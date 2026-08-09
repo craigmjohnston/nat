@@ -152,7 +152,7 @@ func TestBuildAppStartsOnTheBoard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := app.View().Content; !strings.Contains(got, "Craig Johnston") {
+	if got := app.View().Content; !strings.Contains(got, "notion-agent-tracker") {
 		t.Errorf("view = %q, want the board for the loaded config", got)
 	}
 }
