@@ -1,3 +1,5 @@
+// Package config handles local configuration: the XDG config file, and the
+// Notion bearer token read back from Notion's official CLI.
 package config
 
 import (

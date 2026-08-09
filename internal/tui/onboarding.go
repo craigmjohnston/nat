@@ -21,34 +21,24 @@ const ProjectsDBTitle = "Agent Projects"
 // in the project database picker. It cannot collide with a Notion ID.
 const createNewChoice = "<new>"
 
-const introText = `This wizard connects the tracker to your Notion workspace.
-
-Before continuing, create an internal integration at
-https://www.notion.so/profile/integrations and — this is the step people miss —
-open the pages you want tracked in Notion and connect the integration to them
-(••• → Connections). The API can only see pages that have been shared with it.`
-
 // NotionAPI is the part of *notion.Client the onboarding wizard uses. It is an
 // interface so the flow can be driven by a fake in tests.
 type NotionAPI interface {
-	Me(ctx context.Context) (*notion.User, error)
 	ListUsers(ctx context.Context) ([]notion.User, error)
 	Search(ctx context.Context, query, filterType string) ([]notion.SearchResult, error)
 	CreateProjectsDatabase(ctx context.Context, parentPageID, title string) (*notion.Database, error)
 	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
 }
 
-// NewClientFunc builds a NotionAPI for a candidate API key. Onboarding only
-// learns the key part-way through, so a ready-made client cannot be injected.
-type NewClientFunc func(apiKey string) NotionAPI
+// NewClientFunc builds a NotionAPI from a bearer token.
+type NewClientFunc func(token string) NotionAPI
 
-// DefaultNewClient builds a real Notion client for an API key.
-func DefaultNewClient(apiKey string) NotionAPI { return notion.New(apiKey) }
+// DefaultNewClient builds a real Notion client for a bearer token.
+func DefaultNewClient(token string) NotionAPI { return notion.New(token) }
 
-// OnboardingDoneMsg reports that onboarding finished: the API key is in the
-// keychain and Config has been written. NeedsProject is set when the project
-// database holds no projects yet, so the caller should run the new-project
-// flow before showing the board.
+// OnboardingDoneMsg reports that onboarding finished and Config has been
+// written. NeedsProject is set when the project database holds no projects yet,
+// so the caller should run the new-project flow before showing the board.
 type OnboardingDoneMsg struct {
 	Config       config.Config
 	NeedsProject bool
@@ -57,7 +47,6 @@ type OnboardingDoneMsg struct {
 // Messages carrying the result of each Notion call the wizard makes between
 // steps. Every one of them may carry an error instead.
 type (
-	keyCheckedMsg struct{ err error }
 	projectDBsMsg struct {
 		results []notion.SearchResult
 		err     error
@@ -85,9 +74,7 @@ type (
 type onboardingStep int
 
 const (
-	stepAPIKey onboardingStep = iota
-	stepCheckingKey
-	stepLoadingProjectDBs
+	stepLoadingProjectDBs onboardingStep = iota
 	stepPickProjectDB
 	stepLoadingParentPages
 	stepNewProjectDB
@@ -98,13 +85,15 @@ const (
 	stepDone
 )
 
-// Onboarding is the first-run wizard, shown when the config file or the stored
-// API key is missing. It walks the user through connecting an integration,
-// choosing the project database, and picking the assignee, then writes config.
+// Onboarding is the first-run wizard, shown when the config file is missing. It
+// walks the user through choosing the project database and picking the
+// assignee, then writes config.
+//
+// Authentication is not its concern: the caller resolves the Notion CLI's token
+// and hands over a ready client, because a credential problem is fixed with
+// `ntn login` rather than anywhere in this flow.
 type Onboarding struct {
-	newClient NewClientFunc
-	secrets   config.Secrets
-	save      func(config.Config) error
+	save func(config.Config) error
 
 	cfg    config.Config
 	client NotionAPI
@@ -115,7 +104,6 @@ type Onboarding struct {
 	err    error
 
 	// Values bound to form fields.
-	apiKey       string
 	dbChoice     string
 	dbName       string
 	parentPageID string
@@ -126,24 +114,26 @@ type Onboarding struct {
 }
 
 // NewOnboarding returns the wizard, starting from whatever config already
-// exists — onboarding also runs when only the API key has gone missing, and
-// the rest of the file should survive that.
-func NewOnboarding(cfg config.Config, newClient NewClientFunc, secrets config.Secrets, save func(config.Config) error) *Onboarding {
-	m := &Onboarding{newClient: newClient, secrets: secrets, save: save, cfg: cfg}
-	m.form = m.apiKeyForm(nil)
-	return m
+// exists so that a partially written file survives a second run.
+func NewOnboarding(cfg config.Config, client NotionAPI, save func(config.Config) error) *Onboarding {
+	return &Onboarding{
+		save:   save,
+		cfg:    cfg,
+		client: client,
+		step:   stepLoadingProjectDBs,
+		status: "Looking for databases in your workspace…",
+	}
 }
 
-// Init starts the first form.
-func (m *Onboarding) Init() tea.Cmd { return m.form.Init() }
+// Init starts the first Notion call: there is no form to fill in until we know
+// what databases the workspace holds.
+func (m *Onboarding) Init() tea.Cmd { return m.loadProjectDBs }
 
 // Update advances the wizard. Our own messages drive the steps between forms;
 // everything else is handed to the current form, and a completed form moves on
 // to the next step.
 func (m *Onboarding) Update(msg tea.Msg) (*Onboarding, tea.Cmd) {
 	switch msg := msg.(type) {
-	case keyCheckedMsg:
-		return m.keyChecked(msg)
 	case projectDBsMsg:
 		return m.projectDBsLoaded(msg)
 	case parentPagesMsg:
@@ -187,9 +177,6 @@ func (m *Onboarding) View() string {
 func (m *Onboarding) formSubmitted() (*Onboarding, tea.Cmd) {
 	m.form = nil
 	switch m.step {
-	case stepAPIKey:
-		m.apiKey = strings.TrimSpace(m.apiKey)
-		return m.await(stepCheckingKey, "Checking the API key…", m.checkKey)
 	case stepPickProjectDB:
 		if m.dbChoice == createNewChoice {
 			return m.await(stepLoadingParentPages, "Looking for pages to create the database under…", m.loadParentPages)
@@ -218,27 +205,12 @@ func (m *Onboarding) show(step onboardingStep, form *huh.Form) (*Onboarding, tea
 	return m, form.Init()
 }
 
-// fail stops the wizard with an error the user can only quit out of. The one
-// recoverable failure — a rejected API key — is handled in keyChecked instead.
+// fail stops the wizard with an error the user can only quit out of. Nothing in
+// the flow is recoverable in place: a credential problem is fixed with `ntn
+// login` before the app starts, and the rest are workspace state.
 func (m *Onboarding) fail(err error) (*Onboarding, tea.Cmd) {
 	m.err, m.form, m.status = err, nil, ""
 	return m, nil
-}
-
-func (m *Onboarding) keyChecked(msg keyCheckedMsg) (*Onboarding, tea.Cmd) {
-	if msg.err != nil {
-		// The key is the one thing the user can fix in place: ask again,
-		// with the reason it was rejected. The rejected key is cleared first
-		// — it is masked on screen, so leaving it there to be edited would be
-		// editing something the user cannot see.
-		m.apiKey = ""
-		return m.show(stepAPIKey, m.apiKeyForm(msg.err))
-	}
-	if err := m.secrets.SetAPIKey(m.apiKey); err != nil {
-		return m.fail(fmt.Errorf("store API key: %w", err))
-	}
-	m.client = m.newClient(m.apiKey)
-	return m.await(stepLoadingProjectDBs, "Looking for databases the integration can see…", m.loadProjectDBs)
 }
 
 func (m *Onboarding) projectDBsLoaded(msg projectDBsMsg) (*Onboarding, tea.Cmd) {
@@ -328,21 +300,14 @@ func (m *Onboarding) setAssignee(userID string) {
 // The failures worth explaining rather than reporting verbatim.
 var (
 	errNoPages = errors.New(
-		"the integration cannot see any pages: open a page in Notion and connect the integration to it (••• → Connections), then start again")
+		"no pages found in this workspace to create the database under: create one in Notion, then start again")
 	errNoPeople = errors.New(
-		"the integration cannot see any people: give it user information capabilities in Notion, then start again")
+		"no people found in this workspace, so there is nobody to claim slices as")
 	errNoDataSource = errors.New("create project database: no data source was returned")
 )
 
 // The Notion calls made between steps. Each returns a message carrying either
 // the result or the error.
-
-func (m *Onboarding) checkKey() tea.Msg {
-	// Validating with a throwaway client keeps a rejected key out of the
-	// model: m.client is only set once the key is known to work.
-	_, err := m.newClient(m.apiKey).Me(context.Background())
-	return keyCheckedMsg{err: err}
-}
 
 func (m *Onboarding) loadProjectDBs() tea.Msg {
 	results, err := m.client.Search(context.Background(), "", notion.SearchDataSource)
@@ -371,22 +336,6 @@ func (m *Onboarding) checkProjects() tea.Msg {
 
 // The forms. Each binds straight to a field of the model, so a completed form
 // leaves its answer where formSubmitted can read it.
-
-func (m *Onboarding) apiKeyForm(prev error) *huh.Form {
-	input := huh.NewInput().
-		Title("Notion internal integration secret").
-		EchoMode(huh.EchoModePassword).
-		Placeholder("ntn_…").
-		Value(&m.apiKey).
-		Validate(required("an API key"))
-	if prev != nil {
-		input = input.Description(fmt.Sprintf("That key was rejected: %v", prev))
-	}
-	return huh.NewForm(huh.NewGroup(
-		huh.NewNote().Title("notion-agent-tracker — first run").Description(introText),
-		input,
-	))
-}
 
 func (m *Onboarding) projectDBForm() *huh.Form {
 	options := make([]huh.Option[string], 0, len(m.projectDBs)+1)

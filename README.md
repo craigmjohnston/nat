@@ -13,13 +13,16 @@ A TUI for tracking project work in Notion, executed by Claude Code agents.
 ## Requirements
 
 - macOS, Go 1.25.x, tmux, the `claude` CLI
-- A Notion internal integration API key (stored in the macOS Keychain on
-  first run) with access to your project pages and the *user information*
-  capability
+- Notion's official CLI, `ntn` (`curl -fsSL https://ntn.dev | bash`), logged in
+  with `ntn login`. The tracker reads its Notion token from the CLI rather than
+  storing one of its own, so no integration or personal access token is needed —
+  and because the token is workspace-scoped, there is no per-page
+  ••• → Connections step.
 
 ## Setup
 
 ```sh
+ntn login                # once, to authorise the CLI against your workspace
 go build ./cmd/notion-agent-tracker
 ./notion-agent-tracker   # first run launches the onboarding wizard
 ```

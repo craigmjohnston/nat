@@ -15,29 +15,30 @@ import (
 )
 
 // The process's edges, held as variables so tests can stand in for them: main
-// is otherwise unexercisable without the real keychain, a terminal, and an
+// is otherwise unexercisable without the real Notion CLI, a terminal, and an
 // exit that would take the test binary with it.
 var (
-	newSecrets           = keychain
-	stdin      io.Reader = os.Stdin
-	stdout     io.Writer = os.Stdout
-	stderr     io.Writer = os.Stderr
-	exit                 = os.Exit
+	newTokens                   = ntnCLI
+	stdin     io.Reader         = os.Stdin
+	stdout    io.Writer         = os.Stdout
+	stderr    io.Writer         = os.Stderr
+	exit                        = os.Exit
+	newClient tui.NewClientFunc = tui.DefaultNewClient
 )
 
-// keychain is where the API key really lives.
-func keychain() config.Secrets { return config.NewKeyring() }
+// ntnCLI is where the Notion credential really comes from.
+func ntnCLI() config.TokenSource { return config.NewNtnCLI() }
 
 func main() {
-	if err := run(newSecrets(), stdin, stdout); err != nil {
+	if err := run(newTokens(), stdin, stdout); err != nil {
 		fmt.Fprintln(stderr, "notion-agent-tracker:", err)
 		exit(1)
 	}
 }
 
 // run builds the root model and hands it to Bubble Tea.
-func run(secrets config.Secrets, in io.Reader, out io.Writer) error {
-	app, err := buildApp(secrets)
+func run(tokens config.TokenSource, in io.Reader, out io.Writer) error {
+	app, err := buildApp(tokens)
 	if err != nil {
 		return err
 	}
@@ -46,24 +47,36 @@ func run(secrets config.Secrets, in io.Reader, out io.Writer) error {
 }
 
 // buildApp decides which screen the app starts on: the first-run wizard when
-// either the config file or the stored API key is missing, otherwise the board.
-func buildApp(secrets config.Secrets) (*tui.App, error) {
+// there is no config file yet, otherwise the board.
+//
+// Authentication is settled before either screen. The token belongs to the
+// Notion CLI, so a missing or expired one is fixed outside this program with
+// `ntn login` — there is nothing the wizard could usefully do about it.
+func buildApp(tokens config.TokenSource) (*tui.App, error) {
 	cfg, found, err := config.Load()
 	if err != nil {
 		return nil, err
 	}
-	onboard := !found
-	if found {
-		if _, err := secrets.GetAPIKey(); err != nil {
-			if !errors.Is(err, config.ErrAPIKeyNotFound) {
-				return nil, err
-			}
-			onboard = true
-		}
+	token, err := tokens.Token()
+	if err != nil {
+		return nil, authHint(err)
 	}
-	if onboard {
+	if !found {
 		return tui.NewAppWithOnboarding(
-			tui.NewOnboarding(cfg, tui.DefaultNewClient, secrets, config.Save)), nil
+			tui.NewOnboarding(cfg, newClient(token), config.Save)), nil
 	}
 	return tui.NewApp(cfg), nil
+}
+
+// authHint appends the command that fixes an authentication failure, so the
+// user is not left to work out what "not logged in" wants from them.
+func authHint(err error) error {
+	switch {
+	case errors.Is(err, config.ErrNtnNotInstalled):
+		return fmt.Errorf("%w\ninstall it with: curl -fsSL https://ntn.dev | bash", err)
+	case errors.Is(err, config.ErrNtnNotLoggedIn):
+		return fmt.Errorf("%w\nlog in with: %s login", err, config.NtnBinary)
+	default:
+		return err
+	}
 }

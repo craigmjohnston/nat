@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,7 +11,11 @@ import (
 	"testing"
 
 	"github.com/craigmjohnston/notion-agent-tracker/internal/config"
+	"github.com/craigmjohnston/notion-agent-tracker/internal/tui"
 )
+
+// testToken is a plausible workspace token; nothing ever sends it anywhere.
+const testToken = "ntn_o_test"
 
 // writeConfig puts a config file in a temporary XDG config home for the test.
 func writeConfig(t *testing.T, contents string) {
@@ -26,23 +31,24 @@ func writeConfig(t *testing.T, contents string) {
 	}
 }
 
-// configuredHome sets up a config file and a stored API key, so the app starts
-// on the board rather than in the wizard.
-func configuredHome(t *testing.T) *config.MemorySecrets {
+// configuredHome sets up a config file so the app starts on the board rather
+// than in the wizard.
+func configuredHome(t *testing.T) config.TokenSource {
 	t.Helper()
 	writeConfig(t, `{"assignee_user_name":"Craig Johnston"}`)
-	secrets := &config.MemorySecrets{}
-	if err := secrets.SetAPIKey("ntn_secret"); err != nil {
-		t.Fatal(err)
-	}
-	return secrets
+	return config.StaticToken(testToken)
 }
 
+// failingTokens is a TokenSource that always fails with a given error.
+type failingTokens struct{ err error }
+
+func (f failingTokens) Token() (string, error) { return "", f.err }
+
 func TestRunQuits(t *testing.T) {
-	secrets := configuredHome(t)
+	tokens := configuredHome(t)
 	var out bytes.Buffer
 
-	if err := run(secrets, strings.NewReader("q"), &out); err != nil {
+	if err := run(tokens, strings.NewReader("q"), &out); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// The quit is read before the first frame is flushed, so only the terminal
@@ -56,15 +62,15 @@ func TestRunQuits(t *testing.T) {
 func TestRunReportsAStartupFailure(t *testing.T) {
 	writeConfig(t, "{not json")
 
-	if err := run(&config.MemorySecrets{}, strings.NewReader(""), io.Discard); err == nil {
+	if err := run(config.StaticToken(testToken), strings.NewReader(""), io.Discard); err == nil {
 		t.Fatal("want the parse error")
 	}
 }
 
 func TestMainQuits(t *testing.T) {
-	secrets := configuredHome(t)
+	tokens := configuredHome(t)
 	var out, errOut bytes.Buffer
-	stubProcess(t, secrets, strings.NewReader("q"), &out, &errOut)
+	stubProcess(t, tokens, strings.NewReader("q"), &out, &errOut)
 
 	main()
 
@@ -79,7 +85,7 @@ func TestMainQuits(t *testing.T) {
 func TestMainReportsAFailure(t *testing.T) {
 	writeConfig(t, "{not json")
 	var out, errOut bytes.Buffer
-	stubProcess(t, &config.MemorySecrets{}, strings.NewReader(""), &out, &errOut)
+	stubProcess(t, config.StaticToken(testToken), strings.NewReader(""), &out, &errOut)
 
 	main()
 
@@ -92,11 +98,11 @@ func TestMainReportsAFailure(t *testing.T) {
 	}
 }
 
-func TestKeychainIsTheDefaultSecretsStore(t *testing.T) {
-	// Building a Keyring does not touch the OS keychain, so this is safe to
-	// call; it just pins what main runs with by default.
-	if keychain() == nil {
-		t.Error("want a secrets store")
+func TestNtnCLIIsTheDefaultTokenSource(t *testing.T) {
+	// Building an NtnCLI does not run the binary, so this is safe to call; it
+	// just pins what main runs with by default.
+	if ntnCLI() == nil {
+		t.Error("want a token source")
 	}
 }
 
@@ -108,14 +114,14 @@ var lastExit struct {
 
 // stubProcess points main at test doubles for the process's edges, restoring
 // the real ones afterwards.
-func stubProcess(t *testing.T, secrets config.Secrets, in io.Reader, out, errOut io.Writer) {
+func stubProcess(t *testing.T, tokens config.TokenSource, in io.Reader, out, errOut io.Writer) {
 	t.Helper()
-	oldSecrets, oldIn, oldOut, oldErr, oldExit := newSecrets, stdin, stdout, stderr, exit
+	oldTokens, oldIn, oldOut, oldErr, oldExit := newTokens, stdin, stdout, stderr, exit
 	t.Cleanup(func() {
-		newSecrets, stdin, stdout, stderr, exit = oldSecrets, oldIn, oldOut, oldErr, oldExit
+		newTokens, stdin, stdout, stderr, exit = oldTokens, oldIn, oldOut, oldErr, oldExit
 	})
 	lastExit.code, lastExit.exited = 0, false
-	newSecrets = func() config.Secrets { return secrets }
+	newTokens = func() config.TokenSource { return tokens }
 	stdin, stdout, stderr = in, out, errOut
 	exit = func(code int) { lastExit.code, lastExit.exited = code, true }
 }
@@ -129,35 +135,19 @@ func exitCode(t *testing.T) (int, bool) {
 func TestBuildAppStartsOnboardingWithoutAConfigFile(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	app, err := buildApp(&config.MemorySecrets{})
+	app, err := buildApp(config.StaticToken(testToken))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(app.View().Content, "enter") {
-		t.Errorf("view = %q, want the wizard's form", app.View().Content)
-	}
-}
-
-func TestBuildAppStartsOnboardingWithoutAStoredKey(t *testing.T) {
-	writeConfig(t, `{"assignee_user_name":"Craig Johnston"}`)
-
-	app, err := buildApp(&config.MemorySecrets{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if strings.Contains(app.View().Content, "The board is not built yet") {
-		t.Error("want the wizard, not the board, when the API key is missing")
+	if !strings.Contains(app.View().Content, "Looking for databases") {
+		t.Errorf("view = %q, want the wizard's first step", app.View().Content)
 	}
 }
 
 func TestBuildAppStartsOnTheBoard(t *testing.T) {
 	writeConfig(t, `{"assignee_user_name":"Craig Johnston"}`)
-	secrets := &config.MemorySecrets{}
-	if err := secrets.SetAPIKey("ntn_secret"); err != nil {
-		t.Fatal(err)
-	}
 
-	app, err := buildApp(secrets)
+	app, err := buildApp(config.StaticToken(testToken))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -166,27 +156,75 @@ func TestBuildAppStartsOnTheBoard(t *testing.T) {
 	}
 }
 
+func TestBuildAppPassesTheTokenToTheClient(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	old := newClient
+	t.Cleanup(func() { newClient = old })
+
+	var got string
+	newClient = func(token string) tui.NotionAPI {
+		got = token
+		return old(token)
+	}
+
+	if _, err := buildApp(config.StaticToken(testToken)); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != testToken {
+		t.Errorf("client built with %q, want %q", got, testToken)
+	}
+}
+
 func TestBuildAppReportsAnUnreadableConfig(t *testing.T) {
 	writeConfig(t, "{not json")
 
-	if _, err := buildApp(&config.MemorySecrets{}); err == nil {
+	if _, err := buildApp(config.StaticToken(testToken)); err == nil {
 		t.Fatal("want the parse error")
 	}
 }
 
-func TestBuildAppReportsAKeyringFailure(t *testing.T) {
+func TestBuildAppExplainsHowToInstallTheCLI(t *testing.T) {
 	writeConfig(t, `{}`)
 
-	_, err := buildApp(brokenSecrets{})
-	if err == nil || !strings.Contains(err.Error(), "keychain locked") {
-		t.Fatalf("err = %v, want the keyring failure", err)
+	_, err := buildApp(failingTokens{err: config.ErrNtnNotInstalled})
+	if !errors.Is(err, config.ErrNtnNotInstalled) {
+		t.Fatalf("err = %v, want ErrNtnNotInstalled", err)
+	}
+	if !strings.Contains(err.Error(), "ntn.dev") {
+		t.Errorf("err = %q, want it to say how to install ntn", err)
 	}
 }
 
-// brokenSecrets is a config.Secrets whose reads fail for a reason other than
-// the key being absent.
-type brokenSecrets struct{}
+func TestBuildAppExplainsHowToLogIn(t *testing.T) {
+	writeConfig(t, `{}`)
 
-func (brokenSecrets) GetAPIKey() (string, error) { return "", errors.New("keychain locked") }
-func (brokenSecrets) SetAPIKey(string) error     { return nil }
-func (brokenSecrets) DeleteAPIKey() error        { return nil }
+	_, err := buildApp(failingTokens{err: config.ErrNtnNotLoggedIn})
+	if !errors.Is(err, config.ErrNtnNotLoggedIn) {
+		t.Fatalf("err = %v, want ErrNtnNotLoggedIn", err)
+	}
+	if !strings.Contains(err.Error(), "ntn login") {
+		t.Errorf("err = %q, want it to say to run `ntn login`", err)
+	}
+}
+
+func TestBuildAppPassesThroughAnUnrecognisedTokenFailure(t *testing.T) {
+	writeConfig(t, `{}`)
+	sentinel := errors.New("keychain locked")
+
+	_, err := buildApp(failingTokens{err: sentinel})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("err = %v, want it to wrap %v", err, sentinel)
+	}
+	if strings.Contains(err.Error(), "ntn login") {
+		t.Errorf("err = %q, want no misleading login hint", err)
+	}
+}
+
+// Guard against the hint text drifting away from the constant main builds it
+// from, which is the only thing tying the message to the real binary name.
+func TestAuthHintNamesTheBinary(t *testing.T) {
+	err := authHint(config.ErrNtnNotLoggedIn)
+	if want := fmt.Sprintf("%s login", config.NtnBinary); !strings.Contains(err.Error(), want) {
+		t.Errorf("err = %q, want it to contain %q", err, want)
+	}
+}

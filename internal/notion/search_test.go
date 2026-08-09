@@ -138,3 +138,59 @@ func TestSearch(t *testing.T) {
 		}
 	})
 }
+
+// A data source hit carries its schema under "properties", not property values.
+// The two shapes collide — a relation is an object in a schema and an array in
+// a value — so a search that returns any data source with a relation property
+// used to fail to decode entirely. Onboarding's first call is exactly that
+// search, so this shape must survive.
+func TestSearchDecodesDataSourceSchemaProperties(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`{"results":[
+			{"object":"data_source","id":"ds-1","title":[{"plain_text":"Slices"}],
+			 "properties":{
+			   "Name":{"id":"title","name":"Name","type":"title","title":{}},
+			   "Milestone":{"id":"rel","name":"Milestone","type":"relation",
+			                "relation":{"data_source_id":"ds-2","type":"single_property"}}
+			 }},
+			{"object":"page","id":"page-1",
+			 "properties":{"Name":{"type":"title","title":[{"plain_text":"Projects"}]}}}
+		],"has_more":false,"next_cursor":null}`))
+	}))
+	defer srv.Close()
+
+	c, _ := testClient(t, srv)
+	hits, err := c.Search(context.Background(), "", SearchDataSource)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(hits) != 2 {
+		t.Fatalf("hits = %+v, want 2", hits)
+	}
+	// The data source's title comes from the top-level field; its schema entries
+	// must not be mistaken for a title value.
+	if got := hits[0].TitleText(); got != "Slices" {
+		t.Errorf("data source title = %q, want Slices", got)
+	}
+	// A page in the same response still finds its title in its property values.
+	if got := hits[1].TitleText(); got != "Projects" {
+		t.Errorf("page title = %q, want Projects", got)
+	}
+}
+
+// A data source with no top-level title falls through to its schema, where
+// nothing decodes as a title value.
+func TestSearchResultTitleTextSkipsUndecodableProperties(t *testing.T) {
+	r := SearchResult{
+		Object: SearchDataSource,
+		ID:     "ds-1",
+		Properties: map[string]json.RawMessage{
+			"Name":      json.RawMessage(`{"type":"title","title":{}}`),
+			"Milestone": json.RawMessage(`{"type":"relation","relation":{"data_source_id":"ds-2"}}`),
+		},
+	}
+
+	if got := r.TitleText(); got != "" {
+		t.Errorf("title = %q, want empty for a schema with no title value", got)
+	}
+}

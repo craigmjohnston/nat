@@ -2,6 +2,7 @@ package notion
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 )
 
@@ -16,11 +17,15 @@ const (
 // so both title shapes are modelled: data sources carry a top-level title,
 // pages carry theirs in the title property.
 type SearchResult struct {
-	Object     string                   `json:"object"`
-	ID         string                   `json:"id"`
-	URL        string                   `json:"url"`
-	Title      []RichText               `json:"title"`
-	Properties map[string]PropertyValue `json:"properties"`
+	Object string     `json:"object"`
+	ID     string     `json:"id"`
+	URL    string     `json:"url"`
+	Title  []RichText `json:"title"`
+	// Properties is left undecoded because its shape depends on the hit: a
+	// page carries property *values*, a data source carries its *schema*.
+	// The two collide — a relation is an array of IDs in a value and an object
+	// in a schema — so decoding into either type fails on the other.
+	Properties map[string]json.RawMessage `json:"properties"`
 	// Parent is where the hit lives. Data source hits carry the database they
 	// belong to, which onboarding records alongside the data source ID.
 	Parent Parent `json:"parent"`
@@ -32,7 +37,16 @@ func (r SearchResult) TitleText() string {
 	if len(r.Title) > 0 {
 		return PlainText(r.Title)
 	}
-	for _, p := range r.Properties {
+	// Only a page's property values carry a title; a data source schema puts an
+	// empty config under the same key. Anything that does not decode as a title
+	// value is therefore skipped rather than treated as an error.
+	for _, raw := range r.Properties {
+		var p struct {
+			Title []RichText `json:"title"`
+		}
+		if err := json.Unmarshal(raw, &p); err != nil {
+			continue
+		}
 		if len(p.Title) > 0 {
 			return PlainText(p.Title)
 		}

@@ -10,7 +10,8 @@ model).
 
 - `cmd/notion-agent-tracker/` — entrypoint
 - `internal/config/` — XDG config (`~/.config/notion-agent-tracker/config.json`)
-  + Keychain via zalando/go-keyring (service `notion-agent-tracker`)
+  + the Notion bearer token, read from Notion's official CLI via
+  `ntn auth token` (the app stores no credential of its own)
 - `internal/notion/` — hand-rolled stdlib Notion client (no third-party client
   supports data sources); minimal structs, only fields we use
 - `internal/domain/` — Project/Milestone/Slice models, progress math
@@ -37,8 +38,9 @@ model).
 - Bubble Tea v2 idioms: `View()` returns `tea.View`; match `tea.KeyPressMsg`;
   `tea.ExecProcess` for tmux attach.
 - Tests: aim for 100% coverage of new code. httptest for the Notion client
-  (assert exact request JSON), interfaces + fakes for keyring/tmux, teatest
+  (assert exact request JSON), interfaces + fakes for the ntn CLI/tmux, teatest
   for TUI flows, golden snapshots for renders.
 - Gate before claiming done: `go vet ./... && go test -race -cover ./...`
   (plus `golangci-lint run` if installed).
-- Never log or commit the Notion API key; it lives in the macOS Keychain only.
+- Never log or commit the Notion token; it belongs to the `ntn` CLI and is only
+  ever held in memory for the lifetime of a request.
