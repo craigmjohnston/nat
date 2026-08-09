@@ -1,0 +1,44 @@
+[
+  {
+    "id": "b1",
+    "type": "bulleted_list_item",
+    "has_children": true,
+    "bulleted_list_item": {"rich_text": [{"plain_text": "Outer bullet"}]},
+    "children": [
+      {"id": "b2", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": [{"plain_text": "Inner bullet"}]}},
+      {
+        "id": "b3",
+        "type": "bulleted_list_item",
+        "has_children": true,
+        "bulleted_list_item": {"rich_text": [{"plain_text": "Inner with a note"}]},
+        "children": [
+          {"id": "b4", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "A nested paragraph."}]}}
+        ]
+      }
+    ]
+  },
+  {"id": "b5", "type": "bulleted_list_item", "bulleted_list_item": {"rich_text": [{"plain_text": "Second outer bullet"}]}},
+  {"id": "n1", "type": "numbered_list_item", "numbered_list_item": {"rich_text": [{"plain_text": "First step"}]}},
+  {
+    "id": "n2",
+    "type": "numbered_list_item",
+    "has_children": true,
+    "numbered_list_item": {"rich_text": [{"plain_text": "Second step"}]},
+    "children": [
+      {"id": "n3", "type": "numbered_list_item", "numbered_list_item": {"rich_text": [{"plain_text": "Substep"}]}},
+      {"id": "n4", "type": "numbered_list_item", "numbered_list_item": {"rich_text": [{"plain_text": "Another substep"}]}}
+    ]
+  },
+  {"id": "p1", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "An interruption restarts the numbering."}]}},
+  {"id": "n5", "type": "numbered_list_item", "numbered_list_item": {"rich_text": [{"plain_text": "Back to one"}]}},
+  {"id": "t1", "type": "to_do", "to_do": {"checked": true, "rich_text": [{"plain_text": "Done thing"}]}},
+  {
+    "id": "t2",
+    "type": "to_do",
+    "has_children": true,
+    "to_do": {"checked": false, "rich_text": [{"plain_text": "Pending thing"}]},
+    "children": [
+      {"id": "t3", "type": "to_do", "to_do": {"checked": false, "rich_text": [{"plain_text": "Nested pending thing"}]}}
+    ]
+  }
+]

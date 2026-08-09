@@ -26,13 +26,26 @@ type TextContent struct {
 	Content string `json:"content"`
 }
 
+// Annotations are the inline styles Notion attaches to a rich text span. Only
+// the ones with a markdown equivalent are modelled — underline and colour have
+// none, so they are dropped when rendering.
+type Annotations struct {
+	Bold          bool `json:"bold,omitempty"`
+	Italic        bool `json:"italic,omitempty"`
+	Strikethrough bool `json:"strikethrough,omitempty"`
+	Code          bool `json:"code,omitempty"`
+}
+
 // RichText is one span of Notion rich text. Only the fields this app reads or
 // writes are modelled: writes send type+text, reads use plain_text, which
-// Notion populates for every span type.
+// Notion populates for every span type, plus the annotations and link target
+// the markdown renderer needs.
 type RichText struct {
-	Type      string       `json:"type,omitempty"`
-	Text      *TextContent `json:"text,omitempty"`
-	PlainText string       `json:"plain_text,omitempty"`
+	Type        string       `json:"type,omitempty"`
+	Text        *TextContent `json:"text,omitempty"`
+	PlainText   string       `json:"plain_text,omitempty"`
+	Annotations *Annotations `json:"annotations,omitempty"`
+	Href        string       `json:"href,omitempty"`
 }
 
 // PlainText joins the spans of a rich text value into a single string.

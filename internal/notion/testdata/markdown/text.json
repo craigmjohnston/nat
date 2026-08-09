@@ -1,0 +1,48 @@
+[
+  {"id": "h1", "type": "heading_1", "heading_1": {"rich_text": [{"plain_text": "Brief"}]}},
+  {
+    "id": "p1",
+    "type": "paragraph",
+    "paragraph": {
+      "rich_text": [
+        {"plain_text": "Convert a "},
+        {"plain_text": "block tree", "annotations": {"bold": true}},
+        {"plain_text": " to "},
+        {"plain_text": "markdown", "annotations": {"italic": true}},
+        {"plain_text": " for "},
+        {"plain_text": "glamour", "annotations": {"code": true}},
+        {"plain_text": ", not "},
+        {"plain_text": "ANSI", "annotations": {"strikethrough": true}},
+        {"plain_text": "."}
+      ]
+    }
+  },
+  {
+    "id": "p2",
+    "type": "paragraph",
+    "paragraph": {
+      "rich_text": [
+        {"plain_text": "See the ", "annotations": {}},
+        {"plain_text": "API docs", "href": "https://example.com/docs"},
+        {"plain_text": " and this ", "annotations": {"bold": true, "italic": true, "code": true, "strikethrough": true}},
+        {"plain_text": "link", "href": "https://example.com/x", "annotations": {"bold": true}},
+        {"plain_text": "  ", "annotations": {"bold": true}}
+      ]
+    }
+  },
+  {"id": "p3", "type": "paragraph", "paragraph": {"rich_text": []}},
+  {"id": "h2", "type": "heading_2", "heading_2": {"rich_text": [{"plain_text": "Notes"}]}},
+  {"id": "q1", "type": "quote", "quote": {"rich_text": [{"plain_text": "One line.\nAnd another."}]}},
+  {"id": "d1", "type": "divider", "divider": {}},
+  {
+    "id": "c1",
+    "type": "code",
+    "code": {
+      "language": "go",
+      "rich_text": [{"plain_text": "func main() {\n\tprintln(\"hi\")\n}", "annotations": {"code": true}}]
+    }
+  },
+  {"id": "c2", "type": "code", "code": {"rich_text": [{"plain_text": "no language"}]}},
+  {"id": "h3", "type": "heading_3", "heading_3": {"rich_text": [{"plain_text": "Wrap up"}]}},
+  {"id": "p4", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "First line.\nSecond line."}]}}
+]
