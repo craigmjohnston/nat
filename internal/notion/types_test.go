@@ -2,6 +2,7 @@ package notion
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 )
 
@@ -41,6 +42,7 @@ func TestPropertyValueJSON(t *testing.T) {
 			`{"rich_text":[{"type":"text","text":{"content":"/repo/path"}}]}`,
 		},
 		{"select", NewSelect("Active"), `{"select":{"name":"Active"}}`},
+		{"status", NewStatus("Active"), `{"status":{"name":"Active"}}`},
 		{
 			"relation",
 			NewRelation("page-1", "page-2"),
@@ -59,6 +61,27 @@ func TestPropertyValueJSON(t *testing.T) {
 			}
 			if string(got) != tt.want {
 				t.Errorf("marshalled to %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewChoiceMatchesThePropertyType(t *testing.T) {
+	tests := []struct {
+		propertyType string
+		want         PropertyValue
+	}{
+		{TypeSelect, NewSelect("Done")},
+		{TypeStatus, NewStatus("Done")},
+		// A property whose type is unknown — or absent, as it is on a value the
+		// app built itself — is written the way this app's schemas are made.
+		{"", NewSelect("Done")},
+		{"rich_text", NewSelect("Done")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.propertyType, func(t *testing.T) {
+			if got := NewChoice(tt.propertyType, "Done"); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewChoice(%q, \"Done\") = %+v, want %+v", tt.propertyType, got, tt.want)
 			}
 		})
 	}

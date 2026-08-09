@@ -133,9 +133,33 @@ func NewRichText(s string) PropertyValue {
 	return PropertyValue{RichText: richText(s)}
 }
 
+// The property types of a fixed-choice column. The API cannot create Notion's
+// own status type, so this app only ever makes selects — but a column converted
+// in the Notion UI is a status, and must still be readable and writable.
+const (
+	TypeSelect = "select"
+	TypeStatus = "status"
+)
+
 // NewSelect builds a select property value naming an option.
 func NewSelect(name string) PropertyValue {
 	return PropertyValue{Select: &SelectOption{Name: name}}
+}
+
+// NewStatus builds a status property value naming an option.
+func NewStatus(name string) PropertyValue {
+	return PropertyValue{Status: &SelectOption{Name: name}}
+}
+
+// NewChoice builds a fixed-choice property value in the shape propertyType
+// names — the type Notion reported for the property being written, as carried
+// by the page it was read from. Anything but a status is written as a select,
+// which is what this app's own schemas use.
+func NewChoice(propertyType, name string) PropertyValue {
+	if propertyType == TypeStatus {
+		return NewStatus(name)
+	}
+	return NewSelect(name)
 }
 
 // NewRelation builds a relation property value pointing at the given page IDs.

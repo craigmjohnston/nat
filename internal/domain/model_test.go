@@ -36,7 +36,8 @@ func TestMilestoneFromPage(t *testing.T) {
 					"Status": {"type": "select", "select": {"name": "Active"}}
 				}
 			}`,
-			Milestone{ID: "m1", Name: "M4: Read-only board", Order: 4, Status: MilestoneActive, URL: "https://notion.test/m1"},
+			Milestone{ID: "m1", Name: "M4: Read-only board", Order: 4, Status: MilestoneActive,
+				StatusType: notion.TypeSelect, URL: "https://notion.test/m1"},
 		},
 		{
 			"status shape",
@@ -48,7 +49,7 @@ func TestMilestoneFromPage(t *testing.T) {
 					"Status": {"type": "status", "status": {"name": "Queued"}}
 				}
 			}`,
-			Milestone{ID: "m2", Name: "M5", Order: 5, Status: MilestoneQueued},
+			Milestone{ID: "m2", Name: "M5", Order: 5, Status: MilestoneQueued, StatusType: notion.TypeStatus},
 		},
 		{
 			"missing properties map to zero values",
@@ -65,7 +66,7 @@ func TestMilestoneFromPage(t *testing.T) {
 					"Status": {"type": "select", "select": {"name": "Done"}}
 				}
 			}`,
-			Milestone{ID: "m4", Name: "M6", Status: MilestoneDone},
+			Milestone{ID: "m4", Name: "M6", Status: MilestoneDone, StatusType: notion.TypeSelect},
 		},
 	}
 	for _, tt := range tests {
