@@ -22,9 +22,11 @@ type fakeNotion struct {
 	search   func(query, filterType string) ([]notion.SearchResult, error)
 	createDB func(parentPageID, title string) (*notion.Database, error)
 	query    func(id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
+	blocks   func(id string) ([]notion.Block, error)
 
 	searchFilters []string
 	queriedDSIDs  []string
+	blockParents  []string
 	createdUnder  string
 	createdTitle  string
 }
@@ -60,6 +62,14 @@ func (f *fakeNotion) QueryDataSource(_ context.Context, id string, filter map[st
 		return nil, nil
 	}
 	return f.query(id, filter, sorts)
+}
+
+func (f *fakeNotion) GetBlockChildren(_ context.Context, id string) ([]notion.Block, error) {
+	f.blockParents = append(f.blockParents, id)
+	if f.blocks == nil {
+		return nil, nil
+	}
+	return f.blocks(id)
 }
 
 // harness drives an Onboarding the way the Bubble Tea runtime would: it feeds

@@ -34,6 +34,11 @@ type (
 	projectLoadedMsg struct{ project domain.Project }
 	// notionErrMsg carries a failed Notion call, already described.
 	notionErrMsg struct{ err error }
+	// infoLoadedMsg carries the project page body, already converted to
+	// markdown; infoErrMsg the fetch that failed instead. The info screen
+	// reports its own failures, so they do not go through notionErrMsg.
+	infoLoadedMsg struct{ markdown string }
+	infoErrMsg    struct{ err error }
 )
 
 // keyMap is the app's global key bindings. Screens own their own navigation
@@ -80,6 +85,7 @@ type App struct {
 	onboarding *Onboarding
 	screen     screen
 	board      Board
+	info       Info
 
 	project *domain.Project
 	loading bool
@@ -98,7 +104,8 @@ var _ tea.Model = (*App)(nil)
 func NewApp(cfg config.Config, client NotionAPI) *App {
 	s := DefaultStyles()
 	sp := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(s.Spinner))
-	return &App{cfg: cfg, client: client, styles: s, keys: defaultKeyMap(), spinner: sp, board: NewBoard(s)}
+	return &App{cfg: cfg, client: client, styles: s, keys: defaultKeyMap(), spinner: sp,
+		board: NewBoard(s), info: NewInfo(s)}
 }
 
 // NewAppWithOnboarding returns the root model showing the first-run wizard,
@@ -126,6 +133,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Recorded, then passed on: the screens size themselves too.
 		a.width, a.height = msg.Width, msg.Height
 		a.board.SetWidth(msg.Width - a.styles.App.GetHorizontalFrameSize())
+		a.info.SetSize(msg.Width-a.styles.App.GetHorizontalFrameSize(),
+			msg.Height-a.styles.App.GetVerticalFrameSize()-infoChromeHeight)
 	case tea.KeyPressMsg:
 		return a.keyPressed(msg)
 	case OnboardingDoneMsg:
@@ -137,8 +146,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case notionErrMsg:
 		a.loading, a.err = false, msg.err
 		return a, nil
+	case infoLoadedMsg:
+		a.info.SetMarkdown(msg.markdown)
+		return a, nil
+	case infoErrMsg:
+		a.info.Fail(msg.err)
+		return a, nil
 	case spinner.TickMsg:
-		if !a.loading {
+		if !a.loading && !a.info.Busy() {
 			return a, nil
 		}
 		sp, cmd := a.spinner.Update(msg)
@@ -179,16 +194,29 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a, tea.Quit
 	case key.Matches(msg, a.keys.Refresh):
 		a.note = ""
-		return a, a.startLoad()
+		// The project page is refreshed too — at once if the user is reading it,
+		// otherwise lazily, on the next visit to the info screen.
+		a.info.Reset()
+		cmd := a.startLoad()
+		if a.screen == screenInfo {
+			cmd = tea.Batch(cmd, a.startInfoLoad())
+		}
+		return a, cmd
 	case key.Matches(msg, a.keys.Help):
 		a.screen = toggle(a.screen, screenHelp)
 	case key.Matches(msg, a.keys.Info):
 		a.screen = toggle(a.screen, screenInfo)
+		if a.screen == screenInfo {
+			return a, a.startInfoLoad()
+		}
 	default:
-		// Anything the app itself does not want belongs to the board, when the
-		// board is what the user is looking at.
-		if a.screen == screenBoard {
+		// Anything the app itself does not want belongs to the screen the user
+		// is looking at.
+		switch a.screen {
+		case screenBoard:
 			return a, a.board.Update(msg)
+		case screenInfo:
+			return a, a.info.Update(msg)
 		}
 	}
 	return a, nil
@@ -223,6 +251,30 @@ func (a *App) startLoad() tea.Cmd {
 	}
 	a.loading, a.err = true, nil
 	return tea.Batch(a.spinner.Tick, a.fetchProject(a.cfg.ActiveProjectID, project))
+}
+
+// startInfoLoad kicks off a fetch of the project page body, unless there is
+// nothing to fetch or it has been fetched already: the page is the project's
+// conventions, which do not change between keystrokes.
+func (a *App) startInfoLoad() tea.Cmd {
+	if _, ok := a.activeProject(); !ok || !a.info.NeedsLoad() || a.client == nil {
+		return nil
+	}
+	a.info.Start()
+	return tea.Batch(a.spinner.Tick, a.fetchInfo(a.cfg.ActiveProjectID))
+}
+
+// fetchInfo loads a page's body and converts it to markdown for the info
+// screen to render.
+func (a *App) fetchInfo(pageID string) tea.Cmd {
+	client := a.client
+	return func() tea.Msg {
+		blocks, err := client.GetBlockChildren(context.Background(), pageID)
+		if err != nil {
+			return infoErrMsg{err: fmt.Errorf("load project page: %w", err)}
+		}
+		return infoLoadedMsg{markdown: notion.Markdown(blocks)}
+	}
 }
 
 // activeProject returns the configured project the board shows.
@@ -335,13 +387,22 @@ func (a *App) noProjectReason() string {
 	return fmt.Sprintf("Active project %s is not in the config file.", a.cfg.ActiveProjectID)
 }
 
-// infoView stands in for the info screen until it exists.
+// infoChromeHeight is how many lines the app draws around the info screen's
+// viewport, inside the frame: the screen's heading and the blank line under it,
+// then the blank line and status bar below. The viewport gets the rest.
+const infoChromeHeight = 4
+
+// infoView is the project page. An unconfigured project has no page to fetch,
+// which the screen reports the same way the board does.
 func (a *App) infoView() string {
-	return a.styles.Title.Render("Info") + "\n\n" +
-		a.styles.Faint.Render("The info view lands in a later slice.")
+	if a.info.Idle() {
+		return a.styles.Title.Render("Info") + "\n\n" +
+			a.styles.Faint.Render(a.noProjectReason())
+	}
+	return a.info.View(a.spinner.View())
 }
 
-// helpView lists the global keys, then the board's own. The board's reserved
+// helpView lists the global keys, then each screen's own. The board's reserved
 // keys are listed too: they do nothing yet, but the help is where the plan for
 // them is visible.
 func (a *App) helpView() string {
@@ -349,6 +410,8 @@ func (a *App) helpView() string {
 	lines = append(lines, a.helpLines(a.keys.helpBindings())...)
 	lines = append(lines, "", a.styles.Subtitle.Render("Board"), "")
 	lines = append(lines, a.helpLines(a.board.helpBindings())...)
+	lines = append(lines, "", a.styles.Subtitle.Render("Info"), "")
+	lines = append(lines, a.helpLines(infoKeys())...)
 	return strings.Join(lines, "\n")
 }
 
