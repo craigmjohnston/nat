@@ -21,6 +21,7 @@ type fakeNotion struct {
 	users       func() ([]notion.User, error)
 	search      func(query, filterType string) ([]notion.SearchResult, error)
 	createDB    func(parentPageID, title string) (*notion.Database, error)
+	newProject  func(projectsDSID, name string) (*notion.ProjectStructure, error)
 	query       func(id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
 	blocks      func(id string) ([]notion.Block, error)
 	createPage  func(parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)
@@ -34,6 +35,8 @@ type fakeNotion struct {
 	blockParents  []string
 	createdUnder  string
 	createdTitle  string
+	// The projects created, as the data source and name each was asked for.
+	createdProjects []createProjectCall
 
 	// The writes the mutation flows make, in the order they were made.
 	created  []createPageCall
@@ -53,6 +56,10 @@ type (
 	updatePageCall struct {
 		pageID     string
 		properties map[string]notion.PropertyValue
+	}
+	createProjectCall struct {
+		projectsDSID string
+		name         string
 	}
 	appendCall struct {
 		pageID   string
@@ -83,6 +90,14 @@ func (f *fakeNotion) CreateProjectsDatabase(_ context.Context, parentPageID, tit
 		return nil, nil
 	}
 	return f.createDB(parentPageID, title)
+}
+
+func (f *fakeNotion) CreateProject(_ context.Context, projectsDSID, name string) (*notion.ProjectStructure, error) {
+	f.createdProjects = append(f.createdProjects, createProjectCall{projectsDSID: projectsDSID, name: name})
+	if f.newProject == nil {
+		return nil, nil
+	}
+	return f.newProject(projectsDSID, name)
 }
 
 func (f *fakeNotion) QueryDataSource(_ context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error) {

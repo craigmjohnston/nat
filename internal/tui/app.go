@@ -182,6 +182,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.saved(msg.note, msg.err)
 	case milestoneSavedMsg:
 		return a.saved(msg.note, msg.err)
+	case projectCreatedMsg:
+		return a.projectCreated(msg)
+	case projectSwitchedMsg:
+		return a.projectSwitched(msg)
 	case agentLaunchedMsg:
 		return a.agentLaunched(msg)
 	case agentAttachedMsg:
@@ -304,6 +308,10 @@ func (a *App) boardWrite(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.launchAgentFlow(), true
 	case key.Matches(msg, a.board.keys.Attach):
 		return a.attachAgentFlow(), true
+	case key.Matches(msg, a.board.keys.NewProject):
+		return a.newProjectFlow(), true
+	case key.Matches(msg, a.board.keys.SwitchProject):
+		return a.switchProjectFlow(), true
 	}
 	return nil, false
 }
@@ -432,10 +440,14 @@ func toggle(current, want screen) screen {
 // loads the plan if there is a project to load.
 func (a *App) onboardingDone(msg OnboardingDoneMsg) (tea.Model, tea.Cmd) {
 	a.cfg, a.onboarding, a.screen = msg.Config, nil, screenBoard
-	a.note = "Setup complete."
 	if msg.NeedsProject {
-		a.note = "Setup complete. No projects yet — the new-project flow lands in a later milestone."
+		// Nothing to load, and nothing to look at until there is: the wizard hands
+		// straight over to the flow that makes the first project.
+		cmd := a.newProjectFlow()
+		a.note = "Setup complete. No projects yet — let's make one."
+		return a, cmd
 	}
+	a.note = "Setup complete."
 	return a, a.startLoad()
 }
 
@@ -588,7 +600,7 @@ func (a *App) boardView() string {
 // selection points at a project the config no longer describes.
 func (a *App) noProjectReason() string {
 	if a.cfg.ActiveProjectID == "" {
-		return "No project selected. The new-project flow lands in a later milestone."
+		return "No project selected. Press N to create one."
 	}
 	return fmt.Sprintf("Active project %s is not in the config file.", a.cfg.ActiveProjectID)
 }

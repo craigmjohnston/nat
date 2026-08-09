@@ -27,6 +27,7 @@ type NotionAPI interface {
 	ListUsers(ctx context.Context) ([]notion.User, error)
 	Search(ctx context.Context, query, filterType string) ([]notion.SearchResult, error)
 	CreateProjectsDatabase(ctx context.Context, parentPageID, title string) (*notion.Database, error)
+	CreateProject(ctx context.Context, projectsDSID, name string) (*notion.ProjectStructure, error)
 	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
 	GetBlockChildren(ctx context.Context, id string) ([]notion.Block, error)
 	CreatePage(ctx context.Context, parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)
