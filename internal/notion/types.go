@@ -116,6 +116,7 @@ type PropertyValue struct {
 	Title    []RichText    `json:"title,omitempty"`
 	RichText []RichText    `json:"rich_text,omitempty"`
 	Select   *SelectOption `json:"select,omitempty"`
+	Status   *SelectOption `json:"status,omitempty"`
 	Relation []Relation    `json:"relation,omitempty"`
 	People   []User        `json:"people,omitempty"`
 	URL      string        `json:"url,omitempty"`
@@ -175,11 +176,17 @@ func (p PropertyValue) Text() string {
 }
 
 // SelectName returns the option name of a select property, and "" when unset.
+// A status property carries the same option shape under a different key — this
+// app only ever creates selects, but a project customised in Notion may have
+// been converted — so that is read as a fallback.
 func (p PropertyValue) SelectName() string {
-	if p.Select == nil {
-		return ""
+	if p.Select != nil {
+		return p.Select.Name
 	}
-	return p.Select.Name
+	if p.Status != nil {
+		return p.Status.Name
+	}
+	return ""
 }
 
 // RelationIDs returns the related page IDs of a relation property.

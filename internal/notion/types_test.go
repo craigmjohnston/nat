@@ -94,6 +94,16 @@ func TestPropertyValueAccessors(t *testing.T) {
 		}
 	})
 
+	t.Run("SelectName falls back to a status property", func(t *testing.T) {
+		var p PropertyValue
+		if err := json.Unmarshal([]byte(`{"type":"status","status":{"name":"Claimed"}}`), &p); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := p.SelectName(); got != "Claimed" {
+			t.Errorf("SelectName() = %q, want %q", got, "Claimed")
+		}
+	})
+
 	t.Run("RelationIDs", func(t *testing.T) {
 		got := NewRelation("a", "b").RelationIDs()
 		if len(got) != 2 || got[0] != "a" || got[1] != "b" {
