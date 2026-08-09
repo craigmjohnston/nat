@@ -233,6 +233,93 @@ func TestDoRetriesRateLimit(t *testing.T) {
 	})
 }
 
+func TestDoRetriesTransientServerErrors(t *testing.T) {
+	t.Run("a repeatable request recovers from 503", func(t *testing.T) {
+		var calls atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if calls.Add(1) == 1 {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			w.Write([]byte(`{"object":"list"}`))
+		}))
+		defer srv.Close()
+
+		c, waits := testClient(t, srv)
+		if err := c.do(context.Background(), http.MethodPost, "/data_sources/d1/query", map[string]any{}, nil); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if calls.Load() != 2 {
+			t.Errorf("server calls = %d, want 2", calls.Load())
+		}
+		if len(*waits) != 1 || (*waits)[0] != time.Second {
+			t.Errorf("waits = %v, want one 1s backoff", *waits)
+		}
+	})
+
+	t.Run("backs off exponentially until the cap", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadGateway)
+		}))
+		defer srv.Close()
+
+		c, waits := testClient(t, srv, WithMaxRetries(3))
+		var apiErr *APIError
+		if err := c.do(context.Background(), http.MethodGet, "/users", nil, nil); !errors.As(err, &apiErr) {
+			t.Fatalf("got %v, want *APIError", err)
+		}
+		if apiErr.StatusCode != http.StatusBadGateway {
+			t.Errorf("status = %d", apiErr.StatusCode)
+		}
+		want := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second}
+		if len(*waits) != len(want) {
+			t.Fatalf("waits = %v, want %v", *waits, want)
+		}
+		for i, w := range want {
+			if (*waits)[i] != w {
+				t.Errorf("wait %d = %v, want %v", i, (*waits)[i], w)
+			}
+		}
+	})
+
+	t.Run("a write is not repeated after 502", func(t *testing.T) {
+		var calls atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls.Add(1)
+			w.WriteHeader(http.StatusBadGateway)
+		}))
+		defer srv.Close()
+
+		c, waits := testClient(t, srv)
+		if err := c.do(context.Background(), http.MethodPost, "/pages", map[string]any{"parent": "x"}, nil); err == nil {
+			t.Fatal("want an error")
+		}
+		if calls.Load() != 1 {
+			t.Errorf("server calls = %d, want 1: a 502 may mean the write landed", calls.Load())
+		}
+		if len(*waits) != 0 {
+			t.Errorf("waits = %v, want none", *waits)
+		}
+	})
+
+	t.Run("a 500 is surfaced immediately", func(t *testing.T) {
+		var calls atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls.Add(1)
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		if err := c.do(context.Background(), http.MethodGet, "/users", nil, nil); err == nil {
+			t.Fatal("want an error")
+		}
+		if calls.Load() != 1 {
+			t.Errorf("server calls = %d, want 1", calls.Load())
+		}
+	})
+}
+
 func TestDoErrors(t *testing.T) {
 	t.Run("maps a Notion error envelope", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -265,7 +352,7 @@ func TestDoErrors(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		c, _ := testClient(t, srv)
+		c, _ := testClient(t, srv, WithMaxRetries(0))
 		var apiErr *APIError
 		if err := c.do(context.Background(), http.MethodGet, "/x", nil, nil); !errors.As(err, &apiErr) {
 			t.Fatalf("got %v, want *APIError", err)
@@ -361,25 +448,83 @@ type errReader struct{}
 
 func (errReader) Read([]byte) (int, error) { return 0, errors.New("boom") }
 
-func TestRetryAfter(t *testing.T) {
+func TestParseRetryAfter(t *testing.T) {
 	tests := []struct {
-		name  string
-		value string
-		want  time.Duration
+		name   string
+		value  string
+		want   time.Duration
+		wantOK bool
 	}{
-		{"whole seconds", "3", 3 * time.Second},
-		{"fractional seconds", "0.25", 250 * time.Millisecond},
-		{"padded", "  1 ", time.Second},
-		{"missing", "", defaultRetryWait},
-		{"unparsable", "soon", defaultRetryWait},
-		{"zero", "0", defaultRetryWait},
-		{"negative", "-5", defaultRetryWait},
-		{"absurd", "99999", maxRetryWait},
+		{"whole seconds", "3", 3 * time.Second, true},
+		{"fractional seconds", "0.25", 250 * time.Millisecond, true},
+		{"padded", "  1 ", time.Second, true},
+		{"absurd values are capped", "99999", maxRetryWait, true},
+		{"missing", "", 0, false},
+		{"unparsable", "soon", 0, false},
+		{"zero", "0", 0, false},
+		{"negative", "-5", 0, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := retryAfter(tt.value); got != tt.want {
-				t.Errorf("retryAfter(%q) = %v, want %v", tt.value, got, tt.want)
+			got, ok := parseRetryAfter(tt.value)
+			if got != tt.want || ok != tt.wantOK {
+				t.Errorf("parseRetryAfter(%q) = %v, %v; want %v, %v", tt.value, got, ok, tt.want, tt.wantOK)
+			}
+		})
+	}
+}
+
+func TestRetryable(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		status int
+		want   bool
+	}{
+		{"429 on a write is retried", http.MethodPatch, "/pages/x", 429, true},
+		{"429 on a read is retried", http.MethodGet, "/users", 429, true},
+		{"502 on a GET is retried", http.MethodGet, "/users", 502, true},
+		{"503 on a GET is retried", http.MethodGet, "/users", 503, true},
+		{"502 on a data source query is retried", http.MethodPost, "/data_sources/d1/query", 502, true},
+		{"502 on a query with a query string is retried", http.MethodPost, "/data_sources/d1/query?x=1", 502, true},
+		{"503 on search is retried", http.MethodPost, "/search", 503, true},
+		{"502 on page creation is not retried", http.MethodPost, "/pages", 502, false},
+		{"503 on a page update is not retried", http.MethodPatch, "/pages/x", 503, false},
+		{"502 on a delete is not retried", http.MethodDelete, "/blocks/x", 502, false},
+		{"500 is not retried", http.MethodGet, "/users", 500, false},
+		{"504 is not retried", http.MethodGet, "/users", 504, false},
+		{"404 is not retried", http.MethodGet, "/users", 404, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := retryable(tt.method, tt.path, tt.status); got != tt.want {
+				t.Errorf("retryable(%s, %s, %d) = %v, want %v", tt.method, tt.path, tt.status, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRetryWait(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  int
+		header  string
+		attempt int
+		want    time.Duration
+	}{
+		{"Retry-After wins", 429, "5", 0, 5 * time.Second},
+		{"Retry-After wins on 503 too", 503, "5", 2, 5 * time.Second},
+		{"429 without a header waits a flat second", 429, "", 3, defaultRetryWait},
+		{"5xx backs off from one second", 502, "", 0, time.Second},
+		{"5xx doubles each attempt", 502, "", 2, 4 * time.Second},
+		{"5xx backoff is capped", 503, "", 10, maxRetryWait},
+		{"5xx backoff cannot overflow", 503, "", 62, maxRetryWait},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := retryWait(tt.status, tt.header, tt.attempt); got != tt.want {
+				t.Errorf("retryWait(%d, %q, %d) = %v, want %v", tt.status, tt.header, tt.attempt, got, tt.want)
 			}
 		})
 	}

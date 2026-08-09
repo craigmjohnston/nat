@@ -166,11 +166,11 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 			return fmt.Errorf("%s %s: %w", method, path, err)
 		}
 
-		if status == http.StatusTooManyRequests && attempt < c.maxRetries {
+		if attempt < c.maxRetries && retryable(method, path, status) {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case <-c.after(retryAfter(header.Get("Retry-After"))):
+			case <-c.after(retryWait(status, header.Get("Retry-After"), attempt)):
 			}
 			continue
 		}
@@ -202,19 +202,70 @@ func (c *Client) roundTrip(req *http.Request) (int, http.Header, []byte, error) 
 	return resp.StatusCode, resp.Header, data, nil
 }
 
-// retryAfter interprets a Retry-After header value as a wait duration. Notion
-// sends whole or fractional seconds; anything unparsable falls back to a
-// default, and absurd values are capped so a hostile header cannot stall the UI.
-func retryAfter(v string) time.Duration {
-	secs, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
-	if err != nil || secs <= 0 {
+// retryable reports whether a failed request should be tried again.
+//
+// A 429 never reached the handler, so any request can safely be repeated. A
+// 502/503 is ambiguous — the gateway may have failed after Notion applied the
+// change — so those are only retried for requests that are safe to repeat:
+// every GET, plus Notion's read-shaped POSTs (data source queries and search).
+// Retrying a POST that creates or updates a page could duplicate the write.
+func retryable(method, path string, status int) bool {
+	switch status {
+	case http.StatusTooManyRequests:
+		return true
+	case http.StatusBadGateway, http.StatusServiceUnavailable:
+		return safeToRepeat(method, path)
+	default:
+		return false
+	}
+}
+
+// safeToRepeat reports whether re-sending the request cannot change server
+// state a second time.
+func safeToRepeat(method, path string) bool {
+	if method == http.MethodGet || method == http.MethodHead {
+		return true
+	}
+	if method != http.MethodPost {
+		return false
+	}
+	if i := strings.IndexByte(path, '?'); i >= 0 {
+		path = path[:i]
+	}
+	return strings.HasSuffix(path, "/query") || path == "/search"
+}
+
+// retryWait picks how long to wait before the next attempt. Retry-After wins
+// when the server sends a usable one — Notion sends it on 429. Otherwise waits
+// back off exponentially from one second, so a struggling gateway is not
+// hammered at a fixed rate.
+func retryWait(status int, header string, attempt int) time.Duration {
+	if d, ok := parseRetryAfter(header); ok {
+		return d
+	}
+	if status == http.StatusTooManyRequests {
 		return defaultRetryWait
 	}
-	d := time.Duration(secs * float64(time.Second))
-	if d > maxRetryWait {
+	d := defaultRetryWait << attempt
+	if d > maxRetryWait || d <= 0 {
 		return maxRetryWait
 	}
 	return d
+}
+
+// parseRetryAfter interprets a Retry-After header value as a wait duration,
+// reporting whether it was usable. Notion sends whole or fractional seconds;
+// absurd values are capped so a hostile header cannot stall the UI.
+func parseRetryAfter(v string) (time.Duration, bool) {
+	secs, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+	if err != nil || secs <= 0 {
+		return 0, false
+	}
+	d := time.Duration(secs * float64(time.Second))
+	if d > maxRetryWait {
+		return maxRetryWait, true
+	}
+	return d, true
 }
 
 // paginate walks a cursor-paginated list endpoint and returns every result.
