@@ -61,11 +61,11 @@ func buildApp(tokens config.TokenSource) (*tui.App, error) {
 	if _, err := tokens.Token(); err != nil {
 		return nil, authHint(err)
 	}
+	client := newClient(tokens.Token)
 	if !found {
-		return tui.NewAppWithOnboarding(
-			tui.NewOnboarding(cfg, newClient(tokens.Token), config.Save)), nil
+		return tui.NewAppWithOnboarding(cfg, client, tui.NewOnboarding(cfg, client, config.Save)), nil
 	}
-	return tui.NewApp(cfg), nil
+	return tui.NewApp(cfg, client), nil
 }
 
 // authHint appends the command that fixes an authentication failure, so the

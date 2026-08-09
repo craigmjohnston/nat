@@ -12,6 +12,10 @@ const (
 	SortDescending = "descending"
 )
 
+// TimestampCreated is the page timestamp a query can sort by, for data sources
+// whose schema carries no ordering of its own.
+const TimestampCreated = "created_time"
+
 // Sort is one entry of a query's sort order. Set either Property (a schema
 // property name) or Timestamp ("created_time" or "last_edited_time").
 type Sort struct {
