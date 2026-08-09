@@ -233,6 +233,26 @@ func TestBoardSelectedSlice(t *testing.T) {
 	}
 }
 
+func TestBoardSelectedMilestone(t *testing.T) {
+	if _, ok := NewBoard(DefaultStyles()).SelectedMilestone(); ok {
+		t.Error("an empty board has no milestone under the cursor")
+	}
+
+	b := newTestBoard()
+	got, ok := b.SelectedMilestone()
+	if !ok || got.ID != "m1" {
+		t.Errorf("selected = %+v (ok=%v), want m1", got, ok)
+	}
+	b.cursor = 2
+	if _, ok := b.SelectedMilestone(); ok {
+		t.Error("the cursor is on a slice, not a milestone")
+	}
+	b.cursor = len(b.rows) - 2 // the Unassigned group's own row
+	if _, ok := b.SelectedMilestone(); ok {
+		t.Error("the Unassigned group is not a milestone")
+	}
+}
+
 func TestBoardKeepsFoldStateAndClampsTheCursorAcrossAReload(t *testing.T) {
 	b := newTestBoard()
 	b.cursor = 1
@@ -354,6 +374,8 @@ func keyPress(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg(tea.Key{Code: tea.KeyUp})
 	case "down":
 		return tea.KeyPressMsg(tea.Key{Code: tea.KeyDown})
+	case "tab":
+		return tea.KeyPressMsg(tea.Key{Code: tea.KeyTab})
 	default:
 		return tea.KeyPressMsg(tea.Key{Code: rune(s[0]), Text: s})
 	}

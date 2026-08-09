@@ -29,6 +29,10 @@ type NotionAPI interface {
 	CreateProjectsDatabase(ctx context.Context, parentPageID, title string) (*notion.Database, error)
 	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
 	GetBlockChildren(ctx context.Context, id string) ([]notion.Block, error)
+	CreatePage(ctx context.Context, parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)
+	UpdatePageProperties(ctx context.Context, pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
+	AppendBlockChildren(ctx context.Context, id string, children []map[string]any) ([]notion.Block, error)
+	DeleteBlock(ctx context.Context, id string) error
 }
 
 // NewClientFunc builds a NotionAPI from a source of bearer tokens.

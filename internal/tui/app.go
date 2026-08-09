@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/craigmjohnston/notion-agent-tracker/internal/config"
@@ -25,6 +26,7 @@ const (
 	screenBoard screen = iota
 	screenHelp
 	screenInfo
+	screenSliceForm
 )
 
 // The messages the root model's own Notion calls come back as. Every call is a
@@ -86,9 +88,13 @@ type App struct {
 	screen     screen
 	board      Board
 	info       Info
+	sliceForm  *SliceForm
 
 	project *domain.Project
 	loading bool
+	// busy is a write, or the read that opens a form, in flight. Only one runs
+	// at a time: a second would race the first over the same page.
+	busy    bool
 	spinner spinner.Model
 
 	err  error
@@ -152,6 +158,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case infoErrMsg:
 		a.info.Fail(msg.err)
 		return a, nil
+	case sliceBodyMsg:
+		return a.sliceBodyLoaded(msg)
+	case sliceSavedMsg:
+		return a.sliceSaved(msg)
 	case spinner.TickMsg:
 		if !a.loading && !a.info.Busy() {
 			return a, nil
@@ -165,6 +175,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		o, cmd := a.onboarding.Update(msg)
 		a.onboarding = o
 		return a, cmd
+	}
+	if a.sliceForm != nil {
+		return a, a.sliceFormUpdate(msg)
 	}
 	return a, nil
 }
@@ -181,6 +194,18 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		o, cmd := a.onboarding.Update(msg)
 		a.onboarding = o
 		return a, cmd
+	}
+	// An open form owns every key but esc, which abandons it: q and enter are
+	// answers to the form, not instructions to the app behind it. huh's own
+	// abort key is ctrl+c, which quits the app above, so cancelling is handled
+	// here rather than left to the form.
+	if a.sliceForm != nil {
+		if key.Matches(msg, a.keys.Back) {
+			a.closeForm()
+			a.note = "Cancelled."
+			return a, nil
+		}
+		return a, a.sliceFormUpdate(msg)
 	}
 
 	switch {
@@ -214,12 +239,127 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// is looking at.
 		switch a.screen {
 		case screenBoard:
+			if cmd, ok := a.boardWrite(msg); ok {
+				return a, cmd
+			}
 			return a, a.board.Update(msg)
 		case screenInfo:
 			return a, a.info.Update(msg)
 		}
 	}
 	return a, nil
+}
+
+// boardWrite handles the board keys that write to Notion, reporting whether the
+// key was one of them. They live here rather than on the board because they
+// need the client and the project config.
+func (a *App) boardWrite(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	switch {
+	case key.Matches(msg, a.board.keys.Add):
+		return a.addSlice(), true
+	case key.Matches(msg, a.board.keys.Edit):
+		return a.editSlice(), true
+	}
+	return nil, false
+}
+
+// canWrite reports whether a write can be started: a client to make it with, a
+// project to make it against, and nothing already in flight.
+func (a *App) canWrite() bool {
+	if a.client == nil || a.busy {
+		return false
+	}
+	_, ok := a.activeProject()
+	return ok
+}
+
+// addSlice opens the form for a new slice under the milestone the cursor is on.
+func (a *App) addSlice() tea.Cmd {
+	if !a.canWrite() {
+		return nil
+	}
+	m, ok := a.board.SelectedMilestone()
+	if !ok {
+		a.note = "Move to a milestone to add a slice under it."
+		return nil
+	}
+	return a.openForm(newAddSliceForm(m))
+}
+
+// editSlice opens the form for the slice the cursor is on, once its page body
+// has been fetched to fill the brief in with. Claimed and Done slices are work
+// in flight or finished, so they are refused rather than opened.
+func (a *App) editSlice() tea.Cmd {
+	if !a.canWrite() {
+		return nil
+	}
+	s, ok := a.board.SelectedSlice()
+	if !ok {
+		a.note = "Move to a slice to edit it."
+		return nil
+	}
+	if s.Status != domain.SliceTodo {
+		a.note = fmt.Sprintf("%q is %s — only Todo slices can be edited.", s.Name, s.Status)
+		return nil
+	}
+	a.busy, a.note = true, "Loading the slice…"
+	return loadSliceBody(a.client, s)
+}
+
+// sliceBodyLoaded opens the edit form over the body that came back.
+func (a *App) sliceBodyLoaded(msg sliceBodyMsg) (tea.Model, tea.Cmd) {
+	a.busy, a.note = false, ""
+	if msg.err != nil {
+		a.err = msg.err
+		return a, nil
+	}
+	return a, a.openForm(newEditSliceForm(msg.slice, msg.markdown))
+}
+
+// openForm shows a form over the board.
+func (a *App) openForm(f *SliceForm) tea.Cmd {
+	a.sliceForm, a.screen, a.note = f, screenSliceForm, ""
+	return f.Init()
+}
+
+// sliceFormUpdate feeds a message to the open form, writing what it says to
+// Notion once it is complete.
+func (a *App) sliceFormUpdate(msg tea.Msg) tea.Cmd {
+	cmd := a.sliceForm.Update(msg)
+	if a.sliceForm.State() == huh.StateCompleted {
+		return a.saveSliceForm()
+	}
+	return cmd
+}
+
+// saveSliceForm dispatches the write the completed form describes, returning to
+// the board while it is in flight.
+func (a *App) saveSliceForm() tea.Cmd {
+	f := a.sliceForm
+	a.closeForm()
+	a.busy, a.note = true, "Saving…"
+	// The form only ever opens on a configured project, so this is the one it
+	// was opened against.
+	project, _ := a.activeProject()
+	if f.mode == sliceFormAdd {
+		return createSlice(a.client, project.SlicesDSID, f.milestoneID, f.title, f.description, f.repo)
+	}
+	return editSlice(a.client, f.sliceID, f.title, f.description, f.repo)
+}
+
+// closeForm dismisses the form and goes back to the board.
+func (a *App) closeForm() { a.sliceForm, a.screen = nil, screenBoard }
+
+// sliceSaved reports a finished write and reloads the plan, so the board shows
+// what was just written rather than what was there before.
+func (a *App) sliceSaved(msg sliceSavedMsg) (tea.Model, tea.Cmd) {
+	a.busy = false
+	if msg.err != nil {
+		a.note, a.err = "", msg.err
+		return a, nil
+	}
+	a.note = msg.note
+	return a, a.startLoad()
 }
 
 // toggle switches to want, or back to the board if it is already on show.
@@ -349,9 +489,17 @@ func (a *App) body() string {
 		return a.helpView()
 	case screenInfo:
 		return a.infoView()
+	case screenSliceForm:
+		return a.sliceFormView()
 	default:
 		return a.boardView()
 	}
+}
+
+// sliceFormView is the add/edit modal: its heading, then the form, which draws
+// its own key hints.
+func (a *App) sliceFormView() string {
+	return a.styles.Title.Render(a.sliceForm.heading) + "\n\n" + a.sliceForm.View()
 }
 
 // boardView is the main screen: the project's heading and tally, then the
@@ -433,6 +581,11 @@ func (a *App) statusBar() string {
 	}
 	if a.note != "" {
 		return a.styles.Note.Render(a.note)
+	}
+	// An open form has the keys the global hints name, so all that is left to
+	// say is the one key it does not handle itself.
+	if a.sliceForm != nil {
+		return a.styles.HelpKey.Render("esc") + " " + a.styles.HelpDesc.Render("cancel")
 	}
 	hints := make([]string, 0, len(a.keys.helpBindings()))
 	for _, b := range a.keys.helpBindings() {
