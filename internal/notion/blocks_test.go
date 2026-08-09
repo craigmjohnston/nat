@@ -2,6 +2,7 @@ package notion
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -145,6 +146,39 @@ func TestGetBlockChildren(t *testing.T) {
 		}
 		if blocks != nil {
 			t.Errorf("blocks = %+v, want nil on error", blocks)
+		}
+	})
+}
+
+func TestBlockUnmarshalJSON(t *testing.T) {
+	t.Run("keeps the payload named by the block type", func(t *testing.T) {
+		var b Block
+		raw := `{"id":"b1","type":"paragraph","has_children":true,"paragraph":{"rich_text":[]},"quote":{}}`
+		if err := json.Unmarshal([]byte(raw), &b); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if b.ID != "b1" || b.Type != "paragraph" || !b.HasChildren {
+			t.Errorf("block = %+v", b)
+		}
+		if got, want := string(b.payload), `{"rich_text":[]}`; got != want {
+			t.Errorf("payload = %s, want %s", got, want)
+		}
+	})
+
+	t.Run("leaves the payload empty when the type has none", func(t *testing.T) {
+		var b Block
+		if err := json.Unmarshal([]byte(`{"id":"b1","type":"divider"}`), &b); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if b.payload != nil {
+			t.Errorf("payload = %s, want none", b.payload)
+		}
+	})
+
+	t.Run("propagates a decode error", func(t *testing.T) {
+		var b Block
+		if err := json.Unmarshal([]byte(`{"id":42}`), &b); err == nil {
+			t.Fatal("got nil error, want a decode error")
 		}
 	})
 }

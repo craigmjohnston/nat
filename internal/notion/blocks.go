@@ -2,6 +2,7 @@ package notion
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/url"
 )
@@ -13,13 +14,44 @@ import (
 const MaxBlockDepth = 4
 
 // Block is one block of a page's content. Only the fields needed to walk the
-// tree are modelled; the type-specific payload is decoded by whoever renders
-// it.
+// tree are modelled; the type-specific payload is kept raw and decoded by
+// whoever renders it.
 type Block struct {
 	ID          string  `json:"id"`
 	Type        string  `json:"type"`
 	HasChildren bool    `json:"has_children"`
 	Children    []Block `json:"children,omitempty"`
+
+	// payload is the object Notion nests under the block's own type name —
+	// {"type":"paragraph","paragraph":{...}} — kept raw because its shape
+	// depends on Type.
+	payload json.RawMessage
+}
+
+// UnmarshalJSON decodes a block and keeps the payload named by its type.
+func (b *Block) UnmarshalJSON(data []byte) error {
+	type plain Block // sheds this method, and the unexported payload with it
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+	// The decode above succeeded, so data is an object or null — both of which
+	// decode into a map too.
+	var fields map[string]json.RawMessage
+	_ = json.Unmarshal(data, &fields)
+	*b = Block(p)
+	b.payload = fields[p.Type]
+	return nil
+}
+
+// decodePayload unmarshals the block's type-specific payload into v. A block
+// with no payload, or one whose payload does not fit v, leaves v as it was:
+// rendering a malformed block as empty beats failing the whole page.
+func (b Block) decodePayload(v any) {
+	if len(b.payload) == 0 {
+		return
+	}
+	_ = json.Unmarshal(b.payload, v)
 }
 
 // GetBlockChildren returns the children of a page or block, following
