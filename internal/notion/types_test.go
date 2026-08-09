@@ -1,0 +1,187 @@
+package notion
+
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestPlainText(t *testing.T) {
+	tests := []struct {
+		name  string
+		spans []RichText
+		want  string
+	}{
+		{"empty", nil, ""},
+		{"single span", []RichText{{PlainText: "hello"}}, "hello"},
+		{"joined spans", []RichText{{PlainText: "hello "}, {PlainText: "world"}}, "hello world"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := PlainText(tt.spans); got != tt.want {
+				t.Errorf("PlainText() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPropertyValueJSON(t *testing.T) {
+	tests := []struct {
+		name  string
+		value PropertyValue
+		want  string
+	}{
+		{
+			"title",
+			NewTitle("Slice name"),
+			`{"title":[{"type":"text","text":{"content":"Slice name"}}]}`,
+		},
+		{
+			"rich text",
+			NewRichText("/repo/path"),
+			`{"rich_text":[{"type":"text","text":{"content":"/repo/path"}}]}`,
+		},
+		{"select", NewSelect("Active"), `{"select":{"name":"Active"}}`},
+		{"status", NewStatus("Claimed"), `{"status":{"name":"Claimed"}}`},
+		{
+			"relation",
+			NewRelation("page-1", "page-2"),
+			`{"relation":[{"id":"page-1"},{"id":"page-2"}]}`,
+		},
+		{"people", NewPeople("user-1"), `{"people":[{"id":"user-1"}]}`},
+		{"url", NewURL("https://example.test/pr/1"), `{"url":"https://example.test/pr/1"}`},
+		{"number", NewNumber(2), `{"number":2}`},
+		{"zero number is still sent", NewNumber(0), `{"number":0}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := json.Marshal(tt.value)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("marshalled to %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPropertyValueAccessors(t *testing.T) {
+	t.Run("Text reads a title", func(t *testing.T) {
+		p := PropertyValue{Title: []RichText{{PlainText: "Slice"}, {PlainText: " name"}}}
+		if got := p.Text(); got != "Slice name" {
+			t.Errorf("Text() = %q", got)
+		}
+	})
+
+	t.Run("Text reads rich text", func(t *testing.T) {
+		p := PropertyValue{RichText: []RichText{{PlainText: "/repo"}}}
+		if got := p.Text(); got != "/repo" {
+			t.Errorf("Text() = %q", got)
+		}
+	})
+
+	t.Run("Text of another property type is empty", func(t *testing.T) {
+		if got := NewNumber(1).Text(); got != "" {
+			t.Errorf("Text() = %q, want empty", got)
+		}
+	})
+
+	t.Run("SelectName reads select then status", func(t *testing.T) {
+		if got := (PropertyValue{Select: &SelectOption{Name: "Active"}}).SelectName(); got != "Active" {
+			t.Errorf("SelectName() = %q", got)
+		}
+		if got := (PropertyValue{Status: &SelectOption{Name: "Claimed"}}).SelectName(); got != "Claimed" {
+			t.Errorf("SelectName() = %q", got)
+		}
+		if got := (PropertyValue{}).SelectName(); got != "" {
+			t.Errorf("SelectName() = %q, want empty", got)
+		}
+	})
+
+	t.Run("RelationIDs", func(t *testing.T) {
+		got := NewRelation("a", "b").RelationIDs()
+		if len(got) != 2 || got[0] != "a" || got[1] != "b" {
+			t.Errorf("RelationIDs() = %v", got)
+		}
+		if got := (PropertyValue{}).RelationIDs(); len(got) != 0 {
+			t.Errorf("RelationIDs() = %v, want empty", got)
+		}
+	})
+
+	t.Run("PeopleIDs", func(t *testing.T) {
+		got := NewPeople("u1", "u2").PeopleIDs()
+		if len(got) != 2 || got[0] != "u1" || got[1] != "u2" {
+			t.Errorf("PeopleIDs() = %v", got)
+		}
+		if got := (PropertyValue{}).PeopleIDs(); len(got) != 0 {
+			t.Errorf("PeopleIDs() = %v, want empty", got)
+		}
+	})
+
+	t.Run("NumberValue distinguishes zero from unset", func(t *testing.T) {
+		if got, ok := NewNumber(0).NumberValue(); !ok || got != 0 {
+			t.Errorf("NumberValue() = %v, %v; want 0, true", got, ok)
+		}
+		if got, ok := (PropertyValue{}).NumberValue(); ok || got != 0 {
+			t.Errorf("NumberValue() = %v, %v; want 0, false", got, ok)
+		}
+	})
+}
+
+func TestPropertyValueDecodesNotionShapes(t *testing.T) {
+	const payload = `{
+		"Name":     {"type":"title","title":[{"type":"text","text":{"content":"Slice"},"plain_text":"Slice"}]},
+		"Repo":     {"type":"rich_text","rich_text":[{"type":"text","plain_text":"/repo"}]},
+		"Status":   {"type":"select","select":{"id":"opt-1","name":"Todo","color":"gray"}},
+		"Milestone":{"type":"relation","relation":[{"id":"m1"}]},
+		"Assignee": {"type":"people","people":[{"id":"u1","name":"Craig Johnston"}]},
+		"PR":       {"type":"url","url":"https://example.test/pr/1"},
+		"Order":    {"type":"number","number":3}
+	}`
+
+	var props map[string]PropertyValue
+	if err := json.Unmarshal([]byte(payload), &props); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := props["Name"].Text(); got != "Slice" {
+		t.Errorf("Name = %q", got)
+	}
+	if got := props["Repo"].Text(); got != "/repo" {
+		t.Errorf("Repo = %q", got)
+	}
+	if got := props["Status"].SelectName(); got != "Todo" {
+		t.Errorf("Status = %q", got)
+	}
+	if got := props["Status"].Select.Color; got != "gray" {
+		t.Errorf("Status colour = %q", got)
+	}
+	if got := props["Milestone"].RelationIDs(); len(got) != 1 || got[0] != "m1" {
+		t.Errorf("Milestone = %v", got)
+	}
+	if got := props["Assignee"].People; len(got) != 1 || got[0].Name != "Craig Johnston" {
+		t.Errorf("Assignee = %v", got)
+	}
+	if got := props["PR"].URL; got != "https://example.test/pr/1" {
+		t.Errorf("PR = %q", got)
+	}
+	if got, ok := props["Order"].NumberValue(); !ok || got != 3 {
+		t.Errorf("Order = %v, %v", got, ok)
+	}
+	if got := props["Order"].Type; got != "number" {
+		t.Errorf("Type = %q", got)
+	}
+}
+
+func TestListDecodesEnvelope(t *testing.T) {
+	var l List[item]
+	if err := json.Unmarshal([]byte(`{"results":[{"id":"a"}],"has_more":true,"next_cursor":"c1"}`), &l); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(l.Results) != 1 || l.Results[0].ID != "a" || !l.HasMore {
+		t.Errorf("got %+v", l)
+	}
+	if l.NextCursor == nil || *l.NextCursor != "c1" {
+		t.Errorf("NextCursor = %v", l.NextCursor)
+	}
+}
