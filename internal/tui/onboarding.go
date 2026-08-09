@@ -30,11 +30,13 @@ type NotionAPI interface {
 	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
 }
 
-// NewClientFunc builds a NotionAPI from a bearer token.
-type NewClientFunc func(token string) NotionAPI
+// NewClientFunc builds a NotionAPI from a source of bearer tokens.
+type NewClientFunc func(token notion.TokenFunc) NotionAPI
 
-// DefaultNewClient builds a real Notion client for a bearer token.
-func DefaultNewClient(token string) NotionAPI { return notion.New(token) }
+// DefaultNewClient builds a real Notion client that re-reads the token for
+// every request, so a credential rotated outside the process is picked up
+// without a restart.
+func DefaultNewClient(token notion.TokenFunc) NotionAPI { return notion.NewWithToken(token) }
 
 // OnboardingDoneMsg reports that onboarding finished and Config has been
 // written. NeedsProject is set when the project database holds no projects yet,

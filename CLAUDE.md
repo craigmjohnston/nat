@@ -13,7 +13,10 @@ model).
   + the Notion bearer token, read from Notion's official CLI via
   `ntn auth token` (the app stores no credential of its own)
 - `internal/notion/` — hand-rolled stdlib Notion client (no third-party client
-  supports data sources); minimal structs, only fields we use
+  supports data sources); minimal structs, only fields we use. Built with
+  `NewWithToken(TokenFunc)`: the token is fetched per attempt and a 401 is
+  retried once with a fresh one, so a token rotated by the CLI is picked up
+  mid-session.
 - `internal/domain/` — Project/Milestone/Slice models, progress math
 - `internal/agent/` — agent prompt template + tmux session management
   (sessions named `nat-<first-8-hex-of-slice-page-id>`)

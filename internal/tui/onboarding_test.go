@@ -602,7 +602,7 @@ func TestRequired(t *testing.T) {
 }
 
 func TestDefaultNewClient(t *testing.T) {
-	if c := DefaultNewClient("ntn_secret"); c == nil {
+	if c := DefaultNewClient(func() (string, error) { return "ntn_secret", nil }); c == nil {
 		t.Error("want a client")
 	}
 }
