@@ -110,20 +110,29 @@ func (i *Info) render() {
 	i.vp.SetContent(renderMarkdown(i.markdown, i.style, i.width))
 }
 
-// renderMarkdown runs markdown through glamour, word-wrapped to width.
+// renderMarkdown runs markdown through glamour, word-wrapped to width, falling
+// back to the source when glamour cannot render it — unrendered markdown is
+// still readable, an empty screen is not.
 func renderMarkdown(markdown, style string, width int) string {
+	out, err := glamourRender(markdown, style, width)
+	if err != nil {
+		return markdown
+	}
+	return out
+}
+
+// glamourRender is the glamour call itself, kept apart so that both ways it can
+// fail — a stylesheet glamour does not know, and a document it cannot convert —
+// reach renderMarkdown's fallback down one path.
+func glamourRender(markdown, style string, width int) (string, error) {
 	r, err := glamour.NewTermRenderer(
 		glamour.WithStandardStyle(style),
 		glamour.WithWordWrap(max(width, 1)),
 	)
 	if err != nil {
-		return markdown
+		return "", err
 	}
-	out, err := r.Render(markdown)
-	if err != nil {
-		return markdown
-	}
-	return out
+	return r.Render(markdown)
 }
 
 // Update handles the screen's keys: the viewport's own scrolling. Everything
