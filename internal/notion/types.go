@@ -69,10 +69,28 @@ type Relation struct {
 }
 
 // User is a Notion user (person or bot). People properties are arrays of these;
-// writes need only ID.
+// writes need only ID, so every other field is omitted when empty. Type and
+// Person are populated by the users endpoints, not by page properties.
 type User struct {
-	ID   string `json:"id"`
-	Name string `json:"name,omitempty"`
+	ID     string  `json:"id"`
+	Name   string  `json:"name,omitempty"`
+	Type   string  `json:"type,omitempty"`
+	Person *Person `json:"person,omitempty"`
+}
+
+// Person carries the details Notion exposes for a human user. The email is
+// only present when the integration has user-with-email capabilities.
+type Person struct {
+	Email string `json:"email,omitempty"`
+}
+
+// Email returns the user's email address, and "" when it is a bot or the
+// integration cannot read emails.
+func (u User) Email() string {
+	if u.Person == nil {
+		return ""
+	}
+	return u.Person.Email
 }
 
 // PropertyValue is one property of a page, in the shape Notion uses for both
