@@ -27,6 +27,7 @@ type fakeNotion struct {
 	updatePage  func(pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
 	appendBlock func(id string, children []map[string]any) ([]notion.Block, error)
 	deleteBlock func(id string) error
+	trashPage   func(pageID string) error
 
 	searchFilters []string
 	queriedDSIDs  []string
@@ -39,6 +40,7 @@ type fakeNotion struct {
 	updated  []updatePageCall
 	appended []appendCall
 	deleted  []string
+	trashed  []string
 }
 
 // The calls fakeNotion records, so a test can assert on exactly what was sent.
@@ -129,6 +131,14 @@ func (f *fakeNotion) DeleteBlock(_ context.Context, id string) error {
 		return nil
 	}
 	return f.deleteBlock(id)
+}
+
+func (f *fakeNotion) TrashPage(_ context.Context, pageID string) error {
+	f.trashed = append(f.trashed, pageID)
+	if f.trashPage == nil {
+		return nil
+	}
+	return f.trashPage(pageID)
 }
 
 // harness drives an Onboarding the way the Bubble Tea runtime would: it feeds

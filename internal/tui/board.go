@@ -25,15 +25,15 @@ type boardKeyMap struct {
 	Down   key.Binding
 	Toggle key.Binding
 
-	Add   key.Binding
-	Edit  key.Binding
-	Queue key.Binding
+	Add    key.Binding
+	Edit   key.Binding
+	Move   key.Binding
+	Delete key.Binding
+	Queue  key.Binding
 
 	// Reserved, in the order they read in the help.
-	Milestone key.Binding
-	Done      key.Binding
-	Launch    key.Binding
-	Attach    key.Binding
+	Launch key.Binding
+	Attach key.Binding
 }
 
 // defaultBoardKeyMap returns the bindings the board runs with.
@@ -43,25 +43,25 @@ func defaultBoardKeyMap() boardKeyMap {
 		Down:   key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/↓", "down")),
 		Toggle: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "expand/collapse")),
 
-		Add:   key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add slice")),
-		Edit:  key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit slice")),
-		Queue: key.NewBinding(key.WithKeys("Q"), key.WithHelp("Q", "advance milestone")),
+		Add:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add slice")),
+		Edit:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit slice")),
+		Move:   key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move slice")),
+		Delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete slice")),
+		Queue:  key.NewBinding(key.WithKeys("Q"), key.WithHelp("Q", "advance milestone")),
 
-		Milestone: key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move milestone")),
-		Done:      key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "mark done")),
-		Launch:    key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "launch agent")),
-		Attach:    key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "attach to tmux")),
+		Launch: key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "launch agent")),
+		Attach: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "attach to tmux")),
 	}
 }
 
 // reserved are the bindings that exist only to be swallowed for now.
 func (k boardKeyMap) reserved() []key.Binding {
-	return []key.Binding{k.Milestone, k.Done, k.Launch, k.Attach}
+	return []key.Binding{k.Launch, k.Attach}
 }
 
 // writes are the bindings the root model handles rather than the board.
 func (k boardKeyMap) writes() []key.Binding {
-	return []key.Binding{k.Add, k.Edit, k.Queue}
+	return []key.Binding{k.Add, k.Edit, k.Move, k.Delete, k.Queue}
 }
 
 // helpBindings are the board's bindings as the help screen lists them.

@@ -273,6 +273,10 @@ func (a *App) boardWrite(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.addSlice(), true
 	case key.Matches(msg, a.board.keys.Edit):
 		return a.editSlice(), true
+	case key.Matches(msg, a.board.keys.Move):
+		return a.moveSliceFlow(), true
+	case key.Matches(msg, a.board.keys.Delete):
+		return a.deleteSliceFlow(), true
 	case key.Matches(msg, a.board.keys.Queue):
 		return a.queueMilestone(), true
 	}

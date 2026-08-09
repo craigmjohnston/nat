@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/craigmjohnston/notion-agent-tracker/internal/domain"
 	"github.com/craigmjohnston/notion-agent-tracker/internal/notion"
 )
@@ -23,22 +21,7 @@ const (
 // the form, so there is nothing else to press.
 func answerConfirm(t *testing.T, a *App, answer string) {
 	t.Helper()
-	cmd := press(a, answer)
-	for range 4 {
-		if a.form == nil {
-			break
-		}
-		var next []tea.Cmd
-		for _, msg := range run(cmd) {
-			_, c := a.Update(msg)
-			next = append(next, c)
-		}
-		cmd = tea.Batch(next...)
-	}
-	if a.form != nil {
-		t.Fatalf("the form did not finish:\n%s", a.View().Content)
-	}
-	feed(t, a, cmd)
+	finishForm(t, a, press(a, answer))
 }
 
 func TestNextMilestoneStatus(t *testing.T) {
