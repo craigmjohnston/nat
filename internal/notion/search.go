@@ -21,6 +21,9 @@ type SearchResult struct {
 	URL        string                   `json:"url"`
 	Title      []RichText               `json:"title"`
 	Properties map[string]PropertyValue `json:"properties"`
+	// Parent is where the hit lives. Data source hits carry the database they
+	// belong to, which onboarding records alongside the data source ID.
+	Parent Parent `json:"parent"`
 }
 
 // TitleText returns the result's title as plain text, wherever Notion put it,

@@ -6,12 +6,15 @@ import (
 	"net/url"
 )
 
-// Parent says where a new page lives. Slices and milestones are rows of a data
-// source; a project page is a child of an ordinary page.
+// Parent says where a page lives, and — when read back off an object rather
+// than sent — where any other object lives. Slices and milestones are rows of a
+// data source; a project page is a child of an ordinary page; a data source
+// hangs off its database.
 type Parent struct {
 	Type         string `json:"type"`
 	DataSourceID string `json:"data_source_id,omitempty"`
 	PageID       string `json:"page_id,omitempty"`
+	DatabaseID   string `json:"database_id,omitempty"`
 }
 
 // DataSourceParent returns the parent for a page created as a row of a data

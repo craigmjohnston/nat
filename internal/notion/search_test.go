@@ -18,7 +18,8 @@ func TestSearch(t *testing.T) {
 			b, _ := io.ReadAll(r.Body)
 			gotBody = string(b)
 			w.Write([]byte(`{"results":[
-				{"object":"data_source","id":"ds-1","url":"https://notion.so/ds-1","title":[{"plain_text":"Slices"}]},
+				{"object":"data_source","id":"ds-1","url":"https://notion.so/ds-1","title":[{"plain_text":"Slices"}],
+				 "parent":{"type":"database_id","database_id":"db-1"}},
 				{"object":"page","id":"page-1","url":"https://notion.so/page-1",
 				 "properties":{"Name":{"type":"title","title":[{"plain_text":"Projects"}]}}},
 				{"object":"page","id":"page-2"}
@@ -47,6 +48,9 @@ func TestSearch(t *testing.T) {
 		}
 		if got := hits[0].TitleText(); got != "Slices" {
 			t.Errorf("data source title = %q, want Slices", got)
+		}
+		if got := hits[0].Parent; got.Type != "database_id" || got.DatabaseID != "db-1" {
+			t.Errorf("data source parent = %+v, want database db-1", got)
 		}
 		if got := hits[1].TitleText(); got != "Projects" {
 			t.Errorf("page title = %q, want Projects", got)
