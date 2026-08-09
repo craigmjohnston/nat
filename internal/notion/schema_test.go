@@ -16,7 +16,6 @@ func TestSchemaBuilders(t *testing.T) {
 		{"number", SchemaNumber(), `{"number":{}}`},
 		{"select", SchemaSelect("Queued", "Active"), `{"select":{"options":[{"name":"Queued"},{"name":"Active"}]}}`},
 		{"select without options", SchemaSelect(), `{"select":{}}`},
-		{"status", SchemaStatus("Todo"), `{"status":{"options":[{"name":"Todo"}]}}`},
 		{"relation", SchemaRelation("ds-1"), `{"relation":{"data_source_id":"ds-1"}}`},
 		{"people", SchemaPeople(), `{"people":{}}`},
 		{"url", SchemaURL(), `{"url":{}}`},
@@ -36,15 +35,13 @@ func TestSchemaBuilders(t *testing.T) {
 
 func TestPropertySchemaOptions(t *testing.T) {
 	tests := []struct {
-		name     string
-		schema   PropertySchema
-		want     []string
-		isChoice bool
+		name   string
+		schema PropertySchema
+		want   []string
 	}{
-		{"select", SchemaSelect("Todo", "Done"), []string{"Todo", "Done"}, true},
-		{"status", SchemaStatus("Todo", "Done"), []string{"Todo", "Done"}, true},
-		{"select with no options", SchemaSelect(), []string{}, true},
-		{"not a choice", SchemaTitle(), nil, false},
+		{"select", SchemaSelect("Todo", "Done"), []string{"Todo", "Done"}},
+		{"select with no options", SchemaSelect(), []string{}},
+		{"not a select", SchemaTitle(), nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -58,10 +55,7 @@ func TestPropertySchemaOptions(t *testing.T) {
 				}
 			}
 			if tt.want == nil && got != nil {
-				t.Errorf("OptionNames() = %v, want nil for a non-choice property", got)
-			}
-			if tt.schema.IsChoice() != tt.isChoice {
-				t.Errorf("IsChoice() = %v, want %v", tt.schema.IsChoice(), tt.isChoice)
+				t.Errorf("OptionNames() = %v, want nil for a non-select property", got)
 			}
 		})
 	}

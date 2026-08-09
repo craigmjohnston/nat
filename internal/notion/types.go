@@ -55,8 +55,8 @@ func richText(s string) []RichText {
 	return []RichText{{Type: "text", Text: &TextContent{Content: s}}}
 }
 
-// SelectOption is one select or status choice. Writes set Name only; reads
-// also carry ID and Color.
+// SelectOption is one select choice. Writes set Name only; reads also carry ID
+// and Color.
 type SelectOption struct {
 	ID    string `json:"id,omitempty"`
 	Name  string `json:"name,omitempty"`
@@ -85,7 +85,6 @@ type PropertyValue struct {
 	Title    []RichText    `json:"title,omitempty"`
 	RichText []RichText    `json:"rich_text,omitempty"`
 	Select   *SelectOption `json:"select,omitempty"`
-	Status   *SelectOption `json:"status,omitempty"`
 	Relation []Relation    `json:"relation,omitempty"`
 	People   []User        `json:"people,omitempty"`
 	URL      string        `json:"url,omitempty"`
@@ -105,11 +104,6 @@ func NewRichText(s string) PropertyValue {
 // NewSelect builds a select property value naming an option.
 func NewSelect(name string) PropertyValue {
 	return PropertyValue{Select: &SelectOption{Name: name}}
-}
-
-// NewStatus builds a status property value naming an option.
-func NewStatus(name string) PropertyValue {
-	return PropertyValue{Status: &SelectOption{Name: name}}
 }
 
 // NewRelation builds a relation property value pointing at the given page IDs.
@@ -149,16 +143,12 @@ func (p PropertyValue) Text() string {
 	return PlainText(p.RichText)
 }
 
-// SelectName returns the option name of a select or status property, and ""
-// when unset.
+// SelectName returns the option name of a select property, and "" when unset.
 func (p PropertyValue) SelectName() string {
-	if p.Select != nil {
-		return p.Select.Name
+	if p.Select == nil {
+		return ""
 	}
-	if p.Status != nil {
-		return p.Status.Name
-	}
-	return ""
+	return p.Select.Name
 }
 
 // RelationIDs returns the related page IDs of a relation property.

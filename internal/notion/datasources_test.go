@@ -21,7 +21,7 @@ func TestGetDataSource(t *testing.T) {
 				"name":"Slices",
 				"properties":{
 					"Name":{"id":"title","name":"Name","type":"title","title":{}},
-					"Status":{"id":"s","name":"Status","type":"status","status":{"options":[{"id":"1","name":"Todo","color":"gray"}]}},
+					"Status":{"id":"s","name":"Status","type":"select","select":{"options":[{"id":"1","name":"Todo","color":"gray"}]}},
 					"Order":{"id":"o","name":"Order","type":"number","number":{}}
 				}
 			}`))

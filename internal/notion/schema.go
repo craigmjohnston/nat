@@ -5,7 +5,7 @@ package notion
 // `{"Name": {"title": {}}}`.
 type EmptyConfig struct{}
 
-// OptionsConfig configures a select or status property with its choices.
+// OptionsConfig configures a select property with its choices.
 type OptionsConfig struct {
 	Options []SelectOption `json:"options,omitempty"`
 }
@@ -29,7 +29,6 @@ type PropertySchema struct {
 	RichText *EmptyConfig    `json:"rich_text,omitempty"`
 	Number   *EmptyConfig    `json:"number,omitempty"`
 	Select   *OptionsConfig  `json:"select,omitempty"`
-	Status   *OptionsConfig  `json:"status,omitempty"`
 	Relation *RelationConfig `json:"relation,omitempty"`
 	People   *EmptyConfig    `json:"people,omitempty"`
 	URL      *EmptyConfig    `json:"url,omitempty"`
@@ -52,18 +51,11 @@ func SchemaNumber() PropertySchema {
 }
 
 // SchemaSelect builds a select property definition offering the named options.
-//
-// Bootstrapping uses select, not status: the API cannot create status
-// properties, so databases this app creates carry their workflow states as a
-// select. Read them back with OptionNames, which spans both shapes.
+// Every fixed-choice column in this app — slice Status, milestone Status — is a
+// select; the API cannot create Notion's status type, so the app does not use
+// it anywhere.
 func SchemaSelect(options ...string) PropertySchema {
 	return PropertySchema{Select: &OptionsConfig{Options: selectOptions(options)}}
-}
-
-// SchemaStatus builds a status property definition offering the named options,
-// for databases that already carry a status property.
-func SchemaStatus(options ...string) PropertySchema {
-	return PropertySchema{Status: &OptionsConfig{Options: selectOptions(options)}}
 }
 
 // SchemaRelation builds a relation property definition pointing at a data
@@ -94,27 +86,14 @@ func selectOptions(names []string) []SelectOption {
 	return opts
 }
 
-// IsChoice reports whether the property offers a fixed set of options, in
-// either the select or the status shape. Schema verification treats the two as
-// interchangeable: a database this app bootstrapped uses select, one a human
-// converted in the Notion UI uses status, and both drive the same workflow.
-func (s PropertySchema) IsChoice() bool {
-	return s.Select != nil || s.Status != nil
-}
-
-// OptionNames returns the option names of a select or status property, and nil
-// for any other property type. This is the one accessor for both shapes; the
-// value-side equivalent is PropertyValue.SelectName.
+// OptionNames returns the option names of a select property, and nil for any
+// other property type.
 func (s PropertySchema) OptionNames() []string {
-	cfg := s.Select
-	if cfg == nil {
-		cfg = s.Status
-	}
-	if cfg == nil {
+	if s.Select == nil {
 		return nil
 	}
-	names := make([]string, len(cfg.Options))
-	for i, o := range cfg.Options {
+	names := make([]string, len(s.Select.Options))
+	for i, o := range s.Select.Options {
 		names[i] = o.Name
 	}
 	return names

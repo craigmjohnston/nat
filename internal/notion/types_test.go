@@ -41,7 +41,6 @@ func TestPropertyValueJSON(t *testing.T) {
 			`{"rich_text":[{"type":"text","text":{"content":"/repo/path"}}]}`,
 		},
 		{"select", NewSelect("Active"), `{"select":{"name":"Active"}}`},
-		{"status", NewStatus("Claimed"), `{"status":{"name":"Claimed"}}`},
 		{
 			"relation",
 			NewRelation("page-1", "page-2"),
@@ -86,11 +85,8 @@ func TestPropertyValueAccessors(t *testing.T) {
 		}
 	})
 
-	t.Run("SelectName reads select then status", func(t *testing.T) {
+	t.Run("SelectName reads a select", func(t *testing.T) {
 		if got := (PropertyValue{Select: &SelectOption{Name: "Active"}}).SelectName(); got != "Active" {
-			t.Errorf("SelectName() = %q", got)
-		}
-		if got := (PropertyValue{Status: &SelectOption{Name: "Claimed"}}).SelectName(); got != "Claimed" {
 			t.Errorf("SelectName() = %q", got)
 		}
 		if got := (PropertyValue{}).SelectName(); got != "" {
