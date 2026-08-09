@@ -79,6 +79,7 @@ type App struct {
 
 	onboarding *Onboarding
 	screen     screen
+	board      Board
 
 	project *domain.Project
 	loading bool
@@ -97,7 +98,7 @@ var _ tea.Model = (*App)(nil)
 func NewApp(cfg config.Config, client NotionAPI) *App {
 	s := DefaultStyles()
 	sp := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(s.Spinner))
-	return &App{cfg: cfg, client: client, styles: s, keys: defaultKeyMap(), spinner: sp}
+	return &App{cfg: cfg, client: client, styles: s, keys: defaultKeyMap(), spinner: sp, board: NewBoard(s)}
 }
 
 // NewAppWithOnboarding returns the root model showing the first-run wizard,
@@ -124,12 +125,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		// Recorded, then passed on: the screens size themselves too.
 		a.width, a.height = msg.Width, msg.Height
+		a.board.SetWidth(msg.Width - a.styles.App.GetHorizontalFrameSize())
 	case tea.KeyPressMsg:
 		return a.keyPressed(msg)
 	case OnboardingDoneMsg:
 		return a.onboardingDone(msg)
 	case projectLoadedMsg:
 		a.project, a.loading, a.err = &msg.project, false, nil
+		a.board.SetProject(a.project)
 		return a, nil
 	case notionErrMsg:
 		a.loading, a.err = false, msg.err
@@ -181,6 +184,12 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.screen = toggle(a.screen, screenHelp)
 	case key.Matches(msg, a.keys.Info):
 		a.screen = toggle(a.screen, screenInfo)
+	default:
+		// Anything the app itself does not want belongs to the board, when the
+		// board is what the user is looking at.
+		if a.screen == screenBoard {
+			return a, a.board.Update(msg)
+		}
 	}
 	return a, nil
 }
@@ -293,8 +302,9 @@ func (a *App) body() string {
 	}
 }
 
-// boardView stands in for the board screen until it exists: it reports what was
-// loaded, so the load pipeline is visible before anything draws it.
+// boardView is the main screen: the project's heading and tally, then the
+// board itself. Loading and "there is nothing to show" are the root model's to
+// report — the board only ever draws a plan.
 func (a *App) boardView() string {
 	header := a.styles.Title.Render("notion-agent-tracker")
 	switch {
@@ -311,7 +321,8 @@ func (a *App) boardView() string {
 		"",
 		a.styles.Faint.Render(fmt.Sprintf("milestones: %d · slices done: %d/%d",
 			len(a.project.Milestones), p.Done, p.Total)),
-		a.styles.Faint.Render("The board lands in the next slice."),
+		"",
+		a.board.View(),
 	}, "\n")
 }
 
@@ -330,14 +341,25 @@ func (a *App) infoView() string {
 		a.styles.Faint.Render("The info view lands in a later slice.")
 }
 
-// helpView lists the global keys.
+// helpView lists the global keys, then the board's own. The board's reserved
+// keys are listed too: they do nothing yet, but the help is where the plan for
+// them is visible.
 func (a *App) helpView() string {
 	lines := []string{a.styles.Title.Render("Keys"), ""}
-	for _, b := range a.keys.helpBindings() {
-		h := b.Help()
-		lines = append(lines, "  "+a.styles.HelpKey.Render(h.Key)+"  "+a.styles.HelpDesc.Render(h.Desc))
-	}
+	lines = append(lines, a.helpLines(a.keys.helpBindings())...)
+	lines = append(lines, "", a.styles.Subtitle.Render("Board"), "")
+	lines = append(lines, a.helpLines(a.board.helpBindings())...)
 	return strings.Join(lines, "\n")
+}
+
+// helpLines renders one indented line per binding.
+func (a *App) helpLines(bindings []key.Binding) []string {
+	lines := make([]string, len(bindings))
+	for i, b := range bindings {
+		h := b.Help()
+		lines[i] = "  " + a.styles.HelpKey.Render(h.Key) + "  " + a.styles.HelpDesc.Render(h.Desc)
+	}
+	return lines
 }
 
 // statusBar is the bottom line: the error that is waiting to be dismissed, a
