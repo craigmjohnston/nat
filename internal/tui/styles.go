@@ -40,6 +40,14 @@ type Styles struct {
 	// request.
 	Assignee lipgloss.Style
 	PR       lipgloss.Style
+
+	// BarFill and BarFillAlt colour the done part of a progress bar segment,
+	// alternating between the two so adjacent milestones stay apart; BarEmpty
+	// is the part still to do, and BarBoundary the rule between segments.
+	BarFill     lipgloss.Style
+	BarFillAlt  lipgloss.Style
+	BarEmpty    lipgloss.Style
+	BarBoundary lipgloss.Style
 }
 
 // DefaultStyles returns the styles the app runs with.
@@ -63,5 +71,10 @@ func DefaultStyles() Styles {
 		StatusDone:    lipgloss.NewStyle().Foreground(lipgloss.Green),
 		Assignee:      lipgloss.NewStyle().Foreground(lipgloss.Blue),
 		PR:            lipgloss.NewStyle().Foreground(lipgloss.Magenta),
+
+		BarFill:     lipgloss.NewStyle().Foreground(lipgloss.Cyan),
+		BarFillAlt:  lipgloss.NewStyle().Foreground(lipgloss.Blue),
+		BarEmpty:    lipgloss.NewStyle().Foreground(lipgloss.BrightBlack),
+		BarBoundary: lipgloss.NewStyle().Foreground(lipgloss.BrightBlack),
 	}
 }
