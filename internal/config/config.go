@@ -1,0 +1,103 @@
+package config
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+)
+
+const (
+	appDirName     = "notion-agent-tracker"
+	configFileName = "config.json"
+)
+
+// marshalIndent is held as a var so tests can stub a marshal failure.
+var marshalIndent = json.MarshalIndent
+
+// ProjectConfig describes one tracked project.
+type ProjectConfig struct {
+	Name           string `json:"name"`
+	SlicesDSID     string `json:"slices_ds_id"`
+	MilestonesDSID string `json:"milestones_ds_id"`
+	WorkingDir     string `json:"working_dir"`
+}
+
+// Config is the local configuration persisted as JSON in the XDG config dir.
+type Config struct {
+	ProjectDBID           string                   `json:"project_db_id"`
+	ProjectDBDataSourceID string                   `json:"project_db_data_source_id"`
+	AssigneeUserID        string                   `json:"assignee_user_id"`
+	AssigneeUserName      string                   `json:"assignee_user_name"`
+	ActiveProjectID       string                   `json:"active_project_id"`
+	Projects              map[string]ProjectConfig `json:"projects"`
+}
+
+// Dir returns the app's config directory: $XDG_CONFIG_HOME/notion-agent-tracker,
+// falling back to ~/.config/notion-agent-tracker when XDG_CONFIG_HOME is unset
+// or empty. XDG resolution is hand-rolled deliberately: os.UserConfigDir uses
+// ~/Library/Application Support on macOS, but our config lives under ~/.config
+// on every platform.
+func Dir() (string, error) {
+	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
+		return filepath.Join(x, appDirName), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home dir: %w", err)
+	}
+	return filepath.Join(home, ".config", appDirName), nil
+}
+
+// Path returns the full path of the config file.
+func Path() (string, error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, configFileName), nil
+}
+
+// Load reads the config file. A missing file is not an error: it returns a
+// zero Config with found=false so the caller can start onboarding. The file
+// may be hand-written; unknown fields are ignored.
+func Load() (Config, bool, error) {
+	path, err := Path()
+	if err != nil {
+		return Config{}, false, err
+	}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return Config{}, false, nil
+	}
+	if err != nil {
+		return Config{}, false, fmt.Errorf("read config: %w", err)
+	}
+	var c Config
+	if err := json.Unmarshal(data, &c); err != nil {
+		return Config{}, false, fmt.Errorf("parse config %s: %w", path, err)
+	}
+	return c, true, nil
+}
+
+// Save writes the config file with mode 0644, creating the config directory
+// if needed.
+func Save(c Config) error {
+	path, err := Path()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+	data, err := marshalIndent(c, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode config: %w", err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	return nil
+}
