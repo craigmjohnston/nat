@@ -31,6 +31,9 @@ type boardKeyMap struct {
 
 	Launch key.Binding
 	Attach key.Binding
+
+	NewProject    key.Binding
+	SwitchProject key.Binding
 }
 
 // defaultBoardKeyMap returns the bindings the board runs with.
@@ -48,12 +51,21 @@ func defaultBoardKeyMap() boardKeyMap {
 
 		Launch: key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "launch agent")),
 		Attach: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "attach to tmux")),
+
+		NewProject:    key.NewBinding(key.WithKeys("N"), key.WithHelp("N", "new project")),
+		SwitchProject: key.NewBinding(key.WithKeys("P"), key.WithHelp("P", "switch project")),
 	}
 }
 
 // agents are the bindings that act on a slice's agent session.
 func (k boardKeyMap) agents() []key.Binding {
 	return []key.Binding{k.Launch, k.Attach}
+}
+
+// projects are the bindings that act on the plan the board is showing rather
+// than anything in it.
+func (k boardKeyMap) projects() []key.Binding {
+	return []key.Binding{k.NewProject, k.SwitchProject}
 }
 
 // writes are the bindings the root model handles rather than the board.
@@ -65,7 +77,8 @@ func (k boardKeyMap) writes() []key.Binding {
 func (b Board) helpBindings() []key.Binding {
 	bindings := []key.Binding{b.keys.Up, b.keys.Down, b.keys.Toggle}
 	bindings = append(bindings, b.keys.writes()...)
-	return append(bindings, b.keys.agents()...)
+	bindings = append(bindings, b.keys.agents()...)
+	return append(bindings, b.keys.projects()...)
 }
 
 // rowKind tells the two kinds of line the cursor moves over apart.
