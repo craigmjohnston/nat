@@ -24,10 +24,12 @@ go build ./cmd/notion-agent-tracker
 ./notion-agent-tracker   # first run launches the onboarding wizard
 ```
 
-Install the planning skill so `/queue-work` is available in any repo:
+Install the skills so `/queue-work` (plan work into the tracker) and
+`/next-slice` (pick up and complete the next slice) are available in any repo:
 
 ```sh
 ln -s "$(pwd)/skills/queue-work" ~/.claude/skills/queue-work
+ln -s "$(pwd)/skills/next-slice" ~/.claude/skills/next-slice
 ```
 
 ## Status
