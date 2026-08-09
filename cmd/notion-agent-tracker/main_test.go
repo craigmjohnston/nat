@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +24,106 @@ func writeConfig(t *testing.T, contents string) {
 	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(contents), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// configuredHome sets up a config file and a stored API key, so the app starts
+// on the board rather than in the wizard.
+func configuredHome(t *testing.T) *config.MemorySecrets {
+	t.Helper()
+	writeConfig(t, `{"assignee_user_name":"Craig Johnston"}`)
+	secrets := &config.MemorySecrets{}
+	if err := secrets.SetAPIKey("ntn_secret"); err != nil {
+		t.Fatal(err)
+	}
+	return secrets
+}
+
+func TestRunQuits(t *testing.T) {
+	secrets := configuredHome(t)
+	var out bytes.Buffer
+
+	if err := run(secrets, strings.NewReader("q"), &out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The quit is read before the first frame is flushed, so only the terminal
+	// setup lands in the buffer; what the board renders is asserted in the tui
+	// package. What matters here is that run drove a program and returned.
+	if out.Len() == 0 {
+		t.Error("nothing was written to the terminal")
+	}
+}
+
+func TestRunReportsAStartupFailure(t *testing.T) {
+	writeConfig(t, "{not json")
+
+	if err := run(&config.MemorySecrets{}, strings.NewReader(""), io.Discard); err == nil {
+		t.Fatal("want the parse error")
+	}
+}
+
+func TestMainQuits(t *testing.T) {
+	secrets := configuredHome(t)
+	var out, errOut bytes.Buffer
+	stubProcess(t, secrets, strings.NewReader("q"), &out, &errOut)
+
+	main()
+
+	if errOut.Len() != 0 {
+		t.Errorf("stderr = %q, want nothing", errOut.String())
+	}
+	if code, exited := exitCode(t); exited {
+		t.Errorf("exited with %d, want a clean return", code)
+	}
+}
+
+func TestMainReportsAFailure(t *testing.T) {
+	writeConfig(t, "{not json")
+	var out, errOut bytes.Buffer
+	stubProcess(t, &config.MemorySecrets{}, strings.NewReader(""), &out, &errOut)
+
+	main()
+
+	if !strings.Contains(errOut.String(), "notion-agent-tracker: parse config") {
+		t.Errorf("stderr = %q, want the failure reported", errOut.String())
+	}
+	code, exited := exitCode(t)
+	if !exited || code != 1 {
+		t.Errorf("exit(%d, exited=%v), want exit(1)", code, exited)
+	}
+}
+
+func TestKeychainIsTheDefaultSecretsStore(t *testing.T) {
+	// Building a Keyring does not touch the OS keychain, so this is safe to
+	// call; it just pins what main runs with by default.
+	if keychain() == nil {
+		t.Error("want a secrets store")
+	}
+}
+
+// lastExit records what main asked the process to exit with.
+var lastExit struct {
+	code   int
+	exited bool
+}
+
+// stubProcess points main at test doubles for the process's edges, restoring
+// the real ones afterwards.
+func stubProcess(t *testing.T, secrets config.Secrets, in io.Reader, out, errOut io.Writer) {
+	t.Helper()
+	oldSecrets, oldIn, oldOut, oldErr, oldExit := newSecrets, stdin, stdout, stderr, exit
+	t.Cleanup(func() {
+		newSecrets, stdin, stdout, stderr, exit = oldSecrets, oldIn, oldOut, oldErr, oldExit
+	})
+	lastExit.code, lastExit.exited = 0, false
+	newSecrets = func() config.Secrets { return secrets }
+	stdin, stdout, stderr = in, out, errOut
+	exit = func(code int) { lastExit.code, lastExit.exited = code, true }
+}
+
+// exitCode returns the code main exited with, and whether it exited at all.
+func exitCode(t *testing.T) (int, bool) {
+	t.Helper()
+	return lastExit.code, lastExit.exited
 }
 
 func TestBuildAppStartsOnboardingWithoutAConfigFile(t *testing.T) {

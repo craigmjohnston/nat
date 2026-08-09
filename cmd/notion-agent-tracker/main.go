@@ -5,6 +5,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	tea "charm.land/bubbletea/v2"
@@ -13,20 +14,34 @@ import (
 	"github.com/craigmjohnston/notion-agent-tracker/internal/tui"
 )
 
+// The process's edges, held as variables so tests can stand in for them: main
+// is otherwise unexercisable without the real keychain, a terminal, and an
+// exit that would take the test binary with it.
+var (
+	newSecrets           = keychain
+	stdin      io.Reader = os.Stdin
+	stdout     io.Writer = os.Stdout
+	stderr     io.Writer = os.Stderr
+	exit                 = os.Exit
+)
+
+// keychain is where the API key really lives.
+func keychain() config.Secrets { return config.NewKeyring() }
+
 func main() {
-	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "notion-agent-tracker:", err)
-		os.Exit(1)
+	if err := run(newSecrets(), stdin, stdout); err != nil {
+		fmt.Fprintln(stderr, "notion-agent-tracker:", err)
+		exit(1)
 	}
 }
 
 // run builds the root model and hands it to Bubble Tea.
-func run() error {
-	app, err := buildApp(config.NewKeyring())
+func run(secrets config.Secrets, in io.Reader, out io.Writer) error {
+	app, err := buildApp(secrets)
 	if err != nil {
 		return err
 	}
-	_, err = tea.NewProgram(app).Run()
+	_, err = tea.NewProgram(app, tea.WithInput(in), tea.WithOutput(out)).Run()
 	return err
 }
 
