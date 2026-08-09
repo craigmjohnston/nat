@@ -74,7 +74,14 @@ func fillForm(t *testing.T, a *App, title, brief, repo string) {
 
 	// Submitting runs through messages of huh's own — off the field, then off
 	// the group — before the form completes and the write falls out of it.
-	cmd := press(a, "enter")
+	finishForm(t, a, press(a, "enter"))
+}
+
+// finishForm drives a form that has just been submitted to completion, running
+// what it returns and threading the messages back through the app the way the
+// runtime does, then dispatching the write that falls out of it.
+func finishForm(t *testing.T, a *App, cmd tea.Cmd) {
+	t.Helper()
 	for range 4 {
 		if a.form == nil {
 			break
@@ -596,7 +603,7 @@ func TestAppRefusesWritesItCannotMake(t *testing.T) {
 		}},
 	}
 	for _, tt := range tests {
-		for _, k := range []string{"a", "e", "Q"} {
+		for _, k := range []string{"a", "e", "m", "d", "Q"} {
 			t.Run(tt.name+"/"+k, func(t *testing.T) {
 				app := tt.app()
 				app.board.cursor = rowActiveMilestone

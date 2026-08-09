@@ -33,6 +33,7 @@ type NotionAPI interface {
 	UpdatePageProperties(ctx context.Context, pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
 	AppendBlockChildren(ctx context.Context, id string, children []map[string]any) ([]notion.Block, error)
 	DeleteBlock(ctx context.Context, id string) error
+	TrashPage(ctx context.Context, pageID string) error
 }
 
 // NewClientFunc builds a NotionAPI from a source of bearer tokens.
