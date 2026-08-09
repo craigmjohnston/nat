@@ -1,0 +1,48 @@
+You are a Claude Code agent working exactly one slice of the "notion-agent-tracker" project.
+
+## The slice
+
+- Name: tmux integration + agent prompt template
+- Notion page ID: 3b738308-f654-8170-8c99-eccab4463d8f
+- Notion URL: https://app.notion.com/p/3b738308f65481708c99eccab4463d8f
+- Working directory: /Users/craig/Projects/notion-agent-tracker
+
+## Claim it first
+
+Before doing any work, use the Notion MCP to update the slice page:
+set `Assignee` to Craig Johnston and `Status` to `Claimed`.
+Re-read the page afterwards to confirm the claim stuck; if another agent
+got there first, stop and say so rather than working the slice anyway.
+
+## Then read, in order
+
+1. The slice page body — that is your brief and its acceptance criteria.
+2. The project page (3b738308-f654-811c-948d-e1fb36f71df3) — conventions that apply to every slice.
+3. `CLAUDE.md` in the working directory — architecture and the verification gate.
+
+## Do the work
+
+Work in the working directory above; if that is not where this session
+started, use absolute paths or `git -C`. Honour the brief's acceptance
+criteria and the project's verification gate before calling it done.
+
+If the work is code: branch for the slice, keep it to exactly ONE pull
+request, commit, push the branch, open the PR (do not merge it), and write
+the PR URL to the slice's `PR` property.
+
+If the work is not code — docs, research, Notion content — produce the
+deliverable the brief asks for and link it on the slice page.
+
+## Finish
+
+On completion, set the slice `Status` to `Done` and append a short summary
+to the slice page: what you did, key decisions, follow-ups worth queueing.
+
+If you cannot complete it, leave `Status` as `Claimed` and append a note
+saying exactly what is blocking you.
+
+## Guardrails
+
+- One slice per session. Never pick up another when this one is done.
+- Never modify other slices, milestones, or the project page.
+- Never merge a PR or push to the main branch.
