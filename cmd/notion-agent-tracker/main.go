@@ -49,21 +49,21 @@ func run(tokens config.TokenSource, in io.Reader, out io.Writer) error {
 // buildApp decides which screen the app starts on: the first-run wizard when
 // there is no config file yet, otherwise the board.
 //
-// Authentication is settled before either screen. The token belongs to the
-// Notion CLI, so a missing or expired one is fixed outside this program with
-// `ntn login` — there is nothing the wizard could usefully do about it.
+// The token is checked here so that an unusable credential is reported plainly
+// on stderr, with the command that fixes it, rather than as a failed call once
+// the terminal has been taken over. The client is handed the source rather than
+// the token itself, so a rotation later in the session is picked up too.
 func buildApp(tokens config.TokenSource) (*tui.App, error) {
 	cfg, found, err := config.Load()
 	if err != nil {
 		return nil, err
 	}
-	token, err := tokens.Token()
-	if err != nil {
+	if _, err := tokens.Token(); err != nil {
 		return nil, authHint(err)
 	}
 	if !found {
 		return tui.NewAppWithOnboarding(
-			tui.NewOnboarding(cfg, newClient(token), config.Save)), nil
+			tui.NewOnboarding(cfg, newClient(tokens.Token), config.Save)), nil
 	}
 	return tui.NewApp(cfg), nil
 }

@@ -30,10 +30,16 @@ const (
 	maxRetryWait      = 30 * time.Second
 )
 
+// TokenFunc returns the bearer token to authenticate a request with. It is
+// called before every attempt rather than once, so a token that lives outside
+// this process — as ours does, in the Notion CLI's keychain entry — can be
+// rotated without restarting.
+type TokenFunc func() (string, error)
+
 // Client talks to the Notion REST API. The zero value is not usable; build one
-// with New.
+// with New or NewWithToken.
 type Client struct {
-	apiKey     string
+	token      TokenFunc
 	baseURL    string
 	httpClient *http.Client
 	maxRetries int
@@ -68,10 +74,18 @@ func WithMaxRetries(n int) Option {
 	}
 }
 
-// New returns a Client authenticating with the given integration token.
+// New returns a Client authenticating with a fixed token.
 func New(apiKey string, opts ...Option) *Client {
+	return NewWithToken(func() (string, error) { return apiKey, nil }, opts...)
+}
+
+// NewWithToken returns a Client that asks token for a bearer token before every
+// request. A request rejected with 401 is tried once more with a freshly
+// fetched token, which is what makes an externally rotated credential survive a
+// running session.
+func NewWithToken(token TokenFunc, opts ...Option) *Client {
 	c := &Client{
-		apiKey:     apiKey,
+		token:      token,
 		baseURL:    DefaultBaseURL,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		maxRetries: defaultMaxRetries,
@@ -146,7 +160,16 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		}
 	}
 
+	// refreshed records that a 401 has already been answered with a fresh
+	// token, so a genuinely rejected credential fails instead of looping.
+	refreshed := false
+
 	for attempt := 0; ; attempt++ {
+		token, err := c.token()
+		if err != nil {
+			return fmt.Errorf("%s %s: %w", method, path, err)
+		}
+
 		var reader io.Reader
 		if payload != nil {
 			reader = bytes.NewReader(payload)
@@ -155,7 +178,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		if err != nil {
 			return fmt.Errorf("build request %s %s: %w", method, path, err)
 		}
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Notion-Version", Version)
 		if payload != nil {
 			req.Header.Set("Content-Type", "application/json")
@@ -164,6 +187,19 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		status, header, data, err := c.roundTrip(req)
 		if err != nil {
 			return fmt.Errorf("%s %s: %w", method, path, err)
+		}
+
+		// A 401 is rejected before Notion acts on the request, so repeating it
+		// is safe whatever the method — unlike the 502/503 case below. The
+		// token is re-read at the top of the loop, so one retry is enough: a
+		// second 401 means the credential is bad rather than stale, and
+		// looping on it would only hammer the CLI.
+		if status == http.StatusUnauthorized && !refreshed {
+			refreshed = true
+			// This is not a rate-limit retry and must not eat into the
+			// attempts reserved for one.
+			attempt--
+			continue
 		}
 
 		if attempt < c.maxRetries && retryable(method, path, status) {

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/craigmjohnston/notion-agent-tracker/internal/config"
+	"github.com/craigmjohnston/notion-agent-tracker/internal/notion"
 	"github.com/craigmjohnston/notion-agent-tracker/internal/tui"
 )
 
@@ -156,22 +157,28 @@ func TestBuildAppStartsOnTheBoard(t *testing.T) {
 	}
 }
 
-func TestBuildAppPassesTheTokenToTheClient(t *testing.T) {
+// The client must be built from the token *source*, not a token read once at
+// startup, or a credential rotated mid-session would never be picked up.
+func TestBuildAppPassesTheTokenSourceToTheClient(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	old := newClient
 	t.Cleanup(func() { newClient = old })
 
-	var got string
-	newClient = func(token string) tui.NotionAPI {
-		got = token
+	var captured notion.TokenFunc
+	newClient = func(token notion.TokenFunc) tui.NotionAPI {
+		captured = token
 		return old(token)
 	}
 
 	if _, err := buildApp(config.StaticToken(testToken)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got != testToken {
-		t.Errorf("client built with %q, want %q", got, testToken)
+	if captured == nil {
+		t.Fatal("no token source reached the client")
+	}
+	got, err := captured()
+	if err != nil || got != testToken {
+		t.Errorf("token source yielded %q, %v, want %q", got, err, testToken)
 	}
 }
 

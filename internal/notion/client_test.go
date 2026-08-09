@@ -31,8 +31,8 @@ func testClient(t *testing.T, srv *httptest.Server, opts ...Option) (*Client, *[
 
 func TestNewDefaults(t *testing.T) {
 	c := New("secret-key")
-	if c.apiKey != "secret-key" {
-		t.Errorf("apiKey = %q", c.apiKey)
+	if got, err := c.token(); err != nil || got != "secret-key" {
+		t.Errorf("token() = %q, %v, want secret-key", got, err)
 	}
 	if c.baseURL != DefaultBaseURL {
 		t.Errorf("baseURL = %q, want %q", c.baseURL, DefaultBaseURL)
@@ -702,4 +702,114 @@ func TestPaginate(t *testing.T) {
 			t.Errorf("results = %+v, want nil on error", got)
 		}
 	})
+}
+
+// The token is fetched per attempt rather than held, so a credential rotated
+// outside this process is picked up without a restart.
+
+func TestDoRetriesOnceWithAFreshTokenAfterA401(t *testing.T) {
+	var gotAuth []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = append(gotAuth, r.Header.Get("Authorization"))
+		if len(gotAuth) == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"code":"unauthorized","message":"API token is invalid."}`))
+			return
+		}
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	tokens := []string{"stale", "fresh"}
+	var n int
+	c := NewWithToken(func() (string, error) {
+		tok := tokens[min(n, len(tokens)-1)]
+		n++
+		return tok, nil
+	}, WithBaseURL(srv.URL))
+
+	var out struct {
+		OK bool `json:"ok"`
+	}
+	if err := c.do(context.Background(), http.MethodGet, "/thing", nil, &out); err != nil {
+		t.Fatalf("do() error: %v", err)
+	}
+	if !out.OK {
+		t.Error("the retried response was not decoded")
+	}
+	want := []string{"Bearer stale", "Bearer fresh"}
+	if len(gotAuth) != 2 || gotAuth[0] != want[0] || gotAuth[1] != want[1] {
+		t.Errorf("auth headers = %v, want %v", gotAuth, want)
+	}
+}
+
+func TestDoRetriesA401OnlyOnce(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"code":"unauthorized","message":"API token is invalid."}`))
+	}))
+	defer srv.Close()
+
+	c, _ := testClient(t, srv)
+
+	err := c.do(context.Background(), http.MethodGet, "/thing", nil, nil)
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || !apiErr.Unauthorized() {
+		t.Fatalf("err = %v, want an unauthorized APIError", err)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Errorf("server saw %d calls, want 2 (the original and one refresh)", got)
+	}
+}
+
+// A 401 retry must not consume the budget reserved for rate limiting, or a
+// stale token would leave the next 429 with fewer attempts than configured.
+func TestDoAuthRetryDoesNotConsumeRateLimitAttempts(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		switch calls.Add(1) {
+		case 1:
+			w.WriteHeader(http.StatusUnauthorized)
+		case 2, 3, 4:
+			w.WriteHeader(http.StatusTooManyRequests)
+		default:
+			w.Write([]byte(`{"ok":true}`))
+		}
+	}))
+	defer srv.Close()
+
+	c, waits := testClient(t, srv, WithMaxRetries(3))
+
+	if err := c.do(context.Background(), http.MethodGet, "/thing", nil, nil); err != nil {
+		t.Fatalf("do() error: %v", err)
+	}
+	// 1 rejected + 1 refreshed + 3 throttled + 1 success.
+	if got := calls.Load(); got != 5 {
+		t.Errorf("server saw %d calls, want 5", got)
+	}
+	if len(*waits) != 3 {
+		t.Errorf("waited %d times, want 3 — the 401 retry should not back off", len(*waits))
+	}
+}
+
+func TestDoReportsATokenFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("no request should be sent when the token cannot be fetched")
+	}))
+	defer srv.Close()
+
+	sentinel := errors.New("ntn is not logged in")
+	c := NewWithToken(func() (string, error) { return "", sentinel }, WithBaseURL(srv.URL))
+
+	err := c.do(context.Background(), http.MethodGet, "/thing", nil, nil)
+
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("err = %v, want it to wrap %v", err, sentinel)
+	}
+	if !strings.Contains(err.Error(), "/thing") {
+		t.Errorf("err = %q, want it to name the request", err)
+	}
 }
