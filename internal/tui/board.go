@@ -11,19 +11,25 @@ import (
 	"github.com/craigmjohnston/notion-agent-tracker/internal/domain"
 )
 
-// boardKeyMap is the board's own bindings: navigation, plus the keys reserved
-// for the mutations and agent launches that land in later milestones. The
-// reserved ones are matched and swallowed so that pressing them does nothing
-// rather than falling through to something else once more keys exist.
+// boardKeyMap is the board's own bindings: navigation, the writes, plus the
+// keys reserved for the mutations and agent launches that land in later
+// milestones. The reserved ones are matched and swallowed so that pressing them
+// does nothing rather than falling through to something else once more keys
+// exist.
+//
+// Add and Edit are named here but handled by the root model: they need the
+// Notion client and the project config, which the board has no business
+// holding.
 type boardKeyMap struct {
 	Up     key.Binding
 	Down   key.Binding
 	Toggle key.Binding
 
+	Add  key.Binding
+	Edit key.Binding
+
 	// Reserved, in the order they read in the help.
 	Queue     key.Binding
-	Claim     key.Binding
-	Edit      key.Binding
 	Milestone key.Binding
 	Done      key.Binding
 	Launch    key.Binding
@@ -37,9 +43,10 @@ func defaultBoardKeyMap() boardKeyMap {
 		Down:   key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/↓", "down")),
 		Toggle: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "expand/collapse")),
 
+		Add:  key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add slice")),
+		Edit: key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit slice")),
+
 		Queue:     key.NewBinding(key.WithKeys("Q"), key.WithHelp("Q", "queue work")),
-		Claim:     key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "claim")),
-		Edit:      key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
 		Milestone: key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move milestone")),
 		Done:      key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "mark done")),
 		Launch:    key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "launch agent")),
@@ -49,12 +56,19 @@ func defaultBoardKeyMap() boardKeyMap {
 
 // reserved are the bindings that exist only to be swallowed for now.
 func (k boardKeyMap) reserved() []key.Binding {
-	return []key.Binding{k.Queue, k.Claim, k.Edit, k.Milestone, k.Done, k.Launch, k.Attach}
+	return []key.Binding{k.Queue, k.Milestone, k.Done, k.Launch, k.Attach}
+}
+
+// writes are the bindings the root model handles rather than the board.
+func (k boardKeyMap) writes() []key.Binding {
+	return []key.Binding{k.Add, k.Edit}
 }
 
 // helpBindings are the board's bindings as the help screen lists them.
 func (b Board) helpBindings() []key.Binding {
-	return append([]key.Binding{b.keys.Up, b.keys.Down, b.keys.Toggle}, b.keys.reserved()...)
+	bindings := []key.Binding{b.keys.Up, b.keys.Down, b.keys.Toggle}
+	bindings = append(bindings, b.keys.writes()...)
+	return append(bindings, b.keys.reserved()...)
 }
 
 // rowKind tells the two kinds of line the cursor moves over apart.
@@ -212,6 +226,24 @@ func (b Board) SelectedSlice() (domain.Slice, bool) {
 		return domain.Slice{}, false
 	}
 	return b.groups[r.group].Slices[r.slice], true
+}
+
+// SelectedMilestone is the milestone under the cursor, if the cursor is on a
+// group's own row and that group is a real milestone: the implicit Unassigned
+// group is not a page, so nothing can be filed under it.
+func (b Board) SelectedMilestone() (domain.Milestone, bool) {
+	if b.cursor >= len(b.rows) {
+		return domain.Milestone{}, false
+	}
+	r := b.rows[b.cursor]
+	if r.kind != rowMilestone {
+		return domain.Milestone{}, false
+	}
+	m := b.groups[r.group].Milestone
+	if m == nil {
+		return domain.Milestone{}, false
+	}
+	return *m, true
 }
 
 // View renders the board.

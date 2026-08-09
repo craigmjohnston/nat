@@ -18,18 +18,45 @@ import (
 // fakeNotion is a NotionAPI whose every call is a field, so each test can
 // supply only the behaviour it cares about. Unset calls return nothing.
 type fakeNotion struct {
-	users    func() ([]notion.User, error)
-	search   func(query, filterType string) ([]notion.SearchResult, error)
-	createDB func(parentPageID, title string) (*notion.Database, error)
-	query    func(id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
-	blocks   func(id string) ([]notion.Block, error)
+	users       func() ([]notion.User, error)
+	search      func(query, filterType string) ([]notion.SearchResult, error)
+	createDB    func(parentPageID, title string) (*notion.Database, error)
+	query       func(id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
+	blocks      func(id string) ([]notion.Block, error)
+	createPage  func(parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)
+	updatePage  func(pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
+	appendBlock func(id string, children []map[string]any) ([]notion.Block, error)
+	deleteBlock func(id string) error
 
 	searchFilters []string
 	queriedDSIDs  []string
 	blockParents  []string
 	createdUnder  string
 	createdTitle  string
+
+	// The writes the mutation flows make, in the order they were made.
+	created  []createPageCall
+	updated  []updatePageCall
+	appended []appendCall
+	deleted  []string
 }
+
+// The calls fakeNotion records, so a test can assert on exactly what was sent.
+type (
+	createPageCall struct {
+		parent     notion.Parent
+		properties map[string]notion.PropertyValue
+		children   []map[string]any
+	}
+	updatePageCall struct {
+		pageID     string
+		properties map[string]notion.PropertyValue
+	}
+	appendCall struct {
+		pageID   string
+		children []map[string]any
+	}
+)
 
 var _ NotionAPI = (*fakeNotion)(nil)
 
@@ -70,6 +97,38 @@ func (f *fakeNotion) GetBlockChildren(_ context.Context, id string) ([]notion.Bl
 		return nil, nil
 	}
 	return f.blocks(id)
+}
+
+func (f *fakeNotion) CreatePage(_ context.Context, parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error) {
+	f.created = append(f.created, createPageCall{parent: parent, properties: properties, children: children})
+	if f.createPage == nil {
+		return &notion.Page{ID: "new-page"}, nil
+	}
+	return f.createPage(parent, properties, children)
+}
+
+func (f *fakeNotion) UpdatePageProperties(_ context.Context, pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error) {
+	f.updated = append(f.updated, updatePageCall{pageID: pageID, properties: properties})
+	if f.updatePage == nil {
+		return &notion.Page{ID: pageID}, nil
+	}
+	return f.updatePage(pageID, properties)
+}
+
+func (f *fakeNotion) AppendBlockChildren(_ context.Context, id string, children []map[string]any) ([]notion.Block, error) {
+	f.appended = append(f.appended, appendCall{pageID: id, children: children})
+	if f.appendBlock == nil {
+		return nil, nil
+	}
+	return f.appendBlock(id, children)
+}
+
+func (f *fakeNotion) DeleteBlock(_ context.Context, id string) error {
+	f.deleted = append(f.deleted, id)
+	if f.deleteBlock == nil {
+		return nil
+	}
+	return f.deleteBlock(id)
 }
 
 // harness drives an Onboarding the way the Bubble Tea runtime would: it feeds

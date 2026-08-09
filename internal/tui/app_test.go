@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -91,6 +92,16 @@ func run(cmd tea.Cmd) []tea.Msg {
 	case nil:
 		return nil
 	default:
+		// tea.sequenceMsg is unexported, but it is a []tea.Cmd underneath — the
+		// runtime runs its commands in order, and so do we. huh moves between
+		// fields with one, so a form cannot be driven without this.
+		if v := reflect.ValueOf(msg); v.Kind() == reflect.Slice && v.Type().Elem() == reflect.TypeOf(tea.Cmd(nil)) {
+			var msgs []tea.Msg
+			for i := range v.Len() {
+				msgs = append(msgs, run(v.Index(i).Interface().(tea.Cmd))...)
+			}
+			return msgs
+		}
 		return []tea.Msg{msg}
 	}
 }
