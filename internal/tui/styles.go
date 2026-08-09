@@ -25,6 +25,21 @@ type Styles struct {
 	// HelpKey and HelpDesc render one key binding of the help line.
 	HelpKey  lipgloss.Style
 	HelpDesc lipgloss.Style
+
+	// Cursor is the marker in front of the board row the user is on, and
+	// Selected the text of that row.
+	Cursor   lipgloss.Style
+	Selected lipgloss.Style
+	// Milestone is a board group's name when it is not selected.
+	Milestone lipgloss.Style
+	// StatusTodo, StatusClaimed and StatusDone colour a slice's status glyph.
+	StatusTodo    lipgloss.Style
+	StatusClaimed lipgloss.Style
+	StatusDone    lipgloss.Style
+	// Assignee is who holds a claimed slice; PR marks one that has a pull
+	// request.
+	Assignee lipgloss.Style
+	PR       lipgloss.Style
 }
 
 // DefaultStyles returns the styles the app runs with.
@@ -39,5 +54,14 @@ func DefaultStyles() Styles {
 		Spinner:  lipgloss.NewStyle().Foreground(lipgloss.Magenta),
 		HelpKey:  lipgloss.NewStyle().Foreground(lipgloss.BrightMagenta),
 		HelpDesc: lipgloss.NewStyle().Foreground(lipgloss.BrightBlack),
+
+		Cursor:        lipgloss.NewStyle().Foreground(lipgloss.BrightMagenta),
+		Selected:      lipgloss.NewStyle().Bold(true).Foreground(lipgloss.BrightWhite),
+		Milestone:     lipgloss.NewStyle().Foreground(lipgloss.Cyan),
+		StatusTodo:    lipgloss.NewStyle().Foreground(lipgloss.BrightBlack),
+		StatusClaimed: lipgloss.NewStyle().Foreground(lipgloss.Yellow),
+		StatusDone:    lipgloss.NewStyle().Foreground(lipgloss.Green),
+		Assignee:      lipgloss.NewStyle().Foreground(lipgloss.Blue),
+		PR:            lipgloss.NewStyle().Foreground(lipgloss.Magenta),
 	}
 }

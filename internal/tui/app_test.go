@@ -114,7 +114,7 @@ func press(a *App, s string) tea.Cmd {
 	case "ctrl+c":
 		msg = tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl})
 	default:
-		msg = tea.KeyPressMsg(tea.Key{Code: rune(s[0]), Text: s})
+		msg = keyPress(s)
 	}
 	_, cmd := a.Update(msg)
 	return cmd
