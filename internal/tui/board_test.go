@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/craigmjohnston/notion-agent-tracker/internal/agent"
 	"github.com/craigmjohnston/notion-agent-tracker/internal/domain"
 )
 
@@ -123,6 +124,17 @@ func TestBoardRendersEveryGroupExpanded(t *testing.T) {
 	b.cursor = 2 // a slice row, so the cursor is shown on one
 
 	golden(t, "board-expanded", b.View())
+}
+
+func TestBoardMarksSlicesWithALiveSession(t *testing.T) {
+	b := newTestBoard()
+	// The claimed slice's agent, and a session belonging to something else.
+	b.SetLive(map[string]bool{
+		agent.SessionName("s4"): true,
+		"nat-deadbeef":          true,
+	})
+
+	golden(t, "board-live", b.View())
 }
 
 func TestBoardTruncatesRowsToItsWidth(t *testing.T) {

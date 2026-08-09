@@ -8,7 +8,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -166,6 +168,35 @@ func agentCommand(promptFile string) string {
 // for the caller to hand to tea.ExecProcess.
 func AttachCmd(session string) *exec.Cmd {
 	return exec.Command(TmuxBinary, "attach-session", "-t", session)
+}
+
+// AttachCmd is the command attaching to a session, as a method so a caller
+// that already holds a Tmux can launch and attach through the one thing.
+func (t *Tmux) AttachCmd(session string) *exec.Cmd { return AttachCmd(session) }
+
+// WritePromptFile writes an agent's opening prompt somewhere the session it is
+// launched for can read it back, returning the file's path.
+//
+// The file goes in a directory of its own rather than at a predictable path in
+// the shared temp dir: the agent obeys whatever it reads, so a file another
+// user could have put there first would be an instruction we did not write.
+func WritePromptFile(session, prompt string) (string, error) {
+	dir, err := os.MkdirTemp("", "nat-prompt-")
+	if err != nil {
+		return "", fmt.Errorf("create prompt dir: %w", err)
+	}
+	return writePromptInto(dir, session, prompt)
+}
+
+// writePromptInto writes the prompt file inside dir. It is split out so that a
+// write which fails — a directory that cannot be written to — is exercisable
+// without arranging for MkdirTemp itself to succeed and then break.
+func writePromptInto(dir, session, prompt string) (string, error) {
+	path := filepath.Join(dir, session+".md")
+	if err := os.WriteFile(path, []byte(prompt), 0o600); err != nil {
+		return "", fmt.Errorf("write prompt file: %w", err)
+	}
+	return path, nil
 }
 
 // shellQuote wraps s in single quotes so /bin/sh reads it as one literal word,

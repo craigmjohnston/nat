@@ -37,9 +37,10 @@ type Styles struct {
 	StatusClaimed lipgloss.Style
 	StatusDone    lipgloss.Style
 	// Assignee is who holds a claimed slice; PR marks one that has a pull
-	// request.
+	// request; Live marks one with an agent session running on it.
 	Assignee lipgloss.Style
 	PR       lipgloss.Style
+	Live     lipgloss.Style
 
 	// BarFill and BarFillAlt colour the done part of a progress bar segment,
 	// alternating between the two so adjacent milestones stay apart; BarEmpty
@@ -71,6 +72,7 @@ func DefaultStyles() Styles {
 		StatusDone:    lipgloss.NewStyle().Foreground(lipgloss.Green),
 		Assignee:      lipgloss.NewStyle().Foreground(lipgloss.Blue),
 		PR:            lipgloss.NewStyle().Foreground(lipgloss.Magenta),
+		Live:          lipgloss.NewStyle().Bold(true).Foreground(lipgloss.BrightGreen),
 
 		BarFill:     lipgloss.NewStyle().Foreground(lipgloss.Cyan),
 		BarFillAlt:  lipgloss.NewStyle().Foreground(lipgloss.Blue),

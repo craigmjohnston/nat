@@ -8,18 +8,16 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/craigmjohnston/notion-agent-tracker/internal/agent"
 	"github.com/craigmjohnston/notion-agent-tracker/internal/domain"
 )
 
-// boardKeyMap is the board's own bindings: navigation, the writes, plus the
-// keys reserved for the mutations and agent launches that land in later
-// milestones. The reserved ones are matched and swallowed so that pressing them
-// does nothing rather than falling through to something else once more keys
-// exist.
+// boardKeyMap is the board's own bindings: navigation, the writes, and the
+// agent keys.
 //
-// Add and Edit are named here but handled by the root model: they need the
-// Notion client and the project config, which the board has no business
-// holding.
+// Everything but the navigation is named here but handled by the root model:
+// the writes need the Notion client and the project config, and the agent keys
+// the tmux launcher, none of which the board has any business holding.
 type boardKeyMap struct {
 	Up     key.Binding
 	Down   key.Binding
@@ -31,7 +29,6 @@ type boardKeyMap struct {
 	Delete key.Binding
 	Queue  key.Binding
 
-	// Reserved, in the order they read in the help.
 	Launch key.Binding
 	Attach key.Binding
 }
@@ -54,8 +51,8 @@ func defaultBoardKeyMap() boardKeyMap {
 	}
 }
 
-// reserved are the bindings that exist only to be swallowed for now.
-func (k boardKeyMap) reserved() []key.Binding {
+// agents are the bindings that act on a slice's agent session.
+func (k boardKeyMap) agents() []key.Binding {
 	return []key.Binding{k.Launch, k.Attach}
 }
 
@@ -68,7 +65,7 @@ func (k boardKeyMap) writes() []key.Binding {
 func (b Board) helpBindings() []key.Binding {
 	bindings := []key.Binding{b.keys.Up, b.keys.Down, b.keys.Toggle}
 	bindings = append(bindings, b.keys.writes()...)
-	return append(bindings, b.keys.reserved()...)
+	return append(bindings, b.keys.agents()...)
 }
 
 // rowKind tells the two kinds of line the cursor moves over apart.
@@ -102,6 +99,9 @@ type Board struct {
 	expanded map[string]bool
 	rows     []row
 	cursor   int
+	// live is the set of running tmux session names, keyed as the launcher
+	// reports them, so a slice with an agent on it can be marked.
+	live map[string]bool
 
 	width int
 }
@@ -122,6 +122,10 @@ func (b *Board) SetProject(p *domain.Project) {
 // SetWidth records the space the board has to draw in; rows longer than it are
 // truncated rather than wrapped, so one slice stays one line.
 func (b *Board) SetWidth(width int) { b.width = width }
+
+// SetLive records the tmux sessions currently running, which is what the live
+// marker on a slice is drawn from.
+func (b *Board) SetLive(live map[string]bool) { b.live = live }
 
 // groupKey identifies a group across reloads. The implicit Unassigned group has
 // no milestone and so no ID, which is a key no milestone can collide with.
@@ -168,8 +172,8 @@ func (b *Board) rebuild() {
 	}
 }
 
-// Update handles the board's keys. The reserved bindings are matched only to be
-// swallowed, so that a key a later milestone claims does nothing today.
+// Update handles the board's own keys — the ones that move the cursor. The
+// rest reach the root model, which never passes them on.
 func (b *Board) Update(msg tea.Msg) tea.Cmd {
 	press, ok := msg.(tea.KeyPressMsg)
 	if !ok {
@@ -182,7 +186,6 @@ func (b *Board) Update(msg tea.Msg) tea.Cmd {
 		b.move(1)
 	case key.Matches(press, b.keys.Toggle):
 		b.toggle()
-	case key.Matches(press, b.keys.reserved()...):
 	}
 	return nil
 }
@@ -296,10 +299,15 @@ func (b Board) renderMilestone(g domain.Group, selected bool) string {
 	return strings.Join(parts, " ")
 }
 
-// renderSlice draws one slice: its status, its name, who holds it, and whether
-// it has a PR.
+// renderSlice draws one slice: its status, its name, whether an agent is live
+// on it, who holds it, and whether it has a PR. The live marker is its own
+// glyph rather than a status: a session is running or not, which is a different
+// question from where the slice has got to.
 func (b Board) renderSlice(s domain.Slice) string {
 	parts := []string{b.sliceIcon(s.Status), s.Name}
+	if b.live[agent.SessionName(s.ID)] {
+		parts = append(parts, b.styles.Live.Render("●"))
+	}
 	if s.AssigneeName != "" {
 		parts = append(parts, b.styles.Assignee.Render("@"+s.AssigneeName))
 	}
