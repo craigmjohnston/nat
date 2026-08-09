@@ -113,6 +113,20 @@ func (f *SliceForm) State() huh.FormState { return f.form.State }
 // View renders the form.
 func (f *SliceForm) View() string { return f.form.View() }
 
+// Heading is the title drawn over the form.
+func (f *SliceForm) Heading() string { return f.heading }
+
+// save writes the completed form: a new slice, or the one it was opened on.
+func (f *SliceForm) save(a *App) tea.Cmd {
+	// The form only ever opens on a configured project, so this is the one it
+	// was opened against.
+	project, _ := a.activeProject()
+	if f.mode == sliceFormAdd {
+		return createSlice(a.client, project.SlicesDSID, f.milestoneID, f.title, f.description, f.repo)
+	}
+	return editSlice(a.client, f.sliceID, f.title, f.description, f.repo)
+}
+
 // loadSliceBody fetches the page body of the slice about to be edited, as the
 // markdown the form pre-fills its brief with.
 func loadSliceBody(client NotionAPI, s domain.Slice) tea.Cmd {

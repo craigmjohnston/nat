@@ -33,6 +33,17 @@ func newWriteApp(client NotionAPI) *App {
 	return a
 }
 
+// sliceFormOf is the add/edit form on show, failing the test when the modal
+// open over the board is something else.
+func sliceFormOf(t *testing.T, a *App) *SliceForm {
+	t.Helper()
+	f, ok := a.form.(*SliceForm)
+	if !ok {
+		t.Fatalf("form = %T, want the slice form", a.form)
+	}
+	return f
+}
+
 // runMsg runs a command the way the runtime would and returns the single
 // message it produced.
 func runMsg(t *testing.T, cmd tea.Cmd) tea.Msg {
@@ -65,7 +76,7 @@ func fillForm(t *testing.T, a *App, title, brief, repo string) {
 	// the group — before the form completes and the write falls out of it.
 	cmd := press(a, "enter")
 	for range 4 {
-		if a.sliceForm == nil {
+		if a.form == nil {
 			break
 		}
 		var next []tea.Cmd
@@ -75,7 +86,7 @@ func fillForm(t *testing.T, a *App, title, brief, repo string) {
 		}
 		cmd = tea.Batch(next...)
 	}
-	if a.sliceForm != nil {
+	if a.form != nil {
 		t.Fatalf("the form did not finish:\n%s", a.View().Content)
 	}
 	feed(t, a, cmd)
@@ -329,11 +340,11 @@ func TestAppAddOpensTheFormOnTheSelectedMilestone(t *testing.T) {
 
 	press(app, "a")
 
-	if app.sliceForm == nil || app.screen != screenSliceForm {
-		t.Fatalf("screen = %v, form = %v, want the add form on show", app.screen, app.sliceForm)
+	if app.form == nil || app.screen != screenForm {
+		t.Fatalf("screen = %v, form = %v, want the add form on show", app.screen, app.form)
 	}
-	if app.sliceForm.mode != sliceFormAdd || app.sliceForm.milestoneID != "m2" {
-		t.Errorf("form = %+v, want an add form for m2", app.sliceForm)
+	if f := sliceFormOf(t, app); f.mode != sliceFormAdd || f.milestoneID != "m2" {
+		t.Errorf("form = %+v, want an add form for m2", f)
 	}
 	view := app.View().Content
 	if !strings.Contains(view, "Add a slice to M2: Board") {
@@ -359,7 +370,7 @@ func TestAppAddNeedsAMilestoneToFileUnder(t *testing.T) {
 
 			press(app, "a")
 
-			if app.sliceForm != nil {
+			if app.form != nil {
 				t.Error("a form was opened with no milestone to file under")
 			}
 			if !strings.Contains(app.note, "Move to a milestone") {
@@ -406,15 +417,15 @@ func TestAppEditLoadsTheBodyThenOpensTheForm(t *testing.T) {
 	app.board.cursor = rowTodoSlice
 
 	cmd := press(app, "e")
-	if !app.busy || app.sliceForm != nil {
-		t.Fatalf("busy = %v, form = %v, want the fetch in flight", app.busy, app.sliceForm)
+	if !app.busy || app.form != nil {
+		t.Fatalf("busy = %v, form = %v, want the fetch in flight", app.busy, app.form)
 	}
 	app.Update(runMsg(t, cmd))
 
-	if app.busy || app.sliceForm == nil || app.screen != screenSliceForm {
-		t.Fatalf("screen = %v, form = %v, want the edit form on show", app.screen, app.sliceForm)
+	if app.busy || app.form == nil || app.screen != screenForm {
+		t.Fatalf("screen = %v, form = %v, want the edit form on show", app.screen, app.form)
 	}
-	f := app.sliceForm
+	f := sliceFormOf(t, app)
 	if f.mode != sliceFormEdit || f.sliceID != "s5" || f.title != "Info view" || f.description != "The brief." {
 		t.Errorf("form = %+v, want it filled in from the slice", f)
 	}
@@ -426,7 +437,7 @@ func TestAppEditRefusesSlicesThatAreNotTodo(t *testing.T) {
 
 	press(app, "e")
 
-	if app.busy || app.sliceForm != nil {
+	if app.busy || app.form != nil {
 		t.Error("a claimed slice should not be opened for editing")
 	}
 	if want := `"Board screen" is Claimed — only Todo slices can be edited.`; app.note != want {
@@ -452,7 +463,7 @@ func TestAppEditReportsAFailedLoad(t *testing.T) {
 
 	app.Update(runMsg(t, press(app, "e")))
 
-	if app.busy || app.sliceForm != nil {
+	if app.busy || app.form != nil {
 		t.Error("a failed fetch should leave nothing in flight and no form")
 	}
 	if app.err == nil || app.err.Error() != "load slice body: boom" {
@@ -500,7 +511,7 @@ func TestAppFormKeysDoNotReachTheBoard(t *testing.T) {
 	if cmd := press(app, "q"); isQuitCmd(cmd) {
 		t.Error("q inside the form quit the app")
 	}
-	if app.sliceForm == nil {
+	if app.form == nil {
 		t.Error("the form was dismissed by a key meant for it")
 	}
 }
@@ -512,8 +523,8 @@ func TestAppFormIsCancelledWithEsc(t *testing.T) {
 
 	press(app, "esc")
 
-	if app.sliceForm != nil || app.screen != screenBoard {
-		t.Errorf("screen = %v, form = %v, want the board back", app.screen, app.sliceForm)
+	if app.form != nil || app.screen != screenBoard {
+		t.Errorf("screen = %v, form = %v, want the board back", app.screen, app.form)
 	}
 	if app.note != "Cancelled." {
 		t.Errorf("note = %q, want the cancelled note", app.note)
@@ -528,7 +539,7 @@ func TestAppFormReceivesNonKeyMessages(t *testing.T) {
 	// Anything the app does not handle itself belongs to the open form.
 	app.Update(struct{ tea.Msg }{})
 
-	if app.sliceForm == nil {
+	if app.form == nil {
 		t.Error("the form should still be on show")
 	}
 }
@@ -585,15 +596,15 @@ func TestAppRefusesWritesItCannotMake(t *testing.T) {
 		}},
 	}
 	for _, tt := range tests {
-		for _, k := range []string{"a", "e"} {
+		for _, k := range []string{"a", "e", "Q"} {
 			t.Run(tt.name+"/"+k, func(t *testing.T) {
 				app := tt.app()
 				app.board.cursor = rowActiveMilestone
 
 				press(app, k)
 
-				if app.sliceForm != nil || app.note != "" {
-					t.Errorf("form = %v, note = %q, want the key ignored", app.sliceForm, app.note)
+				if app.form != nil || app.note != "" {
+					t.Errorf("form = %v, note = %q, want the key ignored", app.form, app.note)
 				}
 			})
 		}

@@ -25,11 +25,11 @@ type boardKeyMap struct {
 	Down   key.Binding
 	Toggle key.Binding
 
-	Add  key.Binding
-	Edit key.Binding
+	Add   key.Binding
+	Edit  key.Binding
+	Queue key.Binding
 
 	// Reserved, in the order they read in the help.
-	Queue     key.Binding
 	Milestone key.Binding
 	Done      key.Binding
 	Launch    key.Binding
@@ -43,10 +43,10 @@ func defaultBoardKeyMap() boardKeyMap {
 		Down:   key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/↓", "down")),
 		Toggle: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "expand/collapse")),
 
-		Add:  key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add slice")),
-		Edit: key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit slice")),
+		Add:   key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add slice")),
+		Edit:  key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit slice")),
+		Queue: key.NewBinding(key.WithKeys("Q"), key.WithHelp("Q", "advance milestone")),
 
-		Queue:     key.NewBinding(key.WithKeys("Q"), key.WithHelp("Q", "queue work")),
 		Milestone: key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move milestone")),
 		Done:      key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "mark done")),
 		Launch:    key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "launch agent")),
@@ -56,12 +56,12 @@ func defaultBoardKeyMap() boardKeyMap {
 
 // reserved are the bindings that exist only to be swallowed for now.
 func (k boardKeyMap) reserved() []key.Binding {
-	return []key.Binding{k.Queue, k.Milestone, k.Done, k.Launch, k.Attach}
+	return []key.Binding{k.Milestone, k.Done, k.Launch, k.Attach}
 }
 
 // writes are the bindings the root model handles rather than the board.
 func (k boardKeyMap) writes() []key.Binding {
-	return []key.Binding{k.Add, k.Edit}
+	return []key.Binding{k.Add, k.Edit, k.Queue}
 }
 
 // helpBindings are the board's bindings as the help screen lists them.

@@ -34,13 +34,16 @@ const (
 // it — it exists so those slices are still visible on the board.
 const UnassignedName = "Unassigned"
 
-// Milestone is one phase of a project's plan.
+// Milestone is one phase of a project's plan. StatusType is the Notion property
+// type its Status column turned out to have, carried so that a write can be
+// sent in the same shape it was read in.
 type Milestone struct {
-	ID     string
-	Name   string
-	Order  float64
-	Status MilestoneStatus
-	URL    string
+	ID         string
+	Name       string
+	Order      float64
+	Status     MilestoneStatus
+	StatusType string
+	URL        string
 }
 
 // Slice is one unit of work, small enough for a single agent session.
@@ -68,12 +71,14 @@ type Project struct {
 // board would rather show a half-filled row than nothing at all.
 func MilestoneFromPage(p notion.Page) Milestone {
 	order, _ := p.Properties[notion.PropOrder].NumberValue()
+	status := p.Properties[notion.PropStatus]
 	return Milestone{
-		ID:     p.ID,
-		Name:   p.Properties[notion.PropName].Text(),
-		Order:  order,
-		Status: MilestoneStatus(p.Properties[notion.PropStatus].SelectName()),
-		URL:    p.URL,
+		ID:         p.ID,
+		Name:       p.Properties[notion.PropName].Text(),
+		Order:      order,
+		Status:     MilestoneStatus(status.SelectName()),
+		StatusType: status.Type,
+		URL:        p.URL,
 	}
 }
 
