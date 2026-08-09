@@ -1,5 +1,18 @@
 package notion
 
+import "time"
+
+// Page is a Notion page — a row of a data source, here. Data source queries and
+// the page endpoints return the same shape; only the fields this app reads are
+// modelled. A missing property reads as the zero PropertyValue, so
+// p.Properties["Status"].SelectName() is safe on any page.
+type Page struct {
+	ID          string                   `json:"id"`
+	URL         string                   `json:"url"`
+	CreatedTime time.Time                `json:"created_time"`
+	Properties  map[string]PropertyValue `json:"properties"`
+}
+
 // List is the envelope every Notion list endpoint returns.
 type List[T any] struct {
 	Results    []T     `json:"results"`
