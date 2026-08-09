@@ -102,6 +102,11 @@ type App struct {
 	info       Info
 	form       modal
 
+	// launcher starts and attaches to the agents' tmux sessions, and live is
+	// the set of session names it last reported running.
+	launcher AgentLauncher
+	live     map[string]bool
+
 	project *domain.Project
 	loading bool
 	// busy is a write, or the read that opens a form, in flight. Only one runs
@@ -123,7 +128,7 @@ func NewApp(cfg config.Config, client NotionAPI) *App {
 	s := DefaultStyles()
 	sp := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(s.Spinner))
 	return &App{cfg: cfg, client: client, styles: s, keys: defaultKeyMap(), spinner: sp,
-		board: NewBoard(s), info: NewInfo(s)}
+		board: NewBoard(s), info: NewInfo(s), launcher: newLauncher()}
 }
 
 // NewAppWithOnboarding returns the root model showing the first-run wizard,
@@ -135,12 +140,13 @@ func NewAppWithOnboarding(cfg config.Config, client NotionAPI, o *Onboarding) *A
 }
 
 // Init starts the screen on show: the wizard's first call, or the first load of
-// the active project's plan.
+// the active project's plan, alongside the poll that marks the slices an agent
+// is already running on.
 func (a *App) Init() tea.Cmd {
 	if a.onboarding != nil {
 		return a.onboarding.Init()
 	}
-	return a.startLoad()
+	return tea.Batch(a.startLoad(), a.refreshLive(), liveTick())
 }
 
 // Update handles the global keys and the app's own messages, and routes
@@ -176,6 +182,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.saved(msg.note, msg.err)
 	case milestoneSavedMsg:
 		return a.saved(msg.note, msg.err)
+	case agentLaunchedMsg:
+		return a.agentLaunched(msg)
+	case agentAttachedMsg:
+		// The agent has had the terminal to itself, so the plan it was working on
+		// is reloaded rather than trusted.
+		model, cmd := a.saved(msg.note, msg.err)
+		return model, tea.Batch(cmd, a.refreshLive())
+	case liveSessionsMsg:
+		a.liveLoaded(msg)
+		return a, nil
+	case liveTickMsg:
+		return a, tea.Batch(a.refreshLive(), liveTick())
 	case spinner.TickMsg:
 		if !a.loading && !a.info.Busy() {
 			return a, nil
@@ -217,7 +235,9 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, a.keys.Back) {
 			a.closeForm()
 			a.note = "Cancelled."
-			return a, nil
+			// Coming back to the board is a chance to notice a session that
+			// started, or ended, while the form was up.
+			return a, a.refreshLive()
 		}
 		return a, a.formUpdate(msg)
 	}
@@ -236,7 +256,7 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// The project page is refreshed too — at once if the user is reading it,
 		// otherwise lazily, on the next visit to the info screen.
 		a.info.Reset()
-		cmd := a.startLoad()
+		cmd := tea.Batch(a.startLoad(), a.refreshLive())
 		if a.screen == screenInfo {
 			cmd = tea.Batch(cmd, a.startInfoLoad())
 		}
@@ -264,9 +284,10 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// boardWrite handles the board keys that write to Notion, reporting whether the
-// key was one of them. They live here rather than on the board because they
-// need the client and the project config.
+// boardWrite handles the board keys that act on what the cursor is on rather
+// than move it, reporting whether the key was one of them. They live here
+// rather than on the board because they need the client, the project config, or
+// the launcher.
 func (a *App) boardWrite(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch {
 	case key.Matches(msg, a.board.keys.Add):
@@ -279,6 +300,10 @@ func (a *App) boardWrite(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.deleteSliceFlow(), true
 	case key.Matches(msg, a.board.keys.Queue):
 		return a.queueMilestone(), true
+	case key.Matches(msg, a.board.keys.Launch):
+		return a.launchAgentFlow(), true
+	case key.Matches(msg, a.board.keys.Attach):
+		return a.attachAgentFlow(), true
 	}
 	return nil, false
 }
@@ -363,8 +388,21 @@ func (a *App) saveForm() tea.Cmd {
 		a.note = "Cancelled."
 		return nil
 	}
-	a.busy, a.note = true, "Saving…"
+	a.busy, a.note = true, busyNoteOf(f)
 	return cmd
+}
+
+// busyNoter is a modal whose completed form does something other than save: the
+// status bar says what that is, or nothing at all when there is nothing worth
+// announcing.
+type busyNoter interface{ busyNote() string }
+
+// busyNoteOf is what the status bar shows while a modal's work is in flight.
+func busyNoteOf(f modal) string {
+	if n, ok := f.(busyNoter); ok {
+		return n.busyNote()
+	}
+	return "Saving…"
 }
 
 // closeForm dismisses the form and goes back to the board.
@@ -379,7 +417,7 @@ func (a *App) saved(note string, err error) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	a.note = note
-	return a, a.startLoad()
+	return a, tea.Batch(a.startLoad(), a.refreshLive())
 }
 
 // toggle switches to want, or back to the board if it is already on show.

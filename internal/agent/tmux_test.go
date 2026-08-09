@@ -3,7 +3,9 @@ package agent
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -148,6 +150,92 @@ func TestAttachCmd(t *testing.T) {
 	if !reflect.DeepEqual(cmd.Args, want) {
 		t.Errorf("args = %v, want %v", cmd.Args, want)
 	}
+}
+
+func TestTmuxAttachCmd(t *testing.T) {
+	cmd := NewTmux().AttachCmd("nat-3b738308")
+	want := []string{"tmux", "attach-session", "-t", "nat-3b738308"}
+	if !reflect.DeepEqual(cmd.Args, want) {
+		t.Errorf("args = %v, want %v", cmd.Args, want)
+	}
+}
+
+func TestWritePromptFile(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+
+	path, err := WritePromptFile("nat-3b738308", "do the work")
+	if err != nil {
+		t.Fatalf("WritePromptFile: %v", err)
+	}
+	if got := filepath.Base(path); got != "nat-3b738308.md" {
+		t.Errorf("file = %q, want it named after the session", got)
+	}
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if string(body) != "do the work" {
+		t.Errorf("contents = %q, want the prompt", body)
+	}
+
+	// The prompt is nobody else's business, and neither is the directory it
+	// lands in: the agent obeys whatever it reads there.
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf("file mode = %v, want 0600", got)
+	}
+	dir, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dir.Mode().Perm(); got != 0o700 {
+		t.Errorf("dir mode = %v, want 0700", got)
+	}
+}
+
+func TestWritePromptFileGivesEachLaunchItsOwnDirectory(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+
+	first, err := WritePromptFile("nat-3b738308", "one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := WritePromptFile("nat-3b738308", "two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Errorf("both launches wrote %q, want a fresh directory each time", first)
+	}
+}
+
+func TestWritePromptFileError(t *testing.T) {
+	t.Run("no temp dir to write in", func(t *testing.T) {
+		t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
+
+		if _, err := WritePromptFile("nat-1", "prompt"); err == nil {
+			t.Fatal("WritePromptFile: want error, got nil")
+		} else if !strings.Contains(err.Error(), "create prompt dir") {
+			t.Errorf("err = %v, want it to name the failed step", err)
+		}
+	})
+
+	t.Run("directory cannot be written to", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.Chmod(dir, 0o500); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := writePromptInto(dir, "nat-1", "prompt"); err == nil {
+			t.Fatal("writePromptInto: want error, got nil")
+		} else if !strings.Contains(err.Error(), "write prompt file") {
+			t.Errorf("err = %v, want it to name the failed step", err)
+		}
+	})
 }
 
 func TestExitErrorMessage(t *testing.T) {

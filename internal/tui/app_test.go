@@ -278,7 +278,8 @@ func TestAppShowsNothingToLoadWithoutAProject(t *testing.T) {
 }
 
 func TestAppWithoutAClientDoesNotLoad(t *testing.T) {
-	if cmd := NewApp(testConfig(), nil).Init(); cmd != nil {
+	// Init still polls for the agents' sessions, which do not go through Notion.
+	if cmd := NewApp(testConfig(), nil).startLoad(); cmd != nil {
 		t.Error("there is no client to load with")
 	}
 }
