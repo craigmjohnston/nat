@@ -49,7 +49,7 @@ func TestAppQuitKeys(t *testing.T) {
 
 func TestAppQuitsAFailedWizard(t *testing.T) {
 	// A wizard that failed has no form left to handle ctrl+c itself.
-	o := NewOnboarding(config.Config{}, func(string) NotionAPI { return &fakeNotion{} }, &config.MemorySecrets{}, func(config.Config) error { return nil })
+	o := NewOnboarding(config.Config{}, &fakeNotion{}, func(config.Config) error { return nil })
 	o.fail(errNoPeople)
 	app := NewAppWithOnboarding(o)
 
@@ -66,25 +66,35 @@ func TestAppIgnoresOtherKeysOnTheBoard(t *testing.T) {
 }
 
 func TestAppRoutesToOnboarding(t *testing.T) {
-	o := NewOnboarding(config.Config{}, func(string) NotionAPI { return &fakeNotion{} }, &config.MemorySecrets{}, func(config.Config) error { return nil })
+	o := NewOnboarding(config.Config{}, &fakeNotion{}, func(config.Config) error { return nil })
 	app := NewAppWithOnboarding(o)
 
 	if cmd := app.Init(); cmd == nil {
-		t.Error("onboarding should start its first form")
+		t.Error("onboarding should start its first Notion call")
 	}
 	if got := app.View().Content; got != o.View() {
 		t.Errorf("view = %q, want the wizard's own view", got)
 	}
 
-	// While the wizard is on show, "q" is typed into the form rather than
-	// quitting the program.
-	app.Update(tea.KeyPressMsg(tea.Key{Code: 'q', Text: "q"}))
+	// While the wizard is on show, "q" belongs to it — the program must not
+	// quit out from under a form the user is filling in.
+	_, cmd := app.Update(tea.KeyPressMsg(tea.Key{Code: 'q', Text: "q"}))
 	if app.onboarding == nil {
 		t.Fatal("the wizard should still be on show")
 	}
-	if app.onboarding.apiKey != "q" {
-		t.Errorf("api key = %q, want the key press to have reached the form", app.onboarding.apiKey)
+	if isQuitCmd(cmd) {
+		t.Error(`"q" quit the program while the wizard was on show`)
 	}
+}
+
+// isQuitCmd reports whether cmd is tea.Quit, which is only identifiable by the
+// message it produces.
+func isQuitCmd(cmd tea.Cmd) bool {
+	if cmd == nil {
+		return false
+	}
+	_, ok := cmd().(tea.QuitMsg)
+	return ok
 }
 
 func TestAppTakesOverWhenOnboardingFinishes(t *testing.T) {
@@ -99,7 +109,7 @@ func TestAppTakesOverWhenOnboardingFinishes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			o := NewOnboarding(config.Config{}, func(string) NotionAPI { return &fakeNotion{} }, &config.MemorySecrets{}, func(config.Config) error { return nil })
+			o := NewOnboarding(config.Config{}, &fakeNotion{}, func(config.Config) error { return nil })
 			app := NewAppWithOnboarding(o)
 
 			_, cmd := app.Update(tt.msg)

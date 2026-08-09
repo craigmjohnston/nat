@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"runtime"
@@ -17,7 +18,6 @@ import (
 // fakeNotion is a NotionAPI whose every call is a field, so each test can
 // supply only the behaviour it cares about. Unset calls return nothing.
 type fakeNotion struct {
-	me       func() (*notion.User, error)
 	users    func() ([]notion.User, error)
 	search   func(query, filterType string) ([]notion.SearchResult, error)
 	createDB func(parentPageID, title string) (*notion.Database, error)
@@ -30,13 +30,6 @@ type fakeNotion struct {
 }
 
 var _ NotionAPI = (*fakeNotion)(nil)
-
-func (f *fakeNotion) Me(context.Context) (*notion.User, error) {
-	if f.me == nil {
-		return &notion.User{ID: "bot"}, nil
-	}
-	return f.me()
-}
 
 func (f *fakeNotion) ListUsers(context.Context) ([]notion.User, error) {
 	if f.users == nil {
@@ -73,32 +66,23 @@ func (f *fakeNotion) QueryDataSource(_ context.Context, id string, filter map[st
 // key presses in and runs every command the model returns, threading the
 // resulting messages back through Update.
 type harness struct {
-	t       *testing.T
-	m       *Onboarding
-	client  *fakeNotion
-	secrets *config.MemorySecrets
+	t      *testing.T
+	m      *Onboarding
+	client *fakeNotion
 
 	saved   []config.Config
 	saveErr error
-	keys    []string // API keys the client factory was asked for
 	done    []OnboardingDoneMsg
 	quit    bool
 }
 
 func newHarness(t *testing.T, cfg config.Config, client *fakeNotion) *harness {
 	t.Helper()
-	h := &harness{t: t, client: client, secrets: &config.MemorySecrets{}}
-	h.m = NewOnboarding(cfg,
-		func(apiKey string) NotionAPI {
-			h.keys = append(h.keys, apiKey)
-			return client
-		},
-		h.secrets,
-		func(c config.Config) error {
-			h.saved = append(h.saved, c)
-			return h.saveErr
-		},
-	)
+	h := &harness{t: t, client: client}
+	h.m = NewOnboarding(cfg, client, func(c config.Config) error {
+		h.saved = append(h.saved, c)
+		return h.saveErr
+	})
 	return h
 }
 
@@ -200,12 +184,20 @@ func dataSourceHit(id, dbID, title string) notion.SearchResult {
 	}
 }
 
-// pageHit builds a page search hit.
+// pageHit builds a page search hit, whose title lives in its properties the way
+// Notion really reports it.
 func pageHit(id, title string) notion.SearchResult {
+	name, err := json.Marshal(map[string]any{
+		"type":  "title",
+		"title": []map[string]any{{"plain_text": title}},
+	})
+	if err != nil {
+		panic(err)
+	}
 	return notion.SearchResult{
 		Object:     notion.SearchPage,
 		ID:         id,
-		Properties: map[string]notion.PropertyValue{"Name": {Title: []notion.RichText{{PlainText: title}}}},
+		Properties: map[string]json.RawMessage{"Name": name},
 	}
 }
 
@@ -234,9 +226,6 @@ func TestOnboardingPicksAnExistingProjectDatabase(t *testing.T) {
 	h := newHarness(t, config.Config{}, client)
 	h.run(h.m.Init())
 
-	h.typeText("ntn_secret")
-	h.submit() // API key
-
 	if h.m.step != stepPickProjectDB {
 		t.Fatalf("step = %v, want stepPickProjectDB (err: %v)", h.m.step, h.m.err)
 	}
@@ -250,9 +239,6 @@ func TestOnboardingPicksAnExistingProjectDatabase(t *testing.T) {
 
 	if h.m.err != nil {
 		t.Fatalf("unexpected error: %v", h.m.err)
-	}
-	if got, err := h.secrets.GetAPIKey(); err != nil || got != "ntn_secret" {
-		t.Errorf("stored key = %q, %v, want ntn_secret", got, err)
 	}
 	if len(h.saved) != 1 {
 		t.Fatalf("saved %d configs, want 1", len(h.saved))
@@ -276,9 +262,6 @@ func TestOnboardingPicksAnExistingProjectDatabase(t *testing.T) {
 	if got := h.client.searchFilters; len(got) != 1 || got[0] != notion.SearchDataSource {
 		t.Errorf("search filters = %v, want [data_source]", got)
 	}
-	if len(h.keys) != 2 || h.keys[0] != "ntn_secret" || h.keys[1] != "ntn_secret" {
-		t.Errorf("client factory keys = %v, want the key twice (validation, then the real client)", h.keys)
-	}
 }
 
 func TestOnboardingCreatesAProjectDatabase(t *testing.T) {
@@ -298,9 +281,6 @@ func TestOnboardingCreatesAProjectDatabase(t *testing.T) {
 	}
 	h := newHarness(t, config.Config{}, client)
 	h.run(h.m.Init())
-
-	h.typeText("ntn_secret")
-	h.submit() // API key
 
 	// No existing databases, so the only option is "create a new database".
 	if h.m.step != stepPickProjectDB {
@@ -330,8 +310,8 @@ func TestOnboardingCreatesAProjectDatabase(t *testing.T) {
 }
 
 func TestOnboardingKeepsExistingConfigFields(t *testing.T) {
-	// Onboarding also runs when only the keychain entry is missing; the rest
-	// of the config file must survive it.
+	// Onboarding can run again over a partially written config file; the rest
+	// of it must survive.
 	cfg := config.Config{
 		ActiveProjectID: "project-1",
 		Projects: map[string]config.ProjectConfig{
@@ -348,8 +328,6 @@ func TestOnboardingKeepsExistingConfigFields(t *testing.T) {
 	}
 	h := newHarness(t, cfg, client)
 	h.run(h.m.Init())
-	h.typeText("ntn_secret")
-	h.submit()
 	h.submit()
 	h.submit()
 
@@ -362,48 +340,7 @@ func TestOnboardingKeepsExistingConfigFields(t *testing.T) {
 	}
 }
 
-func TestOnboardingRePromptsForARejectedKey(t *testing.T) {
-	attempts := 0
-	client := &fakeNotion{
-		me: func() (*notion.User, error) {
-			attempts++
-			if attempts == 1 {
-				return nil, errors.New("unauthorized")
-			}
-			return &notion.User{ID: "bot"}, nil
-		},
-	}
-	h := newHarness(t, config.Config{}, client)
-	h.run(h.m.Init())
-
-	h.typeText("wrong")
-	h.submit()
-
-	if h.m.step != stepAPIKey || h.m.form == nil {
-		t.Fatalf("step = %v, want the API key form again", h.m.step)
-	}
-	if h.m.err != nil {
-		t.Errorf("a rejected key should not be fatal, got %v", h.m.err)
-	}
-	if view := h.m.View(); !strings.Contains(view, "rejected") {
-		t.Errorf("view does not explain the rejection:\n%s", view)
-	}
-	if _, err := h.secrets.GetAPIKey(); !errors.Is(err, config.ErrAPIKeyNotFound) {
-		t.Errorf("a rejected key must not be stored, got err %v", err)
-	}
-
-	h.typeText("right")
-	h.submit()
-
-	if h.m.step != stepPickProjectDB {
-		t.Fatalf("step = %v, want stepPickProjectDB after a good key (err: %v)", h.m.step, h.m.err)
-	}
-	if got, _ := h.secrets.GetAPIKey(); got != "right" {
-		t.Errorf("stored key = %q, want right", got)
-	}
-}
-
-func TestOnboardingTrimsTheKeyAndDatabaseName(t *testing.T) {
+func TestOnboardingTrimsTheDatabaseName(t *testing.T) {
 	client := &fakeNotion{
 		search: func(_, filterType string) ([]notion.SearchResult, error) {
 			if filterType == notion.SearchPage {
@@ -421,32 +358,13 @@ func TestOnboardingTrimsTheKeyAndDatabaseName(t *testing.T) {
 	h := newHarness(t, config.Config{}, client)
 	h.run(h.m.Init())
 
-	h.typeText("  ntn_secret  ")
-	h.submit()
 	h.submit() // create a new database
 	h.typeText("  Tracked  ")
 	h.submit()
 	h.submit() // parent page
 
-	if got, _ := h.secrets.GetAPIKey(); got != "ntn_secret" {
-		t.Errorf("stored key = %q, want it trimmed", got)
-	}
 	if got := h.client.createdTitle; strings.TrimSpace(got) != got || !strings.Contains(got, "Tracked") {
 		t.Errorf("created title = %q, want the typed name, trimmed", got)
-	}
-}
-
-func TestOnboardingRejectsABlankKey(t *testing.T) {
-	h := newHarness(t, config.Config{}, &fakeNotion{})
-	h.run(h.m.Init())
-	h.typeText("   ")
-	h.submit()
-
-	if h.m.step != stepAPIKey {
-		t.Fatalf("step = %v, want to stay on the API key form", h.m.step)
-	}
-	if view := h.m.View(); !strings.Contains(view, "please enter an API key") {
-		t.Errorf("view does not show the validation error:\n%s", view)
 	}
 }
 
@@ -468,11 +386,11 @@ func TestOnboardingFatalErrors(t *testing.T) {
 	}{
 		{"database search fails", projectDBsMsg{err: errors.New("boom")}, "search for databases: boom"},
 		{"page search fails", parentPagesMsg{err: errors.New("boom")}, "search for pages: boom"},
-		{"no pages shared", parentPagesMsg{}, "cannot see any pages"},
+		{"no pages in the workspace", parentPagesMsg{}, "no pages found in this workspace"},
 		{"create fails", projectDBCreatedMsg{err: errors.New("boom")}, "create project database: boom"},
 		{"created without a data source", projectDBCreatedMsg{db: &notion.Database{ID: "db"}}, "no data source"},
 		{"listing users fails", usersMsg{err: errors.New("boom")}, "list users: boom"},
-		{"no people visible", usersMsg{users: []notion.User{{ID: "bot", Type: notion.UserBot}}}, "cannot see any people"},
+		{"no people in the workspace", usersMsg{users: []notion.User{{ID: "bot", Type: notion.UserBot}}}, "no people found in this workspace"},
 		{"querying projects fails", projectsCheckedMsg{err: errors.New("boom")}, "query projects: boom"},
 	}
 	for _, tt := range tests {
@@ -499,16 +417,6 @@ func TestOnboardingFatalErrors(t *testing.T) {
 	}
 }
 
-func TestOnboardingKeyStorageFailureIsFatal(t *testing.T) {
-	h := newHarness(t, config.Config{}, &fakeNotion{})
-	h.m.secrets = failingSecrets{}
-	h.send(keyCheckedMsg{})
-
-	if h.m.err == nil || !strings.Contains(h.m.err.Error(), "store API key: keychain locked") {
-		t.Fatalf("err = %v, want the storage failure", h.m.err)
-	}
-}
-
 func TestOnboardingSaveFailureIsFatal(t *testing.T) {
 	h := newHarness(t, config.Config{}, &fakeNotion{})
 	h.saveErr = errors.New("read-only")
@@ -522,13 +430,6 @@ func TestOnboardingSaveFailureIsFatal(t *testing.T) {
 	}
 }
 
-// failingSecrets is a config.Secrets whose writes always fail.
-type failingSecrets struct{}
-
-func (failingSecrets) GetAPIKey() (string, error) { return "", config.ErrAPIKeyNotFound }
-func (failingSecrets) SetAPIKey(string) error     { return errors.New("keychain locked") }
-func (failingSecrets) DeleteAPIKey() error        { return nil }
-
 func TestOnboardingIgnoresMessagesWithNoFormOnShow(t *testing.T) {
 	h := newHarness(t, config.Config{}, &fakeNotion{})
 	h.m.form = nil
@@ -536,6 +437,23 @@ func TestOnboardingIgnoresMessagesWithNoFormOnShow(t *testing.T) {
 
 	if h.m.err != nil {
 		t.Errorf("unexpected error: %v", h.m.err)
+	}
+}
+
+func TestOnboardingViewShowsTheFormOnShow(t *testing.T) {
+	client := &fakeNotion{
+		search: func(string, string) ([]notion.SearchResult, error) {
+			return []notion.SearchResult{dataSourceHit("ds-1", "db-1", "Agent Projects")}, nil
+		},
+	}
+	h := newHarness(t, config.Config{}, client)
+	h.run(h.m.Init())
+
+	if h.m.form == nil {
+		t.Fatalf("want a form on show at step %v (err: %v)", h.m.step, h.m.err)
+	}
+	if got := h.m.View(); !strings.Contains(got, "Agent Projects") {
+		t.Errorf("view = %q, want the form's options", got)
 	}
 }
 
