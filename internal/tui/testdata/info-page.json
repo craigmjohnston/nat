@@ -1,0 +1,42 @@
+[
+  {
+    "id": "b1",
+    "type": "paragraph",
+    "paragraph": {
+      "rich_text": [
+        {"plain_text": "A Go TUI over Notion for tracking project work executed by agents."}
+      ]
+    }
+  },
+  {
+    "id": "b2",
+    "type": "heading_2",
+    "heading_2": {"rich_text": [{"plain_text": "Conventions"}]}
+  },
+  {
+    "id": "b3",
+    "type": "bulleted_list_item",
+    "bulleted_list_item": {
+      "rich_text": [
+        {"plain_text": "A slice maps to exactly one "},
+        {"plain_text": "pull request", "annotations": {"bold": true}},
+        {"plain_text": "."}
+      ]
+    }
+  },
+  {
+    "id": "b4",
+    "type": "bulleted_list_item",
+    "bulleted_list_item": {
+      "rich_text": [{"plain_text": "Never push to main."}]
+    }
+  },
+  {
+    "id": "b5",
+    "type": "code",
+    "code": {
+      "language": "sh",
+      "rich_text": [{"plain_text": "go vet ./... && go test -race -cover ./..."}]
+    }
+  }
+]

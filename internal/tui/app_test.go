@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -475,5 +478,191 @@ func TestDefaultStylesAreDistinct(t *testing.T) {
 	s := DefaultStyles()
 	if s.Title.Render("x") == s.Faint.Render("x") {
 		t.Error("the title and faint styles should differ")
+	}
+}
+
+// pageBlocks is the project page body the info tests fetch.
+func pageBlocks(t *testing.T) []notion.Block {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("testdata", "info-page.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var blocks []notion.Block
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		t.Fatal(err)
+	}
+	return blocks
+}
+
+// infoApp returns an app sized like a terminal, with the fixture page waiting
+// behind the info key.
+func infoApp(t *testing.T) (*App, *loadingClient) {
+	t.Helper()
+	client := newLoadingClient()
+	client.blocks = func(string) ([]notion.Block, error) { return pageBlocks(t), nil }
+	app := NewApp(testConfig(), client)
+	app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	return app, client
+}
+
+// openInfo presses "i" and delivers whatever the fetch came back with.
+func openInfo(t *testing.T, app *App) {
+	t.Helper()
+	for _, msg := range run(press(app, "i")) {
+		app.Update(msg)
+	}
+}
+
+func TestAppLoadsTheProjectPageOnDemand(t *testing.T) {
+	app, client := infoApp(t)
+
+	openInfo(t, app)
+
+	if want := []string{testProjectID}; !equal(client.blockParents, want) {
+		t.Errorf("fetched %v, want the project page %v", client.blockParents, want)
+	}
+	view := app.View().Content
+	for _, want := range []string{"Info", "Conventions", "Never push to main"} {
+		if !strings.Contains(stripANSI(view), want) {
+			t.Errorf("view is missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestAppFetchesTheProjectPageOnlyOnce(t *testing.T) {
+	app, client := infoApp(t)
+
+	openInfo(t, app)
+	press(app, "i") // back to the board
+	openInfo(t, app)
+
+	if len(client.blockParents) != 1 {
+		t.Errorf("fetched %d times, want the page cached", len(client.blockParents))
+	}
+}
+
+func TestAppReportsAFailedProjectPageOnTheInfoScreen(t *testing.T) {
+	boom := errors.New("boom")
+	app, client := infoApp(t)
+	client.blocks = func(string) ([]notion.Block, error) { return nil, boom }
+
+	openInfo(t, app)
+
+	if app.err != nil {
+		t.Errorf("err = %v, want the info screen to own its own failure", app.err)
+	}
+	if view := stripANSI(app.View().Content); !strings.Contains(view, "load project page: boom") {
+		t.Errorf("view = %q, want the failure on the info screen", view)
+	}
+	// A failed fetch leaves the screen idle, so leaving and returning retries.
+	press(app, "i")
+	openInfo(t, app)
+	if len(client.blockParents) != 2 {
+		t.Errorf("fetched %d times, want a failed fetch to be retried", len(client.blockParents))
+	}
+}
+
+func TestAppWithNothingToShowDoesNotFetchTheProjectPage(t *testing.T) {
+	tests := []struct {
+		name   string
+		cfg    config.Config
+		client NotionAPI
+	}{
+		{"no project", config.Config{}, newLoadingClient()},
+		{"selection not in config", config.Config{ActiveProjectID: "gone"}, newLoadingClient()},
+		{"no client", testConfig(), nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := NewApp(tt.cfg, tt.client)
+			if cmd := press(app, "i"); cmd != nil {
+				t.Error("there is no project page to fetch")
+			}
+			if view := app.View().Content; !strings.Contains(view, "Info") {
+				t.Errorf("view = %q, want the info screen", view)
+			}
+		})
+	}
+}
+
+func TestAppRoutesScrollingToTheInfoScreen(t *testing.T) {
+	app, _ := infoApp(t)
+	// A viewport tall enough to hold the whole page has nothing to scroll.
+	app.info.SetSize(40, 3)
+	openInfo(t, app)
+
+	press(app, "j")
+
+	if app.info.vp.YOffset() != 1 {
+		t.Errorf("offset = %d, want the key routed to the info screen", app.info.vp.YOffset())
+	}
+}
+
+func TestAppSizesTheInfoViewport(t *testing.T) {
+	app, _ := infoApp(t)
+	frame := app.styles.App
+
+	wantW := 80 - frame.GetHorizontalFrameSize()
+	wantH := 24 - frame.GetVerticalFrameSize() - infoChromeHeight
+	if got := app.info.vp.Width(); got != wantW {
+		t.Errorf("viewport width = %d, want %d", got, wantW)
+	}
+	if got := app.info.vp.Height(); got != wantH {
+		t.Errorf("viewport height = %d, want %d", got, wantH)
+	}
+
+	// The whole window is still filled once the info screen is what is on show.
+	openInfo(t, app)
+	if got := strings.Count(app.View().Content, "\n") + 1; got != 24 {
+		t.Errorf("rendered %d lines, want the full window height of 24", got)
+	}
+}
+
+func TestAppRefreshReloadsTheProjectPage(t *testing.T) {
+	t.Run("lazily from the board", func(t *testing.T) {
+		app, client := infoApp(t)
+		openInfo(t, app)
+		press(app, "i") // back to the board
+
+		run(press(app, "r"))
+		if len(client.blockParents) != 1 {
+			t.Error("a refresh from the board should not fetch the page it is not showing")
+		}
+
+		openInfo(t, app)
+		if len(client.blockParents) != 2 {
+			t.Error("the next visit to the info screen should re-fetch")
+		}
+	})
+
+	t.Run("at once from the info screen", func(t *testing.T) {
+		app, client := infoApp(t)
+		openInfo(t, app)
+
+		for _, msg := range run(press(app, "r")) {
+			app.Update(msg)
+		}
+
+		if len(client.blockParents) != 2 {
+			t.Errorf("fetched %d times, want the page the user is reading refreshed",
+				len(client.blockParents))
+		}
+		if !strings.Contains(stripANSI(app.View().Content), "Conventions") {
+			t.Error("the refreshed page should be back on show")
+		}
+	})
+}
+
+func TestAppSpinnerTurnsWhileTheProjectPageLoads(t *testing.T) {
+	app, _ := infoApp(t)
+	press(app, "i")
+
+	tick := spinner.TickMsg{Time: time.Now(), ID: app.spinner.ID()}
+	if _, cmd := app.Update(tick); cmd == nil {
+		t.Error("the spinner should keep turning while the page is in flight")
+	}
+	if view := stripANSI(app.View().Content); !strings.Contains(view, "Loading the project page") {
+		t.Errorf("view = %q, want the loading state", view)
 	}
 }

@@ -21,13 +21,14 @@ const ProjectsDBTitle = "Agent Projects"
 // in the project database picker. It cannot collide with a Notion ID.
 const createNewChoice = "<new>"
 
-// NotionAPI is the part of *notion.Client the onboarding wizard uses. It is an
-// interface so the flow can be driven by a fake in tests.
+// NotionAPI is the part of *notion.Client the interface uses. It is an
+// interface so the screens can be driven by a fake in tests.
 type NotionAPI interface {
 	ListUsers(ctx context.Context) ([]notion.User, error)
 	Search(ctx context.Context, query, filterType string) ([]notion.SearchResult, error)
 	CreateProjectsDatabase(ctx context.Context, parentPageID, title string) (*notion.Database, error)
 	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
+	GetBlockChildren(ctx context.Context, id string) ([]notion.Block, error)
 }
 
 // NewClientFunc builds a NotionAPI from a source of bearer tokens.
