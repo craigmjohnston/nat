@@ -32,12 +32,18 @@ const (
 // modal is a form shown over the board: it owns every key but esc, and once it
 // completes the app dispatches the write it describes. save returns nil when a
 // completed form asks for nothing — a confirm the user answered no to.
+//
+// SetSize is how a modal learns how much room it has. Left to itself huh sizes
+// a form to the whole window, which is the wrong answer twice over: the app
+// draws a frame and a heading around it, and the leftover columns are what the
+// form actually gets.
 type modal interface {
 	Init() tea.Cmd
 	Update(tea.Msg) tea.Cmd
 	State() huh.FormState
 	View() string
 	Heading() string
+	SetSize(width, height int)
 	save(a *App) tea.Cmd
 }
 
@@ -159,6 +165,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.board.SetWidth(msg.Width - a.styles.App.GetHorizontalFrameSize())
 		a.info.SetSize(msg.Width-a.styles.App.GetHorizontalFrameSize(),
 			msg.Height-a.styles.App.GetVerticalFrameSize()-infoChromeHeight)
+		if a.form != nil {
+			a.form.SetSize(a.formSize())
+		}
 	case tea.KeyPressMsg:
 		return a.keyPressed(msg)
 	case OnboardingDoneMsg:
@@ -369,10 +378,26 @@ func (a *App) sliceBodyLoaded(msg sliceBodyMsg) (tea.Model, tea.Cmd) {
 	return a, a.openForm(newEditSliceForm(msg.slice, msg.markdown))
 }
 
-// openForm shows a form over the board.
+// openForm shows a form over the board, at the size the window it is opening
+// into leaves for it.
 func (a *App) openForm(f modal) tea.Cmd {
 	a.form, a.screen, a.note = f, screenForm, ""
+	f.SetSize(a.formSize())
 	return f.Init()
+}
+
+// formChromeHeight is how many lines an open form does not have to itself: the
+// heading and the blank line under it, then the blank line and status bar
+// below — and one more for the blank line huh draws above its own key hints,
+// which it leaves out of the height it was given.
+const formChromeHeight = 5
+
+// formSize is the room an open form has. Before the first resize there is no
+// window to measure, so the numbers come out non-positive — which is huh's own
+// signal to size itself, and it does that from the resize that follows.
+func (a *App) formSize() (width, height int) {
+	return a.width - a.styles.App.GetHorizontalFrameSize(),
+		a.height - a.styles.App.GetVerticalFrameSize() - formChromeHeight
 }
 
 // formUpdate feeds a message to the open form, writing what it says to Notion

@@ -68,6 +68,11 @@ func (f *DeleteSliceForm) View() string { return f.form.View() }
 // Heading is the title drawn over the form.
 func (f *DeleteSliceForm) Heading() string { return f.heading }
 
+// SetSize gives the form the room the window leaves it.
+func (f *DeleteSliceForm) SetSize(width, height int) {
+	f.form = f.form.WithWidth(width).WithHeight(height)
+}
+
 // save trashes the slice, or nothing at all when the answer was no.
 func (f *DeleteSliceForm) save(a *App) tea.Cmd {
 	if !f.confirmed {

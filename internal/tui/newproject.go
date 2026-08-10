@@ -91,6 +91,11 @@ func (f *NewProjectForm) View() string { return f.form.View() }
 // Heading is the title drawn over the form.
 func (f *NewProjectForm) Heading() string { return f.heading }
 
+// SetSize gives the form the room the window leaves it.
+func (f *NewProjectForm) SetSize(width, height int) {
+	f.form = f.form.WithWidth(width).WithHeight(height)
+}
+
 // busyNote says what the status bar shows while the project is being built: it
 // is three Notion calls and a read-back, which is long enough to notice.
 func (f *NewProjectForm) busyNote() string { return "Creating the project…" }
@@ -201,6 +206,11 @@ func (f *SwitchProjectForm) View() string { return f.form.View() }
 
 // Heading is the title drawn over the form.
 func (f *SwitchProjectForm) Heading() string { return f.heading }
+
+// SetSize gives the form the room the window leaves it.
+func (f *SwitchProjectForm) SetSize(width, height int) {
+	f.form = f.form.WithWidth(width).WithHeight(height)
+}
 
 // busyNote is empty: switching is a config write and a reload, which the board
 // announces for itself.

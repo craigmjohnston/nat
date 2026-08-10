@@ -82,6 +82,11 @@ func (f *MoveSliceForm) View() string { return f.form.View() }
 // Heading is the title drawn over the form.
 func (f *MoveSliceForm) Heading() string { return f.heading }
 
+// SetSize gives the form the room the window leaves it.
+func (f *MoveSliceForm) SetSize(width, height int) {
+	f.form = f.form.WithWidth(width).WithHeight(height)
+}
+
 // save writes the milestone that was picked. A select always holds one of its
 // options, so there is nothing here for a form to decline to write.
 func (f *MoveSliceForm) save(a *App) tea.Cmd {
