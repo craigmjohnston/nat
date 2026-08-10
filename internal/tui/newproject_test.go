@@ -439,7 +439,7 @@ func TestSwitchProjectFormOrdersByNameAndFallsBackToTheID(t *testing.T) {
 		"b": {},
 	}}
 
-	f := newSwitchProjectForm(DefaultStyles().FormTheme, cfg)
+	f := newSwitchProjectForm(cfg)
 
 	// The unnamed project lists under its ID, which sorts before "beta"; two
 	// projects sharing a name are separated by their IDs.
@@ -456,16 +456,16 @@ func TestSwitchProjectFormOrdersByNameAndFallsBackToTheID(t *testing.T) {
 }
 
 func TestSwitchProjectFormOpensOnTheActiveProject(t *testing.T) {
-	if f := newSwitchProjectForm(DefaultStyles().FormTheme, twoProjectConfig()); f.chosen != testProjectID {
+	if f := newSwitchProjectForm(twoProjectConfig()); f.chosen != testProjectID {
 		t.Errorf("chosen = %q, want the active project", f.chosen)
 	}
 }
 
 func TestNewProjectFormAnnouncesItsWork(t *testing.T) {
-	if got := newNewProjectForm(DefaultStyles().FormTheme).busyNote(); got != "Creating the project…" {
+	if got := newNewProjectForm().busyNote(); got != "Creating the project…" {
 		t.Errorf("busy note = %q, want the creation note", got)
 	}
-	if got := newSwitchProjectForm(DefaultStyles().FormTheme, twoProjectConfig()).busyNote(); got != "" {
+	if got := newSwitchProjectForm(twoProjectConfig()).busyNote(); got != "" {
 		t.Errorf("busy note = %q, want nothing announced for a switch", got)
 	}
 }

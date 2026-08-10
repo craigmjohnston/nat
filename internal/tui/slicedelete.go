@@ -5,28 +5,80 @@ import (
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 
 	"github.com/craigmjohnston/nat/internal/domain"
 )
 
-// deleteSlicePrompt is the question behind d: one question, because trashing a
+// DeleteSliceForm is the confirm behind d: one question, because trashing a
 // page is a single write with nothing to fill in.
-func deleteSlicePrompt(s domain.Slice) prompt {
-	return prompt{
-		question: deleteQuestion(s),
-		busy:     savingNote,
-		confirm:  func(a *App) tea.Cmd { return deleteSlice(a.client, s.ID, s.Name) },
-	}
+type DeleteSliceForm struct {
+	form    *huh.Form
+	heading string
+
+	sliceID   string
+	sliceName string
+
+	confirmed bool
 }
 
-// deleteQuestion is what the bar asks before trashing a slice. A Done slice is
+// deleteWarning is what the confirm says under the question. A Done slice is
 // finished work — the record of it is the only thing left — so deleting one is
 // warned about rather than refused.
-func deleteQuestion(s domain.Slice) string {
+func deleteWarning(s domain.Slice) string {
 	if s.Status == domain.SliceDone {
-		return fmt.Sprintf("Delete %q? It is Done — the record goes with it.", s.Name)
+		return "WARNING: this slice is Done. Deleting it drops the record of finished work. " +
+			"The page goes to Notion's trash."
 	}
-	return fmt.Sprintf("Delete %q? The page goes to Notion's trash.", s.Name)
+	return "The page goes to Notion's trash."
+}
+
+// newDeleteSliceForm returns the confirm for trashing a slice.
+func newDeleteSliceForm(s domain.Slice) *DeleteSliceForm {
+	f := &DeleteSliceForm{
+		heading:   "Delete a slice",
+		sliceID:   s.ID,
+		sliceName: s.Name,
+	}
+	f.form = huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().
+			Title(fmt.Sprintf("Delete %q?", s.Name)).
+			Description(deleteWarning(s)).
+			Value(&f.confirmed),
+	))
+	return f
+}
+
+// Init starts the form.
+func (f *DeleteSliceForm) Init() tea.Cmd { return f.form.Init() }
+
+// Update feeds a message to the form.
+func (f *DeleteSliceForm) Update(msg tea.Msg) tea.Cmd {
+	form, cmd := f.form.Update(msg)
+	f.form = form.(*huh.Form)
+	return cmd
+}
+
+// State is how far the form has got.
+func (f *DeleteSliceForm) State() huh.FormState { return f.form.State }
+
+// View renders the form.
+func (f *DeleteSliceForm) View() string { return f.form.View() }
+
+// Heading is the title drawn over the form.
+func (f *DeleteSliceForm) Heading() string { return f.heading }
+
+// SetSize gives the form the room the window leaves it.
+func (f *DeleteSliceForm) SetSize(width, height int) {
+	f.form = f.form.WithWidth(width).WithHeight(height)
+}
+
+// save trashes the slice, or nothing at all when the answer was no.
+func (f *DeleteSliceForm) save(a *App) tea.Cmd {
+	if !f.confirmed {
+		return nil
+	}
+	return deleteSlice(a.client, f.sliceID, f.sliceName)
 }
 
 // deleteSlice moves a slice's page to the trash. Notion has no hard delete, so
@@ -40,7 +92,7 @@ func deleteSlice(client NotionAPI, sliceID, sliceName string) tea.Cmd {
 	}
 }
 
-// deleteSliceFlow asks whether to trash the slice the cursor is on.
+// deleteSliceFlow opens the confirm for the slice the cursor is on.
 func (a *App) deleteSliceFlow() tea.Cmd {
 	if !a.canWrite() {
 		return nil
@@ -54,6 +106,5 @@ func (a *App) deleteSliceFlow() tea.Cmd {
 		a.note = note
 		return nil
 	}
-	a.ask(deleteSlicePrompt(s))
-	return nil
+	return a.openForm(newDeleteSliceForm(s))
 }
