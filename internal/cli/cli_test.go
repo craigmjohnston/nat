@@ -39,6 +39,14 @@ type fakeAPI struct {
 	// queryErr fails the query for the named data source.
 	queryErr map[string]error
 
+	// creates records every page creation, in order.
+	creates []created
+	// createErr fails the creation.
+	createErr error
+	// created is what a creation answers with, before its ID and URL are filled
+	// in; the properties written are merged over it.
+	createdPage notion.Page
+
 	// updates records every property write, in order.
 	updates []update
 	// updateErr fails the write.
@@ -61,6 +69,53 @@ type update struct {
 type appended struct {
 	id       string
 	children []map[string]any
+}
+
+type created struct {
+	parent   notion.Parent
+	props    map[string]notion.PropertyValue
+	children []map[string]any
+}
+
+// CreatePage answers the way Notion does: with the whole new page, carrying the
+// properties it was created with.
+func (f *fakeAPI) CreatePage(_ context.Context, parent notion.Parent, props map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error) {
+	f.creates = append(f.creates, created{parent: parent, props: props, children: children})
+	if f.createErr != nil {
+		return nil, f.createErr
+	}
+	page := f.createdPage
+	page.Properties = map[string]notion.PropertyValue{}
+	for name, v := range f.createdPage.Properties {
+		page.Properties[name] = v
+	}
+	for name, v := range props {
+		page.Properties[name] = readable(v)
+	}
+	return &page, nil
+}
+
+// readable is a written property value as Notion hands it back: text spans
+// carry their content in plain_text on a read, and only in text.content on a
+// write, so a fake that echoed the write unchanged would make every created
+// page look nameless.
+func readable(v notion.PropertyValue) notion.PropertyValue {
+	v.Title, v.RichText = plainText(v.Title), plainText(v.RichText)
+	return v
+}
+
+func plainText(spans []notion.RichText) []notion.RichText {
+	out := make([]notion.RichText, len(spans))
+	for i, s := range spans {
+		if s.Text != nil {
+			s.PlainText = s.Text.Content
+		}
+		out[i] = s
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // GetPage answers with whichever page of the fake plan carries the ID, so a
