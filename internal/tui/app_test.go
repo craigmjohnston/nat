@@ -636,10 +636,11 @@ func TestAppRoutesScrollingToTheInfoScreen(t *testing.T) {
 
 func TestAppSizesTheInfoViewport(t *testing.T) {
 	app, _ := infoApp(t)
-	frame := app.styles.App
 
-	wantW := 80 - frame.GetHorizontalFrameSize()
-	wantH := 24 - frame.GetVerticalFrameSize() - infoChromeHeight
+	// The info screen is the body band: the window less its indents and less
+	// the header and status bar.
+	wantW := 80 - 2*framePadX
+	wantH := 24 - headerHeight - statusHeight
 	if got := app.info.vp.Width(); got != wantW {
 		t.Errorf("viewport width = %d, want %d", got, wantW)
 	}

@@ -22,9 +22,19 @@ import (
 // for live sessions as it starts, and the timer behind the poll would otherwise
 // hold each test up for half a minute. Tests that care about launching put
 // their own launcher in.
+//
+// The host pane is pinned empty for the same reason. The app reads it from the
+// environment, so a suite run from inside tmux — an agent working this very
+// project — would otherwise see a pane the same suite run from a plain terminal
+// does not, and take the branches that join panes beside the board. Tests that
+// want a host pane set one with t.Setenv, which puts this value back after.
 func TestMain(m *testing.M) {
 	newLauncher = func() AgentLauncher { return &fakeLauncher{} }
 	liveTick = func() tea.Cmd { return nil }
+	if err := os.Setenv(agent.PaneEnv, ""); err != nil {
+		fmt.Fprintln(os.Stderr, "pin the host pane:", err)
+		os.Exit(1)
+	}
 	os.Exit(m.Run())
 }
 

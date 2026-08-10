@@ -136,6 +136,11 @@ func (b *Board) SetProject(p *domain.Project) {
 // so one slice stays one line.
 func (b *Board) SetWidth(width int) { b.width = width }
 
+// Cursor is the index of the row the user is on, which is also the line the
+// row is drawn on: one row is one line. The layout scrolls to it, so that a
+// plan taller than the window still shows where the user is.
+func (b Board) Cursor() int { return b.cursor }
+
 // SetLive records the slices with an agent running, which is what the live
 // marker on a slice is drawn from.
 func (b *Board) SetLive(live map[string]string) { b.live = live }

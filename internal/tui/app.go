@@ -10,6 +10,7 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
@@ -135,6 +136,13 @@ type App struct {
 	info       Info
 	form       modal
 
+	// boardVP scrolls the board's rows, which the board itself draws in full: a
+	// plan taller than the window is the layout's problem, not the board's.
+	// helpVP does the same for the help screen, whose content never changes and
+	// so is set once.
+	boardVP viewport.Model
+	helpVP  viewport.Model
+
 	// launcher starts and attaches to the agents' tmux sessions, and live maps
 	// each slice it last reported an agent running for to that agent's session.
 	launcher AgentLauncher
@@ -163,8 +171,11 @@ var _ tea.Model = (*App)(nil)
 func NewApp(cfg config.Config, client NotionAPI) *App {
 	s := DefaultStyles()
 	sp := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(s.Spinner))
-	return &App{cfg: cfg, client: client, styles: s, keys: defaultKeyMap(), spinner: sp,
-		board: NewBoard(s), info: NewInfo(s), launcher: newLauncher(), joined: map[string]bool{}}
+	a := &App{cfg: cfg, client: client, styles: s, keys: defaultKeyMap(), spinner: sp,
+		board: NewBoard(s), info: NewInfo(s), launcher: newLauncher(), joined: map[string]bool{},
+		boardVP: viewport.New(), helpVP: viewport.New()}
+	a.helpVP.SetContent(a.helpBody())
+	return a
 }
 
 // NewAppWithOnboarding returns the root model showing the first-run wizard,
@@ -191,14 +202,9 @@ func (a *App) Init() tea.Cmd {
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		// Recorded, then passed on: the screens size themselves too.
+		// Recorded, then handed on: every band of the layout is sized from it.
 		a.width, a.height = msg.Width, msg.Height
-		a.board.SetWidth(msg.Width - a.styles.App.GetHorizontalFrameSize())
-		a.info.SetSize(msg.Width-a.styles.App.GetHorizontalFrameSize(),
-			msg.Height-a.styles.App.GetVerticalFrameSize()-infoChromeHeight)
-		if a.form != nil {
-			a.form.SetSize(a.formSize())
-		}
+		a.resize()
 	case tea.KeyPressMsg:
 		return a.keyPressed(msg)
 	case OnboardingDoneMsg:
@@ -206,6 +212,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case projectLoadedMsg:
 		a.project, a.loading, a.err = &msg.project, false, nil
 		a.board.SetProject(a.project)
+		a.syncBoard()
 		return a, nil
 	case notionErrMsg:
 		a.loading, a.err = false, msg.err
@@ -324,9 +331,17 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if cmd, ok := a.boardWrite(msg); ok {
 				return a, cmd
 			}
-			return a, a.board.Update(msg)
+			cmd := a.board.Update(msg)
+			// The cursor may have left the part of the plan on show.
+			a.syncBoard()
+			return a, cmd
 		case screenInfo:
 			return a, a.info.Update(msg)
+		case screenHelp:
+			// The key list is longer than a short window, so it scrolls.
+			vp, cmd := a.helpVP.Update(msg)
+			a.helpVP = vp
+			return a, cmd
 		}
 	}
 	return a, nil
@@ -421,18 +436,17 @@ func (a *App) openForm(f modal) tea.Cmd {
 	return f.Init()
 }
 
-// formChromeHeight is how many lines an open form does not have to itself: the
-// heading and the blank line under it, then the blank line and status bar
-// below — and one more for the blank line huh draws above its own key hints,
-// which it leaves out of the height it was given.
-const formChromeHeight = 5
+// formHintsHeight is the blank line huh draws above its own key hints on top of
+// the height it was given, and so the one line of the body band a form cannot
+// be told about.
+const formHintsHeight = 1
 
-// formSize is the room an open form has. Before the first resize there is no
-// window to measure, so the numbers come out non-positive — which is huh's own
-// signal to size itself, and it does that from the resize that follows.
+// formSize is the room an open form has: the body band, less the line huh
+// spends without counting it. Before the first resize there is no window to
+// measure, so the numbers come out non-positive — which is huh's own signal to
+// size itself, and it does that from the resize that follows.
 func (a *App) formSize() (width, height int) {
-	return a.width - a.styles.App.GetHorizontalFrameSize(),
-		a.height - a.styles.App.GetVerticalFrameSize() - formChromeHeight
+	return a.innerWidth(), a.bodyHeight() - formHintsHeight
 }
 
 // formUpdate feeds a message to the open form, writing what it says to Notion
@@ -589,27 +603,108 @@ func (a *App) View() tea.View {
 	return v
 }
 
-// content is the rendered screen, without the terminal-level settings. The
-// status bar is pushed to the bottom of the window once the terminal size is
-// known, so it does not float under short screens.
+// The layout's fixed measurements: the columns each band is held away from the
+// window's edges by, the height of the header band — its two lines and the
+// blank one separating it from the body — and the height of the status bar,
+// which is the window's bottom row and nothing more.
+const (
+	framePadX    = 2
+	headerHeight = 3
+	statusHeight = 1
+)
+
+// content is the rendered screen, without the terminal-level settings: the
+// header, the body of the screen on show, and the status bar docked to the
+// window's bottom row. The three bands are cut and padded to fill the window
+// exactly, so nothing a screen draws can push the bar off the bottom.
 func (a *App) content() string {
 	if a.onboarding != nil {
 		return a.onboarding.View()
 	}
-	frame := a.styles.App
-	if a.width > 0 {
-		frame = frame.Width(a.width)
+	if a.width <= 0 || a.height <= 0 {
+		// Before the first resize there is no window to lay out to, so the bands
+		// are simply drawn one after another at whatever size they come out.
+		return a.headerView() + "\n" + a.body() + "\n" + a.statusBar()
 	}
-	body, status := a.body(), a.statusBar()
-	gap := "\n\n"
-	if inner := a.height - frame.GetVerticalFrameSize(); inner > 0 {
-		// One newline butts the two together, so filling a window of `inner`
-		// lines takes one more than the shortfall between them.
-		if pad := inner - lipgloss.Height(body) - lipgloss.Height(status) + 1; pad > 2 {
-			gap = strings.Repeat("\n", pad)
-		}
+	lines := a.band(a.headerView(), a.headerBandHeight())
+	lines = append(lines, a.band(a.body(), a.bodyHeight())...)
+	return strings.Join(append(lines, a.statusBar()), "\n")
+}
+
+// band lays s out as exactly height lines of the window's width: indented from
+// the window's edges, padded out, and cut rather than allowed to push the bands
+// below it off the window.
+func (a *App) band(s string, height int) []string {
+	if height <= 0 {
+		return nil
 	}
-	return frame.Render(body + gap + status)
+	// Cut to width before padding out to it, so a long line is truncated rather
+	// than wrapped onto a line the band has no room for.
+	s = a.styles.Frame.Render(s)
+	fill := lipgloss.NewStyle().Width(a.width)
+	out := strings.Split(fill.Render(fit(s, a.width)), "\n")
+	for len(out) < height {
+		out = append(out, fill.Render(""))
+	}
+	return out[:height]
+}
+
+// headerBandHeight and bodyHeight are how the window's lines are shared out.
+// The status bar takes the bottom row first and the header what is left of its
+// own height, because a window too short for all three is still worth telling
+// the user where they are and what the keys do.
+func (a *App) headerBandHeight() int {
+	return min(headerHeight, max(a.height-statusHeight, 0))
+}
+
+func (a *App) bodyHeight() int {
+	return max(a.height-statusHeight-a.headerBandHeight(), 0)
+}
+
+// headerView is the top band: the app's name, then the screen the user is on —
+// on the board, the project it is showing and its tally.
+func (a *App) headerView() string {
+	title := a.styles.Title.Render(appName)
+	if name := a.headerName(); name != "" {
+		title += a.styles.Faint.Render(" · ") + a.styles.Subtitle.Render(name)
+	}
+	detail := a.headerDetail()
+	if detail != "" {
+		detail = a.styles.Faint.Render(detail)
+	}
+	return title + "\n" + detail
+}
+
+// appName is what the header and the board's mode chip call the app.
+const appName = "nat"
+
+// headerName is the header's second segment: the screen on show, or on the
+// board the project it is showing. A board with no project loaded names
+// nothing — the body says why.
+func (a *App) headerName() string {
+	switch a.screen {
+	case screenHelp:
+		return "Keys"
+	case screenInfo:
+		return "Info"
+	case screenForm:
+		return a.form.Heading()
+	}
+	if a.project == nil {
+		return ""
+	}
+	return a.project.Name
+}
+
+// headerDetail is the line under the header's title: the plan's tally, which
+// only the board has one of.
+func (a *App) headerDetail() string {
+	if a.screen != screenBoard || a.project == nil {
+		return ""
+	}
+	p := a.project.Progress()
+	return fmt.Sprintf("milestones: %d · slices done: %d/%d",
+		len(a.project.Milestones), p.Done, p.Total)
 }
 
 // body renders the current screen.
@@ -620,41 +715,59 @@ func (a *App) body() string {
 	case screenInfo:
 		return a.infoView()
 	case screenForm:
-		return a.formView()
+		return a.form.View()
 	default:
 		return a.boardView()
 	}
 }
 
-// formView is the open modal: its heading, then the form, which draws its own
-// key hints.
-func (a *App) formView() string {
-	return a.styles.Title.Render(fit(a.form.Heading(), a.innerWidth())) + "\n\n" + a.form.View()
-}
-
-// boardView is the main screen: the project's heading and tally, then the
-// board itself. Loading and "there is nothing to show" are the root model's to
-// report — the board only ever draws a plan.
+// boardView is the main screen: the plan, scrolled to the body band. Loading
+// and "there is nothing to show" are the root model's to report — the board
+// only ever draws a plan.
 func (a *App) boardView() string {
-	width := a.innerWidth()
-	header := a.styles.Title.Render("nat")
 	switch {
 	case a.loading:
-		return header + "\n\n" + fit(a.spinner.View()+" Loading the plan…", width)
+		return a.spinner.View() + " Loading the plan…"
 	case a.project == nil:
-		return header + "\n\n" + a.styles.Faint.Render(fit(a.noProjectReason(), width))
+		return a.styles.Faint.Render(a.noProjectReason())
+	case a.boardVP.Width() <= 0 || a.boardVP.Height() <= 0:
+		// No band to scroll in yet, so every row is drawn.
+		return a.board.View()
 	}
+	return a.boardVP.View()
+}
 
-	p := a.project.Progress()
-	return strings.Join([]string{
-		header,
-		a.styles.Subtitle.Render(fit(a.project.Name, width)),
-		"",
-		a.styles.Faint.Render(fit(fmt.Sprintf("milestones: %d · slices done: %d/%d",
-			len(a.project.Milestones), p.Done, p.Total), width)),
-		"",
-		a.board.View(),
-	}, "\n")
+// syncBoard puts the board's rows into the body's viewport and scrolls it the
+// least it can to bring the cursor back on screen. The board draws every row it
+// has; holding a plan taller than the window to the window is the layout's job.
+func (a *App) syncBoard() {
+	a.boardVP.SetContent(a.board.View())
+	h := a.boardVP.Height()
+	if h <= 0 {
+		return
+	}
+	switch top, cursor := a.boardVP.YOffset(), a.board.Cursor(); {
+	case cursor < top:
+		a.boardVP.SetYOffset(cursor)
+	case cursor >= top+h:
+		a.boardVP.SetYOffset(cursor - h + 1)
+	}
+}
+
+// resize hands the window's new measurements to the bands that size themselves
+// from them.
+func (a *App) resize() {
+	width, height := a.innerWidth(), a.bodyHeight()
+	a.board.SetWidth(width)
+	a.boardVP.SetWidth(width)
+	a.boardVP.SetHeight(height)
+	a.helpVP.SetWidth(width)
+	a.helpVP.SetHeight(height)
+	a.info.SetSize(width, height)
+	a.syncBoard()
+	if a.form != nil {
+		a.form.SetSize(a.formSize())
+	}
 }
 
 // noProjectReason explains an empty board: either nothing is selected, or the
@@ -666,30 +779,32 @@ func (a *App) noProjectReason() string {
 	return fmt.Sprintf("Active project %s is not in the config file.", a.cfg.ActiveProjectID)
 }
 
-// infoChromeHeight is how many lines the app draws around the info screen's
-// viewport, inside the frame: the screen's heading and the blank line under it,
-// then the blank line and status bar below. The viewport gets the rest.
-const infoChromeHeight = 4
-
 // infoView is the project page. An unconfigured project has no page to fetch,
 // which the screen reports the same way the board does.
 func (a *App) infoView() string {
 	if a.info.Idle() {
-		return a.styles.Title.Render("Info") + "\n\n" +
-			a.styles.Faint.Render(fit(a.noProjectReason(), a.innerWidth()))
+		return a.styles.Faint.Render(a.noProjectReason())
 	}
 	return a.info.View(a.spinner.View())
 }
 
-// helpView lists the global keys, then each screen's own. The board's reserved
+// helpView is the key list, scrolled to the body band: it is longer than a
+// short window, and the keys at the bottom are worth reaching.
+func (a *App) helpView() string {
+	if a.helpVP.Width() <= 0 || a.helpVP.Height() <= 0 {
+		return a.helpVP.GetContent()
+	}
+	return a.helpVP.View()
+}
+
+// helpBody lists the global keys, then each screen's own. The board's reserved
 // keys are listed too: they do nothing yet, but the help is where the plan for
 // them is visible.
-func (a *App) helpView() string {
-	lines := []string{a.styles.Title.Render("Keys"), ""}
-	lines = append(lines, a.helpLines(a.keys.helpBindings())...)
+func (a *App) helpBody() string {
+	lines := a.helpLines(a.keys.helpBindings())
 	lines = append(lines, "", a.styles.Subtitle.Render("Board"), "")
 	lines = append(lines, a.helpLines(a.board.helpBindings())...)
-	lines = append(lines, "", a.styles.Subtitle.Render("Info"), "")
+	lines = append(lines, "", a.styles.Subtitle.Render("Scrolling"), "")
 	lines = append(lines, a.helpLines(infoKeys())...)
 	return strings.Join(lines, "\n")
 }
@@ -704,28 +819,71 @@ func (a *App) helpLines(bindings []key.Binding) []string {
 	return lines
 }
 
-// statusBar is the bottom line: the project/mode chip, then the error that is
-// waiting to be dismissed, a note, or the key hints. Every one of them is held
-// to a single line no wider than the window: a status bar that wrapped would
-// take a line the layout above it has already spent.
+// statusBar is the window's bottom row, and the one band with a fill of its
+// own: the mode chip and whatever the app has to say in a left segment, the key
+// hints right-aligned in a right segment, and the bar's background between
+// them. It is one line however narrow the window gets — a bar that wrapped
+// would take a line the bands above it have already spent.
 func (a *App) statusBar() string {
+	room := a.innerWidth()
+	left, right := a.statusLeft(room), ""
+	if gap := room - lipgloss.Width(left) - statusSegmentGap; a.width <= 0 || gap > 0 {
+		right = a.statusRight(max(gap, 0))
+	}
+	if a.width <= 0 {
+		// No window to spread across, so the two segments simply sit together.
+		return a.styles.StatusBar.Render(left + strings.Repeat(" ", statusSegmentGap) + right)
+	}
+	// The indents are the first thing a window too narrow for the bar loses, so
+	// the line is cut to the window rather than to the room between them.
+	pad := max(room-lipgloss.Width(left)-lipgloss.Width(right), 0)
+	line := strings.Repeat(" ", framePadX) + left + strings.Repeat(" ", pad) + right
+	return a.styles.StatusBar.Width(a.width).Render(fit(line, a.width))
+}
+
+// statusSegmentGap is the least space the bar keeps between its two segments,
+// so a full bar does not read as one run of text.
+const statusSegmentGap = 2
+
+// statusLeft is the bar's left segment: the mode chip, and beside it the error
+// waiting to be dismissed, a transient note, or an open form's prompt. The
+// message never takes more than half the bar, so a long note cannot push the
+// key hints out altogether.
+func (a *App) statusLeft(width int) string {
 	chip := a.styles.ModeChip.Render(a.chipText())
-	width := a.innerWidth()
+	room := 0
 	if width > 0 {
 		// A window with no room beside the chip gets the chip alone, cut to fit.
-		if lipgloss.Width(chip)+1 >= width {
+		if room = min(width-lipgloss.Width(chip)-1, width/2); room <= 0 {
 			return fit(chip, width)
 		}
-		width -= lipgloss.Width(chip) + 1
 	}
-	return chip + " " + a.statusText(width)
+	message := a.statusMessage(room)
+	if message == "" {
+		return chip
+	}
+	return chip + " " + message
+}
+
+// statusRight is the bar's right segment: the key hints, or nothing at all once
+// the left segment has taken the bar.
+func (a *App) statusRight(width int) string {
+	// An open form owns every key the hints name, so naming them would be a lie.
+	// Its own prompt, on the left, is the whole story.
+	if a.form != nil {
+		return ""
+	}
+	if len(a.joined) > 0 {
+		return a.paneHintLine(width)
+	}
+	return a.hintLine(width)
 }
 
 // chipText is what the status bar's chip says: the screen's name, or on the
 // board the project's, cut to a third of the bar so the message beside the
 // chip keeps most of the room.
 func (a *App) chipText() string {
-	text := "nat"
+	text := appName
 	switch {
 	case a.screen == screenHelp:
 		text = "help"
@@ -742,8 +900,9 @@ func (a *App) chipText() string {
 	return text
 }
 
-// statusText is the message beside the chip.
-func (a *App) statusText(width int) string {
+// statusMessage is what the app has to say beside the chip, or nothing when it
+// has nothing: the chip is then alone on the left and the hints have the bar.
+func (a *App) statusMessage(width int) string {
 	if a.err != nil {
 		// The error style pads, so the text gets what the padding leaves. The
 		// leading text is what names the call that failed, so the tail goes first.
@@ -752,17 +911,14 @@ func (a *App) statusText(width int) string {
 		return a.styles.Error.Render(text)
 	}
 	if a.note != "" {
-		return a.styles.Note.Render(fit(oneLine(a.note), width))
+		return a.styles.StatusNote.Render(fit(oneLine(a.note), width))
 	}
-	// An open form has the keys the global hints name, so all that is left to
-	// say is the one key it does not handle itself.
+	// An open form has the keys the hints name, so all that is left to say is
+	// the one key it does not handle itself.
 	if a.form != nil {
-		return fit(a.styles.HelpKey.Render("esc")+" "+a.styles.HelpDesc.Render("cancel"), width)
+		return fit(a.styles.StatusKey.Render("esc")+" "+a.styles.StatusDesc.Render("cancel"), width)
 	}
-	if len(a.joined) > 0 {
-		return a.paneHintLine(width)
-	}
-	return a.hintLine(width)
+	return ""
 }
 
 // hintLine is the ordinary hint line: the app's global keys.
@@ -792,25 +948,26 @@ func (a *App) fitHints(hints []hint, width int) string {
 	return fit(line, width)
 }
 
-// renderHints draws one hint per binding, separated by a faint dot.
+// renderHints draws one hint per binding, separated by a dot, in the status
+// bar's own colours.
 func (a *App) renderHints(hints []hint) string {
 	parts := make([]string, 0, len(hints))
 	for _, h := range hints {
 		help := h.binding.Help()
-		parts = append(parts, a.styles.HelpKey.Render(help.Key)+" "+a.styles.HelpDesc.Render(help.Desc))
+		parts = append(parts, a.styles.StatusKey.Render(help.Key)+" "+a.styles.StatusDesc.Render(help.Desc))
 	}
-	return strings.Join(parts, a.styles.Faint.Render(" · "))
+	return strings.Join(parts, a.styles.StatusSep.Render(" · "))
 }
 
-// innerWidth is the columns inside the app's frame, or 0 before the first
-// resize — which every caller reads as "unmeasured, draw it whole". A window
-// too narrow to hold the frame's own padding comes out as 0 as well: there is
-// no width to fit to, and the padding has overflowed it either way.
+// innerWidth is the columns a band has between its indents, or 0 before the
+// first resize — which every caller reads as "unmeasured, draw it whole". A
+// window too narrow to hold the indents comes out as 0 as well: there is no
+// width to fit to, and they have overflowed it either way.
 func (a *App) innerWidth() int {
 	if a.width <= 0 {
 		return 0
 	}
-	return max(0, a.width-a.styles.App.GetHorizontalFrameSize())
+	return max(0, a.width-a.styles.Frame.GetHorizontalFrameSize())
 }
 
 // fit truncates s to width columns, keeping the leading text. A width of zero

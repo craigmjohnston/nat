@@ -143,19 +143,19 @@ func (i *Info) Update(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
-// View renders the screen. spinner is the root model's current frame, drawn
-// while the fetch is in flight so the app turns one spinner rather than two.
+// View renders the screen's body; the layout's header is what names it. spinner
+// is the root model's current frame, drawn while the fetch is in flight so the
+// app turns one spinner rather than two.
 func (i Info) View(spinner string) string {
-	header := i.styles.Title.Render("Info")
 	switch i.state {
 	case infoLoading:
-		return header + "\n\n" + spinner + " Loading the project page…"
+		return spinner + " Loading the project page…"
 	case infoFailed:
-		return header + "\n\n" + i.styles.Error.Render(i.err.Error())
+		return i.styles.Error.Render(i.err.Error())
 	default:
 		if i.markdown == "" {
-			return header + "\n\n" + i.styles.Faint.Render("The project page is empty.")
+			return i.styles.Faint.Render("The project page is empty.")
 		}
-		return header + "\n\n" + i.vp.View()
+		return i.vp.View()
 	}
 }

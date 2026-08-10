@@ -425,6 +425,7 @@ func (a *App) liveLoaded(msg liveSessionsMsg) {
 		}
 	}
 	a.board.SetLive(a.live)
+	a.syncBoard()
 }
 
 // paneMoved keeps the joined marks in step with a pane movement the message
