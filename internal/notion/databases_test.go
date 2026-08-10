@@ -39,7 +39,7 @@ func TestCreateDatabase(t *testing.T) {
 			t.Errorf("got %s %s, want POST /databases", gotMethod, gotPath)
 		}
 		want := `{"initial_data_source":{"properties":{` +
-			`"Milestone":{"relation":{"data_source_id":"ds-milestones"}},` +
+			`"Milestone":{"relation":{"data_source_id":"ds-milestones","type":"single_property","single_property":{}}},` +
 			`"Name":{"title":{}},` +
 			`"Status":{"select":{"options":[{"name":"Todo"},{"name":"Claimed"},{"name":"Done"}]}}}},` +
 			`"parent":{"page_id":"page-1","type":"page_id"},` +

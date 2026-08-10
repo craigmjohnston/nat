@@ -11,9 +11,14 @@ type OptionsConfig struct {
 }
 
 // RelationConfig configures a relation property. Relations point at a data
-// source, not a database, from the data-source API version on.
+// source, not a database, from the data-source API version on. Creating one
+// also requires saying which kind it is, with the matching sub-object present:
+// omitting them fails validation.
 type RelationConfig struct {
 	DataSourceID string `json:"data_source_id"`
+	// Kind is "single_property" or "dual_property".
+	Kind           string       `json:"type,omitempty"`
+	SingleProperty *EmptyConfig `json:"single_property,omitempty"`
 }
 
 // PropertySchema is one property definition in a data source schema. Reads
@@ -58,10 +63,14 @@ func SchemaSelect(options ...string) PropertySchema {
 	return PropertySchema{Select: &OptionsConfig{Options: selectOptions(options)}}
 }
 
-// SchemaRelation builds a relation property definition pointing at a data
-// source.
+// SchemaRelation builds a single-property relation definition pointing at a
+// data source — one-way, so the related data source gains no column of its own.
 func SchemaRelation(dataSourceID string) PropertySchema {
-	return PropertySchema{Relation: &RelationConfig{DataSourceID: dataSourceID}}
+	return PropertySchema{Relation: &RelationConfig{
+		DataSourceID:   dataSourceID,
+		Kind:           "single_property",
+		SingleProperty: &EmptyConfig{},
+	}}
 }
 
 // SchemaPeople builds a people property definition.

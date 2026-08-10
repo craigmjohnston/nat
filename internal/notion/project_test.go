@@ -123,7 +123,7 @@ func TestCreateProject(t *testing.T) {
 				`"title":[{"type":"text","text":{"content":"Milestones"}}]}`,
 			`POST /databases {"initial_data_source":{"properties":{` +
 				`"Assignee":{"people":{}},` +
-				`"Milestone":{"relation":{"data_source_id":"ds-milestones"}},` +
+				`"Milestone":{"relation":{"data_source_id":"ds-milestones","type":"single_property","single_property":{}}},` +
 				`"Name":{"title":{}},` +
 				`"PR":{"url":{}},` +
 				`"Repo":{"rich_text":{}},` +
@@ -361,7 +361,7 @@ func TestProjectSchemas(t *testing.T) {
 		{
 			"slices",
 			SlicesSchema("ds-1"),
-			`{"Assignee":{"people":{}},"Milestone":{"relation":{"data_source_id":"ds-1"}},` +
+			`{"Assignee":{"people":{}},"Milestone":{"relation":{"data_source_id":"ds-1","type":"single_property","single_property":{}}},` +
 				`"Name":{"title":{}},"PR":{"url":{}},"Repo":{"rich_text":{}},` +
 				`"Status":{"select":{"options":[{"name":"Todo"},{"name":"Claimed"},{"name":"Done"}]}}}`,
 		},
