@@ -52,6 +52,7 @@ const Usage = `nat — track project work in Notion
 
 usage:
   nat                 open the board
+  nat setup [--json]  install the agent skills into ~/.claude/skills
   nat info [--json]   print the active project's conventions, milestones and slices
   nat next-slice [--json]
                       claim the next Todo slice and print its brief
@@ -101,6 +102,10 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return usageErrorf("no command given")
 	}
 	switch args[0] {
+	case "setup":
+		// The one command that talks to no one: it lays down files, and a
+		// machine that has not been configured yet is exactly where it is run.
+		return setup(args[1:], env)
 	case "info":
 		return info(ctx, args[1:], env)
 	case "next-slice":
