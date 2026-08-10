@@ -137,6 +137,19 @@ func TestBoardMarksSlicesWithALiveSession(t *testing.T) {
 	golden(t, "board-live", b.View())
 }
 
+func TestBoardFillsTheSelectedRowToItsWidth(t *testing.T) {
+	b := newTestBoard()
+	b.cursor = 2 // a slice row
+
+	lines := strings.Split(b.View(), "\n")
+	if got := lipgloss.Width(lines[2]); got != 60 {
+		t.Errorf("the selected row is %d wide, want the fill run out to 60", got)
+	}
+	if got := lipgloss.Width(lines[3]); got >= 60 {
+		t.Errorf("an unselected row is %d wide, want it left unfilled", got)
+	}
+}
+
 func TestBoardTruncatesRowsToItsWidth(t *testing.T) {
 	b := newTestBoard()
 	b.SetWidth(14)
@@ -422,7 +435,7 @@ func TestBoardUnknownSliceStatusStillDraws(t *testing.T) {
 	b := newTestBoard()
 
 	// The Unassigned group's slice has a status this build does not know.
-	if got := b.renderSlice("  ", b.groups[3].Slices[0]); !strings.Contains(got, "Stray") {
+	if got := b.renderSlice("  ", b.groups[3].Slices[0], false); !strings.Contains(got, "Stray") {
 		t.Errorf("render = %q, want the slice name", got)
 	}
 }

@@ -1,8 +1,8 @@
-[95m❯ [m▸ [1;97mM1: Config[m [90m2/2[m [90mDone[m
-  ▾ [36mM2: Board[m [90m1/3[m [90mActive[m
-    [32m●[m Domain model [34m@Craig Johnston[m [35mPR[m
-    [33m◐[m Board screen [34m@Craig Johnston[m
-    [90m○[m Info view
-  ▸ [36mM3: Mutations[m [90m0/0[m [90mQueued[m
+[1;97;44m❯ ▸ M1: Config 2/2  Done [m[44m                                   [m
+  ▾ [36mM2: Board[m [90m1/3[m [46m [m[30;46mActive[m[46m [m
+    [42m [m[30;42m●[m[42m [m Domain model [34m@Craig Johnston[m [35mPR[m
+    [43m [m[30;43m◐[m[43m [m Board screen [34m@Craig Johnston[m
+    [100m [m[97;100m○[m[100m [m Info view
+  ▸ [36mM3: Mutations[m [90m0/0[m [100m [m[97;100mQueued[m[100m [m
   ▾ [36mUnassigned[m [90m0/1[m
-    [90m·[m Stray
+     [90m·[m  Stray

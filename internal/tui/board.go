@@ -274,16 +274,42 @@ func (b Board) View() string {
 	return strings.Join(lines, "\n")
 }
 
-// renderRow draws one line, with the cursor marker in front of it.
+// renderRow draws one line, with the cursor marker in front of it. The row
+// under the cursor is drawn plain and handed to finishRow for its background
+// fill, so the marker takes the fill's colour like everything else on it.
 func (b Board) renderRow(i int, r row) string {
+	selected := i == b.cursor
 	marker := "  "
-	if i == b.cursor {
-		marker = b.styles.Cursor.Render("❯ ")
+	if selected {
+		marker = "❯ "
 	}
 	if r.kind == rowMilestone {
-		return b.renderMilestone(marker, b.groups[r.group], i == b.cursor)
+		return b.renderMilestone(marker, b.groups[r.group], selected)
 	}
-	return b.renderSlice(marker+"  ", b.groups[r.group].Slices[r.slice])
+	return b.renderSlice(marker+"  ", b.groups[r.group].Slices[r.slice], selected)
+}
+
+// paint styles s, unless the row it is part of is selected: a selected row is
+// drawn plain, because its parts' own colours would each reset the selected
+// fill's background and cut holes in it.
+func paint(selected bool, st lipgloss.Style, s string) string {
+	if selected {
+		return s
+	}
+	return st.Render(s)
+}
+
+// finishRow is the last step of a row: the selected row's background fill, run
+// out to the board's width so the highlight is the row rather than its text.
+func (b Board) finishRow(selected bool, line string) string {
+	if !selected {
+		return line
+	}
+	st := b.styles.SelectedRow
+	if b.width > 0 {
+		st = st.Width(b.width)
+	}
+	return st.Render(line)
 }
 
 // fitRow assembles one row from a head that always draws, a name, and chips in
@@ -311,59 +337,77 @@ func joinRow(head, name string, chips []string) string {
 }
 
 // renderMilestone draws a group's own line: the fold indicator, its name, how
-// many of its slices are done, and its status. The status goes first as the
+// many of its slices are done, and its status chip. The chip goes first as the
 // board narrows, then the count.
 func (b Board) renderMilestone(head string, g domain.Group, selected bool) string {
 	fold := "▸"
 	if b.expanded[groupKey(g)] {
 		fold = "▾"
 	}
-	name := b.styles.Milestone.Render(g.Name())
-	if selected {
-		name = b.styles.Selected.Render(g.Name())
-	}
 	p := g.Progress()
-	chips := []string{b.styles.Faint.Render(fmt.Sprintf("%d/%d", p.Done, p.Total))}
+	chips := []string{paint(selected, b.styles.Faint, fmt.Sprintf("%d/%d", p.Done, p.Total))}
 	if g.Milestone != nil {
-		chips = append(chips, b.styles.Faint.Render(string(g.Milestone.Status)))
+		chips = append(chips, b.milestoneChip(g.Milestone.Status, selected))
 	}
-	return fitRow(b.width, head+fold, name, chips...)
+	name := paint(selected, b.styles.Milestone, g.Name())
+	return b.finishRow(selected, fitRow(b.width, head+fold, name, chips...))
 }
 
-// renderSlice draws one slice: its status, its name, whether an agent is live
-// on it, who holds it, and whether it has a PR. The live marker is its own
+// renderSlice draws one slice: its status chip, its name, whether an agent is
+// live on it, who holds it, and whether it has a PR. The live marker is its own
 // glyph rather than a status: a session is running or not, which is a different
 // question from where the slice has got to.
 //
 // As the board narrows the PR marker goes first, then the assignee, and the live
 // marker last of the three — a running agent is the most urgent thing about a
-// row, and the status glyph and name never go at all.
-func (b Board) renderSlice(head string, s domain.Slice) string {
+// row, and the status chip and name never go at all.
+func (b Board) renderSlice(head string, s domain.Slice, selected bool) string {
 	var chips []string
 	if b.live[s.ID] != "" {
-		chips = append(chips, b.styles.Live.Render("●"))
+		chips = append(chips, paint(selected, b.styles.Live, "●"))
 	}
 	if s.AssigneeName != "" {
-		chips = append(chips, b.styles.Assignee.Render("@"+s.AssigneeName))
+		chips = append(chips, paint(selected, b.styles.Assignee, "@"+s.AssigneeName))
 	}
 	if s.PRURL != "" {
-		chips = append(chips, b.styles.PR.Render("PR"))
+		chips = append(chips, paint(selected, b.styles.PR, "PR"))
 	}
-	return fitRow(b.width, head+b.sliceIcon(s.Status), s.Name, chips...)
+	return b.finishRow(selected, fitRow(b.width, head+b.sliceChip(s.Status, selected), s.Name, chips...))
 }
 
-// sliceIcon is the glyph for a slice's status. An unknown status — one Notion
-// has grown that this build does not know — draws as an empty marker rather
-// than nothing at all, so the column stays aligned.
-func (b Board) sliceIcon(s domain.SliceStatus) string {
+// sliceChip is the badge for a slice's status: its glyph on the status's own
+// background. An unknown status — one Notion has grown that this build does not
+// know — draws as an empty badge rather than nothing at all, so the column
+// stays aligned. On a selected row the chip is its bare padded glyph, for the
+// same reason as paint.
+func (b Board) sliceChip(s domain.SliceStatus, selected bool) string {
+	glyph, st := "·", b.styles.StatusUnknown
 	switch s {
 	case domain.SliceTodo:
-		return b.styles.StatusTodo.Render("○")
+		glyph, st = "○", b.styles.StatusTodo
 	case domain.SliceClaimed:
-		return b.styles.StatusClaimed.Render("◐")
+		glyph, st = "◐", b.styles.StatusClaimed
 	case domain.SliceDone:
-		return b.styles.StatusDone.Render("●")
-	default:
-		return b.styles.Faint.Render("·")
+		glyph, st = "●", b.styles.StatusDone
 	}
+	if selected {
+		return " " + glyph + " "
+	}
+	return st.Render(glyph)
+}
+
+// milestoneChip is the badge for a milestone's status word, shaped like
+// sliceChip: unknown statuses take the Queued grey rather than nothing.
+func (b Board) milestoneChip(s domain.MilestoneStatus, selected bool) string {
+	st := b.styles.MilestoneQueued
+	switch s {
+	case domain.MilestoneActive:
+		st = b.styles.MilestoneActive
+	case domain.MilestoneDone:
+		st = b.styles.MilestoneDone
+	}
+	if selected {
+		return " " + string(s) + " "
+	}
+	return st.Render(string(s))
 }

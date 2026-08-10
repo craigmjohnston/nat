@@ -123,6 +123,27 @@ func TestHintsAreTruncatedOnceThereIsNothingLeftToDrop(t *testing.T) {
 	}
 }
 
+func TestAppStatusBarNeverExceedsTheWindowAsItNarrows(t *testing.T) {
+	// Narrow enough and the bar is the chip alone, cut to fit; the loop takes
+	// that branch too.
+	for width := 1; width <= 80; width++ {
+		a := sizedApp(width, 24)
+		inner := a.innerWidth()
+		if got := lipgloss.Width(a.statusBar()); inner > 0 && got > inner {
+			t.Fatalf("at %d columns the status bar is %d wide, want at most %d",
+				width, got, inner)
+		}
+	}
+}
+
+func TestAppStatusBarLeadsWithTheProjectChip(t *testing.T) {
+	bar := stripANSI(sizedApp(80, 24).statusBar())
+	// The chip is cut to a third of the bar, so the long test name loses its tail.
+	if want := " notion-agent-tracker, dog "; !strings.HasPrefix(bar, want) {
+		t.Errorf("status bar = %q, want it led by the chip %q", bar, want)
+	}
+}
+
 func TestAppKeepsALongErrorOnOneLine(t *testing.T) {
 	const width, height = 40, 24
 	a := sizedApp(width, height)
