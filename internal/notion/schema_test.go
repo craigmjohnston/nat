@@ -16,7 +16,7 @@ func TestSchemaBuilders(t *testing.T) {
 		{"number", SchemaNumber(), `{"number":{}}`},
 		{"select", SchemaSelect("Queued", "Active"), `{"select":{"options":[{"name":"Queued"},{"name":"Active"}]}}`},
 		{"select without options", SchemaSelect(), `{"select":{}}`},
-		{"relation", SchemaRelation("ds-1"), `{"relation":{"data_source_id":"ds-1"}}`},
+		{"relation", SchemaRelation("ds-1"), `{"relation":{"data_source_id":"ds-1","type":"single_property","single_property":{}}}`},
 		{"people", SchemaPeople(), `{"people":{}}`},
 		{"url", SchemaURL(), `{"url":{}}`},
 	}
