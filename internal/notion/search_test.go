@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestSearch(t *testing.T) {
+func TestSearchPaged(t *testing.T) {
 	t.Run("sends the query and object filter and decodes hits", func(t *testing.T) {
 		var gotMethod, gotPath, gotBody string
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -18,44 +18,43 @@ func TestSearch(t *testing.T) {
 			b, _ := io.ReadAll(r.Body)
 			gotBody = string(b)
 			w.Write([]byte(`{"results":[
-				{"object":"data_source","id":"ds-1","url":"https://notion.so/ds-1","title":[{"plain_text":"Slices"}],
-				 "parent":{"type":"database_id","database_id":"db-1"}},
 				{"object":"page","id":"page-1","url":"https://notion.so/page-1",
-				 "properties":{"Name":{"type":"title","title":[{"plain_text":"Projects"}]}}},
+				 "properties":{"Name":{"type":"title","title":[{"plain_text":"Projects"}]}},
+				 "parent":{"type":"workspace"}},
 				{"object":"page","id":"page-2"}
 			],"has_more":false,"next_cursor":null}`))
 		}))
 		defer srv.Close()
 
 		c, _ := testClient(t, srv)
-		hits, err := c.Search(context.Background(), "Slices", SearchDataSource)
+		hits, next, err := c.SearchPaged(context.Background(), "Projects", SearchPage, "")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if gotMethod != http.MethodPost || gotPath != "/search" {
 			t.Errorf("got %s %s, want POST /search", gotMethod, gotPath)
 		}
-		want := `{"filter":{"property":"object","value":"data_source"},"query":"Slices"}`
+		want := `{"filter":{"property":"object","value":"page"},"query":"Projects"}`
 		if gotBody != want {
 			t.Errorf("request body =\n%s\nwant\n%s", gotBody, want)
 		}
 
-		if len(hits) != 3 {
+		if next != "" {
+			t.Errorf("next cursor = %q, want none on the last page", next)
+		}
+		if len(hits) != 2 {
 			t.Fatalf("hits = %+v", hits)
 		}
-		if hits[0].Object != "data_source" || hits[0].ID != "ds-1" || hits[0].URL != "https://notion.so/ds-1" {
+		if hits[0].Object != "page" || hits[0].ID != "page-1" || hits[0].URL != "https://notion.so/page-1" {
 			t.Errorf("got %+v", hits[0])
 		}
-		if got := hits[0].TitleText(); got != "Slices" {
-			t.Errorf("data source title = %q, want Slices", got)
-		}
-		if got := hits[0].Parent; got.Type != "database_id" || got.DatabaseID != "db-1" {
-			t.Errorf("data source parent = %+v, want database db-1", got)
-		}
-		if got := hits[1].TitleText(); got != "Projects" {
+		if got := hits[0].TitleText(); got != "Projects" {
 			t.Errorf("page title = %q, want Projects", got)
 		}
-		if got := hits[2].TitleText(); got != "" {
+		if got := hits[0].Parent.Type; got != "workspace" {
+			t.Errorf("page parent = %q, want the workspace", got)
+		}
+		if got := hits[1].TitleText(); got != "" {
 			t.Errorf("untitled hit = %q, want empty", got)
 		}
 	})
@@ -70,19 +69,19 @@ func TestSearch(t *testing.T) {
 		defer srv.Close()
 
 		c, _ := testClient(t, srv)
-		hits, err := c.Search(context.Background(), "", "")
+		hits, next, err := c.SearchPaged(context.Background(), "", "", "")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if gotBody != `{}` {
 			t.Errorf("request body = %s, want {}", gotBody)
 		}
-		if len(hits) != 0 {
-			t.Errorf("hits = %+v, want none", hits)
+		if len(hits) != 0 || next != "" {
+			t.Errorf("hits = %+v, next = %q, want none", hits, next)
 		}
 	})
 
-	t.Run("follows pagination", func(t *testing.T) {
+	t.Run("hands back the cursor for the caller to continue with", func(t *testing.T) {
 		var bodies []string
 		var calls int
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -105,18 +104,44 @@ func TestSearch(t *testing.T) {
 		defer srv.Close()
 
 		c, _ := testClient(t, srv)
-		hits, err := c.Search(context.Background(), "", SearchPage)
+		hits, next, err := c.SearchPaged(context.Background(), "", SearchPage, "")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(hits) != 2 || hits[0].ID != "page-1" || hits[1].ID != "page-2" {
-			t.Errorf("hits = %+v", hits)
+		if len(hits) != 1 || hits[0].ID != "page-1" || next != "cursor-1" {
+			t.Errorf("hits = %+v, next = %q, want the first page and its cursor", hits, next)
+		}
+
+		hits, next, err = c.SearchPaged(context.Background(), "", SearchPage, next)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(hits) != 1 || hits[0].ID != "page-2" || next != "" {
+			t.Errorf("hits = %+v, next = %q, want the last page and no cursor", hits, next)
 		}
 		if bodies[0] != `{"filter":{"property":"object","value":"page"}}` {
 			t.Errorf("first body = %s", bodies[0])
 		}
 		if bodies[1] != `{"filter":{"property":"object","value":"page"},"start_cursor":"cursor-1"}` {
 			t.Errorf("second body = %s", bodies[1])
+		}
+	})
+
+	t.Run("treats has_more without a cursor as the end", func(t *testing.T) {
+		// A defensive read of a malformed response: has_more set but nothing to
+		// continue with must not loop the caller forever.
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Write([]byte(`{"results":[{"object":"page","id":"page-1"}],"has_more":true,"next_cursor":null}`))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		hits, next, err := c.SearchPaged(context.Background(), "", SearchPage, "")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(hits) != 1 || next != "" {
+			t.Errorf("hits = %+v, next = %q, want the results and no cursor", hits, next)
 		}
 	})
 
@@ -128,13 +153,13 @@ func TestSearch(t *testing.T) {
 		defer srv.Close()
 
 		c, _ := testClient(t, srv)
-		hits, err := c.Search(context.Background(), "", "nonsense")
+		hits, next, err := c.SearchPaged(context.Background(), "", "nonsense", "")
 		var apiErr *APIError
 		if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusBadRequest {
 			t.Fatalf("got %v, want a 400 *APIError", err)
 		}
-		if hits != nil {
-			t.Errorf("hits = %+v, want nil on error", hits)
+		if hits != nil || next != "" {
+			t.Errorf("hits = %+v, next = %q, want nothing on error", hits, next)
 		}
 	})
 }
@@ -142,9 +167,9 @@ func TestSearch(t *testing.T) {
 // A data source hit carries its schema under "properties", not property values.
 // The two shapes collide — a relation is an object in a schema and an array in
 // a value — so a search that returns any data source with a relation property
-// used to fail to decode entirely. Onboarding's first call is exactly that
-// search, so this shape must survive.
-func TestSearchDecodesDataSourceSchemaProperties(t *testing.T) {
+// used to fail to decode entirely. An unfiltered search can still return that
+// shape, so it must survive.
+func TestSearchPagedDecodesDataSourceSchemaProperties(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte(`{"results":[
 			{"object":"data_source","id":"ds-1","title":[{"plain_text":"Slices"}],
@@ -160,7 +185,7 @@ func TestSearchDecodesDataSourceSchemaProperties(t *testing.T) {
 	defer srv.Close()
 
 	c, _ := testClient(t, srv)
-	hits, err := c.Search(context.Background(), "", SearchDataSource)
+	hits, _, err := c.SearchPaged(context.Background(), "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -182,7 +207,7 @@ func TestSearchDecodesDataSourceSchemaProperties(t *testing.T) {
 // nothing decodes as a title value.
 func TestSearchResultTitleTextSkipsUndecodableProperties(t *testing.T) {
 	r := SearchResult{
-		Object: SearchDataSource,
+		Object: "data_source",
 		ID:     "ds-1",
 		Properties: map[string]json.RawMessage{
 			"Name":      json.RawMessage(`{"type":"title","title":{}}`),

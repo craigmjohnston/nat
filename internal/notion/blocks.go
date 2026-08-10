@@ -84,6 +84,63 @@ func (c *Client) blockChildren(ctx context.Context, id string, depth int) ([]Blo
 	return blocks, nil
 }
 
+// PageEntry is a child page or child (inline) database sitting in a page's
+// content. Its ID is the page or database ID — for both block types Notion
+// gives the block the ID of the thing it holds.
+type PageEntry struct {
+	ID       string
+	Title    string
+	Database bool
+}
+
+// containerBlockTypes are the block types that can hold child pages and
+// databases without being pages themselves: columns, toggles, callouts and
+// synced blocks. PageEntries descends into these — and only these — so a
+// database laid out inside a column is still found without fetching the bodies
+// of every subpage.
+var containerBlockTypes = map[string]bool{
+	"column_list":  true,
+	"column":       true,
+	"toggle":       true,
+	"callout":      true,
+	"synced_block": true,
+}
+
+// PageEntries lists the pages and databases living in a page's content, in
+// document order. Container blocks are recursed into up to MaxBlockDepth
+// levels; child pages are reported but never descended into, which is what
+// keeps one call cheap on a large workspace.
+func (c *Client) PageEntries(ctx context.Context, id string) ([]PageEntry, error) {
+	return c.pageEntries(ctx, id, MaxBlockDepth)
+}
+
+// pageEntries collects one level's entries and recurses into containers while
+// depth remains.
+func (c *Client) pageEntries(ctx context.Context, id string, depth int) ([]PageEntry, error) {
+	blocks, err := paginate[Block](ctx, c, http.MethodGet, "/blocks/"+url.PathEscape(id)+"/children", nil)
+	if err != nil {
+		return nil, err
+	}
+	var entries []PageEntry
+	for _, b := range blocks {
+		switch {
+		case b.Type == "child_page" || b.Type == "child_database":
+			var payload struct {
+				Title string `json:"title"`
+			}
+			b.decodePayload(&payload)
+			entries = append(entries, PageEntry{ID: b.ID, Title: payload.Title, Database: b.Type == "child_database"})
+		case depth > 1 && b.HasChildren && containerBlockTypes[b.Type]:
+			kids, err := c.pageEntries(ctx, b.ID, depth-1)
+			if err != nil {
+				return nil, err
+			}
+			entries = append(entries, kids...)
+		}
+	}
+	return entries, nil
+}
+
 // AppendBlockChildren appends blocks to the end of a page or block's content
 // and returns the blocks as created. children are raw Notion block objects.
 func (c *Client) AppendBlockChildren(ctx context.Context, id string, children []map[string]any) ([]Block, error) {

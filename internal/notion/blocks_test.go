@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 )
 
@@ -146,6 +147,168 @@ func TestGetBlockChildren(t *testing.T) {
 		}
 		if blocks != nil {
 			t.Errorf("blocks = %+v, want nil on error", blocks)
+		}
+	})
+}
+
+func TestPageEntries(t *testing.T) {
+	t.Run("collects pages and databases, descending only into containers", func(t *testing.T) {
+		// The page holds, in order: a child page, a paragraph with children (a
+		// list — never descended into), a column layout hiding a database, and
+		// a toggle hiding a page. Only the containers cost extra requests.
+		var gotPaths []string
+		responses := map[string]string{
+			"/blocks/root/children": `{"results":[
+				{"id":"page-a","type":"child_page","has_children":true,"child_page":{"title":"Briefs"}},
+				{"id":"para","type":"paragraph","has_children":true},
+				{"id":"cols","type":"column_list","has_children":true},
+				{"id":"tog","type":"toggle","has_children":true},
+				{"id":"empty-tog","type":"toggle","has_children":false}
+			],"has_more":false}`,
+			"/blocks/cols/children": `{"results":[
+				{"id":"col-1","type":"column","has_children":true}
+			],"has_more":false}`,
+			"/blocks/col-1/children": `{"results":[
+				{"id":"db-1","type":"child_database","has_children":false,"child_database":{"title":"Slices"}}
+			],"has_more":false}`,
+			"/blocks/tog/children": `{"results":[
+				{"id":"page-b","type":"child_page","has_children":false,"child_page":{}}
+			],"has_more":false}`,
+		}
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotPaths = append(gotPaths, r.URL.RequestURI())
+			body, ok := responses[r.URL.RequestURI()]
+			if !ok {
+				t.Errorf("unexpected request %s", r.URL.RequestURI())
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			w.Write([]byte(body))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		entries, err := c.PageEntries(context.Background(), "root")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := []PageEntry{
+			{ID: "page-a", Title: "Briefs"},
+			{ID: "db-1", Title: "Slices", Database: true},
+			{ID: "page-b"},
+		}
+		if !reflect.DeepEqual(entries, want) {
+			t.Errorf("entries = %+v, want %+v", entries, want)
+		}
+		wantPaths := []string{
+			"/blocks/root/children",
+			"/blocks/cols/children",
+			"/blocks/col-1/children",
+			"/blocks/tog/children",
+		}
+		if !reflect.DeepEqual(gotPaths, wantPaths) {
+			t.Errorf("requests = %v, want %v — child pages and plain blocks must not be descended into", gotPaths, wantPaths)
+		}
+	})
+
+	t.Run("follows pagination at every level", func(t *testing.T) {
+		responses := map[string]string{
+			"/blocks/root/children": `{"results":[
+				{"id":"tog","type":"toggle","has_children":true}
+			],"has_more":true,"next_cursor":"cur-1"}`,
+			"/blocks/root/children?start_cursor=cur-1": `{"results":[
+				{"id":"page-a","type":"child_page","has_children":false,"child_page":{"title":"After"}}
+			],"has_more":false}`,
+			"/blocks/tog/children": `{"results":[
+				{"id":"db-1","type":"child_database","has_children":false,"child_database":{"title":"Inside"}}
+			],"has_more":false}`,
+		}
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(responses[r.URL.RequestURI()]))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		entries, err := c.PageEntries(context.Background(), "root")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		want := []PageEntry{
+			{ID: "db-1", Title: "Inside", Database: true},
+			{ID: "page-a", Title: "After"},
+		}
+		if !reflect.DeepEqual(entries, want) {
+			t.Errorf("entries = %+v, want %+v", entries, want)
+		}
+	})
+
+	t.Run("stops descending at the depth cap", func(t *testing.T) {
+		// Every level is another container claiming children, so only the cap
+		// ends the recursion.
+		var requests int
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requests++
+			if requests > MaxBlockDepth {
+				t.Errorf("descended past the cap: request %d for %s", requests, r.URL.Path)
+			}
+			w.Write([]byte(`{
+				"results":[{"id":"nested","type":"toggle","has_children":true}],
+				"has_more":false,"next_cursor":null
+			}`))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		entries, err := c.PageEntries(context.Background(), "root")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if requests != MaxBlockDepth {
+			t.Errorf("made %d requests, want %d", requests, MaxBlockDepth)
+		}
+		if len(entries) != 0 {
+			t.Errorf("entries = %+v, want none from a page of bare toggles", entries)
+		}
+	})
+
+	t.Run("propagates an error from the first level", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"code":"object_not_found","message":"nope"}`))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		entries, err := c.PageEntries(context.Background(), "root")
+		var apiErr *APIError
+		if !errors.As(err, &apiErr) || !apiErr.NotFound() {
+			t.Fatalf("got %v, want a not-found *APIError", err)
+		}
+		if entries != nil {
+			t.Errorf("entries = %+v, want nil on error", entries)
+		}
+	})
+
+	t.Run("propagates an error from inside a container", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/blocks/root/children" {
+				w.Write([]byte(`{"results":[{"id":"tog","type":"toggle","has_children":true}],"has_more":false}`))
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"code":"internal_server_error","message":"boom"}`))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		entries, err := c.PageEntries(context.Background(), "root")
+		var apiErr *APIError
+		if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusInternalServerError {
+			t.Fatalf("got %v, want a 500 *APIError", err)
+		}
+		if entries != nil {
+			t.Errorf("entries = %+v, want nil on error", entries)
 		}
 	})
 }

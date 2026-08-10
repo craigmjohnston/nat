@@ -6,12 +6,10 @@ import (
 	"net/http"
 )
 
-// Object types accepted by Search as a filter. Notion's search only filters on
-// these two; databases are reached through their data sources.
-const (
-	SearchPage       = "page"
-	SearchDataSource = "data_source"
-)
+// SearchPage is the object type accepted by SearchPaged as a filter. Notion's
+// search also filters on data sources, but this app only ever searches pages:
+// databases are reached by walking a page's content.
+const SearchPage = "page"
 
 // SearchResult is one hit from search. The endpoint returns mixed object types,
 // so both title shapes are modelled: data sources carry a top-level title,
@@ -26,8 +24,8 @@ type SearchResult struct {
 	// The two collide — a relation is an array of IDs in a value and an object
 	// in a schema — so decoding into either type fails on the other.
 	Properties map[string]json.RawMessage `json:"properties"`
-	// Parent is where the hit lives. Data source hits carry the database they
-	// belong to, which onboarding records alongside the data source ID.
+	// Parent is where the hit lives. Onboarding keeps only the pages parented
+	// by the workspace itself, which is also what rules out database rows.
 	Parent Parent `json:"parent"`
 }
 
@@ -54,12 +52,13 @@ func (r SearchResult) TitleText() string {
 	return ""
 }
 
-// Search finds pages and data sources the integration has been given access to,
-// following pagination to the end. An empty query matches everything shared
-// with the integration; an empty filterType returns both object types. Pass
-// SearchPage or SearchDataSource to narrow it — onboarding uses both, to pick
-// the Project database and the page to create new databases under.
-func (c *Client) Search(ctx context.Context, query, filterType string) ([]SearchResult, error) {
+// SearchPaged fetches one page of search results, returning the cursor for the
+// page after it — "" once the search is exhausted. It exists instead of a
+// follow-every-page search because the caller streams results into the UI as
+// they arrive: a large workspace shows its first hits immediately rather than
+// after the whole search has run. An empty query matches everything shared
+// with the integration; pass SearchPage as filterType to get only pages.
+func (c *Client) SearchPaged(ctx context.Context, query, filterType, startCursor string) ([]SearchResult, string, error) {
 	body := map[string]any{}
 	if query != "" {
 		body["query"] = query
@@ -67,5 +66,15 @@ func (c *Client) Search(ctx context.Context, query, filterType string) ([]Search
 	if filterType != "" {
 		body["filter"] = map[string]any{"property": "object", "value": filterType}
 	}
-	return paginate[SearchResult](ctx, c, http.MethodPost, "/search", body)
+	if startCursor != "" {
+		body["start_cursor"] = startCursor
+	}
+	var page List[SearchResult]
+	if err := c.do(ctx, http.MethodPost, "/search", body, &page); err != nil {
+		return nil, "", err
+	}
+	if !page.HasMore || page.NextCursor == nil {
+		return page.Results, "", nil
+	}
+	return page.Results, *page.NextCursor, nil
 }

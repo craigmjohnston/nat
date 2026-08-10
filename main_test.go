@@ -341,7 +341,7 @@ func TestBuildAppStartsOnboardingWithoutAConfigFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(app.View().Content, "Looking for databases") {
+	if !strings.Contains(app.View().Content, "Which database holds your projects?") {
 		t.Errorf("view = %q, want the wizard's first step", app.View().Content)
 	}
 }

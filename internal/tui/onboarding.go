@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
@@ -26,7 +25,8 @@ const createNewChoice = "<new>"
 // interface so the screens can be driven by a fake in tests.
 type NotionAPI interface {
 	ListUsers(ctx context.Context) ([]notion.User, error)
-	Search(ctx context.Context, query, filterType string) ([]notion.SearchResult, error)
+	SearchPaged(ctx context.Context, query, filterType, startCursor string) ([]notion.SearchResult, string, error)
+	PageEntries(ctx context.Context, id string) ([]notion.PageEntry, error)
 	GetDatabase(ctx context.Context, id string) (*notion.Database, error)
 	CreateProjectsDatabase(ctx context.Context, parentPageID, title string) (*notion.Database, error)
 	CreateProject(ctx context.Context, projectsDSID, name string) (*notion.ProjectStructure, error)
@@ -55,16 +55,27 @@ type OnboardingDoneMsg struct {
 	NeedsProject bool
 }
 
-// Messages carrying the result of each Notion call the wizard makes between
-// steps. Every one of them may carry an error instead.
+// Messages carrying the result of each Notion call the wizard makes. Every one
+// of them may carry an error instead.
 type (
-	projectDBsMsg struct {
+	// rootPagesMsg is one page of the workspace search: the picker streams
+	// roots in as they arrive rather than waiting for the whole workspace.
+	rootPagesMsg struct {
 		results []notion.SearchResult
-		pages   []notion.SearchResult
-		// parents is where each candidate database lives, keyed by database
-		// ID, for the databases whose parent could be fetched.
-		parents map[string]notion.Parent
+		cursor  string
 		err     error
+	}
+	// pageEntriesMsg is the contents of one page, fetched when it was expanded.
+	pageEntriesMsg struct {
+		node    *treeNode
+		entries []notion.PageEntry
+		err     error
+	}
+	// projectDBResolvedMsg is the chosen database, fetched to learn its data
+	// source ID — the one GetDatabase call the picker ever costs.
+	projectDBResolvedMsg struct {
+		db  *notion.Database
+		err error
 	}
 	projectDBCreatedMsg struct {
 		db  *notion.Database
@@ -85,10 +96,10 @@ type (
 type onboardingStep int
 
 const (
-	stepLoadingProjectDBs onboardingStep = iota
-	stepPickProjectDB
+	stepPickProjectDB onboardingStep = iota
 	stepNewProjectDB
 	stepCreatingProjectDB
+	stepResolvingProjectDB
 	stepLoadingUsers
 	stepPickAssignee
 	stepCheckingProjects
@@ -115,35 +126,41 @@ type Onboarding struct {
 	status string
 	err    error
 
-	width  int
-	height int
-
 	// Values bound to form fields.
 	dbName       string
 	parentPageID string
 	assigneeID   string
 
-	projectDBs []notion.SearchResult
-	pages      []notion.SearchResult
+	// The root pages streamed in so far — the pages a new database can be
+	// created under — and whether the search has run to its end.
+	pages     []notion.SearchResult
+	rootsDone bool
+
+	chosenDBID string
 	users      []notion.User
 }
 
 // NewOnboarding returns the wizard, starting from whatever config already
-// exists so that a partially written file survives a second run.
+// exists so that a partially written file survives a second run. The picker is
+// on show from the first frame; root pages stream into it as the workspace
+// search returns them.
 func NewOnboarding(cfg config.Config, client NotionAPI, save func(config.Config) error) *Onboarding {
-	return &Onboarding{
+	m := &Onboarding{
 		save:   save,
 		cfg:    cfg,
 		client: client,
 		styles: DefaultStyles(),
-		step:   stepLoadingProjectDBs,
-		status: "Looking for databases in your workspace…",
+		step:   stepPickProjectDB,
 	}
+	m.tree = newTreePicker(m.styles,
+		"Which database holds your projects?",
+		"Browse to the existing project database, or create one.",
+		[]*treeNode{{label: "Create a new database…", value: createNewChoice}})
+	return m
 }
 
-// Init starts the first Notion call: there is no form to fill in until we know
-// what databases the workspace holds.
-func (m *Onboarding) Init() tea.Cmd { return m.loadProjectDBs }
+// Init starts the workspace search streaming into the picker.
+func (m *Onboarding) Init() tea.Cmd { return m.searchRoots("") }
 
 // Update advances the wizard. Our own messages drive the steps between forms;
 // everything else is handed to the current form, and a completed form moves on
@@ -151,13 +168,16 @@ func (m *Onboarding) Init() tea.Cmd { return m.loadProjectDBs }
 func (m *Onboarding) Update(msg tea.Msg) (*Onboarding, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width, m.height = msg.Width, msg.Height
 		if m.tree != nil {
 			m.tree.SetSize(msg.Width, msg.Height)
 		}
 		// The form takes its size from this same message, below.
-	case projectDBsMsg:
-		return m.projectDBsLoaded(msg)
+	case rootPagesMsg:
+		return m.rootPagesLoaded(msg)
+	case pageEntriesMsg:
+		return m.pageEntriesLoaded(msg)
+	case projectDBResolvedMsg:
+		return m.projectDBResolved(msg)
 	case projectDBCreatedMsg:
 		return m.projectDBCreated(msg)
 	case usersMsg:
@@ -201,25 +221,34 @@ func (m *Onboarding) View() string {
 	return m.status + "\n"
 }
 
-// treeInput hands one key press to the database picker, and moves the wizard
-// on when the press chose a database — or the escape hatch into creating one.
+// treeInput hands one key press to the database picker. A press can open a
+// page — costing a fetch of its contents — or land on a database, or the
+// escape hatch into creating one.
 func (m *Onboarding) treeInput(msg tea.KeyPressMsg) (*Onboarding, tea.Cmd) {
-	choice, chosen, aborted := m.tree.Handle(msg)
-	if aborted {
+	ev := m.tree.Handle(msg)
+	switch {
+	case ev.aborted:
 		return m, tea.Quit
-	}
-	if !chosen {
+	case ev.load != nil:
+		return m, m.loadPageEntries(ev.load)
+	case !ev.chosen:
 		return m, nil
 	}
-	m.tree = nil
-	if choice == createNewChoice {
+	if ev.choice == createNewChoice {
 		if len(m.pages) == 0 {
+			// The search may yet surface a page to create the database under,
+			// so only a finished search is a dead end.
+			if !m.rootsDone {
+				return m, nil
+			}
 			return m.fail(errNoPages)
 		}
+		m.tree = nil
 		return m.show(stepNewProjectDB, m.newProjectDBForm(m.pages))
 	}
-	m.setProjectDB(choice)
-	return m.await(stepLoadingUsers, "Loading workspace users…", m.loadUsers)
+	m.tree = nil
+	m.chosenDBID = ev.choice
+	return m.await(stepResolvingProjectDB, "Loading the database…", m.resolveProjectDB)
 }
 
 // formSubmitted handles the completed form for the current step and kicks off
@@ -257,19 +286,69 @@ func (m *Onboarding) fail(err error) (*Onboarding, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Onboarding) projectDBsLoaded(msg projectDBsMsg) (*Onboarding, tea.Cmd) {
+// rootPagesLoaded feeds one page of search hits into the picker and asks for
+// the next while there is one. Only pages parented by the workspace itself
+// become roots — everything else, database rows included, is reached by
+// expanding the page it lives in.
+func (m *Onboarding) rootPagesLoaded(msg rootPagesMsg) (*Onboarding, tea.Cmd) {
 	if msg.err != nil {
 		return m.fail(msg.err)
 	}
-	m.projectDBs, m.pages = msg.results, msg.pages
-	roots := append(buildDBTree(msg.results, msg.pages, msg.parents),
-		&treeNode{label: "Create a new database…", value: createNewChoice})
-	m.tree = newTreePicker(m.styles,
-		"Which database holds your projects?",
-		"Browse to the existing project database, or create one.", roots)
-	m.tree.SetSize(m.width, m.height)
-	m.step, m.form, m.status = stepPickProjectDB, nil, ""
+	if m.tree == nil {
+		// The database is already picked; let the rest of the search lapse.
+		return m, nil
+	}
+	var roots []*treeNode
+	for _, p := range msg.results {
+		if p.Parent.Type != "workspace" {
+			continue
+		}
+		m.pages = append(m.pages, p)
+		roots = append(roots, &treeNode{label: resultLabel(p), pageID: p.ID})
+	}
+	m.tree.AddRoots(roots...)
+	if msg.cursor != "" {
+		return m, m.searchRoots(msg.cursor)
+	}
+	m.rootsDone = true
 	return m, nil
+}
+
+// pageEntriesLoaded hands an expanded page its contents: nested pages open
+// further, databases can be chosen.
+func (m *Onboarding) pageEntriesLoaded(msg pageEntriesMsg) (*Onboarding, tea.Cmd) {
+	if msg.err != nil {
+		return m.fail(fmt.Errorf("load the page's contents: %w", msg.err))
+	}
+	if m.tree == nil {
+		return m, nil
+	}
+	children := make([]*treeNode, 0, len(msg.entries))
+	for _, e := range msg.entries {
+		n := &treeNode{label: entryLabel(e)}
+		if e.Database {
+			n.value = e.ID
+		} else {
+			n.pageID = e.ID
+		}
+		children = append(children, n)
+	}
+	m.tree.SetChildren(msg.node, children)
+	return m, nil
+}
+
+// projectDBResolved records the chosen database once its data source ID has
+// been fetched.
+func (m *Onboarding) projectDBResolved(msg projectDBResolvedMsg) (*Onboarding, tea.Cmd) {
+	if msg.err != nil {
+		return m.fail(fmt.Errorf("load the chosen database: %w", msg.err))
+	}
+	dsID, ok := msg.db.DataSourceID()
+	if !ok {
+		return m.fail(fmt.Errorf("open the chosen database: %w", errNoDataSource))
+	}
+	m.cfg.ProjectDBID, m.cfg.ProjectDBDataSourceID = msg.db.ID, dsID
+	return m.await(stepLoadingUsers, "Loading workspace users…", m.loadUsers)
 }
 
 func (m *Onboarding) projectDBCreated(msg projectDBCreatedMsg) (*Onboarding, tea.Cmd) {
@@ -278,7 +357,7 @@ func (m *Onboarding) projectDBCreated(msg projectDBCreatedMsg) (*Onboarding, tea
 	}
 	dsID, ok := msg.db.DataSourceID()
 	if !ok {
-		return m.fail(errNoDataSource)
+		return m.fail(fmt.Errorf("create project database: %w", errNoDataSource))
 	}
 	m.cfg.ProjectDBID, m.cfg.ProjectDBDataSourceID = msg.db.ID, dsID
 	return m.await(stepLoadingUsers, "Loading workspace users…", m.loadUsers)
@@ -312,20 +391,6 @@ func (m *Onboarding) projectsChecked(msg projectsCheckedMsg) (*Onboarding, tea.C
 	}
 }
 
-// setProjectDB records the data source the user picked, along with the database
-// it belongs to. A hit without a parent database still gives us the data source
-// ID, which is what every query addresses.
-func (m *Onboarding) setProjectDB(dsID string) {
-	m.cfg.ProjectDBDataSourceID = dsID
-	m.cfg.ProjectDBID = ""
-	for _, r := range m.projectDBs {
-		if r.ID == dsID {
-			m.cfg.ProjectDBID = r.Parent.DatabaseID
-			return
-		}
-	}
-}
-
 // setAssignee records the user slices are claimed as.
 func (m *Onboarding) setAssignee(userID string) {
 	m.cfg.AssigneeUserID = userID
@@ -344,60 +409,39 @@ var (
 		"no pages found in this workspace to create the database under: create one in Notion, then start again")
 	errNoPeople = errors.New(
 		"no people found in this workspace, so there is nobody to claim slices as")
-	errNoDataSource = errors.New("create project database: no data source was returned")
+	errNoDataSource = errors.New("no data source was returned")
 )
 
-// The Notion calls made between steps. Each returns a message carrying either
+// The Notion calls the wizard makes. Each returns a message carrying either
 // the result or the error.
 
-func (m *Onboarding) loadProjectDBs() tea.Msg {
-	ctx := context.Background()
-	dbs, err := m.client.Search(ctx, "", notion.SearchDataSource)
-	if err != nil {
-		return projectDBsMsg{err: fmt.Errorf("search for databases: %w", err)}
+// searchRoots fetches one page of the workspace search. Its result message
+// carries the cursor, so each arrival queues the next fetch until the search
+// is exhausted.
+func (m *Onboarding) searchRoots(cursor string) tea.Cmd {
+	return func() tea.Msg {
+		results, next, err := m.client.SearchPaged(context.Background(), "", notion.SearchPage, cursor)
+		if err != nil {
+			return rootPagesMsg{err: fmt.Errorf("search for pages: %w", err)}
+		}
+		return rootPagesMsg{results: results, cursor: next}
 	}
-	// Pages give the tree its branches, and later the parent to create a new
-	// database under, so they are loaded up front alongside the databases.
-	pages, err := m.client.Search(ctx, "", notion.SearchPage)
-	if err != nil {
-		return projectDBsMsg{err: fmt.Errorf("search for pages: %w", err)}
-	}
-	return projectDBsMsg{results: dbs, pages: pages, parents: m.databaseParents(ctx, dbs)}
 }
 
-// databaseParents fetches where each candidate database lives, a few at a
-// time. A fetch that fails just leaves its database's parent unknown — shown
-// at the tree's root — rather than stopping onboarding over placement.
-func (m *Onboarding) databaseParents(ctx context.Context, dbs []notion.SearchResult) map[string]notion.Parent {
-	seen := map[string]bool{}
-	ids := make([]string, 0, len(dbs))
-	for _, r := range dbs {
-		if id := r.Parent.DatabaseID; id != "" && !seen[id] {
-			seen[id] = true
-			ids = append(ids, id)
-		}
+// loadPageEntries fetches what lives in one page, for the picker to show under
+// its node.
+func (m *Onboarding) loadPageEntries(node *treeNode) tea.Cmd {
+	return func() tea.Msg {
+		entries, err := m.client.PageEntries(context.Background(), node.pageID)
+		return pageEntriesMsg{node: node, entries: entries, err: err}
 	}
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, 4)
-	parents := make(map[string]notion.Parent, len(ids))
-	for _, id := range ids {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			db, err := m.client.GetDatabase(ctx, id)
-			if err != nil {
-				return
-			}
-			mu.Lock()
-			parents[id] = db.Parent
-			mu.Unlock()
-		}()
-	}
-	wg.Wait()
-	return parents
+}
+
+// resolveProjectDB fetches the chosen database for its data source ID — the
+// selection is the first and only time a database is fetched.
+func (m *Onboarding) resolveProjectDB() tea.Msg {
+	db, err := m.client.GetDatabase(context.Background(), m.chosenDBID)
+	return projectDBResolvedMsg{db: db, err: err}
 }
 
 func (m *Onboarding) createProjectDB() tea.Msg {
@@ -468,6 +512,14 @@ func resultLabel(r notion.SearchResult) string {
 		return t
 	}
 	return "(untitled) " + r.ID
+}
+
+// entryLabel is how a page's child page or database is listed.
+func entryLabel(e notion.PageEntry) string {
+	if e.Title != "" {
+		return e.Title
+	}
+	return "(untitled) " + e.ID
 }
 
 // userLabel is how a person is listed, with their email when the integration
