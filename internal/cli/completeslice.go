@@ -34,7 +34,7 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	if len(rest) != 1 {
 		return usageErrorf("complete-slice: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	pageID, err := pageID(rest[0])
+	pageID, err := pageID("complete-slice", rest[0])
 	if err != nil {
 		return err
 	}
@@ -115,8 +115,10 @@ var uuidTail = regexp.MustCompile(`(?i)[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0
 // pageID reads the page ID out of however the slice was named: the ID itself,
 // or a Notion URL, whose last path segment ends in the ID after a title slug.
 // Both are what an agent has to hand — the brief prints them one under the
-// other — so both are accepted rather than one being the right one.
-func pageID(ref string) (string, error) {
+// other — so both are accepted rather than one being the right one. The command
+// is named because more than one takes a slice this way, and a misuse should
+// say which one it was.
+func pageID(command, ref string) (string, error) {
 	s := ref
 	if i := strings.IndexAny(s, "?#"); i >= 0 {
 		s = s[:i]
@@ -127,7 +129,7 @@ func pageID(ref string) (string, error) {
 	}
 	id := uuidTail.FindString(s)
 	if id == "" {
-		return "", usageErrorf("complete-slice: %q is not a slice: give its Notion URL or page ID", ref)
+		return "", usageErrorf("%s: %q is not a slice: give its Notion URL or page ID", command, ref)
 	}
 	return id, nil
 }

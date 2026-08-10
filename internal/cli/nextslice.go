@@ -187,8 +187,10 @@ func briefOf(s domain.Slice, m domain.Milestone, project config.ProjectConfig, a
 	return brief{Slice: s, Milestone: m, Repo: repo, Assignee: assignee, Body: body, Conventions: conventions}
 }
 
-// nextSliceJSON is the structured form of the brief, for anything parsing it.
-type nextSliceJSON struct {
+// briefJSON is the structured form of the brief, for anything parsing it. It is
+// what both commands that hand out a brief print, so an agent reads the same
+// document however it was started.
+type briefJSON struct {
 	Slice   briefSliceJSON `json:"slice"`
 	Project projectJSON    `json:"project"`
 }
@@ -208,7 +210,7 @@ type briefSliceJSON struct {
 // writeBriefJSON encodes the brief, indented for the same reason info's is: it
 // is read by people as often as by programs.
 func writeBriefJSON(out io.Writer, b brief, projectID, projectName string) error {
-	doc := nextSliceJSON{
+	doc := briefJSON{
 		Slice: briefSliceJSON{
 			ID:            b.Slice.ID,
 			Name:          b.Slice.Name,
@@ -236,7 +238,9 @@ func briefMarkdown(b brief, projectName string) string {
 	fmt.Fprintf(&s, "Claimed for %s. Work exactly this slice.\n\n", b.Assignee)
 
 	fmt.Fprintf(&s, "- Project: %s\n", projectName)
-	fmt.Fprintf(&s, "- Milestone: %s\n", b.Milestone.Name)
+	if b.Milestone.Name != "" {
+		fmt.Fprintf(&s, "- Milestone: %s\n", b.Milestone.Name)
+	}
 	fmt.Fprintf(&s, "- Notion page: %s\n", b.Slice.ID)
 	if b.Slice.URL != "" {
 		fmt.Fprintf(&s, "- Notion URL: %s\n", b.Slice.URL)

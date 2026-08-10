@@ -54,6 +54,9 @@ usage:
   nat info [--json]   print the active project's conventions, milestones and slices
   nat next-slice [--json]
                       claim the next Todo slice and print its brief
+  nat start-slice <slice> [--json]
+                      claim one named Todo slice, by URL or ID, and print its
+                      brief
   nat complete-slice <slice> [--pr URL] [--summary TEXT] [--blocked]
                       close out a slice you claimed: Done, its PR, and a
                       summary appended to its page — or, with --blocked, left
@@ -92,6 +95,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return info(ctx, args[1:], env)
 	case "next-slice":
 		return nextSlice(ctx, args[1:], env)
+	case "start-slice":
+		return startSlice(ctx, args[1:], env)
 	case "complete-slice":
 		return completeSlice(ctx, args[1:], env)
 	case "help", "-h", "--help":

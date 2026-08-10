@@ -233,11 +233,11 @@ func TestNextSlicePrintsJSON(t *testing.T) {
 		t.Fatalf("next-slice --json: %v", err)
 	}
 
-	var got nextSliceJSON
+	var got briefJSON
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
 		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
 	}
-	want := nextSliceJSON{
+	want := briefJSON{
 		Slice: briefSliceJSON{
 			ID: "s3", Name: "Render the board", Status: notion.SliceClaimed,
 			Assignee: "Craig Johnston", MilestoneID: "m2", MilestoneName: "M2: Board",
