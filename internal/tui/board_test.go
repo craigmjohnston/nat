@@ -128,10 +128,10 @@ func TestBoardRendersEveryGroupExpanded(t *testing.T) {
 
 func TestBoardMarksSlicesWithALiveSession(t *testing.T) {
 	b := newTestBoard()
-	// The claimed slice's agent, and a session belonging to something else.
-	b.SetLive(map[string]bool{
-		agent.SessionName("s4"): true,
-		"nat-deadbeef":          true,
+	// The claimed slice's agent, and one working a slice of another project.
+	b.SetLive(map[string]string{
+		"s4":            agent.SessionName("s4"),
+		"another-slice": "nat-deadbeef",
 	})
 
 	golden(t, "board-live", b.View())

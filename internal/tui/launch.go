@@ -17,12 +17,13 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 )
 
-// AgentLauncher is what the launch flow needs of tmux: which of our sessions
-// are running, how to start one, and the command that attaches to it. It is an
-// interface so the flow can be driven without a tmux server.
+// AgentLauncher is what the launch flow needs of tmux: which slices have an
+// agent running and in which session, how to start one, and the command that
+// attaches to it. It is an interface so the flow can be driven without a tmux
+// server.
 type AgentLauncher interface {
-	LiveSessions() (map[string]bool, error)
-	Launch(session, workdir, promptFile string) error
+	LiveSlices() (map[string]string, error)
+	Launch(session, workdir, promptFile, sliceID string) error
 	AttachCmd(session string) *exec.Cmd
 }
 
@@ -56,10 +57,10 @@ type (
 		session string
 		err     error
 	}
-	// liveSessionsMsg carries the sessions currently running, or the read that
-	// failed instead.
+	// liveSessionsMsg carries the slices with an agent running, each mapped to
+	// the session it is running in, or the read that failed instead.
 	liveSessionsMsg struct {
-		live map[string]bool
+		live map[string]string
 		err  error
 	}
 	// liveTickMsg is the periodic prod to re-read them.
@@ -142,7 +143,7 @@ func launchAgent(l AgentLauncher, c agent.PromptContext) tea.Cmd {
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch agent: %w", err)}
 		}
-		if err := l.Launch(session, c.WorkingDir, file); err != nil {
+		if err := l.Launch(session, c.WorkingDir, file, c.Slice.ID); err != nil {
 			return agentLaunchedMsg{err: err}
 		}
 		return agentLaunchedMsg{slice: c.Slice, session: session}
@@ -240,7 +241,7 @@ func (a *App) launchAgentFlow() tea.Cmd {
 		a.note = "Move to a slice to launch an agent for it."
 		return nil
 	}
-	if a.live[agent.SessionName(s.ID)] {
+	if a.live[s.ID] != "" {
 		a.note = fmt.Sprintf("An agent is already running for %q — press t to attach.", s.Name)
 		return nil
 	}
@@ -273,8 +274,8 @@ func (a *App) attachAgentFlow() tea.Cmd {
 		a.note = "Move to a slice to attach to its agent."
 		return nil
 	}
-	session := agent.SessionName(s.ID)
-	if !a.live[session] {
+	session := a.live[s.ID]
+	if session == "" {
 		a.note = fmt.Sprintf("No agent session is running for %q.", s.Name)
 		return nil
 	}
@@ -290,7 +291,7 @@ func (a *App) refreshLive() tea.Cmd {
 	}
 	l := a.launcher
 	return func() tea.Msg {
-		live, err := l.LiveSessions()
+		live, err := l.LiveSlices()
 		return liveSessionsMsg{live: live, err: err}
 	}
 }
@@ -300,7 +301,7 @@ func (a *App) refreshLive() tea.Cmd {
 // still worth looking at without knowing what is running.
 func (a *App) liveLoaded(msg liveSessionsMsg) {
 	if msg.err != nil {
-		a.live, a.note = nil, fmt.Sprintf("Could not read tmux sessions: %v", msg.err)
+		a.live, a.note = nil, fmt.Sprintf("Could not read tmux panes: %v", msg.err)
 	} else {
 		a.live = msg.live
 	}

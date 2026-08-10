@@ -19,8 +19,10 @@ model).
   retried once with a fresh one, so a token rotated by the CLI is picked up
   mid-session.
 - `internal/domain/` — Project/Milestone/Slice models, progress math
-- `internal/agent/` — agent prompt template + tmux session management
-  (sessions named `nat-<first-8-hex-of-slice-page-id>`)
+- `internal/agent/` — agent prompt template + tmux session management. A
+  running agent is identified by its pane's `@nat_slice` option (the full slice
+  page ID); the session name `nat-<last-8-hex-of-slice-page-id>` is only a
+  human label, and takes the tail because page IDs share a leading prefix.
 - `internal/tui/` — bubbletea v2 (`charm.land/*/v2` imports); root model in
   `app.go` routes screens; all Notion I/O via tea.Cmd → typed msgs
 - `skills/queue-work/` — the /queue-work planning skill (symlinked into

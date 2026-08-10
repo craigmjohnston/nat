@@ -27,11 +27,11 @@ func TestMain(m *testing.M) {
 }
 
 // launchCall is one session the launcher was asked to start.
-type launchCall struct{ session, workdir, promptFile string }
+type launchCall struct{ session, workdir, promptFile, sliceID string }
 
 // fakeLauncher records what it was asked to do, in place of a tmux server.
 type fakeLauncher struct {
-	live      map[string]bool
+	live      map[string]string
 	liveErr   error
 	launchErr error
 
@@ -41,15 +41,15 @@ type fakeLauncher struct {
 
 var _ AgentLauncher = (*fakeLauncher)(nil)
 
-func (f *fakeLauncher) LiveSessions() (map[string]bool, error) {
+func (f *fakeLauncher) LiveSlices() (map[string]string, error) {
 	if f.liveErr != nil {
 		return nil, f.liveErr
 	}
 	return f.live, nil
 }
 
-func (f *fakeLauncher) Launch(session, workdir, promptFile string) error {
-	f.launches = append(f.launches, launchCall{session, workdir, promptFile})
+func (f *fakeLauncher) Launch(session, workdir, promptFile, sliceID string) error {
+	f.launches = append(f.launches, launchCall{session, workdir, promptFile, sliceID})
 	return f.launchErr
 }
 
@@ -83,15 +83,16 @@ func launchApp(t *testing.T) (*App, *fakeLauncher, string) {
 	return app, launcher, workdir
 }
 
-// sessionOf is the tmux session name of a row's slice.
-func sessionOf(t *testing.T, a *App, cursor int) string {
+// sliceAt is the ID of the slice on a row — what a live agent is keyed by —
+// with the name of the session such an agent would be running in.
+func sliceAt(t *testing.T, a *App, cursor int) (id, session string) {
 	t.Helper()
 	a.board.cursor = cursor
 	s, ok := a.board.SelectedSlice()
 	if !ok {
 		t.Fatalf("row %d is not a slice", cursor)
 	}
-	return agent.SessionName(s.ID)
+	return s.ID, agent.SessionName(s.ID)
 }
 
 // drive runs a command and threads what it produces back through the app until
@@ -261,6 +262,11 @@ func TestAppLaunchStartsTheSessionAndOffersToAttach(t *testing.T) {
 	if got.workdir != workdir {
 		t.Errorf("workdir = %q, want %q", got.workdir, workdir)
 	}
+	// The full ID, not the session name: it is what the running agent is found
+	// by afterwards.
+	if got.sliceID != "s5" {
+		t.Errorf("slice = %q, want %q", got.sliceID, "s5")
+	}
 
 	// The agent is seeded from the file, so what is in it is the whole contract.
 	prompt, err := os.ReadFile(got.promptFile)
@@ -390,8 +396,8 @@ func TestAppLaunchRefusesASliceThatIsNotTodo(t *testing.T) {
 
 func TestAppLaunchRefusesASliceAlreadyRunning(t *testing.T) {
 	app, _, _ := launchApp(t)
-	session := sessionOf(t, app, rowTodoSlice)
-	app.live = map[string]bool{session: true}
+	id, session := sliceAt(t, app, rowTodoSlice)
+	app.live = map[string]string{id: session}
 
 	press(app, "l")
 
@@ -400,6 +406,50 @@ func TestAppLaunchRefusesASliceAlreadyRunning(t *testing.T) {
 	}
 	if want := `An agent is already running for "Info view" — press t to attach.`; app.note != want {
 		t.Errorf("note = %q, want %q", app.note, want)
+	}
+}
+
+// Two slices of one project share nearly all of their page ID, which used to
+// make them one agent as far as the board was concerned: launching the second
+// was refused, both rows lit up, and t went to whichever agent started first.
+func TestAppTellsApartAgentsOnSlicesSharingAnIDPrefix(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	claimed, todo := "3b738308f654812dac8dd4c80dfecb09", "3b738308f65481708c99eccab4463d8f"
+	app.project.Slices[3].ID = claimed // Board screen, Claimed
+	app.project.Slices[4].ID = todo    // Info view, Todo
+	app.board.SetProject(app.project)
+	launcher.live = map[string]string{claimed: agent.SessionName(claimed)}
+
+	feed(t, app, app.refreshLive())
+
+	// Only the slice whose agent is running is marked.
+	view := stripANSI(app.View().Content)
+	if !strings.Contains(view, "Board screen ●") {
+		t.Errorf("the live slice is unmarked:\n%s", view)
+	}
+	if strings.Contains(view, "Info view ●") {
+		t.Errorf("a slice with no agent of its own is marked:\n%s", view)
+	}
+
+	// t on the claimed slice attaches to its agent, not to the other one.
+	app.board.cursor = rowClaimedSlice
+	press(app, "t")
+	if want := []string{agent.SessionName(claimed)}; !equal(launcher.attached, want) {
+		t.Errorf("attached = %v, want %v", launcher.attached, want)
+	}
+	app.busy = false // as detaching would leave it
+
+	// And the slice with no agent can still be launched, under a session name
+	// of its own rather than one tmux would refuse as a duplicate.
+	app.board.cursor = rowTodoSlice
+	launch(t, app)
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
+	if got := launcher.launches[0]; got.sliceID != todo {
+		t.Errorf("slice = %q, want %q", got.sliceID, todo)
+	} else if got.session == agent.SessionName(claimed) {
+		t.Errorf("session = %q, want one the running agent is not already using", got.session)
 	}
 }
 
@@ -456,8 +506,8 @@ func TestAppAttachesToALiveSessionWhateverTheSlicesStatus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			app, launcher, _ := launchApp(t)
-			session := sessionOf(t, app, tt.cursor)
-			app.live = map[string]bool{session: true}
+			id, session := sliceAt(t, app, tt.cursor)
+			app.live = map[string]string{id: session}
 
 			if cmd := press(app, "t"); cmd == nil {
 				t.Fatal("t should attach to the live session")
@@ -508,7 +558,8 @@ func TestAppAttachIsRefusedWithNothingToAttachWith(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			app, _, _ := launchApp(t)
 			app.board.cursor = rowTodoSlice
-			app.live = map[string]bool{sessionOf(t, app, rowTodoSlice): true}
+			id, session := sliceAt(t, app, rowTodoSlice)
+			app.live = map[string]string{id: session}
 			tt.disable(app)
 
 			if cmd := press(app, "t"); cmd != nil {
@@ -556,13 +607,13 @@ func TestAppReloadsThePlanAfterAttaching(t *testing.T) {
 
 func TestAppMarksSlicesWithALiveSession(t *testing.T) {
 	app, launcher, _ := launchApp(t)
-	session := sessionOf(t, app, rowTodoSlice)
-	launcher.live = map[string]bool{session: true, "nat-someone-else": true}
+	id, session := sliceAt(t, app, rowTodoSlice)
+	launcher.live = map[string]string{id: session, "someone-elses-slice": "nat-elsewhere"}
 
 	feed(t, app, app.refreshLive())
 
-	if !app.live[session] {
-		t.Errorf("live = %v, want %q in it", app.live, session)
+	if app.live[id] != session {
+		t.Errorf("live = %v, want %q under %q", app.live, session, id)
 	}
 	view := stripANSI(app.View().Content)
 	if !strings.Contains(view, "Info view ●") {
@@ -575,7 +626,7 @@ func TestAppMarksSlicesWithALiveSession(t *testing.T) {
 
 func TestAppReportsAFailedSessionRead(t *testing.T) {
 	app, launcher, _ := launchApp(t)
-	app.live = map[string]bool{"nat-5": true}
+	app.live = map[string]string{"s5": "nat-5"}
 	launcher.liveErr = errors.New("no server")
 
 	feed(t, app, app.refreshLive())
@@ -583,7 +634,7 @@ func TestAppReportsAFailedSessionRead(t *testing.T) {
 	if app.live != nil {
 		t.Errorf("live = %v, want it cleared when it cannot be read", app.live)
 	}
-	if !strings.Contains(app.note, "Could not read tmux sessions: no server") {
+	if !strings.Contains(app.note, "Could not read tmux panes: no server") {
 		t.Errorf("note = %q, want the failed read", app.note)
 	}
 	// A background poll is not worth an error banner over the board.
@@ -612,13 +663,13 @@ func TestAppRefreshesLiveSessions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			app, launcher, _ := launchApp(t)
-			session := sessionOf(t, app, rowTodoSlice)
-			launcher.live = map[string]bool{session: true}
+			id, session := sliceAt(t, app, rowTodoSlice)
+			launcher.live = map[string]string{id: session}
 
 			feed(t, app, tt.act(t, app))
 
-			if !app.live[session] {
-				t.Errorf("live = %v, want the sessions re-read", app.live)
+			if app.live[id] != session {
+				t.Errorf("live = %v, want the running agents re-read", app.live)
 			}
 		})
 	}

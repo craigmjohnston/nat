@@ -8,7 +8,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/domain"
 )
 
@@ -112,9 +111,9 @@ type Board struct {
 	expanded map[string]bool
 	rows     []row
 	cursor   int
-	// live is the set of running tmux session names, keyed as the launcher
-	// reports them, so a slice with an agent on it can be marked.
-	live map[string]bool
+	// live maps the ID of each slice with an agent running to the session it
+	// runs in, so a slice with an agent on it can be marked.
+	live map[string]string
 
 	width int
 }
@@ -136,9 +135,9 @@ func (b *Board) SetProject(p *domain.Project) {
 // truncated rather than wrapped, so one slice stays one line.
 func (b *Board) SetWidth(width int) { b.width = width }
 
-// SetLive records the tmux sessions currently running, which is what the live
+// SetLive records the slices with an agent running, which is what the live
 // marker on a slice is drawn from.
-func (b *Board) SetLive(live map[string]bool) { b.live = live }
+func (b *Board) SetLive(live map[string]string) { b.live = live }
 
 // groupKey identifies a group across reloads. The implicit Unassigned group has
 // no milestone and so no ID, which is a key no milestone can collide with.
@@ -318,7 +317,7 @@ func (b Board) renderMilestone(g domain.Group, selected bool) string {
 // question from where the slice has got to.
 func (b Board) renderSlice(s domain.Slice) string {
 	parts := []string{b.sliceIcon(s.Status), s.Name}
-	if b.live[agent.SessionName(s.ID)] {
+	if b.live[s.ID] != "" {
 		parts = append(parts, b.styles.Live.Render("●"))
 	}
 	if s.AssigneeName != "" {
