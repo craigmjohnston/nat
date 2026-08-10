@@ -97,13 +97,32 @@ func tmuxHint(err error) error {
 }
 
 // run builds the root model and hands it to Bubble Tea.
+//
+// The agents are given back through a defer rather than after the program
+// returns, so that a panic unwinding through here frees them too: a pane joined
+// into the board's window dies with that window, and a crash is exactly when
+// nobody is left to notice that an agent went with it.
 func run(tokens config.TokenSource, in io.Reader, out io.Writer) error {
 	app, err := buildApp(tokens)
 	if err != nil {
 		return err
 	}
+	defer release(app)
 	_, err = tea.NewProgram(app, tea.WithInput(in), tea.WithOutput(out)).Run()
 	return err
+}
+
+// releaser is the app as the way out sees it: the one call that hands the
+// joined agent panes back.
+type releaser interface{ Release() error }
+
+// release gives the agents back, reporting a failure on stderr. There is
+// nowhere better to say it: the terminal has been given up by the time this
+// runs, and on the panic path the error being returned is not ours.
+func release(r releaser) {
+	if err := r.Release(); err != nil {
+		fmt.Fprintln(stderr, "nat:", err)
+	}
 }
 
 // buildApp decides which screen the app starts on: the first-run wizard when

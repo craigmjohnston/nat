@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/tui"
@@ -39,7 +40,52 @@ func writeConfig(t *testing.T, contents string) {
 func configuredHome(t *testing.T) config.TokenSource {
 	t.Helper()
 	writeConfig(t, `{"assignee_user_name":"Craig Johnston"}`)
+	// The app these tests build drives the real tmux, and on the way out it
+	// asks tmux about the pane it is drawing in. Running the suite from inside
+	// tmux would otherwise make that a real call about a real pane.
+	t.Setenv(agent.PaneEnv, "")
 	return config.StaticToken(testToken)
+}
+
+// stubReleaser stands in for the app on the way out.
+type stubReleaser struct {
+	err      error
+	released bool
+}
+
+func (s *stubReleaser) Release() error {
+	s.released = true
+	return s.err
+}
+
+func TestReleaseGivesTheAgentsBack(t *testing.T) {
+	var errOut bytes.Buffer
+	stderr = &errOut
+	t.Cleanup(func() { stderr = os.Stderr })
+	r := &stubReleaser{}
+
+	release(r)
+
+	if !r.released {
+		t.Error("the joined agent panes should be handed back")
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("stderr = %q, want nothing", errOut.String())
+	}
+}
+
+// The terminal has been given up by the time this runs, so stderr is the only
+// place left to say that an agent could not be freed.
+func TestReleaseReportsAFailureOnStderr(t *testing.T) {
+	var errOut bytes.Buffer
+	stderr = &errOut
+	t.Cleanup(func() { stderr = os.Stderr })
+
+	release(&stubReleaser{err: errors.New("no server")})
+
+	if !strings.Contains(errOut.String(), "nat: no server") {
+		t.Errorf("stderr = %q, want the failure reported", errOut.String())
+	}
 }
 
 // failingTokens is a TokenSource that always fails with a given error.

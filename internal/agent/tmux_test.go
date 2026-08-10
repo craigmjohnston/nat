@@ -414,6 +414,177 @@ func TestShowPaneClearsUpAfterAFailedBreakOut(t *testing.T) {
 	}
 }
 
+// breakOutCalls is the tmux argv sequence that sends one pane back to a
+// session of its own, with placeholder as the pane the new session came up on.
+func breakOutCalls(paneID, session, placeholder string) []call {
+	return []call{
+		{name: "tmux", args: []string{"new-session", "-d", "-s", session,
+			"-P", "-F", "#{pane_id}", placeholderCommand}},
+		{name: "tmux", args: []string{"join-pane", "-s", paneID, "-t", session + ":"}},
+		{name: "tmux", args: []string{"kill-pane", "-t", placeholder}},
+	}
+}
+
+// Quitting with agents joined: every one of them is sent back to a session of
+// its own, so that the window closing behind the board does not take them.
+func TestBreakOutJoinedFreesTheAgentsInTheBoardsWindow(t *testing.T) {
+	first, second := agentApart, agentApart
+	first.session, first.window = boardPane.session, boardPane.window
+	second.slice, second.id = "3b738308-f654-812d-ac8d-d4c80dfecb09", "%2"
+	second.session, second.window = boardPane.session, boardPane.window
+	// An agent already in a session of its own, in a window of its own: not
+	// the board's to move, and not at risk from the board going away.
+	elsewhere := agentApart
+	elsewhere.slice, elsewhere.id, elsewhere.window = "3b738308-f654-8199-ac8d-aaaaaaaaaaaa", "%3", "@9"
+	r := &fakeRunner{
+		outs: map[string]string{"list-panes": panesOutput(boardPane, first, second, elsewhere)},
+		out:  "%9\n",
+	}
+
+	moved, err := NewTmuxWithRunner(r).BreakOutJoined(boardPane.id)
+	if err != nil {
+		t.Fatalf("BreakOutJoined: %v", err)
+	}
+	if moved != 2 {
+		t.Errorf("moved = %d, want both joined agents", moved)
+	}
+
+	want := []call{{name: "tmux", args: []string{"list-panes", "-a", "-F", listPanesFormat()}}}
+	want = append(want, breakOutCalls(first.id, SessionName(first.slice), "%9")...)
+	want = append(want, breakOutCalls(second.id, SessionName(second.slice), "%9")...)
+	if !reflect.DeepEqual(r.calls, want) {
+		t.Errorf("calls = %+v, want %+v", r.calls, want)
+	}
+}
+
+// The board's pane is not on the server — it was never in tmux, or it has
+// already gone — so there is no window whose closing could take an agent.
+func TestBreakOutJoinedWithoutABoardPane(t *testing.T) {
+	for _, host := range []string{"", "%404"} {
+		r := &fakeRunner{outs: map[string]string{"list-panes": panesOutput(agentApart)}}
+
+		moved, err := NewTmuxWithRunner(r).BreakOutJoined(host)
+		if err != nil {
+			t.Fatalf("BreakOutJoined(%q): %v", host, err)
+		}
+		if moved != 0 {
+			t.Errorf("moved = %d for host %q, want nothing moved", moved, host)
+		}
+		if len(r.calls) != 1 {
+			t.Errorf("calls = %+v for host %q, want only the pane list", r.calls, host)
+		}
+	}
+}
+
+func TestBreakOutJoinedReportsAFailedListing(t *testing.T) {
+	boom := &ExitError{Code: 2, Stderr: "boom"}
+	r := &fakeRunner{errs: map[string]error{"list-panes": boom}}
+
+	if _, err := NewTmuxWithRunner(r).BreakOutJoined(boardPane.id); !errors.Is(err, boom) {
+		t.Errorf("err = %v, want it to wrap %v", err, boom)
+	}
+}
+
+// One pane that will not move must not strand the ones behind it: each of them
+// left joined is another agent the closing window would kill.
+func TestBreakOutJoinedCarriesOnPastAFailure(t *testing.T) {
+	first, second := agentApart, agentApart
+	first.session, first.window = boardPane.session, boardPane.window
+	second.slice, second.id = "3b738308-f654-812d-ac8d-d4c80dfecb09", "%2"
+	second.session, second.window = boardPane.session, boardPane.window
+	r := &fakeRunner{
+		outs: map[string]string{"list-panes": panesOutput(boardPane, first, second)},
+		errs: map[string]error{"new-session": &ExitError{Code: 1, Stderr: "duplicate session"}},
+	}
+
+	moved, err := NewTmuxWithRunner(r).BreakOutJoined(boardPane.id)
+	if moved != 0 {
+		t.Errorf("moved = %d, want nothing moved", moved)
+	}
+	if err == nil {
+		t.Fatal("BreakOutJoined: want the failures reported, got nil")
+	}
+	for _, s := range []string{SessionName(first.slice), SessionName(second.slice)} {
+		if !strings.Contains(err.Error(), s) {
+			t.Errorf("err = %v, want it to name %s", err, s)
+		}
+	}
+}
+
+// Starting up after a run that died: the agents it left in the TUI's session,
+// and any in the window this board is coming up in, are re-homed rather than
+// left somewhere a window close would kill them.
+func TestReclaimStraysReHomesThePanesAnEarlierRunLeft(t *testing.T) {
+	stray := agentApart
+	stray.session, stray.window = TUISession, "@4"
+	inWindow := agentApart
+	inWindow.slice, inWindow.id = "3b738308-f654-812d-ac8d-d4c80dfecb09", "%2"
+	inWindow.session, inWindow.window = "someone-elses", boardPane.window
+	r := &fakeRunner{
+		// agentApart itself is in a session of its own already: a running
+		// agent nobody has shown, which is exactly where it should be.
+		outs: map[string]string{"list-panes": panesOutput(boardPane, stray, inWindow, agentApart)},
+		out:  "%9\n",
+	}
+
+	moved, err := NewTmuxWithRunner(r).ReclaimStrays(boardPane.id)
+	if err != nil {
+		t.Fatalf("ReclaimStrays: %v", err)
+	}
+	if moved != 2 {
+		t.Errorf("moved = %d, want both strays re-homed", moved)
+	}
+
+	want := []call{{name: "tmux", args: []string{"list-panes", "-a", "-F", listPanesFormat()}}}
+	want = append(want, breakOutCalls(stray.id, SessionName(stray.slice), "%9")...)
+	want = append(want, breakOutCalls(inWindow.id, SessionName(inWindow.slice), "%9")...)
+	if !reflect.DeepEqual(r.calls, want) {
+		t.Errorf("calls = %+v, want %+v", r.calls, want)
+	}
+}
+
+// The board is coming up somewhere tmux does not know about, so there is no
+// window of its own to sweep — but the TUI session a crash left behind is
+// still there to be swept.
+func TestReclaimStraysWithoutABoardPane(t *testing.T) {
+	stray := agentApart
+	stray.session = TUISession
+	r := &fakeRunner{
+		outs: map[string]string{"list-panes": panesOutput(stray, agentApart)},
+		out:  "%9\n",
+	}
+
+	moved, err := NewTmuxWithRunner(r).ReclaimStrays("")
+	if err != nil {
+		t.Fatalf("ReclaimStrays: %v", err)
+	}
+	if moved != 1 {
+		t.Errorf("moved = %d, want the stray in %s re-homed", moved, TUISession)
+	}
+}
+
+func TestReclaimStraysReportsAFailedListing(t *testing.T) {
+	boom := &ExitError{Code: 2, Stderr: "boom"}
+	r := &fakeRunner{errs: map[string]error{"list-panes": boom}}
+
+	if _, err := NewTmuxWithRunner(r).ReclaimStrays(boardPane.id); !errors.Is(err, boom) {
+		t.Errorf("err = %v, want it to wrap %v", err, boom)
+	}
+}
+
+// Nothing to reclaim is the ordinary startup, and it costs one tmux call.
+func TestReclaimStraysWithNothingToDo(t *testing.T) {
+	r := &fakeRunner{outs: map[string]string{"list-panes": panesOutput(boardPane)}}
+
+	moved, err := NewTmuxWithRunner(r).ReclaimStrays(boardPane.id)
+	if err != nil || moved != 0 {
+		t.Fatalf("ReclaimStrays = %d, %v, want 0, nil", moved, err)
+	}
+	if len(r.calls) != 1 {
+		t.Errorf("calls = %+v, want only the pane list", r.calls)
+	}
+}
+
 func TestHostPane(t *testing.T) {
 	t.Setenv(PaneEnv, "%3")
 	if got := HostPane(); got != "%3" {

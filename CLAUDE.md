@@ -29,6 +29,9 @@ model).
   human label, and takes the tail because page IDs share a leading prefix.
   `ShowPane` toggles that pane between the board's window (`join-pane`, sized by
   `agent_split_percent`, default 65% to the agent) and a session of its own.
+  A joined pane dies with the board's window, so `BreakOutJoined` frees every
+  such pane as the app leaves (deferred in `main`, so a panic frees them too)
+  and `ReclaimStrays` re-homes on startup whatever an earlier run left joined.
 - `internal/tui/` — bubbletea v2 (`charm.land/*/v2` imports); root model in
   `app.go` routes screens; all Notion I/O via tea.Cmd → typed msgs
 - `skills/queue-work/` — the /queue-work planning skill (symlinked into
