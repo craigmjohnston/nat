@@ -118,7 +118,7 @@ func TestAppQueueAsksAboutTheSelectedMilestone(t *testing.T) {
 			// The board is still there behind the question, which is the point of
 			// asking it on the bar.
 			view := stripANSI(app.View().Content)
-			for _, want := range []string{tt.want, "(y/n)", "M1: Config"} {
+			for _, want := range []string{tt.want, "(y/n)", "1 ▸ Config"} {
 				if !strings.Contains(view, want) {
 					t.Errorf("view is missing %q:\n%s", want, view)
 				}

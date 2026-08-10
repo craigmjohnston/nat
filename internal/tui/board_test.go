@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -126,6 +127,65 @@ func TestBoardRendersEveryGroupExpanded(t *testing.T) {
 	golden(t, "board-expanded", b.View())
 }
 
+// ansi strips the colour codes, leaving the characters the alignment tests
+// measure columns over.
+var ansi = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+// TestBoardRendersAsATable pins the tabular layout: the milestone's plan
+// number is its own column rather than an inline "M2:" prefix, and the counts
+// and status pills right-align into straight vertical columns.
+func TestBoardRendersAsATable(t *testing.T) {
+	b := newTestBoard()
+	lines := strings.Split(ansi.ReplaceAllString(b.View(), ""), "\n")
+
+	for _, line := range lines {
+		if strings.Contains(line, "M1") || strings.Contains(line, "M2") || strings.Contains(line, "M3") {
+			t.Errorf("line %q still carries an inline milestone number", line)
+		}
+	}
+	for i, want := range map[int]string{0: "1 ▸ Config", 1: "2 ▾ Board", 5: "3 ▸ Mutations", 6: "▾ Unassigned"} {
+		if !strings.Contains(lines[i], want) {
+			t.Errorf("line %d = %q, want it to contain %q", i, lines[i], want)
+		}
+	}
+
+	// endColumn is the display column a substring ends on, which is what has
+	// to match for the cells to read as one column — byte offsets would lie on
+	// the lines that carry multi-byte runes like the cursor and fold glyphs.
+	endColumn := func(line, sub string) int {
+		at := strings.Index(line, sub)
+		if at < 0 {
+			return -1
+		}
+		return lipgloss.Width(line[:at+len(sub)])
+	}
+	countEnd, pillEnd := -1, -1
+	for i, count := range map[int]string{0: "2/2", 1: "1/3", 5: "0/0", 6: "0/1"} {
+		got := endColumn(lines[i], count)
+		if got < 0 {
+			t.Fatalf("line %d = %q, want the count %q on it", i, lines[i], count)
+		}
+		if countEnd == -1 {
+			countEnd = got
+		}
+		if got != countEnd {
+			t.Errorf("line %d ends its count at column %d, want %d:\n%q", i, got, countEnd, lines[i])
+		}
+	}
+	for i, pill := range map[int]string{0: "Done", 1: "Active", 5: "Queued"} {
+		got := endColumn(lines[i], pill)
+		if got < 0 {
+			t.Fatalf("line %d = %q, want the pill %q on it", i, lines[i], pill)
+		}
+		if pillEnd == -1 {
+			pillEnd = got
+		}
+		if got != pillEnd {
+			t.Errorf("line %d ends its pill at column %d, want %d:\n%q", i, got, pillEnd, lines[i])
+		}
+	}
+}
+
 func TestBoardMarksSlicesWithALiveSession(t *testing.T) {
 	b := newTestBoard()
 	// The claimed slice's agent, and one working a slice of another project.
@@ -223,7 +283,7 @@ func TestBoardDropsChipsInOrderAsItNarrows(t *testing.T) {
 	// each row still leads with its status glyph and the start of its name.
 	view = newLongRowBoard(40).View()
 	golden(t, "board-narrow-40", view)
-	for _, want := range []string{"Degrade slice rows", "Keep the status bar", "M7: Agent pane"} {
+	for _, want := range []string{"Degrade slice rows", "Keep the status bar", "Agent pane"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("at 40 the view is missing %q:\n%s", want, view)
 		}
@@ -458,7 +518,7 @@ func TestAppShowsTheBoardAndRoutesKeysToIt(t *testing.T) {
 	app.Update(projectLoadedMsg{project: testProject()})
 
 	view := app.View().Content
-	for _, want := range []string{"M1: Config", "M2: Board", "Board screen"} {
+	for _, want := range []string{"Config", "Board", "Board screen"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view is missing %q:\n%s", want, view)
 		}
