@@ -26,6 +26,9 @@ type Styles struct {
 	StatusDesc lipgloss.Style
 	StatusNote lipgloss.Style
 	StatusSep  lipgloss.Style
+	// StatusPrompt is the question of an open confirm, which is neither a note
+	// about something already done nor a key hint, and reads as neither.
+	StatusPrompt lipgloss.Style
 	// Error is the status bar of a failed Notion call.
 	Error lipgloss.Style
 	// ModeChip is the status bar's leading segment: the project's name on the
@@ -90,6 +93,8 @@ func DefaultStyles() Styles {
 		StatusDesc: bar.Foreground(lipgloss.White),
 		StatusNote: bar.Foreground(lipgloss.BrightGreen),
 		StatusSep:  bar.Foreground(lipgloss.White),
+
+		StatusPrompt: bar.Bold(true).Foreground(lipgloss.BrightYellow),
 
 		Error:    chip.Bold(true).Foreground(lipgloss.BrightWhite).Background(lipgloss.Red),
 		ModeChip: chip.Foreground(lipgloss.Black).Background(lipgloss.Cyan),
