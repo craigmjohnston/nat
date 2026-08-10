@@ -52,6 +52,29 @@ To run without tmux at all — accepting that the split view is unavailable — 
 NAT_NO_TMUX=1 nat
 ```
 
+### Watching an agent
+
+`t` on a slice with a running agent shows that agent in a pane beside the board;
+`t` again sends it back to a session of its own. The board keeps the keyboard
+while the agent runs next to it, and the mouse — enabled for the `nat-tui`
+session only, so your own tmux settings are left alone — moves between the two:
+click the agent to type at it, click the board to come back.
+
+The agent's share of the window defaults to 65%. To change it, add
+`agent_split_percent` to `~/.config/notion-agent-tracker/config.json`:
+
+```json
+{
+  "agent_split_percent": 75
+}
+```
+
+Anything outside 10–90 is treated as a typo and the default is used instead.
+
+Started outside tmux (`NAT_NO_TMUX=1`, or with tmux unavailable), there is no
+window to split: `t` hands the whole terminal to the agent's session instead,
+and detaching with `ctrl-b d` comes back to the board.
+
 Install the skills so `/queue-work` (plan work into the tracker) and
 `/next-slice` (pick up and complete the next slice) are available in any repo:
 
