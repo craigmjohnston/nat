@@ -18,7 +18,7 @@ import (
 // its slices grouped under them. Markdown by default, because the reader is
 // usually a person or a model; --json for anything parsing it.
 func info(ctx context.Context, args []string, env Env) error {
-	asJSON, err := parseInfoFlags(args)
+	asJSON, err := parseJSONFlag("info", args)
 	if err != nil {
 		return err
 	}
@@ -59,18 +59,19 @@ func info(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// parseInfoFlags reads the info command's flags. The flag package's own error
-// output is thrown away and the failure returned instead, so a bad flag is
-// reported the same way every other misuse is.
-func parseInfoFlags(args []string) (bool, error) {
-	flags := flag.NewFlagSet("info", flag.ContinueOnError)
+// parseJSONFlag reads the command line of a command whose only flag is --json
+// and which takes no arguments, which is every command here so far. The flag
+// package's own error output is thrown away and the failure returned instead, so
+// a bad flag is reported the same way every other misuse is.
+func parseJSONFlag(command string, args []string) (bool, error) {
+	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	if err := flags.Parse(args); err != nil {
-		return false, usageErrorf("info: %s", err)
+		return false, usageErrorf("%s: %s", command, err)
 	}
 	if flags.NArg() > 0 {
-		return false, usageErrorf("info: unexpected argument %q", flags.Arg(0))
+		return false, usageErrorf("%s: unexpected argument %q", command, flags.Arg(0))
 	}
 	return *asJSON, nil
 }

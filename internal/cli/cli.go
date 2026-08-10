@@ -18,6 +18,7 @@ import (
 type API interface {
 	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
 	GetBlockChildren(ctx context.Context, id string) ([]notion.Block, error)
+	UpdatePageProperties(ctx context.Context, pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
 }
 
 // NewClientFunc builds an API from a source of bearer tokens.
@@ -46,6 +47,8 @@ const Usage = `nat — track project work in Notion
 usage:
   nat                 open the board
   nat info [--json]   print the active project's conventions, milestones and slices
+  nat next-slice [--json]
+                      claim the next Todo slice and print its brief
   nat help            show this message
 `
 
@@ -78,6 +81,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 	switch args[0] {
 	case "info":
 		return info(ctx, args[1:], env)
+	case "next-slice":
+		return nextSlice(ctx, args[1:], env)
 	case "help", "-h", "--help":
 		_, err := io.WriteString(env.Out, Usage)
 		return err

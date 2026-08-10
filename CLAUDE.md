@@ -32,7 +32,9 @@ model).
   A joined pane dies with the board's window, so `BreakOutJoined` frees every
   such pane as the app leaves (deferred in `main`, so a panic frees them too)
   and `ReclaimStrays` re-homes on startup whatever an earlier run left joined.
-- `internal/cli/` — the headless commands (`nat info [--json]`), what the binary
+- `internal/cli/` — the headless commands (`nat info [--json]`,
+  `nat next-slice [--json]`, which claims the next Todo slice under the
+  lowest-ordered Active milestone and prints its brief), what the binary
   does when given a subcommand. Run before the tmux hosting step and with no TUI
   code in the path: a command prints to the terminal it was typed in and exits.
 - `internal/tui/` — bubbletea v2 (`charm.land/*/v2` imports); root model in

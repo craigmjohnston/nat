@@ -477,6 +477,10 @@ func (s stubAPI) GetBlockChildren(context.Context, string) ([]notion.Block, erro
 	return nil, s.err
 }
 
+func (s stubAPI) UpdatePageProperties(context.Context, string, map[string]notion.PropertyValue) (*notion.Page, error) {
+	return &notion.Page{}, s.err
+}
+
 // A subcommand runs headless and exits: no board, and no tmux, which would send
 // the output somewhere nobody is looking.
 func TestMainRunsACommandInsteadOfTheBoard(t *testing.T) {
