@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -167,6 +168,9 @@ func TestLaunch(t *testing.T) {
 			"-c", "/Users/craig/Projects/x",
 			"-P", "-F", "#{pane_id}",
 			"sh", "-c", `claude "$(cat '/tmp/prompt.md')"`,
+			// Chained onto the creation, so the session never shows a status
+			// bar — not even to someone attaching straight away.
+			";", "set-option", "-t", "nat-b4463d8f", "status", "off",
 		}},
 		{name: "tmux", args: []string{"set-option", "-p", "-t", "%7", "@nat_slice", id}},
 	}
@@ -289,7 +293,8 @@ func TestShowPaneBreaksAJoinedAgentBackOut(t *testing.T) {
 	want := []call{
 		{name: "tmux", args: []string{"list-panes", "-a", "-F", listPanesFormat()}},
 		{name: "tmux", args: []string{"new-session", "-d", "-s", session,
-			"-P", "-F", "#{pane_id}", placeholderCommand}},
+			"-P", "-F", "#{pane_id}", placeholderCommand,
+			";", "set-option", "-t", session, "status", "off"}},
 		{name: "tmux", args: []string{"join-pane", "-s", "%1", "-t", session + ":"}},
 		{name: "tmux", args: []string{"kill-pane", "-t", "%9"}},
 	}
@@ -419,7 +424,8 @@ func TestShowPaneClearsUpAfterAFailedBreakOut(t *testing.T) {
 func breakOutCalls(paneID, session, placeholder string) []call {
 	return []call{
 		{name: "tmux", args: []string{"new-session", "-d", "-s", session,
-			"-P", "-F", "#{pane_id}", placeholderCommand}},
+			"-P", "-F", "#{pane_id}", placeholderCommand,
+			";", "set-option", "-t", session, "status", "off"}},
 		{name: "tmux", args: []string{"join-pane", "-s", paneID, "-t", session + ":"}},
 		{name: "tmux", args: []string{"kill-pane", "-t", placeholder}},
 	}
@@ -600,7 +606,12 @@ func TestHostPane(t *testing.T) {
 
 func TestLaunchArgsQuotesThePromptPath(t *testing.T) {
 	args := LaunchArgs("nat-1", "/tmp", "/tmp/craig's prompt.md")
-	got := args[len(args)-1]
+	// The command is the argument after "sh -c", wherever the argv puts it.
+	sh := slices.Index(args, "sh")
+	if sh < 0 || sh+2 >= len(args) {
+		t.Fatalf("args = %v, want an sh -c command in there", args)
+	}
+	got := args[sh+2]
 	want := `claude "$(cat '/tmp/craig'\''s prompt.md')"`
 	if got != want {
 		t.Errorf("command = %q, want %q", got, want)
@@ -611,12 +622,28 @@ func TestLaunchArgsQuotesThePromptPath(t *testing.T) {
 // still reads as one family, and `-A` is what lets a second launch attach.
 func TestHostArgs(t *testing.T) {
 	got := HostArgs("/usr/local/bin/nat")
-	want := []string{"new-session", "-A", "-s", "nat-tui", "/usr/local/bin/nat"}
+	want := []string{"new-session", "-A", "-s", "nat-tui", "/usr/local/bin/nat",
+		";", "set-option", "-t", "nat-tui", "status", "off"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("args = %v, want %v", got, want)
 	}
 	if !strings.HasPrefix(TUISession, SessionPrefix) {
 		t.Errorf("TUISession = %q, want the %q prefix", TUISession, SessionPrefix)
+	}
+}
+
+// Every session nat makes hides the tmux status bar as part of the one command
+// that makes it, so it is never up even for a moment. The inherited case needs
+// no test of its own: running inside the user's tmux makes no session at all,
+// and the argv above are the only places one is made.
+func TestSessionsNatCreatesChainStatusOff(t *testing.T) {
+	launch := LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md")
+	suffix := statusOffArgs("nat-1")
+	if !reflect.DeepEqual(launch[len(launch)-len(suffix):], suffix) {
+		t.Errorf("LaunchArgs = %v, want it to end with %v", launch, suffix)
+	}
+	if statusOffArgs("nat-1")[0] != ";" {
+		t.Error("the status off must be chained, not a command of its own")
 	}
 }
 

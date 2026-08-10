@@ -289,8 +289,9 @@ func (t *Tmux) join(paneID string, host pane, percent int) error {
 // fails takes the placeholder session with it: leaving one behind would be a
 // session named for a slice whose agent is somewhere else entirely.
 func (t *Tmux) breakOut(paneID, session string) error {
-	out, err := t.runner.Run(TmuxBinary, "new-session", "-d",
-		"-s", session, "-P", "-F", "#{pane_id}", placeholderCommand)
+	args := append([]string{"new-session", "-d",
+		"-s", session, "-P", "-F", "#{pane_id}", placeholderCommand}, statusOffArgs(session)...)
+	out, err := t.runner.Run(TmuxBinary, args...)
 	if err != nil {
 		return fmt.Errorf("make session %s for pane %s: %w", session, paneID, err)
 	}
@@ -396,13 +397,13 @@ func (t *Tmux) Launch(session, workdir, promptFile, sliceID string) error {
 // pane IDs are unique for the life of the server, where a name is whatever it
 // has last been set to.
 func LaunchArgs(session, workdir, promptFile string) []string {
-	return []string{
+	return append([]string{
 		"new-session", "-d",
 		"-s", session,
 		"-c", workdir,
 		"-P", "-F", "#{pane_id}",
 		"sh", "-c", agentCommand(promptFile),
-	}
+	}, statusOffArgs(session)...)
 }
 
 // HostArgs is the tmux argv that runs binary as the TUI, inside [TUISession].
@@ -412,8 +413,26 @@ func LaunchArgs(session, workdir, promptFile string) []string {
 // session is being created, so the attaching launch cannot start a second copy
 // of the binary. The command is run directly rather than through a shell, so a
 // path with spaces in it needs no quoting.
+//
+// [TUISession] only ever exists because a launch outside tmux made it — a
+// launch inside tmux never gets here — so hiding its status bar touches no
+// session the user was already in.
 func HostArgs(binary string) []string {
-	return []string{"new-session", "-A", "-s", TUISession, binary}
+	return append([]string{"new-session", "-A", "-s", TUISession, binary}, statusOffArgs(TUISession)...)
+}
+
+// statusOffArgs is the command that hides the tmux status bar in a session of
+// our own, chained onto the new-session that makes it so the bar is never up
+// even for a moment. The green tmux bar under the TUI would be chrome it did
+// not draw — the TUI has a status bar of its own — and under an agent it is
+// noise beside the agent's output. It is a per-session option on a named
+// session, so the sessions the user was already running keep their bars.
+//
+// The lone ";" is tmux's own command separator, read from argv the way `\;` is
+// from a shell: everything before it belongs to new-session, and the set-option
+// runs once the session is there.
+func statusOffArgs(session string) []string {
+	return []string{";", "set-option", "-t", session, "status", "off"}
 }
 
 // agentCommand is the shell command the session runs: start Claude Code with

@@ -139,6 +139,9 @@ type App struct {
 	// each slice it last reported an agent running for to that agent's session.
 	launcher AgentLauncher
 	live     map[string]string
+	// joined marks the slices whose agent pane is beside the board right now.
+	// While any is, the status bar swaps its hints for the pane guidance.
+	joined map[string]bool
 
 	project *domain.Project
 	loading bool
@@ -161,7 +164,7 @@ func NewApp(cfg config.Config, client NotionAPI) *App {
 	s := DefaultStyles()
 	sp := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(s.Spinner))
 	return &App{cfg: cfg, client: client, styles: s, keys: defaultKeyMap(), spinner: sp,
-		board: NewBoard(s), info: NewInfo(s), launcher: newLauncher()}
+		board: NewBoard(s), info: NewInfo(s), launcher: newLauncher(), joined: map[string]bool{}}
 }
 
 // NewAppWithOnboarding returns the root model showing the first-run wizard,
@@ -226,6 +229,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case agentLaunchedMsg:
 		return a.agentLaunched(msg)
 	case agentAttachedMsg:
+		a.paneMoved(msg)
 		// The agent has had the terminal to itself, so the plan it was working on
 		// is reloaded rather than trusted.
 		model, cmd := a.saved(msg.note, msg.err)
@@ -721,13 +725,31 @@ func (a *App) statusBar() string {
 	if a.form != nil {
 		return fit(a.styles.HelpKey.Render("esc")+" "+a.styles.HelpDesc.Render("cancel"), width)
 	}
+	if len(a.joined) > 0 {
+		return a.paneHintLine(width)
+	}
 	return a.hintLine(width)
 }
 
-// hintLine renders the key hints, dropping them by rank until they fit. Only if
-// there is nothing left to drop is what remains truncated.
+// hintLine is the ordinary hint line: the app's global keys.
 func (a *App) hintLine(width int) string {
-	hints := a.keys.statusHints()
+	return a.fitHints(a.keys.statusHints(), width)
+}
+
+// paneHintLine is the status bar while an agent's pane is joined beside the
+// board: how the split is handled, in place of hints for keys the user already
+// knows. The key that returns the pane matters more than the zoom, so the zoom
+// goes first when the bar runs out of room.
+func (a *App) paneHintLine(width int) string {
+	return a.fitHints([]hint{
+		{key.NewBinding(key.WithHelp(a.board.keys.Attach.Help().Key, "return the agent")), 2},
+		{key.NewBinding(key.WithHelp("prefix+z", "zoom the split")), 1},
+	}, width)
+}
+
+// fitHints renders hints on one line, dropping them by rank until they fit.
+// Only if there is nothing left to drop is what remains truncated.
+func (a *App) fitHints(hints []hint, width int) string {
 	line := a.renderHints(hints)
 	for rank := 1; width > 0 && len(hints) > 0 && lipgloss.Width(line) > width; rank++ {
 		hints = slices.DeleteFunc(hints, func(h hint) bool { return h.rank == rank })
