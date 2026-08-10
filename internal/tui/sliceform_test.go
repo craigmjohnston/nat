@@ -33,14 +33,6 @@ func newWriteApp(client NotionAPI) *App {
 	return a
 }
 
-// newSizedWriteApp is newWriteApp in a window, for the flows whose rendering
-// is part of what the test is about.
-func newSizedWriteApp(client NotionAPI) *App {
-	a := newWriteApp(client)
-	a.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
-	return a
-}
-
 // sliceFormOf is the add/edit form on show, failing the test when the modal
 // open over the board is something else.
 func sliceFormOf(t *testing.T, a *App) *SliceForm {

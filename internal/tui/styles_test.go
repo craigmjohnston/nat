@@ -33,7 +33,6 @@ func TestStylesDrawFromTheTokens(t *testing.T) {
 		{"StatusBar background", s.StatusBar.GetBackground(), tok.Surface},
 		{"StatusKey foreground", s.StatusKey.GetForeground(), tok.Accent},
 		{"StatusNote foreground", s.StatusNote.GetForeground(), tok.Success},
-		{"StatusPrompt foreground", s.StatusPrompt.GetForeground(), tok.Warning},
 		{"Error background", s.Error.GetBackground(), tok.Danger},
 		{"ModeChip background", s.ModeChip.GetBackground(), tok.Accent},
 		{"SelectedRow background", s.SelectedRow.GetBackground(), tok.SurfaceHi},

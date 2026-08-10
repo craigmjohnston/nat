@@ -354,14 +354,6 @@ func TestAppLaunchStartsTheSessionAndOffersToAttach(t *testing.T) {
 	}
 }
 
-// answerConfirm answers the open confirm form — "y" or "n" — and feeds the
-// work that falls out back through the app, as the runtime would. Both keys
-// submit the form, so there is nothing else to press.
-func answerConfirm(t *testing.T, a *App, answer string) {
-	t.Helper()
-	finishForm(t, a, press(a, answer))
-}
-
 func TestAppLaunchAttachesWhenConfirmed(t *testing.T) {
 	app, launcher, _ := launchApp(t)
 	app.board.cursor = rowTodoSlice
@@ -1092,7 +1084,7 @@ func TestBusyNoteOf(t *testing.T) {
 		modal modal
 		want  string
 	}{
-		{"a write", newAddSliceForm(DefaultStyles().FormTheme, domain.Milestone{Name: "M2"}), "Saving…"},
+		{"a write", newDeleteSliceForm(DefaultStyles().FormTheme, domain.Slice{Name: "x"}), "Saving…"},
 		{"a launch", newLaunchForm(DefaultStyles().FormTheme, domain.Slice{Name: "x"}, "/tmp"), "Launching the agent…"},
 		{"an attach", newAttachForm(DefaultStyles().FormTheme, domain.Slice{Name: "x"}, "nat-5"), ""},
 	}
