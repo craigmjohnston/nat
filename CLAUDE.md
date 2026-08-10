@@ -52,7 +52,10 @@ model).
   `nat slice-add <title> --milestone <name|URL|ID> [--description TEXT|-]
   [--repo DIR]` (Todo and unassigned, description as the page body;
   `--description -` reads it from stdin, so a slice-add typed with no brief
-  does not wait on one)), what the binary
+  does not wait on one), and `nat plan-apply [FILE]`, which creates a whole
+  drafted plan of milestones and slices from a JSON document (read from FILE or
+  stdin, validated entirely before the first write, and only ever creating
+  pages)), what the binary
   does when given a subcommand. Run before the tmux hosting step and with no TUI
   code in the path: a command prints to the terminal it was typed in and exits.
 - `internal/tui/` — bubbletea v2 (`charm.land/*/v2` imports); root model in

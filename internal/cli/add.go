@@ -107,7 +107,7 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return fmt.Errorf("load milestones: %w", err)
 	}
-	milestone, err := resolveMilestone(*milestoneRef, milestones)
+	milestone, err := resolveMilestone(*milestoneRef, domain.MilestonesFromPages(milestones))
 	if err != nil {
 		return err
 	}
@@ -189,8 +189,7 @@ func nextOrder(pages []notion.Page) float64 {
 // or, worse, accepts. Names are matched case-insensitively and exactly: a
 // prefix match would make adding a slice depend on which milestones happen to
 // exist, which is not something anyone typing a name can see.
-func resolveMilestone(ref string, pages []notion.Page) (domain.Milestone, error) {
-	milestones := domain.MilestonesFromPages(pages)
+func resolveMilestone(ref string, milestones []domain.Milestone) (domain.Milestone, error) {
 	if id := uuidTail.FindString(lastSegment(ref)); id != "" {
 		for _, m := range milestones {
 			if sameID(m.ID, id) {
