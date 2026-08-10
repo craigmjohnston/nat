@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -21,6 +22,15 @@ type fakeAPI struct {
 	blocksByID map[string][]notion.Block
 	// blocksErrByID fails the read of one page in particular.
 	blocksErrByID map[string]error
+	// appends records every block append, in order.
+	appends []appended
+	// appendErr fails the append.
+	appendErr error
+
+	// gets records the ID of every single-page fetch, in order.
+	gets []string
+	// getErr fails the fetch.
+	getErr error
 
 	// queries records the data source ID and sorts of every query, in order.
 	queries []query
@@ -48,6 +58,44 @@ type update struct {
 	props map[string]notion.PropertyValue
 }
 
+type appended struct {
+	id       string
+	children []map[string]any
+}
+
+// GetPage answers with whichever page of the fake plan carries the ID, so a
+// command that reads one page directly sees the same workspace a query does.
+func (f *fakeAPI) GetPage(_ context.Context, id string) (*notion.Page, error) {
+	f.gets = append(f.gets, id)
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	if p, ok := f.page(id); ok {
+		return &p, nil
+	}
+	return nil, fmt.Errorf("notion: no page %s", id)
+}
+
+// page finds a page of the fake plan by ID.
+func (f *fakeAPI) page(id string) (notion.Page, bool) {
+	for _, pages := range f.pages {
+		for _, p := range pages {
+			if p.ID == id {
+				return p, true
+			}
+		}
+	}
+	return notion.Page{}, false
+}
+
+func (f *fakeAPI) AppendBlockChildren(_ context.Context, id string, children []map[string]any) ([]notion.Block, error) {
+	f.appends = append(f.appends, appended{id: id, children: children})
+	if f.appendErr != nil {
+		return nil, f.appendErr
+	}
+	return nil, nil
+}
+
 func (f *fakeAPI) GetBlockChildren(_ context.Context, id string) ([]notion.Block, error) {
 	if err := f.blocksErrByID[id]; err != nil {
 		return nil, err
@@ -66,15 +114,10 @@ func (f *fakeAPI) UpdatePageProperties(_ context.Context, id string, props map[s
 		return nil, f.updateErr
 	}
 	page := notion.Page{ID: id, Properties: map[string]notion.PropertyValue{}}
-	for _, pages := range f.pages {
-		for _, p := range pages {
-			if p.ID != id {
-				continue
-			}
-			page.URL = p.URL
-			for name, v := range p.Properties {
-				page.Properties[name] = v
-			}
+	if existing, ok := f.page(id); ok {
+		page.URL = existing.URL
+		for name, v := range existing.Properties {
+			page.Properties[name] = v
 		}
 	}
 	for name, v := range props {

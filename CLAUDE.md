@@ -34,7 +34,9 @@ model).
   and `ReclaimStrays` re-homes on startup whatever an earlier run left joined.
 - `internal/cli/` — the headless commands (`nat info [--json]`,
   `nat next-slice [--json]`, which claims the next Todo slice under the
-  lowest-ordered Active milestone and prints its brief), what the binary
+  lowest-ordered Active milestone and prints its brief, and
+  `nat complete-slice <slice> [--pr URL] [--summary TEXT] [--blocked]`, which
+  closes out a slice the configured user holds), what the binary
   does when given a subcommand. Run before the tmux hosting step and with no TUI
   code in the path: a command prints to the terminal it was typed in and exits.
 - `internal/tui/` — bubbletea v2 (`charm.land/*/v2` imports); root model in

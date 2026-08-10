@@ -473,7 +473,15 @@ func (s stubAPI) QueryDataSource(context.Context, string, map[string]any, []noti
 	return nil, s.err
 }
 
+func (s stubAPI) GetPage(context.Context, string) (*notion.Page, error) {
+	return &notion.Page{}, s.err
+}
+
 func (s stubAPI) GetBlockChildren(context.Context, string) ([]notion.Block, error) {
+	return nil, s.err
+}
+
+func (s stubAPI) AppendBlockChildren(context.Context, string, []map[string]any) ([]notion.Block, error) {
 	return nil, s.err
 }
 

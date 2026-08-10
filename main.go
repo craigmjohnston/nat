@@ -78,6 +78,7 @@ func command(tokens config.TokenSource) error {
 		Load:      config.Load,
 		NewClient: newCLIClient,
 		Out:       stdout,
+		In:        stdin,
 	})
 }
 
