@@ -583,8 +583,13 @@ func TestAppShowsTheAgentBesideTheBoard(t *testing.T) {
 	if len(launcher.attached) != 0 {
 		t.Errorf("attached = %v, want the terminal left to the board", launcher.attached)
 	}
-	if want := `Showing the agent for "Info view" — t again to send it back.`; app.note != want {
-		t.Errorf("note = %q, want %q", app.note, want)
+	// No note: the status bar's pane guidance says how to send it back, and a
+	// note would sit on top of it.
+	if app.note != "" {
+		t.Errorf("note = %q, want the pane guidance to speak instead", app.note)
+	}
+	if !app.joined[id] {
+		t.Error("the slice should be marked joined")
 	}
 	if app.busy {
 		t.Error("the pane is joined; nothing is still in flight")
@@ -599,11 +604,104 @@ func TestAppSendsAShownAgentBack(t *testing.T) {
 	launcher.joined = false
 	id, session := sliceAt(t, app, rowTodoSlice)
 	app.live = map[string]string{id: session}
+	app.joined[id] = true
 
 	feed(t, app, press(app, "t"))
 
 	if want := fmt.Sprintf("Sent the agent for %q back to %s.", "Info view", session); app.note != want {
 		t.Errorf("note = %q, want %q", app.note, want)
+	}
+	if app.joined[id] {
+		t.Error("the joined mark should go with the pane")
+	}
+}
+
+// While an agent's pane is beside the board, the status bar explains how the
+// split is handled; the ordinary hints come back once the pane is returned.
+func TestAppStatusBarGuidesAJoinedPane(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	t.Setenv(agent.PaneEnv, "%0")
+	launcher.joined = true
+	id, session := sliceAt(t, app, rowTodoSlice)
+	app.live = map[string]string{id: session}
+
+	feed(t, app, press(app, "t"))
+	joined := stripANSI(app.View().Content)
+	for _, want := range []string{"t return the agent", "prefix+z zoom the split"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("joined view is missing %q:\n%s", want, joined)
+		}
+	}
+	if strings.Contains(joined, "q quit") {
+		t.Errorf("the ordinary hints should have made way:\n%s", joined)
+	}
+
+	launcher.joined = false
+	feed(t, app, press(app, "t"))
+	app.note = ""
+	returned := stripANSI(app.View().Content)
+	if strings.Contains(returned, "return the agent") {
+		t.Errorf("the guidance should go with the pane:\n%s", returned)
+	}
+	if !strings.Contains(returned, "q quit") {
+		t.Errorf("the ordinary hints should be back:\n%s", returned)
+	}
+}
+
+// The bar drops the zoom before the key that returns the pane: with only room
+// for one of them, the way back is the one that matters.
+func TestAppPaneGuidanceDropsTheZoomFirst(t *testing.T) {
+	app, _, _ := launchApp(t)
+	line := stripANSI(app.paneHintLine(22))
+	if !strings.Contains(line, "t return the agent") {
+		t.Errorf("line = %q, want the return key kept", line)
+	}
+	if strings.Contains(line, "zoom") {
+		t.Errorf("line = %q, want the zoom dropped", line)
+	}
+}
+
+// An agent that exits while joined takes its pane with it, so the next live
+// poll retires the guidance too. A poll that failed proves nothing and leaves
+// the marks alone.
+func TestAppRetiresTheJoinedMarkWhenTheAgentDies(t *testing.T) {
+	app, _, _ := launchApp(t)
+	id, session := sliceAt(t, app, rowTodoSlice)
+	app.joined[id] = true
+
+	app.Update(liveSessionsMsg{err: errors.New("boom")})
+	if !app.joined[id] {
+		t.Error("a failed poll should not retire the mark")
+	}
+
+	app.Update(liveSessionsMsg{live: map[string]string{id: session}})
+	if !app.joined[id] {
+		t.Error("a live agent's mark should stay")
+	}
+
+	app.Update(liveSessionsMsg{live: map[string]string{}})
+	if app.joined[id] {
+		t.Error("the mark should go with the agent's pane")
+	}
+}
+
+// How the whole window reads while an agent's pane is joined: the plan on
+// show, and the pane guidance where the key hints were.
+func TestAppPaneGuidanceGolden(t *testing.T) {
+	a := sizedApp(80, 16)
+	a.joined["s1"] = true
+	golden(t, "app-pane-joined", a.View().Content)
+}
+
+// Attaches and detaches move no pane, so they leave the joined marks alone.
+func TestPaneMovedIgnoresMessagesThatMovedNothing(t *testing.T) {
+	app, _, _ := launchApp(t)
+	app.joined["s5"] = true
+
+	app.Update(agentAttachedMsg{note: "Detached from nat-5."})
+
+	if !app.joined["s5"] {
+		t.Error("a detach should not touch the joined marks")
 	}
 }
 

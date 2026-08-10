@@ -71,9 +71,14 @@ type (
 	// liveTickMsg is the periodic prod to re-read them.
 	liveTickMsg struct{}
 	// agentAttachedMsg reports a terminal handed to a session and given back.
+	// When the message is a pane moving instead, slice names whose agent moved
+	// and joined says whether it is now beside the board — which is what the
+	// status bar's pane guidance follows.
 	agentAttachedMsg struct {
-		note string
-		err  error
+		note   string
+		err    error
+		slice  string
+		joined bool
 	}
 	// straysReclaimedMsg reports the startup reconcile: how many panes a
 	// previous run had left joined, or the read that failed instead.
@@ -251,8 +256,9 @@ func (a *App) showAgent(s domain.Slice, session string) tea.Cmd {
 }
 
 // showPane joins the slice's agent in beside the board, or sends it back to a
-// session of its own when it is already there. Both directions are the one key,
-// so the note says which way it went.
+// session of its own when it is already there. A join carries no note: the
+// status bar's pane guidance takes over the moment the pane is beside the
+// board, and says how to send it back.
 func showPane(l AgentLauncher, s domain.Slice, host string, percent int) tea.Cmd {
 	return func() tea.Msg {
 		joined, err := l.ShowPane(s.ID, host, percent)
@@ -260,9 +266,10 @@ func showPane(l AgentLauncher, s domain.Slice, host string, percent int) tea.Cmd
 		case err != nil:
 			return agentAttachedMsg{err: fmt.Errorf("show the agent for %q: %w", s.Name, err)}
 		case joined:
-			return agentAttachedMsg{note: fmt.Sprintf("Showing the agent for %q — t again to send it back.", s.Name)}
+			return agentAttachedMsg{slice: s.ID, joined: true}
 		default:
-			return agentAttachedMsg{note: fmt.Sprintf("Sent the agent for %q back to %s.", s.Name, agent.SessionName(s.ID))}
+			return agentAttachedMsg{note: fmt.Sprintf("Sent the agent for %q back to %s.", s.Name, agent.SessionName(s.ID)),
+				slice: s.ID}
 		}
 	}
 }
@@ -409,8 +416,30 @@ func (a *App) liveLoaded(msg liveSessionsMsg) {
 		a.live, a.note = nil, fmt.Sprintf("Could not read tmux panes: %v", msg.err)
 	} else {
 		a.live = msg.live
+		// A joined agent that is no longer live has exited, taking its pane
+		// with it — the pane guidance would be advice about nothing. A failed
+		// read proves no such thing, so it does not touch the marks.
+		for id := range a.joined {
+			if a.live[id] == "" {
+				delete(a.joined, id)
+			}
+		}
 	}
 	a.board.SetLive(a.live)
+}
+
+// paneMoved keeps the joined marks in step with a pane movement the message
+// reports. Messages that moved nothing — an attach, a detach, a failure —
+// name no slice and change nothing.
+func (a *App) paneMoved(msg agentAttachedMsg) {
+	if msg.slice == "" {
+		return
+	}
+	if msg.joined {
+		a.joined[msg.slice] = true
+	} else {
+		delete(a.joined, msg.slice)
+	}
 }
 
 // agentLaunched reports a finished launch and offers to attach to what it
