@@ -84,7 +84,8 @@ func TestGetDatabase(t *testing.T) {
 		var gotMethod, gotPath string
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			gotMethod, gotPath = r.Method, r.URL.Path
-			w.Write([]byte(`{"id":"db-1","data_sources":[{"id":"ds-1"},{"id":"ds-2"}]}`))
+			w.Write([]byte(`{"id":"db-1","data_sources":[{"id":"ds-1"},{"id":"ds-2"}],` +
+				`"parent":{"type":"page_id","page_id":"page-1"}}`))
 		}))
 		defer srv.Close()
 
@@ -103,6 +104,9 @@ func TestGetDatabase(t *testing.T) {
 		}
 		if id, ok := db.DataSourceID(); !ok || id != "ds-1" {
 			t.Errorf("DataSourceID() = %q, %v; want the first data source", id, ok)
+		}
+		if db.Parent.PageID != "page-1" {
+			t.Errorf("Parent = %+v, want the page the database lives under", db.Parent)
 		}
 	})
 
