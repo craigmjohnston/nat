@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
@@ -83,6 +84,7 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 		page = updated
 	}
 
+	logging.Action("slice closed out", "slice", page.ID, "blocked", *blocked, "pr", *pr)
 	_, err = io.WriteString(env.Out, outcomeMarkdown(domain.SliceFromPage(*page), *blocked, cfg.AssigneeUserName))
 	return err
 }

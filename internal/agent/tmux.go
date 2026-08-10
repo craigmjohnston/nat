@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/craigmjohnston/nat/internal/logging"
 )
 
 // TmuxBinary is the name of the tmux binary, looked up on PATH.
@@ -277,6 +279,7 @@ func (t *Tmux) join(paneID string, host pane, percent int) error {
 		"-l", fmt.Sprintf("%d%%", percent), "-s", paneID, "-t", host.id); err != nil {
 		return fmt.Errorf("join pane %s beside the board: %w", paneID, err)
 	}
+	logging.Action("agent pane joined beside the board", "pane", paneID, "host", host.id, "percent", percent)
 	return nil
 }
 
@@ -298,12 +301,14 @@ func (t *Tmux) breakOut(paneID, session string) error {
 	placeholder := strings.TrimSpace(out)
 
 	if _, err := t.runner.Run(TmuxBinary, "join-pane", "-s", paneID, "-t", session+":"); err != nil {
+		logging.Error("killing the session made for a pane that would not move", "session", session, "pane", paneID)
 		_, _ = t.runner.Run(TmuxBinary, "kill-session", "-t", session)
 		return fmt.Errorf("move pane %s into %s: %w", paneID, session, err)
 	}
 	if _, err := t.runner.Run(TmuxBinary, "kill-pane", "-t", placeholder); err != nil {
 		return fmt.Errorf("clear the placeholder pane %s in %s: %w", placeholder, session, err)
 	}
+	logging.Action("agent pane moved to a session of its own", "session", session, "pane", paneID)
 	return nil
 }
 
@@ -383,6 +388,7 @@ func (t *Tmux) Launch(session, workdir, promptFile, sliceID string) error {
 	if _, err := t.runner.Run(TmuxBinary, "set-option", "-p", "-t", pane, SlicePaneOption, sliceID); err != nil {
 		return fmt.Errorf("tag tmux pane %s for slice %s: %w", pane, sliceID, err)
 	}
+	logging.Action("agent launched", "session", session, "slice", sliceID, "workdir", workdir, "pane", pane)
 	return nil
 }
 

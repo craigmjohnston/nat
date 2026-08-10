@@ -16,6 +16,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/cli"
 	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/tui"
 )
@@ -182,9 +183,13 @@ var lastExit struct {
 // hosting step is a no-op: without it, a run on a machine with tmux installed
 // would exec tmux over the test binary. The arguments are emptied for the same
 // reason — the test binary's own flags would otherwise read as a subcommand.
+//
+// The home directory is a temporary one because main opens a log file under it,
+// and a test suite has no business writing to the log the real binary keeps.
 func stubProcess(t *testing.T, tokens config.TokenSource, in io.Reader, out, errOut io.Writer) {
 	t.Helper()
 	t.Setenv(tmuxEnv, "/private/tmp/tmux-501/default,1,0")
+	tempLogHome(t)
 	oldTokens, oldIn, oldOut, oldErr, oldExit, oldArgs := newTokens, stdin, stdout, stderr, exit, args
 	t.Cleanup(func() {
 		newTokens, stdin, stdout, stderr, exit, args = oldTokens, oldIn, oldOut, oldErr, oldExit, oldArgs
@@ -194,6 +199,117 @@ func stubProcess(t *testing.T, tokens config.TokenSource, in io.Reader, out, err
 	newTokens = func() config.TokenSource { return tokens }
 	stdin, stdout, stderr = in, out, errOut
 	exit = func(code int) { lastExit.code, lastExit.exited = code, true }
+}
+
+// tempLogHome points the log directory at somewhere of the test's own,
+// whichever platform's convention resolves it, and returns the home it used.
+func tempLogHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_STATE_HOME", "")
+	return home
+}
+
+// logContents returns everything main's run wrote to the log file.
+func logContents(t *testing.T) string {
+	t.Helper()
+	path, err := logging.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// A startup failure has to survive the terminal it was reported on: started
+// outside tmux the TUI re-execs itself into a session, and a process that dies
+// on the way up takes the pane with it.
+func TestMainLogsAStartupFailureAndSaysWhereTheLogIs(t *testing.T) {
+	writeConfig(t, "{not json")
+	var out, errOut bytes.Buffer
+	stubProcess(t, config.StaticToken(testToken), strings.NewReader(""), &out, &errOut)
+
+	main()
+
+	path, err := logging.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(errOut.String(), "log: "+path) {
+		t.Errorf("stderr = %q, want it to say where the log is", errOut.String())
+	}
+	if got := logContents(t); !strings.Contains(got, "parse config") {
+		t.Errorf("log = %q, want the failure in it", got)
+	}
+}
+
+// The ordinary run leaves a trace too, so a log opened after a crash starts
+// with the run that crashed rather than with nothing at all.
+func TestMainLogsThatItStarted(t *testing.T) {
+	tokens := configuredHome(t)
+	var out, errOut bytes.Buffer
+	stubProcess(t, tokens, strings.NewReader("q"), &out, &errOut)
+
+	main()
+
+	if got := logContents(t); !strings.Contains(got, "nat starting") {
+		t.Errorf("log = %q, want the start of the run in it", got)
+	}
+}
+
+// A log that cannot be opened is said once and then left alone: it is not a
+// reason to refuse to run.
+func TestMainRunsWithoutALogItCannotOpen(t *testing.T) {
+	tokens := configuredHome(t)
+	var out, errOut bytes.Buffer
+	stubProcess(t, tokens, strings.NewReader("q"), &out, &errOut)
+	blockLogDir(t)
+
+	main()
+
+	if !strings.Contains(errOut.String(), "nat: could not open the log file:") {
+		t.Errorf("stderr = %q, want the unopenable log reported", errOut.String())
+	}
+	if code, exited := exitCode(t); exited {
+		t.Errorf("exited with %d, want the app to have run anyway", code)
+	}
+}
+
+// blockLogDir puts a plain file where the log directory's parent has to be, so
+// the log cannot be created under it.
+func blockLogDir(t *testing.T) {
+	t.Helper()
+	dir, err := logging.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := filepath.Dir(dir)
+	if err := os.MkdirAll(filepath.Dir(parent), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(parent, []byte("in the way"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Without a log there is no location worth printing, and the failure is still
+// reported the ordinary way.
+func TestFailSaysNothingAboutALogThereIsNot(t *testing.T) {
+	var errOut bytes.Buffer
+	stderr = &errOut
+	oldExit := exit
+	t.Cleanup(func() { stderr, exit = os.Stderr, oldExit })
+	exit = func(int) {}
+
+	fail("", errors.New("no config"))
+
+	if got := errOut.String(); got != "nat: no config\n" {
+		t.Errorf("stderr = %q, want just the failure", got)
+	}
 }
 
 // exitCode returns the code main exited with, and whether it exited at all.

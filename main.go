@@ -16,6 +16,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/cli"
 	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/tui"
 )
 
@@ -51,22 +52,51 @@ func ntnCLI() config.TokenSource { return config.NewNtnCLI() }
 func processArgs() []string { return os.Args[1:] }
 
 func main() {
+	logPath := openLog()
+	defer func() { _ = logging.Close() }()
+
 	if cli.IsCommand(args()) {
 		if err := command(newTokens()); err != nil {
-			fmt.Fprintln(stderr, "nat:", authHint(err))
-			exit(1)
+			fail(logPath, authHint(err))
 		}
 		return
 	}
 	if err := host(); err != nil {
-		fmt.Fprintln(stderr, "nat:", err)
-		exit(1)
+		fail(logPath, err)
 		return
 	}
 	if err := run(newTokens(), stdin, stdout); err != nil {
-		fmt.Fprintln(stderr, "nat:", err)
-		exit(1)
+		fail(logPath, err)
 	}
+}
+
+// openLog starts the log file and returns its path, or "" when there is not
+// even a path to name. A log that cannot be opened is said once on stderr and
+// then left alone: it is not a reason to refuse to run, and every call through
+// the package is discarded from here on.
+func openLog() string {
+	path, err := logging.Open()
+	if err != nil {
+		fmt.Fprintln(stderr, "nat: could not open the log file:", err)
+	}
+	logging.Action("nat starting", "args", args())
+	return path
+}
+
+// fail reports a failure that stops the app, in both the places it has to go.
+//
+// stderr alone is not enough: started outside tmux the TUI re-execs itself into
+// a session, and a process that dies on the way up takes the pane it was
+// writing to with it — which is how a startup crash becomes a binary that
+// appears to do nothing at all. The log is where that run can still be read
+// afterwards, so the message says where to find it.
+func fail(logPath string, err error) {
+	logging.Error("nat exiting on a failure", "err", err)
+	fmt.Fprintln(stderr, "nat:", err)
+	if logPath != "" {
+		fmt.Fprintln(stderr, "log:", logPath)
+	}
+	exit(1)
 }
 
 // command runs a headless subcommand. It deliberately runs before host: a
@@ -148,6 +178,7 @@ type releaser interface{ Release() error }
 // runs, and on the panic path the error being returned is not ours.
 func release(r releaser) {
 	if err := r.Release(); err != nil {
+		logging.Error("could not return the agents to their own sessions", "err", err)
 		fmt.Fprintln(stderr, "nat:", err)
 	}
 }

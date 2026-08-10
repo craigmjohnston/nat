@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/craigmjohnston/nat/internal/logging"
 )
 
 const (
@@ -146,11 +148,29 @@ func newAPIError(status int, body []byte) *APIError {
 	return e
 }
 
-// do performs one API call. body, when non-nil, is JSON-encoded as the request
+// do performs one API call and records how it went. Every failure is logged —
+// a call that failed inside the TUI is otherwise only ever a line in a status
+// bar that the next keystroke replaces — and so is every request that changed
+// something, which is what makes the log an account of what this app did to a
+// workspace. The method and path are all that is written: a request body is
+// never logged, because the Authorization header is built from a credential and
+// a body may quote one back.
+func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
+	err := c.send(ctx, method, path, body, out)
+	switch {
+	case err != nil:
+		logging.Error("notion request failed", "method", method, "path", path, "err", err)
+	case method != http.MethodGet:
+		logging.Action("notion write", "method", method, "path", path)
+	}
+	return err
+}
+
+// send performs one API call. body, when non-nil, is JSON-encoded as the request
 // payload; out, when non-nil, receives the JSON-decoded response. Non-2xx
 // responses become an *APIError. Requests rejected with 429 are retried up to
 // the client's retry cap, honouring Retry-After.
-func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
+func (c *Client) send(ctx context.Context, method, path string, body, out any) error {
 	var payload []byte
 	if body != nil {
 		var err error
