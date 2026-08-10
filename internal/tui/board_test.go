@@ -148,6 +148,101 @@ func TestBoardTruncatesRowsToItsWidth(t *testing.T) {
 	}
 }
 
+// longRowProject is the plan the narrowing tests render: names long enough that
+// the chips have to go, on a slice carrying every one of them.
+func longRowProject() domain.Project {
+	return domain.Project{
+		ID:   testProjectID,
+		Name: "tracker",
+		Milestones: []domain.Milestone{
+			{ID: "m7", Name: "M7: Agent pane view, joined beside the board pane",
+				Order: 7, Status: domain.MilestoneActive},
+		},
+		Slices: []domain.Slice{
+			{ID: "s1", Name: "Degrade slice rows gracefully as the board narrows",
+				Status: domain.SliceClaimed, MilestoneID: "m7",
+				AssigneeName: "Craig Johnston", PRURL: "https://example.test/pr/9"},
+			{ID: "s2", Name: "Keep the status bar and header inside the window",
+				Status: domain.SliceTodo, MilestoneID: "m7"},
+		},
+	}
+}
+
+// newLongRowBoard returns a board showing longRowProject at width, with an agent
+// live on its claimed slice.
+func newLongRowBoard(width int) *Board {
+	b := NewBoard(DefaultStyles())
+	b.SetWidth(width)
+	b.SetLive(map[string]string{"s1": agent.SessionName("s1")})
+	p := longRowProject()
+	b.SetProject(&p)
+	return &b
+}
+
+func TestBoardDropsChipsInOrderAsItNarrows(t *testing.T) {
+	// At 80 every part of the row fits.
+	view := newLongRowBoard(80).View()
+	golden(t, "board-narrow-80", view)
+	for _, want := range []string{"Degrade slice rows gracefully as the board narrows",
+		"●", "@Craig Johnston", "PR", "0/2", "Active"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("at 80 the view is missing %q:\n%s", want, view)
+		}
+	}
+
+	// At 60 the PR marker and the assignee have gone, but the live marker, the
+	// names and the milestone's count are all still there.
+	view = newLongRowBoard(60).View()
+	golden(t, "board-narrow-60", view)
+	for _, want := range []string{"Degrade slice rows gracefully as the board narrows",
+		"Keep the status bar and header inside the window", "●", "0/2"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("at 60 the view is missing %q:\n%s", want, view)
+		}
+	}
+	for _, unwanted := range []string{"PR", "@Craig Johnston", "Active"} {
+		if strings.Contains(view, unwanted) {
+			t.Errorf("at 60 the view should have dropped %q:\n%s", unwanted, view)
+		}
+	}
+
+	// At 40 nothing is left to drop, so the names are truncated instead — but
+	// each row still leads with its status glyph and the start of its name.
+	view = newLongRowBoard(40).View()
+	golden(t, "board-narrow-40", view)
+	for _, want := range []string{"Degrade slice rows", "Keep the status bar", "M7: Agent pane"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("at 40 the view is missing %q:\n%s", want, view)
+		}
+	}
+	for _, unwanted := range []string{"PR", "@Craig Johnston", "Active", "0/2", "●"} {
+		if strings.Contains(view, unwanted) {
+			t.Errorf("at 40 the view should have dropped %q:\n%s", unwanted, view)
+		}
+	}
+}
+
+func TestBoardNeverExceedsItsWidthAsItNarrows(t *testing.T) {
+	for width := 1; width <= 80; width++ {
+		for _, line := range strings.Split(newLongRowBoard(width).View(), "\n") {
+			if got := lipgloss.Width(line); got > width {
+				t.Fatalf("at width %d the line %q is %d wide", width, line, got)
+			}
+		}
+	}
+}
+
+func TestBoardWithoutAWidthDropsNothing(t *testing.T) {
+	b := newLongRowBoard(0)
+
+	view := b.View()
+	for _, want := range []string{"●", "@Craig Johnston", "PR", "Active"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("an unmeasured board should draw everything, missing %q:\n%s", want, view)
+		}
+	}
+}
+
 func TestBoardWithoutAProjectSaysSo(t *testing.T) {
 	b := NewBoard(DefaultStyles())
 
@@ -327,7 +422,7 @@ func TestBoardUnknownSliceStatusStillDraws(t *testing.T) {
 	b := newTestBoard()
 
 	// The Unassigned group's slice has a status this build does not know.
-	if got := b.renderSlice(b.groups[3].Slices[0]); !strings.Contains(got, "Stray") {
+	if got := b.renderSlice("  ", b.groups[3].Slices[0]); !strings.Contains(got, "Stray") {
 		t.Errorf("render = %q, want the slice name", got)
 	}
 }
