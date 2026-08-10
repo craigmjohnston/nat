@@ -42,7 +42,10 @@ model).
   and `ReclaimStrays` re-homes on startup whatever an earlier run left joined.
 - `internal/cli/` — the headless commands (`nat info [--json]`,
   `nat next-slice [--json]`, which claims the next Todo slice under the
-  lowest-ordered Active milestone and prints its brief, and
+  lowest-ordered Active milestone and prints its brief,
+  `nat start-slice <slice> [--json]`, which claims one named Todo slice and
+  prints the same brief — the command a board-launched agent runs, since it is
+  pointed at a slice rather than choosing one — and
   `nat complete-slice <slice> [--pr URL] [--summary TEXT] [--blocked]`, which
   closes out a slice the configured user holds), what the binary
   does when given a subcommand. Run before the tmux hosting step and with no TUI
