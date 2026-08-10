@@ -35,15 +35,15 @@ func everyModal(t *testing.T) map[string]modal {
 		"p2": {Name: "other"},
 	}}
 	return map[string]modal{
-		"add slice":      newAddSliceForm(m),
-		"edit slice":     newEditSliceForm(s, "The brief."),
-		"move slice":     newMoveSliceForm(s, []domain.Milestone{m}),
-		"delete slice":   newDeleteSliceForm(s),
-		"milestone":      newMilestoneForm(m, domain.MilestoneActive),
-		"launch":         newLaunchForm(s, t.TempDir()),
-		"attach":         newAttachForm(s, "nat-12345678"),
-		"new project":    newNewProjectForm(),
-		"switch project": newSwitchProjectForm(cfg),
+		"add slice":      newAddSliceForm(DefaultStyles().FormTheme, m),
+		"edit slice":     newEditSliceForm(DefaultStyles().FormTheme, s, "The brief."),
+		"move slice":     newMoveSliceForm(DefaultStyles().FormTheme, s, []domain.Milestone{m}),
+		"delete slice":   newDeleteSliceForm(DefaultStyles().FormTheme, s),
+		"milestone":      newMilestoneForm(DefaultStyles().FormTheme, m, domain.MilestoneActive),
+		"launch":         newLaunchForm(DefaultStyles().FormTheme, s, t.TempDir()),
+		"attach":         newAttachForm(DefaultStyles().FormTheme, s, "nat-12345678"),
+		"new project":    newNewProjectForm(DefaultStyles().FormTheme),
+		"switch project": newSwitchProjectForm(DefaultStyles().FormTheme, cfg),
 	}
 }
 
@@ -94,9 +94,13 @@ func TestAppSizesAnOpenFormToTheWindow(t *testing.T) {
 				size.width, size.height, got, view)
 		}
 		// Nothing is wrapped onto a line of its own outside the frame: every line
-		// starts with the frame's own padding, or is blank.
+		// is a band's fill (the heading and status bars start with their indents)
+		// or sits inside a border.
 		for i, line := range strings.Split(stripANSI(view), "\n") {
-			if strings.TrimSpace(line) != "" && !strings.HasPrefix(line, "  ") {
+			if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "  ") {
+				continue
+			}
+			if r := []rune(line)[0]; r != '╭' && r != '│' && r != '╰' {
 				t.Errorf("%dx%d: line %d escapes the frame: %q", size.width, size.height, i, line)
 			}
 		}

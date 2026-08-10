@@ -69,6 +69,85 @@ func TestAppGoldenAtEachWidth(t *testing.T) {
 	}
 }
 
+func TestAppHeaderBarHasADistinctAppSegment(t *testing.T) {
+	a := sizedApp(80, 24)
+	header := a.headerView()
+	if want := a.styles.HeaderApp.Render(appName); !strings.Contains(header, want) {
+		t.Errorf("header = %q, want the app's name as a segment of its own %q", header, want)
+	}
+	if !strings.Contains(stripANSI(header), "notion-agent-tracker") {
+		t.Errorf("header = %q, want the project name beside the segment", stripANSI(header))
+	}
+}
+
+func TestAppHeaderBarCarriesTheTally(t *testing.T) {
+	lines := strings.Split(stripANSI(sizedApp(80, 24).View().Content), "\n")
+	if !strings.Contains(lines[0], "milestones: 1 · slices done: 0/1") {
+		t.Errorf("header = %q, want the tally folded into it", lines[0])
+	}
+	// The subtitle line is gone: the board's border follows the bar directly.
+	if !strings.HasPrefix(lines[1], "╭") {
+		t.Errorf("line under the header = %q, want the board's border", lines[1])
+	}
+}
+
+func TestAppHeaderBarDropsTheTallyWhole(t *testing.T) {
+	// Too narrow for the tally beside the segment: it goes whole — a cut count
+	// misleads — and the name's head is what the room is spent on.
+	header := stripANSI(sizedApp(40, 24).headerView())
+	if strings.Contains(header, "milestones") {
+		t.Errorf("header = %q, want the tally dropped whole at 40 columns", header)
+	}
+	if !strings.Contains(header, "notion-agent-tracker") {
+		t.Errorf("header = %q, want the name's head kept", header)
+	}
+}
+
+func TestAppBoxesTheBoardAndTheStatusBar(t *testing.T) {
+	for _, width := range windowWidths {
+		lines := strings.Split(stripANSI(sizedApp(width, 24).View().Content), "\n")
+		// The board's box follows the heading bar, and the status box takes the
+		// window's last three lines; each runs the window's full width.
+		for _, i := range []int{1, len(lines) - 3} {
+			if !strings.HasPrefix(lines[i], "╭") || !strings.HasSuffix(lines[i], "╮") {
+				t.Errorf("at %d columns line %d = %q, want a border's top", width, i, lines[i])
+			}
+		}
+		for _, i := range []int{len(lines) - 4, len(lines) - 1} {
+			if !strings.HasPrefix(lines[i], "╰") || !strings.HasSuffix(lines[i], "╯") {
+				t.Errorf("at %d columns line %d = %q, want a border's bottom", width, i, lines[i])
+			}
+		}
+	}
+}
+
+func TestAppTooNarrowForBordersDrawsBareBands(t *testing.T) {
+	// Below the framed threshold a border would crowd out the content, so the
+	// bands are drawn bare, the way a too-short window's are.
+	view := sizedApp(4, 24).View().Content
+	checkFits(t, view, 4, 24)
+	if strings.Contains(view, "╭") {
+		t.Errorf("a 4-column window should have no borders:\n%s", view)
+	}
+}
+
+func TestClipLines(t *testing.T) {
+	for _, tt := range []struct {
+		s    string
+		n    int
+		want string
+	}{
+		{"a\nb\nc", 2, "a\nb"},
+		{"a\nb", 3, "a\nb"},
+		{"a\nb", 0, ""},
+		{"a\nb", -1, ""},
+	} {
+		if got := clipLines(tt.s, tt.n); got != tt.want {
+			t.Errorf("clipLines(%q, %d) = %q, want %q", tt.s, tt.n, got, tt.want)
+		}
+	}
+}
+
 func TestAppDropsKeyHintsByRank(t *testing.T) {
 	// Wide enough for every hint.
 	if view := stripANSI(sizedApp(80, 24).View().Content); !strings.Contains(view, "esc back") {
@@ -394,10 +473,12 @@ func TestAppScrollsTheHelpScreen(t *testing.T) {
 }
 
 func TestAppSharesAShortWindowOutFromTheBottom(t *testing.T) {
-	// The status bar takes the bottom row first, then the header what is left:
-	// too short a window loses the body, then the header, never the bar.
+	// The status bar takes the bottom rows first, then the header what is left:
+	// too short a window loses the body, then its borders, then the header,
+	// never the bar. From 6 lines the layout is framed — the boxed status bar
+	// and the body's own border — and below that the bands are drawn bare.
 	for _, tt := range []struct{ height, header, body int }{
-		{20, 3, 16}, {4, 3, 0}, {3, 2, 0}, {1, 0, 0},
+		{20, 1, 14}, {6, 1, 0}, {5, 1, 3}, {2, 1, 0}, {1, 0, 0},
 	} {
 		a := tallApp(80, tt.height)
 		if got := a.headerBandHeight(); got != tt.header {

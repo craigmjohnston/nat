@@ -48,7 +48,7 @@ type MilestoneForm struct {
 }
 
 // newMilestoneForm returns the confirm for moving a milestone to next.
-func newMilestoneForm(m domain.Milestone, next domain.MilestoneStatus) *MilestoneForm {
+func newMilestoneForm(theme huh.Theme, m domain.Milestone, next domain.MilestoneStatus) *MilestoneForm {
 	f := &MilestoneForm{
 		heading:     "Milestone",
 		milestoneID: m.ID,
@@ -60,7 +60,7 @@ func newMilestoneForm(m domain.Milestone, next domain.MilestoneStatus) *Mileston
 		huh.NewConfirm().
 			Title(fmt.Sprintf("%s — set %s?", m.Name, next)).
 			Value(&f.confirmed),
-	))
+	)).WithTheme(theme)
 	return f
 }
 
@@ -126,5 +126,5 @@ func (a *App) queueMilestone() tea.Cmd {
 		a.note = fmt.Sprintf("%q is %s — there is nothing to move it to.", m.Name, m.Status)
 		return nil
 	}
-	return a.openForm(newMilestoneForm(m, next))
+	return a.openForm(newMilestoneForm(a.styles.FormTheme, m, next))
 }

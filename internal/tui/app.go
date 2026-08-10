@@ -186,15 +186,32 @@ func NewAppWithOnboarding(cfg config.Config, client NotionAPI, o *Onboarding) *A
 	return a
 }
 
+// setStyles swaps in a freshly built palette, reaching every widget that took
+// a copy of the styles at construction. Modal forms are built from a.styles as
+// they open, and the background answer arrives before any could, so they need
+// no hand-me-down.
+func (a *App) setStyles(s Styles) {
+	a.styles = s
+	a.spinner.Style = s.Spinner
+	a.board.styles = s
+	a.info.styles = s
+	if a.onboarding != nil {
+		a.onboarding.SetStyles(s)
+	}
+}
+
 // Init starts the screen on show: the wizard's first call, or the first load of
 // the active project's plan, alongside the poll that marks the slices an agent
 // is already running on and the reconcile that re-homes the panes an earlier
 // run left joined.
 func (a *App) Init() tea.Cmd {
+	// The background query goes out first: the styles start on the dark
+	// palette, and the answer swaps in the light one when the terminal says so.
 	if a.onboarding != nil {
-		return a.onboarding.Init()
+		return tea.Batch(tea.RequestBackgroundColor, a.onboarding.Init())
 	}
-	return tea.Batch(a.startLoad(), a.refreshLive(), liveTick(), a.reclaimStrays())
+	return tea.Batch(tea.RequestBackgroundColor,
+		a.startLoad(), a.refreshLive(), liveTick(), a.reclaimStrays())
 }
 
 // Update handles the global keys and the app's own messages, and routes
@@ -207,6 +224,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.resize()
 	case tea.KeyPressMsg:
 		return a.keyPressed(msg)
+	case tea.BackgroundColorMsg:
+		a.setStyles(NewStyles(msg.IsDark()))
+		return a, nil
 	case OnboardingDoneMsg:
 		return a.onboardingDone(msg)
 	case projectLoadedMsg:
@@ -395,7 +415,7 @@ func (a *App) addSlice() tea.Cmd {
 		a.note = "Move to a milestone to add a slice under it."
 		return nil
 	}
-	return a.openForm(newAddSliceForm(m))
+	return a.openForm(newAddSliceForm(a.styles.FormTheme, m))
 }
 
 // editSlice opens the form for the slice the cursor is on, once its page body
@@ -425,7 +445,7 @@ func (a *App) sliceBodyLoaded(msg sliceBodyMsg) (tea.Model, tea.Cmd) {
 		a.err = msg.err
 		return a, nil
 	}
-	return a, a.openForm(newEditSliceForm(msg.slice, msg.markdown))
+	return a, a.openForm(newEditSliceForm(a.styles.FormTheme, msg.slice, msg.markdown))
 }
 
 // openForm shows a form over the board, at the size the window it is opening
@@ -604,19 +624,20 @@ func (a *App) View() tea.View {
 }
 
 // The layout's fixed measurements: the columns each band is held away from the
-// window's edges by, the height of the header band — its two lines and the
-// blank one separating it from the body — and the height of the status bar,
-// which is the window's bottom row and nothing more.
+// window's edges by, the height of the heading bar, and the height of the
+// status bar — one line bare, or three inside its box.
 const (
-	framePadX    = 2
-	headerHeight = 3
-	statusHeight = 1
+	framePadX       = 2
+	headerHeight    = 1
+	statusHeight    = 1
+	statusBoxHeight = statusHeight + 2
 )
 
 // content is the rendered screen, without the terminal-level settings: the
-// header, the body of the screen on show, and the status bar docked to the
-// window's bottom row. The three bands are cut and padded to fill the window
-// exactly, so nothing a screen draws can push the bar off the bottom.
+// heading bar, the body of the screen on show boxed in its border, and the
+// status bar in its own box docked to the window's bottom rows. The bands are
+// cut and padded to fill the window exactly, so nothing a screen draws can
+// push the bar off the bottom.
 func (a *App) content() string {
 	if a.onboarding != nil {
 		return a.onboarding.View()
@@ -626,9 +647,23 @@ func (a *App) content() string {
 		// are simply drawn one after another at whatever size they come out.
 		return a.headerView() + "\n" + a.body() + "\n" + a.statusBar()
 	}
-	lines := a.band(a.headerView(), a.headerBandHeight())
+	var lines []string
+	if a.headerBandHeight() > 0 {
+		lines = append(lines, a.headerView())
+	}
+	if a.framed() {
+		lines = append(lines, a.bodyRegion()...)
+		return strings.Join(append(lines, a.statusRegion()...), "\n")
+	}
 	lines = append(lines, a.band(a.body(), a.bodyHeight())...)
 	return strings.Join(append(lines, a.statusBar()), "\n")
+}
+
+// framed reports whether the window is big enough for the bordered layout: a
+// border costs two lines and two columns per region, and below that the bands
+// are drawn bare rather than boxed, so the content is never all frame.
+func (a *App) framed() bool {
+	return a.height >= headerHeight+statusBoxHeight+2 && a.width >= 2*framePadX+1
 }
 
 // band lays s out as exactly height lines of the window's width: indented from
@@ -649,30 +684,70 @@ func (a *App) band(s string, height int) []string {
 	return out[:height]
 }
 
-// headerBandHeight and bodyHeight are how the window's lines are shared out.
-// The status bar takes the bottom row first and the header what is left of its
-// own height, because a window too short for all three is still worth telling
-// the user where they are and what the keys do.
+// statusBandHeight, headerBandHeight and the body heights are how the
+// window's lines are shared out. The status bar takes the bottom rows first —
+// boxed when the window is framed, bare when it is not — and the header what
+// is left of its own height, because a window too short for all three is
+// still worth telling the user where they are and what the keys do.
+func (a *App) statusBandHeight() int {
+	if a.framed() {
+		return statusBoxHeight
+	}
+	return statusHeight
+}
+
 func (a *App) headerBandHeight() int {
-	return min(headerHeight, max(a.height-statusHeight, 0))
+	return min(headerHeight, max(a.height-a.statusBandHeight(), 0))
+}
+
+// bodyBoxHeight is the lines the body region occupies, border included;
+// bodyHeight is the lines a screen can actually draw on inside it.
+func (a *App) bodyBoxHeight() int {
+	return max(a.height-a.statusBandHeight()-a.headerBandHeight(), 0)
 }
 
 func (a *App) bodyHeight() int {
-	return max(a.height-statusHeight-a.headerBandHeight(), 0)
+	if a.framed() {
+		return max(a.bodyBoxHeight()-2, 0)
+	}
+	return a.bodyBoxHeight()
 }
 
-// headerView is the top band: the app's name, then the screen the user is on —
-// on the board, the project it is showing and its tally.
+// headerView is the top band: a full-width heading bar with the app's name as
+// a segment of its own, the screen or project name beside it, and — on the
+// board — the plan's tally right-aligned on the bar.
 func (a *App) headerView() string {
-	title := a.styles.Title.Render(appName)
-	if name := a.headerName(); name != "" {
-		title += a.styles.Faint.Render(" · ") + a.styles.Subtitle.Render(name)
-	}
+	segment := a.styles.HeaderApp.Render(appName)
+	name := a.headerName()
 	detail := a.headerDetail()
-	if detail != "" {
-		detail = a.styles.Faint.Render(detail)
+	if a.width <= 0 {
+		// No window to spread across, so the segments simply sit together.
+		parts := []string{segment}
+		if name != "" {
+			parts = append(parts, a.styles.HeaderTitle.Render(name))
+		}
+		if detail != "" {
+			parts = append(parts, a.styles.HeaderMeta.Render(detail))
+		}
+		return strings.Join(parts, " ")
 	}
-	return title + "\n" + detail
+	room := a.innerWidth()
+	left := segment
+	if name != "" {
+		left += a.styles.HeaderTitle.Render(" " + name)
+	}
+	// The tally goes whole or not at all — a cut count misleads — and its room
+	// comes out of the name's, whose head is the part worth keeping. Only a bar
+	// too narrow for the tally beside the app's own segment gives it all to the
+	// name.
+	right, gap := "", 0
+	if detail != "" && lipgloss.Width(segment)+statusSegmentGap+lipgloss.Width(detail) < room {
+		right, gap = a.styles.HeaderMeta.Render(detail), statusSegmentGap
+	}
+	left = fit(left, room-lipgloss.Width(right)-gap)
+	pad := max(room-lipgloss.Width(left)-lipgloss.Width(right), 0)
+	line := strings.Repeat(" ", framePadX) + left + strings.Repeat(" ", pad) + right
+	return a.styles.Header.Width(a.width).Render(fit(line, a.width))
 }
 
 // appName is what the header and the board's mode chip call the app.
@@ -705,6 +780,32 @@ func (a *App) headerDetail() string {
 	p := a.project.Progress()
 	return fmt.Sprintf("milestones: %d · slices done: %d/%d",
 		len(a.project.Milestones), p.Done, p.Total)
+}
+
+// bodyRegion is the body band inside its border: the screen's content clipped
+// to the box's interior — a body taller than the box would push the borders
+// apart rather than scroll — and the box run out to the window's width.
+func (a *App) bodyRegion() []string {
+	// framed has already made sure the box has at least its own border lines.
+	height := a.bodyBoxHeight()
+	content := clipLines(fit(a.body(), a.innerWidth()), max(height-2, 0))
+	// Width and Height count the border, so the box is sized to the window.
+	box := a.styles.Box.Width(a.width).Height(height).Render(content)
+	lines := strings.Split(box, "\n")
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+	return lines
+}
+
+// clipLines is the first n lines of s, or nothing at all when n is not
+// positive.
+func clipLines(s string, n int) string {
+	lines := strings.Split(s, "\n")
+	if len(lines) > n {
+		lines = lines[:max(n, 0)]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // body renders the current screen.
@@ -819,26 +920,41 @@ func (a *App) helpLines(bindings []key.Binding) []string {
 	return lines
 }
 
-// statusBar is the window's bottom row, and the one band with a fill of its
-// own: the mode chip and whatever the app has to say in a left segment, the key
-// hints right-aligned in a right segment, and the bar's background between
+// statusRegion is the status bar inside its border, docked to the window's
+// bottom rows: the bar keeps its own fill, and the box's columns come out of
+// the indent the bare bar would have spent anyway.
+func (a *App) statusRegion() []string {
+	box := a.styles.StatusBox.Width(a.width).Render(a.statusBarAt(a.width-2, 1))
+	return strings.Split(box, "\n")
+}
+
+// statusBar is the bare bar at the window's full width: what a window too
+// small for the box gets, and the unmeasured fallback.
+func (a *App) statusBar() string {
+	return a.statusBarAt(a.width, framePadX)
+}
+
+// statusBarAt is the bar as one line of the given total width, its content
+// held in from the left edge by indent, and the one band with a fill of its
+// own: the mode chip and whatever the app has to say in a left segment, the
+// key hints right-aligned in a right segment, and the bar's background between
 // them. It is one line however narrow the window gets — a bar that wrapped
 // would take a line the bands above it have already spent.
-func (a *App) statusBar() string {
+func (a *App) statusBarAt(total, indent int) string {
 	room := a.innerWidth()
 	left, right := a.statusLeft(room), ""
-	if gap := room - lipgloss.Width(left) - statusSegmentGap; a.width <= 0 || gap > 0 {
+	if gap := room - lipgloss.Width(left) - statusSegmentGap; total <= 0 || gap > 0 {
 		right = a.statusRight(max(gap, 0))
 	}
-	if a.width <= 0 {
+	if total <= 0 {
 		// No window to spread across, so the two segments simply sit together.
 		return a.styles.StatusBar.Render(left + strings.Repeat(" ", statusSegmentGap) + right)
 	}
 	// The indents are the first thing a window too narrow for the bar loses, so
 	// the line is cut to the window rather than to the room between them.
 	pad := max(room-lipgloss.Width(left)-lipgloss.Width(right), 0)
-	line := strings.Repeat(" ", framePadX) + left + strings.Repeat(" ", pad) + right
-	return a.styles.StatusBar.Width(a.width).Render(fit(line, a.width))
+	line := strings.Repeat(" ", indent) + left + strings.Repeat(" ", pad) + right
+	return a.styles.StatusBar.Width(total).Render(fit(line, total))
 }
 
 // statusSegmentGap is the least space the bar keeps between its two segments,

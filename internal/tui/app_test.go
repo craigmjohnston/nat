@@ -264,8 +264,10 @@ func TestAppShowsNothingToLoadWithoutAProject(t *testing.T) {
 			client := newLoadingClient()
 			app := NewApp(tt.cfg, client)
 
-			if cmd := app.Init(); cmd != nil {
-				t.Error("there is nothing to load")
+			// Init still queries the terminal's background colour; what it must
+			// not do is call Notion, which the queriedDSIDs check below covers.
+			if cmd := app.Init(); cmd == nil {
+				t.Error("the background query should still go out")
 			}
 			if len(client.queriedDSIDs) != 0 {
 				t.Errorf("queried %v, want no Notion calls", client.queriedDSIDs)
@@ -637,10 +639,10 @@ func TestAppRoutesScrollingToTheInfoScreen(t *testing.T) {
 func TestAppSizesTheInfoViewport(t *testing.T) {
 	app, _ := infoApp(t)
 
-	// The info screen is the body band: the window less its indents and less
-	// the header and status bar.
+	// The info screen is the body box's interior: the window less the box's
+	// border and padding, and less the heading bar and the boxed status bar.
 	wantW := 80 - 2*framePadX
-	wantH := 24 - headerHeight - statusHeight
+	wantH := 24 - headerHeight - statusBoxHeight - 2
 	if got := app.info.vp.Width(); got != wantW {
 		t.Errorf("viewport width = %d, want %d", got, wantW)
 	}

@@ -43,6 +43,7 @@ const (
 type SliceForm struct {
 	mode    sliceFormMode
 	form    *huh.Form
+	theme   huh.Theme
 	heading string
 
 	// milestoneID is the milestone an added slice is filed under; sliceID and
@@ -57,17 +58,18 @@ type SliceForm struct {
 }
 
 // newAddSliceForm returns an empty form for a new slice under a milestone.
-func newAddSliceForm(m domain.Milestone) *SliceForm {
-	f := &SliceForm{mode: sliceFormAdd, milestoneID: m.ID, heading: "Add a slice to " + m.Name}
+func newAddSliceForm(theme huh.Theme, m domain.Milestone) *SliceForm {
+	f := &SliceForm{mode: sliceFormAdd, theme: theme, milestoneID: m.ID, heading: "Add a slice to " + m.Name}
 	f.form = f.build()
 	return f
 }
 
 // newEditSliceForm returns a form filled in with a slice as it stands, with
 // description being its page body as markdown.
-func newEditSliceForm(s domain.Slice, description string) *SliceForm {
+func newEditSliceForm(theme huh.Theme, s domain.Slice, description string) *SliceForm {
 	f := &SliceForm{
 		mode:        sliceFormEdit,
+		theme:       theme,
 		sliceID:     s.ID,
 		heading:     "Edit " + s.Name,
 		title:       s.Name,
@@ -94,7 +96,7 @@ func (f *SliceForm) build() *huh.Form {
 			Title("Repo").
 			Description("Working directory override; blank uses the project's own.").
 			Value(&f.repo),
-	))
+	)).WithTheme(f.theme)
 }
 
 // Init starts the form.

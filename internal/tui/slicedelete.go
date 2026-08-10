@@ -34,7 +34,7 @@ func deleteWarning(s domain.Slice) string {
 }
 
 // newDeleteSliceForm returns the confirm for trashing a slice.
-func newDeleteSliceForm(s domain.Slice) *DeleteSliceForm {
+func newDeleteSliceForm(theme huh.Theme, s domain.Slice) *DeleteSliceForm {
 	f := &DeleteSliceForm{
 		heading:   "Delete a slice",
 		sliceID:   s.ID,
@@ -45,7 +45,7 @@ func newDeleteSliceForm(s domain.Slice) *DeleteSliceForm {
 			Title(fmt.Sprintf("Delete %q?", s.Name)).
 			Description(deleteWarning(s)).
 			Value(&f.confirmed),
-	))
+	)).WithTheme(theme)
 	return f
 }
 
@@ -106,5 +106,5 @@ func (a *App) deleteSliceFlow() tea.Cmd {
 		a.note = note
 		return nil
 	}
-	return a.openForm(newDeleteSliceForm(s))
+	return a.openForm(newDeleteSliceForm(a.styles.FormTheme, s))
 }

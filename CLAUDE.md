@@ -89,3 +89,6 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   (plus `golangci-lint run` if installed).
 - Never log or commit the Notion token; it belongs to the `ntn` CLI and is only
   ever held in memory for the lifetime of a request.
+- Before starting work, pull the latest `main` and branch off it. Only ever
+  base branches — and PRs — on `main`, never on another slice branch, so every
+  PR merges into `main`.
