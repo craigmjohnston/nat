@@ -4,13 +4,13 @@
                                                                                 
   [90mmilestones: 1 · slices done: 0/1[m                                              
                                                                                 
-  [95m❯ [m▾ [1;97mM7: Agent pane view[m [90m0/1[m [90mActive[m                                            
-      [90m○[m Keep the status bar and header inside the window                        
+  [1;97;44m❯ ▾ M7: Agent pane view 0/1  Active [m[44m                                        [m  
+      [100m [m[97;100m○[m[100m [m Keep the status bar and header inside the window                      
                                                                                 
                                                                                 
                                                                                 
                                                                                 
                                                                                 
                                                                                 
-  [95mt[m [90mreturn the agent[m[90m · [m[95mprefix+z[m [90mzoom the split[m                                  
+  [46m [m[30;46mnotion-agent-tracker, dog[m[46m [m [95mt[m [90mreturn the agent[m[90m · [m[95mprefix+z[m [90mzoom the split[m      
                                                                                 

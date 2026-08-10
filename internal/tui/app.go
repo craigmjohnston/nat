@@ -704,12 +704,46 @@ func (a *App) helpLines(bindings []key.Binding) []string {
 	return lines
 }
 
-// statusBar is the bottom line: the error that is waiting to be dismissed, a
-// note, or the key hints. Every one of them is held to a single line no wider
-// than the window: a status bar that wrapped would take a line the layout above
-// it has already spent.
+// statusBar is the bottom line: the project/mode chip, then the error that is
+// waiting to be dismissed, a note, or the key hints. Every one of them is held
+// to a single line no wider than the window: a status bar that wrapped would
+// take a line the layout above it has already spent.
 func (a *App) statusBar() string {
+	chip := a.styles.ModeChip.Render(a.chipText())
 	width := a.innerWidth()
+	if width > 0 {
+		// A window with no room beside the chip gets the chip alone, cut to fit.
+		if lipgloss.Width(chip)+1 >= width {
+			return fit(chip, width)
+		}
+		width -= lipgloss.Width(chip) + 1
+	}
+	return chip + " " + a.statusText(width)
+}
+
+// chipText is what the status bar's chip says: the screen's name, or on the
+// board the project's, cut to a third of the bar so the message beside the
+// chip keeps most of the room.
+func (a *App) chipText() string {
+	text := "nat"
+	switch {
+	case a.screen == screenHelp:
+		text = "help"
+	case a.screen == screenInfo:
+		text = "info"
+	case a.screen == screenForm:
+		text = "edit"
+	case a.project != nil:
+		text = a.project.Name
+	}
+	if w := a.innerWidth(); w > 0 {
+		text = fit(text, w/3)
+	}
+	return text
+}
+
+// statusText is the message beside the chip.
+func (a *App) statusText(width int) string {
 	if a.err != nil {
 		// The error style pads, so the text gets what the padding leaves. The
 		// leading text is what names the call that failed, so the tail goes first.

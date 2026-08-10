@@ -415,6 +415,29 @@ func TestAppShowsANoteOverTheKeyHints(t *testing.T) {
 	}
 }
 
+func TestAppStatusBarChipNamesTheScreen(t *testing.T) {
+	app := NewApp(config.Config{}, nil)
+	// No window yet and no project loaded: the chip's fallback, uncut.
+	if got := app.chipText(); got != "nat" {
+		t.Errorf("chip = %q, want the app's own name with no project", got)
+	}
+
+	p := testProject()
+	app.project = &p
+	tests := map[screen]string{
+		screenBoard: "tracker",
+		screenHelp:  "help",
+		screenInfo:  "info",
+		screenForm:  "edit",
+	}
+	for scr, want := range tests {
+		app.screen = scr
+		if got := app.chipText(); got != want {
+			t.Errorf("chip on screen %d = %q, want %q", scr, got, want)
+		}
+	}
+}
+
 func TestAppRoutesToOnboarding(t *testing.T) {
 	client := &fakeNotion{}
 	o := NewOnboarding(config.Config{}, client, func(config.Config) error { return nil })
