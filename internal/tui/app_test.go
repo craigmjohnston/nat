@@ -264,8 +264,10 @@ func TestAppShowsNothingToLoadWithoutAProject(t *testing.T) {
 			client := newLoadingClient()
 			app := NewApp(tt.cfg, client)
 
-			if cmd := app.Init(); cmd != nil {
-				t.Error("there is nothing to load")
+			// Init still queries the terminal's background colour; what it must
+			// not do is call Notion, which the queriedDSIDs check below covers.
+			if cmd := app.Init(); cmd == nil {
+				t.Error("the background query should still go out")
 			}
 			if len(client.queriedDSIDs) != 0 {
 				t.Errorf("queried %v, want no Notion calls", client.queriedDSIDs)

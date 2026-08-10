@@ -35,13 +35,13 @@ func everyModal(t *testing.T) map[string]modal {
 		"p2": {Name: "other"},
 	}}
 	return map[string]modal{
-		"add slice":      newAddSliceForm(m),
-		"edit slice":     newEditSliceForm(s, "The brief."),
-		"move slice":     newMoveSliceForm(s, []domain.Milestone{m}),
-		"launch":         newLaunchForm(s, t.TempDir()),
-		"attach":         newAttachForm(s, "nat-12345678"),
-		"new project":    newNewProjectForm(),
-		"switch project": newSwitchProjectForm(cfg),
+		"add slice":      newAddSliceForm(DefaultStyles().FormTheme, m),
+		"edit slice":     newEditSliceForm(DefaultStyles().FormTheme, s, "The brief."),
+		"move slice":     newMoveSliceForm(DefaultStyles().FormTheme, s, []domain.Milestone{m}),
+		"launch":         newLaunchForm(DefaultStyles().FormTheme, s, t.TempDir()),
+		"attach":         newAttachForm(DefaultStyles().FormTheme, s, "nat-12345678"),
+		"new project":    newNewProjectForm(DefaultStyles().FormTheme),
+		"switch project": newSwitchProjectForm(DefaultStyles().FormTheme, cfg),
 	}
 }
 
