@@ -147,12 +147,13 @@ func NewAppWithOnboarding(cfg config.Config, client NotionAPI, o *Onboarding) *A
 
 // Init starts the screen on show: the wizard's first call, or the first load of
 // the active project's plan, alongside the poll that marks the slices an agent
-// is already running on.
+// is already running on and the reconcile that re-homes the panes an earlier
+// run left joined.
 func (a *App) Init() tea.Cmd {
 	if a.onboarding != nil {
 		return a.onboarding.Init()
 	}
-	return tea.Batch(a.startLoad(), a.refreshLive(), liveTick())
+	return tea.Batch(a.startLoad(), a.refreshLive(), liveTick(), a.reclaimStrays())
 }
 
 // Update handles the global keys and the app's own messages, and routes
@@ -204,6 +205,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return model, tea.Batch(cmd, a.refreshLive())
 	case liveSessionsMsg:
 		a.liveLoaded(msg)
+		return a, nil
+	case straysReclaimedMsg:
+		a.straysReclaimed(msg)
 		return a, nil
 	case liveTickMsg:
 		return a, tea.Batch(a.refreshLive(), liveTick())

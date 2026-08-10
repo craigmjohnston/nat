@@ -19,13 +19,17 @@ import (
 
 // AgentLauncher is what the launch flow needs of tmux: which slices have an
 // agent running and in which session, how to start one, how to show one beside
-// the board, and the command that attaches to it full-screen. It is an
-// interface so the flow can be driven without a tmux server.
+// the board, the command that attaches to it full-screen, and the two ways a
+// joined pane is given back — on the way out, and on the way in after a run
+// that never got to. It is an interface so the flow can be driven without a
+// tmux server.
 type AgentLauncher interface {
 	LiveSlices() (map[string]string, error)
 	Launch(session, workdir, promptFile, sliceID string) error
 	ShowPane(sliceID, hostPane string, percent int) (bool, error)
 	AttachCmd(session string) *exec.Cmd
+	BreakOutJoined(hostPane string) (int, error)
+	ReclaimStrays(hostPane string) (int, error)
 }
 
 // liveInterval is how often the board re-reads which sessions are running. An
@@ -70,6 +74,12 @@ type (
 	agentAttachedMsg struct {
 		note string
 		err  error
+	}
+	// straysReclaimedMsg reports the startup reconcile: how many panes a
+	// previous run had left joined, or the read that failed instead.
+	straysReclaimedMsg struct {
+		count int
+		err   error
 	}
 )
 
@@ -327,6 +337,55 @@ func (a *App) attachAgentFlow() tea.Cmd {
 	}
 	a.busy, a.note = true, ""
 	return a.showAgent(s, session)
+}
+
+// Release sends the agents joined into the board's window back to sessions of
+// their own. The window goes when the board does, and it would take a pane
+// still in it along — so this is the last thing the app owes anything, and the
+// caller runs it however it is leaving, quit or panic.
+//
+// A board that is not itself a tmux pane has never joined anything: there is
+// nothing to give back, and nothing to ask tmux about.
+func (a *App) Release() error {
+	host := agent.HostPane()
+	if a.launcher == nil || host == "" {
+		return nil
+	}
+	if _, err := a.launcher.BreakOutJoined(host); err != nil {
+		return fmt.Errorf("return the agents to their own sessions: %w", err)
+	}
+	return nil
+}
+
+// reclaimStrays kicks off the startup reconcile, re-homing the panes a run
+// that died left joined. It is skipped when the board is not a pane itself:
+// such a board joins nothing, and the panes it would find are another board's
+// to look after.
+func (a *App) reclaimStrays() tea.Cmd {
+	host := agent.HostPane()
+	if a.launcher == nil || host == "" {
+		return nil
+	}
+	l := a.launcher
+	return func() tea.Msg {
+		count, err := l.ReclaimStrays(host)
+		return straysReclaimedMsg{count: count, err: err}
+	}
+}
+
+// straysReclaimed reports what the reconcile found. Finding nothing is the
+// ordinary case and says nothing; a failure is a note rather than an error
+// banner, because the board is still worth looking at and the agents it could
+// not move are all still running.
+func (a *App) straysReclaimed(msg straysReclaimedMsg) {
+	switch {
+	case msg.err != nil:
+		a.note = fmt.Sprintf("Could not re-home the agents left by an earlier run: %v", msg.err)
+	case msg.count == 1:
+		a.note = "Re-homed 1 agent left joined by an earlier run."
+	case msg.count > 1:
+		a.note = fmt.Sprintf("Re-homed %d agents left joined by an earlier run.", msg.count)
+	}
 }
 
 // refreshLive kicks off a read of the running sessions. It is skipped when

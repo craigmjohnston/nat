@@ -306,6 +306,65 @@ func (t *Tmux) breakOut(paneID, session string) error {
 	return nil
 }
 
+// BreakOutJoined sends every agent pane sharing hostPane's window back to a
+// session of its own, reporting how many it moved. It is what the board owes
+// its agents on the way out: a joined pane belongs to the board's window, so a
+// window that closes with one still in it kills the agent working there.
+//
+// A host pane that is not on the server — the board is not in tmux at all, or
+// its pane has already gone — means there is no window to empty, which is
+// nothing to do rather than a failure.
+func (t *Tmux) BreakOutJoined(hostPane string) (int, error) {
+	panes, err := t.panes()
+	if err != nil {
+		return 0, err
+	}
+	host, ok := find(panes, func(p pane) bool { return p.id == hostPane })
+	if !ok {
+		return 0, nil
+	}
+	return t.breakOutAll(panes, func(p pane) bool { return p.window == host.window })
+}
+
+// ReclaimStrays sends the agent panes a previous run left joined back to
+// sessions of their own, reporting how many it moved. A run that died without
+// getting to [Tmux.BreakOutJoined] — a panic, a kill — leaves its agents in a
+// window that will take them with it when it closes, and a board starting up
+// has joined nothing itself yet: every agent pane in [TUISession], or in the
+// window the new board is starting in, is one of those strays.
+func (t *Tmux) ReclaimStrays(hostPane string) (int, error) {
+	panes, err := t.panes()
+	if err != nil {
+		return 0, err
+	}
+	host, hosted := find(panes, func(p pane) bool { return p.id == hostPane })
+	return t.breakOutAll(panes, func(p pane) bool {
+		return p.session == TUISession || (hosted && p.window == host.window)
+	})
+}
+
+// breakOutAll sends every agent pane matching want back to a session of its
+// own, against the panes as they were listed.
+//
+// A pane that will not move does not stop the rest: each one left where it is
+// is an agent that dies with its window, so the failures are gathered and
+// reported together rather than abandoning the panes behind the first of them.
+func (t *Tmux) breakOutAll(panes []pane, want func(pane) bool) (int, error) {
+	moved := 0
+	var errs []error
+	for _, p := range panes {
+		if p.slice == "" || !want(p) {
+			continue
+		}
+		if err := t.breakOut(p.id, SessionName(p.slice)); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		moved++
+	}
+	return moved, errors.Join(errs...)
+}
+
 // Launch starts a detached tmux session named session, with workdir as its
 // working directory, running an agent seeded with the prompt in promptFile for
 // the slice with page ID sliceID.

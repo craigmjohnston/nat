@@ -48,9 +48,19 @@ type fakeLauncher struct {
 	joined  bool
 	showErr error
 
+	// brokenOut and reclaimed are what the two ways of giving a joined pane
+	// back report: how many panes moved, and the failure that stopped them.
+	brokenOut    int
+	brokenOutErr error
+	reclaimed    int
+	reclaimErr   error
+
 	launches []launchCall
 	shown    []showCall
 	attached []string
+	// releases and reclaims record the host pane each was asked about.
+	releases []string
+	reclaims []string
 }
 
 var _ AgentLauncher = (*fakeLauncher)(nil)
@@ -77,6 +87,16 @@ func (f *fakeLauncher) AttachCmd(session string) *exec.Cmd {
 	// Something harmless: the test runtime never runs it, but nothing here
 	// should be able to take a terminal even if it did.
 	return exec.Command("true")
+}
+
+func (f *fakeLauncher) BreakOutJoined(hostPane string) (int, error) {
+	f.releases = append(f.releases, hostPane)
+	return f.brokenOut, f.brokenOutErr
+}
+
+func (f *fakeLauncher) ReclaimStrays(hostPane string) (int, error) {
+	f.reclaims = append(f.reclaims, hostPane)
+	return f.reclaimed, f.reclaimErr
 }
 
 // launchApp returns an app showing testProject with a launcher standing in for
@@ -830,6 +850,123 @@ func TestAppDoesNotPollWithoutAProject(t *testing.T) {
 	app := NewApp(config.Config{}, &fakeNotion{})
 	if cmd := app.refreshLive(); cmd != nil {
 		t.Error("there are no slices to mark")
+	}
+}
+
+// Quitting with an agent joined into the board's window: the pane is handed
+// back before the window it is in goes away with the app.
+func TestReleaseFreesTheJoinedAgents(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	t.Setenv(agent.PaneEnv, "%0")
+	launcher.brokenOut = 1
+
+	if err := app.Release(); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+
+	if !reflect.DeepEqual(launcher.releases, []string{"%0"}) {
+		t.Errorf("releases = %v, want the board's own pane asked about once", launcher.releases)
+	}
+}
+
+// A board that is not a tmux pane has never joined anything, so there is
+// nothing to hand back and no reason to ask tmux.
+func TestReleaseOutsideTmux(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	t.Setenv(agent.PaneEnv, "")
+
+	if err := app.Release(); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if len(launcher.releases) != 0 {
+		t.Errorf("releases = %v, want tmux left alone", launcher.releases)
+	}
+}
+
+func TestReleaseWithoutALauncher(t *testing.T) {
+	app, _, _ := launchApp(t)
+	app.launcher = nil
+	t.Setenv(agent.PaneEnv, "%0")
+
+	if err := app.Release(); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+}
+
+func TestReleaseReportsAFailure(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	t.Setenv(agent.PaneEnv, "%0")
+	launcher.brokenOutErr = errors.New("no server")
+
+	err := app.Release()
+	if err == nil {
+		t.Fatal("Release: want the failure reported, got nil")
+	}
+	if !strings.Contains(err.Error(), "no server") {
+		t.Errorf("err = %v, want it to carry what tmux said", err)
+	}
+}
+
+// Starting up after a run that died with an agent joined: the stray is
+// re-homed rather than left in a window whose close would kill it.
+func TestStartupReclaimsStrays(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	t.Setenv(agent.PaneEnv, "%0")
+	launcher.reclaimed = 1
+
+	feed(t, app, app.Init())
+
+	if !reflect.DeepEqual(launcher.reclaims, []string{"%0"}) {
+		t.Errorf("reclaims = %v, want the reconcile run once for the board's pane", launcher.reclaims)
+	}
+	if app.note != "Re-homed 1 agent left joined by an earlier run." {
+		t.Errorf("note = %q, want the re-homed agent reported", app.note)
+	}
+}
+
+func TestStraysReclaimedNotes(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  straysReclaimedMsg
+		want string
+	}{
+		{"nothing to do", straysReclaimedMsg{}, ""},
+		{"one pane", straysReclaimedMsg{count: 1}, "Re-homed 1 agent left joined by an earlier run."},
+		{"several panes", straysReclaimedMsg{count: 3}, "Re-homed 3 agents left joined by an earlier run."},
+		{"a failure", straysReclaimedMsg{err: errors.New("no server")},
+			"Could not re-home the agents left by an earlier run: no server"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app, _, _ := launchApp(t)
+
+			app.Update(tt.msg)
+
+			if app.note != tt.want {
+				t.Errorf("note = %q, want %q", app.note, tt.want)
+			}
+			// The agents it could not move are all still running, and the plan
+			// is still worth looking at.
+			if app.err != nil {
+				t.Errorf("err = %v, want the reconcile kept to the status bar", app.err)
+			}
+		})
+	}
+}
+
+// A board with no window of its own joins nothing, and the panes it would find
+// are another board's to look after.
+func TestNoReclaimWithoutABoardPane(t *testing.T) {
+	app, _, _ := launchApp(t)
+	t.Setenv(agent.PaneEnv, "")
+	if cmd := app.reclaimStrays(); cmd != nil {
+		t.Error("there is no window to reconcile")
+	}
+
+	t.Setenv(agent.PaneEnv, "%0")
+	app.launcher = nil
+	if cmd := app.reclaimStrays(); cmd != nil {
+		t.Error("there is no tmux to reconcile with")
 	}
 }
 
