@@ -1092,9 +1092,9 @@ func TestBusyNoteOf(t *testing.T) {
 		modal modal
 		want  string
 	}{
-		{"a write", newAddSliceForm(domain.Milestone{Name: "M2"}), "Saving…"},
-		{"a launch", newLaunchForm(domain.Slice{Name: "x"}, "/tmp"), "Launching the agent…"},
-		{"an attach", newAttachForm(domain.Slice{Name: "x"}, "nat-5"), ""},
+		{"a write", newAddSliceForm(DefaultStyles().FormTheme, domain.Milestone{Name: "M2"}), "Saving…"},
+		{"a launch", newLaunchForm(DefaultStyles().FormTheme, domain.Slice{Name: "x"}, "/tmp"), "Launching the agent…"},
+		{"an attach", newAttachForm(DefaultStyles().FormTheme, domain.Slice{Name: "x"}, "nat-5"), ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

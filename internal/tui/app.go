@@ -194,15 +194,32 @@ func NewAppWithOnboarding(cfg config.Config, client NotionAPI, o *Onboarding) *A
 	return a
 }
 
+// setStyles swaps in a freshly built palette, reaching every widget that took
+// a copy of the styles at construction. Modal forms are built from a.styles as
+// they open, and the background answer arrives before any could, so they need
+// no hand-me-down.
+func (a *App) setStyles(s Styles) {
+	a.styles = s
+	a.spinner.Style = s.Spinner
+	a.board.styles = s
+	a.info.styles = s
+	if a.onboarding != nil {
+		a.onboarding.SetStyles(s)
+	}
+}
+
 // Init starts the screen on show: the wizard's first call, or the first load of
 // the active project's plan, alongside the poll that marks the slices an agent
 // is already running on and the reconcile that re-homes the panes an earlier
 // run left joined.
 func (a *App) Init() tea.Cmd {
+	// The background query goes out first: the styles start on the dark
+	// palette, and the answer swaps in the light one when the terminal says so.
 	if a.onboarding != nil {
-		return a.onboarding.Init()
+		return tea.Batch(tea.RequestBackgroundColor, a.onboarding.Init())
 	}
-	return tea.Batch(a.startLoad(), a.refreshLive(), liveTick(), a.reclaimStrays())
+	return tea.Batch(tea.RequestBackgroundColor,
+		a.startLoad(), a.refreshLive(), liveTick(), a.reclaimStrays())
 }
 
 // Update handles the global keys and the app's own messages, and routes
@@ -215,6 +232,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.resize()
 	case tea.KeyPressMsg:
 		return a.keyPressed(msg)
+	case tea.BackgroundColorMsg:
+		a.setStyles(NewStyles(msg.IsDark()))
+		return a, nil
 	case OnboardingDoneMsg:
 		return a.onboardingDone(msg)
 	case projectLoadedMsg:
@@ -408,7 +428,7 @@ func (a *App) addSlice() tea.Cmd {
 		a.note = "Move to a milestone to add a slice under it."
 		return nil
 	}
-	return a.openForm(newAddSliceForm(m))
+	return a.openForm(newAddSliceForm(a.styles.FormTheme, m))
 }
 
 // editSlice opens the form for the slice the cursor is on, once its page body
@@ -438,7 +458,7 @@ func (a *App) sliceBodyLoaded(msg sliceBodyMsg) (tea.Model, tea.Cmd) {
 		a.err = msg.err
 		return a, nil
 	}
-	return a, a.openForm(newEditSliceForm(msg.slice, msg.markdown))
+	return a, a.openForm(newEditSliceForm(a.styles.FormTheme, msg.slice, msg.markdown))
 }
 
 // openForm shows a form over the board, at the size the window it is opening
