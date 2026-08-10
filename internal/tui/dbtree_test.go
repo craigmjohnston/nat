@@ -1,186 +1,34 @@
 package tui
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-
-	"github.com/craigmjohnston/nat/internal/notion"
 )
 
-// treeLabels flattens a forest into indented labels, so a test can state the
-// whole shape it expects in one literal.
-func treeLabels(nodes []*treeNode) []string {
-	var out []string
-	var walk func(n *treeNode, depth int)
-	walk = func(n *treeNode, depth int) {
-		out = append(out, strings.Repeat("  ", depth)+n.label)
-		for _, c := range n.children {
-			walk(c, depth+1)
-		}
-	}
-	for _, n := range nodes {
-		walk(n, 0)
-	}
-	return out
-}
-
-func TestBuildDBTreeNestsDatabasesUnderTheirPages(t *testing.T) {
-	pages := []notion.SearchResult{
-		pageHit("home", "Home"),
-		pageHit("projects", "Projects"),
-	}
-	pages[1].Parent = notion.PageParent("home")
-	dbs := []notion.SearchResult{
-		dataSourceHit("ds-deep", "db-deep", "Tracker"),
-		dataSourceHit("ds-top", "db-top", "Recipes"),
-	}
-	parents := map[string]notion.Parent{
-		"db-deep": notion.PageParent("projects"),
-		"db-top":  {Type: "workspace"},
-	}
-
-	got := treeLabels(buildDBTree(dbs, pages, parents))
-	want := []string{
-		"Home",
-		"  Projects",
-		"    Tracker",
-		"Recipes",
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("tree = %#v, want %#v", got, want)
-	}
-}
-
-func TestBuildDBTreePutsOrphansAtTheRootAndPrunesEmptyPages(t *testing.T) {
-	pages := []notion.SearchResult{
-		pageHit("empty", "Notes"), // no database anywhere beneath: pruned
-		pageHit("home", "Home"),
-	}
-	dbs := []notion.SearchResult{
-		dataSourceHit("ds-1", "db-known", "Kept"),
-		dataSourceHit("ds-2", "db-unknown", "Orphan"), // parent fetch failed
-		{ID: "ds-3", Object: notion.SearchDataSource}, // untitled, no parent at all
-	}
-	parents := map[string]notion.Parent{"db-known": notion.PageParent("home")}
-
-	got := treeLabels(buildDBTree(dbs, pages, parents))
-	want := []string{
-		"Home",
-		"  Kept",
-		"(untitled) ds-3",
-		"Orphan",
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("tree = %#v, want %#v", got, want)
-	}
-}
-
-func TestBuildDBTreeSortsGroupsBeforeLeaves(t *testing.T) {
-	pages := []notion.SearchResult{
-		pageHit("zeta", "zeta"),
-		pageHit("alpha", "Alpha"),
-	}
-	dbs := []notion.SearchResult{
-		dataSourceHit("ds-a", "db-a", "aardvark"),
-		dataSourceHit("ds-z", "db-z", "Zebra"),
-		dataSourceHit("ds-1", "db-1", "One"),
-		dataSourceHit("ds-2", "db-2", "Two"),
-	}
-	parents := map[string]notion.Parent{
-		"db-1": notion.PageParent("zeta"),
-		"db-2": notion.PageParent("alpha"),
-	}
-
-	got := treeLabels(buildDBTree(dbs, pages, parents))
-	want := []string{
-		"Alpha", "  Two",
-		"zeta", "  One",
-		"aardvark",
-		"Zebra",
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("tree = %#v, want groups first, each level alphabetical:\n%#v", got, want)
-	}
-}
-
-func TestBuildDBTreeSurvivesAParentCycle(t *testing.T) {
-	// Two pages claiming each other as parent must not hang or recurse forever.
-	pages := []notion.SearchResult{
-		pageHit("a", "A"),
-		pageHit("b", "B"),
-		pageHit("self", "Self"),
-	}
-	pages[0].Parent = notion.PageParent("b")
-	pages[1].Parent = notion.PageParent("a")
-	pages[2].Parent = notion.PageParent("self")
-	dbs := []notion.SearchResult{dataSourceHit("ds-1", "db-1", "DB")}
-	parents := map[string]notion.Parent{"db-1": notion.PageParent("a")}
-
-	got := treeLabels(buildDBTree(dbs, pages, parents))
-	// The loopers are re-rooted so nothing beneath them is lost: A keeps its
-	// database, while B and Self hold nothing and are pruned.
-	want := []string{"A", "  DB"}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("tree = %#v, want %#v", got, want)
-	}
-}
-
-func TestBuildDBTreeIgnoresDuplicatePageHits(t *testing.T) {
-	// Paginated search could hand the same page back twice; it must appear — and
-	// hold its children — once.
-	pages := []notion.SearchResult{
-		pageHit("home", "Home"),
-		pageHit("home", "Home"),
-	}
-	dbs := []notion.SearchResult{dataSourceHit("ds-1", "db-1", "DB")}
-	parents := map[string]notion.Parent{"db-1": notion.PageParent("home")}
-
-	got := treeLabels(buildDBTree(dbs, pages, parents))
-	want := []string{"Home", "  DB"}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("tree = %#v, want %#v", got, want)
-	}
-}
-
-func TestBuildDBTreeRootsAPageHangingOffALoop(t *testing.T) {
-	// C is not part of the A↔B loop, but its parent chain never ends; it keeps
-	// its database at the root rather than vanishing with the loop.
-	pages := []notion.SearchResult{
-		pageHit("a", "A"),
-		pageHit("b", "B"),
-		pageHit("c", "C"),
-	}
-	pages[0].Parent = notion.PageParent("b")
-	pages[1].Parent = notion.PageParent("a")
-	pages[2].Parent = notion.PageParent("a")
-	dbs := []notion.SearchResult{dataSourceHit("ds-1", "db-1", "DB")}
-	parents := map[string]notion.Parent{"db-1": notion.PageParent("c")}
-
-	got := treeLabels(buildDBTree(dbs, pages, parents))
-	want := []string{"C", "  DB"}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("tree = %#v, want %#v", got, want)
-	}
-}
-
-// pickerKeys press one key on a picker.
-func pressTree(t *treePicker, code rune) (string, bool, bool) {
+// pressTree presses one key on a picker.
+func pressTree(t *treePicker, code rune) treeEvent {
 	return t.Handle(tea.KeyPressMsg(tea.Key{Code: code}))
 }
 
-// testTree is a small forest: one page holding a database, one root database,
-// and the create-new leaf, the way onboarding builds it.
+// loadedPage builds a page node whose children are already here, the state a
+// node reaches after its fetch has answered.
+func loadedPage(label string, children ...*treeNode) *treeNode {
+	return &treeNode{label: label, pageID: "page-" + label, loaded: true, children: children}
+}
+
+// testTree is a small forest: one page holding a nested page and a database,
+// one root database, and the create-new leaf, the way onboarding builds it
+// once the fetches have run.
 func testTree() []*treeNode {
 	return []*treeNode{
-		{label: "Home", children: []*treeNode{
-			{label: "Deep", children: []*treeNode{{label: "Tracker", value: "ds-tracker"}}},
-			{label: "Recipes", value: "ds-recipes"},
-		}},
-		{label: "Loose", value: "ds-loose"},
+		loadedPage("Home",
+			loadedPage("Deep", &treeNode{label: "Tracker", value: "db-tracker"}),
+			&treeNode{label: "Recipes", value: "db-recipes"},
+		),
+		{label: "Loose", value: "db-loose"},
 		{label: "Create a new database…", value: createNewChoice},
 	}
 }
@@ -192,8 +40,8 @@ func TestTreePickerExpandsAndSelects(t *testing.T) {
 	if got := len(p.rows); got != 3 {
 		t.Fatalf("visible rows = %d, want 3", got)
 	}
-	if _, chosen, _ := pressTree(p, tea.KeyRight); chosen {
-		t.Fatal("expanding a group must not choose anything")
+	if ev := pressTree(p, tea.KeyRight); ev.chosen || ev.load != nil {
+		t.Fatal("expanding a loaded page must not choose or fetch anything")
 	}
 	if got := len(p.rows); got != 5 {
 		t.Fatalf("visible rows after expand = %d, want 5", got)
@@ -201,24 +49,140 @@ func TestTreePickerExpandsAndSelects(t *testing.T) {
 	pressTree(p, tea.KeyDown) // onto Deep
 	pressTree(p, 'l')         // expand it
 	pressTree(p, 'j')         // onto Tracker
-	choice, chosen, aborted := p.Handle(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
-	if !chosen || aborted || choice != "ds-tracker" {
-		t.Errorf("Handle(enter) = (%q, %v, %v), want the nested database chosen", choice, chosen, aborted)
+	ev := p.Handle(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	if !ev.chosen || ev.aborted || ev.choice != "db-tracker" {
+		t.Errorf("Handle(enter) = %+v, want the nested database chosen", ev)
 	}
 }
 
-func TestTreePickerEnterTogglesAGroup(t *testing.T) {
+func TestTreePickerEnterTogglesALoadedPage(t *testing.T) {
 	p := newTreePicker(DefaultStyles(), "Pick", "", testTree())
 
-	if _, chosen, _ := p.Handle(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})); chosen {
-		t.Fatal("enter on a group opens it rather than choosing")
+	if ev := p.Handle(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})); ev.chosen {
+		t.Fatal("enter on a page opens it rather than choosing")
 	}
 	if got := len(p.rows); got != 5 {
-		t.Fatalf("rows after enter = %d, want the group open", got)
+		t.Fatalf("rows after enter = %d, want the page open", got)
 	}
 	p.Handle(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	if got := len(p.rows); got != 3 {
-		t.Fatalf("rows after a second enter = %d, want the group shut again", got)
+		t.Fatalf("rows after a second enter = %d, want the page shut again", got)
+	}
+}
+
+func TestTreePickerLoadsAPageOnFirstOpen(t *testing.T) {
+	p := newTreePicker(DefaultStyles(), "Pick", "", []*treeNode{
+		{label: "Home", pageID: "page-1"},
+		{label: "Create a new database…", value: createNewChoice},
+	})
+	home := p.roots[0]
+
+	ev := pressTree(p, tea.KeyRight)
+	if ev.load != home {
+		t.Fatalf("event = %+v, want a load request for the page", ev)
+	}
+	if !home.loading {
+		t.Error("the page should be marked loading while its fetch runs")
+	}
+	// Pressing again while the fetch is in flight must not fetch twice, on
+	// either key that opens a node.
+	if ev := pressTree(p, tea.KeyRight); ev.load != nil {
+		t.Error("a second expand issued a second fetch")
+	}
+	if ev := p.Handle(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})); ev.load != nil || ev.chosen {
+		t.Error("enter while loading issued a second fetch or chose the page")
+	}
+
+	p.SetChildren(home, []*treeNode{{label: "Slices", value: "db-1"}})
+	if !home.loaded || home.loading || !home.expanded {
+		t.Errorf("node = %+v, want it loaded and open", home)
+	}
+	if got := len(p.rows); got != 3 {
+		t.Fatalf("rows = %d, want the child on show", got)
+	}
+	// The child was registered: collapse from it steps out to its parent.
+	pressTree(p, tea.KeyDown)
+	pressTree(p, tea.KeyLeft)
+	if got := p.rows[p.cursor]; got != home {
+		t.Errorf("cursor on %q after left on the child, want Home", got.label)
+	}
+	// A later open costs nothing: the children are kept.
+	pressTree(p, tea.KeyLeft)
+	if ev := pressTree(p, tea.KeyRight); ev.load != nil {
+		t.Error("reopening a loaded page fetched it again")
+	}
+}
+
+func TestTreePickerEnterAsksForALoad(t *testing.T) {
+	p := newTreePicker(DefaultStyles(), "Pick", "", []*treeNode{{label: "Home", pageID: "page-1"}})
+	if ev := p.Handle(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})); ev.load != p.roots[0] {
+		t.Errorf("event = %+v, want enter to request the fetch", ev)
+	}
+}
+
+func TestTreePickerSetChildrenWithNothingFound(t *testing.T) {
+	// A page holding no pages or databases opens onto nothing rather than
+	// erroring, and stays openable without refetching.
+	p := newTreePicker(DefaultStyles(), "Pick", "", []*treeNode{{label: "Empty", pageID: "page-1"}})
+	pressTree(p, tea.KeyRight)
+	p.SetChildren(p.roots[0], nil)
+
+	if got := len(p.rows); got != 1 {
+		t.Errorf("rows = %d, want just the empty page", got)
+	}
+	pressTree(p, tea.KeyLeft)
+	if ev := pressTree(p, tea.KeyRight); ev.load != nil {
+		t.Error("an empty page should not be fetched again")
+	}
+}
+
+func TestTreePickerAddRootsKeepsTheEscapeHatchLast(t *testing.T) {
+	p := newTreePicker(DefaultStyles(), "Pick", "",
+		[]*treeNode{{label: "Create a new database…", value: createNewChoice}})
+
+	p.AddRoots(&treeNode{label: "Home", pageID: "p1"})
+	p.AddRoots() // a search page with nothing to add changes nothing
+	p.AddRoots(loadedPage("Docs", &treeNode{label: "Tracker", value: "db-1"}))
+
+	if got := len(p.roots); got != 3 {
+		t.Fatalf("roots = %d, want 3", got)
+	}
+	if got := p.roots[2].value; got != createNewChoice {
+		t.Errorf("last root = %q, want the escape hatch", p.roots[2].label)
+	}
+	if got := p.roots[0].label; got != "Home" {
+		t.Errorf("first root = %q, want the streamed order kept", got)
+	}
+	// The added root's subtree was registered: collapse steps out of it.
+	docs := p.roots[1]
+	pressTree(p, tea.KeyDown)
+	pressTree(p, tea.KeyRight)
+	pressTree(p, tea.KeyDown)
+	pressTree(p, tea.KeyLeft)
+	if got := p.rows[p.cursor]; got != docs {
+		t.Errorf("cursor on %q, want Docs", got.label)
+	}
+}
+
+func TestTreePickerCursorFollowsItsNodeAsRootsStream(t *testing.T) {
+	p := newTreePicker(DefaultStyles(), "Pick", "",
+		[]*treeNode{{label: "Create a new database…", value: createNewChoice}})
+	hatch := p.roots[0]
+
+	// Before the user touches the picker, the cursor stays on the top row, so
+	// the first page to stream in lands under it.
+	p.AddRoots(&treeNode{label: "Home", pageID: "p1"})
+	if got := p.rows[p.cursor].label; got != "Home" {
+		t.Errorf("cursor on %q after the first batch, want Home", got)
+	}
+
+	// Once the user has parked the cursor somewhere — here, back on the
+	// escape hatch — pages streaming in above must not shove it onto a row
+	// they never chose.
+	pressTree(p, tea.KeyDown)
+	p.AddRoots(&treeNode{label: "Docs", pageID: "p2"})
+	if got := p.rows[p.cursor]; got != hatch {
+		t.Errorf("cursor on %q after more roots streamed in, want the escape hatch", got.label)
 	}
 }
 
@@ -256,8 +220,12 @@ func TestTreePickerKeepsTheCursorInRange(t *testing.T) {
 		t.Errorf("cursor = %d after down past the end, want %d", p.cursor, want)
 	}
 
-	// Collapsing everything with the cursor at the bottom keeps it on a row.
+	// A cursor left beyond the rows — its node collapsed out from under it —
+	// comes back onto one.
+	p.roots[0].expanded = true
+	p.flatten()
 	p.cursor = len(p.rows) - 1
+	p.roots[0].expanded = false
 	p.flatten()
 	if p.cursor >= len(p.rows) {
 		t.Errorf("cursor = %d of %d rows", p.cursor, len(p.rows))
@@ -275,19 +243,19 @@ func TestTreePickerRowOfAnUnknownNode(t *testing.T) {
 
 func TestTreePickerAborts(t *testing.T) {
 	p := newTreePicker(DefaultStyles(), "Pick", "", testTree())
-	if _, _, aborted := p.Handle(tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl})); !aborted {
+	if ev := p.Handle(tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl})); !ev.aborted {
 		t.Error("ctrl+c should abort")
 	}
 }
 
 func TestTreePickerWithNothingToShow(t *testing.T) {
 	p := newTreePicker(DefaultStyles(), "Pick", "", nil)
-	if _, chosen, aborted := p.Handle(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})); chosen || aborted {
+	if ev := p.Handle(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})); ev.chosen || ev.aborted {
 		t.Error("an empty picker has nothing to choose")
 	}
 }
 
-func TestTreePickerViewMarksGroupsAndTheCursor(t *testing.T) {
+func TestTreePickerViewMarksPagesAndTheCursor(t *testing.T) {
 	p := newTreePicker(DefaultStyles(), "Which one?", "Browse down.", testTree())
 	view := stripANSI(p.View())
 
@@ -298,14 +266,23 @@ func TestTreePickerViewMarksGroupsAndTheCursor(t *testing.T) {
 	}
 	pressTree(p, tea.KeyRight)
 	if view := stripANSI(p.View()); !strings.Contains(view, "▾ Home") {
-		t.Errorf("an open group should show ▾:\n%s", view)
+		t.Errorf("an open page should show ▾:\n%s", view)
+	}
+}
+
+func TestTreePickerViewMarksALoadingPage(t *testing.T) {
+	p := newTreePicker(DefaultStyles(), "Pick", "", []*treeNode{{label: "Home", pageID: "p1"}})
+	pressTree(p, tea.KeyRight)
+
+	if view := stripANSI(p.View()); !strings.Contains(view, "Home …") {
+		t.Errorf("a loading page should show an ellipsis:\n%s", view)
 	}
 }
 
 func TestTreePickerViewScrollsToTheCursor(t *testing.T) {
 	roots := make([]*treeNode, 20)
 	for i := range roots {
-		roots[i] = &treeNode{label: string(rune('a' + i)), value: "ds"}
+		roots[i] = &treeNode{label: string(rune('a' + i)), value: "db"}
 	}
 	p := newTreePicker(DefaultStyles(), "Pick", "", roots)
 	p.SetSize(40, 10)
@@ -337,7 +314,7 @@ func TestTreePickerViewFitsAOneRowWindow(t *testing.T) {
 }
 
 func TestTreePickerViewTruncatesToTheWidth(t *testing.T) {
-	roots := []*treeNode{{label: strings.Repeat("wide ", 20), value: "ds"}}
+	roots := []*treeNode{{label: strings.Repeat("wide ", 20), value: "db"}}
 	p := newTreePicker(DefaultStyles(), "Pick", strings.Repeat("long ", 20), roots)
 	p.SetSize(20, 0)
 

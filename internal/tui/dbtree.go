@@ -1,110 +1,36 @@
 package tui
 
 import (
-	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-
-	"github.com/craigmjohnston/nat/internal/notion"
 )
 
-// treeNode is one entry of the database picker: a page that groups what lives
-// under it, or a selectable leaf — a database, or the create-new escape hatch.
+// treeNode is one entry of the database picker: a page whose contents load on
+// demand, or a selectable leaf — a database, or the create-new escape hatch.
 type treeNode struct {
 	label    string
-	value    string // "" for a page that only groups; otherwise what selecting yields
+	value    string // "" for a page; otherwise what selecting yields
+	pageID   string // the page a group node fetches its children from
 	children []*treeNode
 	expanded bool
+	loaded   bool // the children have been fetched
+	loading  bool // the fetch is in flight
 }
 
 // group reports whether the node exists to be opened rather than selected.
 func (n *treeNode) group() bool { return n.value == "" }
 
-// buildDBTree arranges the database candidates by where they live: pages nest
-// under their parent pages, and each database sits under the page its parent
-// database hangs off, so the user browses down to it. parents maps a database
-// ID to that database's own parent. A database whose parent is unknown or is
-// not a shared page sits at the root — the workspace — and pages that lead to
-// no database are left out.
-func buildDBTree(dbs, pages []notion.SearchResult, parents map[string]notion.Parent) []*treeNode {
-	byID := make(map[string]notion.SearchResult, len(pages))
-	nodes := make(map[string]*treeNode, len(pages))
-	for _, p := range pages {
-		if _, dup := nodes[p.ID]; dup {
-			continue
-		}
-		nodes[p.ID] = &treeNode{label: resultLabel(p)}
-		byID[p.ID] = p
-	}
-
-	var roots []*treeNode
-	placed := map[string]bool{}
-	for _, p := range pages {
-		if placed[p.ID] {
-			continue
-		}
-		placed[p.ID] = true
-		if parent, ok := nodes[p.Parent.PageID]; ok && !looping(p, byID) {
-			parent.children = append(parent.children, nodes[p.ID])
-			continue
-		}
-		roots = append(roots, nodes[p.ID])
-	}
-
-	for _, db := range dbs {
-		leaf := &treeNode{label: resultLabel(db), value: db.ID}
-		if parent, ok := nodes[parents[db.Parent.DatabaseID].PageID]; ok {
-			parent.children = append(parent.children, leaf)
-			continue
-		}
-		roots = append(roots, leaf)
-	}
-
-	return pruneEmpty(roots)
-}
-
-// looping reports whether following p's parents runs into a loop. Real Notion
-// data cannot hold one, but a defensive tree must not lose the pages — and
-// whatever databases they hold — to bad data, so a looping page is treated as
-// having no parent and sits at the root instead.
-func looping(p notion.SearchResult, byID map[string]notion.SearchResult) bool {
-	id := p.Parent.PageID
-	for range len(byID) {
-		if id == p.ID {
-			return true
-		}
-		hit, ok := byID[id]
-		if !ok {
-			return false
-		}
-		id = hit.Parent.PageID
-	}
-	// A chain longer than the pages themselves is a loop p merely hangs off.
-	return true
-}
-
-// pruneEmpty drops the groups that hold no database anywhere beneath them,
-// sorting what is kept — groups first, then leaves, each alphabetically — so
-// the listing reads like a directory.
-func pruneEmpty(nodes []*treeNode) []*treeNode {
-	kept := make([]*treeNode, 0, len(nodes))
-	for _, n := range nodes {
-		n.children = pruneEmpty(n.children)
-		if n.group() && len(n.children) == 0 {
-			continue
-		}
-		kept = append(kept, n)
-	}
-	sort.SliceStable(kept, func(i, j int) bool {
-		if kept[i].group() != kept[j].group() {
-			return kept[i].group()
-		}
-		return strings.ToLower(kept[i].label) < strings.ToLower(kept[j].label)
-	})
-	return kept
+// treeEvent is what one key press produced. At most one field is set: a chosen
+// leaf's value, an abort, or a page whose children must be fetched before it
+// can open.
+type treeEvent struct {
+	choice  string
+	chosen  bool
+	aborted bool
+	load    *treeNode
 }
 
 // treeKeyMap is the picker's bindings.
@@ -129,9 +55,10 @@ func defaultTreeKeyMap() treeKeyMap {
 	}
 }
 
-// treePicker walks a treeNode forest: groups expand and collapse in place, and
-// landing enter on a leaf chooses it. It stands where a flat select would,
-// because a workspace can hold too many databases to scan as one list.
+// treePicker walks a treeNode forest: pages expand and collapse in place —
+// fetching their contents the first time — and landing enter on a leaf chooses
+// it. It stands where a flat select would, because a workspace can hold too
+// many pages to load, let alone scan, as one list.
 type treePicker struct {
 	styles Styles
 	keys   treeKeyMap
@@ -143,6 +70,11 @@ type treePicker struct {
 	parent map[*treeNode]*treeNode
 	rows   []*treeNode // the visible nodes, in drawing order
 	cursor int
+	// moved is set once the user has put the cursor somewhere. Until then the
+	// cursor sits on the top row, so the first page the search streams in
+	// lands under it; afterwards it follows the node the user chose as rows
+	// shift around it.
+	moved bool
 
 	width  int
 	height int
@@ -158,26 +90,55 @@ func newTreePicker(styles Styles, title, description string, roots []*treeNode) 
 		roots:       roots,
 		parent:      map[*treeNode]*treeNode{},
 	}
-	var walk func(n *treeNode)
-	walk = func(n *treeNode) {
-		for _, c := range n.children {
-			t.parent[c] = n
-			walk(c)
-		}
-	}
 	for _, r := range roots {
-		walk(r)
+		t.register(r)
 	}
 	t.flatten()
 	return t
 }
 
+// register records who holds whom below n, so collapse can step out of any row.
+func (t *treePicker) register(n *treeNode) {
+	for _, c := range n.children {
+		t.parent[c] = n
+		t.register(c)
+	}
+}
+
+// AddRoots inserts nodes just above the picker's last root — the create-new
+// escape hatch, which stays at the bottom while the workspace search streams
+// pages in above it.
+func (t *treePicker) AddRoots(nodes ...*treeNode) {
+	if len(nodes) == 0 {
+		return
+	}
+	for _, n := range nodes {
+		t.register(n)
+	}
+	i := max(0, len(t.roots)-1)
+	t.roots = append(t.roots[:i:i], append(nodes, t.roots[i:]...)...)
+	t.flatten()
+}
+
+// SetChildren hands a page node the children its fetch returned and opens it.
+func (t *treePicker) SetChildren(n *treeNode, children []*treeNode) {
+	n.children = children
+	n.loaded, n.loading, n.expanded = true, false, true
+	t.register(n)
+	t.flatten()
+}
+
 // SetSize tells the picker how much window it has to draw in.
 func (t *treePicker) SetSize(width, height int) { t.width, t.height = width, height }
 
-// flatten rebuilds the visible rows from the expansion state, keeping the
-// cursor on a row that still exists.
+// flatten rebuilds the visible rows from the expansion state. Once the user
+// has moved, the cursor follows the node it was on — rows shift under it as
+// pages stream in and children arrive — and falls back to a row that exists.
 func (t *treePicker) flatten() {
+	var focused *treeNode
+	if t.moved && t.cursor < len(t.rows) {
+		focused = t.rows[t.cursor]
+	}
 	t.rows = t.rows[:0]
 	var walk func(n *treeNode)
 	walk = func(n *treeNode) {
@@ -192,10 +153,13 @@ func (t *treePicker) flatten() {
 	for _, r := range t.roots {
 		walk(r)
 	}
+	if focused != nil {
+		t.cursor = t.rowOf(focused)
+	}
 	t.cursor = max(0, min(t.cursor, len(t.rows)-1))
 }
 
-// rowOf says where a node is drawn, so collapsing to a parent can follow it.
+// rowOf says where a node is drawn, so the cursor can follow it.
 func (t *treePicker) rowOf(n *treeNode) int {
 	for i, row := range t.rows {
 		if row == n {
@@ -205,15 +169,17 @@ func (t *treePicker) rowOf(n *treeNode) int {
 	return 0
 }
 
-// Handle applies one key press. It returns the chosen leaf's value once enter
-// lands on one, and aborted when the user backs out of the picker entirely.
-func (t *treePicker) Handle(msg tea.KeyPressMsg) (choice string, chosen, aborted bool) {
+// Handle applies one key press. Opening a page whose contents have not been
+// fetched yet reports it as the event's load — the caller fetches and answers
+// with SetChildren.
+func (t *treePicker) Handle(msg tea.KeyPressMsg) treeEvent {
 	if key.Matches(msg, t.keys.Abort) {
-		return "", false, true
+		return treeEvent{aborted: true}
 	}
 	if len(t.rows) == 0 {
-		return "", false, false
+		return treeEvent{}
 	}
+	t.moved = true
 	node := t.rows[t.cursor]
 	switch {
 	case key.Matches(msg, t.keys.Up):
@@ -222,8 +188,7 @@ func (t *treePicker) Handle(msg tea.KeyPressMsg) (choice string, chosen, aborted
 		t.cursor = min(len(t.rows)-1, t.cursor+1)
 	case key.Matches(msg, t.keys.Expand):
 		if node.group() && !node.expanded {
-			node.expanded = true
-			t.flatten()
+			return t.open(node)
 		}
 	case key.Matches(msg, t.keys.Collapse):
 		if node.group() && node.expanded {
@@ -236,14 +201,33 @@ func (t *treePicker) Handle(msg tea.KeyPressMsg) (choice string, chosen, aborted
 			t.cursor = t.rowOf(p)
 		}
 	case key.Matches(msg, t.keys.Select):
-		if node.group() {
-			node.expanded = !node.expanded
+		if !node.group() {
+			return treeEvent{choice: node.value, chosen: true}
+		}
+		if node.expanded {
+			node.expanded = false
 			t.flatten()
 			break
 		}
-		return node.value, true, false
+		return t.open(node)
 	}
-	return "", false, false
+	return treeEvent{}
+}
+
+// open expands a page in place when its contents are already here, and asks
+// the caller to fetch them the first time. A fetch already in flight is left
+// to finish rather than issued again.
+func (t *treePicker) open(n *treeNode) treeEvent {
+	if n.loaded {
+		n.expanded = true
+		t.flatten()
+		return treeEvent{}
+	}
+	if n.loading {
+		return treeEvent{}
+	}
+	n.loading = true
+	return treeEvent{load: n}
 }
 
 // treeChromeHeight is what the picker draws besides the rows: the title, the
@@ -266,18 +250,21 @@ func (t *treePicker) View() string {
 		if i == t.cursor {
 			cursor, style = t.styles.Cursor.Render("> "), t.styles.Selected
 		}
-		glyph := ""
+		glyph, label := "", row.label
 		if row.group() {
 			glyph, style = "▸ ", t.styles.Milestone
 			if row.expanded {
 				glyph = "▾ "
+			}
+			if row.loading {
+				label += " …"
 			}
 			if i == t.cursor {
 				style = t.styles.Selected
 			}
 		}
 		indent := strings.Repeat("  ", depth[row]-1)
-		b.WriteString(fit(cursor+indent+style.Render(glyph+row.label), t.width) + "\n")
+		b.WriteString(fit(cursor+indent+style.Render(glyph+label), t.width) + "\n")
 	}
 
 	help := make([]string, 0, 4)
