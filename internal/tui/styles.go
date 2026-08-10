@@ -9,15 +9,23 @@ import "charm.land/lipgloss/v2"
 // The palette is the terminal's own 4-bit colours rather than hex values, so
 // the app sits inside whatever theme the user already runs.
 type Styles struct {
-	// App is the outer frame every full-window screen is rendered into.
-	App lipgloss.Style
+	// Frame is the indent every band of the layout shares, holding its content
+	// away from the window's edges.
+	Frame lipgloss.Style
 	// Title is the app/screen heading; Subtitle the line under it.
 	Title    lipgloss.Style
 	Subtitle lipgloss.Style
 	// Faint is for text that should recede: hints, placeholders, counts.
 	Faint lipgloss.Style
-	// Note is a transient, benign message in the status bar.
-	Note lipgloss.Style
+	// StatusBar is the fill of the bottom row, and StatusKey, StatusDesc,
+	// StatusNote and StatusSep the text drawn on it. Each of them carries the
+	// bar's own background: a segment styled with a foreground alone would reset
+	// the fill and cut a hole in it.
+	StatusBar  lipgloss.Style
+	StatusKey  lipgloss.Style
+	StatusDesc lipgloss.Style
+	StatusNote lipgloss.Style
+	StatusSep  lipgloss.Style
 	// Error is the status bar of a failed Notion call.
 	Error lipgloss.Style
 	// ModeChip is the status bar's leading segment: the project's name on the
@@ -69,12 +77,20 @@ func DefaultStyles() Styles {
 	// chip is the shape every badge shares: a space of background either side,
 	// so the fill reads as a chip rather than tinted text.
 	chip := lipgloss.NewStyle().Padding(0, 1)
+	// bar is the status bar's fill, which every segment drawn on it inherits.
+	bar := lipgloss.NewStyle().Background(lipgloss.BrightBlack)
 	return Styles{
-		App:      lipgloss.NewStyle().Padding(1, 2),
+		Frame:    lipgloss.NewStyle().Padding(0, framePadX),
 		Title:    lipgloss.NewStyle().Bold(true).Foreground(lipgloss.BrightCyan),
 		Subtitle: lipgloss.NewStyle().Foreground(lipgloss.Cyan),
 		Faint:    lipgloss.NewStyle().Foreground(lipgloss.BrightBlack),
-		Note:     lipgloss.NewStyle().Foreground(lipgloss.Green),
+
+		StatusBar:  bar,
+		StatusKey:  bar.Bold(true).Foreground(lipgloss.BrightMagenta),
+		StatusDesc: bar.Foreground(lipgloss.White),
+		StatusNote: bar.Foreground(lipgloss.BrightGreen),
+		StatusSep:  bar.Foreground(lipgloss.White),
+
 		Error:    chip.Bold(true).Foreground(lipgloss.BrightWhite).Background(lipgloss.Red),
 		ModeChip: chip.Foreground(lipgloss.Black).Background(lipgloss.Cyan),
 		Spinner:  lipgloss.NewStyle().Foreground(lipgloss.Magenta),

@@ -123,24 +123,60 @@ func TestHintsAreTruncatedOnceThereIsNothingLeftToDrop(t *testing.T) {
 	}
 }
 
-func TestAppStatusBarNeverExceedsTheWindowAsItNarrows(t *testing.T) {
-	// Narrow enough and the bar is the chip alone, cut to fit; the loop takes
-	// that branch too.
+func TestAppStatusBarIsExactlyTheWindowWideAsItNarrows(t *testing.T) {
+	// The bar fills the window's bottom row whatever it holds. Narrow enough and
+	// it is the chip alone, cut to fit; the loop takes that branch too.
 	for width := 1; width <= 80; width++ {
-		a := sizedApp(width, 24)
-		inner := a.innerWidth()
-		if got := lipgloss.Width(a.statusBar()); inner > 0 && got > inner {
-			t.Fatalf("at %d columns the status bar is %d wide, want at most %d",
-				width, got, inner)
+		bar := sizedApp(width, 24).statusBar()
+		if got := lipgloss.Width(bar); got != width {
+			t.Fatalf("at %d columns the status bar is %d wide, want the window filled",
+				width, got)
+		}
+		if strings.Contains(bar, "\n") {
+			t.Fatalf("at %d columns the status bar took more than one line", width)
 		}
 	}
 }
 
 func TestAppStatusBarLeadsWithTheProjectChip(t *testing.T) {
 	bar := stripANSI(sizedApp(80, 24).statusBar())
-	// The chip is cut to a third of the bar, so the long test name loses its tail.
-	if want := " notion-agent-tracker, dog "; !strings.HasPrefix(bar, want) {
+	// The bar is indented like every other band, and the chip is cut to a third
+	// of it, so the long test name loses its tail.
+	if want := "   notion-agent-tracker, dog "; !strings.HasPrefix(bar, want) {
 		t.Errorf("status bar = %q, want it led by the chip %q", bar, want)
+	}
+}
+
+func TestAppStatusBarEndsWithTheKeyHints(t *testing.T) {
+	// The hints are a right segment: they finish at the bar's own indent, with
+	// fill between them and whatever the left segment holds.
+	a := sizedApp(80, 24)
+	a.note = "Saved."
+
+	bar := stripANSI(a.statusBar())
+	if !strings.HasSuffix(bar, "q quit  ") {
+		t.Errorf("status bar = %q, want it to end with the hints", bar)
+	}
+	if !strings.Contains(bar, "Saved.") {
+		t.Errorf("status bar = %q, want the note beside the chip", bar)
+	}
+}
+
+func TestAppStatusBarKeepsTheHintsBesideALongNote(t *testing.T) {
+	// A note is capped at half the bar, so it can never take the whole of it.
+	a := sizedApp(80, 24)
+	a.note = strings.Repeat("very long ", 20)
+
+	if bar := stripANSI(a.statusBar()); !strings.Contains(bar, "q quit") {
+		t.Errorf("status bar = %q, want the hints to have survived the note", bar)
+	}
+}
+
+func TestAppStatusBarDropsTheHintsForAnOpenForm(t *testing.T) {
+	// A form owns the keys the hints name, so only its own way out is offered.
+	bar := stripANSI(sizedFormApp(t, 80, 24).statusBar())
+	if !strings.Contains(bar, "esc cancel") || strings.Contains(bar, "refresh") {
+		t.Errorf("status bar = %q, want only the form's own prompt", bar)
 	}
 }
 
@@ -246,4 +282,130 @@ func TestAppInfoScreenReasonFitsTheWindow(t *testing.T) {
 	press(a, "i")
 
 	checkFits(t, a.View().Content, width, height)
+}
+
+// tallProject is a plan with far more slices than a short window has lines, so
+// the board has to be scrolled to see all of it.
+func tallProject() domain.Project {
+	p := domain.Project{
+		ID:         testProjectID,
+		Name:       "tracker",
+		Milestones: []domain.Milestone{{ID: "m1", Name: "M1: Long", Order: 1, Status: domain.MilestoneActive}},
+	}
+	for i := range 40 {
+		p.Slices = append(p.Slices, domain.Slice{
+			ID:     "s" + strconv.Itoa(i),
+			Name:   "Slice number " + strconv.Itoa(i),
+			Status: domain.SliceTodo, MilestoneID: "m1",
+		})
+	}
+	return p
+}
+
+// tallApp returns an app of a given window size showing tallProject.
+func tallApp(width, height int) *App {
+	a := NewApp(testConfig(), newLoadingClient())
+	a.Update(tea.WindowSizeMsg{Width: width, Height: height})
+	p := tallProject()
+	a.Update(projectLoadedMsg{project: p})
+	return a
+}
+
+func TestAppEveryScreenFitsASmallWindow(t *testing.T) {
+	// 80×20 is the small window the layout has to hold every screen inside.
+	const width, height = 80, 20
+	tests := map[string]func(*App){
+		"board": func(*App) {},
+		"help":  func(a *App) { press(a, "?") },
+		"info":  func(a *App) { press(a, "i") },
+		"form":  func(a *App) { a.board.cursor = 0; press(a, "a") },
+	}
+	for name, open := range tests {
+		t.Run(name, func(t *testing.T) {
+			a := tallApp(width, height)
+			open(a)
+			checkFits(t, a.View().Content, width, height)
+		})
+	}
+}
+
+func TestAppClipsAPlanTallerThanTheWindow(t *testing.T) {
+	const width, height = 80, 20
+	a := tallApp(width, height)
+
+	view := stripANSI(a.View().Content)
+	checkFits(t, view, width, height)
+	if !strings.Contains(view, "Slice number 0") {
+		t.Errorf("the plan should be shown from the top:\n%s", view)
+	}
+	if strings.Contains(view, "Slice number 39") {
+		t.Errorf("a row past the window should have been clipped:\n%s", view)
+	}
+}
+
+func TestAppScrollsTheBoardToKeepTheCursorVisible(t *testing.T) {
+	const width, height = 80, 20
+	a := tallApp(width, height)
+	body := a.bodyHeight()
+
+	// Down to the last row: the board scrolls only as far as it must, so the
+	// cursor lands on the bottom line of the band rather than the top.
+	for range len(a.board.rows) - 1 {
+		press(a, "j")
+	}
+	if got, want := a.boardVP.YOffset(), len(a.board.rows)-body; got != want {
+		t.Errorf("offset = %d, want %d — the least scroll that shows the cursor", got, want)
+	}
+	view := stripANSI(a.View().Content)
+	if !strings.Contains(view, "Slice number 39") {
+		t.Errorf("the cursor's row should be on screen:\n%s", view)
+	}
+
+	// And back to the top the same way.
+	for range len(a.board.rows) - 1 {
+		press(a, "k")
+	}
+	if got := a.boardVP.YOffset(); got != 0 {
+		t.Errorf("offset = %d, want the board back at the top", got)
+	}
+	if view := stripANSI(a.View().Content); !strings.Contains(view, "Slice number 0") {
+		t.Errorf("the cursor's row should be on screen:\n%s", view)
+	}
+}
+
+func TestAppScrollsTheHelpScreen(t *testing.T) {
+	a := tallApp(80, 20)
+	press(a, "?")
+
+	press(a, "j")
+
+	if got := a.helpVP.YOffset(); got != 1 {
+		t.Errorf("offset = %d, want the key routed to the help screen", got)
+	}
+	// The key list is longer than the window, and paging down reaches its end.
+	for !a.helpVP.AtBottom() {
+		press(a, "f")
+	}
+	view := stripANSI(a.View().Content)
+	checkFits(t, view, 80, 20)
+	if !strings.Contains(view, "switch project") {
+		t.Errorf("the keys past the window's bottom should be reachable:\n%s", view)
+	}
+}
+
+func TestAppSharesAShortWindowOutFromTheBottom(t *testing.T) {
+	// The status bar takes the bottom row first, then the header what is left:
+	// too short a window loses the body, then the header, never the bar.
+	for _, tt := range []struct{ height, header, body int }{
+		{20, 3, 16}, {4, 3, 0}, {3, 2, 0}, {1, 0, 0},
+	} {
+		a := tallApp(80, tt.height)
+		if got := a.headerBandHeight(); got != tt.header {
+			t.Errorf("at %d lines the header is %d, want %d", tt.height, got, tt.header)
+		}
+		if got := a.bodyHeight(); got != tt.body {
+			t.Errorf("at %d lines the body is %d, want %d", tt.height, got, tt.body)
+		}
+		checkFits(t, a.View().Content, 80, tt.height)
+	}
 }
