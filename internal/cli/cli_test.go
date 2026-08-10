@@ -16,6 +16,11 @@ import (
 type fakeAPI struct {
 	blocks    []notion.Block
 	blocksErr error
+	// blocksByID answers for one page in particular, for a command that reads
+	// more than one; it takes precedence over blocks.
+	blocksByID map[string][]notion.Block
+	// blocksErrByID fails the read of one page in particular.
+	blocksErrByID map[string]error
 
 	// queries records the data source ID and sorts of every query, in order.
 	queries []query
@@ -23,6 +28,14 @@ type fakeAPI struct {
 	pages map[string][]notion.Page
 	// queryErr fails the query for the named data source.
 	queryErr map[string]error
+
+	// updates records every property write, in order.
+	updates []update
+	// updateErr fails the write.
+	updateErr error
+	// mangle is Notion being less obliging than asked: it is handed the page a
+	// write would have produced, and whatever it does to it is what comes back.
+	mangle func(*notion.Page)
 }
 
 type query struct {
@@ -30,8 +43,47 @@ type query struct {
 	sorts []notion.Sort
 }
 
-func (f *fakeAPI) GetBlockChildren(_ context.Context, _ string) ([]notion.Block, error) {
+type update struct {
+	id    string
+	props map[string]notion.PropertyValue
+}
+
+func (f *fakeAPI) GetBlockChildren(_ context.Context, id string) ([]notion.Block, error) {
+	if err := f.blocksErrByID[id]; err != nil {
+		return nil, err
+	}
+	if blocks, ok := f.blocksByID[id]; ok {
+		return blocks, nil
+	}
 	return f.blocks, f.blocksErr
+}
+
+// UpdatePageProperties answers the way Notion does: with the whole page, the
+// written properties merged over the ones it already had.
+func (f *fakeAPI) UpdatePageProperties(_ context.Context, id string, props map[string]notion.PropertyValue) (*notion.Page, error) {
+	f.updates = append(f.updates, update{id: id, props: props})
+	if f.updateErr != nil {
+		return nil, f.updateErr
+	}
+	page := notion.Page{ID: id, Properties: map[string]notion.PropertyValue{}}
+	for _, pages := range f.pages {
+		for _, p := range pages {
+			if p.ID != id {
+				continue
+			}
+			page.URL = p.URL
+			for name, v := range p.Properties {
+				page.Properties[name] = v
+			}
+		}
+	}
+	for name, v := range props {
+		page.Properties[name] = v
+	}
+	if f.mangle != nil {
+		f.mangle(&page)
+	}
+	return &page, nil
 }
 
 func (f *fakeAPI) QueryDataSource(_ context.Context, id string, _ map[string]any, sorts []notion.Sort) ([]notion.Page, error) {
