@@ -9,7 +9,11 @@ model).
 ## Architecture
 
 - `main.go` — entrypoint; module path `github.com/craigmjohnston/nat`, so
-  `go install github.com/craigmjohnston/nat@latest` yields a `nat` binary
+  `go install github.com/craigmjohnston/nat@latest` yields a `nat` binary.
+  Started outside tmux it re-execs itself into a `nat-tui` session
+  (`tmux new-session -A`, so a second launch attaches rather than starting a
+  rival); started inside tmux it runs in place and does not nest. `NAT_NO_TMUX=1`
+  opts out. The board has to be a pane for an agent's pane to be joined beside it.
 - `internal/config/` — XDG config (`~/.config/notion-agent-tracker/config.json`)
   + the Notion bearer token, read from Notion's official CLI via
   `ntn auth token` (the app stores no credential of its own)

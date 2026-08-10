@@ -37,6 +37,21 @@ git config --global url."git@github.com:".insteadOf "https://github.com/"
 
 To build from a clone instead: `make build && ./nat`.
 
+## Running
+
+`nat` hosts itself in tmux: started from an ordinary terminal it re-execs into a
+tmux session called `nat-tui`, so that a running agent's pane can later be shown
+beside the board. Run it again and you attach to the session already there
+rather than starting a second board. Started from inside tmux it runs in place,
+in whatever window you are in — it never nests a session inside a pane.
+
+To run without tmux at all — accepting that the split view is unavailable — set
+`NAT_NO_TMUX=1`:
+
+```sh
+NAT_NO_TMUX=1 nat
+```
+
 Install the skills so `/queue-work` (plan work into the tracker) and
 `/next-slice` (pick up and complete the next slice) are available in any repo:
 
