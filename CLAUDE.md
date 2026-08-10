@@ -45,9 +45,14 @@ model).
   lowest-ordered Active milestone and prints its brief,
   `nat start-slice <slice> [--json]`, which claims one named Todo slice and
   prints the same brief — the command a board-launched agent runs, since it is
-  pointed at a slice rather than choosing one — and
+  pointed at a slice rather than choosing one —
   `nat complete-slice <slice> [--pr URL] [--summary TEXT] [--blocked]`, which
-  closes out a slice the configured user holds), what the binary
+  closes out a slice the configured user holds, and the one-off additions
+  `nat milestone-add <name>` (Queued, at the end of the plan) and
+  `nat slice-add <title> --milestone <name|URL|ID> [--description TEXT|-]
+  [--repo DIR]` (Todo and unassigned, description as the page body;
+  `--description -` reads it from stdin, so a slice-add typed with no brief
+  does not wait on one)), what the binary
   does when given a subcommand. Run before the tmux hosting step and with no TUI
   code in the path: a command prints to the terminal it was typed in and exits.
 - `internal/tui/` — bubbletea v2 (`charm.land/*/v2` imports); root model in

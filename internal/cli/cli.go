@@ -17,6 +17,7 @@ import (
 // command can be driven by a fake in tests.
 type API interface {
 	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
+	CreatePage(ctx context.Context, parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)
 	GetPage(ctx context.Context, id string) (*notion.Page, error)
 	GetBlockChildren(ctx context.Context, id string) ([]notion.Block, error)
 	AppendBlockChildren(ctx context.Context, id string, children []map[string]any) ([]notion.Block, error)
@@ -57,6 +58,12 @@ usage:
   nat start-slice <slice> [--json]
                       claim one named Todo slice, by URL or ID, and print its
                       brief
+  nat milestone-add <name> [--json]
+                      add a Queued milestone at the end of the plan
+  nat slice-add <title> --milestone <name|URL|ID> [--description TEXT|-]
+                        [--repo DIR] [--json]
+                      add a Todo slice under a milestone, its description
+                      written on the page; --description - reads it from stdin
   nat complete-slice <slice> [--pr URL] [--summary TEXT] [--blocked]
                       close out a slice you claimed: Done, its PR, and a
                       summary appended to its page — or, with --blocked, left
@@ -97,6 +104,10 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return nextSlice(ctx, args[1:], env)
 	case "start-slice":
 		return startSlice(ctx, args[1:], env)
+	case "milestone-add":
+		return milestoneAdd(ctx, args[1:], env)
+	case "slice-add":
+		return sliceAdd(ctx, args[1:], env)
 	case "complete-slice":
 		return completeSlice(ctx, args[1:], env)
 	case "help", "-h", "--help":
