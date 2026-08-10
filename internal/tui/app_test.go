@@ -446,7 +446,7 @@ func TestAppRoutesToOnboarding(t *testing.T) {
 func TestAppQuitsAFailedWizard(t *testing.T) {
 	// A wizard that failed has no form left to handle ctrl+c itself.
 	o := NewOnboarding(config.Config{}, &fakeNotion{}, func(config.Config) error { return nil })
-	o.fail(errNoPeople)
+	o.fail(errNoOwner)
 	app := NewAppWithOnboarding(config.Config{}, &fakeNotion{}, o)
 
 	if !isQuitCmd(press(app, "ctrl+c")) {

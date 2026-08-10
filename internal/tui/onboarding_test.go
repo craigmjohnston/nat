@@ -19,7 +19,7 @@ import (
 // fakeNotion is a NotionAPI whose every call is a field, so each test can
 // supply only the behaviour it cares about. Unset calls return nothing.
 type fakeNotion struct {
-	users       func() ([]notion.User, error)
+	me          func() (*notion.User, error)
 	searchPaged func(query, filterType, cursor string) ([]notion.SearchResult, string, error)
 	pageEntries func(id string) ([]notion.PageEntry, error)
 	getDB       func(id string) (*notion.Database, error)
@@ -77,11 +77,11 @@ type (
 
 var _ NotionAPI = (*fakeNotion)(nil)
 
-func (f *fakeNotion) ListUsers(context.Context) ([]notion.User, error) {
-	if f.users == nil {
-		return nil, nil
+func (f *fakeNotion) Me(context.Context) (*notion.User, error) {
+	if f.me == nil {
+		return nil, errors.New("no token owner")
 	}
-	return f.users()
+	return f.me()
 }
 
 func (f *fakeNotion) SearchPaged(_ context.Context, query, filterType, cursor string) ([]notion.SearchResult, string, error) {
@@ -335,6 +335,15 @@ func person(id, name, email string) notion.User {
 	return notion.User{ID: id, Name: name, Type: notion.UserPerson, Person: &notion.Person{Email: email}}
 }
 
+// tokenOf is what GET /users/me returns for a personal access token: a bot
+// user naming the person it acts for.
+func tokenOf(owner notion.User) func() (*notion.User, error) {
+	return func() (*notion.User, error) {
+		return &notion.User{ID: "bot-1", Name: "Notion CLI", Type: notion.UserBot,
+			Bot: &notion.Bot{Owner: &notion.BotOwner{Type: notion.OwnerUser, User: &owner}}}, nil
+	}
+}
+
 // singleDBClient is a workspace with one root page holding one database, the
 // shortest path through the picker: expand Home, step onto the database,
 // choose it.
@@ -349,9 +358,7 @@ func singleDBClient() *fakeNotion {
 		getDB: func(id string) (*notion.Database, error) {
 			return &notion.Database{ID: id, DataSources: []notion.DataSourceRef{{ID: "ds-1"}}}, nil
 		},
-		users: func() ([]notion.User, error) {
-			return []notion.User{person("user-1", "Craig Johnston", "")}, nil
-		},
+		me: tokenOf(person("user-1", "Craig Johnston", "")),
 	}
 }
 
@@ -369,12 +376,7 @@ func TestOnboardingPicksADatabaseInsideAPage(t *testing.T) {
 		getDB: func(id string) (*notion.Database, error) {
 			return &notion.Database{ID: id, DataSources: []notion.DataSourceRef{{ID: "ds-2"}}}, nil
 		},
-		users: func() ([]notion.User, error) {
-			return []notion.User{
-				{ID: "bot-1", Name: "Tracker", Type: notion.UserBot},
-				person("user-1", "Craig Johnston", "craig@example.com"),
-			}, nil
-		},
+		me: tokenOf(person("user-1", "Craig Johnston", "craig@example.com")),
 		query: func(string, map[string]any, []notion.Sort) ([]notion.Page, error) {
 			return []notion.Page{{ID: "project-1"}}, nil
 		},
@@ -388,15 +390,10 @@ func TestOnboardingPicksADatabaseInsideAPage(t *testing.T) {
 	if got := client.fetchedDBs; len(got) != 0 {
 		t.Fatalf("fetched databases %v before anything was selected", got)
 	}
-	h.expand()  // open Home, fetching its contents
-	h.down()    // onto Tracker
-	h.down()    // onto Agent Projects
-	h.submit()  // choose it — the one GetDatabase call
-
-	if h.m.step != stepPickAssignee {
-		t.Fatalf("step = %v, want stepPickAssignee (err: %v)", h.m.step, h.m.err)
-	}
-	h.submit() // assignee — only one person, already selected
+	h.expand() // open Home, fetching its contents
+	h.down()   // onto Tracker
+	h.down()   // onto Agent Projects
+	h.submit() // choose it — the one GetDatabase call
 
 	if h.m.err != nil {
 		t.Fatalf("unexpected error: %v", h.m.err)
@@ -483,9 +480,7 @@ func TestOnboardingCreatesAProjectDatabase(t *testing.T) {
 		createDB: func(string, string) (*notion.Database, error) {
 			return &notion.Database{ID: "db-new", DataSources: []notion.DataSourceRef{{ID: "ds-new"}}}, nil
 		},
-		users: func() ([]notion.User, error) {
-			return []notion.User{person("user-1", "Craig Johnston", "")}, nil
-		},
+		me: tokenOf(person("user-1", "Craig Johnston", "")),
 	}
 	h := newHarness(t, config.Config{}, client)
 	h.run(h.m.Init())
@@ -500,8 +495,7 @@ func TestOnboardingCreatesAProjectDatabase(t *testing.T) {
 		t.Fatalf("step = %v, want stepNewProjectDB (err: %v)", h.m.step, h.m.err)
 	}
 	h.submit() // keep the default database name
-	h.submit() // parent page
-	h.submit() // assignee
+	h.submit() // parent page — the assignee comes off the token, unprompted
 
 	if h.m.err != nil {
 		t.Fatalf("unexpected error: %v", h.m.err)
@@ -592,8 +586,8 @@ func TestOnboardingNestedPagesExpandFurther(t *testing.T) {
 	if got := h.client.entriesFor; !reflect.DeepEqual(got, []string{"page-1", "page-2"}) {
 		t.Errorf("fetched entries for %v, want each expanded page once", got)
 	}
-	if h.m.err != nil || h.m.step != stepPickAssignee {
-		t.Errorf("step = %v (err: %v), want the flow to continue", h.m.step, h.m.err)
+	if h.m.err != nil || h.m.step != stepDone {
+		t.Errorf("step = %v (err: %v), want the flow to run to the end", h.m.step, h.m.err)
 	}
 }
 
@@ -724,9 +718,7 @@ func TestOnboardingTrimsTheDatabaseName(t *testing.T) {
 		createDB: func(string, string) (*notion.Database, error) {
 			return &notion.Database{ID: "db-new", DataSources: []notion.DataSourceRef{{ID: "ds-new"}}}, nil
 		},
-		users: func() ([]notion.User, error) {
-			return []notion.User{person("user-1", "Craig", "")}, nil
-		},
+		me: tokenOf(person("user-1", "Craig", "")),
 	}
 	h := newHarness(t, config.Config{}, client)
 	h.run(h.m.Init())
@@ -787,8 +779,9 @@ func TestOnboardingFatalErrors(t *testing.T) {
 		{"resolved without a data source", projectDBResolvedMsg{db: &notion.Database{ID: "db"}}, "no data source"},
 		{"create fails", projectDBCreatedMsg{err: errors.New("boom")}, "create project database: boom"},
 		{"created without a data source", projectDBCreatedMsg{db: &notion.Database{ID: "db"}}, "no data source"},
-		{"listing users fails", usersMsg{err: errors.New("boom")}, "list users: boom"},
-		{"no people in the workspace", usersMsg{users: []notion.User{{ID: "bot", Type: notion.UserBot}}}, "no people found in this workspace"},
+		{"identifying the token's owner fails", assigneeMsg{err: errors.New("boom")}, "identify the token's owner: boom"},
+		{"a token owned by the workspace", assigneeMsg{me: &notion.User{Type: notion.UserBot,
+			Bot: &notion.Bot{Owner: &notion.BotOwner{Type: notion.OwnerWorkspace}}}}, "owned by the workspace rather than by a person"},
 		{"querying projects fails", projectsCheckedMsg{err: errors.New("boom")}, "query projects: boom"},
 	}
 	for _, tt := range tests {
@@ -859,9 +852,9 @@ func TestOnboardingViewShowsTheTreeOnShow(t *testing.T) {
 
 func TestOnboardingViewShowsTheStatusOfACallInFlight(t *testing.T) {
 	h := newHarness(t, config.Config{}, &fakeNotion{})
-	h.m.await(stepLoadingUsers, "Loading workspace users…", nil)
+	h.m.await(stepResolvingAssignee, "Identifying you…", nil)
 
-	if got := h.m.View(); !strings.Contains(got, "Loading workspace users…") {
+	if got := h.m.View(); !strings.Contains(got, "Identifying you…") {
 		t.Errorf("view = %q, want the status line", got)
 	}
 }
@@ -942,13 +935,23 @@ func TestOnboardingCommands(t *testing.T) {
 		}
 	})
 
-	t.Run("loadUsers passes the error through", func(t *testing.T) {
-		client := &fakeNotion{users: func() ([]notion.User, error) { return nil, errors.New("boom") }}
+	t.Run("loadAssignee reads the token's owner", func(t *testing.T) {
+		h := newHarness(t, config.Config{}, &fakeNotion{me: tokenOf(person("user-1", "Craig", ""))})
+
+		msg, _ := h.m.loadAssignee().(assigneeMsg)
+		owner, ok := msg.me.OwnerPerson()
+		if msg.err != nil || !ok || owner.ID != "user-1" {
+			t.Errorf("msg = %+v, want the owning person", msg)
+		}
+	})
+
+	t.Run("loadAssignee passes the error through", func(t *testing.T) {
+		client := &fakeNotion{me: func() (*notion.User, error) { return nil, errors.New("boom") }}
 		h := newHarness(t, config.Config{}, client)
 
-		msg, _ := h.m.loadUsers().(usersMsg)
+		msg, _ := h.m.loadAssignee().(assigneeMsg)
 		if msg.err == nil {
-			t.Error("want the list error")
+			t.Error("want the error")
 		}
 	})
 
@@ -984,15 +987,6 @@ func TestOnboardingCommands(t *testing.T) {
 	})
 }
 
-func TestSetAssigneeWithoutAMatchingUser(t *testing.T) {
-	m := &Onboarding{users: []notion.User{person("user-1", "Craig", "")}}
-	m.setAssignee("user-2")
-
-	if m.cfg.AssigneeUserID != "user-2" || m.cfg.AssigneeUserName != "" {
-		t.Errorf("cfg = %+v, want the ID and no name", m.cfg)
-	}
-}
-
 func TestLabels(t *testing.T) {
 	if got := resultLabel(rootPage("page-1", "Projects")); got != "Projects" {
 		t.Errorf("resultLabel = %q, want Projects", got)
@@ -1005,15 +999,6 @@ func TestLabels(t *testing.T) {
 	}
 	if got := entryLabel(notion.PageEntry{ID: "db-1"}); got != "(untitled) db-1" {
 		t.Errorf("entryLabel = %q, want the untitled fallback", got)
-	}
-	if got := userLabel(person("u1", "Craig", "craig@example.com")); got != "Craig <craig@example.com>" {
-		t.Errorf("userLabel = %q, want name and email", got)
-	}
-	if got := userLabel(person("u1", "Craig", "")); got != "Craig" {
-		t.Errorf("userLabel = %q, want just the name", got)
-	}
-	if got := userLabel(notion.User{ID: "u1", Type: notion.UserPerson}); got != "u1" {
-		t.Errorf("userLabel = %q, want the ID fallback", got)
 	}
 }
 
@@ -1095,8 +1080,7 @@ func TestOnboardingSearchSelectsADatabase(t *testing.T) {
 	}
 
 	h.down()   // onto the second Ops Board
-	h.submit() // choose it
-	h.submit() // assignee
+	h.submit() // choose it — the assignee comes off the token, unprompted
 
 	if h.m.err != nil {
 		t.Fatalf("unexpected error: %v", h.m.err)
@@ -1224,8 +1208,8 @@ func TestOnboardingSearchEscapeReturnsToTheTree(t *testing.T) {
 	}
 	// The tree is live again: choosing the database it was left on carries on.
 	h.submit()
-	if h.m.err != nil || h.m.step != stepPickAssignee {
-		t.Errorf("step = %v (err: %v), want the flow to continue", h.m.step, h.m.err)
+	if h.m.err != nil || h.m.step != stepDone {
+		t.Errorf("step = %v (err: %v), want the flow to run to the end", h.m.step, h.m.err)
 	}
 }
 
