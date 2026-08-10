@@ -131,8 +131,9 @@ func (b *Board) SetProject(p *domain.Project) {
 	b.rebuild()
 }
 
-// SetWidth records the space the board has to draw in; rows longer than it are
-// truncated rather than wrapped, so one slice stays one line.
+// SetWidth records the space the board has to draw in; rows longer than it lose
+// their trailing chips and then have their name truncated rather than wrapping,
+// so one slice stays one line.
 func (b *Board) SetWidth(width int) { b.width = width }
 
 // SetLive records the slices with an agent running, which is what the live
@@ -279,22 +280,40 @@ func (b Board) renderRow(i int, r row) string {
 	if i == b.cursor {
 		marker = b.styles.Cursor.Render("❯ ")
 	}
-	var body string
 	if r.kind == rowMilestone {
-		body = b.renderMilestone(b.groups[r.group], i == b.cursor)
-	} else {
-		body = "  " + b.renderSlice(b.groups[r.group].Slices[r.slice])
+		return b.renderMilestone(marker, b.groups[r.group], i == b.cursor)
 	}
-	line := marker + body
-	if b.width > 0 {
-		line = lipgloss.NewStyle().MaxWidth(b.width).Render(line)
+	return b.renderSlice(marker+"  ", b.groups[r.group].Slices[r.slice])
+}
+
+// fitRow assembles one row from a head that always draws, a name, and chips in
+// the order they are drawn. A row too wide for the board loses its chips from
+// the tail — the last one drawn is the first to go — and only once none are left
+// is the name itself truncated: the name and the head are what the row is for.
+func fitRow(width int, head, name string, chips ...string) string {
+	line := joinRow(head, name, chips)
+	if width <= 0 {
+		return line
+	}
+	for len(chips) > 0 && lipgloss.Width(line) > width {
+		chips = chips[:len(chips)-1]
+		line = joinRow(head, name, chips)
+	}
+	if lipgloss.Width(line) > width {
+		line = lipgloss.NewStyle().MaxWidth(width).Render(line)
 	}
 	return line
 }
 
+// joinRow is one row's parts as a line, space separated.
+func joinRow(head, name string, chips []string) string {
+	return strings.Join(append([]string{head, name}, chips...), " ")
+}
+
 // renderMilestone draws a group's own line: the fold indicator, its name, how
-// many of its slices are done, and its status.
-func (b Board) renderMilestone(g domain.Group, selected bool) string {
+// many of its slices are done, and its status. The status goes first as the
+// board narrows, then the count.
+func (b Board) renderMilestone(head string, g domain.Group, selected bool) string {
 	fold := "▸"
 	if b.expanded[groupKey(g)] {
 		fold = "▾"
@@ -304,29 +323,33 @@ func (b Board) renderMilestone(g domain.Group, selected bool) string {
 		name = b.styles.Selected.Render(g.Name())
 	}
 	p := g.Progress()
-	parts := []string{fold, name, b.styles.Faint.Render(fmt.Sprintf("%d/%d", p.Done, p.Total))}
+	chips := []string{b.styles.Faint.Render(fmt.Sprintf("%d/%d", p.Done, p.Total))}
 	if g.Milestone != nil {
-		parts = append(parts, b.styles.Faint.Render(string(g.Milestone.Status)))
+		chips = append(chips, b.styles.Faint.Render(string(g.Milestone.Status)))
 	}
-	return strings.Join(parts, " ")
+	return fitRow(b.width, head+fold, name, chips...)
 }
 
 // renderSlice draws one slice: its status, its name, whether an agent is live
 // on it, who holds it, and whether it has a PR. The live marker is its own
 // glyph rather than a status: a session is running or not, which is a different
 // question from where the slice has got to.
-func (b Board) renderSlice(s domain.Slice) string {
-	parts := []string{b.sliceIcon(s.Status), s.Name}
+//
+// As the board narrows the PR marker goes first, then the assignee, and the live
+// marker last of the three — a running agent is the most urgent thing about a
+// row, and the status glyph and name never go at all.
+func (b Board) renderSlice(head string, s domain.Slice) string {
+	var chips []string
 	if b.live[s.ID] != "" {
-		parts = append(parts, b.styles.Live.Render("●"))
+		chips = append(chips, b.styles.Live.Render("●"))
 	}
 	if s.AssigneeName != "" {
-		parts = append(parts, b.styles.Assignee.Render("@"+s.AssigneeName))
+		chips = append(chips, b.styles.Assignee.Render("@"+s.AssigneeName))
 	}
 	if s.PRURL != "" {
-		parts = append(parts, b.styles.PR.Render("PR"))
+		chips = append(chips, b.styles.PR.Render("PR"))
 	}
-	return strings.Join(parts, " ")
+	return fitRow(b.width, head+b.sliceIcon(s.Status), s.Name, chips...)
 }
 
 // sliceIcon is the glyph for a slice's status. An unknown status — one Notion
