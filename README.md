@@ -52,6 +52,22 @@ To run without tmux at all — accepting that the split view is unavailable — 
 NAT_NO_TMUX=1 nat
 ```
 
+### Headless commands
+
+Given a subcommand, `nat` runs it and exits rather than opening the board — and
+without tmux, so the output lands in the terminal it was typed in. `nat help`
+lists them.
+
+`nat info` prints the active project as markdown: its conventions (the project
+page body), its milestones in plan order, and its slices grouped under them with
+their status, assignee and PR. `nat info --json` prints the same thing
+structured, for an agent to parse:
+
+```sh
+nat info
+nat info --json
+```
+
 ### Watching an agent
 
 `t` on a slice with a running agent shows that agent in a pane beside the board;

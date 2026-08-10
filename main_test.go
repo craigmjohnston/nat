@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/agent"
+	"github.com/craigmjohnston/nat/internal/cli"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/tui"
@@ -166,15 +168,17 @@ var lastExit struct {
 //
 // It also pretends the test binary is already inside tmux, so that main's
 // hosting step is a no-op: without it, a run on a machine with tmux installed
-// would exec tmux over the test binary.
+// would exec tmux over the test binary. The arguments are emptied for the same
+// reason — the test binary's own flags would otherwise read as a subcommand.
 func stubProcess(t *testing.T, tokens config.TokenSource, in io.Reader, out, errOut io.Writer) {
 	t.Helper()
 	t.Setenv(tmuxEnv, "/private/tmp/tmux-501/default,1,0")
-	oldTokens, oldIn, oldOut, oldErr, oldExit := newTokens, stdin, stdout, stderr, exit
+	oldTokens, oldIn, oldOut, oldErr, oldExit, oldArgs := newTokens, stdin, stdout, stderr, exit, args
 	t.Cleanup(func() {
-		newTokens, stdin, stdout, stderr, exit = oldTokens, oldIn, oldOut, oldErr, oldExit
+		newTokens, stdin, stdout, stderr, exit, args = oldTokens, oldIn, oldOut, oldErr, oldExit, oldArgs
 	})
 	lastExit.code, lastExit.exited = 0, false
+	args = func() []string { return nil }
 	newTokens = func() config.TokenSource { return tokens }
 	stdin, stdout, stderr = in, out, errOut
 	exit = func(code int) { lastExit.code, lastExit.exited = code, true }
@@ -436,5 +440,97 @@ func TestAuthHintNamesTheBinary(t *testing.T) {
 	err := authHint(config.ErrNtnNotLoggedIn)
 	if want := fmt.Sprintf("%s login", config.NtnBinary); !strings.Contains(err.Error(), want) {
 		t.Errorf("err = %q, want it to contain %q", err, want)
+	}
+}
+
+// stubCommand points main's headless path at a fake Notion client and the
+// given arguments, on top of the process doubles stubProcess installs.
+func stubCommand(t *testing.T, commandArgs []string, api cli.API) {
+	t.Helper()
+	oldClient := newCLIClient
+	t.Cleanup(func() { newCLIClient = oldClient })
+	newCLIClient = func(notion.TokenFunc) cli.API { return api }
+	args = func() []string { return commandArgs }
+}
+
+// stubAPI is a Notion client that answers every call with nothing, which is
+// enough for a command to run end to end.
+type stubAPI struct{ err error }
+
+func (s stubAPI) QueryDataSource(context.Context, string, map[string]any, []notion.Sort) ([]notion.Page, error) {
+	return nil, s.err
+}
+
+func (s stubAPI) GetBlockChildren(context.Context, string) ([]notion.Block, error) {
+	return nil, s.err
+}
+
+// A subcommand runs headless and exits: no board, and no tmux, which would send
+// the output somewhere nobody is looking.
+func TestMainRunsACommandInsteadOfTheBoard(t *testing.T) {
+	tokens := configuredHome(t)
+	var out, errOut bytes.Buffer
+	stubProcess(t, tokens, strings.NewReader(""), &out, &errOut)
+	outsideTmux(t)
+	calls := stubHost(t, "/opt/homebrew/bin/tmux", nil, nil, nil)
+	stubCommand(t, []string{"help"}, stubAPI{})
+
+	main()
+
+	if out.String() != cli.Usage {
+		t.Errorf("stdout = %q, want the usage text", out.String())
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("stderr = %q, want nothing", errOut.String())
+	}
+	if code, exited := exitCode(t); exited {
+		t.Errorf("exited with %d, want a clean return", code)
+	}
+	if len(*calls) != 0 {
+		t.Errorf("exec calls = %+v, want none: a command does not go through tmux", *calls)
+	}
+}
+
+func TestMainReportsAFailedCommand(t *testing.T) {
+	tokens := configuredHome(t)
+	var out, errOut bytes.Buffer
+	stubProcess(t, tokens, strings.NewReader(""), &out, &errOut)
+	stubCommand(t, []string{"bogus"}, stubAPI{})
+
+	main()
+
+	if !strings.Contains(errOut.String(), `nat: unknown command "bogus"`) {
+		t.Errorf("stderr = %q, want the misuse reported", errOut.String())
+	}
+	code, exited := exitCode(t)
+	if !exited || code != 1 {
+		t.Errorf("exit(%d, exited=%v), want exit(1)", code, exited)
+	}
+}
+
+// A command hits the same unusable credential the board does, and deserves the
+// same way out of it.
+func TestMainExplainsHowToLogInFromACommand(t *testing.T) {
+	writeConfig(t, `{"active_project_id":"p1","projects":{"p1":{"name":"nat"}}}`)
+	var out, errOut bytes.Buffer
+	stubProcess(t, config.StaticToken(""), strings.NewReader(""), &out, &errOut)
+	stubCommand(t, []string{"info"}, stubAPI{err: config.ErrNtnNotLoggedIn})
+
+	main()
+
+	if !strings.Contains(errOut.String(), fmt.Sprintf("%s login", config.NtnBinary)) {
+		t.Errorf("stderr = %q, want the login hint", errOut.String())
+	}
+	code, exited := exitCode(t)
+	if !exited || code != 1 {
+		t.Errorf("exit(%d, exited=%v), want exit(1)", code, exited)
+	}
+}
+
+// DefaultNewClient is what the real binary builds its headless client with.
+func TestCommandsUseTheRealNotionClient(t *testing.T) {
+	client := newCLIClient(func() (string, error) { return testToken, nil })
+	if _, ok := client.(*notion.Client); !ok {
+		t.Errorf("client is %T, want *notion.Client", client)
 	}
 }
