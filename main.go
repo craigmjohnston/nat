@@ -32,7 +32,7 @@ const noTmuxEnv = "NAT_NO_TMUX"
 // that would take the test binary with it, and an exec that would replace it.
 var (
 	newTokens                      = ntnCLI
-	args                           = func() []string { return os.Args[1:] }
+	args                           = processArgs
 	stdin        io.Reader         = os.Stdin
 	stdout       io.Writer         = os.Stdout
 	stderr       io.Writer         = os.Stderr
@@ -46,6 +46,9 @@ var (
 
 // ntnCLI is where the Notion credential really comes from.
 func ntnCLI() config.TokenSource { return config.NewNtnCLI() }
+
+// processArgs is what the binary was invoked with, less its own name.
+func processArgs() []string { return os.Args[1:] }
 
 func main() {
 	if cli.IsCommand(args()) {

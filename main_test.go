@@ -149,6 +149,18 @@ func TestMainReportsAFailure(t *testing.T) {
 	}
 }
 
+// The command line the binary really routes on, pinned so the stubbing the
+// rest of these tests do cannot hide it.
+func TestProcessArgsDropsTheBinaryName(t *testing.T) {
+	old := os.Args
+	t.Cleanup(func() { os.Args = old })
+	os.Args = []string{"nat", "info", "--json"}
+
+	if got := processArgs(); !reflect.DeepEqual(got, []string{"info", "--json"}) {
+		t.Errorf("processArgs() = %q, want the arguments after the binary name", got)
+	}
+}
+
 func TestNtnCLIIsTheDefaultTokenSource(t *testing.T) {
 	// Building an NtnCLI does not run the binary, so this is safe to call; it
 	// just pins what main runs with by default.
