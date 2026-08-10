@@ -146,11 +146,10 @@ func (f *LaunchForm) save(a *App) tea.Cmd {
 	// was opened against.
 	project, _ := a.activeProject()
 	return launchAgent(a.launcher, agent.PromptContext{
-		Slice:         f.slice,
-		Project:       project,
-		ProjectPageID: a.cfg.ActiveProjectID,
-		WorkingDir:    expandHome(strings.TrimSpace(f.workdir)),
-		AssigneeName:  a.cfg.AssigneeUserName,
+		Slice:        f.slice,
+		Project:      project,
+		WorkingDir:   expandHome(strings.TrimSpace(f.workdir)),
+		AssigneeName: a.cfg.AssigneeUserName,
 	})
 }
 

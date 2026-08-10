@@ -2,9 +2,9 @@
 
 A Go TUI over Notion for tracking project work executed by Claude Code agents.
 Craig manages the plan and launches agents from the TUI; agents run as fresh
-`claude` sessions in tmux and talk to Notion via the Notion MCP. The TUI talks
-to the Notion REST API directly (`Notion-Version: 2026-03-11`, data-source
-model).
+`claude` sessions in tmux and reach the tracker only through the headless `nat`
+commands — they need no Notion access of their own. The TUI talks to the Notion
+REST API directly (`Notion-Version: 2026-03-11`, data-source model).
 
 ## Architecture
 

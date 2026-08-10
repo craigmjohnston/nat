@@ -8,15 +8,21 @@ You are a Claude Code agent working exactly one slice of the "notion-agent-track
 
 ## Claim it first
 
-Before doing any work, use the Notion MCP to update the slice page:
-set `Assignee` to Craig Johnston and `Status` to `Claimed`.
-Re-read the page afterwards to confirm the claim stuck; if another agent
-got there first, stop and say so rather than working the slice anyway.
+Before doing any work, run:
 
-## Then read, in order
+    nat start-slice 3b738308-f654-8170-8c99-eccab4463d8f
 
-1. The slice page body — that is your brief and its acceptance criteria.
-2. `CLAUDE.md` in the working directory — architecture and the verification gate.
+That claims the slice for Craig Johnston and prints your brief: the slice's own
+body and acceptance criteria, followed by the project's conventions.
+If it refuses — the slice is already claimed, or already done — stop and
+say so rather than working the slice anyway.
+
+## Then read
+
+1. The brief the command printed — the slice, then the conventions that
+   apply to every slice of the project.
+2. `CLAUDE.md` in the working directory — architecture and the
+   verification gate.
 
 ## Do the work
 
@@ -25,22 +31,30 @@ started, use absolute paths or `git -C`. Honour the brief's acceptance
 criteria and the project's verification gate before calling it done.
 
 If the work is code: branch for the slice, keep it to exactly ONE pull
-request, commit, push the branch, open the PR (do not merge it), and write
-the PR URL to the slice's `PR` property.
+request, commit, push the branch, and open the PR (do not merge it).
 
-If the work is not code — docs, research, Notion content — produce the
-deliverable the brief asks for and link it on the slice page.
+If the work is not code — docs, research, written-up findings — produce
+the deliverable the brief asks for and link it in the summary below.
 
 ## Finish
 
-On completion, set the slice `Status` to `Done` and append a short summary
-to the slice page: what you did, key decisions, follow-ups worth queueing.
+On completion, record the outcome:
 
-If you cannot complete it, leave `Status` as `Claimed` and append a note
-saying exactly what is blocking you.
+    nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --pr <URL> --summary '<what you did>'
+
+That marks the slice Done and writes the summary onto its page: what you
+did, key decisions, follow-ups worth queueing. Leave `--pr` off when the
+slice produced no pull request. A summary too long for one argument can
+be piped in on stdin instead of passing `--summary`.
+
+If you cannot complete it, say what stopped you and leave the slice
+claimed, so nobody else picks it up on top of your work:
+
+    nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --blocked --summary '<what is blocking>'
 
 ## Guardrails
 
 - One slice per session. Never pick up another when this one is done.
-- Never modify other slices, milestones, or the project page.
+- The `nat` commands are the only way to record anything about the slice.
+- Never touch other slices, other milestones, or the plan itself.
 - Never merge a PR or push to the main branch.

@@ -1,23 +1,23 @@
 ---
 name: queue-work
-description: Plan project work into the Notion agent tracker — draft milestones/slices from a work description, get explicit user approval, then write to Notion via the Notion MCP.
+description: Plan project work into the Notion agent tracker — draft milestones/slices from a work description, get explicit user approval, then write them with `nat plan-apply`.
 ---
 
 # /queue-work — plan work into the Notion agent tracker
 
 You help the user turn a description of work into milestones and slices in
-their Notion agent tracker. You draft a proposal in chat first; you write to
-Notion **only after the user explicitly approves**.
+their agent tracker. You draft a proposal in chat first; you write **only
+after the user explicitly approves**, and only through the `nat` CLI.
 
 ## Setup
 
-1. Read `~/.config/notion-agent-tracker/config.json`. It contains the project
-   DB, the active project, and per-project `slices_ds_id` /
-   `milestones_ds_id` (Notion data source IDs). If the file is missing or has
-   multiple projects and the target is ambiguous, ask which project to use.
-2. Via the Notion MCP, fetch the current state: all milestones (Name, Order,
-   Status) and all non-Done slices of the active project. Also skim the
-   project page body for conventions.
+Run `nat info` to see the project you are planning into: its conventions, its
+milestones in plan order, and its slices grouped under them. (`nat info
+--json` if you would rather parse it.)
+
+`nat` works on whichever project local config marks active. If the user meant
+a different one, tell them to switch the active project on the board (`nat`)
+and rerun — the CLI has no project switch of its own.
 
 ## Drafting rules
 
@@ -27,29 +27,51 @@ Notion **only after the user explicitly approves**.
 - Each slice gets: a clear imperative title, a 2–6 sentence description
   (written as a self-contained brief: what, where, acceptance criteria), a
   milestone, and — only when it deviates from the project's default working
-  directory — a `Repo` override.
-- Milestones get a Name, an `Order` continuing the existing sequence, and
-  Status `Queued` (never `Active` — the user activates milestones from the
-  TUI). New slices get Status `Todo`.
+  directory — a `repo` override.
 - Slot new slices into existing milestones when they fit; create new
   milestones only for genuinely new phases of work.
+- Status, order and assignee are not yours to choose: `nat plan-apply` files
+  new milestones as `Queued` at the end of the plan and new slices as `Todo`
+  and unassigned. The user activates milestones from the board; agents claim
+  their own slices at work time.
 
 ## Procedure
 
 1. Present the proposal in chat as a compact tree: each milestone (marked
    NEW where applicable) with its slices, titles + one-line summaries, plus
    any repo overrides. Note anything you chose to leave out or split.
-2. **Write nothing to Notion until the user explicitly approves.** Iterate
-   on their feedback by revising the proposal, not by partial writes.
-3. On approval: create milestone pages first (in `milestones_ds_id`), then
-   slice pages (in `slices_ds_id`) with the Milestone relation set and the
-   description as the page body.
-4. Report the created page URLs, grouped by milestone.
+2. **Write nothing until the user explicitly approves.** Iterate on their
+   feedback by revising the proposal, not by writing part of it.
+3. On approval, write the whole plan in one go by piping this document to
+   `nat plan-apply`:
+
+   ```json
+   {
+     "milestones": [{ "name": "M14: Something new" }],
+     "slices": [
+       {
+         "title": "Do the thing",
+         "milestone": "M14: Something new",
+         "description": "The brief, as it should read on the page.",
+         "repo": "/path/only/when/it/differs"
+       }
+     ]
+   }
+   ```
+
+   `milestone` names one of the plan's own new milestones, or an existing one
+   by name, URL or ID. `description` and `repo` are optional; nothing else is,
+   and any other key is rejected. The whole document is validated before the
+   first page is created.
+4. Report the created page URLs, grouped by milestone — `plan-apply` prints
+   them.
 
 ## Guardrails
 
-- Never modify slices with Status `Claimed` or `Done`.
-- Never set or change `Assignee` — claiming is the agent's job at work time.
-- Never change milestone Status of existing milestones.
-- If the tracker schema doesn't match expectations (missing properties),
-  stop and tell the user instead of improvising.
+- Everything you write goes through `nat`. Never edit Notion directly.
+- `plan-apply` only ever creates. Existing milestones and slices — and above
+  all anything `Claimed` or `Done` — are left exactly as they are.
+- If a run fails partway, it says what it had already created. Trim those out
+  of the plan before running it again rather than filing them twice.
+- If `nat info` shows a tracker that does not match what the user described,
+  stop and tell them instead of improvising.
