@@ -17,7 +17,9 @@ import (
 // command can be driven by a fake in tests.
 type API interface {
 	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
+	GetPage(ctx context.Context, id string) (*notion.Page, error)
 	GetBlockChildren(ctx context.Context, id string) ([]notion.Block, error)
+	AppendBlockChildren(ctx context.Context, id string, children []map[string]any) ([]notion.Block, error)
 	UpdatePageProperties(ctx context.Context, pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
 }
 
@@ -39,6 +41,9 @@ type Env struct {
 	NewClient NewClientFunc
 	// Out is where a command writes its output.
 	Out io.Writer
+	// In is where a command reads input a flag was not given for; it is stdin
+	// in production, and may be nil where nothing is ever piped in.
+	In io.Reader
 }
 
 // Usage is the help text, listing every way the binary can be run.
@@ -49,6 +54,10 @@ usage:
   nat info [--json]   print the active project's conventions, milestones and slices
   nat next-slice [--json]
                       claim the next Todo slice and print its brief
+  nat complete-slice <slice> [--pr URL] [--summary TEXT] [--blocked]
+                      close out a slice you claimed: Done, its PR, and a
+                      summary appended to its page — or, with --blocked, left
+                      Claimed with a note saying what stopped it
   nat help            show this message
 `
 
@@ -83,6 +92,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return info(ctx, args[1:], env)
 	case "next-slice":
 		return nextSlice(ctx, args[1:], env)
+	case "complete-slice":
+		return completeSlice(ctx, args[1:], env)
 	case "help", "-h", "--help":
 		_, err := io.WriteString(env.Out, Usage)
 		return err
