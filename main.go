@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/craigmjohnston/nat/internal/agent"
+	"github.com/craigmjohnston/nat/internal/cli"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/tui"
 )
@@ -29,21 +31,33 @@ const noTmuxEnv = "NAT_NO_TMUX"
 // is otherwise unexercisable without the real Notion CLI, a terminal, an exit
 // that would take the test binary with it, and an exec that would replace it.
 var (
-	newTokens                   = ntnCLI
-	stdin     io.Reader         = os.Stdin
-	stdout    io.Writer         = os.Stdout
-	stderr    io.Writer         = os.Stderr
-	exit                        = os.Exit
-	newClient tui.NewClientFunc = tui.DefaultNewClient
-	lookPath                    = exec.LookPath
-	executable                  = os.Executable
-	execProcess                 = syscall.Exec
+	newTokens                      = ntnCLI
+	args                           = processArgs
+	stdin        io.Reader         = os.Stdin
+	stdout       io.Writer         = os.Stdout
+	stderr       io.Writer         = os.Stderr
+	exit                           = os.Exit
+	newClient    tui.NewClientFunc = tui.DefaultNewClient
+	newCLIClient cli.NewClientFunc = cli.DefaultNewClient
+	lookPath                       = exec.LookPath
+	executable                     = os.Executable
+	execProcess                    = syscall.Exec
 )
 
 // ntnCLI is where the Notion credential really comes from.
 func ntnCLI() config.TokenSource { return config.NewNtnCLI() }
 
+// processArgs is what the binary was invoked with, less its own name.
+func processArgs() []string { return os.Args[1:] }
+
 func main() {
+	if cli.IsCommand(args()) {
+		if err := command(newTokens()); err != nil {
+			fmt.Fprintln(stderr, "nat:", authHint(err))
+			exit(1)
+		}
+		return
+	}
 	if err := host(); err != nil {
 		fmt.Fprintln(stderr, "nat:", err)
 		exit(1)
@@ -53,6 +67,18 @@ func main() {
 		fmt.Fprintln(stderr, "nat:", err)
 		exit(1)
 	}
+}
+
+// command runs a headless subcommand. It deliberately runs before host: a
+// command prints to the terminal it was typed in and exits, and re-execing it
+// into a tmux session would send its output somewhere nobody is looking.
+func command(tokens config.TokenSource) error {
+	return cli.Run(context.Background(), args(), cli.Env{
+		Tokens:    tokens,
+		Load:      config.Load,
+		NewClient: newCLIClient,
+		Out:       stdout,
+	})
 }
 
 // host puts the TUI inside tmux, by replacing this process with a tmux session
