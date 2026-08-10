@@ -23,6 +23,11 @@ const TmuxBinary = "tmux"
 // session list can be told apart from whatever else they have running.
 const SessionPrefix = "nat-"
 
+// TUISession is the session the TUI hosts itself in. It is a fixed name, not a
+// per-run one, so a second launch attaches to the window already running rather
+// than standing up a rival next to it.
+const TUISession = SessionPrefix + "tui"
+
 // sessionIDLen is how much of a slice's page ID goes into its session name.
 // Eight hex digits is what tmux can show without truncating the status line.
 const sessionIDLen = 8
@@ -204,6 +209,17 @@ func LaunchArgs(session, workdir, promptFile string) []string {
 		"-P", "-F", "#{pane_id}",
 		"sh", "-c", agentCommand(promptFile),
 	}
+}
+
+// HostArgs is the tmux argv that runs binary as the TUI, inside [TUISession].
+//
+// `-A` is what makes a second launch attach to the session already there
+// instead of failing on the duplicate name; the command is only used when the
+// session is being created, so the attaching launch cannot start a second copy
+// of the binary. The command is run directly rather than through a shell, so a
+// path with spaces in it needs no quoting.
+func HostArgs(binary string) []string {
+	return []string{"new-session", "-A", "-s", TUISession, binary}
 }
 
 // agentCommand is the shell command the session runs: start Claude Code with

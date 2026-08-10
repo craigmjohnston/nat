@@ -218,6 +218,19 @@ func TestLaunchArgsQuotesThePromptPath(t *testing.T) {
 	}
 }
 
+// The TUI's own session shares the prefix agent sessions use, so a session list
+// still reads as one family, and `-A` is what lets a second launch attach.
+func TestHostArgs(t *testing.T) {
+	got := HostArgs("/usr/local/bin/nat")
+	want := []string{"new-session", "-A", "-s", "nat-tui", "/usr/local/bin/nat"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("args = %v, want %v", got, want)
+	}
+	if !strings.HasPrefix(TUISession, SessionPrefix) {
+		t.Errorf("TUISession = %q, want the %q prefix", TUISession, SessionPrefix)
+	}
+}
+
 func TestAttachCmd(t *testing.T) {
 	cmd := AttachCmd("nat-3b738308")
 	want := []string{"tmux", "attach-session", "-t", "nat-3b738308"}
