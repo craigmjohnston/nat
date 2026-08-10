@@ -83,6 +83,11 @@ func (f *MilestoneForm) View() string { return f.form.View() }
 // Heading is the title drawn over the form.
 func (f *MilestoneForm) Heading() string { return f.heading }
 
+// SetSize gives the form the room the window leaves it.
+func (f *MilestoneForm) SetSize(width, height int) {
+	f.form = f.form.WithWidth(width).WithHeight(height)
+}
+
 // save writes the new status, or nothing at all when the answer was no.
 func (f *MilestoneForm) save(a *App) tea.Cmd {
 	if !f.confirmed {

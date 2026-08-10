@@ -117,6 +117,11 @@ func (f *LaunchForm) View() string { return f.form.View() }
 // Heading is the title drawn over the form.
 func (f *LaunchForm) Heading() string { return f.heading }
 
+// SetSize gives the form the room the window leaves it.
+func (f *LaunchForm) SetSize(width, height int) {
+	f.form = f.form.WithWidth(width).WithHeight(height)
+}
+
 // busyNote says what the status bar shows while the session starts.
 func (f *LaunchForm) busyNote() string { return "Launching the agent…" }
 
@@ -193,6 +198,11 @@ func (f *AttachForm) View() string { return f.form.View() }
 
 // Heading is the title drawn over the form.
 func (f *AttachForm) Heading() string { return f.heading }
+
+// SetSize gives the form the room the window leaves it.
+func (f *AttachForm) SetSize(width, height int) {
+	f.form = f.form.WithWidth(width).WithHeight(height)
+}
 
 // busyNote is empty: attaching replaces the screen and declining writes
 // nothing, so there is no progress worth announcing.

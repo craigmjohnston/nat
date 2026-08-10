@@ -116,6 +116,9 @@ func (f *SliceForm) View() string { return f.form.View() }
 // Heading is the title drawn over the form.
 func (f *SliceForm) Heading() string { return f.heading }
 
+// SetSize gives the form the room the window leaves it.
+func (f *SliceForm) SetSize(width, height int) { f.form = f.form.WithWidth(width).WithHeight(height) }
+
 // save writes the completed form: a new slice, or the one it was opened on.
 func (f *SliceForm) save(a *App) tea.Cmd {
 	// The form only ever opens on a configured project, so this is the one it
