@@ -24,7 +24,7 @@ const createNewChoice = "<new>"
 // NotionAPI is the part of *notion.Client the interface uses. It is an
 // interface so the screens can be driven by a fake in tests.
 type NotionAPI interface {
-	ListUsers(ctx context.Context) ([]notion.User, error)
+	Me(ctx context.Context) (*notion.User, error)
 	SearchPaged(ctx context.Context, query, filterType, startCursor string) ([]notion.SearchResult, string, error)
 	PageEntries(ctx context.Context, id string) ([]notion.PageEntry, error)
 	GetDatabase(ctx context.Context, id string) (*notion.Database, error)
@@ -95,9 +95,11 @@ type (
 		db  *notion.Database
 		err error
 	}
-	usersMsg struct {
-		users []notion.User
-		err   error
+	// assigneeMsg is the user the token authenticates as, which is where the
+	// assignee comes from.
+	assigneeMsg struct {
+		me  *notion.User
+		err error
 	}
 	projectsCheckedMsg struct {
 		count int
@@ -114,19 +116,21 @@ const (
 	stepNewProjectDB
 	stepCreatingProjectDB
 	stepResolvingProjectDB
-	stepLoadingUsers
-	stepPickAssignee
+	stepResolvingAssignee
 	stepCheckingProjects
 	stepDone
 )
 
 // Onboarding is the first-run wizard, shown when the config file is missing. It
-// walks the user through choosing the project database and picking the
-// assignee, then writes config.
+// walks the user through choosing the project database, then writes config.
 //
-// Authentication is not its concern: the caller resolves the Notion CLI's token
-// and hands over a ready client, because a credential problem is fixed with
-// `ntn login` rather than anywhere in this flow.
+// Who claims slices is not asked: the app's token is the Notion CLI's, which is
+// a personal access token acting for exactly one person, so the assignee is
+// read off the token rather than picked from a list.
+//
+// Authentication is not its concern either: the caller resolves the Notion
+// CLI's token and hands over a ready client, because a credential problem is
+// fixed with `ntn login` rather than anywhere in this flow.
 type Onboarding struct {
 	save func(config.Config) error
 
@@ -152,7 +156,6 @@ type Onboarding struct {
 	// Values bound to form fields.
 	dbName       string
 	parentPageID string
-	assigneeID   string
 
 	// The root pages streamed in so far — the pages a new database can be
 	// created under — and whether the search has run to its end.
@@ -160,7 +163,6 @@ type Onboarding struct {
 	rootsDone bool
 
 	chosenDBID string
-	users      []notion.User
 }
 
 // NewOnboarding returns the wizard, starting from whatever config already
@@ -213,8 +215,8 @@ func (m *Onboarding) Update(msg tea.Msg) (*Onboarding, tea.Cmd) {
 		return m.projectDBResolved(msg)
 	case projectDBCreatedMsg:
 		return m.projectDBCreated(msg)
-	case usersMsg:
-		return m.usersLoaded(msg)
+	case assigneeMsg:
+		return m.assigneeResolved(msg)
 	case projectsCheckedMsg:
 		return m.projectsChecked(msg)
 	}
@@ -378,9 +380,6 @@ func (m *Onboarding) formSubmitted() (*Onboarding, tea.Cmd) {
 	switch m.step {
 	case stepNewProjectDB:
 		return m.await(stepCreatingProjectDB, "Creating the project database…", m.createProjectDB)
-	case stepPickAssignee:
-		m.setAssignee(m.assigneeID)
-		return m.await(stepCheckingProjects, "Checking for existing projects…", m.checkProjects)
 	}
 	return m, nil
 }
@@ -468,7 +467,7 @@ func (m *Onboarding) projectDBResolved(msg projectDBResolvedMsg) (*Onboarding, t
 		return m.fail(fmt.Errorf("open the chosen database: %w", errNoDataSource))
 	}
 	m.cfg.ProjectDBID, m.cfg.ProjectDBDataSourceID = msg.db.ID, dsID
-	return m.await(stepLoadingUsers, "Loading workspace users…", m.loadUsers)
+	return m.await(stepResolvingAssignee, "Identifying you…", m.loadAssignee)
 }
 
 func (m *Onboarding) projectDBCreated(msg projectDBCreatedMsg) (*Onboarding, tea.Cmd) {
@@ -480,18 +479,22 @@ func (m *Onboarding) projectDBCreated(msg projectDBCreatedMsg) (*Onboarding, tea
 		return m.fail(fmt.Errorf("create project database: %w", errNoDataSource))
 	}
 	m.cfg.ProjectDBID, m.cfg.ProjectDBDataSourceID = msg.db.ID, dsID
-	return m.await(stepLoadingUsers, "Loading workspace users…", m.loadUsers)
+	return m.await(stepResolvingAssignee, "Identifying you…", m.loadAssignee)
 }
 
-func (m *Onboarding) usersLoaded(msg usersMsg) (*Onboarding, tea.Cmd) {
+// assigneeResolved records who slices are claimed as: the person the token
+// belongs to. There is nothing to choose here — a personal access token acts
+// for exactly one person — so the wizard goes straight on.
+func (m *Onboarding) assigneeResolved(msg assigneeMsg) (*Onboarding, tea.Cmd) {
 	if msg.err != nil {
-		return m.fail(fmt.Errorf("list users: %w", msg.err))
+		return m.fail(fmt.Errorf("identify the token's owner: %w", msg.err))
 	}
-	m.users = notion.Persons(msg.users)
-	if len(m.users) == 0 {
-		return m.fail(errNoPeople)
+	owner, ok := msg.me.OwnerPerson()
+	if !ok {
+		return m.fail(errNoOwner)
 	}
-	return m.show(stepPickAssignee, m.assigneeForm())
+	m.cfg.AssigneeUserID, m.cfg.AssigneeUserName = owner.ID, owner.Name
+	return m.await(stepCheckingProjects, "Checking for existing projects…", m.checkProjects)
 }
 
 func (m *Onboarding) projectsChecked(msg projectsCheckedMsg) (*Onboarding, tea.Cmd) {
@@ -511,24 +514,13 @@ func (m *Onboarding) projectsChecked(msg projectsCheckedMsg) (*Onboarding, tea.C
 	}
 }
 
-// setAssignee records the user slices are claimed as.
-func (m *Onboarding) setAssignee(userID string) {
-	m.cfg.AssigneeUserID = userID
-	m.cfg.AssigneeUserName = ""
-	for _, u := range m.users {
-		if u.ID == userID {
-			m.cfg.AssigneeUserName = u.Name
-			return
-		}
-	}
-}
-
 // The failures worth explaining rather than reporting verbatim.
 var (
 	errNoPages = errors.New(
 		"no pages found in this workspace to create the database under: create one in Notion, then start again")
-	errNoPeople = errors.New(
-		"no people found in this workspace, so there is nobody to claim slices as")
+	errNoOwner = errors.New(
+		"this token is owned by the workspace rather than by a person, so there is nobody to claim slices as: " +
+			"run `ntn login` to authenticate as yourself")
 	errNoDataSource = errors.New("no data source was returned")
 )
 
@@ -592,9 +584,12 @@ func (m *Onboarding) createProjectDB() tea.Msg {
 	return projectDBCreatedMsg{db: db, err: err}
 }
 
-func (m *Onboarding) loadUsers() tea.Msg {
-	users, err := m.client.ListUsers(context.Background())
-	return usersMsg{users: users, err: err}
+// loadAssignee asks Notion who the token acts for. It replaces listing the
+// workspace's users, which a personal access token — the only kind this app
+// ever holds — is forbidden to do.
+func (m *Onboarding) loadAssignee() tea.Msg {
+	me, err := m.client.Me(context.Background())
+	return assigneeMsg{me: me, err: err}
 }
 
 func (m *Onboarding) checkProjects() tea.Msg {
@@ -623,21 +618,6 @@ func (m *Onboarding) newProjectDBForm(pages []notion.SearchResult) *huh.Form {
 	))
 }
 
-func (m *Onboarding) assigneeForm() *huh.Form {
-	options := make([]huh.Option[string], len(m.users))
-	for i, u := range m.users {
-		options[i] = huh.NewOption(userLabel(u), u.ID)
-	}
-	m.assigneeID = options[0].Value
-	return huh.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().
-			Title("Who claims slices?").
-			Description("Agents set this person as the Assignee when they claim work.").
-			Options(options...).
-			Value(&m.assigneeID),
-	))
-}
-
 // required rejects a blank answer, naming what was expected.
 func required(what string) func(string) error {
 	return func(s string) error {
@@ -663,17 +643,4 @@ func entryLabel(e notion.PageEntry) string {
 		return e.Title
 	}
 	return "(untitled) " + e.ID
-}
-
-// userLabel is how a person is listed, with their email when the integration
-// can read it.
-func userLabel(u notion.User) string {
-	name := u.Name
-	if name == "" {
-		name = u.ID
-	}
-	if email := u.Email(); email != "" {
-		return fmt.Sprintf("%s <%s>", name, email)
-	}
-	return name
 }

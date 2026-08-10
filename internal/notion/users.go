@@ -16,23 +16,19 @@ const (
 // only answers usefully for users returned by the users endpoints.
 func (u User) IsPerson() bool { return u.Type == UserPerson }
 
-// Persons returns the real people among users, dropping bots. Onboarding uses
-// it to offer a list of assignable users.
-func Persons(users []User) []User {
-	out := make([]User, 0, len(users))
-	for _, u := range users {
-		if u.IsPerson() {
-			out = append(out, u)
-		}
+// OwnerPerson returns the real person the token acts for, as reported by Me:
+// the owner of a personal access token. It reports false for a token owned by
+// the workspace rather than a person — an internal integration — where there is
+// nobody to claim slices as.
+func (u User) OwnerPerson() (User, bool) {
+	if u.Bot == nil || u.Bot.Owner == nil || u.Bot.Owner.User == nil {
+		return User{}, false
 	}
-	return out
-}
-
-// ListUsers returns every user in the workspace the integration can see,
-// following pagination to the end. The list mixes people and bots; filter it
-// with Persons.
-func (c *Client) ListUsers(ctx context.Context) ([]User, error) {
-	return paginate[User](ctx, c, http.MethodGet, "/users", nil)
+	owner := *u.Bot.Owner.User
+	if !owner.IsPerson() {
+		return User{}, false
+	}
+	return owner, true
 }
 
 // Me returns the bot user the API key authenticates as.

@@ -96,13 +96,14 @@ type Relation struct {
 }
 
 // User is a Notion user (person or bot). People properties are arrays of these;
-// writes need only ID, so every other field is omitted when empty. Type and
-// Person are populated by the users endpoints, not by page properties.
+// writes need only ID, so every other field is omitted when empty. Type, Person
+// and Bot are populated by the users endpoints, not by page properties.
 type User struct {
 	ID     string  `json:"id"`
 	Name   string  `json:"name,omitempty"`
 	Type   string  `json:"type,omitempty"`
 	Person *Person `json:"person,omitempty"`
+	Bot    *Bot    `json:"bot,omitempty"`
 }
 
 // Person carries the details Notion exposes for a human user. The email is
@@ -110,6 +111,28 @@ type User struct {
 type Person struct {
 	Email string `json:"email,omitempty"`
 }
+
+// Bot carries the details Notion exposes for the user a token authenticates as.
+// Owner is the whole reason it is modelled: it is the only way to learn who a
+// personal access token acts for, since such a token cannot list users.
+type Bot struct {
+	Owner         *BotOwner `json:"owner,omitempty"`
+	WorkspaceName string    `json:"workspace_name,omitempty"`
+}
+
+// BotOwner says on whose behalf a token acts: a real person, for a personal
+// access token, or the workspace itself for an internal integration — in which
+// case User is absent, because there is no one person behind it.
+type BotOwner struct {
+	Type string `json:"type"`
+	User *User  `json:"user,omitempty"`
+}
+
+// The owner types Notion reports for a bot user.
+const (
+	OwnerUser      = "user"
+	OwnerWorkspace = "workspace"
+)
 
 // Email returns the user's email address, and "" when it is a bot or the
 // integration cannot read emails.
