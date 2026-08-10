@@ -3,10 +3,15 @@
 Until the TUI's launch flow exists (M6), start agents by hand:
 
 ```sh
-tmux new-session -d -s nat-<first-8-of-slice-id> -c <working-dir> \
-  claude "$(cat /path/to/prompt.txt)"
-tmux attach-session -t nat-<first-8-of-slice-id>   # optional
+pane=$(tmux new-session -d -s nat-<last-8-of-slice-id> -c <working-dir> -P -F '#{pane_id}' \
+  claude "$(cat /path/to/prompt.txt)")
+tmux set-option -p -t "$pane" @nat_slice <full-slice-id>   # what the TUI finds it by
+tmux attach-session -t nat-<last-8-of-slice-id>   # optional
 ```
+
+The session name is only a label — the last 8 digits because slice IDs from
+one workspace share a leading prefix. The `@nat_slice` pane option is the
+identity.
 
 Prompt template — fill in the `<...>` parts:
 

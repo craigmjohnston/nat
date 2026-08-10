@@ -1,6 +1,7 @@
 // Package agent launches Claude Code agents for slices: it builds the prompt a
 // fresh agent session starts from, and manages the detached tmux sessions those
-// agents run in. One live tmux session per slice, named after the slice's page.
+// agents run in. One live tmux session per slice, labelled after the slice's
+// page and tagged with its full ID.
 package agent
 
 import (
@@ -23,9 +24,16 @@ const TmuxBinary = "tmux"
 const SessionPrefix = "nat-"
 
 // sessionIDLen is how much of a slice's page ID goes into its session name.
-// Eight hex digits is what tmux can show without truncating the status line,
-// and is far beyond collision range for one project's slices.
+// Eight hex digits is what tmux can show without truncating the status line.
 const sessionIDLen = 8
+
+// SlicePaneOption is the tmux pane option an agent's pane is tagged with, and
+// holds the full page ID of the slice that agent is working. It, not the
+// session name, is what a running agent is identified by: page IDs in one
+// Notion workspace share a long prefix, so any short slug of one is a name
+// several slices answer to. Tagging the pane also survives the pane being
+// moved into another session.
+const SlicePaneOption = "@nat_slice"
 
 // tmuxTimeout caps how long we wait for a tmux command. These are local calls
 // to a socket in /tmp, so anything slower than this is a hang.
@@ -92,52 +100,88 @@ func NewTmux() *Tmux { return &Tmux{runner: ExecRunner{}} }
 func NewTmuxWithRunner(r Runner) *Tmux { return &Tmux{runner: r} }
 
 // SessionName is the tmux session name for a slice's page ID: the prefix plus
-// the first eight hex digits of the ID, with the UUID dashes dropped. IDs are
+// the last eight hex digits of the ID, with the UUID dashes dropped. IDs are
 // already hex, but non-hex characters are skipped rather than trusted, so a
 // surprising ID cannot produce a name tmux would reject.
+//
+// The tail rather than the head, because page IDs made in one workspace share
+// a long leading prefix: taken from the front, every slice of a project names
+// the same session, and the second launch is refused as a duplicate. The name
+// is only a human label — what a session belongs to is read from
+// [SlicePaneOption] — but it still has to be one tmux will accept twice.
 func SessionName(slicePageID string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(slicePageID) {
 		if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') {
 			b.WriteRune(r)
-			if b.Len() == sessionIDLen {
-				break
-			}
 		}
 	}
-	return SessionPrefix + b.String()
+	hex := b.String()
+	if len(hex) > sessionIDLen {
+		hex = hex[len(hex)-sessionIDLen:]
+	}
+	return SessionPrefix + hex
 }
 
-// LiveSessions is the set of our session names currently running, keyed by
-// session name. Sessions that are not ours are filtered out.
+// LiveSlices maps the page ID of every slice with an agent running to the tmux
+// session that agent's pane is currently in — the ID to mark the slice by, and
+// the session to attach to it with. Panes that are not ours carry no slice tag
+// and are left out.
+//
+// It is a server-wide scan of the panes rather than a look at the session
+// names, because the tag is the identity: a pane the user has moved or renamed
+// their way is still the agent for its slice.
 //
 // tmux exits 1 when no server is running at all, which is the ordinary state
 // before the first agent launches — that reads as an empty set, not an error.
-func (t *Tmux) LiveSessions() (map[string]bool, error) {
-	out, err := t.runner.Run(TmuxBinary, "list-sessions", "-F", "#{session_name}")
+func (t *Tmux) LiveSlices() (map[string]string, error) {
+	out, err := t.runner.Run(TmuxBinary, "list-panes", "-a", "-F", listPanesFormat())
 	if err != nil {
 		var exitErr *ExitError
 		if errors.As(err, &exitErr) && exitErr.Code == 1 {
-			return map[string]bool{}, nil
+			return map[string]string{}, nil
 		}
-		return nil, fmt.Errorf("list tmux sessions: %w", err)
+		return nil, fmt.Errorf("list tmux panes: %w", err)
 	}
 
-	live := map[string]bool{}
+	live := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
-		name := strings.TrimSpace(line)
-		if strings.HasPrefix(name, SessionPrefix) {
-			live[name] = true
+		id, session, ok := strings.Cut(strings.TrimSpace(line), "\t")
+		if !ok || id == "" {
+			continue
+		}
+		// A slice with two panes tagged for it should not happen, and if it
+		// does the first one found is as good an answer as the last.
+		if _, seen := live[id]; !seen {
+			live[id] = session
 		}
 	}
 	return live, nil
 }
 
+// listPanesFormat is what [Tmux.LiveSlices] asks tmux to print for each pane:
+// the slice tag, then the session the pane is in. A tab separates them because
+// a session name can hold anything but that.
+func listPanesFormat() string {
+	return fmt.Sprintf("#{%s}\t#{session_name}", SlicePaneOption)
+}
+
 // Launch starts a detached tmux session named session, with workdir as its
-// working directory, running an agent seeded with the prompt in promptFile.
-func (t *Tmux) Launch(session, workdir, promptFile string) error {
-	if _, err := t.runner.Run(TmuxBinary, LaunchArgs(session, workdir, promptFile)...); err != nil {
+// working directory, running an agent seeded with the prompt in promptFile for
+// the slice with page ID sliceID.
+//
+// The pane the session starts in is tagged with sliceID, which is what
+// [Tmux.LiveSlices] reads the running agents back out of. A session whose pane
+// could not be tagged is left running — its agent is already working — but the
+// failure is reported, because until it is tagged nothing will find it again.
+func (t *Tmux) Launch(session, workdir, promptFile, sliceID string) error {
+	out, err := t.runner.Run(TmuxBinary, LaunchArgs(session, workdir, promptFile)...)
+	if err != nil {
 		return fmt.Errorf("launch tmux session %s: %w", session, err)
+	}
+	pane := strings.TrimSpace(out)
+	if _, err := t.runner.Run(TmuxBinary, "set-option", "-p", "-t", pane, SlicePaneOption, sliceID); err != nil {
+		return fmt.Errorf("tag tmux pane %s for slice %s: %w", pane, sliceID, err)
 	}
 	return nil
 }
@@ -148,12 +192,16 @@ func (t *Tmux) Launch(session, workdir, promptFile string) error {
 // definitions to vary it later.
 //
 // The prompt is passed as a positional argument read back from the file rather
-// than inlined, so a long prompt cannot run into the argv size limit.
+// than inlined, so a long prompt cannot run into the argv size limit. The new
+// session prints its pane's ID, which is the handle the slice tag goes on:
+// pane IDs are unique for the life of the server, where a name is whatever it
+// has last been set to.
 func LaunchArgs(session, workdir, promptFile string) []string {
 	return []string{
 		"new-session", "-d",
 		"-s", session,
 		"-c", workdir,
+		"-P", "-F", "#{pane_id}",
 		"sh", "-c", agentCommand(promptFile),
 	}
 }

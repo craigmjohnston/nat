@@ -102,10 +102,10 @@ type App struct {
 	info       Info
 	form       modal
 
-	// launcher starts and attaches to the agents' tmux sessions, and live is
-	// the set of session names it last reported running.
+	// launcher starts and attaches to the agents' tmux sessions, and live maps
+	// each slice it last reported an agent running for to that agent's session.
 	launcher AgentLauncher
-	live     map[string]bool
+	live     map[string]string
 
 	project *domain.Project
 	loading bool

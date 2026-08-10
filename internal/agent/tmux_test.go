@@ -17,16 +17,31 @@ type call struct {
 	args []string
 }
 
-// fakeRunner records what it was asked to run and replays a canned result.
+// fakeRunner records what it was asked to run and replays a canned result. A
+// launch is two tmux calls, so out and err can be given per tmux subcommand;
+// anything not named there gets the bare out and err.
 type fakeRunner struct {
 	out   string
 	err   error
+	outs  map[string]string
+	errs  map[string]error
 	calls []call
 }
 
 func (f *fakeRunner) Run(name string, args ...string) (string, error) {
 	f.calls = append(f.calls, call{name: name, args: args})
-	return f.out, f.err
+	sub := ""
+	if len(args) > 0 {
+		sub = args[0]
+	}
+	out, err := f.out, f.err
+	if o, ok := f.outs[sub]; ok {
+		out = o
+	}
+	if e, ok := f.errs[sub]; ok {
+		err = e
+	}
+	return out, err
 }
 
 func TestSessionName(t *testing.T) {
@@ -35,10 +50,10 @@ func TestSessionName(t *testing.T) {
 		id   string
 		want string
 	}{
-		{"uuid with dashes", "3b738308-f654-8170-8c99-eccab4463d8f", "nat-3b738308"},
-		{"uuid without dashes", "3b738308f65481708c99eccab4463d8f", "nat-3b738308"},
-		{"uppercase is folded", "3B738308-F654-8170-8C99-ECCAB4463D8F", "nat-3b738308"},
-		{"non-hex characters are skipped", "zz3b-73g83h08f654", "nat-3b738308"},
+		{"uuid with dashes", "3b738308-f654-8170-8c99-eccab4463d8f", "nat-b4463d8f"},
+		{"uuid without dashes", "3b738308f65481708c99eccab4463d8f", "nat-b4463d8f"},
+		{"uppercase is folded", "3B738308-F654-8170-8C99-ECCAB4463D8F", "nat-b4463d8f"},
+		{"non-hex characters are skipped", "zz3b-73g83h08f654", "nat-8308f654"},
 		{"short id is used as-is", "3b73", "nat-3b73"},
 		{"empty id", "", "nat-"},
 	}
@@ -51,36 +66,69 @@ func TestSessionName(t *testing.T) {
 	}
 }
 
-func TestLiveSessions(t *testing.T) {
-	r := &fakeRunner{out: "nat-3b738308\nother-session\nnat-aabbccdd\n"}
-	live, err := NewTmuxWithRunner(r).LiveSessions()
+// The bug this replaced: page IDs from one Notion workspace share a long
+// leading prefix, so a name taken off the front is the same name for every
+// slice of a project — and the second launch is refused as a duplicate.
+func TestSessionNameDistinguishesIDsSharingAPrefix(t *testing.T) {
+	first := SessionName("3b738308-f654-8170-8c99-eccab4463d8f")
+	second := SessionName("3b738308-f654-812d-ac8d-d4c80dfecb09")
+	if first == second {
+		t.Errorf("both slices name session %q, want a name each", first)
+	}
+}
+
+func TestLiveSlices(t *testing.T) {
+	r := &fakeRunner{out: strings.Join([]string{
+		"\tuser-shell", // a pane of the user's own, untagged
+		"3b738308…8f\tnat-b4463d8f",
+		"3b738308…09\tnat-0dfecb09",
+		"3b738308…8f\tnat-moved", // a second pane claiming a slice already found
+		"",
+	}, "\n")}
+
+	live, err := NewTmuxWithRunner(r).LiveSlices()
 	if err != nil {
-		t.Fatalf("LiveSessions: %v", err)
+		t.Fatalf("LiveSlices: %v", err)
 	}
 
-	want := map[string]bool{"nat-3b738308": true, "nat-aabbccdd": true}
+	want := map[string]string{"3b738308…8f": "nat-b4463d8f", "3b738308…09": "nat-0dfecb09"}
 	if !reflect.DeepEqual(live, want) {
 		t.Errorf("live = %v, want %v", live, want)
 	}
 
-	wantCall := call{name: "tmux", args: []string{"list-sessions", "-F", "#{session_name}"}}
+	wantCall := call{name: "tmux", args: []string{
+		"list-panes", "-a", "-F", "#{@nat_slice}\t#{session_name}",
+	}}
 	if len(r.calls) != 1 || !reflect.DeepEqual(r.calls[0], wantCall) {
 		t.Errorf("calls = %+v, want exactly %+v", r.calls, wantCall)
 	}
 }
 
-func TestLiveSessionsWithNoServerRunning(t *testing.T) {
-	r := &fakeRunner{err: &ExitError{Code: 1, Stderr: "no server running on /tmp/tmux-501/default"}}
-	live, err := NewTmuxWithRunner(r).LiveSessions()
+// A pane moved into another session is still the agent for its slice, and is
+// reported under the session it has ended up in.
+func TestLiveSlicesFollowsAPaneToAnotherSession(t *testing.T) {
+	r := &fakeRunner{out: "3b738308…8f\tsomewhere-else\n"}
+	live, err := NewTmuxWithRunner(r).LiveSlices()
 	if err != nil {
-		t.Fatalf("LiveSessions: %v", err)
+		t.Fatalf("LiveSlices: %v", err)
+	}
+	if got := live["3b738308…8f"]; got != "somewhere-else" {
+		t.Errorf("session = %q, want %q", got, "somewhere-else")
+	}
+}
+
+func TestLiveSlicesWithNoServerRunning(t *testing.T) {
+	r := &fakeRunner{err: &ExitError{Code: 1, Stderr: "no server running on /tmp/tmux-501/default"}}
+	live, err := NewTmuxWithRunner(r).LiveSlices()
+	if err != nil {
+		t.Fatalf("LiveSlices: %v", err)
 	}
 	if len(live) != 0 {
 		t.Errorf("live = %v, want empty", live)
 	}
 }
 
-func TestLiveSessionsError(t *testing.T) {
+func TestLiveSlicesError(t *testing.T) {
 	tests := []struct {
 		name string
 		err  error
@@ -90,9 +138,9 @@ func TestLiveSessionsError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			live, err := NewTmuxWithRunner(&fakeRunner{err: tt.err}).LiveSessions()
+			live, err := NewTmuxWithRunner(&fakeRunner{err: tt.err}).LiveSlices()
 			if err == nil {
-				t.Fatal("LiveSessions: want error, got nil")
+				t.Fatal("LiveSlices: want error, got nil")
 			}
 			if !errors.Is(err, tt.err) {
 				t.Errorf("err = %v, want it to wrap %v", err, tt.err)
@@ -105,33 +153,59 @@ func TestLiveSessionsError(t *testing.T) {
 }
 
 func TestLaunch(t *testing.T) {
-	r := &fakeRunner{}
-	if err := NewTmuxWithRunner(r).Launch("nat-3b738308", "/Users/craig/Projects/x", "/tmp/prompt.md"); err != nil {
+	r := &fakeRunner{outs: map[string]string{"new-session": "%7\n"}}
+	id := "3b738308-f654-8170-8c99-eccab4463d8f"
+	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/Users/craig/Projects/x", "/tmp/prompt.md", id); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
 
-	want := call{name: "tmux", args: []string{
-		"new-session", "-d",
-		"-s", "nat-3b738308",
-		"-c", "/Users/craig/Projects/x",
-		"sh", "-c", `claude "$(cat '/tmp/prompt.md')"`,
-	}}
-	if len(r.calls) != 1 || !reflect.DeepEqual(r.calls[0], want) {
-		t.Errorf("calls = %+v, want exactly %+v", r.calls, want)
+	want := []call{
+		{name: "tmux", args: []string{
+			"new-session", "-d",
+			"-s", "nat-b4463d8f",
+			"-c", "/Users/craig/Projects/x",
+			"-P", "-F", "#{pane_id}",
+			"sh", "-c", `claude "$(cat '/tmp/prompt.md')"`,
+		}},
+		{name: "tmux", args: []string{"set-option", "-p", "-t", "%7", "@nat_slice", id}},
+	}
+	if !reflect.DeepEqual(r.calls, want) {
+		t.Errorf("calls = %+v, want %+v", r.calls, want)
 	}
 }
 
 func TestLaunchError(t *testing.T) {
-	inner := &ExitError{Code: 1, Stderr: "duplicate session: nat-3b738308"}
-	err := NewTmuxWithRunner(&fakeRunner{err: inner}).Launch("nat-3b738308", "/tmp", "/tmp/prompt.md")
+	inner := &ExitError{Code: 1, Stderr: "duplicate session: nat-b4463d8f"}
+	err := NewTmuxWithRunner(&fakeRunner{err: inner}).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "3b73")
 	if err == nil {
 		t.Fatal("Launch: want error, got nil")
 	}
 	if !errors.Is(err, inner) {
 		t.Errorf("err = %v, want it to wrap %v", err, inner)
 	}
-	if !strings.Contains(err.Error(), "nat-3b738308") {
+	if !strings.Contains(err.Error(), "nat-b4463d8f") {
 		t.Errorf("err = %v, want it to name the session", err)
+	}
+}
+
+// An untagged pane is an agent nothing can find again, so the failure is
+// reported even though the session itself came up.
+func TestLaunchTagError(t *testing.T) {
+	inner := &ExitError{Code: 1, Stderr: "can't find pane: %7"}
+	r := &fakeRunner{
+		outs: map[string]string{"new-session": "%7\n"},
+		errs: map[string]error{"set-option": inner},
+	}
+
+	err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "3b73")
+	if err == nil {
+		t.Fatal("Launch: want error, got nil")
+	}
+	if !errors.Is(err, inner) {
+		t.Errorf("err = %v, want it to wrap %v", err, inner)
+	}
+	if !strings.Contains(err.Error(), "3b73") {
+		t.Errorf("err = %v, want it to name the slice", err)
 	}
 }
 
@@ -303,19 +377,41 @@ func TestNewTmuxUsesExecRunner(t *testing.T) {
 	}
 }
 
-// The prefix is what tells our sessions apart from the user's own, so the two
-// places that depend on it have to agree.
+// The prefix is what tells our sessions apart from the user's own in a session
+// list, so the name still has to carry it.
 func TestSessionNameCarriesThePrefix(t *testing.T) {
 	name := SessionName("3b738308f65481708c99eccab4463d8f")
 	if !strings.HasPrefix(name, SessionPrefix) {
-		t.Fatalf("%q does not start with %q", name, SessionPrefix)
+		t.Errorf("%q does not start with %q", name, SessionPrefix)
 	}
-	r := &fakeRunner{out: fmt.Sprintf("%s\n", name)}
-	live, err := NewTmuxWithRunner(r).LiveSessions()
+}
+
+// The pane tag is the identity of a running agent, so the option Launch sets
+// and the one LiveSlices reads have to be the same one.
+func TestLaunchTagsWhatLiveSlicesReads(t *testing.T) {
+	id := "3b738308-f654-8170-8c99-eccab4463d8f"
+	session := SessionName(id)
+
+	launch := &fakeRunner{outs: map[string]string{"new-session": "%7"}}
+	if err := NewTmuxWithRunner(launch).Launch(session, "/tmp", "/tmp/prompt.md", id); err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	tag := launch.calls[1].args
+	option, value := tag[len(tag)-2], tag[len(tag)-1]
+
+	// tmux reports the option back where the format asked for it, which is the
+	// first field of the line.
+	format := listPanesFormat()
+	if !strings.HasPrefix(format, "#{"+option+"}\t") {
+		t.Fatalf("format %q does not read back %q", format, option)
+	}
+
+	read := &fakeRunner{out: fmt.Sprintf("%s\t%s\n", value, session)}
+	live, err := NewTmuxWithRunner(read).LiveSlices()
 	if err != nil {
-		t.Fatalf("LiveSessions: %v", err)
+		t.Fatalf("LiveSlices: %v", err)
 	}
-	if !live[name] {
-		t.Errorf("live = %v, want it to contain %q", live, name)
+	if got := live[id]; got != session {
+		t.Errorf("live[%q] = %q, want %q", id, got, session)
 	}
 }
