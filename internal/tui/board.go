@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -267,14 +269,56 @@ func (b Board) SelectedMilestone() (domain.Milestone, bool) {
 	return *m, true
 }
 
+// boardLayout is the column geometry one render shares across all its rows:
+// the widths of the plan-number column and of the title, count and pill cells,
+// each sized to the widest of its kind so the cells line up vertically.
+type boardLayout struct {
+	num, title, count, pill int
+}
+
+// layout measures the groups into the columns the rows align to.
+func (b Board) layout() boardLayout {
+	var l boardLayout
+	for _, g := range b.groups {
+		l.num = max(l.num, len(planNumber(g)))
+		l.title = max(l.title, lipgloss.Width(groupTitle(g)))
+		p := g.Progress()
+		l.count = max(l.count, len(fmt.Sprintf("%d/%d", p.Done, p.Total)))
+		if g.Milestone != nil {
+			l.pill = max(l.pill, lipgloss.Width(string(g.Milestone.Status))+2)
+		}
+	}
+	return l
+}
+
+// planPrefix is the numbering a milestone name carries in Notion ("M10: …"),
+// which the board strips: the number is drawn as its own column instead.
+var planPrefix = regexp.MustCompile(`^M\d+:\s*`)
+
+// planNumber is the milestone's plan number as the number column shows it —
+// blank for the Unassigned group and for a milestone with no order.
+func planNumber(g domain.Group) string {
+	if g.Milestone == nil || g.Milestone.Order == 0 {
+		return ""
+	}
+	return strconv.FormatFloat(g.Milestone.Order, 'f', -1, 64)
+}
+
+// groupTitle is the group's name as the title column shows it: the inline
+// numbering stripped, since the number column already carries it.
+func groupTitle(g domain.Group) string {
+	return planPrefix.ReplaceAllString(g.Name(), "")
+}
+
 // View renders the board.
 func (b Board) View() string {
 	if len(b.groups) == 0 {
 		return b.styles.Faint.Render("No milestones yet.")
 	}
+	l := b.layout()
 	lines := make([]string, len(b.rows))
 	for i, r := range b.rows {
-		lines[i] = b.renderRow(i, r)
+		lines[i] = b.renderRow(i, r, l)
 	}
 	return strings.Join(lines, "\n")
 }
@@ -282,16 +326,19 @@ func (b Board) View() string {
 // renderRow draws one line, with the cursor marker in front of it. The row
 // under the cursor is drawn plain and handed to finishRow for its background
 // fill, so the marker takes the fill's colour like everything else on it.
-func (b Board) renderRow(i int, r row) string {
+// Slice rows skip the number column and indent one step further, so they sit
+// consistently beneath their milestone's title.
+func (b Board) renderRow(i int, r row, l boardLayout) string {
 	selected := i == b.cursor
 	marker := "  "
 	if selected {
 		marker = "❯ "
 	}
 	if r.kind == rowMilestone {
-		return b.renderMilestone(marker, b.groups[r.group], selected)
+		return b.renderMilestone(marker, b.groups[r.group], selected, l)
 	}
-	return b.renderSlice(marker+"  ", b.groups[r.group].Slices[r.slice], selected)
+	indent := strings.Repeat(" ", l.num+1)
+	return b.renderSlice(marker+indent, b.groups[r.group].Slices[r.slice], selected)
 }
 
 // paint styles s, unless the row it is part of is selected: a selected row is
@@ -341,21 +388,37 @@ func joinRow(head, name string, chips []string) string {
 	return strings.Join(append([]string{head, name}, chips...), " ")
 }
 
-// renderMilestone draws a group's own line: the fold indicator, its name, how
-// many of its slices are done, and its status chip. The chip goes first as the
-// board narrows, then the count.
-func (b Board) renderMilestone(head string, g domain.Group, selected bool) string {
+// renderMilestone draws a group's own line: the plan number, the fold
+// indicator, its title, how many of its slices are done, and its status pill.
+// The title cell is padded to the widest title and the count and pill each
+// right-align in a cell of their own, so the columns run straight down the
+// board. The pill goes first as the board narrows, then the count.
+func (b Board) renderMilestone(marker string, g domain.Group, selected bool, l boardLayout) string {
 	fold := "▸"
 	if b.expanded[groupKey(g)] {
 		fold = "▾"
 	}
-	p := g.Progress()
-	chips := []string{paint(selected, b.styles.Faint, fmt.Sprintf("%d/%d", p.Done, p.Total))}
-	if g.Milestone != nil {
-		chips = append(chips, b.milestoneChip(g.Milestone.Status, selected))
+	head := marker
+	if l.num > 0 {
+		head += paint(selected, b.styles.Faint, fmt.Sprintf("%*s", l.num, planNumber(g))) + " "
 	}
-	name := paint(selected, b.styles.Milestone, g.Name())
-	return b.finishRow(selected, fitRow(b.width, head+fold, name, chips...))
+	head += fold
+	p := g.Progress()
+	count := fmt.Sprintf("%*s", l.count, fmt.Sprintf("%d/%d", p.Done, p.Total))
+	chips := []string{paint(selected, b.styles.Faint, count)}
+	if g.Milestone != nil {
+		pill := b.milestoneChip(g.Milestone.Status, selected)
+		if pad := l.pill - lipgloss.Width(pill); pad > 0 {
+			pill = strings.Repeat(" ", pad) + pill
+		}
+		chips = append(chips, pill)
+	}
+	title := groupTitle(g)
+	if pad := l.title - lipgloss.Width(title); pad > 0 {
+		title += strings.Repeat(" ", pad)
+	}
+	name := paint(selected, b.styles.Milestone, title)
+	return b.finishRow(selected, fitRow(b.width, head, name, chips...))
 }
 
 // renderSlice draws one slice: its status chip, its name, whether an agent is
