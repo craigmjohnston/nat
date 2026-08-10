@@ -21,6 +21,9 @@ type Database struct {
 	URL         string          `json:"url"`
 	Title       []RichText      `json:"title"`
 	DataSources []DataSourceRef `json:"data_sources"`
+	// Parent is where the database lives — a page, or the workspace itself —
+	// which the onboarding picker uses to show databases in place.
+	Parent Parent `json:"parent"`
 }
 
 // TitleText returns the database title as plain text.

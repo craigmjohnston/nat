@@ -6,10 +6,13 @@ import (
 	"errors"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/notion"
@@ -20,6 +23,7 @@ import (
 type fakeNotion struct {
 	users       func() ([]notion.User, error)
 	search      func(query, filterType string) ([]notion.SearchResult, error)
+	getDB       func(id string) (*notion.Database, error)
 	createDB    func(parentPageID, title string) (*notion.Database, error)
 	newProject  func(projectsDSID, name string) (*notion.ProjectStructure, error)
 	query       func(id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
@@ -30,7 +34,10 @@ type fakeNotion struct {
 	deleteBlock func(id string) error
 	trashPage   func(pageID string) error
 
+	// mu guards fetchedDBs: databaseParents fetches concurrently.
+	mu            sync.Mutex
 	searchFilters []string
+	fetchedDBs    []string
 	queriedDSIDs  []string
 	blockParents  []string
 	createdUnder  string
@@ -82,6 +89,16 @@ func (f *fakeNotion) Search(_ context.Context, query, filterType string) ([]noti
 		return nil, nil
 	}
 	return f.search(query, filterType)
+}
+
+func (f *fakeNotion) GetDatabase(_ context.Context, id string) (*notion.Database, error) {
+	f.mu.Lock()
+	f.fetchedDBs = append(f.fetchedDBs, id)
+	f.mu.Unlock()
+	if f.getDB == nil {
+		return nil, errors.New("no database")
+	}
+	return f.getDB(id)
 }
 
 func (f *fakeNotion) CreateProjectsDatabase(_ context.Context, parentPageID, title string) (*notion.Database, error) {
@@ -353,8 +370,8 @@ func TestOnboardingPicksAnExistingProjectDatabase(t *testing.T) {
 	if got := h.client.queriedDSIDs; len(got) != 1 || got[0] != "ds-2" {
 		t.Errorf("queried data sources = %v, want [ds-2]", got)
 	}
-	if got := h.client.searchFilters; len(got) != 1 || got[0] != notion.SearchDataSource {
-		t.Errorf("search filters = %v, want [data_source]", got)
+	if got := h.client.searchFilters; !reflect.DeepEqual(got, []string{notion.SearchDataSource, notion.SearchPage}) {
+		t.Errorf("search filters = %v, want the databases and the pages", got)
 	}
 }
 
@@ -402,6 +419,112 @@ func TestOnboardingCreatesAProjectDatabase(t *testing.T) {
 		t.Errorf("done = %+v, want NeedsProject=true for an empty project database", h.done)
 	}
 }
+
+func TestOnboardingPicksADatabaseNestedInTheTree(t *testing.T) {
+	// The database the user wants sits under a page: they open the page in the
+	// tree, land on the database, and the config comes out exactly as if it had
+	// been picked off a flat list.
+	client := &fakeNotion{
+		search: func(_, filterType string) ([]notion.SearchResult, error) {
+			if filterType == notion.SearchPage {
+				return []notion.SearchResult{pageHit("page-1", "Home")}, nil
+			}
+			return []notion.SearchResult{dataSourceHit("ds-1", "db-1", "Agent Projects")}, nil
+		},
+		getDB: func(id string) (*notion.Database, error) {
+			return &notion.Database{ID: id, Parent: notion.PageParent("page-1")}, nil
+		},
+		users: func() ([]notion.User, error) {
+			return []notion.User{person("user-1", "Craig Johnston", "")}, nil
+		},
+	}
+	h := newHarness(t, config.Config{}, client)
+	h.run(h.m.Init())
+
+	if h.m.tree == nil {
+		t.Fatalf("want the tree at step %v (err: %v)", h.m.step, h.m.err)
+	}
+	if view := stripANSI(h.m.View()); strings.Contains(view, "Agent Projects") {
+		t.Fatalf("the database should be folded away under its page:\n%s", view)
+	}
+	h.send(tea.KeyPressMsg(tea.Key{Code: tea.KeyRight})) // open Home
+	h.down()                                             // onto the database
+	h.submit()                                           // choose it
+
+	if h.m.step != stepPickAssignee {
+		t.Fatalf("step = %v, want stepPickAssignee (err: %v)", h.m.step, h.m.err)
+	}
+	h.submit() // assignee
+
+	if len(h.saved) != 1 {
+		t.Fatalf("saved %d configs, want 1 (err: %v)", len(h.saved), h.m.err)
+	}
+	if got := h.saved[0]; got.ProjectDBID != "db-1" || got.ProjectDBDataSourceID != "ds-1" {
+		t.Errorf("saved = %+v, want db-1/ds-1 — the same IDs a flat pick saved", got)
+	}
+}
+
+func TestOnboardingCreateNewWithoutPagesFails(t *testing.T) {
+	// The escape hatch needs a page to put the database under; a workspace
+	// sharing none is the errNoPages dead end, found at the moment of choice.
+	h := newHarness(t, config.Config{}, &fakeNotion{})
+	h.run(h.m.Init())
+
+	if h.m.tree == nil {
+		t.Fatalf("want the tree at step %v (err: %v)", h.m.step, h.m.err)
+	}
+	h.submit() // the only row is "Create a new database…"
+
+	if h.m.err == nil || !strings.Contains(h.m.err.Error(), "no pages found in this workspace") {
+		t.Fatalf("err = %v, want errNoPages", h.m.err)
+	}
+}
+
+func TestOnboardingSizesTheTreeToTheWindow(t *testing.T) {
+	client := &fakeNotion{
+		search: func(string, string) ([]notion.SearchResult, error) {
+			return []notion.SearchResult{dataSourceHit("ds-1", "db-1", "Agent Projects")}, nil
+		},
+	}
+	h := newHarness(t, config.Config{}, client)
+
+	// A size that arrives before the tree exists is kept for it.
+	h.send(tea.WindowSizeMsg{Width: 25, Height: 30})
+	h.run(h.m.Init())
+	if h.m.tree == nil {
+		t.Fatalf("want the tree (err: %v)", h.m.err)
+	}
+	if h.m.tree.width != 25 || h.m.tree.height != 30 {
+		t.Errorf("tree size = %dx%d, want the earlier window's 25x30", h.m.tree.width, h.m.tree.height)
+	}
+
+	// A resize while the tree is up reaches it too.
+	h.send(tea.WindowSizeMsg{Width: 20, Height: 10})
+	if h.m.tree.width != 20 || h.m.tree.height != 10 {
+		t.Errorf("tree size = %dx%d, want the resize's 20x10", h.m.tree.width, h.m.tree.height)
+	}
+	if got := lipgloss.Width(h.m.View()); got > 20 {
+		t.Errorf("view is %d columns in a 20-column window", got)
+	}
+}
+
+func TestOnboardingTreeIgnoresOtherMessages(t *testing.T) {
+	client := &fakeNotion{
+		search: func(string, string) ([]notion.SearchResult, error) {
+			return []notion.SearchResult{dataSourceHit("ds-1", "db-1", "Agent Projects")}, nil
+		},
+	}
+	h := newHarness(t, config.Config{}, client)
+	h.run(h.m.Init())
+
+	h.send(spinnerLikeMsg{})
+	if h.m.tree == nil || h.m.err != nil {
+		t.Errorf("a stray message should leave the tree alone (err: %v)", h.m.err)
+	}
+}
+
+// spinnerLikeMsg is any message the tree has no business reacting to.
+type spinnerLikeMsg struct{}
 
 func TestOnboardingKeepsExistingConfigFields(t *testing.T) {
 	// Onboarding can run again over a partially written config file; the rest
@@ -468,6 +591,31 @@ func TestOnboardingAbortQuits(t *testing.T) {
 	h.send(tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
 
 	if !h.quit {
+		t.Error("aborting the tree should quit the program")
+	}
+}
+
+func TestOnboardingAbortingAFormQuits(t *testing.T) {
+	client := &fakeNotion{
+		search: func(_, filterType string) ([]notion.SearchResult, error) {
+			if filterType == notion.SearchPage {
+				return []notion.SearchResult{pageHit("page-1", "Workspace")}, nil
+			}
+			return nil, nil
+		},
+	}
+	h := newHarness(t, config.Config{}, client)
+	h.run(h.m.Init())
+	h.submit() // create a new database — the huh form takes over
+
+	if h.m.form == nil {
+		t.Fatalf("want the form at step %v (err: %v)", h.m.step, h.m.err)
+	}
+	if view := stripANSI(h.m.View()); !strings.Contains(view, "Name for the new project database") {
+		t.Errorf("view = %q, want the form on show", view)
+	}
+	h.send(tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
+	if !h.quit {
 		t.Error("aborting the form should quit the program")
 	}
 }
@@ -478,9 +626,7 @@ func TestOnboardingFatalErrors(t *testing.T) {
 		msg  tea.Msg
 		want string
 	}{
-		{"database search fails", projectDBsMsg{err: errors.New("boom")}, "search for databases: boom"},
-		{"page search fails", parentPagesMsg{err: errors.New("boom")}, "search for pages: boom"},
-		{"no pages in the workspace", parentPagesMsg{}, "no pages found in this workspace"},
+		{"the load fails", projectDBsMsg{err: errors.New("search for databases: boom")}, "search for databases: boom"},
 		{"create fails", projectDBCreatedMsg{err: errors.New("boom")}, "create project database: boom"},
 		{"created without a data source", projectDBCreatedMsg{db: &notion.Database{ID: "db"}}, "no data source"},
 		{"listing users fails", usersMsg{err: errors.New("boom")}, "list users: boom"},
@@ -534,7 +680,7 @@ func TestOnboardingIgnoresMessagesWithNoFormOnShow(t *testing.T) {
 	}
 }
 
-func TestOnboardingViewShowsTheFormOnShow(t *testing.T) {
+func TestOnboardingViewShowsTheTreeOnShow(t *testing.T) {
 	client := &fakeNotion{
 		search: func(string, string) ([]notion.SearchResult, error) {
 			return []notion.SearchResult{dataSourceHit("ds-1", "db-1", "Agent Projects")}, nil
@@ -543,11 +689,17 @@ func TestOnboardingViewShowsTheFormOnShow(t *testing.T) {
 	h := newHarness(t, config.Config{}, client)
 	h.run(h.m.Init())
 
-	if h.m.form == nil {
-		t.Fatalf("want a form on show at step %v (err: %v)", h.m.step, h.m.err)
+	if h.m.tree == nil {
+		t.Fatalf("want the tree on show at step %v (err: %v)", h.m.step, h.m.err)
 	}
-	if got := h.m.View(); !strings.Contains(got, "Agent Projects") {
-		t.Errorf("view = %q, want the form's options", got)
+	got := stripANSI(h.m.View())
+	for _, want := range []string{"Agent Projects", "Create a new database…", "Which database holds your projects?"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("view = %q, want it to hold %q", got, want)
+		}
+	}
+	if !strings.HasSuffix(got, "\n") {
+		t.Errorf("view = %q, want a trailing newline", got)
 	}
 }
 
@@ -572,35 +724,88 @@ func TestOnboardingFormSubmittedIgnoresAsyncSteps(t *testing.T) {
 }
 
 func TestOnboardingCommands(t *testing.T) {
-	t.Run("loadProjectDBs searches for data sources", func(t *testing.T) {
-		client := &fakeNotion{search: func(query, filterType string) ([]notion.SearchResult, error) {
-			if query != "" || filterType != notion.SearchDataSource {
-				t.Errorf("search(%q, %q), want an unfiltered data source search", query, filterType)
-			}
-			return []notion.SearchResult{dataSourceHit("ds-1", "db-1", "Projects")}, nil
-		}}
+	t.Run("loadProjectDBs searches data sources then pages", func(t *testing.T) {
+		client := &fakeNotion{
+			search: func(query, filterType string) ([]notion.SearchResult, error) {
+				if query != "" {
+					t.Errorf("search query = %q, want an unfiltered search", query)
+				}
+				if filterType == notion.SearchPage {
+					return []notion.SearchResult{pageHit("page-1", "Home")}, nil
+				}
+				return []notion.SearchResult{dataSourceHit("ds-1", "db-1", "Projects")}, nil
+			},
+			getDB: func(id string) (*notion.Database, error) {
+				return &notion.Database{ID: id, Parent: notion.PageParent("page-1")}, nil
+			},
+		}
 		h := newHarness(t, config.Config{}, client)
 		h.m.client = client
 
 		msg, _ := h.m.loadProjectDBs().(projectDBsMsg)
-		if len(msg.results) != 1 || msg.err != nil {
-			t.Errorf("msg = %+v, want the single hit", msg)
+		if len(msg.results) != 1 || len(msg.pages) != 1 || msg.err != nil {
+			t.Errorf("msg = %+v, want one database and one page", msg)
+		}
+		if got := msg.parents["db-1"].PageID; got != "page-1" {
+			t.Errorf("parents[db-1] = %q, want page-1", got)
+		}
+		if got := client.searchFilters; !reflect.DeepEqual(got, []string{notion.SearchDataSource, notion.SearchPage}) {
+			t.Errorf("search filters = %v, want data sources then pages", got)
 		}
 	})
 
-	t.Run("loadParentPages searches for pages", func(t *testing.T) {
+	t.Run("loadProjectDBs reports the database search failing", func(t *testing.T) {
 		client := &fakeNotion{search: func(_, filterType string) ([]notion.SearchResult, error) {
-			if filterType != notion.SearchPage {
-				t.Errorf("filter = %q, want a page search", filterType)
-			}
 			return nil, errors.New("boom")
 		}}
 		h := newHarness(t, config.Config{}, client)
 		h.m.client = client
 
-		msg, _ := h.m.loadParentPages().(parentPagesMsg)
-		if msg.err == nil {
-			t.Error("want the search error")
+		msg, _ := h.m.loadProjectDBs().(projectDBsMsg)
+		if msg.err == nil || !strings.Contains(msg.err.Error(), "search for databases: boom") {
+			t.Errorf("err = %v, want the database search failure", msg.err)
+		}
+	})
+
+	t.Run("loadProjectDBs reports the page search failing", func(t *testing.T) {
+		client := &fakeNotion{search: func(_, filterType string) ([]notion.SearchResult, error) {
+			if filterType == notion.SearchPage {
+				return nil, errors.New("boom")
+			}
+			return nil, nil
+		}}
+		h := newHarness(t, config.Config{}, client)
+		h.m.client = client
+
+		msg, _ := h.m.loadProjectDBs().(projectDBsMsg)
+		if msg.err == nil || !strings.Contains(msg.err.Error(), "search for pages: boom") {
+			t.Errorf("err = %v, want the page search failure", msg.err)
+		}
+	})
+
+	t.Run("databaseParents fetches each parent database once", func(t *testing.T) {
+		client := &fakeNotion{getDB: func(id string) (*notion.Database, error) {
+			if id == "db-lost" {
+				return nil, errors.New("boom")
+			}
+			return &notion.Database{ID: id, Parent: notion.PageParent("page-" + id)}, nil
+		}}
+		h := newHarness(t, config.Config{}, client)
+		h.m.client = client
+
+		parents := h.m.databaseParents(context.Background(), []notion.SearchResult{
+			dataSourceHit("ds-1", "db-1", "One"),
+			dataSourceHit("ds-2", "db-1", "One again"),
+			dataSourceHit("ds-3", "db-lost", "Broken"),
+			{ID: "ds-4", Object: notion.SearchDataSource}, // no parent database at all
+		})
+
+		if want := map[string]notion.Parent{"db-1": notion.PageParent("page-db-1")}; !reflect.DeepEqual(parents, want) {
+			t.Errorf("parents = %+v, want %+v — a failed fetch leaves its database out", parents, want)
+		}
+		sort.Strings(client.fetchedDBs)
+		if want := []string{"db-1", "db-lost"}; !reflect.DeepEqual(client.fetchedDBs, want) {
+			t.Errorf("fetched %v, want each parent database once: %v", client.fetchedDBs, want)
 		}
 	})
 
