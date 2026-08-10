@@ -184,6 +184,18 @@ func NewOnboarding(cfg config.Config, client NotionAPI, save func(config.Config)
 	return m
 }
 
+// SetStyles swaps in a freshly built palette, reaching the pickers that took
+// a copy of the styles when they were made.
+func (m *Onboarding) SetStyles(s Styles) {
+	m.styles = s
+	if m.tree != nil {
+		m.tree.styles = s
+	}
+	if m.search != nil {
+		m.search.styles = s
+	}
+}
+
 // Init starts the workspace search streaming into the picker.
 func (m *Onboarding) Init() tea.Cmd { return m.searchRoots("") }
 
@@ -615,7 +627,7 @@ func (m *Onboarding) newProjectDBForm(pages []notion.SearchResult) *huh.Form {
 			Title("Which page should it live under?").
 			Options(options...).
 			Value(&m.parentPageID),
-	))
+	)).WithTheme(m.styles.FormTheme)
 }
 
 // required rejects a blank answer, naming what was expected.
