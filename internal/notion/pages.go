@@ -10,12 +10,25 @@ import (
 // than sent — where any other object lives. Slices and milestones are rows of a
 // data source; a project page is a child of an ordinary page; a data source
 // hangs off its database.
+// A page nested in a column or a toggle is parented by that block rather than
+// by the page it is drawn on, so BlockID is a link the breadcrumb walk has to
+// follow to get any further.
 type Parent struct {
 	Type         string `json:"type"`
 	DataSourceID string `json:"data_source_id,omitempty"`
 	PageID       string `json:"page_id,omitempty"`
 	DatabaseID   string `json:"database_id,omitempty"`
+	BlockID      string `json:"block_id,omitempty"`
 }
+
+// The parent types Notion reports on an object it hands back.
+const (
+	ParentWorkspace  = "workspace"
+	ParentPage       = "page_id"
+	ParentDatabase   = "database_id"
+	ParentDataSource = "data_source_id"
+	ParentBlock      = "block_id"
+)
 
 // DataSourceParent returns the parent for a page created as a row of a data
 // source.
@@ -42,6 +55,17 @@ func (c *Client) CreatePage(ctx context.Context, parent Parent, properties map[s
 	}
 	var p Page
 	if err := c.do(ctx, http.MethodPost, "/pages", body, &p); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// GetPage fetches a page by ID. Breadcrumb resolution is what needs it: a page
+// found on a parent chain is fetched for its own title and for whatever holds
+// it in turn.
+func (c *Client) GetPage(ctx context.Context, id string) (*Page, error) {
+	var p Page
+	if err := c.do(ctx, http.MethodGet, "/pages/"+url.PathEscape(id), nil, &p); err != nil {
 		return nil, err
 	}
 	return &p, nil

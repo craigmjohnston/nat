@@ -24,12 +24,13 @@ type treeNode struct {
 func (n *treeNode) group() bool { return n.value == "" }
 
 // treeEvent is what one key press produced. At most one field is set: a chosen
-// leaf's value, an abort, or a page whose children must be fetched before it
-// can open.
+// leaf's value, an abort, a request to search instead of browse, or a page
+// whose children must be fetched before it can open.
 type treeEvent struct {
 	choice  string
 	chosen  bool
 	aborted bool
+	search  bool
 	load    *treeNode
 }
 
@@ -40,6 +41,7 @@ type treeKeyMap struct {
 	Expand   key.Binding
 	Collapse key.Binding
 	Select   key.Binding
+	Search   key.Binding
 	Abort    key.Binding
 }
 
@@ -51,6 +53,7 @@ func defaultTreeKeyMap() treeKeyMap {
 		Expand:   key.NewBinding(key.WithKeys("l", "right"), key.WithHelp("→/l", "expand")),
 		Collapse: key.NewBinding(key.WithKeys("h", "left"), key.WithHelp("←/h", "collapse")),
 		Select:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select")),
+		Search:   key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
 		Abort:    key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "quit")),
 	}
 }
@@ -176,6 +179,11 @@ func (t *treePicker) Handle(msg tea.KeyPressMsg) treeEvent {
 	if key.Matches(msg, t.keys.Abort) {
 		return treeEvent{aborted: true}
 	}
+	// Searching is offered whatever the tree holds — a workspace that shared no
+	// page to browse can still be searched.
+	if key.Matches(msg, t.keys.Search) {
+		return treeEvent{search: true}
+	}
 	if len(t.rows) == 0 {
 		return treeEvent{}
 	}
@@ -267,8 +275,8 @@ func (t *treePicker) View() string {
 		b.WriteString(fit(cursor+indent+style.Render(glyph+label), t.width) + "\n")
 	}
 
-	help := make([]string, 0, 4)
-	for _, k := range []key.Binding{t.keys.Up, t.keys.Down, t.keys.Expand, t.keys.Select} {
+	help := make([]string, 0, 5)
+	for _, k := range []key.Binding{t.keys.Up, t.keys.Down, t.keys.Expand, t.keys.Select, t.keys.Search} {
 		help = append(help, t.styles.HelpKey.Render(k.Help().Key)+" "+t.styles.HelpDesc.Render(k.Help().Desc))
 	}
 	b.WriteString(fit(strings.Join(help, "  "), t.width))

@@ -438,3 +438,41 @@ func TestDeleteBlock(t *testing.T) {
 		}
 	})
 }
+
+func TestGetBlock(t *testing.T) {
+	t.Run("returns the block and what holds it", func(t *testing.T) {
+		var gotMethod, gotPath string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotMethod, gotPath = r.Method, r.URL.Path
+			w.Write([]byte(`{"id":"block-1","type":"column","parent":{"type":"page_id","page_id":"page-3"}}`))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		block, err := c.GetBlock(context.Background(), "block-1")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if gotMethod != http.MethodGet || gotPath != "/blocks/block-1" {
+			t.Errorf("got %s %s, want GET /blocks/block-1", gotMethod, gotPath)
+		}
+		if block.Parent.Type != ParentPage || block.Parent.PageID != "page-3" {
+			t.Errorf("parent = %+v, want the page that holds the block", block.Parent)
+		}
+	})
+
+	t.Run("propagates an API error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"code":"object_not_found","message":"nope"}`))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		block, err := c.GetBlock(context.Background(), "block-1")
+		var apiErr *APIError
+		if !errors.As(err, &apiErr) || block != nil {
+			t.Fatalf("got %+v, %v, want nil and an *APIError", block, err)
+		}
+	})
+}

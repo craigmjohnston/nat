@@ -28,6 +28,7 @@ type NotionAPI interface {
 	SearchPaged(ctx context.Context, query, filterType, startCursor string) ([]notion.SearchResult, string, error)
 	PageEntries(ctx context.Context, id string) ([]notion.PageEntry, error)
 	GetDatabase(ctx context.Context, id string) (*notion.Database, error)
+	Breadcrumb(ctx context.Context, parent notion.Parent) []string
 	CreateProjectsDatabase(ctx context.Context, parentPageID, title string) (*notion.Database, error)
 	CreateProject(ctx context.Context, projectsDSID, name string) (*notion.ProjectStructure, error)
 	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
@@ -70,6 +71,19 @@ type (
 		node    *treeNode
 		entries []notion.PageEntry
 		err     error
+	}
+	// dsSearchMsg is what one query typed into the search view found. It
+	// carries the query it was issued for, so an answer overtaken by further
+	// typing can be told apart from the current one and dropped.
+	dsSearchMsg struct {
+		query   string
+		results []notion.SearchResult
+		err     error
+	}
+	// breadcrumbMsg is the trail of pages above one search hit.
+	breadcrumbMsg struct {
+		id    string
+		trail []string
 	}
 	// projectDBResolvedMsg is the chosen database, fetched to learn its data
 	// source ID — the one GetDatabase call the picker ever costs.
@@ -120,11 +134,20 @@ type Onboarding struct {
 	client NotionAPI
 	styles Styles
 
-	step   onboardingStep
-	form   *huh.Form
-	tree   *treePicker
+	step onboardingStep
+	form *huh.Form
+	tree *treePicker
+	// search is the flat view the tree opens on "/", and is nil while the tree
+	// itself is on show. The tree is kept alive underneath it, so closing the
+	// search returns to it with its expansion state and cursor intact.
+	search *searchPicker
 	status string
 	err    error
+
+	// The last window measured, so a search view opened later starts the right
+	// size rather than waiting for the next resize.
+	width  int
+	height int
 
 	// Values bound to form fields.
 	dbName       string
@@ -168,14 +191,24 @@ func (m *Onboarding) Init() tea.Cmd { return m.searchRoots("") }
 func (m *Onboarding) Update(msg tea.Msg) (*Onboarding, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		m.width, m.height = msg.Width, msg.Height
 		if m.tree != nil {
 			m.tree.SetSize(msg.Width, msg.Height)
+		}
+		if m.search != nil {
+			m.search.SetSize(msg.Width, msg.Height)
+			// A taller window shows rows that had no trail resolved yet.
+			return m, m.resolveCrumbs()
 		}
 		// The form takes its size from this same message, below.
 	case rootPagesMsg:
 		return m.rootPagesLoaded(msg)
 	case pageEntriesMsg:
 		return m.pageEntriesLoaded(msg)
+	case dsSearchMsg:
+		return m.searchResults(msg)
+	case breadcrumbMsg:
+		return m.breadcrumbResolved(msg)
 	case projectDBResolvedMsg:
 		return m.projectDBResolved(msg)
 	case projectDBCreatedMsg:
@@ -186,6 +219,12 @@ func (m *Onboarding) Update(msg tea.Msg) (*Onboarding, tea.Cmd) {
 		return m.projectsChecked(msg)
 	}
 
+	if m.search != nil {
+		if press, ok := msg.(tea.KeyPressMsg); ok {
+			return m.searchInput(press)
+		}
+		return m, nil
+	}
 	if m.tree != nil {
 		if press, ok := msg.(tea.KeyPressMsg); ok {
 			return m.treeInput(press)
@@ -212,6 +251,9 @@ func (m *Onboarding) View() string {
 	if m.err != nil {
 		return fmt.Sprintf("Onboarding failed: %v\n\nPress ctrl+c to quit.\n", m.err)
 	}
+	if m.search != nil {
+		return m.search.View() + "\n"
+	}
 	if m.tree != nil {
 		return m.tree.View() + "\n"
 	}
@@ -229,6 +271,8 @@ func (m *Onboarding) treeInput(msg tea.KeyPressMsg) (*Onboarding, tea.Cmd) {
 	switch {
 	case ev.aborted:
 		return m, tea.Quit
+	case ev.search:
+		return m.openSearch()
 	case ev.load != nil:
 		return m, m.loadPageEntries(ev.load)
 	case !ev.chosen:
@@ -251,6 +295,82 @@ func (m *Onboarding) treeInput(msg tea.KeyPressMsg) (*Onboarding, tea.Cmd) {
 	return m.await(stepResolvingProjectDB, "Loading the database…", m.resolveProjectDB)
 }
 
+// openSearch puts the search view over the tree and runs the unfiltered query,
+// so the list is populated before a word has been typed.
+func (m *Onboarding) openSearch() (*Onboarding, tea.Cmd) {
+	m.search = newSearchPicker(m.styles, m.width, m.height)
+	return m, m.searchDataSources("")
+}
+
+// searchInput hands one key press to the search view. Typing re-runs the search
+// and choosing a hit joins the tree's own path: the database holding the data
+// source is fetched, which is what records both IDs in config.
+func (m *Onboarding) searchInput(msg tea.KeyPressMsg) (*Onboarding, tea.Cmd) {
+	ev := m.search.Handle(msg)
+	switch {
+	case ev.aborted:
+		return m, tea.Quit
+	case ev.closed:
+		m.search = nil
+		return m, nil
+	case ev.chosen:
+		m.search, m.tree = nil, nil
+		m.chosenDBID = ev.result.Parent.DatabaseID
+		return m.await(stepResolvingProjectDB, "Loading the database…", m.resolveProjectDB)
+	case ev.queried:
+		return m, tea.Batch(m.searchDataSources(m.search.query), m.resolveCrumbs())
+	}
+	// The cursor moved, which can scroll rows with no trail yet into view.
+	return m, m.resolveCrumbs()
+}
+
+// searchResults shows what a query found, dropping the answers a later
+// keystroke has already overtaken. A data source is opened through the database
+// that holds it — that pair of IDs is what config records — so a hit reporting
+// no database parent cannot be chosen and is left out.
+func (m *Onboarding) searchResults(msg dsSearchMsg) (*Onboarding, tea.Cmd) {
+	if m.search == nil || msg.query != m.search.query {
+		return m, nil
+	}
+	if msg.err != nil {
+		m.search.SetError(msg.err)
+		return m, nil
+	}
+	kept := make([]notion.SearchResult, 0, len(msg.results))
+	for _, r := range msg.results {
+		if r.Parent.DatabaseID != "" {
+			kept = append(kept, r)
+		}
+	}
+	m.search.SetResults(kept)
+	return m, m.resolveCrumbs()
+}
+
+// breadcrumbResolved hands one hit the trail of pages above it.
+func (m *Onboarding) breadcrumbResolved(msg breadcrumbMsg) (*Onboarding, tea.Cmd) {
+	if m.search == nil {
+		return m, nil
+	}
+	m.search.SetCrumb(msg.id, msg.trail)
+	return m, nil
+}
+
+// resolveCrumbs starts a parent-chain walk for each visible hit that has not
+// had one yet — the trails cost a request per step, so they are resolved for
+// the rows on screen and nothing else. It is only ever called with the search
+// view on show.
+func (m *Onboarding) resolveCrumbs() tea.Cmd {
+	pending := m.search.pending()
+	if len(pending) == 0 {
+		return nil
+	}
+	cmds := make([]tea.Cmd, len(pending))
+	for i, r := range pending {
+		cmds[i] = m.resolveBreadcrumb(r)
+	}
+	return tea.Batch(cmds...)
+}
+
 // formSubmitted handles the completed form for the current step and kicks off
 // the Notion call that follows it.
 func (m *Onboarding) formSubmitted() (*Onboarding, tea.Cmd) {
@@ -268,7 +388,7 @@ func (m *Onboarding) formSubmitted() (*Onboarding, tea.Cmd) {
 // await moves to an asynchronous step: no form, a status line, and the call in
 // flight.
 func (m *Onboarding) await(step onboardingStep, status string, cmd tea.Cmd) (*Onboarding, tea.Cmd) {
-	m.step, m.status, m.form, m.tree = step, status, nil, nil
+	m.step, m.status, m.form, m.tree, m.search = step, status, nil, nil, nil
 	return m, cmd
 }
 
@@ -282,7 +402,7 @@ func (m *Onboarding) show(step onboardingStep, form *huh.Form) (*Onboarding, tea
 // the flow is recoverable in place: a credential problem is fixed with `ntn
 // login` before the app starts, and the rest are workspace state.
 func (m *Onboarding) fail(err error) (*Onboarding, tea.Cmd) {
-	m.err, m.form, m.tree, m.status = err, nil, nil, ""
+	m.err, m.form, m.tree, m.search, m.status = err, nil, nil, nil, ""
 	return m, nil
 }
 
@@ -425,6 +545,29 @@ func (m *Onboarding) searchRoots(cursor string) tea.Cmd {
 			return rootPagesMsg{err: fmt.Errorf("search for pages: %w", err)}
 		}
 		return rootPagesMsg{results: results, cursor: next}
+	}
+}
+
+// searchDataSources runs one query over the workspace. Only the first page of
+// hits is fetched: the results are Notion's own ranking and a fresh search
+// follows every keystroke, so paging to the end of a query the user is still
+// typing would buy nothing.
+func (m *Onboarding) searchDataSources(query string) tea.Cmd {
+	return func() tea.Msg {
+		results, _, err := m.client.SearchPaged(context.Background(), query, notion.SearchDataSource, "")
+		if err != nil {
+			return dsSearchMsg{query: query, err: fmt.Errorf("search for databases: %w", err)}
+		}
+		return dsSearchMsg{query: query, results: results}
+	}
+}
+
+// resolveBreadcrumb walks the parent chain above one hit. The walk reports no
+// error of its own — an unreachable ancestor comes back as an ellipsis segment,
+// because a missing trail is not worth interrupting the search for.
+func (m *Onboarding) resolveBreadcrumb(r notion.SearchResult) tea.Cmd {
+	return func() tea.Msg {
+		return breadcrumbMsg{id: r.ID, trail: m.client.Breadcrumb(context.Background(), r.Parent)}
 	}
 }
 
