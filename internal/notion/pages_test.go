@@ -207,3 +207,67 @@ func TestTrashPage(t *testing.T) {
 		}
 	})
 }
+
+func TestGetPage(t *testing.T) {
+	t.Run("returns the page with its title and parent", func(t *testing.T) {
+		var gotMethod, gotPath string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotMethod, gotPath = r.Method, r.URL.Path
+			w.Write([]byte(`{
+				"id":"page-1",
+				"parent":{"type":"block_id","block_id":"block-9"},
+				"properties":{
+					"Tags":{"type":"select","select":{"name":"x"}},
+					"Name":{"type":"title","title":[{"plain_text":"Engineering"}]}
+				}
+			}`))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		page, err := c.GetPage(context.Background(), "page-1")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if gotMethod != http.MethodGet || gotPath != "/pages/page-1" {
+			t.Errorf("got %s %s, want GET /pages/page-1", gotMethod, gotPath)
+		}
+		if got := page.TitleText(); got != "Engineering" {
+			t.Errorf("TitleText() = %q, want Engineering", got)
+		}
+		if page.Parent.Type != ParentBlock || page.Parent.BlockID != "block-9" {
+			t.Errorf("parent = %+v, want the block parent", page.Parent)
+		}
+	})
+
+	t.Run("an untitled page has no title text", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`{"id":"page-1","properties":{"Tags":{"type":"select","select":{"name":"x"}}}}`))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		page, err := c.GetPage(context.Background(), "page-1")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := page.TitleText(); got != "" {
+			t.Errorf("TitleText() = %q, want empty", got)
+		}
+	})
+
+	t.Run("propagates an API error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"code":"object_not_found","message":"nope"}`))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		page, err := c.GetPage(context.Background(), "page-1")
+		var apiErr *APIError
+		if !errors.As(err, &apiErr) || page != nil {
+			t.Fatalf("got %+v, %v, want nil and an *APIError", page, err)
+		}
+	})
+}

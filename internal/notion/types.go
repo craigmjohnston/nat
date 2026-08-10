@@ -11,6 +11,20 @@ type Page struct {
 	URL         string                   `json:"url"`
 	CreatedTime time.Time                `json:"created_time"`
 	Properties  map[string]PropertyValue `json:"properties"`
+	// Parent is where the page lives, which the breadcrumb walk climbs.
+	Parent Parent `json:"parent"`
+}
+
+// TitleText returns the page's name — the text of whichever property holds its
+// title, whatever the schema calls it — and "" for an untitled page. A page has
+// at most one title property, so which one is found is never in question.
+func (p Page) TitleText() string {
+	for _, v := range p.Properties {
+		if len(v.Title) > 0 {
+			return PlainText(v.Title)
+		}
+	}
+	return ""
 }
 
 // List is the envelope every Notion list endpoint returns.

@@ -21,6 +21,10 @@ type Block struct {
 	Type        string  `json:"type"`
 	HasChildren bool    `json:"has_children"`
 	Children    []Block `json:"children,omitempty"`
+	// Parent is what holds the block — a page, or another block. It is only
+	// populated by GetBlock; the children endpoints leave it empty because
+	// their caller already knows what it asked about.
+	Parent Parent `json:"parent"`
 
 	// payload is the object Notion nests under the block's own type name —
 	// {"type":"paragraph","paragraph":{...}} — kept raw because its shape
@@ -52,6 +56,17 @@ func (b Block) decodePayload(v any) {
 		return
 	}
 	_ = json.Unmarshal(b.payload, v)
+}
+
+// GetBlock fetches one block by ID. The breadcrumb walk needs it: a block is
+// not a step of the trail itself, but it is the only way through to the page
+// that ultimately holds an object nested in a column or a toggle.
+func (c *Client) GetBlock(ctx context.Context, id string) (*Block, error) {
+	var b Block
+	if err := c.do(ctx, http.MethodGet, "/blocks/"+url.PathEscape(id), nil, &b); err != nil {
+		return nil, err
+	}
+	return &b, nil
 }
 
 // GetBlockChildren returns the children of a page or block, following

@@ -6,10 +6,14 @@ import (
 	"net/http"
 )
 
-// SearchPage is the object type accepted by SearchPaged as a filter. Notion's
-// search also filters on data sources, but this app only ever searches pages:
-// databases are reached by walking a page's content.
-const SearchPage = "page"
+// The object types accepted by SearchPaged as a filter. The onboarding picker
+// browses with SearchPage — databases are reached by walking a page's content —
+// and searches with SearchDataSource, which finds the thing being chosen
+// directly rather than the page it happens to sit in.
+const (
+	SearchPage       = "page"
+	SearchDataSource = "data_source"
+)
 
 // SearchResult is one hit from search. The endpoint returns mixed object types,
 // so both title shapes are modelled: data sources carry a top-level title,

@@ -23,6 +23,7 @@ type fakeNotion struct {
 	searchPaged func(query, filterType, cursor string) ([]notion.SearchResult, string, error)
 	pageEntries func(id string) ([]notion.PageEntry, error)
 	getDB       func(id string) (*notion.Database, error)
+	breadcrumb  func(parent notion.Parent) []string
 	createDB    func(parentPageID, title string) (*notion.Database, error)
 	newProject  func(projectsDSID, name string) (*notion.ProjectStructure, error)
 	query       func(id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
@@ -38,6 +39,7 @@ type fakeNotion struct {
 	entriesFor    []string
 	fetchedDBs    []string
 	queriedDSIDs  []string
+	crumbParents  []notion.Parent
 	blockParents  []string
 	createdUnder  string
 	createdTitle  string
@@ -105,6 +107,14 @@ func (f *fakeNotion) GetDatabase(_ context.Context, id string) (*notion.Database
 		return nil, errors.New("no database")
 	}
 	return f.getDB(id)
+}
+
+func (f *fakeNotion) Breadcrumb(_ context.Context, parent notion.Parent) []string {
+	f.crumbParents = append(f.crumbParents, parent)
+	if f.breadcrumb == nil {
+		return nil
+	}
+	return f.breadcrumb(parent)
 }
 
 func (f *fakeNotion) CreateProjectsDatabase(_ context.Context, parentPageID, title string) (*notion.Database, error) {
@@ -1020,5 +1030,286 @@ func TestRequired(t *testing.T) {
 func TestDefaultNewClient(t *testing.T) {
 	if c := DefaultNewClient(func() (string, error) { return "ntn_secret", nil }); c == nil {
 		t.Error("want a client")
+	}
+}
+
+// slash opens the search view over the tree.
+func (h *harness) slash() {
+	h.t.Helper()
+	h.send(tea.KeyPressMsg(tea.Key{Code: '/', Text: "/"}))
+}
+
+// escape closes the search view, returning to the tree.
+func (h *harness) escape() {
+	h.t.Helper()
+	h.send(tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
+}
+
+// searchableClient is a workspace whose search finds two same-named databases
+// in different places — the case browsing cannot tell apart.
+func searchableClient() *fakeNotion {
+	client := singleDBClient()
+	client.searchPaged = func(query, filterType, _ string) ([]notion.SearchResult, string, error) {
+		if filterType == notion.SearchPage {
+			return []notion.SearchResult{rootPage("page-1", "Home")}, "", nil
+		}
+		hits := []notion.SearchResult{dsHit("ds-1", "Ops Board", "db-1"), dsHit("ds-2", "Ops Board", "db-2")}
+		if query == "ops b" {
+			hits = hits[1:]
+		}
+		return hits, "", nil
+	}
+	client.breadcrumb = func(parent notion.Parent) []string {
+		return []string{"Engineering", parent.DatabaseID}
+	}
+	client.getDB = func(id string) (*notion.Database, error) {
+		return &notion.Database{ID: id, DataSources: []notion.DataSourceRef{{ID: "ds-for-" + id}}}, nil
+	}
+	return client
+}
+
+func TestOnboardingSearchSelectsADatabase(t *testing.T) {
+	client := searchableClient()
+	h := newHarness(t, config.Config{}, client)
+	h.send(tea.WindowSizeMsg{Width: 80, Height: 24})
+	h.run(h.m.Init())
+	h.slash()
+
+	if h.m.search == nil {
+		t.Fatalf("want the search view (err: %v)", h.m.err)
+	}
+	if h.m.search.width != 80 || h.m.search.height != 24 {
+		t.Errorf("search size = %dx%d, want the window measured before it opened",
+			h.m.search.width, h.m.search.height)
+	}
+	// The view opens on the unfiltered query rather than an empty list, and
+	// every visible hit carries the trail of pages above it.
+	view := stripANSI(h.m.View())
+	for _, want := range []string{"Ops Board — Engineering / db-1", "Ops Board — Engineering / db-2"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view = %q, want it to hold %q", view, want)
+		}
+	}
+	if got := client.crumbParents; len(got) != 2 {
+		t.Errorf("resolved %d trails, want one per visible hit", len(got))
+	}
+
+	h.down()   // onto the second Ops Board
+	h.submit() // choose it
+	h.submit() // assignee
+
+	if h.m.err != nil {
+		t.Fatalf("unexpected error: %v", h.m.err)
+	}
+	if len(h.saved) != 1 {
+		t.Fatalf("saved %d configs, want 1", len(h.saved))
+	}
+	// Selection from search records the same pair of IDs as the tree does: the
+	// database that holds the hit, fetched for its data source.
+	if got := h.saved[0]; got.ProjectDBID != "db-2" || got.ProjectDBDataSourceID != "ds-for-db-2" {
+		t.Errorf("saved config = %+v, want db-2/ds-for-db-2", got)
+	}
+	if got := client.fetchedDBs; !reflect.DeepEqual(got, []string{"db-2"}) {
+		t.Errorf("fetched databases %v, want the chosen one only", got)
+	}
+	if got := client.searchFilters; !reflect.DeepEqual(got, []string{notion.SearchPage, notion.SearchDataSource}) {
+		t.Errorf("search filters = %v, want the browse then the search", got)
+	}
+}
+
+func TestOnboardingSearchNarrowsAsTheQueryChanges(t *testing.T) {
+	client := searchableClient()
+	h := newHarness(t, config.Config{}, client)
+	h.run(h.m.Init())
+	h.slash()
+	h.typeText("ops b")
+
+	if h.m.search.query != "ops b" {
+		t.Fatalf("query = %q, want the typed text", h.m.search.query)
+	}
+	view := stripANSI(h.m.View())
+	if strings.Contains(view, "db-1") || !strings.Contains(view, "db-2") {
+		t.Errorf("want the list narrowed to the one match:\n%s", view)
+	}
+	// One search per keystroke, plus the unfiltered one the view opened on.
+	if got := len(client.searchFilters); got != len("ops b")+2 {
+		t.Errorf("made %d searches, want one per keystroke", got)
+	}
+	// The trails are resolved once per hit, not once per search.
+	if got := len(client.crumbParents); got != 2 {
+		t.Errorf("resolved %d trails, want one per distinct hit", got)
+	}
+}
+
+func TestOnboardingSearchDropsOvertakenAnswers(t *testing.T) {
+	h := newHarness(t, config.Config{}, searchableClient())
+	h.run(h.m.Init())
+	h.slash()
+	h.typeText("ops")
+
+	h.send(dsSearchMsg{query: "op", results: []notion.SearchResult{dsHit("ds-9", "Stale", "db-9")}})
+	if view := stripANSI(h.m.View()); strings.Contains(view, "Stale") {
+		t.Errorf("an answer to an earlier query must not land:\n%s", view)
+	}
+}
+
+func TestOnboardingSearchDropsHitsWithNoDatabase(t *testing.T) {
+	// A data source is opened through the database that holds it, so a hit
+	// reporting none cannot be chosen and must not be offered.
+	h := newHarness(t, config.Config{}, searchableClient())
+	h.run(h.m.Init())
+	h.slash()
+	h.send(dsSearchMsg{results: []notion.SearchResult{
+		{ID: "ds-9", Title: []notion.RichText{{PlainText: "Orphan"}}},
+		dsHit("ds-1", "Ops Board", "db-1"),
+	}})
+
+	if got := len(h.m.search.results); got != 1 {
+		t.Fatalf("results = %d, want the orphan dropped", got)
+	}
+	if view := stripANSI(h.m.View()); strings.Contains(view, "Orphan") {
+		t.Errorf("want the orphan off the list:\n%s", view)
+	}
+}
+
+func TestOnboardingSearchFailureIsNotFatal(t *testing.T) {
+	client := searchableClient()
+	client.searchPaged = func(_, filterType, _ string) ([]notion.SearchResult, string, error) {
+		if filterType == notion.SearchDataSource {
+			return nil, "", errors.New("boom")
+		}
+		return []notion.SearchResult{rootPage("page-1", "Home")}, "", nil
+	}
+	h := newHarness(t, config.Config{}, client)
+	h.run(h.m.Init())
+	h.slash()
+
+	if h.m.err != nil || h.m.search == nil {
+		t.Fatalf("a failed search should stay in the search view (err: %v)", h.m.err)
+	}
+	if view := stripANSI(h.m.View()); !strings.Contains(view, "search for databases: boom") {
+		t.Errorf("want the failure shown in place:\n%s", view)
+	}
+
+	// Typing is the retry, and clears the message on its way.
+	client.searchPaged = func(_, _, _ string) ([]notion.SearchResult, string, error) {
+		return []notion.SearchResult{dsHit("ds-1", "Ops Board", "db-1")}, "", nil
+	}
+	h.typeText("o")
+	if view := stripANSI(h.m.View()); strings.Contains(view, "boom") || !strings.Contains(view, "Ops Board") {
+		t.Errorf("want the retry's hits:\n%s", view)
+	}
+}
+
+func TestOnboardingSearchEscapeReturnsToTheTree(t *testing.T) {
+	h := newHarness(t, config.Config{}, searchableClient())
+	h.run(h.m.Init())
+	h.expand() // open Home, so the tree has expansion state to keep
+	h.down()   // onto the database inside it
+
+	before := h.m.tree.cursor
+	h.slash()
+	h.down() // move about in the search, which the tree must not follow
+	h.escape()
+
+	if h.m.search != nil || h.m.tree == nil {
+		t.Fatalf("escape should return to the tree (err: %v)", h.m.err)
+	}
+	if h.m.tree.cursor != before {
+		t.Errorf("tree cursor = %d, want the %d it was left on", h.m.tree.cursor, before)
+	}
+	view := stripANSI(h.m.View())
+	if !strings.Contains(view, "Agent Projects") {
+		t.Errorf("want the expanded page still open:\n%s", view)
+	}
+	// The tree is live again: choosing the database it was left on carries on.
+	h.submit()
+	if h.m.err != nil || h.m.step != stepPickAssignee {
+		t.Errorf("step = %v (err: %v), want the flow to continue", h.m.step, h.m.err)
+	}
+}
+
+func TestOnboardingSearchAbortQuits(t *testing.T) {
+	h := newHarness(t, config.Config{}, searchableClient())
+	h.run(h.m.Init())
+	h.slash()
+	h.send(tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
+
+	if !h.quit {
+		t.Error("aborting the search should quit the program")
+	}
+}
+
+func TestOnboardingSearchResizeResolvesTheRowsItRevealed(t *testing.T) {
+	client := searchableClient()
+	client.searchPaged = func(_, filterType, _ string) ([]notion.SearchResult, string, error) {
+		if filterType == notion.SearchPage {
+			return []notion.SearchResult{rootPage("page-1", "Home")}, "", nil
+		}
+		return []notion.SearchResult{
+			dsHit("ds-1", "One", "db-1"),
+			dsHit("ds-2", "Two", "db-2"),
+			dsHit("ds-3", "Three", "db-3"),
+		}, "", nil
+	}
+	h := newHarness(t, config.Config{}, client)
+	h.send(tea.WindowSizeMsg{Width: 80, Height: searchChromeHeight + 1})
+	h.run(h.m.Init())
+	h.slash()
+
+	if got := len(client.crumbParents); got != 1 {
+		t.Fatalf("resolved %d trails, want only the one row that fits", got)
+	}
+	h.send(tea.WindowSizeMsg{Width: 80, Height: searchChromeHeight + 3})
+	if got := len(client.crumbParents); got != 3 {
+		t.Errorf("resolved %d trails, want the rows the taller window revealed", got)
+	}
+	if h.m.search.height != searchChromeHeight+3 {
+		t.Errorf("search height = %d, want the resize", h.m.search.height)
+	}
+}
+
+func TestOnboardingSearchIgnoresMessagesOnceItIsGone(t *testing.T) {
+	// A search still in flight, and a trail still being walked, can land after
+	// the database has been picked; neither must disturb the next step.
+	h := newHarness(t, config.Config{}, searchableClient())
+	h.run(h.m.Init())
+	h.slash()
+	h.submit() // choose the first hit — the search view is gone
+
+	if h.m.search != nil || h.m.tree != nil {
+		t.Fatalf("the picker should be gone after the pick (err: %v)", h.m.err)
+	}
+	step := h.m.step
+	h.send(dsSearchMsg{results: []notion.SearchResult{dsHit("ds-9", "Late", "db-9")}})
+	h.send(breadcrumbMsg{id: "ds-9", trail: []string{"Late"}})
+
+	if h.m.err != nil || h.m.step != step {
+		t.Errorf("step = %v (err: %v), want the late messages ignored", h.m.step, h.m.err)
+	}
+}
+
+func TestOnboardingSearchIgnoresNonKeyMessages(t *testing.T) {
+	h := newHarness(t, config.Config{}, searchableClient())
+	h.run(h.m.Init())
+	h.slash()
+	h.send(spinnerLikeMsg{})
+
+	if h.m.search == nil || h.m.err != nil {
+		t.Errorf("a stray message should leave the search alone (err: %v)", h.m.err)
+	}
+}
+
+func TestOnboardingResolveBreadcrumbCommand(t *testing.T) {
+	client := &fakeNotion{breadcrumb: func(notion.Parent) []string { return []string{"Home"} }}
+	h := newHarness(t, config.Config{}, client)
+	hit := dsHit("ds-1", "Ops Board", "db-1")
+
+	msg, _ := h.m.resolveBreadcrumb(hit)().(breadcrumbMsg)
+	if msg.id != "ds-1" || !reflect.DeepEqual(msg.trail, []string{"Home"}) {
+		t.Errorf("msg = %+v, want the hit's trail", msg)
+	}
+	if got := client.crumbParents; !reflect.DeepEqual(got, []notion.Parent{hit.Parent}) {
+		t.Errorf("walked %+v, want the hit's parent", got)
 	}
 }
