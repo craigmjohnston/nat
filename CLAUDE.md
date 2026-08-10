@@ -23,6 +23,14 @@ model).
   retried once with a fresh one, so a token rotated by the CLI is picked up
   mid-session.
 - `internal/domain/` — Project/Milestone/Slice models, progress math
+- `internal/logging/` — the log file: `~/Library/Logs/notion-agent-tracker/` on
+  macOS, the XDG state dir elsewhere, size-capped with one previous file kept.
+  Opened by `main` and discarded until then, so importing it writes nothing.
+  Failures and writes are logged by the Notion client and the tmux layer
+  themselves; startup failures name the log path on stderr, because the TUI's
+  tmux pane dies with the process and takes stderr with it. Everything on its
+  way to the file passes through a redactor — never log a token or a request
+  body.
 - `internal/agent/` — agent prompt template + tmux session management. A
   running agent is identified by its pane's `@nat_slice` option (the full slice
   page ID); the session name `nat-<last-8-hex-of-slice-page-id>` is only a

@@ -9,6 +9,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
@@ -118,7 +119,9 @@ func claim(ctx context.Context, client API, page notion.Page, userID string) (do
 		return domain.Slice{}, fmt.Errorf("the claim on %q did not stick: someone else holds it",
 			domain.SliceFromPage(*updated).Name)
 	}
-	return domain.SliceFromPage(*updated), nil
+	s := domain.SliceFromPage(*updated)
+	logging.Action("slice claimed", "slice", s.ID, "name", s.Name, "user", userID)
+	return s, nil
 }
 
 // holds reports whether the page came back claimed by the given user, which is
