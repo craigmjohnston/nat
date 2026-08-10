@@ -16,12 +16,12 @@ const (
 	rowQueuedMilestone = 5 // M3: Mutations
 )
 
-// answerPrompt answers the open inline prompt and feeds the write that falls
-// out back through the app, as the runtime would. One key press is the whole
-// answer, so there is nothing else to press.
-func answerPrompt(t *testing.T, a *App, answer string) {
+// answerConfirm answers the open confirm — "y" or "n" — and feeds the write
+// that falls out back through the app, as the runtime would. Both keys submit
+// the form, so there is nothing else to press.
+func answerConfirm(t *testing.T, a *App, answer string) {
 	t.Helper()
-	feed(t, a, press(a, answer))
+	finishForm(t, a, press(a, answer))
 }
 
 func TestNextMilestoneStatus(t *testing.T) {
@@ -95,33 +95,28 @@ func TestSetMilestoneStatusReportsAFailure(t *testing.T) {
 	}
 }
 
-func TestAppQueueAsksAboutTheSelectedMilestone(t *testing.T) {
+func TestAppQueueOpensTheConfirmOnTheSelectedMilestone(t *testing.T) {
 	tests := []struct {
 		name   string
 		cursor int
 		want   string
 	}{
-		{"queued", rowQueuedMilestone, `"M3: Mutations" → Active?`},
-		{"active", rowActiveMilestone, `"M2: Board" → Done?`},
+		{"queued", rowQueuedMilestone, "M3: Mutations — set Active?"},
+		{"active", rowActiveMilestone, "M2: Board — set Done?"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := newSizedWriteApp(&fakeNotion{})
+			app := newWriteApp(&fakeNotion{})
 			app.board.cursor = tt.cursor
 
 			feed(t, app, press(app, "Q"))
 
-			if app.prompt == nil || app.screen != screenBoard {
-				t.Fatalf("screen = %v, prompt = %v, want the question asked over the board",
-					app.screen, app.prompt)
+			if app.form == nil || app.screen != screenForm {
+				t.Fatalf("screen = %v, form = %v, want the confirm on show", app.screen, app.form)
 			}
-			// The board is still there behind the question, which is the point of
-			// asking it on the bar.
 			view := stripANSI(app.View().Content)
-			for _, want := range []string{tt.want, "(y/n)", "M1: Config"} {
-				if !strings.Contains(view, want) {
-					t.Errorf("view is missing %q:\n%s", want, view)
-				}
+			if !strings.Contains(view, "Milestone") || !strings.Contains(view, tt.want) {
+				t.Errorf("view is missing %q:\n%s", tt.want, view)
 			}
 		})
 	}
@@ -133,10 +128,10 @@ func TestAppQueueWritesTheConfirmedStatus(t *testing.T) {
 	app.board.cursor = rowQueuedMilestone
 
 	feed(t, app, press(app, "Q"))
-	answerPrompt(t, app, "y")
+	answerConfirm(t, app, "y")
 
-	if app.prompt != nil {
-		t.Error("the question should be gone once it is answered")
+	if app.screen != screenBoard {
+		t.Error("the board should be back once the confirm is answered")
 	}
 	if len(client.updated) != 1 || client.updated[0].pageID != "m3" {
 		t.Fatalf("updated = %+v, want the milestone written", client.updated)
@@ -156,16 +151,13 @@ func TestAppQueueWritesNothingWhenTheAnswerIsNo(t *testing.T) {
 	app.board.cursor = rowQueuedMilestone
 
 	feed(t, app, press(app, "Q"))
-	answerPrompt(t, app, "n")
+	answerConfirm(t, app, "n")
 
-	if app.prompt != nil {
-		t.Error("the question should be gone once it is answered")
-	}
 	if len(client.updated) != 0 {
 		t.Errorf("updated = %+v, want nothing written", client.updated)
 	}
 	if app.busy {
-		t.Error("a question answered no leaves no write in flight")
+		t.Error("a confirm answered no leaves no write in flight")
 	}
 	if app.note != "Cancelled." {
 		t.Errorf("note = %q, want the cancelled note", app.note)
@@ -178,8 +170,8 @@ func TestAppQueueRefusesAMilestoneWithNowhereToGo(t *testing.T) {
 
 	press(app, "Q")
 
-	if app.prompt != nil {
-		t.Error("a Done milestone should not be asked about")
+	if app.form != nil {
+		t.Error("a Done milestone should not open a confirm")
 	}
 	if want := `"M1: Config" is Done — there is nothing to move it to.`; app.note != want {
 		t.Errorf("note = %q, want %q", app.note, want)
@@ -201,8 +193,8 @@ func TestAppQueueNeedsAMilestoneUnderTheCursor(t *testing.T) {
 
 			press(app, "Q")
 
-			if app.prompt != nil {
-				t.Error("a question was asked with no milestone to write to")
+			if app.form != nil {
+				t.Error("a confirm was opened with no milestone to write to")
 			}
 			if !strings.Contains(app.note, "Move to a milestone") {
 				t.Errorf("note = %q, want the milestone hint", app.note)

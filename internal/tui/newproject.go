@@ -52,7 +52,7 @@ type NewProjectForm struct {
 }
 
 // newNewProjectForm returns the empty form for a new project.
-func newNewProjectForm(theme huh.Theme) *NewProjectForm {
+func newNewProjectForm() *NewProjectForm {
 	f := &NewProjectForm{heading: "New project"}
 	f.form = huh.NewForm(huh.NewGroup(
 		huh.NewInput().
@@ -68,7 +68,7 @@ func newNewProjectForm(theme huh.Theme) *NewProjectForm {
 			Description("Where this project's agents start; kept in local config, not Notion.").
 			Value(&f.workdir).
 			Validate(existingDir),
-	)).WithTheme(theme)
+	))
 	return f
 }
 
@@ -144,7 +144,7 @@ type SwitchProjectForm struct {
 
 // newSwitchProjectForm returns the picker over the configured projects, which
 // must not be empty, starting on the one already active.
-func newSwitchProjectForm(theme huh.Theme, cfg config.Config) *SwitchProjectForm {
+func newSwitchProjectForm(cfg config.Config) *SwitchProjectForm {
 	f := &SwitchProjectForm{
 		heading: "Switch project",
 		names:   make(map[string]string, len(cfg.Projects)),
@@ -168,7 +168,7 @@ func newSwitchProjectForm(theme huh.Theme, cfg config.Config) *SwitchProjectForm
 			Description("Which plan the board shows; every project stays where it is.").
 			Options(options...).
 			Value(&f.chosen),
-	)).WithTheme(theme)
+	))
 	return f
 }
 
@@ -233,7 +233,7 @@ func (a *App) newProjectFlow() tea.Cmd {
 		a.note = "No projects database is configured, so there is nowhere to create a project."
 		return nil
 	}
-	return a.openForm(newNewProjectForm(a.styles.FormTheme))
+	return a.openForm(newNewProjectForm())
 }
 
 // switchProjectFlow opens the project picker. With one project there is nothing
@@ -246,7 +246,7 @@ func (a *App) switchProjectFlow() tea.Cmd {
 		a.note = "There is no other project to switch to — press N to add one."
 		return nil
 	}
-	return a.openForm(newSwitchProjectForm(a.styles.FormTheme, a.cfg))
+	return a.openForm(newSwitchProjectForm(a.cfg))
 }
 
 // projectCreated records a freshly created project, makes it the active one,

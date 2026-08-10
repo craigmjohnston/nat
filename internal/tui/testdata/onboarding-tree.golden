@@ -1,9 +1,9 @@
-[1;38;2;203;166;247mWhich database holds your projects?[m
-[38;2;127;132;156mBrowse to the existing project database, or create one.[m
+[1;96mWhich database holds your projects?[m
+[90mBrowse to the existing project database, or create one.[m
 
-[38;2;203;166;247m> [m[1;38;2;205;214;244m▾ Home[m
-    [38;2;137;180;250m▸ Deep[m
+[95m> [m[1;97m▾ Home[m
+    [36m▸ Deep[m
     Recipes
   Loose
   Create a new database…
-[38;2;203;166;247m↑/k[m [38;2;127;132;156mup[m  [38;2;203;166;247m↓/j[m [38;2;127;132;156mdown[m  [38;2;203;166;247m→/l[m [38;2;127;132;156mexpand[m  [38;2;203;166;247menter[m [38;2;127;132;156mselect[m  [38;2;203;166;247m/[m [38;2;127;132;156msearch[m
+[95m↑/k[m [90mup[m  [95m↓/j[m [90mdown[m  [95m→/l[m [90mexpand[m  [95menter[m [90mselect[m  [95m/[m [90msearch[m

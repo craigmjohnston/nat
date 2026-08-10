@@ -32,9 +32,8 @@ const (
 )
 
 // modal is a form shown over the board: it owns every key but esc, and once it
-// completes the app dispatches the write it describes. Every modal is a form
-// with something to fill in — a single yes/no is asked on the status bar
-// instead, over a board that never leaves the screen.
+// completes the app dispatches the write it describes. save returns nil when a
+// completed form asks for nothing — a confirm the user answered no to.
 //
 // SetSize is how a modal learns how much room it has. Left to itself huh sizes
 // a form to the whole window, which is the wrong answer twice over: the app
@@ -74,8 +73,6 @@ type keyMap struct {
 	Info      key.Binding
 	Back      key.Binding
 	Dismiss   key.Binding
-	Yes       key.Binding
-	No        key.Binding
 }
 
 // defaultKeyMap returns the bindings the app runs with.
@@ -88,8 +85,6 @@ func defaultKeyMap() keyMap {
 		Info:      key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "info")),
 		Back:      key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		Dismiss:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "dismiss")),
-		Yes:       key.NewBinding(key.WithKeys("y", "Y"), key.WithHelp("y", "confirm")),
-		No:        key.NewBinding(key.WithKeys("n", "N", "esc"), key.WithHelp("n", "cancel")),
 	}
 }
 
@@ -140,9 +135,6 @@ type App struct {
 	board      Board
 	info       Info
 	form       modal
-	// prompt is the yes/no question the status bar is waiting on, which is asked
-	// over the board rather than on a screen of its own.
-	prompt *prompt
 
 	// boardVP scrolls the board's rows, which the board itself draws in full: a
 	// plan taller than the window is the layout's problem, not the board's.
@@ -194,32 +186,15 @@ func NewAppWithOnboarding(cfg config.Config, client NotionAPI, o *Onboarding) *A
 	return a
 }
 
-// setStyles swaps in a freshly built palette, reaching every widget that took
-// a copy of the styles at construction. Modal forms are built from a.styles as
-// they open, and the background answer arrives before any could, so they need
-// no hand-me-down.
-func (a *App) setStyles(s Styles) {
-	a.styles = s
-	a.spinner.Style = s.Spinner
-	a.board.styles = s
-	a.info.styles = s
-	if a.onboarding != nil {
-		a.onboarding.SetStyles(s)
-	}
-}
-
 // Init starts the screen on show: the wizard's first call, or the first load of
 // the active project's plan, alongside the poll that marks the slices an agent
 // is already running on and the reconcile that re-homes the panes an earlier
 // run left joined.
 func (a *App) Init() tea.Cmd {
-	// The background query goes out first: the styles start on the dark
-	// palette, and the answer swaps in the light one when the terminal says so.
 	if a.onboarding != nil {
-		return tea.Batch(tea.RequestBackgroundColor, a.onboarding.Init())
+		return a.onboarding.Init()
 	}
-	return tea.Batch(tea.RequestBackgroundColor,
-		a.startLoad(), a.refreshLive(), liveTick(), a.reclaimStrays())
+	return tea.Batch(a.startLoad(), a.refreshLive(), liveTick(), a.reclaimStrays())
 }
 
 // Update handles the global keys and the app's own messages, and routes
@@ -232,9 +207,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.resize()
 	case tea.KeyPressMsg:
 		return a.keyPressed(msg)
-	case tea.BackgroundColorMsg:
-		a.setStyles(NewStyles(msg.IsDark()))
-		return a, nil
 	case OnboardingDoneMsg:
 		return a.onboardingDone(msg)
 	case projectLoadedMsg:
@@ -310,11 +282,6 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.onboarding = o
 		return a, cmd
 	}
-	// An open prompt is one question and two answers: it owns the keyboard until
-	// it has one, so no key of the board's fires on a question left standing.
-	if a.prompt != nil {
-		return a, a.answerPrompt(msg)
-	}
 	// An open form owns every key but esc, which abandons it: q and enter are
 	// answers to the form, not instructions to the app behind it. huh's own
 	// abort key is ctrl+c, which quits the app above, so cancelling is handled
@@ -322,7 +289,7 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.form != nil {
 		if key.Matches(msg, a.keys.Back) {
 			a.closeForm()
-			a.note = deniedNote
+			a.note = "Cancelled."
 			// Coming back to the board is a chance to notice a session that
 			// started, or ended, while the form was up.
 			return a, a.refreshLive()
@@ -428,7 +395,7 @@ func (a *App) addSlice() tea.Cmd {
 		a.note = "Move to a milestone to add a slice under it."
 		return nil
 	}
-	return a.openForm(newAddSliceForm(a.styles.FormTheme, m))
+	return a.openForm(newAddSliceForm(m))
 }
 
 // editSlice opens the form for the slice the cursor is on, once its page body
@@ -458,7 +425,7 @@ func (a *App) sliceBodyLoaded(msg sliceBodyMsg) (tea.Model, tea.Cmd) {
 		a.err = msg.err
 		return a, nil
 	}
-	return a, a.openForm(newEditSliceForm(a.styles.FormTheme, msg.slice, msg.markdown))
+	return a, a.openForm(newEditSliceForm(msg.slice, msg.markdown))
 }
 
 // openForm shows a form over the board, at the size the window it is opening
@@ -493,12 +460,18 @@ func (a *App) formUpdate(msg tea.Msg) tea.Cmd {
 }
 
 // saveForm dispatches the write the completed form describes, returning to the
-// board while it is in flight.
+// board while it is in flight. A form that asks for no write — a confirm
+// answered no — is simply dismissed.
 func (a *App) saveForm() tea.Cmd {
 	f := a.form
 	a.closeForm()
+	cmd := f.save(a)
+	if cmd == nil {
+		a.note = "Cancelled."
+		return nil
+	}
 	a.busy, a.note = true, busyNoteOf(f)
-	return f.save(a)
+	return cmd
 }
 
 // busyNoter is a modal whose completed form does something other than save: the
@@ -511,11 +484,8 @@ func busyNoteOf(f modal) string {
 	if n, ok := f.(busyNoter); ok {
 		return n.busyNote()
 	}
-	return savingNote
+	return "Saving…"
 }
-
-// savingNote is what the status bar says while an ordinary write is in flight.
-const savingNote = "Saving…"
 
 // closeForm dismisses the form and goes back to the board.
 func (a *App) closeForm() { a.form, a.screen = nil, screenBoard }
@@ -883,15 +853,8 @@ func (a *App) statusLeft(width int) string {
 	chip := a.styles.ModeChip.Render(a.chipText())
 	room := 0
 	if width > 0 {
-		room = width - lipgloss.Width(chip) - 1
-		// The message shares the bar with the key hints, so it takes no more than
-		// half of it — unless a prompt is open, when the hints are gone and the
-		// question is the whole of what the bar is for.
-		if a.prompt == nil {
-			room = min(room, width/2)
-		}
 		// A window with no room beside the chip gets the chip alone, cut to fit.
-		if room <= 0 {
+		if room = min(width-lipgloss.Width(chip)-1, width/2); room <= 0 {
 			return fit(chip, width)
 		}
 	}
@@ -905,9 +868,9 @@ func (a *App) statusLeft(width int) string {
 // statusRight is the bar's right segment: the key hints, or nothing at all once
 // the left segment has taken the bar.
 func (a *App) statusRight(width int) string {
-	// An open form or prompt owns every key the hints name, so naming them would
-	// be a lie. The question on the left is the whole story.
-	if a.form != nil || a.prompt != nil {
+	// An open form owns every key the hints name, so naming them would be a lie.
+	// Its own prompt, on the left, is the whole story.
+	if a.form != nil {
 		return ""
 	}
 	if len(a.joined) > 0 {
@@ -940,12 +903,6 @@ func (a *App) chipText() string {
 // statusMessage is what the app has to say beside the chip, or nothing when it
 // has nothing: the chip is then alone on the left and the hints have the bar.
 func (a *App) statusMessage(width int) string {
-	// A prompt is what the app is waiting on, so its question comes before
-	// anything else the bar has to say. An error under it is not lost: it is
-	// still there to read, and to dismiss, once the question is answered.
-	if a.prompt != nil {
-		return a.promptLine(width)
-	}
 	if a.err != nil {
 		// The error style pads, so the text gets what the padding leaves. The
 		// leading text is what names the call that failed, so the tail goes first.
