@@ -64,6 +64,9 @@ usage:
                         [--repo DIR] [--json]
                       add a Todo slice under a milestone, its description
                       written on the page; --description - reads it from stdin
+  nat plan-apply [FILE] [--json]
+                      create a whole plan of milestones and slices from a JSON
+                      document, read from FILE or stdin
   nat complete-slice <slice> [--pr URL] [--summary TEXT] [--blocked]
                       close out a slice you claimed: Done, its PR, and a
                       summary appended to its page — or, with --blocked, left
@@ -108,6 +111,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return milestoneAdd(ctx, args[1:], env)
 	case "slice-add":
 		return sliceAdd(ctx, args[1:], env)
+	case "plan-apply":
+		return planApply(ctx, args[1:], env)
 	case "complete-slice":
 		return completeSlice(ctx, args[1:], env)
 	case "help", "-h", "--help":

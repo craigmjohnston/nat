@@ -43,9 +43,16 @@ type fakeAPI struct {
 	creates []created
 	// createErr fails the creation.
 	createErr error
+	// failCreateAfter is how many creations succeed before createErr starts
+	// being returned, for a command that writes more than one page.
+	failCreateAfter int
 	// created is what a creation answers with, before its ID and URL are filled
 	// in; the properties written are merged over it.
 	createdPage notion.Page
+	// createdPages answers successive creations in turn, for a command that
+	// makes more than one page; it takes precedence over createdPage, and runs
+	// out into it.
+	createdPages []notion.Page
 
 	// updates records every property write, in order.
 	updates []update
@@ -81,12 +88,16 @@ type created struct {
 // properties it was created with.
 func (f *fakeAPI) CreatePage(_ context.Context, parent notion.Parent, props map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error) {
 	f.creates = append(f.creates, created{parent: parent, props: props, children: children})
-	if f.createErr != nil {
+	if f.createErr != nil && len(f.creates) > f.failCreateAfter {
 		return nil, f.createErr
 	}
 	page := f.createdPage
+	if n := len(f.creates) - 1; n < len(f.createdPages) {
+		page = f.createdPages[n]
+	}
+	base := page
 	page.Properties = map[string]notion.PropertyValue{}
-	for name, v := range f.createdPage.Properties {
+	for name, v := range base.Properties {
 		page.Properties[name] = v
 	}
 	for name, v := range props {
