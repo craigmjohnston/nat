@@ -47,9 +47,8 @@ func testContext() PromptContext {
 			Name:       "notion-agent-tracker",
 			WorkingDir: "/Users/craig/Projects/notion-agent-tracker",
 		},
-		ProjectPageID: "3b738308-f654-811c-948d-e1fb36f71df3",
-		WorkingDir:    "/Users/craig/Projects/notion-agent-tracker",
-		AssigneeName:  "Craig Johnston",
+		WorkingDir:   "/Users/craig/Projects/notion-agent-tracker",
+		AssigneeName: "Craig Johnston",
 	}
 }
 
@@ -67,8 +66,29 @@ func TestPromptWithRepoOverride(t *testing.T) {
 func TestPromptWithoutOptionalContext(t *testing.T) {
 	c := testContext()
 	c.Slice.URL = ""
-	c.ProjectPageID = ""
 	golden(t, "prompt-minimal", Prompt(c))
+}
+
+// The prompt is the whole of what an agent is told, so what it does not say
+// matters as much as what it does: an agent that learns Notion is behind the
+// commands has a second way to move a slice, and none of the guardrails the
+// commands enforce apply to it.
+func TestPromptRoutesEverythingThroughTheCLI(t *testing.T) {
+	got := Prompt(testContext())
+	for _, want := range []string{
+		"nat start-slice 3b738308-f654-8170-8c99-eccab4463d8f",
+		"nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --pr",
+		"--blocked",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt does not tell the agent to run %q", want)
+		}
+	}
+	for _, unwanted := range []string{"Notion MCP", "`Status`", "`Assignee`", "`PR` property"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("prompt still tells the agent about %s rather than the commands", unwanted)
+		}
+	}
 }
 
 func TestPromptNamesTheSlice(t *testing.T) {

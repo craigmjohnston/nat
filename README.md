@@ -5,7 +5,8 @@ A TUI for tracking project work in Notion, executed by Claude Code agents.
 - **You** manage milestones and slices (small units of work) from the TUI and
   launch agents on them.
 - **Agents** run locally as fresh `claude` sessions in tmux, claim their slice
-  in Notion (via the Notion MCP), do the work, and mark it Done.
+  with `nat start-slice`, do the work, and close it out with
+  `nat complete-slice`. The CLI is their only way into the tracker.
 - **Notion** is the source of truth: a Project DB contains project pages; each
   project page holds its own Slices DB and Milestones DB, plus free-form
   project info in the page body.

@@ -6,71 +6,70 @@ description: Pick up and complete the next available slice of a project tracked 
 # /next-slice — pick up and complete the next slice
 
 You are an agent working one slice of a project tracked in the Notion agent
-tracker. Your job: select the next available slice, claim it, complete it
-according to project conventions, and record the result. You work exactly one
-slice per session — never continue to another slice when done.
+tracker. You work exactly one slice per session — never continue to another
+when this one is done.
 
-## 1. Resolve the project
+The `nat` CLI is how you reach the tracker: it chooses the slice, claims it,
+prints the brief, and records the outcome. You never write to Notion yourself.
 
-- Read `~/.config/notion-agent-tracker/config.json`.
-- If the user named a project ("for X"), match it case-insensitively against
-  the `name` fields under `projects`. Otherwise use `active_project_id`; if
-  config has exactly one project, use it.
-- If no match or ambiguous, list the project names and ask.
-- Note the project's `slices_ds_id`, `milestones_ds_id`, `working_dir`, and
-  the top-level `assignee_user_id` / `assignee_user_name`.
+## 1. Claim the next slice
 
-## 2. Select the next slice
+Run `nat next-slice`. It claims the next unclaimed Todo slice under the
+lowest-ordered Active milestone and prints its brief: the slice's name, page
+ID and URL, the working directory to use, the slice's own body, and the
+project's conventions.
 
-- Via the Notion MCP, query the milestones data source; keep milestones with
-  Status `Active`, sorted by `Order` ascending.
-- Query the slices data source for slices with Status `Todo` and no
-  Assignee, belonging to those milestones. Order within a milestone: oldest
-  created first, unless the user asked for a specific slice by name.
-- Pick the first such slice from the lowest-Order Active milestone.
-- If there are none: report the counts you found (e.g. remaining Claimed
-  slices, next Queued milestone name) and stop. Do not activate a Queued
-  milestone yourself — suggest the user queue it (TUI or ask) and rerun.
+- If the user asked for a particular slice, run `nat start-slice <URL|ID>`
+  instead — same claim, same brief, for the slice you name.
+- If the command refuses — no Active milestone, or nothing unclaimed under
+  the ones that are — report what it said and stop. Do not activate a
+  milestone; suggest the user does it on the board (`nat`) and rerun.
+- `nat` works on whichever project local config marks active. If the user
+  asked for a different one, tell them to switch the active project on the
+  board and rerun — the CLI has no project switch of its own.
 
-## 3. Claim it — before any work
+Tell the user which slice you claimed, with its Notion URL.
 
-- Update the slice: set `Assignee` to the configured user and `Status` to
-  `Claimed`.
-- Re-fetch the slice and verify the assignee is the configured user (another
-  agent may have raced you). If the claim didn't stick, go back to step 2
-  and pick the next slice.
-- Tell the user which slice you claimed, with its Notion URL.
+## 2. Do the work
 
-## 4. Do the work
-
-- Read, in order: the slice page body (the brief), the parent project page
-  body (conventions), and the repo's `CLAUDE.md`.
-- Work in the slice's `Repo` directory if that property is set, otherwise
-  the project's `working_dir` from config. If that differs from your current
-  working directory, work there explicitly (absolute paths / `git -C`).
-- Honor the brief's acceptance criteria and the project's verification gate
-  (for this repo: `go vet ./... && go test -race -cover ./...`).
+- The brief is what the command printed: the slice's body first, then the
+  project conventions. Read `CLAUDE.md` in the working directory too.
+- Work in the working directory the brief names. If that is not where this
+  session started, work there explicitly (absolute paths / `git -C`).
+- Honour the brief's acceptance criteria and the project's verification gate
+  before calling anything done.
 - **If the work is code**: create a branch for the slice, keep the change to
-  exactly ONE pull request, commit, push the branch, open the PR (do not
-  merge it), and write its URL to the slice's `PR` property.
-- **If the work is not code** (docs, research, Notion content): produce the
-  deliverable the brief asks for and link/attach it on the slice page.
+  exactly ONE pull request, commit, push the branch, and open the PR — do not
+  merge it.
+- **If the work is not code** (docs, research, written-up findings): produce
+  the deliverable the brief asks for and link it in the summary below.
 
-## 5. Finish
+## 3. Finish
 
-- On completion: set the slice `Status` to `Done`, then append a short
-  summary to the slice page body — what you did, key decisions, any
-  follow-ups worth queueing.
-- If every slice in the milestone is now Done, mention that to the user —
-  but do not change the milestone's Status.
-- If you cannot complete the slice: leave `Status` as `Claimed` and append a
-  note to the slice page explaining exactly what's blocking, then tell the
-  user.
+Record the outcome with the slice's page ID or URL, as printed in the brief:
+
+```
+nat complete-slice <slice> --pr <URL> --summary '<what you did>'
+```
+
+That marks it Done and writes the summary onto the slice page: what you did,
+key decisions, follow-ups worth queueing. Leave `--pr` off when there was no
+pull request; pipe the summary in on stdin when it is too long for an
+argument.
+
+If you cannot complete the slice, leave it claimed and say what stopped you:
+
+```
+nat complete-slice <slice> --blocked --summary '<what is blocking>'
+```
+
+Then tell the user. If every slice in the milestone is now Done, mention that
+too — but never change a milestone's status.
 
 ## Guardrails
 
 - One slice per session. Never claim more than one.
-- Never modify other slices, milestones, or the project page.
-- Never touch slices already Claimed or Done by anyone.
-- Never change milestone Status.
+- Every write to the tracker goes through `nat`. Never edit Notion directly,
+  and never work a slice the CLI would not hand you.
+- Never touch other slices, milestones, or the project page.
 - Never merge PRs or push to main.

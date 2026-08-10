@@ -316,7 +316,7 @@ func TestAppLaunchStartsTheSessionAndOffersToAttach(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the prompt file: %v", err)
 	}
-	for _, want := range []string{"Info view", "s5", workdir, "Craig Johnston", testProjectID} {
+	for _, want := range []string{"Info view", "s5", workdir, "Craig Johnston"} {
 		if !strings.Contains(string(prompt), want) {
 			t.Errorf("the prompt is missing %q:\n%s", want, prompt)
 		}
