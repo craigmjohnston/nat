@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/craigmjohnston/notion-agent-tracker/internal/notion"
+	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // page decodes a Notion page from JSON, so the mapping tests exercise the same

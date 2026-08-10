@@ -6,7 +6,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/craigmjohnston/notion-agent-tracker/internal/domain"
+	"github.com/craigmjohnston/nat/internal/domain"
 )
 
 // The bar is drawn out of three runes: a filled cell, an empty one, and the

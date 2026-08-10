@@ -13,9 +13,9 @@ import (
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/craigmjohnston/notion-agent-tracker/internal/config"
-	"github.com/craigmjohnston/notion-agent-tracker/internal/domain"
-	"github.com/craigmjohnston/notion-agent-tracker/internal/notion"
+	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // screen is one of the app's full-window views. The board is what the app is
@@ -576,7 +576,7 @@ func (a *App) formView() string {
 // board itself. Loading and "there is nothing to show" are the root model's to
 // report — the board only ever draws a plan.
 func (a *App) boardView() string {
-	header := a.styles.Title.Render("notion-agent-tracker")
+	header := a.styles.Title.Render("nat")
 	switch {
 	case a.loading:
 		return header + "\n\n" + a.spinner.View() + " Loading the plan…"

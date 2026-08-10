@@ -8,7 +8,8 @@ model).
 
 ## Architecture
 
-- `cmd/notion-agent-tracker/` — entrypoint
+- `main.go` — entrypoint; module path `github.com/craigmjohnston/nat`, so
+  `go install github.com/craigmjohnston/nat@latest` yields a `nat` binary
 - `internal/config/` — XDG config (`~/.config/notion-agent-tracker/config.json`)
   + the Notion bearer token, read from Notion's official CLI via
   `ntn auth token` (the app stores no credential of its own)

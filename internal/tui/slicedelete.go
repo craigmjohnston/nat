@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 
-	"github.com/craigmjohnston/notion-agent-tracker/internal/domain"
+	"github.com/craigmjohnston/nat/internal/domain"
 )
 
 // DeleteSliceForm is the confirm behind d: one question, because trashing a

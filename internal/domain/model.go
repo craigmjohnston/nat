@@ -6,7 +6,7 @@ package domain
 import (
 	"sort"
 
-	"github.com/craigmjohnston/notion-agent-tracker/internal/notion"
+	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // MilestoneStatus is where a milestone sits in its workflow.

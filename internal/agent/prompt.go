@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/craigmjohnston/notion-agent-tracker/internal/config"
-	"github.com/craigmjohnston/notion-agent-tracker/internal/domain"
+	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/domain"
 )
 
 // PromptContext is everything a fresh agent session needs to be told about the

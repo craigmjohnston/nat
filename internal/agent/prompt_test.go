@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/craigmjohnston/notion-agent-tracker/internal/config"
-	"github.com/craigmjohnston/notion-agent-tracker/internal/domain"
+	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/domain"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files")

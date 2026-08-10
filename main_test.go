@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/craigmjohnston/notion-agent-tracker/internal/config"
-	"github.com/craigmjohnston/notion-agent-tracker/internal/notion"
-	"github.com/craigmjohnston/notion-agent-tracker/internal/tui"
+	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/tui"
 )
 
 // testToken is a plausible workspace token; nothing ever sends it anywhere.
@@ -90,7 +90,7 @@ func TestMainReportsAFailure(t *testing.T) {
 
 	main()
 
-	if !strings.Contains(errOut.String(), "notion-agent-tracker: parse config") {
+	if !strings.Contains(errOut.String(), "nat: parse config") {
 		t.Errorf("stderr = %q, want the failure reported", errOut.String())
 	}
 	code, exited := exitCode(t)
@@ -152,8 +152,10 @@ func TestBuildAppStartsOnTheBoard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := app.View().Content; !strings.Contains(got, "notion-agent-tracker") {
-		t.Errorf("view = %q, want the board for the loaded config", got)
+	// The config names no active project, so the board draws its empty state —
+	// which is still the board, not onboarding.
+	if got := app.View().Content; !strings.Contains(got, "No project selected") {
+		t.Errorf("view = %q, want the board's empty state", got)
 	}
 }
 

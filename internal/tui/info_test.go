@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/craigmjohnston/notion-agent-tracker/internal/notion"
+	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // infoWidth and infoHeight are the size the info tests render at: wide enough
