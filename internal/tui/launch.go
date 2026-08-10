@@ -101,7 +101,7 @@ type LaunchForm struct {
 
 // newLaunchForm returns the form for launching an agent on a slice, starting
 // on the working directory the config resolves to.
-func newLaunchForm(s domain.Slice, workdir string) *LaunchForm {
+func newLaunchForm(theme huh.Theme, s domain.Slice, workdir string) *LaunchForm {
 	f := &LaunchForm{heading: "Launch an agent for " + s.Name, slice: s, workdir: workdir}
 	f.form = huh.NewForm(huh.NewGroup(
 		huh.NewInput().
@@ -109,7 +109,7 @@ func newLaunchForm(s domain.Slice, workdir string) *LaunchForm {
 			Description("Where the agent's session starts; ~ is expanded.").
 			Value(&f.workdir).
 			Validate(existingDir),
-	))
+	)).WithTheme(theme)
 	return f
 }
 
@@ -183,14 +183,14 @@ type AttachForm struct {
 }
 
 // newAttachForm returns the confirm for showing a freshly started agent.
-func newAttachForm(s domain.Slice, session string) *AttachForm {
+func newAttachForm(theme huh.Theme, s domain.Slice, session string) *AttachForm {
 	f := &AttachForm{heading: "Agent launched", slice: s, session: session}
 	f.form = huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
 			Title(fmt.Sprintf("Show the agent working %q now?", s.Name)).
 			Description("It keeps running either way; t on the slice shows and hides it.").
 			Value(&f.confirmed),
-	))
+	)).WithTheme(theme)
 	return f
 }
 
@@ -310,7 +310,7 @@ func (a *App) launchAgentFlow() tea.Cmd {
 		a.note = fmt.Sprintf("%q is %s — only Todo slices can be launched.", s.Name, s.Status)
 		return nil
 	}
-	return a.openForm(newLaunchForm(s, workdirFor(s, project)))
+	return a.openForm(newLaunchForm(a.styles.FormTheme, s, workdirFor(s, project)))
 }
 
 // workdirFor is the directory a slice's agent starts in: its own repo
@@ -450,7 +450,7 @@ func (a *App) agentLaunched(msg agentLaunchedMsg) (tea.Model, tea.Cmd) {
 		a.note, a.err = "", msg.err
 		return a, nil
 	}
-	cmd := a.openForm(newAttachForm(msg.slice, msg.session))
+	cmd := a.openForm(newAttachForm(a.styles.FormTheme, msg.slice, msg.session))
 	a.note = fmt.Sprintf("Launched %s for %q.", msg.session, msg.slice.Name)
 	return a, tea.Batch(cmd, a.refreshLive())
 }

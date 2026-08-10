@@ -29,7 +29,7 @@ func TestDeleteSliceReportsAFailure(t *testing.T) {
 	}
 }
 
-func TestAppDeleteOpensTheConfirmOnTheSelectedSlice(t *testing.T) {
+func TestAppDeleteAsksAboutTheSelectedSlice(t *testing.T) {
 	tests := []struct {
 		name       string
 		cursor     int
@@ -42,19 +42,24 @@ func TestAppDeleteOpensTheConfirmOnTheSelectedSlice(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := newWriteApp(&fakeNotion{})
+			app := newSizedWriteApp(&fakeNotion{})
 			app.board.cursor = tt.cursor
 
 			feed(t, app, press(app, "d"))
 
-			if app.form == nil || app.screen != screenForm {
-				t.Fatalf("screen = %v, form = %v, want the confirm on show", app.screen, app.form)
+			if app.prompt == nil || app.screen != screenBoard {
+				t.Fatalf("screen = %v, prompt = %v, want the question asked over the board",
+					app.screen, app.prompt)
 			}
+			// The board is still there behind the question, which is the point of
+			// asking it on the bar.
 			view := stripANSI(app.View().Content)
-			if !strings.Contains(view, "Delete a slice") || !strings.Contains(view, tt.want) {
-				t.Errorf("view is missing %q:\n%s", tt.want, view)
+			for _, want := range []string{tt.want, "(y/n)", "M1: Config"} {
+				if !strings.Contains(view, want) {
+					t.Errorf("view is missing %q:\n%s", want, view)
+				}
 			}
-			if got := strings.Contains(view, "WARNING"); got != tt.wantWarned {
+			if got := strings.Contains(view, "It is Done"); got != tt.wantWarned {
 				t.Errorf("warned = %v, want %v:\n%s", got, tt.wantWarned, view)
 			}
 		})
@@ -67,10 +72,10 @@ func TestAppDeleteTrashesTheConfirmedSlice(t *testing.T) {
 	app.board.cursor = rowTodoSlice
 
 	feed(t, app, press(app, "d"))
-	answerConfirm(t, app, "y")
+	answerPrompt(t, app, "y")
 
-	if app.screen != screenBoard {
-		t.Error("the board should be back once the confirm is answered")
+	if app.prompt != nil {
+		t.Error("the question should be gone once it is answered")
 	}
 	if !equal(client.trashed, []string{"s5"}) {
 		t.Fatalf("trashed = %v, want the slice's page", client.trashed)
@@ -86,13 +91,16 @@ func TestAppDeleteTrashesNothingWhenTheAnswerIsNo(t *testing.T) {
 	app.board.cursor = rowTodoSlice
 
 	feed(t, app, press(app, "d"))
-	answerConfirm(t, app, "n")
+	answerPrompt(t, app, "n")
 
+	if app.prompt != nil {
+		t.Error("the question should be gone once it is answered")
+	}
 	if len(client.trashed) != 0 {
 		t.Errorf("trashed = %v, want nothing deleted", client.trashed)
 	}
 	if app.busy {
-		t.Error("a confirm answered no leaves no write in flight")
+		t.Error("a question answered no leaves no write in flight")
 	}
 	if app.note != "Cancelled." {
 		t.Errorf("note = %q, want the cancelled note", app.note)
@@ -105,8 +113,8 @@ func TestAppDeleteRefusesAClaimedSlice(t *testing.T) {
 
 	press(app, "d")
 
-	if app.form != nil {
-		t.Error("a claimed slice should not be opened for deletion")
+	if app.prompt != nil {
+		t.Error("a claimed slice should not be asked about")
 	}
 	if want := `"Board screen" is Claimed — work in flight cannot be deleted.`; app.note != want {
 		t.Errorf("note = %q, want %q", app.note, want)
@@ -119,8 +127,8 @@ func TestAppDeleteNeedsASliceUnderTheCursor(t *testing.T) {
 
 	press(app, "d")
 
-	if app.form != nil {
-		t.Error("a confirm was opened with no slice to delete")
+	if app.prompt != nil {
+		t.Error("a question was asked with no slice to delete")
 	}
 	if !strings.Contains(app.note, "Move to a slice") {
 		t.Errorf("note = %q, want the slice hint", app.note)

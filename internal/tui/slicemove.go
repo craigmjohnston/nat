@@ -40,7 +40,7 @@ type MoveSliceForm struct {
 
 // newMoveSliceForm returns the picker for moving a slice to one of targets,
 // which must not be empty.
-func newMoveSliceForm(s domain.Slice, targets []domain.Milestone) *MoveSliceForm {
+func newMoveSliceForm(theme huh.Theme, s domain.Slice, targets []domain.Milestone) *MoveSliceForm {
 	f := &MoveSliceForm{
 		heading:   "Move " + s.Name,
 		sliceID:   s.ID,
@@ -59,7 +59,7 @@ func newMoveSliceForm(s domain.Slice, targets []domain.Milestone) *MoveSliceForm
 			Description("Where the slice is filed; the work itself is untouched.").
 			Options(options...).
 			Value(&f.chosen),
-	))
+	)).WithTheme(theme)
 	return f
 }
 
@@ -145,5 +145,5 @@ func (a *App) moveSliceFlow() tea.Cmd {
 		a.note = fmt.Sprintf("There is no other milestone to move %q to.", s.Name)
 		return nil
 	}
-	return a.openForm(newMoveSliceForm(s, targets))
+	return a.openForm(newMoveSliceForm(a.styles.FormTheme, s, targets))
 }
