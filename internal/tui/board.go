@@ -49,7 +49,7 @@ func defaultBoardKeyMap() boardKeyMap {
 		Queue:  key.NewBinding(key.WithKeys("Q"), key.WithHelp("Q", "advance milestone")),
 
 		Launch: key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "launch agent")),
-		Attach: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "attach to tmux")),
+		Attach: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "show/hide agent")),
 
 		NewProject:    key.NewBinding(key.WithKeys("N"), key.WithHelp("N", "new project")),
 		SwitchProject: key.NewBinding(key.WithKeys("P"), key.WithHelp("P", "switch project")),

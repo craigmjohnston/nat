@@ -29,12 +29,37 @@ type ProjectConfig struct {
 
 // Config is the local configuration persisted as JSON in the XDG config dir.
 type Config struct {
-	ProjectDBID           string                   `json:"project_db_id"`
-	ProjectDBDataSourceID string                   `json:"project_db_data_source_id"`
-	AssigneeUserID        string                   `json:"assignee_user_id"`
-	AssigneeUserName      string                   `json:"assignee_user_name"`
-	ActiveProjectID       string                   `json:"active_project_id"`
-	Projects              map[string]ProjectConfig `json:"projects"`
+	ProjectDBID           string `json:"project_db_id"`
+	ProjectDBDataSourceID string `json:"project_db_data_source_id"`
+	AssigneeUserID        string `json:"assignee_user_id"`
+	AssigneeUserName      string `json:"assignee_user_name"`
+	ActiveProjectID       string `json:"active_project_id"`
+	// AgentSplitPercent is how much of the window an agent's pane takes when it
+	// is shown beside the board. Hand-written, and omitted until it is: unset
+	// means [DefaultSplitPercent].
+	AgentSplitPercent int                      `json:"agent_split_percent,omitempty"`
+	Projects          map[string]ProjectConfig `json:"projects"`
+}
+
+// The share of the window an agent's pane takes beside the board. The default
+// leaves the board enough for a slice name and its markers while giving the
+// agent the room, which is where the reading happens; the bounds are what keeps
+// a hand-edited config from producing a pane too narrow to use — either way
+// round.
+const (
+	DefaultSplitPercent = 65
+	minSplitPercent     = 10
+	maxSplitPercent     = 90
+)
+
+// SplitPercent is the width to give an agent's pane, as the config asks for it
+// or the default when it does not — a value outside the bounds being a typo
+// rather than an instruction.
+func (c Config) SplitPercent() int {
+	if c.AgentSplitPercent < minSplitPercent || c.AgentSplitPercent > maxSplitPercent {
+		return DefaultSplitPercent
+	}
+	return c.AgentSplitPercent
 }
 
 // Dir returns the app's config directory: $XDG_CONFIG_HOME/notion-agent-tracker,

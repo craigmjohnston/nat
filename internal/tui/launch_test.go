@@ -2,9 +2,11 @@ package tui
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -29,13 +31,25 @@ func TestMain(m *testing.M) {
 // launchCall is one session the launcher was asked to start.
 type launchCall struct{ session, workdir, promptFile, sliceID string }
 
+// showCall is one agent the launcher was asked to show beside the board.
+type showCall struct {
+	sliceID string
+	host    string
+	percent int
+}
+
 // fakeLauncher records what it was asked to do, in place of a tmux server.
 type fakeLauncher struct {
 	live      map[string]string
 	liveErr   error
 	launchErr error
+	// joined is what ShowPane reports back: whether the pane ended up beside
+	// the board, and the failure that stopped it.
+	joined  bool
+	showErr error
 
 	launches []launchCall
+	shown    []showCall
 	attached []string
 }
 
@@ -53,6 +67,11 @@ func (f *fakeLauncher) Launch(session, workdir, promptFile, sliceID string) erro
 	return f.launchErr
 }
 
+func (f *fakeLauncher) ShowPane(sliceID, host string, percent int) (bool, error) {
+	f.shown = append(f.shown, showCall{sliceID, host, percent})
+	return f.joined, f.showErr
+}
+
 func (f *fakeLauncher) AttachCmd(session string) *exec.Cmd {
 	f.attached = append(f.attached, session)
 	// Something harmless: the test runtime never runs it, but nothing here
@@ -68,6 +87,10 @@ func launchApp(t *testing.T) (*App, *fakeLauncher, string) {
 	t.Helper()
 	workdir := t.TempDir()
 	t.Setenv("TMPDIR", t.TempDir())
+	// Whether the board is itself a tmux pane decides how an agent is shown,
+	// and the suite may well be run from inside tmux: the tests that want the
+	// split say so, and the rest get the full-screen attach either way.
+	t.Setenv(agent.PaneEnv, "")
 
 	cfg := testConfig()
 	project := cfg.Projects[testProjectID]
@@ -288,7 +311,7 @@ func TestAppLaunchStartsTheSessionAndOffersToAttach(t *testing.T) {
 		t.Fatalf("form = %T, want the offer to attach", app.form)
 	}
 	view := stripANSI(app.View().Content)
-	for _, want := range []string{"Agent launched", `Attach to the agent working "Info view" now?`} {
+	for _, want := range []string{"Agent launched", `Show the agent working "Info view" now?`} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view is missing %q:\n%s", want, view)
 		}
@@ -522,6 +545,99 @@ func TestAppAttachesToALiveSessionWhateverTheSlicesStatus(t *testing.T) {
 	}
 }
 
+// Inside tmux the board stays on screen: the agent is joined in beside it
+// rather than taking the terminal.
+func TestAppShowsTheAgentBesideTheBoard(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	t.Setenv(agent.PaneEnv, "%0")
+	launcher.joined = true
+	id, session := sliceAt(t, app, rowTodoSlice)
+	app.live = map[string]string{id: session}
+
+	feed(t, app, press(app, "t"))
+
+	want := []showCall{{sliceID: id, host: "%0", percent: config.DefaultSplitPercent}}
+	if !reflect.DeepEqual(launcher.shown, want) {
+		t.Errorf("shown = %+v, want %+v", launcher.shown, want)
+	}
+	if len(launcher.attached) != 0 {
+		t.Errorf("attached = %v, want the terminal left to the board", launcher.attached)
+	}
+	if want := `Showing the agent for "Info view" — t again to send it back.`; app.note != want {
+		t.Errorf("note = %q, want %q", app.note, want)
+	}
+	if app.busy {
+		t.Error("the pane is joined; nothing is still in flight")
+	}
+}
+
+// Pressing t again sends it back, which is the same key and the same call —
+// tmux is what knows which way round it currently is.
+func TestAppSendsAShownAgentBack(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	t.Setenv(agent.PaneEnv, "%0")
+	launcher.joined = false
+	id, session := sliceAt(t, app, rowTodoSlice)
+	app.live = map[string]string{id: session}
+
+	feed(t, app, press(app, "t"))
+
+	if want := fmt.Sprintf("Sent the agent for %q back to %s.", "Info view", session); app.note != want {
+		t.Errorf("note = %q, want %q", app.note, want)
+	}
+}
+
+func TestAppSplitsAtTheConfiguredWidth(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	t.Setenv(agent.PaneEnv, "%0")
+	app.cfg.AgentSplitPercent = 80
+	id, session := sliceAt(t, app, rowTodoSlice)
+	app.live = map[string]string{id: session}
+
+	feed(t, app, press(app, "t"))
+
+	if len(launcher.shown) != 1 || launcher.shown[0].percent != 80 {
+		t.Errorf("shown = %+v, want the configured 80%%", launcher.shown)
+	}
+}
+
+func TestAppReportsAFailedSplit(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	t.Setenv(agent.PaneEnv, "%0")
+	launcher.showErr = errors.New("no agent pane is tagged for slice s5")
+	id, session := sliceAt(t, app, rowTodoSlice)
+	app.live = map[string]string{id: session}
+
+	feed(t, app, press(app, "t"))
+
+	if app.err == nil || !strings.Contains(app.err.Error(), `show the agent for "Info view"`) {
+		t.Errorf("err = %v, want the failed split", app.err)
+	}
+	if app.busy {
+		t.Error("a failed split should leave nothing in flight")
+	}
+}
+
+// The offer made right after a launch goes the same way as t does, so
+// answering yes from inside tmux does not try to nest a session in a pane.
+func TestAppLaunchShowsTheAgentBesideTheBoardWhenConfirmed(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	t.Setenv(agent.PaneEnv, "%0")
+	launcher.joined = true
+	app.board.cursor = rowTodoSlice
+	launch(t, app)
+
+	answerConfirm(t, app, "y")
+
+	want := []showCall{{sliceID: "s5", host: "%0", percent: config.DefaultSplitPercent}}
+	if !reflect.DeepEqual(launcher.shown, want) {
+		t.Errorf("shown = %+v, want %+v", launcher.shown, want)
+	}
+	if len(launcher.attached) != 0 {
+		t.Errorf("attached = %v, want the board kept on screen", launcher.attached)
+	}
+}
+
 func TestAppAttachNeedsALiveSession(t *testing.T) {
 	app, launcher, _ := launchApp(t)
 	app.board.cursor = rowClaimedSlice
@@ -725,7 +841,7 @@ func TestBusyNoteOf(t *testing.T) {
 	}{
 		{"a write", newDeleteSliceForm(domain.Slice{Name: "x"}), "Saving…"},
 		{"a launch", newLaunchForm(domain.Slice{Name: "x"}, "/tmp"), "Launching the agent…"},
-		{"an attach", newAttachForm("x", "nat-5"), ""},
+		{"an attach", newAttachForm(domain.Slice{Name: "x"}, "nat-5"), ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

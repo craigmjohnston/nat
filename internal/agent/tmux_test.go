@@ -79,10 +79,11 @@ func TestSessionNameDistinguishesIDsSharingAPrefix(t *testing.T) {
 
 func TestLiveSlices(t *testing.T) {
 	r := &fakeRunner{out: strings.Join([]string{
-		"\tuser-shell", // a pane of the user's own, untagged
-		"3b738308…8f\tnat-b4463d8f",
-		"3b738308…09\tnat-0dfecb09",
-		"3b738308…8f\tnat-moved", // a second pane claiming a slice already found
+		"\t%0\tuser-shell\t@0", // a pane of the user's own, untagged
+		"3b738308…8f\t%1\tnat-b4463d8f\t@1",
+		"3b738308…09\t%2\tnat-0dfecb09\t@2",
+		"3b738308…8f\t%3\tnat-moved\t@3", // a second pane claiming a slice already found
+		"a line tmux did not write",
 		"",
 	}, "\n")}
 
@@ -97,7 +98,7 @@ func TestLiveSlices(t *testing.T) {
 	}
 
 	wantCall := call{name: "tmux", args: []string{
-		"list-panes", "-a", "-F", "#{@nat_slice}\t#{session_name}",
+		"list-panes", "-a", "-F", "#{@nat_slice}\t#{pane_id}\t#{session_name}\t#{window_id}",
 	}}
 	if len(r.calls) != 1 || !reflect.DeepEqual(r.calls[0], wantCall) {
 		t.Errorf("calls = %+v, want exactly %+v", r.calls, wantCall)
@@ -107,7 +108,7 @@ func TestLiveSlices(t *testing.T) {
 // A pane moved into another session is still the agent for its slice, and is
 // reported under the session it has ended up in.
 func TestLiveSlicesFollowsAPaneToAnotherSession(t *testing.T) {
-	r := &fakeRunner{out: "3b738308…8f\tsomewhere-else\n"}
+	r := &fakeRunner{out: "3b738308…8f\t%1\tsomewhere-else\t@0\n"}
 	live, err := NewTmuxWithRunner(r).LiveSlices()
 	if err != nil {
 		t.Fatalf("LiveSlices: %v", err)
@@ -206,6 +207,223 @@ func TestLaunchTagError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "3b73") {
 		t.Errorf("err = %v, want it to name the slice", err)
+	}
+}
+
+// panesOutput is what tmux prints for [Tmux.panes], one line per pane, in the
+// order the fields are asked for.
+func panesOutput(panes ...pane) string {
+	var b strings.Builder
+	for _, p := range panes {
+		fmt.Fprintf(&b, "%s\t%s\t%s\t%s\n", p.slice, p.id, p.session, p.window)
+	}
+	return b.String()
+}
+
+// The board's pane and an agent's, in windows of their own: the state before
+// the agent has been shown.
+var (
+	boardPane  = pane{id: "%0", session: "nat-tui", window: "@0"}
+	agentApart = pane{slice: "3b738308-f654-8170-8c99-eccab4463d8f",
+		id: "%1", session: "nat-b4463d8f", window: "@1"}
+)
+
+func TestShowPaneJoinsTheAgentBesideTheBoard(t *testing.T) {
+	r := &fakeRunner{out: panesOutput(boardPane, agentApart)}
+
+	joined, err := NewTmuxWithRunner(r).ShowPane(agentApart.slice, boardPane.id, 65)
+	if err != nil {
+		t.Fatalf("ShowPane: %v", err)
+	}
+	if !joined {
+		t.Error("joined = false, want the agent shown beside the board")
+	}
+
+	want := []call{
+		{name: "tmux", args: []string{"list-panes", "-a", "-F", listPanesFormat()}},
+		// The board's own session, not -g: the user's own sessions are theirs.
+		{name: "tmux", args: []string{"set-option", "-t", "nat-tui", "mouse", "on"}},
+		// -d leaves the keyboard on the board, so the plan stays usable.
+		{name: "tmux", args: []string{"join-pane", "-h", "-d", "-l", "65%", "-s", "%1", "-t", "%0"}},
+	}
+	if !reflect.DeepEqual(r.calls, want) {
+		t.Errorf("calls = %+v, want %+v", r.calls, want)
+	}
+}
+
+// The configured width reaches tmux as the size of the joined pane — the
+// agent's share of the window, not the board's.
+func TestShowPaneHonoursTheSplitWidth(t *testing.T) {
+	r := &fakeRunner{out: panesOutput(boardPane, agentApart)}
+
+	if _, err := NewTmuxWithRunner(r).ShowPane(agentApart.slice, boardPane.id, 80); err != nil {
+		t.Fatalf("ShowPane: %v", err)
+	}
+
+	join := r.calls[len(r.calls)-1].args
+	if got := join[4]; got != "80%" {
+		t.Errorf("size = %q, want the agent 80%% of the window", got)
+	}
+}
+
+// Pressing t again: the pane is already in the board's window, so it goes back
+// to a session of its own — named after its slice, as it was when it launched.
+func TestShowPaneBreaksAJoinedAgentBackOut(t *testing.T) {
+	joinedPane := agentApart
+	joinedPane.session, joinedPane.window = boardPane.session, boardPane.window
+	r := &fakeRunner{
+		outs:  map[string]string{"list-panes": panesOutput(boardPane, joinedPane)},
+		out:   "%9\n",
+		calls: nil,
+	}
+
+	joined, err := NewTmuxWithRunner(r).ShowPane(joinedPane.slice, boardPane.id, 65)
+	if err != nil {
+		t.Fatalf("ShowPane: %v", err)
+	}
+	if joined {
+		t.Error("joined = true, want the agent sent back to its own session")
+	}
+
+	session := SessionName(joinedPane.slice)
+	want := []call{
+		{name: "tmux", args: []string{"list-panes", "-a", "-F", listPanesFormat()}},
+		{name: "tmux", args: []string{"new-session", "-d", "-s", session,
+			"-P", "-F", "#{pane_id}", placeholderCommand}},
+		{name: "tmux", args: []string{"join-pane", "-s", "%1", "-t", session + ":"}},
+		{name: "tmux", args: []string{"kill-pane", "-t", "%9"}},
+	}
+	if !reflect.DeepEqual(r.calls, want) {
+		t.Errorf("calls = %+v, want %+v", r.calls, want)
+	}
+}
+
+// The agent is found by its tag rather than its session, which is what makes
+// the second press work at all: a joined pane's launch session is long gone.
+func TestShowPaneFindsAnAgentWhoseSessionIsGone(t *testing.T) {
+	joinedPane := agentApart
+	joinedPane.session, joinedPane.window = "somewhere-else", "@7"
+	r := &fakeRunner{outs: map[string]string{"list-panes": panesOutput(boardPane, joinedPane)}}
+
+	joined, err := NewTmuxWithRunner(r).ShowPane(joinedPane.slice, boardPane.id, 65)
+	if err != nil {
+		t.Fatalf("ShowPane: %v", err)
+	}
+	if !joined {
+		t.Error("joined = false, want a pane in another window joined in")
+	}
+}
+
+func TestShowPaneErrors(t *testing.T) {
+	boom := &ExitError{Code: 1, Stderr: "boom"}
+	joinedPane := agentApart
+	joinedPane.session, joinedPane.window = boardPane.session, boardPane.window
+
+	tests := []struct {
+		name   string
+		runner *fakeRunner
+		want   string
+	}{
+		{
+			name:   "the panes cannot be listed",
+			runner: &fakeRunner{errs: map[string]error{"list-panes": &ExitError{Code: 2, Stderr: "boom"}}},
+			want:   "list tmux panes",
+		},
+		{
+			name:   "no pane is tagged for the slice",
+			runner: &fakeRunner{outs: map[string]string{"list-panes": panesOutput(boardPane)}},
+			want:   "no agent pane is tagged for slice",
+		},
+		{
+			name:   "the board's own pane is not there",
+			runner: &fakeRunner{outs: map[string]string{"list-panes": panesOutput(agentApart)}},
+			want:   "the board's own pane %0 is not in tmux",
+		},
+		{
+			name: "the mouse cannot be enabled",
+			runner: &fakeRunner{
+				outs: map[string]string{"list-panes": panesOutput(boardPane, agentApart)},
+				errs: map[string]error{"set-option": boom},
+			},
+			want: "enable the mouse in nat-tui",
+		},
+		{
+			name: "the pane cannot be joined",
+			runner: &fakeRunner{
+				outs: map[string]string{"list-panes": panesOutput(boardPane, agentApart)},
+				errs: map[string]error{"join-pane": boom},
+			},
+			want: "join pane %1 beside the board",
+		},
+		{
+			name: "the session to break out into cannot be made",
+			runner: &fakeRunner{
+				outs: map[string]string{"list-panes": panesOutput(boardPane, joinedPane)},
+				errs: map[string]error{"new-session": boom},
+			},
+			want: "make session nat-b4463d8f for pane %1",
+		},
+		{
+			name: "the pane cannot be moved into it",
+			runner: &fakeRunner{
+				outs: map[string]string{"list-panes": panesOutput(boardPane, joinedPane)},
+				errs: map[string]error{"join-pane": boom},
+			},
+			want: "move pane %1 into nat-b4463d8f",
+		},
+		{
+			name: "the placeholder cannot be cleared",
+			runner: &fakeRunner{
+				outs: map[string]string{"list-panes": panesOutput(boardPane, joinedPane)},
+				errs: map[string]error{"kill-pane": boom},
+			},
+			want: "clear the placeholder pane",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewTmuxWithRunner(tt.runner).ShowPane(agentApart.slice, boardPane.id, 65)
+			if err == nil {
+				t.Fatal("ShowPane: want error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("err = %v, want it to name %q", err, tt.want)
+			}
+		})
+	}
+}
+
+// A half-made session named for a slice whose agent is still elsewhere would be
+// a lie the next press believes, so a failed move takes it with it.
+func TestShowPaneClearsUpAfterAFailedBreakOut(t *testing.T) {
+	joinedPane := agentApart
+	joinedPane.session, joinedPane.window = boardPane.session, boardPane.window
+	r := &fakeRunner{
+		outs: map[string]string{"list-panes": panesOutput(boardPane, joinedPane)},
+		errs: map[string]error{"join-pane": &ExitError{Code: 1, Stderr: "boom"}},
+	}
+
+	if _, err := NewTmuxWithRunner(r).ShowPane(joinedPane.slice, boardPane.id, 65); err == nil {
+		t.Fatal("ShowPane: want error, got nil")
+	}
+
+	last := r.calls[len(r.calls)-1]
+	want := call{name: "tmux", args: []string{"kill-session", "-t", SessionName(joinedPane.slice)}}
+	if !reflect.DeepEqual(last, want) {
+		t.Errorf("last call = %+v, want %+v", last, want)
+	}
+}
+
+func TestHostPane(t *testing.T) {
+	t.Setenv(PaneEnv, "%3")
+	if got := HostPane(); got != "%3" {
+		t.Errorf("HostPane() = %q, want %q", got, "%3")
+	}
+	// Outside tmux there is no window to show an agent in, which the caller
+	// reads off the empty answer.
+	t.Setenv(PaneEnv, "")
+	if got := HostPane(); got != "" {
+		t.Errorf("HostPane() = %q, want it empty outside tmux", got)
 	}
 }
 
@@ -419,7 +637,7 @@ func TestLaunchTagsWhatLiveSlicesReads(t *testing.T) {
 		t.Fatalf("format %q does not read back %q", format, option)
 	}
 
-	read := &fakeRunner{out: fmt.Sprintf("%s\t%s\n", value, session)}
+	read := &fakeRunner{out: fmt.Sprintf("%s\t%%1\t%s\t@0\n", value, session)}
 	live, err := NewTmuxWithRunner(read).LiveSlices()
 	if err != nil {
 		t.Fatalf("LiveSlices: %v", err)

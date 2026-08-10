@@ -18,12 +18,13 @@ import (
 )
 
 // AgentLauncher is what the launch flow needs of tmux: which slices have an
-// agent running and in which session, how to start one, and the command that
-// attaches to it. It is an interface so the flow can be driven without a tmux
-// server.
+// agent running and in which session, how to start one, how to show one beside
+// the board, and the command that attaches to it full-screen. It is an
+// interface so the flow can be driven without a tmux server.
 type AgentLauncher interface {
 	LiveSlices() (map[string]string, error)
 	Launch(session, workdir, promptFile, sliceID string) error
+	ShowPane(sliceID, hostPane string, percent int) (bool, error)
 	AttachCmd(session string) *exec.Cmd
 }
 
@@ -156,18 +157,19 @@ type AttachForm struct {
 	form    *huh.Form
 	heading string
 
+	slice   domain.Slice
 	session string
 
 	confirmed bool
 }
 
-// newAttachForm returns the confirm for attaching to a freshly started session.
-func newAttachForm(sliceName, session string) *AttachForm {
-	f := &AttachForm{heading: "Agent launched", session: session}
+// newAttachForm returns the confirm for showing a freshly started agent.
+func newAttachForm(s domain.Slice, session string) *AttachForm {
+	f := &AttachForm{heading: "Agent launched", slice: s, session: session}
 	f.form = huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
-			Title(fmt.Sprintf("Attach to the agent working %q now?", sliceName)).
-			Description("Detaching later leaves it running; t on the slice comes back to it.").
+			Title(fmt.Sprintf("Show the agent working %q now?", s.Name)).
+			Description("It keeps running either way; t on the slice shows and hides it.").
 			Value(&f.confirmed),
 	))
 	return f
@@ -196,20 +198,53 @@ func (f *AttachForm) Heading() string { return f.heading }
 // nothing, so there is no progress worth announcing.
 func (f *AttachForm) busyNote() string { return "" }
 
-// save attaches to the session, or — when the answer was no — says how to
-// attach later, so the session is not left running unnamed.
+// save shows the agent, or — when the answer was no — says how to reach it
+// later, so the session is not left running unnamed.
 func (f *AttachForm) save(a *App) tea.Cmd {
 	if !f.confirmed {
 		note := "Running in the background — attach with: " + attachCommand(f.session)
 		return func() tea.Msg { return agentAttachedMsg{note: note} }
 	}
-	return attach(a.launcher, f.session)
+	return a.showAgent(f.slice, f.session)
 }
 
 // attachCommand is the shell command that attaches to a session from another
 // terminal.
 func attachCommand(session string) string {
 	return fmt.Sprintf("%s attach-session -t %s", agent.TmuxBinary, session)
+}
+
+// showAgent is what the board does with a slice's agent: shows it in a pane
+// beside the plan when the board is itself a tmux pane, and hands the whole
+// terminal over when it is not.
+//
+// The full-screen attach is the fallback rather than the other way round
+// because there is nowhere to put a second pane without a window to put it in —
+// and attaching from inside tmux would be nesting a session in a pane, which
+// tmux refuses.
+func (a *App) showAgent(s domain.Slice, session string) tea.Cmd {
+	host := agent.HostPane()
+	if host == "" {
+		return attach(a.launcher, session)
+	}
+	return showPane(a.launcher, s, host, a.cfg.SplitPercent())
+}
+
+// showPane joins the slice's agent in beside the board, or sends it back to a
+// session of its own when it is already there. Both directions are the one key,
+// so the note says which way it went.
+func showPane(l AgentLauncher, s domain.Slice, host string, percent int) tea.Cmd {
+	return func() tea.Msg {
+		joined, err := l.ShowPane(s.ID, host, percent)
+		switch {
+		case err != nil:
+			return agentAttachedMsg{err: fmt.Errorf("show the agent for %q: %w", s.Name, err)}
+		case joined:
+			return agentAttachedMsg{note: fmt.Sprintf("Showing the agent for %q — t again to send it back.", s.Name)}
+		default:
+			return agentAttachedMsg{note: fmt.Sprintf("Sent the agent for %q back to %s.", s.Name, agent.SessionName(s.ID))}
+		}
+	}
 }
 
 // attach hands the terminal to a session until the user detaches from it.
@@ -261,10 +296,11 @@ func workdirFor(s domain.Slice, p config.ProjectConfig) string {
 	return p.WorkingDir
 }
 
-// attachAgentFlow hands the terminal to the session of the slice the cursor is
-// on. Any slice with a live session can be attached to, whatever its status: an
-// agent is worth watching from the moment it starts until it exits, and it
-// spends nearly all of that time holding a slice it has already Claimed.
+// attachAgentFlow shows the agent of the slice the cursor is on, beside the
+// board or full-screen. Any slice with a live session can be shown, whatever
+// its status: an agent is worth watching from the moment it starts until it
+// exits, and it spends nearly all of that time holding a slice it has already
+// Claimed.
 func (a *App) attachAgentFlow() tea.Cmd {
 	if a.launcher == nil || a.busy {
 		return nil
@@ -280,7 +316,7 @@ func (a *App) attachAgentFlow() tea.Cmd {
 		return nil
 	}
 	a.busy, a.note = true, ""
-	return attach(a.launcher, session)
+	return a.showAgent(s, session)
 }
 
 // refreshLive kicks off a read of the running sessions. It is skipped when
@@ -316,7 +352,7 @@ func (a *App) agentLaunched(msg agentLaunchedMsg) (tea.Model, tea.Cmd) {
 		a.note, a.err = "", msg.err
 		return a, nil
 	}
-	cmd := a.openForm(newAttachForm(msg.slice.Name, msg.session))
+	cmd := a.openForm(newAttachForm(msg.slice, msg.session))
 	a.note = fmt.Sprintf("Launched %s for %q.", msg.session, msg.slice.Name)
 	return a, tea.Batch(cmd, a.refreshLive())
 }

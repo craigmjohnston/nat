@@ -40,9 +40,22 @@ const sessionIDLen = 8
 // moved into another session.
 const SlicePaneOption = "@nat_slice"
 
+// PaneEnv is set by tmux in every pane it runs, to the pane's own ID. It is how
+// the TUI finds the pane it is drawing in, which is the one an agent's pane is
+// joined beside.
+const PaneEnv = "TMUX_PANE"
+
 // tmuxTimeout caps how long we wait for a tmux command. These are local calls
 // to a socket in /tmp, so anything slower than this is a hang.
 const tmuxTimeout = 10 * time.Second
+
+// placeholderCommand is what the throwaway pane of a freshly made session runs
+// while the agent's pane is moved in beside it. A pane cannot be broken out
+// into a session that does not exist yet, and a session cannot be made without
+// a pane — so one is made, used as a destination, and killed. It sleeps rather
+// than starting a shell: there are no rc files worth running for the moment it
+// is alive, and a sleep that outlives its kill dies on its own.
+const placeholderCommand = "sleep 3600"
 
 // Runner executes a command and returns its standard output. It exists so the
 // tmux calls can be faked in tests; there is no mock mode for a subprocess.
@@ -135,40 +148,162 @@ func SessionName(slicePageID string) string {
 //
 // It is a server-wide scan of the panes rather than a look at the session
 // names, because the tag is the identity: a pane the user has moved or renamed
-// their way is still the agent for its slice.
-//
-// tmux exits 1 when no server is running at all, which is the ordinary state
-// before the first agent launches — that reads as an empty set, not an error.
+// their way — or that the board has joined in beside itself — is still the
+// agent for its slice.
 func (t *Tmux) LiveSlices() (map[string]string, error) {
-	out, err := t.runner.Run(TmuxBinary, "list-panes", "-a", "-F", listPanesFormat())
+	panes, err := t.panes()
 	if err != nil {
-		var exitErr *ExitError
-		if errors.As(err, &exitErr) && exitErr.Code == 1 {
-			return map[string]string{}, nil
-		}
-		return nil, fmt.Errorf("list tmux panes: %w", err)
+		return nil, err
 	}
 
 	live := map[string]string{}
-	for _, line := range strings.Split(out, "\n") {
-		id, session, ok := strings.Cut(strings.TrimSpace(line), "\t")
-		if !ok || id == "" {
+	for _, p := range panes {
+		if p.slice == "" {
 			continue
 		}
 		// A slice with two panes tagged for it should not happen, and if it
 		// does the first one found is as good an answer as the last.
-		if _, seen := live[id]; !seen {
-			live[id] = session
+		if _, seen := live[p.slice]; !seen {
+			live[p.slice] = p.session
 		}
 	}
 	return live, nil
 }
 
-// listPanesFormat is what [Tmux.LiveSlices] asks tmux to print for each pane:
-// the slice tag, then the session the pane is in. A tab separates them because
-// a session name can hold anything but that.
+// pane is one of the tmux server's panes: which slice it is the agent for, if
+// any, and where it currently is.
+type pane struct {
+	slice   string
+	id      string
+	session string
+	window  string
+}
+
+// panes lists every pane on the server. Panes that are not ours carry no slice
+// tag and come back with an empty one rather than being dropped — the board's
+// own pane is in here too, and is found by its ID.
+//
+// tmux exits 1 when no server is running at all, which is the ordinary state
+// before the first agent launches — that reads as no panes, not an error.
+func (t *Tmux) panes() ([]pane, error) {
+	out, err := t.runner.Run(TmuxBinary, "list-panes", "-a", "-F", listPanesFormat())
+	if err != nil {
+		var exitErr *ExitError
+		if errors.As(err, &exitErr) && exitErr.Code == 1 {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("list tmux panes: %w", err)
+	}
+
+	var panes []pane
+	for _, line := range strings.Split(out, "\n") {
+		// Trimmed on the right only: an untagged pane's line starts with the
+		// empty slice field, and trimming that away would shift every field
+		// along by one.
+		fields := strings.Split(strings.TrimRight(line, "\r"), "\t")
+		if len(fields) != listPanesFields {
+			continue
+		}
+		panes = append(panes, pane{slice: fields[0], id: fields[1], session: fields[2], window: fields[3]})
+	}
+	return panes, nil
+}
+
+// listPanesFields is how many fields [listPanesFormat] asks for; a line with
+// any other number of them is not one tmux wrote for us.
+const listPanesFields = 4
+
+// listPanesFormat is what [Tmux.panes] asks tmux to print for each pane: the
+// slice tag, then the pane, the session it is in and the window within it. Tabs
+// separate them because a session name can hold anything but that.
 func listPanesFormat() string {
-	return fmt.Sprintf("#{%s}\t#{session_name}", SlicePaneOption)
+	return fmt.Sprintf("#{%s}\t#{pane_id}\t#{session_name}\t#{window_id}", SlicePaneOption)
+}
+
+// HostPane is the tmux pane this process is drawing in, or "" when it is not
+// inside tmux at all — in which case there is no window to show an agent beside
+// and the caller falls back to attaching full-screen.
+func HostPane() string { return os.Getenv(PaneEnv) }
+
+// ShowPane shows the agent working sliceID beside the pane the board is drawing
+// in, or — when it is already there — sends it back to a session of its own. It
+// reports which of the two happened.
+//
+// The agent is found by its slice tag rather than by session, because a pane
+// that has been joined here no longer has a session of its own: the session it
+// was launched in is gone the moment its only pane leaves.
+func (t *Tmux) ShowPane(sliceID, hostPane string, percent int) (bool, error) {
+	panes, err := t.panes()
+	if err != nil {
+		return false, err
+	}
+	agentPane, ok := find(panes, func(p pane) bool { return p.slice == sliceID })
+	if !ok {
+		return false, fmt.Errorf("no agent pane is tagged for slice %s", sliceID)
+	}
+	host, ok := find(panes, func(p pane) bool { return p.id == hostPane })
+	if !ok {
+		return false, fmt.Errorf("the board's own pane %s is not in tmux", hostPane)
+	}
+
+	if agentPane.window == host.window {
+		return false, t.breakOut(agentPane.id, SessionName(sliceID))
+	}
+	return true, t.join(agentPane.id, host, percent)
+}
+
+// find returns the first pane matching want.
+func find(panes []pane, want func(pane) bool) (pane, bool) {
+	for _, p := range panes {
+		if want(p) {
+			return p, true
+		}
+	}
+	return pane{}, false
+}
+
+// join moves an agent's pane in beside the board, giving it percent of the
+// width. The board keeps the keyboard (`-d`), so the plan stays usable with the
+// agent working next to it; the mouse is what moves between them.
+//
+// Mouse mode is turned on for the board's own session rather than globally: it
+// is a session option, so whatever the user has set for their own sessions is
+// left as they set it.
+func (t *Tmux) join(paneID string, host pane, percent int) error {
+	if _, err := t.runner.Run(TmuxBinary, "set-option", "-t", host.session, "mouse", "on"); err != nil {
+		return fmt.Errorf("enable the mouse in %s: %w", host.session, err)
+	}
+	if _, err := t.runner.Run(TmuxBinary, "join-pane", "-h", "-d",
+		"-l", fmt.Sprintf("%d%%", percent), "-s", paneID, "-t", host.id); err != nil {
+		return fmt.Errorf("join pane %s beside the board: %w", paneID, err)
+	}
+	return nil
+}
+
+// breakOut sends a joined pane back to a session of its own, named after its
+// slice the way it was when it launched — so it is attachable from any terminal
+// again, and so the board it was sharing a window with goes back to full width.
+//
+// tmux has no way to break a pane straight out into a new session, so the
+// session is made around a placeholder pane which is then killed. A join that
+// fails takes the placeholder session with it: leaving one behind would be a
+// session named for a slice whose agent is somewhere else entirely.
+func (t *Tmux) breakOut(paneID, session string) error {
+	out, err := t.runner.Run(TmuxBinary, "new-session", "-d",
+		"-s", session, "-P", "-F", "#{pane_id}", placeholderCommand)
+	if err != nil {
+		return fmt.Errorf("make session %s for pane %s: %w", session, paneID, err)
+	}
+	placeholder := strings.TrimSpace(out)
+
+	if _, err := t.runner.Run(TmuxBinary, "join-pane", "-s", paneID, "-t", session+":"); err != nil {
+		_, _ = t.runner.Run(TmuxBinary, "kill-session", "-t", session)
+		return fmt.Errorf("move pane %s into %s: %w", paneID, session, err)
+	}
+	if _, err := t.runner.Run(TmuxBinary, "kill-pane", "-t", placeholder); err != nil {
+		return fmt.Errorf("clear the placeholder pane %s in %s: %w", placeholder, session, err)
+	}
+	return nil
 }
 
 // Launch starts a detached tmux session named session, with workdir as its

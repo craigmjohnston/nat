@@ -27,6 +27,8 @@ model).
   running agent is identified by its pane's `@nat_slice` option (the full slice
   page ID); the session name `nat-<last-8-hex-of-slice-page-id>` is only a
   human label, and takes the tail because page IDs share a leading prefix.
+  `ShowPane` toggles that pane between the board's window (`join-pane`, sized by
+  `agent_split_percent`, default 65% to the agent) and a session of its own.
 - `internal/tui/` — bubbletea v2 (`charm.land/*/v2` imports); root model in
   `app.go` routes screens; all Notion I/O via tea.Cmd → typed msgs
 - `skills/queue-work/` — the /queue-work planning skill (symlinked into

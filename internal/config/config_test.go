@@ -217,6 +217,67 @@ func TestSaveRoundTrip(t *testing.T) {
 	assertConfigEqual(t, got, want)
 }
 
+func TestSplitPercent(t *testing.T) {
+	tests := []struct {
+		name string
+		set  int
+		want int
+	}{
+		{"unset", 0, DefaultSplitPercent},
+		{"as configured", 50, 50},
+		{"at the lower bound", minSplitPercent, minSplitPercent},
+		{"at the upper bound", maxSplitPercent, maxSplitPercent},
+		// A pane of a few columns, or one that leaves the board a few, is a
+		// typo rather than an instruction.
+		{"too narrow", minSplitPercent - 1, DefaultSplitPercent},
+		{"too wide", maxSplitPercent + 1, DefaultSplitPercent},
+		{"negative", -20, DefaultSplitPercent},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := Config{AgentSplitPercent: tt.set}
+			if got := c.SplitPercent(); got != tt.want {
+				t.Errorf("SplitPercent() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+// The property is hand-written, so Load has to read it — and Save must not put
+// a zero into a config that never set one, which would read as a broken split
+// rather than an absent one.
+func TestSplitPercentRoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	if err := Save(sampleConfig()); err != nil {
+		t.Fatal(err)
+	}
+	path, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "agent_split_percent") {
+		t.Errorf("an unset split was written out:\n%s", data)
+	}
+
+	set := sampleConfig()
+	set.AgentSplitPercent = 75
+	if err := Save(set); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SplitPercent() != 75 {
+		t.Errorf("SplitPercent() = %d, want the configured 75", got.SplitPercent())
+	}
+}
+
 func TestSaveErrors(t *testing.T) {
 	t.Run("path error", func(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", "")
