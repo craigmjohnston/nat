@@ -91,13 +91,21 @@ Started outside tmux (`NAT_NO_TMUX=1`, or with tmux unavailable), there is no
 window to split: `t` hands the whole terminal to the agent's session instead,
 and detaching with `ctrl-b d` comes back to the board.
 
-Install the skills so `/queue-work` (plan work into the tracker) and
-`/next-slice` (pick up and complete the next slice) are available in any repo:
+## Skills
+
+`/queue-work` (plan work into the tracker) and `/next-slice` (pick up and
+complete the next slice) come with the binary. `nat setup` installs them into
+`~/.claude/skills`, which makes them available in any repo:
 
 ```sh
-ln -s "$(pwd)/skills/queue-work" ~/.claude/skills/queue-work
-ln -s "$(pwd)/skills/next-slice" ~/.claude/skills/next-slice
+nat setup
 ```
+
+Run it again after upgrading: each skill is reported as created, updated or
+unchanged, so an install left behind by an older binary is one command away from
+current. Nothing in `~/.claude/skills` other than the tracker's own skills is
+read or written — and a skill directory that is a symlink, which is how a
+checkout of this repo works on the skills in place, is left alone and said so.
 
 ## Status
 

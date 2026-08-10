@@ -55,13 +55,17 @@ model).
   does not wait on one), and `nat plan-apply [FILE]`, which creates a whole
   drafted plan of milestones and slices from a JSON document (read from FILE or
   stdin, validated entirely before the first write, and only ever creating
-  pages)), what the binary
-  does when given a subcommand. Run before the tmux hosting step and with no TUI
+  pages), and `nat setup`, which installs the embedded skills into
+  `~/.claude/skills` — the only command that talks to neither Notion nor the
+  config file, since it is what a machine with only the binary runs first), what
+  the binary does when given a subcommand. Run before the tmux hosting step and with no TUI
   code in the path: a command prints to the terminal it was typed in and exits.
 - `internal/tui/` — bubbletea v2 (`charm.land/*/v2` imports); root model in
   `app.go` routes screens; all Notion I/O via tea.Cmd → typed msgs
-- `skills/queue-work/` — the /queue-work planning skill (symlinked into
-  `~/.claude/skills/`)
+- `skills/` — the agent skills (/queue-work planning, /next-slice execution),
+  embedded in the binary with `go:embed` and installed by `nat setup`. A
+  checkout works on them in place by symlinking them into `~/.claude/skills/`,
+  which `nat setup` leaves alone rather than writing back through.
 
 ## Domain rules
 
