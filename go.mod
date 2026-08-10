@@ -1,4 +1,4 @@
-module github.com/craigmjohnston/notion-agent-tracker
+module github.com/craigmjohnston/nat
 
 go 1.25.8
 

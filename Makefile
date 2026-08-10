@@ -1,5 +1,5 @@
-BINARY := notion-agent-tracker
-PKG := ./cmd/notion-agent-tracker
+BINARY := nat
+PKG := .
 
 .PHONY: build vet test lint check run clean
 

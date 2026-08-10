@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/craigmjohnston/notion-agent-tracker/internal/config"
-	"github.com/craigmjohnston/notion-agent-tracker/internal/notion"
+	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // testProjectsDSID is the projects data source onboarding leaves behind, which

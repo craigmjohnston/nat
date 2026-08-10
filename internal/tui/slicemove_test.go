@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/craigmjohnston/notion-agent-tracker/internal/domain"
-	"github.com/craigmjohnston/notion-agent-tracker/internal/notion"
+	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // The slice rows the move and delete flows act on, beyond those sliceform_test

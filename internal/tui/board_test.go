@@ -10,8 +10,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/craigmjohnston/notion-agent-tracker/internal/agent"
-	"github.com/craigmjohnston/notion-agent-tracker/internal/domain"
+	"github.com/craigmjohnston/nat/internal/agent"
+	"github.com/craigmjohnston/nat/internal/domain"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files")

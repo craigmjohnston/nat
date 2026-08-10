@@ -11,8 +11,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/craigmjohnston/notion-agent-tracker/internal/config"
-	"github.com/craigmjohnston/notion-agent-tracker/internal/notion"
+	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // fakeNotion is a NotionAPI whose every call is a field, so each test can

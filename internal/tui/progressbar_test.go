@@ -7,7 +7,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/craigmjohnston/notion-agent-tracker/internal/domain"
+	"github.com/craigmjohnston/nat/internal/domain"
 )
 
 // sgr matches the colour escapes lipgloss wraps rendered text in; the plain

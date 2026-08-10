@@ -1,4 +1,4 @@
-# notion-agent-tracker
+# nat — notion-agent-tracker
 
 A TUI for tracking project work in Notion, executed by Claude Code agents.
 
@@ -23,9 +23,19 @@ A TUI for tracking project work in Notion, executed by Claude Code agents.
 
 ```sh
 ntn login                # once, to authorise the CLI against your workspace
-go build ./cmd/notion-agent-tracker
-./notion-agent-tracker   # first run launches the onboarding wizard
+go install github.com/craigmjohnston/nat@latest
+nat                      # first run launches the onboarding wizard
 ```
+
+The repo is private, so the module proxy cannot fetch it. Configure the Go
+toolchain to go straight to GitHub over SSH, once per machine:
+
+```sh
+go env -w GOPRIVATE=github.com/craigmjohnston/*
+git config --global url."git@github.com:".insteadOf "https://github.com/"
+```
+
+To build from a clone instead: `make build && ./nat`.
 
 Install the skills so `/queue-work` (plan work into the tracker) and
 `/next-slice` (pick up and complete the next slice) are available in any repo:

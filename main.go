@@ -1,5 +1,5 @@
-// Command notion-agent-tracker is a terminal UI over a Notion workspace for
-// tracking project work executed by Claude Code agents.
+// Command nat is a terminal UI over a Notion workspace for tracking project
+// work executed by Claude Code agents.
 package main
 
 import (
@@ -10,8 +10,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/craigmjohnston/notion-agent-tracker/internal/config"
-	"github.com/craigmjohnston/notion-agent-tracker/internal/tui"
+	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/tui"
 )
 
 // The process's edges, held as variables so tests can stand in for them: main
@@ -31,7 +31,7 @@ func ntnCLI() config.TokenSource { return config.NewNtnCLI() }
 
 func main() {
 	if err := run(newTokens(), stdin, stdout); err != nil {
-		fmt.Fprintln(stderr, "notion-agent-tracker:", err)
+		fmt.Fprintln(stderr, "nat:", err)
 		exit(1)
 	}
 }

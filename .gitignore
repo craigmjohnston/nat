@@ -1,4 +1,4 @@
-/notion-agent-tracker
+/nat
 *.test
 dist/
 .DS_Store
