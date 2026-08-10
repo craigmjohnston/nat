@@ -92,9 +92,13 @@ func TestAppSizesAnOpenFormToTheWindow(t *testing.T) {
 				size.width, size.height, got, view)
 		}
 		// Nothing is wrapped onto a line of its own outside the frame: every line
-		// starts with the frame's own padding, or is blank.
+		// is a band's fill (the heading and status bars start with their indents)
+		// or sits inside a border.
 		for i, line := range strings.Split(stripANSI(view), "\n") {
-			if strings.TrimSpace(line) != "" && !strings.HasPrefix(line, "  ") {
+			if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "  ") {
+				continue
+			}
+			if r := []rune(line)[0]; r != '╭' && r != '│' && r != '╰' {
 				t.Errorf("%dx%d: line %d escapes the frame: %q", size.width, size.height, i, line)
 			}
 		}

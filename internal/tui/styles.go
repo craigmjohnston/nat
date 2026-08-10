@@ -61,9 +61,21 @@ type Styles struct {
 	// Frame is the indent every band of the layout shares, holding its content
 	// away from the window's edges.
 	Frame lipgloss.Style
-	// Title is the app/screen heading; Subtitle the line under it.
+	// Title is a screen's own heading; Subtitle a section head under it.
 	Title    lipgloss.Style
 	Subtitle lipgloss.Style
+	// Header is the fill of the heading bar; HeaderApp the app's own segment on
+	// it, distinct from HeaderTitle, the project or screen name beside it; and
+	// HeaderMeta the plan's tally, right-aligned on the bar. The text styles
+	// carry the bar's background for the same reason the status segments do.
+	Header      lipgloss.Style
+	HeaderApp   lipgloss.Style
+	HeaderTitle lipgloss.Style
+	HeaderMeta  lipgloss.Style
+	// Box frames the body region, and StatusBox the status bar under it: real
+	// borders, so the layout reads as panels rather than floating text.
+	Box       lipgloss.Style
+	StatusBox lipgloss.Style
 	// Faint is for text that should recede: hints, placeholders, counts.
 	Faint lipgloss.Style
 	// StatusBar is the fill of the bottom row, and StatusKey, StatusDesc,
@@ -145,6 +157,14 @@ func NewStyles(isDark bool) Styles {
 		Title:    lipgloss.NewStyle().Bold(true).Foreground(t.Accent),
 		Subtitle: lipgloss.NewStyle().Foreground(t.AccentAlt),
 		Faint:    lipgloss.NewStyle().Foreground(t.Muted),
+
+		Header:      bar,
+		HeaderApp:   chip.Bold(true).Foreground(t.OnFill).Background(t.Accent),
+		HeaderTitle: bar.Bold(true).Foreground(t.Text),
+		HeaderMeta:  bar.Foreground(t.Muted),
+
+		Box:       lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.SurfaceHi).Padding(0, 1),
+		StatusBox: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.SurfaceHi),
 
 		StatusBar:  bar,
 		StatusKey:  bar.Bold(true).Foreground(t.Accent),
