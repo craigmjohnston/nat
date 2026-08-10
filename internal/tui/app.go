@@ -5,6 +5,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -86,9 +87,35 @@ func defaultKeyMap() keyMap {
 	}
 }
 
+// hint is one key binding of the status bar, with the order it goes in as the
+// bar runs out of room: rank 1 is dropped first.
+type hint struct {
+	binding key.Binding
+	rank    int
+}
+
+// statusHints are the bindings the status bar draws, in the order they read.
+// They are dropped by rank rather than truncated, so a narrow bar loses whole
+// hints from the middle and the two that matter most — quit, and the refresh
+// that is the only way to see what an agent has done — survive longest.
+func (k keyMap) statusHints() []hint {
+	return []hint{
+		{k.Refresh, 4},
+		{k.Info, 2},
+		{k.Help, 3},
+		{k.Back, 1},
+		{k.Quit, 5},
+	}
+}
+
 // helpBindings are the bindings listed to the user, in the order they read.
 func (k keyMap) helpBindings() []key.Binding {
-	return []key.Binding{k.Refresh, k.Info, k.Help, k.Back, k.Quit}
+	hints := k.statusHints()
+	bindings := make([]key.Binding, len(hints))
+	for i, h := range hints {
+		bindings[i] = h.binding
+	}
+	return bindings
 }
 
 // App is the root model. It owns the config, the Notion client, the loaded
@@ -598,28 +625,29 @@ func (a *App) body() string {
 // formView is the open modal: its heading, then the form, which draws its own
 // key hints.
 func (a *App) formView() string {
-	return a.styles.Title.Render(a.form.Heading()) + "\n\n" + a.form.View()
+	return a.styles.Title.Render(fit(a.form.Heading(), a.innerWidth())) + "\n\n" + a.form.View()
 }
 
 // boardView is the main screen: the project's heading and tally, then the
 // board itself. Loading and "there is nothing to show" are the root model's to
 // report — the board only ever draws a plan.
 func (a *App) boardView() string {
+	width := a.innerWidth()
 	header := a.styles.Title.Render("nat")
 	switch {
 	case a.loading:
-		return header + "\n\n" + a.spinner.View() + " Loading the plan…"
+		return header + "\n\n" + fit(a.spinner.View()+" Loading the plan…", width)
 	case a.project == nil:
-		return header + "\n\n" + a.styles.Faint.Render(a.noProjectReason())
+		return header + "\n\n" + a.styles.Faint.Render(fit(a.noProjectReason(), width))
 	}
 
 	p := a.project.Progress()
 	return strings.Join([]string{
 		header,
-		a.styles.Subtitle.Render(a.project.Name),
+		a.styles.Subtitle.Render(fit(a.project.Name, width)),
 		"",
-		a.styles.Faint.Render(fmt.Sprintf("milestones: %d · slices done: %d/%d",
-			len(a.project.Milestones), p.Done, p.Total)),
+		a.styles.Faint.Render(fit(fmt.Sprintf("milestones: %d · slices done: %d/%d",
+			len(a.project.Milestones), p.Done, p.Total), width)),
 		"",
 		a.board.View(),
 	}, "\n")
@@ -644,7 +672,7 @@ const infoChromeHeight = 4
 func (a *App) infoView() string {
 	if a.info.Idle() {
 		return a.styles.Title.Render("Info") + "\n\n" +
-			a.styles.Faint.Render(a.noProjectReason())
+			a.styles.Faint.Render(fit(a.noProjectReason(), a.innerWidth()))
 	}
 	return a.info.View(a.spinner.View())
 }
@@ -673,23 +701,76 @@ func (a *App) helpLines(bindings []key.Binding) []string {
 }
 
 // statusBar is the bottom line: the error that is waiting to be dismissed, a
-// note, or the key hints.
+// note, or the key hints. Every one of them is held to a single line no wider
+// than the window: a status bar that wrapped would take a line the layout above
+// it has already spent.
 func (a *App) statusBar() string {
+	width := a.innerWidth()
 	if a.err != nil {
-		return a.styles.Error.Render(fmt.Sprintf("%v — esc to dismiss", a.err))
+		// The error style pads, so the text gets what the padding leaves. The
+		// leading text is what names the call that failed, so the tail goes first.
+		text := fit(oneLine(fmt.Sprintf("%v — esc to dismiss", a.err)),
+			width-a.styles.Error.GetHorizontalFrameSize())
+		return a.styles.Error.Render(text)
 	}
 	if a.note != "" {
-		return a.styles.Note.Render(a.note)
+		return a.styles.Note.Render(fit(oneLine(a.note), width))
 	}
 	// An open form has the keys the global hints name, so all that is left to
 	// say is the one key it does not handle itself.
 	if a.form != nil {
-		return a.styles.HelpKey.Render("esc") + " " + a.styles.HelpDesc.Render("cancel")
+		return fit(a.styles.HelpKey.Render("esc")+" "+a.styles.HelpDesc.Render("cancel"), width)
 	}
-	hints := make([]string, 0, len(a.keys.helpBindings()))
-	for _, b := range a.keys.helpBindings() {
-		h := b.Help()
-		hints = append(hints, a.styles.HelpKey.Render(h.Key)+" "+a.styles.HelpDesc.Render(h.Desc))
+	return a.hintLine(width)
+}
+
+// hintLine renders the key hints, dropping them by rank until they fit. Only if
+// there is nothing left to drop is what remains truncated.
+func (a *App) hintLine(width int) string {
+	hints := a.keys.statusHints()
+	line := a.renderHints(hints)
+	for rank := 1; width > 0 && len(hints) > 0 && lipgloss.Width(line) > width; rank++ {
+		hints = slices.DeleteFunc(hints, func(h hint) bool { return h.rank == rank })
+		line = a.renderHints(hints)
 	}
-	return strings.Join(hints, a.styles.Faint.Render(" · "))
+	return fit(line, width)
+}
+
+// renderHints draws one hint per binding, separated by a faint dot.
+func (a *App) renderHints(hints []hint) string {
+	parts := make([]string, 0, len(hints))
+	for _, h := range hints {
+		help := h.binding.Help()
+		parts = append(parts, a.styles.HelpKey.Render(help.Key)+" "+a.styles.HelpDesc.Render(help.Desc))
+	}
+	return strings.Join(parts, a.styles.Faint.Render(" · "))
+}
+
+// innerWidth is the columns inside the app's frame, or 0 before the first
+// resize — which every caller reads as "unmeasured, draw it whole". A window
+// too narrow to hold the frame's own padding comes out as 0 as well: there is
+// no width to fit to, and the padding has overflowed it either way.
+func (a *App) innerWidth() int {
+	if a.width <= 0 {
+		return 0
+	}
+	return max(0, a.width-a.styles.App.GetHorizontalFrameSize())
+}
+
+// fit truncates s to width columns, keeping the leading text. A width of zero
+// or less is an unmeasured window, which is left alone.
+func fit(s string, width int) string {
+	if width <= 0 {
+		return s
+	}
+	return lipgloss.NewStyle().MaxWidth(width).Render(s)
+}
+
+// oneLine is s up to its first line break: an error or a note carrying one
+// would otherwise take a line the layout has not left room for.
+func oneLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
