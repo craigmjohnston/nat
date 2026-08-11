@@ -69,9 +69,17 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
 
 ## Domain rules
 
-- Slice workflow: Todo → Claimed → Done. Never edit Claimed/Done slices.
-- Claiming = set Assignee (people property, the configured real Notion user)
-  + Status → Claimed.
+- Slice workflow: Todo → in progress → Done. Never edit an in-progress or Done
+  slice.
+- The in-progress status has two names: projects created before the app asked
+  call it `Claimed`, newer ones `In progress`. Nothing is migrated —
+  `notion.ShapeOf` reads the name (and whether the project has an `Assignee`
+  column at all) off the Slices data source, and `domain` maps both names onto
+  the one `SliceClaimed` status so the board and the progress math ask one
+  question.
+- Claiming = Status → the project's in-progress option, plus Assignee (people
+  property, the configured real Notion user) where the project has that column.
+  Without one, ownership is decided on status alone.
 - Slices ↔ PRs are 1:1 when work is code; PR URL recorded in the `PR` property.
 - Slices may carry a `Repo` override; otherwise the project default working
   dir from local config applies.

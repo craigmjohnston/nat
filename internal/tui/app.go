@@ -530,8 +530,8 @@ func (a *App) addSlice() tea.Cmd {
 }
 
 // editSlice opens the form for the slice the cursor is on, once its page body
-// has been fetched to fill the brief in with. Claimed and Done slices are work
-// in flight or finished, so they are refused rather than opened.
+// has been fetched to fill the brief in with. Slices in progress and Done ones
+// are work in flight or finished, so they are refused rather than opened.
 func (a *App) editSlice() tea.Cmd {
 	if !a.canWrite() {
 		return nil
@@ -541,7 +541,7 @@ func (a *App) editSlice() tea.Cmd {
 		return a.showConfirm("Move to a slice to edit it.", sevWarning)
 	}
 	if s.Status != domain.SliceTodo {
-		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices can be edited.", s.Name, s.Status), sevWarning)
+		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices can be edited.", s.Name, statusWord(s)), sevWarning)
 	}
 	a.busy, a.note = true, "Loading the slice…"
 	return loadSliceBody(a.client, s)

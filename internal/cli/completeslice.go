@@ -15,8 +15,9 @@ import (
 
 // completeSlice closes out the slice an agent was working: Status to Done, the
 // PR recorded, and a summary appended to the page body. --blocked is the other
-// way a session ends — the slice stays Claimed and the note says what stopped
-// it, so the work is not lost and nobody else picks the slice up either.
+// way a session ends — the slice stays in progress and the note says what
+// stopped it, so the work is not lost and nobody else picks the slice up
+// either.
 //
 // Only a slice this user already holds can be finished. An agent that never
 // claimed the slice has no business saying it is done, and a slice held by
@@ -26,7 +27,7 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	flags.SetOutput(io.Discard)
 	pr := flags.String("pr", "", "URL of the pull request this slice produced")
 	summary := flags.String("summary", "", "the note to append; read from stdin when absent")
-	blocked := flags.Bool("blocked", false, "leave the slice Claimed and record what is blocking it")
+	blocked := flags.Bool("blocked", false, "leave the slice in progress and record what is blocking it")
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
@@ -45,7 +46,7 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	cfg, _, err := env.activeProject()
+	cfg, project, err := env.activeProject()
 	if err != nil {
 		return err
 	}
@@ -54,16 +55,20 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	}
 	client := env.NewClient(env.Tokens.Token)
 
+	shape, err := sliceShape(ctx, client, project)
+	if err != nil {
+		return err
+	}
 	page, err := client.GetPage(ctx, pageID)
 	if err != nil {
 		return fmt.Errorf("load the slice: %w", err)
 	}
-	if !holds(*page, cfg.AssigneeUserID) {
-		return notOursError(*page, cfg.AssigneeUserName)
+	if !holds(*page, shape, cfg.AssigneeUserID) {
+		return notOursError(*page, shape, cfg.AssigneeUserName)
 	}
 
 	// The note goes on before the status does. Either write can fail, and of the
-	// two half-finished states this is the recoverable one: a Claimed slice
+	// two half-finished states this is the recoverable one: an in-progress slice
 	// carrying its summary can be completed by running this again, whereas a
 	// Done slice with no summary refuses every attempt to add one.
 	if _, err := client.AppendBlockChildren(ctx, page.ID, noteBlocks(noteHeading(*blocked), note)); err != nil {
@@ -154,19 +159,23 @@ func noteText(summary string, in io.Reader) (string, error) {
 }
 
 // notOursError says why a slice will not be closed out, naming what the slice
-// actually is: not Claimed at all, or claimed by somebody else. It is a plain
+// actually is: not in progress at all, or held by somebody else. It is a plain
 // error rather than a usage one — the command line was fine, the slice is not.
-func notOursError(page notion.Page, assignee string) error {
+//
+// A project with no Assignee column never reaches the second case: holds
+// decides ownership on status alone there, so there is nobody a slice could be
+// held by but the person running this.
+func notOursError(page notion.Page, shape notion.SliceShape, assignee string) error {
 	s := domain.SliceFromPage(page)
-	if s.Status != notion.SliceClaimed {
-		return fmt.Errorf("%q is %s, not Claimed: only a slice you claimed can be closed out",
-			s.Name, blank(string(s.Status)))
+	if s.Status != domain.SliceClaimed {
+		return fmt.Errorf("%q is %s, not %s: only a slice you claimed can be closed out",
+			s.Name, blank(s.StatusName), shape.InProgress)
 	}
 	if s.AssigneeName == "" {
-		return fmt.Errorf("%q is Claimed by nobody, not by %s: only a slice you claimed can be closed out",
+		return fmt.Errorf("%q is in progress but held by nobody, not by %s: only a slice you claimed can be closed out",
 			s.Name, assignee)
 	}
-	return fmt.Errorf("%q is claimed by %s, not by %s: leave it to them", s.Name, s.AssigneeName, assignee)
+	return fmt.Errorf("%q is held by %s, not by %s: leave it to them", s.Name, s.AssigneeName, assignee)
 }
 
 // The headings the appended note is filed under, so a page read later says
@@ -219,7 +228,7 @@ func outcomeMarkdown(s domain.Slice, blocked bool, assignee string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", s.Name)
 	if blocked {
-		fmt.Fprintf(&b, "Still Claimed by %s. The note is on the slice page.\n\n", assignee)
+		fmt.Fprintf(&b, "Still in progress, held by %s. The note is on the slice page.\n\n", assignee)
 	} else {
 		b.WriteString("Done. The summary is on the slice page.\n\n")
 	}

@@ -203,3 +203,25 @@ func TestAppMoveNeedsSomewhereToMoveTo(t *testing.T) {
 		t.Errorf("confirm = %q, want %q", app.board.confirmText, want)
 	}
 }
+
+// The word a refusal names a slice's status by: what the project's own table
+// calls it, the workflow status where a slice carries no name, and a stand-in
+// where it carries neither.
+func TestStatusWord(t *testing.T) {
+	tests := []struct {
+		name  string
+		slice domain.Slice
+		want  string
+	}{
+		{"the project's own name", domain.Slice{Status: domain.SliceClaimed, StatusName: "In progress"}, "In progress"},
+		{"the workflow status", domain.Slice{Status: domain.SliceDone}, "Done"},
+		{"no status at all", domain.Slice{}, "(no status)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := statusWord(tt.slice); got != tt.want {
+				t.Errorf("statusWord() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

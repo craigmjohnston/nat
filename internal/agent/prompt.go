@@ -79,7 +79,7 @@ func Prompt(c PromptContext) string {
 	b.WriteString("slice produced no pull request. A summary too long for one argument can\n")
 	b.WriteString("be piped in on stdin instead of passing `--summary`.\n\n")
 	b.WriteString("If you cannot complete it, say what stopped you and leave the slice\n")
-	b.WriteString("claimed, so nobody else picks it up on top of your work:\n\n")
+	b.WriteString("in progress, so nobody else picks it up on top of your work:\n\n")
 	fmt.Fprintf(&b, "    nat complete-slice %s --blocked --summary '<what is blocking>'\n", c.Slice.ID)
 
 	b.WriteString("\n## Guardrails\n\n")
@@ -132,7 +132,7 @@ func PlanPrompt(projectName, workingDir, request string) string {
 	b.WriteString("\n## Guardrails\n\n")
 	b.WriteString("- Plan only. Never claim, start, or complete a slice — launching work is\n")
 	b.WriteString("  the board's job, not yours.\n")
-	b.WriteString("- Never touch work in flight: Claimed and Done slices, and the\n")
+	b.WriteString("- Never touch work in flight: slices in progress and Done slices, and the\n")
 	b.WriteString("  milestones holding them, are records of what happened.\n")
 	b.WriteString("- The commands above are the only way to change the plan; write nothing\n")
 	b.WriteString("  until the user has approved the draft.\n")

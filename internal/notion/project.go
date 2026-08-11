@@ -32,11 +32,16 @@ const (
 	MilestoneDone   = "Done"
 )
 
-// Slice status options, in workflow order.
+// Slice status options, in workflow order. There are two names for the middle
+// one: projects created before this app asked the question call it Claimed, and
+// newer ones call it In progress. Both mean the same thing — a slice an agent
+// holds — and neither is migrated to the other, so every path that reads or
+// writes a status resolves the name from the project's own schema.
 const (
-	SliceTodo    = "Todo"
-	SliceClaimed = "Claimed"
-	SliceDone    = "Done"
+	SliceTodo       = "Todo"
+	SliceClaimed    = "Claimed"
+	SliceInProgress = "In progress"
+	SliceDone       = "Done"
 )
 
 // ProjectStructure is the set of Notion objects making up one tracked project:
@@ -64,15 +69,57 @@ func MilestonesSchema() map[string]PropertySchema {
 
 // SlicesSchema is the property schema of a project's Slices data source, whose
 // Milestone relation points at the project's Milestones data source.
-func SlicesSchema(milestonesDSID string) map[string]PropertySchema {
-	return map[string]PropertySchema{
+//
+// The Assignee column is only there when asked for: a single-player project
+// tracks work by status alone, and a people column nobody ever fills is a
+// column of noise. Everything downstream reads the shape back rather than
+// assuming it, so both shapes work.
+func SlicesSchema(milestonesDSID string, assignee bool) map[string]PropertySchema {
+	schema := map[string]PropertySchema{
 		PropName:      SchemaTitle(),
-		PropStatus:    SchemaSelect(SliceTodo, SliceClaimed, SliceDone),
+		PropStatus:    SchemaSelect(SliceTodo, SliceInProgress, SliceDone),
 		PropMilestone: SchemaRelation(milestonesDSID),
-		PropAssignee:  SchemaPeople(),
 		PropRepo:      SchemaRichText(),
 		PropPR:        SchemaURL(),
 	}
+	if assignee {
+		schema[PropAssignee] = SchemaPeople()
+	}
+	return schema
+}
+
+// SliceShape is how one project's Slices data source is put together where the
+// two shapes differ: what its in-progress status option is called, what type
+// that column is, and whether it tracks an assignee at all. It is read from the
+// data source rather than assumed, so a project created under either shape can
+// be claimed and completed the same way.
+type SliceShape struct {
+	// InProgress is the status option name a claim writes.
+	InProgress string
+	// StatusType is the property type to write it in — select or status.
+	StatusType string
+	// HasAssignee says whether the Assignee people property is there to write.
+	HasAssignee bool
+}
+
+// ShapeOf reads a Slices data source's shape. An in-progress option it cannot
+// find a name for falls back to Claimed, which is what every project made
+// before the option existed calls it — and what a Status column converted in
+// the Notion UI to a type whose options this app cannot read is likeliest to
+// be.
+func ShapeOf(ds *DataSource) SliceShape {
+	status := ds.Properties[PropStatus]
+	shape := SliceShape{InProgress: SliceClaimed, StatusType: status.Type}
+	for _, name := range status.OptionNames() {
+		if name == SliceInProgress {
+			shape.InProgress = SliceInProgress
+			break
+		}
+	}
+	if assignee, ok := ds.Properties[PropAssignee]; ok && assignee.Type == TypePeople {
+		shape.HasAssignee = true
+	}
+	return shape
 }
 
 // ProjectsSchema is the property schema of the projects data source — one row
@@ -91,12 +138,13 @@ func (c *Client) CreateProjectsDatabase(ctx context.Context, parentPageID, title
 // CreateProject creates a project row in the projects data source and, beneath
 // that page, the project's Milestones and Slices databases — Milestones first,
 // because the slice schema's relation points at it. The created schema is read
-// back and verified before returning.
+// back and verified before returning. assignee says whether the Slices table
+// should carry an Assignee column at all.
 //
 // A non-nil structure with a non-nil error means everything was created but
 // verification failed: the caller can report the mismatch and still record
 // what exists rather than orphaning it.
-func (c *Client) CreateProject(ctx context.Context, projectsDSID, name string) (*ProjectStructure, error) {
+func (c *Client) CreateProject(ctx context.Context, projectsDSID, name string, assignee bool) (*ProjectStructure, error) {
 	page, err := c.CreatePage(ctx, DataSourceParent(projectsDSID), map[string]PropertyValue{
 		PropName: NewTitle(name),
 	}, nil)
@@ -108,7 +156,7 @@ func (c *Client) CreateProject(ctx context.Context, projectsDSID, name string) (
 	if err != nil {
 		return nil, err
 	}
-	slices, slicesDSID, err := c.createProjectDB(ctx, page.ID, SlicesDBTitle, SlicesSchema(milestonesDSID))
+	slices, slicesDSID, err := c.createProjectDB(ctx, page.ID, SlicesDBTitle, SlicesSchema(milestonesDSID, assignee))
 	if err != nil {
 		return nil, err
 	}
@@ -167,12 +215,15 @@ func (e *SchemaError) Error() string {
 	return fmt.Sprintf("%s schema: %s", e.DataSource, strings.Join(e.Problems, "; "))
 }
 
-// expectedProperty is one property VerifyProjectSchema insists on. Options is
-// set for selects only, RelationDSID for relations only.
+// expectedProperty is one property VerifyProjectSchema insists on. Options and
+// AnyOptions are set for selects only, RelationDSID for relations only. Every
+// name in Options must be offered; at least one of AnyOptions must be, which is
+// how a column that may legitimately be named either way is checked.
 type expectedProperty struct {
 	Name         string
 	Type         string
 	Options      []string
+	AnyOptions   []string
 	RelationDSID string
 }
 
@@ -184,12 +235,19 @@ func expectedMilestoneProperties() []expectedProperty {
 	}
 }
 
+// expectedSliceProperties is what a project's Slices data source must carry,
+// under either shape: Assignee is optional, and the in-progress status may be
+// called by either name.
 func expectedSliceProperties(milestonesDSID string) []expectedProperty {
 	return []expectedProperty{
 		{Name: PropName, Type: "title"},
-		{Name: PropStatus, Type: "select", Options: []string{SliceTodo, SliceClaimed, SliceDone}},
+		{
+			Name:       PropStatus,
+			Type:       "select",
+			Options:    []string{SliceTodo, SliceDone},
+			AnyOptions: []string{SliceInProgress, SliceClaimed},
+		},
 		{Name: PropMilestone, Type: "relation", RelationDSID: milestonesDSID},
-		{Name: PropAssignee, Type: "people"},
 		{Name: PropRepo, Type: "rich_text"},
 		{Name: PropPR, Type: "url"},
 	}
@@ -232,11 +290,34 @@ func schemaProblems(ds *DataSource, expected []expectedProperty) []string {
 				problems = append(problems, fmt.Sprintf("property %q is missing option %q", e.Name, want))
 			}
 		}
+		if len(e.AnyOptions) > 0 && !hasAny(have, e.AnyOptions) {
+			problems = append(problems, fmt.Sprintf("property %q offers none of the options %s",
+				e.Name, quoteList(e.AnyOptions)))
+		}
 		if e.RelationDSID != "" && (got.Relation == nil || !sameID(got.Relation.DataSourceID, e.RelationDSID)) {
 			problems = append(problems, fmt.Sprintf("property %q does not relate to data source %s", e.Name, e.RelationDSID))
 		}
 	}
 	return problems
+}
+
+// hasAny reports whether any of the wanted option names is offered.
+func hasAny(have map[string]bool, wanted []string) bool {
+	for _, want := range wanted {
+		if have[want] {
+			return true
+		}
+	}
+	return false
+}
+
+// quoteList renders option names for a problem line: "a" or "b".
+func quoteList(names []string) string {
+	quoted := make([]string, len(names))
+	for i, n := range names {
+		quoted[i] = fmt.Sprintf("%q", n)
+	}
+	return strings.Join(quoted, " or ")
 }
 
 // sameID compares two Notion IDs. The API returns them dashed, but config

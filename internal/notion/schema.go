@@ -34,6 +34,7 @@ type PropertySchema struct {
 	RichText *EmptyConfig    `json:"rich_text,omitempty"`
 	Number   *EmptyConfig    `json:"number,omitempty"`
 	Select   *OptionsConfig  `json:"select,omitempty"`
+	Status   *OptionsConfig  `json:"status,omitempty"`
 	Relation *RelationConfig `json:"relation,omitempty"`
 	People   *EmptyConfig    `json:"people,omitempty"`
 	URL      *EmptyConfig    `json:"url,omitempty"`
@@ -95,14 +96,20 @@ func selectOptions(names []string) []SelectOption {
 	return opts
 }
 
-// OptionNames returns the option names of a select property, and nil for any
-// other property type.
+// OptionNames returns the option names of a fixed-choice property — a select,
+// or a status column converted in the Notion UI — and nil for any other
+// property type. This app only ever creates selects, but it reads back whatever
+// the project has become.
 func (s PropertySchema) OptionNames() []string {
-	if s.Select == nil {
+	options := s.Select
+	if options == nil {
+		options = s.Status
+	}
+	if options == nil {
 		return nil
 	}
-	names := make([]string, len(s.Select.Options))
-	for i, o := range s.Select.Options {
+	names := make([]string, len(options.Options))
+	for i, o := range options.Options {
 		names[i] = o.Name
 	}
 	return names

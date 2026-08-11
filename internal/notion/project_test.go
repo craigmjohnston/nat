@@ -29,6 +29,8 @@ const (
 		}
 	}`
 
+	// slicesDSJSON is the shape projects created before the app asked about an
+	// assignee read back as: an Assignee column, and Claimed for in progress.
 	slicesDSJSON = `{
 		"id":"ds-slices",
 		"name":"Slices",
@@ -41,6 +43,24 @@ const (
 			]}},
 			"Milestone":{"id":"m","name":"Milestone","type":"relation","relation":{"data_source_id":"DS-MILESTONES"}},
 			"Assignee":{"id":"a","name":"Assignee","type":"people","people":{}},
+			"Repo":{"id":"r","name":"Repo","type":"rich_text","rich_text":{}},
+			"PR":{"id":"p","name":"PR","type":"url","url":{}}
+		}
+	}`
+
+	// modernSlicesDSJSON is the shape a project created with the default
+	// answer reads back as: no Assignee column, and In progress.
+	modernSlicesDSJSON = `{
+		"id":"ds-slices",
+		"name":"Slices",
+		"properties":{
+			"Name":{"id":"title","name":"Name","type":"title","title":{}},
+			"Status":{"id":"s","name":"Status","type":"select","select":{"options":[
+				{"id":"1","name":"Todo","color":"gray"},
+				{"id":"2","name":"In progress","color":"blue"},
+				{"id":"3","name":"Done","color":"green"}
+			]}},
+			"Milestone":{"id":"m","name":"Milestone","type":"relation","relation":{"data_source_id":"DS-MILESTONES"}},
 			"Repo":{"id":"r","name":"Repo","type":"rich_text","rich_text":{}},
 			"PR":{"id":"p","name":"PR","type":"url","url":{}}
 		}
@@ -90,12 +110,18 @@ func healthyDataSources() map[string]string {
 	return map[string]string{"ds-milestones": milestonesDSJSON, "ds-slices": slicesDSJSON}
 }
 
+// modernDataSources is the same project in the shape CreateProject now makes:
+// no Assignee column, and In progress where the older one says Claimed.
+func modernDataSources() map[string]string {
+	return map[string]string{"ds-milestones": milestonesDSJSON, "ds-slices": modernSlicesDSJSON}
+}
+
 func TestCreateProject(t *testing.T) {
 	t.Run("creates page, milestones, slices, then verifies", func(t *testing.T) {
-		srv, bodies := projectServer(t, healthyDataSources())
+		srv, bodies := projectServer(t, modernDataSources())
 		c, _ := testClient(t, srv)
 
-		got, err := c.CreateProject(context.Background(), "ds-projects", "notion-agent-tracker")
+		got, err := c.CreateProject(context.Background(), "ds-projects", "notion-agent-tracker", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -122,12 +148,11 @@ func TestCreateProject(t *testing.T) {
 				`"parent":{"page_id":"page-1","type":"page_id"},` +
 				`"title":[{"type":"text","text":{"content":"Milestones"}}]}`,
 			`POST /databases {"initial_data_source":{"properties":{` +
-				`"Assignee":{"people":{}},` +
 				`"Milestone":{"relation":{"data_source_id":"ds-milestones","type":"single_property","single_property":{}}},` +
 				`"Name":{"title":{}},` +
 				`"PR":{"url":{}},` +
 				`"Repo":{"rich_text":{}},` +
-				`"Status":{"select":{"options":[{"name":"Todo"},{"name":"Claimed"},{"name":"Done"}]}}}},` +
+				`"Status":{"select":{"options":[{"name":"Todo"},{"name":"In progress"},{"name":"Done"}]}}}},` +
 				`"parent":{"page_id":"page-1","type":"page_id"},` +
 				`"title":[{"type":"text","text":{"content":"Slices"}}]}`,
 			`GET /data_sources/ds-milestones `,
@@ -151,7 +176,7 @@ func TestCreateProject(t *testing.T) {
 		defer srv.Close()
 
 		c, _ := testClient(t, srv)
-		got, err := c.CreateProject(context.Background(), "ds-projects", "p")
+		got, err := c.CreateProject(context.Background(), "ds-projects", "p", false)
 		var apiErr *APIError
 		if !errors.As(err, &apiErr) {
 			t.Fatalf("got %v, want *APIError", err)
@@ -182,7 +207,7 @@ func TestCreateProject(t *testing.T) {
 		defer srv.Close()
 
 		c, _ := testClient(t, srv)
-		got, err := c.CreateProject(context.Background(), "ds-projects", "p")
+		got, err := c.CreateProject(context.Background(), "ds-projects", "p", false)
 		if err == nil || !strings.Contains(err.Error(), "create Slices database") {
 			t.Fatalf("error = %v, want it to name the Slices database", err)
 		}
@@ -202,7 +227,7 @@ func TestCreateProject(t *testing.T) {
 		defer srv.Close()
 
 		c, _ := testClient(t, srv)
-		got, err := c.CreateProject(context.Background(), "ds-projects", "p")
+		got, err := c.CreateProject(context.Background(), "ds-projects", "p", false)
 		if err == nil || !strings.Contains(err.Error(), "no data source") {
 			t.Fatalf("error = %v, want a missing data source error", err)
 		}
@@ -217,7 +242,7 @@ func TestCreateProject(t *testing.T) {
 		srv, _ := projectServer(t, ds)
 		c, _ := testClient(t, srv)
 
-		got, err := c.CreateProject(context.Background(), "ds-projects", "p")
+		got, err := c.CreateProject(context.Background(), "ds-projects", "p", false)
 		var schemaErr *SchemaError
 		if !errors.As(err, &schemaErr) {
 			t.Fatalf("got %v, want *SchemaError", err)
@@ -265,16 +290,24 @@ func TestVerifyProjectSchema(t *testing.T) {
 		}
 	})
 
+	t.Run("accepts a project created without an assignee", func(t *testing.T) {
+		srv, _ := projectServer(t, modernDataSources())
+		c, _ := testClient(t, srv)
+
+		if err := c.VerifyProjectSchema(context.Background(), "ds-milestones", "ds-slices"); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
 	t.Run("reports every mismatch at once", func(t *testing.T) {
 		ds := healthyDataSources()
 		ds["ds-slices"] = `{
 			"id":"ds-slices",
 			"properties":{
 				"Name":{"type":"title","title":{}},
-				"Status":{"type":"select","select":{"options":[{"name":"Todo"},{"name":"Done"}]}},
+				"Status":{"type":"select","select":{"options":[{"name":"Todo"}]}},
 				"Milestone":{"type":"relation","relation":{"data_source_id":"ds-somewhere-else"}},
-				"Assignee":{"type":"rich_text","rich_text":{}},
-				"PR":{"type":"url","url":{}}
+				"Repo":{"type":"url","url":{}}
 			}
 		}`
 		srv, _ := projectServer(t, ds)
@@ -289,10 +322,11 @@ func TestVerifyProjectSchema(t *testing.T) {
 			t.Errorf("data source = %q, want %q", schemaErr.DataSource, SlicesDBTitle)
 		}
 		want := []string{
-			`property "Status" is missing option "Claimed"`,
+			`property "Status" is missing option "Done"`,
+			`property "Status" offers none of the options "In progress" or "Claimed"`,
 			`property "Milestone" does not relate to data source ds-milestones`,
-			`property "Assignee" is a rich_text, want people`,
-			`missing property "Repo" (rich_text)`,
+			`property "Repo" is a url, want rich_text`,
+			`missing property "PR" (url)`,
 		}
 		if len(schemaErr.Problems) != len(want) {
 			t.Fatalf("problems = %v, want %d", schemaErr.Problems, len(want))
@@ -360,10 +394,17 @@ func TestProjectSchemas(t *testing.T) {
 		},
 		{
 			"slices",
-			SlicesSchema("ds-1"),
+			SlicesSchema("ds-1", false),
+			`{"Milestone":{"relation":{"data_source_id":"ds-1","type":"single_property","single_property":{}}},` +
+				`"Name":{"title":{}},"PR":{"url":{}},"Repo":{"rich_text":{}},` +
+				`"Status":{"select":{"options":[{"name":"Todo"},{"name":"In progress"},{"name":"Done"}]}}}`,
+		},
+		{
+			"slices with an assignee",
+			SlicesSchema("ds-1", true),
 			`{"Assignee":{"people":{}},"Milestone":{"relation":{"data_source_id":"ds-1","type":"single_property","single_property":{}}},` +
 				`"Name":{"title":{}},"PR":{"url":{}},"Repo":{"rich_text":{}},` +
-				`"Status":{"select":{"options":[{"name":"Todo"},{"name":"Claimed"},{"name":"Done"}]}}}`,
+				`"Status":{"select":{"options":[{"name":"Todo"},{"name":"In progress"},{"name":"Done"}]}}}`,
 		},
 		{"projects", ProjectsSchema(), `{"Name":{"title":{}}}`},
 	}
@@ -394,5 +435,57 @@ func TestSameID(t *testing.T) {
 		if got := sameID(tt.a, tt.b); got != tt.want {
 			t.Errorf("sameID(%q, %q) = %v, want %v", tt.a, tt.b, got, tt.want)
 		}
+	}
+}
+
+func TestShapeOf(t *testing.T) {
+	tests := []struct {
+		name string
+		ds   DataSource
+		want SliceShape
+	}{
+		{
+			"a project created before the question was asked",
+			DataSource{Properties: map[string]PropertySchema{
+				PropStatus:   {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceTodo, SliceClaimed, SliceDone})}},
+				PropAssignee: {Type: TypePeople},
+			}},
+			SliceShape{InProgress: SliceClaimed, StatusType: TypeSelect, HasAssignee: true},
+		},
+		{
+			"a project created with the new default",
+			DataSource{Properties: map[string]PropertySchema{
+				PropStatus: {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceTodo, SliceInProgress, SliceDone})}},
+			}},
+			SliceShape{InProgress: SliceInProgress, StatusType: TypeSelect},
+		},
+		{
+			"a Status column converted to Notion's status type",
+			DataSource{Properties: map[string]PropertySchema{
+				PropStatus: {Type: TypeStatus, Status: &OptionsConfig{Options: selectOptions([]string{SliceTodo, SliceInProgress, SliceDone})}},
+			}},
+			SliceShape{InProgress: SliceInProgress, StatusType: TypeStatus},
+		},
+		{
+			"options that cannot be read fall back to Claimed",
+			DataSource{Properties: map[string]PropertySchema{PropStatus: {Type: TypeStatus}}},
+			SliceShape{InProgress: SliceClaimed, StatusType: TypeStatus},
+		},
+		{
+			"an Assignee column of another type is not one to write to",
+			DataSource{Properties: map[string]PropertySchema{
+				PropStatus:   {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceInProgress})}},
+				PropAssignee: {Type: "rich_text"},
+			}},
+			SliceShape{InProgress: SliceInProgress, StatusType: TypeSelect},
+		},
+		{"an empty data source", DataSource{}, SliceShape{InProgress: SliceClaimed}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ShapeOf(&tt.ds); got != tt.want {
+				t.Errorf("ShapeOf() = %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }

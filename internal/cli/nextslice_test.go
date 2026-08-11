@@ -137,6 +137,12 @@ func TestNextSliceWritesTheStatusShapeItRead(t *testing.T) {
 	slices[2].Properties[notion.PropStatus] = notion.PropertyValue{
 		Type: notion.TypeStatus, Status: &notion.SelectOption{Name: notion.SliceTodo},
 	}
+	ds := claimedSlicesDS()
+	ds.Properties[notion.PropStatus] = notion.PropertySchema{
+		Type:   notion.TypeStatus,
+		Status: &notion.OptionsConfig{Options: []notion.SelectOption{{Name: notion.SliceClaimed}}},
+	}
+	api.dataSources = map[string]notion.DataSource{"slices-ds": ds}
 	env, _ := testEnv(testClaimConfig(), api)
 
 	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
@@ -511,5 +517,48 @@ func TestNextSliceRejectsAMisusedCommandLine(t *testing.T) {
 				t.Errorf("output = %q, want nothing", out.String())
 			}
 		})
+	}
+}
+
+// A project created without an Assignee column is claimed on status alone: the
+// in-progress option is the one its own schema offers, and no people property
+// is written to a table that has none.
+func TestNextSliceClaimsAProjectWithNoAssigneeColumn(t *testing.T) {
+	api := claimableAPI(t)
+	api.dataSources = map[string]notion.DataSource{"slices-ds": inProgressSlicesDS()}
+	env, out := testEnv(testClaimConfig(), api)
+
+	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
+		t.Fatalf("next-slice: %v", err)
+	}
+
+	if len(api.updates) != 1 {
+		t.Fatalf("updates = %+v, want exactly one", api.updates)
+	}
+	got := api.updates[0]
+	if _, wrote := got.props[notion.PropAssignee]; wrote {
+		t.Errorf("props = %+v, want no assignee written to a table without the column", got.props)
+	}
+	if name := got.props[notion.PropStatus].SelectName(); name != notion.SliceInProgress {
+		t.Errorf("status = %q, want %q", name, notion.SliceInProgress)
+	}
+	if !strings.Contains(out.String(), "Claimed for Craig Johnston") {
+		t.Errorf("output =\n%s\nwant the brief for the slice it took", out.String())
+	}
+}
+
+// The schema is read before anything is claimed, so a failure to read it leaves
+// the plan untouched.
+func TestNextSliceReportsAFailedSchemaRead(t *testing.T) {
+	api := claimableAPI(t)
+	api.dataSourceErr = errors.New("boom")
+	env, _ := testEnv(testClaimConfig(), api)
+
+	err := Run(context.Background(), []string{"next-slice"}, env)
+	if err == nil || !strings.Contains(err.Error(), "read the slices schema") {
+		t.Fatalf("err = %v, want the schema read named", err)
+	}
+	if len(api.updates) != 0 {
+		t.Errorf("updates = %+v, want nothing written", api.updates)
 	}
 }

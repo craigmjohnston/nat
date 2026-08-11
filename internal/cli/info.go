@@ -124,7 +124,7 @@ func writeInfoJSON(out io.Writer, p domain.Project, conventions string) error {
 	}
 	for _, s := range p.Slices {
 		doc.Slices = append(doc.Slices, sliceJSON{
-			ID: s.ID, Name: s.Name, Status: string(s.Status), MilestoneID: s.MilestoneID,
+			ID: s.ID, Name: s.Name, Status: s.StatusName, MilestoneID: s.MilestoneID,
 			Assignee: s.AssigneeName, PR: s.PRURL, URL: s.URL,
 		})
 	}
@@ -177,10 +177,10 @@ func infoMarkdown(p domain.Project, conventions string) string {
 }
 
 // sliceFacts is what is worth saying about a slice beside its name: its status
-// always, then whoever holds it and whatever PR came out of it, each left out
+// as the project's own board names it, then whoever holds it and whatever PR came out of it, each left out
 // when there is none rather than printed as an empty field.
 func sliceFacts(s domain.Slice) []string {
-	facts := []string{blank(string(s.Status))}
+	facts := []string{blank(s.StatusName)}
 	if s.AssigneeName != "" {
 		facts = append(facts, s.AssigneeName)
 	}

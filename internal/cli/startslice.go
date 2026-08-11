@@ -15,8 +15,8 @@ import (
 // knows which slice the agent is for, so there is nothing to choose — only the
 // claim to take and the brief to hand over.
 //
-// Only a slice nobody has started can be taken. A Claimed or Done slice is
-// somebody's work in progress or somebody's finished work, and either way an
+// Only a slice nobody has started can be taken. A slice already in progress, or
+// Done, is somebody's work or somebody's finished work, and either way an
 // agent must not be told to start it again; that refusal happens before any
 // write, so a mistaken invocation leaves the plan exactly as it was.
 func startSlice(ctx context.Context, args []string, env Env) error {
@@ -44,6 +44,10 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	}
 	client := env.NewClient(env.Tokens.Token)
 
+	shape, err := sliceShape(ctx, client, project)
+	if err != nil {
+		return err
+	}
 	page, err := client.GetPage(ctx, id)
 	if err != nil {
 		return fmt.Errorf("load the slice: %w", err)
@@ -51,7 +55,7 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	if err := takeable(*page); err != nil {
 		return err
 	}
-	claimed, err := claim(ctx, client, *page, cfg.AssigneeUserID)
+	claimed, err := claim(ctx, client, *page, shape, cfg.AssigneeUserID)
 	if err != nil {
 		return err
 	}
@@ -82,9 +86,9 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 // one next-slice would pass over too, and taking it would step on their work.
 func takeable(page notion.Page) error {
 	s := domain.SliceFromPage(page)
-	if s.Status != notion.SliceTodo {
+	if s.Status != domain.SliceTodo {
 		return fmt.Errorf("%q is %s, not Todo: only a slice nobody has started can be claimed",
-			s.Name, blank(string(s.Status)))
+			s.Name, blank(s.StatusName))
 	}
 	if s.AssigneeName != "" {
 		return fmt.Errorf("%q is Todo but assigned to %s: leave it to them", s.Name, s.AssigneeName)

@@ -99,7 +99,7 @@ func TestSliceFromPage(t *testing.T) {
 				}
 			}`,
 			Slice{
-				ID: "s1", Name: "Domain model", Status: SliceClaimed, MilestoneID: "m1",
+				ID: "s1", Name: "Domain model", Status: SliceClaimed, StatusName: "Claimed", MilestoneID: "m1",
 				AssigneeName: "Craig Johnston", Repo: "/repos/other",
 				PRURL: "https://github.test/pr/1", URL: "https://notion.test/s1",
 			},
@@ -113,7 +113,7 @@ func TestSliceFromPage(t *testing.T) {
 					"Status": {"type": "status", "status": {"name": "Todo"}}
 				}
 			}`,
-			Slice{ID: "s2", Name: "Board screen", Status: SliceTodo},
+			Slice{ID: "s2", Name: "Board screen", Status: SliceTodo, StatusName: "Todo"},
 		},
 		{
 			"unclaimed and unrelated slice",
@@ -126,7 +126,23 @@ func TestSliceFromPage(t *testing.T) {
 					"Assignee": {"type": "people", "people": []}
 				}
 			}`,
-			Slice{ID: "s3", Name: "Loose", Status: SliceTodo},
+			Slice{ID: "s3", Name: "Loose", Status: SliceTodo, StatusName: "Todo"},
+		},
+		{
+			"in progress is the same status as claimed",
+			`{
+				"id": "s6",
+				"properties": {
+					"Name": {"type": "title", "title": [{"plain_text": "Newer project"}]},
+					"Status": {"type": "select", "select": {"name": "In progress"}}
+				}
+			}`,
+			Slice{ID: "s6", Name: "Newer project", Status: SliceClaimed, StatusName: "In progress"},
+		},
+		{
+			"a status this build does not know is carried through",
+			`{"id": "s7", "properties": {"Status": {"type": "select", "select": {"name": "Parked"}}}}`,
+			Slice{ID: "s7", Status: SliceStatus("Parked"), StatusName: "Parked"},
 		},
 		{
 			"only the first relation and assignee are read",

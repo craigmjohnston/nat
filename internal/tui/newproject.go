@@ -46,9 +46,10 @@ type NewProjectForm struct {
 	heading string
 
 	// The values bound to the form's fields.
-	name    string
-	info    string
-	workdir string
+	name     string
+	info     string
+	workdir  string
+	assignee bool
 }
 
 // newNewProjectForm returns the empty form for a new project.
@@ -68,6 +69,12 @@ func newNewProjectForm(theme huh.Theme) *NewProjectForm {
 			Description("Where this project's agents start; kept in local config, not Notion.").
 			Value(&f.workdir).
 			Validate(existingDir),
+		huh.NewConfirm().
+			Title("Track an assignee?").
+			Description("Adds an Assignee column to the Slices table. A single-player project needs none — status says whose turn it is.").
+			Affirmative("Yes").
+			Negative("No").
+			Value(&f.assignee),
 	))
 	return f
 }
@@ -103,17 +110,17 @@ func (f *NewProjectForm) busyNote() string { return "Creating the project…" }
 // save builds the project the completed form describes.
 func (f *NewProjectForm) save(a *App) tea.Cmd {
 	return createProject(a.client, a.cfg.ProjectDBDataSourceID,
-		strings.TrimSpace(f.name), f.info, expandHome(strings.TrimSpace(f.workdir)))
+		strings.TrimSpace(f.name), f.info, expandHome(strings.TrimSpace(f.workdir)), f.assignee)
 }
 
 // createProject creates the project page and its two databases, then writes the
 // blurb onto the page. The schema check the client runs on the way out is
 // reported rather than swallowed, but not before the structure it verified: a
 // project that exists is worth recording however its schema read back.
-func createProject(client NotionAPI, projectsDSID, name, info, workdir string) tea.Cmd {
+func createProject(client NotionAPI, projectsDSID, name, info, workdir string, assignee bool) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
-		s, err := client.CreateProject(ctx, projectsDSID, name)
+		s, err := client.CreateProject(ctx, projectsDSID, name, assignee)
 		switch {
 		case s != nil:
 		case err != nil:

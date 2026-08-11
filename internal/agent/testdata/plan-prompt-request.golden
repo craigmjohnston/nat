@@ -30,7 +30,7 @@ plan:
 
 - Plan only. Never claim, start, or complete a slice — launching work is
   the board's job, not yours.
-- Never touch work in flight: Claimed and Done slices, and the
+- Never touch work in flight: slices in progress and Done slices, and the
   milestones holding them, are records of what happened.
 - The commands above are the only way to change the plan; write nothing
   until the user has approved the draft.

@@ -39,6 +39,14 @@ type fakeAPI struct {
 	// queryErr fails the query for the named data source.
 	queryErr map[string]error
 
+	// dataSources answers a schema fetch by data source ID. One not named here
+	// answers with the shape every project created before the app asked about
+	// an assignee has, which is what a test saying nothing about the schema is
+	// written against.
+	dataSources map[string]notion.DataSource
+	// dataSourceErr fails the schema fetch.
+	dataSourceErr error
+
 	// creates records every page creation, in order.
 	creates []created
 	// createErr fails the creation.
@@ -193,6 +201,42 @@ func (f *fakeAPI) UpdatePageProperties(_ context.Context, id string, props map[s
 		f.mangle(&page)
 	}
 	return &page, nil
+}
+
+// GetDataSource answers with the schema of the named data source, which is how
+// a command learns the shape of the project's Slices table.
+func (f *fakeAPI) GetDataSource(_ context.Context, id string) (*notion.DataSource, error) {
+	if f.dataSourceErr != nil {
+		return nil, f.dataSourceErr
+	}
+	if ds, ok := f.dataSources[id]; ok {
+		return &ds, nil
+	}
+	ds := claimedSlicesDS()
+	return &ds, nil
+}
+
+// claimedSlicesDS is the Slices schema of a project created before the app
+// asked about an assignee: a people column, and Claimed for in progress.
+func claimedSlicesDS() notion.DataSource {
+	return notion.DataSource{
+		ID: "slices-ds",
+		Properties: map[string]notion.PropertySchema{
+			notion.PropStatus:   notion.SchemaSelect(notion.SliceTodo, notion.SliceClaimed, notion.SliceDone),
+			notion.PropAssignee: {Type: notion.TypePeople},
+		},
+	}
+}
+
+// inProgressSlicesDS is the Slices schema of a project created with the new
+// default: no Assignee column, and In progress for in progress.
+func inProgressSlicesDS() notion.DataSource {
+	return notion.DataSource{
+		ID: "slices-ds",
+		Properties: map[string]notion.PropertySchema{
+			notion.PropStatus: notion.SchemaSelect(notion.SliceTodo, notion.SliceInProgress, notion.SliceDone),
+		},
+	}
 }
 
 func (f *fakeAPI) QueryDataSource(_ context.Context, id string, _ map[string]any, sorts []notion.Sort) ([]notion.Page, error) {

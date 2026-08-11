@@ -41,7 +41,12 @@ func TestPropertySchemaOptions(t *testing.T) {
 	}{
 		{"select", SchemaSelect("Todo", "Done"), []string{"Todo", "Done"}},
 		{"select with no options", SchemaSelect(), []string{}},
-		{"not a select", SchemaTitle(), nil},
+		{
+			"a status column converted in the Notion UI",
+			PropertySchema{Type: TypeStatus, Status: &OptionsConfig{Options: selectOptions([]string{"Todo", "In progress"})}},
+			[]string{"Todo", "In progress"},
+		},
+		{"not a fixed-choice property", SchemaTitle(), nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -55,7 +60,7 @@ func TestPropertySchemaOptions(t *testing.T) {
 				}
 			}
 			if tt.want == nil && got != nil {
-				t.Errorf("OptionNames() = %v, want nil for a non-select property", got)
+				t.Errorf("OptionNames() = %v, want nil for a property with no options", got)
 			}
 		})
 	}

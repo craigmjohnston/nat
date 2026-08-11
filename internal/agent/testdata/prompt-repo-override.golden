@@ -50,7 +50,7 @@ slice produced no pull request. A summary too long for one argument can
 be piped in on stdin instead of passing `--summary`.
 
 If you cannot complete it, say what stopped you and leave the slice
-claimed, so nobody else picks it up on top of your work:
+in progress, so nobody else picks it up on top of your work:
 
     nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --blocked --summary '<what is blocking>'
 
