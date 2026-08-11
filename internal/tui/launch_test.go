@@ -194,15 +194,30 @@ func step(t *testing.T, a *App, cmd tea.Cmd) {
 	}
 }
 
-// launch presses l on the row the cursor is on and submits the form it opens
+// launch presses l on the row the cursor is on and answers the prompt it opens
 // with the one enter that launches on the defaults and attaches.
 func launch(t *testing.T, a *App) {
 	t.Helper()
 	feed(t, a, press(a, "l"))
-	if a.form == nil {
-		t.Fatalf("no launch form opened: %s", a.note)
+	if !a.board.Prompting() {
+		t.Fatalf("no launch prompt opened: %s", a.note)
 	}
 	drive(t, a, press(a, "enter"))
+}
+
+// configure presses l and takes the prompt's other choice, which opens the
+// launch options form.
+func configure(t *testing.T, a *App) {
+	t.Helper()
+	feed(t, a, press(a, "l"))
+	if !a.board.Prompting() {
+		t.Fatalf("no launch prompt opened: %s", a.note)
+	}
+	feed(t, a, press(a, "right"))
+	step(t, a, press(a, "enter"))
+	if a.form == nil {
+		t.Fatal(`"configure & launch" should open the launch options`)
+	}
 }
 
 func TestExpandHome(t *testing.T) {
@@ -290,11 +305,51 @@ func TestWorkdirFor(t *testing.T) {
 	}
 }
 
-func TestAppLaunchOpensTheFormOnTheSelectedSlice(t *testing.T) {
-	app, _, workdir := launchApp(t)
+// l asks on the row itself rather than switching screens: the plan stays on
+// show, with the two choices anchored to the slice the cursor is on and the
+// hints row saying how to answer them.
+func TestAppLaunchPromptsOnTheSelectedSlicesRow(t *testing.T) {
+	app, _, _ := launchApp(t)
+	app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	app.board.cursor = rowTodoSlice
 
 	feed(t, app, press(app, "l"))
+
+	if app.screen != screenBoard {
+		t.Fatalf("screen = %v, want the board still on show", app.screen)
+	}
+	if app.form != nil {
+		t.Fatalf("form = %T, want the prompt on the row instead of a screen", app.form)
+	}
+	if !app.board.Prompting() {
+		t.Fatal("l should anchor the launch prompt to the row")
+	}
+	// The prompt is on the selected slice's own line, with launching focused:
+	// the answer one enter gives.
+	line := stripANSI(selectedLine(&app.board))
+	for _, want := range []string{"launch", "configure & launch"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("row = %q, want the choice %q on it", line, want)
+		}
+	}
+	if app.board.PromptChoice() != choiceLaunch {
+		t.Errorf("choice = %d, want launching focused", app.board.PromptChoice())
+	}
+	view := stripANSI(app.View().Content)
+	for _, want := range []string{"←/→ choose", "enter select", "esc dismiss"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view is missing the hint %q:\n%s", want, view)
+		}
+	}
+}
+
+// The other choice reaches the options form, on the directory the config
+// resolved to — the slice's own repo when it has one.
+func TestAppLaunchConfigureOpensTheOptionsForm(t *testing.T) {
+	app, _, workdir := launchApp(t)
+	app.board.cursor = rowTodoSlice
+
+	configure(t, app)
 
 	if app.screen != screenForm {
 		t.Fatalf("screen = %v, want the launch form on show", app.screen)
@@ -322,16 +377,126 @@ func TestAppLaunchOpensTheFormOnTheSelectedSlice(t *testing.T) {
 }
 
 func TestAppLaunchPrefersTheSlicesOwnRepo(t *testing.T) {
-	app, _, _ := launchApp(t)
+	app, launcher, _ := launchApp(t)
 	override := t.TempDir()
 	app.project.Slices[4].Repo = override // Info view
 	app.board.SetProject(app.project)
 	app.board.cursor = rowTodoSlice
 
-	feed(t, app, press(app, "l"))
+	launch(t, app)
 
-	if f := app.form.(*LaunchForm); f.workdir != override {
-		t.Errorf("working directory = %q, want the slice's own repo %q", f.workdir, override)
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
+	if got := launcher.launches[0].workdir; got != override {
+		t.Errorf("workdir = %q, want the slice's own repo %q", got, override)
+	}
+}
+
+// The choices are stepped side to side and stop at either end, so a held key
+// cannot wrap the focus round to the choice the user was moving away from.
+func TestAppLaunchPromptStepsBetweenTheChoices(t *testing.T) {
+	tests := []struct {
+		name  string
+		keys  []string
+		want  int
+		focus string
+	}{
+		{"the default", nil, choiceLaunch, "launch"},
+		{"right", []string{"right"}, choiceConfigure, "configure & launch"},
+		{"tab", []string{"tab"}, choiceConfigure, "configure & launch"},
+		{"back again", []string{"right", "left"}, choiceLaunch, "launch"},
+		{"shift+tab", []string{"tab", "shift+tab"}, choiceLaunch, "launch"},
+		{"stopping at the far end", []string{"right", "right"}, choiceConfigure, "configure & launch"},
+		{"stopping at the near end", []string{"left"}, choiceLaunch, "launch"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app, launcher, _ := launchApp(t)
+			app.board.cursor = rowTodoSlice
+
+			feed(t, app, press(app, "l"))
+			for _, k := range tt.keys {
+				feed(t, app, press(app, k))
+			}
+
+			if got := app.board.PromptChoice(); got != tt.want {
+				t.Errorf("choice = %d, want %d", got, tt.want)
+			}
+			// And it is the choice the row draws filled with the accent.
+			line := selectedLine(&app.board)
+			if !strings.Contains(line, app.styles.PromptFocused.Render(tt.focus)) {
+				t.Errorf("row = %q, want %q drawn as the focused choice", stripANSI(line), tt.focus)
+			}
+			if len(launcher.launches) != 0 {
+				t.Errorf("launched %+v, want nothing until the prompt is answered", launcher.launches)
+			}
+		})
+	}
+}
+
+// esc takes the prompt down, leaving the row as it was: nothing was in flight,
+// so there is nothing to report either.
+func TestAppLaunchPromptIsDismissedWithEsc(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	app.board.cursor = rowTodoSlice
+
+	feed(t, app, press(app, "l"))
+	feed(t, app, press(app, "esc"))
+
+	if app.board.Prompting() {
+		t.Error("esc should take the prompt down")
+	}
+	if app.prompt != nil {
+		t.Error("the answer should go with the prompt")
+	}
+	if len(launcher.launches) != 0 {
+		t.Errorf("launched %+v, want nothing from a dismissed prompt", launcher.launches)
+	}
+	if app.board.confirmText != "" || app.toast != "" {
+		t.Errorf("confirm = %q, toast = %q, want the dismissal to say nothing",
+			app.board.confirmText, app.toast)
+	}
+}
+
+// While the prompt is up it owns the keys: the board must not move out from
+// under a question about the row the cursor is on, and q must not quit with it
+// unanswered.
+func TestAppLaunchPromptOwnsTheKeys(t *testing.T) {
+	for _, k := range []string{"j", "q", "d", "?"} {
+		t.Run(k, func(t *testing.T) {
+			app, _, _ := launchApp(t)
+			app.board.cursor = rowTodoSlice
+
+			feed(t, app, press(app, "l"))
+			if cmd := press(app, k); cmd != nil {
+				t.Errorf("%q did something while the prompt was up", k)
+			}
+
+			if !app.board.Prompting() {
+				t.Errorf("%q took the prompt down", k)
+			}
+			if app.board.cursor != rowTodoSlice {
+				t.Errorf("cursor = %d, want it held on the row the prompt is about", app.board.cursor)
+			}
+			if app.screen != screenBoard || app.form != nil {
+				t.Errorf("screen = %v, form = %T, want the board left alone", app.screen, app.form)
+			}
+		})
+	}
+}
+
+// A reload may move the row the prompt is anchored to, or take it away
+// entirely, so the question goes with the plan it was asked about.
+func TestAppLaunchPromptGoesWithAReload(t *testing.T) {
+	app, _, _ := launchApp(t)
+	app.board.cursor = rowTodoSlice
+
+	feed(t, app, press(app, "l"))
+	app.Update(projectLoadedMsg{project: testProject()})
+
+	if app.board.Prompting() || app.prompt != nil {
+		t.Error("the prompt should go with the plan it was asked about")
 	}
 }
 
@@ -373,10 +538,13 @@ func TestAppLaunchStartsTheSessionAndAttaches(t *testing.T) {
 		t.Errorf("wrote %+v to Notion, want the claim left to the agent", client.updated)
 	}
 
-	// One enter is the whole flow: the form is gone and the terminal is the
-	// agent's, with no offer to answer first.
+	// One enter is the whole flow: the prompt is gone, no form was opened at
+	// all, and the terminal is the agent's.
+	if app.board.Prompting() {
+		t.Error("the prompt should go with the answer")
+	}
 	if app.form != nil {
-		t.Fatalf("form = %T, want the launch to finish without a second form", app.form)
+		t.Fatalf("form = %T, want the launch to finish without a form", app.form)
 	}
 	if want := []string{agent.SessionName("s5")}; !equal(launcher.attached, want) {
 		t.Errorf("attached = %v, want %v", launcher.attached, want)
@@ -386,8 +554,8 @@ func TestAppLaunchStartsTheSessionAndAttaches(t *testing.T) {
 	}
 }
 
-// The edit path: a launch is still one screen, with the directory opened for
-// editing on demand and confirming from there launching likewise.
+// The edit path: configuring reaches the options form, with the directory
+// opened for editing on demand and confirming from there launching likewise.
 func TestAppLaunchEditsTheWorkingDirectoryOnDemand(t *testing.T) {
 	app, launcher, workdir := launchApp(t)
 	sub := filepath.Join(workdir, "sub")
@@ -396,7 +564,7 @@ func TestAppLaunchEditsTheWorkingDirectoryOnDemand(t *testing.T) {
 	}
 	app.board.cursor = rowTodoSlice
 
-	feed(t, app, press(app, "l"))
+	configure(t, app)
 	drive(t, app, press(app, "down")) // to "Edit the working directory first"
 	step(t, app, press(app, "enter"))
 	if app.form == nil {
@@ -417,13 +585,14 @@ func TestAppLaunchEditsTheWorkingDirectoryOnDemand(t *testing.T) {
 	}
 }
 
-// The background option launches without taking the terminal, and the
-// confirmation names the key that attaches later.
+// The background option, still on the options form behind the prompt's second
+// choice, launches without taking the terminal, and the confirmation names the
+// key that attaches later.
 func TestAppLaunchInTheBackground(t *testing.T) {
 	app, launcher, _ := launchApp(t)
 	app.board.cursor = rowTodoSlice
 
-	feed(t, app, press(app, "l"))
+	configure(t, app)
 	drive(t, app, press(app, "down"))
 	drive(t, app, press(app, "down")) // to "Launch in the background"
 	drive(t, app, press(app, "enter"))
@@ -442,16 +611,45 @@ func TestAppLaunchInTheBackground(t *testing.T) {
 	}
 }
 
-// A default directory that is not there is caught on the form, where there is
-// still a screen to say so — not inside tmux after the launch.
+// A default directory that is not there is caught before tmux is asked to
+// start anything, where a session would fail with nobody looking. The refusal
+// takes the prompt's place on the row it was about.
 func TestAppLaunchRefusesAMissingDefaultDirectory(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	missing := filepath.Join(t.TempDir(), "not-there")
+	project := app.cfg.Projects[testProjectID]
+	project.WorkingDir = missing
+	app.cfg.Projects[testProjectID] = project
+	app.board.cursor = rowTodoSlice
+
+	launch(t, app)
+
+	if len(launcher.launches) != 0 {
+		t.Errorf("launched %+v, want nothing until the directory is fixed", launcher.launches)
+	}
+	if app.busy {
+		t.Error("a refused launch leaves nothing in flight")
+	}
+	want := fmt.Sprintf("Cannot launch an agent for %q: %s is not there.", "Info view", missing)
+	if app.board.confirmText != want {
+		t.Errorf("confirm = %q, want %q", app.board.confirmText, want)
+	}
+	// The prompt makes way for the report; the other choice is a fresh l away.
+	if app.board.Prompting() {
+		t.Error("the prompt should go with the answer, refused or not")
+	}
+}
+
+// The same directory, on the options form behind the prompt's other choice, is
+// still caught there — with the form kept open to say so.
+func TestAppLaunchConfigureRefusesAMissingDirectory(t *testing.T) {
 	app, launcher, _ := launchApp(t)
 	project := app.cfg.Projects[testProjectID]
 	project.WorkingDir = filepath.Join(t.TempDir(), "not-there")
 	app.cfg.Projects[testProjectID] = project
 	app.board.cursor = rowTodoSlice
 
-	feed(t, app, press(app, "l"))
+	configure(t, app)
 	drive(t, app, press(app, "enter"))
 
 	if len(launcher.launches) != 0 {
@@ -624,8 +822,9 @@ func TestAppLaunchIsRefusedWithNothingToLaunchWith(t *testing.T) {
 			if cmd := press(app, "l"); cmd != nil {
 				t.Error("there is nothing to launch with")
 			}
-			if app.form != nil || app.board.confirmText != "" {
-				t.Errorf("form = %T, confirm = %q, want the key ignored", app.form, app.board.confirmText)
+			if app.board.Prompting() || app.board.confirmText != "" {
+				t.Errorf("prompting = %v, confirm = %q, want the key ignored",
+					app.board.Prompting(), app.board.confirmText)
 			}
 		})
 	}
@@ -779,6 +978,19 @@ func TestAppRetiresTheJoinedMarkWhenTheAgentDies(t *testing.T) {
 	if app.joined[id] {
 		t.Error("the mark should go with the agent's pane")
 	}
+}
+
+// How the whole window reads with the launch prompt up: the plan still on
+// show, the choices anchored to the slice's own row, and the keys that answer
+// them where the row's hints were.
+func TestAppLaunchPromptGolden(t *testing.T) {
+	a := sizedApp(80, 16)
+	a.launcher = &fakeLauncher{}
+	a.board.cursor = 1 // the plan's one slice
+
+	feed(t, a, press(a, "l"))
+
+	golden(t, "app-launch-prompt", a.View().Content)
 }
 
 // How the whole window reads while an agent's pane is joined: the plan on
@@ -986,7 +1198,7 @@ func TestAppRefreshesLiveSessions(t *testing.T) {
 		}},
 		{"on leaving a form", func(t *testing.T, a *App) tea.Cmd {
 			a.board.cursor = rowTodoSlice
-			feed(t, a, press(a, "l"))
+			configure(t, a)
 			return press(a, "esc")
 		}},
 	}

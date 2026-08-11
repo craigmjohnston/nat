@@ -90,6 +90,41 @@ func defaultKeyMap() keyMap {
 	}
 }
 
+// promptKeyMap is what an inline prompt anchored to a board row answers to:
+// the choices side to side, the answer, and the way out. It is a map of its
+// own rather than part of the board's, because while a prompt is up these are
+// the only keys there are.
+type promptKeyMap struct {
+	Prev   key.Binding
+	Next   key.Binding
+	Pick   key.Binding
+	Cancel key.Binding
+}
+
+// defaultPromptKeyMap returns the bindings a prompt runs with. The choices are
+// stepped with the arrows rather than h/l, which on the board are a movement
+// and the launch key: a prompt is a question about one row, and neither should
+// half-work while it is up.
+func defaultPromptKeyMap() promptKeyMap {
+	return promptKeyMap{
+		Prev:   key.NewBinding(key.WithKeys("left", "shift+tab"), key.WithHelp("←/→", "choose")),
+		Next:   key.NewBinding(key.WithKeys("right", "tab")),
+		Pick:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select")),
+		Cancel: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "dismiss")),
+	}
+}
+
+// promptHints are the hints row's bindings while a prompt is up: how to answer
+// it, in place of what the row's keys would otherwise do. The answer matters
+// most, so the way out is the first to go as the row narrows.
+func (k promptKeyMap) promptHints() []hint {
+	return []hint{
+		{k.Prev, 2},
+		{k.Pick, 3},
+		{k.Cancel, 1},
+	}
+}
+
 // hint is one key binding of the hints row, with the order it goes in as the
 // row runs out of room: rank 1 is dropped first.
 type hint struct {
@@ -128,16 +163,20 @@ func (k keyMap) helpBindings() []key.Binding {
 // The first-run wizard is held separately rather than as a screen: it runs
 // before there is a config to show a board for, and it hands over exactly once.
 type App struct {
-	cfg    config.Config
-	client NotionAPI
-	styles Styles
-	keys   keyMap
+	cfg        config.Config
+	client     NotionAPI
+	styles     Styles
+	keys       keyMap
+	promptKeys promptKeyMap
 
 	onboarding *Onboarding
 	screen     screen
 	board      Board
 	info       Info
 	form       modal
+	// prompt is what answering the board's open row prompt does, held by the
+	// flow that opened it; nil when no prompt is up.
+	prompt func(choice int) tea.Cmd
 
 	// boardVP scrolls the board's rows, which the board itself draws in full: a
 	// plan taller than the window is the layout's problem, not the board's.
@@ -182,7 +221,8 @@ var _ tea.Model = (*App)(nil)
 func NewApp(cfg config.Config, client NotionAPI) *App {
 	s := DefaultStyles()
 	sp := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(s.Spinner))
-	a := &App{cfg: cfg, client: client, styles: s, keys: defaultKeyMap(), spinner: sp,
+	a := &App{cfg: cfg, client: client, styles: s, keys: defaultKeyMap(),
+		promptKeys: defaultPromptKeyMap(), spinner: sp,
 		board: NewBoard(s), info: NewInfo(s), launcher: newLauncher(), joined: map[string]bool{},
 		boardVP: viewport.New(), helpVP: viewport.New()}
 	a.helpVP.SetContent(a.helpBody())
@@ -242,6 +282,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.onboardingDone(msg)
 	case projectLoadedMsg:
 		a.project, a.loading, a.err = &msg.project, false, nil
+		// A prompt is a question about a row of the plan that was on show, which
+		// the reload may have moved or taken away entirely.
+		a.closePrompt()
 		a.board.SetProject(a.project)
 		// The first plan brings the bar with it, which the board's viewport has
 		// to give its lines up to; resize re-shares them and re-syncs the board.
@@ -337,6 +380,12 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return a, a.formUpdate(msg)
 	}
+	// An open prompt owns every key too: it is a question about the row the
+	// cursor is on, and the board should not move out from under it while it
+	// goes unanswered. Keys it does not know are ignored rather than passed on.
+	if a.board.Prompting() {
+		return a, a.promptKey(msg)
+	}
 
 	switch {
 	// esc means the nearest "undo" there is: clear the error, else leave the
@@ -418,6 +467,44 @@ func (a *App) boardWrite(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.switchProjectFlow(), true
 	}
 	return nil, false
+}
+
+// openPrompt anchors a question to the row the cursor is on and remembers what
+// answering it does. It is the modal form's small sibling: one choice about one
+// row, asked on the row itself, with the plan still on screen behind it.
+func (a *App) openPrompt(options []string, answer func(choice int) tea.Cmd) tea.Cmd {
+	a.prompt, a.note = answer, ""
+	a.board.SetPrompt(options)
+	a.syncBoard()
+	return nil
+}
+
+// closePrompt takes the prompt down, answered or abandoned.
+func (a *App) closePrompt() {
+	a.prompt = nil
+	a.board.ClearPrompt()
+	a.syncBoard()
+}
+
+// promptKey answers the open prompt: the arrows step the choice, enter takes
+// it, and esc leaves without one. Abandoning it says nothing — nothing was in
+// flight to report on, and the row is as it was.
+func (a *App) promptKey(msg tea.KeyPressMsg) tea.Cmd {
+	switch {
+	case key.Matches(msg, a.promptKeys.Prev):
+		a.board.MovePrompt(-1)
+		a.syncBoard()
+	case key.Matches(msg, a.promptKeys.Next):
+		a.board.MovePrompt(1)
+		a.syncBoard()
+	case key.Matches(msg, a.promptKeys.Cancel):
+		a.closePrompt()
+	case key.Matches(msg, a.promptKeys.Pick):
+		answer, choice := a.prompt, a.board.PromptChoice()
+		a.closePrompt()
+		return answer(choice)
+	}
+	return nil
 }
 
 // canWrite reports whether a write can be started: a client to make it with, a
@@ -1097,7 +1184,8 @@ func (a *App) hintsView() string {
 
 // contextHints are the hints the row above the status bar draws: what acts on
 // the selection — the slice's actions, the milestone's — and otherwise the
-// global set. An open form owns every key, so naming any would be a lie; a
+// global set. An open form owns every key, so naming any would be a lie, and
+// an open prompt names what answers it instead; a
 // joined agent pane swaps in the split guidance, since the pane has the keys
 // until it is hidden again. Each contextual set carries the help key at the
 // lowest rank, so the way to the full list is the first hint a narrow row
@@ -1105,6 +1193,11 @@ func (a *App) hintsView() string {
 func (a *App) contextHints() []hint {
 	if a.form != nil {
 		return nil
+	}
+	// A prompt has the keys until it is answered, so what answers it is all
+	// there is to name.
+	if a.board.Prompting() {
+		return a.promptKeys.promptHints()
 	}
 	if len(a.joined) > 0 {
 		return a.paneHints()

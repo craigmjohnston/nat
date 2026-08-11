@@ -173,21 +173,31 @@ func (f *LaunchForm) SetSize(width, height int) {
 	f.form = f.form.WithWidth(width).WithHeight(height)
 }
 
+// launchNote is what the status bar says while a session starts, whichever way
+// the launch was asked for.
+const launchNote = "Launching the agent…"
+
 // busyNote says what the status bar shows while the session starts.
-func (f *LaunchForm) busyNote() string { return "Launching the agent…" }
+func (f *LaunchForm) busyNote() string { return launchNote }
 
 // save starts the session the completed form describes. Attaching is the
 // default; only the background launch leaves the pane unshown.
 func (f *LaunchForm) save(a *App) tea.Cmd {
-	// The form only ever opens on a configured project, so this is the one it
-	// was opened against.
+	return a.startAgent(f.slice, f.workdir, f.action != actionBackground)
+}
+
+// startAgent is the launch itself, shared by the prompt's default choice and
+// the options form behind its other one: the directory as resolved, expanded,
+// and the project the flow was opened against — the flows only ever open on a
+// configured one, so this is that project.
+func (a *App) startAgent(s domain.Slice, workdir string, attach bool) tea.Cmd {
 	project, _ := a.activeProject()
 	return launchAgent(a.launcher, agent.PromptContext{
-		Slice:        f.slice,
+		Slice:        s,
 		Project:      project,
-		WorkingDir:   expandHome(strings.TrimSpace(f.workdir)),
+		WorkingDir:   expandHome(strings.TrimSpace(workdir)),
 		AssigneeName: a.cfg.AssigneeUserName,
-	}, f.action != actionBackground)
+	}, attach)
 }
 
 // launchAgent writes the agent's prompt out and starts the detached session
@@ -258,8 +268,18 @@ func attached(session string) func(error) tea.Msg {
 	}
 }
 
-// launchAgentFlow opens the launch form for the slice the cursor is on. Only a
-// Todo slice can be launched: Claimed is work an agent already holds, and Done
+// The choices the launch prompt offers, in the order they read. Launching on
+// the shown defaults comes first, so one enter starts the agent; configuring is
+// a step to the right, and reaches the options form.
+var launchChoices = []string{"launch", "configure & launch"}
+
+const (
+	choiceLaunch = iota
+	choiceConfigure
+)
+
+// launchAgentFlow anchors the launch prompt to the slice the cursor is on. Only
+// a Todo slice can be launched: Claimed is work an agent already holds, and Done
 // is finished — a second agent on either would fight the first.
 func (a *App) launchAgentFlow() tea.Cmd {
 	project, ok := a.activeProject()
@@ -276,7 +296,29 @@ func (a *App) launchAgentFlow() tea.Cmd {
 	if s.Status != domain.SliceTodo {
 		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices can be launched.", s.Name, s.Status), sevWarning)
 	}
-	return a.openForm(newLaunchForm(a.styles.FormTheme, s, workdirFor(s, project)))
+	workdir := workdirFor(s, project)
+	return a.openPrompt(launchChoices, func(choice int) tea.Cmd {
+		return a.launchChosen(s, workdir, choice)
+	})
+}
+
+// launchChosen is what answering the prompt does: configuring opens the options
+// form, and the default launches on the spot, on the directory the config
+// resolved to.
+//
+// That directory is checked here rather than left to tmux, where a session
+// started somewhere that is not there fails with nobody looking. The refusal
+// takes the prompt's place on the row, so l and the other choice are the way
+// past it.
+func (a *App) launchChosen(s domain.Slice, workdir string, choice int) tea.Cmd {
+	if choice == choiceConfigure {
+		return a.openForm(newLaunchForm(a.styles.FormTheme, s, workdir))
+	}
+	if err := existingDir(workdir); err != nil {
+		return a.showConfirm(fmt.Sprintf("Cannot launch an agent for %q: %v.", s.Name, err), sevError)
+	}
+	a.busy, a.note = true, launchNote
+	return a.startAgent(s, workdir, true)
 }
 
 // workdirFor is the directory a slice's agent starts in: its own repo

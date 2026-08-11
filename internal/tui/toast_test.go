@@ -132,6 +132,53 @@ func TestBoardConfirmFitsGolden(t *testing.T) {
 	golden(t, "board-confirm-fits", b.View())
 }
 
+// The prompt is drawn in the confirmation's shape and place: over the selected
+// row from its right edge, with the dithered fade where it overlaps the row's
+// content and the focused choice filled with the accent.
+func TestBoardPromptOverlapGolden(t *testing.T) {
+	b := newTestBoard()
+	b.SetWidth(40)
+	b.cursor = 4 // Info view
+	b.SetPrompt(launchChoices)
+	golden(t, "board-prompt-overlap", b.View())
+}
+
+func TestBoardPromptFocusGolden(t *testing.T) {
+	b := newTestBoard()
+	b.cursor = 4
+	b.SetPrompt(launchChoices)
+	b.MovePrompt(1)
+	golden(t, "board-prompt-focused", b.View())
+}
+
+// One question at a time on a row: opening a prompt takes down whatever the
+// last action left there to read.
+func TestBoardPromptReplacesTheConfirm(t *testing.T) {
+	b := newTestBoard()
+	b.cursor = 4
+	b.SetConfirm("Saved.", sevSuccess)
+	b.SetPrompt(launchChoices)
+
+	if b.confirmText != "" {
+		t.Errorf("confirm = %q, want it taken down by the prompt", b.confirmText)
+	}
+	if line := stripANSI(selectedLine(b)); strings.Contains(line, "Saved.") {
+		t.Errorf("row = %q, want the prompt drawn in the confirmation's place", line)
+	}
+}
+
+// With no prompt up there is nothing to focus and nothing to step.
+func TestBoardPromptWithNothingToAnswer(t *testing.T) {
+	b := newTestBoard()
+	b.MovePrompt(1)
+	if b.Prompting() {
+		t.Error("stepping a prompt that is not there should not open one")
+	}
+	if got := b.PromptChoice(); got != 0 {
+		t.Errorf("choice = %d, want the first", got)
+	}
+}
+
 // selectedLine is the line of the board's render that the cursor is on.
 func selectedLine(b *Board) string {
 	return strings.Split(b.View(), "\n")[b.cursor]
