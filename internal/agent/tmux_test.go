@@ -57,6 +57,9 @@ func TestSessionName(t *testing.T) {
 		{"non-hex characters are skipped", "zz3b-73g83h08f654", "nat-8308f654"},
 		{"short id is used as-is", "3b73", "nat-3b73"},
 		{"empty id", "", "nat-"},
+		// Hex-filtered the sentinel would come out as "nat-a", which a short
+		// or surprising slice ID could collide with.
+		{"the planning agent's sentinel", PlanSentinel, PlanSession},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

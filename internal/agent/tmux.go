@@ -42,6 +42,19 @@ const sessionIDLen = 8
 // moved into another session.
 const SlicePaneOption = "@nat_slice"
 
+// PlanSentinel is the value [SlicePaneOption] carries on the planning agent's
+// pane, in place of a slice page ID: the planning agent works the plan itself
+// and has no slice to be tagged with. It cannot collide with a real slice —
+// page IDs are hex, and "plan" is not — so everything that reads the tag
+// (LiveSlices, ShowPane, the break-outs) handles the planning pane the same
+// way it handles a slice's.
+const PlanSentinel = "plan"
+
+// PlanSession is the tmux session the planning agent launches in. There is
+// only ever one planning agent, so unlike the slice sessions it needs no ID in
+// its name.
+const PlanSession = SessionPrefix + PlanSentinel
+
 // PaneEnv is set by tmux in every pane it runs, to the pane's own ID. It is how
 // the TUI finds the pane it is drawing in, which is the one an agent's pane is
 // joined beside.
@@ -130,6 +143,11 @@ func NewTmuxWithRunner(r Runner) *Tmux { return &Tmux{runner: r} }
 // is only a human label — what a session belongs to is read from
 // [SlicePaneOption] — but it still has to be one tmux will accept twice.
 func SessionName(slicePageID string) string {
+	// The planning agent's tag is not a page ID at all: hex-filtering it would
+	// name a session tmux could confuse with a slice's.
+	if slicePageID == PlanSentinel {
+		return PlanSession
+	}
 	var b strings.Builder
 	for _, r := range strings.ToLower(slicePageID) {
 		if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') {

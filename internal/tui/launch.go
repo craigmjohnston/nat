@@ -407,10 +407,12 @@ func (a *App) refreshLive() tea.Cmd {
 	}
 }
 
-// liveLoaded takes the sessions that came back to the board. A failed read is
-// a note rather than an error banner: it is a background poll, and the plan is
-// still worth looking at without knowing what is running.
-func (a *App) liveLoaded(msg liveSessionsMsg) {
+// liveLoaded takes the sessions that came back to the board, returning the
+// plan reload a planning agent's exit calls for. A failed read is a note
+// rather than an error banner: it is a background poll, and the plan is still
+// worth looking at without knowing what is running.
+func (a *App) liveLoaded(msg liveSessionsMsg) tea.Cmd {
+	planWasLive := a.live[agent.PlanSentinel] != ""
 	if msg.err != nil {
 		a.live, a.note = nil, fmt.Sprintf("Could not read tmux panes: %v", msg.err)
 	} else {
@@ -426,6 +428,12 @@ func (a *App) liveLoaded(msg liveSessionsMsg) {
 	}
 	a.board.SetLive(a.live)
 	a.syncBoard()
+	// A planning agent that has exited has been editing the plan, so the board
+	// re-reads it rather than showing what was there before the session.
+	if msg.err == nil && planWasLive && a.live[agent.PlanSentinel] == "" {
+		return a.startLoad()
+	}
+	return nil
 }
 
 // paneMoved keeps the joined marks in step with a pane movement the message
@@ -450,7 +458,11 @@ func (a *App) agentLaunched(msg agentLaunchedMsg) (tea.Model, tea.Cmd) {
 		a.note, a.err = "", msg.err
 		return a, nil
 	}
-	cmd := a.openForm(newAttachForm(a.styles.FormTheme, msg.slice, msg.session))
+	form := modal(newAttachForm(a.styles.FormTheme, msg.slice, msg.session))
+	if msg.slice.ID == agent.PlanSentinel {
+		form = newPlanAttachForm(a.styles.FormTheme, msg.session)
+	}
+	cmd := a.openForm(form)
 	a.note = fmt.Sprintf("Launched %s for %q.", msg.session, msg.slice.Name)
 	return a, tea.Batch(cmd, a.refreshLive())
 }
