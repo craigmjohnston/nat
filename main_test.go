@@ -367,7 +367,9 @@ func TestHostRunsTheTUIInsideTmux(t *testing.T) {
 		t.Errorf("argv0 = %q, want the tmux found on PATH", got.argv0)
 	}
 	want := []string{"tmux", "new-session", "-A", "-s", "nat-tui", "/usr/local/bin/nat",
-		";", "set-option", "-t", "nat-tui", "status", "off"}
+		";", "set-option", "-t", "nat-tui", "status", "off",
+		";", "set-option", "-s", "extended-keys", "on",
+		";", "set-option", "-s", "-a", "terminal-features", "*:extkeys:hyperlinks"}
 	if !reflect.DeepEqual(got.argv, want) {
 		t.Errorf("argv = %q, want %q", got.argv, want)
 	}
