@@ -157,8 +157,8 @@ func sliceAt(t *testing.T, a *App, cursor int) (id, session string) {
 
 // drive runs a command and threads what it produces back through the app until
 // nothing is left to run, the way the runtime does. Unlike finishForm it does
-// not insist the modal is gone at the end: launching finishes on a second form,
-// the offer to attach.
+// not insist the modal is gone at the end: a launch form that fails validation
+// stays open, and stepping into the edit group leaves it open on purpose.
 func drive(t *testing.T, a *App, cmd tea.Cmd) {
 	t.Helper()
 	for range 8 {
@@ -175,8 +175,27 @@ func drive(t *testing.T, a *App, cmd tea.Cmd) {
 	t.Fatal("the launch flow did not settle")
 }
 
-// launch presses l on the row the cursor is on and submits the form it opens,
-// leaving the offer to attach on show.
+// step threads a command's messages back through the app for a few rounds and
+// then lets go, without insisting anything settles: focusing an input arms a
+// cursor-blink command that re-arms forever, so quiescence is not something
+// every keystroke can reach.
+func step(t *testing.T, a *App, cmd tea.Cmd) {
+	t.Helper()
+	for range 3 {
+		if cmd == nil {
+			return
+		}
+		var next []tea.Cmd
+		for _, msg := range run(cmd) {
+			_, c := a.Update(msg)
+			next = append(next, c)
+		}
+		cmd = tea.Batch(next...)
+	}
+}
+
+// launch presses l on the row the cursor is on and submits the form it opens
+// with the one enter that launches on the defaults and attaches.
 func launch(t *testing.T, a *App) {
 	t.Helper()
 	feed(t, a, press(a, "l"))
@@ -287,8 +306,18 @@ func TestAppLaunchOpensTheFormOnTheSelectedSlice(t *testing.T) {
 	if f.workdir != workdir {
 		t.Errorf("working directory = %q, want the project default %q", f.workdir, workdir)
 	}
-	if view := stripANSI(app.View().Content); !strings.Contains(view, "Launch an agent for Info view") {
+	view := stripANSI(app.View().Content)
+	if !strings.Contains(view, "Launch an agent for Info view") {
 		t.Errorf("view is missing the heading:\n%s", view)
+	}
+	// The resolved default is on display before anything is confirmed — the
+	// window edge may truncate the path, so only its head is asserted on —
+	// with launching, not editing, as the first, pre-selected choice.
+	for _, want := range []string{"Working directory: " + workdir[:9], "Launch and show the agent",
+		"Edit the working directory first", "Launch in the background"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view is missing %q:\n%s", want, view)
+		}
 	}
 }
 
@@ -306,7 +335,7 @@ func TestAppLaunchPrefersTheSlicesOwnRepo(t *testing.T) {
 	}
 }
 
-func TestAppLaunchStartsTheSessionAndOffersToAttach(t *testing.T) {
+func TestAppLaunchStartsTheSessionAndAttaches(t *testing.T) {
 	app, launcher, workdir := launchApp(t)
 	app.board.cursor = rowTodoSlice
 
@@ -344,50 +373,95 @@ func TestAppLaunchStartsTheSessionAndOffersToAttach(t *testing.T) {
 		t.Errorf("wrote %+v to Notion, want the claim left to the agent", client.updated)
 	}
 
-	if _, ok := app.form.(*AttachForm); !ok {
-		t.Fatalf("form = %T, want the offer to attach", app.form)
+	// One enter is the whole flow: the form is gone and the terminal is the
+	// agent's, with no offer to answer first.
+	if app.form != nil {
+		t.Fatalf("form = %T, want the launch to finish without a second form", app.form)
 	}
-	view := stripANSI(app.View().Content)
-	for _, want := range []string{"Agent launched", `Show the agent working "Info view" now?`} {
-		if !strings.Contains(view, want) {
-			t.Errorf("view is missing %q:\n%s", want, view)
-		}
+	if want := []string{agent.SessionName("s5")}; !equal(launcher.attached, want) {
+		t.Errorf("attached = %v, want %v", launcher.attached, want)
 	}
-	if app.busy {
-		t.Error("the launch is over; nothing should still be in flight")
-	}
-	if !strings.Contains(app.board.confirmText, `Launched nat-5 for "Info view".`) {
-		t.Errorf("confirm = %q, want the launched confirmation", app.board.confirmText)
+	if !app.busy {
+		t.Error("the terminal is the session's until it is given back")
 	}
 }
 
-func TestAppLaunchAttachesWhenConfirmed(t *testing.T) {
-	app, launcher, _ := launchApp(t)
+// The edit path: a launch is still one screen, with the directory opened for
+// editing on demand and confirming from there launching likewise.
+func TestAppLaunchEditsTheWorkingDirectoryOnDemand(t *testing.T) {
+	app, launcher, workdir := launchApp(t)
+	sub := filepath.Join(workdir, "sub")
+	if err := os.Mkdir(sub, 0o750); err != nil {
+		t.Fatal(err)
+	}
 	app.board.cursor = rowTodoSlice
-	launch(t, app)
 
-	answerConfirm(t, app, "y")
+	feed(t, app, press(app, "l"))
+	drive(t, app, press(app, "down")) // to "Edit the working directory first"
+	step(t, app, press(app, "enter"))
+	if app.form == nil {
+		t.Fatal("choosing to edit should keep the form open on the directory")
+	}
+	typeText(app, "/sub") // appended to the prefilled default
+	finishForm(t, app, press(app, "enter"))
 
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
+	if got := launcher.launches[0].workdir; got != sub {
+		t.Errorf("workdir = %q, want the edited %q", got, sub)
+	}
+	// Confirming from the edit launches likewise: straight to the agent.
 	if want := []string{agent.SessionName("s5")}; !equal(launcher.attached, want) {
 		t.Errorf("attached = %v, want %v", launcher.attached, want)
 	}
 }
 
-func TestAppLaunchDeclinedPrintsTheAttachCommand(t *testing.T) {
+// The background option launches without taking the terminal, and the
+// confirmation names the key that attaches later.
+func TestAppLaunchInTheBackground(t *testing.T) {
 	app, launcher, _ := launchApp(t)
 	app.board.cursor = rowTodoSlice
-	launch(t, app)
 
-	answerConfirm(t, app, "n")
+	feed(t, app, press(app, "l"))
+	drive(t, app, press(app, "down"))
+	drive(t, app, press(app, "down")) // to "Launch in the background"
+	drive(t, app, press(app, "enter"))
 
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
 	if len(launcher.attached) != 0 {
 		t.Errorf("attached = %v, want the terminal left alone", launcher.attached)
 	}
-	if want := "tmux attach-session -t " + agent.SessionName("s5"); !strings.Contains(app.board.confirmText, want) {
-		t.Errorf("confirm = %q, want it to name %q", app.board.confirmText, want)
+	if want := `Launched nat-5 for "Info view" — t attaches.`; app.board.confirmText != want {
+		t.Errorf("confirm = %q, want %q", app.board.confirmText, want)
 	}
 	if app.busy {
-		t.Error("declining leaves nothing in flight")
+		t.Error("a background launch leaves nothing in flight")
+	}
+}
+
+// A default directory that is not there is caught on the form, where there is
+// still a screen to say so — not inside tmux after the launch.
+func TestAppLaunchRefusesAMissingDefaultDirectory(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	project := app.cfg.Projects[testProjectID]
+	project.WorkingDir = filepath.Join(t.TempDir(), "not-there")
+	app.cfg.Projects[testProjectID] = project
+	app.board.cursor = rowTodoSlice
+
+	feed(t, app, press(app, "l"))
+	drive(t, app, press(app, "enter"))
+
+	if len(launcher.launches) != 0 {
+		t.Errorf("launched %+v, want nothing until the directory is fixed", launcher.launches)
+	}
+	if app.form == nil {
+		t.Fatal("the form should stay open on the failed validation")
+	}
+	if view := stripANSI(app.View().Content); !strings.Contains(view, "is not there") {
+		t.Errorf("view is missing the validation error:\n%s", view)
 	}
 }
 
@@ -415,7 +489,7 @@ func TestLaunchAgentReportsAFailedPromptFile(t *testing.T) {
 
 	msg := runMsg(t, launchAgent(launcher, agent.PromptContext{
 		Slice: domain.Slice{ID: "s5", Name: "Info view"},
-	})).(agentLaunchedMsg)
+	}, true)).(agentLaunchedMsg)
 
 	if msg.err == nil || !strings.Contains(msg.err.Error(), "launch agent: create prompt dir") {
 		t.Errorf("err = %v, want the failed prompt file", msg.err)
@@ -753,16 +827,16 @@ func TestAppReportsAFailedSplit(t *testing.T) {
 	}
 }
 
-// The offer made right after a launch goes the same way as t does, so
-// answering yes from inside tmux does not try to nest a session in a pane.
-func TestAppLaunchShowsTheAgentBesideTheBoardWhenConfirmed(t *testing.T) {
+// The attach that follows a launch goes the same way as t does, so launching
+// from inside tmux joins the pane beside the board rather than trying to nest
+// a session in a pane.
+func TestAppLaunchShowsTheAgentBesideTheBoard(t *testing.T) {
 	app, launcher, _ := launchApp(t)
 	t.Setenv(agent.PaneEnv, "%0")
 	launcher.joined = true
 	app.board.cursor = rowTodoSlice
-	launch(t, app)
 
-	answerConfirm(t, app, "y")
+	launch(t, app)
 
 	want := []showCall{{sliceID: "s5", host: "%0", percent: config.DefaultSplitPercent}}
 	if !reflect.DeepEqual(launcher.shown, want) {
@@ -1093,7 +1167,6 @@ func TestBusyNoteOf(t *testing.T) {
 	}{
 		{"a write", newDeleteSliceForm(DefaultStyles().FormTheme, domain.Slice{Name: "x"}), "Saving…"},
 		{"a launch", newLaunchForm(DefaultStyles().FormTheme, domain.Slice{Name: "x"}, "/tmp"), "Launching the agent…"},
-		{"an attach", newAttachForm(DefaultStyles().FormTheme, domain.Slice{Name: "x"}, "nat-5"), ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

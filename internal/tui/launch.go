@@ -56,10 +56,12 @@ func liveTicked(time.Time) tea.Msg { return liveTickMsg{} }
 // The messages the launch flow comes back as.
 type (
 	// agentLaunchedMsg reports a finished launch: the slice its session was
-	// started for, or the error that stopped it.
+	// started for — with whether its pane should be shown straight away — or
+	// the error that stopped it.
 	agentLaunchedMsg struct {
 		slice   domain.Slice
 		session string
+		attach  bool
 		err     error
 	}
 	// liveSessionsMsg carries the slices with an agent running, each mapped to
@@ -88,28 +90,62 @@ type (
 	}
 )
 
-// LaunchForm is the modal behind l: where the agent's session should start.
-// The directory is the one thing about a launch worth asking, and it is worth
-// asking every time — a slice's brief may well be about somewhere else.
+// launchAction is the one choice the launch screen asks for. Launching on the
+// defaults comes first, so a single enter starts the agent and shows its pane;
+// editing and the background launch are the exceptions, a keystroke away.
+type launchAction int
+
+const (
+	actionLaunch launchAction = iota
+	actionEdit
+	actionBackground
+)
+
+// LaunchForm is the modal behind l. The resolved defaults are on display and
+// enter launches on them straight away; the directory is only opened for
+// editing when the user asks, because the default — the slice's own repo, or
+// the project's — is nearly always right.
 type LaunchForm struct {
 	form    *huh.Form
 	heading string
 
 	slice   domain.Slice
 	workdir string
+	action  launchAction
 }
 
-// newLaunchForm returns the form for launching an agent on a slice, starting
-// on the working directory the config resolves to.
+// newLaunchForm returns the form for launching an agent on a slice, showing
+// the working directory the config resolves to.
 func newLaunchForm(theme huh.Theme, s domain.Slice, workdir string) *LaunchForm {
 	f := &LaunchForm{heading: "Launch an agent for " + s.Name, slice: s, workdir: workdir}
-	f.form = huh.NewForm(huh.NewGroup(
-		huh.NewInput().
-			Title("Working directory").
-			Description("Where the agent's session starts; ~ is expanded.").
-			Value(&f.workdir).
-			Validate(existingDir),
-	)).WithTheme(theme)
+	f.form = huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[launchAction]().
+				Title("Working directory: " + workdir).
+				Options(
+					huh.NewOption("Launch and show the agent", actionLaunch),
+					huh.NewOption("Edit the working directory first", actionEdit),
+					huh.NewOption("Launch in the background", actionBackground),
+				).
+				Value(&f.action).
+				// A launch on the defaults skips the input and its check, so
+				// the directory is validated here instead — an edit is headed
+				// for the input, which checks what is actually typed.
+				Validate(func(a launchAction) error {
+					if a == actionEdit {
+						return nil
+					}
+					return existingDir(f.workdir)
+				}),
+		),
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Working directory").
+				Description("Where the agent's session starts; ~ is expanded.").
+				Value(&f.workdir).
+				Validate(existingDir),
+		).WithHideFunc(func() bool { return f.action != actionEdit }),
+	).WithTheme(theme)
 	return f
 }
 
@@ -140,7 +176,8 @@ func (f *LaunchForm) SetSize(width, height int) {
 // busyNote says what the status bar shows while the session starts.
 func (f *LaunchForm) busyNote() string { return "Launching the agent…" }
 
-// save starts the session the completed form describes.
+// save starts the session the completed form describes. Attaching is the
+// default; only the background launch leaves the pane unshown.
 func (f *LaunchForm) save(a *App) tea.Cmd {
 	// The form only ever opens on a configured project, so this is the one it
 	// was opened against.
@@ -150,13 +187,13 @@ func (f *LaunchForm) save(a *App) tea.Cmd {
 		Project:      project,
 		WorkingDir:   expandHome(strings.TrimSpace(f.workdir)),
 		AssigneeName: a.cfg.AssigneeUserName,
-	})
+	}, f.action != actionBackground)
 }
 
 // launchAgent writes the agent's prompt out and starts the detached session
 // that reads it. Nothing in Notion is touched: the agent claims its own slice,
 // which is what keeps the claim honest when two of them race.
-func launchAgent(l AgentLauncher, c agent.PromptContext) tea.Cmd {
+func launchAgent(l AgentLauncher, c agent.PromptContext, attach bool) tea.Cmd {
 	return func() tea.Msg {
 		session := agent.SessionName(c.Slice.ID)
 		file, err := agent.WritePromptFile(session, agent.Prompt(c))
@@ -166,76 +203,8 @@ func launchAgent(l AgentLauncher, c agent.PromptContext) tea.Cmd {
 		if err := l.Launch(session, c.WorkingDir, file, c.Slice.ID); err != nil {
 			return agentLaunchedMsg{err: err}
 		}
-		return agentLaunchedMsg{slice: c.Slice, session: session}
+		return agentLaunchedMsg{slice: c.Slice, session: session, attach: attach}
 	}
-}
-
-// AttachForm is the confirm offered once a session is up: the agent is running
-// either way, and this only asks whether to watch it now.
-type AttachForm struct {
-	form    *huh.Form
-	heading string
-
-	slice   domain.Slice
-	session string
-
-	confirmed bool
-}
-
-// newAttachForm returns the confirm for showing a freshly started agent.
-func newAttachForm(theme huh.Theme, s domain.Slice, session string) *AttachForm {
-	f := &AttachForm{heading: "Agent launched", slice: s, session: session}
-	f.form = huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().
-			Title(fmt.Sprintf("Show the agent working %q now?", s.Name)).
-			Description("It keeps running either way; t on the slice shows and hides it.").
-			Value(&f.confirmed),
-	)).WithTheme(theme)
-	return f
-}
-
-// Init starts the form.
-func (f *AttachForm) Init() tea.Cmd { return f.form.Init() }
-
-// Update feeds a message to the form.
-func (f *AttachForm) Update(msg tea.Msg) tea.Cmd {
-	form, cmd := f.form.Update(msg)
-	f.form = form.(*huh.Form)
-	return cmd
-}
-
-// State is how far the form has got.
-func (f *AttachForm) State() huh.FormState { return f.form.State }
-
-// View renders the form.
-func (f *AttachForm) View() string { return f.form.View() }
-
-// Heading is the title drawn over the form.
-func (f *AttachForm) Heading() string { return f.heading }
-
-// SetSize gives the form the room the window leaves it.
-func (f *AttachForm) SetSize(width, height int) {
-	f.form = f.form.WithWidth(width).WithHeight(height)
-}
-
-// busyNote is empty: attaching replaces the screen and declining writes
-// nothing, so there is no progress worth announcing.
-func (f *AttachForm) busyNote() string { return "" }
-
-// save shows the agent, or — when the answer was no — says how to reach it
-// later, so the session is not left running unnamed.
-func (f *AttachForm) save(a *App) tea.Cmd {
-	if !f.confirmed {
-		note := "Running in the background — attach with: " + attachCommand(f.session)
-		return func() tea.Msg { return agentAttachedMsg{note: note} }
-	}
-	return a.showAgent(f.slice, f.session)
-}
-
-// attachCommand is the shell command that attaches to a session from another
-// terminal.
-func attachCommand(session string) string {
-	return fmt.Sprintf("%s attach-session -t %s", agent.TmuxBinary, session)
 }
 
 // showAgent is what the board does with a slice's agent: shows it in a pane
@@ -448,23 +417,22 @@ func (a *App) paneMoved(msg agentAttachedMsg) {
 	}
 }
 
-// agentLaunched reports a finished launch and offers to attach to what it
-// started. A planning launch skips the offer: the user has just said what they
-// want to workshop, so the pane is shown straight away — w toggles it from
-// there.
+// agentLaunched takes a finished launch to its pane: attaching is the default,
+// so the session is shown straight away — t toggles it from there. A launch
+// sent to the background is confirmed instead, naming the key that attaches,
+// so the session is not left running unannounced.
 func (a *App) agentLaunched(msg agentLaunchedMsg) (tea.Model, tea.Cmd) {
 	a.busy = false
 	if msg.err != nil {
 		a.note, a.err = "", msg.err
 		return a, nil
 	}
-	if msg.slice.ID == agent.PlanSentinel {
-		a.busy, a.note = true, ""
-		return a, tea.Batch(a.showAgent(msg.slice, msg.session), a.refreshLive())
+	if !msg.attach {
+		confirm := a.showConfirm(fmt.Sprintf("Launched %s for %q — t attaches.", msg.session, msg.slice.Name), sevSuccess)
+		return a, tea.Batch(confirm, a.refreshLive())
 	}
-	cmd := a.openForm(newAttachForm(a.styles.FormTheme, msg.slice, msg.session))
-	confirm := a.showConfirm(fmt.Sprintf("Launched %s for %q.", msg.session, msg.slice.Name), sevSuccess)
-	return a, tea.Batch(cmd, confirm, a.refreshLive())
+	a.busy, a.note = true, ""
+	return a, tea.Batch(a.showAgent(msg.slice, msg.session), a.refreshLive())
 }
 
 // expandHome expands a leading ~ to the user's home directory. tmux is handed

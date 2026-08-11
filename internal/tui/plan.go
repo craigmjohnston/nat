@@ -92,7 +92,9 @@ func launchPlanAgent(l AgentLauncher, projectName, workdir, request string) tea.
 		if err := l.Launch(agent.PlanSession, workdir, file, agent.PlanSentinel); err != nil {
 			return agentLaunchedMsg{err: err}
 		}
-		return agentLaunchedMsg{slice: planSlice(), session: agent.PlanSession}
+		// A planning launch always attaches: the user has just said what they
+		// want to workshop, so the pane is shown straight away.
+		return agentLaunchedMsg{slice: planSlice(), session: agent.PlanSession, attach: true}
 	}
 }
 

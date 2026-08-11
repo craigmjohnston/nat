@@ -42,7 +42,6 @@ func everyModal(t *testing.T) map[string]modal {
 		"delete slice":   newDeleteSliceForm(DefaultStyles().FormTheme, s),
 		"milestone":      newMilestoneForm(DefaultStyles().FormTheme, m, domain.MilestoneActive),
 		"launch":         newLaunchForm(DefaultStyles().FormTheme, s, t.TempDir()),
-		"attach":         newAttachForm(DefaultStyles().FormTheme, s, "nat-12345678"),
 		"new project":    newNewProjectForm(DefaultStyles().FormTheme),
 		"switch project": newSwitchProjectForm(DefaultStyles().FormTheme, cfg),
 	}
