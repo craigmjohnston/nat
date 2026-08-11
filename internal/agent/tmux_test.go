@@ -174,6 +174,10 @@ func TestLaunch(t *testing.T) {
 			// Chained onto the creation, so the session never shows a status
 			// bar — not even to someone attaching straight away.
 			";", "set-option", "-t", "nat-b4463d8f", "status", "off",
+			// Server options, chained on too: shift+enter reaches the agent,
+			// and the URLs it prints stay clickable links.
+			";", "set-option", "-s", "extended-keys", "on",
+			";", "set-option", "-s", "-a", "terminal-features", "*:extkeys:hyperlinks",
 		}},
 		{name: "tmux", args: []string{"set-option", "-p", "-t", "%7", "@nat_slice", id}},
 	}
@@ -626,7 +630,9 @@ func TestLaunchArgsQuotesThePromptPath(t *testing.T) {
 func TestHostArgs(t *testing.T) {
 	got := HostArgs("/usr/local/bin/nat")
 	want := []string{"new-session", "-A", "-s", "nat-tui", "/usr/local/bin/nat",
-		";", "set-option", "-t", "nat-tui", "status", "off"}
+		";", "set-option", "-t", "nat-tui", "status", "off",
+		";", "set-option", "-s", "extended-keys", "on",
+		";", "set-option", "-s", "-a", "terminal-features", "*:extkeys:hyperlinks"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("args = %v, want %v", got, want)
 	}
@@ -641,12 +647,42 @@ func TestHostArgs(t *testing.T) {
 // and the argv above are the only places one is made.
 func TestSessionsNatCreatesChainStatusOff(t *testing.T) {
 	launch := LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md")
-	suffix := statusOffArgs("nat-1")
-	if !reflect.DeepEqual(launch[len(launch)-len(suffix):], suffix) {
-		t.Errorf("LaunchArgs = %v, want it to end with %v", launch, suffix)
+	chained := append(statusOffArgs("nat-1"), inputFeatureArgs()...)
+	if !reflect.DeepEqual(launch[len(launch)-len(chained):], chained) {
+		t.Errorf("LaunchArgs = %v, want it to end with %v", launch, chained)
 	}
 	if statusOffArgs("nat-1")[0] != ";" {
 		t.Error("the status off must be chained, not a command of its own")
+	}
+}
+
+// Shift+enter and clickable links ride on tmux server options: extended-keys
+// forwards the modified key to an agent that asks for it, and the
+// terminal-features entry both asks the outer terminal for extended keys
+// (extkeys) and lets OSC 8 hyperlinks pass through (hyperlinks). They are
+// chained onto every session nat itself creates; inside the user's own tmux
+// the first agent launch is what sets them.
+func TestSessionsNatCreatesEnableExtendedKeysAndHyperlinks(t *testing.T) {
+	suffix := inputFeatureArgs()
+	if suffix[0] != ";" {
+		t.Error("the feature options must be chained, not a command of their own")
+	}
+	joined := strings.Join(suffix, " ")
+	for _, want := range []string{
+		"; set-option -s extended-keys on",
+		"; set-option -s -a terminal-features *:extkeys:hyperlinks",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("inputFeatureArgs = %q, want it to contain %q", joined, want)
+		}
+	}
+	for _, args := range [][]string{
+		LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md"),
+		HostArgs("/usr/local/bin/nat"),
+	} {
+		if !reflect.DeepEqual(args[len(args)-len(suffix):], suffix) {
+			t.Errorf("args = %v, want them to end with %v", args, suffix)
+		}
 	}
 }
 

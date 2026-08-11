@@ -421,13 +421,14 @@ func (t *Tmux) Launch(session, workdir, promptFile, sliceID string) error {
 // pane IDs are unique for the life of the server, where a name is whatever it
 // has last been set to.
 func LaunchArgs(session, workdir, promptFile string) []string {
-	return append([]string{
+	args := append([]string{
 		"new-session", "-d",
 		"-s", session,
 		"-c", workdir,
 		"-P", "-F", "#{pane_id}",
 		"sh", "-c", agentCommand(promptFile),
 	}, statusOffArgs(session)...)
+	return append(args, inputFeatureArgs()...)
 }
 
 // HostArgs is the tmux argv that runs binary as the TUI, inside [TUISession].
@@ -442,7 +443,8 @@ func LaunchArgs(session, workdir, promptFile string) []string {
 // launch inside tmux never gets here — so hiding its status bar touches no
 // session the user was already in.
 func HostArgs(binary string) []string {
-	return append([]string{"new-session", "-A", "-s", TUISession, binary}, statusOffArgs(TUISession)...)
+	args := append([]string{"new-session", "-A", "-s", TUISession, binary}, statusOffArgs(TUISession)...)
+	return append(args, inputFeatureArgs()...)
 }
 
 // statusOffArgs is the command that hides the tmux status bar in a session of
@@ -457,6 +459,30 @@ func HostArgs(binary string) []string {
 // runs once the session is there.
 func statusOffArgs(session string) []string {
 	return []string{";", "set-option", "-t", session, "status", "off"}
+}
+
+// terminalFeatures is the terminal-features entry chained onto our session
+// creation: every outer terminal ("*") is told to support extended keys, so
+// tmux asks it for them and shift+enter arrives distinguishable from enter,
+// and OSC 8 hyperlinks, so a URL an agent prints stays a link the terminal can
+// open even with the mouse held by tmux. A terminal that truly supports
+// neither degrades to what it did before; the claim costs it nothing.
+const terminalFeatures = "*:extkeys:hyperlinks"
+
+// inputFeatureArgs is the command chain that lets an agent's pane receive
+// modified keys and emit clickable links: extended-keys forwards keys like
+// shift+enter to a program that asks for them (Claude Code's composer does),
+// and the terminal-features entry covers both directions of the outer
+// terminal. Both are server options — tmux has no narrower scope for them —
+// so they are chained onto the new-session commands rather than set per
+// session; appending to terminal-features (-a) leaves whatever entries the
+// user has set, at the cost of a repeated identical entry per launch, which
+// tmux reads happily.
+func inputFeatureArgs() []string {
+	return []string{
+		";", "set-option", "-s", "extended-keys", "on",
+		";", "set-option", "-s", "-a", "terminal-features", terminalFeatures,
+	}
 }
 
 // agentCommand is the shell command the session runs: start Claude Code with
