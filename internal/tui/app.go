@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
+	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
@@ -478,16 +479,31 @@ func (a *App) openForm(f modal) tea.Cmd {
 }
 
 // formHintsHeight is the blank line huh draws above its own key hints on top of
-// the height it was given, and so the one line of the body band a form cannot
+// the height it was given, and so the one line of the modal a form cannot
 // be told about.
 const formHintsHeight = 1
 
-// formSize is the room an open form has: the body band, less the line huh
-// spends without counting it. Before the first resize there is no window to
-// measure, so the numbers come out non-positive — which is huh's own signal to
-// size itself, and it does that from the resize that follows.
+// A floating modal's measurements: the least columns and lines of board its
+// frame is held away from the body's edges by, and the widest its interior may
+// grow — a form run out across a wide window reads as a wall, not a dialog.
+const (
+	modalMarginX  = 3
+	modalMarginY  = 1
+	modalMaxWidth = 64
+)
+
+// formSize is the room an open form has: the interior of a modal floating over
+// the board, held off the body's edges and capped rather than run out to a wide
+// window. Before the first resize there is no window to measure, so the numbers
+// come out non-positive — which is huh's own signal to size itself, and it does
+// that from the resize that follows.
 func (a *App) formSize() (width, height int) {
-	return a.innerWidth(), a.bodyHeight() - formHintsHeight
+	if a.width <= 0 || a.height <= 0 {
+		return 0, 0
+	}
+	width = min(a.innerWidth()-2*modalMarginX-a.styles.Modal.GetHorizontalFrameSize(), modalMaxWidth)
+	height = a.bodyHeight() - 2*modalMarginY - a.styles.Modal.GetVerticalFrameSize() - formHintsHeight
+	return width, height
 }
 
 // formUpdate feeds a message to the open form, writing what it says to Notion
@@ -823,10 +839,39 @@ func (a *App) body() string {
 	case screenInfo:
 		return a.infoView()
 	case screenForm:
-		return a.form.View()
+		return a.modalView()
 	default:
 		return a.boardView()
 	}
+}
+
+// modalView floats the open form over the board: the form in its own bordered
+// box, centred on the body band, over the board faded behind it. Before the
+// first resize there is no band to centre on, so the box is drawn alone.
+func (a *App) modalView() string {
+	box := a.styles.Modal.Render(a.form.View())
+	width, height := a.innerWidth(), a.bodyHeight()
+	if width <= 0 || height <= 0 {
+		return box
+	}
+	// A Layer's position only counts through a Compositor — composing layers
+	// straight onto a Canvas draws each at the origin.
+	canvas := lipgloss.NewCanvas(width, height)
+	canvas.Compose(lipgloss.NewCompositor(
+		lipgloss.NewLayer(a.scrimView()),
+		lipgloss.NewLayer(box).
+			X(max((width-lipgloss.Width(box))/2, 0)).
+			Y(max((height-lipgloss.Height(box))/2, 0)).
+			Z(1),
+	))
+	return canvas.Render()
+}
+
+// scrimView is the board as a modal's backdrop: every colour it draws with
+// stripped and the whole of it redrawn receded, so the form on top is the only
+// thing at full strength.
+func (a *App) scrimView() string {
+	return a.styles.Scrim.Render(xansi.Strip(a.boardView()))
 }
 
 // boardView is the main screen: the project's segmented progress bar, and the
