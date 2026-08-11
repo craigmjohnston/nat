@@ -223,8 +223,8 @@ func TestAppPlanKeyTogglesThePaneBesideTheBoard(t *testing.T) {
 	launcher.joined = false
 	feed(t, app, press(app, "w"))
 
-	if want := `Sent the agent for "the plan" back to nat-plan.`; app.note != want {
-		t.Errorf("note = %q, want %q", app.note, want)
+	if want := `Sent the agent for "the plan" back to nat-plan.`; app.toast != want {
+		t.Errorf("toast = %q, want %q", app.toast, want)
 	}
 	if app.joined[agent.PlanSentinel] {
 		t.Error("the joined mark should go with the pane")
@@ -299,8 +299,8 @@ func TestAppPlanKeyIsRefusedWithNothingToLaunchWith(t *testing.T) {
 			if cmd := press(app, "w"); cmd != nil {
 				t.Error("there is nothing to launch with")
 			}
-			if app.form != nil || app.note != "" {
-				t.Errorf("form = %T, note = %q, want the key ignored", app.form, app.note)
+			if app.form != nil || app.board.confirmText != "" {
+				t.Errorf("form = %T, confirm = %q, want the key ignored", app.form, app.board.confirmText)
 			}
 		})
 	}

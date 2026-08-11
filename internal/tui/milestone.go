@@ -118,13 +118,11 @@ func (a *App) queueMilestone() tea.Cmd {
 	}
 	m, ok := a.board.SelectedMilestone()
 	if !ok {
-		a.note = "Move to a milestone to change its status."
-		return nil
+		return a.showConfirm("Move to a milestone to change its status.", sevWarning)
 	}
 	next, ok := nextMilestoneStatus(m.Status)
 	if !ok {
-		a.note = fmt.Sprintf("%q is %s — there is nothing to move it to.", m.Name, m.Status)
-		return nil
+		return a.showConfirm(fmt.Sprintf("%q is %s — there is nothing to move it to.", m.Name, m.Status), sevWarning)
 	}
 	return a.openForm(newMilestoneForm(a.styles.FormTheme, m, next))
 }

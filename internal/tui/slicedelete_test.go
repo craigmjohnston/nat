@@ -75,8 +75,8 @@ func TestAppDeleteTrashesTheConfirmedSlice(t *testing.T) {
 	if !equal(client.trashed, []string{"s5"}) {
 		t.Fatalf("trashed = %v, want the slice's page", client.trashed)
 	}
-	if app.note != `Deleted "Info view".` {
-		t.Errorf("note = %q, want the deleted note", app.note)
+	if app.board.confirmText != `Deleted "Info view".` {
+		t.Errorf("confirm = %q, want the deleted confirmation", app.board.confirmText)
 	}
 }
 
@@ -94,8 +94,8 @@ func TestAppDeleteTrashesNothingWhenTheAnswerIsNo(t *testing.T) {
 	if app.busy {
 		t.Error("a confirm answered no leaves no write in flight")
 	}
-	if app.note != "Cancelled." {
-		t.Errorf("note = %q, want the cancelled note", app.note)
+	if app.toast != "Cancelled." {
+		t.Errorf("toast = %q, want the cancelled toast", app.toast)
 	}
 }
 
@@ -108,8 +108,8 @@ func TestAppDeleteRefusesAClaimedSlice(t *testing.T) {
 	if app.form != nil {
 		t.Error("a claimed slice should not be opened for deletion")
 	}
-	if want := `"Board screen" is Claimed — work in flight cannot be deleted.`; app.note != want {
-		t.Errorf("note = %q, want %q", app.note, want)
+	if want := `"Board screen" is Claimed — work in flight cannot be deleted.`; app.board.confirmText != want {
+		t.Errorf("confirm = %q, want %q", app.board.confirmText, want)
 	}
 }
 
@@ -122,7 +122,7 @@ func TestAppDeleteNeedsASliceUnderTheCursor(t *testing.T) {
 	if app.form != nil {
 		t.Error("a confirm was opened with no slice to delete")
 	}
-	if !strings.Contains(app.note, "Move to a slice") {
-		t.Errorf("note = %q, want the slice hint", app.note)
+	if !strings.Contains(app.board.confirmText, "Move to a slice") {
+		t.Errorf("confirm = %q, want the slice hint", app.board.confirmText)
 	}
 }

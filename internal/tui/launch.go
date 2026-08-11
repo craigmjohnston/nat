@@ -299,16 +299,13 @@ func (a *App) launchAgentFlow() tea.Cmd {
 	}
 	s, ok := a.board.SelectedSlice()
 	if !ok {
-		a.note = "Move to a slice to launch an agent for it."
-		return nil
+		return a.showConfirm("Move to a slice to launch an agent for it.", sevWarning)
 	}
 	if a.live[s.ID] != "" {
-		a.note = fmt.Sprintf("An agent is already running for %q — press t to attach.", s.Name)
-		return nil
+		return a.showConfirm(fmt.Sprintf("An agent is already running for %q — press t to attach.", s.Name), sevWarning)
 	}
 	if s.Status != domain.SliceTodo {
-		a.note = fmt.Sprintf("%q is %s — only Todo slices can be launched.", s.Name, s.Status)
-		return nil
+		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices can be launched.", s.Name, s.Status), sevWarning)
 	}
 	return a.openForm(newLaunchForm(a.styles.FormTheme, s, workdirFor(s, project)))
 }
@@ -333,13 +330,11 @@ func (a *App) attachAgentFlow() tea.Cmd {
 	}
 	s, ok := a.board.SelectedSlice()
 	if !ok {
-		a.note = "Move to a slice to attach to its agent."
-		return nil
+		return a.showConfirm("Move to a slice to attach to its agent.", sevWarning)
 	}
 	session := a.live[s.ID]
 	if session == "" {
-		a.note = fmt.Sprintf("No agent session is running for %q.", s.Name)
-		return nil
+		return a.showConfirm(fmt.Sprintf("No agent session is running for %q.", s.Name), sevWarning)
 	}
 	a.busy, a.note = true, ""
 	return a.showAgent(s, session)
@@ -380,18 +375,19 @@ func (a *App) reclaimStrays() tea.Cmd {
 }
 
 // straysReclaimed reports what the reconcile found. Finding nothing is the
-// ordinary case and says nothing; a failure is a note rather than an error
+// ordinary case and says nothing; a failure is a toast rather than an error
 // banner, because the board is still worth looking at and the agents it could
 // not move are all still running.
-func (a *App) straysReclaimed(msg straysReclaimedMsg) {
+func (a *App) straysReclaimed(msg straysReclaimedMsg) tea.Cmd {
 	switch {
 	case msg.err != nil:
-		a.note = fmt.Sprintf("Could not re-home the agents left by an earlier run: %v", msg.err)
+		return a.showToast(fmt.Sprintf("Could not re-home the agents left by an earlier run: %v", msg.err), sevError)
 	case msg.count == 1:
-		a.note = "Re-homed 1 agent left joined by an earlier run."
+		return a.showToast("Re-homed 1 agent left joined by an earlier run.", sevSuccess)
 	case msg.count > 1:
-		a.note = fmt.Sprintf("Re-homed %d agents left joined by an earlier run.", msg.count)
+		return a.showToast(fmt.Sprintf("Re-homed %d agents left joined by an earlier run.", msg.count), sevSuccess)
 	}
+	return nil
 }
 
 // refreshLive kicks off a read of the running sessions. It is skipped when
@@ -408,13 +404,15 @@ func (a *App) refreshLive() tea.Cmd {
 }
 
 // liveLoaded takes the sessions that came back to the board, returning the
-// plan reload a planning agent's exit calls for. A failed read is a note
+// plan reload a planning agent's exit calls for. A failed read is a toast
 // rather than an error banner: it is a background poll, and the plan is still
 // worth looking at without knowing what is running.
 func (a *App) liveLoaded(msg liveSessionsMsg) tea.Cmd {
 	planWasLive := a.live[agent.PlanSentinel] != ""
+	var failed tea.Cmd
 	if msg.err != nil {
-		a.live, a.note = nil, fmt.Sprintf("Could not read tmux panes: %v", msg.err)
+		a.live = nil
+		failed = a.showToast(fmt.Sprintf("Could not read tmux panes: %v", msg.err), sevError)
 	} else {
 		a.live = msg.live
 		// A joined agent that is no longer live has exited, taking its pane
@@ -433,7 +431,7 @@ func (a *App) liveLoaded(msg liveSessionsMsg) tea.Cmd {
 	if msg.err == nil && planWasLive && a.live[agent.PlanSentinel] == "" {
 		return a.startLoad()
 	}
-	return nil
+	return failed
 }
 
 // paneMoved keeps the joined marks in step with a pane movement the message
@@ -465,8 +463,8 @@ func (a *App) agentLaunched(msg agentLaunchedMsg) (tea.Model, tea.Cmd) {
 		return a, tea.Batch(a.showAgent(msg.slice, msg.session), a.refreshLive())
 	}
 	cmd := a.openForm(newAttachForm(a.styles.FormTheme, msg.slice, msg.session))
-	a.note = fmt.Sprintf("Launched %s for %q.", msg.session, msg.slice.Name)
-	return a, tea.Batch(cmd, a.refreshLive())
+	confirm := a.showConfirm(fmt.Sprintf("Launched %s for %q.", msg.session, msg.slice.Name), sevSuccess)
+	return a, tea.Batch(cmd, confirm, a.refreshLive())
 }
 
 // expandHome expands a leading ~ to the user's home directory. tmux is handed

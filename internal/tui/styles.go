@@ -93,6 +93,22 @@ type Styles struct {
 	StatusSep  lipgloss.Style
 	// Error is the status bar of a failed Notion call.
 	Error lipgloss.Style
+	// ToastSuccess, ToastWarning and ToastError are the status-bar toasts for
+	// events not scoped to a row, each the severity's colour on the bar's fill.
+	ToastSuccess lipgloss.Style
+	ToastWarning lipgloss.Style
+	ToastError   lipgloss.Style
+	// ConfirmSuccess, ConfirmWarning and ConfirmError are the inline
+	// confirmations anchored to a board row: a chip filled with the severity's
+	// colour. Each ConfirmFade* is the ~2-cell dithered edge drawn where the
+	// chip overlaps the row's content — the severity colour over the selected
+	// row's fill, so the chip reads as sliding over the row.
+	ConfirmSuccess     lipgloss.Style
+	ConfirmWarning     lipgloss.Style
+	ConfirmError       lipgloss.Style
+	ConfirmFadeSuccess lipgloss.Style
+	ConfirmFadeWarning lipgloss.Style
+	ConfirmFadeError   lipgloss.Style
 	// ModeChip is the status bar's leading segment: the project's name on the
 	// board, the screen's name everywhere else.
 	ModeChip lipgloss.Style
@@ -172,7 +188,19 @@ func NewStyles(isDark bool) Styles {
 		StatusNote: bar.Foreground(t.Success),
 		StatusSep:  bar.Foreground(t.Muted),
 
-		Error:    chip.Bold(true).Foreground(t.OnFill).Background(t.Danger),
+		Error: chip.Bold(true).Foreground(t.OnFill).Background(t.Danger),
+
+		ToastSuccess: bar.Foreground(t.Success),
+		ToastWarning: bar.Foreground(t.Warning),
+		ToastError:   bar.Foreground(t.Danger),
+
+		ConfirmSuccess:     chip.Foreground(t.OnFill).Background(t.Success),
+		ConfirmWarning:     chip.Foreground(t.OnFill).Background(t.Warning),
+		ConfirmError:       chip.Foreground(t.OnFill).Background(t.Danger),
+		ConfirmFadeSuccess: lipgloss.NewStyle().Foreground(t.Success).Background(t.SurfaceHi),
+		ConfirmFadeWarning: lipgloss.NewStyle().Foreground(t.Warning).Background(t.SurfaceHi),
+		ConfirmFadeError:   lipgloss.NewStyle().Foreground(t.Danger).Background(t.SurfaceHi),
+
 		ModeChip: chip.Foreground(t.OnFill).Background(t.Accent),
 		Spinner:  lipgloss.NewStyle().Foreground(t.Accent),
 		HelpKey:  lipgloss.NewStyle().Foreground(t.Accent),
@@ -201,6 +229,29 @@ func NewStyles(isDark bool) Styles {
 
 		FormTheme: huh.ThemeFunc(func(bool) *huh.Styles { return formStyles(t) }),
 	}
+}
+
+// toastStyle is the status-bar style a toast of the given severity renders in.
+func (s Styles) toastStyle(sev severity) lipgloss.Style {
+	switch sev {
+	case sevWarning:
+		return s.ToastWarning
+	case sevError:
+		return s.ToastError
+	}
+	return s.ToastSuccess
+}
+
+// confirmStyles are the chip and fade styles an inline confirmation of the
+// given severity renders in.
+func (s Styles) confirmStyles(sev severity) (chip, fade lipgloss.Style) {
+	switch sev {
+	case sevWarning:
+		return s.ConfirmWarning, s.ConfirmFadeWarning
+	case sevError:
+		return s.ConfirmError, s.ConfirmFadeError
+	}
+	return s.ConfirmSuccess, s.ConfirmFadeSuccess
 }
 
 // formStyles adapts the tokens for huh's widgets, giving each part the same

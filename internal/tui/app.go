@@ -159,8 +159,16 @@ type App struct {
 	busy    bool
 	spinner spinner.Model
 
-	err  error
-	note string
+	err error
+	// note is progress in flight — "Saving…" — cleared when the work lands.
+	// What lands reports itself as an inline confirmation on the board row it
+	// was about, or, when it is not about a row, as a toast here on the bar;
+	// both auto-dismiss, on the timer their id ties them to.
+	note      string
+	toast     string
+	toastSev  severity
+	toastID   int
+	confirmID int
 
 	width, height int
 }
@@ -261,16 +269,26 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case agentAttachedMsg:
 		a.paneMoved(msg)
 		// The agent has had the terminal to itself, so the plan it was working on
-		// is reloaded rather than trusted.
+		// is reloaded rather than trusted. The planning agent's pane is about the
+		// plan rather than any row, so its report is a toast, not a row confirm.
+		if msg.slice == agent.PlanSentinel && msg.err == nil && msg.note != "" {
+			a.busy = false
+			return a, tea.Batch(a.startLoad(), a.refreshLive(), a.showToast(msg.note, sevSuccess))
+		}
 		model, cmd := a.saved(msg.note, msg.err)
 		return model, tea.Batch(cmd, a.refreshLive())
 	case liveSessionsMsg:
 		return a, a.liveLoaded(msg)
 	case straysReclaimedMsg:
-		a.straysReclaimed(msg)
-		return a, nil
+		return a, a.straysReclaimed(msg)
 	case liveTickMsg:
 		return a, tea.Batch(a.refreshLive(), liveTick())
+	case toastGoneMsg:
+		a.toastGone(msg)
+		return a, nil
+	case confirmGoneMsg:
+		a.confirmGone(msg)
+		return a, nil
 	case spinner.TickMsg:
 		if !a.loading && !a.info.Busy() {
 			return a, nil
@@ -311,10 +329,9 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if a.form != nil {
 		if key.Matches(msg, a.keys.Back) {
 			a.closeForm()
-			a.note = "Cancelled."
 			// Coming back to the board is a chance to notice a session that
 			// started, or ended, while the form was up.
-			return a, a.refreshLive()
+			return a, tea.Batch(a.showToast("Cancelled.", sevWarning), a.refreshLive())
 		}
 		return a, a.formUpdate(msg)
 	}
@@ -329,7 +346,9 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, a.keys.Quit):
 		return a, tea.Quit
 	case key.Matches(msg, a.keys.Refresh):
-		a.note = ""
+		// A refresh is a fresh look, so whatever was being reported goes.
+		a.note, a.toast = "", ""
+		a.board.ClearConfirm()
 		// The project page is refreshed too — at once if the user is reading it,
 		// otherwise lazily, on the next visit to the info screen.
 		a.info.Reset()
@@ -416,8 +435,7 @@ func (a *App) addSlice() tea.Cmd {
 	}
 	m, ok := a.board.SelectedMilestone()
 	if !ok {
-		a.note = "Move to a milestone to add a slice under it."
-		return nil
+		return a.showConfirm("Move to a milestone to add a slice under it.", sevWarning)
 	}
 	return a.openForm(newAddSliceForm(a.styles.FormTheme, m))
 }
@@ -431,12 +449,10 @@ func (a *App) editSlice() tea.Cmd {
 	}
 	s, ok := a.board.SelectedSlice()
 	if !ok {
-		a.note = "Move to a slice to edit it."
-		return nil
+		return a.showConfirm("Move to a slice to edit it.", sevWarning)
 	}
 	if s.Status != domain.SliceTodo {
-		a.note = fmt.Sprintf("%q is %s — only Todo slices can be edited.", s.Name, s.Status)
-		return nil
+		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices can be edited.", s.Name, s.Status), sevWarning)
 	}
 	a.busy, a.note = true, "Loading the slice…"
 	return loadSliceBody(a.client, s)
@@ -491,8 +507,7 @@ func (a *App) saveForm() tea.Cmd {
 	a.closeForm()
 	cmd := f.save(a)
 	if cmd == nil {
-		a.note = "Cancelled."
-		return nil
+		return a.showToast("Cancelled.", sevWarning)
 	}
 	a.busy, a.note = true, busyNoteOf(f)
 	return cmd
@@ -515,15 +530,21 @@ func busyNoteOf(f modal) string {
 func (a *App) closeForm() { a.form, a.screen = nil, screenBoard }
 
 // saved reports a finished write and reloads the plan, so the board shows what
-// was just written rather than what was there before.
+// was just written rather than what was there before. The writes that come
+// through here are all about the row the cursor is on, so the report is an
+// inline confirmation anchored to it.
 func (a *App) saved(note string, err error) (tea.Model, tea.Cmd) {
 	a.busy = false
 	if err != nil {
 		a.note, a.err = "", err
 		return a, nil
 	}
-	a.note = note
-	return a, tea.Batch(a.startLoad(), a.refreshLive())
+	a.note = ""
+	cmds := []tea.Cmd{a.startLoad(), a.refreshLive()}
+	if note != "" {
+		cmds = append(cmds, a.showConfirm(note, sevSuccess))
+	}
+	return a, tea.Batch(cmds...)
 }
 
 // toggle switches to want, or back to the board if it is already on show.
@@ -542,11 +563,9 @@ func (a *App) onboardingDone(msg OnboardingDoneMsg) (tea.Model, tea.Cmd) {
 		// Nothing to load, and nothing to look at until there is: the wizard hands
 		// straight over to the flow that makes the first project.
 		cmd := a.newProjectFlow()
-		a.note = "Setup complete. No projects yet — let's make one."
-		return a, cmd
+		return a, tea.Batch(cmd, a.showToast("Setup complete. No projects yet — let's make one.", sevSuccess))
 	}
-	a.note = "Setup complete."
-	return a, a.startLoad()
+	return a, tea.Batch(a.startLoad(), a.showToast("Setup complete.", sevSuccess))
 }
 
 // startLoad kicks off a load of the active project's plan, returning nil when
@@ -1033,6 +1052,9 @@ func (a *App) statusMessage(width int) string {
 	// the one key it does not handle itself.
 	if a.form != nil {
 		return fit(a.styles.StatusKey.Render("esc")+" "+a.styles.StatusDesc.Render("cancel"), width)
+	}
+	if a.toast != "" {
+		return a.styles.toastStyle(a.toastSev).Render(fit(oneLine(a.toast), width))
 	}
 	return ""
 }

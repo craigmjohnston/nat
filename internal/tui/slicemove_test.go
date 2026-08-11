@@ -148,8 +148,8 @@ func TestAppMoveWritesThePickedMilestone(t *testing.T) {
 	if got := client.updated[0].properties[notion.PropMilestone]; !reflect.DeepEqual(got, want) {
 		t.Errorf("milestone = %+v, want %+v", got, want)
 	}
-	if app.note != `Moved "Info view" to M3: Mutations.` {
-		t.Errorf("note = %q, want the moved note", app.note)
+	if app.board.confirmText != `Moved "Info view" to M3: Mutations.` {
+		t.Errorf("confirm = %q, want the moved confirmation", app.board.confirmText)
 	}
 }
 
@@ -162,8 +162,8 @@ func TestAppMoveRefusesAClaimedSlice(t *testing.T) {
 	if app.form != nil {
 		t.Error("a claimed slice should not be opened for moving")
 	}
-	if want := `"Board screen" is Claimed — work in flight cannot be moved.`; app.note != want {
-		t.Errorf("note = %q, want %q", app.note, want)
+	if want := `"Board screen" is Claimed — work in flight cannot be moved.`; app.board.confirmText != want {
+		t.Errorf("confirm = %q, want %q", app.board.confirmText, want)
 	}
 }
 
@@ -176,8 +176,8 @@ func TestAppMoveNeedsASliceUnderTheCursor(t *testing.T) {
 	if app.form != nil {
 		t.Error("a picker was opened with no slice to move")
 	}
-	if !strings.Contains(app.note, "Move to a slice") {
-		t.Errorf("note = %q, want the slice hint", app.note)
+	if !strings.Contains(app.board.confirmText, "Move to a slice") {
+		t.Errorf("confirm = %q, want the slice hint", app.board.confirmText)
 	}
 }
 
@@ -199,7 +199,7 @@ func TestAppMoveNeedsSomewhereToMoveTo(t *testing.T) {
 	if app.form != nil {
 		t.Error("a picker was opened with nowhere to move to")
 	}
-	if want := `There is no other milestone to move "Only" to.`; app.note != want {
-		t.Errorf("note = %q, want %q", app.note, want)
+	if want := `There is no other milestone to move "Only" to.`; app.board.confirmText != want {
+		t.Errorf("confirm = %q, want %q", app.board.confirmText, want)
 	}
 }
