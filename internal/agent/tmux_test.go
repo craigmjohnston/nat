@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -165,7 +166,7 @@ func TestLaunch(t *testing.T) {
 	}
 
 	want := []call{
-		{name: "tmux", args: []string{
+		{name: "tmux", args: append([]string{
 			"new-session", "-d",
 			"-s", "nat-b4463d8f",
 			"-c", "/Users/craig/Projects/x",
@@ -174,11 +175,14 @@ func TestLaunch(t *testing.T) {
 			// Chained onto the creation, so the session never shows a status
 			// bar — not even to someone attaching straight away.
 			";", "set-option", "-t", "nat-b4463d8f", "status", "off",
+			// The mouse is tmux's in an agent's session, so the hyperlink
+			// click binding fires there.
+			";", "set-option", "-t", "nat-b4463d8f", "mouse", "on",
 			// Server options, chained on too: shift+enter reaches the agent,
 			// and the URLs it prints stay clickable links.
 			";", "set-option", "-s", "extended-keys", "on",
 			";", "set-option", "-s", "-a", "terminal-features", "*:extkeys:hyperlinks",
-		}},
+		}, clickBindingArgs()...)},
 		{name: "tmux", args: []string{"set-option", "-p", "-t", "%7", "@nat_slice", id}},
 	}
 	if !reflect.DeepEqual(r.calls, want) {
@@ -218,6 +222,53 @@ func TestLaunchTagError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "3b73") {
 		t.Errorf("err = %v, want it to name the slice", err)
+	}
+}
+
+// clickBindingArgs is the command chain every launch ends with: the two mouse
+// bindings that open the hyperlink under a click. The opener is chosen here
+// independently of the code under test, so a wrong platform pick fails rather
+// than agreeing with itself.
+func clickBindingArgs() []string {
+	opener := "xdg-open"
+	if runtime.GOOS == "darwin" {
+		opener = "open"
+	}
+	open := "run-shell -b '" + opener + " #{q:mouse_hyperlink}'"
+	return []string{
+		";", "bind-key", "-T", "root", "MouseDown1Pane",
+		"if-shell", "-F", "-t", "=", "#{!=:#{mouse_hyperlink},}",
+		// On a link: open it, and still do everything a click always did.
+		open + " ; select-pane -t = ; send-keys -M",
+		"select-pane -t = ; send-keys -M",
+		";", "bind-key", "-T", "root", "C-MouseDown1Pane",
+		"if-shell", "-F", "-t", "=", "#{!=:#{mouse_hyperlink},}",
+		// On a link: open it instead of tmux's stock pane swap, which is
+		// never what a ctrl-click on a URL wants.
+		open,
+		"swap-pane -s @",
+	}
+}
+
+func TestURLOpenerPerPlatform(t *testing.T) {
+	if got := urlOpenerFor("darwin"); got != "open" {
+		t.Errorf(`urlOpenerFor("darwin") = %q, want "open"`, got)
+	}
+	if got := urlOpenerFor("linux"); got != "xdg-open" {
+		t.Errorf(`urlOpenerFor("linux") = %q, want "xdg-open"`, got)
+	}
+	if got, want := urlOpener(), urlOpenerFor(runtime.GOOS); got != want {
+		t.Errorf("urlOpener() = %q, want the pick for this platform, %q", got, want)
+	}
+}
+
+func TestHyperlinkClickArgs(t *testing.T) {
+	got := hyperlinkClickArgs()
+	if !reflect.DeepEqual(got, clickBindingArgs()) {
+		t.Errorf("hyperlinkClickArgs = %q, want %q", got, clickBindingArgs())
+	}
+	if got[0] != ";" {
+		t.Error("the bindings must be chained, not a command of their own")
 	}
 }
 
@@ -301,7 +352,10 @@ func TestShowPaneBreaksAJoinedAgentBackOut(t *testing.T) {
 		{name: "tmux", args: []string{"list-panes", "-a", "-F", listPanesFormat()}},
 		{name: "tmux", args: []string{"new-session", "-d", "-s", session,
 			"-P", "-F", "#{pane_id}", placeholderCommand,
-			";", "set-option", "-t", session, "status", "off"}},
+			";", "set-option", "-t", session, "status", "off",
+			// A broken-out session is attached to on its own, so the mouse —
+			// and with it the link click — has to be tmux's there too.
+			";", "set-option", "-t", session, "mouse", "on"}},
 		{name: "tmux", args: []string{"join-pane", "-s", "%1", "-t", session + ":"}},
 		{name: "tmux", args: []string{"kill-pane", "-t", "%9"}},
 	}
@@ -432,7 +486,8 @@ func breakOutCalls(paneID, session, placeholder string) []call {
 	return []call{
 		{name: "tmux", args: []string{"new-session", "-d", "-s", session,
 			"-P", "-F", "#{pane_id}", placeholderCommand,
-			";", "set-option", "-t", session, "status", "off"}},
+			";", "set-option", "-t", session, "status", "off",
+			";", "set-option", "-t", session, "mouse", "on"}},
 		{name: "tmux", args: []string{"join-pane", "-s", paneID, "-t", session + ":"}},
 		{name: "tmux", args: []string{"kill-pane", "-t", placeholder}},
 	}
@@ -629,10 +684,13 @@ func TestLaunchArgsQuotesThePromptPath(t *testing.T) {
 // still reads as one family, and `-A` is what lets a second launch attach.
 func TestHostArgs(t *testing.T) {
 	got := HostArgs("/usr/local/bin/nat")
-	want := []string{"new-session", "-A", "-s", "nat-tui", "/usr/local/bin/nat",
+	// No mouse-on for the board's session: it gets its mouse at join time, the
+	// way it always has.
+	want := append([]string{"new-session", "-A", "-s", "nat-tui", "/usr/local/bin/nat",
 		";", "set-option", "-t", "nat-tui", "status", "off",
 		";", "set-option", "-s", "extended-keys", "on",
-		";", "set-option", "-s", "-a", "terminal-features", "*:extkeys:hyperlinks"}
+		";", "set-option", "-s", "-a", "terminal-features", "*:extkeys:hyperlinks"},
+		clickBindingArgs()...)
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("args = %v, want %v", got, want)
 	}
@@ -647,12 +705,16 @@ func TestHostArgs(t *testing.T) {
 // and the argv above are the only places one is made.
 func TestSessionsNatCreatesChainStatusOff(t *testing.T) {
 	launch := LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md")
-	chained := append(statusOffArgs("nat-1"), inputFeatureArgs()...)
+	chained := append(statusOffArgs("nat-1"), mouseOnArgs("nat-1")...)
+	chained = append(chained, inputFeatureArgs()...)
+	chained = append(chained, hyperlinkClickArgs()...)
 	if !reflect.DeepEqual(launch[len(launch)-len(chained):], chained) {
 		t.Errorf("LaunchArgs = %v, want it to end with %v", launch, chained)
 	}
-	if statusOffArgs("nat-1")[0] != ";" {
-		t.Error("the status off must be chained, not a command of its own")
+	for _, args := range [][]string{statusOffArgs("nat-1"), mouseOnArgs("nat-1")} {
+		if args[0] != ";" {
+			t.Errorf("%v must be chained, not a command of its own", args)
+		}
 	}
 }
 
@@ -676,6 +738,7 @@ func TestSessionsNatCreatesEnableExtendedKeysAndHyperlinks(t *testing.T) {
 			t.Errorf("inputFeatureArgs = %q, want it to contain %q", joined, want)
 		}
 	}
+	suffix = append(suffix, hyperlinkClickArgs()...)
 	for _, args := range [][]string{
 		LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md"),
 		HostArgs("/usr/local/bin/nat"),

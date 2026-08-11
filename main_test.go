@@ -366,10 +366,9 @@ func TestHostRunsTheTUIInsideTmux(t *testing.T) {
 	if got.argv0 != "/opt/homebrew/bin/tmux" {
 		t.Errorf("argv0 = %q, want the tmux found on PATH", got.argv0)
 	}
-	want := []string{"tmux", "new-session", "-A", "-s", "nat-tui", "/usr/local/bin/nat",
-		";", "set-option", "-t", "nat-tui", "status", "off",
-		";", "set-option", "-s", "extended-keys", "on",
-		";", "set-option", "-s", "-a", "terminal-features", "*:extkeys:hyperlinks"}
+	// The chain's exact shape is the agent package's contract, asserted in its
+	// own tests; what matters here is that host hands it to tmux unaltered.
+	want := append([]string{"tmux"}, agent.HostArgs("/usr/local/bin/nat")...)
 	if !reflect.DeepEqual(got.argv, want) {
 		t.Errorf("argv = %q, want %q", got.argv, want)
 	}
