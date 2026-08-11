@@ -118,10 +118,10 @@ type LaunchForm struct {
 // the working directory the config resolves to.
 func newLaunchForm(theme huh.Theme, s domain.Slice, workdir string) *LaunchForm {
 	f := &LaunchForm{heading: "Launch an agent for " + s.Name, slice: s, workdir: workdir}
-	f.form = huh.NewForm(
+	f.form = newForm(theme,
 		huh.NewGroup(
 			huh.NewSelect[launchAction]().
-				Title("Working directory: " + workdir).
+				Title("Working directory: "+workdir).
 				Options(
 					huh.NewOption("Launch and show the agent", actionLaunch),
 					huh.NewOption("Edit the working directory first", actionEdit),
@@ -145,7 +145,7 @@ func newLaunchForm(theme huh.Theme, s domain.Slice, workdir string) *LaunchForm 
 				Value(&f.workdir).
 				Validate(existingDir),
 		).WithHideFunc(func() bool { return f.action != actionEdit }),
-	).WithTheme(theme)
+	)
 	return f
 }
 

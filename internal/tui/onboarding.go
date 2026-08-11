@@ -618,7 +618,7 @@ func (m *Onboarding) newProjectDBForm(pages []notion.SearchResult) *huh.Form {
 		options[i] = huh.NewOption(resultLabel(p), p.ID)
 	}
 	m.dbName, m.parentPageID = ProjectsDBTitle, options[0].Value
-	return huh.NewForm(huh.NewGroup(
+	return newForm(m.styles.FormTheme, huh.NewGroup(
 		huh.NewInput().
 			Title("Name for the new project database").
 			Value(&m.dbName).
@@ -627,7 +627,7 @@ func (m *Onboarding) newProjectDBForm(pages []notion.SearchResult) *huh.Form {
 			Title("Which page should it live under?").
 			Options(options...).
 			Value(&m.parentPageID),
-	)).WithTheme(m.styles.FormTheme)
+	))
 }
 
 // required rejects a blank answer, naming what was expected.

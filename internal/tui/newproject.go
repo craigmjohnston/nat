@@ -54,7 +54,7 @@ type NewProjectForm struct {
 // newNewProjectForm returns the empty form for a new project.
 func newNewProjectForm(theme huh.Theme) *NewProjectForm {
 	f := &NewProjectForm{heading: "New project"}
-	f.form = huh.NewForm(huh.NewGroup(
+	f.form = newForm(theme, huh.NewGroup(
 		huh.NewInput().
 			Title("Name").
 			Value(&f.name).
@@ -68,7 +68,7 @@ func newNewProjectForm(theme huh.Theme) *NewProjectForm {
 			Description("Where this project's agents start; kept in local config, not Notion.").
 			Value(&f.workdir).
 			Validate(existingDir),
-	)).WithTheme(theme)
+	))
 	return f
 }
 
@@ -162,13 +162,13 @@ func newSwitchProjectForm(theme huh.Theme, cfg config.Config) *SwitchProjectForm
 	if _, ok := cfg.Projects[f.chosen]; !ok {
 		f.chosen = options[0].Value
 	}
-	f.form = huh.NewForm(huh.NewGroup(
+	f.form = newForm(theme, huh.NewGroup(
 		huh.NewSelect[string]().
 			Title("Project").
 			Description("Which plan the board shows; every project stays where it is.").
 			Options(options...).
 			Value(&f.chosen),
-	)).WithTheme(theme)
+	))
 	return f
 }
 

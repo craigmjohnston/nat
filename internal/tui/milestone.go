@@ -56,11 +56,11 @@ func newMilestoneForm(theme huh.Theme, m domain.Milestone, next domain.Milestone
 		statusType:  m.StatusType,
 		next:        next,
 	}
-	f.form = huh.NewForm(huh.NewGroup(
+	f.form = newForm(theme, huh.NewGroup(
 		huh.NewConfirm().
 			Title(fmt.Sprintf("%s — set %s?", m.Name, next)).
 			Value(&f.confirmed),
-	)).WithTheme(theme)
+	))
 	return f
 }
 

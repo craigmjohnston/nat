@@ -40,12 +40,12 @@ func newDeleteSliceForm(theme huh.Theme, s domain.Slice) *DeleteSliceForm {
 		sliceID:   s.ID,
 		sliceName: s.Name,
 	}
-	f.form = huh.NewForm(huh.NewGroup(
+	f.form = newForm(theme, huh.NewGroup(
 		huh.NewConfirm().
 			Title(fmt.Sprintf("Delete %q?", s.Name)).
 			Description(deleteWarning(s)).
 			Value(&f.confirmed),
-	)).WithTheme(theme)
+	))
 	return f
 }
 
