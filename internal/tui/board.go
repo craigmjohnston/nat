@@ -88,10 +88,13 @@ type rowKind int
 const (
 	rowMilestone rowKind = iota
 	rowSlice
+	rowSection
 )
 
 // row is one selectable line of the board, addressing back into the groups it
-// was flattened from. slice is meaningless for a rowMilestone.
+// was flattened from. slice is meaningless for a rowMilestone, and a rowSection
+// — the Done section's own line — addresses no group at all, so its group is -1
+// rather than silently aliasing the first one.
 type row struct {
 	kind  rowKind
 	group int
@@ -156,6 +159,18 @@ func groupKey(g domain.Group) string {
 	return g.Milestone.ID
 }
 
+// doneSectionKey is the expanded-map key of the Done section. It is not a
+// group's key: milestones key by page ID and the Unassigned group by "", so it
+// collides with neither.
+const doneSectionKey = "done-section"
+
+// doneGroup reports whether a group folds into the Done section: a real
+// milestone whose status is Done. The Unassigned group never folds — its
+// slices are stray, and worth seeing.
+func doneGroup(g domain.Group) bool {
+	return g.Milestone != nil && g.Milestone.Status == domain.MilestoneDone
+}
+
 // defaultExpanded is how a group is shown before the user touches it: the work
 // in flight is open, everything else is a one-line summary. Slices with no
 // milestone are open too — they are stray, and worth seeing.
@@ -163,24 +178,38 @@ func defaultExpanded(g domain.Group) bool {
 	return g.Milestone == nil || g.Milestone.Status == domain.MilestoneActive
 }
 
-// rebuild recomputes the groups and the rows they flatten to.
+// rebuild recomputes the groups and the rows they flatten to. The Done groups
+// all fold behind a single section row, which sits where the first of them
+// would have and gathers the rest up to it: a mature plan is one Done line, not
+// a wall of them. The section starts collapsed and remembers its state like any
+// group; expanding it reveals the Done milestones, which behave as usual.
 func (b *Board) rebuild() {
 	b.groups = nil
 	if b.project != nil {
 		b.groups = b.project.Groups()
 	}
 	b.rows = nil
+	sectionEmitted := false
 	for i, g := range b.groups {
-		key := groupKey(g)
-		if _, ok := b.expanded[key]; !ok {
-			b.expanded[key] = defaultExpanded(g)
-		}
-		b.rows = append(b.rows, row{kind: rowMilestone, group: i})
-		if !b.expanded[key] {
+		if !doneGroup(g) {
+			b.appendGroup(i)
 			continue
 		}
-		for j := range g.Slices {
-			b.rows = append(b.rows, row{kind: rowSlice, group: i, slice: j})
+		if sectionEmitted {
+			continue
+		}
+		sectionEmitted = true
+		if _, ok := b.expanded[doneSectionKey]; !ok {
+			b.expanded[doneSectionKey] = false
+		}
+		b.rows = append(b.rows, row{kind: rowSection, group: -1})
+		if !b.expanded[doneSectionKey] {
+			continue
+		}
+		for j, d := range b.groups {
+			if doneGroup(d) {
+				b.appendGroup(j)
+			}
 		}
 	}
 
@@ -189,6 +218,23 @@ func (b *Board) rebuild() {
 	}
 	if b.cursor < 0 {
 		b.cursor = 0
+	}
+}
+
+// appendGroup flattens one group onto the rows: its own line, then its slices
+// if it is expanded. A group not seen before starts at its default fold state.
+func (b *Board) appendGroup(i int) {
+	g := b.groups[i]
+	key := groupKey(g)
+	if _, ok := b.expanded[key]; !ok {
+		b.expanded[key] = defaultExpanded(g)
+	}
+	b.rows = append(b.rows, row{kind: rowMilestone, group: i})
+	if !b.expanded[key] {
+		return
+	}
+	for j := range g.Slices {
+		b.rows = append(b.rows, row{kind: rowSlice, group: i, slice: j})
 	}
 }
 
@@ -219,19 +265,32 @@ func (b *Board) move(delta int) {
 	b.cursor = next
 }
 
-// toggle expands or collapses the group the cursor is in. Collapsing from a
-// slice row would leave the cursor on a line that no longer exists, so the
-// cursor moves to the group's own row either way.
+// toggle expands or collapses the group the cursor is in — or, on the Done
+// section's own row, the section. Collapsing from a slice row would leave the
+// cursor on a line that no longer exists, so the cursor moves to the group's
+// own row either way.
 func (b *Board) toggle() {
 	if len(b.rows) == 0 {
 		return
 	}
-	g := b.rows[b.cursor].group
+	r := b.rows[b.cursor]
+	if r.kind == rowSection {
+		b.expanded[doneSectionKey] = !b.expanded[doneSectionKey]
+		b.rebuild()
+		b.cursorTo(func(r row) bool { return r.kind == rowSection })
+		return
+	}
+	g := r.group
 	key := groupKey(b.groups[g])
 	b.expanded[key] = !b.expanded[key]
 	b.rebuild()
+	b.cursorTo(func(r row) bool { return r.kind == rowMilestone && r.group == g })
+}
+
+// cursorTo moves the cursor to the first row match picks out, if there is one.
+func (b *Board) cursorTo(match func(row) bool) {
 	for i, r := range b.rows {
-		if r.kind == rowMilestone && r.group == g {
+		if match(r) {
 			b.cursor = i
 			break
 		}
@@ -334,6 +393,9 @@ func (b Board) renderRow(i int, r row, l boardLayout) string {
 	if selected {
 		marker = "❯ "
 	}
+	if r.kind == rowSection {
+		return b.renderDoneSection(marker, selected, l)
+	}
 	if r.kind == rowMilestone {
 		return b.renderMilestone(marker, b.groups[r.group], selected, l)
 	}
@@ -419,6 +481,44 @@ func (b Board) renderMilestone(marker string, g domain.Group, selected bool, l b
 	}
 	name := paint(selected, b.styles.Milestone, title)
 	return b.finishRow(selected, fitRow(b.width, head, name, chips...))
+}
+
+// renderDoneSection draws the row the Done milestones fold behind: the fold
+// indicator, a Done title in the title column, and a faint aggregate of what it
+// hides — how many milestones, and their slices' combined count. Its number
+// cell is blank: the section is not part of the plan's numbering.
+func (b Board) renderDoneSection(marker string, selected bool, l boardLayout) string {
+	fold := "▸"
+	if b.expanded[doneSectionKey] {
+		fold = "▾"
+	}
+	head := marker
+	if l.num > 0 {
+		head += strings.Repeat(" ", l.num) + " "
+	}
+	head += fold
+	milestones := 0
+	var p domain.Progress
+	for _, g := range b.groups {
+		if !doneGroup(g) {
+			continue
+		}
+		milestones++
+		gp := g.Progress()
+		p.Done += gp.Done
+		p.Total += gp.Total
+	}
+	noun := "milestones"
+	if milestones == 1 {
+		noun = "milestone"
+	}
+	agg := fmt.Sprintf("%d %s · %d/%d", milestones, noun, p.Done, p.Total)
+	title := "Done"
+	if pad := l.title - lipgloss.Width(title); pad > 0 {
+		title += strings.Repeat(" ", pad)
+	}
+	name := paint(selected, b.styles.Milestone, title)
+	return b.finishRow(selected, fitRow(b.width, head, name, paint(selected, b.styles.Faint, agg)))
 }
 
 // renderSlice draws one slice: its status chip, its name, whether an agent is
