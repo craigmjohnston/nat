@@ -160,8 +160,21 @@ type Board struct {
 	// on, and would otherwise follow the cursor to rows it says nothing about.
 	confirmText string
 	confirmSev  severity
+	// prompt is the question anchored to that same row, waiting to be answered;
+	// nil when there is none. It is drawn where a confirmation would be and in
+	// the same shape, but it is answered rather than waited out, so the root
+	// model gives it the keys while it is up.
+	prompt *rowPrompt
 
 	width int
+}
+
+// rowPrompt is an inline question on a board row: the choices as they read,
+// left to right, and which of them is focused — the one enter would answer
+// with.
+type rowPrompt struct {
+	options []string
+	cursor  int
 }
 
 // NewBoard returns an empty board, waiting for a project to be loaded into it.
@@ -195,6 +208,41 @@ func (b *Board) SetLive(live map[string]string) { b.live = live }
 // ClearConfirm takes it down.
 func (b *Board) SetConfirm(text string, sev severity) { b.confirmText, b.confirmSev = text, sev }
 func (b *Board) ClearConfirm()                        { b.confirmText = "" }
+
+// SetPrompt anchors a question to the row the cursor is on, focused on its
+// first choice, and ClearPrompt takes it down. A prompt and a confirmation are
+// drawn in the same place, so opening one takes the other down.
+func (b *Board) SetPrompt(options []string) {
+	b.prompt, b.confirmText = &rowPrompt{options: options}, ""
+}
+func (b *Board) ClearPrompt() { b.prompt = nil }
+
+// Prompting reports whether a prompt is waiting to be answered — while one is,
+// the root model gives it the keys.
+func (b Board) Prompting() bool { return b.prompt != nil }
+
+// PromptChoice is the index of the focused choice, which is what answering the
+// prompt answers with. With no prompt up there is nothing to answer, and the
+// first choice is as good an answer as any.
+func (b Board) PromptChoice() int {
+	if b.prompt == nil {
+		return 0
+	}
+	return b.prompt.cursor
+}
+
+// MovePrompt steps the focused choice, stopping at either end rather than
+// wrapping — the same way the cursor moves over the rows.
+func (b *Board) MovePrompt(delta int) {
+	if b.prompt == nil {
+		return
+	}
+	next := b.prompt.cursor + delta
+	if next < 0 || next >= len(b.prompt.options) {
+		return
+	}
+	b.prompt.cursor = next
+}
 
 // groupKey identifies a group across reloads. The implicit Unassigned group has
 // no milestone and so no ID, which is a key no milestone can collide with.
@@ -466,7 +514,8 @@ func paint(selected bool, st lipgloss.Style, s string) string {
 
 // finishRow is the last step of a row: the selected row's background fill, run
 // out to the board's width so the highlight is the row rather than its text —
-// and over that, the inline confirmation when one is anchored to the row.
+// and over that, the prompt waiting on the row, or the inline confirmation when
+// one is anchored to it.
 func (b Board) finishRow(selected bool, line string) string {
 	if !selected {
 		return line
@@ -477,28 +526,46 @@ func (b Board) finishRow(selected bool, line string) string {
 		st = st.Width(b.width)
 	}
 	filled := st.Render(line)
+	if b.prompt != nil {
+		return b.overlayChip(filled, raw, b.promptChip(), b.styles.PromptFade)
+	}
 	if b.confirmText == "" {
 		return filled
 	}
-	return b.overlayConfirm(filled, raw)
+	chip, fade := b.styles.confirmStyles(b.confirmSev)
+	return b.overlayChip(filled, raw, chip.Render(b.confirmText), fade)
 }
 
-// confirmFadeWidth is the dithered edge the confirmation carries where it
-// overlaps the row's content, in cells.
+// promptChip is the open prompt as one chip: its choices side by side, the
+// focused one filled with the accent and the rest quiet, so the answer enter
+// would give is the one that stands out.
+func (b Board) promptChip() string {
+	var chip strings.Builder
+	for i, option := range b.prompt.options {
+		st := b.styles.PromptOption
+		if i == b.prompt.cursor {
+			st = b.styles.PromptFocused
+		}
+		chip.WriteString(st.Render(option))
+	}
+	return chip.String()
+}
+
+// confirmFadeWidth is the dithered edge a chip carries where it overlaps the
+// row's content, in cells.
 const confirmFadeWidth = 2
 
 // confirmFadeRunes are the edge's cells, reading toward the chip: lighter
 // shade first, so the chip appears to condense out of the row under it.
 const confirmFadeRunes = "░▒"
 
-// overlayConfirm lays the inline confirmation over the selected row's filled
-// line, from its right edge. line is the row already run out to the board's
-// width and raw the width of its content before the fill, which is what says
-// whether the chip lands on content or on empty fill: on content it carries
-// the dithered fade on its left edge, so it reads as sliding over the row.
-func (b Board) overlayConfirm(line string, raw int) string {
-	chipStyle, fadeStyle := b.styles.confirmStyles(b.confirmSev)
-	chip := chipStyle.Render(b.confirmText)
+// overlayChip lays an already rendered chip — an inline confirmation, or the
+// prompt waiting on the row — over the selected row's filled line, from its
+// right edge. line is the row already run out to the board's width and raw the
+// width of its content before the fill, which is what says whether the chip
+// lands on content or on empty fill: on content it carries the dithered fade
+// on its left edge, so it reads as sliding over the row.
+func (b Board) overlayChip(line string, raw int, chip string, fadeStyle lipgloss.Style) string {
 	if b.width <= 0 {
 		// Unmeasured: nothing to anchor to, so the chip simply follows the row.
 		return line + " " + chip

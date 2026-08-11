@@ -118,6 +118,13 @@ type Styles struct {
 	ConfirmFadeSuccess lipgloss.Style
 	ConfirmFadeWarning lipgloss.Style
 	ConfirmFadeError   lipgloss.Style
+	// PromptOption and PromptFocused are the choices of an inline prompt
+	// anchored to a board row: quiet chips, with the focused one — the answer
+	// enter gives — filled with the accent. PromptFade is that chip's dithered
+	// edge, shaped like the confirmations'.
+	PromptOption  lipgloss.Style
+	PromptFocused lipgloss.Style
+	PromptFade    lipgloss.Style
 	// ModeChip is the status bar's leading segment: the project's name on the
 	// board, the screen's name everywhere else.
 	ModeChip lipgloss.Style
@@ -214,6 +221,10 @@ func NewStyles(isDark bool) Styles {
 		ConfirmFadeSuccess: lipgloss.NewStyle().Foreground(t.Success).Background(t.SurfaceHi),
 		ConfirmFadeWarning: lipgloss.NewStyle().Foreground(t.Warning).Background(t.SurfaceHi),
 		ConfirmFadeError:   lipgloss.NewStyle().Foreground(t.Danger).Background(t.SurfaceHi),
+
+		PromptOption:  chip.Foreground(t.Text).Background(t.Surface),
+		PromptFocused: chip.Bold(true).Foreground(t.OnFill).Background(t.Accent),
+		PromptFade:    lipgloss.NewStyle().Foreground(t.Accent).Background(t.SurfaceHi),
 
 		ModeChip: chip.Foreground(t.OnFill).Background(t.Accent),
 		Spinner:  lipgloss.NewStyle().Foreground(t.Accent),
