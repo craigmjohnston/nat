@@ -230,8 +230,7 @@ func (a *App) newProjectFlow() tea.Cmd {
 		return nil
 	}
 	if a.cfg.ProjectDBDataSourceID == "" {
-		a.note = "No projects database is configured, so there is nowhere to create a project."
-		return nil
+		return a.showToast("No projects database is configured, so there is nowhere to create a project.", sevWarning)
 	}
 	return a.openForm(newNewProjectForm(a.styles.FormTheme))
 }
@@ -243,8 +242,7 @@ func (a *App) switchProjectFlow() tea.Cmd {
 		return nil
 	}
 	if len(a.cfg.Projects) < 2 {
-		a.note = "There is no other project to switch to — press N to add one."
-		return nil
+		return a.showToast("There is no other project to switch to — press N to add one.", sevWarning)
 	}
 	return a.openForm(newSwitchProjectForm(a.styles.FormTheme, a.cfg))
 }
@@ -271,11 +269,10 @@ func (a *App) projectCreated(msg projectCreatedMsg) (tea.Model, tea.Cmd) {
 	// The reload is started first: it clears the error banner, and anything that
 	// went wrong on the way here is worth more than an empty one.
 	cmd := a.showActiveProject()
-	a.note, a.err = fmt.Sprintf("Created %q.", msg.name), err
-	if err != nil {
-		a.note = ""
+	if a.err = err; err != nil {
+		return a, cmd
 	}
-	return a, cmd
+	return a, tea.Batch(cmd, a.showToast(fmt.Sprintf("Created %q.", msg.name), sevSuccess))
 }
 
 // projectSwitched points the board at another configured project.
@@ -284,11 +281,10 @@ func (a *App) projectSwitched(msg projectSwitchedMsg) (tea.Model, tea.Cmd) {
 	a.cfg.ActiveProjectID = msg.id
 	err := a.persist()
 	cmd := a.showActiveProject()
-	a.note, a.err = fmt.Sprintf("Switched to %q.", msg.name), err
-	if err != nil {
-		a.note = ""
+	if a.err = err; err != nil {
+		return a, cmd
 	}
-	return a, cmd
+	return a, tea.Batch(cmd, a.showToast(fmt.Sprintf("Switched to %q.", msg.name), sevSuccess))
 }
 
 // persist writes the config as it now stands, describing a failure to do so.

@@ -123,6 +123,13 @@ type Board struct {
 	// runs in, so a slice with an agent on it can be marked.
 	live map[string]string
 
+	// confirmText is the inline confirmation anchored to the row the cursor is
+	// on, drawn from its right edge in confirmSev's colour; empty when there is
+	// none. Moving the cursor dismisses it — it is about the row it was born
+	// on, and would otherwise follow the cursor to rows it says nothing about.
+	confirmText string
+	confirmSev  severity
+
 	width int
 }
 
@@ -152,6 +159,11 @@ func (b Board) Cursor() int { return b.cursor }
 // SetLive records the slices with an agent running, which is what the live
 // marker on a slice is drawn from.
 func (b *Board) SetLive(live map[string]string) { b.live = live }
+
+// SetConfirm anchors an inline confirmation to the row the cursor is on, and
+// ClearConfirm takes it down.
+func (b *Board) SetConfirm(text string, sev severity) { b.confirmText, b.confirmSev = text, sev }
+func (b *Board) ClearConfirm()                        { b.confirmText = "" }
 
 // groupKey identifies a group across reloads. The implicit Unassigned group has
 // no milestone and so no ID, which is a key no milestone can collide with.
@@ -259,13 +271,15 @@ func (b *Board) Update(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-// move steps the cursor, stopping at either end rather than wrapping.
+// move steps the cursor, stopping at either end rather than wrapping. Leaving
+// the row dismisses the confirmation anchored to it.
 func (b *Board) move(delta int) {
 	next := b.cursor + delta
 	if next < 0 || next >= len(b.rows) {
 		return
 	}
 	b.cursor = next
+	b.ClearConfirm()
 }
 
 // toggle expands or collapses the group the cursor is in — or, on the Done
@@ -276,6 +290,9 @@ func (b *Board) toggle() {
 	if len(b.rows) == 0 {
 		return
 	}
+	// Folding moves the cursor to the group's own row, which is not the row the
+	// confirmation was anchored to.
+	b.ClearConfirm()
 	r := b.rows[b.cursor]
 	if r.kind == rowSection {
 		b.expanded[doneSectionKey] = !b.expanded[doneSectionKey]
@@ -417,16 +434,63 @@ func paint(selected bool, st lipgloss.Style, s string) string {
 }
 
 // finishRow is the last step of a row: the selected row's background fill, run
-// out to the board's width so the highlight is the row rather than its text.
+// out to the board's width so the highlight is the row rather than its text —
+// and over that, the inline confirmation when one is anchored to the row.
 func (b Board) finishRow(selected bool, line string) string {
 	if !selected {
 		return line
 	}
+	raw := lipgloss.Width(line)
 	st := b.styles.SelectedRow
 	if b.width > 0 {
 		st = st.Width(b.width)
 	}
-	return st.Render(line)
+	filled := st.Render(line)
+	if b.confirmText == "" {
+		return filled
+	}
+	return b.overlayConfirm(filled, raw)
+}
+
+// confirmFadeWidth is the dithered edge the confirmation carries where it
+// overlaps the row's content, in cells.
+const confirmFadeWidth = 2
+
+// confirmFadeRunes are the edge's cells, reading toward the chip: lighter
+// shade first, so the chip appears to condense out of the row under it.
+const confirmFadeRunes = "░▒"
+
+// overlayConfirm lays the inline confirmation over the selected row's filled
+// line, from its right edge. line is the row already run out to the board's
+// width and raw the width of its content before the fill, which is what says
+// whether the chip lands on content or on empty fill: on content it carries
+// the dithered fade on its left edge, so it reads as sliding over the row.
+func (b Board) overlayConfirm(line string, raw int) string {
+	chipStyle, fadeStyle := b.styles.confirmStyles(b.confirmSev)
+	chip := chipStyle.Render(b.confirmText)
+	if b.width <= 0 {
+		// Unmeasured: nothing to anchor to, so the chip simply follows the row.
+		return line + " " + chip
+	}
+	chipWidth := lipgloss.Width(chip)
+	if chipWidth >= b.width {
+		return fit(chip, b.width)
+	}
+	start := b.width - chipWidth
+	if raw+confirmFadeWidth <= start {
+		// The chip lands on the fill with room to spare, so there is nothing to
+		// fade over.
+		return fit(line, start) + chip
+	}
+	cells := min(confirmFadeWidth, start)
+	fade := fadeStyle.Render(string([]rune(confirmFadeRunes)[confirmFadeWidth-cells:]))
+	// fit reads a width of zero as "unmeasured, leave it whole", so a chip and
+	// fade that take the whole board keep nothing of the row at all.
+	left := ""
+	if keep := start - cells; keep > 0 {
+		left = fit(line, keep)
+	}
+	return left + fade + chip
 }
 
 // fitRow assembles one row from a head that always draws, a name, and chips in

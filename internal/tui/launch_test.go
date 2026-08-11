@@ -31,6 +31,13 @@ import (
 func TestMain(m *testing.M) {
 	newLauncher = func() AgentLauncher { return &fakeLauncher{} }
 	liveTick = func() tea.Cmd { return nil }
+	// The dismissal timers never fire on their own either: a pending 4-second
+	// tick would hold every teatest program open, and the confirmations under
+	// test would vanish before they could be asserted on. The auto-dismiss
+	// tests put a firing version in themselves, and the real one is kept for
+	// the test of the timer itself.
+	realDismissAfter = dismissAfter
+	dismissAfter = func(tea.Msg) tea.Cmd { return nil }
 	if err := os.Setenv(agent.PaneEnv, ""); err != nil {
 		fmt.Fprintln(os.Stderr, "pin the host pane:", err)
 		os.Exit(1)
@@ -349,8 +356,8 @@ func TestAppLaunchStartsTheSessionAndOffersToAttach(t *testing.T) {
 	if app.busy {
 		t.Error("the launch is over; nothing should still be in flight")
 	}
-	if !strings.Contains(app.note, `Launched nat-5 for "Info view".`) {
-		t.Errorf("note = %q, want the launched note", app.note)
+	if !strings.Contains(app.board.confirmText, `Launched nat-5 for "Info view".`) {
+		t.Errorf("confirm = %q, want the launched confirmation", app.board.confirmText)
 	}
 }
 
@@ -376,8 +383,8 @@ func TestAppLaunchDeclinedPrintsTheAttachCommand(t *testing.T) {
 	if len(launcher.attached) != 0 {
 		t.Errorf("attached = %v, want the terminal left alone", launcher.attached)
 	}
-	if want := "tmux attach-session -t " + agent.SessionName("s5"); !strings.Contains(app.note, want) {
-		t.Errorf("note = %q, want it to name %q", app.note, want)
+	if want := "tmux attach-session -t " + agent.SessionName("s5"); !strings.Contains(app.board.confirmText, want) {
+		t.Errorf("confirm = %q, want it to name %q", app.board.confirmText, want)
 	}
 	if app.busy {
 		t.Error("declining leaves nothing in flight")
@@ -440,8 +447,8 @@ func TestAppLaunchRefusesASliceThatIsNotTodo(t *testing.T) {
 			if len(launcher.launches) != 0 {
 				t.Errorf("launched %+v, want nothing", launcher.launches)
 			}
-			if app.note != tt.want {
-				t.Errorf("note = %q, want %q", app.note, tt.want)
+			if app.board.confirmText != tt.want {
+				t.Errorf("confirm = %q, want %q", app.board.confirmText, tt.want)
 			}
 		})
 	}
@@ -457,8 +464,8 @@ func TestAppLaunchRefusesASliceAlreadyRunning(t *testing.T) {
 	if app.form != nil {
 		t.Errorf("form = %T, want no second agent on the same slice", app.form)
 	}
-	if want := `An agent is already running for "Info view" — press t to attach.`; app.note != want {
-		t.Errorf("note = %q, want %q", app.note, want)
+	if want := `An agent is already running for "Info view" — press t to attach.`; app.board.confirmText != want {
+		t.Errorf("confirm = %q, want %q", app.board.confirmText, want)
 	}
 }
 
@@ -515,8 +522,8 @@ func TestAppLaunchNeedsASliceUnderTheCursor(t *testing.T) {
 	if app.form != nil {
 		t.Error("a launch form was opened with no slice to launch")
 	}
-	if !strings.Contains(app.note, "Move to a slice") {
-		t.Errorf("note = %q, want the slice hint", app.note)
+	if !strings.Contains(app.board.confirmText, "Move to a slice") {
+		t.Errorf("confirm = %q, want the slice hint", app.board.confirmText)
 	}
 }
 
@@ -538,8 +545,8 @@ func TestAppLaunchIsRefusedWithNothingToLaunchWith(t *testing.T) {
 			if cmd := press(app, "l"); cmd != nil {
 				t.Error("there is nothing to launch with")
 			}
-			if app.form != nil || app.note != "" {
-				t.Errorf("form = %T, note = %q, want the key ignored", app.form, app.note)
+			if app.form != nil || app.board.confirmText != "" {
+				t.Errorf("form = %T, confirm = %q, want the key ignored", app.form, app.board.confirmText)
 			}
 		})
 	}
@@ -593,10 +600,10 @@ func TestAppShowsTheAgentBesideTheBoard(t *testing.T) {
 	if len(launcher.attached) != 0 {
 		t.Errorf("attached = %v, want the terminal left to the board", launcher.attached)
 	}
-	// No note: the status bar's pane guidance says how to send it back, and a
-	// note would sit on top of it.
-	if app.note != "" {
-		t.Errorf("note = %q, want the pane guidance to speak instead", app.note)
+	// No confirmation: the status bar's pane guidance says how to send it back,
+	// and a report would sit on top of it.
+	if app.note != "" || app.board.confirmText != "" {
+		t.Errorf("note = %q, confirm = %q, want the pane guidance to speak instead", app.note, app.board.confirmText)
 	}
 	if !app.joined[id] {
 		t.Error("the slice should be marked joined")
@@ -618,8 +625,8 @@ func TestAppSendsAShownAgentBack(t *testing.T) {
 
 	feed(t, app, press(app, "t"))
 
-	if want := fmt.Sprintf("Sent the agent for %q back to %s.", "Info view", session); app.note != want {
-		t.Errorf("note = %q, want %q", app.note, want)
+	if want := fmt.Sprintf("Sent the agent for %q back to %s.", "Info view", session); app.board.confirmText != want {
+		t.Errorf("confirm = %q, want %q", app.board.confirmText, want)
 	}
 	if app.joined[id] {
 		t.Error("the joined mark should go with the pane")
@@ -648,7 +655,7 @@ func TestAppStatusBarGuidesAJoinedPane(t *testing.T) {
 
 	launcher.joined = false
 	feed(t, app, press(app, "t"))
-	app.note = ""
+	app.board.ClearConfirm()
 	returned := stripANSI(app.View().Content)
 	if strings.Contains(returned, "return the agent") {
 		t.Errorf("the guidance should go with the pane:\n%s", returned)
@@ -775,8 +782,8 @@ func TestAppAttachNeedsALiveSession(t *testing.T) {
 	if len(launcher.attached) != 0 {
 		t.Errorf("attached = %v, want nothing to attach to", launcher.attached)
 	}
-	if want := `No agent session is running for "Board screen".`; app.note != want {
-		t.Errorf("note = %q, want %q", app.note, want)
+	if want := `No agent session is running for "Board screen".`; app.board.confirmText != want {
+		t.Errorf("confirm = %q, want %q", app.board.confirmText, want)
 	}
 }
 
@@ -786,8 +793,8 @@ func TestAppAttachNeedsASliceUnderTheCursor(t *testing.T) {
 
 	press(app, "t")
 
-	if !strings.Contains(app.note, "Move to a slice") {
-		t.Errorf("note = %q, want the slice hint", app.note)
+	if !strings.Contains(app.board.confirmText, "Move to a slice") {
+		t.Errorf("confirm = %q, want the slice hint", app.board.confirmText)
 	}
 }
 
@@ -839,8 +846,8 @@ func TestAppReloadsThePlanAfterAttaching(t *testing.T) {
 	if app.busy {
 		t.Error("the terminal is back; nothing is in flight")
 	}
-	if app.note != "Detached from nat-5." {
-		t.Errorf("note = %q, want the detached note", app.note)
+	if app.board.confirmText != "Detached from nat-5." {
+		t.Errorf("confirm = %q, want the detached confirmation", app.board.confirmText)
 	}
 	// The agent has had the terminal to itself, so the plan is re-read rather
 	// than trusted.
@@ -878,8 +885,8 @@ func TestAppReportsAFailedSessionRead(t *testing.T) {
 	if app.live != nil {
 		t.Errorf("live = %v, want it cleared when it cannot be read", app.live)
 	}
-	if !strings.Contains(app.note, "Could not read tmux panes: no server") {
-		t.Errorf("note = %q, want the failed read", app.note)
+	if !strings.Contains(app.toast, "Could not read tmux panes: no server") {
+		t.Errorf("toast = %q, want the failed read", app.toast)
 	}
 	// A background poll is not worth an error banner over the board.
 	if app.err != nil {
@@ -1027,8 +1034,8 @@ func TestStartupReclaimsStrays(t *testing.T) {
 	if !reflect.DeepEqual(launcher.reclaims, []string{"%0"}) {
 		t.Errorf("reclaims = %v, want the reconcile run once for the board's pane", launcher.reclaims)
 	}
-	if app.note != "Re-homed 1 agent left joined by an earlier run." {
-		t.Errorf("note = %q, want the re-homed agent reported", app.note)
+	if app.toast != "Re-homed 1 agent left joined by an earlier run." {
+		t.Errorf("toast = %q, want the re-homed agent reported", app.toast)
 	}
 }
 
@@ -1050,8 +1057,8 @@ func TestStraysReclaimedNotes(t *testing.T) {
 
 			app.Update(tt.msg)
 
-			if app.note != tt.want {
-				t.Errorf("note = %q, want %q", app.note, tt.want)
+			if app.toast != tt.want {
+				t.Errorf("toast = %q, want %q", app.toast, tt.want)
 			}
 			// The agents it could not move are all still running, and the plan
 			// is still worth looking at.

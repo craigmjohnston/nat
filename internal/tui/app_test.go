@@ -295,15 +295,17 @@ func TestAppRefreshReloads(t *testing.T) {
 	run(app.Init())
 	app.Update(first[projectLoadedMsg](t, run(app.Init())))
 	before := len(client.queriedDSIDs)
-	app.note = "Setup complete."
+	app.note, app.toast = "Setup complete.", "Refreshed."
+	app.board.SetConfirm("Saved.", sevSuccess)
 
 	run(press(app, "r"))
 
 	if len(client.queriedDSIDs) != before+2 {
 		t.Errorf("queried %d data sources, want %d more", len(client.queriedDSIDs), before+2)
 	}
-	if app.note != "" {
-		t.Errorf("note = %q, want the stale note cleared on refresh", app.note)
+	if app.note != "" || app.toast != "" || app.board.confirmText != "" {
+		t.Errorf("note = %q, toast = %q, confirm = %q, want them all cleared on refresh",
+			app.note, app.toast, app.board.confirmText)
 	}
 }
 

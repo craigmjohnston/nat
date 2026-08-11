@@ -380,8 +380,8 @@ func TestAppAddNeedsAMilestoneToFileUnder(t *testing.T) {
 			if app.form != nil {
 				t.Error("a form was opened with no milestone to file under")
 			}
-			if !strings.Contains(app.note, "Move to a milestone") {
-				t.Errorf("note = %q, want the milestone hint", app.note)
+			if !strings.Contains(app.board.confirmText, "Move to a milestone") {
+				t.Errorf("confirm = %q, want the milestone hint", app.board.confirmText)
 			}
 		})
 	}
@@ -411,8 +411,8 @@ func TestAppAddWritesTheCompletedForm(t *testing.T) {
 	if got := paragraphTexts(t, client.created[0].children); !reflect.DeepEqual(got, []string{"The brief."}) {
 		t.Errorf("body = %q, want the brief that was typed", got)
 	}
-	if app.note != `Added "New slice".` {
-		t.Errorf("note = %q, want the created note", app.note)
+	if app.board.confirmText != `Added "New slice".` {
+		t.Errorf("confirm = %q, want the created confirmation", app.board.confirmText)
 	}
 }
 
@@ -447,8 +447,8 @@ func TestAppEditRefusesSlicesThatAreNotTodo(t *testing.T) {
 	if app.busy || app.form != nil {
 		t.Error("a claimed slice should not be opened for editing")
 	}
-	if want := `"Board screen" is Claimed — only Todo slices can be edited.`; app.note != want {
-		t.Errorf("note = %q, want %q", app.note, want)
+	if want := `"Board screen" is Claimed — only Todo slices can be edited.`; app.board.confirmText != want {
+		t.Errorf("confirm = %q, want %q", app.board.confirmText, want)
 	}
 }
 
@@ -458,8 +458,8 @@ func TestAppEditNeedsASliceUnderTheCursor(t *testing.T) {
 
 	press(app, "e")
 
-	if !strings.Contains(app.note, "Move to a slice") {
-		t.Errorf("note = %q, want the slice hint", app.note)
+	if !strings.Contains(app.board.confirmText, "Move to a slice") {
+		t.Errorf("confirm = %q, want the slice hint", app.board.confirmText)
 	}
 }
 
@@ -504,8 +504,8 @@ func TestAppEditWritesTheCompletedForm(t *testing.T) {
 	if got := paragraphTexts(t, client.appended[0].children); !reflect.DeepEqual(got, []string{"The brief."}) {
 		t.Errorf("body = %q, want the body it was opened with", got)
 	}
-	if app.note != `Updated "Info view".` {
-		t.Errorf("note = %q, want the updated note", app.note)
+	if app.board.confirmText != `Updated "Info view".` {
+		t.Errorf("confirm = %q, want the updated confirmation", app.board.confirmText)
 	}
 }
 
@@ -533,8 +533,8 @@ func TestAppFormIsCancelledWithEsc(t *testing.T) {
 	if app.form != nil || app.screen != screenBoard {
 		t.Errorf("screen = %v, form = %v, want the board back", app.screen, app.form)
 	}
-	if app.note != "Cancelled." {
-		t.Errorf("note = %q, want the cancelled note", app.note)
+	if app.toast != "Cancelled." {
+		t.Errorf("toast = %q, want the cancelled toast", app.toast)
 	}
 }
 
@@ -560,8 +560,8 @@ func TestAppReloadsThePlanAfterAWrite(t *testing.T) {
 	if app.busy {
 		t.Error("still busy after the write came back")
 	}
-	if app.note != "Added." {
-		t.Errorf("note = %q, want the write's note", app.note)
+	if app.board.confirmText != "Added." {
+		t.Errorf("confirm = %q, want the write's confirmation", app.board.confirmText)
 	}
 	if !app.loading {
 		t.Error("the plan should be reloading")
@@ -576,8 +576,8 @@ func TestAppReportsAFailedWrite(t *testing.T) {
 
 	app.Update(sliceSavedMsg{err: errors.New("create slice: boom")})
 
-	if app.busy || app.note != "" {
-		t.Errorf("busy = %v, note = %q, want the failure to clear both", app.busy, app.note)
+	if app.busy || app.note != "" || app.board.confirmText != "" {
+		t.Errorf("busy = %v, note = %q, confirm = %q, want the failure to clear them", app.busy, app.note, app.board.confirmText)
 	}
 	if app.err == nil || app.err.Error() != "create slice: boom" {
 		t.Errorf("err = %v, want the failure reported", app.err)
@@ -610,8 +610,8 @@ func TestAppRefusesWritesItCannotMake(t *testing.T) {
 
 				press(app, k)
 
-				if app.form != nil || app.note != "" {
-					t.Errorf("form = %v, note = %q, want the key ignored", app.form, app.note)
+				if app.form != nil || app.board.confirmText != "" {
+					t.Errorf("form = %v, confirm = %q, want the key ignored", app.form, app.board.confirmText)
 				}
 			})
 		}

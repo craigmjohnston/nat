@@ -140,8 +140,8 @@ func TestAppQueueWritesTheConfirmedStatus(t *testing.T) {
 	if got := client.updated[0].properties[notion.PropStatus]; !reflect.DeepEqual(got, want) {
 		t.Errorf("status = %+v, want %+v", got, want)
 	}
-	if app.note != `"M3: Mutations" is now Active.` {
-		t.Errorf("note = %q, want the updated note", app.note)
+	if app.board.confirmText != `"M3: Mutations" is now Active.` {
+		t.Errorf("confirm = %q, want the updated confirmation", app.board.confirmText)
 	}
 }
 
@@ -159,8 +159,8 @@ func TestAppQueueWritesNothingWhenTheAnswerIsNo(t *testing.T) {
 	if app.busy {
 		t.Error("a confirm answered no leaves no write in flight")
 	}
-	if app.note != "Cancelled." {
-		t.Errorf("note = %q, want the cancelled note", app.note)
+	if app.toast != "Cancelled." {
+		t.Errorf("toast = %q, want the cancelled toast", app.toast)
 	}
 }
 
@@ -175,8 +175,8 @@ func TestAppQueueRefusesAMilestoneWithNowhereToGo(t *testing.T) {
 	if app.form != nil {
 		t.Error("a Done milestone should not open a confirm")
 	}
-	if want := `"M1: Config" is Done — there is nothing to move it to.`; app.note != want {
-		t.Errorf("note = %q, want %q", app.note, want)
+	if want := `"M1: Config" is Done — there is nothing to move it to.`; app.board.confirmText != want {
+		t.Errorf("confirm = %q, want %q", app.board.confirmText, want)
 	}
 }
 
@@ -199,8 +199,8 @@ func TestAppQueueNeedsAMilestoneUnderTheCursor(t *testing.T) {
 			if app.form != nil {
 				t.Error("a confirm was opened with no milestone to write to")
 			}
-			if !strings.Contains(app.note, "Move to a milestone") {
-				t.Errorf("note = %q, want the milestone hint", app.note)
+			if !strings.Contains(app.board.confirmText, "Move to a milestone") {
+				t.Errorf("confirm = %q, want the milestone hint", app.board.confirmText)
 			}
 		})
 	}
@@ -213,8 +213,8 @@ func TestAppReloadsThePlanAfterAMilestoneWrite(t *testing.T) {
 
 	_, cmd := app.Update(milestoneSavedMsg{note: `"M3" is now Active.`})
 
-	if app.busy || app.note != `"M3" is now Active.` {
-		t.Errorf("busy = %v, note = %q, want the write finished", app.busy, app.note)
+	if app.busy || app.board.confirmText != `"M3" is now Active.` {
+		t.Errorf("busy = %v, confirm = %q, want the write finished", app.busy, app.board.confirmText)
 	}
 	if got := first[projectLoadedMsg](t, run(cmd)); got.project.ID != testProjectID {
 		t.Errorf("reloaded %q, want the active project", got.project.ID)

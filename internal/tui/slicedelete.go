@@ -99,12 +99,10 @@ func (a *App) deleteSliceFlow() tea.Cmd {
 	}
 	s, ok := a.board.SelectedSlice()
 	if !ok {
-		a.note = "Move to a slice to delete it."
-		return nil
+		return a.showConfirm("Move to a slice to delete it.", sevWarning)
 	}
 	if note, refused := claimedNote(s, "deleted"); refused {
-		a.note = note
-		return nil
+		return a.showConfirm(note, sevWarning)
 	}
 	return a.openForm(newDeleteSliceForm(a.styles.FormTheme, s))
 }

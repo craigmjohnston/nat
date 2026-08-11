@@ -197,8 +197,8 @@ func TestAppNewProjectFlowWritesConfigAndReloads(t *testing.T) {
 	if app.err != nil {
 		t.Fatalf("err = %v, want a clean creation", app.err)
 	}
-	if app.note != `Created "tracker two".` {
-		t.Errorf("note = %q, want the created note", app.note)
+	if app.toast != `Created "tracker two".` {
+		t.Errorf("toast = %q, want the created toast", app.toast)
 	}
 	want := config.ProjectConfig{
 		Name: "tracker two", MilestonesDSID: "m-ds", SlicesDSID: "s-ds", WorkingDir: dir,
@@ -289,8 +289,8 @@ func TestAppNewProjectNeedsAProjectsDatabase(t *testing.T) {
 	if app.form != nil {
 		t.Error("a form was opened with nowhere to create under")
 	}
-	if !strings.Contains(app.note, "No projects database is configured") {
-		t.Errorf("note = %q, want the missing-database note", app.note)
+	if !strings.Contains(app.toast, "No projects database is configured") {
+		t.Errorf("toast = %q, want the missing-database toast", app.toast)
 	}
 }
 
@@ -333,8 +333,8 @@ func TestAppOnboardingHandsOverToTheNewProjectFlow(t *testing.T) {
 	if _, ok := app.form.(*NewProjectForm); !ok {
 		t.Fatalf("form = %T, want the new-project form", app.form)
 	}
-	if !strings.Contains(app.note, "No projects yet") {
-		t.Errorf("note = %q, want the hand-over note", app.note)
+	if !strings.Contains(app.toast, "No projects yet") {
+		t.Errorf("toast = %q, want the hand-over toast", app.toast)
 	}
 	if len(client.queriedDSIDs) != 0 {
 		t.Errorf("queried %v, want no plan loaded before there is one", client.queriedDSIDs)
@@ -359,8 +359,8 @@ func TestAppSwitchProjectPicksAnotherPlan(t *testing.T) {
 	press(app, "k")
 	finishForm(t, app, press(app, "enter"))
 
-	if app.note != `Switched to "another".` {
-		t.Errorf("note = %q, want the switched note", app.note)
+	if app.toast != `Switched to "another".` {
+		t.Errorf("toast = %q, want the switched toast", app.toast)
 	}
 	if saved.ActiveProjectID != "other" || app.cfg.ActiveProjectID != "other" {
 		t.Errorf("active project = %q/%q, want the picked one", saved.ActiveProjectID, app.cfg.ActiveProjectID)
@@ -415,8 +415,8 @@ func TestAppSwitchProjectNeedsSomewhereToSwitchTo(t *testing.T) {
 	if app.form != nil {
 		t.Error("a picker was opened with only one project")
 	}
-	if want := "There is no other project to switch to — press N to add one."; app.note != want {
-		t.Errorf("note = %q, want %q", app.note, want)
+	if want := "There is no other project to switch to — press N to add one."; app.toast != want {
+		t.Errorf("toast = %q, want %q", app.toast, want)
 	}
 }
 

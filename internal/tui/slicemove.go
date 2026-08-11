@@ -133,17 +133,14 @@ func (a *App) moveSliceFlow() tea.Cmd {
 	}
 	s, ok := a.board.SelectedSlice()
 	if !ok {
-		a.note = "Move to a slice to move it."
-		return nil
+		return a.showConfirm("Move to a slice to move it.", sevWarning)
 	}
 	if note, refused := claimedNote(s, "moved"); refused {
-		a.note = note
-		return nil
+		return a.showConfirm(note, sevWarning)
 	}
 	targets := moveTargets(a.project, s)
 	if len(targets) == 0 {
-		a.note = fmt.Sprintf("There is no other milestone to move %q to.", s.Name)
-		return nil
+		return a.showConfirm(fmt.Sprintf("There is no other milestone to move %q to.", s.Name), sevWarning)
 	}
 	return a.openForm(newMoveSliceForm(a.styles.FormTheme, s, targets))
 }
