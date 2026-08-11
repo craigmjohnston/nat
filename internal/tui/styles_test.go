@@ -40,7 +40,7 @@ func TestStylesDrawFromTheTokens(t *testing.T) {
 		{"MilestoneActive background", s.MilestoneActive.GetBackground(), tok.Accent},
 		{"Live foreground", s.Live.GetForeground(), tok.Success},
 		{"BarFill foreground", s.BarFill.GetForeground(), tok.Accent},
-		{"BarFillAlt foreground", s.BarFillAlt.GetForeground(), tok.AccentAlt},
+		{"BarFillDone foreground", s.BarFillDone.GetForeground(), tok.AccentDim},
 		{"BarEmpty foreground", s.BarEmpty.GetForeground(), tok.SurfaceHi},
 	}
 	for _, c := range checks {

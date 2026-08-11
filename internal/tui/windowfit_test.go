@@ -92,18 +92,21 @@ func TestAppBoardLeadsWithTheProgressBar(t *testing.T) {
 	if !strings.HasPrefix(lines[1], "╭") {
 		t.Errorf("line under the header = %q, want the board's border", lines[1])
 	}
-	if !strings.Contains(lines[2], strings.Repeat(barEmpty, 80-2*framePadX)) {
+	if !strings.Contains(lines[2], strings.Repeat(barCell, 80-2*framePadX)) {
 		t.Errorf("first body line = %q, want the bar at the body's full width", lines[2])
 	}
 	if !strings.Contains(lines[3], "0/1 · M7: Agent pane view") {
 		t.Errorf("second body line = %q, want the bar's label", lines[3])
+	}
+	if got := strings.TrimSpace(strings.Trim(lines[4], "│ ")); got != "" {
+		t.Errorf("third body line = %q, want a blank line parting the bar from the rows", lines[4])
 	}
 }
 
 func TestAppProgressBarResizesWithTheWindow(t *testing.T) {
 	for _, width := range windowWidths {
 		view := stripANSI(sizedApp(width, 24).View().Content)
-		if !strings.Contains(view, strings.Repeat(barEmpty, width-2*framePadX)) {
+		if !strings.Contains(view, strings.Repeat(barCell, width-2*framePadX)) {
 			t.Errorf("at %d columns the bar should span the body's width:\n%s", width, view)
 		}
 	}
