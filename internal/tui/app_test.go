@@ -172,7 +172,7 @@ func TestAppLoadsTheActiveProject(t *testing.T) {
 	// over the board, its label naming the tally and the milestone in play.
 	app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	view := stripANSI(app.View().Content)
-	for _, want := range []string{"tracker", barFilled, barEmpty, "1/2"} {
+	for _, want := range []string{"tracker", barCell, "1/2"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view is missing %q:\n%s", want, view)
 		}

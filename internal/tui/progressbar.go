@@ -9,12 +9,13 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 )
 
-// The bar is drawn out of three runes: a filled cell, an empty one, and the
-// boundary between two milestones.
+// The bar is drawn out of one half-height cell rune — whether a cell is
+// finished history, the bright fill of the milestone in progress, or work
+// still to do is told by colour alone — and a plain gap where one milestone
+// hands over to the next.
 const (
-	barFilled   = "█"
-	barEmpty    = "░"
-	barBoundary = "│"
+	barCell     = "▄"
+	barBoundary = " "
 )
 
 // ProgressSegment is one milestone's share of the bar: its name, for the label,
@@ -37,9 +38,10 @@ func SegmentsOf(groups []domain.Group) []ProgressSegment {
 // exactly width cells wide, with a label under it — two lines in all.
 //
 // Each segment is as wide as its share of the project's slices, never narrower
-// than one cell, and filled in proportion to how much of it is done. Adjacent
-// segments alternate hue and are parted by a boundary rune, so where one
-// milestone ends and the next begins is readable at a glance.
+// than one cell, and filled in proportion to how much of it is done. Finished
+// milestones recede: they draw in a dimmed fill and merge into one unbroken
+// run, so the eye lands on the bright milestone the work is in. Gaps are drawn
+// only where they say something — around segments with work left in them.
 //
 // Milestones with no slices are not drawn: there is nothing to be done in them,
 // and a cell each would be cells taken from the milestones that hold the work.
@@ -84,18 +86,17 @@ func renderBar(styles Styles, width int, segments []ProgressSegment) string {
 	// Nothing to track yet: an empty bar, rather than a blank line, so the
 	// board's shape does not change once the first slice is queued.
 	if len(segments) == 0 {
-		return repeat(styles.BarEmpty, barEmpty, width)
+		return repeat(styles.BarEmpty, barCell, width)
 	}
 
-	boundaries := len(segments) - 1
+	boundaries := boundaryCount(segments)
 	cells := width - boundaries
 	if cells < len(segments) {
-		// Not enough room for the boundaries; the alternating hues still part
-		// the segments.
+		// Not enough room for the gaps; drop them all before dropping cells.
 		boundaries, cells = 0, width
 	}
 	if cells < len(segments) {
-		return renderSegment(styles, totalProgress(segments), width, 0)
+		return renderSegment(styles, totalProgress(segments), width)
 	}
 
 	counts := make([]int, len(segments))
@@ -104,27 +105,44 @@ func renderBar(styles Styles, width int, segments []ProgressSegment) string {
 	}
 	widths := shareOut(cells, counts)
 
-	parts := make([]string, len(segments))
+	var b strings.Builder
 	for i, s := range segments {
-		parts[i] = renderSegment(styles, s.Progress, widths[i], i)
+		b.WriteString(renderSegment(styles, s.Progress, widths[i]))
+		if boundaries > 0 && i+1 < len(segments) && !(finished(segments[i]) && finished(segments[i+1])) {
+			b.WriteString(barBoundary)
+		}
 	}
-	sep := ""
-	if boundaries > 0 {
-		sep = styles.BarBoundary.Render(barBoundary)
-	}
-	return strings.Join(parts, sep)
+	return b.String()
 }
 
-// renderSegment draws one milestone's stretch of the bar: its done fraction
-// filled, the rest empty. Segments alternate hue by position so that two
-// neighbours never look like one.
-func renderSegment(styles Styles, p domain.Progress, width, index int) string {
-	fill := styles.BarFill
-	if index%2 == 1 {
-		fill = styles.BarFillAlt
+// finished reports whether a segment has nothing left in it. Two finished
+// neighbours draw as one: the boundary between them would only chop history
+// up, and the Done section under the bar already counts the milestones.
+func finished(s ProgressSegment) bool {
+	return s.Progress.Done == s.Progress.Total
+}
+
+// boundaryCount is how many gaps the bar draws: one for each adjacent pair
+// that does not merge.
+func boundaryCount(segments []ProgressSegment) int {
+	n := 0
+	for i := 0; i+1 < len(segments); i++ {
+		if !(finished(segments[i]) && finished(segments[i+1])) {
+			n++
+		}
+	}
+	return n
+}
+
+// renderSegment draws one milestone's stretch of the bar. A finished
+// milestone is a quiet run of the dimmed fill; an unfinished one draws its
+// done fraction in the bright fill and the rest in the empty colour.
+func renderSegment(styles Styles, p domain.Progress, width int) string {
+	if p.Done == p.Total {
+		return repeat(styles.BarFillDone, barCell, width)
 	}
 	filled := filledCells(p.Fraction(), width)
-	return repeat(fill, barFilled, filled) + repeat(styles.BarEmpty, barEmpty, width-filled)
+	return repeat(styles.BarFill, barCell, filled) + repeat(styles.BarEmpty, barCell, width-filled)
 }
 
 // filledCells is how many of a segment's cells are filled, for a fraction in

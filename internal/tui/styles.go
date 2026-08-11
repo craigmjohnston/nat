@@ -23,9 +23,12 @@ type Tokens struct {
 	SurfaceHi color.Color
 	// Accent is the interface's own colour — headings, keys, the cursor — and
 	// AccentAlt a second hue for what sits beside accented text without being
-	// it: milestone names, assignees, the alternating bar segments.
+	// it: milestone names, assignees. AccentDim is the accent knocked back
+	// toward the surface, for what is the interface's colour but should
+	// recede: the finished stretch of the progress bar.
 	Accent    color.Color
 	AccentAlt color.Color
+	AccentDim color.Color
 	// Success, Warning and Danger colour outcomes: done/live, claimed/pending
 	// confirmation, and failure.
 	Success color.Color
@@ -47,6 +50,7 @@ func NewTokens(isDark bool) Tokens {
 		SurfaceHi: ld(lipgloss.Color("#bcc0cc"), lipgloss.Color("#45475a")), // surface1
 		Accent:    ld(lipgloss.Color("#8839ef"), lipgloss.Color("#cba6f7")), // mauve
 		AccentAlt: ld(lipgloss.Color("#1e66f5"), lipgloss.Color("#89b4fa")), // blue
+		AccentDim: ld(lipgloss.Color("#c09ef2"), lipgloss.Color("#6c5b88")), // mauve faded toward the base
 		Success:   ld(lipgloss.Color("#40a02b"), lipgloss.Color("#a6e3a1")), // green
 		Warning:   ld(lipgloss.Color("#df8e1d"), lipgloss.Color("#f9e2af")), // yellow
 		Danger:    ld(lipgloss.Color("#d20f39"), lipgloss.Color("#f38ba8")), // red
@@ -126,13 +130,12 @@ type Styles struct {
 	PR       lipgloss.Style
 	Live     lipgloss.Style
 
-	// BarFill and BarFillAlt colour the done part of a progress bar segment,
-	// alternating between the two so adjacent milestones stay apart; BarEmpty
-	// is the part still to do, and BarBoundary the rule between segments.
+	// BarFill colours the done part of the milestone the work is in;
+	// BarFillDone the milestones already finished, receding behind it; and
+	// BarEmpty the part still to do.
 	BarFill     lipgloss.Style
-	BarFillAlt  lipgloss.Style
+	BarFillDone lipgloss.Style
 	BarEmpty    lipgloss.Style
-	BarBoundary lipgloss.Style
 
 	// FormTheme is the huh theme the modal forms render with, built from the
 	// same tokens as everything else. huh has a light/dark probe of its own,
@@ -193,9 +196,8 @@ func NewStyles(isDark bool) Styles {
 		Live:     lipgloss.NewStyle().Bold(true).Foreground(t.Success),
 
 		BarFill:     lipgloss.NewStyle().Foreground(t.Accent),
-		BarFillAlt:  lipgloss.NewStyle().Foreground(t.AccentAlt),
+		BarFillDone: lipgloss.NewStyle().Foreground(t.AccentDim),
 		BarEmpty:    lipgloss.NewStyle().Foreground(t.SurfaceHi),
-		BarBoundary: lipgloss.NewStyle().Foreground(t.Muted),
 
 		FormTheme: huh.ThemeFunc(func(bool) *huh.Styles { return formStyles(t) }),
 	}

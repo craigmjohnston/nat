@@ -814,24 +814,26 @@ func (a *App) boardView() string {
 }
 
 // progressBarView is the bar over the board's rows: the plan segmented by
-// milestone, as wide as the body's interior, label line included — or nothing
-// before the first resize, when there is no width to size the bar to.
+// milestone, as wide as the body's interior, label line included, and a blank
+// line holding the rows off it — or nothing before the first resize, when
+// there is no width to size the bar to.
 func (a *App) progressBarView() string {
 	bar := RenderProgressBar(a.styles, a.innerWidth(), SegmentsOf(a.project.Groups()))
 	if bar == "" {
 		return ""
 	}
-	return bar + "\n"
+	return bar + "\n\n"
 }
 
 // progressBandLines is the body lines the bar takes from the board's viewport:
-// the bar's own two when there is a plan to sum, none without one — the other
-// board states draw no bar — or before the first resize.
+// the bar, its label and the blank line under them when there is a plan to
+// sum, none without one — the other board states draw no bar — or before the
+// first resize.
 func (a *App) progressBandLines() int {
 	if a.project == nil || a.innerWidth() <= 0 {
 		return 0
 	}
-	return 2
+	return 3
 }
 
 // syncBoard puts the board's rows into the body's viewport and scrolls it the

@@ -121,33 +121,39 @@ func TestProgressBarSkipsMilestonesWithNoSlices(t *testing.T) {
 }
 
 func TestProgressBarDropsBoundariesBeforeItDropsCells(t *testing.T) {
-	// Three segments in three cells: one cell each, no room for boundaries.
-	bar := barOf(RenderProgressBar(DefaultStyles(), 3,
-		segs([2]int{1, 1}, [2]int{0, 1}, [2]int{0, 1})))
+	// Three segments in three cells: one cell each, no room for gaps.
+	styles := DefaultStyles()
+	rendered := RenderProgressBar(styles, 3, segs([2]int{1, 1}, [2]int{0, 1}, [2]int{0, 1}))
 
+	bar := barOf(rendered)
 	if strings.Contains(bar, barBoundary) {
-		t.Errorf("bar %q still draws boundaries at width 3", bar)
+		t.Errorf("bar %q still draws gaps at width 3", bar)
 	}
-	if want := barFilled + barEmpty + barEmpty; bar != want {
-		t.Errorf("bar = %q, want %q", bar, want)
+	want := styles.BarFillDone.Render(barCell) +
+		styles.BarEmpty.Render(barCell) + styles.BarEmpty.Render(barCell)
+	if got := strings.SplitN(rendered, "\n", 2)[0]; got != want {
+		t.Errorf("bar = %q, want %q", got, want)
 	}
 }
 
 func TestProgressBarCollapsesWhenThereAreMoreMilestonesThanColumns(t *testing.T) {
 	// Four milestones, two of them done, in three cells: one bar over the lot,
-	// half of it filled.
-	bar := barOf(RenderProgressBar(DefaultStyles(), 4,
-		segs([2]int{1, 1}, [2]int{1, 1}, [2]int{0, 1}, [2]int{0, 1})))
+	// half of it filled — in the bright fill, since the project as a whole is
+	// not finished history.
+	styles := DefaultStyles()
+	rendered := RenderProgressBar(styles, 3,
+		segs([2]int{1, 1}, [2]int{1, 1}, [2]int{0, 1}, [2]int{0, 1}))
 
-	if want := strings.Repeat(barFilled, 2) + strings.Repeat(barEmpty, 2); bar != want {
-		t.Errorf("bar = %q, want %q", bar, want)
+	want := styles.BarFill.Render(barCell) + styles.BarEmpty.Render(strings.Repeat(barCell, 2))
+	if got := strings.SplitN(rendered, "\n", 2)[0]; got != want {
+		t.Errorf("bar = %q, want %q", got, want)
 	}
 }
 
 func TestProgressBarWithNoSlicesAtAllIsEmptyRatherThanBlank(t *testing.T) {
 	for _, segments := range [][]ProgressSegment{nil, segs([2]int{0, 0}, [2]int{0, 0})} {
 		rendered := RenderProgressBar(DefaultStyles(), 5, segments)
-		if got, want := barOf(rendered), strings.Repeat(barEmpty, 5); got != want {
+		if got, want := barOf(rendered), strings.Repeat(barCell, 5); got != want {
 			t.Errorf("bar = %q, want %q", got, want)
 		}
 		if got, want := labelOf(rendered), "0/0"; got != want {
@@ -157,10 +163,13 @@ func TestProgressBarWithNoSlicesAtAllIsEmptyRatherThanBlank(t *testing.T) {
 }
 
 func TestProgressBarDrawsASingleMilestoneWithoutBoundaries(t *testing.T) {
-	bar := barOf(RenderProgressBar(DefaultStyles(), 8, segs([2]int{1, 4})))
+	styles := DefaultStyles()
+	rendered := RenderProgressBar(styles, 8, segs([2]int{1, 4}))
 
-	if want := strings.Repeat(barFilled, 2) + strings.Repeat(barEmpty, 6); bar != want {
-		t.Errorf("bar = %q, want %q", bar, want)
+	want := styles.BarFill.Render(strings.Repeat(barCell, 2)) +
+		styles.BarEmpty.Render(strings.Repeat(barCell, 6))
+	if got := strings.SplitN(rendered, "\n", 2)[0]; got != want {
+		t.Errorf("bar = %q, want %q", got, want)
 	}
 }
 
@@ -226,18 +235,27 @@ func TestProgressBarLabelIsTruncatedToTheBarWidth(t *testing.T) {
 	}
 }
 
-func TestProgressBarAlternatesTheHueOfAdjacentSegments(t *testing.T) {
+func TestProgressBarMergesFinishedMilestonesIntoOneQuietRun(t *testing.T) {
 	styles := DefaultStyles()
-	rendered := RenderProgressBar(styles, 9, segs([2]int{2, 2}, [2]int{4, 4}, [2]int{1, 1}))
+	rendered := RenderProgressBar(styles, 8, segs([2]int{2, 2}, [2]int{4, 4}, [2]int{1, 2}))
 
-	// Widths 2, 4 and 1, all filled: the middle one in the alternate hue.
-	want := styles.BarFill.Render(strings.Repeat(barFilled, 2)) +
-		styles.BarBoundary.Render(barBoundary) +
-		styles.BarFillAlt.Render(strings.Repeat(barFilled, 4)) +
-		styles.BarBoundary.Render(barBoundary) +
-		styles.BarFill.Render(barFilled)
+	// The one gap — before the unfinished milestone — leaves 7 cells, shared
+	// 2/3/2. The finished segments draw in the dimmed fill with nothing
+	// between them; the unfinished one is half bright fill, half empty.
+	want := styles.BarFillDone.Render(strings.Repeat(barCell, 2)) +
+		styles.BarFillDone.Render(strings.Repeat(barCell, 3)) +
+		barBoundary +
+		styles.BarFill.Render(barCell) + styles.BarEmpty.Render(barCell)
 	if got := strings.SplitN(rendered, "\n", 2)[0]; got != want {
 		t.Errorf("bar = %q, want %q", got, want)
+	}
+}
+
+func TestProgressBarPartsUnfinishedMilestonesWithAGap(t *testing.T) {
+	bar := barOf(RenderProgressBar(DefaultStyles(), 5, segs([2]int{0, 2}, [2]int{0, 2})))
+
+	if want := strings.Repeat(barCell, 2) + barBoundary + strings.Repeat(barCell, 2); bar != want {
+		t.Errorf("bar = %q, want %q", bar, want)
 	}
 }
 
