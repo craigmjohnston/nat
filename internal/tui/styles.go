@@ -80,6 +80,11 @@ type Styles struct {
 	// borders, so the layout reads as panels rather than floating text.
 	Box       lipgloss.Style
 	StatusBox lipgloss.Style
+	// Modal frames a form floating over the board, and Scrim redraws the board
+	// behind it knocked back to one quiet colour, so the modal is the only
+	// surface at full strength while it is up.
+	Modal lipgloss.Style
+	Scrim lipgloss.Style
 	// Faint is for text that should recede: hints, placeholders, counts.
 	Faint lipgloss.Style
 	// StatusBar is the fill of the bottom row, and StatusKey, StatusDesc and
@@ -185,6 +190,8 @@ func NewStyles(isDark bool) Styles {
 
 		Box:       lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.SurfaceHi).Padding(0, 1),
 		StatusBox: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.SurfaceHi),
+		Modal:     lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.AccentDim).Padding(0, 1),
+		Scrim:     lipgloss.NewStyle().Foreground(t.SurfaceHi),
 
 		StatusBar:  bar,
 		StatusKey:  bar.Bold(true).Foreground(t.Accent),
