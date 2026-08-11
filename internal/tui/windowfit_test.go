@@ -116,13 +116,14 @@ func TestAppBoxesTheBoardAndTheStatusBar(t *testing.T) {
 	for _, width := range windowWidths {
 		lines := strings.Split(stripANSI(sizedApp(width, 24).View().Content), "\n")
 		// The board's box follows the heading bar, and the status box takes the
-		// window's last three lines; each runs the window's full width.
+		// window's last three lines, with the hints row on its own line between
+		// the two boxes; each box runs the window's full width.
 		for _, i := range []int{1, len(lines) - 3} {
 			if !strings.HasPrefix(lines[i], "╭") || !strings.HasSuffix(lines[i], "╮") {
 				t.Errorf("at %d columns line %d = %q, want a border's top", width, i, lines[i])
 			}
 		}
-		for _, i := range []int{len(lines) - 4, len(lines) - 1} {
+		for _, i := range []int{len(lines) - 5, len(lines) - 1} {
 			if !strings.HasPrefix(lines[i], "╰") || !strings.HasSuffix(lines[i], "╯") {
 				t.Errorf("at %d columns line %d = %q, want a border's bottom", width, i, lines[i])
 			}
@@ -158,31 +159,71 @@ func TestClipLines(t *testing.T) {
 }
 
 func TestAppDropsKeyHintsByRank(t *testing.T) {
-	// Wide enough for every hint.
-	if view := stripANSI(sizedApp(80, 24).View().Content); !strings.Contains(view, "esc back") {
+	// Wide enough for every hint: the cursor starts on the milestone, and the
+	// row draws its whole set, help included.
+	if view := stripANSI(sizedApp(80, 24).View().Content); !strings.Contains(view, "? help") {
 		t.Errorf("a wide window should draw every hint:\n%s", view)
 	}
 
-	// Narrow enough that one has to go: back is the first to be dropped, and
-	// what the user most needs stays.
+	// Narrow enough that some have to go: help and the toggle drop first, and
+	// the actions that write survive.
 	view := stripANSI(sizedApp(40, 24).View().Content)
-	if strings.Contains(view, "esc back") {
-		t.Errorf("at 40 columns the back hint should have gone:\n%s", view)
+	for _, gone := range []string{"? help", "enter expand/collapse"} {
+		if strings.Contains(view, gone) {
+			t.Errorf("at 40 columns %q should have gone:\n%s", gone, view)
+		}
 	}
-	for _, want := range []string{"q quit", "r refresh"} {
+	for _, want := range []string{"a add slice", "Q advance milestone"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("at 40 columns the view is missing %q:\n%s", want, view)
 		}
 	}
 }
 
+// The hints row sits on its own line directly above the status box, and what
+// it says follows the cursor: the milestone's actions on a milestone, the
+// slice's on a slice, and the global set where nothing is selected.
+func TestAppHintsRowIsContextual(t *testing.T) {
+	a := sizedApp(80, 24)
+
+	view := stripANSI(a.View().Content)
+	lines := strings.Split(view, "\n")
+	row := lines[len(lines)-4]
+	for _, want := range []string{"a add slice", "Q advance milestone", "enter expand/collapse", "? help"} {
+		if !strings.Contains(row, want) {
+			t.Errorf("hints row on a milestone = %q, want %q", row, want)
+		}
+	}
+
+	press(a, "j")
+	lines = strings.Split(stripANSI(a.View().Content), "\n")
+	row = lines[len(lines)-4]
+	for _, want := range []string{"e edit", "m move", "d delete", "l launch agent", "t show/hide agent", "? help"} {
+		if !strings.Contains(row, want) {
+			t.Errorf("hints row on a slice = %q, want %q", row, want)
+		}
+	}
+	if strings.Contains(row, "add slice") {
+		t.Errorf("hints row on a slice = %q, want the milestone's hints gone", row)
+	}
+
+	press(a, "?")
+	lines = strings.Split(stripANSI(a.View().Content), "\n")
+	row = lines[len(lines)-4]
+	for _, want := range []string{"r refresh", "esc back", "q quit"} {
+		if !strings.Contains(row, want) {
+			t.Errorf("hints row on the help screen = %q, want the global set with %q", row, want)
+		}
+	}
+}
+
 func TestHintsGoInRankOrder(t *testing.T) {
 	a := NewApp(testConfig(), nil)
-	// The hints as they narrow: each drop takes the whole hint, never half of
-	// one, and the order is the rank order.
+	// The global hints as they narrow: each drop takes the whole hint, never
+	// half of one, and the order is the rank order.
 	dropped := []string{"esc back", "i info", "? help", "r refresh", "q quit"}
 	for width := 60; width >= 0; width-- {
-		line := stripANSI(a.hintLine(width))
+		line := stripANSI(a.fitHints(a.keys.statusHints(), width))
 		if width > 0 && lipgloss.Width(line) > width {
 			t.Fatalf("at %d columns the hints are %d wide: %q", width, lipgloss.Width(line), line)
 		}
@@ -206,7 +247,8 @@ func TestHintsGoInRankOrder(t *testing.T) {
 func TestHintsAreTruncatedOnceThereIsNothingLeftToDrop(t *testing.T) {
 	// One column holds no whole hint, so what is left is cut to fit rather than
 	// overflowing.
-	if got := lipgloss.Width(NewApp(testConfig(), nil).hintLine(1)); got > 1 {
+	a := NewApp(testConfig(), nil)
+	if got := lipgloss.Width(a.fitHints(a.keys.statusHints(), 1)); got > 1 {
 		t.Errorf("hints are %d wide in one column", got)
 	}
 }
@@ -226,43 +268,55 @@ func TestAppStatusBarIsExactlyTheWindowWideAsItNarrows(t *testing.T) {
 	}
 }
 
-func TestAppStatusBarLeadsWithTheProjectChip(t *testing.T) {
+func TestAppStatusBarLeadsWithTheModeChip(t *testing.T) {
 	bar := stripANSI(sizedApp(80, 24).statusBar())
-	// The bar is indented like every other band, and the chip is cut to a third
-	// of it, so the long test name loses its tail.
-	if want := "   notion-agent-tracker, dog "; !strings.HasPrefix(bar, want) {
+	// The bar is indented like every other band, and the chip names the app
+	// rather than the project — the heading already does that.
+	if want := "   nat "; !strings.HasPrefix(bar, want) {
 		t.Errorf("status bar = %q, want it led by the chip %q", bar, want)
+	}
+	if strings.Contains(bar, "notion-agent-tracker") {
+		t.Errorf("status bar = %q, want the project name left to the heading", bar)
 	}
 }
 
-func TestAppStatusBarEndsWithTheKeyHints(t *testing.T) {
-	// The hints are a right segment: they finish at the bar's own indent, with
-	// fill between them and whatever the left segment holds.
+func TestAppStatusBarCarriesNoKeyHints(t *testing.T) {
+	// The hints have a row of their own above the bar, so the bar is the chip
+	// and the message alone.
 	a := sizedApp(80, 24)
 	a.note = "Saved."
 
 	bar := stripANSI(a.statusBar())
-	if !strings.HasSuffix(bar, "q quit  ") {
-		t.Errorf("status bar = %q, want it to end with the hints", bar)
+	if strings.Contains(bar, "q quit") || strings.Contains(bar, "? help") {
+		t.Errorf("status bar = %q, want the hints on their own row", bar)
 	}
 	if !strings.Contains(bar, "Saved.") {
 		t.Errorf("status bar = %q, want the note beside the chip", bar)
 	}
 }
 
-func TestAppStatusBarKeepsTheHintsBesideALongNote(t *testing.T) {
-	// A note is capped at half the bar, so it can never take the whole of it.
+func TestAppStatusBarKeepsALongNoteInTheBar(t *testing.T) {
+	// A long note is truncated to the bar rather than wrapped or overflowed.
 	a := sizedApp(80, 24)
 	a.note = strings.Repeat("very long ", 20)
 
-	if bar := stripANSI(a.statusBar()); !strings.Contains(bar, "q quit") {
-		t.Errorf("status bar = %q, want the hints to have survived the note", bar)
+	bar := a.statusBar()
+	if got := lipgloss.Width(bar); got != 80 {
+		t.Errorf("status bar is %d wide, want the window filled", got)
+	}
+	if !strings.Contains(stripANSI(bar), "very long") {
+		t.Errorf("status bar = %q, want the note's leading text kept", stripANSI(bar))
 	}
 }
 
-func TestAppStatusBarDropsTheHintsForAnOpenForm(t *testing.T) {
-	// A form owns the keys the hints name, so only its own way out is offered.
-	bar := stripANSI(sizedFormApp(t, 80, 24).statusBar())
+func TestAppHintsRowIsEmptyForAnOpenForm(t *testing.T) {
+	// A form owns the keys the hints name, so only its own way out is offered,
+	// on the bar itself.
+	a := sizedFormApp(t, 80, 24)
+	if row := stripANSI(a.hintsView()); row != "" {
+		t.Errorf("hints row = %q, want it empty while a form is open", row)
+	}
+	bar := stripANSI(a.statusBar())
 	if !strings.Contains(bar, "esc cancel") || strings.Contains(bar, "refresh") {
 		t.Errorf("status bar = %q, want only the form's own prompt", bar)
 	}
@@ -346,7 +400,7 @@ func TestAppWithoutAWindowSizeDrawsEverything(t *testing.T) {
 		t.Errorf("inner width = %d, want an unmeasured window", got)
 	}
 	view := stripANSI(a.View().Content)
-	for _, want := range []string{p.Name, "esc back", "q quit"} {
+	for _, want := range []string{p.Name, "a add slice", "? help"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("an unmeasured window is missing %q:\n%s", want, view)
 		}
@@ -483,12 +537,13 @@ func TestAppScrollsTheHelpScreen(t *testing.T) {
 }
 
 func TestAppSharesAShortWindowOutFromTheBottom(t *testing.T) {
-	// The status bar takes the bottom rows first, then the header what is left:
-	// too short a window loses the body, then its borders, then the header,
-	// never the bar. From 6 lines the layout is framed — the boxed status bar
-	// and the body's own border — and below that the bands are drawn bare.
+	// The status bar takes the bottom rows first, then the header and the hints
+	// row what is left: too short a window loses the body, then its borders,
+	// then the hints, then the header, never the bar. From 6 lines the layout
+	// is framed — the boxed status bar and the body's own border — and below
+	// that the bands are drawn bare.
 	for _, tt := range []struct{ height, header, body int }{
-		{20, 1, 14}, {6, 1, 0}, {5, 1, 3}, {2, 1, 0}, {1, 0, 0},
+		{20, 1, 13}, {6, 1, 0}, {5, 1, 2}, {2, 1, 0}, {1, 0, 0},
 	} {
 		a := tallApp(80, tt.height)
 		if got := a.headerBandHeight(); got != tt.header {

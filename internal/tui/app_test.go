@@ -429,10 +429,12 @@ func TestAppStatusBarChipNamesTheScreen(t *testing.T) {
 		t.Errorf("chip = %q, want the app's own name with no project", got)
 	}
 
+	// The board's chip stays the app's own name even with a project loaded:
+	// the heading names the project already.
 	p := testProject()
 	app.project = &p
 	tests := map[screen]string{
-		screenBoard: "tracker",
+		screenBoard: "nat",
 		screenHelp:  "help",
 		screenInfo:  "info",
 		screenForm:  "edit",
@@ -645,9 +647,10 @@ func TestAppSizesTheInfoViewport(t *testing.T) {
 	app, _ := infoApp(t)
 
 	// The info screen is the body box's interior: the window less the box's
-	// border and padding, and less the heading bar and the boxed status bar.
+	// border and padding, and less the heading bar, the hints row and the
+	// boxed status bar.
 	wantW := 80 - 2*framePadX
-	wantH := 24 - headerHeight - statusBoxHeight - 2
+	wantH := 24 - headerHeight - hintsHeight - statusBoxHeight - 2
 	if got := app.info.vp.Width(); got != wantW {
 		t.Errorf("viewport width = %d, want %d", got, wantW)
 	}

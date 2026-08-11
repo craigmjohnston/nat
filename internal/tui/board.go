@@ -77,6 +77,37 @@ func (k boardKeyMap) writes() []key.Binding {
 	return []key.Binding{k.Add, k.Edit, k.Move, k.Delete, k.Queue}
 }
 
+// sliceHints are the hints row's bindings while the cursor is on a slice: the
+// actions that act on it, in the order they read. The agent keys are what the
+// tracker is for, so they survive a narrow row longest. The write keys drop
+// the word "slice" their help carries — the hints only show on one, and the
+// row has less room than the help screen.
+func (k boardKeyMap) sliceHints() []hint {
+	return []hint{
+		{shortHint(k.Edit, "edit"), 4},
+		{shortHint(k.Move, "move"), 2},
+		{shortHint(k.Delete, "delete"), 3},
+		{k.Launch, 6},
+		{k.Attach, 5},
+	}
+}
+
+// shortHint is b with its help description replaced, for a hints row whose
+// context already says what the key acts on.
+func shortHint(b key.Binding, desc string) key.Binding {
+	return key.NewBinding(key.WithHelp(b.Help().Key, desc))
+}
+
+// milestoneHints are the hints row's bindings while the cursor is on a
+// milestone: the actions that act on it or file under it.
+func (k boardKeyMap) milestoneHints() []hint {
+	return []hint{
+		{k.Add, 4},
+		{k.Queue, 3},
+		{k.Toggle, 2},
+	}
+}
+
 // helpBindings are the board's bindings as the help screen lists them.
 func (b Board) helpBindings() []key.Binding {
 	bindings := []key.Binding{b.keys.Up, b.keys.Down, b.keys.Toggle}

@@ -89,17 +89,18 @@ func defaultKeyMap() keyMap {
 	}
 }
 
-// hint is one key binding of the status bar, with the order it goes in as the
-// bar runs out of room: rank 1 is dropped first.
+// hint is one key binding of the hints row, with the order it goes in as the
+// row runs out of room: rank 1 is dropped first.
 type hint struct {
 	binding key.Binding
 	rank    int
 }
 
-// statusHints are the bindings the status bar draws, in the order they read.
-// They are dropped by rank rather than truncated, so a narrow bar loses whole
-// hints from the middle and the two that matter most — quit, and the refresh
-// that is the only way to see what an agent has done — survive longest.
+// statusHints are the global bindings the hints row draws when nothing more
+// specific is selected, in the order they read. They are dropped by rank
+// rather than truncated, so a narrow row loses whole hints from the middle and
+// the two that matter most — quit, and the refresh that is the only way to see
+// what an agent has done — survive longest.
 func (k keyMap) statusHints() []hint {
 	return []hint{
 		{k.Refresh, 4},
@@ -647,20 +648,22 @@ func (a *App) View() tea.View {
 }
 
 // The layout's fixed measurements: the columns each band is held away from the
-// window's edges by, the height of the heading bar, and the height of the
-// status bar — one line bare, or three inside its box.
+// window's edges by, the height of the heading bar, the height of the key
+// hints row above the status bar, and the height of the status bar itself —
+// one line bare, or three inside its box.
 const (
 	framePadX       = 2
 	headerHeight    = 1
+	hintsHeight     = 1
 	statusHeight    = 1
 	statusBoxHeight = statusHeight + 2
 )
 
 // content is the rendered screen, without the terminal-level settings: the
-// heading bar, the body of the screen on show boxed in its border, and the
-// status bar in its own box docked to the window's bottom rows. The bands are
-// cut and padded to fill the window exactly, so nothing a screen draws can
-// push the bar off the bottom.
+// heading bar, the body of the screen on show boxed in its border, the key
+// hints on a row of their own, and the status bar in its own box docked to the
+// window's bottom rows. The bands are cut and padded to fill the window
+// exactly, so nothing a screen draws can push the bar off the bottom.
 func (a *App) content() string {
 	if a.onboarding != nil {
 		return a.onboarding.View()
@@ -668,7 +671,7 @@ func (a *App) content() string {
 	if a.width <= 0 || a.height <= 0 {
 		// Before the first resize there is no window to lay out to, so the bands
 		// are simply drawn one after another at whatever size they come out.
-		return a.headerView() + "\n" + a.body() + "\n" + a.statusBar()
+		return a.headerView() + "\n" + a.body() + "\n" + a.hintsView() + "\n" + a.statusBar()
 	}
 	var lines []string
 	if a.headerBandHeight() > 0 {
@@ -676,9 +679,11 @@ func (a *App) content() string {
 	}
 	if a.framed() {
 		lines = append(lines, a.bodyRegion()...)
+		lines = append(lines, a.band(a.hintsView(), a.hintBandHeight())...)
 		return strings.Join(append(lines, a.statusRegion()...), "\n")
 	}
 	lines = append(lines, a.band(a.body(), a.bodyHeight())...)
+	lines = append(lines, a.band(a.hintsView(), a.hintBandHeight())...)
 	return strings.Join(append(lines, a.statusBar()), "\n")
 }
 
@@ -723,10 +728,17 @@ func (a *App) headerBandHeight() int {
 	return min(headerHeight, max(a.height-a.statusBandHeight(), 0))
 }
 
+// hintBandHeight is the key hints row's line, when the window still has one
+// after the status bar and the header have taken theirs: a short window loses
+// the body before it loses the hints.
+func (a *App) hintBandHeight() int {
+	return min(hintsHeight, max(a.height-a.statusBandHeight()-a.headerBandHeight(), 0))
+}
+
 // bodyBoxHeight is the lines the body region occupies, border included;
 // bodyHeight is the lines a screen can actually draw on inside it.
 func (a *App) bodyBoxHeight() int {
-	return max(a.height-a.statusBandHeight()-a.headerBandHeight(), 0)
+	return max(a.height-a.statusBandHeight()-a.headerBandHeight()-a.hintBandHeight(), 0)
 }
 
 func (a *App) bodyHeight() int {
@@ -954,42 +966,31 @@ func (a *App) statusBar() string {
 }
 
 // statusBarAt is the bar as one line of the given total width, its content
-// held in from the left edge by indent, and the one band with a fill of its
-// own: the mode chip and whatever the app has to say in a left segment, the
-// key hints right-aligned in a right segment, and the bar's background between
-// them. It is one line however narrow the window gets — a bar that wrapped
-// would take a line the bands above it have already spent.
+// held in from the left edge by indent, with a fill of its own: the mode chip
+// and whatever the app has to say beside it. The key hints live on their own
+// row above the bar rather than in it. It is one line however narrow the
+// window gets — a bar that wrapped would take a line the bands above it have
+// already spent.
 func (a *App) statusBarAt(total, indent int) string {
-	room := a.innerWidth()
-	left, right := a.statusLeft(room), ""
-	if gap := room - lipgloss.Width(left) - statusSegmentGap; total <= 0 || gap > 0 {
-		right = a.statusRight(max(gap, 0))
-	}
+	left := a.statusLeft(a.innerWidth())
 	if total <= 0 {
-		// No window to spread across, so the two segments simply sit together.
-		return a.styles.StatusBar.Render(left + strings.Repeat(" ", statusSegmentGap) + right)
+		// No window to spread across, so the segment simply sits at its own size.
+		return a.styles.StatusBar.Render(left)
 	}
-	// The indents are the first thing a window too narrow for the bar loses, so
-	// the line is cut to the window rather than to the room between them.
-	pad := max(room-lipgloss.Width(left)-lipgloss.Width(right), 0)
-	line := strings.Repeat(" ", indent) + left + strings.Repeat(" ", pad) + right
+	// The indent is the first thing a window too narrow for the bar loses, so
+	// the line is cut to the window rather than to the room inside it.
+	line := strings.Repeat(" ", indent) + left
 	return a.styles.StatusBar.Width(total).Render(fit(line, total))
 }
 
-// statusSegmentGap is the least space the bar keeps between its two segments,
-// so a full bar does not read as one run of text.
-const statusSegmentGap = 2
-
-// statusLeft is the bar's left segment: the mode chip, and beside it the error
-// waiting to be dismissed, a transient note, or an open form's prompt. The
-// message never takes more than half the bar, so a long note cannot push the
-// key hints out altogether.
+// statusLeft is the bar's content: the mode chip, and beside it the error
+// waiting to be dismissed, a transient note, or an open form's prompt.
 func (a *App) statusLeft(width int) string {
 	chip := a.styles.ModeChip.Render(a.chipText())
 	room := 0
 	if width > 0 {
 		// A window with no room beside the chip gets the chip alone, cut to fit.
-		if room = min(width-lipgloss.Width(chip)-1, width/2); room <= 0 {
+		if room = width - lipgloss.Width(chip) - 1; room <= 0 {
 			return fit(chip, width)
 		}
 	}
@@ -1000,34 +1001,18 @@ func (a *App) statusLeft(width int) string {
 	return chip + " " + message
 }
 
-// statusRight is the bar's right segment: the key hints, or nothing at all once
-// the left segment has taken the bar.
-func (a *App) statusRight(width int) string {
-	// An open form owns every key the hints name, so naming them would be a lie.
-	// Its own prompt, on the left, is the whole story.
-	if a.form != nil {
-		return ""
-	}
-	if len(a.joined) > 0 {
-		return a.paneHintLine(width)
-	}
-	return a.hintLine(width)
-}
-
-// chipText is what the status bar's chip says: the screen's name, or on the
-// board the project's, cut to a third of the bar so the message beside the
-// chip keeps most of the room.
+// chipText is what the status bar's chip says: the screen's name, or the app's
+// own on the board — the heading already names the project — cut to a third of
+// the bar so the message beside the chip keeps most of the room.
 func (a *App) chipText() string {
 	text := appName
-	switch {
-	case a.screen == screenHelp:
+	switch a.screen {
+	case screenHelp:
 		text = "help"
-	case a.screen == screenInfo:
+	case screenInfo:
 		text = "info"
-	case a.screen == screenForm:
+	case screenForm:
 		text = "edit"
-	case a.project != nil:
-		text = a.project.Name
 	}
 	if w := a.innerWidth(); w > 0 {
 		text = fit(text, w/3)
@@ -1059,26 +1044,52 @@ func (a *App) statusMessage(width int) string {
 	return ""
 }
 
-// hintLine is the ordinary hint line: the app's global keys.
-func (a *App) hintLine(width int) string {
-	return a.fitHints(a.keys.statusHints(), width)
+// hintsView is the hints row's content: the contextual hints on one line,
+// dropped by rank to the width the band has.
+func (a *App) hintsView() string {
+	return a.fitHints(a.contextHints(), a.innerWidth())
 }
 
-// paneHintLine is the status bar while an agent's pane is joined beside the
-// board: how the split is handled, in place of hints for keys the user already
-// knows. The key that returns the pane matters more than the zoom, so the zoom
-// goes first when the bar runs out of room. When the joined pane is the
-// planning agent's, the guidance names its own key rather than t's — pressing
-// t there would find no slice to act on.
-func (a *App) paneHintLine(width int) string {
-	returnKey := a.board.keys.Attach.Help().Key
-	if len(a.joined) == 1 && a.joined[agent.PlanSentinel] {
-		returnKey = a.board.keys.Plan.Help().Key
+// contextHints are the hints the row above the status bar draws: what acts on
+// the selection — the slice's actions, the milestone's — and otherwise the
+// global set. An open form owns every key, so naming any would be a lie; a
+// joined agent pane swaps in the split guidance, since the pane has the keys
+// until it is hidden again. Each contextual set carries the help key at the
+// lowest rank, so the way to the full list is the first hint a narrow row
+// gives up.
+func (a *App) contextHints() []hint {
+	if a.form != nil {
+		return nil
 	}
-	return a.fitHints([]hint{
-		{key.NewBinding(key.WithHelp(returnKey, "return the agent")), 2},
+	if len(a.joined) > 0 {
+		return a.paneHints()
+	}
+	if a.screen == screenBoard {
+		if _, ok := a.board.SelectedSlice(); ok {
+			return append(a.board.keys.sliceHints(), hint{a.keys.Help, 1})
+		}
+		if _, ok := a.board.SelectedMilestone(); ok {
+			return append(a.board.keys.milestoneHints(), hint{a.keys.Help, 1})
+		}
+	}
+	return a.keys.statusHints()
+}
+
+// paneHints are the hints while an agent's pane is joined beside the board:
+// how the split is handled, in place of hints for keys the user already knows.
+// The key that hides the pane matters more than the zoom, so the zoom goes
+// first when the row runs out of room. When the joined pane is the planning
+// agent's, the guidance names its own key rather than t's — pressing t there
+// would find no slice to act on.
+func (a *App) paneHints() []hint {
+	hideKey := a.board.keys.Attach.Help().Key
+	if len(a.joined) == 1 && a.joined[agent.PlanSentinel] {
+		hideKey = a.board.keys.Plan.Help().Key
+	}
+	return []hint{
+		{key.NewBinding(key.WithHelp(hideKey, "hide agent pane")), 2},
 		{key.NewBinding(key.WithHelp("prefix+z", "zoom the split")), 1},
-	}, width)
+	}
 }
 
 // fitHints renders hints on one line, dropping them by rank until they fit.
@@ -1092,15 +1103,15 @@ func (a *App) fitHints(hints []hint, width int) string {
 	return fit(line, width)
 }
 
-// renderHints draws one hint per binding, separated by a dot, in the status
-// bar's own colours.
+// renderHints draws one hint per binding, separated by a dot, in the hints
+// row's own colours.
 func (a *App) renderHints(hints []hint) string {
 	parts := make([]string, 0, len(hints))
 	for _, h := range hints {
 		help := h.binding.Help()
-		parts = append(parts, a.styles.StatusKey.Render(help.Key)+" "+a.styles.StatusDesc.Render(help.Desc))
+		parts = append(parts, a.styles.HintKey.Render(help.Key)+" "+a.styles.HintDesc.Render(help.Desc))
 	}
-	return strings.Join(parts, a.styles.StatusSep.Render(" · "))
+	return strings.Join(parts, a.styles.HintSep.Render(" · "))
 }
 
 // innerWidth is the columns a band has between its indents, or 0 before the

@@ -82,15 +82,19 @@ type Styles struct {
 	StatusBox lipgloss.Style
 	// Faint is for text that should recede: hints, placeholders, counts.
 	Faint lipgloss.Style
-	// StatusBar is the fill of the bottom row, and StatusKey, StatusDesc,
-	// StatusNote and StatusSep the text drawn on it. Each of them carries the
+	// StatusBar is the fill of the bottom row, and StatusKey, StatusDesc and
+	// StatusNote the text drawn on it. Each of them carries the
 	// bar's own background: a segment styled with a foreground alone would reset
 	// the fill and cut a hole in it.
 	StatusBar  lipgloss.Style
 	StatusKey  lipgloss.Style
 	StatusDesc lipgloss.Style
 	StatusNote lipgloss.Style
-	StatusSep  lipgloss.Style
+	// HintKey, HintDesc and HintSep are the key hints row above the status bar,
+	// drawn on the window's own background rather than the bar's fill.
+	HintKey  lipgloss.Style
+	HintDesc lipgloss.Style
+	HintSep  lipgloss.Style
 	// Error is the status bar of a failed Notion call.
 	Error lipgloss.Style
 	// ToastSuccess, ToastWarning and ToastError are the status-bar toasts for
@@ -186,7 +190,10 @@ func NewStyles(isDark bool) Styles {
 		StatusKey:  bar.Bold(true).Foreground(t.Accent),
 		StatusDesc: bar.Foreground(t.Text),
 		StatusNote: bar.Foreground(t.Success),
-		StatusSep:  bar.Foreground(t.Muted),
+
+		HintKey:  lipgloss.NewStyle().Bold(true).Foreground(t.Accent),
+		HintDesc: lipgloss.NewStyle().Foreground(t.Text),
+		HintSep:  lipgloss.NewStyle().Foreground(t.Muted),
 
 		Error: chip.Bold(true).Foreground(t.OnFill).Background(t.Danger),
 
