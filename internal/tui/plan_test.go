@@ -265,12 +265,12 @@ func TestAppPaneGuidanceNamesThePlanKey(t *testing.T) {
 	app, _, _ := launchApp(t)
 
 	app.joined[agent.PlanSentinel] = true
-	if line := stripANSI(app.paneHintLine(60)); !strings.Contains(line, "w return the agent") {
+	if line := stripANSI(app.fitHints(app.paneHints(), 60)); !strings.Contains(line, "w hide agent pane") {
 		t.Errorf("line = %q, want the planning key named", line)
 	}
 
 	app.joined["s5"] = true
-	if line := stripANSI(app.paneHintLine(60)); !strings.Contains(line, "t return the agent") {
+	if line := stripANSI(app.fitHints(app.paneHints(), 60)); !strings.Contains(line, "t hide agent pane") {
 		t.Errorf("line = %q, want the slice key named", line)
 	}
 }

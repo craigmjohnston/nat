@@ -710,9 +710,9 @@ func TestAppSendsAShownAgentBack(t *testing.T) {
 	}
 }
 
-// While an agent's pane is beside the board, the status bar explains how the
+// While an agent's pane is beside the board, the hints row explains how the
 // split is handled; the ordinary hints come back once the pane is returned.
-func TestAppStatusBarGuidesAJoinedPane(t *testing.T) {
+func TestAppHintsRowGuidesAJoinedPane(t *testing.T) {
 	app, launcher, _ := launchApp(t)
 	t.Setenv(agent.PaneEnv, "%0")
 	launcher.joined = true
@@ -721,12 +721,12 @@ func TestAppStatusBarGuidesAJoinedPane(t *testing.T) {
 
 	feed(t, app, press(app, "t"))
 	joined := stripANSI(app.View().Content)
-	for _, want := range []string{"t return the agent", "prefix+z zoom the split"} {
+	for _, want := range []string{"t hide agent pane", "prefix+z zoom the split"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("joined view is missing %q:\n%s", want, joined)
 		}
 	}
-	if strings.Contains(joined, "q quit") {
+	if strings.Contains(joined, "? help") {
 		t.Errorf("the ordinary hints should have made way:\n%s", joined)
 	}
 
@@ -734,21 +734,21 @@ func TestAppStatusBarGuidesAJoinedPane(t *testing.T) {
 	feed(t, app, press(app, "t"))
 	app.board.ClearConfirm()
 	returned := stripANSI(app.View().Content)
-	if strings.Contains(returned, "return the agent") {
+	if strings.Contains(returned, "hide agent pane") {
 		t.Errorf("the guidance should go with the pane:\n%s", returned)
 	}
-	if !strings.Contains(returned, "q quit") {
+	if !strings.Contains(returned, "? help") {
 		t.Errorf("the ordinary hints should be back:\n%s", returned)
 	}
 }
 
-// The bar drops the zoom before the key that returns the pane: with only room
+// The row drops the zoom before the key that hides the pane: with only room
 // for one of them, the way back is the one that matters.
 func TestAppPaneGuidanceDropsTheZoomFirst(t *testing.T) {
 	app, _, _ := launchApp(t)
-	line := stripANSI(app.paneHintLine(22))
-	if !strings.Contains(line, "t return the agent") {
-		t.Errorf("line = %q, want the return key kept", line)
+	line := stripANSI(app.fitHints(app.paneHints(), 22))
+	if !strings.Contains(line, "t hide agent pane") {
+		t.Errorf("line = %q, want the hide key kept", line)
 	}
 	if strings.Contains(line, "zoom") {
 		t.Errorf("line = %q, want the zoom dropped", line)
