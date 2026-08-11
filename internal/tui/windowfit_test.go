@@ -80,26 +80,32 @@ func TestAppHeaderBarHasADistinctAppSegment(t *testing.T) {
 	}
 }
 
-func TestAppHeaderBarCarriesTheTally(t *testing.T) {
+func TestAppBoardLeadsWithTheProgressBar(t *testing.T) {
 	lines := strings.Split(stripANSI(sizedApp(80, 24).View().Content), "\n")
-	if !strings.Contains(lines[0], "milestones: 1 · slices done: 0/1") {
-		t.Errorf("header = %q, want the tally folded into it", lines[0])
+	// The old text tally is gone from the header; the board's border follows it
+	// directly, and the bar is the body's first two lines: the bar itself —
+	// windowProject's one slice is Todo, so every cell is empty — then its
+	// label, naming the tally and the milestone the work is in.
+	if strings.Contains(lines[0], "milestones:") {
+		t.Errorf("header = %q, want the text tally gone", lines[0])
 	}
-	// The subtitle line is gone: the board's border follows the bar directly.
 	if !strings.HasPrefix(lines[1], "╭") {
 		t.Errorf("line under the header = %q, want the board's border", lines[1])
 	}
+	if !strings.Contains(lines[2], strings.Repeat(barEmpty, 80-2*framePadX)) {
+		t.Errorf("first body line = %q, want the bar at the body's full width", lines[2])
+	}
+	if !strings.Contains(lines[3], "0/1 · M7: Agent pane view") {
+		t.Errorf("second body line = %q, want the bar's label", lines[3])
+	}
 }
 
-func TestAppHeaderBarDropsTheTallyWhole(t *testing.T) {
-	// Too narrow for the tally beside the segment: it goes whole — a cut count
-	// misleads — and the name's head is what the room is spent on.
-	header := stripANSI(sizedApp(40, 24).headerView())
-	if strings.Contains(header, "milestones") {
-		t.Errorf("header = %q, want the tally dropped whole at 40 columns", header)
-	}
-	if !strings.Contains(header, "notion-agent-tracker") {
-		t.Errorf("header = %q, want the name's head kept", header)
+func TestAppProgressBarResizesWithTheWindow(t *testing.T) {
+	for _, width := range windowWidths {
+		view := stripANSI(sizedApp(width, 24).View().Content)
+		if !strings.Contains(view, strings.Repeat(barEmpty, width-2*framePadX)) {
+			t.Errorf("at %d columns the bar should span the body's width:\n%s", width, view)
+		}
 	}
 }
 
@@ -425,7 +431,8 @@ func TestAppClipsAPlanTallerThanTheWindow(t *testing.T) {
 func TestAppScrollsTheBoardToKeepTheCursorVisible(t *testing.T) {
 	const width, height = 80, 20
 	a := tallApp(width, height)
-	body := a.bodyHeight()
+	// The bar over the rows has taken its two lines from the viewport already.
+	body := a.boardVP.Height()
 
 	// Down to the last row: the board scrolls only as far as it must, so the
 	// cursor lands on the bottom line of the band rather than the top.

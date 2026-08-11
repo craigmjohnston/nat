@@ -168,8 +168,11 @@ func TestAppLoadsTheActiveProject(t *testing.T) {
 	if got := len(app.project.Milestones); got != 1 {
 		t.Errorf("milestones = %d, want 1", got)
 	}
-	view := app.View().Content
-	for _, want := range []string{"tracker", "milestones: 1", "slices done: 1/2"} {
+	// A window to size the bar to: the plan's progress is the segmented bar
+	// over the board, its label naming the tally and the milestone in play.
+	app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	view := stripANSI(app.View().Content)
+	for _, want := range []string{"tracker", barFilled, barEmpty, "1/2"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view is missing %q:\n%s", want, view)
 		}

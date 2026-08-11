@@ -232,7 +232,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case projectLoadedMsg:
 		a.project, a.loading, a.err = &msg.project, false, nil
 		a.board.SetProject(a.project)
-		a.syncBoard()
+		// The first plan brings the bar with it, which the board's viewport has
+		// to give its lines up to; resize re-shares them and re-syncs the board.
+		a.resize()
 		return a, nil
 	case notionErrMsg:
 		a.loading, a.err = false, msg.err
@@ -714,39 +716,22 @@ func (a *App) bodyHeight() int {
 }
 
 // headerView is the top band: a full-width heading bar with the app's name as
-// a segment of its own, the screen or project name beside it, and — on the
-// board — the plan's tally right-aligned on the bar.
+// a segment of its own and the screen or project name beside it.
 func (a *App) headerView() string {
 	segment := a.styles.HeaderApp.Render(appName)
 	name := a.headerName()
-	detail := a.headerDetail()
 	if a.width <= 0 {
 		// No window to spread across, so the segments simply sit together.
-		parts := []string{segment}
-		if name != "" {
-			parts = append(parts, a.styles.HeaderTitle.Render(name))
+		if name == "" {
+			return segment
 		}
-		if detail != "" {
-			parts = append(parts, a.styles.HeaderMeta.Render(detail))
-		}
-		return strings.Join(parts, " ")
+		return segment + " " + a.styles.HeaderTitle.Render(name)
 	}
-	room := a.innerWidth()
 	left := segment
 	if name != "" {
-		left += a.styles.HeaderTitle.Render(" " + name)
+		left = fit(segment+a.styles.HeaderTitle.Render(" "+name), a.innerWidth())
 	}
-	// The tally goes whole or not at all — a cut count misleads — and its room
-	// comes out of the name's, whose head is the part worth keeping. Only a bar
-	// too narrow for the tally beside the app's own segment gives it all to the
-	// name.
-	right, gap := "", 0
-	if detail != "" && lipgloss.Width(segment)+statusSegmentGap+lipgloss.Width(detail) < room {
-		right, gap = a.styles.HeaderMeta.Render(detail), statusSegmentGap
-	}
-	left = fit(left, room-lipgloss.Width(right)-gap)
-	pad := max(room-lipgloss.Width(left)-lipgloss.Width(right), 0)
-	line := strings.Repeat(" ", framePadX) + left + strings.Repeat(" ", pad) + right
+	line := strings.Repeat(" ", framePadX) + left
 	return a.styles.Header.Width(a.width).Render(fit(line, a.width))
 }
 
@@ -769,17 +754,6 @@ func (a *App) headerName() string {
 		return ""
 	}
 	return a.project.Name
-}
-
-// headerDetail is the line under the header's title: the plan's tally, which
-// only the board has one of.
-func (a *App) headerDetail() string {
-	if a.screen != screenBoard || a.project == nil {
-		return ""
-	}
-	p := a.project.Progress()
-	return fmt.Sprintf("milestones: %d · slices done: %d/%d",
-		len(a.project.Milestones), p.Done, p.Total)
 }
 
 // bodyRegion is the body band inside its border: the screen's content clipped
@@ -822,9 +796,10 @@ func (a *App) body() string {
 	}
 }
 
-// boardView is the main screen: the plan, scrolled to the body band. Loading
-// and "there is nothing to show" are the root model's to report — the board
-// only ever draws a plan.
+// boardView is the main screen: the project's segmented progress bar, and the
+// plan under it scrolled to what is left of the body band. Loading and "there
+// is nothing to show" are the root model's to report — the board only ever
+// draws a plan, and those states have no plan for a bar to sum either.
 func (a *App) boardView() string {
 	switch {
 	case a.loading:
@@ -833,9 +808,30 @@ func (a *App) boardView() string {
 		return a.styles.Faint.Render(a.noProjectReason())
 	case a.boardVP.Width() <= 0 || a.boardVP.Height() <= 0:
 		// No band to scroll in yet, so every row is drawn.
-		return a.board.View()
+		return a.progressBarView() + a.board.View()
 	}
-	return a.boardVP.View()
+	return a.progressBarView() + a.boardVP.View()
+}
+
+// progressBarView is the bar over the board's rows: the plan segmented by
+// milestone, as wide as the body's interior, label line included — or nothing
+// before the first resize, when there is no width to size the bar to.
+func (a *App) progressBarView() string {
+	bar := RenderProgressBar(a.styles, a.innerWidth(), SegmentsOf(a.project.Groups()))
+	if bar == "" {
+		return ""
+	}
+	return bar + "\n"
+}
+
+// progressBandLines is the body lines the bar takes from the board's viewport:
+// the bar's own two when there is a plan to sum, none without one — the other
+// board states draw no bar — or before the first resize.
+func (a *App) progressBandLines() int {
+	if a.project == nil || a.innerWidth() <= 0 {
+		return 0
+	}
+	return 2
 }
 
 // syncBoard puts the board's rows into the body's viewport and scrolls it the
@@ -861,7 +857,7 @@ func (a *App) resize() {
 	width, height := a.innerWidth(), a.bodyHeight()
 	a.board.SetWidth(width)
 	a.boardVP.SetWidth(width)
-	a.boardVP.SetHeight(height)
+	a.boardVP.SetHeight(max(height-a.progressBandLines(), 0))
 	a.helpVP.SetWidth(width)
 	a.helpVP.SetHeight(height)
 	a.info.SetSize(width, height)
