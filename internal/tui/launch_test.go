@@ -460,7 +460,10 @@ func TestAppLaunchRefusesAMissingDefaultDirectory(t *testing.T) {
 	if app.form == nil {
 		t.Fatal("the form should stay open on the failed validation")
 	}
-	if view := stripANSI(app.View().Content); !strings.Contains(view, "is not there") {
+	// The error may be wrapped mid-phrase at the window edge, so the view is
+	// flattened onto one line before looking for it.
+	view := stripANSI(app.View().Content)
+	if flat := strings.Join(strings.Fields(view), " "); !strings.Contains(flat, "is not there") {
 		t.Errorf("view is missing the validation error:\n%s", view)
 	}
 }
