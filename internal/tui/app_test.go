@@ -647,10 +647,10 @@ func TestAppSizesTheInfoViewport(t *testing.T) {
 	app, _ := infoApp(t)
 
 	// The info screen is the body box's interior: the window less the box's
-	// border and padding, and less the heading bar, the hints row and the
-	// boxed status bar.
+	// border and padding, and less the boxed header — no plan is loaded, so it
+	// holds the heading alone — the hints row and the boxed status bar.
 	wantW := 80 - 2*framePadX
-	wantH := 24 - headerHeight - hintsHeight - statusBoxHeight - 2
+	wantH := 24 - (headerHeight + 2) - hintsHeight - statusBoxHeight - 2
 	if got := app.info.vp.Width(); got != wantW {
 		t.Errorf("viewport width = %d, want %d", got, wantW)
 	}

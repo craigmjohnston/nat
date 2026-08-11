@@ -751,22 +751,29 @@ func (a *App) View() tea.View {
 }
 
 // The layout's fixed measurements: the columns each band is held away from the
-// window's edges by, the height of the heading bar, the height of the key
-// hints row above the status bar, and the height of the status bar itself —
-// one line bare, or three inside its box.
+// window's edges by, the height of the heading bar and of the progress bar
+// under it, the least lines the body's box is worth drawing in, the height of
+// the key hints row above the status bar, and the height of the status bar
+// itself — one line bare, or three inside its box.
 const (
-	framePadX       = 2
+	framePadX = 2
+	// headerHeight is the heading bar's own line, and headerBarHeight the
+	// progress bar and its label beneath it inside the header's box.
 	headerHeight    = 1
+	headerBarHeight = 2
+	headerBoxMin    = headerHeight + 2
+	bodyBoxMin      = 3
 	hintsHeight     = 1
 	statusHeight    = 1
 	statusBoxHeight = statusHeight + 2
 )
 
 // content is the rendered screen, without the terminal-level settings: the
-// heading bar, the body of the screen on show boxed in its border, the key
-// hints on a row of their own, and the status bar in its own box docked to the
-// window's bottom rows. The bands are cut and padded to fill the window
-// exactly, so nothing a screen draws can push the bar off the bottom.
+// heading and the progress bar boxed in a section of their own, the body of the
+// screen on show boxed under it, the key hints on a row of their own, and the
+// status bar in its own box docked to the window's bottom rows. The bands are
+// cut and padded to fill the window exactly, so nothing a screen draws can push
+// the bar off the bottom.
 func (a *App) content() string {
 	if a.onboarding != nil {
 		return a.onboarding.View()
@@ -776,14 +783,15 @@ func (a *App) content() string {
 		// are simply drawn one after another at whatever size they come out.
 		return a.headerView() + "\n" + a.body() + "\n" + a.hintsView() + "\n" + a.statusBar()
 	}
-	var lines []string
-	if a.headerBandHeight() > 0 {
-		lines = append(lines, a.headerView())
-	}
 	if a.framed() {
+		lines := a.headerRegion()
 		lines = append(lines, a.bodyRegion()...)
 		lines = append(lines, a.band(a.hintsView(), a.hintBandHeight())...)
 		return strings.Join(append(lines, a.statusRegion()...), "\n")
+	}
+	var lines []string
+	if a.headerBandHeight() > 0 {
+		lines = append(lines, a.headerView())
 	}
 	lines = append(lines, a.band(a.body(), a.bodyHeight())...)
 	lines = append(lines, a.band(a.hintsView(), a.hintBandHeight())...)
@@ -791,10 +799,14 @@ func (a *App) content() string {
 }
 
 // framed reports whether the window is big enough for the bordered layout: a
-// border costs two lines and two columns per region, and below that the bands
-// are drawn bare rather than boxed, so the content is never all frame.
+// border costs two lines and two columns per region, and the layout now boxes
+// the header as well as the body and the status bar, so there has to be room
+// for the header's own box, a body box with a line in it, and the hints row
+// between them. Below that the bands are drawn bare rather than boxed, so the
+// content is never all frame.
 func (a *App) framed() bool {
-	return a.height >= headerHeight+statusBoxHeight+2 && a.width >= 2*framePadX+1
+	return a.height >= headerBoxMin+bodyBoxMin+hintsHeight+statusBoxHeight &&
+		a.width >= 2*framePadX+1
 }
 
 // band lays s out as exactly height lines of the window's width: indented from
@@ -827,8 +839,28 @@ func (a *App) statusBandHeight() int {
 	return statusHeight
 }
 
+// headerBandHeight is the lines the header takes: its own box when the window
+// is framed, one bare line when it is not. The box gives up the progress bar
+// before the body gives up its rows, so a short window keeps the plan on show
+// and loses the bar's label, then the bar, then nothing more — the heading
+// itself always stays.
 func (a *App) headerBandHeight() int {
-	return min(headerHeight, max(a.height-a.statusBandHeight(), 0))
+	room := max(a.height-a.statusBandHeight(), 0)
+	if !a.framed() {
+		return min(headerHeight, room)
+	}
+	spare := max(a.height-a.statusBandHeight()-hintsHeight-bodyBoxMin, headerBoxMin)
+	return min(a.headerContentHeight()+2, spare)
+}
+
+// headerContentHeight is the lines inside the header's box: the heading, and
+// the progress bar and its label when there is a plan to sum and a width to
+// draw it at.
+func (a *App) headerContentHeight() int {
+	if a.project == nil || a.innerWidth() <= 0 {
+		return headerHeight
+	}
+	return headerHeight + headerBarHeight
 }
 
 // hintBandHeight is the key hints row's line, when the window still has one
@@ -851,23 +883,49 @@ func (a *App) bodyHeight() int {
 	return a.bodyBoxHeight()
 }
 
-// headerView is the top band: a full-width heading bar with the app's name as
-// a segment of its own and the screen or project name beside it.
-func (a *App) headerView() string {
+// headerRegion is the header band inside its border: the heading bar and the
+// progress bar under it, boxed in a section of their own above the body, and
+// clipped to whatever lines the box was given.
+func (a *App) headerRegion() []string {
+	// framed has already made sure the box has its border lines and the heading.
+	return a.boxRegion(a.headerContent(), a.headerBandHeight())
+}
+
+// headerContent is the header box's interior: the heading bar run out to the
+// box's own width, and the project's segmented progress bar beneath it.
+func (a *App) headerContent() string {
+	width := a.innerWidth()
+	heading := a.styles.Header.Width(width).Render(a.headerLeft(width))
+	bar := a.progressBarView()
+	if bar == "" {
+		return heading
+	}
+	return heading + "\n" + bar
+}
+
+// headerLeft is what the heading says: the app's name as a segment of its own
+// and the screen or project name beside it, cut to width.
+func (a *App) headerLeft(width int) string {
 	segment := a.styles.HeaderApp.Render(appName)
 	name := a.headerName()
-	if a.width <= 0 {
+	if name == "" {
+		return segment
+	}
+	if width <= 0 {
 		// No window to spread across, so the segments simply sit together.
-		if name == "" {
-			return segment
-		}
 		return segment + " " + a.styles.HeaderTitle.Render(name)
 	}
-	left := segment
-	if name != "" {
-		left = fit(segment+a.styles.HeaderTitle.Render(" "+name), a.innerWidth())
+	return fit(segment+a.styles.HeaderTitle.Render(" "+name), width)
+}
+
+// headerView is the bare heading bar: what a window too small for the boxed
+// header gets, and the unmeasured fallback. It is a full-width fill with the
+// heading held in from the edge like every other bare band.
+func (a *App) headerView() string {
+	if a.width <= 0 {
+		return a.headerLeft(0)
 	}
-	line := strings.Repeat(" ", framePadX) + left
+	line := strings.Repeat(" ", framePadX) + a.headerLeft(a.innerWidth())
 	return a.styles.Header.Width(a.width).Render(fit(line, a.width))
 }
 
@@ -897,15 +955,21 @@ func (a *App) headerName() string {
 // apart rather than scroll — and the box run out to the window's width.
 func (a *App) bodyRegion() []string {
 	// framed has already made sure the box has at least its own border lines.
-	height := a.bodyBoxHeight()
-	content := clipLines(fit(a.body(), a.innerWidth()), max(height-2, 0))
+	return a.boxRegion(a.body(), a.bodyBoxHeight())
+}
+
+// boxRegion is content inside the layout's border, as exactly height lines of
+// the window's width: clipped to the box's interior — content taller than the
+// box would push the borders apart rather than scroll — and the box run out to
+// the window's width.
+func (a *App) boxRegion(content string, height int) []string {
+	content = clipLines(fit(content, a.innerWidth()), max(height-2, 0))
 	// Width and Height count the border, so the box is sized to the window.
 	box := a.styles.Box.Width(a.width).Height(height).Render(content)
+	// Cut to the band's lines however the box came out: a region that overran
+	// would push the bands below it off the window.
 	lines := strings.Split(box, "\n")
-	if len(lines) > height {
-		lines = lines[:height]
-	}
-	return lines
+	return lines[:min(len(lines), height)]
 }
 
 // clipLines is the first n lines of s, or nothing at all when n is not
@@ -961,10 +1025,9 @@ func (a *App) scrimView() string {
 	return a.styles.Scrim.Render(xansi.Strip(a.boardView()))
 }
 
-// boardView is the main screen: the project's segmented progress bar, and the
-// plan under it scrolled to what is left of the body band. Loading and "there
-// is nothing to show" are the root model's to report — the board only ever
-// draws a plan, and those states have no plan for a bar to sum either.
+// boardView is the main screen: the plan, scrolled to the body band. Loading
+// and "there is nothing to show" are the root model's to report — the board
+// only ever draws a plan. The progress bar is the header's, not the board's.
 func (a *App) boardView() string {
 	switch {
 	case a.loading:
@@ -973,32 +1036,19 @@ func (a *App) boardView() string {
 		return a.styles.Faint.Render(a.noProjectReason())
 	case a.boardVP.Width() <= 0 || a.boardVP.Height() <= 0:
 		// No band to scroll in yet, so every row is drawn.
-		return a.progressBarView() + a.board.View()
+		return a.board.View()
 	}
-	return a.progressBarView() + a.boardVP.View()
+	return a.boardVP.View()
 }
 
-// progressBarView is the bar over the board's rows: the plan segmented by
-// milestone, as wide as the body's interior, label line included, and a blank
-// line holding the rows off it — or nothing before the first resize, when
-// there is no width to size the bar to.
+// progressBarView is the header's bar: the plan segmented by milestone, as
+// wide as the header box's interior, label line included — or nothing when
+// there is no plan to sum, or no width to size the bar to.
 func (a *App) progressBarView() string {
-	bar := RenderProgressBar(a.styles, a.innerWidth(), SegmentsOf(a.project.Groups()))
-	if bar == "" {
+	if a.project == nil {
 		return ""
 	}
-	return bar + "\n\n"
-}
-
-// progressBandLines is the body lines the bar takes from the board's viewport:
-// the bar, its label and the blank line under them when there is a plan to
-// sum, none without one — the other board states draw no bar — or before the
-// first resize.
-func (a *App) progressBandLines() int {
-	if a.project == nil || a.innerWidth() <= 0 {
-		return 0
-	}
-	return 3
+	return RenderProgressBar(a.styles, a.innerWidth(), SegmentsOf(a.project.Groups()))
 }
 
 // syncBoard puts the board's rows into the body's viewport and scrolls it the
@@ -1024,7 +1074,7 @@ func (a *App) resize() {
 	width, height := a.innerWidth(), a.bodyHeight()
 	a.board.SetWidth(width)
 	a.boardVP.SetWidth(width)
-	a.boardVP.SetHeight(max(height-a.progressBandLines(), 0))
+	a.boardVP.SetHeight(height)
 	a.helpVP.SetWidth(width)
 	a.helpVP.SetHeight(height)
 	a.info.SetSize(width, height)

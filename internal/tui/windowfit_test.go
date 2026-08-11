@@ -80,26 +80,74 @@ func TestAppHeaderBarHasADistinctAppSegment(t *testing.T) {
 	}
 }
 
-func TestAppBoardLeadsWithTheProgressBar(t *testing.T) {
+func TestAppBoxesTheHeaderWithTheProgressBar(t *testing.T) {
 	lines := strings.Split(stripANSI(sizedApp(80, 24).View().Content), "\n")
-	// The old text tally is gone from the header; the board's border follows it
-	// directly, and the bar is the body's first two lines: the bar itself —
-	// windowProject's one slice is Todo, so every cell is empty — then its
-	// label, naming the tally and the milestone the work is in.
-	if strings.Contains(lines[0], "milestones:") {
-		t.Errorf("header = %q, want the text tally gone", lines[0])
+	// The header is a bordered section of its own: its top border, the heading,
+	// the bar — windowProject's one slice is Todo, so every cell is empty — and
+	// the bar's label, naming the tally and the milestone the work is in, then
+	// the border closing the section off from the board's box beneath it.
+	if !strings.HasPrefix(lines[0], "╭") || !strings.HasSuffix(lines[0], "╮") {
+		t.Errorf("first line = %q, want the header box's top border", lines[0])
 	}
-	if !strings.HasPrefix(lines[1], "╭") {
-		t.Errorf("line under the header = %q, want the board's border", lines[1])
+	if !strings.Contains(lines[1], "nat") || !strings.Contains(lines[1], "notion-agent-tracker") {
+		t.Errorf("heading = %q, want the app and project names", lines[1])
+	}
+	if strings.Contains(lines[1], "milestones:") {
+		t.Errorf("heading = %q, want the text tally gone", lines[1])
 	}
 	if !strings.Contains(lines[2], strings.Repeat(barCell, 80-2*framePadX)) {
-		t.Errorf("first body line = %q, want the bar at the body's full width", lines[2])
+		t.Errorf("second header line = %q, want the bar at the box's full width", lines[2])
 	}
 	if !strings.Contains(lines[3], "0/1 · M7: Agent pane view") {
-		t.Errorf("second body line = %q, want the bar's label", lines[3])
+		t.Errorf("third header line = %q, want the bar's label", lines[3])
 	}
-	if got := strings.TrimSpace(strings.Trim(lines[4], "│ ")); got != "" {
-		t.Errorf("third body line = %q, want a blank line parting the bar from the rows", lines[4])
+	if !strings.HasPrefix(lines[4], "╰") || !strings.HasSuffix(lines[4], "╯") {
+		t.Errorf("line under the bar = %q, want the header box closed", lines[4])
+	}
+	if !strings.HasPrefix(lines[5], "╭") {
+		t.Errorf("line under the header box = %q, want the board's own box", lines[5])
+	}
+}
+
+func TestAppHeaderBoxShedsTheBarBeforeTheBoardShedsItsRows(t *testing.T) {
+	// The header's box is the first band to give anything up as the window
+	// shortens: the bar's label goes, then the bar, and the heading and a row of
+	// the plan are what a framed window keeps to the last.
+	for _, tt := range []struct {
+		height             int
+		wantBar, wantLabel bool
+	}{
+		{24, true, true}, {11, true, false}, {10, false, false},
+	} {
+		view := stripANSI(sizedApp(80, tt.height).View().Content)
+		if got := strings.Contains(view, strings.Repeat(barCell, 80-2*framePadX)); got != tt.wantBar {
+			t.Errorf("at %d lines the bar is drawn = %v, want %v:\n%s", tt.height, got, tt.wantBar, view)
+		}
+		if got := strings.Contains(view, "0/1 · M7"); got != tt.wantLabel {
+			t.Errorf("at %d lines the label is drawn = %v, want %v:\n%s", tt.height, got, tt.wantLabel, view)
+		}
+		for _, want := range []string{"nat", "Agent pane view"} {
+			if !strings.Contains(view, want) {
+				t.Errorf("at %d lines the view is missing %q:\n%s", tt.height, want, view)
+			}
+		}
+	}
+}
+
+func TestAppHeaderKeepsTheBarOnEveryScreen(t *testing.T) {
+	// The header is a band of its own, so what it shows does not move as screens
+	// are pushed over the board: only the name beside the app's segment changes.
+	for _, tt := range []struct{ key, name string }{{"?", "Keys"}, {"i", "Info"}} {
+		a := sizedApp(80, 24)
+		press(a, tt.key)
+
+		lines := strings.Split(stripANSI(a.View().Content), "\n")
+		if !strings.Contains(lines[1], tt.name) {
+			t.Errorf("heading = %q, want the screen named %q", lines[1], tt.name)
+		}
+		if !strings.Contains(lines[2], strings.Repeat(barCell, 80-2*framePadX)) {
+			t.Errorf("on %s the header line = %q, want the bar still there", tt.name, lines[2])
+		}
 	}
 }
 
@@ -112,18 +160,18 @@ func TestAppProgressBarResizesWithTheWindow(t *testing.T) {
 	}
 }
 
-func TestAppBoxesTheBoardAndTheStatusBar(t *testing.T) {
+func TestAppBoxesTheHeaderTheBoardAndTheStatusBar(t *testing.T) {
 	for _, width := range windowWidths {
 		lines := strings.Split(stripANSI(sizedApp(width, 24).View().Content), "\n")
-		// The board's box follows the heading bar, and the status box takes the
-		// window's last three lines, with the hints row on its own line between
-		// the two boxes; each box runs the window's full width.
-		for _, i := range []int{1, len(lines) - 3} {
+		// The header takes the window's first five lines, the board's box follows
+		// it, and the status box takes the last three, with the hints row on its
+		// own line between the two; each box runs the window's full width.
+		for _, i := range []int{0, 5, len(lines) - 3} {
 			if !strings.HasPrefix(lines[i], "╭") || !strings.HasSuffix(lines[i], "╮") {
 				t.Errorf("at %d columns line %d = %q, want a border's top", width, i, lines[i])
 			}
 		}
-		for _, i := range []int{len(lines) - 5, len(lines) - 1} {
+		for _, i := range []int{4, len(lines) - 5, len(lines) - 1} {
 			if !strings.HasPrefix(lines[i], "╰") || !strings.HasSuffix(lines[i], "╯") {
 				t.Errorf("at %d columns line %d = %q, want a border's bottom", width, i, lines[i])
 			}
@@ -488,7 +536,8 @@ func TestAppClipsAPlanTallerThanTheWindow(t *testing.T) {
 func TestAppScrollsTheBoardToKeepTheCursorVisible(t *testing.T) {
 	const width, height = 80, 20
 	a := tallApp(width, height)
-	// The bar over the rows has taken its two lines from the viewport already.
+	// The bar lives in the header's own box now, so the viewport is the whole
+	// of the body band.
 	body := a.boardVP.Height()
 
 	// Down to the last row: the board scrolls only as far as it must, so the
@@ -531,7 +580,7 @@ func TestAppScrollsTheHelpScreen(t *testing.T) {
 	}
 	view := stripANSI(a.View().Content)
 	checkFits(t, view, 80, 20)
-	if !strings.Contains(view, "switch project") {
+	if !strings.Contains(view, "page down") {
 		t.Errorf("the keys past the window's bottom should be reachable:\n%s", view)
 	}
 }
@@ -539,11 +588,13 @@ func TestAppScrollsTheHelpScreen(t *testing.T) {
 func TestAppSharesAShortWindowOutFromTheBottom(t *testing.T) {
 	// The status bar takes the bottom rows first, then the header and the hints
 	// row what is left: too short a window loses the body, then its borders,
-	// then the hints, then the header, never the bar. From 6 lines the layout
-	// is framed — the boxed status bar and the body's own border — and below
-	// that the bands are drawn bare.
+	// then the hints, then the header, never the bar. From 10 lines the layout
+	// is framed — the boxed header, the boxed status bar and the body's own
+	// border — and below that the bands are drawn bare. The header box gives up
+	// the progress bar's label, then the bar itself, before the body gives up
+	// its last row.
 	for _, tt := range []struct{ height, header, body int }{
-		{20, 1, 13}, {6, 1, 0}, {5, 1, 2}, {2, 1, 0}, {1, 0, 0},
+		{20, 5, 9}, {12, 5, 1}, {11, 4, 1}, {10, 3, 1}, {9, 1, 6}, {5, 1, 2}, {2, 1, 0}, {1, 0, 0},
 	} {
 		a := tallApp(80, tt.height)
 		if got := a.headerBandHeight(); got != tt.header {
