@@ -100,7 +100,11 @@ func Prompt(c PromptContext) string {
 // allowed, and they enforce the drafting rules themselves. The workflow lives
 // in the /queue-work skill rather than being restated here, for the same
 // reason the slice prompt does not restate the brief.
-func PlanPrompt(projectName, workingDir string) string {
+//
+// request is what the user typed into the launch input: the thing they want to
+// workshop, carried in the prompt so the agent starts on it rather than
+// opening with a question. Empty means a plain planning session.
+func PlanPrompt(projectName, workingDir, request string) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "You are a Claude Code planning agent for the %q project.\n\n", projectName)
@@ -134,6 +138,13 @@ func PlanPrompt(projectName, workingDir string) string {
 	b.WriteString("  until the user has approved the draft.\n")
 	fmt.Fprintf(&b, "- This session starts in %s; the user's board picks up\n", workingDir)
 	b.WriteString("  your changes when you exit, or on its refresh key.\n")
+
+	if request != "" {
+		b.WriteString("\n## The request\n\n")
+		b.WriteString("The user launched you with this in hand — start on it straight away,\n")
+		b.WriteString("rather than asking what they want to work on:\n\n")
+		b.WriteString(request + "\n")
+	}
 
 	return b.String()
 }

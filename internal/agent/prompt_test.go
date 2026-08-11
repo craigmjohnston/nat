@@ -107,7 +107,12 @@ func TestPromptNamesTheSlice(t *testing.T) {
 }
 
 func TestPlanPrompt(t *testing.T) {
-	golden(t, "plan-prompt", PlanPrompt("notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"))
+	golden(t, "plan-prompt", PlanPrompt("notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", ""))
+}
+
+func TestPlanPromptWithRequest(t *testing.T) {
+	golden(t, "plan-prompt-request", PlanPrompt("notion-agent-tracker",
+		"/Users/craig/Projects/notion-agent-tracker", "Split the reporting milestone into smaller slices."))
 }
 
 // The planning prompt points the agent at the planning workflow and nothing
@@ -116,7 +121,7 @@ func TestPlanPrompt(t *testing.T) {
 // from executing the plan instead of workshopping it — and so does Notion, for
 // the same reason the slice prompt keeps quiet about it.
 func TestPlanPromptRoutesEverythingThroughThePlanningCommands(t *testing.T) {
-	got := PlanPrompt("notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker")
+	got := PlanPrompt("notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", "")
 	for _, want := range []string{
 		"notion-agent-tracker",
 		"/Users/craig/Projects/notion-agent-tracker",
