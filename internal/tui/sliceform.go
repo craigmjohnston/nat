@@ -83,7 +83,7 @@ func newEditSliceForm(theme huh.Theme, s domain.Slice, description string) *Slic
 // build assembles the form over the model's own fields, so a completed form
 // leaves its answers where the caller can read them.
 func (f *SliceForm) build() *huh.Form {
-	return huh.NewForm(huh.NewGroup(
+	return newForm(f.theme, huh.NewGroup(
 		huh.NewInput().
 			Title("Title").
 			Value(&f.title).
@@ -96,7 +96,7 @@ func (f *SliceForm) build() *huh.Form {
 			Title("Repo").
 			Description("Working directory override; blank uses the project's own.").
 			Value(&f.repo),
-	)).WithTheme(f.theme)
+	))
 }
 
 // Init starts the form.

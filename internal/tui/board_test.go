@@ -654,6 +654,8 @@ func keyPress(s string) tea.KeyPressMsg {
 	switch s {
 	case "enter":
 		return tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})
+	case "shift+enter":
+		return tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter, Mod: tea.ModShift})
 	case "up":
 		return tea.KeyPressMsg(tea.Key{Code: tea.KeyUp})
 	case "down":

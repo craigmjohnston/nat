@@ -53,13 +53,13 @@ func newMoveSliceForm(theme huh.Theme, s domain.Slice, targets []domain.Mileston
 		options[i] = huh.NewOption(m.Name, m.ID)
 		f.names[m.ID] = m.Name
 	}
-	f.form = huh.NewForm(huh.NewGroup(
+	f.form = newForm(theme, huh.NewGroup(
 		huh.NewSelect[string]().
 			Title("Milestone").
 			Description("Where the slice is filed; the work itself is untouched.").
 			Options(options...).
 			Value(&f.chosen),
-	)).WithTheme(theme)
+	))
 	return f
 }
 
