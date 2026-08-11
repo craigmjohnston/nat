@@ -32,6 +32,7 @@ type boardKeyMap struct {
 
 	Launch key.Binding
 	Attach key.Binding
+	Plan   key.Binding
 
 	NewProject    key.Binding
 	SwitchProject key.Binding
@@ -52,15 +53,17 @@ func defaultBoardKeyMap() boardKeyMap {
 
 		Launch: key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "launch agent")),
 		Attach: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "show/hide agent")),
+		Plan:   key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "planning agent")),
 
 		NewProject:    key.NewBinding(key.WithKeys("N"), key.WithHelp("N", "new project")),
 		SwitchProject: key.NewBinding(key.WithKeys("P"), key.WithHelp("P", "switch project")),
 	}
 }
 
-// agents are the bindings that act on a slice's agent session.
+// agents are the bindings that act on an agent session: a slice's, or the
+// planning agent's.
 func (k boardKeyMap) agents() []key.Binding {
-	return []key.Binding{k.Launch, k.Attach}
+	return []key.Binding{k.Launch, k.Attach, k.Plan}
 }
 
 // projects are the bindings that act on the plan the board is showing rather

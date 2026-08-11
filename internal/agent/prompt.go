@@ -91,6 +91,53 @@ func Prompt(c PromptContext) string {
 	return b.String()
 }
 
+// PlanPrompt is the opening message for a planning agent session: an agent
+// launched from the board to workshop the plan itself — milestones and slices —
+// with the user, rather than to execute a slice.
+//
+// Like Prompt, it routes every write through the `nat` commands and says
+// nothing about Notion: the planning commands are the only writes the agent is
+// allowed, and they enforce the drafting rules themselves. The workflow lives
+// in the /queue-work skill rather than being restated here, for the same
+// reason the slice prompt does not restate the brief.
+func PlanPrompt(projectName, workingDir string) string {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "You are a Claude Code planning agent for the %q project.\n\n", projectName)
+	b.WriteString("Your job is to workshop the plan itself with the user — reshape\n")
+	b.WriteString("milestones, draft new slices — not to execute any slice.\n")
+
+	b.WriteString("\n## How to work\n\n")
+	b.WriteString("Follow the /queue-work skill: it is the planning workflow for this\n")
+	b.WriteString("tracker. Start by running:\n\n")
+	b.WriteString("    nat info\n\n")
+	b.WriteString("That prints the current plan: the project's conventions, its milestones\n")
+	b.WriteString("in plan order, and the slices under them (`--json` to parse it instead).\n")
+
+	b.WriteString("\n## Applying changes\n\n")
+	b.WriteString("Draft in conversation first, and write only after the user explicitly\n")
+	b.WriteString("approves. The `nat` planning commands are the only way to change the\n")
+	b.WriteString("plan:\n\n")
+	b.WriteString("- `nat plan-apply [FILE]` — a whole drafted plan of milestones and\n")
+	b.WriteString("  slices at once, from a JSON document (stdin without FILE)\n")
+	b.WriteString("- `nat milestone-add <name>` — one new milestone, Queued, at the end of\n")
+	b.WriteString("  the plan\n")
+	b.WriteString("- `nat slice-add <title> --milestone <name> [--description -]` — one new\n")
+	b.WriteString("  Todo slice, its brief read from stdin\n")
+
+	b.WriteString("\n## Guardrails\n\n")
+	b.WriteString("- Plan only. Never claim, start, or complete a slice — launching work is\n")
+	b.WriteString("  the board's job, not yours.\n")
+	b.WriteString("- Never touch work in flight: Claimed and Done slices, and the\n")
+	b.WriteString("  milestones holding them, are records of what happened.\n")
+	b.WriteString("- The commands above are the only way to change the plan; write nothing\n")
+	b.WriteString("  until the user has approved the draft.\n")
+	fmt.Fprintf(&b, "- This session starts in %s; the user's board picks up\n", workingDir)
+	b.WriteString("  your changes when you exit, or on its refresh key.\n")
+
+	return b.String()
+}
+
 // repoOverridden reports whether the agent is being sent somewhere other than
 // the project's default working directory, which is worth calling out in the
 // prompt so the agent does not assume the default.

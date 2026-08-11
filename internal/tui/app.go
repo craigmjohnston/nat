@@ -15,6 +15,7 @@ import (
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
@@ -264,8 +265,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		model, cmd := a.saved(msg.note, msg.err)
 		return model, tea.Batch(cmd, a.refreshLive())
 	case liveSessionsMsg:
-		a.liveLoaded(msg)
-		return a, nil
+		return a, a.liveLoaded(msg)
 	case straysReclaimedMsg:
 		a.straysReclaimed(msg)
 		return a, nil
@@ -389,6 +389,8 @@ func (a *App) boardWrite(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.launchAgentFlow(), true
 	case key.Matches(msg, a.board.keys.Attach):
 		return a.attachAgentFlow(), true
+	case key.Matches(msg, a.board.keys.Plan):
+		return a.planAgentFlow(), true
 	case key.Matches(msg, a.board.keys.NewProject):
 		return a.newProjectFlow(), true
 	case key.Matches(msg, a.board.keys.SwitchProject):
@@ -1043,10 +1045,16 @@ func (a *App) hintLine(width int) string {
 // paneHintLine is the status bar while an agent's pane is joined beside the
 // board: how the split is handled, in place of hints for keys the user already
 // knows. The key that returns the pane matters more than the zoom, so the zoom
-// goes first when the bar runs out of room.
+// goes first when the bar runs out of room. When the joined pane is the
+// planning agent's, the guidance names its own key rather than t's — pressing
+// t there would find no slice to act on.
 func (a *App) paneHintLine(width int) string {
+	returnKey := a.board.keys.Attach.Help().Key
+	if len(a.joined) == 1 && a.joined[agent.PlanSentinel] {
+		returnKey = a.board.keys.Plan.Help().Key
+	}
 	return a.fitHints([]hint{
-		{key.NewBinding(key.WithHelp(a.board.keys.Attach.Help().Key, "return the agent")), 2},
+		{key.NewBinding(key.WithHelp(returnKey, "return the agent")), 2},
 		{key.NewBinding(key.WithHelp("prefix+z", "zoom the split")), 1},
 	}, width)
 }

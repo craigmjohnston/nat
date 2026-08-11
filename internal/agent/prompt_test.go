@@ -106,6 +106,37 @@ func TestPromptNamesTheSlice(t *testing.T) {
 	}
 }
 
+func TestPlanPrompt(t *testing.T) {
+	golden(t, "plan-prompt", PlanPrompt("notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"))
+}
+
+// The planning prompt points the agent at the planning workflow and nothing
+// else: the skill, the read, and the three writes. The slice commands stay out
+// of it — a planning agent that knows how to claim a slice is one prompt away
+// from executing the plan instead of workshopping it — and so does Notion, for
+// the same reason the slice prompt keeps quiet about it.
+func TestPlanPromptRoutesEverythingThroughThePlanningCommands(t *testing.T) {
+	got := PlanPrompt("notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker")
+	for _, want := range []string{
+		"notion-agent-tracker",
+		"/Users/craig/Projects/notion-agent-tracker",
+		"/queue-work",
+		"nat info",
+		"nat plan-apply",
+		"nat milestone-add",
+		"nat slice-add",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("plan prompt does not mention %q", want)
+		}
+	}
+	for _, unwanted := range []string{"start-slice", "complete-slice", "next-slice", "Notion"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("plan prompt should not mention %q", unwanted)
+		}
+	}
+}
+
 func TestPromptFlagsARepoOverrideOnlyWhenItDiffers(t *testing.T) {
 	const note = "overrides the project default"
 
