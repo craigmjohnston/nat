@@ -17,6 +17,7 @@ func sizedFormApp(t *testing.T, width, height int) *App {
 	t.Helper()
 	a := newWriteApp(&fakeNotion{})
 	a.Update(tea.WindowSizeMsg{Width: width, Height: height})
+	a.board.cursor = rowActiveMilestone
 	feed(t, a, a.addSlice())
 	if a.form == nil {
 		t.Fatal("no form is open")
@@ -130,6 +131,7 @@ func TestAppLeavesTheFormAloneWithoutAWindowSize(t *testing.T) {
 	if width > 0 || height > 0 {
 		t.Errorf("form size = %dx%d, want an unknown size before the first resize", width, height)
 	}
+	a.board.cursor = rowActiveMilestone
 	feed(t, a, a.addSlice())
 	if a.form == nil {
 		t.Fatal("no form is open")

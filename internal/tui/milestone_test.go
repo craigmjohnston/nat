@@ -12,7 +12,7 @@ import (
 
 // The milestone rows of the board testProject flattens to.
 const (
-	rowDoneMilestone   = 0 // M1: Config
+	rowDoneSection     = 0 // the Done section, folding M1: Config
 	rowQueuedMilestone = 5 // M3: Mutations
 )
 
@@ -166,7 +166,9 @@ func TestAppQueueWritesNothingWhenTheAnswerIsNo(t *testing.T) {
 
 func TestAppQueueRefusesAMilestoneWithNowhereToGo(t *testing.T) {
 	app := newWriteApp(&fakeNotion{})
-	app.board.cursor = rowDoneMilestone
+	app.board.expanded[doneSectionKey] = true
+	app.board.rebuild()
+	app.board.cursor = 1 // M1: Config, revealed inside the Done section
 
 	press(app, "Q")
 
@@ -185,6 +187,7 @@ func TestAppQueueNeedsAMilestoneUnderTheCursor(t *testing.T) {
 	}{
 		{"on a slice", rowTodoSlice},
 		{"on the unassigned group", rowUnassigned},
+		{"on the Done section", rowDoneSection},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
