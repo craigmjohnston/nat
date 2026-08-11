@@ -75,7 +75,7 @@ func twoProjectConfig() config.Config {
 func TestCreateProjectBuildsTheProjectAndItsPageBody(t *testing.T) {
 	client := creatingClient()
 
-	msg := runMsg(t, createProject(client, testProjectsDSID, "tracker", "Line one.\n\nLine two.", "/work")).(projectCreatedMsg)
+	msg := runMsg(t, createProject(client, testProjectsDSID, "tracker", "Line one.\n\nLine two.", "/work", false)).(projectCreatedMsg)
 
 	if msg.err != nil {
 		t.Fatalf("err = %v, want a clean creation", msg.err)
@@ -101,7 +101,7 @@ func TestCreateProjectBuildsTheProjectAndItsPageBody(t *testing.T) {
 func TestCreateProjectWithoutABlurbWritesNoBody(t *testing.T) {
 	client := creatingClient()
 
-	runMsg(t, createProject(client, testProjectsDSID, "tracker", "   \n\n  ", "/work"))
+	runMsg(t, createProject(client, testProjectsDSID, "tracker", "   \n\n  ", "/work", false))
 
 	if len(client.appended) != 0 {
 		t.Errorf("appended %+v, want no body write for an empty blurb", client.appended)
@@ -124,7 +124,7 @@ func TestCreateProjectReportsAFailedCreation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client := &fakeNotion{newProject: tt.create}
 
-			msg := runMsg(t, createProject(client, testProjectsDSID, "tracker", "blurb", "/work")).(projectCreatedMsg)
+			msg := runMsg(t, createProject(client, testProjectsDSID, "tracker", "blurb", "/work", false)).(projectCreatedMsg)
 
 			if msg.structure != nil {
 				t.Errorf("structure = %+v, want nothing recorded", msg.structure)
@@ -147,7 +147,7 @@ func TestCreateProjectKeepsAProjectWhoseSchemaDidNotVerify(t *testing.T) {
 		newProject: func(string, string) (*notion.ProjectStructure, error) { return newStructure(), schemaErr },
 	}
 
-	msg := runMsg(t, createProject(client, testProjectsDSID, "tracker", "blurb", "/work")).(projectCreatedMsg)
+	msg := runMsg(t, createProject(client, testProjectsDSID, "tracker", "blurb", "/work", false)).(projectCreatedMsg)
 
 	if msg.structure == nil {
 		t.Fatal("the project exists, so it should still be recorded")
@@ -165,7 +165,7 @@ func TestCreateProjectReportsAFailedPageBody(t *testing.T) {
 	client := creatingClient()
 	client.appendBlock = func(string, []map[string]any) ([]notion.Block, error) { return nil, boom }
 
-	msg := runMsg(t, createProject(client, testProjectsDSID, "tracker", "blurb", "/work")).(projectCreatedMsg)
+	msg := runMsg(t, createProject(client, testProjectsDSID, "tracker", "blurb", "/work", false)).(projectCreatedMsg)
 
 	if msg.structure == nil {
 		t.Fatal("the project exists, so it should still be recorded")
@@ -173,6 +173,24 @@ func TestCreateProjectReportsAFailedPageBody(t *testing.T) {
 	if msg.err == nil || !strings.Contains(msg.err.Error(), "write project page: boom") {
 		t.Errorf("err = %v, want the body failure reported", msg.err)
 	}
+}
+
+// fillProjectForm drives the new-project form to completion: the three text
+// fields, then the assignee question the slices schema hangs on.
+func fillProjectForm(t *testing.T, a *App, name, info, workdir string, assignee bool) {
+	t.Helper()
+	typeText(a, name)
+	feed(t, a, press(a, "enter"))
+	typeText(a, info)
+	feed(t, a, press(a, "tab"))
+	typeText(a, workdir)
+	feed(t, a, press(a, "enter"))
+	answer := "n"
+	if assignee {
+		answer = "y"
+	}
+	feed(t, a, press(a, answer))
+	finishForm(t, a, press(a, "enter"))
 }
 
 func TestAppNewProjectFlowWritesConfigAndReloads(t *testing.T) {
@@ -192,7 +210,13 @@ func TestAppNewProjectFlowWritesConfigAndReloads(t *testing.T) {
 			t.Errorf("view is missing %q:\n%s", want, view)
 		}
 	}
-	fillForm(t, app, "tracker two", "The conventions.", dir)
+	fillProjectForm(t, app, "tracker two", "The conventions.", dir, false)
+
+	// The question defaults to no, and the answer is what decides whether the
+	// Slices table gets an Assignee column at all.
+	if len(client.createdProjects) != 1 || client.createdProjects[0].assignee {
+		t.Errorf("created %+v, want one project with no assignee column", client.createdProjects)
+	}
 
 	if app.err != nil {
 		t.Fatalf("err = %v, want a clean creation", app.err)
@@ -474,5 +498,21 @@ func TestBoardWithNoProjectPointsAtTheNewProjectKey(t *testing.T) {
 	app := NewApp(config.Config{}, nil)
 	if view := app.View().Content; !strings.Contains(view, "Press N to create one") {
 		t.Errorf("view = %q, want the new-project hint", view)
+	}
+}
+
+// Answering yes to the assignee question reproduces the older schema, which is
+// what a project with more than one person working it wants.
+func TestAppNewProjectTracksAnAssigneeWhenAsked(t *testing.T) {
+	capturedConfig(t)
+	client := creatingClient()
+	client.query = func(string, map[string]any, []notion.Sort) ([]notion.Page, error) { return nil, nil }
+	app := newProjectApp(client)
+
+	feed(t, app, press(app, "N"))
+	fillProjectForm(t, app, "tracker two", "", t.TempDir(), true)
+
+	if len(client.createdProjects) != 1 || !client.createdProjects[0].assignee {
+		t.Errorf("created %+v, want one project with an assignee column", client.createdProjects)
 	}
 }

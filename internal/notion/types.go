@@ -178,6 +178,10 @@ const (
 	TypeStatus = "status"
 )
 
+// TypePeople is the property type of a people column, named because a project
+// may or may not have one and the difference is read from the schema.
+const TypePeople = "people"
+
 // NewSelect builds a select property value naming an option.
 func NewSelect(name string) PropertyValue {
 	return PropertyValue{Select: &SelectOption{Name: name}}

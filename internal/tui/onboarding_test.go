@@ -68,6 +68,7 @@ type (
 	createProjectCall struct {
 		projectsDSID string
 		name         string
+		assignee     bool
 	}
 	appendCall struct {
 		pageID   string
@@ -125,8 +126,9 @@ func (f *fakeNotion) CreateProjectsDatabase(_ context.Context, parentPageID, tit
 	return f.createDB(parentPageID, title)
 }
 
-func (f *fakeNotion) CreateProject(_ context.Context, projectsDSID, name string) (*notion.ProjectStructure, error) {
-	f.createdProjects = append(f.createdProjects, createProjectCall{projectsDSID: projectsDSID, name: name})
+func (f *fakeNotion) CreateProject(_ context.Context, projectsDSID, name string, assignee bool) (*notion.ProjectStructure, error) {
+	f.createdProjects = append(f.createdProjects,
+		createProjectCall{projectsDSID: projectsDSID, name: name, assignee: assignee})
 	if f.newProject == nil {
 		return nil, nil
 	}

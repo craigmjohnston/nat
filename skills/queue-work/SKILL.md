@@ -70,7 +70,7 @@ and rerun — the CLI has no project switch of its own.
 
 - Everything you write goes through `nat`. Never edit Notion directly.
 - `plan-apply` only ever creates. Existing milestones and slices — and above
-  all anything `Claimed` or `Done` — are left exactly as they are.
+  all anything in progress or `Done` — are left exactly as they are.
 - If a run fails partway, it says what it had already created. Trim those out
   of the plan before running it again rather than filing them twice.
 - If `nat info` shows a tracker that does not match what the user described,

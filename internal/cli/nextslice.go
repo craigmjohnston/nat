@@ -32,11 +32,15 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 	}
 	client := env.NewClient(env.Tokens.Token)
 
+	shape, err := sliceShape(ctx, client, project)
+	if err != nil {
+		return err
+	}
 	milestone, page, err := selectNextSlice(ctx, client, project)
 	if err != nil {
 		return err
 	}
-	claimed, err := claim(ctx, client, *page, cfg.AssigneeUserID)
+	claimed, err := claim(ctx, client, *page, shape, cfg.AssigneeUserID)
 	if err != nil {
 		return err
 	}
@@ -101,21 +105,35 @@ func selectNextSlice(ctx context.Context, client API, project config.ProjectConf
 		plural("milestone", len(active)), strings.Join(milestoneNames(active), ", "))
 }
 
-// claim takes the slice: assignee set to the configured user, status to
-// Claimed. The page Notion answers with is checked rather than assumed — a
-// people value naming someone the workspace does not know comes back empty
-// instead of failing, and an agent must not be handed a brief for a slice it
-// does not actually hold.
-func claim(ctx context.Context, client API, page notion.Page, userID string) (domain.Slice, error) {
-	statusType := page.Properties[notion.PropStatus].Type
-	updated, err := client.UpdatePageProperties(ctx, page.ID, map[string]notion.PropertyValue{
-		notion.PropAssignee: notion.NewPeople(userID),
-		notion.PropStatus:   notion.NewChoice(statusType, notion.SliceClaimed),
-	})
+// sliceShape reads how the project's Slices table is put together: what its
+// in-progress status is called, and whether it has an Assignee column at all.
+// Both differ between projects created before and after the app started asking,
+// and neither can be guessed from a page alone.
+func sliceShape(ctx context.Context, client API, project config.ProjectConfig) (notion.SliceShape, error) {
+	ds, err := client.GetDataSource(ctx, project.SlicesDSID)
+	if err != nil {
+		return notion.SliceShape{}, fmt.Errorf("read the slices schema: %w", err)
+	}
+	return notion.ShapeOf(ds), nil
+}
+
+// claim takes the slice: status to the project's in-progress option, and the
+// assignee set to the configured user where the project tracks one. The page
+// Notion answers with is checked rather than assumed — a people value naming
+// someone the workspace does not know comes back empty instead of failing, and
+// an agent must not be handed a brief for a slice it does not actually hold.
+func claim(ctx context.Context, client API, page notion.Page, shape notion.SliceShape, userID string) (domain.Slice, error) {
+	properties := map[string]notion.PropertyValue{
+		notion.PropStatus: notion.NewChoice(shape.StatusType, shape.InProgress),
+	}
+	if shape.HasAssignee {
+		properties[notion.PropAssignee] = notion.NewPeople(userID)
+	}
+	updated, err := client.UpdatePageProperties(ctx, page.ID, properties)
 	if err != nil {
 		return domain.Slice{}, fmt.Errorf("claim the slice: %w", err)
 	}
-	if !holds(*updated, userID) {
+	if !holds(*updated, shape, userID) {
 		return domain.Slice{}, fmt.Errorf("the claim on %q did not stick: someone else holds it",
 			domain.SliceFromPage(*updated).Name)
 	}
@@ -124,11 +142,16 @@ func claim(ctx context.Context, client API, page notion.Page, userID string) (do
 	return s, nil
 }
 
-// holds reports whether the page came back claimed by the given user, which is
-// what a successful claim looks like from the outside.
-func holds(page notion.Page, userID string) bool {
-	if page.Properties[notion.PropStatus].SelectName() != notion.SliceClaimed {
+// holds reports whether the page came back held by the given user, which is what
+// a successful claim looks like from the outside. Without an Assignee column the
+// status is the whole answer: there is nobody else the slice could belong to, so
+// a project that tracks no assignee decides ownership on status alone.
+func holds(page notion.Page, shape notion.SliceShape, userID string) bool {
+	if page.Properties[notion.PropStatus].SelectName() != shape.InProgress {
 		return false
+	}
+	if !shape.HasAssignee {
+		return true
 	}
 	for _, id := range page.Properties[notion.PropAssignee].PeopleIDs() {
 		if id == userID {
@@ -214,7 +237,7 @@ func writeBriefJSON(out io.Writer, b brief, projectID, projectName string) error
 		Slice: briefSliceJSON{
 			ID:            b.Slice.ID,
 			Name:          b.Slice.Name,
-			Status:        string(b.Slice.Status),
+			Status:        b.Slice.StatusName,
 			Assignee:      b.Assignee,
 			MilestoneID:   b.Milestone.ID,
 			MilestoneName: b.Milestone.Name,

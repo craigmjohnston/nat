@@ -354,7 +354,7 @@ func milestoneAddedMarkdown(m domain.Milestone, projectName string) string {
 func sliceAddedMarkdown(s domain.Slice, m domain.Milestone, project config.ProjectConfig) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", s.Name)
-	fmt.Fprintf(&b, "Added to %s, %s and unclaimed.\n\n", m.Name, blank(string(s.Status)))
+	fmt.Fprintf(&b, "Added to %s, %s and unclaimed.\n\n", m.Name, blank(s.StatusName))
 	fmt.Fprintf(&b, "- Notion page: %s\n", s.ID)
 	if s.URL != "" {
 		fmt.Fprintf(&b, "- Notion URL: %s\n", s.URL)

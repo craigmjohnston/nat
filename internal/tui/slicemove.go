@@ -11,15 +11,31 @@ import (
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
+// statusWord names a slice's status the way the project's own table does —
+// Claimed or In progress, whichever it was created with — so a refusal on the
+// status bar reads as what is on the page, falling back to the workflow status
+// where the page named none. A slice carrying no status at all still needs a
+// word, or the message ends mid-sentence.
+func statusWord(s domain.Slice) string {
+	switch {
+	case s.StatusName != "":
+		return s.StatusName
+	case s.Status != "":
+		return string(s.Status)
+	default:
+		return "(no status)"
+	}
+}
+
 // claimedNote is the status-bar message refusing a slice an agent is working
-// on, and whether there is one to show. A Claimed slice is work in flight: the
-// plan may still describe it, but the page underneath belongs to whoever took
-// it.
+// on, and whether there is one to show. A slice in progress is work in flight:
+// the plan may still describe it, but the page underneath belongs to whoever
+// took it.
 func claimedNote(s domain.Slice, verb string) (string, bool) {
 	if s.Status != domain.SliceClaimed {
 		return "", false
 	}
-	return fmt.Sprintf("%q is Claimed — work in flight cannot be %s.", s.Name, verb), true
+	return fmt.Sprintf("%q is %s — work in flight cannot be %s.", s.Name, statusWord(s), verb), true
 }
 
 // MoveSliceForm is the picker behind m: the milestones the slice could be filed

@@ -204,7 +204,7 @@ func TestCompleteSliceBlockedLeavesTheSliceClaimed(t *testing.T) {
 
 	wantOut := fmt.Sprintf(`# Render the board
 
-Still Claimed by Craig Johnston. The note is on the slice page.
+Still in progress, held by Craig Johnston. The note is on the slice page.
 
 - Notion page: %[1]s
 - Notion URL: https://notion.so/%[1]s
@@ -238,8 +238,8 @@ func TestCompleteSliceBlockedStillRecordsThePR(t *testing.T) {
 	if _, wrote := props[notion.PropStatus]; wrote {
 		t.Errorf("props = %+v, want the status left alone", props)
 	}
-	if !strings.Contains(out.String(), "Still Claimed") {
-		t.Errorf("output =\n%s\nwant it to say the slice is still claimed", out.String())
+	if !strings.Contains(out.String(), "Still in progress") {
+		t.Errorf("output =\n%s\nwant it to say the slice is still in progress", out.String())
 	}
 }
 
@@ -341,12 +341,12 @@ func TestCompleteSliceRefusesASliceItDoesNotHold(t *testing.T) {
 		{
 			name:    "claimed by someone else",
 			page:    heldSlice(sliceID, "Render the board", notion.SliceClaimed, "u2", "Someone Else"),
-			wantErr: []string{"claimed by Someone Else, not by Craig Johnston", "leave it to them"},
+			wantErr: []string{"held by Someone Else, not by Craig Johnston", "leave it to them"},
 		},
 		{
 			name:    "claimed by nobody",
 			page:    heldSlice(sliceID, "Render the board", notion.SliceClaimed, "", ""),
-			wantErr: []string{"Claimed by nobody, not by Craig Johnston"},
+			wantErr: []string{"in progress but held by nobody, not by Craig Johnston"},
 		},
 		{
 			name:    "no status at all",
@@ -605,5 +605,63 @@ func TestCompleteSliceRejectsAMisusedCommandLine(t *testing.T) {
 				t.Errorf("output = %q, want nothing", out.String())
 			}
 		})
+	}
+}
+
+// Without an Assignee column there is nobody a slice could be held by but the
+// person running the command, so an In progress slice closes out on its status
+// alone rather than being refused for having no assignee.
+func TestCompleteSliceClosesOutAProjectWithNoAssigneeColumn(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {heldSlice(sliceID, "Render the board", notion.SliceInProgress, "", "")},
+		},
+		dataSources: map[string]notion.DataSource{"slices-ds": inProgressSlicesDS()},
+	}
+	env, out := completeEnv(api)
+
+	if err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done."}, env); err != nil {
+		t.Fatalf("complete-slice: %v", err)
+	}
+
+	if len(api.updates) != 1 {
+		t.Fatalf("updates = %+v, want exactly one", api.updates)
+	}
+	if name := api.updates[0].props[notion.PropStatus].SelectName(); name != notion.SliceDone {
+		t.Errorf("status = %q, want %q", name, notion.SliceDone)
+	}
+	if !strings.Contains(out.String(), "Done.") {
+		t.Errorf("output =\n%s\nwant the slice reported Done", out.String())
+	}
+}
+
+// A slice of such a project that is not in progress is still refused, named by
+// the status its own project calls it.
+func TestCompleteSliceRefusesATodoSliceOfAProjectWithNoAssigneeColumn(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {heldSlice(sliceID, "Render the board", notion.SliceTodo, "", "")},
+		},
+		dataSources: map[string]notion.DataSource{"slices-ds": inProgressSlicesDS()},
+	}
+	env, _ := completeEnv(api)
+
+	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done."}, env)
+	if err == nil || !strings.Contains(err.Error(), "is Todo, not In progress") {
+		t.Fatalf("err = %v, want it to name the project's own in-progress status", err)
+	}
+}
+
+func TestCompleteSliceReportsAFailedSchemaRead(t *testing.T) {
+	api := completableAPI()
+	api.dataSourceErr = errors.New("boom")
+	env, _ := completeEnv(api)
+
+	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done."}, env)
+	if err == nil || !strings.Contains(err.Error(), "read the slices schema") {
+		t.Fatalf("err = %v, want the schema read named", err)
+	}
+	if len(api.appends) != 0 {
+		t.Errorf("appends = %+v, want nothing written", api.appends)
 	}
 }

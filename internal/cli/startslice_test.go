@@ -413,3 +413,41 @@ func TestStartSliceReportsAFailedWrite(t *testing.T) {
 		})
 	}
 }
+
+// The same project shape, taken by name rather than chosen.
+func TestStartSliceClaimsAProjectWithNoAssigneeColumn(t *testing.T) {
+	api := startableAPI(t)
+	api.dataSources = map[string]notion.DataSource{"slices-ds": inProgressSlicesDS()}
+	env, out := testEnv(testClaimConfig(), api)
+
+	if err := Run(context.Background(), []string{"start-slice", startSliceID}, env); err != nil {
+		t.Fatalf("start-slice: %v", err)
+	}
+
+	if len(api.updates) != 1 {
+		t.Fatalf("updates = %+v, want exactly one", api.updates)
+	}
+	if _, wrote := api.updates[0].props[notion.PropAssignee]; wrote {
+		t.Errorf("props = %+v, want no assignee written", api.updates[0].props)
+	}
+	if name := api.updates[0].props[notion.PropStatus].SelectName(); name != notion.SliceInProgress {
+		t.Errorf("status = %q, want %q", name, notion.SliceInProgress)
+	}
+	if !strings.Contains(out.String(), "Claimed for Craig Johnston") {
+		t.Errorf("output =\n%s\nwant the brief", out.String())
+	}
+}
+
+func TestStartSliceReportsAFailedSchemaRead(t *testing.T) {
+	api := startableAPI(t)
+	api.dataSourceErr = errors.New("boom")
+	env, _ := testEnv(testClaimConfig(), api)
+
+	err := Run(context.Background(), []string{"start-slice", startSliceID}, env)
+	if err == nil || !strings.Contains(err.Error(), "read the slices schema") {
+		t.Fatalf("err = %v, want the schema read named", err)
+	}
+	if len(api.updates) != 0 {
+		t.Errorf("updates = %+v, want nothing written", api.updates)
+	}
+}

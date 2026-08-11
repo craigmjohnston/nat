@@ -22,7 +22,12 @@ const (
 // SliceStatus is where a slice sits in its workflow.
 type SliceStatus string
 
-// The slice statuses, in workflow order.
+// The slice statuses, in workflow order. There is one in-progress status here
+// however the project spells it: a project's Status column offers either
+// Claimed or In progress, and both map onto SliceClaimed, so everything reading
+// a plan — the board chip, the progress math, the gating on work in flight —
+// asks one question rather than two. The name as the project writes it is kept
+// on the slice as StatusName, for output that names it back to the user.
 const (
 	SliceTodo    SliceStatus = notion.SliceTodo
 	SliceClaimed SliceStatus = notion.SliceClaimed
@@ -46,11 +51,15 @@ type Milestone struct {
 	URL        string
 }
 
-// Slice is one unit of work, small enough for a single agent session.
+// Slice is one unit of work, small enough for a single agent session. Status is
+// the workflow status, normalised across the two spellings of in-progress;
+// StatusName is what the project's own Status column calls it, so a message
+// naming a slice's status says what someone would see in Notion.
 type Slice struct {
 	ID           string
 	Name         string
 	Status       SliceStatus
+	StatusName   string
 	MilestoneID  string
 	AssigneeName string
 	Repo         string
@@ -95,13 +104,15 @@ func MilestonesFromPages(pages []notion.Page) []Milestone {
 // to at most one milestone, so only the first relation is read; likewise only
 // the first assignee, since claiming sets exactly one.
 func SliceFromPage(p notion.Page) Slice {
+	name := p.Properties[notion.PropStatus].SelectName()
 	s := Slice{
-		ID:     p.ID,
-		Name:   p.Properties[notion.PropName].Text(),
-		Status: SliceStatus(p.Properties[notion.PropStatus].SelectName()),
-		Repo:   p.Properties[notion.PropRepo].Text(),
-		PRURL:  p.Properties[notion.PropPR].URL,
-		URL:    p.URL,
+		ID:         p.ID,
+		Name:       p.Properties[notion.PropName].Text(),
+		Status:     sliceStatus(name),
+		StatusName: name,
+		Repo:       p.Properties[notion.PropRepo].Text(),
+		PRURL:      p.Properties[notion.PropPR].URL,
+		URL:        p.URL,
 	}
 	if ids := p.Properties[notion.PropMilestone].RelationIDs(); len(ids) > 0 {
 		s.MilestoneID = ids[0]
@@ -110,6 +121,17 @@ func SliceFromPage(p notion.Page) Slice {
 		s.AssigneeName = people[0].Name
 	}
 	return s
+}
+
+// sliceStatus maps a Status option name onto the workflow status it means. In
+// progress is the newer name for Claimed, so the two land on one status;
+// anything else is carried through as it was written, which is what an unknown
+// status draws as on the board.
+func sliceStatus(name string) SliceStatus {
+	if name == notion.SliceInProgress {
+		return SliceClaimed
+	}
+	return SliceStatus(name)
 }
 
 // SlicesFromPages maps a Slices query result, preserving its order.

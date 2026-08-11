@@ -101,6 +101,8 @@ func TestAppNewProjectInfoBreaksTheLineOnShiftEnter(t *testing.T) {
 	typeText(app, "And the rest.")
 	feed(t, app, press(app, "tab"))
 	typeText(app, t.TempDir())
+	feed(t, app, press(app, "enter"))
+	feed(t, app, press(app, "n"))
 	finishForm(t, app, press(app, "enter"))
 
 	if len(client.appended) != 1 {

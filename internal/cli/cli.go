@@ -17,6 +17,7 @@ import (
 // command can be driven by a fake in tests.
 type API interface {
 	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
+	GetDataSource(ctx context.Context, id string) (*notion.DataSource, error)
 	CreatePage(ctx context.Context, parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)
 	GetPage(ctx context.Context, id string) (*notion.Page, error)
 	GetBlockChildren(ctx context.Context, id string) ([]notion.Block, error)
@@ -71,7 +72,7 @@ usage:
   nat complete-slice <slice> [--pr URL] [--summary TEXT] [--blocked]
                       close out a slice you claimed: Done, its PR, and a
                       summary appended to its page — or, with --blocked, left
-                      Claimed with a note saying what stopped it
+                      in progress with a note saying what stopped it
   nat help            show this message
 `
 

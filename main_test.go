@@ -590,6 +590,10 @@ func (s stubAPI) QueryDataSource(context.Context, string, map[string]any, []noti
 	return nil, s.err
 }
 
+func (s stubAPI) GetDataSource(context.Context, string) (*notion.DataSource, error) {
+	return &notion.DataSource{}, s.err
+}
+
 func (s stubAPI) CreatePage(context.Context, notion.Parent, map[string]notion.PropertyValue, []map[string]any) (*notion.Page, error) {
 	return &notion.Page{}, s.err
 }

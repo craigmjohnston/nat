@@ -279,8 +279,8 @@ const (
 )
 
 // launchAgentFlow anchors the launch prompt to the slice the cursor is on. Only
-// a Todo slice can be launched: Claimed is work an agent already holds, and Done
-// is finished — a second agent on either would fight the first.
+// a Todo slice can be launched: a slice in progress is work an agent already
+// holds, and Done is finished — a second agent on either would fight the first.
 func (a *App) launchAgentFlow() tea.Cmd {
 	project, ok := a.activeProject()
 	if !ok || a.launcher == nil || a.busy {
@@ -294,7 +294,7 @@ func (a *App) launchAgentFlow() tea.Cmd {
 		return a.showConfirm(fmt.Sprintf("An agent is already running for %q — press t to attach.", s.Name), sevWarning)
 	}
 	if s.Status != domain.SliceTodo {
-		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices can be launched.", s.Name, s.Status), sevWarning)
+		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices can be launched.", s.Name, statusWord(s)), sevWarning)
 	}
 	workdir := workdirFor(s, project)
 	return a.openPrompt(launchChoices, func(choice int) tea.Cmd {
