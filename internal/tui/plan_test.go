@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 )
@@ -124,6 +126,32 @@ func TestAppPlanLaunchCarriesTheRequestInThePrompt(t *testing.T) {
 		if !strings.Contains(string(prompt), want) {
 			t.Errorf("the prompt is missing %q:\n%s", want, prompt)
 		}
+	}
+}
+
+// The workshop field is a multiline text box: ctrl+j breaks the line, and the
+// whole request — line break included — rides into the prompt. An input would
+// have run the lines together.
+func TestAppPlanLaunchAcceptsAMultilineRequest(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+
+	feed(t, app, press(app, "w"))
+	typeText(app, "split the reporting milestone")
+	_, cmd := app.Update(tea.KeyPressMsg(tea.Key{Code: 'j', Mod: tea.ModCtrl}))
+	feed(t, app, cmd)
+	typeText(app, "and slim the first slice down")
+	drive(t, app, press(app, "enter"))
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
+	prompt, err := os.ReadFile(launcher.launches[0].promptFile)
+	if err != nil {
+		t.Fatalf("read the prompt file: %v", err)
+	}
+	want := "split the reporting milestone\nand slim the first slice down"
+	if !strings.Contains(string(prompt), want) {
+		t.Errorf("the prompt is missing the two lines:\n%s", prompt)
 	}
 }
 

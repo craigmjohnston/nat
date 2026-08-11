@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -312,6 +313,7 @@ func (t *Tmux) join(paneID string, host pane, percent int) error {
 func (t *Tmux) breakOut(paneID, session string) error {
 	args := append([]string{"new-session", "-d",
 		"-s", session, "-P", "-F", "#{pane_id}", placeholderCommand}, statusOffArgs(session)...)
+	args = append(args, mouseOnArgs(session)...)
 	out, err := t.runner.Run(TmuxBinary, args...)
 	if err != nil {
 		return fmt.Errorf("make session %s for pane %s: %w", session, paneID, err)
@@ -428,7 +430,9 @@ func LaunchArgs(session, workdir, promptFile string) []string {
 		"-P", "-F", "#{pane_id}",
 		"sh", "-c", agentCommand(promptFile),
 	}, statusOffArgs(session)...)
-	return append(args, inputFeatureArgs()...)
+	args = append(args, mouseOnArgs(session)...)
+	args = append(args, inputFeatureArgs()...)
+	return append(args, hyperlinkClickArgs()...)
 }
 
 // HostArgs is the tmux argv that runs binary as the TUI, inside [TUISession].
@@ -444,7 +448,8 @@ func LaunchArgs(session, workdir, promptFile string) []string {
 // session the user was already in.
 func HostArgs(binary string) []string {
 	args := append([]string{"new-session", "-A", "-s", TUISession, binary}, statusOffArgs(TUISession)...)
-	return append(args, inputFeatureArgs()...)
+	args = append(args, inputFeatureArgs()...)
+	return append(args, hyperlinkClickArgs()...)
 }
 
 // statusOffArgs is the command that hides the tmux status bar in a session of
@@ -459,6 +464,71 @@ func HostArgs(binary string) []string {
 // runs once the session is there.
 func statusOffArgs(session string) []string {
 	return []string{";", "set-option", "-t", session, "status", "off"}
+}
+
+// mouseOnArgs is the command chained onto an agent session's creation that
+// turns tmux's own mouse handling on for it. The hyperlink click binding only
+// fires in a session where tmux holds the mouse: with the option off, tmux
+// hands mouse reporting straight through to the agent, and a click on a link
+// reaches Claude Code instead of the binding. Session-scoped like the status
+// bar, so the user's own sessions keep whatever they had; the board's session
+// gets its mouse at join time, where it always has.
+func mouseOnArgs(session string) []string {
+	return []string{";", "set-option", "-t", session, "mouse", "on"}
+}
+
+// hyperlinkUnderMouse is the tmux format condition that is true when the cell
+// under the mouse carries an OSC 8 hyperlink. The comparison against empty
+// rather than bare truthiness, so a hyperlink whose target is the one string
+// tmux reads as false ("0") still counts.
+const hyperlinkUnderMouse = "#{!=:#{mouse_hyperlink},}"
+
+// stockClick and stockCtrlClick are tmux's own default root-table bindings for
+// the two mouse events, kept as the fall-through of the hyperlink bindings: a
+// key binding is server-wide — tmux has no narrower scope for one — so away
+// from a link every click behaves exactly as it did before, in the user's own
+// sessions too.
+const (
+	stockClick     = "select-pane -t = ; send-keys -M"
+	stockCtrlClick = "swap-pane -s @"
+)
+
+// urlOpener is the command that hands a URL to the desktop on this platform.
+func urlOpener() string { return urlOpenerFor(runtime.GOOS) }
+
+// urlOpenerFor picks the opener for a GOOS, split out so both answers are
+// reachable from a test run on either platform.
+func urlOpenerFor(goos string) string {
+	if goos == "darwin" {
+		return "open"
+	}
+	return "xdg-open"
+}
+
+// hyperlinkClickArgs is the command chain that makes a link in a pane open on
+// click. tmux ends up holding the mouse everywhere an agent's links show — its
+// own mouse option is on in the sessions nat makes and in the board's at join,
+// and Claude Code asks for mouse reporting besides — so no click ever reaches
+// the outer terminal's own link handling; the OSC 8 hyperlink reaches it fine
+// (that is what the terminal-features entry above arranges), but the gesture
+// to open it never does. So tmux is taught the gesture instead: it knows the
+// hyperlink under the mouse, and a click on one hands the URL to the desktop.
+//
+// A plain click also keeps its stock behaviour — focusing the pane, reaching
+// the program inside — so on a link it is that plus the open; ctrl-click's
+// stock meaning (swapping panes) is suppressed on a link, because a swap is
+// never what a click on a URL wants. Bindings are idempotent to repeat, so
+// chaining them onto every launch costs nothing.
+func hyperlinkClickArgs() []string {
+	open := fmt.Sprintf("run-shell -b '%s #{q:mouse_hyperlink}'", urlOpener())
+	return []string{
+		";", "bind-key", "-T", "root", "MouseDown1Pane",
+		"if-shell", "-F", "-t", "=", hyperlinkUnderMouse,
+		open + " ; " + stockClick, stockClick,
+		";", "bind-key", "-T", "root", "C-MouseDown1Pane",
+		"if-shell", "-F", "-t", "=", hyperlinkUnderMouse,
+		open, stockCtrlClick,
+	}
 }
 
 // terminalFeatures is the terminal-features entry chained onto our session

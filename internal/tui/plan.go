@@ -34,9 +34,14 @@ type PlanForm struct {
 func newPlanForm(theme huh.Theme) *PlanForm {
 	f := &PlanForm{}
 	f.form = huh.NewForm(huh.NewGroup(
-		huh.NewInput().
+		// A text field rather than an input, so a longer request can be
+		// composed: enter still submits, and alt+enter or ctrl+j breaks the
+		// line. No external editor — the board's pane is not for handing to
+		// $EDITOR mid-form.
+		huh.NewText().
 			Title("What do you want to workshop?").
 			Description("Goes into the agent's prompt; empty starts a plain session.").
+			ExternalEditor(false).
 			Value(&f.request),
 	)).WithTheme(theme)
 	return f
