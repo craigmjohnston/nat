@@ -12,34 +12,34 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 )
 
-// planLaunch presses w and submits the form it opens, leaving the offer to
-// attach on show.
-func planLaunch(t *testing.T, a *App) {
+// planLaunch presses w, types the request into the form it opens, and submits
+// it, which launches the agent and shows its pane straight away.
+func planLaunch(t *testing.T, a *App, request string) {
 	t.Helper()
 	feed(t, a, press(a, "w"))
 	if a.form == nil {
 		t.Fatalf("no planning form opened: %s", a.note)
 	}
+	typeText(a, request)
 	drive(t, a, press(a, "enter"))
 }
 
 func TestAppPlanKeyOpensTheForm(t *testing.T) {
-	app, _, workdir := launchApp(t)
+	app, _, _ := launchApp(t)
 
 	feed(t, app, press(app, "w"))
 
 	if app.screen != screenForm {
 		t.Fatalf("screen = %v, want the planning form on show", app.screen)
 	}
-	f, ok := app.form.(*PlanForm)
-	if !ok {
+	if _, ok := app.form.(*PlanForm); !ok {
 		t.Fatalf("form = %T, want the planning form", app.form)
 	}
-	if f.workdir != workdir {
-		t.Errorf("working directory = %q, want the project default %q", f.workdir, workdir)
-	}
-	if view := stripANSI(app.View().Content); !strings.Contains(view, "Launch a planning agent") {
-		t.Errorf("view is missing the heading:\n%s", view)
+	view := stripANSI(app.View().Content)
+	for _, want := range []string{"Launch a planning agent", "What do you want to workshop?"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view is missing %q:\n%s", want, view)
+		}
 	}
 }
 
@@ -56,10 +56,10 @@ func TestAppPlanKeyWorksFromAnyRow(t *testing.T) {
 	}
 }
 
-func TestAppPlanLaunchStartsTheSessionAndOffersToAttach(t *testing.T) {
+func TestAppPlanLaunchStartsTheSessionAndAttaches(t *testing.T) {
 	app, launcher, workdir := launchApp(t)
 
-	planLaunch(t, app)
+	planLaunch(t, app, "")
 
 	if len(launcher.launches) != 1 {
 		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
@@ -68,8 +68,9 @@ func TestAppPlanLaunchStartsTheSessionAndOffersToAttach(t *testing.T) {
 	if got.session != agent.PlanSession {
 		t.Errorf("session = %q, want %q", got.session, agent.PlanSession)
 	}
+	// The project default, unasked: there is no directory question any more.
 	if got.workdir != workdir {
-		t.Errorf("workdir = %q, want %q", got.workdir, workdir)
+		t.Errorf("workdir = %q, want the project default %q", got.workdir, workdir)
 	}
 	// The sentinel, not a page ID: it is what the running planning agent is
 	// found by afterwards.
@@ -87,46 +88,66 @@ func TestAppPlanLaunchStartsTheSessionAndOffersToAttach(t *testing.T) {
 			t.Errorf("the prompt is missing %q:\n%s", want, prompt)
 		}
 	}
-
-	if _, ok := app.form.(*AttachForm); !ok {
-		t.Fatalf("form = %T, want the offer to attach", app.form)
+	// An empty input is a plain planning session: no request section to start on.
+	if strings.Contains(string(prompt), "## The request") {
+		t.Errorf("the prompt carries a request nobody typed:\n%s", prompt)
 	}
-	view := stripANSI(app.View().Content)
-	for _, want := range []string{"Planning agent launched", "Show the planning agent now?"} {
-		if !strings.Contains(view, want) {
-			t.Errorf("view is missing %q:\n%s", want, view)
-		}
-	}
-	if app.busy {
-		t.Error("the launch is over; nothing should still be in flight")
-	}
-	if !strings.Contains(app.note, `Launched nat-plan for "the plan".`) {
-		t.Errorf("note = %q, want the launched note", app.note)
-	}
-}
 
-func TestAppPlanLaunchAttachesWhenConfirmed(t *testing.T) {
-	app, launcher, _ := launchApp(t)
-	planLaunch(t, app)
-
-	answerConfirm(t, app, "y")
-
+	// No offer to attach: outside tmux the launch hands the terminal straight
+	// to the session.
+	if app.form != nil {
+		t.Fatalf("form = %T, want the pane shown with nothing to confirm", app.form)
+	}
 	if want := []string{agent.PlanSession}; !equal(launcher.attached, want) {
 		t.Errorf("attached = %v, want %v", launcher.attached, want)
 	}
+	if !app.busy {
+		t.Error("the terminal is the session's until it is given back")
+	}
 }
 
-func TestAppPlanLaunchDeclinedPrintsTheAttachCommand(t *testing.T) {
+// What the user typed into the launch input rides in the prompt, so the agent
+// starts on it rather than opening with a question.
+func TestAppPlanLaunchCarriesTheRequestInThePrompt(t *testing.T) {
 	app, launcher, _ := launchApp(t)
-	planLaunch(t, app)
 
-	answerConfirm(t, app, "n")
+	planLaunch(t, app, "split the reporting milestone")
 
-	if len(launcher.attached) != 0 {
-		t.Errorf("attached = %v, want the terminal left alone", launcher.attached)
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
 	}
-	if want := "tmux attach-session -t " + agent.PlanSession; !strings.Contains(app.note, want) {
-		t.Errorf("note = %q, want it to name %q", app.note, want)
+	prompt, err := os.ReadFile(launcher.launches[0].promptFile)
+	if err != nil {
+		t.Fatalf("read the prompt file: %v", err)
+	}
+	for _, want := range []string{"## The request", "split the reporting milestone"} {
+		if !strings.Contains(string(prompt), want) {
+			t.Errorf("the prompt is missing %q:\n%s", want, prompt)
+		}
+	}
+}
+
+// Inside tmux the launch joins the agent's pane beside the board straight
+// away, with no confirm between the input and the pane.
+func TestAppPlanLaunchJoinsThePaneBesideTheBoard(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	t.Setenv(agent.PaneEnv, "%0")
+	launcher.joined = true
+	// The refresh that follows the launch sees the session running, as the
+	// real tmux would; without it the joined mark would be read as an exit.
+	launcher.live = map[string]string{agent.PlanSentinel: agent.PlanSession}
+
+	planLaunch(t, app, "")
+
+	want := []showCall{{sliceID: agent.PlanSentinel, host: "%0", percent: config.DefaultSplitPercent}}
+	if !reflect.DeepEqual(launcher.shown, want) {
+		t.Errorf("shown = %+v, want %+v", launcher.shown, want)
+	}
+	if !app.joined[agent.PlanSentinel] {
+		t.Error("the planning agent should be marked joined")
+	}
+	if app.form != nil {
+		t.Fatalf("form = %T, want the pane shown with nothing to confirm", app.form)
 	}
 }
 
@@ -134,7 +155,7 @@ func TestAppPlanLaunchReportsAFailedLaunch(t *testing.T) {
 	app, launcher, _ := launchApp(t)
 	launcher.launchErr = errors.New("duplicate session")
 
-	planLaunch(t, app)
+	planLaunch(t, app, "")
 
 	if app.form != nil {
 		t.Errorf("form = %T, want no offer to attach to a session that did not start", app.form)
@@ -151,7 +172,7 @@ func TestLaunchPlanAgentReportsAFailedPromptFile(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
 	launcher := &fakeLauncher{}
 
-	msg := runMsg(t, launchPlanAgent(launcher, "tracker", "/tmp")).(agentLaunchedMsg)
+	msg := runMsg(t, launchPlanAgent(launcher, "tracker", "/tmp", "")).(agentLaunchedMsg)
 
 	if msg.err == nil || !strings.Contains(msg.err.Error(), "launch planning agent: create prompt dir") {
 		t.Errorf("err = %v, want the failed prompt file", msg.err)
@@ -286,7 +307,7 @@ func TestAppPlanKeyIsRefusedWithNothingToLaunchWith(t *testing.T) {
 }
 
 func TestPlanFormBusyNote(t *testing.T) {
-	f := newPlanForm(DefaultStyles().FormTheme, "/tmp")
+	f := newPlanForm(DefaultStyles().FormTheme)
 	if got := busyNoteOf(f); got != "Launching the planning agent…" {
 		t.Errorf("busyNoteOf = %q, want the planning launch note", got)
 	}

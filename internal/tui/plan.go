@@ -19,26 +19,25 @@ func planSlice() domain.Slice {
 	return domain.Slice{ID: agent.PlanSentinel, Name: "the plan"}
 }
 
-// PlanForm is the modal behind w when no planning agent is running: where its
-// session should start. The directory matters less than a slice agent's — the
-// planning commands work wherever they are typed — but it is where the agent
-// reads the repo's own conventions from, so it is still worth asking.
+// PlanForm is the modal behind w when no planning agent is running: what the
+// user wants to workshop, carried into the agent's prompt so the session
+// starts on it. There is no directory question — the planning commands work
+// wherever they are typed, so the project's default is always right — and an
+// empty answer launches a plain planning session.
 type PlanForm struct {
 	form *huh.Form
 
-	workdir string
+	request string
 }
 
-// newPlanForm returns the form for launching a planning agent, starting on the
-// project's default working directory.
-func newPlanForm(theme huh.Theme, workdir string) *PlanForm {
-	f := &PlanForm{workdir: workdir}
+// newPlanForm returns the form for launching a planning agent.
+func newPlanForm(theme huh.Theme) *PlanForm {
+	f := &PlanForm{}
 	f.form = huh.NewForm(huh.NewGroup(
 		huh.NewInput().
-			Title("Working directory").
-			Description("Where the agent's session starts; ~ is expanded.").
-			Value(&f.workdir).
-			Validate(existingDir),
+			Title("What do you want to workshop?").
+			Description("Goes into the agent's prompt; empty starts a plain session.").
+			Value(&f.request),
 	)).WithTheme(theme)
 	return f
 }
@@ -70,21 +69,23 @@ func (f *PlanForm) SetSize(width, height int) {
 // busyNote says what the status bar shows while the session starts.
 func (f *PlanForm) busyNote() string { return "Launching the planning agent…" }
 
-// save starts the session the completed form describes.
+// save starts the session the completed form describes, in the project's
+// default working directory.
 func (f *PlanForm) save(a *App) tea.Cmd {
 	// The form only ever opens on a configured project, so this is the one it
 	// was opened against.
 	project, _ := a.activeProject()
-	return launchPlanAgent(a.launcher, project.Name, expandHome(strings.TrimSpace(f.workdir)))
+	return launchPlanAgent(a.launcher, project.Name, expandHome(project.WorkingDir),
+		strings.TrimSpace(f.request))
 }
 
-// launchPlanAgent writes the planning prompt out and starts the detached
-// session that reads it, tagged with the sentinel rather than a slice ID. It
-// comes back as the same message a slice launch does, so the offer to attach
-// and the failure reporting are shared.
-func launchPlanAgent(l AgentLauncher, projectName, workdir string) tea.Cmd {
+// launchPlanAgent writes the planning prompt out — the user's request folded
+// in — and starts the detached session that reads it, tagged with the sentinel
+// rather than a slice ID. It comes back as the same message a slice launch
+// does, so the failure reporting is shared.
+func launchPlanAgent(l AgentLauncher, projectName, workdir, request string) tea.Cmd {
 	return func() tea.Msg {
-		file, err := agent.WritePromptFile(agent.PlanSession, agent.PlanPrompt(projectName, workdir))
+		file, err := agent.WritePromptFile(agent.PlanSession, agent.PlanPrompt(projectName, workdir, request))
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch planning agent: %w", err)}
 		}
@@ -95,27 +96,12 @@ func launchPlanAgent(l AgentLauncher, projectName, workdir string) tea.Cmd {
 	}
 }
 
-// newPlanAttachForm is the offer to attach as it reads after a planning
-// launch: the same confirm as newAttachForm, with the planning agent's own
-// words — there is no slice for the usual ones to name, and the key that shows
-// it later is w rather than t.
-func newPlanAttachForm(theme huh.Theme, session string) *AttachForm {
-	f := &AttachForm{heading: "Planning agent launched", slice: planSlice(), session: session}
-	f.form = huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().
-			Title("Show the planning agent now?").
-			Description("It keeps running either way; w shows and hides it.").
-			Value(&f.confirmed),
-	)).WithTheme(theme)
-	return f
-}
-
 // planAgentFlow is what w does: launches a planning agent when none is
 // running, and shows or hides the one that is — the same toggle t is for a
 // slice's agent. One planning agent is enough: a second would workshop the
 // same plan the first is already holding in its head.
 func (a *App) planAgentFlow() tea.Cmd {
-	project, ok := a.activeProject()
+	_, ok := a.activeProject()
 	if !ok || a.launcher == nil || a.busy {
 		return nil
 	}
@@ -123,5 +109,5 @@ func (a *App) planAgentFlow() tea.Cmd {
 		a.busy, a.note = true, ""
 		return a.showAgent(planSlice(), session)
 	}
-	return a.openForm(newPlanForm(a.styles.FormTheme, project.WorkingDir))
+	return a.openForm(newPlanForm(a.styles.FormTheme))
 }

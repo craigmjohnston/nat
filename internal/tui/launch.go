@@ -451,18 +451,20 @@ func (a *App) paneMoved(msg agentAttachedMsg) {
 }
 
 // agentLaunched reports a finished launch and offers to attach to what it
-// started.
+// started. A planning launch skips the offer: the user has just said what they
+// want to workshop, so the pane is shown straight away — w toggles it from
+// there.
 func (a *App) agentLaunched(msg agentLaunchedMsg) (tea.Model, tea.Cmd) {
 	a.busy = false
 	if msg.err != nil {
 		a.note, a.err = "", msg.err
 		return a, nil
 	}
-	form := modal(newAttachForm(a.styles.FormTheme, msg.slice, msg.session))
 	if msg.slice.ID == agent.PlanSentinel {
-		form = newPlanAttachForm(a.styles.FormTheme, msg.session)
+		a.busy, a.note = true, ""
+		return a, tea.Batch(a.showAgent(msg.slice, msg.session), a.refreshLive())
 	}
-	cmd := a.openForm(form)
+	cmd := a.openForm(newAttachForm(a.styles.FormTheme, msg.slice, msg.session))
 	a.note = fmt.Sprintf("Launched %s for %q.", msg.session, msg.slice.Name)
 	return a, tea.Batch(cmd, a.refreshLive())
 }
