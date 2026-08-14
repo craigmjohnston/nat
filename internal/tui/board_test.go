@@ -2,6 +2,7 @@ package tui
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -471,6 +472,93 @@ func TestBoardFillsTheSelectedRowToItsWidth(t *testing.T) {
 	}
 }
 
+func TestBoardFillsEveryLineOfASelectedWrappedRow(t *testing.T) {
+	b := newLongRowBoard(40)
+	b.cursor = 1 // the long slice row, which wraps at this width
+
+	lines := b.rowLines()[1]
+	if len(lines) < 2 {
+		t.Fatalf("the row is %d lines, want it wrapped", len(lines))
+	}
+	for i, line := range lines {
+		if got := lipgloss.Width(line); got != 40 {
+			t.Errorf("line %d of the selected row is %d wide, want the fill run out to 40", i, got)
+		}
+	}
+}
+
+// TestBoardContinuesTheStatusStripDownAWrappedRow pins the strip: every line of
+// a wrapped slice row carries the status cell's background, so the status reads
+// as a band beside the whole row rather than a mark on its first line.
+func TestBoardContinuesTheStatusStripDownAWrappedRow(t *testing.T) {
+	b := newLongRowBoard(40)
+
+	for _, r := range []struct {
+		row  int
+		want string
+	}{{1, claimedBG}, {2, todoBG}} {
+		lines := b.rowLines()[r.row]
+		if len(lines) < 2 {
+			t.Fatalf("row %d is %d lines, want it wrapped", r.row, len(lines))
+		}
+		for i, line := range lines {
+			if !strings.Contains(line, r.want) {
+				t.Errorf("line %d of row %d is missing the status strip %q:\n%q",
+					i, r.row, r.want, line)
+			}
+			plain := ansi.ReplaceAllString(line, "")
+			// The strip takes the same cells on every line, so the name and its
+			// continuations all start at the same column.
+			if i > 0 && strings.TrimLeft(plain[:8], " ") != "" {
+				t.Errorf("line %d of row %d does not indent past the strip:\n%q",
+					i, r.row, plain)
+			}
+		}
+	}
+}
+
+// claimedBG and todoBG are the background sequences of the two status chips the
+// long-row board draws, which is what the strip is looked for by.
+var (
+	claimedBG = backgroundOf(DefaultStyles().StatusClaimed)
+	todoBG    = backgroundOf(DefaultStyles().StatusTodo)
+)
+
+// backgroundOf is the escape sequence a chip style paints its background with.
+func backgroundOf(st lipgloss.Style) string {
+	rendered := st.Render(" ")
+	at := strings.Index(rendered, "48;2;")
+	if at < 0 {
+		return ""
+	}
+	return rendered[at : at+strings.Index(rendered[at:], "m")]
+}
+
+// TestBoardCursorSpanCountsAWrappedRowsLines pins what the layout scrolls by:
+// the line the selected row starts on, and how many lines it takes.
+func TestBoardCursorSpanCountsAWrappedRowsLines(t *testing.T) {
+	b := newLongRowBoard(40)
+	b.cursor = 2 // the second slice, under a milestone row that wraps too
+
+	top, height := b.CursorSpan()
+	lines := b.rowLines()
+	want := len(lines[0]) + len(lines[1])
+	if top != want || height != len(lines[2]) {
+		t.Errorf("CursorSpan() = (%d, %d), want (%d, %d)", top, height, want, len(lines[2]))
+	}
+	if height < 2 {
+		t.Errorf("the row is %d lines, want the span to cover a wrapped row", height)
+	}
+}
+
+func TestBoardCursorSpanWithoutRows(t *testing.T) {
+	b := NewBoard(DefaultStyles())
+
+	if top, height := b.CursorSpan(); top != 0 || height != 1 {
+		t.Errorf("CursorSpan() = (%d, %d), want (0, 1) on an empty board", top, height)
+	}
+}
+
 func TestBoardTruncatesRowsToItsWidth(t *testing.T) {
 	b := newTestBoard()
 	b.SetWidth(14)
@@ -513,45 +601,42 @@ func newLongRowBoard(width int) *Board {
 	return &b
 }
 
-func TestBoardDropsChipsInOrderAsItNarrows(t *testing.T) {
-	// At 80 every part of the row fits.
+// TestBoardWrapsRowsAsItNarrows pins the narrowing: a row too wide for the
+// board takes another line rather than losing anything off its tail, so every
+// part of it — the names, the chips, the milestone's count and pill — is still
+// on the board however narrow it gets.
+func TestBoardWrapsRowsAsItNarrows(t *testing.T) {
+	parts := []string{"Degrade slice rows gracefully as the board narrows",
+		"Keep the status bar and header inside the window",
+		"●", "@Craig Johnston", "PR", "0/2", "Active"}
+
+	// At 80 every part of the row fits on the one line.
 	view := newLongRowBoard(80).View()
 	golden(t, "board-narrow-80", view)
-	for _, want := range []string{"Degrade slice rows gracefully as the board narrows",
-		"●", "@Craig Johnston", "PR", "0/2", "Active"} {
+	for _, want := range parts {
 		if !strings.Contains(view, want) {
 			t.Errorf("at 80 the view is missing %q:\n%s", want, view)
 		}
 	}
-
-	// At 60 the PR marker and the assignee have gone, but the live marker, the
-	// names and the milestone's count are all still there.
-	view = newLongRowBoard(60).View()
-	golden(t, "board-narrow-60", view)
-	for _, want := range []string{"Degrade slice rows gracefully as the board narrows",
-		"Keep the status bar and header inside the window", "●", "0/2"} {
-		if !strings.Contains(view, want) {
-			t.Errorf("at 60 the view is missing %q:\n%s", want, view)
-		}
-	}
-	for _, unwanted := range []string{"PR", "@Craig Johnston", "Active"} {
-		if strings.Contains(view, unwanted) {
-			t.Errorf("at 60 the view should have dropped %q:\n%s", unwanted, view)
-		}
+	if got := len(strings.Split(view, "\n")); got != 3 {
+		t.Errorf("at 80 the board is %d lines, want one per row", got)
 	}
 
-	// At 40 nothing is left to drop, so the names are truncated instead — but
-	// each row still leads with its status glyph and the start of its name.
-	view = newLongRowBoard(40).View()
-	golden(t, "board-narrow-40", view)
-	for _, want := range []string{"Degrade slice rows", "Keep the status bar", "Agent pane"} {
-		if !strings.Contains(view, want) {
-			t.Errorf("at 40 the view is missing %q:\n%s", want, view)
+	// At 60 and at 40 the rows wrap, and nothing has gone: only the names, now
+	// broken across lines, read differently.
+	for _, width := range []int{60, 40} {
+		b := newLongRowBoard(width)
+		view := b.View()
+		golden(t, fmt.Sprintf("board-narrow-%d", width), view)
+		flat := strings.Join(strings.Fields(ansi.ReplaceAllString(view, "")), " ")
+		for _, want := range parts {
+			if !strings.Contains(flat, want) {
+				t.Errorf("at %d the view is missing %q:\n%s", width, want, view)
+			}
 		}
-	}
-	for _, unwanted := range []string{"PR", "@Craig Johnston", "Active", "0/2", "●"} {
-		if strings.Contains(view, unwanted) {
-			t.Errorf("at 40 the view should have dropped %q:\n%s", unwanted, view)
+		if got := len(strings.Split(view, "\n")); got <= len(b.rows) {
+			t.Errorf("at %d the board is %d lines over %d rows, want them wrapped",
+				width, got, len(b.rows))
 		}
 	}
 }
@@ -760,7 +845,8 @@ func TestBoardUnknownSliceStatusStillDraws(t *testing.T) {
 	b := newTestBoard()
 
 	// The Unassigned group's slice has a status this build does not know.
-	if got := b.renderSlice("  ", b.groups[3].Slices[0], false); !strings.Contains(got, "Stray") {
+	got := strings.Join(b.renderSlice("  ", b.groups[3].Slices[0], false), "\n")
+	if !strings.Contains(got, "Stray") {
 		t.Errorf("render = %q, want the slice name", got)
 	}
 }

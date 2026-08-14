@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/craigmjohnston/nat/internal/domain"
 )
@@ -223,14 +224,14 @@ func (b *Board) SetProject(p *domain.Project) {
 	b.rebuild()
 }
 
-// SetWidth records the space the board has to draw in; rows longer than it lose
-// their trailing chips and then have their name truncated rather than wrapping,
-// so one slice stays one line.
+// SetWidth records the space the board has to draw in; a row longer than it
+// wraps onto continuation lines rather than losing its tail, so nothing of it
+// is hidden by a narrow board.
 func (b *Board) SetWidth(width int) { b.width = width }
 
-// Cursor is the index of the row the user is on, which is also the line the
-// row is drawn on: one row is one line. The layout scrolls to it, so that a
-// plan taller than the window still shows where the user is.
+// Cursor is the index of the row the user is on. A row is not a line — a
+// wrapped one takes several — so the layout scrolls by CursorSpan rather than
+// by this.
 func (b Board) Cursor() int { return b.cursor }
 
 // SetLive records the slices with an agent running, which is what the live
@@ -550,20 +551,44 @@ func (b Board) View() string {
 	if len(b.groups) == 0 {
 		return b.styles.Faint.Render("No milestones yet.")
 	}
-	l := b.layout()
-	lines := make([]string, len(b.rows))
-	for i, r := range b.rows {
-		lines[i] = b.renderRow(i, r, l)
+	var lines []string
+	for _, rl := range b.rowLines() {
+		lines = append(lines, rl...)
 	}
 	return strings.Join(lines, "\n")
 }
 
-// renderRow draws one line, with the cursor marker in front of it. The row
+// rowLines is every row as the lines it is drawn on, in board order. A row that
+// fits is one line and a wrapped one several, which is what the cursor's
+// position on the board is measured from as well as what View joins.
+func (b Board) rowLines() [][]string {
+	l := b.layout()
+	lines := make([][]string, len(b.rows))
+	for i, r := range b.rows {
+		lines[i] = b.renderRow(i, r, l)
+	}
+	return lines
+}
+
+// CursorSpan is where the row under the cursor sits in the drawn board: the
+// line it starts on, and how many lines it takes. Selection is per row, so a
+// wrapped row is brought on screen whole.
+func (b Board) CursorSpan() (top, height int) {
+	for i, lines := range b.rowLines() {
+		if i == b.cursor {
+			return top, len(lines)
+		}
+		top += len(lines)
+	}
+	return top, 1
+}
+
+// renderRow draws one row, with the cursor marker in front of it. The row
 // under the cursor is drawn plain and handed to finishRow for its background
 // fill, so the marker takes the fill's colour like everything else on it.
 // Slice rows skip the number column and indent one step further, so they sit
 // consistently beneath their milestone's title.
-func (b Board) renderRow(i int, r row, l boardLayout) string {
+func (b Board) renderRow(i int, r row, l boardLayout) []string {
 	selected := i == b.cursor
 	marker := "  "
 	if selected {
@@ -579,38 +604,57 @@ func (b Board) renderRow(i int, r row, l boardLayout) string {
 	return b.renderSlice(marker+indent, b.groups[r.group].Slices[r.slice], selected)
 }
 
+// blanks is s's width in spaces: the left edge of a row's continuation lines,
+// where whatever the head drew there has nothing to say a second time.
+func blanks(s string) string {
+	return strings.Repeat(" ", lipgloss.Width(s))
+}
+
 // paint styles s, unless the row it is part of is selected: a selected row is
 // drawn plain, because its parts' own colours would each reset the selected
 // fill's background and cut holes in it.
 func paint(selected bool, st lipgloss.Style, s string) string {
+	return painter(selected, st).Render(s)
+}
+
+// painter is the style paint would use, for text that is styled a piece at a
+// time rather than in one go — a wrapped name, whose lines are each rendered
+// on their own.
+func painter(selected bool, st lipgloss.Style) lipgloss.Style {
 	if selected {
-		return s
+		return lipgloss.NewStyle()
 	}
-	return st.Render(s)
+	return st
 }
 
 // finishRow is the last step of a row: the selected row's background fill, run
-// out to the board's width so the highlight is the row rather than its text —
-// and over that, the prompt waiting on the row, or the inline confirmation when
-// one is anchored to it.
-func (b Board) finishRow(selected bool, line string) string {
+// out to the board's width on every one of the row's lines, so the highlight is
+// the whole row rather than its text — and over that, the prompt waiting on the
+// row, or the inline confirmation when one is anchored to it. Both of those go
+// on the row's last line, which is the one with room for them: the lines above
+// it only exist because the row filled them.
+func (b Board) finishRow(selected bool, lines []string) []string {
 	if !selected {
-		return line
+		return lines
 	}
-	raw := lipgloss.Width(line)
 	st := b.styles.SelectedRow
 	if b.width > 0 {
 		st = st.Width(b.width)
 	}
-	filled := st.Render(line)
-	if b.prompt != nil {
-		return b.overlayChip(filled, raw, b.promptChip(), b.styles.PromptFade)
+	filled := make([]string, len(lines))
+	for i, line := range lines {
+		filled[i] = st.Render(line)
 	}
-	if b.confirmText == "" {
-		return filled
+	last := len(filled) - 1
+	raw := lipgloss.Width(lines[last])
+	switch {
+	case b.prompt != nil:
+		filled[last] = b.overlayChip(filled[last], raw, b.promptChip(), b.styles.PromptFade)
+	case b.confirmText != "":
+		chip, fade := b.styles.confirmStyles(b.confirmSev)
+		filled[last] = b.overlayChip(filled[last], raw, chip.Render(b.confirmText), fade)
 	}
-	chip, fade := b.styles.confirmStyles(b.confirmSev)
-	return b.overlayChip(filled, raw, chip.Render(b.confirmText), fade)
+	return filled
 }
 
 // promptChip is the open prompt as one chip: its choices side by side, the
@@ -668,23 +712,96 @@ func (b Board) overlayChip(line string, raw int, chip string, fadeStyle lipgloss
 	return left + fade + chip
 }
 
+// rowName is a row's name as fitRow lays it out: the raw text, the style each
+// of its lines is drawn in, and the spaces that pad it out to its column.
+//
+// The style is held rather than applied because a name that wraps is rendered a
+// line at a time — one render over the whole name would be cut in half at the
+// break, leaving the second half unstyled. The padding only survives while the
+// chips it aligns stay on the name's own line; once they wrap there is no
+// column left to align to.
+type rowName struct {
+	text  string
+	style lipgloss.Style
+	pad   int
+}
+
+// String is the name as a row that fits draws it: styled, and padded out.
+func (n rowName) String() string {
+	return n.style.Render(n.text) + strings.Repeat(" ", n.pad)
+}
+
+// words is the name broken where fitRow may put a line end: at its spaces, and
+// inside any single word too long for a line of its own.
+func (n rowName) words(limit int) []string {
+	var out []string
+	for _, w := range strings.Fields(n.text) {
+		out = append(out, strings.Split(xansi.Hardwrap(w, limit, false), "\n")...)
+	}
+	return out
+}
+
+// minRowName is the narrowest a name's column may be and still be worth
+// flowing text into. Below it the board is narrower than its own left edge and
+// there is nothing sensible to wrap, so the row is cut to the width instead.
+const minRowName = 4
+
 // fitRow assembles one row from a head that always draws, a name, and chips in
-// the order they are drawn. A row too wide for the board loses its chips from
-// the tail — the last one drawn is the first to go — and only once none are left
-// is the name itself truncated: the name and the head are what the row is for.
-func fitRow(width int, head, name string, chips ...string) string {
-	line := joinRow(head, name, chips)
-	if width <= 0 {
-		return line
+// the order they are drawn. A row too wide for the board wraps: the name flows
+// word by word onto continuation lines, each carrying cont — the head's width
+// again — so the row's left edge runs down all of them, and the chips follow
+// the name as whole pieces. Nothing is dropped and nothing is truncated.
+func fitRow(width int, head, cont string, name rowName, chips ...string) []string {
+	whole := joinRow(head, name.String(), chips)
+	if width <= 0 || lipgloss.Width(whole) <= width {
+		return []string{whole}
 	}
-	for len(chips) > 0 && lipgloss.Width(line) > width {
-		chips = chips[:len(chips)-1]
-		line = joinRow(head, name, chips)
+	avail := width - lipgloss.Width(head) - 1
+	if avail < minRowName {
+		return []string{fit(whole, width)}
 	}
-	if lipgloss.Width(line) > width {
-		line = lipgloss.NewStyle().MaxWidth(width).Render(line)
+
+	var (
+		lines []string
+		body  strings.Builder
+		used  int
+	)
+	// A line's trailing spaces are the name's padding with nothing left on the
+	// line to align, so they go with the break.
+	flush := func() {
+		prefix := cont
+		if len(lines) == 0 {
+			prefix = head
+		}
+		lines = append(lines, prefix+" "+strings.TrimRight(body.String(), " "))
+		body.Reset()
+		used = 0
 	}
-	return line
+	add := func(s string, w int) {
+		if used > 0 && used+1+w > avail {
+			flush()
+		}
+		if used > 0 {
+			body.WriteString(" ")
+			used++
+		}
+		body.WriteString(s)
+		used += w
+	}
+	for _, word := range name.words(avail) {
+		add(name.style.Render(word), lipgloss.Width(word))
+	}
+	if used+name.pad <= avail {
+		body.WriteString(strings.Repeat(" ", name.pad))
+		used += name.pad
+	}
+	for _, chip := range chips {
+		add(fit(chip, avail), min(lipgloss.Width(chip), avail))
+	}
+	if used > 0 {
+		flush()
+	}
+	return lines
 }
 
 // joinRow is one row's parts as a line, space separated.
@@ -697,9 +814,10 @@ func joinRow(head, name string, chips []string) string {
 // The title cell is padded to the widest title and the count and pill each
 // right-align in a cell of their own, so the columns run straight down the
 // board. Where the hide-done toggle is keeping slices of it off the board, a
-// faint cue says how many. That cue goes first as the board narrows, then the
-// pill, then the count.
-func (b Board) renderMilestone(marker string, g domain.Group, selected bool, l boardLayout) string {
+// faint cue says how many. A board too narrow for all of that wraps the row
+// rather than dropping any of it, and the columns give way with the break —
+// there is nothing left on the line to align to.
+func (b Board) renderMilestone(marker string, g domain.Group, selected bool, l boardLayout) []string {
 	fold := "▸"
 	if b.expanded[groupKey(g)] {
 		fold = "▾"
@@ -722,19 +840,19 @@ func (b Board) renderMilestone(marker string, g domain.Group, selected bool, l b
 	if n := b.hiddenDone(g); n > 0 {
 		chips = append(chips, paint(selected, b.styles.Faint, fmt.Sprintf("· %d done hidden", n)))
 	}
-	title := groupTitle(g)
-	if pad := l.title - lipgloss.Width(title); pad > 0 {
-		title += strings.Repeat(" ", pad)
+	name := rowName{
+		text:  groupTitle(g),
+		style: painter(selected, b.styles.Milestone),
+		pad:   max(0, l.title-lipgloss.Width(groupTitle(g))),
 	}
-	name := paint(selected, b.styles.Milestone, title)
-	return b.finishRow(selected, fitRow(b.width, head, name, chips...))
+	return b.finishRow(selected, fitRow(b.width, head, blanks(head), name, chips...))
 }
 
 // renderDoneSection draws the row the Done milestones fold behind: the fold
 // indicator, a Done title in the title column, and a faint aggregate of what it
 // hides — how many milestones, and their slices' combined count. Its number
 // cell is blank: the section is not part of the plan's numbering.
-func (b Board) renderDoneSection(marker string, selected bool, l boardLayout) string {
+func (b Board) renderDoneSection(marker string, selected bool, l boardLayout) []string {
 	fold := "▸"
 	if b.expanded[doneSectionKey] {
 		fold = "▾"
@@ -760,12 +878,14 @@ func (b Board) renderDoneSection(marker string, selected bool, l boardLayout) st
 		noun = "milestone"
 	}
 	agg := fmt.Sprintf("%d %s · %d/%d", milestones, noun, p.Done, p.Total)
-	title := "Done"
-	if pad := l.title - lipgloss.Width(title); pad > 0 {
-		title += strings.Repeat(" ", pad)
+	const title = "Done"
+	name := rowName{
+		text:  title,
+		style: painter(selected, b.styles.Milestone),
+		pad:   max(0, l.title-lipgloss.Width(title)),
 	}
-	name := paint(selected, b.styles.Milestone, title)
-	return b.finishRow(selected, fitRow(b.width, head, name, paint(selected, b.styles.Faint, agg)))
+	return b.finishRow(selected,
+		fitRow(b.width, head, blanks(head), name, paint(selected, b.styles.Faint, agg)))
 }
 
 // renderSlice draws one slice: its status chip, its name, whether an agent is
@@ -773,10 +893,10 @@ func (b Board) renderDoneSection(marker string, selected bool, l boardLayout) st
 // glyph rather than a status: a session is running or not, which is a different
 // question from where the slice has got to.
 //
-// As the board narrows the PR marker goes first, then the assignee, and the live
-// marker last of the three — a running agent is the most urgent thing about a
-// row, and the status chip and name never go at all.
-func (b Board) renderSlice(head string, s domain.Slice, selected bool) string {
+// A row too wide for the board wraps rather than shedding any of its chips,
+// and the status chip carries on down the wrapped lines as a bare strip of its
+// colour, so the status reads as a band beside the whole row.
+func (b Board) renderSlice(head string, s domain.Slice, selected bool) []string {
 	var chips []string
 	if b.live[s.ID] != "" {
 		chips = append(chips, paint(selected, b.styles.Live, "●"))
@@ -787,28 +907,51 @@ func (b Board) renderSlice(head string, s domain.Slice, selected bool) string {
 	if s.PRURL != "" {
 		chips = append(chips, paint(selected, b.styles.PR, "PR"))
 	}
-	return b.finishRow(selected, fitRow(b.width, head+b.sliceChip(s.Status, selected), s.Name, chips...))
+	name := rowName{text: s.Name, style: painter(selected, lipgloss.NewStyle())}
+	return b.finishRow(selected, fitRow(b.width,
+		head+b.sliceChip(s.Status, selected),
+		blanks(head)+b.sliceStrip(s.Status, selected),
+		name, chips...))
 }
 
-// sliceChip is the badge for a slice's status: its glyph on the status's own
-// background. An unknown status — one Notion has grown that this build does not
-// know — draws as an empty badge rather than nothing at all, so the column
-// stays aligned. On a selected row the chip is its bare padded glyph, for the
-// same reason as paint.
-func (b Board) sliceChip(s domain.SliceStatus, selected bool) string {
-	glyph, st := "·", b.styles.StatusUnknown
+// sliceStatus is a slice status as the board draws it: a glyph whose shape says
+// how far along the slice is — ○ not started, ◐ under way, ✓ finished — and the
+// chip style it is badged with. An unknown status, one Notion has grown that
+// this build does not know, keeps a glyph and a chip of its own rather than
+// nothing at all, so the column stays aligned.
+func (b Board) sliceStatus(s domain.SliceStatus) (string, lipgloss.Style) {
 	switch s {
 	case domain.SliceTodo:
-		glyph, st = "○", b.styles.StatusTodo
+		return "○", b.styles.StatusTodo
 	case domain.SliceClaimed:
-		glyph, st = "◐", b.styles.StatusClaimed
+		return "◐", b.styles.StatusClaimed
 	case domain.SliceDone:
-		glyph, st = "●", b.styles.StatusDone
+		return "✓", b.styles.StatusDone
 	}
+	return "·", b.styles.StatusUnknown
+}
+
+// sliceChip is the badge a slice row leads with: its status glyph on the
+// status's own background. On a selected row the chip is its bare padded glyph,
+// for the same reason as paint.
+func (b Board) sliceChip(s domain.SliceStatus, selected bool) string {
+	glyph, st := b.sliceStatus(s)
 	if selected {
 		return " " + glyph + " "
 	}
 	return st.Render(glyph)
+}
+
+// sliceStrip is that same cell on the row's continuation lines, with no glyph
+// in it: the colour carries on down the row, so a wrapped slice is one band of
+// status rather than a mark on its first line. A selected row is drawn plain
+// and filled instead, so the strip gives way to the selection.
+func (b Board) sliceStrip(s domain.SliceStatus, selected bool) string {
+	if selected {
+		return "   "
+	}
+	_, st := b.sliceStatus(s)
+	return st.Render(" ")
 }
 
 // milestoneChip is the badge for a milestone's status word, shaped like
