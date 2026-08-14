@@ -1237,9 +1237,9 @@ func (a *App) hintsView() string {
 // global set. An open form owns every key, so naming any would be a lie, and
 // an open prompt names what answers it instead; a
 // joined agent pane swaps in the split guidance, since the pane has the keys
-// until it is hidden again. Each contextual set carries the help key at the
-// lowest rank, so the way to the full list is the first hint a narrow row
-// gives up.
+// until it is hidden again. Each contextual set carries the help key near the
+// lowest rank, so the way to the full list is among the first hints a narrow
+// row gives up — only the board-wide hide-done toggle goes before it.
 func (a *App) contextHints() []hint {
 	if a.form != nil {
 		return nil
@@ -1254,10 +1254,10 @@ func (a *App) contextHints() []hint {
 	}
 	if a.screen == screenBoard {
 		if _, ok := a.board.SelectedSlice(); ok {
-			return append(a.board.keys.sliceHints(), hint{a.keys.Help, 1})
+			return append(a.board.keys.sliceHints(), hint{a.keys.Help, 2})
 		}
 		if _, ok := a.board.SelectedMilestone(); ok {
-			return append(a.board.keys.milestoneHints(), hint{a.keys.Help, 1})
+			return append(a.board.keys.milestoneHints(), hint{a.keys.Help, 2})
 		}
 	}
 	return a.keys.statusHints()

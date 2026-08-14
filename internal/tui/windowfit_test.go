@@ -265,6 +265,26 @@ func TestAppHintsRowIsContextual(t *testing.T) {
 	}
 }
 
+// The board-wide hide-done toggle is named on both the milestone and the slice
+// hints, and is the first of either set to go as the row narrows — it acts on
+// the whole board rather than on the row the rest of the hints are about.
+func TestAppHintsNameTheHideDoneToggle(t *testing.T) {
+	a := sizedApp(80, 24)
+
+	for _, hints := range [][]hint{a.board.keys.milestoneHints(), a.board.keys.sliceHints()} {
+		if line := stripANSI(a.fitHints(hints, 100)); !strings.Contains(line, "z hide done") {
+			t.Errorf("hints = %q, want the toggle named", line)
+		}
+		line := stripANSI(a.fitHints(append(hints, hint{a.keys.Help, 2}), 78))
+		if strings.Contains(line, "z hide done") {
+			t.Errorf("hints = %q, want the toggle dropped first at 78 columns", line)
+		}
+		if !strings.Contains(line, "? help") {
+			t.Errorf("hints = %q, want help to outlive the toggle", line)
+		}
+	}
+}
+
 func TestHintsGoInRankOrder(t *testing.T) {
 	a := NewApp(testConfig(), nil)
 	// The global hints as they narrow: each drop takes the whole hint, never
