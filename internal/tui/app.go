@@ -268,11 +268,17 @@ func (a *App) Init() tea.Cmd {
 // Update handles the global keys and the app's own messages, and routes
 // everything else to the screen on show.
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// The one message that falls out of the switch to the screen behind it also
+	// has something to do on the way, so its command is carried down there.
+	var bar tea.Cmd
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		// Recorded, then handed on: every band of the layout is sized from it.
 		a.width, a.height = msg.Width, msg.Height
 		a.resize()
+		// The panes under the tmux bar have changed width, and its sections are
+		// drawn to the width they were.
+		bar = a.refreshStatusBar()
 	case tea.KeyPressMsg:
 		return a.keyPressed(msg)
 	case tea.BackgroundColorMsg:
@@ -346,12 +352,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if a.onboarding != nil {
 		o, cmd := a.onboarding.Update(msg)
 		a.onboarding = o
-		return a, cmd
+		return a, tea.Batch(bar, cmd)
 	}
 	if a.form != nil {
-		return a, a.formUpdate(msg)
+		return a, tea.Batch(bar, a.formUpdate(msg))
 	}
-	return a, nil
+	return a, bar
 }
 
 // keyPressed handles a key press. ctrl+c always quits — the wizard's forms

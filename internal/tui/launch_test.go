@@ -71,13 +71,16 @@ type fakeLauncher struct {
 	brokenOutErr error
 	reclaimed    int
 	reclaimErr   error
+	refreshErr   error
 
 	launches []launchCall
 	shown    []showCall
 	attached []string
-	// releases and reclaims record the host pane each was asked about.
-	releases []string
-	reclaims []string
+	// releases, reclaims and refreshes record the host pane each was asked
+	// about.
+	releases  []string
+	reclaims  []string
+	refreshes []string
 }
 
 var _ AgentLauncher = (*fakeLauncher)(nil)
@@ -114,6 +117,11 @@ func (f *fakeLauncher) BreakOutJoined(hostPane string) (int, error) {
 func (f *fakeLauncher) ReclaimStrays(hostPane string) (int, error) {
 	f.reclaims = append(f.reclaims, hostPane)
 	return f.reclaimed, f.reclaimErr
+}
+
+func (f *fakeLauncher) RefreshStatusBar(hostPane string) error {
+	f.refreshes = append(f.refreshes, hostPane)
+	return f.refreshErr
 }
 
 // launchApp returns an app showing testProject with a launcher standing in for
@@ -1311,6 +1319,63 @@ func TestReleaseReportsAFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no server") {
 		t.Errorf("err = %v, want it to carry what tmux said", err)
+	}
+}
+
+// The board's pane has changed size, so the sections of the tmux bar under it
+// — each drawn to the width of the pane above it — are rebuilt.
+func TestResizeRedrawsTheTmuxStatusBar(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	t.Setenv(agent.PaneEnv, "%0")
+
+	_, cmd := app.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	feed(t, app, cmd)
+
+	if !reflect.DeepEqual(launcher.refreshes, []string{"%0"}) {
+		t.Errorf("refreshes = %v, want the bar rebuilt for the board's pane", launcher.refreshes)
+	}
+}
+
+// A bar tmux would not redraw is chrome around a board that is still entirely
+// usable: it is logged, not raised over the plan.
+func TestResizeSurvivesAStatusBarThatWillNotRedraw(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	t.Setenv(agent.PaneEnv, "%0")
+	launcher.refreshErr = errors.New("no server")
+
+	_, cmd := app.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	feed(t, app, cmd)
+
+	if app.err != nil {
+		t.Errorf("err = %v, want the failure kept off the board", app.err)
+	}
+}
+
+// Outside tmux, and without a launcher, there is no bar of ours under the
+// board to redraw.
+func TestResizeLeavesTmuxAloneWithNoPaneToDrawFor(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		pane    string
+		noAgent bool
+	}{
+		{name: "outside tmux", pane: ""},
+		{name: "without a launcher", pane: "%0", noAgent: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app, launcher, _ := launchApp(t)
+			t.Setenv(agent.PaneEnv, tc.pane)
+			if tc.noAgent {
+				app.launcher = nil
+			}
+
+			_, cmd := app.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+			feed(t, app, cmd)
+
+			if len(launcher.refreshes) != 0 {
+				t.Errorf("refreshes = %v, want tmux left alone", launcher.refreshes)
+			}
+		})
 	}
 }
 

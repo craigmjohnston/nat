@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -211,12 +212,35 @@ func (t *Tmux) LiveSlices() (map[string]string, error) {
 }
 
 // pane is one of the tmux server's panes: which slice it is the agent for, if
-// any, and where it currently is.
+// any, where it currently is, and what the status bar needs to draw a section
+// for it — its index within the window, how wide it is, and its label.
 type pane struct {
 	slice   string
 	id      string
 	session string
 	window  string
+	index   string
+	width   int
+	label   string
+}
+
+// statusLabel is what the bar calls a pane: the label an agent's pane was
+// tagged with, or "board" for the pane with no tag at all — the one nat itself
+// is drawing in.
+//
+// A pane an earlier run launched carries the slice tag but no label, and would
+// otherwise read as the board; it falls back to the bare word, which is at
+// least true of it. The agents outlive the run that started them, so this is
+// the ordinary state of things for a while after an upgrade, not a corner.
+func (p pane) statusLabel() string {
+	switch {
+	case p.label != "":
+		return p.label
+	case p.slice == "":
+		return boardLabel
+	default:
+		return agentLabel
+	}
 }
 
 // panes lists every pane on the server. Panes that are not ours carry no slice
@@ -244,20 +268,28 @@ func (t *Tmux) panes() ([]pane, error) {
 		if len(fields) != listPanesFields {
 			continue
 		}
-		panes = append(panes, pane{slice: fields[0], id: fields[1], session: fields[2], window: fields[3]})
+		// A width tmux could not give us is no reason to drop the pane: it is
+		// still an agent to be found and moved, and a zero-width section is
+		// simply one the bar has nothing to draw.
+		width, _ := strconv.Atoi(fields[5])
+		panes = append(panes, pane{slice: fields[0], id: fields[1], session: fields[2], window: fields[3],
+			index: fields[4], width: width, label: fields[6]})
 	}
 	return panes, nil
 }
 
 // listPanesFields is how many fields [listPanesFormat] asks for; a line with
 // any other number of them is not one tmux wrote for us.
-const listPanesFields = 4
+const listPanesFields = 7
 
 // listPanesFormat is what [Tmux.panes] asks tmux to print for each pane: the
-// slice tag, then the pane, the session it is in and the window within it. Tabs
-// separate them because a session name can hold anything but that.
+// slice tag, then the pane, the session it is in and the window within it, and
+// then what the status bar draws a section for it from — its index in the
+// window, its width, and its label. Tabs separate them because a session name
+// can hold anything but that.
 func listPanesFormat() string {
-	return fmt.Sprintf("#{%s}\t#{pane_id}\t#{session_name}\t#{window_id}", SlicePaneOption)
+	return fmt.Sprintf("#{%s}\t#{pane_id}\t#{session_name}\t#{window_id}\t#{pane_index}\t#{pane_width}\t#{%s}",
+		SlicePaneOption, LabelPaneOption)
 }
 
 // HostPane is the tmux pane this process is drawing in, or "" when it is not
@@ -287,9 +319,17 @@ func (t *Tmux) ShowPane(sliceID, hostPane string, percent int) (bool, error) {
 	}
 
 	if agentPane.window == host.window {
-		return false, t.breakOut(agentPane.id, SessionName(sliceID))
+		if err := t.breakOut(agentPane.id, SessionName(sliceID)); err != nil {
+			return false, err
+		}
+		t.refreshAfterLayout(hostPane)
+		return false, nil
 	}
-	return true, t.join(agentPane.id, host, percent)
+	if err := t.join(agentPane.id, host, percent); err != nil {
+		return true, err
+	}
+	t.refreshAfterLayout(hostPane)
+	return true, nil
 }
 
 // find returns the first pane matching want.
@@ -383,9 +423,16 @@ func (t *Tmux) ReclaimStrays(hostPane string) (int, error) {
 		return 0, err
 	}
 	host, hosted := find(panes, func(p pane) bool { return p.id == hostPane })
-	return t.breakOutAll(panes, func(p pane) bool {
+	moved, err := t.breakOutAll(panes, func(p pane) bool {
 		return p.session == TUISession || (hosted && p.window == host.window)
 	})
+	// A stray taken out of the board's window is a section the bar no longer
+	// has a pane for; one taken out of another window is not, but the bar is
+	// rebuilt from what is there either way.
+	if moved > 0 {
+		t.refreshAfterLayout(hostPane)
+	}
+	return moved, err
 }
 
 // breakOutAll sends every agent pane matching want back to a session of its
@@ -502,35 +549,146 @@ const (
 	paneBorderFG    = "#45475a" // surface1
 )
 
-// paneLabelFormat is what the status bar calls one pane: the label an agent's
-// pane was tagged with, or "board" for the pane with no tag at all — the one
-// nat itself is drawing in. Compared against empty rather than tested for
-// truth, so a label tmux would read as false is still a label.
-//
-// A pane an earlier run launched carries the slice tag but no label, and would
-// otherwise read as the board; it falls back to the bare word, which is at
-// least true of it. The agents outlive the run that started them, so this is
-// the ordinary state of things for a while after an upgrade, not a corner.
-const paneLabelFormat = "#{?#{==:#{" + LabelPaneOption + "},}," +
-	"#{?#{==:#{" + SlicePaneOption + "},},board,agent}," +
-	"#{" + LabelPaneOption + "}}"
+// The words the bar falls back to when a pane carries no label of its own: the
+// pane nat is drawing in has no tag at all, and one an earlier run launched has
+// the slice tag but no label yet.
+const (
+	boardLabel = "board"
+	agentLabel = "agent"
+)
 
-// statusBarFormat is the whole status line: nat's name, then every pane of the
-// window in turn, the focused one picked out in the accent colour. The
-// `#{P:...}` loop walks the panes and `#{pane_active}` is true for exactly one
-// of them, so tmux redraws the bar itself when focus moves — nothing has to
-// poll for it, and no pane needs telling that another one took the focus.
+// The two styles a section is drawn in, picked between by the focus. Attributes
+// are separated by spaces rather than commas: a comma inside `#{?...}` is where
+// tmux splits its branches, and would cut a style in half.
+const (
+	activeSectionStyle   = "#[fg=" + statusBarOnFill + " bg=" + statusBarAccent + " bold]"
+	inactiveSectionStyle = "#[fg=" + statusBarFG + " bg=" + statusBarBG + " nobold]"
+)
+
+// statusSeparator is the one column between two sections — the pane border
+// standing between the panes above them, drawn in the bar's own style so it
+// reads as the same seam. It is what makes the sections total the window width:
+// tmux counts the border column in the window's width but in no pane's.
+const statusSeparator = "#[default] "
+
+// statusFormatOption is the status line's one row, which is the whole bar: nat
+// sets no status-left or status-right, so row zero is all there is.
+const statusFormatOption = "status-format[0]"
+
+// statusSection is one pane as the bar draws it: the pane's index within the
+// window, what to call it, and how wide the pane is.
+type statusSection struct {
+	index string
+	label string
+	width int
+}
+
+// sectionsFor turns the panes of one window into the sections of its bar, in
+// the order tmux listed them — which for the board's window, split left to
+// right, is the order they sit in.
+func sectionsFor(panes []pane) []statusSection {
+	sections := make([]statusSection, 0, len(panes))
+	for _, p := range panes {
+		sections = append(sections, statusSection{index: p.index, label: p.statusLabel(), width: p.width})
+	}
+	return sections
+}
+
+// buildStatusFormat is the whole status line for a window's panes: one section
+// per pane, each exactly as wide as the pane above it, so the bar reads as a
+// footer to the frames rather than a row of chips of its own.
 //
-// A window with only the board in it renders as the one chip, which is what
-// the bar shows whenever no agent is joined.
+// The widths are baked in because tmux will not expand a format inside a
+// padding width — `#{p#{pane_width}:...}` pads to nothing — so the bar has to
+// be rebuilt whenever the layout changes. The focus, though, is left to tmux:
+// each section carries a condition comparing the window's focused pane against
+// the index it was built for, so moving the focus redraws the bar with no
+// command sent and nothing to poll.
 //
-// Style attributes are separated by spaces rather than commas: a comma inside
-// `#{?...}` is where tmux splits its branches, and would cut a style in half.
-const statusBarFormat = "#[fg=" + statusBarAccent + " bg=" + statusBarBG + " bold] nat " +
-	"#{P:#{?pane_active," +
-	"#[fg=" + statusBarOnFill + " bg=" + statusBarAccent + " bold]," +
-	"#[fg=" + statusBarFG + " bg=" + statusBarBG + " nobold]}" +
-	" " + paneLabelFormat + " #[default]}"
+// The comparison is on the pane's index rather than its ID because tmux passes
+// a status format through strftime, which eats the `%` an ID begins with — and
+// eats it once more for every `#{?...}` the comparison sits inside, so no
+// amount of escaping survives reliably. An index is current for exactly as long
+// as the layout it was read from, which is exactly how long this format lives.
+//
+// A window with only the board in it renders as one full-width section, always
+// in the accent: the sole pane of a window is the focused one, so the condition
+// would have nothing to decide.
+func buildStatusFormat(sections []statusSection) string {
+	var b strings.Builder
+	for i, s := range sections {
+		if i > 0 {
+			b.WriteString(statusSeparator)
+		}
+		if len(sections) == 1 {
+			b.WriteString(activeSectionStyle)
+		} else {
+			b.WriteString("#{?#{==:#{pane_index}," + s.index + "}," +
+				activeSectionStyle + "," + inactiveSectionStyle + "}")
+		}
+		// The label goes through #{l:...} because the body of a padding is
+		// read as a format: a bare word in there expands to nothing.
+		fmt.Fprintf(&b, "#{p%d:#{l: %s}}", s.width, s.label)
+	}
+	b.WriteString("#[default]")
+	return b.String()
+}
+
+// initialStatusWidth is how wide the board's one section is drawn before the
+// first rebuild, when the window it will sit in does not exist yet and its
+// width cannot be asked for. It is wider than any terminal, and tmux clips the
+// status line at the window's edge, so the section fills the row whatever that
+// turns out to be.
+const initialStatusWidth = 1024
+
+// initialStatusFormat is the bar a freshly made board session starts with: the
+// one section for the pane it starts with. The first layout change — the first
+// resize, which the TUI takes as it starts — replaces it with one built from
+// the panes actually there.
+func initialStatusFormat() string {
+	return buildStatusFormat([]statusSection{{label: boardLabel, width: initialStatusWidth}})
+}
+
+// RefreshStatusBar redraws the status bar of the session hostPane's window
+// belongs to, with one section per pane as the panes now are. It is what every
+// layout change owes the bar: a section's width is baked into the format, so a
+// pane joined, broken out or resized leaves the old sections lined up against
+// nothing.
+//
+// A host pane that is not on the server — the board is not in tmux at all, or
+// its pane has already gone — means there is no bar of ours to redraw, which is
+// nothing to do rather than a failure.
+func (t *Tmux) RefreshStatusBar(hostPane string) error {
+	panes, err := t.panes()
+	if err != nil {
+		return err
+	}
+	host, ok := find(panes, func(p pane) bool { return p.id == hostPane })
+	if !ok {
+		return nil
+	}
+	var window []pane
+	for _, p := range panes {
+		if p.window == host.window {
+			window = append(window, p)
+		}
+	}
+	format := buildStatusFormat(sectionsFor(window))
+	if _, err := t.runner.Run(TmuxBinary, "set-option", "-t", host.session, statusFormatOption, format); err != nil {
+		return fmt.Errorf("redraw the status bar of %s: %w", host.session, err)
+	}
+	return nil
+}
+
+// refreshAfterLayout redraws the bar for a layout that has just changed, and
+// keeps a failure to itself. The panes have already moved by then, and a bar
+// still showing the sections of a moment ago is not worth failing the move the
+// user asked for over — it is logged and corrected by the next change.
+func (t *Tmux) refreshAfterLayout(hostPane string) {
+	if err := t.RefreshStatusBar(hostPane); err != nil {
+		logging.Error("could not redraw the board's status bar", "error", err)
+	}
+}
 
 // statusBarArgs is the command chain that gives the board's session a status
 // bar of nat's own and takes the highlight off the pane borders.
@@ -542,9 +700,8 @@ const statusBarFormat = "#[fg=" + statusBarAccent + " bg=" + statusBarBG + " bol
 // neutral grey, so the split shows as a seam and the bar alone says where the
 // focus is.
 //
-// It sits at the top: the bottom row of the board is nat's own status bar and
-// the bottom of an agent's pane is its composer, so a bar under either would
-// be a second one stacked on the first.
+// It sits at the bottom, under the frames its sections are the width of, so it
+// reads as their footer rather than a row of its own.
 //
 // Per session, like the bar we hide in an agent's own — except the border
 // styles, which tmux keeps per window; targeting the session sets them on the
@@ -554,9 +711,9 @@ func statusBarArgs(session string) []string {
 	var args []string
 	for _, opt := range [][2]string{
 		{"status", "on"},
-		{"status-position", "top"},
+		{"status-position", "bottom"},
 		{"status-style", "fg=" + statusBarFG + " bg=" + statusBarBG},
-		{"status-format[0]", statusBarFormat},
+		{statusFormatOption, initialStatusFormat()},
 		{"pane-border-style", "fg=" + paneBorderFG},
 		{"pane-active-border-style", "fg=" + paneBorderFG},
 	} {
