@@ -117,7 +117,7 @@ func TestAppHeaderBoxShedsTheBarBeforeTheBoardShedsItsRows(t *testing.T) {
 		height             int
 		wantBar, wantLabel bool
 	}{
-		{24, true, true}, {11, true, false}, {10, false, false},
+		{24, true, true}, {8, true, false}, {7, false, false},
 	} {
 		view := stripANSI(sizedApp(80, tt.height).View().Content)
 		if got := strings.Contains(view, strings.Repeat(barCell, 80-2*framePadX)); got != tt.wantBar {
@@ -160,21 +160,21 @@ func TestAppProgressBarResizesWithTheWindow(t *testing.T) {
 	}
 }
 
-func TestAppBoxesTheHeaderTheBoardAndTheStatusBar(t *testing.T) {
+func TestAppBoxesTheHeaderAndTheBoard(t *testing.T) {
 	for _, width := range windowWidths {
 		a := sizedApp(width, 24)
 		lines := strings.Split(stripANSI(a.View().Content), "\n")
-		// The header takes the window's first five lines, the board's box follows
-		// it, and the status box takes the last three, with the hints on their own
-		// lines between the two — as many as they wrapped onto; each box runs the
-		// window's full width.
+		// The header takes the window's first five lines and the board's box
+		// follows it, closing over the hints on the bottom lines — as many as they
+		// wrapped onto; each box runs the window's full width. Nothing is drawn
+		// under them: the status bar is the tmux bar's now.
 		hints := a.hintBandHeight()
-		for _, i := range []int{0, 5, len(lines) - 3} {
+		for _, i := range []int{0, 5} {
 			if !strings.HasPrefix(lines[i], "╭") || !strings.HasSuffix(lines[i], "╮") {
 				t.Errorf("at %d columns line %d = %q, want a border's top", width, i, lines[i])
 			}
 		}
-		for _, i := range []int{4, len(lines) - 4 - hints, len(lines) - 1} {
+		for _, i := range []int{4, len(lines) - 1 - hints} {
 			if !strings.HasPrefix(lines[i], "╰") || !strings.HasSuffix(lines[i], "╯") {
 				t.Errorf("at %d columns line %d = %q, want a border's bottom", width, i, lines[i])
 			}
@@ -227,27 +227,26 @@ func TestAppWrapsKeyHintsThenDropsThemByRank(t *testing.T) {
 
 	// Narrow and short together: with the body down to its last rows the hints
 	// have only the one line to wrap onto, and the ranks decide what goes.
-	view = stripANSI(sizedApp(40, 6).View().Content)
+	view = stripANSI(sizedApp(40, 7).View().Content)
 	if strings.Contains(view, "? help") {
-		t.Errorf("in a 40x6 window help should have gone:\n%s", view)
+		t.Errorf("in a 40x7 window help should have gone:\n%s", view)
 	}
 	if !strings.Contains(view, "a add slice") {
-		t.Errorf("in a 40x6 window the view is missing the write keys:\n%s", view)
+		t.Errorf("in a 40x7 window the view is missing the write keys:\n%s", view)
 	}
 }
 
-// The hints sit on their own lines directly above the status box, and what
-// they say follows the cursor: the milestone's actions on a milestone, the
-// slice's on a slice, and the global set where nothing is selected.
+// The hints sit on the window's bottom lines, and what they say follows the
+// cursor: the milestone's actions on a milestone, the slice's on a slice, and
+// the global set where nothing is selected.
 func TestAppHintsRowIsContextual(t *testing.T) {
 	a := sizedApp(80, 24)
 
 	// hintRows is the hints band as one string, however many lines it wrapped
-	// onto, taken from directly above the three-line status box.
+	// onto, taken from the bottom of the window.
 	hintRows := func() string {
 		lines := strings.Split(stripANSI(a.View().Content), "\n")
-		cut := len(lines) - 3
-		return strings.Join(lines[cut-a.hintBandHeight():cut], "\n")
+		return strings.Join(lines[len(lines)-a.hintBandHeight():], "\n")
 	}
 
 	rows := hintRows()
@@ -415,72 +414,94 @@ func TestHintsWithNoRoomDrawNothing(t *testing.T) {
 	}
 }
 
-func TestAppStatusBarIsExactlyTheWindowWideAsItNarrows(t *testing.T) {
-	// The bar fills the window's bottom row whatever it holds. Narrow enough and
-	// it is the chip alone, cut to fit; the loop takes that branch too.
+func TestAppStatusLineStaysWithinTheWindowAsItNarrows(t *testing.T) {
+	// The line goes out as the terminal title, for the tmux bar under the pane
+	// to draw: one line, never wider than the pane it sits under. Narrow enough
+	// and it is the chip alone, cut to fit; the loop takes that branch too.
 	for width := 1; width <= 80; width++ {
-		bar := sizedApp(width, 24).statusBar()
-		if got := lipgloss.Width(bar); got != width {
-			t.Fatalf("at %d columns the status bar is %d wide, want the window filled",
+		line := sizedApp(width, 24).windowTitle()
+		if got := lipgloss.Width(line); got > width {
+			t.Fatalf("at %d columns the status line is %d wide, want it cut to the window",
 				width, got)
 		}
-		if strings.Contains(bar, "\n") {
-			t.Fatalf("at %d columns the status bar took more than one line", width)
+		if strings.Contains(line, "\n") {
+			t.Fatalf("at %d columns the status line took more than one line", width)
 		}
 	}
 }
 
-func TestAppStatusBarLeadsWithTheModeChip(t *testing.T) {
-	bar := stripANSI(sizedApp(80, 24).statusBar())
-	// The bar is indented like every other band, and the chip names the app
-	// rather than the project — the heading already does that.
-	if want := "   nat "; !strings.HasPrefix(bar, want) {
-		t.Errorf("status bar = %q, want it led by the chip %q", bar, want)
+func TestAppStatusLineLeadsWithTheModeChip(t *testing.T) {
+	line := sizedApp(80, 24).windowTitle()
+	// The chip names the app rather than the project — the heading already does
+	// that — and the line carries no styling: a title is text, and tmux would
+	// show the escape codes rather than obey them.
+	if want := "nat"; !strings.HasPrefix(line, want) {
+		t.Errorf("status line = %q, want it led by the chip %q", line, want)
 	}
-	if strings.Contains(bar, "notion-agent-tracker") {
-		t.Errorf("status bar = %q, want the project name left to the heading", bar)
+	if strings.Contains(line, "notion-agent-tracker") {
+		t.Errorf("status line = %q, want the project name left to the heading", line)
+	}
+	if line != stripANSI(line) {
+		t.Errorf("status line = %q, want it plain text", line)
 	}
 }
 
-func TestAppStatusBarCarriesNoKeyHints(t *testing.T) {
-	// The hints have a row of their own above the bar, so the bar is the chip
+func TestAppStatusLineCarriesNoKeyHints(t *testing.T) {
+	// The hints have a row of their own in the window, so the line is the chip
 	// and the message alone.
 	a := sizedApp(80, 24)
 	a.note = "Saved."
 
-	bar := stripANSI(a.statusBar())
-	if strings.Contains(bar, "q quit") || strings.Contains(bar, "? help") {
-		t.Errorf("status bar = %q, want the hints on their own row", bar)
+	line := a.windowTitle()
+	if strings.Contains(line, "q quit") || strings.Contains(line, "? help") {
+		t.Errorf("status line = %q, want the hints left to their own row", line)
 	}
-	if !strings.Contains(bar, "Saved.") {
-		t.Errorf("status bar = %q, want the note beside the chip", bar)
+	if !strings.Contains(line, "Saved.") {
+		t.Errorf("status line = %q, want the note beside the chip", line)
 	}
 }
 
-func TestAppStatusBarKeepsALongNoteInTheBar(t *testing.T) {
-	// A long note is truncated to the bar rather than wrapped or overflowed.
+func TestAppStatusLineKeepsALongNoteToOneLine(t *testing.T) {
+	// A long note is truncated to the window rather than wrapped or overflowed.
 	a := sizedApp(80, 24)
 	a.note = strings.Repeat("very long ", 20)
 
-	bar := a.statusBar()
-	if got := lipgloss.Width(bar); got != 80 {
-		t.Errorf("status bar is %d wide, want the window filled", got)
+	line := a.windowTitle()
+	if got := lipgloss.Width(line); got > 80 {
+		t.Errorf("status line is %d wide, want it cut to the window", got)
 	}
-	if !strings.Contains(stripANSI(bar), "very long") {
-		t.Errorf("status bar = %q, want the note's leading text kept", stripANSI(bar))
+	if !strings.Contains(line, "very long") {
+		t.Errorf("status line = %q, want the note's leading text kept", line)
+	}
+}
+
+// The window ends at the body's own border: the status bar the app used to draw
+// under it is the tmux bar's now, so nothing of it is left in the view.
+func TestAppDrawsNoStatusBarOfItsOwn(t *testing.T) {
+	a := sizedApp(80, 24)
+	a.note = "Saved."
+
+	view := stripANSI(a.View().Content)
+	if strings.Contains(view, "Saved.") {
+		t.Errorf("view still draws the status message:\n%s", view)
+	}
+	lines := strings.Split(view, "\n")
+	last := strings.TrimSpace(lines[len(lines)-1])
+	if hints := stripANSI(a.hintsView()); last == "" || !strings.Contains(hints, last) {
+		t.Errorf("last line = %q, want the bottom row to be the hints %q", last, hints)
 	}
 }
 
 func TestAppHintsRowIsEmptyForAnOpenForm(t *testing.T) {
 	// A form owns the keys the hints name, so only its own way out is offered,
-	// on the bar itself.
+	// on the status line itself.
 	a := sizedFormApp(t, 80, 24)
 	if row := stripANSI(a.hintsView()); row != "" {
 		t.Errorf("hints row = %q, want it empty while a form is open", row)
 	}
-	bar := stripANSI(a.statusBar())
-	if !strings.Contains(bar, "esc cancel") || strings.Contains(bar, "refresh") {
-		t.Errorf("status bar = %q, want only the form's own prompt", bar)
+	line := a.windowTitle()
+	if !strings.Contains(line, "esc cancel") || strings.Contains(line, "refresh") {
+		t.Errorf("status line = %q, want only the form's own prompt", line)
 	}
 }
 
@@ -489,11 +510,15 @@ func TestAppKeepsALongErrorOnOneLine(t *testing.T) {
 	a := sizedApp(width, height)
 	a.Update(notionErrMsg{err: errors.New("load milestones: " + strings.Repeat("boom ", 40))})
 
-	view := a.View().Content
-	checkFits(t, view, width, height)
-	// The head of the error names what failed, so it is the part that survives.
-	if !strings.Contains(stripANSI(view), "load milestones") {
-		t.Errorf("the error should keep its leading text:\n%s", view)
+	checkFits(t, a.View().Content, width, height)
+	// The head of the error names what failed, so it is the part that survives
+	// the cut to the one line the bar has for it.
+	line := a.windowTitle()
+	if !strings.Contains(line, "load milestones") {
+		t.Errorf("status line = %q, want the error's leading text", line)
+	}
+	if lipgloss.Width(line) > width || strings.Contains(line, "\n") {
+		t.Errorf("status line = %q, want one line cut to the window", line)
 	}
 }
 
@@ -506,16 +531,19 @@ func TestAppKeepsALongNoteOnOneLine(t *testing.T) {
 }
 
 func TestAppKeepsAMultiLineMessageOnOneLine(t *testing.T) {
-	// Notion errors can carry a body with newlines in it; the status bar is one
-	// line whatever it is given.
+	// Notion errors can carry a body with newlines in it; the status line is one
+	// line whatever it is given, and a title with a break in it would be two.
 	const width, height = 60, 24
 	a := sizedApp(width, height)
 	a.Update(notionErrMsg{err: errors.New("save slice:\nbody\nlines")})
 
-	view := a.View().Content
-	checkFits(t, view, width, height)
-	if strings.Contains(stripANSI(view), "body") {
-		t.Errorf("the error's later lines should have gone:\n%s", view)
+	checkFits(t, a.View().Content, width, height)
+	line := a.windowTitle()
+	if !strings.Contains(line, "save slice:") {
+		t.Errorf("status line = %q, want the error's first line", line)
+	}
+	if strings.Contains(line, "body") || strings.Contains(line, "\n") {
+		t.Errorf("status line = %q, want the error's later lines gone", line)
 	}
 }
 
@@ -756,19 +784,18 @@ func TestAppScrollsTheHelpScreen(t *testing.T) {
 }
 
 func TestAppSharesAShortWindowOutFromTheBottom(t *testing.T) {
-	// The status bar takes the bottom rows first, then the header and the hints
-	// row what is left: too short a window loses the body, then its borders,
-	// then the hints, then the header, never the bar. From 10 lines the layout
-	// is framed — the boxed header, the boxed status bar and the body's own
-	// border — and below that the bands are drawn bare. The header box gives up
-	// the progress bar's label, then the bar itself, before the body gives up
-	// its last row.
+	// The header takes its rows first, then the hints row, and the body has what
+	// is left: too short a window loses the body, then its borders, then the
+	// hints, and the heading is the one line it keeps to the last. From 7 lines the layout is framed — the boxed
+	// header and the body's own border — and below that the bands are drawn
+	// bare. The header box gives up the progress bar's label, then the bar
+	// itself, before the body gives up its last row.
 	//
 	// At 80 columns the hints wrap onto a second line wherever the window has
 	// one to spare, which is a line the body pays for: the tall windows are one
 	// row shorter than the arithmetic on hintsHeight alone would give.
 	for _, tt := range []struct{ height, header, body int }{
-		{20, 5, 8}, {12, 5, 1}, {11, 4, 1}, {10, 3, 1}, {9, 1, 5}, {5, 1, 2}, {2, 1, 0}, {1, 0, 0},
+		{20, 5, 11}, {12, 5, 3}, {9, 5, 1}, {8, 4, 1}, {7, 3, 1}, {6, 1, 3}, {2, 1, 0}, {1, 1, 0},
 	} {
 		a := tallApp(80, tt.height)
 		if got := a.headerBandHeight(); got != tt.header {

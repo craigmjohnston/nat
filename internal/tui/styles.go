@@ -76,10 +76,9 @@ type Styles struct {
 	HeaderApp   lipgloss.Style
 	HeaderTitle lipgloss.Style
 	HeaderMeta  lipgloss.Style
-	// Box frames the body region, and StatusBox the status bar under it: real
-	// borders, so the layout reads as panels rather than floating text.
-	Box       lipgloss.Style
-	StatusBox lipgloss.Style
+	// Box frames the body region: a real border, so the layout reads as panels
+	// rather than floating text.
+	Box lipgloss.Style
 	// Modal frames a form floating over the board, and Scrim redraws the board
 	// behind it knocked back to one quiet colour, so the modal is the only
 	// surface at full strength while it is up.
@@ -87,20 +86,19 @@ type Styles struct {
 	Scrim lipgloss.Style
 	// Faint is for text that should recede: hints, placeholders, counts.
 	Faint lipgloss.Style
-	// StatusBar is the fill of the bottom row, and StatusKey, StatusDesc and
-	// StatusNote the text drawn on it. Each of them carries the
-	// bar's own background: a segment styled with a foreground alone would reset
-	// the fill and cut a hole in it.
-	StatusBar  lipgloss.Style
+	// StatusKey, StatusDesc and StatusNote are the text of the status line the
+	// tmux bar draws under the pane. Each of them carries the bar's own
+	// background: a segment styled with a foreground alone would reset the fill
+	// and cut a hole in it.
 	StatusKey  lipgloss.Style
 	StatusDesc lipgloss.Style
 	StatusNote lipgloss.Style
-	// HintKey, HintDesc and HintSep are the key hints row above the status bar,
-	// drawn on the window's own background rather than the bar's fill.
+	// HintKey, HintDesc and HintSep are the key hints on the window's bottom
+	// row, drawn on its own background rather than on a fill of their own.
 	HintKey  lipgloss.Style
 	HintDesc lipgloss.Style
 	HintSep  lipgloss.Style
-	// Error is the status bar of a failed Notion call.
+	// Error is the status line of a failed Notion call.
 	Error lipgloss.Style
 	// ToastSuccess, ToastWarning and ToastError are the status-bar toasts for
 	// events not scoped to a row, each the severity's colour on the bar's fill.
@@ -125,7 +123,7 @@ type Styles struct {
 	PromptOption  lipgloss.Style
 	PromptFocused lipgloss.Style
 	PromptFade    lipgloss.Style
-	// ModeChip is the status bar's leading segment: the project's name on the
+	// ModeChip is the status line's leading segment: the project's name on the
 	// board, the screen's name everywhere else.
 	ModeChip lipgloss.Style
 	// Spinner styles the loading indicator.
@@ -182,7 +180,7 @@ func NewStyles(isDark bool) Styles {
 	// chip is the shape every badge shares: a space of background either side,
 	// so the fill reads as a chip rather than tinted text.
 	chip := lipgloss.NewStyle().Padding(0, 1)
-	// bar is the status bar's fill, which every segment drawn on it inherits.
+	// bar is the tmux bar's fill, which every segment drawn on it inherits.
 	bar := lipgloss.NewStyle().Background(t.Surface)
 	return Styles{
 		Frame:    lipgloss.NewStyle().Padding(0, framePadX),
@@ -195,12 +193,10 @@ func NewStyles(isDark bool) Styles {
 		HeaderTitle: bar.Bold(true).Foreground(t.Text),
 		HeaderMeta:  bar.Foreground(t.Muted),
 
-		Box:       lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.SurfaceHi).Padding(0, 1),
-		StatusBox: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.SurfaceHi),
-		Modal:     lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.AccentDim).Padding(0, 1),
-		Scrim:     lipgloss.NewStyle().Foreground(t.SurfaceHi),
+		Box:   lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.SurfaceHi).Padding(0, 1),
+		Modal: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.AccentDim).Padding(0, 1),
+		Scrim: lipgloss.NewStyle().Foreground(t.SurfaceHi),
 
-		StatusBar:  bar,
 		StatusKey:  bar.Bold(true).Foreground(t.Accent),
 		StatusDesc: bar.Foreground(t.Text),
 		StatusNote: bar.Foreground(t.Success),
