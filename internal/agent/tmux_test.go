@@ -183,7 +183,10 @@ func TestLaunch(t *testing.T) {
 			";", "set-option", "-s", "extended-keys", "on",
 			";", "set-option", "-s", "-a", "terminal-features", "*:extkeys:hyperlinks",
 		}, clickBindingArgs()...)},
-		{name: "tmux", args: []string{"set-option", "-p", "-t", "%7", "@nat_slice", id}},
+		// The tag the agent is found by, and — chained onto it, so a pane is
+		// never one without the other — the label the board's bar shows it by.
+		{name: "tmux", args: []string{"set-option", "-p", "-t", "%7", "@nat_slice", id,
+			";", "set-option", "-p", "-t", "%7", "@nat_label", "b4463d8f"}},
 	}
 	if !reflect.DeepEqual(r.calls, want) {
 		t.Errorf("calls = %+v, want %+v", r.calls, want)
@@ -686,11 +689,12 @@ func TestHostArgs(t *testing.T) {
 	got := HostArgs("/usr/local/bin/nat")
 	// No mouse-on for the board's session: it gets its mouse at join time, the
 	// way it always has.
-	want := append([]string{"new-session", "-A", "-s", "nat-tui", "/usr/local/bin/nat",
-		";", "set-option", "-t", "nat-tui", "status", "off",
+	want := append([]string{"new-session", "-A", "-s", "nat-tui", "/usr/local/bin/nat"},
+		statusBarArgs("nat-tui")...)
+	want = append(want, []string{
 		";", "set-option", "-s", "extended-keys", "on",
-		";", "set-option", "-s", "-a", "terminal-features", "*:extkeys:hyperlinks"},
-		clickBindingArgs()...)
+		";", "set-option", "-s", "-a", "terminal-features", "*:extkeys:hyperlinks"}...)
+	want = append(want, clickBindingArgs()...)
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("args = %v, want %v", got, want)
 	}
@@ -699,11 +703,12 @@ func TestHostArgs(t *testing.T) {
 	}
 }
 
-// Every session nat makes hides the tmux status bar as part of the one command
+// An agent's own session hides the tmux status bar as part of the one command
 // that makes it, so it is never up even for a moment. The inherited case needs
 // no test of its own: running inside the user's tmux makes no session at all,
-// and the argv above are the only places one is made.
-func TestSessionsNatCreatesChainStatusOff(t *testing.T) {
+// and the argv above are the only places one is made. The board's session is
+// the exception, and gets a bar of nat's own — see the status bar tests below.
+func TestAgentSessionsChainStatusOff(t *testing.T) {
 	launch := LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md")
 	chained := append(statusOffArgs("nat-1"), mouseOnArgs("nat-1")...)
 	chained = append(chained, inputFeatureArgs()...)
@@ -745,6 +750,93 @@ func TestSessionsNatCreatesEnableExtendedKeysAndHyperlinks(t *testing.T) {
 	} {
 		if !reflect.DeepEqual(args[len(args)-len(suffix):], suffix) {
 			t.Errorf("args = %v, want them to end with %v", args, suffix)
+		}
+	}
+}
+
+// The board's session gets the bar back, themed as nat's own, and every one of
+// the options is chained onto the new-session rather than run on its own.
+func TestStatusBarArgsSetTheBarOnTheBoardsSession(t *testing.T) {
+	args := statusBarArgs("nat-tui")
+	for i := 0; i < len(args); i += 6 {
+		if args[i] != ";" {
+			t.Fatalf("args = %v, want every option chained with %q", args, ";")
+		}
+		if got := args[i+1 : i+4]; !reflect.DeepEqual(got, []string{"set-option", "-t", "nat-tui"}) {
+			t.Errorf("args = %v, want each option set on the named session", got)
+		}
+	}
+
+	joined := strings.Join(args, " ")
+	for _, want := range []string{
+		"; set-option -t nat-tui status on",
+		// Above the board rather than below it: the board's own bottom row is
+		// its status bar, and an agent's is its composer.
+		"; set-option -t nat-tui status-position top",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("statusBarArgs = %q, want it to contain %q", joined, want)
+		}
+	}
+}
+
+// Both borders in the one neutral colour, so the split reads as a seam and the
+// stock green highlight on the focused edge is gone.
+func TestStatusBarArgsNeutraliseThePaneBorders(t *testing.T) {
+	args := statusBarArgs("nat-tui")
+	styles := map[string]string{}
+	for i, a := range args {
+		if a == "pane-border-style" || a == "pane-active-border-style" {
+			styles[a] = args[i+1]
+		}
+	}
+	if len(styles) != 2 {
+		t.Fatalf("statusBarArgs = %v, want both border styles set", args)
+	}
+	if styles["pane-border-style"] != styles["pane-active-border-style"] {
+		t.Errorf("border styles = %v, want the active one to match the inactive one", styles)
+	}
+	if !strings.Contains(styles["pane-border-style"], paneBorderFG) {
+		t.Errorf("border style = %q, want nat's neutral %q", styles["pane-border-style"], paneBorderFG)
+	}
+}
+
+// The bar names the panes off #{pane_active} and the label tag, so tmux
+// redraws it on focus change with nothing to poll — and reads the same whether
+// or not an agent is joined, because the pane loop is what draws the chips.
+func TestStatusBarFormatLabelsTheFocusedPane(t *testing.T) {
+	for _, want := range []string{
+		"#{P:",           // one chip per pane of the window, board alone included
+		"#{?pane_active", // and the focused one picked out by tmux itself
+		"#{" + LabelPaneOption + "}",
+		// The pane an earlier run launched has the tag but no label yet.
+		"#{" + SlicePaneOption + "}",
+		"board",
+		"agent",
+		"nat",
+	} {
+		if !strings.Contains(statusBarFormat, want) {
+			t.Errorf("statusBarFormat = %q, want it to contain %q", statusBarFormat, want)
+		}
+	}
+	// A comma inside the branches of #{?...} is where tmux splits them, so the
+	// styles have to be spelled with spaces.
+	for _, style := range []string{statusBarFG, statusBarBG, statusBarAccent, statusBarOnFill} {
+		if strings.Contains(statusBarFormat, style+",") {
+			t.Errorf("statusBarFormat = %q, want no comma after the style %q", statusBarFormat, style)
+		}
+	}
+}
+
+// The label is the session name a user attaches the agent by, without the
+// prefix every pane on nat's own bar would carry.
+func TestPaneLabel(t *testing.T) {
+	for _, tc := range []struct{ id, want string }{
+		{"3b738308-f654-8170-8c99-eccab4463d8f", "b4463d8f"},
+		{PlanSentinel, PlanSentinel},
+	} {
+		if got := PaneLabel(tc.id); got != tc.want {
+			t.Errorf("PaneLabel(%q) = %q, want %q", tc.id, got, tc.want)
 		}
 	}
 }
@@ -927,8 +1019,10 @@ func TestLaunchTagsWhatLiveSlicesReads(t *testing.T) {
 	if err := NewTmuxWithRunner(launch).Launch(session, "/tmp", "/tmp/prompt.md", id); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
+	// The tagging call sets the slice tag first and the status bar's label
+	// after it, so the tag is the option-and-value the call opens with.
 	tag := launch.calls[1].args
-	option, value := tag[len(tag)-2], tag[len(tag)-1]
+	option, value := tag[4], tag[5]
 
 	// tmux reports the option back where the format asked for it, which is the
 	// first field of the line.

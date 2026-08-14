@@ -43,6 +43,16 @@ const sessionIDLen = 8
 // moved into another session.
 const SlicePaneOption = "@nat_slice"
 
+// LabelPaneOption is the tmux pane option carrying the human label the status
+// bar shows a pane by — the slice's short session ID, or "plan" for the
+// planning agent. It is set beside [SlicePaneOption] rather than derived from
+// it in the status format, because tmux's formats can compare and choose but
+// not slice a string down to its last eight digits.
+//
+// The board's own pane carries neither option, which is how the bar tells it
+// from an agent's.
+const LabelPaneOption = "@nat_label"
+
 // PlanSentinel is the value [SlicePaneOption] carries on the planning agent's
 // pane, in place of a slice page ID: the planning agent works the plan itself
 // and has no slice to be tagged with. It cannot collide with a real slice —
@@ -160,6 +170,15 @@ func SessionName(slicePageID string) string {
 		hex = hex[len(hex)-sessionIDLen:]
 	}
 	return SessionPrefix + hex
+}
+
+// PaneLabel is what the status bar calls the pane an agent for slicePageID
+// runs in: its session name without the shared prefix, so the label reads as
+// the eight hex digits the user attaches that session by ("plan" for the
+// planning agent). The prefix is dropped because the bar is nat's own — every
+// pane on it would carry it.
+func PaneLabel(slicePageID string) string {
+	return strings.TrimPrefix(SessionName(slicePageID), SessionPrefix)
 }
 
 // LiveSlices maps the page ID of every slice with an agent running to the tmux
@@ -396,7 +415,8 @@ func (t *Tmux) breakOutAll(panes []pane, want func(pane) bool) (int, error) {
 // the slice with page ID sliceID.
 //
 // The pane the session starts in is tagged with sliceID, which is what
-// [Tmux.LiveSlices] reads the running agents back out of. A session whose pane
+// [Tmux.LiveSlices] reads the running agents back out of, and with the label
+// the board's status bar shows it by. A session whose pane
 // could not be tagged is left running — its agent is already working — but the
 // failure is reported, because until it is tagged nothing will find it again.
 func (t *Tmux) Launch(session, workdir, promptFile, sliceID string) error {
@@ -405,7 +425,9 @@ func (t *Tmux) Launch(session, workdir, promptFile, sliceID string) error {
 		return fmt.Errorf("launch tmux session %s: %w", session, err)
 	}
 	pane := strings.TrimSpace(out)
-	if _, err := t.runner.Run(TmuxBinary, "set-option", "-p", "-t", pane, SlicePaneOption, sliceID); err != nil {
+	if _, err := t.runner.Run(TmuxBinary,
+		"set-option", "-p", "-t", pane, SlicePaneOption, sliceID,
+		";", "set-option", "-p", "-t", pane, LabelPaneOption, PaneLabel(sliceID)); err != nil {
 		return fmt.Errorf("tag tmux pane %s for slice %s: %w", pane, sliceID, err)
 	}
 	logging.Action("agent launched", "session", session, "slice", sliceID, "workdir", workdir, "pane", pane)
@@ -444,26 +466,103 @@ func LaunchArgs(session, workdir, promptFile string) []string {
 // path with spaces in it needs no quoting.
 //
 // [TUISession] only ever exists because a launch outside tmux made it — a
-// launch inside tmux never gets here — so hiding its status bar touches no
-// session the user was already in.
+// launch inside tmux never gets here — so styling its status bar and borders
+// touches no session the user was already in.
 func HostArgs(binary string) []string {
-	args := append([]string{"new-session", "-A", "-s", TUISession, binary}, statusOffArgs(TUISession)...)
+	args := append([]string{"new-session", "-A", "-s", TUISession, binary}, statusBarArgs(TUISession)...)
 	args = append(args, inputFeatureArgs()...)
 	return append(args, hyperlinkClickArgs()...)
 }
 
-// statusOffArgs is the command that hides the tmux status bar in a session of
-// our own, chained onto the new-session that makes it so the bar is never up
-// even for a moment. The green tmux bar under the TUI would be chrome it did
-// not draw — the TUI has a status bar of its own — and under an agent it is
-// noise beside the agent's output. It is a per-session option on a named
-// session, so the sessions the user was already running keep their bars.
+// statusOffArgs is the command that hides the tmux status bar in an agent's own
+// session, chained onto the new-session that makes it so the bar is never up
+// even for a moment. tmux's stock bar under an agent is noise beside the
+// agent's output, and says nothing the agent's own session does not. It is a
+// per-session option on a named session, so the sessions the user was already
+// running keep their bars.
+//
+// The board's session gets a bar of nat's own instead — see [statusBarArgs] —
+// because that is the one window an agent's pane is ever joined into, and so
+// the one place the bar has something to say.
 //
 // The lone ";" is tmux's own command separator, read from argv the way `\;` is
 // from a shell: everything before it belongs to new-session, and the set-option
 // runs once the session is there.
 func statusOffArgs(session string) []string {
 	return []string{";", "set-option", "-t", session, "status", "off"}
+}
+
+// nat's palette as tmux takes it: the colours the TUI's dark theme draws with,
+// spelled out because tmux has no notion of a theme that follows the terminal.
+const (
+	statusBarBG     = "#313244" // surface0
+	statusBarFG     = "#7f849c" // overlay1
+	statusBarAccent = "#cba6f7" // mauve
+	statusBarOnFill = "#11111b" // crust, for text on the accent
+	paneBorderFG    = "#45475a" // surface1
+)
+
+// paneLabelFormat is what the status bar calls one pane: the label an agent's
+// pane was tagged with, or "board" for the pane with no tag at all — the one
+// nat itself is drawing in. Compared against empty rather than tested for
+// truth, so a label tmux would read as false is still a label.
+//
+// A pane an earlier run launched carries the slice tag but no label, and would
+// otherwise read as the board; it falls back to the bare word, which is at
+// least true of it. The agents outlive the run that started them, so this is
+// the ordinary state of things for a while after an upgrade, not a corner.
+const paneLabelFormat = "#{?#{==:#{" + LabelPaneOption + "},}," +
+	"#{?#{==:#{" + SlicePaneOption + "},},board,agent}," +
+	"#{" + LabelPaneOption + "}}"
+
+// statusBarFormat is the whole status line: nat's name, then every pane of the
+// window in turn, the focused one picked out in the accent colour. The
+// `#{P:...}` loop walks the panes and `#{pane_active}` is true for exactly one
+// of them, so tmux redraws the bar itself when focus moves — nothing has to
+// poll for it, and no pane needs telling that another one took the focus.
+//
+// A window with only the board in it renders as the one chip, which is what
+// the bar shows whenever no agent is joined.
+//
+// Style attributes are separated by spaces rather than commas: a comma inside
+// `#{?...}` is where tmux splits its branches, and would cut a style in half.
+const statusBarFormat = "#[fg=" + statusBarAccent + " bg=" + statusBarBG + " bold] nat " +
+	"#{P:#{?pane_active," +
+	"#[fg=" + statusBarOnFill + " bg=" + statusBarAccent + " bold]," +
+	"#[fg=" + statusBarFG + " bg=" + statusBarBG + " nobold]}" +
+	" " + paneLabelFormat + " #[default]}"
+
+// statusBarArgs is the command chain that gives the board's session a status
+// bar of nat's own and takes the highlight off the pane borders.
+//
+// The bar is there to say which pane the keyboard is talking to, which is the
+// question the border highlight used to answer badly: tmux's stock active
+// border is a green edge that reads as an alert, and against nat's own frames
+// it is one line of chrome too many. Both border styles are set to the same
+// neutral grey, so the split shows as a seam and the bar alone says where the
+// focus is.
+//
+// It sits at the top: the bottom row of the board is nat's own status bar and
+// the bottom of an agent's pane is its composer, so a bar under either would
+// be a second one stacked on the first.
+//
+// Per session, like the bar we hide in an agent's own — except the border
+// styles, which tmux keeps per window; targeting the session sets them on the
+// window it currently has, which for the board's session is the window it was
+// made with and never leaves.
+func statusBarArgs(session string) []string {
+	var args []string
+	for _, opt := range [][2]string{
+		{"status", "on"},
+		{"status-position", "top"},
+		{"status-style", "fg=" + statusBarFG + " bg=" + statusBarBG},
+		{"status-format[0]", statusBarFormat},
+		{"pane-border-style", "fg=" + paneBorderFG},
+		{"pane-active-border-style", "fg=" + paneBorderFG},
+	} {
+		args = append(args, ";", "set-option", "-t", session, opt[0], opt[1])
+	}
+	return args
 }
 
 // mouseOnArgs is the command chained onto an agent session's creation that
