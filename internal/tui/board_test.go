@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -42,9 +43,14 @@ func testProject() domain.Project {
 	}
 }
 
-// newTestBoard returns a board showing testProject at a fixed width.
+// newTestBoard returns a board showing testProject at a fixed width, with the
+// hide-done toggle off. Most board tests are about fold state, navigation and
+// layout and want every slice on show; the ones about the toggle turn it back
+// on, and TestBoardHidesDoneSlicesByDefault covers the state a real board
+// starts in.
 func newTestBoard() *Board {
 	b := NewBoard(DefaultStyles())
+	b.hideDone = false
 	b.SetWidth(60)
 	p := testProject()
 	b.SetProject(&p)
@@ -195,6 +201,27 @@ func TestBoardWithoutDoneMilestonesHasNoDoneSection(t *testing.T) {
 	}
 }
 
+// A board starts with the Done slices of unfinished milestones already hidden:
+// what is left to do is what the board is read for.
+func TestBoardHidesDoneSlicesByDefault(t *testing.T) {
+	b := NewBoard(DefaultStyles())
+	b.SetWidth(60)
+	p := testProject()
+	b.SetProject(&p)
+
+	for _, name := range rowNames(&b) {
+		if name == "Domain model" {
+			t.Fatalf("rows = %q, want the Done slice hidden from the start", rowNames(&b))
+		}
+	}
+
+	// And the key is what turns it off again.
+	b.Update(keyPress("z"))
+	if got := rowNames(&b); !slices.Contains(got, "Domain model") {
+		t.Errorf("rows = %q, want the Done slice shown after the toggle", got)
+	}
+}
+
 func TestBoardHidesDoneSlicesOfUnfinishedMilestones(t *testing.T) {
 	b := newTestBoard()
 
@@ -314,7 +341,7 @@ func TestBoardHideDoneOnAnEmptyBoardDoesNothing(t *testing.T) {
 
 	b.Update(keyPress("z"))
 
-	if !b.hideDone {
+	if b.hideDone {
 		t.Error("the toggle should still have flipped")
 	}
 	if b.cursor != 0 || len(b.rows) != 0 {

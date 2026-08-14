@@ -752,9 +752,9 @@ func (a *App) View() tea.View {
 
 // The layout's fixed measurements: the columns each band is held away from the
 // window's edges by, the height of the heading bar and of the progress bar
-// under it, the least lines the body's box is worth drawing in, the height of
-// the key hints row above the status bar, and the height of the status bar
-// itself — one line bare, or three inside its box.
+// under it, the least lines the body's box is worth drawing in, the least and
+// most lines the key hints above the status bar wrap onto, and the height of
+// the status bar itself — one line bare, or three inside its box.
 const (
 	framePadX = 2
 	// headerHeight is the heading bar's own line, and headerBarHeight the
@@ -764,6 +764,7 @@ const (
 	headerBoxMin    = headerHeight + 2
 	bodyBoxMin      = 3
 	hintsHeight     = 1
+	hintsMaxHeight  = 3
 	statusHeight    = 1
 	statusBoxHeight = statusHeight + 2
 )
@@ -863,12 +864,29 @@ func (a *App) headerContentHeight() int {
 	return headerHeight + headerBarHeight
 }
 
-// hintBandHeight is the key hints row's line, when the window still has one
-// after the status bar and the header have taken theirs: a short window loses
-// the body before it loses the hints.
-func (a *App) hintBandHeight() int {
-	return min(hintsHeight, max(a.height-a.statusBandHeight()-a.headerBandHeight(), 0))
+// hintAllowance is the most lines the hints may wrap onto before they start
+// dropping by rank: their own line whenever the window has one to give after
+// the status bar and the header have taken theirs — a short window loses the
+// body before it loses the hints — and beyond that only lines the body can
+// spare, never more than hintsMaxHeight. A tall window is not a reason to
+// stack hints the width could have held on one line; the width decides that,
+// and this only says how far the stack may grow.
+func (a *App) hintAllowance() int {
+	if a.height <= 0 {
+		// Unmeasured: there are no lines to share out, and the bands are drawn one
+		// after another at whatever size they come out.
+		return hintsHeight
+	}
+	room := max(a.height-a.statusBandHeight()-a.headerBandHeight(), 0)
+	if room <= hintsHeight {
+		return room
+	}
+	return min(hintsMaxHeight, max(hintsHeight, room-bodyBoxMin))
 }
+
+// hintBandHeight is the lines the hints actually take, which is what the body
+// is left with the rest of.
+func (a *App) hintBandHeight() int { return len(a.hintLines()) }
 
 // bodyBoxHeight is the lines the body region occupies, border included;
 // bodyHeight is the lines a screen can actually draw on inside it.
@@ -1226,11 +1244,13 @@ func (a *App) statusMessage(width int) string {
 	return ""
 }
 
-// hintsView is the hints row's content: the contextual hints on one line,
-// dropped by rank to the width the band has.
-func (a *App) hintsView() string {
-	return a.fitHints(a.contextHints(), a.innerWidth())
+// hintLines are the contextual hints wrapped to the width the band has, and
+// hintsView the same thing as the block the band draws.
+func (a *App) hintLines() []string {
+	return a.wrapHints(a.contextHints(), a.innerWidth(), a.hintAllowance())
 }
+
+func (a *App) hintsView() string { return strings.Join(a.hintLines(), "\n") }
 
 // contextHints are the hints the row above the status bar draws: what acts on
 // the selection — the slice's actions, the milestone's — and otherwise the
@@ -1254,10 +1274,10 @@ func (a *App) contextHints() []hint {
 	}
 	if a.screen == screenBoard {
 		if _, ok := a.board.SelectedSlice(); ok {
-			return append(a.board.keys.sliceHints(), hint{a.keys.Help, 2})
+			return append(a.board.sliceHints(), hint{a.keys.Help, 2})
 		}
 		if _, ok := a.board.SelectedMilestone(); ok {
-			return append(a.board.keys.milestoneHints(), hint{a.keys.Help, 2})
+			return append(a.board.milestoneHints(), hint{a.keys.Help, 2})
 		}
 	}
 	return a.keys.statusHints()
@@ -1280,26 +1300,56 @@ func (a *App) paneHints() []hint {
 	}
 }
 
-// fitHints renders hints on one line, dropping them by rank until they fit.
-// Only if there is nothing left to drop is what remains truncated.
-func (a *App) fitHints(hints []hint, width int) string {
-	line := a.renderHints(hints)
-	for rank := 1; width > 0 && len(hints) > 0 && lipgloss.Width(line) > width; rank++ {
-		hints = slices.DeleteFunc(hints, func(h hint) bool { return h.rank == rank })
-		line = a.renderHints(hints)
+// wrapHints renders hints over as many lines as they need, up to maxLines: a
+// window too narrow for them all on one line stacks them rather than losing
+// them, and a hint is never split across two lines. Only once the stack would
+// be taller than maxLines do hints start dropping by rank, and only if there is
+// nothing left to drop is what remains truncated.
+func (a *App) wrapHints(hints []hint, width, maxLines int) []string {
+	if maxLines <= 0 {
+		return nil
 	}
-	return fit(line, width)
+	lines := a.packHints(hints, width)
+	for rank := 1; len(hints) > 0 && len(lines) > maxLines; rank++ {
+		hints = slices.DeleteFunc(hints, func(h hint) bool { return h.rank == rank })
+		lines = a.packHints(hints, width)
+	}
+	for i, line := range lines {
+		lines[i] = fit(line, width)
+	}
+	return lines[:min(len(lines), maxLines)]
 }
 
-// renderHints draws one hint per binding, separated by a dot, in the hints
-// row's own colours.
-func (a *App) renderHints(hints []hint) string {
-	parts := make([]string, 0, len(hints))
-	for _, h := range hints {
-		help := h.binding.Help()
-		parts = append(parts, a.styles.HintKey.Render(help.Key)+" "+a.styles.HintDesc.Render(help.Desc))
+// packHints lays the hints onto lines, each separated from the last by a dot
+// and each line filled as far as it goes before the next is started. A hint
+// wider than the whole width still takes a line of its own, where it is cut
+// rather than wrapped: half a hint says less than a truncated one.
+func (a *App) packHints(hints []hint, width int) []string {
+	sep := a.styles.HintSep.Render(" · ")
+	var lines []string
+	var line string
+	for i, h := range hints {
+		part := a.renderHint(h)
+		if i == 0 {
+			line = part
+			continue
+		}
+		if next := line + sep + part; width <= 0 || lipgloss.Width(next) <= width {
+			line = next
+			continue
+		}
+		lines, line = append(lines, line), part
 	}
-	return strings.Join(parts, a.styles.HintSep.Render(" · "))
+	// The last line is always emitted, so an empty set still comes out as the
+	// one blank line the band draws.
+	return append(lines, line)
+}
+
+// renderHint draws one hint — its key and what it does — in the hints row's own
+// colours.
+func (a *App) renderHint(h hint) string {
+	help := h.binding.Help()
+	return a.styles.HintKey.Render(help.Key) + " " + a.styles.HintDesc.Render(help.Desc)
 }
 
 // innerWidth is the columns a band has between its indents, or 0 before the

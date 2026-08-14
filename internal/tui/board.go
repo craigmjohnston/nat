@@ -83,19 +83,30 @@ func (k boardKeyMap) writes() []key.Binding {
 // actions that act on it, in the order they read. The agent keys are what the
 // tracker is for, so they survive a narrow row longest. The write keys drop
 // the word "slice" their help carries — the hints only show on one, and the
-// row has less room than the help screen. The hide-done toggle acts on the
-// whole board rather than on the row the hints are about, so it takes the very
-// lowest rank: it is the first hint a narrowing row gives up, ahead even of the
-// way to the help screen.
-func (k boardKeyMap) sliceHints() []hint {
+// row has less room than the help screen.
+func (b Board) sliceHints() []hint {
+	k := b.keys
 	return []hint{
 		{shortHint(k.Edit, "edit"), 5},
 		{shortHint(k.Move, "move"), 3},
 		{shortHint(k.Delete, "delete"), 4},
 		{k.Launch, 7},
 		{k.Attach, 6},
-		{shortHint(k.HideDone, "hide done"), 1},
+		b.doneHint(),
 	}
+}
+
+// doneHint is the hide-done toggle as the hints row names it: what the key
+// would do next, since the board starts with the Done slices already hidden and
+// a hint for the state it is in says nothing. It acts on the whole board rather
+// than on the row the rest of the hints are about, so it takes the very lowest
+// rank — the first hint to go, ahead even of the way to the help screen.
+func (b Board) doneHint() hint {
+	desc := "hide done"
+	if b.hideDone {
+		desc = "show done"
+	}
+	return hint{shortHint(b.keys.HideDone, desc), 1}
 }
 
 // shortHint is b with its help description replaced, for a hints row whose
@@ -106,12 +117,13 @@ func shortHint(b key.Binding, desc string) key.Binding {
 
 // milestoneHints are the hints row's bindings while the cursor is on a
 // milestone: the actions that act on it or file under it.
-func (k boardKeyMap) milestoneHints() []hint {
+func (b Board) milestoneHints() []hint {
+	k := b.keys
 	return []hint{
 		{k.Add, 5},
 		{k.Queue, 4},
 		{k.Toggle, 3},
-		{shortHint(k.HideDone, "hide done"), 1},
+		b.doneHint(),
 	}
 }
 
@@ -158,11 +170,13 @@ type Board struct {
 	rows     []row
 	cursor   int
 	// hideDone keeps the Done slices of milestones still in flight off the
-	// board, so what is left of a half-finished milestone is what shows. It is
-	// one board-wide bit, kept for the session like the expanded map, and it
-	// only changes what is drawn: progress and counts still weigh every slice.
-	// Milestones inside the Done section are exempt — everything under there is
-	// done, and hiding it would leave them empty.
+	// board, so what is left of a half-finished milestone is what shows. It
+	// starts on, because what is left to do is what the board is read for; the
+	// key turns it off to see the whole milestone. It is one board-wide bit,
+	// kept for the session like the expanded map, and it only changes what is
+	// drawn: progress and counts still weigh every slice. Milestones inside the
+	// Done section are exempt — everything under there is done, and hiding it
+	// would leave them empty.
 	hideDone bool
 	// live maps the ID of each slice with an agent running to the session it
 	// runs in, so a slice with an agent on it can be marked.
@@ -193,7 +207,12 @@ type rowPrompt struct {
 
 // NewBoard returns an empty board, waiting for a project to be loaded into it.
 func NewBoard(styles Styles) Board {
-	return Board{styles: styles, keys: defaultBoardKeyMap(), expanded: map[string]bool{}}
+	return Board{
+		styles:   styles,
+		keys:     defaultBoardKeyMap(),
+		expanded: map[string]bool{},
+		hideDone: true,
+	}
 }
 
 // SetProject shows a freshly loaded plan. Groups the user has already expanded
