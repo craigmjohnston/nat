@@ -251,40 +251,40 @@ func TestSeverityStyleMapping(t *testing.T) {
 	}
 }
 
-func TestAppShowsAToastOverTheKeyHints(t *testing.T) {
+func TestAppPutsAToastOnTheStatusLine(t *testing.T) {
 	app := NewApp(config.Config{}, nil)
 	app.toast, app.toastSev = "Switched to \"other\".", sevSuccess
 
-	if view := app.View().Content; !strings.Contains(view, "Switched to \"other\".") {
-		t.Errorf("view is missing the toast:\n%s", view)
+	if got := app.View().WindowTitle; !strings.Contains(got, "Switched to \"other\".") {
+		t.Errorf("window title = %q, want the toast", got)
 	}
 }
 
-// The bar speaks in one voice at a time: an error beats the toast, and so does
-// progress in flight.
-func TestStatusBarPrefersTheErrorAndTheNoteToTheToast(t *testing.T) {
+// The status line speaks in one voice at a time: an error beats the toast, and
+// so does progress in flight.
+func TestStatusLinePrefersTheErrorAndTheNoteToTheToast(t *testing.T) {
 	app := sizedApp(80, 24)
 	app.toast, app.toastSev = "Switched.", sevSuccess
 
 	app.note = "Saving…"
-	if bar := stripANSI(app.statusBar()); strings.Contains(bar, "Switched.") || !strings.Contains(bar, "Saving…") {
+	if bar := app.windowTitle(); strings.Contains(bar, "Switched.") || !strings.Contains(bar, "Saving…") {
 		t.Errorf("bar = %q, want the note spoken over the toast", bar)
 	}
 
 	app.err = errors.New("load milestones: boom")
-	if bar := stripANSI(app.statusBar()); strings.Contains(bar, "Switched.") || !strings.Contains(bar, "boom") {
+	if bar := app.windowTitle(); strings.Contains(bar, "Switched.") || !strings.Contains(bar, "boom") {
 		t.Errorf("bar = %q, want the error spoken over everything", bar)
 	}
 }
 
-// An open form owns the bar's message slot: its esc hint matters more than a
-// toast left over from before it opened.
-func TestStatusBarPrefersTheFormHintToTheToast(t *testing.T) {
+// An open form owns the status line's message slot: its esc hint matters more
+// than a toast left over from before it opened.
+func TestStatusLinePrefersTheFormHintToTheToast(t *testing.T) {
 	app := sizedApp(80, 24)
 	app.toast, app.toastSev = "Switched.", sevSuccess
 	app.openForm(newNewProjectForm(app.styles.FormTheme))
 
-	if bar := stripANSI(app.statusBar()); strings.Contains(bar, "Switched.") || !strings.Contains(bar, "esc cancel") {
+	if bar := app.windowTitle(); strings.Contains(bar, "Switched.") || !strings.Contains(bar, "esc cancel") {
 		t.Errorf("bar = %q, want the form's esc hint over the toast", bar)
 	}
 }

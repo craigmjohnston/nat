@@ -829,10 +829,10 @@ func TestStatusBarArgsNeutraliseThePaneBorders(t *testing.T) {
 // reads as a footer to the frames.
 func TestBuildStatusFormatSizesEachSectionToItsPane(t *testing.T) {
 	format := buildStatusFormat([]statusSection{
-		{index: "0", label: "board", width: 40},
-		{index: "1", label: "b4463d8f", width: 39},
+		{index: "0", content: paneTitleContent, width: 40},
+		{index: "1", content: literalContent("b4463d8f"), width: 39},
 	})
-	for _, want := range []string{"#{p40:", "#{p39:", "board", "b4463d8f", statusSeparator} {
+	for _, want := range []string{"#{=40;p40:", "#{=39;p39:", paneTitleContent, "b4463d8f", statusSeparator} {
 		if !strings.Contains(format, want) {
 			t.Errorf("format = %q, want it to contain %q", format, want)
 		}
@@ -865,8 +865,8 @@ func TestBuildStatusFormatSizesEachSectionToItsPane(t *testing.T) {
 // The board alone: one section, the whole window wide, and in the accent
 // without asking — the sole pane of a window is the focused one.
 func TestBuildStatusFormatDrawsTheBoardAloneAsOneSection(t *testing.T) {
-	format := buildStatusFormat([]statusSection{{index: "0", label: "board", width: 80}})
-	if want := activeSectionStyle + "#{p80:#{l: board}}#[default]"; format != want {
+	format := buildStatusFormat([]statusSection{{index: "0", content: paneTitleContent, width: 80}})
+	if want := activeSectionStyle + "#{=80;p80:#{l: }#{pane_title}}#[default]"; format != want {
 		t.Errorf("format = %q, want %q", format, want)
 	}
 }
@@ -875,30 +875,30 @@ func TestBuildStatusFormatDrawsTheBoardAloneAsOneSection(t *testing.T) {
 // one section, wider than any terminal, which tmux clips at the window's edge.
 func TestInitialStatusFormatFillsTheRow(t *testing.T) {
 	format := initialStatusFormat()
-	if want := fmt.Sprintf("#{p%d:", initialStatusWidth); !strings.Contains(format, want) {
+	if want := fmt.Sprintf("#{=%d;p%d:", initialStatusWidth, initialStatusWidth); !strings.Contains(format, want) {
 		t.Errorf("format = %q, want it to contain %q", format, want)
 	}
-	if !strings.Contains(format, boardLabel) {
-		t.Errorf("format = %q, want it to name the board", format)
+	if !strings.Contains(format, paneTitleContent) {
+		t.Errorf("format = %q, want the board's section drawn from its pane title", format)
 	}
 }
 
-// What each pane is called: its own label, the bare word for a pane an earlier
-// run tagged before there were labels, and "board" for the untagged pane nat
-// itself is drawing in.
-func TestPaneStatusLabel(t *testing.T) {
+// What each pane's section draws: its own label, the bare word for a pane an
+// earlier run tagged before there were labels, and its own title — where nat
+// writes its messages — for the untagged pane nat itself is drawing in.
+func TestPaneStatusContent(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		pane pane
 		want string
 	}{
-		{"a labelled agent", pane{slice: "3b73", label: "b4463d8f"}, "b4463d8f"},
-		{"an agent from before the labels", pane{slice: "3b73"}, agentLabel},
-		{"the board's own pane", pane{}, boardLabel},
+		{"a labelled agent", pane{slice: "3b73", label: "b4463d8f"}, literalContent("b4463d8f")},
+		{"an agent from before the labels", pane{slice: "3b73"}, literalContent(agentLabel)},
+		{"the board's own pane", pane{}, paneTitleContent},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.pane.statusLabel(); got != tc.want {
-				t.Errorf("statusLabel() = %q, want %q", got, tc.want)
+			if got := tc.pane.statusContent(); got != tc.want {
+				t.Errorf("statusContent() = %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -925,7 +925,7 @@ func TestRefreshStatusBarBuildsTheBarFromTheWindowsPanes(t *testing.T) {
 		t.Errorf("calls = %+v, want %+v", r.calls, want)
 	}
 	format := r.calls[1].args[4]
-	if !strings.Contains(format, "#{p40:") || !strings.Contains(format, "#{p39:") {
+	if !strings.Contains(format, "#{=40;p40:") || !strings.Contains(format, "#{=39;p39:") {
 		t.Errorf("format = %q, want a section the width of each pane", format)
 	}
 	if strings.Contains(format, elsewhere.label) {

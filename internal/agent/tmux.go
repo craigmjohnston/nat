@@ -224,22 +224,30 @@ type pane struct {
 	label   string
 }
 
-// statusLabel is what the bar calls a pane: the label an agent's pane was
-// tagged with, or "board" for the pane with no tag at all — the one nat itself
-// is drawing in.
+// statusContent is what the bar draws in a pane's section, as the tmux format
+// that yields it: the label an agent's pane was tagged with, or the pane's own
+// title for the pane with no tag at all — the one nat itself is drawing in.
+//
+// The board's section is its title because that is how nat's messages reach the
+// bar: the app writes the line the in-TUI status bar used to draw as its
+// terminal title (OSC 2), which inside tmux is the pane's, and tmux redraws the
+// status line itself whenever a title changes — so the bar follows the app with
+// no tmux command sent per keystroke. tmux does not re-expand what it
+// substitutes, so a title carrying `#{...}`, `#[...]` or a `%` reaches the bar
+// as the text it is.
 //
 // A pane an earlier run launched carries the slice tag but no label, and would
 // otherwise read as the board; it falls back to the bare word, which is at
 // least true of it. The agents outlive the run that started them, so this is
 // the ordinary state of things for a while after an upgrade, not a corner.
-func (p pane) statusLabel() string {
+func (p pane) statusContent() string {
 	switch {
 	case p.label != "":
-		return p.label
+		return literalContent(p.label)
 	case p.slice == "":
-		return boardLabel
+		return paneTitleContent
 	default:
-		return agentLabel
+		return literalContent(agentLabel)
 	}
 }
 
@@ -549,13 +557,17 @@ const (
 	paneBorderFG    = "#45475a" // surface1
 )
 
-// The words the bar falls back to when a pane carries no label of its own: the
-// pane nat is drawing in has no tag at all, and one an earlier run launched has
-// the slice tag but no label yet.
-const (
-	boardLabel = "board"
-	agentLabel = "agent"
-)
+// agentLabel is the word the bar falls back to for an agent's pane that carries
+// no label of its own: one an earlier run launched has the slice tag but no
+// label yet.
+const agentLabel = "agent"
+
+// paneTitleContent draws a pane's own title, and literalContent a fixed word.
+// The word goes through `#{l:...}` because the body of a padding is read as a
+// format: a bare word in there is a variable name, and expands to nothing.
+const paneTitleContent = "#{pane_title}"
+
+func literalContent(label string) string { return "#{l:" + label + "}" }
 
 // The two styles a section is drawn in, picked between by the focus. Attributes
 // are separated by spaces rather than commas: a comma inside `#{?...}` is where
@@ -576,11 +588,11 @@ const statusSeparator = "#[default] "
 const statusFormatOption = "status-format[0]"
 
 // statusSection is one pane as the bar draws it: the pane's index within the
-// window, what to call it, and how wide the pane is.
+// window, the tmux format for what it has to say, and how wide the pane is.
 type statusSection struct {
-	index string
-	label string
-	width int
+	index   string
+	content string
+	width   int
 }
 
 // sectionsFor turns the panes of one window into the sections of its bar, in
@@ -589,7 +601,7 @@ type statusSection struct {
 func sectionsFor(panes []pane) []statusSection {
 	sections := make([]statusSection, 0, len(panes))
 	for _, p := range panes {
-		sections = append(sections, statusSection{index: p.index, label: p.statusLabel(), width: p.width})
+		sections = append(sections, statusSection{index: p.index, content: p.statusContent(), width: p.width})
 	}
 	return sections
 }
@@ -626,9 +638,10 @@ func buildStatusFormat(sections []statusSection) string {
 			b.WriteString("#{?#{==:#{pane_index}," + s.index + "}," +
 				activeSectionStyle + "," + inactiveSectionStyle + "}")
 		}
-		// The label goes through #{l:...} because the body of a padding is
-		// read as a format: a bare word in there expands to nothing.
-		fmt.Fprintf(&b, "#{p%d:#{l: %s}}", s.width, s.label)
+		// Cut before padding: a section holding more than its pane is wide —
+		// the board's title carrying a long error — would otherwise push every
+		// section after it out of line with the pane above it.
+		fmt.Fprintf(&b, "#{=%d;p%d:#{l: }%s}", s.width, s.width, s.content)
 	}
 	b.WriteString("#[default]")
 	return b.String()
@@ -646,7 +659,7 @@ const initialStatusWidth = 1024
 // resize, which the TUI takes as it starts — replaces it with one built from
 // the panes actually there.
 func initialStatusFormat() string {
-	return buildStatusFormat([]statusSection{{label: boardLabel, width: initialStatusWidth}})
+	return buildStatusFormat([]statusSection{{content: paneTitleContent, width: initialStatusWidth}})
 }
 
 // RefreshStatusBar redraws the status bar of the session hostPane's window

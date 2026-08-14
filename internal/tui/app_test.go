@@ -230,9 +230,9 @@ func TestAppReportsAFailedLoad(t *testing.T) {
 			if !errors.Is(app.err, boom) {
 				t.Error("the underlying error should be wrapped, not swallowed")
 			}
-			if view := app.View().Content; !strings.Contains(view, "boom") ||
-				!strings.Contains(view, "esc to dismiss") {
-				t.Errorf("view = %q, want the error status bar", view)
+			if line := app.windowTitle(); !strings.Contains(line, "boom") ||
+				!strings.Contains(line, "esc to dismiss") {
+				t.Errorf("status line = %q, want the error and the way out", line)
 			}
 		})
 	}
@@ -276,8 +276,10 @@ func TestAppShowsNothingToLoadWithoutAProject(t *testing.T) {
 			if len(client.queriedDSIDs) != 0 {
 				t.Errorf("queried %v, want no Notion calls", client.queriedDSIDs)
 			}
-			if view := app.View().Content; !strings.Contains(view, tt.want) {
-				t.Errorf("view = %q, want %q", view, tt.want)
+			// The board's own note goes out on the status line; the plan it loads
+			// is drawn in the window.
+			if got := app.View().Content + app.windowTitle(); !strings.Contains(got, tt.want) {
+				t.Errorf("view and status line = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -392,19 +394,19 @@ func TestAppRecordsTheWindowSize(t *testing.T) {
 	if app.width != 60 || app.height != 20 {
 		t.Fatalf("size = %dx%d, want 60x20", app.width, app.height)
 	}
-	// The status bar is pushed to the bottom of the window it now knows about.
+	// The bands are laid out to the bottom of the window it now knows about.
 	if got := strings.Count(app.View().Content, "\n") + 1; got != 20 {
 		t.Errorf("rendered %d lines, want the full window height of 20", got)
 	}
 }
 
-func TestAppFitsTheStatusBarUnderTallScreens(t *testing.T) {
-	// Too short a window to pad: the status bar simply follows the body.
+func TestAppFitsTheHintsUnderTallScreens(t *testing.T) {
+	// Too short a window to pad: the hints row simply follows the body.
 	app := NewApp(testConfig(), newLoadingClient())
 	app.Update(tea.WindowSizeMsg{Width: 60, Height: 3})
 
 	if !strings.Contains(app.View().Content, "quit") {
-		t.Error("the status bar should still be rendered")
+		t.Error("the hints row should still be rendered")
 	}
 }
 
@@ -414,16 +416,13 @@ func TestAppViewTakesTheWholeWindow(t *testing.T) {
 	}
 }
 
-func TestAppSetsTheWindowTitleAndNativeProgress(t *testing.T) {
+func TestAppSetsTheNativeProgress(t *testing.T) {
 	// The board's own plan: 6 slices, 3 of them Done.
 	p := testProject()
 	app := NewApp(testConfig(), newLoadingClient())
 	app.Update(projectLoadedMsg{project: p})
 
 	v := app.View()
-	if want := "nat — tracker 3/6"; v.WindowTitle != want {
-		t.Errorf("window title = %q, want %q", v.WindowTitle, want)
-	}
 	if v.ProgressBar == nil {
 		t.Fatal("a loaded plan should set the terminal progress bar")
 	}
@@ -431,30 +430,25 @@ func TestAppSetsTheWindowTitleAndNativeProgress(t *testing.T) {
 		t.Errorf("progress bar = %+v, want half done", got)
 	}
 
-	// Moving a slice on changes both, so the terminal tracks the plan.
+	// Moving a slice on moves the bar, so the terminal tracks the plan.
 	p.Slices[4].Status = domain.SliceDone
 	app.Update(projectLoadedMsg{project: p})
 
 	v = app.View()
-	if want := "nat — tracker 4/6"; v.WindowTitle != want {
-		t.Errorf("window title = %q, want %q", v.WindowTitle, want)
-	}
 	if v.ProgressBar == nil || v.ProgressBar.Value != 66 {
 		t.Errorf("progress bar = %+v, want two thirds done", v.ProgressBar)
 	}
 }
 
-func TestAppLeavesTheWindowTitleAloneWithNoPlan(t *testing.T) {
+func TestAppClearsTheNativeProgressWithNoPlan(t *testing.T) {
 	tests := []struct {
 		name    string
 		project *domain.Project
-		want    string
 	}{
 		{name: "no project at all"},
 		{
 			name:    "a project with nothing planned yet",
 			project: &domain.Project{ID: testProjectID, Name: "tracker"},
-			want:    "nat — tracker",
 		},
 	}
 	for _, tt := range tests {
@@ -462,23 +456,19 @@ func TestAppLeavesTheWindowTitleAloneWithNoPlan(t *testing.T) {
 			app := NewApp(testConfig(), newLoadingClient())
 			app.project = tt.project
 
-			v := app.View()
-			if v.WindowTitle != tt.want {
-				t.Errorf("window title = %q, want %q", v.WindowTitle, tt.want)
-			}
-			if v.ProgressBar != nil {
+			if v := app.View(); v.ProgressBar != nil {
 				t.Errorf("progress bar = %+v, want it cleared", v.ProgressBar)
 			}
 		})
 	}
 }
 
-func TestAppShowsANoteOverTheKeyHints(t *testing.T) {
+func TestAppPutsANoteOnTheStatusLine(t *testing.T) {
 	app := NewApp(config.Config{}, nil)
 	app.note = "Setup complete."
 
-	if view := app.View().Content; !strings.Contains(view, "Setup complete.") {
-		t.Errorf("view = %q, want the note", view)
+	if got := app.View().WindowTitle; !strings.Contains(got, "Setup complete.") {
+		t.Errorf("window title = %q, want the note", got)
 	}
 }
 
@@ -571,8 +561,10 @@ func TestAppTakesOverWhenOnboardingFinishes(t *testing.T) {
 			if len(client.queriedDSIDs) != tt.wantLoads {
 				t.Errorf("queried %v, want %d loads", client.queriedDSIDs, tt.wantLoads)
 			}
-			if view := app.View().Content; !strings.Contains(view, tt.want) {
-				t.Errorf("view = %q, want %q", view, tt.want)
+			// The board's own note goes out on the status line; the plan it loads
+			// is drawn in the window.
+			if got := app.View().Content + app.windowTitle(); !strings.Contains(got, tt.want) {
+				t.Errorf("view and status line = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -708,9 +700,9 @@ func TestAppSizesTheInfoViewport(t *testing.T) {
 
 	// The info screen is the body box's interior: the window less the box's
 	// border and padding, and less the boxed header — no plan is loaded, so it
-	// holds the heading alone — the hints row and the boxed status bar.
+	// holds the heading alone — and the hints row.
 	wantW := 80 - 2*framePadX
-	wantH := 24 - (headerHeight + 2) - hintsHeight - statusBoxHeight - 2
+	wantH := 24 - (headerHeight + 2) - hintsHeight - 2
 	if got := app.info.vp.Width(); got != wantW {
 		t.Errorf("viewport width = %d, want %d", got, wantW)
 	}

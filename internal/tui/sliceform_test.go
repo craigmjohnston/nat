@@ -361,7 +361,11 @@ func TestAppAddOpensTheFormOnTheSelectedMilestone(t *testing.T) {
 	if !strings.Contains(view, "Add a slice to M2: Board") {
 		t.Errorf("view is missing the heading:\n%s", view)
 	}
-	if !strings.Contains(view, "cancel") || strings.Contains(view, "refresh") {
+	// The form's own way out is on the status line, and no other key is offered.
+	if line := app.windowTitle(); !strings.Contains(line, "cancel") {
+		t.Errorf("status line = %q, want the form's way out", line)
+	}
+	if strings.Contains(view, "refresh") {
 		t.Errorf("view should offer only the form's own way out:\n%s", view)
 	}
 }
