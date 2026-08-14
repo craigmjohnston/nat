@@ -608,7 +608,7 @@ func newLongRowBoard(width int) *Board {
 func TestBoardWrapsRowsAsItNarrows(t *testing.T) {
 	parts := []string{"Degrade slice rows gracefully as the board narrows",
 		"Keep the status bar and header inside the window",
-		"●", "@Craig Johnston", "PR", "0/2", "Active"}
+		"●", "@Craig Johnston", "#9", "0/2", "Active"}
 
 	// At 80 every part of the row fits on the one line.
 	view := newLongRowBoard(80).View()
@@ -655,10 +655,99 @@ func TestBoardWithoutAWidthDropsNothing(t *testing.T) {
 	b := newLongRowBoard(0)
 
 	view := b.View()
-	for _, want := range []string{"●", "@Craig Johnston", "PR", "Active"} {
+	for _, want := range []string{"●", "@Craig Johnston", "#9", "Active"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("an unmeasured board should draw everything, missing %q:\n%s", want, view)
 		}
+	}
+}
+
+// TestPRLabelNamesTheNumber pins what the chip reads: the number off the tail
+// of a forge's PR URL, and the bare word when there is none to read.
+func TestPRLabelNamesTheNumber(t *testing.T) {
+	for _, tc := range []struct{ url, want string }{
+		{"https://github.com/craigmjohnston/nat/pull/71", "#71"},
+		{"https://github.com/craigmjohnston/nat/pull/71/", "#71"},
+		{"https://github.com/craigmjohnston/nat/pull/71/files?w=1", "PR"},
+		{"https://github.com/craigmjohnston/nat/pull/71?w=1", "#71"},
+		{"https://github.com/craigmjohnston/nat/pull/71#discussion", "#71"},
+		{"https://example.test/some/review/page", "PR"},
+		{"", "PR"},
+	} {
+		if got := prLabel(tc.url); got != tc.want {
+			t.Errorf("prLabel(%q) = %q, want %q", tc.url, got, tc.want)
+		}
+	}
+}
+
+// prChipURL is the target of the first OSC 8 hyperlink in s, and "" when there
+// is none: what a terminal would open on a click.
+func prChipURL(s string) string {
+	const open = "\x1b]8;;"
+	i := strings.Index(s, open)
+	if i < 0 {
+		return ""
+	}
+	rest := s[i+len(open):]
+	end := strings.IndexByte(rest, '\a')
+	if end < 0 {
+		return ""
+	}
+	return rest[:end]
+}
+
+// TestBoardLinksThePRChip pins the chip as a hyperlink: the number is drawn,
+// wrapped in an OSC 8 pointing at the PR and closed again, and the escape costs
+// the row no cells — so a terminal that ignores it sees only "#9".
+func TestBoardLinksThePRChip(t *testing.T) {
+	const url = "https://example.test/pr/9"
+	view := newLongRowBoard(0).View()
+
+	if got := prChipURL(view); got != url {
+		t.Errorf("the chip links to %q, want %q", got, url)
+	}
+	if !strings.Contains(view, "#9\x1b[m\x1b]8;;\a") {
+		t.Errorf("the chip should close its hyperlink after the number:\n%q", view)
+	}
+	linked := strings.Split(view, "\n")[1]
+	if got, want := lipgloss.Width(linked), lipgloss.Width(stripANSI(linked)); got != want {
+		t.Errorf("the linked row measures %d cells, want %d — the escape draws nothing", got, want)
+	}
+}
+
+// TestBoardLinksThePRChipOnTheSelectedRow pins the link surviving the selected
+// row's fill, which draws the row's own parts plain: the colour goes, the
+// hyperlink stays, because it is what the chip is for.
+func TestBoardLinksThePRChipOnTheSelectedRow(t *testing.T) {
+	b := newLongRowBoard(0)
+	b.Update(tea.KeyPressMsg{Code: 'j'}) // onto the slice with the PR
+
+	view := b.View()
+	if got, want := prChipURL(view), "https://example.test/pr/9"; got != want {
+		t.Errorf("the selected row's chip links to %q, want %q", got, want)
+	}
+	if !strings.Contains(stripANSI(view), "#9") {
+		t.Errorf("the selected row should still name the PR:\n%s", view)
+	}
+}
+
+// TestBoardDropsThePRChipLast pins the chip's rank as the board narrows: it is
+// the last chip of the row, so it is the first pushed off the row's own line —
+// the slice's state is worth more of a cramped row than a link out of the app.
+func TestBoardDropsThePRChipLast(t *testing.T) {
+	b := newLongRowBoard(43)
+
+	// Row 1 is the slice carrying both an assignee and a PR.
+	lines := b.rowLines()[1]
+	if len(lines) < 2 {
+		t.Fatalf("at 43 the row should have wrapped, got %q", lines)
+	}
+	last := stripANSI(lines[len(lines)-1])
+	if !strings.Contains(last, "#9") {
+		t.Errorf("the PR chip should be the part pushed onto the last line:\n%q", lines)
+	}
+	if strings.Contains(last, "@Craig Johnston") {
+		t.Errorf("the assignee should outlast the PR chip on the lines above:\n%q", lines)
 	}
 }
 

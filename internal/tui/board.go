@@ -889,9 +889,13 @@ func (b Board) renderDoneSection(marker string, selected bool, l boardLayout) []
 }
 
 // renderSlice draws one slice: its status chip, its name, whether an agent is
-// live on it, who holds it, and whether it has a PR. The live marker is its own
-// glyph rather than a status: a session is running or not, which is a different
-// question from where the slice has got to.
+// live on it, who holds it, and the pull request it produced. The live marker
+// is its own glyph rather than a status: a session is running or not, which is
+// a different question from where the slice has got to.
+//
+// The PR chip comes last of the chips, so it is the first of them to give way
+// as the board narrows: the slice's own state is worth more of a cramped row
+// than a link out of the app.
 //
 // A row too wide for the board wraps rather than shedding any of its chips,
 // and the status chip carries on down the wrapped lines as a bare strip of its
@@ -905,7 +909,7 @@ func (b Board) renderSlice(head string, s domain.Slice, selected bool) []string 
 		chips = append(chips, paint(selected, b.styles.Assignee, "@"+s.AssigneeName))
 	}
 	if s.PRURL != "" {
-		chips = append(chips, paint(selected, b.styles.PR, "PR"))
+		chips = append(chips, b.prChip(s.PRURL, selected))
 	}
 	name := rowName{text: s.Name, style: painter(selected, lipgloss.NewStyle())}
 	return b.finishRow(selected, fitRow(b.width,
@@ -952,6 +956,34 @@ func (b Board) sliceStrip(s domain.SliceStatus, selected bool) string {
 	}
 	_, st := b.sliceStatus(s)
 	return st.Render(" ")
+}
+
+// prNumberPath is the number a pull request URL ends its path with — the 71 of
+// ".../pull/71" — which is what the PR chip is named after.
+var prNumberPath = regexp.MustCompile(`/(\d+)/?$`)
+
+// prLabel is the chip's text: the pull request's number, "#71". A URL that ends
+// in no number — a shortened link, a review page, something that is not a forge
+// at all — falls back to the bare word, which is what the chip said before it
+// carried a number and still says everything it has to.
+func prLabel(url string) string {
+	path, _, _ := strings.Cut(url, "?")
+	path, _, _ = strings.Cut(path, "#")
+	if m := prNumberPath.FindStringSubmatch(path); m != nil {
+		return "#" + m[1]
+	}
+	return "PR"
+}
+
+// prChip is the badge a slice with a pull request carries, wrapped in an OSC 8
+// hyperlink to it: terminals that speak them open the PR on a click, and those
+// that do not simply draw the text, since the escape takes no cells. The app
+// handles no mouse events of its own for this — the click is the terminal's,
+// and inside tmux the hyperlink bindings the agent layer installs.
+func (b Board) prChip(url string, selected bool) string {
+	return xansi.SetHyperlink(url) +
+		paint(selected, b.styles.PR, prLabel(url)) +
+		xansi.ResetHyperlink()
 }
 
 // milestoneChip is the badge for a milestone's status word, shaped like

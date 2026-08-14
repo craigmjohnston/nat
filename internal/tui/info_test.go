@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	xansi "github.com/charmbracelet/x/ansi"
+
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
@@ -74,24 +76,10 @@ func longestLine(s string) int {
 	return widest
 }
 
-// stripANSI removes the escape sequences glamour and lipgloss decorate with, so
-// a test can measure the text itself.
-func stripANSI(s string) string {
-	var out strings.Builder
-	for {
-		start := strings.Index(s, "\x1b[")
-		if start < 0 {
-			out.WriteString(s)
-			return out.String()
-		}
-		out.WriteString(s[:start])
-		end := strings.IndexByte(s[start:], 'm')
-		if end < 0 {
-			return out.String()
-		}
-		s = s[start+end+1:]
-	}
-}
+// stripANSI removes the escape sequences glamour and lipgloss decorate with —
+// the colours, and the hyperlinks a PR chip carries — so a test can measure the
+// text itself.
+func stripANSI(s string) string { return xansi.Strip(s) }
 
 func TestInfoScrolls(t *testing.T) {
 	i := newTestInfo(t)
