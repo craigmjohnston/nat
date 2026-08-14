@@ -20,9 +20,10 @@ import (
 // the writes need the Notion client and the project config, and the agent keys
 // the tmux launcher, none of which the board has any business holding.
 type boardKeyMap struct {
-	Up     key.Binding
-	Down   key.Binding
-	Toggle key.Binding
+	Up       key.Binding
+	Down     key.Binding
+	Toggle   key.Binding
+	HideDone key.Binding
 
 	Add    key.Binding
 	Edit   key.Binding
@@ -41,9 +42,10 @@ type boardKeyMap struct {
 // defaultBoardKeyMap returns the bindings the board runs with.
 func defaultBoardKeyMap() boardKeyMap {
 	return boardKeyMap{
-		Up:     key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("k/↑", "up")),
-		Down:   key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/↓", "down")),
-		Toggle: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "expand/collapse")),
+		Up:       key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("k/↑", "up")),
+		Down:     key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/↓", "down")),
+		Toggle:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "expand/collapse")),
+		HideDone: key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "hide/show done slices")),
 
 		Add:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add slice")),
 		Edit:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit slice")),
@@ -82,14 +84,29 @@ func (k boardKeyMap) writes() []key.Binding {
 // tracker is for, so they survive a narrow row longest. The write keys drop
 // the word "slice" their help carries — the hints only show on one, and the
 // row has less room than the help screen.
-func (k boardKeyMap) sliceHints() []hint {
+func (b Board) sliceHints() []hint {
+	k := b.keys
 	return []hint{
-		{shortHint(k.Edit, "edit"), 4},
-		{shortHint(k.Move, "move"), 2},
-		{shortHint(k.Delete, "delete"), 3},
-		{k.Launch, 6},
-		{k.Attach, 5},
+		{shortHint(k.Edit, "edit"), 5},
+		{shortHint(k.Move, "move"), 3},
+		{shortHint(k.Delete, "delete"), 4},
+		{k.Launch, 7},
+		{k.Attach, 6},
+		b.doneHint(),
 	}
+}
+
+// doneHint is the hide-done toggle as the hints row names it: what the key
+// would do next, since the board starts with the Done slices already hidden and
+// a hint for the state it is in says nothing. It acts on the whole board rather
+// than on the row the rest of the hints are about, so it takes the very lowest
+// rank — the first hint to go, ahead even of the way to the help screen.
+func (b Board) doneHint() hint {
+	desc := "hide done"
+	if b.hideDone {
+		desc = "show done"
+	}
+	return hint{shortHint(b.keys.HideDone, desc), 1}
 }
 
 // shortHint is b with its help description replaced, for a hints row whose
@@ -100,17 +117,19 @@ func shortHint(b key.Binding, desc string) key.Binding {
 
 // milestoneHints are the hints row's bindings while the cursor is on a
 // milestone: the actions that act on it or file under it.
-func (k boardKeyMap) milestoneHints() []hint {
+func (b Board) milestoneHints() []hint {
+	k := b.keys
 	return []hint{
-		{k.Add, 4},
-		{k.Queue, 3},
-		{k.Toggle, 2},
+		{k.Add, 5},
+		{k.Queue, 4},
+		{k.Toggle, 3},
+		b.doneHint(),
 	}
 }
 
 // helpBindings are the board's bindings as the help screen lists them.
 func (b Board) helpBindings() []key.Binding {
-	bindings := []key.Binding{b.keys.Up, b.keys.Down, b.keys.Toggle}
+	bindings := []key.Binding{b.keys.Up, b.keys.Down, b.keys.Toggle, b.keys.HideDone}
 	bindings = append(bindings, b.keys.writes()...)
 	bindings = append(bindings, b.keys.agents()...)
 	return append(bindings, b.keys.projects()...)
@@ -150,6 +169,15 @@ type Board struct {
 	expanded map[string]bool
 	rows     []row
 	cursor   int
+	// hideDone keeps the Done slices of milestones still in flight off the
+	// board, so what is left of a half-finished milestone is what shows. It
+	// starts on, because what is left to do is what the board is read for; the
+	// key turns it off to see the whole milestone. It is one board-wide bit,
+	// kept for the session like the expanded map, and it only changes what is
+	// drawn: progress and counts still weigh every slice. Milestones inside the
+	// Done section are exempt — everything under there is done, and hiding it
+	// would leave them empty.
+	hideDone bool
 	// live maps the ID of each slice with an agent running to the session it
 	// runs in, so a slice with an agent on it can be marked.
 	live map[string]string
@@ -179,7 +207,12 @@ type rowPrompt struct {
 
 // NewBoard returns an empty board, waiting for a project to be loaded into it.
 func NewBoard(styles Styles) Board {
-	return Board{styles: styles, keys: defaultBoardKeyMap(), expanded: map[string]bool{}}
+	return Board{
+		styles:   styles,
+		keys:     defaultBoardKeyMap(),
+		expanded: map[string]bool{},
+		hideDone: true,
+	}
 }
 
 // SetProject shows a freshly loaded plan. Groups the user has already expanded
@@ -327,9 +360,29 @@ func (b *Board) appendGroup(i int) {
 	if !b.expanded[key] {
 		return
 	}
-	for j := range g.Slices {
+	hide := b.hideDone && !doneGroup(g)
+	for j, s := range g.Slices {
+		if hide && s.Status == domain.SliceDone {
+			continue
+		}
 		b.rows = append(b.rows, row{kind: rowSlice, group: i, slice: j})
 	}
+}
+
+// hiddenDone is how many of a group's slices the hide-done toggle is keeping
+// off the board, which is what the milestone's cue reports. A collapsed group
+// shows no slices to begin with, so nothing of it is hidden by this toggle.
+func (b Board) hiddenDone(g domain.Group) int {
+	if !b.hideDone || doneGroup(g) || !b.expanded[groupKey(g)] {
+		return 0
+	}
+	n := 0
+	for _, s := range g.Slices {
+		if s.Status == domain.SliceDone {
+			n++
+		}
+	}
+	return n
 }
 
 // Update handles the board's own keys — the ones that move the cursor. The
@@ -346,6 +399,8 @@ func (b *Board) Update(msg tea.Msg) tea.Cmd {
 		b.move(1)
 	case key.Matches(press, b.keys.Toggle):
 		b.toggle()
+	case key.Matches(press, b.keys.HideDone):
+		b.toggleHideDone()
 	}
 	return nil
 }
@@ -386,14 +441,36 @@ func (b *Board) toggle() {
 	b.cursorTo(func(r row) bool { return r.kind == rowMilestone && r.group == g })
 }
 
-// cursorTo moves the cursor to the first row match picks out, if there is one.
-func (b *Board) cursorTo(match func(row) bool) {
+// toggleHideDone flips the board-wide hide-done bit. The row the cursor was on
+// may be one of the ones that just went, so the cursor is put back on it if it
+// survived and otherwise falls back to its milestone's own row, which always
+// does: it must never be left on a row that is no longer drawn.
+func (b *Board) toggleHideDone() {
+	b.ClearConfirm()
+	if len(b.rows) == 0 {
+		b.hideDone = !b.hideDone
+		b.rebuild()
+		return
+	}
+	was := b.rows[b.cursor]
+	b.hideDone = !b.hideDone
+	b.rebuild()
+	if b.cursorTo(func(r row) bool { return r == was }) {
+		return
+	}
+	b.cursorTo(func(r row) bool { return r.kind == rowMilestone && r.group == was.group })
+}
+
+// cursorTo moves the cursor to the first row match picks out, reporting whether
+// there was one.
+func (b *Board) cursorTo(match func(row) bool) bool {
 	for i, r := range b.rows {
 		if match(r) {
 			b.cursor = i
-			break
+			return true
 		}
 	}
+	return false
 }
 
 // SelectedSlice is the slice under the cursor, if the cursor is on one. The
@@ -619,7 +696,9 @@ func joinRow(head, name string, chips []string) string {
 // indicator, its title, how many of its slices are done, and its status pill.
 // The title cell is padded to the widest title and the count and pill each
 // right-align in a cell of their own, so the columns run straight down the
-// board. The pill goes first as the board narrows, then the count.
+// board. Where the hide-done toggle is keeping slices of it off the board, a
+// faint cue says how many. That cue goes first as the board narrows, then the
+// pill, then the count.
 func (b Board) renderMilestone(marker string, g domain.Group, selected bool, l boardLayout) string {
 	fold := "▸"
 	if b.expanded[groupKey(g)] {
@@ -639,6 +718,9 @@ func (b Board) renderMilestone(marker string, g domain.Group, selected bool, l b
 			pill = strings.Repeat(" ", pad) + pill
 		}
 		chips = append(chips, pill)
+	}
+	if n := b.hiddenDone(g); n > 0 {
+		chips = append(chips, paint(selected, b.styles.Faint, fmt.Sprintf("· %d done hidden", n)))
 	}
 	title := groupTitle(g)
 	if pad := l.title - lipgloss.Width(title); pad > 0 {

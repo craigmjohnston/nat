@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -42,9 +43,14 @@ func testProject() domain.Project {
 	}
 }
 
-// newTestBoard returns a board showing testProject at a fixed width.
+// newTestBoard returns a board showing testProject at a fixed width, with the
+// hide-done toggle off. Most board tests are about fold state, navigation and
+// layout and want every slice on show; the ones about the toggle turn it back
+// on, and TestBoardHidesDoneSlicesByDefault covers the state a real board
+// starts in.
 func newTestBoard() *Board {
 	b := NewBoard(DefaultStyles())
+	b.hideDone = false
 	b.SetWidth(60)
 	p := testProject()
 	b.SetProject(&p)
@@ -193,6 +199,161 @@ func TestBoardWithoutDoneMilestonesHasNoDoneSection(t *testing.T) {
 			t.Fatalf("rows = %q, want no Done section", rowNames(b))
 		}
 	}
+}
+
+// A board starts with the Done slices of unfinished milestones already hidden:
+// what is left to do is what the board is read for.
+func TestBoardHidesDoneSlicesByDefault(t *testing.T) {
+	b := NewBoard(DefaultStyles())
+	b.SetWidth(60)
+	p := testProject()
+	b.SetProject(&p)
+
+	for _, name := range rowNames(&b) {
+		if name == "Domain model" {
+			t.Fatalf("rows = %q, want the Done slice hidden from the start", rowNames(&b))
+		}
+	}
+
+	// And the key is what turns it off again.
+	b.Update(keyPress("z"))
+	if got := rowNames(&b); !slices.Contains(got, "Domain model") {
+		t.Errorf("rows = %q, want the Done slice shown after the toggle", got)
+	}
+}
+
+func TestBoardHidesDoneSlicesOfUnfinishedMilestones(t *testing.T) {
+	b := newTestBoard()
+
+	b.Update(keyPress("z"))
+
+	// M2 is still in flight, so its Done slice goes; the Claimed and Todo ones
+	// stay, and so does the Unassigned group's slice, which is not Done.
+	want := []string{
+		"Done section",
+		"M2: Board", "Board screen", "Info view",
+		"M3: Mutations",
+		domain.UnassignedName, "Stray",
+	}
+	if got := rowNames(b); !equal(got, want) {
+		t.Errorf("rows = %q, want the Done slice hidden: %q", got, want)
+	}
+
+	// The toggle is a toggle: pressing it again puts them back.
+	b.Update(keyPress("z"))
+	if got := rowNames(b); !equal(got, []string{
+		"Done section",
+		"M2: Board", "Domain model", "Board screen", "Info view",
+		"M3: Mutations",
+		domain.UnassignedName, "Stray",
+	}) {
+		t.Errorf("rows = %q, want the Done slice back", got)
+	}
+}
+
+func TestBoardHideDoneLeavesTheDoneSectionAlone(t *testing.T) {
+	b := newTestBoard()
+	b.cursor = 0
+	b.Update(keyPress("enter")) // expand the Done section
+	b.cursor = 1
+	b.Update(keyPress("enter")) // expand M1 inside it
+
+	b.Update(keyPress("z"))
+
+	want := []string{
+		"Done section", "M1: Config", "XDG config", "Keyring",
+		"M2: Board", "Board screen", "Info view",
+		"M3: Mutations",
+		domain.UnassignedName, "Stray",
+	}
+	if got := rowNames(b); !equal(got, want) {
+		t.Errorf("rows = %q, want a Done milestone still listing all its slices: %q", got, want)
+	}
+}
+
+func TestBoardHideDoneSurvivesAReload(t *testing.T) {
+	b := newTestBoard()
+	b.Update(keyPress("z"))
+
+	p := testProject()
+	b.SetProject(&p)
+
+	for _, name := range rowNames(b) {
+		if name == "Domain model" {
+			t.Fatalf("rows = %q, want the Done slice still hidden after a reload", rowNames(b))
+		}
+	}
+}
+
+// Hiding a slice is a rendering decision only: the milestone's own count and
+// the progress math behind it still weigh every slice it has.
+func TestBoardHideDoneStillCountsTheHiddenSlices(t *testing.T) {
+	b := newTestBoard()
+	b.Update(keyPress("z"))
+
+	view := ansi.ReplaceAllString(b.View(), "")
+	if !strings.Contains(view, "1/3") {
+		t.Errorf("view is missing M2's full 1/3 count:\n%s", view)
+	}
+	if !strings.Contains(view, "· 1 done hidden") {
+		t.Errorf("view is missing the hidden-slice cue:\n%s", view)
+	}
+}
+
+// A collapsed milestone shows no slices at all, so the toggle hides nothing of
+// it and it says nothing about hidden slices.
+func TestBoardHideDoneCuesOnlyExpandedMilestones(t *testing.T) {
+	b := newTestBoard()
+	b.hideDone = true
+	for k := range b.expanded {
+		b.expanded[k] = false
+	}
+	b.rebuild()
+
+	if view := ansi.ReplaceAllString(b.View(), ""); strings.Contains(view, "done hidden") {
+		t.Errorf("a collapsed board should cue nothing:\n%s", view)
+	}
+}
+
+func TestBoardHideDoneKeepsTheCursorOnAVisibleRow(t *testing.T) {
+	b := newTestBoard()
+
+	// On the Done slice itself, which is about to go: the cursor falls back to
+	// its milestone's own row.
+	b.cursor = 2
+	b.Update(keyPress("z"))
+	if got := rowNames(b)[b.cursor]; got != "M2: Board" {
+		t.Errorf("cursor is on %q, want it fallen back to the milestone row", got)
+	}
+
+	// On a row that survives: the cursor follows it to its new index rather than
+	// staying on a number.
+	b.Update(keyPress("z"))
+	b.cursor = 4 // Info view
+	b.Update(keyPress("z"))
+	if got := rowNames(b)[b.cursor]; got != "Info view" {
+		t.Errorf("cursor is on %q, want it kept on Info view", got)
+	}
+}
+
+func TestBoardHideDoneOnAnEmptyBoardDoesNothing(t *testing.T) {
+	b := NewBoard(DefaultStyles())
+
+	b.Update(keyPress("z"))
+
+	if b.hideDone {
+		t.Error("the toggle should still have flipped")
+	}
+	if b.cursor != 0 || len(b.rows) != 0 {
+		t.Errorf("cursor = %d, rows = %d, want an empty board untouched", b.cursor, len(b.rows))
+	}
+}
+
+func TestBoardRendersWithDoneSlicesHidden(t *testing.T) {
+	b := newTestBoard()
+	b.Update(keyPress("z"))
+
+	golden(t, "board-hide-done", b.View())
 }
 
 func TestBoardRendersExpandedAndCollapsedGroups(t *testing.T) {
@@ -609,7 +770,7 @@ func TestAppHelpListsTheBoardKeys(t *testing.T) {
 	press(app, "?")
 
 	view := app.View().Content
-	for _, want := range []string{"quit", "Board", "expand/collapse", "launch agent"} {
+	for _, want := range []string{"quit", "Board", "expand/collapse", "launch agent", "hide/show done slices"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("help is missing %q:\n%s", want, view)
 		}

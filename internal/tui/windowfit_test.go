@@ -162,16 +162,19 @@ func TestAppProgressBarResizesWithTheWindow(t *testing.T) {
 
 func TestAppBoxesTheHeaderTheBoardAndTheStatusBar(t *testing.T) {
 	for _, width := range windowWidths {
-		lines := strings.Split(stripANSI(sizedApp(width, 24).View().Content), "\n")
+		a := sizedApp(width, 24)
+		lines := strings.Split(stripANSI(a.View().Content), "\n")
 		// The header takes the window's first five lines, the board's box follows
-		// it, and the status box takes the last three, with the hints row on its
-		// own line between the two; each box runs the window's full width.
+		// it, and the status box takes the last three, with the hints on their own
+		// lines between the two — as many as they wrapped onto; each box runs the
+		// window's full width.
+		hints := a.hintBandHeight()
 		for _, i := range []int{0, 5, len(lines) - 3} {
 			if !strings.HasPrefix(lines[i], "╭") || !strings.HasSuffix(lines[i], "╮") {
 				t.Errorf("at %d columns line %d = %q, want a border's top", width, i, lines[i])
 			}
 		}
-		for _, i := range []int{4, len(lines) - 5, len(lines) - 1} {
+		for _, i := range []int{4, len(lines) - 4 - hints, len(lines) - 1} {
 			if !strings.HasPrefix(lines[i], "╰") || !strings.HasSuffix(lines[i], "╯") {
 				t.Errorf("at %d columns line %d = %q, want a border's bottom", width, i, lines[i])
 			}
@@ -206,72 +209,170 @@ func TestClipLines(t *testing.T) {
 	}
 }
 
-func TestAppDropsKeyHintsByRank(t *testing.T) {
-	// Wide enough for every hint: the cursor starts on the milestone, and the
-	// row draws its whole set, help included.
+func TestAppWrapsKeyHintsThenDropsThemByRank(t *testing.T) {
+	// Wide enough for every hint on one line: the cursor starts on the
+	// milestone, and the row draws its whole set, help included.
 	if view := stripANSI(sizedApp(80, 24).View().Content); !strings.Contains(view, "? help") {
 		t.Errorf("a wide window should draw every hint:\n%s", view)
 	}
 
-	// Narrow enough that some have to go: help and the toggle drop first, and
-	// the actions that write survive.
+	// Narrow enough that they no longer fit on one line: they wrap onto the
+	// next rather than going, so nothing is lost.
 	view := stripANSI(sizedApp(40, 24).View().Content)
-	for _, gone := range []string{"? help", "enter expand/collapse"} {
-		if strings.Contains(view, gone) {
-			t.Errorf("at 40 columns %q should have gone:\n%s", gone, view)
-		}
-	}
-	for _, want := range []string{"a add slice", "Q advance milestone"} {
+	for _, want := range []string{"a add slice", "Q advance milestone", "enter expand/collapse", "? help"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("at 40 columns the view is missing %q:\n%s", want, view)
 		}
 	}
+
+	// Narrow and short together: with the body down to its last rows the hints
+	// have only the one line to wrap onto, and the ranks decide what goes.
+	view = stripANSI(sizedApp(40, 6).View().Content)
+	if strings.Contains(view, "? help") {
+		t.Errorf("in a 40x6 window help should have gone:\n%s", view)
+	}
+	if !strings.Contains(view, "a add slice") {
+		t.Errorf("in a 40x6 window the view is missing the write keys:\n%s", view)
+	}
 }
 
-// The hints row sits on its own line directly above the status box, and what
-// it says follows the cursor: the milestone's actions on a milestone, the
+// The hints sit on their own lines directly above the status box, and what
+// they say follows the cursor: the milestone's actions on a milestone, the
 // slice's on a slice, and the global set where nothing is selected.
 func TestAppHintsRowIsContextual(t *testing.T) {
 	a := sizedApp(80, 24)
 
-	view := stripANSI(a.View().Content)
-	lines := strings.Split(view, "\n")
-	row := lines[len(lines)-4]
+	// hintRows is the hints band as one string, however many lines it wrapped
+	// onto, taken from directly above the three-line status box.
+	hintRows := func() string {
+		lines := strings.Split(stripANSI(a.View().Content), "\n")
+		cut := len(lines) - 3
+		return strings.Join(lines[cut-a.hintBandHeight():cut], "\n")
+	}
+
+	rows := hintRows()
 	for _, want := range []string{"a add slice", "Q advance milestone", "enter expand/collapse", "? help"} {
-		if !strings.Contains(row, want) {
-			t.Errorf("hints row on a milestone = %q, want %q", row, want)
+		if !strings.Contains(rows, want) {
+			t.Errorf("hints on a milestone = %q, want %q", rows, want)
 		}
 	}
 
 	press(a, "j")
-	lines = strings.Split(stripANSI(a.View().Content), "\n")
-	row = lines[len(lines)-4]
+	rows = hintRows()
 	for _, want := range []string{"e edit", "m move", "d delete", "l launch agent", "t show/hide agent", "? help"} {
-		if !strings.Contains(row, want) {
-			t.Errorf("hints row on a slice = %q, want %q", row, want)
+		if !strings.Contains(rows, want) {
+			t.Errorf("hints on a slice = %q, want %q", rows, want)
 		}
 	}
-	if strings.Contains(row, "add slice") {
-		t.Errorf("hints row on a slice = %q, want the milestone's hints gone", row)
+	if strings.Contains(rows, "add slice") {
+		t.Errorf("hints on a slice = %q, want the milestone's hints gone", rows)
 	}
 
 	press(a, "?")
-	lines = strings.Split(stripANSI(a.View().Content), "\n")
-	row = lines[len(lines)-4]
+	rows = hintRows()
 	for _, want := range []string{"r refresh", "esc back", "q quit"} {
-		if !strings.Contains(row, want) {
-			t.Errorf("hints row on the help screen = %q, want the global set with %q", row, want)
+		if !strings.Contains(rows, want) {
+			t.Errorf("hints on the help screen = %q, want the global set with %q", rows, want)
 		}
 	}
 }
 
+// The board-wide hide-done toggle is named on both the milestone and the slice
+// hints, and names what the key would do next rather than the state the board
+// is already in.
+func TestAppHintsNameTheHideDoneToggle(t *testing.T) {
+	a := sizedApp(80, 24)
+
+	for _, hints := range [][]hint{a.board.milestoneHints(), a.board.sliceHints()} {
+		// The board starts with them hidden, so the key shows them.
+		if line := stripANSI(strings.Join(a.wrapHints(hints, 100, 1), "\n")); !strings.Contains(line, "z show done") {
+			t.Errorf("hints = %q, want the toggle offering to show", line)
+		}
+	}
+
+	press(a, "z")
+	for _, hints := range [][]hint{a.board.milestoneHints(), a.board.sliceHints()} {
+		if line := stripANSI(strings.Join(a.wrapHints(hints, 100, 1), "\n")); !strings.Contains(line, "z hide done") {
+			t.Errorf("hints = %q, want the toggle offering to hide once they are shown", line)
+		}
+	}
+}
+
+// The toggle is the first hint to go when even wrapping cannot fit them all —
+// it acts on the whole board rather than on the row the rest are about, so it
+// goes ahead even of the way to the help screen.
+func TestAppHintsDropTheHideDoneToggleFirst(t *testing.T) {
+	a := sizedApp(80, 24)
+
+	hints := append(a.board.milestoneHints(), hint{a.keys.Help, 2})
+	// One line only, and not wide enough for the set: the ranks decide what goes.
+	line := stripANSI(strings.Join(a.wrapHints(hints, 78, 1), "\n"))
+	if strings.Contains(line, "done") {
+		t.Errorf("hints = %q, want the toggle dropped first", line)
+	}
+	if !strings.Contains(line, "? help") {
+		t.Errorf("hints = %q, want help to outlive the toggle", line)
+	}
+}
+
+// Hints wrap before they drop: a window too narrow for them all on one line
+// stacks them onto the lines it has, and no hint is ever broken across two.
+func TestHintsWrapRatherThanDrop(t *testing.T) {
+	a := NewApp(testConfig(), nil)
+	hints := a.keys.statusHints()
+	whole := []string{"esc back", "i info", "? help", "r refresh", "q quit"}
+
+	// Down to 20 columns the whole set still stacks onto the lines it is allowed;
+	// below that even a stack cannot hold them, and they drop by rank instead —
+	// which is what TestHintsGoInRankOrder pins.
+	for width := 60; width >= 20; width-- {
+		lines := a.wrapHints(hints, width, hintsMaxHeight)
+		if len(lines) > hintsMaxHeight {
+			t.Fatalf("at %d columns the hints take %d lines", width, len(lines))
+		}
+		for _, line := range lines {
+			if got := lipgloss.Width(line); got > width {
+				t.Fatalf("at %d columns a wrapped line is %d wide: %q", width, got, stripANSI(line))
+			}
+		}
+		// Down to the width of the widest hint the stack still holds them all,
+		// each whole rather than split over the line break.
+		block := stripANSI(strings.Join(lines, "\n"))
+		for _, hint := range whole {
+			if !strings.Contains(block, hint) {
+				t.Fatalf("at %d columns %q was dropped or split:\n%s", width, hint, block)
+			}
+		}
+	}
+}
+
+// The hints band grows with the wrapping and the body gives up the lines,
+// rather than the hints being cut off at one line.
+func TestAppHintsBandGrowsAsTheyWrap(t *testing.T) {
+	wide, narrow := sizedApp(120, 24), sizedApp(44, 24)
+
+	if got := wide.hintBandHeight(); got != 1 {
+		t.Errorf("hint band = %d lines at 120 columns, want them all on one", got)
+	}
+	if got := narrow.hintBandHeight(); got < 2 {
+		t.Errorf("hint band = %d lines at 44 columns, want them wrapped onto more", got)
+	}
+	// The body pays for the extra lines, and the window still adds up exactly.
+	checkFits(t, narrow.View().Content, 44, 24)
+	if got := narrow.bodyBoxHeight(); got < bodyBoxMin {
+		t.Errorf("body box = %d lines, want the hints to stop at %d", got, bodyBoxMin)
+	}
+}
+
+// A window with no lines to spare keeps the hints to one and falls back to
+// dropping them by rank, so what is left is still whole.
 func TestHintsGoInRankOrder(t *testing.T) {
 	a := NewApp(testConfig(), nil)
-	// The global hints as they narrow: each drop takes the whole hint, never
-	// half of one, and the order is the rank order.
+	// The global hints as they narrow onto a single line: each drop takes the
+	// whole hint, never half of one, and the order is the rank order.
 	dropped := []string{"esc back", "i info", "? help", "r refresh", "q quit"}
 	for width := 60; width >= 0; width-- {
-		line := stripANSI(a.fitHints(a.keys.statusHints(), width))
+		line := stripANSI(strings.Join(a.wrapHints(a.keys.statusHints(), width, 1), "\n"))
 		if width > 0 && lipgloss.Width(line) > width {
 			t.Fatalf("at %d columns the hints are %d wide: %q", width, lipgloss.Width(line), line)
 		}
@@ -294,10 +395,23 @@ func TestHintsGoInRankOrder(t *testing.T) {
 
 func TestHintsAreTruncatedOnceThereIsNothingLeftToDrop(t *testing.T) {
 	// One column holds no whole hint, so what is left is cut to fit rather than
-	// overflowing.
+	// overflowing — on however many lines it is allowed.
 	a := NewApp(testConfig(), nil)
-	if got := lipgloss.Width(a.fitHints(a.keys.statusHints(), 1)); got > 1 {
-		t.Errorf("hints are %d wide in one column", got)
+	for _, lines := range []int{1, hintsMaxHeight} {
+		for _, line := range a.wrapHints(a.keys.statusHints(), 1, lines) {
+			if got := lipgloss.Width(line); got > 1 {
+				t.Errorf("hints are %d wide in one column over %d lines", got, lines)
+			}
+		}
+	}
+}
+
+// A band with no room for the hints at all draws none, rather than one line it
+// has not got.
+func TestHintsWithNoRoomDrawNothing(t *testing.T) {
+	a := NewApp(testConfig(), nil)
+	if lines := a.wrapHints(a.keys.statusHints(), 40, 0); lines != nil {
+		t.Errorf("hints = %q, want none", lines)
 	}
 }
 
@@ -593,8 +707,12 @@ func TestAppSharesAShortWindowOutFromTheBottom(t *testing.T) {
 	// border — and below that the bands are drawn bare. The header box gives up
 	// the progress bar's label, then the bar itself, before the body gives up
 	// its last row.
+	//
+	// At 80 columns the hints wrap onto a second line wherever the window has
+	// one to spare, which is a line the body pays for: the tall windows are one
+	// row shorter than the arithmetic on hintsHeight alone would give.
 	for _, tt := range []struct{ height, header, body int }{
-		{20, 5, 9}, {12, 5, 1}, {11, 4, 1}, {10, 3, 1}, {9, 1, 6}, {5, 1, 2}, {2, 1, 0}, {1, 0, 0},
+		{20, 5, 8}, {12, 5, 1}, {11, 4, 1}, {10, 3, 1}, {9, 1, 5}, {5, 1, 2}, {2, 1, 0}, {1, 0, 0},
 	} {
 		a := tallApp(80, tt.height)
 		if got := a.headerBandHeight(); got != tt.header {

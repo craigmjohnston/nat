@@ -137,6 +137,7 @@ func launchApp(t *testing.T) (*App, *fakeLauncher, string) {
 	app := NewApp(cfg, &fakeNotion{})
 	p := testProject()
 	app.project = &p
+	app.board.hideDone = false // every slice addressable by row, Done ones included
 	app.board.SetProject(&p)
 	launcher := &fakeLauncher{}
 	app.launcher = launcher
@@ -947,7 +948,7 @@ func TestAppHintsRowGuidesAJoinedPane(t *testing.T) {
 // for one of them, the way back is the one that matters.
 func TestAppPaneGuidanceDropsTheZoomFirst(t *testing.T) {
 	app, _, _ := launchApp(t)
-	line := stripANSI(app.fitHints(app.paneHints(), 22))
+	line := stripANSI(strings.Join(app.wrapHints(app.paneHints(), 22, 1), "\n"))
 	if !strings.Contains(line, "t hide agent pane") {
 		t.Errorf("line = %q, want the hide key kept", line)
 	}

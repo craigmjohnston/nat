@@ -15,6 +15,8 @@ import (
 )
 
 // The rows of the board testProject flattens to, named so the tests read.
+// They are the rows with the hide-done toggle off, which is how the fixtures
+// below set the board up: a mutation has to be able to address a Done slice.
 const (
 	rowActiveMilestone = 1 // M2: Board, expanded because it is active
 	rowClaimedSlice    = 3 // Board screen
@@ -24,11 +26,13 @@ const (
 
 // newWriteApp returns an app showing testProject, ready for a mutation. The
 // plan is set straight rather than loaded, so the tests start on a board with a
-// slice of every status on it.
+// slice of every status on it — the toggle that would hide the Done one off,
+// since the mutations have to be able to reach it.
 func newWriteApp(client NotionAPI) *App {
 	a := NewApp(testConfig(), client)
 	p := testProject()
 	a.project = &p
+	a.board.hideDone = false
 	a.board.SetProject(&p)
 	return a
 }
