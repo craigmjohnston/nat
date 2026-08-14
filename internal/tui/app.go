@@ -743,11 +743,46 @@ func (a *App) fetchProject(id string, cfg config.ProjectConfig) tea.Cmd {
 	}
 }
 
-// View renders the screen on show, full window.
+// View renders the screen on show, full window, and sets what the terminal
+// itself shows about the app: the window title, and the native progress bar
+// terminals that speak OSC 9;4 draw in the tab or the dock.
 func (a *App) View() tea.View {
 	v := tea.NewView(a.content())
 	v.AltScreen = true
+	v.WindowTitle = a.windowTitle()
+	v.ProgressBar = a.progressBar()
 	return v
+}
+
+// windowTitle is what the terminal window is called: the app and the project it
+// is showing, with the same done/total tally as the bar's label — "nat —
+// tracker 12/30". A plan with no slices in it has no tally worth naming, and
+// before there is a project at all — first run, or an unknown active project —
+// the app says nothing, leaving whatever title the terminal already had.
+func (a *App) windowTitle() string {
+	if a.project == nil {
+		return ""
+	}
+	title := appName + " — " + a.project.Name
+	if p := a.project.Progress(); !p.Empty() {
+		title += fmt.Sprintf(" %d/%d", p.Done, p.Total)
+	}
+	return title
+}
+
+// progressBar is the terminal's own progress indicator, at the project's done
+// fraction. It is cleared — nil, so nothing is emitted and any bar already up
+// is reset — when there is no project or no slices to be done: a bar sitting at
+// zero for want of a plan would read as work stalled.
+func (a *App) progressBar() *tea.ProgressBar {
+	if a.project == nil {
+		return nil
+	}
+	p := a.project.Progress()
+	if p.Empty() {
+		return nil
+	}
+	return tea.NewProgressBar(tea.ProgressBarDefault, int(p.Fraction()*100))
 }
 
 // The layout's fixed measurements: the columns each band is held away from the

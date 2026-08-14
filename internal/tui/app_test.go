@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
@@ -410,6 +411,65 @@ func TestAppFitsTheStatusBarUnderTallScreens(t *testing.T) {
 func TestAppViewTakesTheWholeWindow(t *testing.T) {
 	if !NewApp(config.Config{}, nil).View().AltScreen {
 		t.Error("the app should run in the alternate screen buffer")
+	}
+}
+
+func TestAppSetsTheWindowTitleAndNativeProgress(t *testing.T) {
+	// The board's own plan: 6 slices, 3 of them Done.
+	p := testProject()
+	app := NewApp(testConfig(), newLoadingClient())
+	app.Update(projectLoadedMsg{project: p})
+
+	v := app.View()
+	if want := "nat — tracker 3/6"; v.WindowTitle != want {
+		t.Errorf("window title = %q, want %q", v.WindowTitle, want)
+	}
+	if v.ProgressBar == nil {
+		t.Fatal("a loaded plan should set the terminal progress bar")
+	}
+	if got := *v.ProgressBar; got != (tea.ProgressBar{State: tea.ProgressBarDefault, Value: 50}) {
+		t.Errorf("progress bar = %+v, want half done", got)
+	}
+
+	// Moving a slice on changes both, so the terminal tracks the plan.
+	p.Slices[4].Status = domain.SliceDone
+	app.Update(projectLoadedMsg{project: p})
+
+	v = app.View()
+	if want := "nat — tracker 4/6"; v.WindowTitle != want {
+		t.Errorf("window title = %q, want %q", v.WindowTitle, want)
+	}
+	if v.ProgressBar == nil || v.ProgressBar.Value != 66 {
+		t.Errorf("progress bar = %+v, want two thirds done", v.ProgressBar)
+	}
+}
+
+func TestAppLeavesTheWindowTitleAloneWithNoPlan(t *testing.T) {
+	tests := []struct {
+		name    string
+		project *domain.Project
+		want    string
+	}{
+		{name: "no project at all"},
+		{
+			name:    "a project with nothing planned yet",
+			project: &domain.Project{ID: testProjectID, Name: "tracker"},
+			want:    "nat — tracker",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := NewApp(testConfig(), newLoadingClient())
+			app.project = tt.project
+
+			v := app.View()
+			if v.WindowTitle != tt.want {
+				t.Errorf("window title = %q, want %q", v.WindowTitle, tt.want)
+			}
+			if v.ProgressBar != nil {
+				t.Errorf("progress bar = %+v, want it cleared", v.ProgressBar)
+			}
+		})
 	}
 }
 
