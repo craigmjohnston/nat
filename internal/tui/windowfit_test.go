@@ -679,6 +679,62 @@ func TestAppScrollsTheBoardToKeepTheCursorVisible(t *testing.T) {
 	}
 }
 
+// wrappedApp returns an app of a given window size whose slice rows are too
+// long for it, so every one of them wraps onto continuation lines.
+func wrappedApp(width, height int) *App {
+	a := NewApp(testConfig(), newLoadingClient())
+	a.Update(tea.WindowSizeMsg{Width: width, Height: height})
+	p := tallProject()
+	for i := range p.Slices {
+		p.Slices[i].Name += ", named at a length that no narrow board can hold on one line"
+	}
+	a.Update(projectLoadedMsg{project: p})
+	return a
+}
+
+// TestAppScrollsAWrappedRowOnScreenWhole pins the scrolling against rows that
+// are more than one line: moving onto one brings all of it into the band, not
+// just the line the cursor marker is on.
+func TestAppScrollsAWrappedRowOnScreenWhole(t *testing.T) {
+	a := wrappedApp(40, 20)
+
+	for range len(a.board.rows) - 1 {
+		press(a, "j")
+	}
+
+	top, rows := a.board.CursorSpan()
+	if rows < 2 {
+		t.Fatalf("the cursor's row is %d lines, want it wrapped", rows)
+	}
+	off, band := a.boardVP.YOffset(), a.boardVP.Height()
+	if top < off || top+rows > off+band {
+		t.Errorf("the row spans lines %d..%d, outside the band %d..%d", top, top+rows, off, off+band)
+	}
+	if view := stripANSI(a.View().Content); !strings.Contains(view, "Slice number 39") {
+		t.Errorf("the cursor's row should be on screen:\n%s", view)
+	}
+}
+
+// TestAppScrollsToTheTopOfARowTallerThanTheBand pins the one row that cannot
+// come on screen whole: its first line wins, since that is the one carrying the
+// cursor marker.
+func TestAppScrollsToTheTopOfARowTallerThanTheBand(t *testing.T) {
+	a := wrappedApp(24, 9)
+	band := a.boardVP.Height()
+
+	for range len(a.board.rows) - 1 {
+		press(a, "j")
+	}
+
+	top, rows := a.board.CursorSpan()
+	if rows <= band {
+		t.Fatalf("the cursor's row is %d lines in a band of %d, want it taller", rows, band)
+	}
+	if got := a.boardVP.YOffset(); got != top {
+		t.Errorf("offset = %d, want %d — the top of the row the cursor is on", got, top)
+	}
+}
+
 func TestAppScrollsTheHelpScreen(t *testing.T) {
 	a := tallApp(80, 20)
 	press(a, "?")

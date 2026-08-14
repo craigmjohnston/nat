@@ -1078,11 +1078,15 @@ func (a *App) syncBoard() {
 	if h <= 0 {
 		return
 	}
-	switch top, cursor := a.boardVP.YOffset(), a.board.Cursor(); {
+	// A row is not a line: a wrapped one spans several, and it is the whole of
+	// it that has to come on screen. A row taller than the band cannot, so its
+	// first line wins — that is the one carrying the cursor marker.
+	cursor, rows := a.board.CursorSpan()
+	switch top := a.boardVP.YOffset(); {
 	case cursor < top:
 		a.boardVP.SetYOffset(cursor)
-	case cursor >= top+h:
-		a.boardVP.SetYOffset(cursor - h + 1)
+	case cursor+rows > top+h:
+		a.boardVP.SetYOffset(min(cursor+rows-h, cursor))
 	}
 }
 
