@@ -610,6 +610,12 @@ func (s stubAPI) AppendBlockChildren(context.Context, string, []map[string]any) 
 	return nil, s.err
 }
 
+func (s stubAPI) AppendBlockChildrenAfter(context.Context, string, string, []map[string]any) ([]notion.Block, error) {
+	return nil, s.err
+}
+
+func (s stubAPI) DeleteBlock(context.Context, string) error { return s.err }
+
 func (s stubAPI) UpdatePageProperties(context.Context, string, map[string]notion.PropertyValue) (*notion.Page, error) {
 	return &notion.Page{}, s.err
 }

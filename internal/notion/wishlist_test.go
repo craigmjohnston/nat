@@ -2,9 +2,11 @@ package notion
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -218,5 +220,109 @@ func TestHeadingLevel(t *testing.T) {
 		if got := headingLevel(Block{Type: tc.typ}); got != tc.want {
 			t.Errorf("headingLevel(%q) = %d, want %d", tc.typ, got, tc.want)
 		}
+	}
+}
+
+// sectionOf decodes a page body and picks its wishlist out, which is what every
+// test of the section helpers starts from.
+func sectionOf(t *testing.T, blocks ...string) WishlistSection {
+	t.Helper()
+	var page []Block
+	if err := json.Unmarshal([]byte(`[`+strings.Join(blocks, ",")+`]`), &page); err != nil {
+		t.Fatal(err)
+	}
+	section, ok := FindWishlist(page)
+	if !ok {
+		t.Fatal("no wishlist section found")
+	}
+	return section
+}
+
+func TestFindWishlistReportsAPageWithNoWishlist(t *testing.T) {
+	var page []Block
+	if err := json.Unmarshal([]byte(`[`+heading("h1", 2, "Conventions")+`]`), &page); err != nil {
+		t.Fatal(err)
+	}
+	section, ok := FindWishlist(page)
+	if ok {
+		t.Errorf("found %#v, want no section", section)
+	}
+}
+
+func TestWishlistSectionHasItem(t *testing.T) {
+	section := sectionOf(t,
+		heading("h1", 2, "Wishlist"),
+		bullet("3bd38308-f654-8142-9534-d3d80043f35a", "an item", false),
+		`{"id":"p1","type":"paragraph","has_children":false,"paragraph":{"rich_text":[{"plain_text":"an aside"}]}}`,
+	)
+	cases := map[string]bool{
+		"3bd38308-f654-8142-9534-d3d80043f35a": true,
+		"3BD38308F65481429534D3D80043F35A":     true,
+		"p1":                                   false, // in the section, but not an item
+		"h1":                                   false, // the heading itself
+		"nowhere":                              false,
+	}
+	for id, want := range cases {
+		if got := section.HasItem(id); got != want {
+			t.Errorf("HasItem(%q) = %t, want %t", id, got, want)
+		}
+	}
+}
+
+func TestWishlistSectionEmptyItemAfter(t *testing.T) {
+	blank := `{"id":"blank","type":"bulleted_list_item","has_children":false,"bulleted_list_item":{"rich_text":[]}}`
+	aside := `{"id":"aside","type":"paragraph","has_children":false,"paragraph":{"rich_text":[{"plain_text":"an aside"}]}}`
+
+	t.Run("lands under the last block still standing", func(t *testing.T) {
+		section := sectionOf(t, heading("h1", 2, "Wishlist"), bullet("w1", "one", false), aside, bullet("w2", "two", false))
+
+		after, need := section.EmptyItemAfter([]string{"w1", "W2"})
+
+		if !need || after != "aside" {
+			t.Errorf("EmptyItemAfter = %q, %t, want %q, true", after, need, "aside")
+		}
+	})
+
+	t.Run("lands under the heading when the section is emptied", func(t *testing.T) {
+		section := sectionOf(t, heading("h1", 2, "Wishlist"), bullet("w1", "one", false))
+
+		after, need := section.EmptyItemAfter([]string{"w1"})
+
+		if !need || after != "h1" {
+			t.Errorf("EmptyItemAfter = %q, %t, want %q, true", after, need, "h1")
+		}
+	})
+
+	t.Run("is not needed while a blank bullet survives", func(t *testing.T) {
+		section := sectionOf(t, heading("h1", 2, "Wishlist"), bullet("w1", "one", false), blank)
+
+		if after, need := section.EmptyItemAfter([]string{"w1"}); need {
+			t.Errorf("EmptyItemAfter = %q, %t, want false: the section already has one", after, need)
+		}
+	})
+
+	t.Run("is needed again once the blank bullet is one of the removed", func(t *testing.T) {
+		section := sectionOf(t, heading("h1", 2, "Wishlist"), blank, bullet("w1", "one", false))
+
+		after, need := section.EmptyItemAfter([]string{"blank"})
+
+		if !need || after != "w1" {
+			t.Errorf("EmptyItemAfter = %q, %t, want %q, true", after, need, "w1")
+		}
+	})
+}
+
+func TestEmptyItemBlockIsABulletWithNothingInIt(t *testing.T) {
+	block := EmptyItemBlock()
+
+	if block["type"] != "bulleted_list_item" {
+		t.Errorf("type = %v, want a bulleted_list_item", block["type"])
+	}
+	payload, ok := block["bulleted_list_item"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload = %#v, want an object", block["bulleted_list_item"])
+	}
+	if spans, ok := payload["rich_text"].([]map[string]any); !ok || len(spans) != 0 {
+		t.Errorf("rich_text = %#v, want no spans", payload["rich_text"])
 	}
 }

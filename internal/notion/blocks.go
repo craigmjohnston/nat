@@ -159,7 +159,17 @@ func (c *Client) pageEntries(ctx context.Context, id string, depth int) ([]PageE
 // AppendBlockChildren appends blocks to the end of a page or block's content
 // and returns the blocks as created. children are raw Notion block objects.
 func (c *Client) AppendBlockChildren(ctx context.Context, id string, children []map[string]any) ([]Block, error) {
+	return c.AppendBlockChildrenAfter(ctx, id, "", children)
+}
+
+// AppendBlockChildrenAfter appends blocks to a page or block's content
+// immediately below the child named by after, rather than at the end. An empty
+// after appends at the end, which is what AppendBlockChildren asks for.
+func (c *Client) AppendBlockChildrenAfter(ctx context.Context, id, after string, children []map[string]any) ([]Block, error) {
 	body := map[string]any{"children": children}
+	if after != "" {
+		body["after"] = after
+	}
 	var list List[Block]
 	if err := c.do(ctx, http.MethodPatch, "/blocks/"+url.PathEscape(id)+"/children", body, &list); err != nil {
 		return nil, err
