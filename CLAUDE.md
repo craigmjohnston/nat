@@ -156,8 +156,11 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
 - Tests: aim for 100% coverage of new code. httptest for the Notion client
   (assert exact request JSON), interfaces + fakes for the ntn CLI/tmux, teatest
   for TUI flows, golden snapshots for renders.
-- Gate before claiming done: `go vet ./... && go test -race -cover ./...`
-  (plus `golangci-lint run` if installed).
+- Gate before claiming done: `go vet ./... && go test -race -cover ./... &&
+  golangci-lint run`. All three run in CI, so a failing lint fails the PR;
+  `brew install golangci-lint` if the binary is missing. `.golangci.yml` runs
+  the default linter set with one exclusion — see the file — so an unchecked
+  error is either handled or assigned to `_` where the reason can be read.
 - Never log or commit the Notion token; it belongs to the `ntn` CLI and is only
   ever held in memory for the lifetime of a request.
 - Before starting work, pull the latest `main` and branch off it. Only ever

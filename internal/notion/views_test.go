@@ -63,7 +63,7 @@ func TestViewOrder(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			gotMethod, gotPath = r.Method, r.URL.EscapedPath()
 			body, _ := io.ReadAll(r.Body)
-			json.Unmarshal(body, &gotBody)
+			_ = json.Unmarshal(body, &gotBody)
 			w.Write([]byte(`{"object":"view_query","id":"q-1","results":[
 				{"object":"page","id":"p-3"},
 				{"object":"page","id":"p-1"},

@@ -18,6 +18,14 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # The version is pinned: a linter that updates itself fails pull requests
+      # that changed nothing, on a rule that did not exist when they were
+      # written. Raising it is its own change, made deliberately.
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+
       - name: Build
         run: go build ./...
 

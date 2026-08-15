@@ -89,14 +89,14 @@ func TestSearchPaged(t *testing.T) {
 			bodies = append(bodies, string(b))
 			calls++
 			if calls == 1 {
-				json.NewEncoder(w).Encode(map[string]any{
+				_ = json.NewEncoder(w).Encode(map[string]any{
 					"results":     []map[string]any{{"object": "page", "id": "page-1"}},
 					"has_more":    true,
 					"next_cursor": "cursor-1",
 				})
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"results":  []map[string]any{{"object": "page", "id": "page-2"}},
 				"has_more": false,
 			})

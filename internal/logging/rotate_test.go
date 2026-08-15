@@ -33,7 +33,7 @@ func TestRotatorWritesUnderTheCap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	if _, err := r.Write([]byte("one\n")); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -56,7 +56,7 @@ func TestRotatorMovesTheLogAsideWhenItWouldOverflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	if _, err := r.Write([]byte("0123456789\n")); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -82,7 +82,7 @@ func TestRotatorKeepsOnlyOnePreviousLog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	for _, line := range []string{"first-line\n", "second-line\n", "third-line\n"} {
 		if _, err := r.Write([]byte(line)); err != nil {
@@ -105,7 +105,7 @@ func TestRotatorWritesARecordLargerThanTheCap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	if _, err := r.Write([]byte("short\n")); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -131,7 +131,7 @@ func TestRotatorCountsWhatIsAlreadyInTheFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	if _, err := r.Write([]byte("new run\n")); err != nil {
 		t.Fatalf("unexpected error: %v", err)

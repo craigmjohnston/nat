@@ -250,7 +250,9 @@ func (c *Client) roundTrip(req *http.Request) (int, http.Header, []byte, error) 
 	if err != nil {
 		return 0, nil, nil, err
 	}
-	defer resp.Body.Close()
+	// A close that fails says nothing worth acting on: the body is read below,
+	// and what the request answered is decided by that read and the status.
+	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return 0, nil, nil, fmt.Errorf("read response body: %w", err)

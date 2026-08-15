@@ -108,26 +108,30 @@ func renderBar(styles Styles, width int, segments []ProgressSegment) string {
 	var b strings.Builder
 	for i, s := range segments {
 		b.WriteString(renderSegment(styles, s.Progress, widths[i]))
-		if boundaries > 0 && i+1 < len(segments) && !(finished(segments[i]) && finished(segments[i+1])) {
+		if boundaries > 0 && i+1 < len(segments) && !merges(segments[i], segments[i+1]) {
 			b.WriteString(barBoundary)
 		}
 	}
 	return b.String()
 }
 
-// finished reports whether a segment has nothing left in it. Two finished
-// neighbours draw as one: the boundary between them would only chop history
-// up, and the Done section under the bar already counts the milestones.
+// finished reports whether a segment has nothing left in it.
 func finished(s ProgressSegment) bool {
 	return s.Progress.Done == s.Progress.Total
 }
+
+// merges reports whether two neighbouring segments draw as one, which two
+// finished ones do: the boundary between them would only chop history up, and
+// the Done section under the bar already counts the milestones. It is the one
+// answer both the count of the gaps and the drawing of them are read from.
+func merges(a, b ProgressSegment) bool { return finished(a) && finished(b) }
 
 // boundaryCount is how many gaps the bar draws: one for each adjacent pair
 // that does not merge.
 func boundaryCount(segments []ProgressSegment) int {
 	n := 0
 	for i := 0; i+1 < len(segments); i++ {
-		if !(finished(segments[i]) && finished(segments[i+1])) {
+		if !merges(segments[i], segments[i+1]) {
 			n++
 		}
 	}
