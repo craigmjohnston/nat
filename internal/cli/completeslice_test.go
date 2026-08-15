@@ -652,6 +652,35 @@ func TestCompleteSliceRefusesATodoSliceOfAProjectWithNoAssigneeColumn(t *testing
 	}
 }
 
+// A project keeping its whole plan on one page closes a slice out the same way:
+// what the Milestone column holds is nothing to do with finishing the work, and
+// ownership is decided on the status the project's own schema names.
+func TestCompleteSliceClosesOutASliceOfAOnePagePlan(t *testing.T) {
+	slice := selectSlicePage(sliceID, "Render the board", notion.SliceInProgress, "M2: Board")
+	api := &fakeAPI{
+		pages:       map[string][]notion.Page{"slices-ds": {slice}},
+		dataSources: map[string]notion.DataSource{"slices-ds": selectMilestoneSlicesDS("M1: Client", "M2: Board")},
+	}
+	env, out := completeEnv(api)
+
+	if err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done."}, env); err != nil {
+		t.Fatalf("complete-slice: %v", err)
+	}
+
+	if len(api.updates) != 1 {
+		t.Fatalf("updates = %+v, want exactly one", api.updates)
+	}
+	if name := api.updates[0].props[notion.PropStatus].SelectName(); name != notion.SliceDone {
+		t.Errorf("status = %q, want %q", name, notion.SliceDone)
+	}
+	if _, wrote := api.updates[0].props[notion.PropMilestone]; wrote {
+		t.Errorf("props = %+v, want the milestone left alone", api.updates[0].props)
+	}
+	if !strings.Contains(out.String(), "Done.") {
+		t.Errorf("output =\n%s\nwant the slice reported Done", out.String())
+	}
+}
+
 func TestCompleteSliceReportsAFailedSchemaRead(t *testing.T) {
 	api := completableAPI()
 	api.dataSourceErr = errors.New("boom")

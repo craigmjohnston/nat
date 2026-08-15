@@ -24,6 +24,15 @@ type Sort struct {
 	Direction string `json:"direction"`
 }
 
+// PlanOrder is the order a project's slices are read in: oldest first, which is
+// the order the board lists them under a milestone and so the order an agent
+// picks them up in. It is one definition rather than one per caller, because the
+// slice the board shows at the top of a milestone and the slice next-slice hands
+// out have to be the same slice.
+func PlanOrder() []Sort {
+	return []Sort{{Timestamp: TimestampCreated, Direction: SortAscending}}
+}
+
 // DataSource is one data source of a database: the schema its pages conform to.
 type DataSource struct {
 	ID         string                    `json:"id"`

@@ -42,7 +42,7 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   and `ReclaimStrays` re-homes on startup whatever an earlier run left joined.
 - `internal/cli/` — the headless commands (`nat info [--json]`,
   `nat next-slice [--json]`, which claims the next Todo slice under the
-  lowest-ordered Active milestone and prints its brief,
+  lowest-ordered open milestone and prints its brief,
   `nat start-slice <slice> [--json]`, which claims one named Todo slice and
   prints the same brief — the command a board-launched agent runs, since it is
   pointed at a slice rather than choosing one —
@@ -111,7 +111,15 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   after the options already there, since their order is the plan's order. A name
   the plan already holds is refused before that write, because such a milestone
   is nothing but its name. `slice-add` and `plan-apply` file slices with
-  whichever `Milestone` value the shape calls for.
+  whichever `Milestone` value the shape calls for. The agent commands work
+  either shape too: `next-slice` reads the plan the way the board does and walks
+  it in the board's own order (`notion.PlanOrder`), taking work from the
+  lowest-ordered milestone still open — Active under the relation shape, and
+  under the select shape merely not Done, since a derived milestone is Queued
+  until a slice under it starts and gating on Active would leave a plan on which
+  nothing has begun with no way to begin. `start-slice` names a slice's
+  milestone from the schema's options rather than fetching a page that does not
+  exist, and `complete-slice` touches no milestone at all.
 
 ## Conventions
 

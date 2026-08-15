@@ -60,7 +60,7 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	milestone, err := milestoneOf(ctx, client, claimed)
+	milestone, err := milestoneOf(ctx, client, claimed, shape)
 	if err != nil {
 		return fmt.Errorf("claimed %q but could not read its milestone: %w", claimed.Name, err)
 	}
@@ -97,10 +97,26 @@ func takeable(page notion.Page) error {
 }
 
 // milestoneOf reads the milestone a slice belongs to, so the brief can name it.
-// A slice relating to none is not an error — the board shows those too — it
+// A slice belonging to none is not an error — the board shows those too — it
 // simply has no milestone to print.
-func milestoneOf(ctx context.Context, client API, s domain.Slice) (domain.Milestone, error) {
+//
+// What the slice's Milestone value means depends on the shape the plan is kept
+// in: a page to fetch under the relation shape, and under the select shape the
+// name of one of the Milestone column's options, which the schema already
+// carries — so there is nothing to fetch, and fetching it would look for a page
+// that does not exist. A name the plan no longer offers — an option deleted out
+// from under a slice — leaves the brief without a milestone rather than failing
+// over one line of it.
+func milestoneOf(ctx context.Context, client API, s domain.Slice, shape notion.SliceShape) (domain.Milestone, error) {
 	if s.MilestoneID == "" {
+		return domain.Milestone{}, nil
+	}
+	if !shape.MilestonesRelated() {
+		for _, m := range domain.MilestonesFromOptions(shape.MilestoneOptions, shape.MilestoneType) {
+			if m.ID == s.MilestoneID {
+				return m, nil
+			}
+		}
 		return domain.Milestone{}, nil
 	}
 	page, err := client.GetPage(ctx, s.MilestoneID)

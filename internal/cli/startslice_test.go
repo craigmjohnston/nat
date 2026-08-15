@@ -158,6 +158,93 @@ func TestStartSliceTakesASliceWithNoMilestone(t *testing.T) {
 	}
 }
 
+// startableSelectAPI answers as a project keeping its whole plan on one page:
+// the slice names its milestone on a select, and there is no page anywhere that
+// name could be fetched as.
+func startableSelectAPI(t *testing.T) *fakeAPI {
+	t.Helper()
+	return &fakeAPI{
+		blocksByID: map[string][]notion.Block{
+			"project-1":  conventionBlocks(t),
+			startSliceID: briefBlocks(t, "Render the board, then stop."),
+		},
+		dataSources: map[string]notion.DataSource{
+			"slices-ds": selectMilestoneSlicesDS("M1: Client", "M2: Board"),
+		},
+		pages: map[string][]notion.Page{
+			"slices-ds": {selectSlicePage(startSliceID, "Render the board", notion.SliceTodo, "M2: Board")},
+		},
+	}
+}
+
+// A slice of a one-page plan names its milestone rather than relating to one, so
+// the brief reads it off the schema instead of fetching a page that does not
+// exist.
+func TestStartSliceNamesTheMilestoneOfAOnePagePlan(t *testing.T) {
+	api := startableSelectAPI(t)
+	env, out := testEnv(testClaimConfig(), api)
+
+	if err := Run(context.Background(), []string{"start-slice", startSliceID}, env); err != nil {
+		t.Fatalf("start-slice: %v", err)
+	}
+
+	if !strings.Contains(out.String(), "- Milestone: M2: Board\n") {
+		t.Errorf("output =\n%s\nwant the derived milestone named", out.String())
+	}
+	if len(api.gets) != 1 || api.gets[0] != startSliceID {
+		t.Errorf("gets = %v, want only the slice fetched", api.gets)
+	}
+	if len(api.updates) != 1 || api.updates[0].id != startSliceID {
+		t.Fatalf("updates = %+v, want exactly the named slice claimed", api.updates)
+	}
+	if name := api.updates[0].props[notion.PropStatus].SelectName(); name != notion.SliceInProgress {
+		t.Errorf("status = %q, want %q", name, notion.SliceInProgress)
+	}
+}
+
+func TestStartSliceNamesTheDerivedMilestoneInJSON(t *testing.T) {
+	env, out := testEnv(testClaimConfig(), startableSelectAPI(t))
+
+	if err := Run(context.Background(), []string{"start-slice", startSliceID, "--json"}, env); err != nil {
+		t.Fatalf("start-slice --json: %v", err)
+	}
+
+	var got briefJSON
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
+	}
+	want := briefJSON{
+		Slice: briefSliceJSON{
+			ID: startSliceID, Name: "Render the board", Status: notion.SliceInProgress,
+			Assignee: "Craig Johnston", MilestoneID: "M2: Board", MilestoneName: "M2: Board",
+			Repo: "/tmp/nat", Brief: "Render the board, then stop.", URL: "https://notion.so/" + startSliceID,
+		},
+		Project: projectJSON{ID: "project-1", Name: "nat", Conventions: "Branch per slice."},
+	}
+	if got != want {
+		t.Errorf("json = %+v\nwant %+v", got, want)
+	}
+}
+
+// A slice naming a milestone the plan no longer offers is still claimed: the
+// brief loses one line rather than the whole command.
+func TestStartSliceTakesASliceNamingAMilestoneOutsideThePlan(t *testing.T) {
+	api := startableSelectAPI(t)
+	api.dataSources["slices-ds"] = selectMilestoneSlicesDS("M1: Client")
+	env, out := testEnv(testClaimConfig(), api)
+
+	if err := Run(context.Background(), []string{"start-slice", startSliceID}, env); err != nil {
+		t.Fatalf("start-slice: %v", err)
+	}
+
+	if strings.Contains(out.String(), "Milestone") {
+		t.Errorf("output =\n%s\nwant no milestone line", out.String())
+	}
+	if len(api.updates) != 1 {
+		t.Errorf("updates = %+v, want the slice claimed", api.updates)
+	}
+}
+
 // A slice somebody has already started is refused, and nothing at all is
 // written — the point of naming a slice is that the caller may have named the
 // wrong one.

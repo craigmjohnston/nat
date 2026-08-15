@@ -778,8 +778,7 @@ func (a *App) fetchProject(id string, cfg config.ProjectConfig) tea.Cmd {
 		if err != nil {
 			return notionErrMsg{err: err}
 		}
-		slices, err := client.QueryDataSource(ctx, cfg.SlicesDSID, nil,
-			[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
+		slices, err := client.QueryDataSource(ctx, cfg.SlicesDSID, nil, notion.PlanOrder())
 		if err != nil {
 			return notionErrMsg{err: fmt.Errorf("load slices: %w", err)}
 		}

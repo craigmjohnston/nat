@@ -36,7 +36,7 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	milestone, page, err := selectNextSlice(ctx, client, project)
+	milestone, page, err := selectNextSlice(ctx, client, cfg.ActiveProjectID, project, shape)
 	if err != nil {
 		return err
 	}
@@ -62,47 +62,82 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// selectNextSlice finds the slice to work next: the oldest unclaimed Todo slice
-// under the lowest-ordered Active milestone. Milestones that are Queued have not
-// been started and Done ones are finished, so neither is drawn from — which is
-// also what keeps an agent from running ahead of the plan.
+// selectNextSlice finds the slice to work next: the first unclaimed Todo slice
+// the board would list, under the lowest-ordered milestone still open. The plan
+// is read the way the board reads it — whichever shape it is kept in — and
+// walked in the board's own order, so the slice handed out is the one someone
+// looking at the board would expect to go next.
 //
 // The filtering is done here rather than in the query because a Status column
 // may be a select or a Notion status depending on how the project was set up,
 // and the two need differently-shaped filters; the plans are small enough that
 // reading them whole costs nothing.
-func selectNextSlice(ctx context.Context, client API, project config.ProjectConfig) (domain.Milestone, *notion.Page, error) {
-	milestones, err := client.QueryDataSource(ctx, project.MilestonesDSID, nil,
-		[]notion.Sort{{Property: notion.PropOrder, Direction: notion.SortAscending}})
+func selectNextSlice(ctx context.Context, client API, projectID string, project config.ProjectConfig, shape notion.SliceShape) (domain.Milestone, *notion.Page, error) {
+	milestones, err := loadMilestones(ctx, client, project, shape)
 	if err != nil {
-		return domain.Milestone{}, nil, fmt.Errorf("load milestones: %w", err)
+		return domain.Milestone{}, nil, err
 	}
-	slices, err := client.QueryDataSource(ctx, project.SlicesDSID, nil,
-		[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
+	pages, err := client.QueryDataSource(ctx, project.SlicesDSID, nil, notion.PlanOrder())
 	if err != nil {
 		return domain.Milestone{}, nil, fmt.Errorf("load slices: %w", err)
 	}
+	plan := domain.NewProject(projectID, project.Name, milestones, domain.SlicesFromPages(pages))
 
-	var active []domain.Milestone
-	for _, m := range domain.MilestonesFromPages(milestones) {
-		if m.Status == domain.MilestoneActive {
-			active = append(active, m)
+	var open []domain.Milestone
+	for _, g := range plan.Groups() {
+		if g.Milestone == nil || !drawnFrom(*g.Milestone) {
+			continue
 		}
-	}
-	if len(active) == 0 {
-		return domain.Milestone{}, nil, fmt.Errorf("no Active milestone: activate one on the board and run this again")
-	}
-
-	for _, m := range active {
-		for i, p := range slices {
+		open = append(open, *g.Milestone)
+		for i, p := range pages {
 			s := domain.SliceFromPage(p)
-			if s.MilestoneID == m.ID && s.Status == domain.SliceTodo && s.AssigneeName == "" {
-				return m, &slices[i], nil
+			if s.MilestoneID == g.Milestone.ID && s.Status == domain.SliceTodo && s.AssigneeName == "" {
+				return *g.Milestone, &pages[i], nil
 			}
 		}
 	}
-	return domain.Milestone{}, nil, fmt.Errorf("no unclaimed Todo slice in the Active %s: %s",
-		plural("milestone", len(active)), strings.Join(milestoneNames(active), ", "))
+	if len(open) == 0 {
+		return domain.Milestone{}, nil, noOpenMilestoneError(shape)
+	}
+	return domain.Milestone{}, nil, fmt.Errorf("no unclaimed Todo slice in the %s %s: %s",
+		openAdjective(shape), plural("milestone", len(open)), strings.Join(milestoneNames(open), ", "))
+}
+
+// drawnFrom reports whether work may be taken from a milestone. One with a page
+// of its own says so itself: Queued has not been started and Done is finished,
+// so only an Active milestone is drawn from, and an agent cannot run ahead of a
+// plan its author has not opened up.
+//
+// A derived milestone has no status to say it with. Its status is read back off
+// the slices under it, so it is Queued until one of them starts — gating on
+// Active there would mean a plan on which nothing has begun could never begin,
+// with no status anyone could write to unblock it. Everything not yet finished
+// is open instead, and the plan's own order decides which comes first.
+func drawnFrom(m domain.Milestone) bool {
+	if m.Derived {
+		return m.Status != domain.MilestoneDone
+	}
+	return m.Status == domain.MilestoneActive
+}
+
+// openAdjective names what the milestones drawn from have in common, so a
+// refusal describes the plan the reader is actually looking at.
+func openAdjective(shape notion.SliceShape) string {
+	if shape.MilestonesRelated() {
+		return "Active"
+	}
+	return "unfinished"
+}
+
+// noOpenMilestoneError says there is nowhere to take work from, and what would
+// change that: a milestone to activate under the shape that has statuses, and
+// under the shape that has none — where every milestone is finished — a plan
+// with more in it.
+func noOpenMilestoneError(shape notion.SliceShape) error {
+	if shape.MilestonesRelated() {
+		return fmt.Errorf("no Active milestone: activate one on the board and run this again")
+	}
+	return fmt.Errorf("no unfinished milestone: every milestone in the plan is Done")
 }
 
 // sliceShape reads how the project's Slices table is put together: what its

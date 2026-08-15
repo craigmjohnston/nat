@@ -42,8 +42,7 @@ func info(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	slices, err := client.QueryDataSource(ctx, project.SlicesDSID, nil,
-		[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
+	slices, err := client.QueryDataSource(ctx, project.SlicesDSID, nil, notion.PlanOrder())
 	if err != nil {
 		return fmt.Errorf("load slices: %w", err)
 	}
