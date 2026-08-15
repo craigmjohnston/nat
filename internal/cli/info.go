@@ -48,7 +48,8 @@ func info(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("load slices: %w", err)
 	}
 
-	p := domain.NewProject(cfg.ActiveProjectID, project.Name, milestones, domain.SlicesFromPages(slices))
+	p := domain.NewProject(cfg.ActiveProjectID, project.Name, milestones, domain.InViewOrder(
+		domain.SlicesFromPages(slices), notion.PlanOrder(ctx, client, shape, project.SlicesDSID)))
 	conventions := strings.TrimSpace(notion.Markdown(blocks))
 
 	if asJSON {

@@ -590,6 +590,10 @@ func (s stubAPI) QueryDataSource(context.Context, string, map[string]any, []noti
 	return nil, s.err
 }
 
+func (s stubAPI) DataSourceOrder(context.Context, string) ([]string, error) {
+	return nil, s.err
+}
+
 func (s stubAPI) GetDataSource(context.Context, string) (*notion.DataSource, error) {
 	return &notion.DataSource{}, s.err
 }

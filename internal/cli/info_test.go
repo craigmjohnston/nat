@@ -447,3 +447,63 @@ func reflectEqual(a, b infoJSON) bool {
 	y, _ := json.Marshal(b)
 	return string(x) == string(y)
 }
+
+// A plan kept on one page has no Order to sort its slices by, so info prints
+// them in the order the project's own view puts them in.
+func TestInfoOrdersAOnePagePlanByItsBoard(t *testing.T) {
+	api := &fakeAPI{
+		dataSources: map[string]notion.DataSource{"slices-ds": selectMilestoneSlicesDS("M1: Client")},
+		pages: map[string][]notion.Page{
+			"slices-ds": {
+				selectSlicePage("s1", "First read", notion.SliceTodo, "M1: Client"),
+				selectSlicePage("s2", "Second read", notion.SliceTodo, "M1: Client"),
+			},
+		},
+		order: map[string][]string{"slices-ds": {"s2", "s1"}},
+	}
+	env, out := testEnv(testConfig(), api)
+
+	if err := Run(context.Background(), []string{"info"}, env); err != nil {
+		t.Fatalf("info: %v", err)
+	}
+
+	if got := api.ordered; len(got) != 1 || got[0] != "slices-ds" {
+		t.Fatalf("read the order of %v, want the slices data source once", got)
+	}
+	if !strings.Contains(out.String(), "- Second read — Todo\n- First read — Todo") {
+		t.Errorf("output =\n%s\nwant the board's order", out.String())
+	}
+}
+
+// A project with a Milestones database orders its plan by their Order, so info
+// asks its views for nothing.
+func TestInfoDoesNotReadAnOrderForAPagedPlan(t *testing.T) {
+	api := populatedAPI(t)
+	env, _ := testEnv(testConfig(), api)
+
+	if err := Run(context.Background(), []string{"info"}, env); err != nil {
+		t.Fatalf("info: %v", err)
+	}
+	if len(api.ordered) != 0 {
+		t.Errorf("read the order of %v, want no view read at all", api.ordered)
+	}
+}
+
+// An order that cannot be read costs the plan its order, not its printing.
+func TestInfoPrintsAOnePagePlanWhenTheOrderCannotBeRead(t *testing.T) {
+	api := &fakeAPI{
+		dataSources: map[string]notion.DataSource{"slices-ds": selectMilestoneSlicesDS("M1: Client")},
+		pages: map[string][]notion.Page{
+			"slices-ds": {selectSlicePage("s1", "First read", notion.SliceTodo, "M1: Client")},
+		},
+		orderErr: errors.New("boom"),
+	}
+	env, out := testEnv(testConfig(), api)
+
+	if err := Run(context.Background(), []string{"info"}, env); err != nil {
+		t.Fatalf("info: %v", err)
+	}
+	if !strings.Contains(out.String(), "- First read — Todo") {
+		t.Errorf("output =\n%s\nwant the plan printed anyway", out.String())
+	}
+}

@@ -550,3 +550,59 @@ func TestProjectGroupsDoesNotReorderTheProject(t *testing.T) {
 		t.Errorf("Groups() reordered the project's milestones: %+v", p.Milestones)
 	}
 }
+
+// ids names the slices in order, for an assertion that reads like the board.
+func ids(slices []Slice) string {
+	names := make([]string, len(slices))
+	for i, s := range slices {
+		names[i] = s.ID
+	}
+	return strings.Join(names, ",")
+}
+
+func TestInViewOrder(t *testing.T) {
+	slices := []Slice{{ID: "s1"}, {ID: "s2"}, {ID: "s3"}}
+
+	t.Run("puts the slices in the order given", func(t *testing.T) {
+		got := InViewOrder(slices, []string{"s3", "s1", "s2"})
+		if ids(got) != "s3,s1,s2" {
+			t.Errorf("order = %s, want s3,s1,s2", ids(got))
+		}
+	})
+
+	t.Run("keeps the slices it was given where there is no order", func(t *testing.T) {
+		if got := InViewOrder(slices, nil); ids(got) != "s1,s2,s3" {
+			t.Errorf("order = %s, want the input order", ids(got))
+		}
+	})
+
+	t.Run("trails the slices the order does not name, in the order read", func(t *testing.T) {
+		got := InViewOrder(slices, []string{"s3"})
+		if ids(got) != "s3,s1,s2" {
+			t.Errorf("order = %s, want the named slice first", ids(got))
+		}
+	})
+
+	t.Run("ignores an ID the order names but the plan does not hold", func(t *testing.T) {
+		got := InViewOrder(slices, []string{"gone", "s2"})
+		if ids(got) != "s2,s1,s3" {
+			t.Errorf("order = %s, want s2 first", ids(got))
+		}
+	})
+
+	t.Run("matches IDs however they are written", func(t *testing.T) {
+		dashed := []Slice{{ID: "3bd38308-f654-812e-abde-e5b4160e2717"}, {ID: "s2"}}
+		got := InViewOrder(dashed, []string{"s2", "3BD38308F654812EABDEE5B4160E2717"})
+		if got[0].ID != "s2" || got[1].ID != dashed[0].ID {
+			t.Errorf("order = %s, want the undashed ID to have matched", ids(got))
+		}
+	})
+
+	t.Run("does not reorder what it was given", func(t *testing.T) {
+		in := []Slice{{ID: "s1"}, {ID: "s2"}}
+		InViewOrder(in, []string{"s2", "s1"})
+		if ids(in) != "s1,s2" {
+			t.Errorf("the input was reordered: %s", ids(in))
+		}
+	})
+}
