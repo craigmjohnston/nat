@@ -69,18 +69,6 @@ func TestGetDataSource(t *testing.T) {
 	})
 }
 
-// The order a project's slices are read in is one definition, so the board and
-// the headless commands hand out the same slice.
-func TestPlanOrderIsOldestFirst(t *testing.T) {
-	want := []Sort{{Timestamp: TimestampCreated, Direction: SortAscending}}
-
-	got := PlanOrder()
-
-	if len(got) != len(want) || got[0] != want[0] {
-		t.Errorf("PlanOrder() = %+v, want %+v", got, want)
-	}
-}
-
 func TestQueryDataSource(t *testing.T) {
 	t.Run("sends filter and sorts and decodes pages", func(t *testing.T) {
 		var gotMethod, gotPath, gotBody string

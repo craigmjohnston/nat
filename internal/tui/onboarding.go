@@ -33,6 +33,7 @@ type NotionAPI interface {
 	CreateProjectsDatabase(ctx context.Context, parentPageID, title string) (*notion.Database, error)
 	CreateProject(ctx context.Context, projectsDSID, name string, assignee bool) (*notion.ProjectStructure, error)
 	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
+	DataSourceOrder(ctx context.Context, dataSourceID string) ([]string, error)
 	GetBlockChildren(ctx context.Context, id string) ([]notion.Block, error)
 	Wishlist(ctx context.Context, pageID string) ([]notion.WishlistItem, error)
 	CreatePage(ctx context.Context, parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)

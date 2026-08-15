@@ -603,23 +603,55 @@ func TestNextSliceWorksAgainstAOnePagePlan(t *testing.T) {
 	}
 }
 
-// The slices are read in the board's own order, so the slice handed out is the
-// one at the top of the milestone rather than whichever the query happened to
-// return first.
-func TestNextSliceReadsAOnePagePlanInBoardOrder(t *testing.T) {
+// The slice handed out is the one at the top of the milestone on the project's
+// own board, not whichever the query happened to return first: a plan written
+// in one go shares a created time to the minute, so the board's order is the
+// only order it has.
+func TestNextSliceTakesTheTopSliceOfTheBoard(t *testing.T) {
 	api := onePagePlanAPI(t)
+	api.order = map[string][]string{"slices-ds": {"s1", "s4", "s3", "s2"}}
 	env, _ := testEnv(testClaimConfig(), api)
 
 	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
 	}
 
-	want := []query{{id: "slices-ds", sorts: notion.PlanOrder()}}
-	if len(api.queries) != len(want) {
-		t.Fatalf("queries = %+v, want %+v", api.queries, want)
+	if len(api.updates) != 1 || api.updates[0].id != "s3" {
+		t.Fatalf("updates = %+v, want s3, the board's first slice of M2: Board", api.updates)
 	}
-	if api.queries[0].id != want[0].id || len(api.queries[0].sorts) != 1 || api.queries[0].sorts[0] != want[0].sorts[0] {
-		t.Errorf("query = %+v, want %+v", api.queries[0], want[0])
+	if len(api.ordered) != 1 || api.ordered[0] != "slices-ds" {
+		t.Errorf("order reads = %v, want the slices' own view read once", api.ordered)
+	}
+}
+
+// A plan kept in a Milestones database is ordered by those milestones' Order,
+// so no view is read for one.
+func TestNextSliceReadsNoViewForARelatedPlan(t *testing.T) {
+	api := claimableAPI(t)
+	env, _ := testEnv(testClaimConfig(), api)
+
+	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
+		t.Fatalf("next-slice: %v", err)
+	}
+
+	if len(api.ordered) != 0 {
+		t.Errorf("order reads = %v, want none", api.ordered)
+	}
+}
+
+// An order that cannot be read is not worth refusing to work over: the slices
+// stay in the order they were queried and the next one is still handed out.
+func TestNextSliceWorksWithoutAReadableBoardOrder(t *testing.T) {
+	api := onePagePlanAPI(t)
+	api.orderErr = errors.New("notion: 500")
+	env, _ := testEnv(testClaimConfig(), api)
+
+	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
+		t.Fatalf("next-slice: %v", err)
+	}
+
+	if len(api.updates) != 1 || api.updates[0].id != "s2" {
+		t.Fatalf("updates = %+v, want s2, the plan in the order it was queried", api.updates)
 	}
 }
 

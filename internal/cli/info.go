@@ -42,12 +42,14 @@ func info(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	slices, err := client.QueryDataSource(ctx, project.SlicesDSID, nil, notion.PlanOrder())
+	slices, err := client.QueryDataSource(ctx, project.SlicesDSID, nil,
+		[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
 	if err != nil {
 		return fmt.Errorf("load slices: %w", err)
 	}
 
-	p := domain.NewProject(cfg.ActiveProjectID, project.Name, milestones, domain.SlicesFromPages(slices))
+	p := domain.NewProject(cfg.ActiveProjectID, project.Name, milestones, domain.InViewOrder(
+		domain.SlicesFromPages(slices), notion.PlanOrder(ctx, client, shape, project.SlicesDSID)))
 	conventions := strings.TrimSpace(notion.Markdown(blocks))
 
 	if asJSON {

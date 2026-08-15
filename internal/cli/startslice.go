@@ -55,7 +55,7 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	if err := takeable(*page); err != nil {
 		return err
 	}
-	claimed, err := claim(ctx, client, *page, shape, cfg.AssigneeUserID)
+	claimed, err := claim(ctx, client, page.ID, shape, cfg.AssigneeUserID)
 	if err != nil {
 		return err
 	}

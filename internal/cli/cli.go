@@ -17,6 +17,7 @@ import (
 // command can be driven by a fake in tests.
 type API interface {
 	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
+	DataSourceOrder(ctx context.Context, dataSourceID string) ([]string, error)
 	GetDataSource(ctx context.Context, id string) (*notion.DataSource, error)
 	UpdateDataSourceProperties(ctx context.Context, id string, properties map[string]notion.PropertySchema) (*notion.DataSource, error)
 	CreatePage(ctx context.Context, parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)

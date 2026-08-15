@@ -36,11 +36,11 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	milestone, page, err := selectNextSlice(ctx, client, cfg.ActiveProjectID, project, shape)
+	milestone, next, err := selectNextSlice(ctx, client, cfg.ActiveProjectID, project, shape)
 	if err != nil {
 		return err
 	}
-	claimed, err := claim(ctx, client, *page, shape, cfg.AssigneeUserID)
+	claimed, err := claim(ctx, client, next.ID, shape, cfg.AssigneeUserID)
 	if err != nil {
 		return err
 	}
@@ -64,24 +64,26 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 
 // selectNextSlice finds the slice to work next: the first unclaimed Todo slice
 // the board would list, under the lowest-ordered milestone still open. The plan
-// is read the way the board reads it — whichever shape it is kept in — and
-// walked in the board's own order, so the slice handed out is the one someone
-// looking at the board would expect to go next.
+// is read exactly the way the board reads it — whichever shape it is kept in,
+// and in the order the project's own board puts its slices in — so the slice
+// handed out is the one someone looking at that board would expect to go next.
 //
 // The filtering is done here rather than in the query because a Status column
 // may be a select or a Notion status depending on how the project was set up,
 // and the two need differently-shaped filters; the plans are small enough that
 // reading them whole costs nothing.
-func selectNextSlice(ctx context.Context, client API, projectID string, project config.ProjectConfig, shape notion.SliceShape) (domain.Milestone, *notion.Page, error) {
+func selectNextSlice(ctx context.Context, client API, projectID string, project config.ProjectConfig, shape notion.SliceShape) (domain.Milestone, domain.Slice, error) {
 	milestones, err := loadMilestones(ctx, client, project, shape)
 	if err != nil {
-		return domain.Milestone{}, nil, err
+		return domain.Milestone{}, domain.Slice{}, err
 	}
-	pages, err := client.QueryDataSource(ctx, project.SlicesDSID, nil, notion.PlanOrder())
+	pages, err := client.QueryDataSource(ctx, project.SlicesDSID, nil,
+		[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
 	if err != nil {
-		return domain.Milestone{}, nil, fmt.Errorf("load slices: %w", err)
+		return domain.Milestone{}, domain.Slice{}, fmt.Errorf("load slices: %w", err)
 	}
-	plan := domain.NewProject(projectID, project.Name, milestones, domain.SlicesFromPages(pages))
+	plan := domain.NewProject(projectID, project.Name, milestones, domain.InViewOrder(
+		domain.SlicesFromPages(pages), notion.PlanOrder(ctx, client, shape, project.SlicesDSID)))
 
 	var open []domain.Milestone
 	for _, g := range plan.Groups() {
@@ -89,17 +91,16 @@ func selectNextSlice(ctx context.Context, client API, projectID string, project 
 			continue
 		}
 		open = append(open, *g.Milestone)
-		for i, p := range pages {
-			s := domain.SliceFromPage(p)
-			if s.MilestoneID == g.Milestone.ID && s.Status == domain.SliceTodo && s.AssigneeName == "" {
-				return *g.Milestone, &pages[i], nil
+		for _, s := range g.Slices {
+			if s.Status == domain.SliceTodo && s.AssigneeName == "" {
+				return *g.Milestone, s, nil
 			}
 		}
 	}
 	if len(open) == 0 {
-		return domain.Milestone{}, nil, noOpenMilestoneError(shape)
+		return domain.Milestone{}, domain.Slice{}, noOpenMilestoneError(shape)
 	}
-	return domain.Milestone{}, nil, fmt.Errorf("no unclaimed Todo slice in the %s %s: %s",
+	return domain.Milestone{}, domain.Slice{}, fmt.Errorf("no unclaimed Todo slice in the %s %s: %s",
 		openAdjective(shape), plural("milestone", len(open)), strings.Join(milestoneNames(open), ", "))
 }
 
@@ -169,14 +170,14 @@ func slicesDataSource(ctx context.Context, client API, project config.ProjectCon
 // Notion answers with is checked rather than assumed — a people value naming
 // someone the workspace does not know comes back empty instead of failing, and
 // an agent must not be handed a brief for a slice it does not actually hold.
-func claim(ctx context.Context, client API, page notion.Page, shape notion.SliceShape, userID string) (domain.Slice, error) {
+func claim(ctx context.Context, client API, sliceID string, shape notion.SliceShape, userID string) (domain.Slice, error) {
 	properties := map[string]notion.PropertyValue{
 		notion.PropStatus: notion.NewChoice(shape.StatusType, shape.InProgress),
 	}
 	if shape.HasAssignee {
 		properties[notion.PropAssignee] = notion.NewPeople(userID)
 	}
-	updated, err := client.UpdatePageProperties(ctx, page.ID, properties)
+	updated, err := client.UpdatePageProperties(ctx, sliceID, properties)
 	if err != nil {
 		return domain.Slice{}, fmt.Errorf("claim the slice: %w", err)
 	}
