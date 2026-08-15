@@ -395,7 +395,8 @@ func TestAppendBlockChildren(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		want := `{"after":"b-3","children":[{"bulleted_list_item":{"rich_text":[]},"type":"bulleted_list_item"}]}`
+		want := `{"children":[{"bulleted_list_item":{"rich_text":[]},"type":"bulleted_list_item"}],` +
+			`"position":{"after_block":{"id":"b-3"},"type":"after_block"}}`
 		if gotBody != want {
 			t.Errorf("request body =\n%s\nwant\n%s", gotBody, want)
 		}
