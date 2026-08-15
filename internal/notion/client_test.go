@@ -559,7 +559,7 @@ func (h *pagedHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cursor := "cursor-" + page[len(page)-1]
 		next = &cursor
 	}
-	json.NewEncoder(w).Encode(List[item]{Results: results, HasMore: hasMore, NextCursor: next})
+	_ = json.NewEncoder(w).Encode(List[item]{Results: results, HasMore: hasMore, NextCursor: next})
 }
 
 func TestPaginate(t *testing.T) {

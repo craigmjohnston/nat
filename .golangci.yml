@@ -1,0 +1,23 @@
+version: "2"
+
+# The default linter set — errcheck, govet, ineffassign, staticcheck, unused —
+# is what the gate in CLAUDE.md means by `golangci-lint run`. Nothing is added
+# to it here and no preset of blanket exclusions is turned on: an unchecked
+# error is either handled or assigned to _ at the call site, where the reason
+# for letting it go sits next to the code.
+linters:
+  settings:
+    errcheck:
+      # The one exception, and it is not the app's code: the fake Notion servers
+      # the tests stand up write their canned response to an http.ResponseWriter.
+      # A failed write there means the test's own client hung up, which the test
+      # is about to fail over anyway, and `_, _ =` on every handler in the
+      # package would bury the responses they exist to show.
+      exclude-functions:
+        - (net/http.ResponseWriter).Write
+
+# CI is the only reader that matters, and a run that stops counting after the
+# first few of a kind hides the size of what it found.
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

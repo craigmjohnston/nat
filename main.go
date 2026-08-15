@@ -78,7 +78,7 @@ func main() {
 func openLog() string {
 	path, err := logging.Open()
 	if err != nil {
-		fmt.Fprintln(stderr, "nat: could not open the log file:", err)
+		_, _ = fmt.Fprintln(stderr, "nat: could not open the log file:", err)
 	}
 	logging.Action("nat starting", "args", args())
 	return path
@@ -93,9 +93,12 @@ func openLog() string {
 // afterwards, so the message says where to find it.
 func fail(logPath string, err error) {
 	logging.Error("nat exiting on a failure", "err", err)
-	fmt.Fprintln(stderr, "nat:", err)
+	// A stderr that will not take the message is exactly the case the log is
+	// there for, so a failed write is nothing to report — there is nowhere left
+	// to report it to.
+	_, _ = fmt.Fprintln(stderr, "nat:", err)
 	if logPath != "" {
-		fmt.Fprintln(stderr, "log:", logPath)
+		_, _ = fmt.Fprintln(stderr, "log:", logPath)
 	}
 	exit(1)
 }
@@ -181,7 +184,7 @@ type releaser interface{ Release() error }
 func release(r releaser) {
 	if err := r.Release(); err != nil {
 		logging.Error("could not return the agents to their own sessions", "err", err)
-		fmt.Fprintln(stderr, "nat:", err)
+		_, _ = fmt.Fprintln(stderr, "nat:", err)
 	}
 }
 
