@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"time"
 )
 
 // Sort directions accepted by data source queries.
@@ -13,8 +14,26 @@ const (
 )
 
 // TimestampCreated is the page timestamp a query can sort by, for data sources
-// whose schema carries no ordering of its own.
-const TimestampCreated = "created_time"
+// whose schema carries no ordering of its own. TimestampLastEdited is the one a
+// query can filter by, for reloads that want only what changed.
+const (
+	TimestampCreated    = "created_time"
+	TimestampLastEdited = "last_edited_time"
+)
+
+// EditedOnOrAfter is the query filter matching pages edited at or after t.
+// Notion records last_edited_time only to the minute, so t is widened to the
+// top of its minute: an edit made in the same minute as t but after it would
+// otherwise never match a filter. What the widening re-fetches has been seen
+// already, which a caller merging pages by ID absorbs.
+func EditedOnOrAfter(t time.Time) map[string]any {
+	return map[string]any{
+		"timestamp": TimestampLastEdited,
+		TimestampLastEdited: map[string]any{
+			"on_or_after": t.UTC().Truncate(time.Minute).Format(time.RFC3339),
+		},
+	}
+}
 
 // Sort is one entry of a query's sort order. Set either Property (a schema
 // property name) or Timestamp ("created_time" or "last_edited_time").
