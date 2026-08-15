@@ -717,7 +717,7 @@ func TestAppLaunchRefusesASliceThatIsNotTodo(t *testing.T) {
 		cursor int
 		want   string
 	}{
-		{"claimed", rowClaimedSlice, `"Board screen" is Claimed — only Todo slices can be launched.`},
+		{"claimed", rowClaimedSlice, `"Board screen" is In progress — only Todo slices can be launched.`},
 		{"done", rowDoneSlice, `"Domain model" is Done — only Todo slices can be launched.`},
 	}
 	for _, tt := range tests {
@@ -1151,7 +1151,7 @@ func TestAppReloadsThePlanAfterAttaching(t *testing.T) {
 	}
 	// The agent has had the terminal to itself, so the plan is re-read rather
 	// than trusted.
-	if len(client.queriedDSIDs) != 2 {
+	if len(client.queriedDSIDs) != 1 {
 		t.Errorf("queried %v, want the plan reloaded", client.queriedDSIDs)
 	}
 }

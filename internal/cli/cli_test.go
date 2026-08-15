@@ -244,6 +244,16 @@ func (f *fakeAPI) UpdatePageProperties(_ context.Context, id string, props map[s
 	if f.mangle != nil {
 		f.mangle(&page)
 	}
+	// The workspace keeps the write, so a command that reads the plan again
+	// after writing to it sees what it wrote — which is what a migration on the
+	// way past depends on.
+	for _, pages := range f.pages {
+		for i, p := range pages {
+			if p.ID == id {
+				pages[i] = page
+			}
+		}
+	}
 	return &page, nil
 }
 
@@ -256,7 +266,7 @@ func (f *fakeAPI) GetDataSource(_ context.Context, id string) (*notion.DataSourc
 	if ds, ok := f.dataSources[id]; ok {
 		return &ds, nil
 	}
-	ds := claimedSlicesDS()
+	ds := assigneeSlicesDS()
 	return &ds, nil
 }
 
@@ -283,27 +293,19 @@ func (f *fakeAPI) UpdateDataSourceProperties(_ context.Context, id string, props
 	return &ds, nil
 }
 
-// claimedSlicesDS is the Slices schema of a project created before the app
-// asked about an assignee: a people column, and Claimed for in progress.
-func claimedSlicesDS() notion.DataSource {
-	return notion.DataSource{
-		ID: "slices-ds",
-		Properties: map[string]notion.PropertySchema{
-			notion.PropStatus:   notion.SchemaSelect(notion.SliceTodo, notion.SliceClaimed, notion.SliceDone),
-			notion.PropAssignee: {Type: notion.TypePeople},
-		},
-	}
+// assigneeSlicesDS is the Slices schema of a project that tracks an assignee,
+// its plan the milestones named — which is what a test saying nothing about the
+// schema is written against.
+func assigneeSlicesDS(milestones ...string) notion.DataSource {
+	ds := selectMilestoneSlicesDS(milestones...)
+	ds.Properties[notion.PropAssignee] = notion.PropertySchema{Type: notion.TypePeople}
+	return ds
 }
 
-// inProgressSlicesDS is the Slices schema of a project created with the new
-// default: no Assignee column, and In progress for in progress.
-func inProgressSlicesDS() notion.DataSource {
-	return notion.DataSource{
-		ID: "slices-ds",
-		Properties: map[string]notion.PropertySchema{
-			notion.PropStatus: notion.SchemaSelect(notion.SliceTodo, notion.SliceInProgress, notion.SliceDone),
-		},
-	}
+// soloSlicesDS is the same project without one: a single-player plan, where
+// ownership is decided on status alone.
+func soloSlicesDS() notion.DataSource {
+	return selectMilestoneSlicesDS()
 }
 
 func (f *fakeAPI) QueryDataSource(_ context.Context, id string, _ map[string]any, sorts []notion.Sort) ([]notion.Page, error) {
@@ -340,10 +342,9 @@ func testConfig() config.Config {
 		ActiveProjectID: "project-1",
 		Projects: map[string]config.ProjectConfig{
 			"project-1": {
-				Name:           "nat",
-				MilestonesDSID: "milestones-ds",
-				SlicesDSID:     "slices-ds",
-				WorkingDir:     "/tmp/nat",
+				Name:       "nat",
+				SlicesDSID: "slices-ds",
+				WorkingDir: "/tmp/nat",
 			},
 		},
 	}

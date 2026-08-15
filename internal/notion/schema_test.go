@@ -14,10 +14,8 @@ func TestSchemaBuilders(t *testing.T) {
 	}{
 		{"title", SchemaTitle(), `{"title":{}}`},
 		{"rich text", SchemaRichText(), `{"rich_text":{}}`},
-		{"number", SchemaNumber(), `{"number":{}}`},
 		{"select", SchemaSelect("Queued", "Active"), `{"select":{"options":[{"name":"Queued"},{"name":"Active"}]}}`},
 		{"select without options", SchemaSelect(), `{"select":{}}`},
-		{"relation", SchemaRelation("ds-1"), `{"relation":{"data_source_id":"ds-1","type":"single_property","single_property":{}}}`},
 		{"people", SchemaPeople(), `{"people":{}}`},
 		{"url", SchemaURL(), `{"url":{}}`},
 	}
@@ -110,7 +108,7 @@ func TestPropertySchemaAppendedOptionsRefusesWhatItCannotWrite(t *testing.T) {
 		schema PropertySchema
 	}{
 		{"a status column", PropertySchema{Type: TypeStatus, Status: &OptionsConfig{Options: selectOptions([]string{"Todo"})}}},
-		{"a relation", SchemaRelation("ds-1")},
+		{"a relation", PropertySchema{Type: "relation", Relation: &RelationConfig{DataSourceID: "ds-1"}}},
 		{"a property that is not there at all", PropertySchema{}},
 	}
 	for _, tt := range tests {

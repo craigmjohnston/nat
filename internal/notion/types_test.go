@@ -43,15 +43,8 @@ func TestPropertyValueJSON(t *testing.T) {
 		},
 		{"select", NewSelect("Active"), `{"select":{"name":"Active"}}`},
 		{"status", NewStatus("Active"), `{"status":{"name":"Active"}}`},
-		{
-			"relation",
-			NewRelation("page-1", "page-2"),
-			`{"relation":[{"id":"page-1"},{"id":"page-2"}]}`,
-		},
 		{"people", NewPeople("user-1"), `{"people":[{"id":"user-1"}]}`},
 		{"url", NewURL("https://example.test/pr/1"), `{"url":"https://example.test/pr/1"}`},
-		{"number", NewNumber(2), `{"number":2}`},
-		{"zero number is still sent", NewNumber(0), `{"number":0}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -103,7 +96,7 @@ func TestPropertyValueAccessors(t *testing.T) {
 	})
 
 	t.Run("Text of another property type is empty", func(t *testing.T) {
-		if got := NewNumber(1).Text(); got != "" {
+		if got := NewSelect("Todo").Text(); got != "" {
 			t.Errorf("Text() = %q, want empty", got)
 		}
 	})
@@ -128,7 +121,7 @@ func TestPropertyValueAccessors(t *testing.T) {
 	})
 
 	t.Run("RelationIDs", func(t *testing.T) {
-		got := NewRelation("a", "b").RelationIDs()
+		got := (PropertyValue{Relation: []Relation{{ID: "a"}, {ID: "b"}}}).RelationIDs()
 		if len(got) != 2 || got[0] != "a" || got[1] != "b" {
 			t.Errorf("RelationIDs() = %v", got)
 		}
@@ -147,14 +140,6 @@ func TestPropertyValueAccessors(t *testing.T) {
 		}
 	})
 
-	t.Run("NumberValue distinguishes zero from unset", func(t *testing.T) {
-		if got, ok := NewNumber(0).NumberValue(); !ok || got != 0 {
-			t.Errorf("NumberValue() = %v, %v; want 0, true", got, ok)
-		}
-		if got, ok := (PropertyValue{}).NumberValue(); ok || got != 0 {
-			t.Errorf("NumberValue() = %v, %v; want 0, false", got, ok)
-		}
-	})
 }
 
 func TestPropertyValueDecodesNotionShapes(t *testing.T) {
@@ -194,8 +179,8 @@ func TestPropertyValueDecodesNotionShapes(t *testing.T) {
 	if got := props["PR"].URL; got != "https://example.test/pr/1" {
 		t.Errorf("PR = %q", got)
 	}
-	if got, ok := props["Order"].NumberValue(); !ok || got != 3 {
-		t.Errorf("Order = %v, %v", got, ok)
+	if got := props["Order"].Number; got == nil || *got != 3 {
+		t.Errorf("Order = %v", got)
 	}
 	if got := props["Order"].Type; got != "number" {
 		t.Errorf("Type = %q", got)

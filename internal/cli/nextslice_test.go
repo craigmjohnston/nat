@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -32,10 +33,10 @@ func mustJSON(t *testing.T, s string) string {
 	return string(b)
 }
 
-// claimableAPI answers with a plan whose next slice is unambiguous: the Active
-// milestone is neither the first nor the last in the plan, and the slices under
-// it run through every reason a slice cannot be taken before reaching the one
-// that can.
+// claimableAPI answers with a plan whose next slice is unambiguous: the
+// milestone work is taken from is neither the first nor the last in the plan —
+// the first is finished — and the slices under it run through every reason a
+// slice cannot be taken before reaching the one that can.
 func claimableAPI(t *testing.T) *fakeAPI {
 	t.Helper()
 	return &fakeAPI{
@@ -43,18 +44,16 @@ func claimableAPI(t *testing.T) *fakeAPI {
 			"project-1": conventionBlocks(t),
 			"s3":        briefBlocks(t, "Render the board, then stop."),
 		},
+		dataSources: map[string]notion.DataSource{
+			"slices-ds": assigneeSlicesDS("M1: Client", "M2: Board", "M3: Later"),
+		},
 		pages: map[string][]notion.Page{
-			"milestones-ds": {
-				milestonePage("m1", "M1: Client", 1, notion.MilestoneDone),
-				milestonePage("m2", "M2: Board", 2, notion.MilestoneActive),
-				milestonePage("m3", "M3: Later", 3, notion.MilestoneQueued),
-			},
 			"slices-ds": {
-				slicePage("s1", "Notion client", notion.SliceTodo, "m1", "", ""),
-				slicePage("s2", "Board scaffolding", notion.SliceDone, "m2", "Craig Johnston", ""),
-				slicePage("s3", "Render the board", notion.SliceTodo, "m2", "", ""),
-				slicePage("s4", "Style the board", notion.SliceTodo, "m2", "", ""),
-				slicePage("s5", "Queued work", notion.SliceTodo, "m3", "", ""),
+				slicePage("s1", "Notion client", notion.SliceDone, "M1: Client", "Craig Johnston", ""),
+				slicePage("s2", "Board scaffolding", notion.SliceDone, "M2: Board", "Craig Johnston", ""),
+				slicePage("s3", "Render the board", notion.SliceTodo, "M2: Board", "", ""),
+				slicePage("s4", "Style the board", notion.SliceTodo, "M2: Board", "", ""),
+				slicePage("s5", "Queued work", notion.SliceTodo, "M3: Later", "", ""),
 			},
 		},
 	}
@@ -101,8 +100,8 @@ Branch per slice.
 }
 
 // The slice taken is the oldest unclaimed Todo one under the lowest-ordered
-// Active milestone: not a Done or Queued milestone's, not one already held, and
-// not a later one under the same milestone.
+// milestone still open: not a finished or later milestone's, not one already
+// held, and not a later one under the same milestone.
 func TestNextSliceClaimsTheRightSlice(t *testing.T) {
 	api := claimableAPI(t)
 	env, _ := testEnv(testClaimConfig(), api)
@@ -121,8 +120,8 @@ func TestNextSliceClaimsTheRightSlice(t *testing.T) {
 	if ids := got.props[notion.PropAssignee].PeopleIDs(); len(ids) != 1 || ids[0] != "u1" {
 		t.Errorf("assignee = %v, want [u1]", ids)
 	}
-	if name := got.props[notion.PropStatus].SelectName(); name != notion.SliceClaimed {
-		t.Errorf("status = %q, want %q", name, notion.SliceClaimed)
+	if name := got.props[notion.PropStatus].SelectName(); name != notion.SliceInProgress {
+		t.Errorf("status = %q, want %q", name, notion.SliceInProgress)
 	}
 	if got.props[notion.PropStatus].Select == nil {
 		t.Errorf("status = %+v, want a select, the shape the page was read in", got.props[notion.PropStatus])
@@ -137,10 +136,10 @@ func TestNextSliceWritesTheStatusShapeItRead(t *testing.T) {
 	slices[2].Properties[notion.PropStatus] = notion.PropertyValue{
 		Type: notion.TypeStatus, Status: &notion.SelectOption{Name: notion.SliceTodo},
 	}
-	ds := claimedSlicesDS()
+	ds := assigneeSlicesDS("M1: Client", "M2: Board", "M3: Later")
 	ds.Properties[notion.PropStatus] = notion.PropertySchema{
 		Type:   notion.TypeStatus,
-		Status: &notion.OptionsConfig{Options: []notion.SelectOption{{Name: notion.SliceClaimed}}},
+		Status: &notion.OptionsConfig{Options: []notion.SelectOption{{Name: notion.SliceInProgress}}},
 	}
 	api.dataSources = map[string]notion.DataSource{"slices-ds": ds}
 	env, _ := testEnv(testClaimConfig(), api)
@@ -155,9 +154,9 @@ func TestNextSliceWritesTheStatusShapeItRead(t *testing.T) {
 	}
 }
 
-// The milestones come back in plan order and the slices oldest first, which is
-// what makes "the next slice" mean anything.
-func TestNextSliceQueriesInPlanOrder(t *testing.T) {
+// The plan comes with the schema, so the slices are the only query — oldest
+// first, which is what makes "the next slice" mean anything.
+func TestNextSliceQueriesOnlyTheSlices(t *testing.T) {
 	api := claimableAPI(t)
 	env, _ := testEnv(testClaimConfig(), api)
 
@@ -165,17 +164,12 @@ func TestNextSliceQueriesInPlanOrder(t *testing.T) {
 		t.Fatalf("next-slice: %v", err)
 	}
 
-	want := []query{
-		{id: "milestones-ds", sorts: []notion.Sort{{Property: notion.PropOrder, Direction: notion.SortAscending}}},
-		{id: "slices-ds", sorts: []notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}}},
+	want := query{id: "slices-ds", sorts: []notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}}}
+	if len(api.queries) != 1 {
+		t.Fatalf("queries = %+v, want only %+v", api.queries, want)
 	}
-	if len(api.queries) != len(want) {
-		t.Fatalf("queries = %+v, want %+v", api.queries, want)
-	}
-	for i, q := range api.queries {
-		if q.id != want[i].id || len(q.sorts) != 1 || q.sorts[0] != want[i].sorts[0] {
-			t.Errorf("query %d = %+v, want %+v", i, q, want[i])
-		}
+	if q := api.queries[0]; q.id != want.id || len(q.sorts) != 1 || q.sorts[0] != want.sorts[0] {
+		t.Errorf("query = %+v, want %+v", q, want)
 	}
 }
 
@@ -219,7 +213,7 @@ func TestNextSliceOmitsAMissingURL(t *testing.T) {
 	api := claimableAPI(t)
 	api.pages["slices-ds"][2].URL = ""
 	cfg := testClaimConfig()
-	cfg.Projects["project-1"] = config.ProjectConfig{Name: "nat", MilestonesDSID: "milestones-ds", SlicesDSID: "slices-ds"}
+	cfg.Projects["project-1"] = config.ProjectConfig{Name: "nat", SlicesDSID: "slices-ds"}
 	env, out := testEnv(cfg, api)
 
 	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
@@ -245,79 +239,14 @@ func TestNextSlicePrintsJSON(t *testing.T) {
 	}
 	want := briefJSON{
 		Slice: briefSliceJSON{
-			ID: "s3", Name: "Render the board", Status: notion.SliceClaimed,
-			Assignee: "Craig Johnston", MilestoneID: "m2", MilestoneName: "M2: Board",
+			ID: "s3", Name: "Render the board", Status: notion.SliceInProgress,
+			Assignee: "Craig Johnston", MilestoneID: "M2: Board", MilestoneName: "M2: Board",
 			Repo: "/tmp/nat", Brief: "Render the board, then stop.", URL: "https://notion.so/s3",
 		},
 		Project: projectJSON{ID: "project-1", Name: "nat", Conventions: "Branch per slice."},
 	}
 	if got != want {
 		t.Errorf("json = %+v\nwant %+v", got, want)
-	}
-}
-
-// With nothing to claim the command fails and writes nothing — an agent reading
-// it must not mistake "none left" for a brief — and touches no page.
-func TestNextSliceReportsNothingToClaim(t *testing.T) {
-	tests := []struct {
-		name    string
-		pages   map[string][]notion.Page
-		wantErr []string
-	}{
-		{
-			name: "no Active milestone",
-			pages: map[string][]notion.Page{
-				"milestones-ds": {milestonePage("m1", "M1: Client", 1, notion.MilestoneQueued)},
-				"slices-ds":     {slicePage("s1", "Notion client", notion.SliceTodo, "m1", "", "")},
-			},
-			wantErr: []string{"no Active milestone"},
-		},
-		{
-			name: "every slice taken",
-			pages: map[string][]notion.Page{
-				"milestones-ds": {milestonePage("m2", "M2: Board", 2, notion.MilestoneActive)},
-				"slices-ds": {
-					slicePage("s1", "Held", notion.SliceClaimed, "m2", "Craig Johnston", ""),
-					slicePage("s2", "Finished", notion.SliceDone, "m2", "Craig Johnston", ""),
-					slicePage("s3", "Todo but held", notion.SliceTodo, "m2", "Someone Else", ""),
-					slicePage("s4", "Another milestone's", notion.SliceTodo, "m9", "", ""),
-				},
-			},
-			wantErr: []string{"no unclaimed Todo slice in the Active milestone", "M2: Board"},
-		},
-		{
-			name: "several Active milestones, none with work",
-			pages: map[string][]notion.Page{
-				"milestones-ds": {
-					milestonePage("m1", "M1: Client", 1, notion.MilestoneActive),
-					milestonePage("m2", "M2: Board", 2, notion.MilestoneActive),
-				},
-			},
-			wantErr: []string{"Active milestones", "M1: Client, M2: Board"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			api := &fakeAPI{pages: tt.pages}
-			env, out := testEnv(testClaimConfig(), api)
-
-			err := Run(context.Background(), []string{"next-slice"}, env)
-
-			if err == nil {
-				t.Fatal("err = nil, want a refusal")
-			}
-			for _, want := range tt.wantErr {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("err = %q, want it to mention %q", err, want)
-				}
-			}
-			if len(api.updates) != 0 {
-				t.Errorf("updates = %+v, want none", api.updates)
-			}
-			if out.Len() != 0 {
-				t.Errorf("output = %q, want nothing", out.String())
-			}
-		})
 	}
 }
 
@@ -373,13 +302,6 @@ func TestNextSliceReportsAFailedCall(t *testing.T) {
 		api  func(*testing.T) *fakeAPI
 		want string
 	}{
-		{
-			name: "milestones",
-			api: func(t *testing.T) *fakeAPI {
-				return &fakeAPI{queryErr: map[string]error{"milestones-ds": boom}}
-			},
-			want: "load milestones",
-		},
 		{
 			name: "slices",
 			api: func(t *testing.T) *fakeAPI {
@@ -525,7 +447,9 @@ func TestNextSliceRejectsAMisusedCommandLine(t *testing.T) {
 // is written to a table that has none.
 func TestNextSliceClaimsAProjectWithNoAssigneeColumn(t *testing.T) {
 	api := claimableAPI(t)
-	api.dataSources = map[string]notion.DataSource{"slices-ds": inProgressSlicesDS()}
+	api.dataSources = map[string]notion.DataSource{
+		"slices-ds": selectMilestoneSlicesDS("M1: Client", "M2: Board", "M3: Later"),
+	}
 	env, out := testEnv(testClaimConfig(), api)
 
 	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
@@ -547,102 +471,31 @@ func TestNextSliceClaimsAProjectWithNoAssigneeColumn(t *testing.T) {
 	}
 }
 
-// onePagePlanAPI answers with a plan kept entirely on one page: no Milestones
-// data source, the milestones the options of the slices' own Milestone column,
-// and nothing yet in progress — so no milestone is Active, and none could be
-// made Active either, there being no status to write.
-func onePagePlanAPI(t *testing.T) *fakeAPI {
-	t.Helper()
-	return &fakeAPI{
-		blocksByID: map[string][]notion.Block{
-			"project-1": conventionBlocks(t),
-			"s2":        briefBlocks(t, "Render the board, then stop."),
-		},
-		dataSources: map[string]notion.DataSource{
-			"slices-ds": selectMilestoneSlicesDS("M1: Client", "M2: Board", "M3: Later"),
-		},
-		pages: map[string][]notion.Page{
-			"slices-ds": {
-				selectSlicePage("s1", "Notion client", notion.SliceDone, "M1: Client"),
-				selectSlicePage("s2", "Render the board", notion.SliceTodo, "M2: Board"),
-				selectSlicePage("s3", "Style the board", notion.SliceTodo, "M2: Board"),
-				selectSlicePage("s4", "Queued work", notion.SliceTodo, "M3: Later"),
-			},
-		},
-	}
-}
-
-// A plan on one page has no Active milestone to gate on and no way to make one,
-// so work is taken from the lowest-ordered milestone that is not finished: the
-// first milestone here is Done, the second has not been started, and the slice
-// claimed is the first of that one's.
-func TestNextSliceWorksAgainstAOnePagePlan(t *testing.T) {
-	api := onePagePlanAPI(t)
-	env, out := testEnv(testClaimConfig(), api)
-
-	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
-		t.Fatalf("next-slice: %v", err)
-	}
-
-	if len(api.updates) != 1 || api.updates[0].id != "s2" {
-		t.Fatalf("updates = %+v, want exactly s2 claimed", api.updates)
-	}
-	if name := api.updates[0].props[notion.PropStatus].SelectName(); name != notion.SliceInProgress {
-		t.Errorf("status = %q, want %q", name, notion.SliceInProgress)
-	}
-	if _, wrote := api.updates[0].props[notion.PropAssignee]; wrote {
-		t.Errorf("props = %+v, want no assignee written to a table without the column", api.updates[0].props)
-	}
-	if !strings.Contains(out.String(), "- Milestone: M2: Board\n") {
-		t.Errorf("output =\n%s\nwant the derived milestone named", out.String())
-	}
-	for _, q := range api.queries {
-		if q.id == "milestones-ds" {
-			t.Errorf("queried %s, want no milestones query at all", q.id)
-		}
-	}
-}
-
 // The slice handed out is the one at the top of the milestone on the project's
 // own board, not whichever the query happened to return first: a plan written
 // in one go shares a created time to the minute, so the board's order is the
 // only order it has.
 func TestNextSliceTakesTheTopSliceOfTheBoard(t *testing.T) {
-	api := onePagePlanAPI(t)
-	api.order = map[string][]string{"slices-ds": {"s1", "s4", "s3", "s2"}}
+	api := claimableAPI(t)
+	api.order = map[string][]string{"slices-ds": {"s1", "s2", "s5", "s4", "s3"}}
 	env, _ := testEnv(testClaimConfig(), api)
 
 	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
 	}
 
-	if len(api.updates) != 1 || api.updates[0].id != "s3" {
-		t.Fatalf("updates = %+v, want s3, the board's first slice of M2: Board", api.updates)
+	if len(api.updates) != 1 || api.updates[0].id != "s4" {
+		t.Fatalf("updates = %+v, want s4, the board's first Todo slice of M2: Board", api.updates)
 	}
 	if len(api.ordered) != 1 || api.ordered[0] != "slices-ds" {
 		t.Errorf("order reads = %v, want the slices' own view read once", api.ordered)
 	}
 }
 
-// A plan kept in a Milestones database is ordered by those milestones' Order,
-// so no view is read for one.
-func TestNextSliceReadsNoViewForARelatedPlan(t *testing.T) {
-	api := claimableAPI(t)
-	env, _ := testEnv(testClaimConfig(), api)
-
-	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
-		t.Fatalf("next-slice: %v", err)
-	}
-
-	if len(api.ordered) != 0 {
-		t.Errorf("order reads = %v, want none", api.ordered)
-	}
-}
-
 // An order that cannot be read is not worth refusing to work over: the slices
 // stay in the order they were queried and the next one is still handed out.
 func TestNextSliceWorksWithoutAReadableBoardOrder(t *testing.T) {
-	api := onePagePlanAPI(t)
+	api := claimableAPI(t)
 	api.orderErr = errors.New("notion: 500")
 	env, _ := testEnv(testClaimConfig(), api)
 
@@ -650,41 +503,16 @@ func TestNextSliceWorksWithoutAReadableBoardOrder(t *testing.T) {
 		t.Fatalf("next-slice: %v", err)
 	}
 
-	if len(api.updates) != 1 || api.updates[0].id != "s2" {
-		t.Fatalf("updates = %+v, want s2, the plan in the order it was queried", api.updates)
+	if len(api.updates) != 1 || api.updates[0].id != "s3" {
+		t.Fatalf("updates = %+v, want s3, the plan in the order it was queried", api.updates)
 	}
 }
 
-// The brief for a slice under a derived milestone names it, so an agent reading
-// the JSON is told where in the plan its work sits.
-func TestNextSliceNamesTheDerivedMilestoneInJSON(t *testing.T) {
-	env, out := testEnv(testClaimConfig(), onePagePlanAPI(t))
-
-	if err := Run(context.Background(), []string{"next-slice", "--json"}, env); err != nil {
-		t.Fatalf("next-slice --json: %v", err)
-	}
-
-	var got briefJSON
-	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
-		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
-	}
-	want := briefJSON{
-		Slice: briefSliceJSON{
-			ID: "s2", Name: "Render the board", Status: notion.SliceInProgress,
-			Assignee: "Craig Johnston", MilestoneID: "M2: Board", MilestoneName: "M2: Board",
-			Repo: "/tmp/nat", Brief: "Render the board, then stop.", URL: "https://notion.so/s2",
-		},
-		Project: projectJSON{ID: "project-1", Name: "nat", Conventions: "Branch per slice."},
-	}
-	if got != want {
-		t.Errorf("json = %+v\nwant %+v", got, want)
-	}
-}
-
-// With nothing left to take from a one-page plan the refusal says so in the
-// terms that plan is kept in: there are no statuses to activate, so it is the
-// milestones themselves that are finished or empty.
-func TestNextSliceReportsNothingToClaimInAOnePagePlan(t *testing.T) {
+// With nothing left to take the refusal says so in the terms the plan is kept
+// in: there are no statuses to activate, so it is the milestones themselves
+// that are finished or empty. Nothing is written either — an agent reading the
+// refusal must not mistake "none left" for a brief.
+func TestNextSliceReportsNothingToClaim(t *testing.T) {
 	tests := []struct {
 		name    string
 		options []string
@@ -695,23 +523,23 @@ func TestNextSliceReportsNothingToClaimInAOnePagePlan(t *testing.T) {
 			name:    "every milestone Done",
 			options: []string{"M1: Client", "M2: Board"},
 			slices: []notion.Page{
-				selectSlicePage("s1", "Notion client", notion.SliceDone, "M1: Client"),
-				selectSlicePage("s2", "Render the board", notion.SliceDone, "M2: Board"),
+				slicePage("s1", "Notion client", notion.SliceDone, "M1: Client", "", ""),
+				slicePage("s2", "Render the board", notion.SliceDone, "M2: Board", "", ""),
 			},
 			wantErr: []string{"no unfinished milestone", "every milestone in the plan is Done"},
 		},
 		{
 			name:    "no milestone in the plan at all",
 			options: []string{},
-			slices:  []notion.Page{selectSlicePage("s1", "Stray idea", notion.SliceTodo, "")},
+			slices:  []notion.Page{slicePage("s1", "Stray idea", notion.SliceTodo, "", "", "")},
 			wantErr: []string{"no unfinished milestone"},
 		},
 		{
 			name:    "nothing unclaimed under the unfinished milestones",
 			options: []string{"M1: Client", "M2: Board"},
 			slices: []notion.Page{
-				selectSlicePage("s1", "Notion client", notion.SliceInProgress, "M1: Client"),
-				selectSlicePage("s2", "Render the board", notion.SliceDone, "M2: Board"),
+				slicePage("s1", "Notion client", notion.SliceInProgress, "M1: Client", "", ""),
+				slicePage("s2", "Render the board", notion.SliceDone, "M2: Board", "", ""),
 			},
 			wantErr: []string{"no unclaimed Todo slice in the unfinished milestone", "M1: Client"},
 		},
@@ -744,15 +572,13 @@ func TestNextSliceReportsNothingToClaimInAOnePagePlan(t *testing.T) {
 	}
 }
 
-// A slice whose milestone is not in the plan — a relation to a page the query
-// did not return, or an option since deleted — is not work anyone is owed, so
-// it is passed over rather than claimed under a milestone that isn't there.
+// A slice whose milestone is not in the plan — an option since deleted out from
+// under it — is not work anyone is owed, so it is passed over rather than
+// claimed under a milestone that isn't there.
 func TestNextSlicePassesOverASliceOutsideThePlan(t *testing.T) {
 	api := &fakeAPI{
-		pages: map[string][]notion.Page{
-			"milestones-ds": {milestonePage("m1", "M1: Client", 1, notion.MilestoneActive)},
-			"slices-ds":     {slicePage("s1", "Orphan", notion.SliceTodo, "gone", "", "")},
-		},
+		dataSources: map[string]notion.DataSource{"slices-ds": selectMilestoneSlicesDS("M1: Client")},
+		pages:       map[string][]notion.Page{"slices-ds": {slicePage("s1", "Orphan", notion.SliceTodo, "gone", "", "")}},
 	}
 	env, _ := testEnv(testClaimConfig(), api)
 
@@ -774,10 +600,81 @@ func TestNextSliceReportsAFailedSchemaRead(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(), api)
 
 	err := Run(context.Background(), []string{"next-slice"}, env)
-	if err == nil || !strings.Contains(err.Error(), "read the slices schema") {
+	if err == nil || !strings.Contains(err.Error(), "load the slices schema") {
 		t.Fatalf("err = %v, want the schema read named", err)
 	}
 	if len(api.updates) != 0 {
 		t.Errorf("updates = %+v, want nothing written", api.updates)
 	}
+}
+
+// A project still in the shape this app started with is migrated on the way to
+// the command that reads it, so an agent works a plan of the one shape whatever
+// the project was stored as.
+func TestNextSliceMigratesAnOldProject(t *testing.T) {
+	old := notion.DataSource{ID: "slices-ds", Properties: map[string]notion.PropertySchema{
+		notion.PropStatus: notion.SchemaSelect(notion.SliceTodo, notion.SliceClaimed, notion.SliceDone),
+		notion.PropMilestone: {
+			Type:     "relation",
+			Relation: &notion.RelationConfig{DataSourceID: "milestones-ds"},
+		},
+		notion.PropAssignee: {Type: notion.TypePeople},
+	}}
+	api := &fakeAPI{
+		blocksByID: map[string][]notion.Block{
+			"project-1": conventionBlocks(t),
+			"s2":        briefBlocks(t, "Render the board, then stop."),
+		},
+		dataSources: map[string]notion.DataSource{"slices-ds": old},
+		pages: map[string][]notion.Page{
+			"milestones-ds": {
+				{ID: "m1", Properties: map[string]notion.PropertyValue{notion.PropName: title("M1: Client")}},
+				{ID: "m2", Properties: map[string]notion.PropertyValue{notion.PropName: title("M2: Board")}},
+			},
+			"slices-ds": {
+				relatedSlicePage("s1", "Notion client", notion.SliceDone, "m1"),
+				relatedSlicePage("s2", "Render the board", notion.SliceTodo, "m2"),
+			},
+		},
+	}
+	env, out := testEnv(testClaimConfig(), api)
+
+	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
+		t.Fatalf("next-slice: %v", err)
+	}
+
+	// The milestones moved onto the slices' own column, the slices were refiled
+	// under them, and the claim went to the slice under M2 — all of which needs
+	// the plan to have been read in its new shape.
+	if len(api.schemaUpdates) != 1 {
+		t.Fatalf("schema writes = %+v, want the one migration wrote", api.schemaUpdates)
+	}
+	written := api.schemaUpdates[0].props
+	if got := written[notion.PropMilestone].OptionNames(); !reflect.DeepEqual(got, []string{"M1: Client", "M2: Board"}) {
+		t.Errorf("options = %v, want the milestones moved onto the column", got)
+	}
+	if got := written[notion.PropStatus].OptionNames(); !reflect.DeepEqual(got,
+		[]string{notion.SliceTodo, notion.SliceInProgress, notion.SliceDone}) {
+		t.Errorf("status options = %v, want the old name renamed", got)
+	}
+	var claimed string
+	for _, u := range api.updates {
+		if _, ok := u.props[notion.PropStatus]; ok {
+			claimed = u.id
+		}
+	}
+	if claimed != "s2" {
+		t.Errorf("claimed %q, want s2", claimed)
+	}
+	if !strings.Contains(out.String(), "- Milestone: M2: Board\n") {
+		t.Errorf("output =\n%s\nwant the migrated milestone named", out.String())
+	}
+}
+
+// relatedSlicePage is a slice of a project in the old shape: its milestone a
+// relation to a page of a Milestones data source.
+func relatedSlicePage(id, name, status, milestoneID string) notion.Page {
+	p := slicePage(id, name, status, "", "", "")
+	p.Properties[notion.PropMilestone] = notion.PropertyValue{Relation: []notion.Relation{{ID: milestoneID}}}
+	return p
 }

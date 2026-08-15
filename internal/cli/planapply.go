@@ -60,10 +60,7 @@ func planApply(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	existing, err := loadMilestones(ctx, client, project, notion.ShapeOf(ds))
-	if err != nil {
-		return err
-	}
+	existing := milestonesOf(notion.ShapeOf(ds))
 	targets, err := validatePlan(p, existing)
 	if err != nil {
 		return err
@@ -227,7 +224,7 @@ func applyPlan(ctx context.Context, client API, project config.ProjectConfig, ds
 	for i, pm := range p.Milestones {
 		names[i] = strings.TrimSpace(pm.Name)
 	}
-	added, err := addMilestones(ctx, client, project, ds, existing, names)
+	added, err := addMilestones(ctx, client, project.SlicesDSID, ds, existing, names)
 	applied.Milestones = added
 	if err != nil {
 		return applied, appliedErr(applied, err)
@@ -282,7 +279,7 @@ func (a appliedPlan) jsonDoc(project config.ProjectConfig) planAppliedJSON {
 	}
 	for _, m := range a.Milestones {
 		doc.Milestones = append(doc.Milestones, milestoneJSON{
-			ID: m.ID, Name: m.Name, Order: m.Order, Status: string(m.Status), URL: m.URL,
+			ID: m.ID, Name: m.Name, Order: m.Order, Status: string(m.Status),
 		})
 	}
 	for _, s := range a.Slices {
@@ -309,7 +306,7 @@ func (a appliedPlan) markdown(project config.ProjectConfig) string {
 
 	for _, m := range a.Milestones {
 		fmt.Fprintf(&b, "\n## %s\n\n", m.Name)
-		fmt.Fprintf(&b, "New milestone %s, %s — %s\n\n", planPosition(m), blank(string(m.Status)), milestoneWhere(m))
+		fmt.Fprintf(&b, "New milestone %s, %s — %s\n\n", planPosition(m), blank(string(m.Status)), optionNote)
 		b.WriteString(sliceList(a.slicesUnder(m.ID)))
 	}
 	for _, m := range a.existingMilestones() {
@@ -361,15 +358,6 @@ func sliceList(slices []appliedSlice) string {
 		fmt.Fprintf(&b, "- %s — %s\n", s.Slice.Name, pageRef(s.Slice.ID, s.Slice.URL))
 	}
 	return b.String()
-}
-
-// milestoneWhere says where a created milestone is to be found: the page it
-// got, or — where the plan is a column's options — that it is one of them.
-func milestoneWhere(m domain.Milestone) string {
-	if m.Derived {
-		return optionNote
-	}
-	return pageRef(m.ID, m.URL)
 }
 
 // pageRef names a created page: its URL, which is what someone checking the

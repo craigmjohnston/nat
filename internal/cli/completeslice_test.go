@@ -33,7 +33,7 @@ func heldSlice(id, name, status, userID, assignee string) notion.Page {
 func completableAPI() *fakeAPI {
 	return &fakeAPI{
 		pages: map[string][]notion.Page{
-			"slices-ds": {heldSlice(sliceID, "Render the board", notion.SliceClaimed, "u1", "Craig Johnston")},
+			"slices-ds": {heldSlice(sliceID, "Render the board", notion.SliceInProgress, "u1", "Craig Johnston")},
 		},
 	}
 }
@@ -183,7 +183,7 @@ func TestCompleteSliceReadsTheSummaryFromStdin(t *testing.T) {
 
 // --blocked is the other way a session ends: the note goes on, the status does
 // not move, and the slice stays with the agent that could not finish it.
-func TestCompleteSliceBlockedLeavesTheSliceClaimed(t *testing.T) {
+func TestCompleteSliceBlockedLeavesTheSliceInProgress(t *testing.T) {
 	api := completableAPI()
 	env, out := completeEnv(api)
 
@@ -248,7 +248,7 @@ func TestCompleteSliceBlockedStillRecordsThePR(t *testing.T) {
 func TestCompleteSliceWritesTheStatusShapeItRead(t *testing.T) {
 	api := completableAPI()
 	api.pages["slices-ds"][0].Properties[notion.PropStatus] = notion.PropertyValue{
-		Type: notion.TypeStatus, Status: &notion.SelectOption{Name: notion.SliceClaimed},
+		Type: notion.TypeStatus, Status: &notion.SelectOption{Name: notion.SliceInProgress},
 	}
 	env, _ := completeEnv(api)
 
@@ -331,27 +331,27 @@ func TestCompleteSliceRefusesASliceItDoesNotHold(t *testing.T) {
 		{
 			name:    "still Todo",
 			page:    heldSlice(sliceID, "Render the board", notion.SliceTodo, "", ""),
-			wantErr: []string{"is Todo, not Claimed", "Render the board"},
+			wantErr: []string{"is Todo, not In progress", "Render the board"},
 		},
 		{
 			name:    "already Done",
 			page:    heldSlice(sliceID, "Render the board", notion.SliceDone, "u1", "Craig Johnston"),
-			wantErr: []string{"is Done, not Claimed"},
+			wantErr: []string{"is Done, not In progress"},
 		},
 		{
 			name:    "claimed by someone else",
-			page:    heldSlice(sliceID, "Render the board", notion.SliceClaimed, "u2", "Someone Else"),
+			page:    heldSlice(sliceID, "Render the board", notion.SliceInProgress, "u2", "Someone Else"),
 			wantErr: []string{"held by Someone Else, not by Craig Johnston", "leave it to them"},
 		},
 		{
 			name:    "claimed by nobody",
-			page:    heldSlice(sliceID, "Render the board", notion.SliceClaimed, "", ""),
+			page:    heldSlice(sliceID, "Render the board", notion.SliceInProgress, "", ""),
 			wantErr: []string{"in progress but held by nobody, not by Craig Johnston"},
 		},
 		{
 			name:    "no status at all",
 			page:    notion.Page{ID: sliceID, Properties: map[string]notion.PropertyValue{notion.PropName: title("Render the board")}},
-			wantErr: []string{"is (no status), not Claimed"},
+			wantErr: []string{"is (no status), not In progress"},
 		},
 	}
 	for _, tt := range tests {
@@ -616,7 +616,7 @@ func TestCompleteSliceClosesOutAProjectWithNoAssigneeColumn(t *testing.T) {
 		pages: map[string][]notion.Page{
 			"slices-ds": {heldSlice(sliceID, "Render the board", notion.SliceInProgress, "", "")},
 		},
-		dataSources: map[string]notion.DataSource{"slices-ds": inProgressSlicesDS()},
+		dataSources: map[string]notion.DataSource{"slices-ds": soloSlicesDS()},
 	}
 	env, out := completeEnv(api)
 
@@ -642,7 +642,7 @@ func TestCompleteSliceRefusesATodoSliceOfAProjectWithNoAssigneeColumn(t *testing
 		pages: map[string][]notion.Page{
 			"slices-ds": {heldSlice(sliceID, "Render the board", notion.SliceTodo, "", "")},
 		},
-		dataSources: map[string]notion.DataSource{"slices-ds": inProgressSlicesDS()},
+		dataSources: map[string]notion.DataSource{"slices-ds": soloSlicesDS()},
 	}
 	env, _ := completeEnv(api)
 
@@ -656,7 +656,7 @@ func TestCompleteSliceRefusesATodoSliceOfAProjectWithNoAssigneeColumn(t *testing
 // what the Milestone column holds is nothing to do with finishing the work, and
 // ownership is decided on the status the project's own schema names.
 func TestCompleteSliceClosesOutASliceOfAOnePagePlan(t *testing.T) {
-	slice := selectSlicePage(sliceID, "Render the board", notion.SliceInProgress, "M2: Board")
+	slice := slicePage(sliceID, "Render the board", notion.SliceInProgress, "M2: Board", "", "")
 	api := &fakeAPI{
 		pages:       map[string][]notion.Page{"slices-ds": {slice}},
 		dataSources: map[string]notion.DataSource{"slices-ds": selectMilestoneSlicesDS("M1: Client", "M2: Board")},
@@ -687,7 +687,7 @@ func TestCompleteSliceReportsAFailedSchemaRead(t *testing.T) {
 	env, _ := completeEnv(api)
 
 	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done."}, env)
-	if err == nil || !strings.Contains(err.Error(), "read the slices schema") {
+	if err == nil || !strings.Contains(err.Error(), "load the slices schema") {
 		t.Fatalf("err = %v, want the schema read named", err)
 	}
 	if len(api.appends) != 0 {

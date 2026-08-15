@@ -20,65 +20,6 @@ func page(t *testing.T, body string) notion.Page {
 	return p
 }
 
-func TestMilestoneFromPage(t *testing.T) {
-	tests := []struct {
-		name string
-		body string
-		want Milestone
-	}{
-		{
-			"select shape",
-			`{
-				"id": "m1",
-				"url": "https://notion.test/m1",
-				"properties": {
-					"Name": {"type": "title", "title": [{"plain_text": "M4: Read-only board"}]},
-					"Order": {"type": "number", "number": 4},
-					"Status": {"type": "select", "select": {"name": "Active"}}
-				}
-			}`,
-			Milestone{ID: "m1", Name: "M4: Read-only board", Order: 4, Status: MilestoneActive,
-				StatusType: notion.TypeSelect, URL: "https://notion.test/m1"},
-		},
-		{
-			"status shape",
-			`{
-				"id": "m2",
-				"properties": {
-					"Name": {"type": "title", "title": [{"plain_text": "M5"}]},
-					"Order": {"type": "number", "number": 5},
-					"Status": {"type": "status", "status": {"name": "Queued"}}
-				}
-			}`,
-			Milestone{ID: "m2", Name: "M5", Order: 5, Status: MilestoneQueued, StatusType: notion.TypeStatus},
-		},
-		{
-			"missing properties map to zero values",
-			`{"id": "m3", "properties": {}}`,
-			Milestone{ID: "m3"},
-		},
-		{
-			"unset order is zero",
-			`{
-				"id": "m4",
-				"properties": {
-					"Name": {"type": "title", "title": [{"plain_text": "M6"}]},
-					"Order": {"type": "number", "number": null},
-					"Status": {"type": "select", "select": {"name": "Done"}}
-				}
-			}`,
-			Milestone{ID: "m4", Name: "M6", Status: MilestoneDone, StatusType: notion.TypeSelect},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := MilestoneFromPage(page(t, tt.body)); got != tt.want {
-				t.Errorf("MilestoneFromPage() = %+v, want %+v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestSliceFromPage(t *testing.T) {
 	tests := []struct {
 		name string
@@ -86,21 +27,22 @@ func TestSliceFromPage(t *testing.T) {
 		want Slice
 	}{
 		{
-			"select shape, fully populated",
+			"fully populated",
 			`{
 				"id": "s1",
 				"url": "https://notion.test/s1",
 				"properties": {
 					"Name": {"type": "title", "title": [{"plain_text": "Domain model"}]},
-					"Status": {"type": "select", "select": {"name": "Claimed"}},
-					"Milestone": {"type": "relation", "relation": [{"id": "m1"}]},
+					"Status": {"type": "select", "select": {"name": "In progress"}},
+					"Milestone": {"type": "select", "select": {"name": "M1: Groundwork"}},
 					"Assignee": {"type": "people", "people": [{"id": "u1", "name": "Craig Johnston"}]},
 					"Repo": {"type": "rich_text", "rich_text": [{"plain_text": "/repos/other"}]},
 					"PR": {"type": "url", "url": "https://github.test/pr/1"}
 				}
 			}`,
 			Slice{
-				ID: "s1", Name: "Domain model", Status: SliceClaimed, StatusName: "Claimed", MilestoneID: "m1",
+				ID: "s1", Name: "Domain model", Status: SliceClaimed, StatusName: "In progress",
+				MilestoneID:  "M1: Groundwork",
 				AssigneeName: "Craig Johnston", Repo: "/repos/other",
 				PRURL: "https://github.test/pr/1", URL: "https://notion.test/s1",
 			},
@@ -123,22 +65,22 @@ func TestSliceFromPage(t *testing.T) {
 				"properties": {
 					"Name": {"type": "title", "title": [{"plain_text": "Loose"}]},
 					"Status": {"type": "select", "select": {"name": "Todo"}},
-					"Milestone": {"type": "relation", "relation": []},
+					"Milestone": {"type": "select", "select": null},
 					"Assignee": {"type": "people", "people": []}
 				}
 			}`,
 			Slice{ID: "s3", Name: "Loose", Status: SliceTodo, StatusName: "Todo"},
 		},
 		{
-			"in progress is the same status as claimed",
+			"the old name for in progress is a status this build no longer knows",
 			`{
 				"id": "s6",
 				"properties": {
-					"Name": {"type": "title", "title": [{"plain_text": "Newer project"}]},
-					"Status": {"type": "select", "select": {"name": "In progress"}}
+					"Name": {"type": "title", "title": [{"plain_text": "Unmigrated"}]},
+					"Status": {"type": "select", "select": {"name": "Claimed"}}
 				}
 			}`,
-			Slice{ID: "s6", Name: "Newer project", Status: SliceClaimed, StatusName: "In progress"},
+			Slice{ID: "s6", Name: "Unmigrated", Status: SliceStatus("Claimed"), StatusName: "Claimed"},
 		},
 		{
 			"a status this build does not know is carried through",
@@ -146,15 +88,14 @@ func TestSliceFromPage(t *testing.T) {
 			Slice{ID: "s7", Status: SliceStatus("Parked"), StatusName: "Parked"},
 		},
 		{
-			"only the first relation and assignee are read",
+			"only the first assignee is read",
 			`{
 				"id": "s4",
 				"properties": {
-					"Milestone": {"type": "relation", "relation": [{"id": "m1"}, {"id": "m2"}]},
 					"Assignee": {"type": "people", "people": [{"id": "u1", "name": "First"}, {"id": "u2", "name": "Second"}]}
 				}
 			}`,
-			Slice{ID: "s4", MilestoneID: "m1", AssigneeName: "First"},
+			Slice{ID: "s4", AssigneeName: "First"},
 		},
 		{
 			"missing properties map to zero values",
@@ -162,7 +103,7 @@ func TestSliceFromPage(t *testing.T) {
 			Slice{ID: "s5"},
 		},
 		{
-			"a milestone named on a select is the milestone",
+			"the milestone is the option the slice names",
 			`{
 				"id": "s8",
 				"properties": {
@@ -188,21 +129,10 @@ func TestSliceFromPage(t *testing.T) {
 	}
 }
 
-func TestMilestonesFromPages(t *testing.T) {
-	pages := []notion.Page{page(t, `{"id":"m1"}`), page(t, `{"id":"m2"}`)}
-	want := []Milestone{{ID: "m1"}, {ID: "m2"}}
-	if got := MilestonesFromPages(pages); !reflect.DeepEqual(got, want) {
-		t.Errorf("MilestonesFromPages() = %+v, want %+v", got, want)
-	}
-	if got := MilestonesFromPages(nil); len(got) != 0 {
-		t.Errorf("MilestonesFromPages(nil) = %+v, want empty", got)
-	}
-}
-
 func TestMilestonesFromOptions(t *testing.T) {
 	want := []Milestone{
-		{ID: "M1: Groundwork", Name: "M1: Groundwork", Order: 0, Derived: true, SelectType: notion.TypeSelect},
-		{ID: "M2: The board", Name: "M2: The board", Order: 1, Derived: true, SelectType: notion.TypeSelect},
+		{ID: "M1: Groundwork", Name: "M1: Groundwork", Order: 0, SelectType: notion.TypeSelect},
+		{ID: "M2: The board", Name: "M2: The board", Order: 1, SelectType: notion.TypeSelect},
 	}
 	got := MilestonesFromOptions([]string{"M1: Groundwork", "M2: The board"}, notion.TypeSelect)
 	if !reflect.DeepEqual(got, want) {
@@ -263,7 +193,7 @@ func TestMilestoneStatusOf(t *testing.T) {
 	}
 }
 
-// TestNewProjectDerivesStatuses covers a select-shaped plan: every milestone's
+// TestNewProjectDerivesStatuses is what NewProject is for: every milestone's
 // status comes off the slices that name it, in the order the options were in.
 func TestNewProjectDerivesStatuses(t *testing.T) {
 	p := NewProject("p1", "Tracker",
@@ -281,34 +211,16 @@ func TestNewProjectDerivesStatuses(t *testing.T) {
 	}
 	want := []Milestone{
 		{ID: "M1: Groundwork", Name: "M1: Groundwork", Order: 0, Status: MilestoneDone,
-			Derived: true, SelectType: notion.TypeSelect},
+			SelectType: notion.TypeSelect},
 		{ID: "M2: The board", Name: "M2: The board", Order: 1, Status: MilestoneActive,
-			Derived: true, SelectType: notion.TypeSelect},
+			SelectType: notion.TypeSelect},
 		{ID: "M3: Later", Name: "M3: Later", Order: 2, Status: MilestoneQueued,
-			Derived: true, SelectType: notion.TypeSelect},
+			SelectType: notion.TypeSelect},
 		{ID: "M4: Empty", Name: "M4: Empty", Order: 3, Status: MilestoneQueued,
-			Derived: true, SelectType: notion.TypeSelect},
+			SelectType: notion.TypeSelect},
 	}
 	if !reflect.DeepEqual(p.Milestones, want) {
 		t.Errorf("NewProject().Milestones = %+v, want %+v", p.Milestones, want)
-	}
-}
-
-// TestNewProjectKeepsPagedMilestones is the other shape: a milestone with a page
-// keeps the Order and Status read off it, whatever its slices are doing, and the
-// milestones it was given are not modified in place.
-func TestNewProjectKeepsPagedMilestones(t *testing.T) {
-	given := []Milestone{
-		{ID: "m1", Name: "M1: Groundwork", Order: 7, Status: MilestoneQueued, StatusType: "select"},
-	}
-	p := NewProject("p1", "Tracker", given, []Slice{{ID: "s1", MilestoneID: "m1", Status: SliceDone}})
-
-	want := []Milestone{{ID: "m1", Name: "M1: Groundwork", Order: 7, Status: MilestoneQueued, StatusType: "select"}}
-	if !reflect.DeepEqual(p.Milestones, want) {
-		t.Errorf("NewProject().Milestones = %+v, want %+v", p.Milestones, want)
-	}
-	if !reflect.DeepEqual(given, want) {
-		t.Errorf("NewProject() modified its argument: %+v", given)
 	}
 }
 
@@ -612,8 +524,7 @@ func TestInViewOrder(t *testing.T) {
 	})
 }
 
-// TestMilestoneRef covers both shapes of plan: filing a slice under a milestone
-// page is a relation, and under a derived milestone the option naming it,
+// TestMilestoneRef: filing a slice under a milestone is the option naming it,
 // written as the type its column was read as.
 func TestMilestoneRef(t *testing.T) {
 	tests := []struct {
@@ -622,19 +533,14 @@ func TestMilestoneRef(t *testing.T) {
 		want      notion.PropertyValue
 	}{
 		{
-			"a milestone page",
-			Milestone{ID: "m3", Name: "M3: Mutations"},
-			notion.NewRelation("m3"),
-		},
-		{
 			"a select option",
-			Milestone{ID: "M3: Mutations", Name: "M3: Mutations", Derived: true,
+			Milestone{ID: "M3: Mutations", Name: "M3: Mutations",
 				SelectType: notion.TypeSelect},
 			notion.NewSelect("M3: Mutations"),
 		},
 		{
 			"a status option",
-			Milestone{ID: "M3: Mutations", Name: "M3: Mutations", Derived: true,
+			Milestone{ID: "M3: Mutations", Name: "M3: Mutations",
 				SelectType: notion.TypeStatus},
 			notion.NewStatus("M3: Mutations"),
 		},

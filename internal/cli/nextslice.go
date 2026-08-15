@@ -64,30 +64,31 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 
 // selectNextSlice finds the slice to work next: the first unclaimed Todo slice
 // the board would list, under the lowest-ordered milestone still open. The plan
-// is read exactly the way the board reads it — whichever shape it is kept in,
-// and in the order the project's own board puts its slices in — so the slice
-// handed out is the one someone looking at that board would expect to go next.
+// is read exactly the way the board reads it — in the order the project's own
+// board puts its slices in — so the slice handed out is the one someone looking
+// at that board would expect to go next.
+//
+// A milestone has no status of its own to gate on: it is read back off the
+// slices under it, so it is Queued until one of them starts. Everything not yet
+// finished is open, and the plan's own order decides which comes first — gating
+// on Active would leave a plan on which nothing has begun with no way to begin.
 //
 // The filtering is done here rather than in the query because a Status column
 // may be a select or a Notion status depending on how the project was set up,
 // and the two need differently-shaped filters; the plans are small enough that
 // reading them whole costs nothing.
 func selectNextSlice(ctx context.Context, client API, projectID string, project config.ProjectConfig, shape notion.SliceShape) (domain.Milestone, domain.Slice, error) {
-	milestones, err := loadMilestones(ctx, client, project, shape)
-	if err != nil {
-		return domain.Milestone{}, domain.Slice{}, err
-	}
 	pages, err := client.QueryDataSource(ctx, project.SlicesDSID, nil,
 		[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
 	if err != nil {
 		return domain.Milestone{}, domain.Slice{}, fmt.Errorf("load slices: %w", err)
 	}
-	plan := domain.NewProject(projectID, project.Name, milestones, domain.InViewOrder(
-		domain.SlicesFromPages(pages), notion.PlanOrder(ctx, client, shape, project.SlicesDSID)))
+	plan := domain.NewProject(projectID, project.Name, milestonesOf(shape), domain.InViewOrder(
+		domain.SlicesFromPages(pages), notion.PlanOrder(ctx, client, project.SlicesDSID)))
 
 	var open []domain.Milestone
 	for _, g := range plan.Groups() {
-		if g.Milestone == nil || !drawnFrom(*g.Milestone) {
+		if g.Milestone == nil || g.Milestone.Status == domain.MilestoneDone {
 			continue
 		}
 		open = append(open, *g.Milestone)
@@ -98,53 +99,16 @@ func selectNextSlice(ctx context.Context, client API, projectID string, project 
 		}
 	}
 	if len(open) == 0 {
-		return domain.Milestone{}, domain.Slice{}, noOpenMilestoneError(shape)
+		return domain.Milestone{}, domain.Slice{}, fmt.Errorf(
+			"no unfinished milestone: every milestone in the plan is Done")
 	}
-	return domain.Milestone{}, domain.Slice{}, fmt.Errorf("no unclaimed Todo slice in the %s %s: %s",
-		openAdjective(shape), plural("milestone", len(open)), strings.Join(milestoneNames(open), ", "))
+	return domain.Milestone{}, domain.Slice{}, fmt.Errorf("no unclaimed Todo slice in the unfinished %s: %s",
+		plural("milestone", len(open)), strings.Join(milestoneNames(open), ", "))
 }
 
-// drawnFrom reports whether work may be taken from a milestone. One with a page
-// of its own says so itself: Queued has not been started and Done is finished,
-// so only an Active milestone is drawn from, and an agent cannot run ahead of a
-// plan its author has not opened up.
-//
-// A derived milestone has no status to say it with. Its status is read back off
-// the slices under it, so it is Queued until one of them starts — gating on
-// Active there would mean a plan on which nothing has begun could never begin,
-// with no status anyone could write to unblock it. Everything not yet finished
-// is open instead, and the plan's own order decides which comes first.
-func drawnFrom(m domain.Milestone) bool {
-	if m.Derived {
-		return m.Status != domain.MilestoneDone
-	}
-	return m.Status == domain.MilestoneActive
-}
-
-// openAdjective names what the milestones drawn from have in common, so a
-// refusal describes the plan the reader is actually looking at.
-func openAdjective(shape notion.SliceShape) string {
-	if shape.MilestonesRelated() {
-		return "Active"
-	}
-	return "unfinished"
-}
-
-// noOpenMilestoneError says there is nowhere to take work from, and what would
-// change that: a milestone to activate under the shape that has statuses, and
-// under the shape that has none — where every milestone is finished — a plan
-// with more in it.
-func noOpenMilestoneError(shape notion.SliceShape) error {
-	if shape.MilestonesRelated() {
-		return fmt.Errorf("no Active milestone: activate one on the board and run this again")
-	}
-	return fmt.Errorf("no unfinished milestone: every milestone in the plan is Done")
-}
-
-// sliceShape reads how the project's Slices table is put together: what its
-// in-progress status is called, and whether it has an Assignee column at all.
-// Both differ between projects created before and after the app started asking,
-// and neither can be guessed from a page alone.
+// sliceShape reads how the project's Slices table is put together: the types of
+// its columns, whether it has an Assignee column at all, and the milestones its
+// Milestone column offers. None of it can be guessed from a page alone.
 func sliceShape(ctx context.Context, client API, project config.ProjectConfig) (notion.SliceShape, error) {
 	ds, err := slicesDataSource(ctx, client, project)
 	if err != nil {
@@ -153,14 +117,20 @@ func sliceShape(ctx context.Context, client API, project config.ProjectConfig) (
 	return notion.ShapeOf(ds), nil
 }
 
-// slicesDataSource reads the project's Slices data source. Its schema is both
-// where the shape is read from and — for a project whose plan is that schema's
-// own Milestone options — what a new milestone is appended to, so a command
+// slicesDataSource reads the project's Slices data source, migrating a project
+// still in the shape this app started with on the way — which is how a command
+// run against one reads a plan of the one shape, exactly as the board does.
+//
+// The schema is both where the shape is read from and what a new milestone is
+// appended to, since the plan is its Milestone column's options, so a command
 // that files one needs the schema itself rather than the shape read off it.
 func slicesDataSource(ctx context.Context, client API, project config.ProjectConfig) (*notion.DataSource, error) {
-	ds, err := client.GetDataSource(ctx, project.SlicesDSID)
+	ds, migration, err := notion.MigrateProject(ctx, client, project.SlicesDSID)
 	if err != nil {
-		return nil, fmt.Errorf("read the slices schema: %w", err)
+		return nil, err
+	}
+	if !migration.Empty() {
+		logging.Action("project migrated on the way to a command", "summary", migration.Summary())
 	}
 	return ds, nil
 }
@@ -172,7 +142,7 @@ func slicesDataSource(ctx context.Context, client API, project config.ProjectCon
 // an agent must not be handed a brief for a slice it does not actually hold.
 func claim(ctx context.Context, client API, sliceID string, shape notion.SliceShape, userID string) (domain.Slice, error) {
 	properties := map[string]notion.PropertyValue{
-		notion.PropStatus: notion.NewChoice(shape.StatusType, shape.InProgress),
+		notion.PropStatus: notion.NewChoice(shape.StatusType, notion.SliceInProgress),
 	}
 	if shape.HasAssignee {
 		properties[notion.PropAssignee] = notion.NewPeople(userID)
@@ -195,7 +165,7 @@ func claim(ctx context.Context, client API, sliceID string, shape notion.SliceSh
 // status is the whole answer: there is nobody else the slice could belong to, so
 // a project that tracks no assignee decides ownership on status alone.
 func holds(page notion.Page, shape notion.SliceShape, userID string) bool {
-	if page.Properties[notion.PropStatus].SelectName() != shape.InProgress {
+	if page.Properties[notion.PropStatus].SelectName() != notion.SliceInProgress {
 		return false
 	}
 	if !shape.HasAssignee {

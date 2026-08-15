@@ -28,8 +28,8 @@ func TestCreateDatabase(t *testing.T) {
 		c, _ := testClient(t, srv)
 		db, err := c.CreateDatabase(context.Background(), "page-1", "Slices", map[string]PropertySchema{
 			"Name":      SchemaTitle(),
-			"Status":    SchemaSelect("Todo", "Claimed", "Done"),
-			"Milestone": SchemaRelation("ds-milestones"),
+			"Status":    SchemaSelect("Todo", "In progress", "Done"),
+			"Milestone": SchemaSelect(),
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -39,9 +39,9 @@ func TestCreateDatabase(t *testing.T) {
 			t.Errorf("got %s %s, want POST /databases", gotMethod, gotPath)
 		}
 		want := `{"initial_data_source":{"properties":{` +
-			`"Milestone":{"relation":{"data_source_id":"ds-milestones","type":"single_property","single_property":{}}},` +
+			`"Milestone":{"select":{}},` +
 			`"Name":{"title":{}},` +
-			`"Status":{"select":{"options":[{"name":"Todo"},{"name":"Claimed"},{"name":"Done"}]}}}},` +
+			`"Status":{"select":{"options":[{"name":"Todo"},{"name":"In progress"},{"name":"Done"}]}}}},` +
 			`"parent":{"page_id":"page-1","type":"page_id"},` +
 			`"title":[{"type":"text","text":{"content":"Slices"}}]}`
 		if gotBody != want {

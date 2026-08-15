@@ -104,7 +104,7 @@ func (f *NewProjectForm) SetSize(width, height int) {
 }
 
 // busyNote says what the status bar shows while the project is being built: it
-// is three Notion calls and a read-back, which is long enough to notice.
+// is a page, a database and a read-back, which is long enough to notice.
 func (f *NewProjectForm) busyNote() string { return "Creating the project…" }
 
 // save builds the project the completed form describes.
@@ -113,8 +113,8 @@ func (f *NewProjectForm) save(a *App) tea.Cmd {
 		strings.TrimSpace(f.name), f.info, expandHome(strings.TrimSpace(f.workdir)), f.assignee)
 }
 
-// createProject creates the project page and its two databases, then writes the
-// blurb onto the page. The schema check the client runs on the way out is
+// createProject creates the project page and its Slices database, then writes
+// the blurb onto the page. The schema check the client runs on the way out is
 // reported rather than swallowed, but not before the structure it verified: a
 // project that exists is worth recording however its schema read back.
 func createProject(client NotionAPI, projectsDSID, name, info, workdir string, assignee bool) tea.Cmd {
@@ -266,10 +266,9 @@ func (a *App) projectCreated(msg projectCreatedMsg) (tea.Model, tea.Cmd) {
 		a.cfg.Projects = map[string]config.ProjectConfig{}
 	}
 	a.cfg.Projects[msg.structure.PageID] = config.ProjectConfig{
-		Name:           msg.name,
-		MilestonesDSID: msg.structure.MilestonesDSID,
-		SlicesDSID:     msg.structure.SlicesDSID,
-		WorkingDir:     msg.workdir,
+		Name:       msg.name,
+		SlicesDSID: msg.structure.SlicesDSID,
+		WorkingDir: msg.workdir,
 	}
 	a.cfg.ActiveProjectID = msg.structure.PageID
 	err := errors.Join(msg.err, a.persist())

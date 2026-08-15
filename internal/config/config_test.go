@@ -10,7 +10,9 @@ import (
 )
 
 // handWritten mirrors the bootstrap config that was written by hand before
-// this package existed; Load must tolerate it, including unknown fields.
+// this package existed; Load must tolerate it, including unknown fields — among
+// them milestones_ds_id, which every config written before a project's plan
+// moved onto its slices still carries.
 const handWritten = `{
   "project_db_id": "3cbd79ca-8b6c-49a5-8f9e-fe960b825353",
   "project_db_data_source_id": "f7709ced-9231-49fd-b389-314ceb944103",
@@ -37,10 +39,9 @@ func sampleConfig() Config {
 		ActiveProjectID:       "proj-1",
 		Projects: map[string]ProjectConfig{
 			"proj-1": {
-				Name:           "notion-agent-tracker",
-				SlicesDSID:     "slices-ds",
-				MilestonesDSID: "milestones-ds",
-				WorkingDir:     "/tmp/work",
+				Name:       "notion-agent-tracker",
+				SlicesDSID: "slices-ds",
+				WorkingDir: "/tmp/work",
 			},
 		},
 	}
@@ -123,10 +124,9 @@ func TestLoad(t *testing.T) {
 				ActiveProjectID:       "3b738308-f654-811c-948d-e1fb36f71df3",
 				Projects: map[string]ProjectConfig{
 					"3b738308-f654-811c-948d-e1fb36f71df3": {
-						Name:           "notion-agent-tracker",
-						SlicesDSID:     "91fd1049-a9fd-4275-b9a1-364ceecc03b0",
-						MilestonesDSID: "f026fcfd-43a5-4a4c-8590-6d8600df802f",
-						WorkingDir:     "/Users/craig/Projects/notion-agent-tracker",
+						Name:       "notion-agent-tracker",
+						SlicesDSID: "91fd1049-a9fd-4275-b9a1-364ceecc03b0",
+						WorkingDir: "/Users/craig/Projects/notion-agent-tracker",
 					},
 				},
 			},

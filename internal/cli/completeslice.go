@@ -169,7 +169,7 @@ func notOursError(page notion.Page, shape notion.SliceShape, assignee string) er
 	s := domain.SliceFromPage(page)
 	if s.Status != domain.SliceClaimed {
 		return fmt.Errorf("%q is %s, not %s: only a slice you claimed can be closed out",
-			s.Name, blank(s.StatusName), shape.InProgress)
+			s.Name, blank(s.StatusName), notion.SliceInProgress)
 	}
 	if s.AssigneeName == "" {
 		return fmt.Errorf("%q is in progress but held by nobody, not by %s: only a slice you claimed can be closed out",

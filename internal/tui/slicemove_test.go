@@ -41,7 +41,7 @@ func TestMoveTargetsAreEveryOtherMilestoneInPlanOrder(t *testing.T) {
 		slice domain.Slice
 		want  []string
 	}{
-		{"from a milestone", domain.Slice{MilestoneID: "m2"},
+		{"from a milestone", domain.Slice{MilestoneID: "M2: Board"},
 			[]string{"M1: Config", "M3: Mutations"}},
 		{"from a milestone not in the plan", domain.Slice{MilestoneID: "gone"},
 			[]string{"M1: Config", "M2: Board", "M3: Mutations"}},
@@ -67,7 +67,7 @@ func TestMoveSliceWritesOnlyTheMilestone(t *testing.T) {
 	client := &fakeNotion{}
 
 	msg := runMsg(t, moveSlice(client, "s5", "Info view",
-		domain.Milestone{ID: "m3", Name: "M3: Mutations"}))
+		domain.Milestone{ID: "M3: Mutations", Name: "M3: Mutations", SelectType: notion.TypeSelect}))
 
 	if got := msg.(sliceSavedMsg); got.err != nil || got.note != `Moved "Info view" to M3: Mutations.` {
 		t.Errorf("msg = %+v, want the moved note", got)
@@ -76,7 +76,7 @@ func TestMoveSliceWritesOnlyTheMilestone(t *testing.T) {
 		t.Fatalf("updated %d pages, want 1", len(client.updated))
 	}
 	call := client.updated[0]
-	want := map[string]notion.PropertyValue{notion.PropMilestone: notion.NewRelation("m3")}
+	want := map[string]notion.PropertyValue{notion.PropMilestone: notion.NewSelect("M3: Mutations")}
 	if call.pageID != "s5" || !reflect.DeepEqual(call.properties, want) {
 		t.Errorf("update = %+v, want s5 with %+v", call, want)
 	}
@@ -90,7 +90,7 @@ func TestMoveSliceReportsAFailure(t *testing.T) {
 	}
 
 	msg := runMsg(t, moveSlice(client, "s5", "Info view",
-		domain.Milestone{ID: "m3", Name: "M3: Mutations"}))
+		domain.Milestone{ID: "M3: Mutations", Name: "M3: Mutations", SelectType: notion.TypeSelect}))
 
 	if got := msg.(sliceSavedMsg); got.err == nil || got.err.Error() != "move slice: boom" {
 		t.Errorf("err = %v, want the wrapped failure", got.err)
@@ -146,7 +146,7 @@ func TestAppMoveWritesThePickedMilestone(t *testing.T) {
 	if len(client.updated) != 1 || client.updated[0].pageID != "s5" {
 		t.Fatalf("updated = %+v, want the slice written", client.updated)
 	}
-	want := notion.NewRelation("m3")
+	want := notion.NewSelect("M3: Mutations")
 	if got := client.updated[0].properties[notion.PropMilestone]; !reflect.DeepEqual(got, want) {
 		t.Errorf("milestone = %+v, want %+v", got, want)
 	}
@@ -164,7 +164,7 @@ func TestAppMoveRefusesAClaimedSlice(t *testing.T) {
 	if app.form != nil {
 		t.Error("a claimed slice should not be opened for moving")
 	}
-	if want := `"Board screen" is Claimed — work in flight cannot be moved.`; app.board.confirmText != want {
+	if want := `"Board screen" is In progress — work in flight cannot be moved.`; app.board.confirmText != want {
 		t.Errorf("confirm = %q, want %q", app.board.confirmText, want)
 	}
 }
@@ -188,8 +188,8 @@ func TestAppMoveNeedsSomewhereToMoveTo(t *testing.T) {
 	// it.
 	p := domain.Project{
 		ID:         testProjectID,
-		Milestones: []domain.Milestone{{ID: "m1", Name: "M1", Status: domain.MilestoneActive}},
-		Slices:     []domain.Slice{{ID: "s1", Name: "Only", Status: domain.SliceTodo, MilestoneID: "m1"}},
+		Milestones: []domain.Milestone{{ID: "M1", Name: "M1", Status: domain.MilestoneActive}},
+		Slices:     []domain.Slice{{ID: "s1", Name: "Only", Status: domain.SliceTodo, MilestoneID: "M1"}},
 	}
 	app := NewApp(testConfig(), &fakeNotion{})
 	app.project = &p
@@ -228,46 +228,19 @@ func TestStatusWord(t *testing.T) {
 	}
 }
 
-// TestMoveSliceWritesTheDerivedMilestonesOption is the other shape: the target
-// is an option of the slices' own Milestone column, so the move writes that
-// option rather than a relation to a page that does not exist.
-func TestMoveSliceWritesTheDerivedMilestonesOption(t *testing.T) {
+// A Milestone column converted to Notion's own status type is written back in
+// that shape, not as the select this app would have created.
+func TestMoveSliceWritesTheMilestoneColumnsOwnType(t *testing.T) {
 	client := &fakeNotion{}
-	m := domain.Milestone{
-		ID: "M3: Mutations", Name: "M3: Mutations", Derived: true, SelectType: notion.TypeSelect,
-	}
+	m := domain.Milestone{ID: "M3: Mutations", Name: "M3: Mutations", SelectType: notion.TypeStatus}
 
 	msg := runMsg(t, moveSlice(client, "s5", "Info view", m))
 
 	if got := msg.(sliceSavedMsg); got.err != nil || got.note != `Moved "Info view" to M3: Mutations.` {
 		t.Errorf("msg = %+v, want the moved note", got)
 	}
-	want := map[string]notion.PropertyValue{notion.PropMilestone: notion.NewSelect("M3: Mutations")}
+	want := map[string]notion.PropertyValue{notion.PropMilestone: notion.NewStatus("M3: Mutations")}
 	if len(client.updated) != 1 || !reflect.DeepEqual(client.updated[0].properties, want) {
 		t.Errorf("updated = %+v, want s5 with %+v", client.updated, want)
-	}
-}
-
-// TestAppMoveWritesTheOptionUnderASelectShapedPlan drives the whole key on a
-// one-page project: the picker offers the same milestones, and the write names
-// the one that was picked as an option.
-func TestAppMoveWritesTheOptionUnderASelectShapedPlan(t *testing.T) {
-	client := &fakeNotion{}
-	app := newSelectWriteApp(client)
-	app.board.cursor = rowTodoSlice
-
-	feed(t, app, press(app, "m"))
-	// Past M1: Config, which the picker opens on, to M3: Mutations.
-	chooseOption(t, app, 1)
-
-	if len(client.updated) != 1 || client.updated[0].pageID != "s5" {
-		t.Fatalf("updated = %+v, want the slice written", client.updated)
-	}
-	want := notion.NewSelect("M3: Mutations")
-	if got := client.updated[0].properties[notion.PropMilestone]; !reflect.DeepEqual(got, want) {
-		t.Errorf("milestone = %+v, want %+v", got, want)
-	}
-	if app.board.confirmText != `Moved "Info view" to M3: Mutations.` {
-		t.Errorf("confirm = %q, want the moved confirmation", app.board.confirmText)
 	}
 }

@@ -203,15 +203,6 @@ func NewChoice(propertyType, name string) PropertyValue {
 	return NewSelect(name)
 }
 
-// NewRelation builds a relation property value pointing at the given page IDs.
-func NewRelation(pageIDs ...string) PropertyValue {
-	rels := make([]Relation, len(pageIDs))
-	for i, id := range pageIDs {
-		rels[i] = Relation{ID: id}
-	}
-	return PropertyValue{Relation: rels}
-}
-
 // NewPeople builds a people property value naming the given user IDs.
 func NewPeople(userIDs ...string) PropertyValue {
 	people := make([]User, len(userIDs))
@@ -224,11 +215,6 @@ func NewPeople(userIDs ...string) PropertyValue {
 // NewURL builds a url property value.
 func NewURL(u string) PropertyValue {
 	return PropertyValue{URL: u}
-}
-
-// NewNumber builds a number property value.
-func NewNumber(n float64) PropertyValue {
-	return PropertyValue{Number: &n}
 }
 
 // Text returns the plain text of a title or rich_text property, and "" for any
@@ -270,12 +256,4 @@ func (p PropertyValue) PeopleIDs() []string {
 		ids[i] = u.ID
 	}
 	return ids
-}
-
-// NumberValue returns the value of a number property and whether it was set.
-func (p PropertyValue) NumberValue() (float64, bool) {
-	if p.Number == nil {
-		return 0, false
-	}
-	return *p.Number, true
 }

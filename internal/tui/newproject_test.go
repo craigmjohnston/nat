@@ -16,12 +16,10 @@ const testProjectsDSID = "projects-ds"
 // newStructure is what a successful CreateProject comes back with.
 func newStructure() *notion.ProjectStructure {
 	return &notion.ProjectStructure{
-		PageID:         "p2",
-		PageURL:        "https://notion.so/p2",
-		MilestonesDBID: "m-db",
-		MilestonesDSID: "m-ds",
-		SlicesDBID:     "s-db",
-		SlicesDSID:     "s-ds",
+		PageID:     "p2",
+		PageURL:    "https://notion.so/p2",
+		SlicesDBID: "s-db",
+		SlicesDSID: "s-ds",
 	}
 }
 
@@ -67,7 +65,7 @@ func newProjectApp(client NotionAPI) *App {
 func twoProjectConfig() config.Config {
 	cfg := testConfig()
 	cfg.Projects["other"] = config.ProjectConfig{
-		Name: "another", MilestonesDSID: "o-ms", SlicesDSID: "o-sl",
+		Name: "another", SlicesDSID: "o-sl",
 	}
 	return cfg
 }
@@ -225,7 +223,7 @@ func TestAppNewProjectFlowWritesConfigAndReloads(t *testing.T) {
 		t.Errorf("toast = %q, want the created toast", app.toast)
 	}
 	want := config.ProjectConfig{
-		Name: "tracker two", MilestonesDSID: "m-ds", SlicesDSID: "s-ds", WorkingDir: dir,
+		Name: "tracker two", SlicesDSID: "s-ds", WorkingDir: dir,
 	}
 	if got := saved.Projects["p2"]; got != want {
 		t.Errorf("saved project = %+v, want %+v", got, want)
@@ -247,8 +245,8 @@ func TestAppNewProjectReloadsOntoWhatItMade(t *testing.T) {
 	_, cmd := app.Update(projectCreatedMsg{structure: newStructure(), name: "tracker two", workdir: "/work"})
 	feed(t, app, cmd)
 
-	if got := client.queriedDSIDs[before:]; len(got) != 2 || got[0] != "m-ds" || got[1] != "s-ds" {
-		t.Errorf("queried %v, want the new project's data sources", got)
+	if got := client.queriedDSIDs[before:]; len(got) != 1 || got[0] != "s-ds" {
+		t.Errorf("queried %v, want the new project's slices", got)
 	}
 	if app.project == nil || app.project.ID != "p2" {
 		t.Errorf("project = %+v, want the board on the new one", app.project)
@@ -406,8 +404,8 @@ func TestAppSwitchProjectReloadsOntoTheOtherPlan(t *testing.T) {
 		t.Error("the old plan should be dropped, not left on show")
 	}
 	feed(t, app, cmd)
-	if got := client.queriedDSIDs[before:]; len(got) != 2 || got[0] != "o-ms" || got[1] != "o-sl" {
-		t.Errorf("queried %v, want the picked project's data sources", got)
+	if got := client.queriedDSIDs[before:]; len(got) != 1 || got[0] != "o-sl" {
+		t.Errorf("queried %v, want the picked project's slices", got)
 	}
 	if app.project == nil || app.project.Name != "another" {
 		t.Errorf("project = %+v, want the board on the other plan", app.project)

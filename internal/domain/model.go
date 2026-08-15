@@ -23,15 +23,14 @@ const (
 // SliceStatus is where a slice sits in its workflow.
 type SliceStatus string
 
-// The slice statuses, in workflow order. There is one in-progress status here
-// however the project spells it: a project's Status column offers either
-// Claimed or In progress, and both map onto SliceClaimed, so everything reading
-// a plan — the board chip, the progress math, the gating on work in flight —
-// asks one question rather than two. The name as the project writes it is kept
-// on the slice as StatusName, for output that names it back to the user.
+// The slice statuses, in workflow order. SliceClaimed is the in-progress one —
+// a slice an agent holds — named for what it means to the plan rather than for
+// the option, which every project spells "In progress" once it has been loaded
+// once. The name as the project writes it is kept on the slice as StatusName,
+// for output that names it back to the user.
 const (
 	SliceTodo    SliceStatus = notion.SliceTodo
-	SliceClaimed SliceStatus = notion.SliceClaimed
+	SliceClaimed SliceStatus = notion.SliceInProgress
 	SliceDone    SliceStatus = notion.SliceDone
 )
 
@@ -40,34 +39,23 @@ const (
 // it — it exists so those slices are still visible on the board.
 const UnassignedName = "Unassigned"
 
-// Milestone is one phase of a project's plan. StatusType is the Notion property
-// type its Status column turned out to have, carried so that a write can be
-// sent in the same shape it was read in. Derived marks a milestone that has no
-// page of its own — an option of a Slices data source's Milestone select — so
-// its Order and Status are computed rather than read, and nothing can be
-// written to it. Such a milestone carries SelectType instead: the property type
-// of the Milestone column naming it, so a slice can be filed under it in the
-// shape that column was read in.
+// Milestone is one phase of a project's plan: an option of the Slices data
+// source's Milestone column, with no page of its own, so its Order is its place
+// among the options and its Status is computed from the slices under it.
+// SelectType is the property type of that column, so a slice can be filed under
+// the milestone in the shape the column was read in.
 type Milestone struct {
 	ID         string
 	Name       string
 	Order      float64
 	Status     MilestoneStatus
-	StatusType string
-	URL        string
-	Derived    bool
 	SelectType string
 }
 
-// Ref is the Milestone property value filing a slice under m, in whichever
-// shape the plan is kept: a relation to the milestone's page, or — where the
-// milestone is an option of the slices' own Milestone column — that option,
-// written back as the type the column was read as.
+// Ref is the Milestone property value filing a slice under m: the option naming
+// it, written back as the type the column was read as.
 func (m Milestone) Ref() notion.PropertyValue {
-	if m.Derived {
-		return notion.NewChoice(m.SelectType, m.Name)
-	}
-	return notion.NewRelation(m.ID)
+	return notion.NewChoice(m.SelectType, m.Name)
 }
 
 // Slice is one unit of work, small enough for a single agent session. Status is
@@ -94,85 +82,42 @@ type Project struct {
 	Slices     []Slice
 }
 
-// MilestoneFromPage maps a page of a project's Milestones data source. Missing
-// or differently-typed properties map to zero values rather than an error: the
-// board would rather show a half-filled row than nothing at all.
-func MilestoneFromPage(p notion.Page) Milestone {
-	order, _ := p.Properties[notion.PropOrder].NumberValue()
-	status := p.Properties[notion.PropStatus]
-	return Milestone{
-		ID:         p.ID,
-		Name:       p.Properties[notion.PropName].Text(),
-		Order:      order,
-		Status:     MilestoneStatus(status.SelectName()),
-		StatusType: status.Type,
-		URL:        p.URL,
-	}
-}
-
-// MilestonesFromPages maps a Milestones query result, preserving its order.
-func MilestonesFromPages(pages []notion.Page) []Milestone {
-	ms := make([]Milestone, len(pages))
-	for i, p := range pages {
-		ms[i] = MilestoneFromPage(p)
-	}
-	return ms
-}
-
 // MilestonesFromOptions maps the options of a Slices data source's Milestone
-// select onto milestones, for a project that keeps no Milestones database. Such
-// a milestone is nothing but its name, so the name is its ID here too — it is
-// what a slice's select names, and so what groups the plan — and its order is
-// its place among the options, which is the order the plan is written in. It
-// has no page, so no URL and no status of its own: NewProject computes the
-// status from the slices under it. propertyType is the type of the column the
-// options came off, carried so that filing a slice under one of them writes the
-// column in the shape it was read in.
+// column onto milestones, which is a project's whole plan. Such a milestone is
+// nothing but its name, so the name is its ID here too — it is what a slice's
+// column names, and so what groups the plan — and its order is its place among
+// the options, which is the order the plan is written in. It has no page, and no
+// status of its own: NewProject computes the status from the slices under it.
+// propertyType is the type of the column the options came off, carried so that
+// filing a slice under one of them writes the column in the shape it was read
+// in.
 func MilestonesFromOptions(names []string, propertyType string) []Milestone {
 	ms := make([]Milestone, len(names))
 	for i, n := range names {
-		ms[i] = Milestone{ID: n, Name: n, Order: float64(i), Derived: true, SelectType: propertyType}
+		ms[i] = Milestone{ID: n, Name: n, Order: float64(i), SelectType: propertyType}
 	}
 	return ms
 }
 
-// SliceFromPage maps a page of a project's Slices data source. A slice relates
-// to at most one milestone, so only the first relation is read — and where the
-// project has no Milestones database, the Milestone column is a select instead
-// and the option it names is the milestone. Likewise only the first assignee is
-// read, since claiming sets exactly one.
+// SliceFromPage maps a page of a project's Slices data source. The Milestone
+// column names the milestone the slice is under, as one of that column's
+// options. Only the first assignee is read, since claiming sets exactly one.
 func SliceFromPage(p notion.Page) Slice {
 	name := p.Properties[notion.PropStatus].SelectName()
 	s := Slice{
 		ID:         p.ID,
 		Name:       p.Properties[notion.PropName].Text(),
-		Status:     sliceStatus(name),
+		Status:     SliceStatus(name),
 		StatusName: name,
 		Repo:       p.Properties[notion.PropRepo].Text(),
 		PRURL:      p.Properties[notion.PropPR].URL,
 		URL:        p.URL,
 	}
-	milestone := p.Properties[notion.PropMilestone]
-	if ids := milestone.RelationIDs(); len(ids) > 0 {
-		s.MilestoneID = ids[0]
-	} else {
-		s.MilestoneID = milestone.SelectName()
-	}
+	s.MilestoneID = p.Properties[notion.PropMilestone].SelectName()
 	if people := p.Properties[notion.PropAssignee].People; len(people) > 0 {
 		s.AssigneeName = people[0].Name
 	}
 	return s
-}
-
-// sliceStatus maps a Status option name onto the workflow status it means. In
-// progress is the newer name for Claimed, so the two land on one status;
-// anything else is carried through as it was written, which is what an unknown
-// status draws as on the board.
-func sliceStatus(name string) SliceStatus {
-	if name == notion.SliceInProgress {
-		return SliceClaimed
-	}
-	return SliceStatus(name)
 }
 
 // SlicesFromPages maps a Slices query result, preserving its order.
@@ -262,8 +207,8 @@ func ProgressOf(slices []Slice) Progress {
 	return p
 }
 
-// MilestoneStatusOf is the status a milestone with no page of its own is in,
-// read off the slices under it: nothing started is Queued, everything finished
+// MilestoneStatusOf is the status a milestone is in, read off the slices under
+// it: nothing started is Queued, everything finished
 // is Done, anything in between — a slice in progress, or some but not all of
 // them Done — is Active. A milestone with no slices at all has nothing started
 // either, so it is Queued.
@@ -280,16 +225,12 @@ func MilestoneStatusOf(slices []Slice) MilestoneStatus {
 }
 
 // NewProject assembles a plan read from Notion, filling in what a milestone
-// without a page of its own cannot carry: its status, computed from the slices
-// that name it. Milestones read from a Milestones database keep the Order and
-// Status their pages hold, untouched.
+// with no page of its own cannot carry: its status, computed from the slices
+// that name it.
 func NewProject(id, name string, milestones []Milestone, slices []Slice) Project {
 	ms := make([]Milestone, len(milestones))
 	copy(ms, milestones)
 	for i := range ms {
-		if !ms[i].Derived {
-			continue
-		}
 		var under []Slice
 		for _, s := range slices {
 			if s.MilestoneID == ms[i].ID {

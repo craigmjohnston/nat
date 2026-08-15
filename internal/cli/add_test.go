@@ -19,16 +19,13 @@ const (
 )
 
 // plannedAPI answers with a plan of three milestones and nothing else, which is
-// all either add command reads before writing.
+// all either add command reads before writing: the plan is the options of the
+// slices' own Milestone column, so it comes with the schema.
 func plannedAPI(createdID string) *fakeAPI {
 	return &fakeAPI{
 		createdPage: notion.Page{ID: createdID, URL: "https://notion.so/" + createdID},
-		pages: map[string][]notion.Page{
-			"milestones-ds": {
-				milestonePage("m1", "M1: Client", 1, notion.MilestoneDone),
-				milestonePage("m2", "M2: Board", 2, notion.MilestoneActive),
-				milestonePage("m3", "M3: Agents", 3, notion.MilestoneQueued),
-			},
+		dataSources: map[string]notion.DataSource{
+			"slices-ds": selectMilestoneSlicesDS("M1: Client", "M2: Board", "M3: Agents"),
 		},
 	}
 }
@@ -60,19 +57,7 @@ func noWritesBut(t *testing.T, api *fakeAPI, creations int) {
 		t.Errorf("writes to existing pages = %+v %+v, want none", api.updates, api.appends)
 	}
 	if len(api.schemaUpdates) != 0 {
-		t.Errorf("schema writes = %+v, want none: the plan is pages, not options", api.schemaUpdates)
-	}
-}
-
-// selectPlanAPI answers as a project keeping its whole plan on one page: no
-// Milestones data source at all, and a Milestone select on the Slices table
-// whose options are the milestones, in plan order.
-func selectPlanAPI(createdID string) *fakeAPI {
-	return &fakeAPI{
-		createdPage: notion.Page{ID: createdID, URL: "https://notion.so/" + createdID},
-		dataSources: map[string]notion.DataSource{
-			"slices-ds": selectMilestoneSlicesDS("M1: Client", "M2: Board", "M3: Agents"),
-		},
+		t.Errorf("schema writes = %+v, want none", api.schemaUpdates)
 	}
 }
 
@@ -101,7 +86,7 @@ func writtenMilestoneOptions(t *testing.T, api *fakeAPI) []string {
 // milestone by gaining an option, appended after the ones already there so that
 // the order of the options stays the order of the plan.
 func TestMilestoneAddAppendsAnOptionWhereThePlanIsOne(t *testing.T) {
-	api := selectPlanAPI(addedMilestoneID)
+	api := plannedAPI(addedMilestoneID)
 	env, out := testEnv(testConfig(), api)
 
 	if err := Run(context.Background(), []string{"milestone-add", "M4: Polish"}, env); err != nil {
@@ -132,7 +117,7 @@ Added to nat as milestone 4, Queued.
 // The first milestone of a plan kept this way is added to an empty option list,
 // which is still a select and still tells the shape apart from a relation.
 func TestMilestoneAddAppendsToAnEmptyOptionList(t *testing.T) {
-	api := selectPlanAPI(addedMilestoneID)
+	api := plannedAPI(addedMilestoneID)
 	api.dataSources["slices-ds"] = selectMilestoneSlicesDS()
 	env, out := testEnv(testConfig(), api)
 
@@ -154,7 +139,7 @@ func TestMilestoneAddAppendsToAnEmptyOptionList(t *testing.T) {
 func TestMilestoneAddRefusesAnOptionThePlanAlreadyHas(t *testing.T) {
 	for _, name := range []string{"M2: Board", "m2: bOARD", "  M2: Board  "} {
 		t.Run(name, func(t *testing.T) {
-			api := selectPlanAPI(addedMilestoneID)
+			api := plannedAPI(addedMilestoneID)
 			env, out := testEnv(testConfig(), api)
 
 			err := Run(context.Background(), []string{"milestone-add", name}, env)
@@ -179,7 +164,7 @@ func TestMilestoneAddRefusesAnOptionThePlanAlreadyHas(t *testing.T) {
 // API cannot write, so the command says where the milestone has to be added
 // rather than writing a schema that would drop them.
 func TestMilestoneAddRefusesAColumnItCannotWrite(t *testing.T) {
-	api := selectPlanAPI(addedMilestoneID)
+	api := plannedAPI(addedMilestoneID)
 	ds := selectMilestoneSlicesDS()
 	ds.Properties[notion.PropMilestone] = notion.PropertySchema{
 		Type:   notion.TypeStatus,
@@ -201,8 +186,8 @@ func TestMilestoneAddRefusesAColumnItCannotWrite(t *testing.T) {
 	}
 }
 
-func TestMilestoneAddPrintsJSONForAnOption(t *testing.T) {
-	env, out := testEnv(testConfig(), selectPlanAPI(addedMilestoneID))
+func TestMilestoneAddPrintsJSON(t *testing.T) {
+	env, out := testEnv(testConfig(), plannedAPI(addedMilestoneID))
 
 	if err := Run(context.Background(), []string{"milestone-add", "M4: Polish", "--json"}, env); err != nil {
 		t.Fatalf("milestone-add: %v", err)
@@ -224,7 +209,7 @@ func TestMilestoneAddPrintsJSONForAnOption(t *testing.T) {
 
 func TestMilestoneAddReportsAFailedSchemaWrite(t *testing.T) {
 	boom := errors.New("notion: 400")
-	api := selectPlanAPI(addedMilestoneID)
+	api := plannedAPI(addedMilestoneID)
 	api.schemaUpdateErr = boom
 	env, out := testEnv(testConfig(), api)
 
@@ -243,13 +228,13 @@ func TestMilestoneAddReportsAFailedSchemaWrite(t *testing.T) {
 
 func TestMilestoneAddReportsAFailedSchemaRead(t *testing.T) {
 	boom := errors.New("notion: 500")
-	api := selectPlanAPI(addedMilestoneID)
+	api := plannedAPI(addedMilestoneID)
 	api.dataSourceErr = boom
 	env, _ := testEnv(testConfig(), api)
 
 	err := Run(context.Background(), []string{"milestone-add", "M4: Polish"}, env)
 
-	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "read the slices schema") {
+	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "load the slices schema") {
 		t.Fatalf("err = %v, want the schema read reported", err)
 	}
 }
@@ -258,7 +243,7 @@ func TestMilestoneAddReportsAFailedSchemaRead(t *testing.T) {
 // rather than relating to a page, and the milestones to choose from are the
 // options that column already offers.
 func TestSliceAddNamesTheMilestoneWhereThePlanIsOptions(t *testing.T) {
-	api := selectPlanAPI(addedSliceID)
+	api := plannedAPI(addedSliceID)
 	env, out := testEnv(testConfig(), api)
 
 	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "m2: bOARD"}, env)
@@ -286,7 +271,7 @@ func TestSliceAddNamesTheMilestoneWhereThePlanIsOptions(t *testing.T) {
 // A milestone that is not one of the options is refused the same way an unknown
 // milestone page is, and the options are what it lists to choose from.
 func TestSliceAddRefusesAnUnknownOption(t *testing.T) {
-	api := selectPlanAPI(addedSliceID)
+	api := plannedAPI(addedSliceID)
 	env, _ := testEnv(testConfig(), api)
 
 	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "M4: Polish"}, env)
@@ -299,113 +284,6 @@ func TestSliceAddRefusesAnUnknownOption(t *testing.T) {
 	}
 	if len(api.creates) != 0 {
 		t.Errorf("creates = %+v, want none", api.creates)
-	}
-}
-
-func TestMilestoneAddFilesAQueuedMilestoneAtTheEndOfThePlan(t *testing.T) {
-	api := plannedAPI(addedMilestoneID)
-	env, out := testEnv(testConfig(), api)
-
-	if err := Run(context.Background(), []string{"milestone-add", "M4: Polish"}, env); err != nil {
-		t.Fatalf("milestone-add: %v", err)
-	}
-
-	want := `# M4: Polish
-
-Added to nat as milestone 4, Queued.
-
-- Notion page: 3b838308f65481fc8784e24878ff64f0
-- Notion URL: https://notion.so/3b838308f65481fc8784e24878ff64f0
-`
-	if out.String() != want {
-		t.Errorf("output =\n%s\nwant:\n%s", out.String(), want)
-	}
-	noWritesBut(t, api, 1)
-	c := api.creates[0]
-	if c.parent != notion.DataSourceParent("milestones-ds") {
-		t.Errorf("parent = %+v, want the milestones data source", c.parent)
-	}
-	if got := writtenText(c.props[notion.PropName]); got != "M4: Polish" {
-		t.Errorf("name = %q, want %q", got, "M4: Polish")
-	}
-	if got, ok := c.props[notion.PropOrder].NumberValue(); !ok || got != 4 {
-		t.Errorf("order = %v (ok=%t), want 4", got, ok)
-	}
-	if got := c.props[notion.PropStatus].SelectName(); got != notion.MilestoneQueued {
-		t.Errorf("status = %q, want %q", got, notion.MilestoneQueued)
-	}
-	if len(c.props) != 3 {
-		t.Errorf("properties = %+v, want exactly name, order and status", c.props)
-	}
-	if len(c.children) != 0 {
-		t.Errorf("children = %+v, want none: a milestone has no body", c.children)
-	}
-}
-
-// The order counts from the highest there is rather than from how many
-// milestones there are, so a plan that has had one removed does not reuse a
-// number — and an empty plan starts at 1.
-func TestMilestoneAddNumbersFromTheHighestOrder(t *testing.T) {
-	tests := []struct {
-		name       string
-		milestones []notion.Page
-		want       float64
-	}{
-		{name: "empty plan", want: 1},
-		{
-			name:       "a gap in the middle",
-			milestones: []notion.Page{milestonePage("m1", "M1", 1, notion.MilestoneDone), milestonePage("m9", "M9", 9, notion.MilestoneActive)},
-			want:       10,
-		},
-		{
-			name:       "out of order and fractional",
-			milestones: []notion.Page{milestonePage("m2", "M2", 2.5, notion.MilestoneDone), milestonePage("m1", "M1", 1, notion.MilestoneDone)},
-			want:       3.5,
-		},
-		{
-			name:       "no order set at all",
-			milestones: []notion.Page{{ID: "m1", Properties: map[string]notion.PropertyValue{notion.PropName: title("M1")}}},
-			want:       1,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			api := plannedAPI(addedMilestoneID)
-			api.pages["milestones-ds"] = tt.milestones
-			env, _ := testEnv(testConfig(), api)
-
-			if err := Run(context.Background(), []string{"milestone-add", "Next"}, env); err != nil {
-				t.Fatalf("milestone-add: %v", err)
-			}
-
-			if got, _ := api.creates[0].props[notion.PropOrder].NumberValue(); got != tt.want {
-				t.Errorf("order = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestMilestoneAddPrintsJSON(t *testing.T) {
-	for _, args := range [][]string{{"milestone-add", "M4: Polish", "--json"}, {"milestone-add", "--json", "M4: Polish"}} {
-		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			env, out := testEnv(testConfig(), plannedAPI(addedMilestoneID))
-
-			if err := Run(context.Background(), args, env); err != nil {
-				t.Fatalf("%v: %v", args, err)
-			}
-
-			var got milestoneAddedJSON
-			if err := json.Unmarshal(out.Bytes(), &got); err != nil {
-				t.Fatalf("output is not JSON: %v\n%s", err, out.String())
-			}
-			want := milestoneAddedJSON{Milestone: milestoneJSON{
-				ID: addedMilestoneID, Name: "M4: Polish", Order: 4,
-				Status: notion.MilestoneQueued, URL: "https://notion.so/" + addedMilestoneID,
-			}}
-			if got != want {
-				t.Errorf("json = %+v\nwant %+v", got, want)
-			}
-		})
 	}
 }
 
@@ -454,15 +332,14 @@ func TestMilestoneAddReportsAFailedCall(t *testing.T) {
 		creation bool
 	}{
 		{
-			name: "the milestones",
-			fail: func(api *fakeAPI) { api.queryErr = map[string]error{"milestones-ds": boom} },
-			want: "load milestones",
+			name: "the schema read",
+			fail: func(api *fakeAPI) { api.dataSourceErr = boom },
+			want: "load the slices schema",
 		},
 		{
-			name:     "the creation",
-			fail:     func(api *fakeAPI) { api.createErr = boom },
-			want:     "create the milestone",
-			creation: true,
+			name: "the schema write",
+			fail: func(api *fakeAPI) { api.schemaUpdateErr = boom },
+			want: "create the milestone",
 		},
 	}
 	for _, tt := range tests {
@@ -549,8 +426,8 @@ Added to M2: Board, Todo and unclaimed.
 	if got := c.props[notion.PropStatus].SelectName(); got != notion.SliceTodo {
 		t.Errorf("status = %q, want %q", got, notion.SliceTodo)
 	}
-	if got := c.props[notion.PropMilestone].RelationIDs(); len(got) != 1 || got[0] != "m2" {
-		t.Errorf("milestone = %v, want [m2]", got)
+	if got := c.props[notion.PropMilestone].SelectName(); got != "M2: Board" {
+		t.Errorf("milestone = %q, want the option naming M2", got)
 	}
 	if got := writtenText(c.props[notion.PropRepo]); got != "" {
 		t.Errorf("repo = %q, want empty", got)
@@ -579,34 +456,20 @@ func paragraphText(t *testing.T, block map[string]any) string {
 	return spans[0]["text"].(map[string]any)["content"].(string)
 }
 
-// The milestone may be named however the caller has it: its name in any case,
-// its page ID, or the URL a Notion page was copied from.
-func TestSliceAddResolvesTheMilestoneHoweverItIsNamed(t *testing.T) {
-	tests := []struct {
-		name string
-		ref  string
-	}{
-		{name: "by name", ref: "M2: Board"},
-		{name: "by name in another case", ref: "m2: bOARD"},
-		{name: "by name with stray spaces", ref: "  M2: Board  "},
-		{name: "by ID", ref: "3b738308-f654-8138-b972-f81cb0d5fd6f"},
-		{name: "by ID without dashes", ref: "3b738308f6548138b972f81cb0d5fd6f"},
-		{name: "by URL", ref: "https://www.notion.so/M2-Board-3b738308f6548138b972f81cb0d5fd6f?pvs=4"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+// The milestone is named by its own name, in whatever case the caller has it.
+func TestSliceAddResolvesTheMilestoneByName(t *testing.T) {
+	for _, ref := range []string{"M2: Board", "m2: bOARD", "  M2: Board  "} {
+		t.Run(ref, func(t *testing.T) {
 			api := plannedAPI(addedSliceID)
-			api.pages["milestones-ds"][1].ID = "3b738308-f654-8138-b972-f81cb0d5fd6f"
 			env, _ := testEnv(testConfig(), api)
 
-			err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", tt.ref}, env)
+			err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", ref}, env)
 
 			if err != nil {
 				t.Fatalf("slice-add: %v", err)
 			}
-			got := api.creates[0].props[notion.PropMilestone].RelationIDs()
-			if len(got) != 1 || got[0] != "3b738308-f654-8138-b972-f81cb0d5fd6f" {
-				t.Errorf("milestone = %v, want the M2 page", got)
+			if got := api.creates[0].props[notion.PropMilestone].SelectName(); got != "M2: Board" {
+				t.Errorf("milestone = %q, want M2", got)
 			}
 		})
 	}
@@ -618,7 +481,7 @@ func TestSliceAddRefusesAMilestoneItCannotResolve(t *testing.T) {
 	tests := []struct {
 		name       string
 		ref        string
-		milestones []notion.Page
+		milestones []string
 		want       []string
 	}{
 		{
@@ -634,18 +497,18 @@ func TestSliceAddRefusesAMilestoneItCannotResolve(t *testing.T) {
 		{
 			name:       "two milestones sharing a name",
 			ref:        "M2: Board",
-			milestones: []notion.Page{milestonePage("m2", "M2: Board", 2, notion.MilestoneActive), milestonePage("m2b", "M2: Board", 3, notion.MilestoneQueued)},
-			want:       []string{`2 milestones are named "M2: Board"`, "m2, m2b"},
+			milestones: []string{"M2: Board", "M2: Board"},
+			want:       []string{`2 milestones are named "M2: Board"`, "rename one in Notion"},
 		},
 		{
-			name: "an ID from somewhere else",
+			name: "a page ID, which no milestone has",
 			ref:  "3b838308f65481fc8784e24878ff64f0",
-			want: []string{"no milestone 3b838308f65481fc8784e24878ff64f0 in this project"},
+			want: []string{`no milestone named "3b838308f65481fc8784e24878ff64f0"`},
 		},
 		{
 			name:       "a project with no milestones yet",
 			ref:        "M1",
-			milestones: []notion.Page{},
+			milestones: []string{},
 			want:       []string{"no milestones yet", "nat milestone-add"},
 		},
 	}
@@ -653,7 +516,7 @@ func TestSliceAddRefusesAMilestoneItCannotResolve(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			api := plannedAPI(addedSliceID)
 			if tt.milestones != nil {
-				api.pages["milestones-ds"] = tt.milestones
+				api.dataSources["slices-ds"] = selectMilestoneSlicesDS(tt.milestones...)
 			}
 			env, out := testEnv(testConfig(), api)
 
@@ -810,7 +673,7 @@ func TestSliceAddPrintsJSON(t *testing.T) {
 			}
 			want := sliceAddedJSON{Slice: addedSliceJSON{
 				ID: addedSliceID, Name: "Render the board", Status: notion.SliceTodo,
-				MilestoneID: "m2", MilestoneName: "M2: Board", Repo: "/tmp/nat",
+				MilestoneID: "M2: Board", MilestoneName: "M2: Board", Repo: "/tmp/nat",
 				URL: "https://notion.so/" + addedSliceID,
 			}}
 			if got != want {
@@ -869,11 +732,6 @@ func TestSliceAddReportsAFailedCall(t *testing.T) {
 		want     string
 		creation bool
 	}{
-		{
-			name: "the milestones",
-			fail: func(api *fakeAPI) { api.queryErr = map[string]error{"milestones-ds": boom} },
-			want: "load milestones",
-		},
 		{
 			name:     "the creation",
 			fail:     func(api *fakeAPI) { api.createErr = boom },
@@ -946,7 +804,7 @@ func TestSliceAddReportsAFailedSchemaRead(t *testing.T) {
 
 	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "M2: Board"}, env)
 
-	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "read the slices schema") {
+	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "load the slices schema") {
 		t.Fatalf("err = %v, want the schema read reported", err)
 	}
 	noWritesBut(t, api, 0)
