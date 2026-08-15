@@ -115,8 +115,8 @@ func TestTheWishlistIndicatorGivesWayToTheStatusMessage(t *testing.T) {
 	if got := a.View().WindowTitle; strings.Contains(got, "wishlist") {
 		t.Errorf("bar = %q, want the indicator dropped for want of room", got)
 	}
-	// It is back as soon as the error is dismissed and the room with it.
-	press(a, "esc")
+	// It is back as soon as the message goes and the room comes back with it.
+	a.Update(toastGoneMsg{id: a.toastID})
 	if got := a.View().WindowTitle; !strings.Contains(got, "3 wishlist items") {
 		t.Errorf("bar = %q, want the indicator back", got)
 	}

@@ -336,7 +336,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 	case notionErrMsg:
-		a.loading, a.err = false, msg.err
+		a.loading = false
+		// A load that fails over a board already on screen is news, not a state:
+		// the plan stays up — as old as it was, which the freshness indicator goes
+		// on saying — and the failure passes as a toast rather than an error the
+		// user has to dismiss before the app answers a key again. With no plan
+		// loaded there is nothing to keep and nothing else to look at, so the
+		// failure stands on the bar until it is dismissed.
+		if a.project != nil {
+			return a, a.showToast(fmt.Sprintf("Refresh failed: %v", msg.err), sevError)
+		}
+		a.err = msg.err
 		return a, nil
 	case wishlistLoadedMsg:
 		a.wishlistLoaded(msg)
@@ -1158,9 +1168,17 @@ func (a *App) scrimView() string {
 // boardView is the main screen: the plan, scrolled to the body band. Loading
 // and "there is nothing to show" are the root model's to report — the board
 // only ever draws a plan. The progress bar is the header's, not the board's.
+//
+// Only the first load takes the screen. A reload — the refresh key, a nudge
+// from a headless write, the reload after an agent exits — leaves the plan it
+// is replacing on show and swaps the new one in when it lands, so the board
+// does not blink back to a spinner every time something changes behind it; the
+// status line's freshness indicator says a fetch is in flight. A project switch
+// clears the plan first, so that one does show the spinner: what is on screen
+// is no longer what the app is loading.
 func (a *App) boardView() string {
 	switch {
-	case a.loading:
+	case a.loading && a.project == nil:
 		return a.spinner.View() + " Loading the plan…"
 	case a.project == nil:
 		return a.styles.Faint.Render(a.noProjectReason())
