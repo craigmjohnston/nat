@@ -36,6 +36,8 @@ func TestMain(m *testing.M) {
 	// own readings in.
 	nudgeTick = func() tea.Cmd { return nil }
 	nudgeStat = func() (time.Time, bool) { return time.Time{}, false }
+	// So is the background poll: its own tests put a firing version in.
+	pollTick = func(time.Duration) tea.Cmd { return nil }
 	// The dismissal timers never fire on their own either: a pending 4-second
 	// tick would hold every teatest program open, and the confirmations under
 	// test would vanish before they could be asserted on. The auto-dismiss

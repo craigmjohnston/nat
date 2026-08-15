@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // handWritten mirrors the bootstrap config that was written by hand before
@@ -275,6 +276,67 @@ func TestSplitPercentRoundTrip(t *testing.T) {
 	}
 	if got.SplitPercent() != 75 {
 		t.Errorf("SplitPercent() = %d, want the configured 75", got.SplitPercent())
+	}
+}
+
+func TestPollInterval(t *testing.T) {
+	tests := []struct {
+		name string
+		set  int
+		want time.Duration
+	}{
+		{"unset", 0, DefaultPollSeconds * time.Second},
+		{"as configured", 60, time.Minute},
+		{"at the lower bound", minPollSeconds, minPollSeconds * time.Second},
+		{"at the upper bound", maxPollSeconds, maxPollSeconds * time.Second},
+		// A poll every second, or one an hour and more apart, is a typo rather
+		// than an instruction.
+		{"too often", minPollSeconds - 1, DefaultPollSeconds * time.Second},
+		{"too rare", maxPollSeconds + 1, DefaultPollSeconds * time.Second},
+		{"negative", -30, DefaultPollSeconds * time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := Config{PollSeconds: tt.set}
+			if got := c.PollInterval(); got != tt.want {
+				t.Errorf("PollInterval() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// The interval is hand-written too, so Load has to read it — and Save must not
+// write a zero into a config that never set one, which would read as a poll
+// turned off rather than an absent one.
+func TestPollSecondsRoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	if err := Save(sampleConfig()); err != nil {
+		t.Fatal(err)
+	}
+	path, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "poll_seconds") {
+		t.Errorf("an unset poll interval was written out:\n%s", data)
+	}
+
+	set := sampleConfig()
+	set.PollSeconds = 120
+	if err := Save(set); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PollInterval() != 2*time.Minute {
+		t.Errorf("PollInterval() = %v, want the configured 2m", got.PollInterval())
 	}
 }
 

@@ -69,6 +69,27 @@ nat info
 nat info --json
 ```
 
+### Keeping the board current
+
+The board does not need restarting to notice a change. A write made through a
+`nat` command — an agent claiming or closing out a slice — shows within a
+second. A change made in Notion itself is picked up by a background poll, every
+30 seconds by default; `r` refetches at once. A poll is skipped while a form,
+a prompt or a write is in flight, so nothing lands on top of what you are
+typing, and resumes on the next one. A poll that fails leaves the plan on the
+board as it was and says so on the status line.
+
+To change the interval, add `poll_seconds` to
+`~/.config/notion-agent-tracker/config.json`:
+
+```json
+{
+  "poll_seconds": 120
+}
+```
+
+Anything outside 5–3600 is treated as a typo and the default is used instead.
+
 ### Watching an agent
 
 `t` on a slice with a running agent shows that agent in a pane beside the board;
