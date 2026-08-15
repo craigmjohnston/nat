@@ -5,6 +5,7 @@ package domain
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/craigmjohnston/nat/internal/notion"
 )
@@ -181,6 +182,45 @@ func SlicesFromPages(pages []notion.Page) []Slice {
 		ss[i] = SliceFromPage(p)
 	}
 	return ss
+}
+
+// InViewOrder returns the slices in the order the given page IDs put them in —
+// the order of a Notion view, which is what someone reading the plan in Notion
+// sees. A slice the order does not name keeps its place relative to the other
+// unnamed ones and follows every named slice, so a slice a view's filter hides,
+// or one created since the order was read, is still there to work.
+//
+// The input is not modified; the IDs are compared ignoring dashes and case,
+// since a Notion ID is written both ways.
+func InViewOrder(slices []Slice, order []string) []Slice {
+	if len(order) == 0 {
+		return slices
+	}
+	rank := make(map[string]int, len(order))
+	for i, id := range order {
+		rank[normaliseID(id)] = i
+	}
+	ordered := make([]Slice, len(slices))
+	copy(ordered, slices)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return rankOf(rank, ordered[i]) < rankOf(rank, ordered[j])
+	})
+	return ordered
+}
+
+// rankOf is a slice's place in a view's order, and one past the last place for
+// a slice the order does not name.
+func rankOf(rank map[string]int, s Slice) int {
+	if i, ok := rank[normaliseID(s.ID)]; ok {
+		return i
+	}
+	return len(rank)
+}
+
+// normaliseID puts a Notion ID in one form, so IDs read from different places
+// compare equal however they were written.
+func normaliseID(id string) string {
+	return strings.ToLower(strings.ReplaceAll(id, "-", ""))
 }
 
 // Progress is the tally of one set of slices by status, as the segmented

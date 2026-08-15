@@ -28,6 +28,7 @@ type fakeNotion struct {
 	createDB    func(parentPageID, title string) (*notion.Database, error)
 	newProject  func(projectsDSID, name string) (*notion.ProjectStructure, error)
 	query       func(id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
+	order       func(id string) ([]string, error)
 	blocks      func(id string) ([]notion.Block, error)
 	wishlist    func(pageID string) ([]notion.WishlistItem, error)
 	createPage  func(parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)
@@ -42,6 +43,7 @@ type fakeNotion struct {
 	fetchedDBs    []string
 	fetchedDSs    []string
 	queriedDSIDs  []string
+	orderedDSIDs  []string
 	crumbParents  []notion.Parent
 	blockParents  []string
 	wishlistPages []string
@@ -160,6 +162,14 @@ func (f *fakeNotion) QueryDataSource(_ context.Context, id string, filter map[st
 		return nil, nil
 	}
 	return f.query(id, filter, sorts)
+}
+
+func (f *fakeNotion) DataSourceOrder(_ context.Context, id string) ([]string, error) {
+	f.orderedDSIDs = append(f.orderedDSIDs, id)
+	if f.order == nil {
+		return nil, nil
+	}
+	return f.order(id)
 }
 
 func (f *fakeNotion) GetBlockChildren(_ context.Context, id string) ([]notion.Block, error) {

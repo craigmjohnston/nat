@@ -44,6 +44,13 @@ type fakeAPI struct {
 	// queryErr fails the query for the named data source.
 	queryErr map[string]error
 
+	// ordered records the data source ID of every view-order read, in order.
+	ordered []string
+	// order answers a view-order read by data source ID.
+	order map[string][]string
+	// orderErr fails the view-order read.
+	orderErr error
+
 	// schemaUpdates records every schema write, in order.
 	schemaUpdates []schemaUpdate
 	// schemaUpdateErr fails the schema write.
@@ -305,6 +312,14 @@ func (f *fakeAPI) QueryDataSource(_ context.Context, id string, _ map[string]any
 		return nil, err
 	}
 	return f.pages[id], nil
+}
+
+func (f *fakeAPI) DataSourceOrder(_ context.Context, id string) ([]string, error) {
+	f.ordered = append(f.ordered, id)
+	if err := f.orderErr; err != nil {
+		return nil, err
+	}
+	return f.order[id], nil
 }
 
 // testEnv builds an Env around a fake client and an in-memory config, and

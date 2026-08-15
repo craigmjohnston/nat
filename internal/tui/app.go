@@ -762,6 +762,11 @@ func (a *App) activeProject() (config.ProjectConfig, bool) {
 // plan order and slices oldest first, which is the order agents pick them up
 // in; the domain groups them from there.
 //
+// A project whose plan lives on one page has no Order to sort its slices by,
+// and created time is no substitute — Notion records it to the minute, so a
+// plan written in one go has no order at all. Such a project is ordered by
+// where its slices sit in its board instead, read from the view.
+//
 // Where the milestones come from is the project's own business: the Slices
 // schema says whether they are pages of a Milestones database or the options of
 // the slices' own Milestone select, and either way one domain.Project comes out,
@@ -774,7 +779,8 @@ func (a *App) fetchProject(id string, cfg config.ProjectConfig) tea.Cmd {
 		if err != nil {
 			return notionErrMsg{err: fmt.Errorf("load the slices schema: %w", err)}
 		}
-		milestones, err := fetchMilestones(ctx, client, cfg, notion.ShapeOf(ds))
+		shape := notion.ShapeOf(ds)
+		milestones, err := fetchMilestones(ctx, client, cfg, shape)
 		if err != nil {
 			return notionErrMsg{err: err}
 		}
@@ -784,7 +790,9 @@ func (a *App) fetchProject(id string, cfg config.ProjectConfig) tea.Cmd {
 			return notionErrMsg{err: fmt.Errorf("load slices: %w", err)}
 		}
 		return projectLoadedMsg{project: domain.NewProject(
-			id, cfg.Name, milestones, domain.SlicesFromPages(slices))}
+			id, cfg.Name, milestones, domain.InViewOrder(
+				domain.SlicesFromPages(slices),
+				notion.PlanOrder(ctx, client, shape, cfg.SlicesDSID)))}
 	}
 }
 

@@ -850,3 +850,55 @@ func TestAppSpinnerTurnsWhileTheProjectPageLoads(t *testing.T) {
 		t.Errorf("view = %q, want the loading state", view)
 	}
 }
+
+// A plan kept on one page has no Order to sort its slices by, so the board
+// takes the order from the project's own view — where the slices sit on the
+// board is the order they are meant to be worked in.
+func TestAppOrdersAOnePagePlanByItsBoard(t *testing.T) {
+	client := newSelectShapedClient()
+	client.order = func(string) ([]string, error) { return []string{"s2", "s1"}, nil }
+	app := NewApp(testConfig(), client)
+
+	msgs := run(app.Init())
+	app.Update(first[projectLoadedMsg](t, msgs))
+
+	if got := client.orderedDSIDs; len(got) != 1 || got[0] != "sl-ds" {
+		t.Fatalf("read the order of %v, want the slices data source once", got)
+	}
+	if app.project == nil || len(app.project.Slices) != 2 ||
+		app.project.Slices[0].ID != "s2" || app.project.Slices[1].ID != "s1" {
+		t.Errorf("slices = %+v, want the board's order", app.project.Slices)
+	}
+}
+
+// A project with a Milestones database orders its plan by their Order, so the
+// board asks its views for nothing.
+func TestAppDoesNotReadAnOrderForAPagedPlan(t *testing.T) {
+	client := newLoadingClient()
+	app := NewApp(testConfig(), client)
+
+	msgs := run(app.Init())
+	app.Update(first[projectLoadedMsg](t, msgs))
+
+	if got := client.orderedDSIDs; len(got) != 0 {
+		t.Errorf("read the order of %v, want no view read at all", got)
+	}
+}
+
+// An order that cannot be read is not worth failing a load over: the board
+// draws the plan in the order the query returned it.
+func TestAppDrawsAOnePagePlanWhenTheOrderCannotBeRead(t *testing.T) {
+	client := newSelectShapedClient()
+	client.order = func(string) ([]string, error) { return nil, errors.New("boom") }
+	app := NewApp(testConfig(), client)
+
+	msgs := run(app.Init())
+	app.Update(first[projectLoadedMsg](t, msgs))
+
+	if app.err != nil {
+		t.Fatalf("err = %v, want the load to have survived", app.err)
+	}
+	if app.project == nil || len(app.project.Slices) != 2 || app.project.Slices[0].ID != "s1" {
+		t.Errorf("slices = %+v, want the queried order", app.project)
+	}
+}
