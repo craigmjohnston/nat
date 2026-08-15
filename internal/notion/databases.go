@@ -62,10 +62,3 @@ func (c *Client) GetDatabase(ctx context.Context, id string) (*Database, error) 
 	}
 	return &db, nil
 }
-
-// SetDatabaseInline sets whether a database renders inline on its parent page —
-// its rows shown on the page itself — rather than as a child page of its own.
-func (c *Client) SetDatabaseInline(ctx context.Context, id string, inline bool) error {
-	return c.do(ctx, http.MethodPatch, "/databases/"+url.PathEscape(id),
-		map[string]any{"is_inline": inline}, nil)
-}

@@ -27,11 +27,6 @@ type API interface {
 	AppendBlockChildrenAfter(ctx context.Context, id, after string, children []map[string]any) ([]notion.Block, error)
 	DeleteBlock(ctx context.Context, id string) error
 	UpdatePageProperties(ctx context.Context, pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
-	SetDatabaseInline(ctx context.Context, id string, inline bool) error
-	ListViews(ctx context.Context, dataSourceID string) ([]notion.View, error)
-	GetView(ctx context.Context, id string) (*notion.View, error)
-	CreateBoardView(ctx context.Context, databaseID, dataSourceID, name, groupPropertyID string) (*notion.View, error)
-	DeleteView(ctx context.Context, id string) error
 }
 
 // NewClientFunc builds an API from a source of bearer tokens.

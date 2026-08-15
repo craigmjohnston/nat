@@ -891,16 +891,7 @@ func TestAppMigratesAnOldProjectAndSaysSo(t *testing.T) {
 				Type:     "relation",
 				Relation: &notion.RelationConfig{DataSourceID: "ms-ds"},
 			},
-		}, Parent: notion.Parent{Type: notion.ParentDatabase, DatabaseID: "sl-db"}}, nil
-	}
-	client.updateDS = func(id string, properties map[string]notion.PropertySchema) (*notion.DataSource, error) {
-		// Echo the way Notion answers: the written properties carrying IDs.
-		echoed := map[string]notion.PropertySchema{}
-		for name, s := range properties {
-			s.ID = "prop-" + name
-			echoed[name] = s
-		}
-		return &notion.DataSource{ID: id, Properties: echoed}, nil
+		}}, nil
 	}
 	client.query = func(id string, _ map[string]any, _ []notion.Sort) ([]notion.Page, error) {
 		if id != "ms-ds" {

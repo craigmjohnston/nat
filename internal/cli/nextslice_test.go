@@ -619,7 +619,7 @@ func TestNextSliceMigratesAnOldProject(t *testing.T) {
 			Relation: &notion.RelationConfig{DataSourceID: "milestones-ds"},
 		},
 		notion.PropAssignee: {Type: notion.TypePeople},
-	}, Parent: notion.Parent{Type: notion.ParentDatabase, DatabaseID: "slices-db"}}
+	}}
 	api := &fakeAPI{
 		blocksByID: map[string][]notion.Block{
 			"project-1": conventionBlocks(t),

@@ -3,7 +3,6 @@ package notion
 import (
 	"context"
 	"errors"
-	"fmt"
 	"maps"
 	"reflect"
 	"strings"
@@ -17,9 +16,6 @@ type migrateStub struct {
 	dataSource   *DataSource
 	dataSourceDS map[string]*DataSource
 	queries      map[string][]Page
-	// views answers ListViews; view answers GetView for any ID.
-	views []View
-	view  *View
 
 	getErr   error
 	getErrDS map[string]error
@@ -28,15 +24,7 @@ type migrateStub struct {
 	schemaErrOn    int
 	schemaErr      error
 	pageErr        error
-	inlineErr      error
-	listViewsErr   error
-	getViewErr     error
-	createViewErr  error
-	deleteViewErr  error
 	deleteBlockErr error
-	// noPropertyIDs echoes schema writes without assigning property IDs, the
-	// way a misbehaving API would.
-	noPropertyIDs bool
 
 	// calls is every write-side call in the order it was made.
 	calls   []string
@@ -69,31 +57,25 @@ func (s *migrateStub) QueryDataSource(_ context.Context, id string, _ map[string
 
 // UpdateDataSourceProperties echoes the way the API does: the whole schema with
 // the written properties applied, IDs assigned to whatever was created — which
-// is where the migration reads the Milestone property ID and the new In
-// progress option's ID back from.
+// is where the migration reads the new In progress option's ID back from before
+// sending the list again without Claimed.
 func (s *migrateStub) UpdateDataSourceProperties(_ context.Context, id string, properties map[string]PropertySchema) (*DataSource, error) {
-	sent := maps.Clone(properties)
-	s.writes = append(s.writes, sent)
+	s.writes = append(s.writes, maps.Clone(properties))
 	s.calls = append(s.calls, "schema "+id)
 	if len(s.writes) == s.schemaErrOn {
 		return nil, s.schemaErr
 	}
 	merged := maps.Clone(s.dataSource.Properties)
 	for k, v := range properties {
-		if !s.noPropertyIDs {
-			if v.ID == "" {
-				v.ID = "prop-" + k
-			}
-			if v.Select != nil {
-				options := make([]SelectOption, len(v.Select.Options))
-				copy(options, v.Select.Options)
-				for i := range options {
-					if options[i].ID == "" {
-						options[i].ID = "opt-" + options[i].Name
-					}
+		if v.Select != nil {
+			options := make([]SelectOption, len(v.Select.Options))
+			copy(options, v.Select.Options)
+			for i := range options {
+				if options[i].ID == "" {
+					options[i].ID = "opt-" + options[i].Name
 				}
-				v.Select = &OptionsConfig{Options: options}
 			}
+			v.Select = &OptionsConfig{Options: options}
 		}
 		merged[k] = v
 	}
@@ -117,43 +99,6 @@ func (s *migrateStub) UpdatePageProperties(_ context.Context, pageID string, pro
 	return &Page{ID: pageID}, nil
 }
 
-func (s *migrateStub) SetDatabaseInline(_ context.Context, id string, inline bool) error {
-	s.calls = append(s.calls, fmt.Sprintf("inline %s %v", id, inline))
-	return s.inlineErr
-}
-
-func (s *migrateStub) ListViews(_ context.Context, dataSourceID string) ([]View, error) {
-	s.calls = append(s.calls, "list-views "+dataSourceID)
-	if s.listViewsErr != nil {
-		return nil, s.listViewsErr
-	}
-	return s.views, nil
-}
-
-func (s *migrateStub) GetView(_ context.Context, id string) (*View, error) {
-	s.calls = append(s.calls, "get-view "+id)
-	if s.getViewErr != nil {
-		return nil, s.getViewErr
-	}
-	if s.view != nil {
-		return s.view, nil
-	}
-	return &View{ID: id, Type: ViewTypeTable}, nil
-}
-
-func (s *migrateStub) CreateBoardView(_ context.Context, databaseID, dataSourceID, name, groupPropertyID string) (*View, error) {
-	s.calls = append(s.calls, fmt.Sprintf("create-board %s %s %s %s", databaseID, dataSourceID, name, groupPropertyID))
-	if s.createViewErr != nil {
-		return nil, s.createViewErr
-	}
-	return &View{ID: "v-board", Name: name, Type: ViewTypeBoard}, nil
-}
-
-func (s *migrateStub) DeleteView(_ context.Context, id string) error {
-	s.calls = append(s.calls, "delete-view "+id)
-	return s.deleteViewErr
-}
-
 func (s *migrateStub) DeleteBlock(_ context.Context, id string) error {
 	s.calls = append(s.calls, "trash "+id)
 	return s.deleteBlockErr
@@ -173,19 +118,17 @@ func oldShape() *DataSource {
 			}}},
 			PropMilestone: {Type: "relation", Relation: &RelationConfig{DataSourceID: "ds-milestones"}},
 		},
-		Parent: Parent{Type: ParentDatabase, DatabaseID: "db-slices"},
 	}
 }
 
-// oldShapeStub is a stub around a whole old-shape project: the slices, the
-// milestones database behind the relation, and the default table view.
+// oldShapeStub is a stub around a whole old-shape project: the slices, and the
+// milestones database behind the relation.
 func oldShapeStub() *migrateStub {
 	return &migrateStub{
 		dataSource: oldShape(),
 		dataSourceDS: map[string]*DataSource{
 			"ds-milestones": {ID: "ds-milestones", Parent: Parent{Type: ParentDatabase, DatabaseID: "db-milestones"}},
 		},
-		views: []View{{ID: "v-table"}},
 	}
 }
 
@@ -285,17 +228,12 @@ func TestMigrateProjectOldShape(t *testing.T) {
 	}; !reflect.DeepEqual(stub.filed, want) {
 		t.Errorf("filed %v, want %v", stub.filed, want)
 	}
-	// The page shape follows the data, and the Milestones database goes last:
-	// until everything else has succeeded it is still in place to refile from.
+	// The Milestones database goes last: until everything else has succeeded it
+	// is still in place to refile from.
 	wantCalls := []string{
 		"schema ds-slices",
 		"page s-1", "page s-4", "page s-5",
 		"schema ds-slices",
-		"inline db-slices true",
-		"list-views ds-slices",
-		"create-board db-slices ds-slices Board prop-" + PropMilestone,
-		"get-view v-table",
-		"delete-view v-table",
 		"trash db-milestones",
 	}
 	if !reflect.DeepEqual(stub.calls, wantCalls) {
@@ -305,7 +243,6 @@ func TestMigrateProjectOldShape(t *testing.T) {
 		Milestones:        []string{"M1: Groundwork", "M2: The board"},
 		Slices:            2,
 		StatusRenamed:     true,
-		Board:             true,
 		MilestonesTrashed: true,
 	}
 	if !reflect.DeepEqual(migration, want) {
@@ -342,7 +279,7 @@ func TestMigrateProjectIsIdempotent(t *testing.T) {
 
 // A project already on one page whose status still says Claimed has only that
 // to migrate: the option is appended, the slices holding the old name are moved,
-// and the old option is dropped — with the page's shape left alone.
+// and the old option is dropped — with nothing else touched.
 func TestMigrateProjectStatusOnly(t *testing.T) {
 	stub := &migrateStub{
 		dataSource: &DataSource{ID: "ds-slices", Properties: map[string]PropertySchema{
@@ -419,67 +356,20 @@ func TestMigrateProjectRefusesAStatusColumn(t *testing.T) {
 	}
 }
 
-// A project whose data sources name no databases cannot have its page shaped or
-// its Milestones database trashed, and is refused whole before the first write
-// rather than half-migrated.
-func TestMigrateProjectRefusesWithoutDatabases(t *testing.T) {
-	t.Run("no slices database", func(t *testing.T) {
-		stub := oldShapeStub()
-		stub.dataSource.Parent = Parent{}
+// A project whose milestones data source names no database cannot have that
+// database trashed, and is refused whole before the first write rather than
+// half-migrated.
+func TestMigrateProjectRefusesWithoutMilestonesDatabase(t *testing.T) {
+	stub := oldShapeStub()
+	stub.dataSourceDS["ds-milestones"] = &DataSource{ID: "ds-milestones"}
+	stub.queries = map[string][]Page{"ds-milestones": milestonePages()}
 
-		_, _, err := MigrateProject(context.Background(), stub, "ds-slices")
-		if err == nil || !strings.Contains(err.Error(), "no database to put on the page") {
-			t.Fatalf("err = %v, want a refusal naming the missing database", err)
-		}
-		if stub.calls != nil || stub.queried != nil {
-			t.Error("something was written before the refusal")
-		}
-	})
-	t.Run("no milestones database", func(t *testing.T) {
-		stub := oldShapeStub()
-		stub.dataSourceDS["ds-milestones"] = &DataSource{ID: "ds-milestones"}
-		stub.queries = map[string][]Page{"ds-milestones": milestonePages()}
-
-		_, _, err := MigrateProject(context.Background(), stub, "ds-slices")
-		if err == nil || !strings.Contains(err.Error(), "no database to trash") {
-			t.Fatalf("err = %v, want a refusal naming the missing database", err)
-		}
-		if stub.calls != nil {
-			t.Error("something was written before the refusal")
-		}
-	})
-}
-
-// Only the lone default table this app created with the database is replaced by
-// the board; views someone arranged themselves are left alongside it.
-func TestMigrateProjectKeepsCuratedViews(t *testing.T) {
-	tests := []struct {
-		name  string
-		views []View
-		view  *View
-	}{
-		{"several views", []View{{ID: "v-1"}, {ID: "v-2"}}, nil},
-		{"one view, not a table", []View{{ID: "v-1"}}, &View{ID: "v-1", Type: ViewTypeBoard}},
+	_, _, err := MigrateProject(context.Background(), stub, "ds-slices")
+	if err == nil || !strings.Contains(err.Error(), "no database to trash") {
+		t.Fatalf("err = %v, want a refusal naming the missing database", err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			stub := oldShapeStub()
-			stub.views, stub.view = tt.views, tt.view
-			stub.queries = map[string][]Page{"ds-milestones": milestonePages()}
-
-			_, migration, err := MigrateProject(context.Background(), stub, "ds-slices")
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if !migration.Board {
-				t.Errorf("migration = %+v, want the board reported", migration)
-			}
-			for _, call := range stub.calls {
-				if strings.HasPrefix(call, "delete-view") {
-					t.Errorf("calls %v deleted a view, want them kept", stub.calls)
-				}
-			}
-		})
+	if stub.calls != nil {
+		t.Error("something was written before the refusal")
 	}
 }
 
@@ -607,60 +497,6 @@ func TestMigrateProjectErrors(t *testing.T) {
 			`retire the "Claimed" option`,
 		},
 		{
-			"the migrated schema carries no property IDs",
-			func() *migrateStub {
-				stub := planned()
-				stub.noPropertyIDs = true
-				return stub
-			},
-			"names no Milestone property to group the board by",
-		},
-		{
-			"the database cannot be inlined",
-			func() *migrateStub {
-				stub := planned()
-				stub.inlineErr = boom
-				return stub
-			},
-			"inline the slices database",
-		},
-		{
-			"the views cannot be listed",
-			func() *migrateStub {
-				stub := planned()
-				stub.listViewsErr = boom
-				return stub
-			},
-			"list the plan's views",
-		},
-		{
-			"the board view cannot be created",
-			func() *migrateStub {
-				stub := planned()
-				stub.createViewErr = boom
-				return stub
-			},
-			"create the board view",
-		},
-		{
-			"the prior view cannot be read",
-			func() *migrateStub {
-				stub := planned()
-				stub.getViewErr = boom
-				return stub
-			},
-			"read the plan's view",
-		},
-		{
-			"the table view cannot be removed",
-			func() *migrateStub {
-				stub := planned()
-				stub.deleteViewErr = boom
-				return stub
-			},
-			"remove the table view",
-		},
-		{
 			"the Milestones database cannot be trashed",
 			func() *migrateStub {
 				stub := planned()
@@ -692,10 +528,9 @@ func TestMigrationSummary(t *testing.T) {
 		{"nothing", Migration{}, "nothing to migrate"},
 		{
 			"one of each",
-			Migration{Milestones: []string{"M1"}, Slices: 1, StatusRenamed: true, Board: true, MilestonesTrashed: true},
+			Migration{Milestones: []string{"M1"}, Slices: 1, StatusRenamed: true, MilestonesTrashed: true},
 			`Migrated this project: 1 milestone moved onto the slices, 1 slice refiled, ` +
-				`"Claimed" renamed to "In progress", the plan brought onto the project page as a board, ` +
-				`the old Milestones database moved to Notion's trash.`,
+				`"Claimed" renamed to "In progress", the old Milestones database moved to Notion's trash.`,
 		},
 		{
 			"several",

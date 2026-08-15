@@ -628,20 +628,6 @@ func (s stubAPI) UpdatePageProperties(context.Context, string, map[string]notion
 	return &notion.Page{}, s.err
 }
 
-func (s stubAPI) SetDatabaseInline(context.Context, string, bool) error { return s.err }
-
-func (s stubAPI) ListViews(context.Context, string) ([]notion.View, error) { return nil, s.err }
-
-func (s stubAPI) GetView(context.Context, string) (*notion.View, error) {
-	return &notion.View{}, s.err
-}
-
-func (s stubAPI) CreateBoardView(context.Context, string, string, string, string) (*notion.View, error) {
-	return &notion.View{}, s.err
-}
-
-func (s stubAPI) DeleteView(context.Context, string) error { return s.err }
-
 // A subcommand runs headless and exits: no board, and no tmux, which would send
 // the output somewhere nobody is looking.
 func TestMainRunsACommandInsteadOfTheBoard(t *testing.T) {

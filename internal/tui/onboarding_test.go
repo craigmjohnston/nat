@@ -243,23 +243,6 @@ func (f *fakeNotion) TrashPage(_ context.Context, pageID string) error {
 	return f.trashPage(pageID)
 }
 
-// The migration's page-shape calls. No TUI test drives an old-shape project —
-// MigrateProject has its own — so these only satisfy the interface.
-
-func (f *fakeNotion) SetDatabaseInline(context.Context, string, bool) error { return nil }
-
-func (f *fakeNotion) ListViews(context.Context, string) ([]notion.View, error) { return nil, nil }
-
-func (f *fakeNotion) GetView(context.Context, string) (*notion.View, error) {
-	return &notion.View{}, nil
-}
-
-func (f *fakeNotion) CreateBoardView(context.Context, string, string, string, string) (*notion.View, error) {
-	return &notion.View{}, nil
-}
-
-func (f *fakeNotion) DeleteView(context.Context, string) error { return nil }
-
 // harness drives an Onboarding the way the Bubble Tea runtime would: it feeds
 // key presses in and runs every command the model returns, threading the
 // resulting messages back through Update.

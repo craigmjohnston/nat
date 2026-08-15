@@ -8,9 +8,6 @@ import (
 	"github.com/craigmjohnston/nat/internal/logging"
 )
 
-// BoardViewName is what the board view a migration creates is called in Notion.
-const BoardViewName = "Board"
-
 // MigrationAPI is the part of the client migrating a project needs, as an
 // interface so the callers that already hold a narrower one — the TUI's, the
 // CLI's — can pass it straight through.
@@ -19,11 +16,6 @@ type MigrationAPI interface {
 	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []Sort) ([]Page, error)
 	UpdateDataSourceProperties(ctx context.Context, id string, properties map[string]PropertySchema) (*DataSource, error)
 	UpdatePageProperties(ctx context.Context, pageID string, properties map[string]PropertyValue) (*Page, error)
-	SetDatabaseInline(ctx context.Context, id string, inline bool) error
-	ListViews(ctx context.Context, dataSourceID string) ([]View, error)
-	GetView(ctx context.Context, id string) (*View, error)
-	CreateBoardView(ctx context.Context, databaseID, dataSourceID, name, groupPropertyID string) (*View, error)
-	DeleteView(ctx context.Context, id string) error
 	DeleteBlock(ctx context.Context, id string) error
 }
 
@@ -41,9 +33,6 @@ type Migration struct {
 	// way — In progress appended, the slices sitting on Claimed moved over, and
 	// Claimed dropped — and reported only once all three have happened.
 	StatusRenamed bool
-	// Board reports the Slices database put on the project page as the plan's
-	// own board: rendered inline, with a board view grouped by Milestone.
-	Board bool
 	// MilestonesTrashed reports the old Milestones database moved to Notion's
 	// trash, its milestones now living entirely on the Milestone column.
 	MilestonesTrashed bool
@@ -51,8 +40,7 @@ type Migration struct {
 
 // Empty reports whether nothing was migrated.
 func (m Migration) Empty() bool {
-	return len(m.Milestones) == 0 && m.Slices == 0 && !m.StatusRenamed &&
-		!m.Board && !m.MilestonesTrashed
+	return len(m.Milestones) == 0 && m.Slices == 0 && !m.StatusRenamed && !m.MilestonesTrashed
 }
 
 // Summary says what changed, in one line, for a status bar or a log.
@@ -67,9 +55,6 @@ func (m Migration) Summary() string {
 	}
 	if m.StatusRenamed {
 		parts = append(parts, fmt.Sprintf("%q renamed to %q", SliceClaimed, SliceInProgress))
-	}
-	if m.Board {
-		parts = append(parts, "the plan brought onto the project page as a board")
 	}
 	if m.MilestonesTrashed {
 		parts = append(parts, "the old Milestones database moved to Notion's trash")
@@ -100,11 +85,6 @@ func pluralise(word string, n int) string {
 //   - A Milestone relation becomes a select whose options are the project's
 //     milestones in plan order, and every slice is refiled onto that option from
 //     the milestone page it related to.
-//   - The Slices database becomes the plan on the page itself: rendered inline,
-//     with a board view grouped by the Milestone column. Where its only view is
-//     the default table this app created alongside it, that table is removed so
-//     the board is the first view — the one the plan's order is read from;
-//     views someone curated are left alongside the board instead.
 //   - The Milestones database, its milestones now wholly on the Milestone
 //     column, is moved to Notion's trash — recoverable there, not destroyed.
 //   - A Claimed status option becomes In progress. The API quietly ignores
@@ -112,10 +92,13 @@ func pluralise(word string, n int) string {
 //     appended, every slice sitting on Claimed is moved onto it, and Claimed is
 //     dropped once nothing holds it.
 //
+// The Slices database itself — a full-page child of the project page, its first
+// view the table the plan's order is read from — is left exactly as it is.
+//
 // The whole migration is settled before the first write: a project whose Status
 // column was converted in the Notion UI to a type this app cannot write options
-// to, or whose data sources name no database to put on the page or trash, is
-// refused whole rather than half-migrated.
+// to, or whose milestones data source names no database to trash, is refused
+// whole rather than half-migrated.
 //
 // The plan is read in full before the schema changes, because converting the
 // column is what discards the relations it is read from. A run that dies partway
@@ -138,10 +121,6 @@ func MigrateProject(ctx context.Context, api MigrationAPI, slicesDSID string) (*
 			"the %s column is a %s, whose options this app cannot write: "+
 				"rename its %q option to %q in Notion and open the board again",
 			PropStatus, status.Type, SliceClaimed, SliceInProgress)
-	}
-	if milestone.Relation != nil && ds.Parent.DatabaseID == "" {
-		return nil, Migration{}, fmt.Errorf(
-			"the slices data source names no database to put on the page")
 	}
 
 	// Read everything before the first write: the schema change discards the
@@ -181,9 +160,6 @@ func MigrateProject(ctx context.Context, api MigrationAPI, slicesDSID string) (*
 	if err != nil {
 		return nil, Migration{}, fmt.Errorf("migrate the slices schema: %w", err)
 	}
-	// The write that put the Milestone select in place is the one that echoes
-	// its property ID back, which is what the board view groups by.
-	milestonePropID := updated.Properties[PropMilestone].ID
 
 	for _, w := range writes {
 		if _, err := api.UpdatePageProperties(ctx, w.pageID, w.properties); err != nil {
@@ -210,10 +186,6 @@ func MigrateProject(ctx context.Context, api MigrationAPI, slicesDSID string) (*
 	}
 
 	if milestone.Relation != nil {
-		if err := putPlanOnPage(ctx, api, ds.Parent.DatabaseID, slicesDSID, milestonePropID); err != nil {
-			return nil, Migration{}, err
-		}
-		report.Board = true
 		// The Milestones database goes last: until here it was still in place
 		// to refile from, and from here the plan needs nothing it holds.
 		if err := api.DeleteBlock(ctx, milestonesDB); err != nil {
@@ -224,48 +196,9 @@ func MigrateProject(ctx context.Context, api MigrationAPI, slicesDSID string) (*
 
 	logging.Action("project migrated", "data_source", slicesDSID,
 		"milestones", len(report.Milestones), "slices", report.Slices,
-		"status_renamed", report.StatusRenamed, "board", report.Board,
+		"status_renamed", report.StatusRenamed,
 		"milestones_trashed", report.MilestonesTrashed)
 	return updated, report, nil
-}
-
-// putPlanOnPage makes the migrated Slices database read as the plan on the
-// project page: rendered inline, with a board view grouped by the Milestone
-// select — whose groups sit in manual order, which for a select is option
-// order, which is plan order. Where the database's only view is the default
-// table this app created with it, that table is removed so the board is the
-// first view — the one the plan's order is read from. Any other views were
-// arranged by someone, and are left alongside the board.
-func putPlanOnPage(ctx context.Context, api MigrationAPI, databaseID, dataSourceID, milestonePropID string) error {
-	if milestonePropID == "" {
-		return fmt.Errorf("the migrated schema names no %s property to group the board by", PropMilestone)
-	}
-	if err := api.SetDatabaseInline(ctx, databaseID, true); err != nil {
-		return fmt.Errorf("inline the slices database: %w", err)
-	}
-	views, err := api.ListViews(ctx, dataSourceID)
-	if err != nil {
-		return fmt.Errorf("list the plan's views: %w", err)
-	}
-	if _, err := api.CreateBoardView(ctx, databaseID, dataSourceID, BoardViewName, milestonePropID); err != nil {
-		return fmt.Errorf("create the board view: %w", err)
-	}
-	if len(views) != 1 {
-		return nil
-	}
-	// The list endpoint returns bare stubs, so whether the one prior view is
-	// the default table is only readable one view at a time.
-	view, err := api.GetView(ctx, views[0].ID)
-	if err != nil {
-		return fmt.Errorf("read the plan's view: %w", err)
-	}
-	if view.Type != ViewTypeTable {
-		return nil
-	}
-	if err := api.DeleteView(ctx, view.ID); err != nil {
-		return fmt.Errorf("remove the table view: %w", err)
-	}
-	return nil
 }
 
 // renamesClaimed reports whether a Status column still offers the old name for
