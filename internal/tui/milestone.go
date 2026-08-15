@@ -120,6 +120,9 @@ func (a *App) queueMilestone() tea.Cmd {
 	if !ok {
 		return a.showConfirm("Move to a milestone to change its status.", sevWarning)
 	}
+	if m.Derived {
+		return a.showConfirm(fmt.Sprintf("%q has no page of its own — its status follows its slices.", m.Name), sevWarning)
+	}
 	next, ok := nextMilestoneStatus(m.Status)
 	if !ok {
 		return a.showConfirm(fmt.Sprintf("%q is %s — there is nothing to move it to.", m.Name, m.Status), sevWarning)

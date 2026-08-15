@@ -41,7 +41,10 @@ const UnassignedName = "Unassigned"
 
 // Milestone is one phase of a project's plan. StatusType is the Notion property
 // type its Status column turned out to have, carried so that a write can be
-// sent in the same shape it was read in.
+// sent in the same shape it was read in. Derived marks a milestone that has no
+// page of its own — an option of a Slices data source's Milestone select — so
+// its Order and Status are computed rather than read, and nothing can be
+// written to it.
 type Milestone struct {
 	ID         string
 	Name       string
@@ -49,6 +52,7 @@ type Milestone struct {
 	Status     MilestoneStatus
 	StatusType string
 	URL        string
+	Derived    bool
 }
 
 // Slice is one unit of work, small enough for a single agent session. Status is
@@ -105,11 +109,12 @@ func MilestonesFromPages(pages []notion.Page) []Milestone {
 // a milestone is nothing but its name, so the name is its ID here too — it is
 // what a slice's select names, and so what groups the plan — and its order is
 // its place among the options, which is the order the plan is written in. It
-// has no page, so no status and no URL.
+// has no page, so no URL and no status of its own: NewProject computes the
+// status from the slices under it.
 func MilestonesFromOptions(names []string) []Milestone {
 	ms := make([]Milestone, len(names))
 	for i, n := range names {
-		ms[i] = Milestone{ID: n, Name: n, Order: float64(i)}
+		ms[i] = Milestone{ID: n, Name: n, Order: float64(i), Derived: true}
 	}
 	return ms
 }
@@ -199,6 +204,45 @@ func ProgressOf(slices []Slice) Progress {
 		}
 	}
 	return p
+}
+
+// MilestoneStatusOf is the status a milestone with no page of its own is in,
+// read off the slices under it: nothing started is Queued, everything finished
+// is Done, anything in between — a slice in progress, or some but not all of
+// them Done — is Active. A milestone with no slices at all has nothing started
+// either, so it is Queued.
+func MilestoneStatusOf(slices []Slice) MilestoneStatus {
+	p := ProgressOf(slices)
+	switch {
+	case p.Total > 0 && p.Done == p.Total:
+		return MilestoneDone
+	case p.Claimed > 0 || p.Done > 0:
+		return MilestoneActive
+	default:
+		return MilestoneQueued
+	}
+}
+
+// NewProject assembles a plan read from Notion, filling in what a milestone
+// without a page of its own cannot carry: its status, computed from the slices
+// that name it. Milestones read from a Milestones database keep the Order and
+// Status their pages hold, untouched.
+func NewProject(id, name string, milestones []Milestone, slices []Slice) Project {
+	ms := make([]Milestone, len(milestones))
+	copy(ms, milestones)
+	for i := range ms {
+		if !ms[i].Derived {
+			continue
+		}
+		var under []Slice
+		for _, s := range slices {
+			if s.MilestoneID == ms[i].ID {
+				under = append(under, s)
+			}
+		}
+		ms[i].Status = MilestoneStatusOf(under)
+	}
+	return Project{ID: id, Name: name, Milestones: ms, Slices: slices}
 }
 
 // Group is one row of the board: a milestone and the slices under it. Milestone

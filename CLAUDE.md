@@ -95,7 +95,11 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   migrated — `notion.ShapeOf` reads which shape the Slices data source has, and
   a plan read from a select becomes the same `domain.Project` (via
   `domain.MilestonesFromOptions`, milestone name as ID, option index as order,
-  no status or URL), so the board and the progress math ask one question.
+  no URL), so the board and the progress math ask one question. Such a
+  milestone is marked `Derived` and has no status of its own:
+  `domain.NewProject` computes it from the slices under it — Queued until one
+  starts, Active while any is in progress or only some are Done, Done when they
+  all are — and nothing can be written to it, so the board's Q refuses it.
 
 ## Conventions
 

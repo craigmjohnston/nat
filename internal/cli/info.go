@@ -48,12 +48,7 @@ func info(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("load slices: %w", err)
 	}
 
-	p := domain.Project{
-		ID:         cfg.ActiveProjectID,
-		Name:       project.Name,
-		Milestones: milestones,
-		Slices:     domain.SlicesFromPages(slices),
-	}
+	p := domain.NewProject(cfg.ActiveProjectID, project.Name, milestones, domain.SlicesFromPages(slices))
 	conventions := strings.TrimSpace(notion.Markdown(blocks))
 
 	if asJSON {
