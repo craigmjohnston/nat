@@ -881,6 +881,10 @@ func TestAppDrawsAOnePagePlanWhenTheOrderCannotBeRead(t *testing.T) {
 func TestAppMigratesAnOldProjectAndSaysSo(t *testing.T) {
 	client := newLoadingClient()
 	client.getDS = func(id string) (*notion.DataSource, error) {
+		if id == "ms-ds" {
+			return &notion.DataSource{ID: id,
+				Parent: notion.Parent{Type: notion.ParentDatabase, DatabaseID: "ms-db"}}, nil
+		}
 		return &notion.DataSource{ID: id, Properties: map[string]notion.PropertySchema{
 			notion.PropStatus: notion.SchemaSelect(notion.SliceTodo, notion.SliceClaimed, notion.SliceDone),
 			notion.PropMilestone: {
@@ -904,8 +908,13 @@ func TestAppMigratesAnOldProjectAndSaysSo(t *testing.T) {
 	_, cmd := app.Update(loaded)
 	run(cmd)
 
-	if len(client.schemaWrites) != 1 || client.schemaWrites[0].dataSourceID != "sl-ds" {
+	// Two writes: the plan and In progress onto the column, then Claimed
+	// retired once nothing sits on it.
+	if len(client.schemaWrites) != 2 || client.schemaWrites[0].dataSourceID != "sl-ds" {
 		t.Fatalf("schema writes = %+v, want the slices data source migrated", client.schemaWrites)
+	}
+	if want := []string{"ms-db"}; !reflect.DeepEqual(client.deleted, want) {
+		t.Errorf("deleted %v, want the Milestones database trashed", client.deleted)
 	}
 	if got := app.toast; !strings.Contains(got, "Migrated this project") {
 		t.Errorf("toast = %q, want the migration reported", got)

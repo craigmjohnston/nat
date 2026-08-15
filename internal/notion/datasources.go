@@ -29,6 +29,10 @@ type DataSource struct {
 	ID         string                    `json:"id"`
 	Name       string                    `json:"name"`
 	Properties map[string]PropertySchema `json:"properties"`
+	// Parent is the database whose rows the data source holds, which is how the
+	// migration finds the old Milestones database to trash from the data source
+	// the relation names.
+	Parent Parent `json:"parent"`
 }
 
 // GetDataSource fetches a data source by ID, chiefly to verify its schema
