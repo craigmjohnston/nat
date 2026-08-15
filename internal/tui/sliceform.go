@@ -155,7 +155,7 @@ func createSlice(client NotionAPI, slicesDSID string, m domain.Milestone, title,
 		properties := map[string]notion.PropertyValue{
 			notion.PropName:      notion.NewTitle(title),
 			notion.PropStatus:    notion.NewSelect(notion.SliceTodo),
-			notion.PropMilestone: milestoneRef(m),
+			notion.PropMilestone: m.Ref(),
 			notion.PropRepo:      notion.NewRichText(repo),
 		}
 		_, err := client.CreatePage(context.Background(), notion.DataSourceParent(slicesDSID),

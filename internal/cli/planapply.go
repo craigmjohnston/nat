@@ -56,17 +56,20 @@ func planApply(ctx context.Context, args []string, env Env) error {
 	}
 	client := env.NewClient(env.Tokens.Token)
 
-	existing, err := client.QueryDataSource(ctx, project.MilestonesDSID, nil,
-		[]notion.Sort{{Property: notion.PropOrder, Direction: notion.SortAscending}})
+	ds, err := slicesDataSource(ctx, client, project)
 	if err != nil {
-		return fmt.Errorf("load milestones: %w", err)
+		return err
 	}
-	targets, err := validatePlan(p, domain.MilestonesFromPages(existing))
+	existing, err := loadMilestones(ctx, client, project, notion.ShapeOf(ds))
+	if err != nil {
+		return err
+	}
+	targets, err := validatePlan(p, existing)
 	if err != nil {
 		return err
 	}
 
-	applied, err := applyPlan(ctx, client, project, p, targets, nextOrder(existing))
+	applied, err := applyPlan(ctx, client, project, ds, p, targets, existing)
 	if err != nil {
 		return err
 	}
@@ -211,29 +214,30 @@ type appliedSlice struct {
 	Milestone domain.Milestone
 }
 
-// applyPlan writes the plan: milestones first, because the slices relate to
-// them, then the slices in the order they were written.
+// applyPlan writes the plan: milestones first, because the slices are filed
+// under them, then the slices in the order they were written.
 //
 // A write that fails stops the run, and whatever was created stays created —
 // there is no transaction to roll back, and deleting pages to tidy up would be
 // a worse thing to get wrong. The error says how far it got, so the plan can be
 // trimmed and run again.
-func applyPlan(ctx context.Context, client API, project config.ProjectConfig, p plan, targets []sliceTarget, order float64) (appliedPlan, error) {
+func applyPlan(ctx context.Context, client API, project config.ProjectConfig, ds *notion.DataSource, p plan, targets []sliceTarget, existing []domain.Milestone) (appliedPlan, error) {
 	var applied appliedPlan
-	for _, pm := range p.Milestones {
-		m, err := createMilestone(ctx, client, project.MilestonesDSID, strings.TrimSpace(pm.Name), order)
-		if err != nil {
-			return applied, appliedErr(applied, err)
-		}
-		applied.Milestones = append(applied.Milestones, m)
-		order++
+	names := make([]string, len(p.Milestones))
+	for i, pm := range p.Milestones {
+		names[i] = strings.TrimSpace(pm.Name)
+	}
+	added, err := addMilestones(ctx, client, project, ds, existing, names)
+	applied.Milestones = added
+	if err != nil {
+		return applied, appliedErr(applied, err)
 	}
 	for i, ps := range p.Slices {
 		m := targets[i].existing
 		if targets[i].newIndex >= 0 {
 			m = applied.Milestones[targets[i].newIndex]
 		}
-		s, err := createSlice(ctx, client, project.SlicesDSID, m.ID,
+		s, err := createSlice(ctx, client, project.SlicesDSID, m,
 			strings.TrimSpace(ps.Title), strings.TrimSpace(ps.Description), strings.TrimSpace(ps.Repo))
 		if err != nil {
 			return applied, appliedErr(applied, err)
@@ -305,7 +309,7 @@ func (a appliedPlan) markdown(project config.ProjectConfig) string {
 
 	for _, m := range a.Milestones {
 		fmt.Fprintf(&b, "\n## %s\n\n", m.Name)
-		fmt.Fprintf(&b, "New milestone %s, %s — %s\n\n", formatOrder(m.Order), blank(string(m.Status)), pageRef(m.ID, m.URL))
+		fmt.Fprintf(&b, "New milestone %s, %s — %s\n\n", planPosition(m), blank(string(m.Status)), milestoneWhere(m))
 		b.WriteString(sliceList(a.slicesUnder(m.ID)))
 	}
 	for _, m := range a.existingMilestones() {
@@ -357,6 +361,15 @@ func sliceList(slices []appliedSlice) string {
 		fmt.Fprintf(&b, "- %s — %s\n", s.Slice.Name, pageRef(s.Slice.ID, s.Slice.URL))
 	}
 	return b.String()
+}
+
+// milestoneWhere says where a created milestone is to be found: the page it
+// got, or — where the plan is a column's options — that it is one of them.
+func milestoneWhere(m domain.Milestone) string {
+	if m.Derived {
+		return optionNote
+	}
+	return pageRef(m.ID, m.URL)
 }
 
 // pageRef names a created page: its URL, which is what someone checking the

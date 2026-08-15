@@ -116,7 +116,7 @@ func (f *MoveSliceForm) save(a *App) tea.Cmd {
 func moveSlice(client NotionAPI, sliceID, sliceName string, m domain.Milestone) tea.Cmd {
 	return func() tea.Msg {
 		properties := map[string]notion.PropertyValue{
-			notion.PropMilestone: milestoneRef(m),
+			notion.PropMilestone: m.Ref(),
 		}
 		if _, err := client.UpdatePageProperties(context.Background(), sliceID, properties); err != nil {
 			return sliceSavedMsg{err: fmt.Errorf("move slice: %w", err)}

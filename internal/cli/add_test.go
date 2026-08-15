@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -57,6 +58,247 @@ func noWritesBut(t *testing.T, api *fakeAPI, creations int) {
 	}
 	if len(api.updates) != 0 || len(api.appends) != 0 {
 		t.Errorf("writes to existing pages = %+v %+v, want none", api.updates, api.appends)
+	}
+	if len(api.schemaUpdates) != 0 {
+		t.Errorf("schema writes = %+v, want none: the plan is pages, not options", api.schemaUpdates)
+	}
+}
+
+// selectPlanAPI answers as a project keeping its whole plan on one page: no
+// Milestones data source at all, and a Milestone select on the Slices table
+// whose options are the milestones, in plan order.
+func selectPlanAPI(createdID string) *fakeAPI {
+	return &fakeAPI{
+		createdPage: notion.Page{ID: createdID, URL: "https://notion.so/" + createdID},
+		dataSources: map[string]notion.DataSource{
+			"slices-ds": selectMilestoneSlicesDS("M1: Client", "M2: Board", "M3: Agents"),
+		},
+	}
+}
+
+// writtenMilestoneOptions is the option list one schema write put on the
+// Milestone column, by name and in order.
+func writtenMilestoneOptions(t *testing.T, api *fakeAPI) []string {
+	t.Helper()
+	if len(api.schemaUpdates) != 1 {
+		t.Fatalf("schema writes = %+v, want exactly one", api.schemaUpdates)
+	}
+	w := api.schemaUpdates[0]
+	if w.id != "slices-ds" {
+		t.Errorf("schema write went to %q, want the slices data source", w.id)
+	}
+	if len(w.props) != 1 {
+		t.Errorf("properties written = %+v, want only the Milestone column", w.props)
+	}
+	property := w.props[notion.PropMilestone]
+	if property.Select == nil {
+		t.Fatalf("Milestone written as %+v, want a select", property)
+	}
+	return property.OptionNames()
+}
+
+// A project whose plan is the options of its slices' Milestone column gains a
+// milestone by gaining an option, appended after the ones already there so that
+// the order of the options stays the order of the plan.
+func TestMilestoneAddAppendsAnOptionWhereThePlanIsOne(t *testing.T) {
+	api := selectPlanAPI(addedMilestoneID)
+	env, out := testEnv(testConfig(), api)
+
+	if err := Run(context.Background(), []string{"milestone-add", "M4: Polish"}, env); err != nil {
+		t.Fatalf("milestone-add: %v", err)
+	}
+
+	want := `# M4: Polish
+
+Added to nat as milestone 4, Queued.
+
+- ` + optionNote + `
+`
+	if out.String() != want {
+		t.Errorf("output =\n%s\nwant:\n%s", out.String(), want)
+	}
+	if len(api.creates) != 0 {
+		t.Errorf("creates = %+v, want none: the milestone is an option, not a page", api.creates)
+	}
+	if len(api.queries) != 0 {
+		t.Errorf("queries = %+v, want none: there is no Milestones data source to read", api.queries)
+	}
+	want4 := []string{"M1: Client", "M2: Board", "M3: Agents", "M4: Polish"}
+	if got := writtenMilestoneOptions(t, api); !reflect.DeepEqual(got, want4) {
+		t.Errorf("options = %v, want %v", got, want4)
+	}
+}
+
+// The first milestone of a plan kept this way is added to an empty option list,
+// which is still a select and still tells the shape apart from a relation.
+func TestMilestoneAddAppendsToAnEmptyOptionList(t *testing.T) {
+	api := selectPlanAPI(addedMilestoneID)
+	api.dataSources["slices-ds"] = selectMilestoneSlicesDS()
+	env, out := testEnv(testConfig(), api)
+
+	if err := Run(context.Background(), []string{"milestone-add", "M1: Client"}, env); err != nil {
+		t.Fatalf("milestone-add: %v", err)
+	}
+
+	if !strings.Contains(out.String(), "as milestone 1, Queued") {
+		t.Errorf("output =\n%s\nwant the first milestone of the plan", out.String())
+	}
+	if got := writtenMilestoneOptions(t, api); !reflect.DeepEqual(got, []string{"M1: Client"}) {
+		t.Errorf("options = %v, want just the new one", got)
+	}
+}
+
+// Such a milestone is nothing but its name, so a name the plan already holds is
+// refused — before the schema is written, since the write would replace the
+// whole option list.
+func TestMilestoneAddRefusesAnOptionThePlanAlreadyHas(t *testing.T) {
+	for _, name := range []string{"M2: Board", "m2: bOARD", "  M2: Board  "} {
+		t.Run(name, func(t *testing.T) {
+			api := selectPlanAPI(addedMilestoneID)
+			env, out := testEnv(testConfig(), api)
+
+			err := Run(context.Background(), []string{"milestone-add", name}, env)
+
+			if err == nil {
+				t.Fatal("err = nil, want a refusal")
+			}
+			if !strings.Contains(err.Error(), `already has a milestone named "M2: Board"`) {
+				t.Errorf("err = %q, want it to name the milestone", err)
+			}
+			if len(api.schemaUpdates) != 0 || len(api.creates) != 0 {
+				t.Errorf("writes = %+v %+v, want none", api.schemaUpdates, api.creates)
+			}
+			if out.Len() != 0 {
+				t.Errorf("output = %q, want nothing", out.String())
+			}
+		})
+	}
+}
+
+// A Milestone column converted to Notion's own status type carries options this
+// API cannot write, so the command says where the milestone has to be added
+// rather than writing a schema that would drop them.
+func TestMilestoneAddRefusesAColumnItCannotWrite(t *testing.T) {
+	api := selectPlanAPI(addedMilestoneID)
+	ds := selectMilestoneSlicesDS()
+	ds.Properties[notion.PropMilestone] = notion.PropertySchema{
+		Type:   notion.TypeStatus,
+		Status: &notion.OptionsConfig{Options: []notion.SelectOption{{Name: "M1: Client"}}},
+	}
+	api.dataSources["slices-ds"] = ds
+	env, _ := testEnv(testConfig(), api)
+
+	err := Run(context.Background(), []string{"milestone-add", "M4: Polish"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "can only be added to it in Notion") {
+		t.Fatalf("err = %v, want the column reported as unwritable", err)
+	}
+	if !strings.Contains(err.Error(), notion.TypeStatus) {
+		t.Errorf("err = %q, want it to name the column's type", err)
+	}
+	if len(api.schemaUpdates) != 0 {
+		t.Errorf("schema writes = %+v, want none", api.schemaUpdates)
+	}
+}
+
+func TestMilestoneAddPrintsJSONForAnOption(t *testing.T) {
+	env, out := testEnv(testConfig(), selectPlanAPI(addedMilestoneID))
+
+	if err := Run(context.Background(), []string{"milestone-add", "M4: Polish", "--json"}, env); err != nil {
+		t.Fatalf("milestone-add: %v", err)
+	}
+
+	var got milestoneAddedJSON
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
+	}
+	// The option's name is its ID: it is what a slice's column names, and so
+	// what the plan is grouped by. There is no page, so no URL.
+	want := milestoneAddedJSON{Milestone: milestoneJSON{
+		ID: "M4: Polish", Name: "M4: Polish", Order: 3, Status: notion.MilestoneQueued,
+	}}
+	if got != want {
+		t.Errorf("json = %+v\nwant %+v", got, want)
+	}
+}
+
+func TestMilestoneAddReportsAFailedSchemaWrite(t *testing.T) {
+	boom := errors.New("notion: 400")
+	api := selectPlanAPI(addedMilestoneID)
+	api.schemaUpdateErr = boom
+	env, out := testEnv(testConfig(), api)
+
+	err := Run(context.Background(), []string{"milestone-add", "M4: Polish"}, env)
+
+	if !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want %v", err, boom)
+	}
+	if !strings.Contains(err.Error(), "create the milestone") {
+		t.Errorf("err = %q, want it to say what failed", err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("output = %q, want nothing", out.String())
+	}
+}
+
+func TestMilestoneAddReportsAFailedSchemaRead(t *testing.T) {
+	boom := errors.New("notion: 500")
+	api := selectPlanAPI(addedMilestoneID)
+	api.dataSourceErr = boom
+	env, _ := testEnv(testConfig(), api)
+
+	err := Run(context.Background(), []string{"milestone-add", "M4: Polish"}, env)
+
+	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "read the slices schema") {
+		t.Fatalf("err = %v, want the schema read reported", err)
+	}
+}
+
+// Under this shape a slice names its milestone on its own Milestone column
+// rather than relating to a page, and the milestones to choose from are the
+// options that column already offers.
+func TestSliceAddNamesTheMilestoneWhereThePlanIsOptions(t *testing.T) {
+	api := selectPlanAPI(addedSliceID)
+	env, out := testEnv(testConfig(), api)
+
+	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "m2: bOARD"}, env)
+
+	if err != nil {
+		t.Fatalf("slice-add: %v", err)
+	}
+	if !strings.Contains(out.String(), "Added to M2: Board, Todo and unclaimed.") {
+		t.Errorf("output =\n%s\nwant the option named", out.String())
+	}
+	if len(api.queries) != 0 {
+		t.Errorf("queries = %+v, want none: there is no Milestones data source to read", api.queries)
+	}
+	if len(api.schemaUpdates) != 0 {
+		t.Errorf("schema writes = %+v, want none: the option is already there", api.schemaUpdates)
+	}
+	if len(api.creates) != 1 {
+		t.Fatalf("creates = %+v, want just the slice", api.creates)
+	}
+	if got := api.creates[0].props[notion.PropMilestone]; !reflect.DeepEqual(got, notion.NewSelect("M2: Board")) {
+		t.Errorf("milestone = %+v, want the option naming it", got)
+	}
+}
+
+// A milestone that is not one of the options is refused the same way an unknown
+// milestone page is, and the options are what it lists to choose from.
+func TestSliceAddRefusesAnUnknownOption(t *testing.T) {
+	api := selectPlanAPI(addedSliceID)
+	env, _ := testEnv(testConfig(), api)
+
+	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "M4: Polish"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), `no milestone named "M4: Polish"`) {
+		t.Fatalf("err = %v, want the milestone refused", err)
+	}
+	if !strings.Contains(err.Error(), "M1: Client, M2: Board, M3: Agents") {
+		t.Errorf("err = %q, want it to list the options", err)
+	}
+	if len(api.creates) != 0 {
+		t.Errorf("creates = %+v, want none", api.creates)
 	}
 }
 
@@ -692,4 +934,20 @@ func TestSliceAddReportsAFailedWrite(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The shape has to be read before a slice can be filed: which milestones there
+// are, and how the slice names the one it goes under, both come off the schema.
+func TestSliceAddReportsAFailedSchemaRead(t *testing.T) {
+	boom := errors.New("notion: 500")
+	api := plannedAPI(addedSliceID)
+	api.dataSourceErr = boom
+	env, _ := testEnv(testConfig(), api)
+
+	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "M2: Board"}, env)
+
+	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "read the slices schema") {
+		t.Fatalf("err = %v, want the schema read reported", err)
+	}
+	noWritesBut(t, api, 0)
 }

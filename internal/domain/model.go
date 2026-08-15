@@ -58,6 +58,17 @@ type Milestone struct {
 	SelectType string
 }
 
+// Ref is the Milestone property value filing a slice under m, in whichever
+// shape the plan is kept: a relation to the milestone's page, or — where the
+// milestone is an option of the slices' own Milestone column — that option,
+// written back as the type the column was read as.
+func (m Milestone) Ref() notion.PropertyValue {
+	if m.Derived {
+		return notion.NewChoice(m.SelectType, m.Name)
+	}
+	return notion.NewRelation(m.ID)
+}
+
 // Slice is one unit of work, small enough for a single agent session. Status is
 // the workflow status, normalised across the two spellings of in-progress;
 // StatusName is what the project's own Status column calls it, so a message

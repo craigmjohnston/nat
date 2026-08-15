@@ -254,42 +254,6 @@ func TestAppReportsAFailedMilestoneWrite(t *testing.T) {
 	}
 }
 
-// TestMilestoneRef covers both shapes of plan: filing a slice under a milestone
-// page is a relation, and under a derived milestone the option naming it,
-// written as the type its column was read as.
-func TestMilestoneRef(t *testing.T) {
-	tests := []struct {
-		name      string
-		milestone domain.Milestone
-		want      notion.PropertyValue
-	}{
-		{
-			"a milestone page",
-			domain.Milestone{ID: "m3", Name: "M3: Mutations"},
-			notion.NewRelation("m3"),
-		},
-		{
-			"a select option",
-			domain.Milestone{ID: "M3: Mutations", Name: "M3: Mutations", Derived: true,
-				SelectType: notion.TypeSelect},
-			notion.NewSelect("M3: Mutations"),
-		},
-		{
-			"a status option",
-			domain.Milestone{ID: "M3: Mutations", Name: "M3: Mutations", Derived: true,
-				SelectType: notion.TypeStatus},
-			notion.NewStatus("M3: Mutations"),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := milestoneRef(tt.milestone); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("milestoneRef() = %+v, want %+v", got, tt.want)
-			}
-		})
-	}
-}
-
 // TestMilestoneHintsNameOnlyWhatTheShapeCanDo: the hints row offers Q where the
 // milestone has a status of its own to advance, and leaves it off where the
 // status is derived from the slices under it.

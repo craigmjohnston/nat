@@ -18,6 +18,7 @@ import (
 type API interface {
 	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
 	GetDataSource(ctx context.Context, id string) (*notion.DataSource, error)
+	UpdateDataSourceProperties(ctx context.Context, id string, properties map[string]notion.PropertySchema) (*notion.DataSource, error)
 	CreatePage(ctx context.Context, parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)
 	GetPage(ctx context.Context, id string) (*notion.Page, error)
 	GetBlockChildren(ctx context.Context, id string) ([]notion.Block, error)

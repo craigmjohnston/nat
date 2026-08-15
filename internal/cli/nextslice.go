@@ -110,11 +110,23 @@ func selectNextSlice(ctx context.Context, client API, project config.ProjectConf
 // Both differ between projects created before and after the app started asking,
 // and neither can be guessed from a page alone.
 func sliceShape(ctx context.Context, client API, project config.ProjectConfig) (notion.SliceShape, error) {
-	ds, err := client.GetDataSource(ctx, project.SlicesDSID)
+	ds, err := slicesDataSource(ctx, client, project)
 	if err != nil {
-		return notion.SliceShape{}, fmt.Errorf("read the slices schema: %w", err)
+		return notion.SliceShape{}, err
 	}
 	return notion.ShapeOf(ds), nil
+}
+
+// slicesDataSource reads the project's Slices data source. Its schema is both
+// where the shape is read from and — for a project whose plan is that schema's
+// own Milestone options — what a new milestone is appended to, so a command
+// that files one needs the schema itself rather than the shape read off it.
+func slicesDataSource(ctx context.Context, client API, project config.ProjectConfig) (*notion.DataSource, error) {
+	ds, err := client.GetDataSource(ctx, project.SlicesDSID)
+	if err != nil {
+		return nil, fmt.Errorf("read the slices schema: %w", err)
+	}
+	return ds, nil
 }
 
 // claim takes the slice: status to the project's in-progress option, and the

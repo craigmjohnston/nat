@@ -555,3 +555,39 @@ func TestProjectGroupsDoesNotReorderTheProject(t *testing.T) {
 		t.Errorf("Groups() reordered the project's milestones: %+v", p.Milestones)
 	}
 }
+
+// TestMilestoneRef covers both shapes of plan: filing a slice under a milestone
+// page is a relation, and under a derived milestone the option naming it,
+// written as the type its column was read as.
+func TestMilestoneRef(t *testing.T) {
+	tests := []struct {
+		name      string
+		milestone Milestone
+		want      notion.PropertyValue
+	}{
+		{
+			"a milestone page",
+			Milestone{ID: "m3", Name: "M3: Mutations"},
+			notion.NewRelation("m3"),
+		},
+		{
+			"a select option",
+			Milestone{ID: "M3: Mutations", Name: "M3: Mutations", Derived: true,
+				SelectType: notion.TypeSelect},
+			notion.NewSelect("M3: Mutations"),
+		},
+		{
+			"a status option",
+			Milestone{ID: "M3: Mutations", Name: "M3: Mutations", Derived: true,
+				SelectType: notion.TypeStatus},
+			notion.NewStatus("M3: Mutations"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.milestone.Ref(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Ref() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}

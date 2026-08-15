@@ -110,17 +110,6 @@ func setMilestoneStatus(client NotionAPI, id, name, statusType string, status do
 	}
 }
 
-// milestoneRef is the Milestone property value filing a slice under m, in
-// whichever shape the plan is kept: a relation to the milestone's page, or —
-// where the milestone is an option of the slices' own Milestone column — that
-// option, written back as the type the column was read as.
-func milestoneRef(m domain.Milestone) notion.PropertyValue {
-	if m.Derived {
-		return notion.NewChoice(m.SelectType, m.Name)
-	}
-	return notion.NewRelation(m.ID)
-}
-
 // queueMilestone opens the confirm for the milestone the cursor is on. The
 // implicit Unassigned group is not a page, so there is nothing there to move.
 //

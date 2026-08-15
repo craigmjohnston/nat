@@ -475,6 +475,9 @@ func TestPlanApplyReportsAFailedCreate(t *testing.T) {
 // with the wrong constructor is caught here rather than in production.
 func TestPlanApplyWritesTheRequestsNotionExpects(t *testing.T) {
 	responses := []string{
+		`{"id":"slices-ds","properties":{
+			"Status":{"type":"select","select":{"options":[{"name":"Todo"}]}},
+			"Milestone":{"type":"relation","relation":{"data_source_id":"milestones-ds"}}}}`,
 		`{"results":[{"id":"m2","url":"https://notion.so/m2","properties":{
 			"Name":{"type":"title","title":[{"plain_text":"M2: Board"}]},
 			"Order":{"type":"number","number":2},
@@ -482,24 +485,7 @@ func TestPlanApplyWritesTheRequestsNotionExpects(t *testing.T) {
 		`{"id":"new-1","url":"https://notion.so/new-1"}`,
 		`{"id":"new-2","url":"https://notion.so/new-2"}`,
 	}
-	type request struct {
-		method, path string
-		body         any
-	}
-	var got []request
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body any
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Errorf("request %d body: %v", len(got), err)
-		}
-		got = append(got, request{method: r.Method, path: r.URL.Path, body: body})
-		if n := len(got) - 1; n < len(responses) {
-			_, _ = io.WriteString(w, responses[n])
-			return
-		}
-		t.Errorf("unexpected request %d: %s %s", len(got), r.Method, r.URL.Path)
-	}))
-	defer srv.Close()
+	srv, got := recordingNotion(t, responses)
 
 	env, _ := testEnv(testConfig(), nil)
 	env.NewClient = func(token notion.TokenFunc) API {
@@ -514,7 +500,8 @@ func TestPlanApplyWritesTheRequestsNotionExpects(t *testing.T) {
 		t.Fatalf("plan-apply: %v", err)
 	}
 
-	want := []request{
+	want := []notionRequest{
+		{method: http.MethodGet, path: "/data_sources/slices-ds"},
 		{
 			method: http.MethodPost,
 			path:   "/data_sources/milestones-ds/query",
@@ -553,8 +540,8 @@ func TestPlanApplyWritesTheRequestsNotionExpects(t *testing.T) {
 			},
 		},
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("requests =\n%+v\nwant:\n%+v", got, want)
+	if !reflect.DeepEqual(*got, want) {
+		t.Errorf("requests =\n%+v\nwant:\n%+v", *got, want)
 	}
 }
 
@@ -576,5 +563,264 @@ func TestPlanApplyReportsAFailedWrite(t *testing.T) {
 				t.Errorf("err = %v, want %v", err, errWrite)
 			}
 		})
+	}
+}
+
+// selectPlanApplyAPI answers as a project keeping its plan on the slices'
+// Milestone column, handing out distinct pages for the slices a test creates.
+func selectPlanApplyAPI(creations int) *fakeAPI {
+	api := selectPlanAPI("")
+	api.createdPages = createdSeq(creations)
+	return api
+}
+
+// A whole plan's worth of milestones is one schema write: the options already
+// there, then the new ones in the order the document wrote them. Either they
+// all arrive or none do, which is the most a plan can be applied atomically.
+func TestPlanApplyAppendsEveryNewMilestoneInOneSchemaWrite(t *testing.T) {
+	api := selectPlanApplyAPI(3)
+
+	out, err := runPlan(t, api, `{
+	  "milestones": [{"name": "M4: Polish"}, {"name": "M5: Ship"}],
+	  "slices": [
+	    {"title": "Frame the board", "milestone": "M4: Polish"},
+	    {"title": "Cut a release", "milestone": "M5: Ship"},
+	    {"title": "Poll in the background", "milestone": "M2: Board"}
+	  ]
+	}`)
+	if err != nil {
+		t.Fatalf("plan-apply: %v", err)
+	}
+
+	want := `# Plan applied
+
+Added 2 milestones and 3 slices to nat.
+
+## M4: Polish
+
+New milestone 4, ` + notion.MilestoneQueued + ` — ` + optionNote + `
+
+- Frame the board — https://notion.so/new-1
+
+## M5: Ship
+
+New milestone 5, ` + notion.MilestoneQueued + ` — ` + optionNote + `
+
+- Cut a release — https://notion.so/new-2
+
+## M2: Board
+
+- Poll in the background — https://notion.so/new-3
+`
+	if out != want {
+		t.Errorf("output =\n%s\nwant:\n%s", out, want)
+	}
+	if len(api.queries) != 0 {
+		t.Errorf("queries = %+v, want none: there is no Milestones data source to read", api.queries)
+	}
+	wantOptions := []string{"M1: Client", "M2: Board", "M3: Agents", "M4: Polish", "M5: Ship"}
+	if got := writtenMilestoneOptions(t, api); !reflect.DeepEqual(got, wantOptions) {
+		t.Errorf("options = %v, want %v", got, wantOptions)
+	}
+
+	if len(api.creates) != 3 {
+		t.Fatalf("creates = %+v, want one page per slice", api.creates)
+	}
+	for i, want := range []string{"M4: Polish", "M5: Ship", "M2: Board"} {
+		c := api.creates[i]
+		if c.parent != notion.DataSourceParent("slices-ds") {
+			t.Errorf("slice %d parent = %+v, want the slices data source", i, c.parent)
+		}
+		if got := c.props[notion.PropMilestone]; !reflect.DeepEqual(got, notion.NewSelect(want)) {
+			t.Errorf("slice %d milestone = %+v, want the option %q", i, got, want)
+		}
+	}
+}
+
+// A plan that files slices under milestones the project already has writes no
+// schema at all: the options it needs are there.
+func TestPlanApplyLeavesTheOptionsAloneWhereItAddsNoMilestone(t *testing.T) {
+	api := selectPlanApplyAPI(1)
+
+	if _, err := runPlan(t, api, `{"slices": [{"title": "Do it", "milestone": "M3: Agents"}]}`); err != nil {
+		t.Fatalf("plan-apply: %v", err)
+	}
+
+	if len(api.schemaUpdates) != 0 {
+		t.Errorf("schema writes = %+v, want none", api.schemaUpdates)
+	}
+	if got := api.creates[0].props[notion.PropMilestone]; !reflect.DeepEqual(got, notion.NewSelect("M3: Agents")) {
+		t.Errorf("milestone = %+v, want the option naming it", got)
+	}
+}
+
+// The option list is written once, so a failure there leaves the plan whole:
+// nothing was created, and the document can be run again as it is.
+func TestPlanApplyReportsAFailedOptionWrite(t *testing.T) {
+	boom := errors.New("notion down")
+	api := selectPlanApplyAPI(1)
+	api.schemaUpdateErr = boom
+
+	out, err := runPlan(t, api, `{"milestones": [{"name": "M4: Polish"}],
+	  "slices": [{"title": "Frame the board", "milestone": "M4: Polish"}]}`)
+
+	if !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want %v", err, boom)
+	}
+	if strings.Contains(err.Error(), "were created before this failed") {
+		t.Errorf("err = %q, want nothing reported as created", err)
+	}
+	if len(api.creates) != 0 {
+		t.Errorf("creates = %+v, want none", api.creates)
+	}
+	if out != "" {
+		t.Errorf("output = %q, want nothing", out)
+	}
+}
+
+// A plan naming a milestone the option list does not offer is refused whole,
+// the same way one naming a milestone page that does not exist is.
+func TestPlanApplyRefusesAnUnknownOption(t *testing.T) {
+	api := selectPlanApplyAPI(1)
+
+	_, err := runPlan(t, api, `{"slices": [{"title": "Do it", "milestone": "M9: Later"}]}`)
+
+	if err == nil || !strings.Contains(err.Error(), `no milestone named "M9: Later"`) {
+		t.Fatalf("err = %v, want the milestone refused", err)
+	}
+	if len(api.creates) != 0 || len(api.schemaUpdates) != 0 {
+		t.Errorf("writes = %+v %+v, want none", api.creates, api.schemaUpdates)
+	}
+}
+
+// A plan whose new milestone is already an option is refused in validation,
+// before the schema write that would otherwise carry two of a name.
+func TestPlanApplyRefusesAnOptionThePlanAlreadyHas(t *testing.T) {
+	api := selectPlanApplyAPI(1)
+
+	_, err := runPlan(t, api, `{"milestones": [{"name": "M2: Board"}]}`)
+
+	if err == nil || !strings.Contains(err.Error(), "which the project already has") {
+		t.Fatalf("err = %v, want the duplicate refused", err)
+	}
+	if len(api.schemaUpdates) != 0 {
+		t.Errorf("schema writes = %+v, want none", api.schemaUpdates)
+	}
+}
+
+// The plan is read against the shape the project keeps it in, so a schema that
+// cannot be read stops the run before anything is written.
+func TestPlanApplyReportsAFailedSchemaRead(t *testing.T) {
+	boom := errors.New("notion: 500")
+	api := planAPI(1)
+	api.dataSourceErr = boom
+
+	out, err := runPlan(t, api, samplePlan)
+
+	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "read the slices schema") {
+		t.Fatalf("err = %v, want the schema read reported", err)
+	}
+	noWritesBut(t, api, 0)
+	if out != "" {
+		t.Errorf("output = %q, want nothing", out)
+	}
+}
+
+// notionRequest is one call as it reached the server: what the real client
+// actually sent, rather than what the fake was asked for.
+type notionRequest struct {
+	method, path string
+	body         any
+}
+
+// recordingNotion serves the given responses in order and records every request
+// it was sent, so a test can assert the exact JSON Notion receives.
+func recordingNotion(t *testing.T, responses []string) (*httptest.Server, *[]notionRequest) {
+	t.Helper()
+	var got []notionRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body any
+		// A GET carries none, and decoding one would read as a malformed request.
+		if r.Method != http.MethodGet {
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("request %d body: %v", len(got), err)
+			}
+		}
+		got = append(got, notionRequest{method: r.Method, path: r.URL.Path, body: body})
+		if n := len(got) - 1; n < len(responses) {
+			_, _ = io.WriteString(w, responses[n])
+			return
+		}
+		t.Errorf("unexpected request %d: %s %s", len(got), r.Method, r.URL.Path)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &got
+}
+
+// The same, for a plan kept on the slices' Milestone column: the milestone is
+// an option appended to the schema, and the slice names it rather than relating
+// to a page. The options already there are sent back with their IDs and colours,
+// since the write replaces the list rather than adding to it.
+func TestPlanApplyWritesTheRequestsNotionExpectsForOptions(t *testing.T) {
+	responses := []string{
+		`{"id":"slices-ds","properties":{
+			"Status":{"id":"s","name":"Status","type":"select","select":{"options":[{"id":"t","name":"Todo","color":"gray"}]}},
+			"Milestone":{"id":"m","name":"Milestone","type":"select","select":{"options":[
+				{"id":"o1","name":"M1: Client","color":"blue"},{"id":"o2","name":"M2: Board","color":"green"}]}}}}`,
+		`{"id":"slices-ds","properties":{"Milestone":{"type":"select","select":{"options":[
+			{"id":"o1","name":"M1: Client"},{"id":"o2","name":"M2: Board"},{"id":"o3","name":"M3: Agents"}]}}}}`,
+		`{"id":"new-1","url":"https://notion.so/new-1"}`,
+	}
+	srv, got := recordingNotion(t, responses)
+
+	env, _ := testEnv(testConfig(), nil)
+	env.NewClient = func(token notion.TokenFunc) API {
+		return notion.NewWithToken(token, notion.WithBaseURL(srv.URL))
+	}
+	env.In = strings.NewReader(`{
+	  "milestones": [{"name": "M3: Agents"}],
+	  "slices": [{"title": "Frame the board", "milestone": "M3: Agents", "description": "Draw a border."}]
+	}`)
+
+	if err := Run(context.Background(), []string{"plan-apply"}, env); err != nil {
+		t.Fatalf("plan-apply: %v", err)
+	}
+
+	want := []notionRequest{
+		{method: http.MethodGet, path: "/data_sources/slices-ds"},
+		{
+			method: http.MethodPatch,
+			path:   "/data_sources/slices-ds",
+			body: map[string]any{
+				"properties": map[string]any{
+					"Milestone": map[string]any{"select": map[string]any{"options": []any{
+						map[string]any{"id": "o1", "name": "M1: Client", "color": "blue"},
+						map[string]any{"id": "o2", "name": "M2: Board", "color": "green"},
+						map[string]any{"name": "M3: Agents"},
+					}}},
+				},
+			},
+		},
+		{
+			method: http.MethodPost,
+			path:   "/pages",
+			body: map[string]any{
+				"parent": map[string]any{"type": "data_source_id", "data_source_id": "slices-ds"},
+				"properties": map[string]any{
+					"Name":      map[string]any{"title": []any{textSpan("Frame the board")}},
+					"Status":    map[string]any{"select": map[string]any{"name": "Todo"}},
+					"Milestone": map[string]any{"select": map[string]any{"name": "M3: Agents"}},
+					"Repo":      map[string]any{"rich_text": []any{textSpan("")}},
+				},
+				"children": []any{map[string]any{
+					"object":    "block",
+					"type":      "paragraph",
+					"paragraph": map[string]any{"rich_text": []any{textSpan("Draw a border.")}},
+				}},
+			},
+		},
+	}
+	if !reflect.DeepEqual(*got, want) {
+		t.Errorf("requests =\n%+v\nwant:\n%+v", *got, want)
 	}
 }
