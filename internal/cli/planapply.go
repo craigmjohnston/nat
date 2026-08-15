@@ -97,8 +97,9 @@ type planMilestone struct {
 }
 
 // planSlice is a slice to file. Milestone names one of the plan's own new
-// milestones or an existing one of the project, by name, URL or ID, the same
-// way slice-add's --milestone does.
+// milestones or an existing one of the project, by name — the same way
+// slice-add's --milestone does, and for the same reason: a milestone is an
+// option of the slices' Milestone column and so is nothing but its name.
 type planSlice struct {
 	Title       string `json:"title"`
 	Milestone   string `json:"milestone"`
