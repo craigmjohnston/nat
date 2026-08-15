@@ -66,7 +66,7 @@ func info(ctx context.Context, args []string, env Env) error {
 // of domain milestones comes out, so nothing downstream asks about the shape.
 func loadMilestones(ctx context.Context, client API, project config.ProjectConfig, shape notion.SliceShape) ([]domain.Milestone, error) {
 	if !shape.MilestonesRelated() {
-		return domain.MilestonesFromOptions(shape.MilestoneOptions), nil
+		return domain.MilestonesFromOptions(shape.MilestoneOptions, shape.MilestoneType), nil
 	}
 	pages, err := client.QueryDataSource(ctx, project.MilestonesDSID, nil,
 		[]notion.Sort{{Property: notion.PropOrder, Direction: notion.SortAscending}})

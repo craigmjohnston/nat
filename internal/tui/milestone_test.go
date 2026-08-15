@@ -185,9 +185,7 @@ func TestAppQueueRefusesAMilestoneWithNowhereToGo(t *testing.T) {
 // slices, so there is nothing for Q to write.
 func TestAppQueueRefusesADerivedMilestone(t *testing.T) {
 	client := &fakeNotion{}
-	app := newWriteApp(client)
-	app.project.Milestones[2].Derived = true // M3: Mutations
-	app.board.SetProject(app.project)
+	app := newSelectWriteApp(client)
 	app.board.cursor = rowQueuedMilestone
 
 	press(app, "Q")
@@ -198,7 +196,8 @@ func TestAppQueueRefusesADerivedMilestone(t *testing.T) {
 	if len(client.updated) != 0 {
 		t.Errorf("updated = %+v, want nothing written", client.updated)
 	}
-	want := `"M3: Mutations" has no page of its own — its status follows its slices.`
+	want := `"M3: Mutations" has no page of its own — its status follows its slices; ` +
+		"reorder the plan in Notion."
 	if app.board.confirmText != want {
 		t.Errorf("confirm = %q, want %q", app.board.confirmText, want)
 	}
@@ -252,5 +251,80 @@ func TestAppReportsAFailedMilestoneWrite(t *testing.T) {
 
 	if app.err == nil || app.err.Error() != "update milestone: boom" {
 		t.Errorf("err = %v, want the failure reported", app.err)
+	}
+}
+
+// TestMilestoneHintsNameOnlyWhatTheShapeCanDo: the hints row offers Q where the
+// milestone has a status of its own to advance, and leaves it off where the
+// status is derived from the slices under it.
+func TestMilestoneHintsNameOnlyWhatTheShapeCanDo(t *testing.T) {
+	tests := []struct {
+		name    string
+		app     *App
+		wantsQ  bool
+		wantKey string
+	}{
+		{"milestone pages", newWriteApp(&fakeNotion{}), true, "Q"},
+		{"derived milestones", newSelectWriteApp(&fakeNotion{}), false, "Q"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.app.board.cursor = rowQueuedMilestone
+
+			var found bool
+			for _, h := range tt.app.board.milestoneHints() {
+				if h.binding.Help().Key == tt.wantKey {
+					found = true
+				}
+			}
+			if found != tt.wantsQ {
+				t.Errorf("Q among the hints = %v, want %v", found, tt.wantsQ)
+			}
+			// The key that files a slice under the milestone works in either
+			// shape, so it is named in both.
+			if hints := tt.app.board.milestoneHints(); hints[0].binding.Help().Key != "a" {
+				t.Errorf("hints = %+v, want the add key first", hints)
+			}
+		})
+	}
+}
+
+// TestHelpDropsTheQueueKeyForASelectShapedPlan: the help screen lists the keys
+// the board has, and a plan with no milestone pages has nothing for Q to write
+// anywhere in it.
+func TestHelpDropsTheQueueKeyForASelectShapedPlan(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		app   *App
+		wantQ bool
+	}{
+		{"milestone pages", newWriteApp(&fakeNotion{}), true},
+		{"derived milestones", newSelectWriteApp(&fakeNotion{}), false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var found bool
+			for _, b := range tt.app.board.helpBindings() {
+				if b.Help().Key == "Q" {
+					found = true
+				}
+			}
+			if found != tt.wantQ {
+				t.Errorf("Q in the help = %v, want %v", found, tt.wantQ)
+			}
+		})
+	}
+}
+
+// A board with no plan on it yet is of neither shape: nothing is hidden until
+// there is a plan to read the shape off.
+func TestDerivedPlanNeedsAPlan(t *testing.T) {
+	b := NewBoard(DefaultStyles())
+	if b.derivedPlan() {
+		t.Error("a board with no project is not a derived plan")
+	}
+	p := domain.Project{ID: testProjectID}
+	b.SetProject(&p)
+	if b.derivedPlan() {
+		t.Error("a project with nothing planned yet is not a derived plan")
 	}
 }

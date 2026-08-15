@@ -28,9 +28,17 @@ const (
 // plan is set straight rather than loaded, so the tests start on a board with a
 // slice of every status on it — the toggle that would hide the Done one off,
 // since the mutations have to be able to reach it.
-func newWriteApp(client NotionAPI) *App {
+func newWriteApp(client NotionAPI) *App { return newWriteAppOn(client, testProject()) }
+
+// newSelectWriteApp is the same app over the same plan kept the other way: as
+// the options of the slices' Milestone select, so its milestones are derived.
+// The two fixtures flatten to the same rows, so the row constants above address
+// the same work in either shape.
+func newSelectWriteApp(client NotionAPI) *App { return newWriteAppOn(client, testSelectProject()) }
+
+// newWriteAppOn is the app both fixtures are built from.
+func newWriteAppOn(client NotionAPI, p domain.Project) *App {
 	a := NewApp(testConfig(), client)
-	p := testProject()
 	a.project = &p
 	a.board.hideDone = false
 	a.board.SetProject(&p)
@@ -182,7 +190,8 @@ func TestParagraphBlocksSplitsOnBlankLines(t *testing.T) {
 func TestCreateSliceFilesANewTodoSlice(t *testing.T) {
 	client := &fakeNotion{}
 
-	msg := runMsg(t, createSlice(client, "sl-ds", "m2", "  New slice  ", "First.\n\nSecond.", " /tmp/repo "))
+	msg := runMsg(t, createSlice(client, "sl-ds", domain.Milestone{ID: "m2", Name: "M2: Board"},
+		"  New slice  ", "First.\n\nSecond.", " /tmp/repo "))
 
 	if got := msg.(sliceSavedMsg); got.err != nil || got.note != `Added "New slice".` {
 		t.Errorf("msg = %+v, want the created note", got)
@@ -213,7 +222,7 @@ func TestCreateSliceReportsAFailure(t *testing.T) {
 		return nil, errors.New("boom")
 	}}
 
-	msg := runMsg(t, createSlice(client, "sl-ds", "m2", "New slice", "", ""))
+	msg := runMsg(t, createSlice(client, "sl-ds", domain.Milestone{ID: "m2"}, "New slice", "", ""))
 
 	if got := msg.(sliceSavedMsg); got.err == nil || got.err.Error() != "create slice: boom" {
 		t.Errorf("err = %v, want the wrapped failure", got.err)
@@ -354,7 +363,7 @@ func TestAppAddOpensTheFormOnTheSelectedMilestone(t *testing.T) {
 	if app.form == nil || app.screen != screenForm {
 		t.Fatalf("screen = %v, form = %v, want the add form on show", app.screen, app.form)
 	}
-	if f := sliceFormOf(t, app); f.mode != sliceFormAdd || f.milestoneID != "m2" {
+	if f := sliceFormOf(t, app); f.mode != sliceFormAdd || f.milestone.ID != "m2" {
 		t.Errorf("form = %+v, want an add form for m2", f)
 	}
 	view := app.View().Content
@@ -623,5 +632,59 @@ func TestAppRefusesWritesItCannotMake(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestCreateSliceFilesUnderADerivedMilestone is the other shape: a plan kept as
+// the options of the slices' own Milestone column, where filing a slice means
+// naming the option rather than relating to a page.
+func TestCreateSliceFilesUnderADerivedMilestone(t *testing.T) {
+	tests := []struct {
+		name         string
+		propertyType string
+		want         notion.PropertyValue
+	}{
+		{"select", notion.TypeSelect, notion.NewSelect("M3: Mutations")},
+		{"status", notion.TypeStatus, notion.NewStatus("M3: Mutations")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &fakeNotion{}
+			m := domain.Milestone{
+				ID: "M3: Mutations", Name: "M3: Mutations", Derived: true, SelectType: tt.propertyType,
+			}
+
+			runMsg(t, createSlice(client, "sl-ds", m, "New slice", "", ""))
+
+			if len(client.created) != 1 {
+				t.Fatalf("created %d pages, want 1", len(client.created))
+			}
+			if got := client.created[0].properties[notion.PropMilestone]; !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("milestone = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestAppAddWritesTheOptionUnderASelectShapedPlan drives the whole key: a is
+// pressed on a milestone of a one-page project and the slice that falls out
+// names its milestone the way that project's slices do.
+func TestAppAddWritesTheOptionUnderASelectShapedPlan(t *testing.T) {
+	client := &fakeNotion{}
+	app := newSelectWriteApp(client)
+	app.board.cursor = rowActiveMilestone
+
+	feed(t, app, press(app, "a"))
+	fillForm(t, app, "New slice", "The brief.", "")
+
+	if len(client.created) != 1 {
+		t.Fatalf("created %d pages, want the slice written", len(client.created))
+	}
+	want := notion.NewSelect("M2: Board")
+	if got := client.created[0].properties[notion.PropMilestone]; !reflect.DeepEqual(got, want) {
+		t.Errorf("milestone = %+v, want %+v", got, want)
+	}
+	if app.board.confirmText != `Added "New slice".` {
+		t.Errorf("confirm = %q, want the created confirmation", app.board.confirmText)
 	}
 }

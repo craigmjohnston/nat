@@ -46,10 +46,11 @@ type SliceForm struct {
 	theme   huh.Theme
 	heading string
 
-	// milestoneID is the milestone an added slice is filed under; sliceID and
-	// its name identify the page an edited one rewrites.
-	milestoneID string
-	sliceID     string
+	// milestone is the milestone an added slice is filed under, carried whole
+	// so the write knows the shape the plan names it in; sliceID identifies the
+	// page an edited one rewrites.
+	milestone domain.Milestone
+	sliceID   string
 
 	// The values bound to the form's fields.
 	title       string
@@ -59,7 +60,7 @@ type SliceForm struct {
 
 // newAddSliceForm returns an empty form for a new slice under a milestone.
 func newAddSliceForm(theme huh.Theme, m domain.Milestone) *SliceForm {
-	f := &SliceForm{mode: sliceFormAdd, theme: theme, milestoneID: m.ID, heading: "Add a slice to " + m.Name}
+	f := &SliceForm{mode: sliceFormAdd, theme: theme, milestone: m, heading: "Add a slice to " + m.Name}
 	f.form = f.build()
 	return f
 }
@@ -127,7 +128,7 @@ func (f *SliceForm) save(a *App) tea.Cmd {
 	// was opened against.
 	project, _ := a.activeProject()
 	if f.mode == sliceFormAdd {
-		return createSlice(a.client, project.SlicesDSID, f.milestoneID, f.title, f.description, f.repo)
+		return createSlice(a.client, project.SlicesDSID, f.milestone, f.title, f.description, f.repo)
 	}
 	return editSlice(a.client, f.sliceID, f.title, f.description, f.repo)
 }
@@ -144,15 +145,17 @@ func loadSliceBody(client NotionAPI, s domain.Slice) tea.Cmd {
 	}
 }
 
-// createSlice files a new slice under a milestone. It starts Todo and
-// unassigned, which is what makes it something an agent can pick up.
-func createSlice(client NotionAPI, slicesDSID, milestoneID, title, description, repo string) tea.Cmd {
+// createSlice files a new slice under a milestone, naming it the way the plan
+// does: a relation to a milestone page, or the option a derived milestone is.
+// The slice starts Todo and unassigned, which is what makes it something an
+// agent can pick up.
+func createSlice(client NotionAPI, slicesDSID string, m domain.Milestone, title, description, repo string) tea.Cmd {
 	title, repo = strings.TrimSpace(title), strings.TrimSpace(repo)
 	return func() tea.Msg {
 		properties := map[string]notion.PropertyValue{
 			notion.PropName:      notion.NewTitle(title),
 			notion.PropStatus:    notion.NewSelect(notion.SliceTodo),
-			notion.PropMilestone: notion.NewRelation(milestoneID),
+			notion.PropMilestone: m.Ref(),
 			notion.PropRepo:      notion.NewRichText(repo),
 		}
 		_, err := client.CreatePage(context.Background(), notion.DataSourceParent(slicesDSID),

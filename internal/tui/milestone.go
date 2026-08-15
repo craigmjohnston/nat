@@ -112,6 +112,11 @@ func setMilestoneStatus(client NotionAPI, id, name, statusType string, status do
 
 // queueMilestone opens the confirm for the milestone the cursor is on. The
 // implicit Unassigned group is not a page, so there is nothing there to move.
+//
+// A derived milestone is refused rather than reordered: Q advances a milestone
+// along its workflow, and where the plan is a column's options there is no
+// status to advance — the order of the options is the plan itself, and rewriting
+// the schema is a different question from where the work has got to.
 func (a *App) queueMilestone() tea.Cmd {
 	if !a.canWrite() {
 		return nil
@@ -121,7 +126,9 @@ func (a *App) queueMilestone() tea.Cmd {
 		return a.showConfirm("Move to a milestone to change its status.", sevWarning)
 	}
 	if m.Derived {
-		return a.showConfirm(fmt.Sprintf("%q has no page of its own — its status follows its slices.", m.Name), sevWarning)
+		return a.showConfirm(fmt.Sprintf(
+			"%q has no page of its own — its status follows its slices; reorder the plan in Notion.",
+			m.Name), sevWarning)
 	}
 	next, ok := nextMilestoneStatus(m.Status)
 	if !ok {

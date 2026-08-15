@@ -203,3 +203,59 @@ func TestQueryDataSource(t *testing.T) {
 		}
 	})
 }
+
+func TestUpdateDataSourceProperties(t *testing.T) {
+	t.Run("sends the property definitions and decodes the schema", func(t *testing.T) {
+		var gotMethod, gotPath, gotBody string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotMethod, gotPath = r.Method, r.URL.Path
+			b, _ := io.ReadAll(r.Body)
+			gotBody = string(b)
+			w.Write([]byte(`{"id":"ds-1","name":"Slices","properties":{
+				"Milestone":{"id":"m","name":"Milestone","type":"select","select":{"options":[
+					{"id":"o1","name":"M1: Client","color":"blue"},{"id":"o2","name":"M4: Polish","color":"default"}]}}}}`))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		existing := PropertySchema{Type: TypeSelect, Select: &OptionsConfig{
+			Options: []SelectOption{{ID: "o1", Name: "M1: Client", Color: "blue"}},
+		}}
+		appended, _ := existing.AppendedOptions("M4: Polish")
+		ds, err := c.UpdateDataSourceProperties(context.Background(), "ds-1",
+			map[string]PropertySchema{PropMilestone: appended})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if gotMethod != http.MethodPatch || gotPath != "/data_sources/ds-1" {
+			t.Errorf("got %s %s, want PATCH /data_sources/ds-1", gotMethod, gotPath)
+		}
+		want := `{"properties":{"Milestone":{"select":{"options":[` +
+			`{"id":"o1","name":"M1: Client","color":"blue"},{"name":"M4: Polish"}]}}}}`
+		if gotBody != want {
+			t.Errorf("request body =\n%s\nwant\n%s", gotBody, want)
+		}
+		if got := ds.Properties[PropMilestone].OptionNames(); len(got) != 2 || got[1] != "M4: Polish" {
+			t.Errorf("options = %v, want the appended one back", got)
+		}
+	})
+
+	t.Run("propagates an API error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"code":"validation_error","message":"nope"}`))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		ds, err := c.UpdateDataSourceProperties(context.Background(), "ds-1",
+			map[string]PropertySchema{PropMilestone: SchemaSelect("M4: Polish")})
+		var apiErr *APIError
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("got %v, want *APIError", err)
+		}
+		if ds != nil {
+			t.Errorf("data source = %+v, want nil on error", ds)
+		}
+	})
+}
