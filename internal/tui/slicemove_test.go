@@ -63,10 +63,11 @@ func TestMoveTargetsOfNoPlanAtAll(t *testing.T) {
 	}
 }
 
-func TestMoveSliceWritesOnlyTheRelation(t *testing.T) {
+func TestMoveSliceWritesOnlyTheMilestone(t *testing.T) {
 	client := &fakeNotion{}
 
-	msg := runMsg(t, moveSlice(client, "s5", "Info view", "m3", "M3: Mutations"))
+	msg := runMsg(t, moveSlice(client, "s5", "Info view",
+		domain.Milestone{ID: "m3", Name: "M3: Mutations"}))
 
 	if got := msg.(sliceSavedMsg); got.err != nil || got.note != `Moved "Info view" to M3: Mutations.` {
 		t.Errorf("msg = %+v, want the moved note", got)
@@ -88,7 +89,8 @@ func TestMoveSliceReportsAFailure(t *testing.T) {
 		},
 	}
 
-	msg := runMsg(t, moveSlice(client, "s5", "Info view", "m3", "M3: Mutations"))
+	msg := runMsg(t, moveSlice(client, "s5", "Info view",
+		domain.Milestone{ID: "m3", Name: "M3: Mutations"}))
 
 	if got := msg.(sliceSavedMsg); got.err == nil || got.err.Error() != "move slice: boom" {
 		t.Errorf("err = %v, want the wrapped failure", got.err)
@@ -223,5 +225,49 @@ func TestStatusWord(t *testing.T) {
 				t.Errorf("statusWord() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestMoveSliceWritesTheDerivedMilestonesOption is the other shape: the target
+// is an option of the slices' own Milestone column, so the move writes that
+// option rather than a relation to a page that does not exist.
+func TestMoveSliceWritesTheDerivedMilestonesOption(t *testing.T) {
+	client := &fakeNotion{}
+	m := domain.Milestone{
+		ID: "M3: Mutations", Name: "M3: Mutations", Derived: true, SelectType: notion.TypeSelect,
+	}
+
+	msg := runMsg(t, moveSlice(client, "s5", "Info view", m))
+
+	if got := msg.(sliceSavedMsg); got.err != nil || got.note != `Moved "Info view" to M3: Mutations.` {
+		t.Errorf("msg = %+v, want the moved note", got)
+	}
+	want := map[string]notion.PropertyValue{notion.PropMilestone: notion.NewSelect("M3: Mutations")}
+	if len(client.updated) != 1 || !reflect.DeepEqual(client.updated[0].properties, want) {
+		t.Errorf("updated = %+v, want s5 with %+v", client.updated, want)
+	}
+}
+
+// TestAppMoveWritesTheOptionUnderASelectShapedPlan drives the whole key on a
+// one-page project: the picker offers the same milestones, and the write names
+// the one that was picked as an option.
+func TestAppMoveWritesTheOptionUnderASelectShapedPlan(t *testing.T) {
+	client := &fakeNotion{}
+	app := newSelectWriteApp(client)
+	app.board.cursor = rowTodoSlice
+
+	feed(t, app, press(app, "m"))
+	// Past M1: Config, which the picker opens on, to M3: Mutations.
+	chooseOption(t, app, 1)
+
+	if len(client.updated) != 1 || client.updated[0].pageID != "s5" {
+		t.Fatalf("updated = %+v, want the slice written", client.updated)
+	}
+	want := notion.NewSelect("M3: Mutations")
+	if got := client.updated[0].properties[notion.PropMilestone]; !reflect.DeepEqual(got, want) {
+		t.Errorf("milestone = %+v, want %+v", got, want)
+	}
+	if app.board.confirmText != `Moved "Info view" to M3: Mutations.` {
+		t.Errorf("confirm = %q, want the moved confirmation", app.board.confirmText)
 	}
 }

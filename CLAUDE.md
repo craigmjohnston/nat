@@ -99,7 +99,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   milestone is marked `Derived` and has no status of its own:
   `domain.NewProject` computes it from the slices under it — Queued until one
   starts, Active while any is in progress or only some are Done, Done when they
-  all are — and nothing can be written to it, so the board's Q refuses it.
+  all are — and nothing can be written to it, so the board's Q refuses it, the
+  hints row leaves it off a derived milestone's row, and the help screen leaves
+  it off a plan with no milestone pages at all. Filing a slice under a milestone
+  — the board's `a` and `m` — writes the `Milestone` column in the shape the plan
+  is kept in: a relation to a page, or the option naming a derived milestone
+  (`domain.Milestone.SelectType`, the column's own type). The CLI's `slice-add`
+  and `plan-apply` still assume the relation shape.
 
 ## Conventions
 

@@ -201,13 +201,14 @@ func TestMilestonesFromPages(t *testing.T) {
 
 func TestMilestonesFromOptions(t *testing.T) {
 	want := []Milestone{
-		{ID: "M1: Groundwork", Name: "M1: Groundwork", Order: 0, Derived: true},
-		{ID: "M2: The board", Name: "M2: The board", Order: 1, Derived: true},
+		{ID: "M1: Groundwork", Name: "M1: Groundwork", Order: 0, Derived: true, SelectType: notion.TypeSelect},
+		{ID: "M2: The board", Name: "M2: The board", Order: 1, Derived: true, SelectType: notion.TypeSelect},
 	}
-	if got := MilestonesFromOptions([]string{"M1: Groundwork", "M2: The board"}); !reflect.DeepEqual(got, want) {
+	got := MilestonesFromOptions([]string{"M1: Groundwork", "M2: The board"}, notion.TypeSelect)
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("MilestonesFromOptions() = %+v, want %+v", got, want)
 	}
-	if got := MilestonesFromOptions(nil); len(got) != 0 {
+	if got := MilestonesFromOptions(nil, notion.TypeSelect); len(got) != 0 {
 		t.Errorf("MilestonesFromOptions(nil) = %+v, want empty", got)
 	}
 }
@@ -216,7 +217,7 @@ func TestMilestonesFromOptions(t *testing.T) {
 // its option: a plan read from a select groups exactly as one read from pages.
 func TestMilestonesFromOptionsGroupSlices(t *testing.T) {
 	p := Project{
-		Milestones: MilestonesFromOptions([]string{"M1: Groundwork", "M2: The board"}),
+		Milestones: MilestonesFromOptions([]string{"M1: Groundwork", "M2: The board"}, notion.TypeSelect),
 		Slices: []Slice{
 			{ID: "s1", MilestoneID: "M2: The board"},
 			{ID: "s2", MilestoneID: "M1: Groundwork"},
@@ -266,7 +267,7 @@ func TestMilestoneStatusOf(t *testing.T) {
 // status comes off the slices that name it, in the order the options were in.
 func TestNewProjectDerivesStatuses(t *testing.T) {
 	p := NewProject("p1", "Tracker",
-		MilestonesFromOptions([]string{"M1: Groundwork", "M2: The board", "M3: Later", "M4: Empty"}),
+		MilestonesFromOptions([]string{"M1: Groundwork", "M2: The board", "M3: Later", "M4: Empty"}, notion.TypeSelect),
 		[]Slice{
 			{ID: "s1", MilestoneID: "M1: Groundwork", Status: SliceDone},
 			{ID: "s2", MilestoneID: "M2: The board", Status: SliceClaimed},
@@ -279,10 +280,14 @@ func TestNewProjectDerivesStatuses(t *testing.T) {
 		t.Fatalf("NewProject() = %+v, want the plan it was given", p)
 	}
 	want := []Milestone{
-		{ID: "M1: Groundwork", Name: "M1: Groundwork", Order: 0, Status: MilestoneDone, Derived: true},
-		{ID: "M2: The board", Name: "M2: The board", Order: 1, Status: MilestoneActive, Derived: true},
-		{ID: "M3: Later", Name: "M3: Later", Order: 2, Status: MilestoneQueued, Derived: true},
-		{ID: "M4: Empty", Name: "M4: Empty", Order: 3, Status: MilestoneQueued, Derived: true},
+		{ID: "M1: Groundwork", Name: "M1: Groundwork", Order: 0, Status: MilestoneDone,
+			Derived: true, SelectType: notion.TypeSelect},
+		{ID: "M2: The board", Name: "M2: The board", Order: 1, Status: MilestoneActive,
+			Derived: true, SelectType: notion.TypeSelect},
+		{ID: "M3: Later", Name: "M3: Later", Order: 2, Status: MilestoneQueued,
+			Derived: true, SelectType: notion.TypeSelect},
+		{ID: "M4: Empty", Name: "M4: Empty", Order: 3, Status: MilestoneQueued,
+			Derived: true, SelectType: notion.TypeSelect},
 	}
 	if !reflect.DeepEqual(p.Milestones, want) {
 		t.Errorf("NewProject().Milestones = %+v, want %+v", p.Milestones, want)

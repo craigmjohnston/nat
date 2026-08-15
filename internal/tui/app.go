@@ -794,7 +794,7 @@ func (a *App) fetchProject(id string, cfg config.ProjectConfig) tea.Cmd {
 // no query of their own because the schema already carries them.
 func fetchMilestones(ctx context.Context, client NotionAPI, cfg config.ProjectConfig, shape notion.SliceShape) ([]domain.Milestone, error) {
 	if !shape.MilestonesRelated() {
-		return domain.MilestonesFromOptions(shape.MilestoneOptions), nil
+		return domain.MilestonesFromOptions(shape.MilestoneOptions, shape.MilestoneType), nil
 	}
 	pages, err := client.QueryDataSource(ctx, cfg.MilestonesDSID, nil,
 		[]notion.Sort{{Property: notion.PropOrder, Direction: notion.SortAscending}})

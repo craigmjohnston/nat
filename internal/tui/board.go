@@ -117,23 +117,48 @@ func shortHint(b key.Binding, desc string) key.Binding {
 }
 
 // milestoneHints are the hints row's bindings while the cursor is on a
-// milestone: the actions that act on it or file under it.
+// milestone: the actions that act on it or file under it. A derived milestone
+// has no status of its own to advance, so the row does not offer the key that
+// would — pressing it still says why, but the hints only name what works here.
 func (b Board) milestoneHints() []hint {
 	k := b.keys
-	return []hint{
-		{k.Add, 5},
-		{k.Queue, 4},
-		{k.Toggle, 3},
-		b.doneHint(),
+	hints := []hint{{k.Add, 5}}
+	if m, ok := b.SelectedMilestone(); !ok || !m.Derived {
+		hints = append(hints, hint{k.Queue, 4})
 	}
+	return append(hints, hint{k.Toggle, 3}, b.doneHint())
 }
 
-// helpBindings are the board's bindings as the help screen lists them.
+// helpBindings are the board's bindings as the help screen lists them. A plan
+// kept as a column's options has no milestone page to advance anywhere, so the
+// key that would is left off the list rather than promising a write no
+// milestone of this project can take.
 func (b Board) helpBindings() []key.Binding {
 	bindings := []key.Binding{b.keys.Up, b.keys.Down, b.keys.Toggle, b.keys.HideDone}
-	bindings = append(bindings, b.keys.writes()...)
+	for _, w := range b.keys.writes() {
+		if b.derivedPlan() && w.Help().Key == b.keys.Queue.Help().Key {
+			continue
+		}
+		bindings = append(bindings, w)
+	}
 	bindings = append(bindings, b.keys.agents()...)
 	return append(bindings, b.keys.projects()...)
+}
+
+// derivedPlan reports whether the plan on show is one a project keeps on its
+// own page: every milestone an option of the slices' Milestone column rather
+// than a page. A board with no milestones at all is not one — there is no plan
+// yet to be of either shape.
+func (b Board) derivedPlan() bool {
+	if b.project == nil || len(b.project.Milestones) == 0 {
+		return false
+	}
+	for _, m := range b.project.Milestones {
+		if !m.Derived {
+			return false
+		}
+	}
+	return true
 }
 
 // rowKind tells the two kinds of line the cursor moves over apart.

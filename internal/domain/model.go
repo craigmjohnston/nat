@@ -44,7 +44,9 @@ const UnassignedName = "Unassigned"
 // sent in the same shape it was read in. Derived marks a milestone that has no
 // page of its own — an option of a Slices data source's Milestone select — so
 // its Order and Status are computed rather than read, and nothing can be
-// written to it.
+// written to it. Such a milestone carries SelectType instead: the property type
+// of the Milestone column naming it, so a slice can be filed under it in the
+// shape that column was read in.
 type Milestone struct {
 	ID         string
 	Name       string
@@ -53,6 +55,7 @@ type Milestone struct {
 	StatusType string
 	URL        string
 	Derived    bool
+	SelectType string
 }
 
 // Slice is one unit of work, small enough for a single agent session. Status is
@@ -110,11 +113,13 @@ func MilestonesFromPages(pages []notion.Page) []Milestone {
 // what a slice's select names, and so what groups the plan — and its order is
 // its place among the options, which is the order the plan is written in. It
 // has no page, so no URL and no status of its own: NewProject computes the
-// status from the slices under it.
-func MilestonesFromOptions(names []string) []Milestone {
+// status from the slices under it. propertyType is the type of the column the
+// options came off, carried so that filing a slice under one of them writes the
+// column in the shape it was read in.
+func MilestonesFromOptions(names []string, propertyType string) []Milestone {
 	ms := make([]Milestone, len(names))
 	for i, n := range names {
-		ms[i] = Milestone{ID: n, Name: n, Order: float64(i), Derived: true}
+		ms[i] = Milestone{ID: n, Name: n, Order: float64(i), Derived: true, SelectType: propertyType}
 	}
 	return ms
 }
