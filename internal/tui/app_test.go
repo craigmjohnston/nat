@@ -207,8 +207,8 @@ func TestAppLoadsAPlanFromAMilestoneSelect(t *testing.T) {
 	app.Update(first[projectLoadedMsg](t, msgs))
 
 	want := []domain.Milestone{
-		{ID: "M1: Client", Name: "M1: Client", Order: 0},
-		{ID: "M2: Board", Name: "M2: Board", Order: 1},
+		{ID: "M1: Client", Name: "M1: Client", Order: 0, Status: domain.MilestoneDone, Derived: true},
+		{ID: "M2: Board", Name: "M2: Board", Order: 1, Status: domain.MilestoneQueued, Derived: true},
 	}
 	if app.project == nil || !reflect.DeepEqual(app.project.Milestones, want) {
 		t.Fatalf("milestones = %+v, want %+v", app.project, want)
@@ -218,6 +218,11 @@ func TestAppLoadsAPlanFromAMilestoneSelect(t *testing.T) {
 	}
 
 	app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	// M1: Client is Done — every slice under it is — so it renders folded into
+	// the Done section like any finished milestone read off a page.
+	app.board.expanded[doneSectionKey] = true
+	app.board.rebuild()
+	app.syncBoard()
 	view := stripANSI(app.View().Content)
 	for _, s := range []string{"tracker", "Client", "Board", barCell, "1/2"} {
 		if !strings.Contains(view, s) {

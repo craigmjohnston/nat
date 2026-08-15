@@ -783,12 +783,8 @@ func (a *App) fetchProject(id string, cfg config.ProjectConfig) tea.Cmd {
 		if err != nil {
 			return notionErrMsg{err: fmt.Errorf("load slices: %w", err)}
 		}
-		return projectLoadedMsg{project: domain.Project{
-			ID:         id,
-			Name:       cfg.Name,
-			Milestones: milestones,
-			Slices:     domain.SlicesFromPages(slices),
-		}}
+		return projectLoadedMsg{project: domain.NewProject(
+			id, cfg.Name, milestones, domain.SlicesFromPages(slices))}
 	}
 }
 

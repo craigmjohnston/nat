@@ -180,6 +180,30 @@ func TestAppQueueRefusesAMilestoneWithNowhereToGo(t *testing.T) {
 	}
 }
 
+// TestAppQueueRefusesADerivedMilestone covers a select-shaped plan: the
+// milestone is an option rather than a page, and its status is read off its
+// slices, so there is nothing for Q to write.
+func TestAppQueueRefusesADerivedMilestone(t *testing.T) {
+	client := &fakeNotion{}
+	app := newWriteApp(client)
+	app.project.Milestones[2].Derived = true // M3: Mutations
+	app.board.SetProject(app.project)
+	app.board.cursor = rowQueuedMilestone
+
+	press(app, "Q")
+
+	if app.form != nil {
+		t.Error("a milestone with no page should not open a confirm")
+	}
+	if len(client.updated) != 0 {
+		t.Errorf("updated = %+v, want nothing written", client.updated)
+	}
+	want := `"M3: Mutations" has no page of its own — its status follows its slices.`
+	if app.board.confirmText != want {
+		t.Errorf("confirm = %q, want %q", app.board.confirmText, want)
+	}
+}
+
 func TestAppQueueNeedsAMilestoneUnderTheCursor(t *testing.T) {
 	tests := []struct {
 		name   string

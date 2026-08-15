@@ -167,8 +167,8 @@ func TestInfoReadsAPlanFromAMilestoneSelect(t *testing.T) {
 
 ## Milestones
 
-- 0. M1: Client — (no status)
-- 1. M2: Board — (no status)
+- 0. M1: Client — Done
+- 1. M2: Board — Queued
 
 ## Slices
 

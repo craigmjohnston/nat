@@ -201,8 +201,8 @@ func TestMilestonesFromPages(t *testing.T) {
 
 func TestMilestonesFromOptions(t *testing.T) {
 	want := []Milestone{
-		{ID: "M1: Groundwork", Name: "M1: Groundwork", Order: 0},
-		{ID: "M2: The board", Name: "M2: The board", Order: 1},
+		{ID: "M1: Groundwork", Name: "M1: Groundwork", Order: 0, Derived: true},
+		{ID: "M2: The board", Name: "M2: The board", Order: 1, Derived: true},
 	}
 	if got := MilestonesFromOptions([]string{"M1: Groundwork", "M2: The board"}); !reflect.DeepEqual(got, want) {
 		t.Errorf("MilestonesFromOptions() = %+v, want %+v", got, want)
@@ -235,6 +235,75 @@ func TestMilestonesFromOptionsGroupSlices(t *testing.T) {
 	want := []string{"M1: Groundwork: s2", "M2: The board: s1", UnassignedName + ": s3,s4"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Groups() = %v, want %v", got, want)
+	}
+}
+
+func TestMilestoneStatusOf(t *testing.T) {
+	tests := []struct {
+		name   string
+		slices []Slice
+		want   MilestoneStatus
+	}{
+		{"no slices at all", nil, MilestoneQueued},
+		{"every slice Todo", []Slice{{Status: SliceTodo}, {Status: SliceTodo}}, MilestoneQueued},
+		{"one slice in progress", []Slice{{Status: SliceTodo}, {Status: SliceClaimed}}, MilestoneActive},
+		{"some but not all Done", []Slice{{Status: SliceTodo}, {Status: SliceDone}}, MilestoneActive},
+		{"the last slice in flight", []Slice{{Status: SliceDone}, {Status: SliceClaimed}}, MilestoneActive},
+		{"every slice Done", []Slice{{Status: SliceDone}, {Status: SliceDone}}, MilestoneDone},
+		{"one slice, Done", []Slice{{Status: SliceDone}}, MilestoneDone},
+		{"a status this build does not know", []Slice{{Status: SliceStatus("Parked")}}, MilestoneQueued},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := MilestoneStatusOf(tt.slices); got != tt.want {
+				t.Errorf("MilestoneStatusOf() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestNewProjectDerivesStatuses covers a select-shaped plan: every milestone's
+// status comes off the slices that name it, in the order the options were in.
+func TestNewProjectDerivesStatuses(t *testing.T) {
+	p := NewProject("p1", "Tracker",
+		MilestonesFromOptions([]string{"M1: Groundwork", "M2: The board", "M3: Later", "M4: Empty"}),
+		[]Slice{
+			{ID: "s1", MilestoneID: "M1: Groundwork", Status: SliceDone},
+			{ID: "s2", MilestoneID: "M2: The board", Status: SliceClaimed},
+			{ID: "s3", MilestoneID: "M2: The board", Status: SliceTodo},
+			{ID: "s4", MilestoneID: "M3: Later", Status: SliceTodo},
+			{ID: "s5", MilestoneID: "M9: Retired", Status: SliceDone},
+		})
+
+	if p.ID != "p1" || p.Name != "Tracker" || len(p.Slices) != 5 {
+		t.Fatalf("NewProject() = %+v, want the plan it was given", p)
+	}
+	want := []Milestone{
+		{ID: "M1: Groundwork", Name: "M1: Groundwork", Order: 0, Status: MilestoneDone, Derived: true},
+		{ID: "M2: The board", Name: "M2: The board", Order: 1, Status: MilestoneActive, Derived: true},
+		{ID: "M3: Later", Name: "M3: Later", Order: 2, Status: MilestoneQueued, Derived: true},
+		{ID: "M4: Empty", Name: "M4: Empty", Order: 3, Status: MilestoneQueued, Derived: true},
+	}
+	if !reflect.DeepEqual(p.Milestones, want) {
+		t.Errorf("NewProject().Milestones = %+v, want %+v", p.Milestones, want)
+	}
+}
+
+// TestNewProjectKeepsPagedMilestones is the other shape: a milestone with a page
+// keeps the Order and Status read off it, whatever its slices are doing, and the
+// milestones it was given are not modified in place.
+func TestNewProjectKeepsPagedMilestones(t *testing.T) {
+	given := []Milestone{
+		{ID: "m1", Name: "M1: Groundwork", Order: 7, Status: MilestoneQueued, StatusType: "select"},
+	}
+	p := NewProject("p1", "Tracker", given, []Slice{{ID: "s1", MilestoneID: "m1", Status: SliceDone}})
+
+	want := []Milestone{{ID: "m1", Name: "M1: Groundwork", Order: 7, Status: MilestoneQueued, StatusType: "select"}}
+	if !reflect.DeepEqual(p.Milestones, want) {
+		t.Errorf("NewProject().Milestones = %+v, want %+v", p.Milestones, want)
+	}
+	if !reflect.DeepEqual(given, want) {
+		t.Errorf("NewProject() modified its argument: %+v", given)
 	}
 }
 
