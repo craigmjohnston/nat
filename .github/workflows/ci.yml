@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+# The two halves of the gate run as jobs of their own, side by side: a lint
+# failure and a test failure are different things to go and fix, and a run that
+# reports both at once is worth the second checkout.
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -18,14 +21,6 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      # The version is pinned: a linter that updates itself fails pull requests
-      # that changed nothing, on a rule that did not exist when they were
-      # written. Raising it is its own change, made deliberately.
-      - name: Lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.12.2
-
       - name: Build
         run: go build ./...
 
@@ -38,3 +33,20 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.out
           fail_ci_if_error: true
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.x"
+
+      # The version is pinned: a linter that updates itself fails pull requests
+      # that changed nothing, on a rule that did not exist when they were
+      # written. Raising it is its own change, made deliberately.
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
