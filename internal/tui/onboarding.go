@@ -28,6 +28,7 @@ type NotionAPI interface {
 	SearchPaged(ctx context.Context, query, filterType, startCursor string) ([]notion.SearchResult, string, error)
 	PageEntries(ctx context.Context, id string) ([]notion.PageEntry, error)
 	GetDatabase(ctx context.Context, id string) (*notion.Database, error)
+	GetDataSource(ctx context.Context, id string) (*notion.DataSource, error)
 	Breadcrumb(ctx context.Context, parent notion.Parent) []string
 	CreateProjectsDatabase(ctx context.Context, parentPageID, title string) (*notion.Database, error)
 	CreateProject(ctx context.Context, projectsDSID, name string, assignee bool) (*notion.ProjectStructure, error)

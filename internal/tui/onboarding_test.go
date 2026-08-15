@@ -23,6 +23,7 @@ type fakeNotion struct {
 	searchPaged func(query, filterType, cursor string) ([]notion.SearchResult, string, error)
 	pageEntries func(id string) ([]notion.PageEntry, error)
 	getDB       func(id string) (*notion.Database, error)
+	getDS       func(id string) (*notion.DataSource, error)
 	breadcrumb  func(parent notion.Parent) []string
 	createDB    func(parentPageID, title string) (*notion.Database, error)
 	newProject  func(projectsDSID, name string) (*notion.ProjectStructure, error)
@@ -39,6 +40,7 @@ type fakeNotion struct {
 	searchCursors []string
 	entriesFor    []string
 	fetchedDBs    []string
+	fetchedDSs    []string
 	queriedDSIDs  []string
 	crumbParents  []notion.Parent
 	blockParents  []string
@@ -110,6 +112,21 @@ func (f *fakeNotion) GetDatabase(_ context.Context, id string) (*notion.Database
 		return nil, errors.New("no database")
 	}
 	return f.getDB(id)
+}
+
+// GetDataSource answers with a Slices schema, which is how the board learns
+// where a project keeps its milestones. The default is the relation shape —
+// milestones of their own — so a test says nothing unless the shape is what it
+// is about.
+func (f *fakeNotion) GetDataSource(_ context.Context, id string) (*notion.DataSource, error) {
+	f.fetchedDSs = append(f.fetchedDSs, id)
+	if f.getDS == nil {
+		return &notion.DataSource{ID: id, Properties: map[string]notion.PropertySchema{
+			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceInProgress, notion.SliceDone),
+			notion.PropMilestone: notion.SchemaRelation("ms-ds"),
+		}}, nil
+	}
+	return f.getDS(id)
 }
 
 func (f *fakeNotion) Breadcrumb(_ context.Context, parent notion.Parent) []string {

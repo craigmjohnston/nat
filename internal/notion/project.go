@@ -89,10 +89,11 @@ func SlicesSchema(milestonesDSID string, assignee bool) map[string]PropertySchem
 }
 
 // SliceShape is how one project's Slices data source is put together where the
-// two shapes differ: what its in-progress status option is called, what type
-// that column is, and whether it tracks an assignee at all. It is read from the
-// data source rather than assumed, so a project created under either shape can
-// be claimed and completed the same way.
+// shapes differ: what its in-progress status option is called, what type that
+// column is, whether it tracks an assignee at all, and how its Milestone column
+// names a plan. It is read from the data source rather than assumed, so a
+// project created under any of those shapes can be read, claimed and completed
+// the same way.
 type SliceShape struct {
 	// InProgress is the status option name a claim writes.
 	InProgress string
@@ -100,7 +101,24 @@ type SliceShape struct {
 	StatusType string
 	// HasAssignee says whether the Assignee people property is there to write.
 	HasAssignee bool
+	// MilestoneType is the property type of the Milestone column: a relation to
+	// a Milestones data source, or a fixed-choice column naming the milestone
+	// on the slice itself.
+	MilestoneType string
+	// MilestoneOptions are the milestone names a fixed-choice Milestone column
+	// offers, in the order the schema lists them, which is the order the plan
+	// is written in. It is nil under the relation shape, where the milestones
+	// are pages of their own.
+	MilestoneOptions []string
 }
+
+// MilestonesRelated reports whether the project keeps its milestones in a
+// Milestones data source of its own. The question asked is whether the
+// Milestone column offers milestones to choose from, not what type it says it
+// is: a column this build cannot read options off — a relation, or one missing
+// altogether — means the milestones are pages elsewhere, which is what every
+// project read before the second shape existed had.
+func (s SliceShape) MilestonesRelated() bool { return s.MilestoneOptions == nil }
 
 // ShapeOf reads a Slices data source's shape. An in-progress option it cannot
 // find a name for falls back to Claimed, which is what every project made
@@ -118,6 +136,11 @@ func ShapeOf(ds *DataSource) SliceShape {
 	}
 	if assignee, ok := ds.Properties[PropAssignee]; ok && assignee.Type == TypePeople {
 		shape.HasAssignee = true
+	}
+	milestone := ds.Properties[PropMilestone]
+	shape.MilestoneType = milestone.Type
+	if milestone.Relation == nil {
+		shape.MilestoneOptions = milestone.OptionNames()
 	}
 	return shape
 }

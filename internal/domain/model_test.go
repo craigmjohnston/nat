@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/notion"
@@ -160,6 +161,23 @@ func TestSliceFromPage(t *testing.T) {
 			`{"id": "s5", "properties": {}}`,
 			Slice{ID: "s5"},
 		},
+		{
+			"a milestone named on a select is the milestone",
+			`{
+				"id": "s8",
+				"properties": {
+					"Name": {"type": "title", "title": [{"plain_text": "Single page"}]},
+					"Status": {"type": "select", "select": {"name": "Todo"}},
+					"Milestone": {"type": "select", "select": {"name": "M2: The board"}}
+				}
+			}`,
+			Slice{ID: "s8", Name: "Single page", Status: SliceTodo, StatusName: "Todo", MilestoneID: "M2: The board"},
+		},
+		{
+			"a Milestone select naming nothing leaves the slice unassigned",
+			`{"id": "s9", "properties": {"Milestone": {"type": "select", "select": null}}}`,
+			Slice{ID: "s9"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -178,6 +196,45 @@ func TestMilestonesFromPages(t *testing.T) {
 	}
 	if got := MilestonesFromPages(nil); len(got) != 0 {
 		t.Errorf("MilestonesFromPages(nil) = %+v, want empty", got)
+	}
+}
+
+func TestMilestonesFromOptions(t *testing.T) {
+	want := []Milestone{
+		{ID: "M1: Groundwork", Name: "M1: Groundwork", Order: 0},
+		{ID: "M2: The board", Name: "M2: The board", Order: 1},
+	}
+	if got := MilestonesFromOptions([]string{"M1: Groundwork", "M2: The board"}); !reflect.DeepEqual(got, want) {
+		t.Errorf("MilestonesFromOptions() = %+v, want %+v", got, want)
+	}
+	if got := MilestonesFromOptions(nil); len(got) != 0 {
+		t.Errorf("MilestonesFromOptions(nil) = %+v, want empty", got)
+	}
+}
+
+// TestMilestonesFromOptionsGroupSlices is the point of naming a milestone after
+// its option: a plan read from a select groups exactly as one read from pages.
+func TestMilestonesFromOptionsGroupSlices(t *testing.T) {
+	p := Project{
+		Milestones: MilestonesFromOptions([]string{"M1: Groundwork", "M2: The board"}),
+		Slices: []Slice{
+			{ID: "s1", MilestoneID: "M2: The board"},
+			{ID: "s2", MilestoneID: "M1: Groundwork"},
+			{ID: "s3", MilestoneID: "M9: Retired"},
+			{ID: "s4"},
+		},
+	}
+	var got []string
+	for _, g := range p.Groups() {
+		names := make([]string, len(g.Slices))
+		for i, s := range g.Slices {
+			names[i] = s.ID
+		}
+		got = append(got, g.Name()+": "+strings.Join(names, ","))
+	}
+	want := []string{"M1: Groundwork: s2", "M2: The board: s1", UnassignedName + ": s3,s4"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Groups() = %v, want %v", got, want)
 	}
 }
 

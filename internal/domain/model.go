@@ -100,9 +100,25 @@ func MilestonesFromPages(pages []notion.Page) []Milestone {
 	return ms
 }
 
+// MilestonesFromOptions maps the options of a Slices data source's Milestone
+// select onto milestones, for a project that keeps no Milestones database. Such
+// a milestone is nothing but its name, so the name is its ID here too — it is
+// what a slice's select names, and so what groups the plan — and its order is
+// its place among the options, which is the order the plan is written in. It
+// has no page, so no status and no URL.
+func MilestonesFromOptions(names []string) []Milestone {
+	ms := make([]Milestone, len(names))
+	for i, n := range names {
+		ms[i] = Milestone{ID: n, Name: n, Order: float64(i)}
+	}
+	return ms
+}
+
 // SliceFromPage maps a page of a project's Slices data source. A slice relates
-// to at most one milestone, so only the first relation is read; likewise only
-// the first assignee, since claiming sets exactly one.
+// to at most one milestone, so only the first relation is read — and where the
+// project has no Milestones database, the Milestone column is a select instead
+// and the option it names is the milestone. Likewise only the first assignee is
+// read, since claiming sets exactly one.
 func SliceFromPage(p notion.Page) Slice {
 	name := p.Properties[notion.PropStatus].SelectName()
 	s := Slice{
@@ -114,8 +130,11 @@ func SliceFromPage(p notion.Page) Slice {
 		PRURL:      p.Properties[notion.PropPR].URL,
 		URL:        p.URL,
 	}
-	if ids := p.Properties[notion.PropMilestone].RelationIDs(); len(ids) > 0 {
+	milestone := p.Properties[notion.PropMilestone]
+	if ids := milestone.RelationIDs(); len(ids) > 0 {
 		s.MilestoneID = ids[0]
+	} else {
+		s.MilestoneID = milestone.SelectName()
 	}
 	if people := p.Properties[notion.PropAssignee].People; len(people) > 0 {
 		s.AssigneeName = people[0].Name

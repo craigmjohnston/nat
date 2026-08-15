@@ -143,6 +143,98 @@ func TestInfoQueriesInPlanOrder(t *testing.T) {
 	}
 }
 
+// A project whose slices name their milestone on a select has no Milestones
+// data source to query: the plan is the select's options, in the order the
+// schema lists them, and it prints as any other plan does.
+func TestInfoReadsAPlanFromAMilestoneSelect(t *testing.T) {
+	api := &fakeAPI{
+		dataSources: map[string]notion.DataSource{"slices-ds": selectMilestoneSlicesDS("M1: Client", "M2: Board")},
+		pages: map[string][]notion.Page{
+			"slices-ds": {
+				selectSlicePage("s1", "Notion client", notion.SliceDone, "M1: Client"),
+				selectSlicePage("s2", "Render the board", notion.SliceTodo, "M2: Board"),
+				selectSlicePage("s3", "Stray idea", notion.SliceTodo, ""),
+			},
+		},
+	}
+	env, out := testEnv(testConfig(), api)
+
+	if err := Run(context.Background(), []string{"info"}, env); err != nil {
+		t.Fatalf("info: %v", err)
+	}
+
+	want := `# nat
+
+## Milestones
+
+- 0. M1: Client — (no status)
+- 1. M2: Board — (no status)
+
+## Slices
+
+### M1: Client
+
+- Notion client — Done
+
+### M2: Board
+
+- Render the board — Todo
+
+### Unassigned
+
+- Stray idea — Todo
+`
+	if out.String() != want {
+		t.Errorf("output =\n%s\nwant:\n%s", out.String(), want)
+	}
+	for _, q := range api.queries {
+		if q.id == "milestones-ds" {
+			t.Errorf("queried %s, want no milestones query at all", q.id)
+		}
+	}
+}
+
+// The schema says where the project keeps its milestones, so a read that fails
+// stops the command rather than having it guess a shape.
+func TestInfoReportsAFailedSchemaRead(t *testing.T) {
+	boom := errors.New("boom")
+	env, _ := testEnv(testConfig(), &fakeAPI{dataSourceErr: boom})
+
+	err := Run(context.Background(), []string{"info"}, env)
+	if err == nil || !strings.Contains(err.Error(), "read the slices schema") {
+		t.Fatalf("err = %v, want the schema read reported", err)
+	}
+	if !errors.Is(err, boom) {
+		t.Error("the underlying error should be wrapped, not swallowed")
+	}
+}
+
+// selectMilestoneSlicesDS is the Slices schema of a project keeping its whole
+// plan on one page: the Milestone column is a select naming the milestones,
+// with no Milestones data source behind it.
+func selectMilestoneSlicesDS(milestones ...string) notion.DataSource {
+	return notion.DataSource{
+		ID: "slices-ds",
+		Properties: map[string]notion.PropertySchema{
+			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceInProgress, notion.SliceDone),
+			notion.PropMilestone: notion.SchemaSelect(milestones...),
+		},
+	}
+}
+
+// selectSlicePage is a row of such a Slices data source, its milestone named
+// rather than related.
+func selectSlicePage(id, name, status, milestone string) notion.Page {
+	props := map[string]notion.PropertyValue{
+		notion.PropName:   title(name),
+		notion.PropStatus: notion.NewSelect(status),
+	}
+	if milestone != "" {
+		props[notion.PropMilestone] = notion.NewSelect(milestone)
+	}
+	return notion.Page{ID: id, URL: "https://notion.so/" + id, Properties: props}
+}
+
 // A project with nothing in it yet still prints its headings, so the output
 // says "there is nothing here" rather than looking truncated.
 func TestInfoPrintsAnEmptyProject(t *testing.T) {

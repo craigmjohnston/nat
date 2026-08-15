@@ -196,6 +196,87 @@ func TestAppQueriesBothDataSourcesInPlanOrder(t *testing.T) {
 	}
 }
 
+// A project whose slices name their milestone on a select keeps its whole plan
+// on one page: the milestones are the select's options, there is no Milestones
+// data source to query, and the board draws it like any other plan.
+func TestAppLoadsAPlanFromAMilestoneSelect(t *testing.T) {
+	client := newSelectShapedClient()
+	app := NewApp(testConfig(), client)
+
+	msgs := run(app.Init())
+	app.Update(first[projectLoadedMsg](t, msgs))
+
+	want := []domain.Milestone{
+		{ID: "M1: Client", Name: "M1: Client", Order: 0},
+		{ID: "M2: Board", Name: "M2: Board", Order: 1},
+	}
+	if app.project == nil || !reflect.DeepEqual(app.project.Milestones, want) {
+		t.Fatalf("milestones = %+v, want %+v", app.project, want)
+	}
+	if _, queried := client.sorts["ms-ds"]; queried {
+		t.Error("the milestones data source was queried, but this project has none")
+	}
+
+	app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	view := stripANSI(app.View().Content)
+	for _, s := range []string{"tracker", "Client", "Board", barCell, "1/2"} {
+		if !strings.Contains(view, s) {
+			t.Errorf("view is missing %q:\n%s", s, view)
+		}
+	}
+}
+
+// newSelectShapedClient answers with the same plan loadingClient does, in the
+// shape that keeps the milestones on the slices themselves.
+func newSelectShapedClient() *loadingClient {
+	c := &loadingClient{sorts: map[string][]notion.Sort{}}
+	c.getDS = func(id string) (*notion.DataSource, error) {
+		return &notion.DataSource{ID: id, Properties: map[string]notion.PropertySchema{
+			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceInProgress, notion.SliceDone),
+			notion.PropMilestone: notion.SchemaSelect("M1: Client", "M2: Board"),
+		}}, nil
+	}
+	c.query = func(id string, _ map[string]any, sorts []notion.Sort) ([]notion.Page, error) {
+		c.sorts[id] = sorts
+		if id != "sl-ds" {
+			return nil, nil
+		}
+		return []notion.Page{
+			selectSlicePage("s1", "First", notion.SliceDone, "M1: Client"),
+			selectSlicePage("s2", "Second", notion.SliceTodo, "M2: Board"),
+		}, nil
+	}
+	return c
+}
+
+// selectSlicePage is a slice naming its milestone rather than relating to one.
+func selectSlicePage(id, name, status, milestone string) notion.Page {
+	return notion.Page{ID: id, Properties: map[string]notion.PropertyValue{
+		notion.PropName:      notion.NewTitle(name),
+		notion.PropStatus:    notion.NewSelect(status),
+		notion.PropMilestone: notion.NewSelect(milestone),
+	}}
+}
+
+// The schema read says which shape the project is, so a load that cannot read
+// it fails the same way a failed query does rather than guessing.
+func TestAppReportsAFailedSchemaRead(t *testing.T) {
+	boom := errors.New("boom")
+	client := newLoadingClient()
+	client.getDS = func(string) (*notion.DataSource, error) { return nil, boom }
+	app := NewApp(testConfig(), client)
+
+	msgs := run(app.Init())
+	app.Update(first[notionErrMsg](t, msgs))
+
+	if app.err == nil || app.err.Error() != "load the slices schema: boom" {
+		t.Fatalf("err = %v, want the schema read reported", app.err)
+	}
+	if !errors.Is(app.err, boom) {
+		t.Error("the underlying error should be wrapped, not swallowed")
+	}
+}
+
 func TestAppReportsAFailedLoad(t *testing.T) {
 	boom := errors.New("boom")
 	tests := []struct {
