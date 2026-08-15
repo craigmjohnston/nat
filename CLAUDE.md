@@ -52,7 +52,12 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `nat slice-add <title> --milestone <name|URL|ID> [--description TEXT|-]
   [--repo DIR]` (Todo and unassigned, description as the page body;
   `--description -` reads it from stdin, so a slice-add typed with no brief
-  does not wait on one), and `nat plan-apply [FILE]`, which creates a whole
+  does not wait on one), the wishlist pair `nat wishlist [--json]`, which prints
+  the pending items written under the project page's Wishlist heading (with
+  their block IDs under `--json`), and `nat wishlist-clear <block-id>...`,
+  which trashes exactly the named items — never the section wholesale, so an
+  idea typed while a workshop session runs survives it — and leaves the section
+  holding one empty bullet, and `nat plan-apply [FILE]`, which creates a whole
   drafted plan of milestones and slices from a JSON document (read from FILE or
   stdin, validated entirely before the first write, and only ever creating
   pages), and `nat setup`, which installs the embedded skills into

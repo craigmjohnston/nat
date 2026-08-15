@@ -378,6 +378,29 @@ func TestAppendBlockChildren(t *testing.T) {
 		}
 	})
 
+	t.Run("names the block to land under when given one", func(t *testing.T) {
+		var gotBody string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			b, _ := io.ReadAll(r.Body)
+			gotBody = string(b)
+			w.Write([]byte(`{"results":[],"has_more":false}`))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		if _, err := c.AppendBlockChildrenAfter(context.Background(), "page-1", "b-3", []map[string]any{{
+			"type":               "bulleted_list_item",
+			"bulleted_list_item": map[string]any{"rich_text": []map[string]any{}},
+		}}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		want := `{"after":"b-3","children":[{"bulleted_list_item":{"rich_text":[]},"type":"bulleted_list_item"}]}`
+		if gotBody != want {
+			t.Errorf("request body =\n%s\nwant\n%s", gotBody, want)
+		}
+	})
+
 	t.Run("propagates an API error", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)

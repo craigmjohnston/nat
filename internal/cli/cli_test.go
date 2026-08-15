@@ -27,6 +27,11 @@ type fakeAPI struct {
 	// appendErr fails the append.
 	appendErr error
 
+	// deletes records the ID of every block trashed, in order.
+	deletes []string
+	// deleteErr fails the trashing.
+	deleteErr error
+
 	// gets records the ID of every single-page fetch, in order.
 	gets []string
 	// getErr fails the fetch.
@@ -82,7 +87,10 @@ type update struct {
 }
 
 type appended struct {
-	id       string
+	id string
+	// after is the child the blocks were asked to land below, empty where they
+	// went to the end.
+	after    string
 	children []map[string]any
 }
 
@@ -168,6 +176,25 @@ func (f *fakeAPI) AppendBlockChildren(_ context.Context, id string, children []m
 		return nil, f.appendErr
 	}
 	return nil, nil
+}
+
+// AppendBlockChildrenAfter records where the append was asked to land, which is
+// the whole point of the call: a block put back into the middle of a page.
+func (f *fakeAPI) AppendBlockChildrenAfter(_ context.Context, id, after string, children []map[string]any) ([]notion.Block, error) {
+	f.appends = append(f.appends, appended{id: id, after: after, children: children})
+	if f.appendErr != nil {
+		return nil, f.appendErr
+	}
+	return nil, nil
+}
+
+// DeleteBlock records the block trashed, in order.
+func (f *fakeAPI) DeleteBlock(_ context.Context, id string) error {
+	f.deletes = append(f.deletes, id)
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	return nil
 }
 
 func (f *fakeAPI) GetBlockChildren(_ context.Context, id string) ([]notion.Block, error) {

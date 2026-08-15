@@ -22,6 +22,8 @@ type API interface {
 	GetPage(ctx context.Context, id string) (*notion.Page, error)
 	GetBlockChildren(ctx context.Context, id string) ([]notion.Block, error)
 	AppendBlockChildren(ctx context.Context, id string, children []map[string]any) ([]notion.Block, error)
+	AppendBlockChildrenAfter(ctx context.Context, id, after string, children []map[string]any) ([]notion.Block, error)
+	DeleteBlock(ctx context.Context, id string) error
 	UpdatePageProperties(ctx context.Context, pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
 }
 
@@ -66,6 +68,12 @@ usage:
                         [--repo DIR] [--json]
                       add a Todo slice under a milestone, its description
                       written on the page; --description - reads it from stdin
+  nat wishlist [--json]
+                      print the active project's pending wishlist items, with
+                      their block IDs under --json
+  nat wishlist-clear <block-id>...
+                      trash exactly the named wishlist items, leaving the
+                      section with one empty bullet for the next idea
   nat plan-apply [FILE] [--json]
                       create a whole plan of milestones and slices from a JSON
                       document, read from FILE or stdin
@@ -117,6 +125,10 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return milestoneAdd(ctx, args[1:], env)
 	case "slice-add":
 		return sliceAdd(ctx, args[1:], env)
+	case "wishlist":
+		return wishlist(ctx, args[1:], env)
+	case "wishlist-clear":
+		return wishlistClear(ctx, args[1:], env)
 	case "plan-apply":
 		return planApply(ctx, args[1:], env)
 	case "complete-slice":
