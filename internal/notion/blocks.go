@@ -165,10 +165,17 @@ func (c *Client) AppendBlockChildren(ctx context.Context, id string, children []
 // AppendBlockChildrenAfter appends blocks to a page or block's content
 // immediately below the child named by after, rather than at the end. An empty
 // after appends at the end, which is what AppendBlockChildren asks for.
+//
+// The placement rides on `position`, not the older `after` field: the API
+// version we are pinned to rejects `after` outright rather than deprecating it
+// quietly, so a request carrying it fails validation before it is read.
 func (c *Client) AppendBlockChildrenAfter(ctx context.Context, id, after string, children []map[string]any) ([]Block, error) {
 	body := map[string]any{"children": children}
 	if after != "" {
-		body["after"] = after
+		body["position"] = map[string]any{
+			"type":        "after_block",
+			"after_block": map[string]any{"id": after},
+		}
 	}
 	var list List[Block]
 	if err := c.do(ctx, http.MethodPatch, "/blocks/"+url.PathEscape(id)+"/children", body, &list); err != nil {
