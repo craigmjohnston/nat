@@ -1121,11 +1121,15 @@ func TestAppAttachIsRefusedWithNothingToAttachWith(t *testing.T) {
 }
 
 func TestAttachedReportsTheTerminalComingBack(t *testing.T) {
-	if got := attached("nat-5")(nil).(agentAttachedMsg); got.note != "Detached from nat-5." {
-		t.Errorf("msg = %+v, want the detached note", got)
+	msg := attached("s5", "nat-5")(nil).(agentAttachedMsg)
+	if msg.note != "Detached from nat-5." {
+		t.Errorf("msg = %+v, want the detached note", msg)
+	}
+	if msg.slice != "s5" {
+		t.Errorf("slice = %q, want the slice the session was about", msg.slice)
 	}
 	boom := errors.New("no such session")
-	got := attached("nat-5")(boom).(agentAttachedMsg)
+	got := attached("s5", "nat-5")(boom).(agentAttachedMsg)
 	if got.err == nil || !errors.Is(got.err, boom) {
 		t.Errorf("err = %v, want it to wrap %v", got.err, boom)
 	}
@@ -1134,13 +1138,13 @@ func TestAttachedReportsTheTerminalComingBack(t *testing.T) {
 	}
 }
 
-func TestAppReloadsThePlanAfterAttaching(t *testing.T) {
-	client := newLoadingClient()
-	app := NewApp(testConfig(), client)
+func TestAppRefreshesTheSliceAfterAttaching(t *testing.T) {
+	client := &fakeNotion{}
+	app := newWriteApp(client)
 	app.launcher = &fakeLauncher{}
 	app.busy = true
 
-	_, cmd := app.Update(agentAttachedMsg{note: "Detached from nat-5."})
+	_, cmd := app.Update(agentAttachedMsg{note: "Detached from nat-5.", slice: "s5"})
 	run(cmd)
 
 	if app.busy {
@@ -1149,10 +1153,13 @@ func TestAppReloadsThePlanAfterAttaching(t *testing.T) {
 	if app.board.confirmText != "Detached from nat-5." {
 		t.Errorf("confirm = %q, want the detached confirmation", app.board.confirmText)
 	}
-	// The agent has had the terminal to itself, so the plan is re-read rather
-	// than trusted.
-	if len(client.queriedDSIDs) != 1 {
-		t.Errorf("queried %v, want the plan reloaded", client.queriedDSIDs)
+	// The agent has had the terminal to itself, so the slice it was working on
+	// is re-read rather than trusted — that one page, not the whole plan.
+	if !equal(client.fetchedPages, []string{"s5"}) {
+		t.Errorf("fetched %v, want the agent's slice refetched", client.fetchedPages)
+	}
+	if client.queriedDSIDs != nil {
+		t.Errorf("queried %v, want no full reload", client.queriedDSIDs)
 	}
 }
 

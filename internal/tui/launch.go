@@ -230,7 +230,7 @@ func launchAgent(l AgentLauncher, c agent.PromptContext, attach bool) tea.Cmd {
 func (a *App) showAgent(s domain.Slice, session string) tea.Cmd {
 	host := agent.HostPane()
 	if host == "" {
-		return attach(a.launcher, session)
+		return attach(a.launcher, s.ID, session)
 	}
 	return showPane(a.launcher, s, host, a.cfg.SplitPercent())
 }
@@ -255,18 +255,20 @@ func showPane(l AgentLauncher, s domain.Slice, host string, percent int) tea.Cmd
 }
 
 // attach hands the terminal to a session until the user detaches from it.
-func attach(l AgentLauncher, session string) tea.Cmd {
-	return tea.ExecProcess(l.AttachCmd(session), attached(session))
+func attach(l AgentLauncher, sliceID, session string) tea.Cmd {
+	return tea.ExecProcess(l.AttachCmd(session), attached(sliceID, session))
 }
 
 // attached is what getting the terminal back reports. Detaching is the ordinary
-// way out of a session, and leaves the agent running.
-func attached(session string) func(error) tea.Msg {
+// way out of a session, and leaves the agent running. The message names the
+// slice the session was about, so the board refetches the page the agent has
+// been working on rather than the whole plan.
+func attached(sliceID, session string) func(error) tea.Msg {
 	return func(err error) tea.Msg {
 		if err != nil {
 			return agentAttachedMsg{err: fmt.Errorf("attach to %s: %w", session, err)}
 		}
-		return agentAttachedMsg{note: fmt.Sprintf("Detached from %s.", session)}
+		return agentAttachedMsg{note: fmt.Sprintf("Detached from %s.", session), slice: sliceID}
 	}
 }
 

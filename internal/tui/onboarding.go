@@ -38,6 +38,7 @@ type NotionAPI interface {
 	GetBlockChildren(ctx context.Context, id string) ([]notion.Block, error)
 	Wishlist(ctx context.Context, pageID string) ([]notion.WishlistItem, error)
 	CreatePage(ctx context.Context, parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)
+	GetPage(ctx context.Context, id string) (*notion.Page, error)
 	UpdatePageProperties(ctx context.Context, pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
 	AppendBlockChildren(ctx context.Context, id string, children []map[string]any) ([]notion.Block, error)
 	DeleteBlock(ctx context.Context, id string) error

@@ -88,7 +88,7 @@ func deleteSlice(client NotionAPI, sliceID, sliceName string) tea.Cmd {
 		if err := client.TrashPage(context.Background(), sliceID); err != nil {
 			return sliceSavedMsg{err: fmt.Errorf("delete slice: %w", err)}
 		}
-		return sliceSavedMsg{note: fmt.Sprintf("Deleted %q.", sliceName)}
+		return sliceSavedMsg{note: fmt.Sprintf("Deleted %q.", sliceName), sliceID: sliceID, deleted: true}
 	}
 }
 

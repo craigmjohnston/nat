@@ -22,10 +22,16 @@ type (
 		err      error
 	}
 	// sliceSavedMsg reports a finished write: note is what the status bar says
-	// when it worked, err what stopped it.
+	// when it worked, err what stopped it. sliceID is the page the write
+	// touched, which the board refetches and patches into the plan rather than
+	// reloading the whole of it; deleted says the page went to the trash
+	// instead, so its row is removed outright and there is nothing to refetch.
+	// A message naming no page falls back to the full reload.
 	sliceSavedMsg struct {
-		note string
-		err  error
+		note    string
+		err     error
+		sliceID string
+		deleted bool
 	}
 )
 
@@ -158,12 +164,12 @@ func createSlice(client NotionAPI, slicesDSID string, m domain.Milestone, title,
 			notion.PropMilestone: m.Ref(),
 			notion.PropRepo:      notion.NewRichText(repo),
 		}
-		_, err := client.CreatePage(context.Background(), notion.DataSourceParent(slicesDSID),
+		page, err := client.CreatePage(context.Background(), notion.DataSourceParent(slicesDSID),
 			properties, paragraphBlocks(description))
 		if err != nil {
 			return sliceSavedMsg{err: fmt.Errorf("create slice: %w", err)}
 		}
-		return sliceSavedMsg{note: fmt.Sprintf("Added %q.", title)}
+		return sliceSavedMsg{note: fmt.Sprintf("Added %q.", title), sliceID: page.ID}
 	}
 }
 
@@ -184,7 +190,7 @@ func editSlice(client NotionAPI, sliceID, title, description, repo string) tea.C
 		if err := replaceBody(ctx, client, sliceID, description); err != nil {
 			return sliceSavedMsg{err: err}
 		}
-		return sliceSavedMsg{note: fmt.Sprintf("Updated %q.", title)}
+		return sliceSavedMsg{note: fmt.Sprintf("Updated %q.", title), sliceID: sliceID}
 	}
 }
 
