@@ -108,9 +108,9 @@ func TestFailedRefreshKeepsThePlanAndItsAge(t *testing.T) {
 	if a.project == nil || len(a.project.Slices) != 2 {
 		t.Fatalf("project = %+v, want the plan that was already on screen", a.project)
 	}
-	// The Done milestone the fake plan is all of comes up collapsed, so what
-	// the board draws of it is its summary row.
-	if view := stripANSI(a.View().Content); !strings.Contains(view, "Done 1 milestone") {
+	// The milestone the fake plan is all of is half finished, so the board draws
+	// it with the slice still to do under it.
+	if view := stripANSI(a.View().Content); !strings.Contains(view, "M1 1/2  Active") {
 		t.Errorf("view = %q, want the stale plan still drawn behind the failure", view)
 	}
 	if a.form != nil || a.screen != screenBoard {

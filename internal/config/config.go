@@ -21,10 +21,9 @@ var marshalIndent = json.MarshalIndent
 
 // ProjectConfig describes one tracked project.
 type ProjectConfig struct {
-	Name           string `json:"name"`
-	SlicesDSID     string `json:"slices_ds_id"`
-	MilestonesDSID string `json:"milestones_ds_id"`
-	WorkingDir     string `json:"working_dir"`
+	Name       string `json:"name"`
+	SlicesDSID string `json:"slices_ds_id"`
+	WorkingDir string `json:"working_dir"`
 }
 
 // Config is the local configuration persisted as JSON in the XDG config dir.

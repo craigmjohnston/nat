@@ -66,7 +66,7 @@ usage:
                       brief
   nat milestone-add <name> [--json]
                       add a Queued milestone at the end of the plan
-  nat slice-add <title> --milestone <name|URL|ID> [--description TEXT|-]
+  nat slice-add <title> --milestone <name> [--description TEXT|-]
                         [--repo DIR] [--json]
                       add a Todo slice under a milestone, its description
                       written on the page; --description - reads it from stdin

@@ -20,52 +20,26 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the golden files")
 
-// testProject is the plan the board tests render: a finished milestone, the
-// active one holding a slice of each status, an empty queued one, and a slice
+// testProject is the plan the board tests render: a finished milestone, the one
+// in flight holding a slice of each status, an empty one after it, and a slice
 // whose milestone is not in the plan, which lands in Unassigned.
+//
+// The milestones are the options of the slices' Milestone column, which is
+// where every project keeps its plan: each one's ID is its name, and its status
+// is read back off the slices under it.
 func testProject() domain.Project {
-	return domain.Project{
-		ID:   testProjectID,
-		Name: "tracker",
-		Milestones: []domain.Milestone{
-			{ID: "m1", Name: "M1: Config", Order: 1, Status: domain.MilestoneDone},
-			{ID: "m2", Name: "M2: Board", Order: 2, Status: domain.MilestoneActive},
-			{ID: "m3", Name: "M3: Mutations", Order: 3, Status: domain.MilestoneQueued},
-		},
-		Slices: []domain.Slice{
-			{ID: "s1", Name: "XDG config", Status: domain.SliceDone, MilestoneID: "m1"},
-			{ID: "s2", Name: "Keyring", Status: domain.SliceDone, MilestoneID: "m1"},
-			{ID: "s3", Name: "Domain model", Status: domain.SliceDone, MilestoneID: "m2",
+	return domain.NewProject(testProjectID, "tracker",
+		domain.MilestonesFromOptions([]string{"M1: Config", "M2: Board", "M3: Mutations"}, notion.TypeSelect),
+		[]domain.Slice{
+			{ID: "s1", Name: "XDG config", Status: domain.SliceDone, MilestoneID: "M1: Config"},
+			{ID: "s2", Name: "Keyring", Status: domain.SliceDone, MilestoneID: "M1: Config"},
+			{ID: "s3", Name: "Domain model", Status: domain.SliceDone, MilestoneID: "M2: Board",
 				AssigneeName: "Craig Johnston", PRURL: "https://example.test/pr/1"},
-			{ID: "s4", Name: "Board screen", Status: domain.SliceClaimed, StatusName: "Claimed",
-				MilestoneID: "m2", AssigneeName: "Craig Johnston"},
-			{ID: "s5", Name: "Info view", Status: domain.SliceTodo, MilestoneID: "m2"},
+			{ID: "s4", Name: "Board screen", Status: domain.SliceClaimed, StatusName: "In progress",
+				MilestoneID: "M2: Board", AssigneeName: "Craig Johnston"},
+			{ID: "s5", Name: "Info view", Status: domain.SliceTodo, MilestoneID: "M2: Board"},
 			{ID: "s6", Name: "Stray", Status: "Unknown", MilestoneID: "gone"},
-		},
-	}
-}
-
-// testSelectProject is that same plan as a project that keeps it on its own
-// page: the milestones are options of the slices' Milestone select rather than
-// pages, so each one's ID is its name and its status is derived from the slices
-// under it — which works out as the statuses testProject writes by hand, so the
-// two fixtures flatten to the same rows.
-func testSelectProject() domain.Project {
-	base := testProject()
-	names := make([]string, len(base.Milestones))
-	byID := make(map[string]string, len(base.Milestones))
-	for i, m := range base.Milestones {
-		names[i], byID[m.ID] = m.Name, m.Name
-	}
-	slices := make([]domain.Slice, len(base.Slices))
-	for i, s := range base.Slices {
-		if name, ok := byID[s.MilestoneID]; ok {
-			s.MilestoneID = name
-		}
-		slices[i] = s
-	}
-	return domain.NewProject(base.ID, base.Name,
-		domain.MilestonesFromOptions(names, notion.TypeSelect), slices)
+		})
 }
 
 // newTestBoard returns a board showing testProject at a fixed width, with the
@@ -602,7 +576,7 @@ func longRowProject() domain.Project {
 		Name: "tracker",
 		Milestones: []domain.Milestone{
 			{ID: "m7", Name: "M7: Agent pane view, joined beside the board pane",
-				Order: 7, Status: domain.MilestoneActive},
+				Order: 6, Status: domain.MilestoneActive},
 		},
 		Slices: []domain.Slice{
 			{ID: "s1", Name: "Degrade slice rows gracefully as the board narrows",
@@ -883,8 +857,8 @@ func TestBoardSelectedMilestone(t *testing.T) {
 	}
 	b.cursor = 1
 	got, ok := b.SelectedMilestone()
-	if !ok || got.ID != "m2" {
-		t.Errorf("selected = %+v (ok=%v), want m2", got, ok)
+	if !ok || got.ID != "M2: Board" {
+		t.Errorf("selected = %+v (ok=%v), want M2: Board", got, ok)
 	}
 	b.cursor = 2
 	if _, ok := b.SelectedMilestone(); ok {
@@ -904,11 +878,11 @@ func TestBoardKeepsFoldStateAndClampsTheCursorAcrossAReload(t *testing.T) {
 
 	// A reload that has lost everything but the first milestone.
 	p := domain.Project{Milestones: []domain.Milestone{
-		{ID: "m2", Name: "M2: Board", Order: 2, Status: domain.MilestoneActive},
+		{ID: "M2: Board", Name: "M2: Board", Order: 1, Status: domain.MilestoneActive},
 	}}
 	b.SetProject(&p)
 
-	if b.expanded["m2"] {
+	if b.expanded["M2: Board"] {
 		t.Error("the user's collapse should survive a reload")
 	}
 	if b.cursor != 0 {

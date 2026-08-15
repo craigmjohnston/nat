@@ -31,8 +31,8 @@ and rerun — the CLI has no project switch of its own.
 - Slot new slices into existing milestones when they fit; create new
   milestones only for genuinely new phases of work.
 - Status, order and assignee are not yours to choose: `nat plan-apply` files
-  new milestones as `Queued` at the end of the plan and new slices as `Todo`
-  and unassigned. The user activates milestones from the board; agents claim
+  new milestones at the end of the plan and new slices as `Todo`
+  and unassigned. A milestone's status follows its slices; agents claim
   their own slices at work time.
 
 ## Procedure

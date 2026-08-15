@@ -30,7 +30,6 @@ type boardKeyMap struct {
 	Edit   key.Binding
 	Move   key.Binding
 	Delete key.Binding
-	Queue  key.Binding
 
 	Launch key.Binding
 	Attach key.Binding
@@ -52,7 +51,6 @@ func defaultBoardKeyMap() boardKeyMap {
 		Edit:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit slice")),
 		Move:   key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move slice")),
 		Delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete slice")),
-		Queue:  key.NewBinding(key.WithKeys("Q"), key.WithHelp("Q", "advance milestone")),
 
 		Launch: key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "launch agent")),
 		Attach: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "show/hide agent")),
@@ -77,7 +75,7 @@ func (k boardKeyMap) projects() []key.Binding {
 
 // writes are the bindings the root model handles rather than the board.
 func (k boardKeyMap) writes() []key.Binding {
-	return []key.Binding{k.Add, k.Edit, k.Move, k.Delete, k.Queue}
+	return []key.Binding{k.Add, k.Edit, k.Move, k.Delete}
 }
 
 // sliceHints are the hints row's bindings while the cursor is on a slice: the
@@ -117,48 +115,20 @@ func shortHint(b key.Binding, desc string) key.Binding {
 }
 
 // milestoneHints are the hints row's bindings while the cursor is on a
-// milestone: the actions that act on it or file under it. A derived milestone
-// has no status of its own to advance, so the row does not offer the key that
-// would — pressing it still says why, but the hints only name what works here.
+// milestone: the actions that act on it or file under it. A milestone has no
+// status of its own to set — it follows the slices under it — so the row is
+// about what can be filed there.
 func (b Board) milestoneHints() []hint {
 	k := b.keys
-	hints := []hint{{k.Add, 5}}
-	if m, ok := b.SelectedMilestone(); !ok || !m.Derived {
-		hints = append(hints, hint{k.Queue, 4})
-	}
-	return append(hints, hint{k.Toggle, 3}, b.doneHint())
+	return []hint{{k.Add, 5}, {k.Toggle, 3}, b.doneHint()}
 }
 
-// helpBindings are the board's bindings as the help screen lists them. A plan
-// kept as a column's options has no milestone page to advance anywhere, so the
-// key that would is left off the list rather than promising a write no
-// milestone of this project can take.
+// helpBindings are the board's bindings as the help screen lists them.
 func (b Board) helpBindings() []key.Binding {
 	bindings := []key.Binding{b.keys.Up, b.keys.Down, b.keys.Toggle, b.keys.HideDone}
-	for _, w := range b.keys.writes() {
-		if b.derivedPlan() && w.Help().Key == b.keys.Queue.Help().Key {
-			continue
-		}
-		bindings = append(bindings, w)
-	}
+	bindings = append(bindings, b.keys.writes()...)
 	bindings = append(bindings, b.keys.agents()...)
 	return append(bindings, b.keys.projects()...)
-}
-
-// derivedPlan reports whether the plan on show is one a project keeps on its
-// own page: every milestone an option of the slices' Milestone column rather
-// than a page. A board with no milestones at all is not one — there is no plan
-// yet to be of either shape.
-func (b Board) derivedPlan() bool {
-	if b.project == nil || len(b.project.Milestones) == 0 {
-		return false
-	}
-	for _, m := range b.project.Milestones {
-		if !m.Derived {
-			return false
-		}
-	}
-	return true
 }
 
 // rowKind tells the two kinds of line the cursor moves over apart.
@@ -556,13 +526,15 @@ func (b Board) layout() boardLayout {
 // which the board strips: the number is drawn as its own column instead.
 var planPrefix = regexp.MustCompile(`^M\d+:\s*`)
 
-// planNumber is the milestone's plan number as the number column shows it —
-// blank for the Unassigned group and for a milestone with no order.
+// planNumber is the milestone's plan number as the number column shows it: its
+// place among the Milestone column's options, which counts from zero, so the
+// first milestone of the plan is milestone 1. The Unassigned group is no
+// milestone of the plan and carries no number.
 func planNumber(g domain.Group) string {
-	if g.Milestone == nil || g.Milestone.Order == 0 {
+	if g.Milestone == nil {
 		return ""
 	}
-	return strconv.FormatFloat(g.Milestone.Order, 'f', -1, 64)
+	return strconv.FormatFloat(g.Milestone.Order+1, 'f', -1, 64)
 }
 
 // groupTitle is the group's name as the title column shows it: the inline

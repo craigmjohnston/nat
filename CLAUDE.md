@@ -49,7 +49,7 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `nat complete-slice <slice> [--pr URL] [--summary TEXT] [--blocked]`, which
   closes out a slice the configured user holds, and the one-off additions
   `nat milestone-add <name>` (Queued, at the end of the plan) and
-  `nat slice-add <title> --milestone <name|URL|ID> [--description TEXT|-]
+  `nat slice-add <title> --milestone <name> [--description TEXT|-]
   [--repo DIR]` (Todo and unassigned, description as the page body;
   `--description -` reads it from stdin, so a slice-add typed with no brief
   does not wait on one), the wishlist pair `nat wishlist [--json]`, which prints
@@ -76,61 +76,66 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
 
 - Slice workflow: Todo → in progress → Done. Never edit an in-progress or Done
   slice.
-- The in-progress status has two names: projects created before the app asked
-  call it `Claimed`, newer ones `In progress`. Nothing is migrated —
-  `notion.ShapeOf` reads the name (and whether the project has an `Assignee`
-  column at all) off the Slices data source, and `domain` maps both names onto
-  the one `SliceClaimed` status so the board and the progress math ask one
-  question.
-- Claiming = Status → the project's in-progress option, plus Assignee (people
+- The in-progress status is called `In progress`. Projects made before the app
+  asked called it `Claimed`; that name is migrated away at load
+  (`notion.MigrateProject`) rather than read anywhere. `notion.ShapeOf` still
+  reads the types of the `Status` and `Milestone` columns off the Slices data
+  source — either may have been converted to Notion's own status type in the UI
+  — and whether the project has an `Assignee` column at all.
+- Claiming = Status → `In progress`, plus Assignee (people
   property, the configured real Notion user) where the project has that column.
   Without one, ownership is decided on status alone.
 - Slices ↔ PRs are 1:1 when work is code; PR URL recorded in the `PR` property.
 - Slices may carry a `Repo` override; otherwise the project default working
   dir from local config applies.
-- Milestones live in their own DB (Name/Order/Status: Queued/Active/Done);
-  slices relate via the `Milestone` relation. A project may instead keep its
-  whole plan on one page: no Milestones DB, and a `Milestone` **select** on the
-  Slices data source whose options are the milestones, in plan order. Nothing is
-  migrated — `notion.ShapeOf` reads which shape the Slices data source has, and
-  a plan read from a select becomes the same `domain.Project` (via
-  `domain.MilestonesFromOptions`, milestone name as ID, option index as order,
-  no URL), so the board and the progress math ask one question. Such a
-  milestone is marked `Derived` and has no status of its own:
-  `domain.NewProject` computes it from the slices under it — Queued until one
-  starts, Active while any is in progress or only some are Done, Done when they
-  all are — and nothing can be written to it, so the board's Q refuses it, the
-  hints row leaves it off a derived milestone's row, and the help screen leaves
-  it off a plan with no milestone pages at all. Filing a slice under a milestone
-  — the board's `a` and `m` — writes the `Milestone` column in the shape the plan
-  is kept in: a relation to a page, or the option naming a derived milestone
-  (`domain.Milestone.Ref()`, written as `SelectType` — the column's own type).
-  The planning commands work either shape too: `milestone-add` and `plan-apply`
-  create milestone pages under the relation shape, and under the select shape
-  append options to the `Milestone` column instead — one schema write per run,
-  after the options already there, since their order is the plan's order. A name
-  the plan already holds is refused before that write, because such a milestone
-  is nothing but its name. `slice-add` and `plan-apply` file slices with
-  whichever `Milestone` value the shape calls for. The agent commands work
-  either shape too: `next-slice` reads the plan the way the board does and takes
-  work from the lowest-ordered milestone still open — Active under the relation
-  shape, and under the select shape merely not Done, since a derived milestone
-  is Queued until a slice under it starts and gating on Active would leave a
-  plan on which nothing has begun with no way to begin. `start-slice` names a
-  slice's milestone from the schema's options rather than fetching a page that
-  does not exist, and `complete-slice` touches no milestone at all.
-- Slice order under such a plan is where the slices sit in the project's own
-  board: `notion.PlanOrder` reads the row order of the Slices data source's
-  first view (`GET /views`, then `POST /views/{id}/queries`, which is exposed
-  from `2026-03-11`) and `domain.InViewOrder` applies it, with anything the view
-  does not name trailing in the order it was queried. A failure to read it is
-  logged and the plan drawn unordered rather than not at all. Notion records
+- A project keeps its whole plan on one page: no Milestones database, and a
+  `Milestone` **select** on the Slices data source whose options are the
+  milestones, in plan order. `domain.MilestonesFromOptions` maps them —
+  milestone name as ID, option index as order — so a milestone is nothing but
+  its name. It has no status of its own: `domain.NewProject` computes it from
+  the slices under it — Queued until one starts, Active while any is in progress
+  or only some are Done, Done when they all are — so there is nothing on a
+  milestone to write, and the board has no key that would.
+- A project still in the old shape — a Milestones database with a `Milestone`
+  relation on the Slices data source, and/or a `Claimed` status option — is
+  migrated in place the first time it is loaded, by the board and by every
+  headless command alike (`notion.MigrateProject`, run from `tui.fetchProject`
+  and `cli.slicesDataSource`): the milestone pages become the options of a
+  `Milestone` select, in plan order; every slice is refiled onto the option its
+  relation named; and the `Claimed` option is renamed to `In progress` by ID, so
+  the slices sitting on it keep their status. The Milestones database itself is
+  left in Notion untouched, simply never read again. The whole migration is
+  settled before the first write — a `Status` column converted in the Notion UI
+  cannot have its options written, and such a project is refused with the one
+  edit to make there rather than half-migrated — and the plan is read in full
+  before the schema changes, because converting the column is what discards the
+  relations it is read from. It is idempotent: a project already in the one
+  shape is read and left alone, which is what every load after the first does.
+  What changed is logged, and the board says so in a toast.
+- Filing a slice under a milestone — the board's `a` and `m`, `slice-add`,
+  `plan-apply` — writes the option naming it (`domain.Milestone.Ref()`, sent as
+  `SelectType`, the column's own type). `milestone-add` and `plan-apply` add
+  milestones by appending options to the `Milestone` column, one schema write
+  per run, after the options already there, since their order is the plan's
+  order. A name the plan already holds is refused before that write, because
+  such a milestone is nothing but its name — and for the same reason a milestone
+  is named by name alone, never by URL or ID. `next-slice` reads the plan the
+  way the board does and takes work from the lowest-ordered milestone that is
+  not Done: a milestone is Queued until a slice under it starts, so gating on
+  Active would leave a plan on which nothing has begun with no way to begin.
+  `start-slice` names a slice's milestone from the schema's options, and
+  `complete-slice` touches no milestone at all.
+- Slice order is where the slices sit in the project's own board:
+  `notion.PlanOrder` reads the row order of the Slices data source's first view
+  (`GET /views`, then `POST /views/{id}/queries`, which is exposed from
+  `2026-03-11`) and `domain.InViewOrder` applies it, with anything the view does
+  not name trailing in the order it was queried. A failure to read it is logged
+  and the plan drawn unordered rather than not at all. Notion records
   `created_time` only to the minute, so the created-time sort every other read
   uses is no order at all for a plan written in one go — which is why this one
-  is read. A project with a Milestones database orders its plan by their
-  `Order` and reads no view. `next-slice` reads it too, so the slice it hands
-  out is the one at the top of the milestone on the board rather than whichever
-  the query happened to return first.
+  is read. `next-slice` reads it too, so the slice it hands out is the one at
+  the top of the milestone on the board rather than whichever the query happened
+  to return first.
 
 ## Conventions
 

@@ -336,7 +336,7 @@ func workdirFor(s domain.Slice, p config.ProjectConfig) string {
 // board or full-screen. Any slice with a live session can be shown, whatever
 // its status: an agent is worth watching from the moment it starts until it
 // exits, and it spends nearly all of that time holding a slice it has already
-// Claimed.
+// claimed.
 func (a *App) attachAgentFlow() tea.Cmd {
 	if a.launcher == nil || a.busy {
 		return nil

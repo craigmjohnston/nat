@@ -29,8 +29,8 @@ func sizedFormApp(t *testing.T, width, height int) *App {
 // modal interface rather than one implementation of it.
 func everyModal(t *testing.T) map[string]modal {
 	t.Helper()
-	m := domain.Milestone{ID: "m2", Name: "M2: Board", Status: domain.MilestoneQueued}
-	s := domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceTodo, MilestoneID: "m2"}
+	m := domain.Milestone{ID: "M2: Board", Name: "M2: Board", Status: domain.MilestoneQueued}
+	s := domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceTodo, MilestoneID: "M2: Board"}
 	cfg := config.Config{ActiveProjectID: "p1", Projects: map[string]config.ProjectConfig{
 		"p1": {Name: "tracker"},
 		"p2": {Name: "other"},
@@ -40,7 +40,6 @@ func everyModal(t *testing.T) map[string]modal {
 		"edit slice":     newEditSliceForm(DefaultStyles().FormTheme, s, "The brief."),
 		"move slice":     newMoveSliceForm(DefaultStyles().FormTheme, s, []domain.Milestone{m}),
 		"delete slice":   newDeleteSliceForm(DefaultStyles().FormTheme, s),
-		"milestone":      newMilestoneForm(DefaultStyles().FormTheme, m, domain.MilestoneActive),
 		"launch":         newLaunchForm(DefaultStyles().FormTheme, s, t.TempDir()),
 		"new project":    newNewProjectForm(DefaultStyles().FormTheme),
 		"switch project": newSwitchProjectForm(DefaultStyles().FormTheme, cfg),

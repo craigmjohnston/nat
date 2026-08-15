@@ -247,12 +247,9 @@ func (s *orderStub) DataSourceOrder(_ context.Context, id string) ([]string, err
 }
 
 func TestPlanOrder(t *testing.T) {
-	related := SliceShape{MilestoneType: "relation"}
-	onPage := SliceShape{MilestoneType: "select", MilestoneOptions: []string{"M1"}}
-
-	t.Run("reads the order of a plan kept on one page", func(t *testing.T) {
+	t.Run("reads the order the project's own board puts its slices in", func(t *testing.T) {
 		stub := &orderStub{ids: []string{"p-2", "p-1"}}
-		got := PlanOrder(context.Background(), stub, onPage, "sl-ds")
+		got := PlanOrder(context.Background(), stub, "sl-ds")
 		if strings.Join(got, ",") != "p-2,p-1" {
 			t.Errorf("order = %v", got)
 		}
@@ -261,19 +258,9 @@ func TestPlanOrder(t *testing.T) {
 		}
 	})
 
-	t.Run("asks for nothing where the milestones order the plan", func(t *testing.T) {
-		stub := &orderStub{ids: []string{"p-1"}}
-		if got := PlanOrder(context.Background(), stub, related, "sl-ds"); got != nil {
-			t.Errorf("order = %v, want none", got)
-		}
-		if len(stub.asked) != 0 {
-			t.Errorf("asked %v, want no call at all", stub.asked)
-		}
-	})
-
 	t.Run("falls back to no order when the read fails", func(t *testing.T) {
 		stub := &orderStub{err: errors.New("boom")}
-		if got := PlanOrder(context.Background(), stub, onPage, "sl-ds"); got != nil {
+		if got := PlanOrder(context.Background(), stub, "sl-ds"); got != nil {
 			t.Errorf("order = %v, want none", got)
 		}
 	})

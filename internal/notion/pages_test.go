@@ -110,18 +110,17 @@ func TestUpdatePageProperties(t *testing.T) {
 			gotMethod, gotPath = r.Method, r.URL.Path
 			b, _ := io.ReadAll(r.Body)
 			gotBody = string(b)
-			w.Write([]byte(`{"id":"page-1","properties":{"Status":{"type":"select","select":{"name":"Claimed"}}}}`))
+			w.Write([]byte(`{"id":"page-1","properties":{"Status":{"type":"select","select":{"name":"In progress"}}}}`))
 		}))
 		defer srv.Close()
 
 		c, _ := testClient(t, srv)
 		page, err := c.UpdatePageProperties(context.Background(), "page 1/x", map[string]PropertyValue{
 			"Assignee":  NewPeople("user-1"),
-			"Milestone": NewRelation("ms-1"),
-			"Order":     NewNumber(3),
+			"Milestone": NewSelect("M1: Groundwork"),
 			"PR":        NewURL("https://github.com/o/r/pull/7"),
 			"Repo":      NewRichText("/tmp/repo"),
-			"Status":    NewSelect("Claimed"),
+			"Status":    NewSelect("In progress"),
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -137,15 +136,14 @@ func TestUpdatePageProperties(t *testing.T) {
 		}
 		want := `{"properties":{` +
 			`"Assignee":{"people":[{"id":"user-1"}]},` +
-			`"Milestone":{"relation":[{"id":"ms-1"}]},` +
-			`"Order":{"number":3},` +
+			`"Milestone":{"select":{"name":"M1: Groundwork"}},` +
 			`"PR":{"url":"https://github.com/o/r/pull/7"},` +
 			`"Repo":{"rich_text":[{"type":"text","text":{"content":"/tmp/repo"}}]},` +
-			`"Status":{"select":{"name":"Claimed"}}}}`
+			`"Status":{"select":{"name":"In progress"}}}}`
 		if gotBody != want {
 			t.Errorf("request body =\n%s\nwant\n%s", gotBody, want)
 		}
-		if got := page.Properties["Status"].SelectName(); got != "Claimed" {
+		if got := page.Properties["Status"].SelectName(); got != "In progress" {
 			t.Errorf("Status = %q", got)
 		}
 	})

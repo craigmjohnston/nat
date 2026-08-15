@@ -47,12 +47,9 @@ func milestoneAdd(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	existing, err := loadMilestones(ctx, client, project, notion.ShapeOf(ds))
-	if err != nil {
-		return err
-	}
+	existing := milestonesOf(notion.ShapeOf(ds))
 
-	added, err := addMilestones(ctx, client, project, ds, existing, []string{name})
+	added, err := addMilestones(ctx, client, project.SlicesDSID, ds, existing, []string{name})
 	if err != nil {
 		return err
 	}
@@ -60,7 +57,7 @@ func milestoneAdd(ctx context.Context, args []string, env Env) error {
 
 	if *asJSON {
 		return writeJSON(env.Out, milestoneAddedJSON{Milestone: milestoneJSON{
-			ID: m.ID, Name: m.Name, Order: m.Order, Status: string(m.Status), URL: m.URL,
+			ID: m.ID, Name: m.Name, Order: m.Order, Status: string(m.Status),
 		}})
 	}
 	_, err = io.WriteString(env.Out, milestoneAddedMarkdown(m, project.Name))
@@ -75,7 +72,7 @@ func milestoneAdd(ctx context.Context, args []string, env Env) error {
 func sliceAdd(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("slice-add", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	milestoneRef := flags.String("milestone", "", "the milestone to file the slice under, by name, URL or ID")
+	milestoneRef := flags.String("milestone", "", "the milestone to file the slice under, by name")
 	description := flags.String("description", "", "the brief to write on the slice page; `-` reads it from stdin")
 	repo := flags.String("repo", "", "working directory for this slice, overriding the project default")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
@@ -110,11 +107,7 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	milestones, err := loadMilestones(ctx, client, project, shape)
-	if err != nil {
-		return err
-	}
-	milestone, err := resolveMilestone(*milestoneRef, milestones)
+	milestone, err := resolveMilestone(*milestoneRef, milestonesOf(shape))
 	if err != nil {
 		return err
 	}
@@ -139,36 +132,18 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// addMilestones files milestones at the end of the plan, in whichever shape the
-// project keeps it, and returns them in the order they were given.
-//
-// Under the relation shape each is a page of its own, created in turn, so a run
-// that fails halfway returns the ones already written along with the error —
-// there is no undoing them, and the caller has to be able to say what landed.
-// Under the select shape the plan is the options of the slices' own Milestone
+// addMilestones files milestones at the end of the plan and returns them in the
+// order they were given. The plan is the options of the slices' own Milestone
 // column, and every new milestone is appended to it in one schema write: either
 // they all arrive or none do.
-func addMilestones(ctx context.Context, client API, project config.ProjectConfig, ds *notion.DataSource, existing []domain.Milestone, names []string) ([]domain.Milestone, error) {
-	// A plan that adds no milestone writes nothing: under the select shape the
-	// write would replace the option list with a copy of itself, which is a real
-	// edit to make of a schema for the sake of nothing.
+func addMilestones(ctx context.Context, client API, slicesDSID string, ds *notion.DataSource, existing []domain.Milestone, names []string) ([]domain.Milestone, error) {
+	// A plan that adds no milestone writes nothing: the write would replace the
+	// option list with a copy of itself, which is a real edit to make of a schema
+	// for the sake of nothing.
 	if len(names) == 0 {
 		return nil, nil
 	}
-	if !notion.ShapeOf(ds).MilestonesRelated() {
-		return appendMilestoneOptions(ctx, client, project.SlicesDSID, ds, existing, names)
-	}
-	var added []domain.Milestone
-	order := nextOrder(existing)
-	for _, name := range names {
-		m, err := createMilestone(ctx, client, project.MilestonesDSID, name, order)
-		if err != nil {
-			return added, err
-		}
-		added = append(added, m)
-		order++
-	}
-	return added, nil
+	return appendMilestoneOptions(ctx, client, slicesDSID, ds, existing, names)
 }
 
 // appendMilestoneOptions adds milestones to a plan kept as the options of the
@@ -214,29 +189,11 @@ func appendMilestoneOptions(ctx context.Context, client API, slicesDSID string, 
 			Name:       name,
 			Order:      float64(len(existing) + i),
 			Status:     domain.MilestoneStatusOf(nil),
-			Derived:    true,
 			SelectType: milestone.Type,
 		}
 		logging.Action("milestone added", "milestone", name, "order", added[i].Order)
 	}
 	return added, nil
-}
-
-// createMilestone writes the milestone. It is separate from the command so that
-// anything else filing milestones — a whole plan at once, rather than one — puts
-// the same properties on the page.
-func createMilestone(ctx context.Context, client API, milestonesDSID, name string, order float64) (domain.Milestone, error) {
-	page, err := client.CreatePage(ctx, notion.DataSourceParent(milestonesDSID), map[string]notion.PropertyValue{
-		notion.PropName:   notion.NewTitle(name),
-		notion.PropOrder:  notion.NewNumber(order),
-		notion.PropStatus: notion.NewSelect(notion.MilestoneQueued),
-	}, nil)
-	if err != nil {
-		return domain.Milestone{}, fmt.Errorf("create the milestone: %w", err)
-	}
-	m := domain.MilestoneFromPage(*page)
-	logging.Action("milestone added", "milestone", m.ID, "name", name, "order", order)
-	return m, nil
 }
 
 // createSlice writes the slice, with its brief as the page body. Status and
@@ -259,38 +216,14 @@ func createSlice(ctx context.Context, client API, slicesDSID string, milestone d
 	return s, nil
 }
 
-// nextOrder is the order a milestone added to the end of the plan takes: one
-// past the highest there is. It counts from the orders rather than from how many
-// milestones there are, because a plan that has had milestones removed — or
-// slotted between two others at a fraction — would otherwise reuse a number.
-func nextOrder(milestones []domain.Milestone) float64 {
-	highest := 0.0
-	for _, m := range milestones {
-		if m.Order > highest {
-			highest = m.Order
-		}
-	}
-	return highest + 1
-}
-
-// resolveMilestone finds the milestone a new slice is filed under, given
-// however it was named: a page URL or ID, or the milestone's own name.
+// resolveMilestone finds the milestone a new slice is filed under, by name: a
+// milestone is an option of the slices' Milestone column and so is nothing but
+// its name — there is no page to name it by instead.
 //
-// Only milestones of this project are searched, so an ID belonging to some other
-// workspace page is a failure here rather than a relation Notion rejects later —
-// or, worse, accepts. Names are matched case-insensitively and exactly: a
-// prefix match would make adding a slice depend on which milestones happen to
-// exist, which is not something anyone typing a name can see.
+// Names are matched case-insensitively and exactly: a prefix match would make
+// adding a slice depend on which milestones happen to exist, which is not
+// something anyone typing a name can see.
 func resolveMilestone(ref string, milestones []domain.Milestone) (domain.Milestone, error) {
-	if id := uuidTail.FindString(lastSegment(ref)); id != "" {
-		for _, m := range milestones {
-			if sameID(m.ID, id) {
-				return m, nil
-			}
-		}
-		return domain.Milestone{}, fmt.Errorf("no milestone %s in this project: %s", id, knownMilestones(milestones))
-	}
-
 	name := strings.TrimSpace(ref)
 	var matches []domain.Milestone
 	for _, m := range milestones {
@@ -304,8 +237,9 @@ func resolveMilestone(ref string, milestones []domain.Milestone) (domain.Milesto
 	case 0:
 		return domain.Milestone{}, fmt.Errorf("no milestone named %q: %s", name, knownMilestones(milestones))
 	default:
-		return domain.Milestone{}, fmt.Errorf("%d milestones are named %q: name one by ID instead — %s",
-			len(matches), name, strings.Join(milestoneIDs(matches), ", "))
+		// Two options of a name cannot be told apart: a milestone is its name,
+		// and nothing else names it.
+		return domain.Milestone{}, fmt.Errorf("%d milestones are named %q: rename one in Notion", len(matches), name)
 	}
 }
 
@@ -316,36 +250,6 @@ func knownMilestones(ms []domain.Milestone) string {
 		return "the project has no milestones yet — add one with `nat milestone-add`"
 	}
 	return "the project's milestones are " + strings.Join(milestoneNames(ms), ", ")
-}
-
-// milestoneIDs lists milestones by ID, for telling apart ones sharing a name.
-func milestoneIDs(ms []domain.Milestone) []string {
-	ids := make([]string, len(ms))
-	for i, m := range ms {
-		ids[i] = m.ID
-	}
-	return ids
-}
-
-// lastSegment is the part of a reference a page ID would be at the end of: the
-// final path segment of a URL, without its query or fragment. A milestone named
-// by hand is left as it is, and simply will not look like an ID.
-func lastSegment(ref string) string {
-	s := ref
-	if i := strings.IndexAny(s, "?#"); i >= 0 {
-		s = s[:i]
-	}
-	s = strings.TrimSuffix(s, "/")
-	if i := strings.LastIndex(s, "/"); i >= 0 {
-		s = s[i+1:]
-	}
-	return s
-}
-
-// sameID compares two Notion page IDs. The API returns them dashed and URLs
-// carry them bare, so neither dashes nor case are part of the comparison.
-func sameID(a, b string) bool {
-	return strings.EqualFold(strings.ReplaceAll(a, "-", ""), strings.ReplaceAll(b, "-", ""))
 }
 
 // stdinRef is what --description is given to mean "the brief is being piped in".
@@ -434,30 +338,20 @@ func milestoneAddedMarkdown(m domain.Milestone, projectName string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", m.Name)
 	fmt.Fprintf(&b, "Added to %s as milestone %s, %s.\n\n", projectName, planPosition(m), blank(string(m.Status)))
-	if m.Derived {
-		fmt.Fprintf(&b, "- %s\n", optionNote)
-		return b.String()
-	}
-	fmt.Fprintf(&b, "- Notion page: %s\n", m.ID)
-	if m.URL != "" {
-		fmt.Fprintf(&b, "- Notion URL: %s\n", m.URL)
-	}
+	fmt.Fprintf(&b, "- %s\n", optionNote)
 	return b.String()
 }
 
-// optionNote is what there is to say about where a derived milestone lives: it
-// has no page to link to, so the line that would carry one says why.
+// optionNote is what there is to say about where a milestone lives: it has no
+// page to link to, so the line that would carry one says why.
 const optionNote = "An option of the slices' Milestone column, with no page of its own — " +
 	"its status follows the slices filed under it."
 
 // planPosition is where in the plan a milestone sits, as someone reading the
-// board counts: a milestone page carries its own Order, and a derived one is
-// numbered by its place among the options, which counts from zero.
+// board counts: its place among the Milestone column's options, which counts
+// from zero, so the first milestone is milestone 1.
 func planPosition(m domain.Milestone) string {
-	if m.Derived {
-		return formatOrder(m.Order + 1)
-	}
-	return formatOrder(m.Order)
+	return formatOrder(m.Order + 1)
 }
 
 // sliceAddedMarkdown reports the slice as filed: which milestone holds it, and

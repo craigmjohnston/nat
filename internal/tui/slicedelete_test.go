@@ -6,6 +6,14 @@ import (
 	"testing"
 )
 
+// answerConfirm answers the open confirm — "y" or "n" — and feeds the write
+// that falls out back through the app, as the runtime would. Both keys submit
+// the form, so there is nothing else to press.
+func answerConfirm(t *testing.T, a *App, answer string) {
+	t.Helper()
+	finishForm(t, a, press(a, answer))
+}
+
 func TestDeleteSliceTrashesThePage(t *testing.T) {
 	client := &fakeNotion{}
 
@@ -108,7 +116,7 @@ func TestAppDeleteRefusesAClaimedSlice(t *testing.T) {
 	if app.form != nil {
 		t.Error("a claimed slice should not be opened for deletion")
 	}
-	if want := `"Board screen" is Claimed — work in flight cannot be deleted.`; app.board.confirmText != want {
+	if want := `"Board screen" is In progress — work in flight cannot be deleted.`; app.board.confirmText != want {
 		t.Errorf("confirm = %q, want %q", app.board.confirmText, want)
 	}
 }

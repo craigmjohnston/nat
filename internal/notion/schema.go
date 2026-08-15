@@ -11,9 +11,10 @@ type OptionsConfig struct {
 }
 
 // RelationConfig configures a relation property. Relations point at a data
-// source, not a database, from the data-source API version on. Creating one
-// also requires saying which kind it is, with the matching sub-object present:
-// omitting them fails validation.
+// source, not a database, from the data-source API version on. Nothing here
+// creates one — a project's milestones are the options of a select — but a
+// project made before that was so has one to read, and migrating it starts from
+// the data source it names.
 type RelationConfig struct {
 	DataSourceID string `json:"data_source_id"`
 	// Kind is "single_property" or "dual_property".
@@ -51,27 +52,13 @@ func SchemaRichText() PropertySchema {
 	return PropertySchema{RichText: &EmptyConfig{}}
 }
 
-// SchemaNumber builds a number property definition.
-func SchemaNumber() PropertySchema {
-	return PropertySchema{Number: &EmptyConfig{}}
-}
-
-// SchemaSelect builds a select property definition offering the named options.
-// Every fixed-choice column in this app — slice Status, milestone Status — is a
-// select; the API cannot create Notion's status type, so the app does not use
-// it anywhere.
+// SchemaSelect builds a select property definition offering the named options,
+// and — given none — one offering nothing yet, which is what a new project's
+// Milestone column is until it has a plan. Every fixed-choice column in this
+// app is a select; the API cannot create Notion's status type, so the app does
+// not use it anywhere.
 func SchemaSelect(options ...string) PropertySchema {
 	return PropertySchema{Select: &OptionsConfig{Options: selectOptions(options)}}
-}
-
-// SchemaRelation builds a single-property relation definition pointing at a
-// data source — one-way, so the related data source gains no column of its own.
-func SchemaRelation(dataSourceID string) PropertySchema {
-	return PropertySchema{Relation: &RelationConfig{
-		DataSourceID:   dataSourceID,
-		Kind:           "single_property",
-		SingleProperty: &EmptyConfig{},
-	}}
 }
 
 // SchemaPeople builds a people property definition.

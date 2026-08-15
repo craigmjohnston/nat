@@ -11,10 +11,9 @@ import (
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
-// statusWord names a slice's status the way the project's own table does —
-// Claimed or In progress, whichever it was created with — so a refusal on the
-// status bar reads as what is on the page, falling back to the workflow status
-// where the page named none. A slice carrying no status at all still needs a
+// statusWord names a slice's status the way the project's own table does, so a
+// refusal on the status bar reads as what is on the page, falling back to the
+// workflow status where the page named none. A slice carrying no status at all still needs a
 // word, or the message ends mid-sentence.
 func statusWord(s domain.Slice) string {
 	switch {

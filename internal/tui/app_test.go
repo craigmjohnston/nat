@@ -26,34 +26,33 @@ func testConfig() config.Config {
 		AssigneeUserName: "Craig Johnston",
 		ActiveProjectID:  testProjectID,
 		Projects: map[string]config.ProjectConfig{
-			testProjectID: {
-				Name:           "tracker",
-				MilestonesDSID: "ms-ds",
-				SlicesDSID:     "sl-ds",
-			},
+			testProjectID: {Name: "tracker", SlicesDSID: "sl-ds"},
 		},
 	}
 }
 
-// pages builds the query results the load pipeline maps.
-func milestonePage(id, name, status string, order float64) notion.Page {
-	return notion.Page{ID: id, Properties: map[string]notion.PropertyValue{
-		notion.PropName:   notion.NewTitle(name),
-		notion.PropStatus: notion.NewSelect(status),
-		notion.PropOrder:  notion.NewNumber(order),
-	}}
-}
-
-func slicePage(id, name, status, milestoneID string) notion.Page {
+// slicePage builds a row of the Slices data source the load pipeline maps, its
+// milestone the option naming it.
+func slicePage(id, name, status, milestone string) notion.Page {
 	return notion.Page{ID: id, Properties: map[string]notion.PropertyValue{
 		notion.PropName:      notion.NewTitle(name),
 		notion.PropStatus:    notion.NewSelect(status),
-		notion.PropMilestone: notion.NewRelation(milestoneID),
+		notion.PropMilestone: notion.NewSelect(milestone),
 	}}
 }
 
-// loadingClient answers the two queries the load pipeline makes, recording the
-// sorts it was asked for.
+// milestoneColumn is a Milestone column offering the named milestones, as a
+// read returns it: with its type on it, which is how a write back to it knows
+// the shape to take.
+func milestoneColumn(milestones ...string) notion.PropertySchema {
+	schema := notion.SchemaSelect(milestones...)
+	schema.Type = notion.TypeSelect
+	return schema
+}
+
+// loadingClient answers the query the load pipeline makes, recording the sorts
+// it was asked for. Its plan is the Milestone column's options, which is where
+// every project keeps one.
 type loadingClient struct {
 	fakeNotion
 	sorts map[string][]notion.Sort
@@ -61,18 +60,21 @@ type loadingClient struct {
 
 func newLoadingClient() *loadingClient {
 	c := &loadingClient{sorts: map[string][]notion.Sort{}}
+	c.getDS = func(id string) (*notion.DataSource, error) {
+		return &notion.DataSource{ID: id, Properties: map[string]notion.PropertySchema{
+			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceInProgress, notion.SliceDone),
+			notion.PropMilestone: milestoneColumn("M1"),
+		}}, nil
+	}
 	c.query = func(id string, _ map[string]any, sorts []notion.Sort) ([]notion.Page, error) {
 		c.sorts[id] = sorts
-		switch id {
-		case "ms-ds":
-			return []notion.Page{milestonePage("m1", "M1", notion.MilestoneDone, 1)}, nil
-		case "sl-ds":
-			return []notion.Page{
-				slicePage("s1", "First", notion.SliceDone, "m1"),
-				slicePage("s2", "Second", notion.SliceTodo, "m1"),
-			}, nil
+		if id != "sl-ds" {
+			return nil, nil
 		}
-		return nil, nil
+		return []notion.Page{
+			slicePage("s1", "First", notion.SliceDone, "M1"),
+			slicePage("s2", "Second", notion.SliceTodo, "M1"),
+		}, nil
 	}
 	return c
 }
@@ -180,26 +182,24 @@ func TestAppLoadsTheActiveProject(t *testing.T) {
 	}
 }
 
-func TestAppQueriesBothDataSourcesInPlanOrder(t *testing.T) {
+// The plan comes with the schema, so the slices are the only query the board
+// makes — oldest first, until the board's own order re-sorts them.
+func TestAppQueriesOnlyTheSlices(t *testing.T) {
 	client := newLoadingClient()
 	run(NewApp(testConfig(), client).Init())
 
-	want := map[string][]notion.Sort{
-		"ms-ds": {{Property: notion.PropOrder, Direction: notion.SortAscending}},
-		"sl-ds": {{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}},
+	if len(client.sorts) != 1 {
+		t.Fatalf("queried %+v, want only the slices", client.sorts)
 	}
-	for id, sorts := range want {
-		got := client.sorts[id]
-		if len(got) != 1 || got[0] != sorts[0] {
-			t.Errorf("%s sorted by %+v, want %+v", id, got, sorts)
-		}
+	want := notion.Sort{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}
+	if got := client.sorts["sl-ds"]; len(got) != 1 || got[0] != want {
+		t.Errorf("slices sorted by %+v, want %+v", got, want)
 	}
 }
 
-// A project whose slices name their milestone on a select keeps its whole plan
-// on one page: the milestones are the select's options, there is no Milestones
-// data source to query, and the board draws it like any other plan.
-func TestAppLoadsAPlanFromAMilestoneSelect(t *testing.T) {
+// A project's plan is the options of its slices' Milestone column: the
+// milestones come off the schema, with their statuses read back off the slices.
+func TestAppLoadsThePlanFromTheMilestoneColumn(t *testing.T) {
 	client := newSelectShapedClient()
 	app := NewApp(testConfig(), client)
 
@@ -207,19 +207,16 @@ func TestAppLoadsAPlanFromAMilestoneSelect(t *testing.T) {
 	app.Update(first[projectLoadedMsg](t, msgs))
 
 	want := []domain.Milestone{
-		{ID: "M1: Client", Name: "M1: Client", Order: 0, Status: domain.MilestoneDone, Derived: true},
-		{ID: "M2: Board", Name: "M2: Board", Order: 1, Status: domain.MilestoneQueued, Derived: true},
+		{ID: "M1: Client", Name: "M1: Client", Order: 0, Status: domain.MilestoneDone, SelectType: notion.TypeSelect},
+		{ID: "M2: Board", Name: "M2: Board", Order: 1, Status: domain.MilestoneQueued, SelectType: notion.TypeSelect},
 	}
 	if app.project == nil || !reflect.DeepEqual(app.project.Milestones, want) {
 		t.Fatalf("milestones = %+v, want %+v", app.project, want)
 	}
-	if _, queried := client.sorts["ms-ds"]; queried {
-		t.Error("the milestones data source was queried, but this project has none")
-	}
 
 	app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	// M1: Client is Done — every slice under it is — so it renders folded into
-	// the Done section like any finished milestone read off a page.
+	// the Done section like any finished milestone.
 	app.board.expanded[doneSectionKey] = true
 	app.board.rebuild()
 	app.syncBoard()
@@ -231,14 +228,13 @@ func TestAppLoadsAPlanFromAMilestoneSelect(t *testing.T) {
 	}
 }
 
-// newSelectShapedClient answers with the same plan loadingClient does, in the
-// shape that keeps the milestones on the slices themselves.
+// newSelectShapedClient answers with a plan of two milestones, one finished.
 func newSelectShapedClient() *loadingClient {
 	c := &loadingClient{sorts: map[string][]notion.Sort{}}
 	c.getDS = func(id string) (*notion.DataSource, error) {
 		return &notion.DataSource{ID: id, Properties: map[string]notion.PropertySchema{
 			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceInProgress, notion.SliceDone),
-			notion.PropMilestone: notion.SchemaSelect("M1: Client", "M2: Board"),
+			notion.PropMilestone: milestoneColumn("M1: Client", "M2: Board"),
 		}}, nil
 	}
 	c.query = func(id string, _ map[string]any, sorts []notion.Sort) ([]notion.Page, error) {
@@ -247,20 +243,11 @@ func newSelectShapedClient() *loadingClient {
 			return nil, nil
 		}
 		return []notion.Page{
-			selectSlicePage("s1", "First", notion.SliceDone, "M1: Client"),
-			selectSlicePage("s2", "Second", notion.SliceTodo, "M2: Board"),
+			slicePage("s1", "First", notion.SliceDone, "M1: Client"),
+			slicePage("s2", "Second", notion.SliceTodo, "M2: Board"),
 		}, nil
 	}
 	return c
-}
-
-// selectSlicePage is a slice naming its milestone rather than relating to one.
-func selectSlicePage(id, name, status, milestone string) notion.Page {
-	return notion.Page{ID: id, Properties: map[string]notion.PropertyValue{
-		notion.PropName:      notion.NewTitle(name),
-		notion.PropStatus:    notion.NewSelect(status),
-		notion.PropMilestone: notion.NewSelect(milestone),
-	}}
 }
 
 // The schema read says which shape the project is, so a load that cannot read
@@ -289,7 +276,6 @@ func TestAppReportsAFailedLoad(t *testing.T) {
 		failDS string
 		want   string
 	}{
-		{"milestones", "ms-ds", "load milestones: boom"},
 		{"slices", "sl-ds", "load slices: boom"},
 	}
 	for _, tt := range tests {
@@ -389,8 +375,8 @@ func TestAppRefreshReloads(t *testing.T) {
 
 	run(press(app, "r"))
 
-	if len(client.queriedDSIDs) != before+2 {
-		t.Errorf("queried %d data sources, want %d more", len(client.queriedDSIDs), before+2)
+	if len(client.queriedDSIDs) != before+1 {
+		t.Errorf("queried %d data sources, want %d more", len(client.queriedDSIDs), before+1)
 	}
 	if app.note != "" || app.toast != "" || app.board.confirmText != "" {
 		t.Errorf("note = %q, toast = %q, confirm = %q, want them all cleared on refresh",
@@ -629,7 +615,7 @@ func TestAppTakesOverWhenOnboardingFinishes(t *testing.T) {
 		want      string
 		wantLoads int
 	}{
-		{"with a project", OnboardingDoneMsg{Config: testConfig()}, "Setup complete.", 2},
+		{"with a project", OnboardingDoneMsg{Config: testConfig()}, "Setup complete.", 1},
 		{"without a project", OnboardingDoneMsg{Config: config.Config{}, NeedsProject: true}, "No projects yet", 0},
 	}
 	for _, tt := range tests {
@@ -871,20 +857,6 @@ func TestAppOrdersAOnePagePlanByItsBoard(t *testing.T) {
 	}
 }
 
-// A project with a Milestones database orders its plan by their Order, so the
-// board asks its views for nothing.
-func TestAppDoesNotReadAnOrderForAPagedPlan(t *testing.T) {
-	client := newLoadingClient()
-	app := NewApp(testConfig(), client)
-
-	msgs := run(app.Init())
-	app.Update(first[projectLoadedMsg](t, msgs))
-
-	if got := client.orderedDSIDs; len(got) != 0 {
-		t.Errorf("read the order of %v, want no view read at all", got)
-	}
-}
-
 // An order that cannot be read is not worth failing a load over: the board
 // draws the plan in the order the query returned it.
 func TestAppDrawsAOnePagePlanWhenTheOrderCannotBeRead(t *testing.T) {
@@ -900,5 +872,42 @@ func TestAppDrawsAOnePagePlanWhenTheOrderCannotBeRead(t *testing.T) {
 	}
 	if app.project == nil || len(app.project.Slices) != 2 || app.project.Slices[0].ID != "s1" {
 		t.Errorf("slices = %+v, want the queried order", app.project)
+	}
+}
+
+// A project still in the shape this app started with is migrated on the way to
+// being drawn, and the board says what changed: the plan on screen is not quite
+// the one Notion held a moment ago.
+func TestAppMigratesAnOldProjectAndSaysSo(t *testing.T) {
+	client := newLoadingClient()
+	client.getDS = func(id string) (*notion.DataSource, error) {
+		return &notion.DataSource{ID: id, Properties: map[string]notion.PropertySchema{
+			notion.PropStatus: notion.SchemaSelect(notion.SliceTodo, notion.SliceClaimed, notion.SliceDone),
+			notion.PropMilestone: {
+				Type:     "relation",
+				Relation: &notion.RelationConfig{DataSourceID: "ms-ds"},
+			},
+		}}, nil
+	}
+	client.query = func(id string, _ map[string]any, _ []notion.Sort) ([]notion.Page, error) {
+		if id != "ms-ds" {
+			return nil, nil
+		}
+		return []notion.Page{{ID: "m1", Properties: map[string]notion.PropertyValue{
+			notion.PropName: {Type: "title", Title: []notion.RichText{{PlainText: "M1: Config"}}},
+		}}}, nil
+	}
+	app := NewApp(testConfig(), client)
+
+	msgs := run(app.Init())
+	loaded := first[projectLoadedMsg](t, msgs)
+	_, cmd := app.Update(loaded)
+	run(cmd)
+
+	if len(client.schemaWrites) != 1 || client.schemaWrites[0].dataSourceID != "sl-ds" {
+		t.Fatalf("schema writes = %+v, want the slices data source migrated", client.schemaWrites)
+	}
+	if got := app.toast; !strings.Contains(got, "Migrated this project") {
+		t.Errorf("toast = %q, want the migration reported", got)
 	}
 }

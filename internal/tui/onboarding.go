@@ -29,6 +29,7 @@ type NotionAPI interface {
 	PageEntries(ctx context.Context, id string) ([]notion.PageEntry, error)
 	GetDatabase(ctx context.Context, id string) (*notion.Database, error)
 	GetDataSource(ctx context.Context, id string) (*notion.DataSource, error)
+	UpdateDataSourceProperties(ctx context.Context, id string, properties map[string]notion.PropertySchema) (*notion.DataSource, error)
 	Breadcrumb(ctx context.Context, parent notion.Parent) []string
 	CreateProjectsDatabase(ctx context.Context, parentPageID, title string) (*notion.Database, error)
 	CreateProject(ctx context.Context, projectsDSID, name string, assignee bool) (*notion.ProjectStructure, error)

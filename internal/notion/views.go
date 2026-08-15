@@ -100,19 +100,14 @@ type OrderReader interface {
 	DataSourceOrder(ctx context.Context, dataSourceID string) ([]string, error)
 }
 
-// PlanOrder is the order a project's slices are meant to be worked in, for a
-// project that says so by where the slices sit in its board rather than in a
-// property: the order of the Slices data source's first view.
+// PlanOrder is the order a project's slices are meant to be worked in: where
+// they sit in the Slices data source's first view, which is the plan as its
+// author arranged it in Notion.
 //
-// A project keeping its milestones in a database of their own orders its plan
-// by those milestones' Order, and its slices need no order of their own, so
-// nothing is read for one. Neither does a failure to read the order stop
-// anything: an unordered plan is still a plan, so the error is logged and the
-// slices are left in the order they were queried in.
-func PlanOrder(ctx context.Context, r OrderReader, shape SliceShape, slicesDSID string) []string {
-	if shape.MilestonesRelated() {
-		return nil
-	}
+// A failure to read it does not stop anything: an unordered plan is still a
+// plan, so the error is logged and the slices are left in the order they were
+// queried in.
+func PlanOrder(ctx context.Context, r OrderReader, slicesDSID string) []string {
 	order, err := r.DataSourceOrder(ctx, slicesDSID)
 	if err != nil {
 		logging.Error("could not read the slice order from the board", "data_source", slicesDSID, "err", err)

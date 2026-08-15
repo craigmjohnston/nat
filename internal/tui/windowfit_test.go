@@ -20,7 +20,7 @@ func windowProject() domain.Project {
 		ID:   testProjectID,
 		Name: "notion-agent-tracker, dogfooding its own development",
 		Milestones: []domain.Milestone{
-			{ID: "m7", Name: "M7: Agent pane view", Order: 7, Status: domain.MilestoneActive},
+			{ID: "m7", Name: "M7: Agent pane view", Order: 6, Status: domain.MilestoneActive},
 		},
 		Slices: []domain.Slice{
 			{ID: "s1", Name: "Keep the status bar and header inside the window",
@@ -219,7 +219,7 @@ func TestAppWrapsKeyHintsThenDropsThemByRank(t *testing.T) {
 	// Narrow enough that they no longer fit on one line: they wrap onto the
 	// next rather than going, so nothing is lost.
 	view := stripANSI(sizedApp(40, 24).View().Content)
-	for _, want := range []string{"a add slice", "Q advance milestone", "enter expand/collapse", "? help"} {
+	for _, want := range []string{"a add slice", "enter expand/collapse", "z show done", "? help"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("at 40 columns the view is missing %q:\n%s", want, view)
 		}
@@ -250,7 +250,7 @@ func TestAppHintsRowIsContextual(t *testing.T) {
 	}
 
 	rows := hintRows()
-	for _, want := range []string{"a add slice", "Q advance milestone", "enter expand/collapse", "? help"} {
+	for _, want := range []string{"a add slice", "enter expand/collapse", "z show done", "? help"} {
 		if !strings.Contains(rows, want) {
 			t.Errorf("hints on a milestone = %q, want %q", rows, want)
 		}
@@ -305,7 +305,7 @@ func TestAppHintsDropTheHideDoneToggleFirst(t *testing.T) {
 
 	hints := append(a.board.milestoneHints(), hint{a.keys.Help, 2})
 	// One line only, and not wide enough for the set: the ranks decide what goes.
-	line := stripANSI(strings.Join(a.wrapHints(hints, 78, 1), "\n"))
+	line := stripANSI(strings.Join(a.wrapHints(hints, 45, 1), "\n"))
 	if strings.Contains(line, "done") {
 		t.Errorf("hints = %q, want the toggle dropped first", line)
 	}
@@ -622,13 +622,13 @@ func tallProject() domain.Project {
 	p := domain.Project{
 		ID:         testProjectID,
 		Name:       "tracker",
-		Milestones: []domain.Milestone{{ID: "m1", Name: "M1: Long", Order: 1, Status: domain.MilestoneActive}},
+		Milestones: []domain.Milestone{{ID: "M1: Long", Name: "M1: Long", Order: 1, Status: domain.MilestoneActive}},
 	}
 	for i := range 40 {
 		p.Slices = append(p.Slices, domain.Slice{
 			ID:     "s" + strconv.Itoa(i),
 			Name:   "Slice number " + strconv.Itoa(i),
-			Status: domain.SliceTodo, MilestoneID: "m1",
+			Status: domain.SliceTodo, MilestoneID: "M1: Long",
 		})
 	}
 	return p
@@ -678,15 +678,16 @@ func TestAppClipsAPlanTallerThanTheWindow(t *testing.T) {
 func TestAppScrollsTheBoardToKeepTheCursorVisible(t *testing.T) {
 	const width, height = 80, 20
 	a := tallApp(width, height)
-	// The bar lives in the header's own box now, so the viewport is the whole
-	// of the body band.
-	body := a.boardVP.Height()
 
 	// Down to the last row: the board scrolls only as far as it must, so the
 	// cursor lands on the bottom line of the band rather than the top.
 	for range len(a.board.rows) - 1 {
 		press(a, "j")
 	}
+	// The bar lives in the header's own box now, so the viewport is the whole
+	// of the body band — measured here, since the hints row a slice draws is
+	// taller than a milestone's and the band pays for it.
+	body := a.boardVP.Height()
 	if got, want := a.boardVP.YOffset(), len(a.board.rows)-body; got != want {
 		t.Errorf("offset = %d, want %d — the least scroll that shows the cursor", got, want)
 	}
@@ -791,11 +792,10 @@ func TestAppSharesAShortWindowOutFromTheBottom(t *testing.T) {
 	// bare. The header box gives up the progress bar's label, then the bar
 	// itself, before the body gives up its last row.
 	//
-	// At 80 columns the hints wrap onto a second line wherever the window has
-	// one to spare, which is a line the body pays for: the tall windows are one
-	// row shorter than the arithmetic on hintsHeight alone would give.
+	// At 80 columns the hints fit on one line, so the body keeps the row they
+	// would otherwise wrap onto.
 	for _, tt := range []struct{ height, header, body int }{
-		{20, 5, 11}, {12, 5, 3}, {9, 5, 1}, {8, 4, 1}, {7, 3, 1}, {6, 1, 3}, {2, 1, 0}, {1, 1, 0},
+		{20, 5, 12}, {12, 5, 4}, {9, 5, 1}, {8, 4, 1}, {7, 3, 1}, {6, 1, 4}, {2, 1, 0}, {1, 1, 0},
 	} {
 		a := tallApp(80, tt.height)
 		if got := a.headerBandHeight(); got != tt.header {

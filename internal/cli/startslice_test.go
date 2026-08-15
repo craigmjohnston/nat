@@ -24,9 +24,11 @@ func startableAPI(t *testing.T) *fakeAPI {
 			"project-1":  conventionBlocks(t),
 			startSliceID: briefBlocks(t, "Render the board, then stop."),
 		},
+		dataSources: map[string]notion.DataSource{
+			"slices-ds": assigneeSlicesDS("M1: Client", "M2: Board"),
+		},
 		pages: map[string][]notion.Page{
-			"milestones-ds": {milestonePage("m2", "M2: Board", 2, notion.MilestoneActive)},
-			"slices-ds":     {slicePage(startSliceID, "Render the board", notion.SliceTodo, "m2", "", "")},
+			"slices-ds": {slicePage(startSliceID, "Render the board", notion.SliceTodo, "M2: Board", "", "")},
 		},
 	}
 }
@@ -66,8 +68,8 @@ Branch per slice.
 	if ids := api.updates[0].props[notion.PropAssignee].PeopleIDs(); len(ids) != 1 || ids[0] != "u1" {
 		t.Errorf("assignee = %v, want [u1]", ids)
 	}
-	if name := api.updates[0].props[notion.PropStatus].SelectName(); name != notion.SliceClaimed {
-		t.Errorf("status = %q, want %q", name, notion.SliceClaimed)
+	if name := api.updates[0].props[notion.PropStatus].SelectName(); name != notion.SliceInProgress {
+		t.Errorf("status = %q, want %q", name, notion.SliceInProgress)
 	}
 	if len(api.queries) != 0 {
 		t.Errorf("queries = %+v, want none: the slice was named, not chosen", api.queries)
@@ -108,8 +110,8 @@ func TestStartSlicePrintsJSON(t *testing.T) {
 			}
 			want := briefJSON{
 				Slice: briefSliceJSON{
-					ID: startSliceID, Name: "Render the board", Status: notion.SliceClaimed,
-					Assignee: "Craig Johnston", MilestoneID: "m2", MilestoneName: "M2: Board",
+					ID: startSliceID, Name: "Render the board", Status: notion.SliceInProgress,
+					Assignee: "Craig Johnston", MilestoneID: "M2: Board", MilestoneName: "M2: Board",
 					Repo: "/tmp/nat", Brief: "Render the board, then stop.", URL: "https://notion.so/" + startSliceID,
 				},
 				Project: projectJSON{ID: "project-1", Name: "nat", Conventions: "Branch per slice."},
@@ -158,30 +160,10 @@ func TestStartSliceTakesASliceWithNoMilestone(t *testing.T) {
 	}
 }
 
-// startableSelectAPI answers as a project keeping its whole plan on one page:
-// the slice names its milestone on a select, and there is no page anywhere that
-// name could be fetched as.
-func startableSelectAPI(t *testing.T) *fakeAPI {
-	t.Helper()
-	return &fakeAPI{
-		blocksByID: map[string][]notion.Block{
-			"project-1":  conventionBlocks(t),
-			startSliceID: briefBlocks(t, "Render the board, then stop."),
-		},
-		dataSources: map[string]notion.DataSource{
-			"slices-ds": selectMilestoneSlicesDS("M1: Client", "M2: Board"),
-		},
-		pages: map[string][]notion.Page{
-			"slices-ds": {selectSlicePage(startSliceID, "Render the board", notion.SliceTodo, "M2: Board")},
-		},
-	}
-}
-
-// A slice of a one-page plan names its milestone rather than relating to one, so
-// the brief reads it off the schema instead of fetching a page that does not
-// exist.
-func TestStartSliceNamesTheMilestoneOfAOnePagePlan(t *testing.T) {
-	api := startableSelectAPI(t)
+// The brief names the slice's milestone off the schema: the option it names is
+// the milestone, and there is no page anywhere to fetch instead.
+func TestStartSliceReadsTheMilestoneOffTheSchema(t *testing.T) {
+	api := startableAPI(t)
 	env, out := testEnv(testClaimConfig(), api)
 
 	if err := Run(context.Background(), []string{"start-slice", startSliceID}, env); err != nil {
@@ -189,48 +171,21 @@ func TestStartSliceNamesTheMilestoneOfAOnePagePlan(t *testing.T) {
 	}
 
 	if !strings.Contains(out.String(), "- Milestone: M2: Board\n") {
-		t.Errorf("output =\n%s\nwant the derived milestone named", out.String())
+		t.Errorf("output =\n%s\nwant the milestone named", out.String())
 	}
 	if len(api.gets) != 1 || api.gets[0] != startSliceID {
 		t.Errorf("gets = %v, want only the slice fetched", api.gets)
 	}
-	if len(api.updates) != 1 || api.updates[0].id != startSliceID {
-		t.Fatalf("updates = %+v, want exactly the named slice claimed", api.updates)
-	}
-	if name := api.updates[0].props[notion.PropStatus].SelectName(); name != notion.SliceInProgress {
-		t.Errorf("status = %q, want %q", name, notion.SliceInProgress)
-	}
-}
-
-func TestStartSliceNamesTheDerivedMilestoneInJSON(t *testing.T) {
-	env, out := testEnv(testClaimConfig(), startableSelectAPI(t))
-
-	if err := Run(context.Background(), []string{"start-slice", startSliceID, "--json"}, env); err != nil {
-		t.Fatalf("start-slice --json: %v", err)
-	}
-
-	var got briefJSON
-	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
-		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
-	}
-	want := briefJSON{
-		Slice: briefSliceJSON{
-			ID: startSliceID, Name: "Render the board", Status: notion.SliceInProgress,
-			Assignee: "Craig Johnston", MilestoneID: "M2: Board", MilestoneName: "M2: Board",
-			Repo: "/tmp/nat", Brief: "Render the board, then stop.", URL: "https://notion.so/" + startSliceID,
-		},
-		Project: projectJSON{ID: "project-1", Name: "nat", Conventions: "Branch per slice."},
-	}
-	if got != want {
-		t.Errorf("json = %+v\nwant %+v", got, want)
+	if len(api.queries) != 0 {
+		t.Errorf("queries = %+v, want none: the slice was named, not chosen", api.queries)
 	}
 }
 
 // A slice naming a milestone the plan no longer offers is still claimed: the
 // brief loses one line rather than the whole command.
 func TestStartSliceTakesASliceNamingAMilestoneOutsideThePlan(t *testing.T) {
-	api := startableSelectAPI(t)
-	api.dataSources["slices-ds"] = selectMilestoneSlicesDS("M1: Client")
+	api := startableAPI(t)
+	api.dataSources["slices-ds"] = assigneeSlicesDS("M1: Client")
 	env, out := testEnv(testClaimConfig(), api)
 
 	if err := Run(context.Background(), []string{"start-slice", startSliceID}, env); err != nil {
@@ -255,23 +210,23 @@ func TestStartSliceRefusesASliceAlreadyUnderway(t *testing.T) {
 		want  []string
 	}{
 		{
-			name:  "claimed",
-			slice: slicePage(startSliceID, "Render the board", notion.SliceClaimed, "m2", "Craig Johnston", ""),
-			want:  []string{`"Render the board" is Claimed, not Todo`},
+			name:  "in progress",
+			slice: slicePage(startSliceID, "Render the board", notion.SliceInProgress, "M2: Board", "Craig Johnston", ""),
+			want:  []string{`"Render the board" is In progress, not Todo`},
 		},
 		{
 			name:  "done",
-			slice: slicePage(startSliceID, "Render the board", notion.SliceDone, "m2", "Craig Johnston", ""),
+			slice: slicePage(startSliceID, "Render the board", notion.SliceDone, "M2: Board", "Craig Johnston", ""),
 			want:  []string{`"Render the board" is Done, not Todo`},
 		},
 		{
 			name:  "no status at all",
-			slice: slicePage(startSliceID, "Render the board", "", "m2", "", ""),
+			slice: slicePage(startSliceID, "Render the board", "", "M2: Board", "", ""),
 			want:  []string{"(no status), not Todo"},
 		},
 		{
 			name:  "todo but assigned to someone else",
-			slice: slicePage(startSliceID, "Render the board", notion.SliceTodo, "m2", "Someone Else", ""),
+			slice: slicePage(startSliceID, "Render the board", notion.SliceTodo, "M2: Board", "Someone Else", ""),
 			want:  []string{"Todo but assigned to Someone Else", "leave it to them"},
 		},
 	}
@@ -390,23 +345,6 @@ func TestStartSliceReportsAFailedCall(t *testing.T) {
 	}
 }
 
-// A milestone that cannot be read leaves the slice claimed but the brief
-// unprintable, which is said as such rather than reported as a failed claim.
-func TestStartSliceReportsAnUnreadableMilestone(t *testing.T) {
-	api := startableAPI(t)
-	api.pages["milestones-ds"] = nil
-	env, out := testEnv(testClaimConfig(), api)
-
-	err := Run(context.Background(), []string{"start-slice", startSliceID}, env)
-
-	if err == nil || !strings.Contains(err.Error(), `claimed "Render the board" but could not read its milestone`) {
-		t.Fatalf("err = %v, want the milestone read reported", err)
-	}
-	if out.Len() != 0 {
-		t.Errorf("output = %q, want nothing", out.String())
-	}
-}
-
 // A slice named as something that is not a page at all never reaches Notion.
 func TestStartSliceRejectsAMisusedCommandLine(t *testing.T) {
 	tests := []struct {
@@ -504,7 +442,7 @@ func TestStartSliceReportsAFailedWrite(t *testing.T) {
 // The same project shape, taken by name rather than chosen.
 func TestStartSliceClaimsAProjectWithNoAssigneeColumn(t *testing.T) {
 	api := startableAPI(t)
-	api.dataSources = map[string]notion.DataSource{"slices-ds": inProgressSlicesDS()}
+	api.dataSources = map[string]notion.DataSource{"slices-ds": selectMilestoneSlicesDS("M1: Client", "M2: Board")}
 	env, out := testEnv(testClaimConfig(), api)
 
 	if err := Run(context.Background(), []string{"start-slice", startSliceID}, env); err != nil {
@@ -531,7 +469,7 @@ func TestStartSliceReportsAFailedSchemaRead(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(), api)
 
 	err := Run(context.Background(), []string{"start-slice", startSliceID}, env)
-	if err == nil || !strings.Contains(err.Error(), "read the slices schema") {
+	if err == nil || !strings.Contains(err.Error(), "load the slices schema") {
 		t.Fatalf("err = %v, want the schema read named", err)
 	}
 	if len(api.updates) != 0 {

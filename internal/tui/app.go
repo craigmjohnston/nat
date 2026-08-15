@@ -55,8 +55,13 @@ type modal interface {
 // The messages the root model's own Notion calls come back as. Every call is a
 // tea.Cmd returning one of these, so nothing in Update blocks on the network.
 type (
-	// projectLoadedMsg carries a freshly loaded plan.
-	projectLoadedMsg struct{ project domain.Project }
+	// projectLoadedMsg carries a freshly loaded plan, and what migrating the
+	// project on the way to it changed — nothing at all, for every project
+	// already in the one shape.
+	projectLoadedMsg struct {
+		project   domain.Project
+		migration notion.Migration
+	}
 	// notionErrMsg carries a failed Notion call, already described.
 	notionErrMsg struct{ err error }
 	// infoLoadedMsg carries the project page body, already converted to
@@ -320,6 +325,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The first plan brings the bar with it, which the board's viewport has
 		// to give its lines up to; resize re-shares them and re-syncs the board.
 		a.resize()
+		// A project that had to be migrated to be shown says so: the plan on
+		// screen is not quite the one Notion held a moment ago.
+		if !msg.migration.Empty() {
+			return a, a.showToast(msg.migration.Summary(), sevSuccess)
+		}
 		return a, nil
 	case notionErrMsg:
 		a.loading, a.err = false, msg.err
@@ -336,8 +346,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sliceBodyMsg:
 		return a.sliceBodyLoaded(msg)
 	case sliceSavedMsg:
-		return a.saved(msg.note, msg.err)
-	case milestoneSavedMsg:
 		return a.saved(msg.note, msg.err)
 	case projectCreatedMsg:
 		return a.projectCreated(msg)
@@ -489,8 +497,6 @@ func (a *App) boardWrite(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.moveSliceFlow(), true
 	case key.Matches(msg, a.board.keys.Delete):
 		return a.deleteSliceFlow(), true
-	case key.Matches(msg, a.board.keys.Queue):
-		return a.queueMilestone(), true
 	case key.Matches(msg, a.board.keys.Launch):
 		return a.launchAgentFlow(), true
 	case key.Matches(msg, a.board.keys.Attach):
@@ -758,58 +764,43 @@ func (a *App) activeProject() (config.ProjectConfig, bool) {
 	return p, ok
 }
 
-// fetchProject loads a project's milestones and slices. Milestones come back in
-// plan order and slices oldest first, which is the order agents pick them up
-// in; the domain groups them from there.
+// fetchProject loads a project's plan: its milestones, which are the options of
+// its Slices data source's Milestone column and so come with the schema, and its
+// slices, oldest first — which is the order agents pick them up in, until the
+// board's own order re-sorts them. The domain groups them from there.
 //
-// A project whose plan lives on one page has no Order to sort its slices by,
-// and created time is no substitute — Notion records it to the minute, so a
-// plan written in one go has no order at all. Such a project is ordered by
-// where its slices sit in its board instead, read from the view.
+// A plan kept on one page has no Order to sort its slices by, and created time
+// is no substitute — Notion records it to the minute, so a plan written in one
+// go has no order at all. The order comes from where the slices sit in the
+// project's own board instead, read from the view.
 //
-// Where the milestones come from is the project's own business: the Slices
-// schema says whether they are pages of a Milestones database or the options of
-// the slices' own Milestone select, and either way one domain.Project comes out,
-// so the board asks nothing about the shape.
+// A project still in the shape this app started with — milestones in a database
+// of their own — is migrated on the way past, before its schema is read for the
+// plan, so what comes back is a plan of the one shape however it was stored.
 func (a *App) fetchProject(id string, cfg config.ProjectConfig) tea.Cmd {
 	client := a.client
 	return func() tea.Msg {
 		ctx := context.Background()
-		ds, err := client.GetDataSource(ctx, cfg.SlicesDSID)
-		if err != nil {
-			return notionErrMsg{err: fmt.Errorf("load the slices schema: %w", err)}
-		}
-		shape := notion.ShapeOf(ds)
-		milestones, err := fetchMilestones(ctx, client, cfg, shape)
+		ds, migration, err := notion.MigrateProject(ctx, client, cfg.SlicesDSID)
 		if err != nil {
 			return notionErrMsg{err: err}
 		}
+		shape := notion.ShapeOf(ds)
 		slices, err := client.QueryDataSource(ctx, cfg.SlicesDSID, nil,
 			[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
 		if err != nil {
 			return notionErrMsg{err: fmt.Errorf("load slices: %w", err)}
 		}
-		return projectLoadedMsg{project: domain.NewProject(
-			id, cfg.Name, milestones, domain.InViewOrder(
-				domain.SlicesFromPages(slices),
-				notion.PlanOrder(ctx, client, shape, cfg.SlicesDSID)))}
+		return projectLoadedMsg{
+			project: domain.NewProject(
+				id, cfg.Name,
+				domain.MilestonesFromOptions(shape.MilestoneOptions, shape.MilestoneType),
+				domain.InViewOrder(
+					domain.SlicesFromPages(slices),
+					notion.PlanOrder(ctx, client, cfg.SlicesDSID))),
+			migration: migration,
+		}
 	}
-}
-
-// fetchMilestones reads a project's plan in whichever shape it keeps it: the
-// pages of its Milestones data source, in plan order, or — for a project whose
-// slices name their milestone on a select — that select's options, which need
-// no query of their own because the schema already carries them.
-func fetchMilestones(ctx context.Context, client NotionAPI, cfg config.ProjectConfig, shape notion.SliceShape) ([]domain.Milestone, error) {
-	if !shape.MilestonesRelated() {
-		return domain.MilestonesFromOptions(shape.MilestoneOptions, shape.MilestoneType), nil
-	}
-	pages, err := client.QueryDataSource(ctx, cfg.MilestonesDSID, nil,
-		[]notion.Sort{{Property: notion.PropOrder, Direction: notion.SortAscending}})
-	if err != nil {
-		return nil, fmt.Errorf("load milestones: %w", err)
-	}
-	return domain.MilestonesFromPages(pages), nil
 }
 
 // View renders the screen on show, full window, and sets what the terminal
@@ -1166,6 +1157,10 @@ func (a *App) progressBarView() string {
 // least it can to bring the cursor back on screen. The board draws every row it
 // has; holding a plan taller than the window to the window is the layout's job.
 func (a *App) syncBoard() {
+	// The hints band says what the row under the cursor can do, and a slice's
+	// hints run to more lines than a milestone's — so the lines left for the
+	// board change as the cursor moves, not only as the window resizes.
+	a.boardVP.SetHeight(a.bodyHeight())
 	a.boardVP.SetContent(a.board.View())
 	h := a.boardVP.Height()
 	if h <= 0 {

@@ -24,6 +24,7 @@ type fakeNotion struct {
 	pageEntries func(id string) ([]notion.PageEntry, error)
 	getDB       func(id string) (*notion.Database, error)
 	getDS       func(id string) (*notion.DataSource, error)
+	updateDS    func(id string, properties map[string]notion.PropertySchema) (*notion.DataSource, error)
 	breadcrumb  func(parent notion.Parent) []string
 	createDB    func(parentPageID, title string) (*notion.Database, error)
 	newProject  func(projectsDSID, name string) (*notion.ProjectStructure, error)
@@ -42,6 +43,7 @@ type fakeNotion struct {
 	entriesFor    []string
 	fetchedDBs    []string
 	fetchedDSs    []string
+	schemaWrites  []schemaWriteCall
 	queriedDSIDs  []string
 	orderedDSIDs  []string
 	crumbParents  []notion.Parent
@@ -80,6 +82,10 @@ type (
 		pageID   string
 		children []map[string]any
 	}
+	schemaWriteCall struct {
+		dataSourceID string
+		properties   map[string]notion.PropertySchema
+	}
 )
 
 var _ NotionAPI = (*fakeNotion)(nil)
@@ -116,19 +122,28 @@ func (f *fakeNotion) GetDatabase(_ context.Context, id string) (*notion.Database
 	return f.getDB(id)
 }
 
-// GetDataSource answers with a Slices schema, which is how the board learns
-// where a project keeps its milestones. The default is the relation shape —
-// milestones of their own — so a test says nothing unless the shape is what it
-// is about.
+// GetDataSource answers with a Slices schema, which is where the board reads
+// the project's plan from: the options of its Milestone column. The default has
+// none on it, so a test says nothing unless the plan is what it is about.
 func (f *fakeNotion) GetDataSource(_ context.Context, id string) (*notion.DataSource, error) {
 	f.fetchedDSs = append(f.fetchedDSs, id)
 	if f.getDS == nil {
 		return &notion.DataSource{ID: id, Properties: map[string]notion.PropertySchema{
 			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceInProgress, notion.SliceDone),
-			notion.PropMilestone: notion.SchemaRelation("ms-ds"),
+			notion.PropMilestone: milestoneColumn(),
 		}}, nil
 	}
 	return f.getDS(id)
+}
+
+// UpdateDataSourceProperties records a schema write and answers with the data
+// source it left behind, which is what migrating a project sends.
+func (f *fakeNotion) UpdateDataSourceProperties(_ context.Context, id string, properties map[string]notion.PropertySchema) (*notion.DataSource, error) {
+	f.schemaWrites = append(f.schemaWrites, schemaWriteCall{dataSourceID: id, properties: properties})
+	if f.updateDS == nil {
+		return &notion.DataSource{ID: id, Properties: properties}, nil
+	}
+	return f.updateDS(id, properties)
 }
 
 func (f *fakeNotion) Breadcrumb(_ context.Context, parent notion.Parent) []string {

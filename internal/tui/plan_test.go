@@ -286,7 +286,7 @@ func TestAppReloadsThePlanWhenThePlanningAgentExits(t *testing.T) {
 		want int
 	}{
 		{"planning agent gone", map[string]string{agent.PlanSentinel: agent.PlanSession},
-			liveSessionsMsg{live: map[string]string{}}, 2},
+			liveSessionsMsg{live: map[string]string{}}, 1},
 		{"planning agent still live", map[string]string{agent.PlanSentinel: agent.PlanSession},
 			liveSessionsMsg{live: map[string]string{agent.PlanSentinel: agent.PlanSession}}, 0},
 		{"a failed poll", map[string]string{agent.PlanSentinel: agent.PlanSession},
