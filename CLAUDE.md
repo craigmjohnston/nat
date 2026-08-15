@@ -42,7 +42,7 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   and `ReclaimStrays` re-homes on startup whatever an earlier run left joined.
 - `internal/cli/` — the headless commands (`nat info [--json]`,
   `nat next-slice [--json]`, which claims the next Todo slice under the
-  lowest-ordered Active milestone and prints its brief,
+  lowest-ordered open milestone and prints its brief,
   `nat start-slice <slice> [--json]`, which claims one named Todo slice and
   prints the same brief — the command a board-launched agent runs, since it is
   pointed at a slice rather than choosing one —
@@ -111,7 +111,14 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   after the options already there, since their order is the plan's order. A name
   the plan already holds is refused before that write, because such a milestone
   is nothing but its name. `slice-add` and `plan-apply` file slices with
-  whichever `Milestone` value the shape calls for.
+  whichever `Milestone` value the shape calls for. The agent commands work
+  either shape too: `next-slice` reads the plan the way the board does and takes
+  work from the lowest-ordered milestone still open — Active under the relation
+  shape, and under the select shape merely not Done, since a derived milestone
+  is Queued until a slice under it starts and gating on Active would leave a
+  plan on which nothing has begun with no way to begin. `start-slice` names a
+  slice's milestone from the schema's options rather than fetching a page that
+  does not exist, and `complete-slice` touches no milestone at all.
 - Slice order under such a plan is where the slices sit in the project's own
   board: `notion.PlanOrder` reads the row order of the Slices data source's
   first view (`GET /views`, then `POST /views/{id}/queries`, which is exposed
@@ -121,7 +128,9 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `created_time` only to the minute, so the created-time sort every other read
   uses is no order at all for a plan written in one go — which is why this one
   is read. A project with a Milestones database orders its plan by their
-  `Order` and reads no view.
+  `Order` and reads no view. `next-slice` reads it too, so the slice it hands
+  out is the one at the top of the milestone on the board rather than whichever
+  the query happened to return first.
 
 ## Conventions
 

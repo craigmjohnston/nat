@@ -15,14 +15,16 @@ prints the brief, and records the outcome. You never write to Notion yourself.
 ## 1. Claim the next slice
 
 Run `nat next-slice`. It claims the next unclaimed Todo slice under the
-lowest-ordered Active milestone and prints its brief: the slice's name, page
-ID and URL, the working directory to use, the slice's own body, and the
-project's conventions.
+lowest-ordered milestone still open — Active, or for a project that keeps its
+whole plan on one page and so has no milestone statuses to set, simply the
+lowest-ordered milestone that is not Done — and prints its brief: the slice's
+name, page ID and URL, the working directory to use, the slice's own body, and
+the project's conventions.
 
 - If the user asked for a particular slice, run `nat start-slice <URL|ID>`
   instead — same claim, same brief, for the slice you name.
-- If the command refuses — no Active milestone, or nothing unclaimed under
-  the ones that are — report what it said and stop. Do not activate a
+- If the command refuses — no milestone open, or nothing unclaimed under the
+  ones that are — report what it said and stop. Do not activate a
   milestone; suggest the user does it on the board (`nat`) and rerun.
 - `nat` works on whichever project local config marks active. If the user
   asked for a different one, tell them to switch the active project on the
