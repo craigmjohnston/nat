@@ -15,6 +15,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files")
@@ -42,6 +43,29 @@ func testProject() domain.Project {
 			{ID: "s6", Name: "Stray", Status: "Unknown", MilestoneID: "gone"},
 		},
 	}
+}
+
+// testSelectProject is that same plan as a project that keeps it on its own
+// page: the milestones are options of the slices' Milestone select rather than
+// pages, so each one's ID is its name and its status is derived from the slices
+// under it — which works out as the statuses testProject writes by hand, so the
+// two fixtures flatten to the same rows.
+func testSelectProject() domain.Project {
+	base := testProject()
+	names := make([]string, len(base.Milestones))
+	byID := make(map[string]string, len(base.Milestones))
+	for i, m := range base.Milestones {
+		names[i], byID[m.ID] = m.Name, m.Name
+	}
+	slices := make([]domain.Slice, len(base.Slices))
+	for i, s := range base.Slices {
+		if name, ok := byID[s.MilestoneID]; ok {
+			s.MilestoneID = name
+		}
+		slices[i] = s
+	}
+	return domain.NewProject(base.ID, base.Name,
+		domain.MilestonesFromOptions(names, notion.TypeSelect), slices)
 }
 
 // newTestBoard returns a board showing testProject at a fixed width, with the

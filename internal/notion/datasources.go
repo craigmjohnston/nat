@@ -41,6 +41,19 @@ func (c *Client) GetDataSource(ctx context.Context, id string) (*DataSource, err
 	return &ds, nil
 }
 
+// UpdateDataSourceProperties writes property definitions to a data source's
+// schema. A property the map does not name is left alone; one it does is
+// replaced by what is given, which for a fixed-choice column means its whole
+// option list — so the options to keep have to be sent along with any new ones.
+func (c *Client) UpdateDataSourceProperties(ctx context.Context, id string, properties map[string]PropertySchema) (*DataSource, error) {
+	body := map[string]any{"properties": properties}
+	var ds DataSource
+	if err := c.do(ctx, http.MethodPatch, "/data_sources/"+url.PathEscape(id), body, &ds); err != nil {
+		return nil, err
+	}
+	return &ds, nil
+}
+
 // QueryDataSource returns every page of a data source matching filter, in the
 // given sort order, following pagination to the end. A nil filter or sorts is
 // omitted from the request. Filters are passed through as Notion's filter

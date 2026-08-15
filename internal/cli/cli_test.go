@@ -44,6 +44,11 @@ type fakeAPI struct {
 	// queryErr fails the query for the named data source.
 	queryErr map[string]error
 
+	// schemaUpdates records every schema write, in order.
+	schemaUpdates []schemaUpdate
+	// schemaUpdateErr fails the schema write.
+	schemaUpdateErr error
+
 	// dataSources answers a schema fetch by data source ID. One not named here
 	// answers with the shape every project created before the app asked about
 	// an assignee has, which is what a test saying nothing about the schema is
@@ -84,6 +89,11 @@ type query struct {
 type update struct {
 	id    string
 	props map[string]notion.PropertyValue
+}
+
+type schemaUpdate struct {
+	id    string
+	props map[string]notion.PropertySchema
 }
 
 type appended struct {
@@ -240,6 +250,29 @@ func (f *fakeAPI) GetDataSource(_ context.Context, id string) (*notion.DataSourc
 		return &ds, nil
 	}
 	ds := claimedSlicesDS()
+	return &ds, nil
+}
+
+// UpdateDataSourceProperties records the schema write and answers with the data
+// source it left behind: the properties written merged over the ones it had, the
+// same way Notion hands the whole schema back.
+func (f *fakeAPI) UpdateDataSourceProperties(_ context.Context, id string, props map[string]notion.PropertySchema) (*notion.DataSource, error) {
+	f.schemaUpdates = append(f.schemaUpdates, schemaUpdate{id: id, props: props})
+	if f.schemaUpdateErr != nil {
+		return nil, f.schemaUpdateErr
+	}
+	ds := notion.DataSource{ID: id, Properties: map[string]notion.PropertySchema{}}
+	if existing, ok := f.dataSources[id]; ok {
+		for name, s := range existing.Properties {
+			ds.Properties[name] = s
+		}
+	}
+	for name, s := range props {
+		ds.Properties[name] = s
+	}
+	if f.dataSources != nil {
+		f.dataSources[id] = ds
+	}
 	return &ds, nil
 }
 

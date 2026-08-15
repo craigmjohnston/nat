@@ -594,6 +594,10 @@ func (s stubAPI) GetDataSource(context.Context, string) (*notion.DataSource, err
 	return &notion.DataSource{}, s.err
 }
 
+func (s stubAPI) UpdateDataSourceProperties(context.Context, string, map[string]notion.PropertySchema) (*notion.DataSource, error) {
+	return &notion.DataSource{}, s.err
+}
+
 func (s stubAPI) CreatePage(context.Context, notion.Parent, map[string]notion.PropertyValue, []map[string]any) (*notion.Page, error) {
 	return &notion.Page{}, s.err
 }

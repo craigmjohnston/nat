@@ -46,9 +46,9 @@ type MoveSliceForm struct {
 
 	sliceID   string
 	sliceName string
-	// names is each target milestone's name by ID, so the note the write reports
-	// can name where the slice went.
-	names map[string]string
+	// targets is each milestone the picker offers, by ID, so the write knows
+	// what shape to file the slice in and can name where it went.
+	targets map[string]domain.Milestone
 
 	// chosen is the ID of the milestone picked, bound to the select.
 	chosen string
@@ -61,13 +61,13 @@ func newMoveSliceForm(theme huh.Theme, s domain.Slice, targets []domain.Mileston
 		heading:   "Move " + s.Name,
 		sliceID:   s.ID,
 		sliceName: s.Name,
-		names:     make(map[string]string, len(targets)),
+		targets:   make(map[string]domain.Milestone, len(targets)),
 		chosen:    targets[0].ID,
 	}
 	options := make([]huh.Option[string], len(targets))
 	for i, m := range targets {
 		options[i] = huh.NewOption(m.Name, m.ID)
-		f.names[m.ID] = m.Name
+		f.targets[m.ID] = m
 	}
 	f.form = newForm(theme, huh.NewGroup(
 		huh.NewSelect[string]().
@@ -106,21 +106,22 @@ func (f *MoveSliceForm) SetSize(width, height int) {
 // save writes the milestone that was picked. A select always holds one of its
 // options, so there is nothing here for a form to decline to write.
 func (f *MoveSliceForm) save(a *App) tea.Cmd {
-	return moveSlice(a.client, f.sliceID, f.sliceName, f.chosen, f.names[f.chosen])
+	return moveSlice(a.client, f.sliceID, f.sliceName, f.targets[f.chosen])
 }
 
-// moveSlice refiles a slice under another milestone. Only the relation is
-// written: the slice's own brief, status and repo say nothing about where in
-// the plan it sits.
-func moveSlice(client NotionAPI, sliceID, sliceName, milestoneID, milestoneName string) tea.Cmd {
+// moveSlice refiles a slice under another milestone. Only the Milestone column
+// is written — the slice's own brief, status and repo say nothing about where in
+// the plan it sits — and it is written in the shape the plan is kept: a relation
+// to a milestone page, or the option naming a derived one.
+func moveSlice(client NotionAPI, sliceID, sliceName string, m domain.Milestone) tea.Cmd {
 	return func() tea.Msg {
 		properties := map[string]notion.PropertyValue{
-			notion.PropMilestone: notion.NewRelation(milestoneID),
+			notion.PropMilestone: m.Ref(),
 		}
 		if _, err := client.UpdatePageProperties(context.Background(), sliceID, properties); err != nil {
 			return sliceSavedMsg{err: fmt.Errorf("move slice: %w", err)}
 		}
-		return sliceSavedMsg{note: fmt.Sprintf("Moved %q to %s.", sliceName, milestoneName)}
+		return sliceSavedMsg{note: fmt.Sprintf("Moved %q to %s.", sliceName, m.Name)}
 	}
 }
 

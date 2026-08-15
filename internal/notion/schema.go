@@ -96,6 +96,27 @@ func selectOptions(names []string) []SelectOption {
 	return opts
 }
 
+// AppendedOptions builds the property definition that leaves a select's options
+// as they are and adds the named ones after them. Notion replaces an option
+// list wholesale rather than merging into it, so the options already there are
+// sent back exactly as they were read — ID, name and colour — and only the tail
+// is new.
+//
+// It reports false for anything but a select. The API cannot write the options
+// of Notion's own status type, and a column this build cannot read options off
+// is not one to guess at: either way there is nothing to append to here, and
+// the caller says so rather than writing a schema that drops what it could not
+// read.
+func (s PropertySchema) AppendedOptions(names ...string) (PropertySchema, bool) {
+	if s.Select == nil {
+		return PropertySchema{}, false
+	}
+	options := make([]SelectOption, 0, len(s.Select.Options)+len(names))
+	options = append(options, s.Select.Options...)
+	options = append(options, selectOptions(names)...)
+	return PropertySchema{Select: &OptionsConfig{Options: options}}, true
+}
+
 // OptionNames returns the option names of a fixed-choice property — a select,
 // or a status column converted in the Notion UI — and nil for any other
 // property type. This app only ever creates selects, but it reads back whatever
