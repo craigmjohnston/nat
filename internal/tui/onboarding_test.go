@@ -33,6 +33,7 @@ type fakeNotion struct {
 	blocks      func(id string) ([]notion.Block, error)
 	wishlist    func(pageID string) ([]notion.WishlistItem, error)
 	createPage  func(parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)
+	getPage     func(id string) (*notion.Page, error)
 	updatePage  func(pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
 	appendBlock func(id string, children []map[string]any) ([]notion.Block, error)
 	deleteBlock func(id string) error
@@ -49,6 +50,7 @@ type fakeNotion struct {
 	crumbParents  []notion.Parent
 	blockParents  []string
 	wishlistPages []string
+	fetchedPages  []string
 	createdUnder  string
 	createdTitle  string
 	// The projects created, as the data source and name each was asked for.
@@ -209,6 +211,17 @@ func (f *fakeNotion) CreatePage(_ context.Context, parent notion.Parent, propert
 		return &notion.Page{ID: "new-page"}, nil
 	}
 	return f.createPage(parent, properties, children)
+}
+
+// GetPage answers with a bare page carrying the asked-for ID, which is what the
+// single-slice refresh maps a row from; a test says more only when the row's
+// content is what it is about.
+func (f *fakeNotion) GetPage(_ context.Context, id string) (*notion.Page, error) {
+	f.fetchedPages = append(f.fetchedPages, id)
+	if f.getPage == nil {
+		return &notion.Page{ID: id}, nil
+	}
+	return f.getPage(id)
 }
 
 func (f *fakeNotion) UpdatePageProperties(_ context.Context, pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error) {

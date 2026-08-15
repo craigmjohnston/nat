@@ -346,7 +346,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sliceBodyMsg:
 		return a.sliceBodyLoaded(msg)
 	case sliceSavedMsg:
-		return a.saved(msg.note, msg.err)
+		return a.saved(msg)
+	case sliceRefreshedMsg:
+		return a.sliceRefreshed(msg)
 	case projectCreatedMsg:
 		return a.projectCreated(msg)
 	case projectSwitchedMsg:
@@ -355,14 +357,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.agentLaunched(msg)
 	case agentAttachedMsg:
 		a.paneMoved(msg)
-		// The agent has had the terminal to itself, so the plan it was working on
-		// is reloaded rather than trusted. The planning agent's pane is about the
-		// plan rather than any row, so its report is a toast, not a row confirm.
-		if msg.slice == agent.PlanSentinel && msg.err == nil && msg.note != "" {
-			a.busy = false
-			return a, tea.Batch(a.startLoad(), a.refreshLive(), a.showToast(msg.note, sevSuccess))
+		// The agent has had the pane to itself, so the slice it was working on
+		// is refetched rather than trusted. The planning agent works the whole
+		// plan, not a page of it, so its exit reloads the lot — and its report
+		// is a toast, not a row confirm, since it is about no row.
+		if msg.slice == agent.PlanSentinel {
+			if msg.err == nil && msg.note != "" {
+				a.busy = false
+				return a, tea.Batch(a.startLoad(), a.refreshLive(), a.showToast(msg.note, sevSuccess))
+			}
+			model, cmd := a.saved(sliceSavedMsg{note: msg.note, err: msg.err})
+			return model, tea.Batch(cmd, a.refreshLive())
 		}
-		model, cmd := a.saved(msg.note, msg.err)
+		model, cmd := a.saved(sliceSavedMsg{note: msg.note, err: msg.err, sliceID: msg.slice})
 		return model, tea.Batch(cmd, a.refreshLive())
 	case liveSessionsMsg:
 		return a, a.liveLoaded(msg)
@@ -675,20 +682,31 @@ func busyNoteOf(f modal) string {
 // closeForm dismisses the form and goes back to the board.
 func (a *App) closeForm() { a.form, a.screen = nil, screenBoard }
 
-// saved reports a finished write and reloads the plan, so the board shows what
-// was just written rather than what was there before. The writes that come
-// through here are all about the row the cursor is on, so the report is an
-// inline confirmation anchored to it.
-func (a *App) saved(note string, err error) (tea.Model, tea.Cmd) {
+// saved reports a finished write and brings the board up to date with it: the
+// one page the write touched is refetched and patched into the plan — a deleted
+// one simply comes off it — rather than the whole plan reloaded. A write naming
+// no page falls back to the full reload, as does one that lands before there is
+// a plan to patch. The writes that come through here are all about the row the
+// cursor is on, so the report is an inline confirmation anchored to it.
+func (a *App) saved(msg sliceSavedMsg) (tea.Model, tea.Cmd) {
 	a.busy = false
-	if err != nil {
-		a.note, a.err = "", err
+	if msg.err != nil {
+		a.note, a.err = "", msg.err
 		return a, nil
 	}
 	a.note = ""
-	cmds := []tea.Cmd{a.startLoad(), a.refreshLive()}
-	if note != "" {
-		cmds = append(cmds, a.showConfirm(note, sevSuccess))
+	var cmds []tea.Cmd
+	switch {
+	case msg.deleted:
+		a.removeSlice(msg.sliceID)
+	case msg.sliceID != "" && a.project != nil:
+		cmds = append(cmds, a.refreshSlice(msg.sliceID))
+	default:
+		cmds = append(cmds, a.startLoad())
+	}
+	cmds = append(cmds, a.refreshLive())
+	if msg.note != "" {
+		cmds = append(cmds, a.showConfirm(msg.note, sevSuccess))
 	}
 	return a, tea.Batch(cmds...)
 }

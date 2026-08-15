@@ -120,7 +120,7 @@ func moveSlice(client NotionAPI, sliceID, sliceName string, m domain.Milestone) 
 		if _, err := client.UpdatePageProperties(context.Background(), sliceID, properties); err != nil {
 			return sliceSavedMsg{err: fmt.Errorf("move slice: %w", err)}
 		}
-		return sliceSavedMsg{note: fmt.Sprintf("Moved %q to %s.", sliceName, m.Name)}
+		return sliceSavedMsg{note: fmt.Sprintf("Moved %q to %s.", sliceName, m.Name), sliceID: sliceID}
 	}
 }
 
