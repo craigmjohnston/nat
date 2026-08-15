@@ -124,26 +124,100 @@ func TestFailedRefreshKeepsThePlanAndItsAge(t *testing.T) {
 	}
 }
 
-func TestErrorStandsUntilARefreshLands(t *testing.T) {
+func TestAReloadLeavesThePlanOnScreen(t *testing.T) {
 	fixClock(t, time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC))
 	client := newLoadingClient()
 	a := loadedApp(t, client)
-	a.Update(notionErrMsg{err: errors.New("boom")})
 
 	msgs := run(press(a, "r"))
-	if a.err == nil {
-		t.Error("the failure should stand while the refresh that may fix it is in flight")
+	if !a.loading {
+		t.Fatal("the refresh key should have put a load in flight")
 	}
-	if got := bar(a); !strings.Contains(got, "boom") {
-		t.Errorf("status line = %q, want the error still on it", got)
+	view := stripANSI(a.View().Content)
+	if strings.Contains(view, "Loading the plan") {
+		t.Errorf("view = %q, want the plan kept rather than the load screen", view)
+	}
+	if !strings.Contains(view, "M1 1/2  Active") {
+		t.Errorf("view = %q, want the plan that was already on screen", view)
+	}
+	if got := bar(a); !strings.Contains(got, "syncing…") {
+		t.Errorf("status line = %q, want the in-flight indicator", got)
 	}
 
+	// The new plan swaps in when it lands.
 	a.Update(first[projectLoadedMsg](t, msgs))
-	if a.err != nil {
-		t.Errorf("err = %v, want the landed refresh to have cleared it", a.err)
+	if view := stripANSI(a.View().Content); !strings.Contains(view, "M1 1/2  Active") {
+		t.Errorf("view = %q, want the reloaded plan", view)
 	}
+}
+
+func TestSwitchingProjectShowsTheLoadScreen(t *testing.T) {
+	client := newLoadingClient()
+	a := loadedApp(t, client)
+
+	// The plan on screen is no longer the one being loaded, so it goes.
+	a.showActiveProject()
+	if view := stripANSI(a.View().Content); !strings.Contains(view, "Loading the plan") {
+		t.Errorf("view = %q, want the load screen with no plan to keep", view)
+	}
+}
+
+func TestAFailedReloadIsAToastRatherThanAStandingError(t *testing.T) {
+	fixClock(t, time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC))
+	client := newLoadingClient()
+	a := loadedApp(t, client)
+
+	failAfterLoad(client, errors.New("boom"))
+	for _, msg := range run(press(a, "r")) {
+		a.Update(msg)
+	}
+
+	if a.err != nil {
+		t.Errorf("err = %v, want no error state left for the user to dismiss", a.err)
+	}
+	if got := bar(a); !strings.Contains(got, "Refresh failed: load slices: boom") {
+		t.Errorf("status line = %q, want the failure as a toast", got)
+	}
+	// esc is the board's own key again rather than the failure's dismissal.
+	if !isQuitCmd(press(a, "esc")) {
+		t.Error("esc should reach the board rather than be spent dismissing the failure")
+	}
+	// And the toast goes on its own timer, leaving the plan where it is.
+	a.Update(toastGoneMsg{id: a.toastID})
 	if got := bar(a); strings.Contains(got, "boom") {
-		t.Errorf("status line = %q, want the error gone", got)
+		t.Errorf("status line = %q, want the toast gone", got)
+	}
+	if a.project == nil {
+		t.Error("project = nil, want the plan still loaded")
+	}
+}
+
+func TestAFailedFirstLoadStandsUntilARefreshLands(t *testing.T) {
+	client := newLoadingClient()
+	failAfterLoad(client, errors.New("boom"))
+	a := NewApp(testConfig(), client)
+	a.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	for _, msg := range run(a.Init()) {
+		a.Update(msg)
+	}
+
+	// Nothing was loaded to keep, so the failure stands rather than passing by.
+	if a.err == nil {
+		t.Fatal("err = nil, want the failure standing with no board to fall back on")
+	}
+	if got := bar(a); !strings.Contains(got, "boom") {
+		t.Errorf("status line = %q, want the error on it", got)
+	}
+
+	client.query = newLoadingClient().query
+	for _, msg := range run(press(a, "r")) {
+		a.Update(msg)
+	}
+	if a.err != nil {
+		t.Errorf("err = %v, want the landed load to have cleared it", a.err)
+	}
+	if view := stripANSI(a.View().Content); !strings.Contains(view, "M1 1/2  Active") {
+		t.Errorf("view = %q, want the plan that finally landed", view)
 	}
 }
 
