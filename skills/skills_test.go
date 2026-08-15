@@ -57,3 +57,29 @@ func TestSkillsWriteThroughTheCLI(t *testing.T) {
 		}
 	}
 }
+
+// A project keeps its whole plan on one page: a milestone is an option of the
+// slices' Milestone column, with no status of its own and no page to name it
+// by. The skills ship inside the binary, so an instruction that assumes
+// otherwise cannot be corrected where it is read — an agent told to have the
+// user activate a milestone would be asking for something the board refuses.
+func TestSkillsDoNotAssumeMilestonePages(t *testing.T) {
+	for _, skill := range []string{"next-slice", "queue-work"} {
+		body, err := fs.ReadFile(FS(), skill+"/SKILL.md")
+		if err != nil {
+			t.Errorf("read the %s skill: %v", skill, err)
+			continue
+		}
+		text := strings.ToLower(string(body))
+		for phrase, why := range map[string]string{
+			"activat":          "a milestone has no status to activate",
+			"active milestone": "a milestone has no status of its own",
+			"milestone page":   "a milestone has no page",
+			"url or id":        "a milestone is named by name alone",
+		} {
+			if strings.Contains(text, phrase) {
+				t.Errorf("the %s skill says %q: %s", skill, phrase, why)
+			}
+		}
+	}
+}

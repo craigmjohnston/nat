@@ -31,9 +31,9 @@ and rerun — the CLI has no project switch of its own.
 - Slot new slices into existing milestones when they fit; create new
   milestones only for genuinely new phases of work.
 - Status, order and assignee are not yours to choose: `nat plan-apply` files
-  new milestones at the end of the plan and new slices as `Todo`
-  and unassigned. A milestone's status follows its slices; agents claim
-  their own slices at work time.
+  new milestones at the end of the plan and new slices as `Todo` and
+  unassigned. A milestone's status follows its slices — there is none to set,
+  on the board or anywhere else; agents claim their own slices at work time.
 
 ## Procedure
 
@@ -60,9 +60,10 @@ and rerun — the CLI has no project switch of its own.
    ```
 
    `milestone` names one of the plan's own new milestones, or an existing one
-   by name, URL or ID. `description` and `repo` are optional; nothing else is,
-   and any other key is rejected. The whole document is validated before the
-   first page is created.
+   of the project, by name — a milestone is an option of the slices' own
+   `Milestone` column, so its name is all there is to name it by.
+   `description` and `repo` are optional; nothing else is, and any other key is
+   rejected. The whole document is validated before the first page is created.
 4. Report the created page URLs, grouped by milestone — `plan-apply` prints
    them.
 
