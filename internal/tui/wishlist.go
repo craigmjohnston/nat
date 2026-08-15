@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/logging"
@@ -101,18 +100,4 @@ func launchWishlistAgent(l AgentLauncher, projectName, workdir string, items []n
 		}
 		return agentLaunchedMsg{slice: planSlice(), session: agent.PlanSession, attach: true}
 	}
-}
-
-// withWishlist puts the indicator beside what the status line already says,
-// within the room the two have between them. The indicator goes last, and goes
-// entirely when there is no room for it: an error or a note is about what the
-// user just did, and outranks a standing count.
-func withWishlist(content, indicator string, width int) string {
-	if indicator == "" {
-		return content
-	}
-	if width > 0 && lipgloss.Width(content)+1+lipgloss.Width(indicator) > width {
-		return content
-	}
-	return content + " " + indicator
 }

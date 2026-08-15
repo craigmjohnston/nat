@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -210,6 +211,11 @@ type App struct {
 	// and neither is worth launching an agent on.
 	wishlist []notion.WishlistItem
 	loading  bool
+	// syncedAt is when the plan on screen came back from Notion, which the
+	// status line's freshness indicator counts from. Zero until the first load
+	// lands, and left where it is by a load that fails: what is on the board is
+	// still as old as it was.
+	syncedAt time.Time
 	// busy is a write, or the read that opens a form, in flight. Only one runs
 	// at a time: a second would race the first over the same page.
 	busy    bool
@@ -302,7 +308,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case OnboardingDoneMsg:
 		return a.onboardingDone(msg)
 	case projectLoadedMsg:
+		// A load that lands is what clears the failure before it: the board is
+		// current again, so there is nothing left for the status line to warn
+		// about.
 		a.project, a.loading, a.err = &msg.project, false, nil
+		a.syncedAt = timeNow()
 		// A prompt is a question about a row of the plan that was on show, which
 		// the reload may have moved or taken away entirely.
 		a.closePrompt()
@@ -707,7 +717,10 @@ func (a *App) startLoad() tea.Cmd {
 	if !ok || a.client == nil {
 		return nil
 	}
-	a.loading, a.err = true, nil
+	// Whatever failed last time is left on the status line until this load says
+	// otherwise: a refresh in flight is not yet news, and clearing the warning
+	// on the way out would take it off a board still showing the stale plan.
+	a.loading = true
 	return tea.Batch(a.spinner.Tick, a.fetchProject(a.cfg.ActiveProjectID, project),
 		a.fetchWishlist(a.cfg.ActiveProjectID))
 }
@@ -1209,9 +1222,10 @@ func (a *App) helpLines(bindings []key.Binding) []string {
 
 // statusLeft is the status line's content: the mode chip, beside it the error
 // waiting to be dismissed, a transient note, or an open form's prompt, and last
-// the wishlist indicator when the project has items pending. It is drawn by the
-// tmux bar under the pane rather than by the app — see [App.windowTitle] — and
-// so is cut to one line at the width the pane has.
+// the standing indicators — how fresh the board is, and the wishlist count when
+// the project has items pending. It is drawn by the tmux bar under the pane
+// rather than by the app — see [App.windowTitle] — and so is cut to one line at
+// the width the pane has.
 func (a *App) statusLeft(width int) string {
 	chip := a.styles.ModeChip.Render(a.chipText())
 	room := 0
@@ -1221,14 +1235,39 @@ func (a *App) statusLeft(width int) string {
 			return fit(chip, width)
 		}
 	}
-	// The indicator is a standing count rather than news, so it takes what the
-	// message leaves rather than the other way round.
-	indicator := a.wishlistIndicator()
-	message := a.statusMessage(room)
-	if message == "" {
-		return withWishlist(chip, indicator, width)
+	// The indicators are standing readings rather than news, so they take what
+	// the message leaves rather than the other way round. Freshness goes first
+	// of the two: how current the board is says something on every board, where
+	// the wishlist count only says something on some.
+	content := chip
+	if message := a.statusMessage(room); message != "" {
+		content += " " + message
 	}
-	return withWishlist(chip+" "+message, indicator, width)
+	content, joined := a.withIndicator(content, a.freshnessIndicator(), width, false)
+	content, _ = a.withIndicator(content, a.wishlistIndicator(), width, joined)
+	return content
+}
+
+// withIndicator puts a standing indicator beside what the status line already
+// says, within the room the two have between them, and reports whether it went
+// on. An indicator goes entirely when there is no room for it: an error or a
+// note is about what the user just did, and outranks a standing reading.
+//
+// joined says whether an indicator is already on the line, in which case the
+// two are separated by the hints' dot rather than a space: side by side, two
+// readings a space apart read as one sentence.
+func (a *App) withIndicator(content, indicator string, width int, joined bool) (string, bool) {
+	if indicator == "" {
+		return content, joined
+	}
+	sep := " "
+	if joined {
+		sep = a.styles.HintSep.Render(" · ")
+	}
+	if width > 0 && lipgloss.Width(content)+lipgloss.Width(sep)+lipgloss.Width(indicator) > width {
+		return content, joined
+	}
+	return content + sep + indicator, true
 }
 
 // chipText is what the status line's chip says: the screen's name, or the app's
