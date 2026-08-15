@@ -50,6 +50,20 @@ type Env struct {
 	// In is where a command reads input a flag was not given for; it is stdin
 	// in production, and may be nil where nothing is ever piped in.
 	In io.Reader
+	// Nudge marks that a write landed in Notion, so a board running on this
+	// machine can refetch at once instead of waiting out a poll interval. It is
+	// nudge.Touch in production, and may be nil where nothing listens.
+	Nudge func()
+}
+
+// nudged reports a successful Notion write to whatever board may be watching.
+// It is strictly fire-and-forget: a headless command never blocks, fails, or
+// cares whether anyone is listening, so a missing Nudge is simply nothing to
+// tell.
+func (e Env) nudged() {
+	if e.Nudge != nil {
+		e.Nudge()
+	}
 }
 
 // Usage is the help text, listing every way the binary can be run.

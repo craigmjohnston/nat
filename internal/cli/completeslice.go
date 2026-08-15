@@ -89,6 +89,7 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 		page = updated
 	}
 
+	env.nudged()
 	logging.Action("slice closed out", "slice", page.ID, "blocked", *blocked, "pr", *pr)
 	_, err = io.WriteString(env.Out, outcomeMarkdown(domain.SliceFromPage(*page), *blocked, cfg.AssigneeUserName))
 	return err

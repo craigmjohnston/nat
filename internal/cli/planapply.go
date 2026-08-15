@@ -67,6 +67,12 @@ func planApply(ctx context.Context, args []string, env Env) error {
 	}
 
 	applied, err := applyPlan(ctx, client, project, ds, p, targets, existing)
+	// A run that failed partway has still written what it wrote — the error
+	// itself says so — and the board deserves to hear about that half as much
+	// as about a whole plan.
+	if len(applied.Milestones) > 0 || len(applied.Slices) > 0 {
+		env.nudged()
+	}
 	if err != nil {
 		return err
 	}

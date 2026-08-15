@@ -17,6 +17,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/cli"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/logging"
+	"github.com/craigmjohnston/nat/internal/nudge"
 	"github.com/craigmjohnston/nat/internal/tui"
 )
 
@@ -109,6 +110,7 @@ func command(tokens config.TokenSource) error {
 		NewClient: newCLIClient,
 		Out:       stdout,
 		In:        stdin,
+		Nudge:     nudge.Touch,
 	})
 }
 

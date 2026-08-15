@@ -44,6 +44,9 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
+	// The claim is the write, so the board is nudged here — even a run that
+	// fails to read the brief afterwards has already moved the slice.
+	env.nudged()
 
 	brief, err := body(ctx, client, claimed.ID)
 	if err != nil {
