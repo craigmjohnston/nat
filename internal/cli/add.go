@@ -53,6 +53,7 @@ func milestoneAdd(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
+	env.nudged()
 	m := added[0]
 
 	if *asJSON {
@@ -116,6 +117,7 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
+	env.nudged()
 
 	if *asJSON {
 		return writeJSON(env.Out, sliceAddedJSON{Slice: addedSliceJSON{

@@ -31,6 +31,11 @@ import (
 func TestMain(m *testing.M) {
 	newLauncher = func() AgentLauncher { return &fakeLauncher{} }
 	liveTick = func() tea.Cmd { return nil }
+	// The nudge watcher is pinned quiet the same way: no timer, and no stat of
+	// the real marker in the home directory. Tests about the watcher put their
+	// own readings in.
+	nudgeTick = func() tea.Cmd { return nil }
+	nudgeStat = func() (time.Time, bool) { return time.Time{}, false }
 	// The dismissal timers never fire on their own either: a pending 4-second
 	// tick would hold every teatest program open, and the confirmations under
 	// test would vanish before they could be asserted on. The auto-dismiss

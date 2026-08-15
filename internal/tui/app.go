@@ -221,6 +221,10 @@ type App struct {
 	// lands, and left where it is by a load that fails: what is on the board is
 	// still as old as it was.
 	syncedAt time.Time
+	// nudgeSeen is the nudge marker's mtime as last acted on — the file the
+	// headless commands touch after writing to Notion. Zero until the first
+	// reading, which is a baseline rather than a reason to reload.
+	nudgeSeen time.Time
 	// busy is a write, or the read that opens a form, in flight. Only one runs
 	// at a time: a second would race the first over the same page.
 	busy    bool
@@ -288,7 +292,7 @@ func (a *App) Init() tea.Cmd {
 		return tea.Batch(tea.RequestBackgroundColor, a.onboarding.Init())
 	}
 	return tea.Batch(tea.RequestBackgroundColor,
-		a.startLoad(), a.refreshLive(), liveTick(), a.reclaimStrays())
+		a.startLoad(), a.refreshLive(), liveTick(), nudgeTick(), a.reclaimStrays())
 }
 
 // Update handles the global keys and the app's own messages, and routes
@@ -379,6 +383,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.straysReclaimed(msg)
 	case liveTickMsg:
 		return a, tea.Batch(a.refreshLive(), liveTick())
+	case nudgeTickMsg:
+		return a, tea.Batch(checkNudge(), nudgeTick())
+	case nudgeMsg:
+		return a, a.nudged(msg)
 	case toastGoneMsg:
 		a.toastGone(msg)
 		return a, nil

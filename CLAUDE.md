@@ -31,6 +31,12 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   tmux pane dies with the process and takes stderr with it. Everything on its
   way to the file passes through a redactor — never log a token or a request
   body.
+- `internal/nudge/` — the marker file the headless commands touch after a
+  successful Notion write (`nudge` in the log/state dir), and the board's way of
+  reading it: the TUI stats its mtime every second and refetches the plan when
+  it moves, so agent-driven changes show within a second instead of a poll
+  interval. Fire-and-forget on the CLI side — a touch that fails is logged and
+  swallowed, and commands are wired to it through `Env.Nudge`.
 - `internal/agent/` — agent prompt template + tmux session management. A
   running agent is identified by its pane's `@nat_slice` option (the full slice
   page ID); the session name `nat-<last-8-hex-of-slice-page-id>` is only a
