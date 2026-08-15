@@ -152,6 +152,30 @@ func TestQueryDataSource(t *testing.T) {
 		}
 	})
 
+	t.Run("sends the edited-since filter as Notion's timestamp filter", func(t *testing.T) {
+		var gotBody string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			b, _ := io.ReadAll(r.Body)
+			gotBody = string(b)
+			w.Write([]byte(`{"results":[],"has_more":false}`))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		// 12:00:45 CEST: the filter goes out in UTC, cut to the top of the
+		// minute — Notion records last_edited_time no finer, so an edit made
+		// later in the stamp's own minute has to match too.
+		since := time.Date(2026, 8, 15, 12, 0, 45, 0, time.FixedZone("CEST", 2*60*60))
+		if _, err := c.QueryDataSource(context.Background(), "ds-1", EditedOnOrAfter(since), nil); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		want := `{"filter":{"last_edited_time":{"on_or_after":"2026-08-15T10:00:00Z"},` +
+			`"timestamp":"last_edited_time"}}`
+		if gotBody != want {
+			t.Errorf("request body =\n%s\nwant\n%s", gotBody, want)
+		}
+	})
+
 	t.Run("follows pagination", func(t *testing.T) {
 		var bodies []string
 		var calls int

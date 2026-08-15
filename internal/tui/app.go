@@ -349,6 +349,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.saved(msg)
 	case sliceRefreshedMsg:
 		return a.sliceRefreshed(msg)
+	case slicesSyncedMsg:
+		return a.slicesSynced(msg)
 	case projectCreatedMsg:
 		return a.projectCreated(msg)
 	case projectSwitchedMsg:
