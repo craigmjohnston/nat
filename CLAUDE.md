@@ -72,7 +72,14 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   the binary does when given a subcommand. Run before the tmux hosting step and with no TUI
   code in the path: a command prints to the terminal it was typed in and exits.
 - `internal/tui/` — bubbletea v2 (`charm.land/*/v2` imports); root model in
-  `app.go` routes screens; all Notion I/O via tea.Cmd → typed msgs
+  `app.go` routes screens; all Notion I/O via tea.Cmd → typed msgs. `poll.go` is
+  the background refetch of the plan, for the changes no nudge reports because
+  no `nat` command made them: a tick every `poll_seconds` (default 30, bounded)
+  running the same load the refresh key does, so the plan stays on screen while
+  it is in flight and a failure leaves the board as it was. It is passed over —
+  never cancelled, so it resumes on the next tick by itself — while the wizard,
+  a form, a row prompt, a write or another load is in flight, since a plan
+  landing under any of those would clobber what the user is in the middle of.
 - `skills/` — the agent skills (/queue-work planning, /next-slice execution),
   embedded in the binary with `go:embed` and installed by `nat setup`. A
   checkout works on them in place by symlinking them into `~/.claude/skills/`,

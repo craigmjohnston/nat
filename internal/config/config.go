@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 const (
@@ -36,8 +37,13 @@ type Config struct {
 	// AgentSplitPercent is how much of the window an agent's pane takes when it
 	// is shown beside the board. Hand-written, and omitted until it is: unset
 	// means [DefaultSplitPercent].
-	AgentSplitPercent int                      `json:"agent_split_percent,omitempty"`
-	Projects          map[string]ProjectConfig `json:"projects"`
+	AgentSplitPercent int `json:"agent_split_percent,omitempty"`
+	// PollSeconds is how often the board refetches the plan on its own, for the
+	// changes no nudge marker reports: the ones made in Notion itself. Written
+	// by hand like the split, and omitted until it is — unset means
+	// [DefaultPollSeconds].
+	PollSeconds int                      `json:"poll_seconds,omitempty"`
+	Projects    map[string]ProjectConfig `json:"projects"`
 }
 
 // The share of the window an agent's pane takes beside the board. The default
@@ -59,6 +65,28 @@ func (c Config) SplitPercent() int {
 		return DefaultSplitPercent
 	}
 	return c.AgentSplitPercent
+}
+
+// How often the board refetches the plan by itself. Half a minute is often
+// enough that a status changed in Notion shows up while the user is still
+// looking for it, and rare enough to cost nothing: the writes made through nat
+// itself are reported by the nudge marker within the second, and this is only
+// for the rest. The bounds are what keeps a hand-edited config from polling
+// Notion every second, or from a poll so far off it reads as none at all.
+const (
+	DefaultPollSeconds = 30
+	minPollSeconds     = 5
+	maxPollSeconds     = 3600
+)
+
+// PollInterval is how long the board waits between refetches, as the config
+// asks for it or the default when it does not — a value outside the bounds
+// being a typo rather than an instruction.
+func (c Config) PollInterval() time.Duration {
+	if c.PollSeconds < minPollSeconds || c.PollSeconds > maxPollSeconds {
+		return DefaultPollSeconds * time.Second
+	}
+	return time.Duration(c.PollSeconds) * time.Second
 }
 
 // Dir returns the app's config directory: $XDG_CONFIG_HOME/notion-agent-tracker,

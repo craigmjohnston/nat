@@ -283,8 +283,9 @@ func (a *App) setStyles(s Styles) {
 
 // Init starts the screen on show: the wizard's first call, or the first load of
 // the active project's plan, alongside the poll that marks the slices an agent
-// is already running on and the reconcile that re-homes the panes an earlier
-// run left joined.
+// is already running on, the background poll that keeps the plan itself
+// current, and the reconcile that re-homes the panes an earlier run left
+// joined.
 func (a *App) Init() tea.Cmd {
 	// The background query goes out first: the styles start on the dark
 	// palette, and the answer swaps in the light one when the terminal says so.
@@ -292,7 +293,8 @@ func (a *App) Init() tea.Cmd {
 		return tea.Batch(tea.RequestBackgroundColor, a.onboarding.Init())
 	}
 	return tea.Batch(tea.RequestBackgroundColor,
-		a.startLoad(), a.refreshLive(), liveTick(), nudgeTick(), a.reclaimStrays())
+		a.startLoad(), a.refreshLive(), liveTick(), nudgeTick(),
+		pollTick(a.cfg.PollInterval()), a.reclaimStrays())
 }
 
 // Update handles the global keys and the app's own messages, and routes
@@ -395,6 +397,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Batch(a.refreshLive(), liveTick())
 	case nudgeTickMsg:
 		return a, tea.Batch(checkNudge(), nudgeTick())
+	case pollTickMsg:
+		// The next tick is scheduled whatever this one does, so a poll passed over
+		// while a form or a write is up resumes on the tick after.
+		return a, tea.Batch(a.polled(), pollTick(a.cfg.PollInterval()))
 	case nudgeMsg:
 		return a, a.nudged(msg)
 	case toastGoneMsg:
