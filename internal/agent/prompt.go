@@ -6,6 +6,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // PromptContext is everything a fresh agent session needs to be told about the
@@ -105,9 +106,73 @@ func Prompt(c PromptContext) string {
 // workshop, carried in the prompt so the agent starts on it rather than
 // opening with a question. Empty means a plain planning session.
 func PlanPrompt(projectName, workingDir, request string) string {
-	var b strings.Builder
+	b := planBody(projectName, workingDir)
 
-	fmt.Fprintf(&b, "You are a Claude Code planning agent for the %q project.\n\n", projectName)
+	if request != "" {
+		b.WriteString("\n## The request\n\n")
+		b.WriteString("The user launched you with this in hand — start on it straight away,\n")
+		b.WriteString("rather than asking what they want to work on:\n\n")
+		b.WriteString(request + "\n")
+	}
+
+	return b.String()
+}
+
+// WishlistPrompt is the opening message for a planning agent launched on the
+// project's wishlist: the same planning session PlanPrompt describes, with the
+// items themselves in place of the question the user would otherwise have been
+// asked. They are the request.
+//
+// The items are carried whole — sub-bullets and all, as the page holds them —
+// and their block IDs come with them, because tidying up after the plan is
+// written is part of the job and `nat wishlist-clear` addresses items by ID.
+// The clear is deliberately spelled out as the last step rather than the first:
+// an item cleared before the plan lands is an idea lost, and an item the agent
+// never read is somebody's newer idea, typed while the session ran.
+func WishlistPrompt(projectName, workingDir string, items []notion.WishlistItem) string {
+	if len(items) == 0 {
+		return PlanPrompt(projectName, workingDir, "")
+	}
+	b := planBody(projectName, workingDir)
+
+	b.WriteString("\n## The request\n\n")
+	b.WriteString("The user launched you on their wishlist — the ideas they have been\n")
+	b.WriteString("jotting on the project page. These are the request: start on them\n")
+	b.WriteString("straight away, rather than asking what they want to work on.\n\n")
+	for _, item := range items {
+		b.WriteString(item.Markdown + "\n")
+	}
+
+	b.WriteString("\n## Clearing them\n\n")
+	b.WriteString("An item that the approved plan now covers has been captured, so take it\n")
+	b.WriteString("off the wishlist — once the plan is written, and not before:\n\n")
+	fmt.Fprintf(b, "    nat wishlist-clear %s\n\n", strings.Join(itemIDs(items), " "))
+	b.WriteString("Name only the items above, and only the ones the plan covers: an idea\n")
+	b.WriteString("the user set aside stays on the wishlist, and so does one typed while\n")
+	b.WriteString("this session ran — which is why the command names items rather than\n")
+	b.WriteString("emptying the section.\n")
+
+	return b.String()
+}
+
+// itemIDs are the wishlist items' block IDs, in the order they were read: what
+// the clear command names.
+func itemIDs(items []notion.WishlistItem) []string {
+	ids := make([]string, len(items))
+	for i, item := range items {
+		ids[i] = item.ID
+	}
+	return ids
+}
+
+// planBody is everything a planning session is told before the request it was
+// launched on: the job, the workflow, the commands, the guardrails. Both
+// planning prompts open with it, so a wishlist launch and a typed one differ
+// only in what they are pointed at.
+func planBody(projectName, workingDir string) *strings.Builder {
+	b := &strings.Builder{}
+
+	fmt.Fprintf(b, "You are a Claude Code planning agent for the %q project.\n\n", projectName)
 	b.WriteString("Your job is to workshop the plan itself with the user — reshape\n")
 	b.WriteString("milestones, draft new slices — not to execute any slice.\n")
 
@@ -136,17 +201,10 @@ func PlanPrompt(projectName, workingDir, request string) string {
 	b.WriteString("  milestones holding them, are records of what happened.\n")
 	b.WriteString("- The commands above are the only way to change the plan; write nothing\n")
 	b.WriteString("  until the user has approved the draft.\n")
-	fmt.Fprintf(&b, "- This session starts in %s; the user's board picks up\n", workingDir)
+	fmt.Fprintf(b, "- This session starts in %s; the user's board picks up\n", workingDir)
 	b.WriteString("  your changes when you exit, or on its refresh key.\n")
 
-	if request != "" {
-		b.WriteString("\n## The request\n\n")
-		b.WriteString("The user launched you with this in hand — start on it straight away,\n")
-		b.WriteString("rather than asking what they want to work on:\n\n")
-		b.WriteString(request + "\n")
-	}
-
-	return b.String()
+	return b
 }
 
 // repoOverridden reports whether the agent is being sent somewhere other than

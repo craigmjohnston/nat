@@ -75,10 +75,11 @@ type keyMap struct {
 	Info      key.Binding
 	Back      key.Binding
 	Dismiss   key.Binding
-	// Workshop opens a session on the project's wishlist. It is named by the
-	// wishlist indicator, which is the only place the wishlist is mentioned;
-	// the key itself is handled by the slice that launches the agent, so it is
-	// deliberately out of the hints and the help screen until then.
+	// Workshop launches a planning agent on the project's wishlist. It is out
+	// of the hints row on purpose: the wishlist indicator names it whenever
+	// there is something to workshop, which is the only time the key does
+	// anything, and a standing hint for it would take room from keys that
+	// always work.
 	Workshop key.Binding
 }
 
@@ -154,13 +155,15 @@ func (k keyMap) statusHints() []hint {
 }
 
 // helpBindings are the bindings listed to the user, in the order they read.
+// The workshop key is among them although it is not among the hints: the help
+// screen is where a key the hints row has no room for is still findable.
 func (k keyMap) helpBindings() []key.Binding {
 	hints := k.statusHints()
-	bindings := make([]key.Binding, len(hints))
-	for i, h := range hints {
-		bindings[i] = h.binding
+	bindings := make([]key.Binding, 0, len(hints)+1)
+	for _, h := range hints {
+		bindings = append(bindings, h.binding)
 	}
-	return bindings
+	return append(bindings, k.Workshop)
 }
 
 // App is the root model. It owns the config, the Notion client, the loaded
@@ -200,11 +203,12 @@ type App struct {
 	joined map[string]bool
 
 	project *domain.Project
-	// wishlist is how many items the project page's wishlist had when it was
-	// last read, which is what the status line's indicator counts. Zero is both
-	// an empty wishlist and one that could not be read: neither is worth an
-	// indicator.
-	wishlist int
+	// wishlist is the pending items the project page's wishlist held when it
+	// was last read: what the status line's indicator counts, and what the
+	// workshop key launches a planning agent on. Empty is both an empty
+	// wishlist and one that could not be read — neither is worth an indicator,
+	// and neither is worth launching an agent on.
+	wishlist []notion.WishlistItem
 	loading  bool
 	// busy is a write, or the read that opens a form, in flight. Only one runs
 	// at a time: a second would race the first over the same page.
@@ -428,6 +432,8 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			cmd = tea.Batch(cmd, a.startInfoLoad())
 		}
 		return a, cmd
+	case key.Matches(msg, a.keys.Workshop):
+		return a, a.workshopFlow()
 	case key.Matches(msg, a.keys.Help):
 		a.screen = toggle(a.screen, screenHelp)
 	case key.Matches(msg, a.keys.Info):

@@ -2,11 +2,14 @@ package tui
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
@@ -47,8 +50,8 @@ func TestAppReadsTheWishlistOfTheActiveProjectPage(t *testing.T) {
 	if got := client.wishlistPages; len(got) != 1 || got[0] != testProjectID {
 		t.Errorf("wishlist read for %v, want the active project page %q", got, testProjectID)
 	}
-	if a.wishlist != 3 {
-		t.Errorf("wishlist = %d, want the 3 items read", a.wishlist)
+	if len(a.wishlist) != 3 {
+		t.Errorf("wishlist = %d, want the 3 items read", len(a.wishlist))
 	}
 }
 
@@ -62,8 +65,8 @@ func TestAppRefreshRereadsTheWishlist(t *testing.T) {
 	if got := len(client.wishlistPages); got != 2 {
 		t.Errorf("wishlist read %d times, want the refresh to have re-read it", got)
 	}
-	if a.wishlist != 1 {
-		t.Errorf("wishlist = %d, want the one item still pending", a.wishlist)
+	if len(a.wishlist) != 1 {
+		t.Errorf("wishlist = %d, want the one item still pending", len(a.wishlist))
 	}
 }
 
@@ -90,8 +93,8 @@ func TestAFailedWishlistReadLeavesTheBoardRendered(t *testing.T) {
 	if a.err != nil {
 		t.Errorf("err = %v, want a wishlist failure kept off the screen", a.err)
 	}
-	if a.wishlist != 0 {
-		t.Errorf("wishlist = %d, want no count from a failed read", a.wishlist)
+	if len(a.wishlist) != 0 {
+		t.Errorf("wishlist = %d, want no count from a failed read", len(a.wishlist))
 	}
 	if got := a.View().WindowTitle; strings.Contains(got, "wishlist") || strings.Contains(got, "boom") {
 		t.Errorf("bar = %q, want no indicator and no error on it", got)
@@ -134,7 +137,164 @@ func TestSwitchingProjectDropsTheWishlistCount(t *testing.T) {
 
 	a.Update(projectSwitchedMsg{id: "other", name: "other"})
 
-	if a.wishlist != 0 {
-		t.Errorf("wishlist = %d, want the last project's count dropped", a.wishlist)
+	if len(a.wishlist) != 0 {
+		t.Errorf("wishlist = %d, want the last project's count dropped", len(a.wishlist))
+	}
+}
+
+// workshopApp is the launch harness with a wishlist of n items already read,
+// as a load would have left it.
+func workshopApp(t *testing.T, n int) (*App, *fakeLauncher, string) {
+	t.Helper()
+	app, launcher, workdir := launchApp(t)
+	app.wishlist = wishlistItems(n)
+	return app, launcher, workdir
+}
+
+// W launches the planning agent straight on the wishlist: no form between the
+// key and the session, because the items are the request.
+func TestAppWorkshopKeyLaunchesAPlanningAgentOnTheWishlist(t *testing.T) {
+	app, launcher, workdir := workshopApp(t, 2)
+
+	drive(t, app, press(app, "W"))
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
+	got := launcher.launches[0]
+	if got.session != agent.PlanSession {
+		t.Errorf("session = %q, want %q", got.session, agent.PlanSession)
+	}
+	if got.workdir != workdir {
+		t.Errorf("workdir = %q, want the project default %q", got.workdir, workdir)
+	}
+	// The sentinel again: one planning agent, however it was launched.
+	if got.sliceID != agent.PlanSentinel {
+		t.Errorf("tag = %q, want %q", got.sliceID, agent.PlanSentinel)
+	}
+	if app.form != nil {
+		t.Fatalf("form = %T, want no question asked", app.form)
+	}
+
+	prompt, err := os.ReadFile(got.promptFile)
+	if err != nil {
+		t.Fatalf("read the prompt file: %v", err)
+	}
+	for _, want := range []string{"/queue-work", "## The request",
+		"nat wishlist-clear a-block b-block"} {
+		if !strings.Contains(string(prompt), want) {
+			t.Errorf("the prompt is missing %q:\n%s", want, prompt)
+		}
+	}
+
+	// The pane is attached on launch, as a typed planning launch is.
+	if want := []string{agent.PlanSession}; !equal(launcher.attached, want) {
+		t.Errorf("attached = %v, want %v", launcher.attached, want)
+	}
+	if !app.busy {
+		t.Error("the terminal is the session's until it is given back")
+	}
+}
+
+// Nothing pending, nothing to workshop: the key is not even named on the bar
+// when the wishlist is empty, and pressing it anyway does nothing.
+func TestAppWorkshopKeyDoesNothingWithAnEmptyWishlist(t *testing.T) {
+	app, launcher, _ := workshopApp(t, 0)
+
+	if cmd := press(app, "W"); cmd != nil {
+		t.Error("there is nothing to workshop")
+	}
+	if len(launcher.launches) != 0 {
+		t.Errorf("launches = %+v, want none", launcher.launches)
+	}
+	if app.form != nil {
+		t.Fatalf("form = %T, want the key ignored", app.form)
+	}
+}
+
+// One planning agent at a time. With one already running, W neither starts a
+// second nor toggles the first — that is w's job, and the running agent is
+// already holding the plan in its head.
+func TestAppWorkshopKeyDoesNothingWithAPlanningAgentRunning(t *testing.T) {
+	app, launcher, _ := workshopApp(t, 2)
+	app.live = map[string]string{agent.PlanSentinel: agent.PlanSession}
+
+	if cmd := press(app, "W"); cmd != nil {
+		t.Error("the running planning agent should be left alone")
+	}
+	if len(launcher.launches) != 0 {
+		t.Errorf("launches = %+v, want no second planning agent", launcher.launches)
+	}
+	if len(launcher.attached) != 0 || len(launcher.shown) != 0 {
+		t.Errorf("attached = %v, shown = %+v, want the pane untouched", launcher.attached, launcher.shown)
+	}
+}
+
+func TestAppWorkshopKeyIsRefusedWithNothingToLaunchWith(t *testing.T) {
+	tests := []struct {
+		name    string
+		disable func(*App)
+	}{
+		{"no project", func(a *App) { a.cfg.ActiveProjectID = "" }},
+		{"no launcher", func(a *App) { a.launcher = nil }},
+		{"a write already in flight", func(a *App) { a.busy = true }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app, _, _ := workshopApp(t, 2)
+			tt.disable(app)
+
+			if cmd := press(app, "W"); cmd != nil {
+				t.Error("there is nothing to launch with")
+			}
+			if app.form != nil {
+				t.Errorf("form = %T, want the key ignored", app.form)
+			}
+		})
+	}
+}
+
+func TestLaunchWishlistAgentReportsAFailedPromptFile(t *testing.T) {
+	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
+	launcher := &fakeLauncher{}
+
+	msg := runMsg(t, launchWishlistAgent(launcher, "tracker", "/tmp", wishlistItems(1))).(agentLaunchedMsg)
+
+	if msg.err == nil || !strings.Contains(msg.err.Error(), "launch planning agent: create prompt dir") {
+		t.Errorf("err = %v, want the failed prompt file", msg.err)
+	}
+	if len(launcher.launches) != 0 {
+		t.Error("no session should start without a prompt to seed it")
+	}
+}
+
+func TestAppWorkshopLaunchReportsAFailedLaunch(t *testing.T) {
+	app, launcher, _ := workshopApp(t, 2)
+	launcher.launchErr = errors.New("duplicate session")
+
+	drive(t, app, press(app, "W"))
+
+	if app.err == nil || !strings.Contains(app.err.Error(), "duplicate session") {
+		t.Errorf("err = %v, want the failed launch", app.err)
+	}
+	if app.busy {
+		t.Error("a failed launch should leave nothing in flight")
+	}
+}
+
+// The key is out of the hints row — the indicator names it when it does
+// anything — but the help screen lists it, which is where a key nobody has
+// seen hinted is still findable.
+func TestTheHelpScreenListsTheWorkshopKey(t *testing.T) {
+	app, _, _ := launchApp(t)
+
+	help := app.keys.Workshop.Help()
+	if got := stripANSI(app.helpBody()); !strings.Contains(got, help.Key+"  "+help.Desc) {
+		t.Errorf("help does not list the workshop key:\n%s", got)
+	}
+	for _, line := range app.wrapHints(app.contextHints(), 200, 3) {
+		if strings.Contains(stripANSI(line), help.Desc) {
+			t.Errorf("hints row = %q, want the workshop key left to the indicator", line)
+		}
 	}
 }

@@ -66,6 +66,27 @@ and rerun — the CLI has no project switch of its own.
 4. Report the created page URLs, grouped by milestone — `plan-apply` prints
    them.
 
+## Launched on the wishlist
+
+The board can start you on the project's wishlist — the ideas the user has
+been jotting on the project page — in which case your prompt carries the items
+and their block IDs, and they are the request: draft from them rather than
+asking what to work on. If you were not launched that way, `nat wishlist` (or
+`nat wishlist --json`, which gives the IDs) reads the same items.
+
+Clearing captured items is the last step, after step 4 above:
+
+```
+nat wishlist-clear <block-id>...
+```
+
+- Only after the plan is written. An item cleared before that is an idea lost.
+- Only the items you read, named one by one. The command never empties the
+  section, because an idea the user typed while you were drafting has to
+  survive your tidy-up.
+- Only the items the plan actually covers. Anything the user set aside stays
+  on the wishlist for next time — say which ones you left.
+
 ## Guardrails
 
 - Everything you write goes through `nat`. Never edit Notion directly.
