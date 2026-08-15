@@ -308,6 +308,7 @@ func (a *App) persist() error {
 // the active one in its place.
 func (a *App) showActiveProject() tea.Cmd {
 	a.project = nil
+	a.wishlist = 0
 	a.board.SetProject(nil)
 	a.info.Reset()
 	return tea.Batch(a.startLoad(), a.refreshLive())

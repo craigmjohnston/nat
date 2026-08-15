@@ -75,6 +75,11 @@ type keyMap struct {
 	Info      key.Binding
 	Back      key.Binding
 	Dismiss   key.Binding
+	// Workshop opens a session on the project's wishlist. It is named by the
+	// wishlist indicator, which is the only place the wishlist is mentioned;
+	// the key itself is handled by the slice that launches the agent, so it is
+	// deliberately out of the hints and the help screen until then.
+	Workshop key.Binding
 }
 
 // defaultKeyMap returns the bindings the app runs with.
@@ -87,6 +92,7 @@ func defaultKeyMap() keyMap {
 		Info:      key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "info")),
 		Back:      key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		Dismiss:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "dismiss")),
+		Workshop:  key.NewBinding(key.WithKeys("W"), key.WithHelp("W", "workshop")),
 	}
 }
 
@@ -194,7 +200,12 @@ type App struct {
 	joined map[string]bool
 
 	project *domain.Project
-	loading bool
+	// wishlist is how many items the project page's wishlist had when it was
+	// last read, which is what the status line's indicator counts. Zero is both
+	// an empty wishlist and one that could not be read: neither is worth an
+	// indicator.
+	wishlist int
+	loading  bool
 	// busy is a write, or the read that opens a form, in flight. Only one runs
 	// at a time: a second would race the first over the same page.
 	busy    bool
@@ -298,6 +309,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case notionErrMsg:
 		a.loading, a.err = false, msg.err
+		return a, nil
+	case wishlistLoadedMsg:
+		a.wishlistLoaded(msg)
 		return a, nil
 	case infoLoadedMsg:
 		a.info.SetMarkdown(msg.markdown)
@@ -678,16 +692,18 @@ func (a *App) onboardingDone(msg OnboardingDoneMsg) (tea.Model, tea.Cmd) {
 	return a, tea.Batch(a.startLoad(), a.showToast("Setup complete.", sevSuccess))
 }
 
-// startLoad kicks off a load of the active project's plan, returning nil when
-// there is nothing to load: an unconfigured or unknown active project is a
-// state the board reports, not an error.
+// startLoad kicks off a load of the active project's plan and of the wishlist
+// on its page, which the status line counts. It returns nil when there is
+// nothing to load: an unconfigured or unknown active project is a state the
+// board reports, not an error.
 func (a *App) startLoad() tea.Cmd {
 	project, ok := a.activeProject()
 	if !ok || a.client == nil {
 		return nil
 	}
 	a.loading, a.err = true, nil
-	return tea.Batch(a.spinner.Tick, a.fetchProject(a.cfg.ActiveProjectID, project))
+	return tea.Batch(a.spinner.Tick, a.fetchProject(a.cfg.ActiveProjectID, project),
+		a.fetchWishlist(a.cfg.ActiveProjectID))
 }
 
 // startInfoLoad kicks off a fetch of the project page body, unless there is
@@ -1185,10 +1201,11 @@ func (a *App) helpLines(bindings []key.Binding) []string {
 	return lines
 }
 
-// statusLeft is the status line's content: the mode chip, and beside it the
-// error waiting to be dismissed, a transient note, or an open form's prompt. It
-// is drawn by the tmux bar under the pane rather than by the app — see
-// [App.windowTitle] — and so is cut to one line at the width the pane has.
+// statusLeft is the status line's content: the mode chip, beside it the error
+// waiting to be dismissed, a transient note, or an open form's prompt, and last
+// the wishlist indicator when the project has items pending. It is drawn by the
+// tmux bar under the pane rather than by the app — see [App.windowTitle] — and
+// so is cut to one line at the width the pane has.
 func (a *App) statusLeft(width int) string {
 	chip := a.styles.ModeChip.Render(a.chipText())
 	room := 0
@@ -1198,11 +1215,14 @@ func (a *App) statusLeft(width int) string {
 			return fit(chip, width)
 		}
 	}
+	// The indicator is a standing count rather than news, so it takes what the
+	// message leaves rather than the other way round.
+	indicator := a.wishlistIndicator()
 	message := a.statusMessage(room)
 	if message == "" {
-		return chip
+		return withWishlist(chip, indicator, width)
 	}
-	return chip + " " + message
+	return withWishlist(chip+" "+message, indicator, width)
 }
 
 // chipText is what the status line's chip says: the screen's name, or the app's

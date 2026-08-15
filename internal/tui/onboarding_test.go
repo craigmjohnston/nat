@@ -28,6 +28,7 @@ type fakeNotion struct {
 	newProject  func(projectsDSID, name string) (*notion.ProjectStructure, error)
 	query       func(id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
 	blocks      func(id string) ([]notion.Block, error)
+	wishlist    func(pageID string) ([]notion.WishlistItem, error)
 	createPage  func(parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)
 	updatePage  func(pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
 	appendBlock func(id string, children []map[string]any) ([]notion.Block, error)
@@ -41,6 +42,7 @@ type fakeNotion struct {
 	queriedDSIDs  []string
 	crumbParents  []notion.Parent
 	blockParents  []string
+	wishlistPages []string
 	createdUnder  string
 	createdTitle  string
 	// The projects created, as the data source and name each was asked for.
@@ -149,6 +151,14 @@ func (f *fakeNotion) GetBlockChildren(_ context.Context, id string) ([]notion.Bl
 		return nil, nil
 	}
 	return f.blocks(id)
+}
+
+func (f *fakeNotion) Wishlist(_ context.Context, pageID string) ([]notion.WishlistItem, error) {
+	f.wishlistPages = append(f.wishlistPages, pageID)
+	if f.wishlist == nil {
+		return nil, nil
+	}
+	return f.wishlist(pageID)
 }
 
 func (f *fakeNotion) CreatePage(_ context.Context, parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error) {
