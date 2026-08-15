@@ -89,7 +89,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
 - Slices may carry a `Repo` override; otherwise the project default working
   dir from local config applies.
 - Milestones live in their own DB (Name/Order/Status: Queued/Active/Done);
-  slices relate via the `Milestone` relation.
+  slices relate via the `Milestone` relation. A project may instead keep its
+  whole plan on one page: no Milestones DB, and a `Milestone` **select** on the
+  Slices data source whose options are the milestones, in plan order. Nothing is
+  migrated — `notion.ShapeOf` reads which shape the Slices data source has, and
+  a plan read from a select becomes the same `domain.Project` (via
+  `domain.MilestonesFromOptions`, milestone name as ID, option index as order,
+  no status or URL), so the board and the progress math ask one question.
 
 ## Conventions
 

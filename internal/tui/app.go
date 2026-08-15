@@ -761,14 +761,22 @@ func (a *App) activeProject() (config.ProjectConfig, bool) {
 // fetchProject loads a project's milestones and slices. Milestones come back in
 // plan order and slices oldest first, which is the order agents pick them up
 // in; the domain groups them from there.
+//
+// Where the milestones come from is the project's own business: the Slices
+// schema says whether they are pages of a Milestones database or the options of
+// the slices' own Milestone select, and either way one domain.Project comes out,
+// so the board asks nothing about the shape.
 func (a *App) fetchProject(id string, cfg config.ProjectConfig) tea.Cmd {
 	client := a.client
 	return func() tea.Msg {
 		ctx := context.Background()
-		milestones, err := client.QueryDataSource(ctx, cfg.MilestonesDSID, nil,
-			[]notion.Sort{{Property: notion.PropOrder, Direction: notion.SortAscending}})
+		ds, err := client.GetDataSource(ctx, cfg.SlicesDSID)
 		if err != nil {
-			return notionErrMsg{err: fmt.Errorf("load milestones: %w", err)}
+			return notionErrMsg{err: fmt.Errorf("load the slices schema: %w", err)}
+		}
+		milestones, err := fetchMilestones(ctx, client, cfg, notion.ShapeOf(ds))
+		if err != nil {
+			return notionErrMsg{err: err}
 		}
 		slices, err := client.QueryDataSource(ctx, cfg.SlicesDSID, nil,
 			[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
@@ -778,10 +786,26 @@ func (a *App) fetchProject(id string, cfg config.ProjectConfig) tea.Cmd {
 		return projectLoadedMsg{project: domain.Project{
 			ID:         id,
 			Name:       cfg.Name,
-			Milestones: domain.MilestonesFromPages(milestones),
+			Milestones: milestones,
 			Slices:     domain.SlicesFromPages(slices),
 		}}
 	}
+}
+
+// fetchMilestones reads a project's plan in whichever shape it keeps it: the
+// pages of its Milestones data source, in plan order, or — for a project whose
+// slices name their milestone on a select — that select's options, which need
+// no query of their own because the schema already carries them.
+func fetchMilestones(ctx context.Context, client NotionAPI, cfg config.ProjectConfig, shape notion.SliceShape) ([]domain.Milestone, error) {
+	if !shape.MilestonesRelated() {
+		return domain.MilestonesFromOptions(shape.MilestoneOptions), nil
+	}
+	pages, err := client.QueryDataSource(ctx, cfg.MilestonesDSID, nil,
+		[]notion.Sort{{Property: notion.PropOrder, Direction: notion.SortAscending}})
+	if err != nil {
+		return nil, fmt.Errorf("load milestones: %w", err)
+	}
+	return domain.MilestonesFromPages(pages), nil
 }
 
 // View renders the screen on show, full window, and sets what the terminal

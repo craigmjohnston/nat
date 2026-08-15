@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -479,12 +480,77 @@ func TestShapeOf(t *testing.T) {
 			}},
 			SliceShape{InProgress: SliceInProgress, StatusType: TypeSelect},
 		},
+		{
+			"a project whose milestones are pages of their own",
+			DataSource{Properties: map[string]PropertySchema{
+				PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceInProgress})}},
+				PropMilestone: {Type: "relation", Relation: &RelationConfig{DataSourceID: "ds-milestones"}},
+			}},
+			SliceShape{InProgress: SliceInProgress, StatusType: TypeSelect, MilestoneType: "relation"},
+		},
+		{
+			"a project whose milestones are options of a select",
+			DataSource{Properties: map[string]PropertySchema{
+				PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceInProgress})}},
+				PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{"M1: Groundwork", "M2: The board"})}},
+			}},
+			SliceShape{
+				InProgress: SliceInProgress, StatusType: TypeSelect,
+				MilestoneType: TypeSelect, MilestoneOptions: []string{"M1: Groundwork", "M2: The board"},
+			},
+		},
+		{
+			"a Milestone select converted to Notion's status type",
+			DataSource{Properties: map[string]PropertySchema{
+				PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceInProgress})}},
+				PropMilestone: {Type: TypeStatus, Status: &OptionsConfig{Options: selectOptions([]string{"M1: Groundwork"})}},
+			}},
+			SliceShape{
+				InProgress: SliceInProgress, StatusType: TypeSelect,
+				MilestoneType: TypeStatus, MilestoneOptions: []string{"M1: Groundwork"},
+			},
+		},
+		{
+			"a Milestone select with no milestones on it yet is still a plan of its own",
+			DataSource{Properties: map[string]PropertySchema{
+				PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceInProgress})}},
+				PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
+			}},
+			SliceShape{
+				InProgress: SliceInProgress, StatusType: TypeSelect,
+				MilestoneType: TypeSelect, MilestoneOptions: []string{},
+			},
+		},
 		{"an empty data source", DataSource{}, SliceShape{InProgress: SliceClaimed}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := ShapeOf(&tt.ds); got != tt.want {
+			got := ShapeOf(&tt.ds)
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ShapeOf() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+// A plan is read from a Milestones data source unless the Slices table carries
+// the milestones itself, which is what keeps every project made before the
+// second shape existed loading exactly as it did.
+func TestSliceShapeMilestonesRelated(t *testing.T) {
+	tests := []struct {
+		name  string
+		shape SliceShape
+		want  bool
+	}{
+		{"a relation", SliceShape{MilestoneType: "relation"}, true},
+		{"no Milestone column at all", SliceShape{}, true},
+		{"a select naming milestones", SliceShape{MilestoneType: TypeSelect, MilestoneOptions: []string{"M1"}}, false},
+		{"a select naming none yet", SliceShape{MilestoneType: TypeSelect, MilestoneOptions: []string{}}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.shape.MilestonesRelated(); got != tt.want {
+				t.Errorf("MilestonesRelated() = %v, want %v", got, tt.want)
 			}
 		})
 	}

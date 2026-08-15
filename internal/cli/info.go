@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
@@ -33,10 +34,13 @@ func info(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return fmt.Errorf("load project page: %w", err)
 	}
-	milestones, err := client.QueryDataSource(ctx, project.MilestonesDSID, nil,
-		[]notion.Sort{{Property: notion.PropOrder, Direction: notion.SortAscending}})
+	shape, err := sliceShape(ctx, client, project)
 	if err != nil {
-		return fmt.Errorf("load milestones: %w", err)
+		return err
+	}
+	milestones, err := loadMilestones(ctx, client, project, shape)
+	if err != nil {
+		return err
 	}
 	slices, err := client.QueryDataSource(ctx, project.SlicesDSID, nil,
 		[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
@@ -47,7 +51,7 @@ func info(ctx context.Context, args []string, env Env) error {
 	p := domain.Project{
 		ID:         cfg.ActiveProjectID,
 		Name:       project.Name,
-		Milestones: domain.MilestonesFromPages(milestones),
+		Milestones: milestones,
 		Slices:     domain.SlicesFromPages(slices),
 	}
 	conventions := strings.TrimSpace(notion.Markdown(blocks))
@@ -57,6 +61,23 @@ func info(ctx context.Context, args []string, env Env) error {
 	}
 	_, err = io.WriteString(env.Out, infoMarkdown(p, conventions))
 	return err
+}
+
+// loadMilestones reads a project's plan in whichever shape it keeps it: the
+// pages of its Milestones data source, in plan order, or — for a project whose
+// slices name their milestone on a select — that select's options, which the
+// schema already carries and so need no query of their own. Either way one list
+// of domain milestones comes out, so nothing downstream asks about the shape.
+func loadMilestones(ctx context.Context, client API, project config.ProjectConfig, shape notion.SliceShape) ([]domain.Milestone, error) {
+	if !shape.MilestonesRelated() {
+		return domain.MilestonesFromOptions(shape.MilestoneOptions), nil
+	}
+	pages, err := client.QueryDataSource(ctx, project.MilestonesDSID, nil,
+		[]notion.Sort{{Property: notion.PropOrder, Direction: notion.SortAscending}})
+	if err != nil {
+		return nil, fmt.Errorf("load milestones: %w", err)
+	}
+	return domain.MilestonesFromPages(pages), nil
 }
 
 // parseJSONFlag reads the command line of a command whose only flag is --json
