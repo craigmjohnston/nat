@@ -42,6 +42,11 @@ type NotionAPI interface {
 	AppendBlockChildren(ctx context.Context, id string, children []map[string]any) ([]notion.Block, error)
 	DeleteBlock(ctx context.Context, id string) error
 	TrashPage(ctx context.Context, pageID string) error
+	SetDatabaseInline(ctx context.Context, id string, inline bool) error
+	ListViews(ctx context.Context, dataSourceID string) ([]notion.View, error)
+	GetView(ctx context.Context, id string) (*notion.View, error)
+	CreateBoardView(ctx context.Context, databaseID, dataSourceID, name, groupPropertyID string) (*notion.View, error)
+	DeleteView(ctx context.Context, id string) error
 }
 
 // NewClientFunc builds a NotionAPI from a source of bearer tokens.

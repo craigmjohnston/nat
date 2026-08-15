@@ -8,6 +8,9 @@ import (
 	"github.com/craigmjohnston/nat/internal/logging"
 )
 
+// BoardViewName is what the board view a migration creates is called in Notion.
+const BoardViewName = "Board"
+
 // MigrationAPI is the part of the client migrating a project needs, as an
 // interface so the callers that already hold a narrower one — the TUI's, the
 // CLI's — can pass it straight through.
@@ -16,6 +19,12 @@ type MigrationAPI interface {
 	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []Sort) ([]Page, error)
 	UpdateDataSourceProperties(ctx context.Context, id string, properties map[string]PropertySchema) (*DataSource, error)
 	UpdatePageProperties(ctx context.Context, pageID string, properties map[string]PropertyValue) (*Page, error)
+	SetDatabaseInline(ctx context.Context, id string, inline bool) error
+	ListViews(ctx context.Context, dataSourceID string) ([]View, error)
+	GetView(ctx context.Context, id string) (*View, error)
+	CreateBoardView(ctx context.Context, databaseID, dataSourceID, name, groupPropertyID string) (*View, error)
+	DeleteView(ctx context.Context, id string) error
+	DeleteBlock(ctx context.Context, id string) error
 }
 
 // Migration is what migrating one project changed, so the run can say. A
@@ -27,13 +36,23 @@ type Migration struct {
 	Milestones []string
 	// Slices counts the slices refiled from their relation onto that column.
 	Slices int
-	// StatusRenamed reports the Claimed status option renamed to In progress.
+	// StatusRenamed reports the Claimed status option become In progress. The
+	// API silently ignores renaming an option in place, so it is done the long
+	// way — In progress appended, the slices sitting on Claimed moved over, and
+	// Claimed dropped — and reported only once all three have happened.
 	StatusRenamed bool
+	// Board reports the Slices database put on the project page as the plan's
+	// own board: rendered inline, with a board view grouped by Milestone.
+	Board bool
+	// MilestonesTrashed reports the old Milestones database moved to Notion's
+	// trash, its milestones now living entirely on the Milestone column.
+	MilestonesTrashed bool
 }
 
 // Empty reports whether nothing was migrated.
 func (m Migration) Empty() bool {
-	return len(m.Milestones) == 0 && m.Slices == 0 && !m.StatusRenamed
+	return len(m.Milestones) == 0 && m.Slices == 0 && !m.StatusRenamed &&
+		!m.Board && !m.MilestonesTrashed
 }
 
 // Summary says what changed, in one line, for a status bar or a log.
@@ -48,6 +67,12 @@ func (m Migration) Summary() string {
 	}
 	if m.StatusRenamed {
 		parts = append(parts, fmt.Sprintf("%q renamed to %q", SliceClaimed, SliceInProgress))
+	}
+	if m.Board {
+		parts = append(parts, "the plan brought onto the project page as a board")
+	}
+	if m.MilestonesTrashed {
+		parts = append(parts, "the old Milestones database moved to Notion's trash")
 	}
 	if len(parts) == 0 {
 		return "nothing to migrate"
@@ -65,30 +90,38 @@ func pluralise(word string, n int) string {
 
 // MigrateProject reads a project's Slices data source and, where it is still in
 // the shape this app started with, migrates it in place to the one shape
-// everything now reads: milestones as the options of the slices' own Milestone
-// column, and one name for the in-progress status.
+// everything now reads: one page holding the whole plan, milestones as the
+// options of the slices' own Milestone column, and one name for the in-progress
+// status.
 //
-// Two things are migrated, and both are idempotent — a project already in the
-// one shape is read and left alone, which is what every load after the first
-// does:
+// The migrated things, each idempotent — a project already in the one shape is
+// read and left alone, which is what every load after the first does:
 //
 //   - A Milestone relation becomes a select whose options are the project's
 //     milestones in plan order, and every slice is refiled onto that option from
-//     the milestone page it related to. The Milestones database itself is left
-//     exactly as it is, simply never read again: nothing of the user's plan is
-//     destroyed, and it is still there to look at.
-//   - A Claimed status option is renamed to In progress, by ID, so the slices
-//     sitting on it keep their status.
+//     the milestone page it related to.
+//   - The Slices database becomes the plan on the page itself: rendered inline,
+//     with a board view grouped by the Milestone column. Where its only view is
+//     the default table this app created alongside it, that table is removed so
+//     the board is the first view — the one the plan's order is read from;
+//     views someone curated are left alongside the board instead.
+//   - The Milestones database, its milestones now wholly on the Milestone
+//     column, is moved to Notion's trash — recoverable there, not destroyed.
+//   - A Claimed status option becomes In progress. The API quietly ignores
+//     renaming an option in place, so it is done the long way: In progress is
+//     appended, every slice sitting on Claimed is moved onto it, and Claimed is
+//     dropped once nothing holds it.
 //
 // The whole migration is settled before the first write: a project whose Status
 // column was converted in the Notion UI to a type this app cannot write options
-// to is refused with the one edit to make there, rather than half-migrated.
+// to, or whose data sources name no database to put on the page or trash, is
+// refused whole rather than half-migrated.
 //
 // The plan is read in full before the schema changes, because converting the
-// column is what discards the relations it is read from. A run that dies between
-// the schema write and the last slice leaves those slices unfiled — their
-// milestone pages are still in Notion to refile them from — so what was written
-// is reported rather than assumed.
+// column is what discards the relations it is read from. A run that dies partway
+// leaves the milestone pages in Notion to refile from — the Milestones database
+// goes to the trash last, after everything else has succeeded — so what was
+// written is reported rather than assumed.
 func MigrateProject(ctx context.Context, api MigrationAPI, slicesDSID string) (*DataSource, Migration, error) {
 	ds, err := api.GetDataSource(ctx, slicesDSID)
 	if err != nil {
@@ -96,56 +129,149 @@ func MigrateProject(ctx context.Context, api MigrationAPI, slicesDSID string) (*
 	}
 
 	milestone, status := ds.Properties[PropMilestone], ds.Properties[PropStatus]
-	renameStatus := renamesClaimed(status)
-	if milestone.Relation == nil && !renameStatus {
+	replaceStatus := renamesClaimed(status)
+	if milestone.Relation == nil && !replaceStatus {
 		return ds, Migration{}, nil
 	}
-	if renameStatus && status.Select == nil {
+	if replaceStatus && status.Select == nil {
 		return nil, Migration{}, fmt.Errorf(
 			"the %s column is a %s, whose options this app cannot write: "+
 				"rename its %q option to %q in Notion and open the board again",
 			PropStatus, status.Type, SliceClaimed, SliceInProgress)
 	}
+	if milestone.Relation != nil && ds.Parent.DatabaseID == "" {
+		return nil, Migration{}, fmt.Errorf(
+			"the slices data source names no database to put on the page")
+	}
 
+	// Read everything before the first write: the schema change discards the
+	// relations the plan is read from, and a refusal here leaves the project
+	// exactly as it was.
 	var report Migration
-	var filing []sliceFiling
+	var names []string
+	var byPage map[string]string
+	var milestonesDB string
+	if milestone.Relation != nil {
+		if names, byPage, err = milestonePlan(ctx, api, milestone.Relation.DataSourceID); err != nil {
+			return nil, Migration{}, err
+		}
+		if milestonesDB, err = milestonesDatabase(ctx, api, milestone.Relation.DataSourceID); err != nil {
+			return nil, Migration{}, err
+		}
+	}
+	slices, err := api.QueryDataSource(ctx, slicesDSID, nil,
+		[]Sort{{Timestamp: TimestampCreated, Direction: SortAscending}})
+	if err != nil {
+		return nil, Migration{}, fmt.Errorf("load slices: %w", err)
+	}
+	writes := sliceWrites(slices, byPage, replaceStatus)
+
 	properties := map[string]PropertySchema{}
 	if milestone.Relation != nil {
-		names, byPage, err := milestonePlan(ctx, api, milestone.Relation.DataSourceID)
-		if err != nil {
-			return nil, Migration{}, err
-		}
-		if filing, err = sliceFilings(ctx, api, slicesDSID, byPage); err != nil {
-			return nil, Migration{}, err
-		}
 		properties[PropMilestone] = SchemaSelect(names...)
 		report.Milestones = names
 	}
-	if renameStatus {
-		properties[PropStatus] = renamedOption(status, SliceClaimed, SliceInProgress)
-		report.StatusRenamed = true
+	if replaceStatus {
+		// Renaming Claimed in place is silently ignored by the API, so In
+		// progress is appended here — alongside Claimed, which the slices still
+		// sit on — and Claimed is dropped below once they have moved.
+		properties[PropStatus], _ = status.AppendedOptions(SliceInProgress)
 	}
-
 	updated, err := api.UpdateDataSourceProperties(ctx, slicesDSID, properties)
 	if err != nil {
 		return nil, Migration{}, fmt.Errorf("migrate the slices schema: %w", err)
 	}
-	for _, f := range filing {
-		if _, err := api.UpdatePageProperties(ctx, f.pageID,
-			map[string]PropertyValue{PropMilestone: NewSelect(f.milestone)}); err != nil {
-			return nil, Migration{}, fmt.Errorf("file slice %s under %q: %w", f.pageID, f.milestone, err)
+	// The write that put the Milestone select in place is the one that echoes
+	// its property ID back, which is what the board view groups by.
+	milestonePropID := updated.Properties[PropMilestone].ID
+
+	for _, w := range writes {
+		if _, err := api.UpdatePageProperties(ctx, w.pageID, w.properties); err != nil {
+			if w.milestone != "" {
+				return nil, Migration{}, fmt.Errorf("file slice %s under %q: %w", w.pageID, w.milestone, err)
+			}
+			return nil, Migration{}, fmt.Errorf("move slice %s to %q: %w", w.pageID, SliceInProgress, err)
 		}
-		report.Slices++
+		if w.milestone != "" {
+			report.Slices++
+		}
 	}
+
+	if replaceStatus {
+		// Nothing sits on Claimed any more; drop it. The options are sent back
+		// exactly as the schema write echoed them — In progress now has an ID —
+		// minus the one being retired.
+		without := withoutOption(updated.Properties[PropStatus], SliceClaimed)
+		if updated, err = api.UpdateDataSourceProperties(ctx, slicesDSID,
+			map[string]PropertySchema{PropStatus: without}); err != nil {
+			return nil, Migration{}, fmt.Errorf("retire the %q option: %w", SliceClaimed, err)
+		}
+		report.StatusRenamed = true
+	}
+
+	if milestone.Relation != nil {
+		if err := putPlanOnPage(ctx, api, ds.Parent.DatabaseID, slicesDSID, milestonePropID); err != nil {
+			return nil, Migration{}, err
+		}
+		report.Board = true
+		// The Milestones database goes last: until here it was still in place
+		// to refile from, and from here the plan needs nothing it holds.
+		if err := api.DeleteBlock(ctx, milestonesDB); err != nil {
+			return nil, Migration{}, fmt.Errorf("trash the Milestones database: %w", err)
+		}
+		report.MilestonesTrashed = true
+	}
+
 	logging.Action("project migrated", "data_source", slicesDSID,
-		"milestones", len(report.Milestones), "slices", report.Slices, "status_renamed", report.StatusRenamed)
+		"milestones", len(report.Milestones), "slices", report.Slices,
+		"status_renamed", report.StatusRenamed, "board", report.Board,
+		"milestones_trashed", report.MilestonesTrashed)
 	return updated, report, nil
+}
+
+// putPlanOnPage makes the migrated Slices database read as the plan on the
+// project page: rendered inline, with a board view grouped by the Milestone
+// select — whose groups sit in manual order, which for a select is option
+// order, which is plan order. Where the database's only view is the default
+// table this app created with it, that table is removed so the board is the
+// first view — the one the plan's order is read from. Any other views were
+// arranged by someone, and are left alongside the board.
+func putPlanOnPage(ctx context.Context, api MigrationAPI, databaseID, dataSourceID, milestonePropID string) error {
+	if milestonePropID == "" {
+		return fmt.Errorf("the migrated schema names no %s property to group the board by", PropMilestone)
+	}
+	if err := api.SetDatabaseInline(ctx, databaseID, true); err != nil {
+		return fmt.Errorf("inline the slices database: %w", err)
+	}
+	views, err := api.ListViews(ctx, dataSourceID)
+	if err != nil {
+		return fmt.Errorf("list the plan's views: %w", err)
+	}
+	if _, err := api.CreateBoardView(ctx, databaseID, dataSourceID, BoardViewName, milestonePropID); err != nil {
+		return fmt.Errorf("create the board view: %w", err)
+	}
+	if len(views) != 1 {
+		return nil
+	}
+	// The list endpoint returns bare stubs, so whether the one prior view is
+	// the default table is only readable one view at a time.
+	view, err := api.GetView(ctx, views[0].ID)
+	if err != nil {
+		return fmt.Errorf("read the plan's view: %w", err)
+	}
+	if view.Type != ViewTypeTable {
+		return nil
+	}
+	if err := api.DeleteView(ctx, view.ID); err != nil {
+		return fmt.Errorf("remove the table view: %w", err)
+	}
+	return nil
 }
 
 // renamesClaimed reports whether a Status column still offers the old name for
 // the in-progress option and nothing else. A column offering both names is left
-// alone: renaming one onto the other would ask Notion for two options of a name,
-// and merging them is a decision about somebody's slices rather than a rename.
+// alone: moving one option's slices onto the other is a decision about
+// somebody's slices rather than a rename.
 func renamesClaimed(status PropertySchema) bool {
 	var claimed, inProgress bool
 	for _, name := range status.OptionNames() {
@@ -159,17 +285,14 @@ func renamesClaimed(status PropertySchema) bool {
 	return claimed && !inProgress
 }
 
-// renamedOption is the select definition with one option renamed. Every option
-// is sent back as it was read — ID, name and colour — because Notion replaces an
-// option list wholesale; the one being renamed keeps its ID, which is what makes
-// this a rename rather than a new option, so the pages sitting on it keep their
-// value.
-func renamedOption(status PropertySchema, from, to string) PropertySchema {
-	options := make([]SelectOption, len(status.Select.Options))
-	copy(options, status.Select.Options)
-	for i := range options {
-		if options[i].Name == from {
-			options[i].Name = to
+// withoutOption is the select definition minus the named option. Every option
+// kept is sent back exactly as it was read — ID, name and colour — because
+// Notion replaces an option list wholesale: what the list omits is removed.
+func withoutOption(status PropertySchema, name string) PropertySchema {
+	options := make([]SelectOption, 0, len(status.Select.Options))
+	for _, o := range status.Select.Options {
+		if o.Name != name {
+			options = append(options, o)
 		}
 	}
 	return PropertySchema{Select: &OptionsConfig{Options: options}}
@@ -212,34 +335,55 @@ func milestonePlan(ctx context.Context, api MigrationAPI, milestonesDSID string)
 	return names, byPage, nil
 }
 
-// sliceFiling is one slice and the milestone option it is to be refiled under.
-type sliceFiling struct {
-	pageID    string
+// milestonesDatabase names the database whose rows the Milestones data source
+// holds — the child of the project page that is trashed once the plan has moved
+// off it. It is resolved before anything is written, so a project it cannot be
+// read for is refused whole.
+func milestonesDatabase(ctx context.Context, api MigrationAPI, milestonesDSID string) (string, error) {
+	ds, err := api.GetDataSource(ctx, milestonesDSID)
+	if err != nil {
+		return "", fmt.Errorf("load the milestones database: %w", err)
+	}
+	if ds.Parent.DatabaseID == "" {
+		return "", fmt.Errorf("the milestones data source names no database to trash")
+	}
+	return ds.Parent.DatabaseID, nil
+}
+
+// pageWrite is the properties one slice is to be written during migration: the
+// milestone option its relation named, the in-progress status for the old name,
+// or both in the one write.
+type pageWrite struct {
+	pageID     string
+	properties map[string]PropertyValue
+	// milestone is the option the slice is refiled under, "" for a write that
+	// only moves its status.
 	milestone string
 }
 
-// sliceFilings reads which milestone each slice relates to, before the column
-// that says so is converted. A slice relating to nothing, or to a page the
-// milestones query did not return, has no option to file it under and is left
-// with an empty Milestone — the board shows those as Unassigned rather than
-// losing them.
-func sliceFilings(ctx context.Context, api MigrationAPI, slicesDSID string, byPage map[string]string) ([]sliceFiling, error) {
-	pages, err := api.QueryDataSource(ctx, slicesDSID, nil,
-		[]Sort{{Timestamp: TimestampCreated, Direction: SortAscending}})
-	if err != nil {
-		return nil, fmt.Errorf("load slices: %w", err)
-	}
-	var filings []sliceFiling
+// sliceWrites reads what each slice is to be written, before the schema changes
+// that would discard the relations it is read from. A slice relating to
+// nothing, or to a page the milestones query did not return, has no option to
+// file it under and is left with an empty Milestone — the board shows those as
+// Unassigned rather than losing them.
+func sliceWrites(pages []Page, byPage map[string]string, replaceStatus bool) []pageWrite {
+	var writes []pageWrite
 	for _, p := range pages {
-		ids := p.Properties[PropMilestone].RelationIDs()
-		if len(ids) == 0 {
-			continue
+		w := pageWrite{pageID: p.ID, properties: map[string]PropertyValue{}}
+		if ids := p.Properties[PropMilestone].RelationIDs(); len(ids) > 0 {
+			if name, ok := byPage[normalisedID(ids[0])]; ok {
+				w.properties[PropMilestone] = NewSelect(name)
+				w.milestone = name
+			}
 		}
-		if name, ok := byPage[normalisedID(ids[0])]; ok {
-			filings = append(filings, sliceFiling{pageID: p.ID, milestone: name})
+		if replaceStatus && p.Properties[PropStatus].SelectName() == SliceClaimed {
+			w.properties[PropStatus] = NewSelect(SliceInProgress)
+		}
+		if len(w.properties) > 0 {
+			writes = append(writes, w)
 		}
 	}
-	return filings, nil
+	return writes
 }
 
 // normalisedID puts a Notion ID in one form, so IDs read from different places

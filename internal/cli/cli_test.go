@@ -280,11 +280,20 @@ func (f *fakeAPI) UpdateDataSourceProperties(_ context.Context, id string, props
 	}
 	ds := notion.DataSource{ID: id, Properties: map[string]notion.PropertySchema{}}
 	if existing, ok := f.dataSources[id]; ok {
+		ds.Parent = existing.Parent
 		for name, s := range existing.Properties {
 			ds.Properties[name] = s
 		}
 	}
+	// A written property comes back carrying an ID, the way Notion answers: the
+	// one it already had, or a fresh one for a property that had none.
 	for name, s := range props {
+		if s.ID == "" {
+			s.ID = ds.Properties[name].ID
+		}
+		if s.ID == "" {
+			s.ID = "prop-" + name
+		}
 		ds.Properties[name] = s
 	}
 	if f.dataSources != nil {
@@ -323,6 +332,23 @@ func (f *fakeAPI) DataSourceOrder(_ context.Context, id string) ([]string, error
 	}
 	return f.order[id], nil
 }
+
+// The migration's page-shape calls. No command test drives an old-shape
+// project — MigrateProject has its own — so these only satisfy the interface.
+
+func (f *fakeAPI) SetDatabaseInline(context.Context, string, bool) error { return nil }
+
+func (f *fakeAPI) ListViews(context.Context, string) ([]notion.View, error) { return nil, nil }
+
+func (f *fakeAPI) GetView(context.Context, string) (*notion.View, error) {
+	return &notion.View{}, nil
+}
+
+func (f *fakeAPI) CreateBoardView(context.Context, string, string, string, string) (*notion.View, error) {
+	return &notion.View{}, nil
+}
+
+func (f *fakeAPI) DeleteView(context.Context, string) error { return nil }
 
 // testEnv builds an Env around a fake client and an in-memory config, and
 // returns the buffer its commands write to.

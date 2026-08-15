@@ -23,7 +23,8 @@ func TestGetDataSource(t *testing.T) {
 					"Name":{"id":"title","name":"Name","type":"title","title":{}},
 					"Status":{"id":"s","name":"Status","type":"select","select":{"options":[{"id":"1","name":"Todo","color":"gray"}]}},
 					"Order":{"id":"o","name":"Order","type":"number","number":{}}
-				}
+				},
+				"parent":{"type":"database_id","database_id":"db-1"}
 			}`))
 		}))
 		defer srv.Close()
@@ -47,6 +48,9 @@ func TestGetDataSource(t *testing.T) {
 		}
 		if ds.Properties["Order"].Number == nil {
 			t.Error("number property config was not decoded")
+		}
+		if ds.Parent.DatabaseID != "db-1" {
+			t.Errorf("Parent = %+v, want the database the rows belong to", ds.Parent)
 		}
 	})
 

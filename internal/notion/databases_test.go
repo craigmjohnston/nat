@@ -147,3 +147,40 @@ func TestGetDatabase(t *testing.T) {
 		}
 	})
 }
+
+func TestSetDatabaseInline(t *testing.T) {
+	t.Run("patches is_inline", func(t *testing.T) {
+		var gotMethod, gotPath, gotBody string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotMethod, gotPath = r.Method, r.URL.Path
+			body, _ := io.ReadAll(r.Body)
+			gotBody = string(body)
+			w.Write([]byte(`{"id":"db-1","is_inline":true}`))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		if err := c.SetDatabaseInline(context.Background(), "db-1", true); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if gotMethod != http.MethodPatch || gotPath != "/databases/db-1" {
+			t.Errorf("got %s %s, want PATCH /databases/db-1", gotMethod, gotPath)
+		}
+		if want := `{"is_inline":true}`; gotBody != want {
+			t.Errorf("body = %s, want %s", gotBody, want)
+		}
+	})
+
+	t.Run("propagates an API error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"code":"object_not_found","message":"nope"}`))
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		if err := c.SetDatabaseInline(context.Background(), "db-1", false); err == nil {
+			t.Fatal("err = nil, want the API error")
+		}
+	})
+}

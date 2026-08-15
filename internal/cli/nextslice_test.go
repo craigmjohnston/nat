@@ -619,13 +619,17 @@ func TestNextSliceMigratesAnOldProject(t *testing.T) {
 			Relation: &notion.RelationConfig{DataSourceID: "milestones-ds"},
 		},
 		notion.PropAssignee: {Type: notion.TypePeople},
-	}}
+	}, Parent: notion.Parent{Type: notion.ParentDatabase, DatabaseID: "slices-db"}}
 	api := &fakeAPI{
 		blocksByID: map[string][]notion.Block{
 			"project-1": conventionBlocks(t),
 			"s2":        briefBlocks(t, "Render the board, then stop."),
 		},
-		dataSources: map[string]notion.DataSource{"slices-ds": old},
+		dataSources: map[string]notion.DataSource{
+			"slices-ds": old,
+			"milestones-ds": {ID: "milestones-ds",
+				Parent: notion.Parent{Type: notion.ParentDatabase, DatabaseID: "milestones-db"}},
+		},
 		pages: map[string][]notion.Page{
 			"milestones-ds": {
 				{ID: "m1", Properties: map[string]notion.PropertyValue{notion.PropName: title("M1: Client")}},
@@ -646,16 +650,25 @@ func TestNextSliceMigratesAnOldProject(t *testing.T) {
 	// The milestones moved onto the slices' own column, the slices were refiled
 	// under them, and the claim went to the slice under M2 — all of which needs
 	// the plan to have been read in its new shape.
-	if len(api.schemaUpdates) != 1 {
-		t.Fatalf("schema writes = %+v, want the one migration wrote", api.schemaUpdates)
+	if len(api.schemaUpdates) != 2 {
+		t.Fatalf("schema writes = %+v, want the migration's two", api.schemaUpdates)
 	}
 	written := api.schemaUpdates[0].props
 	if got := written[notion.PropMilestone].OptionNames(); !reflect.DeepEqual(got, []string{"M1: Client", "M2: Board"}) {
 		t.Errorf("options = %v, want the milestones moved onto the column", got)
 	}
+	// In progress arrives alongside Claimed first — the API will not rename an
+	// option in place — and Claimed is retired by the second write.
 	if got := written[notion.PropStatus].OptionNames(); !reflect.DeepEqual(got,
-		[]string{notion.SliceTodo, notion.SliceInProgress, notion.SliceDone}) {
-		t.Errorf("status options = %v, want the old name renamed", got)
+		[]string{notion.SliceTodo, notion.SliceClaimed, notion.SliceDone, notion.SliceInProgress}) {
+		t.Errorf("status options = %v, want the new name appended", got)
+	}
+	if got := api.schemaUpdates[1].props[notion.PropStatus].OptionNames(); !reflect.DeepEqual(got,
+		[]string{notion.SliceTodo, notion.SliceDone, notion.SliceInProgress}) {
+		t.Errorf("status options = %v, want the old name retired", got)
+	}
+	if want := []string{"milestones-db"}; !reflect.DeepEqual(api.deletes, want) {
+		t.Errorf("deletes = %v, want the Milestones database trashed", api.deletes)
 	}
 	var claimed string
 	for _, u := range api.updates {

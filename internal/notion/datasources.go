@@ -29,6 +29,10 @@ type DataSource struct {
 	ID         string                    `json:"id"`
 	Name       string                    `json:"name"`
 	Properties map[string]PropertySchema `json:"properties"`
+	// Parent is the database whose rows the data source holds, which is how an
+	// operation addressed to the database itself — inlining it on its page,
+	// trashing it — finds it from the data source the app is configured with.
+	Parent Parent `json:"parent"`
 }
 
 // GetDataSource fetches a data source by ID, chiefly to verify its schema

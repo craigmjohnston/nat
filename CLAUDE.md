@@ -102,16 +102,23 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   headless command alike (`notion.MigrateProject`, run from `tui.fetchProject`
   and `cli.slicesDataSource`): the milestone pages become the options of a
   `Milestone` select, in plan order; every slice is refiled onto the option its
-  relation named; and the `Claimed` option is renamed to `In progress` by ID, so
-  the slices sitting on it keep their status. The Milestones database itself is
-  left in Notion untouched, simply never read again. The whole migration is
-  settled before the first write — a `Status` column converted in the Notion UI
-  cannot have its options written, and such a project is refused with the one
-  edit to make there rather than half-migrated — and the plan is read in full
-  before the schema changes, because converting the column is what discards the
-  relations it is read from. It is idempotent: a project already in the one
-  shape is read and left alone, which is what every load after the first does.
-  What changed is logged, and the board says so in a toast.
+  relation named; the Slices database becomes the plan on the page itself —
+  rendered inline, with a board view grouped by `Milestone` in manual (option,
+  so plan) order, replacing the lone default table where that is the only view
+  and left alongside any views someone curated; and the Milestones database,
+  its plan now wholly on the column, goes to Notion's trash — recoverable, and
+  only after everything else has succeeded. `Claimed` becomes `In progress` the
+  long way — appended, the slices holding it moved over, then dropped — because
+  the API silently ignores renaming an option in place (a 200 whose body still
+  says the old name). The whole migration is settled before the first write — a
+  `Status` column converted in the Notion UI cannot have its options written,
+  and such a project is refused with the one edit to make there rather than
+  half-migrated, as is one whose data sources name no parent databases — and
+  the plan is read in full before the schema changes, because converting the
+  column is what discards the relations it is read from. It is idempotent: a
+  project already in the one shape is read and left alone, which is what every
+  load after the first does. What changed is logged, and the board says so in a
+  toast.
 - Filing a slice under a milestone — the board's `a` and `m`, `slice-add`,
   `plan-apply` — writes the option naming it (`domain.Milestone.Ref()`, sent as
   `SelectType`, the column's own type). `milestone-add` and `plan-apply` add

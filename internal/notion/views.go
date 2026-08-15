@@ -23,11 +23,62 @@ type View struct {
 	Type string `json:"type"`
 }
 
+// The view types this app tells apart: the default table a database is born
+// with, and the board a plan is arranged on.
+const (
+	ViewTypeTable = "table"
+	ViewTypeBoard = "board"
+)
+
 // ListViews returns a data source's views, in the order Notion lists them —
-// which is the order of the view tabs above the database.
+// which is the order of the view tabs above the database. The list carries bare
+// stubs, an ID and nothing else; a view's type is only readable from GetView.
 func (c *Client) ListViews(ctx context.Context, dataSourceID string) ([]View, error) {
 	return paginate[View](ctx, c, http.MethodGet,
 		"/views?data_source_id="+url.QueryEscape(dataSourceID), nil)
+}
+
+// GetView fetches one view in full.
+func (c *Client) GetView(ctx context.Context, id string) (*View, error) {
+	var v View
+	if err := c.do(ctx, http.MethodGet, "/views/"+url.PathEscape(id), nil, &v); err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
+// CreateBoardView creates a board view of a data source, grouped by the select
+// property named. The groups sit in manual order, which for a select is its
+// option order — so a board grouped by a Milestone column shows the plan in the
+// plan's own order. The API addresses a new view by database and data source
+// both, the database saying where it lives and the data source what it shows.
+func (c *Client) CreateBoardView(ctx context.Context, databaseID, dataSourceID, name, groupPropertyID string) (*View, error) {
+	body := map[string]any{
+		"database_id":    databaseID,
+		"data_source_id": dataSourceID,
+		"name":           name,
+		"type":           ViewTypeBoard,
+		"configuration": map[string]any{
+			"type": ViewTypeBoard,
+			"group_by": map[string]any{
+				"type":        TypeSelect,
+				"property_id": groupPropertyID,
+				"sort":        map[string]any{"type": "manual"},
+			},
+		},
+	}
+	var v View
+	if err := c.do(ctx, http.MethodPost, "/views", body, &v); err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
+// DeleteView deletes a view. Unlike a block there is no trash to recover one
+// from, so this app only ever deletes the empty default table a migration
+// replaces with the board.
+func (c *Client) DeleteView(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodDelete, "/views/"+url.PathEscape(id), nil, nil)
 }
 
 // viewQueryResult is a page of a view query: the rows as bare page stubs, plus
