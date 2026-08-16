@@ -24,7 +24,7 @@ type termSession interface {
 	Cursor() (x, y int, visible bool)
 	SendKey(uv.KeyPressEvent)
 	SendBytes(p []byte)
-	SendMouse(x, y int, button uv.MouseButton, kind vterm.MouseKind)
+	SendMouse(x, y int, button uv.MouseButton, mod uv.KeyMod, kind vterm.MouseKind)
 	Paste(text string)
 	Resize(cols, rows int) error
 	Output() <-chan struct{}
@@ -304,10 +304,12 @@ func (a *App) viewerKey(msg tea.KeyPressMsg) tea.Cmd {
 // agent's own pane; nat draws the rectangle itself now, so it carries the mouse
 // there too.
 //
-// An event inside the box goes to the agent at the cell it landed on, and a
-// press there also hands the keyboard over, so tab is not the only way to type
-// at an agent. An event anywhere else is not the terminal's and is dropped —
-// bar a press, which is the board asking for the keyboard back.
+// An event inside the box goes to the agent at the cell it landed on, with
+// whatever modifiers were held as it happened — the tmux on the far end binds
+// ctrl+click as well as click, and a click stripped of its ctrl is a different
+// gesture. A press there also hands the keyboard over, so tab is not the only
+// way to type at an agent. An event anywhere else is not the terminal's and is
+// dropped — bar a press, which is the board asking for the keyboard back.
 //
 // An exited terminal is a frame being read rather than a child to click at, so
 // it takes no mouse at all.
@@ -330,7 +332,7 @@ func (a *App) viewerMouse(msg tea.MouseMsg) tea.Cmd {
 	if kind == vterm.MousePress {
 		a.viewer.focused = true
 	}
-	a.viewer.session.SendMouse(x, y, m.Button, kind)
+	a.viewer.session.SendMouse(x, y, m.Button, m.Mod, kind)
 	return nil
 }
 

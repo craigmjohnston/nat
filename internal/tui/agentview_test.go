@@ -50,6 +50,7 @@ type fakeTerm struct {
 type fakeMouse struct {
 	x, y   int
 	button uv.MouseButton
+	mod    uv.KeyMod
 	kind   vterm.MouseKind
 }
 
@@ -69,8 +70,8 @@ func (f *fakeTerm) SendKey(k uv.KeyPressEvent) {
 
 func (f *fakeTerm) SendBytes(p []byte) { f.raw = append(f.raw, string(p)) }
 
-func (f *fakeTerm) SendMouse(x, y int, button uv.MouseButton, kind vterm.MouseKind) {
-	f.mice = append(f.mice, fakeMouse{x: x, y: y, button: button, kind: kind})
+func (f *fakeTerm) SendMouse(x, y int, button uv.MouseButton, mod uv.KeyMod, kind vterm.MouseKind) {
+	f.mice = append(f.mice, fakeMouse{x: x, y: y, button: button, mod: mod, kind: kind})
 }
 
 func (f *fakeTerm) Paste(text string) { f.pastes = append(f.pastes, text) }
@@ -650,7 +651,12 @@ func termOrigin(a *App) (x, y int) {
 
 // mouseAt sends one mouse event of the given kind at a window cell.
 func mouseAt(a *App, kind vterm.MouseKind, x, y int) {
-	m := tea.Mouse{X: x, Y: y, Button: tea.MouseLeft}
+	mouseAtWithMod(a, kind, x, y, 0)
+}
+
+// mouseAtWithMod sends one mouse event at a window cell with modifiers held.
+func mouseAtWithMod(a *App, kind vterm.MouseKind, x, y int, mod tea.KeyMod) {
+	m := tea.Mouse{X: x, Y: y, Button: tea.MouseLeft, Mod: mod}
 	var msg tea.Msg
 	switch kind {
 	case vterm.MousePress:
@@ -687,6 +693,25 @@ func TestViewerMouseInsideTheBoxReachesTheAgent(t *testing.T) {
 		{x: 0, y: 0, button: tea.MouseLeft, kind: vterm.MouseMotion},
 		{x: 0, y: 0, button: tea.MouseLeft, kind: vterm.MouseWheel},
 		{x: lastX, y: lastY, button: tea.MouseLeft, kind: vterm.MouseWheel},
+	}
+	if !reflect.DeepEqual(term.mice, want) {
+		t.Errorf("mice = %+v, want %+v", term.mice, want)
+	}
+}
+
+// The modifiers held during an event go to the agent with it: the tmux on the
+// far end of the terminal binds C-MouseDown1Pane as well as MouseDown1Pane, and
+// a ctrl+click that arrives stripped of its ctrl fires the wrong binding.
+func TestViewerMouseCarriesTheModifiers(t *testing.T) {
+	app, _, term := viewerApp(t)
+	originX, originY := termOrigin(app)
+
+	mouseAtWithMod(app, vterm.MousePress, originX+1, originY+1, tea.ModCtrl)
+	mouseAtWithMod(app, vterm.MouseWheel, originX+1, originY+1, tea.ModShift|tea.ModAlt)
+
+	want := []fakeMouse{
+		{x: 1, y: 1, button: tea.MouseLeft, mod: tea.ModCtrl, kind: vterm.MousePress},
+		{x: 1, y: 1, button: tea.MouseLeft, mod: tea.ModShift | tea.ModAlt, kind: vterm.MouseWheel},
 	}
 	if !reflect.DeepEqual(term.mice, want) {
 		t.Errorf("mice = %+v, want %+v", term.mice, want)

@@ -320,7 +320,7 @@ func TestSendMouseFollowsTheChildsMouseModes(t *testing.T) {
 			}
 
 			got := sentMouse(t, f, s, func() {
-				s.SendMouse(3, 1, uv.MouseLeft, MousePress)
+				s.SendMouse(3, 1, uv.MouseLeft, 0, MousePress)
 			})
 			if got != tt.want {
 				t.Fatalf("child was sent %q, want %q", got, tt.want)
@@ -349,7 +349,38 @@ func TestSendMouseEncodesEachKindOfEvent(t *testing.T) {
 			setMode(t, f, s, "\x1b[?1000h\x1b[?1006h", "m")
 
 			got := sentMouse(t, f, s, func() {
-				s.SendMouse(3, 1, tt.button, tt.kind)
+				s.SendMouse(3, 1, tt.button, 0, tt.kind)
+			})
+			if got != tt.want {
+				t.Fatalf("child was sent %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// The modifiers held during an event are encoded into the button byte — 4 for
+// shift, 8 for alt, 16 for ctrl, added to the button's own code — so a child
+// that binds a modified gesture sees the one that happened.
+func TestSendMouseEncodesTheModifiers(t *testing.T) {
+	tests := []struct {
+		name string
+		mod  uv.KeyMod
+		want string
+	}{
+		{"none", 0, "\x1b[<0;4;2M"},
+		{"shift", uv.ModShift, "\x1b[<4;4;2M"},
+		{"alt", uv.ModAlt, "\x1b[<8;4;2M"},
+		{"ctrl", uv.ModCtrl, "\x1b[<16;4;2M"},
+		{"all three", uv.ModShift | uv.ModAlt | uv.ModCtrl, "\x1b[<28;4;2M"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFakePty()
+			s := startFake(t, f, 20, 4)
+			setMode(t, f, s, "\x1b[?1000h\x1b[?1006h", "m")
+
+			got := sentMouse(t, f, s, func() {
+				s.SendMouse(3, 1, uv.MouseLeft, tt.mod, MousePress)
 			})
 			if got != tt.want {
 				t.Fatalf("child was sent %q, want %q", got, tt.want)
@@ -364,7 +395,7 @@ func TestSendMouseStaysOrderedWithKeys(t *testing.T) {
 	setMode(t, f, s, "\x1b[?1000h\x1b[?1006h", "m")
 
 	s.SendBytes([]byte("a"))
-	s.SendMouse(3, 1, uv.MouseLeft, MousePress)
+	s.SendMouse(3, 1, uv.MouseLeft, 0, MousePress)
 	s.SendKey(uv.KeyPressEvent{Code: 'b', Text: "b"})
 
 	waitOut(t, f, "a\x1b[<0;4;2Mb")
