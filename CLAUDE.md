@@ -124,7 +124,16 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   info and a form. An agent that exits leaves its last frame on screen marked
   `exited`, and the after-viewing refetch — the slice's page, or the whole plan
   for the planning agent — happens once, whichever of the client's EOF and the
-  live poll notices first. `T` is the hatch to the old full-screen attach.
+  live poll notices first. `T` is the hatch to the old full-screen attach. The
+  mouse is the terminal's too: all-motion reporting is asked for on the view
+  only while one is on show — with it off the user's own selection and
+  scrollback are left alone, and the board has no use for a click — and an event
+  inside the box is turned into a cell of the child's screen and handed to
+  `SendMouse`, a press there taking the keyboard as well. Everything outside the
+  box is dropped, bar a press, which hands the keyboard back. Nothing between
+  swallows it: tmux passes mouse reporting through unless its own `mouse` option
+  is on, which nat sets for the sessions it makes for agents and never for the
+  one it hosts the board in.
   `presence.go` is the star a slice with an agent on it is marked with: it
   pulses — the same star swelling and settling, one cell wide at every frame so
   the row does not shift under it — while the agent works, and holds a star of
