@@ -344,8 +344,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.keyPressed(msg)
 	case tea.MouseMsg:
 		// The mouse is only ever reported while a terminal is beside the board —
-		// see [App.View] — and only the terminal has anything to do with it.
-		return a, a.viewerMouse(msg)
+		// see [App.View] — and both halves of that split take their own; see
+		// [App.mouseEvent].
+		return a, a.mouseEvent(msg)
+	case linkOpenedMsg:
+		return a, a.linkOpened(msg)
 	case tea.BackgroundColorMsg:
 		a.setStyles(NewStyles(msg.IsDark()))
 		return a, nil
@@ -924,8 +927,11 @@ func (a *App) View() tea.View {
 //
 // It is asked for only while there is a terminal to route it to, because
 // reporting takes the mouse off the terminal emulator itself: with it on, the
-// user's own selection and scrollback need a modifier held. The board has
-// nothing it would do with a click, so it leaves the mouse where it was.
+// user's own selection and scrollback need a modifier held. With no terminal on
+// show there is nothing the mouse could reach that a key does not, so it is
+// left where it was — and while there is one the board handles its own half of
+// the window, since the terminal's link handling has gone for both halves at
+// once; see [App.mouseEvent].
 //
 // Nothing between here and the agent swallows it: tmux hands mouse reporting
 // straight through unless its own `mouse` option is on, which nat sets for the

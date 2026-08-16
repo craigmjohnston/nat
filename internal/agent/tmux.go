@@ -696,8 +696,10 @@ const (
 	stockCtrlClick = "swap-pane -s @"
 )
 
-// urlOpener is the command that hands a URL to the desktop on this platform.
-func urlOpener() string { return urlOpenerFor(runtime.GOOS) }
+// URLOpener is the command that hands a URL to the desktop on this platform.
+// The TUI opens the board's PR chips with it too, since a click there is nat's
+// own while it is holding the mouse.
+func URLOpener() string { return urlOpenerFor(runtime.GOOS) }
 
 // urlOpenerFor picks the opener for a GOOS, split out so both answers are
 // reachable from a test run on either platform.
@@ -723,7 +725,7 @@ func urlOpenerFor(goos string) string {
 // never what a click on a URL wants. Bindings are idempotent to repeat, so
 // chaining them onto every launch costs nothing.
 func hyperlinkClickArgs() []string {
-	open := fmt.Sprintf("run-shell -b '%s #{q:mouse_hyperlink}'", urlOpener())
+	open := fmt.Sprintf("run-shell -b '%s #{q:mouse_hyperlink}'", URLOpener())
 	return []string{
 		";", "bind-key", "-T", "root", "MouseDown1Pane",
 		"if-shell", "-F", "-t", "=", hyperlinkUnderMouse,

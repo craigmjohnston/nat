@@ -592,6 +592,129 @@ func (b Board) CursorSpan() (top, height int) {
 	return top, 1
 }
 
+// RowAtLine is the row drawn on a line of the board, counted from the first
+// line of the whole render, and whether that line has a row on it at all: the
+// mouse's way back from a line of the window to the row it points at, since a
+// wrapped row takes more than one line and nothing below the last row is any
+// row's.
+func (b Board) RowAtLine(line int) (int, bool) {
+	if line < 0 {
+		return 0, false
+	}
+	at := 0
+	for i, lines := range b.rowLines() {
+		at += len(lines)
+		if line < at {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// SelectRow puts the cursor on a row, the way the movement keys do — a row that
+// is not there is no move at all.
+func (b *Board) SelectRow(i int) { b.move(i - b.cursor) }
+
+// CursorToVisible keeps the cursor on a row the band of lines [top, top+height)
+// draws whole, moving it to the nearest such row when scrolling has left it
+// off screen. It is what makes the wheel and the layout's own scrolling agree:
+// the layout brings the cursor's row back on screen whenever it re-syncs, so a
+// cursor left behind by a scroll would drag the board back where it was.
+//
+// A band too short for the row it lands on has no whole row to offer, so the
+// cursor goes to whichever row the top line belongs to and the re-sync scrolls
+// to suit it.
+func (b *Board) CursorToVisible(top, height int) {
+	if height <= 0 || len(b.rows) == 0 {
+		return
+	}
+	first, last, at := -1, -1, 0
+	for i, lines := range b.rowLines() {
+		if at >= top && at+len(lines) <= top+height {
+			if first < 0 {
+				first = i
+			}
+			last = i
+		}
+		at += len(lines)
+	}
+	if first < 0 {
+		if i, ok := b.RowAtLine(top); ok {
+			b.SelectRow(i)
+		}
+		return
+	}
+	switch {
+	case b.cursor < first:
+		b.SelectRow(first)
+	case b.cursor > last:
+		b.SelectRow(last)
+	}
+}
+
+// LinkAt is the URL of the hyperlink drawn at a cell of the board — the PR
+// chip, the only one there is — and whether that cell carries one. With mouse
+// reporting on, the click that would have opened it belongs to the app, so the
+// app has to know what sits under it; see [App.boardClick].
+func (b Board) LinkAt(line, col int) (string, bool) {
+	at := 0
+	for _, lines := range b.rowLines() {
+		if line < at+len(lines) {
+			if line < at {
+				return "", false
+			}
+			return hyperlinkAt(lines[line-at], col)
+		}
+		at += len(lines)
+	}
+	return "", false
+}
+
+// hyperlinkAt is the URL of the OSC 8 hyperlink covering a cell of one rendered
+// line, walking the line sequence by sequence so the escapes cost the count no
+// columns. A link left open at the end of the line runs to that end.
+func hyperlinkAt(line string, col int) (string, bool) {
+	var (
+		url   string
+		start int
+		width int
+		state byte
+	)
+	for len(line) > 0 {
+		seq, w, n, next := xansi.DecodeSequence(line, state, nil)
+		if u, ok := hyperlinkTarget(seq); ok {
+			if u == "" {
+				if url != "" && col >= start && col < width {
+					return url, true
+				}
+				url = ""
+			} else {
+				url, start = u, width
+			}
+		}
+		width += w
+		line, state = line[n:], next
+	}
+	if url != "" && col >= start {
+		return url, true
+	}
+	return "", false
+}
+
+// hyperlinkTarget is the URL an OSC 8 sequence sets, and whether the sequence
+// is one at all. The closing sequence sets none, which is how a link ends.
+func hyperlinkTarget(seq string) (string, bool) {
+	const open = "\x1b]8;"
+	if !strings.HasPrefix(seq, open) {
+		return "", false
+	}
+	body := strings.TrimSuffix(strings.TrimSuffix(seq[len(open):], "\a"), "\x1b\\")
+	// The parameters come first and this app sets none, so the URL is whatever
+	// follows them.
+	_, url, _ := strings.Cut(body, ";")
+	return url, true
+}
+
 // renderRow draws one row, with the cursor marker in front of it. The row
 // under the cursor is drawn plain and handed to finishRow for its background
 // fill, so the marker takes the fill's colour like everything else on it.
@@ -985,9 +1108,11 @@ func prLabel(url string) string {
 
 // prChip is the badge a slice with a pull request carries, wrapped in an OSC 8
 // hyperlink to it: terminals that speak them open the PR on a click, and those
-// that do not simply draw the text, since the escape takes no cells. The app
-// handles no mouse events of its own for this — the click is the terminal's,
-// and inside tmux the hyperlink bindings the agent layer installs.
+// that do not simply draw the text, since the escape takes no cells. The click
+// is the terminal's — and inside tmux the hyperlink bindings the agent layer
+// installs — except while nat holds the mouse for the agent terminal beside the
+// board, when the app reads the link out of the drawn row and opens it itself;
+// see [Board.LinkAt].
 func (b Board) prChip(url string, selected bool) string {
 	return xansi.SetHyperlink(url) +
 		paint(selected, b.styles.PR, prLabel(url)) +
