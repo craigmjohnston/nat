@@ -108,6 +108,27 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   and refused comes back as an `*ExitError` whose message is the first line of
   its stderr, since "a pull request for branch X already exists" is the entire
   point of showing the failure.
+- `internal/git/` — git, wrapped as thinly as gh is and for the same reason: the
+  one thing the board asks of it is the diff of a slice's handed-back branch, so
+  the work can be read before `p` turns it into a pull request. `Diff` runs one
+  `git diff --merge-base <base> <branch>` in the slice's repo and hands back what
+  git wrote alongside the base it measured against — the merge base rather than
+  the tip, since what the branch did is the point and not everything main has
+  moved on by. The base is whatever `refs/remotes/origin/HEAD` names and `main`
+  when there is no such ref, which is logged and swallowed rather than returned:
+  the fallback is the project's own convention, and refusing a diff over it would
+  be worse than showing one against main. The prefixes are pinned and any
+  external diff driver refused (`--src-prefix=a/ --dst-prefix=b/ --no-ext-diff
+  --no-color`), because the output is parsed rather than shown as it stands and a
+  repository configured with `diff.noprefix` would hand back something else.
+  `ParseFiles` splits that output into `File`s — the paths, the ± tallies,
+  whether git described the file rather than diffing it, and the section's lines
+  verbatim, since the viewer is read-only and the shape it needs is the shape git
+  already produced. The paths come from the `+++`/`---` lines rather than the
+  `diff --git` header they follow, which pairs two paths with one space between
+  them and cannot be split where a filename holds spaces of its own. `Runner` is
+  its own rather than `gh.Runner`, because a package about git has no business
+  importing the GitHub CLI to borrow a type off it.
 - `internal/cli/` — the headless commands (`nat info [--json]`,
   `nat next-slice [--json]`, which claims the next unblocked Todo slice under
   the lowest-ordered open milestone and prints its brief,
@@ -185,7 +206,25 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   a title is text.
   `approve.go` is the `p` key, the board's one action that reaches outside
   Notion — the domain rule on `Branch` says what it does and why gh's failures
-  are toasts.
+  are toasts. `diff.go` and `diffflow.go` are `v`, the key that is answered with
+  it: the unified diff of the same branch, read through `internal/git` and drawn
+  as a screen over the board like help and info, which is where the work is read
+  before it is approved. It is read-only — nothing on it writes anything — and it
+  holds the parsed files rather than the rendered body, because a body line is
+  cut to the width it is drawn at and a resize renders again. One diff line is
+  one body line, truncated rather than wrapped: the file jumps scroll to a line
+  number, and a body whose lines did not correspond to git's would send them to
+  the wrong place. The file list beside it is what `n`/`p` move through, and it
+  goes entirely on a window under 60 columns, where the columns are worth more to
+  the diff than to a list of paths — the jumps go on working either way, which is
+  what per-file navigation actually needs. Lines are coloured by their shape
+  rather than their syntax, the header lines tested before the +/- ones they look
+  like, since `+++ b/main.go` is a header and not three added characters. A read
+  that fails takes the diff it replaced with it, unlike the info screen's,
+  because a diff is of one branch at one moment and leaving the last one up under
+  a failure would be showing the wrong change; the refresh key reads the branch
+  again while the screen is up, which is what an agent pushing another commit is
+  worth asking about.
   `settings.go` is `S`, the config file as a form, so nothing local has to be
   edited by hand: the active project's working directory, the agent split, the
   poll interval and the two model pairs — and nothing else in the file, since
@@ -350,7 +389,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `Handed back` heading rather than `Summary`. A branch is refused outright
   where `notion.ShapeOf` reads no `Branch` text column — a hand-back written
   nowhere is one lost — and refused before the note goes on, so the slice is
-  left as it was. `p` on the board is what ends that wait: it confirms on the row, runs `gh pr create` in the
+  left as it was. `v` on the board is how that wait is read — the branch's diff
+  against the base it was cut from, on a screen of its own — and only a
+  handed-back slice has one to read, the same rule and the same refusals `p`
+  applies. `p` on the board is what ends that wait: it confirms on the row, runs `gh pr create` in the
   slice's repo from that branch, and writes the URL it gets back onto the `PR`
   property as it sets the status to `Done` — the one board key that reaches
   outside Notion, and the only place a slice's PR is recorded from the TUI. The

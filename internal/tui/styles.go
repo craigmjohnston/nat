@@ -190,6 +190,22 @@ type Styles struct {
 	// It takes the Success green the finished things take: the work itself is
 	// done, and what is pending is a person opening the pull request from it.
 	Review lipgloss.Style
+	// DiffFile, DiffMeta, DiffHunk, DiffAdd and DiffDel colour the unified diff
+	// of a slice's branch, by the shape of the line rather than by its syntax:
+	// the "diff --git" line that opens a file's section, the header lines under
+	// it, a hunk's @@ line, and the added and removed lines themselves. Added and
+	// removed take the Success and Danger colours the rest of the interface reads
+	// outcomes in — which is what a diff's green and red are anyway.
+	DiffFile lipgloss.Style
+	DiffMeta lipgloss.Style
+	DiffHunk lipgloss.Style
+	DiffAdd  lipgloss.Style
+	DiffDel  lipgloss.Style
+	// DiffCount is the ± tally beside a path in the diff's file list, and
+	// DiffRule the rule between the list and the diff beside it.
+	DiffCount lipgloss.Style
+	DiffRule  lipgloss.Style
+
 	// StarDim, StarMid and StarPeak are the star of a slice with an agent
 	// working on it, brightening and settling as the pulse swells: all three
 	// the Working orange, separated by weight the way Claude Code's own
@@ -293,6 +309,14 @@ func NewStyles(isDark bool) Styles {
 		Live:     lipgloss.NewStyle().Bold(true).Foreground(t.Success),
 		Blocked:  lipgloss.NewStyle().Foreground(t.Muted),
 		Review:   lipgloss.NewStyle().Bold(true).Foreground(t.Success),
+
+		DiffFile:  lipgloss.NewStyle().Bold(true).Foreground(t.Accent),
+		DiffMeta:  lipgloss.NewStyle().Foreground(t.Muted),
+		DiffHunk:  lipgloss.NewStyle().Foreground(t.AccentAlt),
+		DiffAdd:   lipgloss.NewStyle().Foreground(t.Success),
+		DiffDel:   lipgloss.NewStyle().Foreground(t.Danger),
+		DiffCount: lipgloss.NewStyle().Foreground(t.Muted),
+		DiffRule:  lipgloss.NewStyle().Foreground(t.SurfaceHi),
 
 		StarDim:     lipgloss.NewStyle().Faint(true).Foreground(t.Working),
 		StarMid:     lipgloss.NewStyle().Foreground(t.Working),

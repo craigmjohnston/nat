@@ -1,0 +1,359 @@
+package tui
+
+import (
+	"errors"
+	"strings"
+	"testing"
+
+	xansi "github.com/charmbracelet/x/ansi"
+
+	"github.com/craigmjohnston/nat/internal/git"
+)
+
+// diffWidth and diffHeight are the size the diff tests render at: wide enough
+// for the file list beside the diff, short enough that the sample overflows and
+// has to be scrolled and jumped through.
+const (
+	diffTestWidth  = 72
+	diffTestHeight = 10
+)
+
+// sampleDiff is a diff with one of every line shape the screen colours: a file
+// header, a hunk, context, additions, removals, a created file and a binary one
+// — and enough files that the list scrolls and the jumps have somewhere to go.
+const sampleDiff = `diff --git a/internal/tui/board.go b/internal/tui/board.go
+index 1111111..2222222 100644
+--- a/internal/tui/board.go
++++ b/internal/tui/board.go
+@@ -12,7 +12,7 @@ func (b Board) View() string {
+ 	lines := b.rows
+-	return strings.Join(lines, "\n")
++	return strings.Join(fitRow(lines), "\n")
+ }
+diff --git a/internal/tui/diff.go b/internal/tui/diff.go
+new file mode 100644
+index 0000000..3333333
+--- /dev/null
++++ b/internal/tui/diff.go
+@@ -0,0 +1,3 @@
++package tui
++
++// Diff is the review screen.
+diff --git a/a/very/deeply/nested/directory/somewhere/settings.go b/a/very/deeply/nested/directory/somewhere/settings.go
+index 4444444..5555555 100644
+--- a/a/very/deeply/nested/directory/somewhere/settings.go
++++ b/a/very/deeply/nested/directory/somewhere/settings.go
+@@ -1 +1 @@
+-package old
++package new
+diff --git a/docs/shot.png b/docs/shot.png
+index 6666666..7777777 100644
+Binary files a/docs/shot.png and b/docs/shot.png differ
+`
+
+// newTestDiff returns a diff screen showing the sample at a fixed size, as the
+// review of a branch handed back on.
+func newTestDiff() *Diff {
+	d := NewDiff(DefaultStyles())
+	d.SetSize(diffTestWidth, diffTestHeight)
+	d.Start("Diff viewer", "slice/diff-viewer", "/repos/nat")
+	d.SetFiles("origin/main", git.ParseFiles(sampleDiff))
+	return &d
+}
+
+func TestDiffRendersTheBranch(t *testing.T) {
+	golden(t, "diff-files", newTestDiff().View(""))
+}
+
+// TestDiffWithoutRoomForTheFileList covers a narrow window: the columns go to
+// the diff, which is where the content is.
+func TestDiffWithoutRoomForTheFileList(t *testing.T) {
+	d := newTestDiff()
+	d.SetSize(diffSplitMin-1, diffTestHeight)
+	golden(t, "diff-narrow", d.View(""))
+	if strings.Contains(xansi.Strip(d.View("")), "│") {
+		t.Error("a narrow window should draw no rule, and so no file list")
+	}
+}
+
+// TestDiffStatesEachSayWhatIsGoingOn covers the four things the screen can be
+// showing besides a diff.
+func TestDiffStatesEachSayWhatIsGoingOn(t *testing.T) {
+	d := NewDiff(DefaultStyles())
+	d.SetSize(diffTestWidth, diffTestHeight)
+	if got := xansi.Strip(d.View("")); !strings.Contains(got, "press v") {
+		t.Errorf("idle view = %q, want it to say where a diff comes from", got)
+	}
+
+	d.Start("Diff viewer", "slice/diff-viewer", "/repos/nat")
+	if !d.Busy() {
+		t.Error("Busy() = false while a read is in flight")
+	}
+	if got := xansi.Strip(d.View("~")); !strings.Contains(got, "~ Reading the diff of slice/diff-viewer") {
+		t.Errorf("loading view = %q, want the spinner and the branch", got)
+	}
+
+	d.SetFiles("origin/main", nil)
+	if got := xansi.Strip(d.View("")); !strings.Contains(got, "slice/diff-viewer has no changes against origin/main") {
+		t.Errorf("empty view = %q, want it to name the branch and the base", got)
+	}
+
+	d.Fail(errors.New("fatal: bad revision\nand a second line"))
+	if got := xansi.Strip(d.View("")); !strings.Contains(got, "fatal: bad revision") ||
+		strings.Contains(got, "second line") {
+		t.Errorf("failed view = %q, want git's first line alone", got)
+	}
+}
+
+// TestDiffFailureDropsWhatWasOnScreen covers a reread that failed over a diff
+// already up: a diff is of one branch at one moment, and the old one is not it.
+func TestDiffFailureDropsWhatWasOnScreen(t *testing.T) {
+	d := newTestDiff()
+	d.Fail(errors.New("boom"))
+	if len(d.files) != 0 || d.vp.GetContent() != "" {
+		t.Error("a failed read should take the diff it replaced with it")
+	}
+}
+
+// TestDiffJumpsBetweenFiles covers the per-file navigation: each jump scrolls
+// the diff to the top of the section the list's cursor lands on, and the ends
+// hold rather than wrap.
+func TestDiffJumpsBetweenFiles(t *testing.T) {
+	d := newTestDiff()
+	if d.cursor != 0 || d.vp.YOffset() != 0 {
+		t.Fatalf("a fresh diff starts at file %d, offset %d, want the top of the first",
+			d.cursor, d.vp.YOffset())
+	}
+	// The last file's section starts nearer the end than a screenful, so the
+	// viewport holds at the bottom rather than scrolling past it.
+	bottom := strings.Count(d.vp.GetContent(), "\n") + 1 - diffTestHeight
+	for want := 1; want < len(d.files); want++ {
+		d.Update(keyPress("n"))
+		if d.cursor != want {
+			t.Fatalf("after %d jumps the cursor is on file %d, want %d", want, d.cursor, want)
+		}
+		wantLine := min(d.offsets[want], bottom)
+		if got := d.vp.YOffset(); got != wantLine {
+			t.Errorf("file %d is scrolled to line %d, want %d", want, got, wantLine)
+		}
+	}
+	last := d.cursor
+	d.Update(keyPress("n"))
+	if d.cursor != last {
+		t.Errorf("a jump past the end moved to %d, want it to hold at %d", d.cursor, last)
+	}
+	for range len(d.files) + 2 {
+		d.Update(keyPress("p"))
+	}
+	if d.cursor != 0 || d.vp.YOffset() != 0 {
+		t.Errorf("jumping back reached file %d at line %d, want the first file at the top",
+			d.cursor, d.vp.YOffset())
+	}
+}
+
+// TestDiffJumpsWithNothingToJumpThrough covers the keys on an empty diff, which
+// have nowhere to go and must not run off the end of the list.
+func TestDiffJumpsWithNothingToJumpThrough(t *testing.T) {
+	d := NewDiff(DefaultStyles())
+	d.SetSize(diffTestWidth, diffTestHeight)
+	d.SetFiles("origin/main", nil)
+	d.Update(keyPress("n"))
+	d.Update(keyPress("p"))
+	if d.cursor != 0 {
+		t.Errorf("cursor = %d, want it left alone", d.cursor)
+	}
+}
+
+// TestDiffScrollsTheFileListWithTheCursor covers a change of more files than
+// the list has room for: the cursor stays on the list rather than running off
+// the bottom of it.
+func TestDiffScrollsTheFileListWithTheCursor(t *testing.T) {
+	d := NewDiff(DefaultStyles())
+	// Three rows of list, and five files to move through them.
+	d.SetSize(diffTestWidth, 4)
+	d.SetFiles("origin/main", manyFiles(5))
+	for range 4 {
+		d.Update(keyPress("n"))
+	}
+	if d.cursor != 4 {
+		t.Fatalf("cursor = %d, want the last file", d.cursor)
+	}
+	if d.listTop != 2 {
+		t.Errorf("listTop = %d, want the list scrolled to keep the cursor on it", d.listTop)
+	}
+	if got := xansi.Strip(d.listView()); strings.Contains(got, "file0.go") {
+		t.Errorf("list = %q, want the files scrolled past to be off it", got)
+	}
+	for range 4 {
+		d.Update(keyPress("p"))
+	}
+	if d.listTop != 0 {
+		t.Errorf("listTop = %d, want the list back at the top with the cursor", d.listTop)
+	}
+}
+
+// TestDiffListWithNoRoomAtAll covers a band with no lines to draw rows on,
+// which is the state a window shorter than its own frame leaves.
+func TestDiffListWithNoRoomAtAll(t *testing.T) {
+	d := NewDiff(DefaultStyles())
+	d.SetSize(diffTestWidth, 0)
+	d.SetFiles("origin/main", manyFiles(3))
+	d.Update(keyPress("n"))
+	if d.listTop != 0 {
+		t.Errorf("listTop = %d, want it left at the top when there are no rows", d.listTop)
+	}
+}
+
+// manyFiles is n one-line changes, for the tests about the list rather than
+// about the diff.
+func manyFiles(n int) []git.File {
+	var diff strings.Builder
+	for i := range n {
+		diff.WriteString("diff --git a/file" + string(rune('0'+i)) + ".go b/file" + string(rune('0'+i)) + ".go\n")
+		diff.WriteString("@@ -1 +1 @@\n-old\n+new\n")
+	}
+	return git.ParseFiles(diff.String())
+}
+
+// TestDiffScrollsWithTheViewportKeys covers the keys the screen does not claim
+// for itself, which belong to the viewport under it.
+func TestDiffScrollsWithTheViewportKeys(t *testing.T) {
+	d := newTestDiff()
+	d.Update(keyPress("j"))
+	if d.vp.YOffset() == 0 {
+		t.Error("j should scroll the diff")
+	}
+}
+
+// TestDiffRerendersOnResize covers the body being cut to the width it is drawn
+// at: a resize renders again rather than leaving lines cut to the old one.
+func TestDiffRerendersOnResize(t *testing.T) {
+	d := newTestDiff()
+	wide := d.vp.GetContent()
+	d.SetSize(40, diffTestHeight)
+	if d.vp.GetContent() == wide {
+		t.Error("a resize should render the diff again at the new width")
+	}
+}
+
+// TestDiffOneLineIsOneLine covers what the file jumps depend on: a body line
+// per diff line, however long the diff's lines are.
+func TestDiffOneLineIsOneLine(t *testing.T) {
+	d := newTestDiff()
+	var want int
+	for _, f := range d.files {
+		want += len(f.Lines)
+	}
+	// One blank line between each pair of sections.
+	want += len(d.files) - 1
+	if got := strings.Count(d.vp.GetContent(), "\n") + 1; got != want {
+		t.Errorf("body is %d lines, want %d — one per line of the diff", got, want)
+	}
+}
+
+// TestDiffTargetAndReset cover what the refresh key reads and what a project
+// switch clears.
+func TestDiffTargetAndReset(t *testing.T) {
+	d := newTestDiff()
+	if !d.Loadable() {
+		t.Error("Loadable() = false on a screen pointed at a branch")
+	}
+	slice, branch, dir := d.Target()
+	if slice != "Diff viewer" || branch != "slice/diff-viewer" || dir != "/repos/nat" {
+		t.Errorf("Target() = %q/%q/%q, want what the screen was opened on", slice, branch, dir)
+	}
+
+	d.Reset()
+	if d.Loadable() || len(d.files) != 0 || d.state != diffIdle {
+		t.Error("Reset() should leave nothing of the branch it was showing")
+	}
+	if d.width != diffTestWidth || d.height != diffTestHeight {
+		t.Error("Reset() should keep the room the window gave the screen")
+	}
+}
+
+// TestDiffLineStyles pins which style each shape of line is drawn in, since the
+// colours are the whole of how a unified diff is read.
+func TestDiffLineStyles(t *testing.T) {
+	s := DefaultStyles()
+	d := NewDiff(s)
+	for _, tt := range []struct {
+		line string
+		want string
+	}{
+		{"diff --git a/x b/x", "DiffFile"},
+		{"--- a/x", "DiffMeta"},
+		{"+++ b/x", "DiffMeta"},
+		{"index 111..222 100644", "DiffMeta"},
+		{"Binary files a/x and b/x differ", "DiffMeta"},
+		{"@@ -1 +1 @@", "DiffHunk"},
+		{"+added", "DiffAdd"},
+		{"-removed", "DiffDel"},
+		{" context", "plain"},
+		{"", "plain"},
+	} {
+		styles := map[string]string{
+			"DiffFile": s.DiffFile.Render("x"),
+			"DiffMeta": s.DiffMeta.Render("x"),
+			"DiffHunk": s.DiffHunk.Render("x"),
+			"DiffAdd":  s.DiffAdd.Render("x"),
+			"DiffDel":  s.DiffDel.Render("x"),
+			"plain":    "x",
+		}
+		if got := d.lineStyle(tt.line).Render("x"); got != styles[tt.want] {
+			t.Errorf("%q is drawn as %q, want %s", tt.line, got, tt.want)
+		}
+	}
+}
+
+// TestElideLeftKeepsTheTail covers the file list's paths: what names a file is
+// the end of its path, so that is what survives a narrow column.
+func TestElideLeftKeepsTheTail(t *testing.T) {
+	for _, tt := range []struct {
+		path  string
+		width int
+		want  string
+	}{
+		{"internal/tui/diff.go", 30, "internal/tui/diff.go"},
+		{"internal/tui/diff.go", 20, "internal/tui/diff.go"},
+		{"internal/tui/diff.go", 12, "…tui/diff.go"},
+		{"internal/tui/diff.go", 1, "…"},
+		{"internal/tui/diff.go", 0, ""},
+		{"日本語", 2, "…"},
+	} {
+		got := elideLeft(tt.path, tt.width)
+		if got != tt.want {
+			t.Errorf("elideLeft(%q, %d) = %q, want %q", tt.path, tt.width, got, tt.want)
+		}
+	}
+}
+
+// TestDiffPluralNamesOneFile covers the file list's heading on a change of a
+// single file.
+func TestDiffPluralNamesOneFile(t *testing.T) {
+	d := NewDiff(DefaultStyles())
+	d.SetSize(diffTestWidth, diffTestHeight)
+	d.SetFiles("origin/main", manyFiles(1))
+	if want := "1 file vs origin/main"; d.listHeading() != want {
+		t.Errorf("heading = %q, want %q", d.listHeading(), want)
+	}
+	d.SetFiles("origin/main", manyFiles(2))
+	if want := "2 files vs origin/main"; d.listHeading() != want {
+		t.Errorf("heading = %q, want %q", d.listHeading(), want)
+	}
+}
+
+// TestDiffListMarksABinaryFile covers the tally of a file git described rather
+// than diffed, which has no ± to show — both where the row is drawn plain and
+// where the cursor fills it and its colours come off.
+func TestDiffListMarksABinaryFile(t *testing.T) {
+	d := newTestDiff()
+	if got := xansi.Strip(d.listView()); !strings.Contains(got, "bin") {
+		t.Errorf("list = %q, want the binary file marked", got)
+	}
+	d.cursor = len(d.files) - 1
+	row := xansi.Strip(d.fileRow(d.cursor))
+	if !strings.Contains(row, "shot.png") || !strings.Contains(row, "bin") {
+		t.Errorf("selected row = %q, want the binary file marked under the cursor", row)
+	}
+}

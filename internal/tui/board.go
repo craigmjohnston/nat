@@ -33,6 +33,9 @@ type boardKeyMap struct {
 	// Approve opens the pull request for a slice an agent handed back on a
 	// branch, and marks it Done. It is the last step of a slice's workflow, and
 	// the only board key that reaches outside Notion.
+	// Diff opens the review screen on the branch a slice was handed back on,
+	// which is what the approve key beside it is answered with.
+	Diff    key.Binding
 	Approve key.Binding
 	// Release hands a slice in progress back to the plan — Todo and unassigned
 	// — for when the session working it ended without finishing it. It is the
@@ -64,6 +67,7 @@ func defaultBoardKeyMap() boardKeyMap {
 		Move:   key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move slice")),
 		Delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete slice")),
 
+		Diff:    key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "review diff")),
 		Approve: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "approve & open PR")),
 		Release: key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "release slice")),
 
@@ -93,7 +97,7 @@ func (k boardKeyMap) projects() []key.Binding {
 
 // writes are the bindings the root model handles rather than the board.
 func (k boardKeyMap) writes() []key.Binding {
-	return []key.Binding{k.Add, k.Edit, k.Move, k.Delete, k.Approve, k.Release}
+	return []key.Binding{k.Add, k.Edit, k.Move, k.Delete, k.Diff, k.Approve, k.Release}
 }
 
 // sliceHints are the hints row's bindings while the cursor is on a slice: the
@@ -102,9 +106,11 @@ func (k boardKeyMap) writes() []key.Binding {
 // the word "slice" their help carries — the hints only show on one, and the
 // row has less room than the help screen.
 //
-// Approve ranks below all of them but the board-wide toggle: it is the one key
-// here that does nothing at all on most rows, since only a slice handed back on
-// a branch can be approved.
+// Approve and the diff beside it rank below all of them but the board-wide
+// toggle: they are the two keys here that do nothing at all on most rows, since
+// only a slice handed back on a branch can be read or approved. Of the two the
+// diff goes first, because approving is what the row is waiting for and reading
+// it is how the user gets there.
 //
 // Release is not here at all. It is rarer than any of these — a session that
 // died, rather than anything the plan does in its ordinary course — and the
@@ -112,12 +118,13 @@ func (k boardKeyMap) writes() []key.Binding {
 func (b Board) sliceHints() []hint {
 	k := b.keys
 	return []hint{
-		{shortHint(k.Edit, "edit"), 5},
-		{shortHint(k.Move, "move"), 3},
-		{shortHint(k.Delete, "delete"), 4},
-		{shortHint(k.Approve, "approve"), 2},
-		{k.Launch, 7},
-		{k.Attach, 6},
+		{shortHint(k.Edit, "edit"), 6},
+		{shortHint(k.Move, "move"), 4},
+		{shortHint(k.Delete, "delete"), 5},
+		{shortHint(k.Diff, "diff"), 2},
+		{shortHint(k.Approve, "approve"), 3},
+		{k.Launch, 8},
+		{k.Attach, 7},
 		b.doneHint(),
 	}
 }

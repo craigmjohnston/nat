@@ -310,5 +310,8 @@ func (a *App) showActiveProject() tea.Cmd {
 	a.wishlist = nil
 	a.board.SetProject(nil)
 	a.info.Reset()
+	// The diff on the review screen is of a branch in the project being left,
+	// and so is what the refresh key would otherwise read again.
+	a.diff.Reset()
 	return tea.Batch(a.startLoad(), a.refreshLive())
 }

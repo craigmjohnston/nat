@@ -23,7 +23,8 @@ import (
 )
 
 // screen is one of the app's full-window views. The board is what the app is
-// for; help and info are pushed over it and dismissed with esc.
+// for; help, info and the diff of a slice's branch are pushed over it and
+// dismissed with esc.
 type screen int
 
 const (
@@ -31,6 +32,7 @@ const (
 	screenHelp
 	screenInfo
 	screenForm
+	screenDiff
 )
 
 // modal is a form shown over the board: it owns every key but esc, and once it
@@ -211,6 +213,7 @@ type App struct {
 	screen     screen
 	board      Board
 	info       Info
+	diff       Diff
 	form       modal
 	// prompt is what answering the board's open row prompt does, held by the
 	// flow that opened it; nil when no prompt is up.
@@ -238,8 +241,10 @@ type App struct {
 	launcher AgentLauncher
 	live     map[string]string
 	// prs opens the pull request the approve key asks for, which is the one
-	// thing nat does through the GitHub CLI.
-	prs PRCreator
+	// thing nat does through the GitHub CLI; differ reads the diff the review
+	// key shows, which is the one thing it does through git.
+	prs    PRCreator
+	differ Differ
 	// viewer is the agent terminal beside the board, or nil when the board has
 	// the window to itself. Exactly one is on show at a time: it is a split, not
 	// a stack of panes.
@@ -302,7 +307,8 @@ func NewApp(cfg config.Config, client NotionAPI) *App {
 	sp := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(s.Spinner))
 	a := &App{cfg: cfg, client: client, styles: s, keys: defaultKeyMap(),
 		promptKeys: defaultPromptKeyMap(), spinner: sp,
-		board: NewBoard(s), info: NewInfo(s), launcher: newLauncher(), prs: newPRCreator(),
+		board: NewBoard(s), info: NewInfo(s), diff: NewDiff(s),
+		launcher: newLauncher(), prs: newPRCreator(), differ: newDiffer(),
 		boardVP: viewport.New(), helpVP: viewport.New()}
 	a.helpVP.SetContent(a.helpBody())
 	return a
@@ -325,6 +331,7 @@ func (a *App) setStyles(s Styles) {
 	a.spinner.Style = s.Spinner
 	a.board.styles = s
 	a.info.styles = s
+	a.diff.styles = s
 	if a.onboarding != nil {
 		a.onboarding.SetStyles(s)
 	}
@@ -409,6 +416,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case infoErrMsg:
 		a.info.Fail(msg.err)
 		return a, nil
+	case diffLoadedMsg:
+		return a.diffLoaded(msg)
 	case sliceBodyMsg:
 		return a.sliceBodyLoaded(msg)
 	case prOpenedMsg:
@@ -474,7 +483,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.confirmGone(msg)
 		return a, nil
 	case spinner.TickMsg:
-		if !a.loading && !a.info.Busy() {
+		if !a.loading && !a.info.Busy() && !a.diff.Busy() {
 			return a, nil
 		}
 		sp, cmd := a.spinner.Update(msg)
@@ -551,6 +560,11 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if a.screen == screenInfo {
 			cmd = tea.Batch(cmd, a.startInfoLoad())
 		}
+		// A diff on show is read again too: an agent that pushed another commit
+		// while it was up is exactly what a refresh is being asked about.
+		if a.screen == screenDiff {
+			cmd = tea.Batch(cmd, a.startDiffLoad())
+		}
 		return a, cmd
 	case key.Matches(msg, a.keys.Workshop):
 		return a, a.workshopFlow()
@@ -577,6 +591,8 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		case screenInfo:
 			return a, a.info.Update(msg)
+		case screenDiff:
+			return a, a.diff.Update(msg)
 		case screenHelp:
 			// The key list is longer than a short window, so it scrolls.
 			vp, cmd := a.helpVP.Update(msg)
@@ -601,6 +617,8 @@ func (a *App) boardWrite(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.moveSliceFlow(), true
 	case key.Matches(msg, a.board.keys.Delete):
 		return a.deleteSliceFlow(), true
+	case key.Matches(msg, a.board.keys.Diff):
+		return a.diffSliceFlow(), true
 	case key.Matches(msg, a.board.keys.Approve):
 		return a.approveSliceFlow(), true
 	case key.Matches(msg, a.board.keys.Release):
@@ -1269,6 +1287,8 @@ func (a *App) headerName() string {
 		return "Keys"
 	case screenInfo:
 		return "Info"
+	case screenDiff:
+		return a.diffHeading()
 	case screenForm:
 		return a.form.Heading()
 	}
@@ -1369,6 +1389,8 @@ func (a *App) body() string {
 		return a.helpView()
 	case screenInfo:
 		return a.infoView()
+	case screenDiff:
+		return a.diff.View(a.spinner.View())
 	case screenForm:
 		return a.modalView()
 	default:
@@ -1481,6 +1503,7 @@ func (a *App) resize() {
 	a.helpVP.SetWidth(width)
 	a.helpVP.SetHeight(height)
 	a.info.SetSize(width, height)
+	a.diff.SetSize(width, height)
 	a.syncBoard()
 	if a.form != nil {
 		a.form.SetSize(a.formSize())
@@ -1535,6 +1558,8 @@ func (a *App) helpBody() string {
 	lines := a.helpLines(a.keys.helpBindings())
 	lines = append(lines, "", a.styles.Subtitle.Render("Board"), "")
 	lines = append(lines, a.helpLines(a.board.helpBindings())...)
+	lines = append(lines, "", a.styles.Subtitle.Render("Diff"), "")
+	lines = append(lines, a.helpLines(defaultDiffKeyMap().bindings())...)
 	lines = append(lines, "", a.styles.Subtitle.Render("Scrolling"), "")
 	lines = append(lines, a.helpLines(infoKeys())...)
 	return strings.Join(lines, "\n")
@@ -1649,6 +1674,8 @@ func (a *App) chipText() string {
 		text = "help"
 	case screenInfo:
 		text = "info"
+	case screenDiff:
+		text = "diff"
 	case screenForm:
 		text = "edit"
 	default:
@@ -1711,6 +1738,11 @@ func (a *App) contextHints() []hint {
 	}
 	if a.viewerVisible() {
 		return a.viewerHints()
+	}
+	// The diff screen's keys are its own, and the board's say nothing while it
+	// is up: it is a screen over the board, not a state of it.
+	if a.screen == screenDiff {
+		return a.diff.keys.hints(a.keys.Back)
 	}
 	if a.screen == screenBoard {
 		if _, ok := a.board.SelectedSlice(); ok {
