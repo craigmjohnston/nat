@@ -331,15 +331,20 @@ const (
 	MouseWheel
 )
 
-// SendMouse sends a mouse event at cell (x, y) to the child, encoded as the
-// child's active mouse modes ask for it — X10, normal, button-event or
-// any-event reporting, in the plain or the SGR encoding. A child that has asked
-// for no mouse reporting at all is sent nothing.
+// SendMouse sends a mouse event at cell (x, y) to the child, with mod the
+// modifiers held down as it happened, encoded as the child's active mouse modes
+// ask for it — X10, normal, button-event or any-event reporting, in the plain
+// or the SGR encoding. A child that has asked for no mouse reporting at all is
+// sent nothing.
+//
+// The modifiers are part of the event and not decoration: a child that binds a
+// gesture to ctrl or shift held — tmux's C-MouseDown1Pane, say — sees a plain
+// click without them, and the binding never fires.
 //
 // The encoding is entirely the emulator's; this only names the event. A kind
 // outside the four above is dropped.
-func (s *Session) SendMouse(x, y int, button uv.MouseButton, kind MouseKind) {
-	m := uv.Mouse{X: x, Y: y, Button: button}
+func (s *Session) SendMouse(x, y int, button uv.MouseButton, mod uv.KeyMod, kind MouseKind) {
+	m := uv.Mouse{X: x, Y: y, Button: button, Mod: mod}
 
 	var event uv.MouseEvent
 	switch kind {

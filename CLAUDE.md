@@ -87,9 +87,12 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   mirrored by an in-process VT emulator (`x/vt`), so the TUI can draw an agent
   as a widget instead of joining its tmux pane. `Start` returns a `Session`:
   `Render`/`Cursor` to draw it, `SendKey`/`SendBytes`/`Paste` to type at it and
-  `SendMouse` to click and scroll at it — a cell, a button and a kind of event
-  (press, release, motion, wheel), which the emulator encodes for the child's
-  active mouse modes, or drops where the child has asked for no reporting,
+  `SendMouse` to click and scroll at it — a cell, a button, the modifiers held
+  and a kind of event (press, release, motion, wheel), which the emulator
+  encodes for the child's active mouse modes, or drops where the child has asked
+  for no reporting; the modifiers are not decoration, since tmux binds
+  `C-MouseDown1Pane` as well as `MouseDown1Pane` and a click stripped of its
+  ctrl fires the wrong one,
   `Resize`, `Output` to know when to redraw and `Done`/`Err` when it has gone.
   Two goroutines: the read pump feeds the PTY into the emulator under the
   Session's own mutex (`vt.SafeEmulator`'s lock is not trusted alone — an
@@ -129,11 +132,15 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   only while one is on show — with it off the user's own selection and
   scrollback are left alone, and the board has no use for a click — and an event
   inside the box is turned into a cell of the child's screen and handed to
-  `SendMouse`, a press there taking the keyboard as well. Everything outside the
-  box is dropped, bar a press, which hands the keyboard back. Nothing between
-  swallows it: tmux passes mouse reporting through unless its own `mouse` option
-  is on, which nat sets for the sessions it makes for agents and never for the
-  one it hosts the board in.
+  `SendMouse` with the modifiers it arrived with, a press there taking the
+  keyboard as well. Everything outside the box is dropped, bar a press, which
+  hands the keyboard back. Nothing between swallows it: tmux passes mouse
+  reporting through unless its own `mouse` option is on, which nat sets for the
+  sessions it makes for agents and never for the one it hosts the board in. What
+  the agent's own tmux does with what arrives is unchanged by the hop: a click on
+  an OSC 8 hyperlink fires the `MouseDown1Pane` binding and opens it, and a wheel
+  enters copy-mode over the pane's scrollback and leaves it again on the way back
+  down (tmux's stock `copy-mode -e`), exactly as they did through a joined pane.
   `presence.go` is the star a slice with an agent on it is marked with: it
   pulses — the same star swelling and settling, one cell wide at every frame so
   the row does not shift under it — while the agent works, and holds a star of
