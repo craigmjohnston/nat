@@ -41,6 +41,15 @@ func slicePage(id, name, status, milestone string) notion.Page {
 	}}
 }
 
+// dependsOnColumn is the Depends on column as a read returns it. Every current
+// project has one, and a fixture without it is a project the load-time
+// back-fill writes to before anything else the test is about.
+func dependsOnColumn(dsID string) notion.PropertySchema {
+	schema := notion.SchemaRelation(dsID)
+	schema.Type = "relation"
+	return schema
+}
+
 // milestoneColumn is a Milestone column offering the named milestones, as a
 // read returns it: with its type on it, which is how a write back to it knows
 // the shape to take.
@@ -64,6 +73,7 @@ func newLoadingClient() *loadingClient {
 		return &notion.DataSource{ID: id, Properties: map[string]notion.PropertySchema{
 			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceInProgress, notion.SliceDone),
 			notion.PropMilestone: milestoneColumn("M1"),
+			notion.PropDependsOn: dependsOnColumn(id),
 		}}, nil
 	}
 	c.query = func(id string, _ map[string]any, sorts []notion.Sort) ([]notion.Page, error) {
@@ -235,6 +245,7 @@ func newSelectShapedClient() *loadingClient {
 		return &notion.DataSource{ID: id, Properties: map[string]notion.PropertySchema{
 			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceInProgress, notion.SliceDone),
 			notion.PropMilestone: milestoneColumn("M1: Client", "M2: Board"),
+			notion.PropDependsOn: dependsOnColumn(id),
 		}}, nil
 	}
 	c.query = func(id string, _ map[string]any, sorts []notion.Sort) ([]notion.Page, error) {
@@ -886,7 +897,8 @@ func TestAppMigratesAnOldProjectAndSaysSo(t *testing.T) {
 				Parent: notion.Parent{Type: notion.ParentDatabase, DatabaseID: "ms-db"}}, nil
 		}
 		return &notion.DataSource{ID: id, Properties: map[string]notion.PropertySchema{
-			notion.PropStatus: notion.SchemaSelect(notion.SliceTodo, notion.SliceClaimed, notion.SliceDone),
+			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceClaimed, notion.SliceDone),
+			notion.PropDependsOn: dependsOnColumn(id),
 			notion.PropMilestone: {
 				Type:     "relation",
 				Relation: &notion.RelationConfig{DataSourceID: "ms-ds"},

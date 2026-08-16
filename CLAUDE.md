@@ -284,7 +284,8 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   relation from the Slices data source to itself — single so there is no
   reciprocal `Blocks` column to keep in step — created alongside the other
   columns, though as a second write, since a self-relation cannot name a data
-  source the create has not returned yet. The rule is one line
+  source the create has not returned yet, and back-filled at load onto a project
+  created before there was one. The rule is one line
   (`domain.Blockers`): a slice is blocked while any slice it names is not Done,
   and a slice names none where the column is absent or empty, so a project whose
   table has no such column behaves exactly as it did before there was one. A
@@ -331,7 +332,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   is what discards the relations it is read from. It is idempotent: a project
   already in the one shape is read and left alone, which is what every load
   after the first does. What changed is logged, and the board says so in a
-  toast.
+  toast. One step there is every project's rather than an old-shape project's:
+  a missing `Depends on` column is added (`addDependsOn`). `CreateProject`
+  writes that column, but only for the projects it creates, so a project older
+  than slice dependencies has nothing for one to be recorded on and Notion
+  refuses every write against it — and it goes on last, after the shape changes
+  and whether or not there were any, so a project refused part way through them
+  is left as those steps found it.
 - Filing a slice under a milestone — the board's `a` and `m`, `slice-add`,
   `plan-apply` — writes the option naming it (`domain.Milestone.Ref()`, sent as
   `SelectType`, the column's own type). `milestone-add` and `plan-apply` add

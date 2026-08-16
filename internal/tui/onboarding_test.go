@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"reflect"
 	"runtime"
 	"strings"
@@ -133,6 +134,7 @@ func (f *fakeNotion) GetDataSource(_ context.Context, id string) (*notion.DataSo
 		return &notion.DataSource{ID: id, Properties: map[string]notion.PropertySchema{
 			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceInProgress, notion.SliceDone),
 			notion.PropMilestone: milestoneColumn(),
+			notion.PropDependsOn: dependsOnColumn(id),
 		}}, nil
 	}
 	return f.getDS(id)
@@ -143,7 +145,18 @@ func (f *fakeNotion) GetDataSource(_ context.Context, id string) (*notion.DataSo
 func (f *fakeNotion) UpdateDataSourceProperties(_ context.Context, id string, properties map[string]notion.PropertySchema) (*notion.DataSource, error) {
 	f.schemaWrites = append(f.schemaWrites, schemaWriteCall{dataSourceID: id, properties: properties})
 	if f.updateDS == nil {
-		return &notion.DataSource{ID: id, Properties: properties}, nil
+		// Echo the way the API does: the whole schema with the written
+		// properties applied over it, rather than the write alone. A migration
+		// reads columns it did not write back out of this — the dependency
+		// column it is deciding whether to add among them.
+		merged := map[string]notion.PropertySchema{}
+		if f.getDS != nil {
+			if ds, err := f.getDS(id); err == nil && ds != nil {
+				maps.Copy(merged, ds.Properties)
+			}
+		}
+		maps.Copy(merged, properties)
+		return &notion.DataSource{ID: id, Properties: merged}, nil
 	}
 	return f.updateDS(id, properties)
 }
