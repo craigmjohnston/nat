@@ -630,6 +630,32 @@ func TestAppTerminalExitConverges(t *testing.T) {
 	}
 }
 
+// An exit reported for a terminal that has already gone finds nothing on show
+// and says nothing: no second close, and no second refetch. Both callers check
+// the board for themselves before asking, so this is the guard standing behind
+// them — a caller that stops checking gets a no-op rather than a nil viewer to
+// dereference.
+func TestViewerExitedWithNothingOnShow(t *testing.T) {
+	client := &fakeNotion{getPage: pageFor("s5", "Info view", notion.SliceDone, "M2: Board")}
+	app, _, term := viewerApp(t)
+	app.client = client
+
+	feed(t, app, mustCmd(app.Update(termExitedMsg{session: term})))
+	if app.viewer != nil {
+		t.Fatalf("viewer = %+v, want the first report to have closed the terminal", app.viewer)
+	}
+
+	if cmd := app.viewerExited(nil); cmd != nil {
+		t.Error("a terminal that is no longer on the board has nothing left to report")
+	}
+	if term.closes != 1 {
+		t.Errorf("closes = %d, want the session closed exactly once", term.closes)
+	}
+	if !equal(client.fetchedPages, []string{"s5"}) {
+		t.Errorf("fetched %v, want the slice refetched exactly once", client.fetchedPages)
+	}
+}
+
 // A client that died while its session ran on takes its box with it like any
 // other, but the failure is reported rather than passed off as the agent
 // finishing — and the toast names the session, so the user can reattach.
