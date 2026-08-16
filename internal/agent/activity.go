@@ -2,7 +2,7 @@ package agent
 
 import (
 	"errors"
-	"strings"
+	"regexp"
 
 	"github.com/craigmjohnston/nat/internal/logging"
 )
@@ -44,18 +44,28 @@ func (a Activity) String() string {
 	}
 }
 
-// workingMarker is what Claude Code prints on its status line for as long as it
-// is busy and only while it is busy — the hint that the key which interrupts it
-// is escape. It is matched case-folded and against the visible screen alone, so
-// the same words further up the scrollback (an agent that has printed this very
-// sentence) say nothing about now.
+// workingLine is Claude Code's running status line, matched by its shape rather
+// than by any of its wording: a verb that trails off, then the elapsed time of
+// the turn in brackets — "✻ Quantumizing… (1m 6s · ↓ 2.1k tokens · thinking
+// with medium effort)". Every busy screen has one and no idle one does, which
+// is why it is the signal: Claude Code stops for input in several shapes — a
+// permission prompt, a question, the end of a turn — and enumerating those
+// would be a list that goes stale, where "anything that is not busy is waiting"
+// cannot.
 //
-// It is the marker rather than the composer box or a prompt's wording because
-// it is the one thing every busy screen has and no idle one does: Claude Code
-// stops for input in several shapes — a permission prompt, a question, the end
-// of a turn — and enumerating them would be a list that goes stale, where
-// "anything that is not busy is waiting" cannot.
-const workingMarker = "esc to interrupt"
+// The shape is what survives the wording changing under us, which is exactly
+// what went wrong before: the marker was the hint that escape interrupts, and
+// current Claude Code prints no such hint at any pane width, so every working
+// agent read as waiting and its star stopped moving. The verb is a different
+// word every turn and the bracket holds whatever the turn has to say for
+// itself, but a turn in flight always counts up in there — where the line the
+// same turn leaves behind when it is done has no ellipsis and no bracket at all
+// ("✻ Crunched for 4s"), and so cannot be mistaken for it.
+//
+// It is matched against the visible screen alone, so the same shape further up
+// the scrollback says nothing about now, and against the line as tmux joins it
+// (-J), so a narrow pane's wrapped status line is one line again.
+var workingLine = regexp.MustCompile(`…\s*\(\d+[smh]`)
 
 // Activity reports how every agent on the server is getting on, keyed by the
 // page ID of the slice its pane is tagged with — the same keys [Tmux.LiveSlices]
@@ -105,7 +115,7 @@ func (t *Tmux) classify(p pane) Activity {
 		logging.Error("could not read an agent pane's screen", "pane", p.id, "error", err)
 		return ActivityUnknown
 	}
-	if strings.Contains(strings.ToLower(out), workingMarker) {
+	if workingLine.MatchString(out) {
 		return ActivityWorking
 	}
 	return ActivityWaiting
