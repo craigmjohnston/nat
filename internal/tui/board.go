@@ -184,6 +184,11 @@ type Board struct {
 	// live maps the ID of each slice with an agent running to the session it
 	// runs in, so a slice with an agent on it can be marked.
 	live map[string]string
+	// activity is how those agents are getting on, and pulse the frame the
+	// star animation is on. Both are only ever read through the star chip —
+	// see presence.go.
+	activity map[string]Presence
+	pulse    int
 
 	// confirmText is the inline confirmation anchored to the row the cursor is
 	// on, drawn from its right edge in confirmSev's colour; empty when there is
@@ -892,10 +897,9 @@ func (b Board) renderDoneSection(marker string, selected bool, l boardLayout) []
 		fitRow(b.width, head, blanks(head), name, paint(selected, b.styles.Faint, agg)))
 }
 
-// renderSlice draws one slice: its status chip, its name, whether an agent is
-// live on it, who holds it, and the pull request it produced. The live marker
-// is its own glyph rather than a status: a session is running or not, which is
-// a different question from where the slice has got to.
+// renderSlice draws one slice: its status chip, its name, the star of an agent
+// live on it — see [Board.star] — who holds it, and the pull request it
+// produced.
 //
 // The PR chip comes last of the chips, so it is the first of them to give way
 // as the board narrows: the slice's own state is worth more of a cramped row
@@ -906,8 +910,8 @@ func (b Board) renderDoneSection(marker string, selected bool, l boardLayout) []
 // colour, so the status reads as a band beside the whole row.
 func (b Board) renderSlice(head string, s domain.Slice, selected bool) []string {
 	var chips []string
-	if b.live[s.ID] != "" {
-		chips = append(chips, paint(selected, b.styles.Live, "●"))
+	if star, live := b.star(s.ID, selected); live {
+		chips = append(chips, star)
 	}
 	if s.AssigneeName != "" {
 		chips = append(chips, paint(selected, b.styles.Assignee, "@"+s.AssigneeName))

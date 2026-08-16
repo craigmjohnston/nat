@@ -225,6 +225,17 @@ type App struct {
 	// the window to itself. Exactly one is on show at a time: it is a split, not
 	// a stack of panes.
 	viewer *agentViewer
+	// activity is how those agents are getting on, which is what the star on a
+	// slice row is animated from. Nothing classifies them yet — the activity
+	// watcher is a slice of its own — so it stays empty and every live agent
+	// draws as working; it is pruned as agents go, so a reading can never
+	// outlive the agent it was about.
+	activity map[string]Presence
+	// pulse is the frame the star animation is on, and pulsing whether its
+	// timer is running. One timer draws every star on the board, and it stops
+	// itself as soon as there is nothing left pulsing.
+	pulse   int
+	pulsing bool
 
 	project *domain.Project
 	// wishlist is the pending items the project page's wishlist held when it
@@ -417,6 +428,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.straysReclaimed(msg)
 	case liveTickMsg:
 		return a, tea.Batch(a.refreshLive(), liveTick())
+	case pulseTickMsg:
+		return a, a.pulsed()
 	case nudgeTickMsg:
 		return a, tea.Batch(checkNudge(), nudgeTick())
 	case pollTickMsg:

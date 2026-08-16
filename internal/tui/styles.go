@@ -165,10 +165,19 @@ type Styles struct {
 	MilestoneActive lipgloss.Style
 	MilestoneDone   lipgloss.Style
 	// Assignee is who holds a claimed slice; PR marks one that has a pull
-	// request; Live marks one with an agent session running on it.
+	// request; Live marks the agent terminal whose session is still running.
 	Assignee lipgloss.Style
 	PR       lipgloss.Style
 	Live     lipgloss.Style
+	// StarDim, StarMid and StarPeak are the star of a slice with an agent
+	// working on it, brightening and settling as the pulse swells, and
+	// StarWaiting the steady star of one that has stopped for input — the
+	// pending yellow, because it is the board's colour for something waiting on
+	// a person.
+	StarDim     lipgloss.Style
+	StarMid     lipgloss.Style
+	StarPeak    lipgloss.Style
+	StarWaiting lipgloss.Style
 
 	// BarFill colours the done part of the milestone the work is in;
 	// BarFillDone the milestones already finished, receding behind it; and
@@ -258,6 +267,11 @@ func NewStyles(isDark bool) Styles {
 		Assignee: lipgloss.NewStyle().Foreground(t.AccentAlt),
 		PR:       lipgloss.NewStyle().Foreground(t.Accent),
 		Live:     lipgloss.NewStyle().Bold(true).Foreground(t.Success),
+
+		StarDim:     lipgloss.NewStyle().Foreground(t.Muted),
+		StarMid:     lipgloss.NewStyle().Foreground(t.Success),
+		StarPeak:    lipgloss.NewStyle().Bold(true).Foreground(t.Success),
+		StarWaiting: lipgloss.NewStyle().Bold(true).Foreground(t.Warning),
 
 		BarFill:     lipgloss.NewStyle().Foreground(t.Accent),
 		BarFillDone: lipgloss.NewStyle().Foreground(t.AccentDim),

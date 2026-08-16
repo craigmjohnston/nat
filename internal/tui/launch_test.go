@@ -38,6 +38,10 @@ func TestMain(m *testing.M) {
 	nudgeStat = func() (time.Time, bool) { return time.Time{}, false }
 	// So is the background poll: its own tests put a firing version in.
 	pollTick = func(time.Duration) tea.Cmd { return nil }
+	// And so is the star animation, which would otherwise keep every app with
+	// a live agent in it redrawing twice a second. Its own tests put a firing
+	// version in.
+	pulseTick = func() tea.Cmd { return nil }
 	// The embedded agent terminal is pinned away from a real pseudo-terminal
 	// the same way: nothing is started, and nothing waits on a channel that
 	// would never fire. Tests about the viewer put a fake in with
@@ -766,10 +770,10 @@ func TestAppTellsApartAgentsOnSlicesSharingAnIDPrefix(t *testing.T) {
 
 	// Only the slice whose agent is running is marked.
 	view := stripANSI(app.View().Content)
-	if !strings.Contains(view, "Board screen ●") {
+	if !strings.Contains(view, "Board screen "+pulseFrames[0]) {
 		t.Errorf("the live slice is unmarked:\n%s", view)
 	}
-	if strings.Contains(view, "Info view ●") {
+	if strings.Contains(view, "Info view "+pulseFrames[0]) {
 		t.Errorf("a slice with no agent of its own is marked:\n%s", view)
 	}
 
@@ -977,10 +981,10 @@ func TestAppMarksSlicesWithALiveSession(t *testing.T) {
 		t.Errorf("live = %v, want %q under %q", app.live, session, id)
 	}
 	view := stripANSI(app.View().Content)
-	if !strings.Contains(view, "Info view ●") {
+	if !strings.Contains(view, "Info view "+pulseFrames[0]) {
 		t.Errorf("the live slice is unmarked:\n%s", view)
 	}
-	if strings.Contains(view, "Board screen ●") {
+	if strings.Contains(view, "Board screen "+pulseFrames[0]) {
 		t.Errorf("a slice with no session of its own is marked:\n%s", view)
 	}
 }

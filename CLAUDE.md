@@ -122,6 +122,17 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `exited`, and the after-viewing refetch — the slice's page, or the whole plan
   for the planning agent — happens once, whichever of the client's EOF and the
   live poll notices first. `T` is the hatch to the old full-screen attach.
+  `presence.go` is the star a slice with an agent on it is marked with: it
+  pulses — the same star swelling and settling, one cell wide at every frame so
+  the row does not shift under it — while the agent works, and holds a star of
+  its own steady when the agent has stopped for input. Liveness is the live
+  map's answer and the classification only refines it, so an agent that has gone
+  has no star whatever was last read of it, and one nobody has classified draws
+  as working — which is every agent until the activity watcher lands. The whole
+  board animates off one timer, armed by the live read and stopping itself as
+  soon as nothing is pulsing; each frame re-syncs the board, since its rows are
+  cached in a viewport. Both the glyph and the colour move, because a selected
+  row is drawn without any chip's styling.
 - `skills/` — the agent skills (/queue-work planning, /next-slice execution),
   embedded in the binary with `go:embed` and installed by `nat setup`. A
   checkout works on them in place by symlinking them into `~/.claude/skills/`,
