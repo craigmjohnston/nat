@@ -44,7 +44,7 @@ func slicePage(id, name, status, milestone, assignee, pr string) notion.Page {
 		props[notion.PropMilestone] = notion.NewSelect(milestone)
 	}
 	if assignee != "" {
-		props[notion.PropAssignee] = notion.PropertyValue{People: []notion.User{{ID: "u1", Name: assignee}}}
+		props[notion.PropAssignee] = notion.PropertyValue{People: &[]notion.User{{ID: "u1", Name: assignee}}}
 	}
 	if pr != "" {
 		props[notion.PropPR] = notion.NewURL(pr)

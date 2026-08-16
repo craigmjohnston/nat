@@ -64,7 +64,7 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("load the slice: %w", err)
 	}
 	if !holds(*page, shape, cfg.AssigneeUserID) {
-		return notOursError(*page, shape, cfg.AssigneeUserName)
+		return notOursError(*page, shape, cfg.AssigneeUserName, "closed out")
 	}
 
 	// The note goes on before the status does. Either write can fail, and of the
@@ -159,22 +159,24 @@ func noteText(summary string, in io.Reader) (string, error) {
 	return text, nil
 }
 
-// notOursError says why a slice will not be closed out, naming what the slice
+// notOursError says why a slice will not be acted on, naming what the slice
 // actually is: not in progress at all, or held by somebody else. It is a plain
 // error rather than a usage one — the command line was fine, the slice is not.
+// The action names what was refused — "closed out", "released" — since the two
+// commands that hold a slice to this rule do different things with one.
 //
 // A project with no Assignee column never reaches the second case: holds
 // decides ownership on status alone there, so there is nobody a slice could be
 // held by but the person running this.
-func notOursError(page notion.Page, shape notion.SliceShape, assignee string) error {
+func notOursError(page notion.Page, shape notion.SliceShape, assignee, action string) error {
 	s := domain.SliceFromPage(page)
 	if s.Status != domain.SliceClaimed {
-		return fmt.Errorf("%q is %s, not %s: only a slice you claimed can be closed out",
-			s.Name, blank(s.StatusName), notion.SliceInProgress)
+		return fmt.Errorf("%q is %s, not %s: only a slice you claimed can be %s",
+			s.Name, blank(s.StatusName), notion.SliceInProgress, action)
 	}
 	if s.AssigneeName == "" {
-		return fmt.Errorf("%q is in progress but held by nobody, not by %s: only a slice you claimed can be closed out",
-			s.Name, assignee)
+		return fmt.Errorf("%q is in progress but held by nobody, not by %s: only a slice you claimed can be %s",
+			s.Name, assignee, action)
 	}
 	return fmt.Errorf("%q is held by %s, not by %s: leave it to them", s.Name, s.AssigneeName, assignee)
 }
