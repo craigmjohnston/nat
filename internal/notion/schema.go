@@ -11,10 +11,11 @@ type OptionsConfig struct {
 }
 
 // RelationConfig configures a relation property. Relations point at a data
-// source, not a database, from the data-source API version on. Nothing here
-// creates one — a project's milestones are the options of a select — but a
-// project made before that was so has one to read, and migrating it starts from
-// the data source it names.
+// source, not a database, from the data-source API version on. A project's
+// milestones are the options of a select rather than a relation, but the slices
+// point at each other through one — a slice's dependencies — and a project made
+// before milestones were options has a relation to read, which migrating it
+// starts from the data source it names.
 type RelationConfig struct {
 	DataSourceID string `json:"data_source_id"`
 	// Kind is "single_property" or "dual_property".
@@ -60,6 +61,22 @@ func SchemaRichText() PropertySchema {
 func SchemaSelect(options ...string) PropertySchema {
 	return PropertySchema{Select: &OptionsConfig{Options: selectOptions(options)}}
 }
+
+// SchemaRelation builds a relation property definition pointing at the given
+// data source. It is single-property on purpose: the Slices data source's
+// dependency column points at itself, and a dual-property relation would put a
+// second, reciprocal column on the same table for the app to keep in step with
+// this one.
+func SchemaRelation(dataSourceID string) PropertySchema {
+	return PropertySchema{Relation: &RelationConfig{
+		DataSourceID:   dataSourceID,
+		Kind:           RelationSingle,
+		SingleProperty: &EmptyConfig{},
+	}}
+}
+
+// RelationSingle is the relation kind that puts a column on one side only.
+const RelationSingle = "single_property"
 
 // SchemaPeople builds a people property definition.
 func SchemaPeople() PropertySchema {

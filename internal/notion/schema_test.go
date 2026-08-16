@@ -138,3 +138,17 @@ func TestPropertySchemaAppendedOptionsAddsToAnEmptySelect(t *testing.T) {
 		t.Errorf("marshalled to %s, want %s", b, want)
 	}
 }
+
+// The dependency column points at the data source it lives on, and is
+// single-property so there is no reciprocal column on the other side to keep in
+// step with it.
+func TestSchemaRelation(t *testing.T) {
+	b, err := json.Marshal(SchemaRelation("ds-slices"))
+	if err != nil {
+		t.Fatalf("marshalling: %v", err)
+	}
+	want := `{"relation":{"data_source_id":"ds-slices","type":"single_property","single_property":{}}}`
+	if string(b) != want {
+		t.Errorf("marshalled to %s\nwant %s", b, want)
+	}
+}

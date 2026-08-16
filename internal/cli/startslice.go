@@ -18,7 +18,10 @@ import (
 // Only a slice nobody has started can be taken. A slice already in progress, or
 // Done, is somebody's work or somebody's finished work, and either way an
 // agent must not be told to start it again; that refusal happens before any
-// write, so a mistaken invocation leaves the plan exactly as it was.
+// write, so a mistaken invocation leaves the plan exactly as it was. So does
+// the other refusal: a slice waiting on work that is not finished is named
+// along with what it waits on, rather than claimed and handed to an agent that
+// cannot do it yet.
 func startSlice(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("start-slice", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -54,6 +57,13 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	}
 	if err := takeable(*page); err != nil {
 		return err
+	}
+	// The dependencies are read one page at a time rather than off the plan:
+	// this command was pointed at a slice, so there is no plan loaded, and a
+	// slice waits on few enough slices for that to be the cheaper read.
+	waiting := domain.SliceFromPage(*page)
+	if blockers, _ := domain.Blockers(waiting, dependencyIndex(ctx, client, waiting)); len(blockers) > 0 {
+		return blockedError(waiting, blockers)
 	}
 	claimed, err := claim(ctx, client, page.ID, shape, cfg.AssigneeUserID)
 	if err != nil {

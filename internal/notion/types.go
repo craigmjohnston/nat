@@ -146,15 +146,19 @@ func (u User) Email() string {
 // PropertyValue is one property of a page, in the shape Notion uses for both
 // reads and writes. Every field is omitted when empty, so a value built by one
 // of the New* constructors serialises to exactly the property being written.
-// Clearing a property is therefore not expressible here — no flow in this app
-// needs it yet.
+//
+// Relation is the one exception, and a pointer for exactly that reason: a
+// relation is the one property this app clears, and an empty list is how Notion
+// is told to — which `omitempty` on a plain slice would drop, leaving the write
+// saying nothing at all. A nil pointer is the property being left out; a
+// pointer to an empty list is the property being emptied.
 type PropertyValue struct {
 	Type     string        `json:"type,omitempty"`
 	Title    []RichText    `json:"title,omitempty"`
 	RichText []RichText    `json:"rich_text,omitempty"`
 	Select   *SelectOption `json:"select,omitempty"`
 	Status   *SelectOption `json:"status,omitempty"`
-	Relation []Relation    `json:"relation,omitempty"`
+	Relation *[]Relation   `json:"relation,omitempty"`
 	People   []User        `json:"people,omitempty"`
 	URL      string        `json:"url,omitempty"`
 	Number   *float64      `json:"number,omitempty"`
@@ -212,6 +216,17 @@ func NewPeople(userIDs ...string) PropertyValue {
 	return PropertyValue{People: people}
 }
 
+// NewRelation builds a relation property value naming the given pages, and —
+// given none — the value that empties the relation, which is how a slice is
+// told it waits on nothing.
+func NewRelation(pageIDs ...string) PropertyValue {
+	rels := make([]Relation, len(pageIDs))
+	for i, id := range pageIDs {
+		rels[i] = Relation{ID: id}
+	}
+	return PropertyValue{Relation: &rels}
+}
+
 // NewURL builds a url property value.
 func NewURL(u string) PropertyValue {
 	return PropertyValue{URL: u}
@@ -240,10 +255,14 @@ func (p PropertyValue) SelectName() string {
 	return ""
 }
 
-// RelationIDs returns the related page IDs of a relation property.
+// RelationIDs returns the related page IDs of a relation property, and none for
+// a property that is not one or holds nothing.
 func (p PropertyValue) RelationIDs() []string {
-	ids := make([]string, len(p.Relation))
-	for i, r := range p.Relation {
+	if p.Relation == nil || len(*p.Relation) == 0 {
+		return nil
+	}
+	ids := make([]string, len(*p.Relation))
+	for i, r := range *p.Relation {
 		ids[i] = r.ID
 	}
 	return ids

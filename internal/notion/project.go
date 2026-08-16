@@ -26,6 +26,11 @@ const (
 	// has no such column simply never has a branch to read, and reads back
 	// empty rather than failing.
 	PropBranch = "Branch"
+	// PropDependsOn is the slices a slice waits on: a relation from the Slices
+	// data source to itself, which is what makes a slice blocked while any of
+	// them is unfinished. It is optional in the same way Branch is — a project
+	// whose table has no such column names no dependencies and so has none.
+	PropDependsOn = "Depends on"
 )
 
 // Milestone status options, in workflow order.
@@ -144,6 +149,15 @@ func (c *Client) CreateProject(ctx context.Context, projectsDSID, name string, a
 	if err != nil {
 		return nil, err
 	}
+	// The dependency column cannot go in the schema the database is created
+	// with: it points at that database's own data source, which does not exist
+	// to be named until the create has returned. So it is added straight
+	// afterwards, before anything reads the table.
+	if _, err := c.UpdateDataSourceProperties(ctx, slicesDSID, map[string]PropertySchema{
+		PropDependsOn: SchemaRelation(slicesDSID),
+	}); err != nil {
+		return nil, fmt.Errorf("add the %q column: %w", PropDependsOn, err)
+	}
 
 	s := &ProjectStructure{
 		PageID:     page.ID,
@@ -206,7 +220,9 @@ type expectedProperty struct {
 // Assignee is left out: it is optional, and a project tracking work by status
 // alone is not a broken one. The Milestone select is expected to exist but to
 // offer nothing in particular — its options are the plan, which a project this
-// new has none of yet.
+// new has none of yet. Depends on is expected because CreateProject adds it: a
+// project made without one is a project whose second write silently did
+// nothing, and this is where that would be caught.
 func expectedSliceProperties() []expectedProperty {
 	return []expectedProperty{
 		{Name: PropName, Type: "title"},
@@ -214,6 +230,7 @@ func expectedSliceProperties() []expectedProperty {
 		{Name: PropMilestone, Type: "select"},
 		{Name: PropRepo, Type: "rich_text"},
 		{Name: PropPR, Type: "url"},
+		{Name: PropDependsOn, Type: "relation"},
 	}
 }
 

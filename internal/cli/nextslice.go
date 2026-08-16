@@ -65,11 +65,17 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// selectNextSlice finds the slice to work next: the first unclaimed Todo slice
-// the board would list, under the lowest-ordered milestone still open. The plan
-// is read exactly the way the board reads it — in the order the project's own
-// board puts its slices in — so the slice handed out is the one someone looking
-// at that board would expect to go next.
+// selectNextSlice finds the slice to work next: the first unclaimed, unblocked
+// Todo slice the board would list, under the lowest-ordered milestone still
+// open. The plan is read exactly the way the board reads it — in the order the
+// project's own board puts its slices in — so the slice handed out is the one
+// someone looking at that board would expect to go next.
+//
+// A slice waiting on unfinished work is passed over rather than stopped at: it
+// is not workable yet, but the slices under it may well be, and a plan that
+// halts at the first blocked slice would hand out nothing until somebody
+// noticed. Only when every candidate is blocked is there nothing to do, and
+// then the refusal says which slices are waiting on what.
 //
 // A milestone has no status of its own to gate on: it is read back off the
 // slices under it, so it is Queued until one of them starts. Everything not yet
@@ -89,21 +95,39 @@ func selectNextSlice(ctx context.Context, client API, projectID string, project 
 	plan := domain.NewProject(projectID, project.Name, milestonesOf(shape), domain.InViewOrder(
 		domain.SlicesFromPages(pages), notion.PlanOrder(ctx, client, project.SlicesDSID)))
 
+	// The whole plan is the index: every slice a dependency could name is in it,
+	// and one it does not hold is a page this project cannot see.
+	byID := domain.SlicesByID(plan.Slices)
+
 	var open []domain.Milestone
+	var waiting []string
 	for _, g := range plan.Groups() {
 		if g.Milestone == nil || g.Milestone.Status == domain.MilestoneDone {
 			continue
 		}
 		open = append(open, *g.Milestone)
 		for _, s := range g.Slices {
-			if s.Status == domain.SliceTodo && s.AssigneeName == "" {
+			if s.Status != domain.SliceTodo || s.AssigneeName != "" {
+				continue
+			}
+			blockers, unknown := domain.Blockers(s, byID)
+			for _, id := range unknown {
+				logging.Action("dependency is not in the plan", "slice", s.ID, "dependency", id)
+			}
+			if len(blockers) == 0 {
 				return *g.Milestone, s, nil
 			}
+			waiting = append(waiting, fmt.Sprintf("%q waits on %s", s.Name, blockerList(blockers)))
 		}
 	}
 	if len(open) == 0 {
 		return domain.Milestone{}, domain.Slice{}, fmt.Errorf(
 			"no unfinished milestone: every milestone in the plan is Done")
+	}
+	if len(waiting) > 0 {
+		return domain.Milestone{}, domain.Slice{}, fmt.Errorf(
+			"every unclaimed Todo slice in the unfinished %s is blocked: %s",
+			plural("milestone", len(open)), strings.Join(waiting, "; "))
 	}
 	return domain.Milestone{}, domain.Slice{}, fmt.Errorf("no unclaimed Todo slice in the unfinished %s: %s",
 		plural("milestone", len(open)), strings.Join(milestoneNames(open), ", "))

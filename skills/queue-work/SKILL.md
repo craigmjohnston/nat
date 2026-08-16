@@ -53,7 +53,8 @@ and rerun — the CLI has no project switch of its own.
          "title": "Do the thing",
          "milestone": "M14: Something new",
          "description": "The brief, as it should read on the page.",
-         "repo": "/path/only/when/it/differs"
+         "repo": "/path/only/when/it/differs",
+         "depends_on": ["A slice that has to be finished first"]
        }
      ]
    }
@@ -62,8 +63,15 @@ and rerun — the CLI has no project switch of its own.
    `milestone` names one of the plan's own new milestones, or an existing one
    of the project, by name — a milestone is an option of the slices' own
    `Milestone` column, so its name is all there is to name it by.
-   `description` and `repo` are optional; nothing else is, and any other key is
-   rejected. The whole document is validated before the first page is created.
+   `description`, `repo` and `depends_on` are optional; nothing else is, and any
+   other key is rejected. The whole document is validated before the first page
+   is created.
+
+   `depends_on` names slices by title — one the same document creates, wherever
+   in it, or one the project already has. A slice is blocked while anything it
+   names is not Done: `nat next-slice` steps over it and `nat start-slice`
+   refuses it, so use it for work that genuinely cannot start yet, not for work
+   that merely reads better in order.
 4. Report the created page URLs, grouped by milestone — `plan-apply` prints
    them.
 
