@@ -17,9 +17,9 @@ var sgr = regexp.MustCompile("\x1b\\[[0-9;]*m")
 // plain is a rendered string with its styling taken off.
 func plain(s string) string { return sgr.ReplaceAllString(s, "") }
 
-// barOf and labelOf split a rendered bar into its two lines.
-func barOf(rendered string) string   { return plain(strings.SplitN(rendered, "\n", 2)[0]) }
-func labelOf(rendered string) string { return plain(strings.SplitN(rendered, "\n", 2)[1]) }
+// barOf is a rendered bar — one line, and no label under it — with its styling
+// taken off.
+func barOf(rendered string) string { return plain(rendered) }
 
 // segs builds segments from done/total pairs, named M1, M2, … so that the
 // widths under test are readable at the call site.
@@ -156,9 +156,6 @@ func TestProgressBarWithNoSlicesAtAllIsEmptyRatherThanBlank(t *testing.T) {
 		if got, want := barOf(rendered), strings.Repeat(barCell, 5); got != want {
 			t.Errorf("bar = %q, want %q", got, want)
 		}
-		if got, want := labelOf(rendered), "0/0"; got != want {
-			t.Errorf("label = %q, want %q", got, want)
-		}
 	}
 }
 
@@ -205,33 +202,46 @@ func TestProgressBarFillsOnlyAFinishedSegmentCompletely(t *testing.T) {
 	}
 }
 
-func TestProgressBarLabelPointsAtTheFirstUnfinishedMilestone(t *testing.T) {
+// The milestone the heading names is the earliest one that has been started
+// and not finished — the work the plan is in, past the milestones behind it.
+func TestCurrentSegmentNameIsTheEarliestStartedAndUnfinishedMilestone(t *testing.T) {
 	segments := segs([2]int{2, 2}, [2]int{0, 0}, [2]int{4, 10}, [2]int{0, 3})
 	segments[2].Name = "M3: Notion client"
 
-	if got, want := labelOf(RenderProgressBar(DefaultStyles(), 40, segments)), "6/15 · M3: Notion client"; got != want {
-		t.Errorf("label = %q, want %q", got, want)
+	if got, want := CurrentSegmentName(segments), "M3: Notion client"; got != want {
+		t.Errorf("CurrentSegmentName() = %q, want %q", got, want)
 	}
 }
 
-func TestProgressBarLabelNamesNoMilestoneWhenEverythingIsDone(t *testing.T) {
-	rendered := RenderProgressBar(DefaultStyles(), 20, segs([2]int{2, 2}, [2]int{3, 3}))
+// A milestone with a slice claimed but none done yet has been started too: it
+// is where the work is, whatever the tally says.
+func TestCurrentSegmentNameCountsAClaimedSliceAsStarted(t *testing.T) {
+	segments := segs([2]int{0, 4}, [2]int{0, 4})
+	segments[1].Progress = domain.Progress{Claimed: 1, Todo: 3, Total: 4}
 
-	if got, want := labelOf(rendered), "5/5"; got != want {
-		t.Errorf("label = %q, want %q", got, want)
+	if got, want := CurrentSegmentName(segments), "M2"; got != want {
+		t.Errorf("CurrentSegmentName() = %q, want %q", got, want)
 	}
 }
 
-func TestProgressBarLabelIsTruncatedToTheBarWidth(t *testing.T) {
-	segments := segs([2]int{0, 4})
-	segments[0].Name = "M1: a very long milestone name indeed"
-
-	label := labelOf(RenderProgressBar(DefaultStyles(), 10, segments))
-	if got := lipgloss.Width(label); got > 10 {
-		t.Errorf("label %q is %d wide, want at most 10", label, got)
+// Nothing started at all: the name falls back to the earliest milestone with
+// work left in it, which is the one the next slice comes out of. Milestones
+// with no slices are passed over — there is nothing in them to begin.
+func TestCurrentSegmentNameFallsBackToTheEarliestMilestoneWithWorkLeft(t *testing.T) {
+	if got, want := CurrentSegmentName(segs([2]int{0, 0}, [2]int{0, 3}, [2]int{0, 2})), "M2"; got != want {
+		t.Errorf("CurrentSegmentName() = %q, want %q", got, want)
 	}
-	if !strings.HasPrefix(label, "0/4 · M1:") {
-		t.Errorf("label = %q, want it to start with the tally", label)
+}
+
+func TestCurrentSegmentNameIsEmptyWithNoMilestoneToPointAt(t *testing.T) {
+	for _, segments := range [][]ProgressSegment{
+		nil,
+		segs([2]int{0, 0}, [2]int{0, 0}),
+		segs([2]int{2, 2}, [2]int{3, 3}),
+	} {
+		if got := CurrentSegmentName(segments); got != "" {
+			t.Errorf("CurrentSegmentName(%+v) = %q, want no milestone named", segments, got)
+		}
 	}
 }
 
