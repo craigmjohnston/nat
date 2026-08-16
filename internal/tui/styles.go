@@ -177,6 +177,11 @@ type Styles struct {
 	Assignee lipgloss.Style
 	PR       lipgloss.Style
 	Live     lipgloss.Style
+	// Blocked marks a slice waiting on slices that are not Done. It is the
+	// muted text the counts and hints take, because a blocked row is one there
+	// is nothing to do about yet: it should read as receding rather than as
+	// something gone wrong.
+	Blocked lipgloss.Style
 	// StarDim, StarMid and StarPeak are the star of a slice with an agent
 	// working on it, brightening and settling as the pulse swells: all three
 	// the Working orange, separated by weight the way Claude Code's own
@@ -277,6 +282,7 @@ func NewStyles(isDark bool) Styles {
 		Assignee: lipgloss.NewStyle().Foreground(t.AccentAlt),
 		PR:       lipgloss.NewStyle().Foreground(t.Accent),
 		Live:     lipgloss.NewStyle().Bold(true).Foreground(t.Success),
+		Blocked:  lipgloss.NewStyle().Foreground(t.Muted),
 
 		StarDim:     lipgloss.NewStyle().Faint(true).Foreground(t.Working),
 		StarMid:     lipgloss.NewStyle().Foreground(t.Working),
