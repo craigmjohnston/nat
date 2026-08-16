@@ -1037,19 +1037,89 @@ func TestPaneLabel(t *testing.T) {
 	}
 }
 
+// wantAttachArgs is the argv both attaches build: the client features are a
+// top-level flag, so they precede the command.
+var wantAttachArgs = []string{
+	"tmux", "-T", "256,RGB,extkeys,focus", "attach-session", "-t", "nat-3b738308",
+}
+
+// envValues is every value the environment of cmd gives name, so a test can
+// assert both that a variable is gone and that another appears exactly once.
+func envValues(cmd *exec.Cmd, name string) []string {
+	var out []string
+	for _, entry := range cmd.Env {
+		if got, value, found := strings.Cut(entry, "="); found && got == name {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
 func TestAttachCmd(t *testing.T) {
+	t.Setenv("TMUX", "/tmp/tmux-501/default,123,0")
+	t.Setenv("TMUX_PANE", "%7")
+	t.Setenv("TERM", "xterm-ghostty")
+
 	cmd := AttachCmd("nat-3b738308")
-	want := []string{"tmux", "attach-session", "-t", "nat-3b738308"}
-	if !reflect.DeepEqual(cmd.Args, want) {
-		t.Errorf("args = %v, want %v", cmd.Args, want)
+
+	if !reflect.DeepEqual(cmd.Args, wantAttachArgs) {
+		t.Errorf("args = %v, want %v", cmd.Args, wantAttachArgs)
+	}
+	for _, name := range []string{"TMUX", "TMUX_PANE"} {
+		if got := envValues(cmd, name); got != nil {
+			t.Errorf("%s = %v, want it scrubbed", name, got)
+		}
+	}
+	if got := envValues(cmd, "TERM"); !reflect.DeepEqual(got, []string{"xterm-ghostty"}) {
+		t.Errorf("TERM = %v, want the caller's kept", got)
 	}
 }
 
 func TestTmuxAttachCmd(t *testing.T) {
 	cmd := NewTmux().AttachCmd("nat-3b738308")
-	want := []string{"tmux", "attach-session", "-t", "nat-3b738308"}
-	if !reflect.DeepEqual(cmd.Args, want) {
-		t.Errorf("args = %v, want %v", cmd.Args, want)
+	if !reflect.DeepEqual(cmd.Args, wantAttachArgs) {
+		t.Errorf("args = %v, want %v", cmd.Args, wantAttachArgs)
+	}
+}
+
+func TestAttachClientCmd(t *testing.T) {
+	t.Setenv("TMUX", "/tmp/tmux-501/default,123,0")
+	t.Setenv("TMUX_PANE", "%7")
+	t.Setenv("TERM", "xterm-ghostty")
+
+	cmd := AttachClientCmd("nat-3b738308")
+
+	if !reflect.DeepEqual(cmd.Args, wantAttachArgs) {
+		t.Errorf("args = %v, want %v", cmd.Args, wantAttachArgs)
+	}
+	for _, name := range []string{"TMUX", "TMUX_PANE"} {
+		if got := envValues(cmd, name); got != nil {
+			t.Errorf("%s = %v, want it scrubbed", name, got)
+		}
+	}
+	if got := envValues(cmd, "TERM"); !reflect.DeepEqual(got, []string{"xterm-256color"}) {
+		t.Errorf("TERM = %v, want exactly one xterm-256color", got)
+	}
+}
+
+func TestTmuxAttachClientCmd(t *testing.T) {
+	cmd := NewTmux().AttachClientCmd("nat-3b738308")
+	if !reflect.DeepEqual(cmd.Args, wantAttachArgs) {
+		t.Errorf("args = %v, want %v", cmd.Args, wantAttachArgs)
+	}
+	if got := envValues(cmd, "TERM"); !reflect.DeepEqual(got, []string{"xterm-256color"}) {
+		t.Errorf("TERM = %v, want exactly one xterm-256color", got)
+	}
+}
+
+// An environment entry with no "=" in it is not a variable and belongs to
+// neither name, so the scrub has to leave it alone rather than mistake it for
+// one of the names it is dropping.
+func TestScrubEnvKeepsNamelessEntries(t *testing.T) {
+	got := scrubEnv([]string{"TMUX", "TMUX=abc", "PATH=/bin"}, "TMUX")
+	want := []string{"TMUX", "PATH=/bin"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("scrubEnv = %v, want %v", got, want)
 	}
 }
 
