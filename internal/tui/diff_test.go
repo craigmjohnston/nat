@@ -342,3 +342,18 @@ func TestDiffPluralNamesOneFile(t *testing.T) {
 		t.Errorf("heading = %q, want %q", d.listHeading(), want)
 	}
 }
+
+// TestDiffListMarksABinaryFile covers the tally of a file git described rather
+// than diffed, which has no ± to show — both where the row is drawn plain and
+// where the cursor fills it and its colours come off.
+func TestDiffListMarksABinaryFile(t *testing.T) {
+	d := newTestDiff()
+	if got := xansi.Strip(d.listView()); !strings.Contains(got, "bin") {
+		t.Errorf("list = %q, want the binary file marked", got)
+	}
+	d.cursor = len(d.files) - 1
+	row := xansi.Strip(d.fileRow(d.cursor))
+	if !strings.Contains(row, "shot.png") || !strings.Contains(row, "bin") {
+		t.Errorf("selected row = %q, want the binary file marked under the cursor", row)
+	}
+}
