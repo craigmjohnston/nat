@@ -1008,9 +1008,11 @@ func (a *App) progressBar() *tea.ProgressBar {
 const (
 	framePadX = 2
 	// headerHeight is the heading bar's own line, and headerBarHeight the
-	// progress bar and its label beneath it inside the header's box.
+	// progress bar beneath it inside the header's box. The bar carries no label
+	// line of its own: what it said — the milestone the work is in and the
+	// plan's tally — is on the heading beside the project's name.
 	headerHeight    = 1
-	headerBarHeight = 2
+	headerBarHeight = 1
 	headerBoxMin    = headerHeight + 2
 	bodyBoxMin      = 3
 	hintsHeight     = 1
@@ -1081,8 +1083,8 @@ func (a *App) band(s string, height int) []string {
 // everything is still worth telling the user where they are and what the keys
 // do: its own box when the window is framed, one bare line when it is not. The
 // box gives up the progress bar before the body gives up its rows, so a short
-// window keeps the plan on show and loses the bar's label, then the bar, then
-// nothing more — the heading itself always stays.
+// window keeps the plan on show and loses the bar, then nothing more — the
+// heading, which carries the tally, always stays.
 func (a *App) headerBandHeight() int {
 	if !a.framed() {
 		return min(headerHeight, max(a.height, 0))
@@ -1092,8 +1094,7 @@ func (a *App) headerBandHeight() int {
 }
 
 // headerContentHeight is the lines inside the header's box: the heading, and
-// the progress bar and its label when there is a plan to sum and a width to
-// draw it at.
+// the progress bar when there is a plan to sum and a width to draw it at.
 func (a *App) headerContentHeight() int {
 	if a.project == nil || a.innerWidth() <= 0 {
 		return headerHeight
@@ -1150,7 +1151,7 @@ func (a *App) headerRegion() []string {
 // box's own width, and the project's segmented progress bar beneath it.
 func (a *App) headerContent() string {
 	width := a.innerWidth()
-	heading := a.styles.Header.Width(width).Render(a.headerLeft(width))
+	heading := a.styles.Header.Width(width).Render(a.headingLine(width))
 	bar := a.progressBarView()
 	if bar == "" {
 		return heading
@@ -1158,8 +1159,66 @@ func (a *App) headerContent() string {
 	return heading + "\n" + bar
 }
 
-// headerLeft is what the heading says: the app's name as a segment of its own
-// and the screen or project name beside it, cut to width.
+// headingLine is the header's own line: the app's segment and the screen or
+// project name on the left, and the plan's standing reading — the milestone the
+// work is in and how much of the plan is done — right-aligned on the same line,
+// which is where the bar's label line used to say it.
+//
+// The reading is what a narrow window gives up, and by degrees: the milestone's
+// name goes first and the tally last, since the tally reads at any width and a
+// name cut to nothing reads as neither. What is left of the line is the name of
+// where the user is, which is the one thing the heading must always say.
+func (a *App) headingLine(width int) string {
+	// A window with no room for a reading — an unmeasured one included — has the
+	// names alone, which is what the heading is without one.
+	reading := a.headingReading(width)
+	if reading == "" {
+		return a.headerLeft(width)
+	}
+	left := a.headerLeft(width - lipgloss.Width(reading) - headingGap)
+	gap := max(width-lipgloss.Width(left)-lipgloss.Width(reading), headingGap)
+	// The gap is part of the bar, so it is filled the way the bar is: an unstyled
+	// run of spaces would read as a hole punched in the heading's colour.
+	return left + a.styles.Header.Render(strings.Repeat(" ", gap)) + reading
+}
+
+// headingGap is the least the heading's name and its reading are kept apart by,
+// so the two never read as one run of text.
+const headingGap = 2
+
+// headingReading is the heading's right-hand side, in the widest form the line
+// has room for: the milestone the work is in and the plan's tally, the tally
+// alone, or nothing at all on a window with no room beside the app's own
+// segment. There is nothing to read where no plan is loaded, or where the plan
+// has no slices in it — a tally of nothing is no reading.
+func (a *App) headingReading(width int) string {
+	if a.project == nil {
+		return ""
+	}
+	p := a.project.Progress()
+	if p.Empty() {
+		return ""
+	}
+	tally := a.styles.HeaderMeta.Render(fmt.Sprintf("%d/%d", p.Done, p.Total))
+	// The app's segment is what the left keeps at its narrowest, so it is what
+	// the reading has to leave room for — and never more than half the line
+	// besides, since a reading that crowds the name out has cost more than it
+	// says.
+	room := min(width-lipgloss.Width(a.styles.HeaderApp.Render(appName))-headingGap, width/2)
+	if name := CurrentSegmentName(SegmentsOf(a.project.Groups())); name != "" {
+		whole := a.styles.HeaderMilestone.Render(name) + a.styles.HeaderMeta.Render(" · ") + tally
+		if lipgloss.Width(whole) <= room {
+			return whole
+		}
+	}
+	if lipgloss.Width(tally) <= room {
+		return tally
+	}
+	return ""
+}
+
+// headerLeft is what the heading says on the left: the app's name as a segment
+// of its own and the screen or project name beside it, cut to width.
 func (a *App) headerLeft(width int) string {
 	segment := a.styles.HeaderApp.Render(appName)
 	name := a.headerName()

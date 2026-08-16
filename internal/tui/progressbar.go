@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -35,7 +34,9 @@ func SegmentsOf(groups []domain.Group) []ProgressSegment {
 }
 
 // RenderProgressBar draws a horizontal progress bar segmented by milestone,
-// exactly width cells wide, with a label under it — two lines in all.
+// exactly width cells wide, on one line. It carries no label of its own: the
+// tally and the milestone the work is in are read off the heading above it —
+// see [App.headingReading].
 //
 // Each segment is as wide as its share of the project's slices, never narrower
 // than one cell, and filled in proportion to how much of it is done. Finished
@@ -54,8 +55,7 @@ func RenderProgressBar(styles Styles, width int, segments []ProgressSegment) str
 	if width <= 0 {
 		return ""
 	}
-	return renderBar(styles, width, drawable(segments)) + "\n" +
-		renderBarLabel(styles, width, segments)
+	return renderBar(styles, width, drawable(segments))
 }
 
 // drawable is the segments that get cells: the ones with slices in them.
@@ -204,26 +204,26 @@ func shareOut(cells int, weights []int) []int {
 	return widths
 }
 
-// renderBarLabel is the line under the bar: how much of the project is done,
-// and the milestone the work is in — the first one that is not finished.
-func renderBarLabel(styles Styles, width int, segments []ProgressSegment) string {
-	total := totalProgress(segments)
-	label := styles.Faint.Render(fmt.Sprintf("%d/%d", total.Done, total.Total))
-	if name := currentSegmentName(segments); name != "" {
-		label += styles.Faint.Render(" · ") + styles.Milestone.Render(name)
-	}
-	return lipgloss.NewStyle().MaxWidth(width).Render(label)
-}
-
-// currentSegmentName is the name of the first segment with work left in it, or
-// "" when every segment is finished — there is no milestone to point at then.
-func currentSegmentName(segments []ProgressSegment) string {
+// CurrentSegmentName is the milestone the plan is in, which the heading names
+// beside the tally: the earliest segment that has been started and not
+// finished. A plan on which nothing has begun has no such segment, and falls
+// back to the earliest one with work left in it — the milestone the next slice
+// will come out of. It is "" only when every segment is finished, or when there
+// is nothing in any of them: there is no milestone to point at then.
+func CurrentSegmentName(segments []ProgressSegment) string {
+	var next string
 	for _, s := range segments {
-		if !s.Progress.Empty() && s.Progress.Done < s.Progress.Total {
+		if s.Progress.Empty() || s.Progress.Done == s.Progress.Total {
+			continue
+		}
+		if s.Progress.Claimed > 0 || s.Progress.Done > 0 {
 			return s.Name
 		}
+		if next == "" {
+			next = s.Name
+		}
 	}
-	return ""
+	return next
 }
 
 // repeat renders n copies of a bar rune, or nothing at all: an empty styled

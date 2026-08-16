@@ -99,55 +99,103 @@ func TestAppHeaderBarHasADistinctAppSegment(t *testing.T) {
 
 func TestAppBoxesTheHeaderWithTheProgressBar(t *testing.T) {
 	lines := strings.Split(stripANSI(sizedApp(80, 24).View().Content), "\n")
-	// The header is a bordered section of its own: its top border, the heading,
-	// the bar — windowProject's one slice is Todo, so every cell is empty — and
-	// the bar's label, naming the tally and the milestone the work is in, then
-	// the border closing the section off from the board's box beneath it.
+	// The header is a bordered section of two lines: its top border, the heading
+	// — the names on the left and the plan's reading right-aligned on the same
+	// line — and the bar under it, which windowProject's one Todo slice leaves
+	// every cell of empty. Then the border closing the section off from the
+	// board's box beneath it: there is no label line under the bar.
 	if !strings.HasPrefix(lines[0], "╭") || !strings.HasSuffix(lines[0], "╮") {
 		t.Errorf("first line = %q, want the header box's top border", lines[0])
 	}
 	if !strings.Contains(lines[1], "nat") || !strings.Contains(lines[1], "notion-agent-tracker") {
 		t.Errorf("heading = %q, want the app and project names", lines[1])
 	}
-	if strings.Contains(lines[1], "milestones:") {
-		t.Errorf("heading = %q, want the text tally gone", lines[1])
+	if !strings.Contains(lines[1], "M7: Agent pane view · 0/1") {
+		t.Errorf("heading = %q, want the milestone and the tally on it", lines[1])
 	}
 	if !strings.Contains(lines[2], strings.Repeat(barCell, 80-2*framePadX)) {
 		t.Errorf("second header line = %q, want the bar at the box's full width", lines[2])
 	}
-	if !strings.Contains(lines[3], "0/1 · M7: Agent pane view") {
-		t.Errorf("third header line = %q, want the bar's label", lines[3])
+	if !strings.HasPrefix(lines[3], "╰") || !strings.HasSuffix(lines[3], "╯") {
+		t.Errorf("line under the bar = %q, want the header box closed", lines[3])
 	}
-	if !strings.HasPrefix(lines[4], "╰") || !strings.HasSuffix(lines[4], "╯") {
-		t.Errorf("line under the bar = %q, want the header box closed", lines[4])
+	if !strings.HasPrefix(lines[4], "╭") {
+		t.Errorf("line under the header box = %q, want the board's own box", lines[4])
 	}
-	if !strings.HasPrefix(lines[5], "╭") {
-		t.Errorf("line under the header box = %q, want the board's own box", lines[5])
+}
+
+// The heading's reading sits at the line's right-hand end, however much room
+// the names beside it leave.
+func TestAppHeadingRightAlignsThePlansReading(t *testing.T) {
+	line := stripANSI(strings.Split(sizedApp(80, 24).View().Content, "\n")[1])
+
+	if got, want := strings.TrimRight(line, " │"), "M7: Agent pane view · 0/1"; !strings.HasSuffix(got, want) {
+		t.Errorf("heading = %q, want it to end with %q", got, want)
 	}
 }
 
 func TestAppHeaderBoxShedsTheBarBeforeTheBoardShedsItsRows(t *testing.T) {
 	// The header's box is the first band to give anything up as the window
-	// shortens: the bar's label goes, then the bar, and the heading and a row of
-	// the plan are what a framed window keeps to the last.
+	// shortens: the bar goes, and the heading — the names and the plan's
+	// reading — and a row of the plan are what a framed window keeps to the last.
 	for _, tt := range []struct {
-		height             int
-		wantBar, wantLabel bool
+		height  int
+		wantBar bool
 	}{
-		{24, true, true}, {8, true, false}, {7, false, false},
+		{24, true}, {8, true}, {7, false},
 	} {
 		view := stripANSI(sizedApp(80, tt.height).View().Content)
 		if got := strings.Contains(view, strings.Repeat(barCell, 80-2*framePadX)); got != tt.wantBar {
 			t.Errorf("at %d lines the bar is drawn = %v, want %v:\n%s", tt.height, got, tt.wantBar, view)
 		}
-		if got := strings.Contains(view, "0/1 · M7"); got != tt.wantLabel {
-			t.Errorf("at %d lines the label is drawn = %v, want %v:\n%s", tt.height, got, tt.wantLabel, view)
-		}
-		for _, want := range []string{"nat", "Agent pane view"} {
+		for _, want := range []string{"nat", "Agent pane view", "M7: Agent pane view · 0/1"} {
 			if !strings.Contains(view, want) {
 				t.Errorf("at %d lines the view is missing %q:\n%s", tt.height, want, view)
 			}
 		}
+	}
+}
+
+// The heading gives its reading up by degrees as the window narrows: the
+// milestone's name goes first and the tally last, and what is left of the line
+// is always the name of where the user is.
+func TestAppHeadingShedsTheMilestoneBeforeTheTally(t *testing.T) {
+	for _, tt := range []struct {
+		width                    int
+		wantMilestone, wantTally bool
+	}{
+		{80, true, true}, {40, false, true}, {12, false, false},
+	} {
+		line := stripANSI(headingLineOf(sizedApp(tt.width, 24)))
+		if got := strings.Contains(line, "M7"); got != tt.wantMilestone {
+			t.Errorf("at %d columns the milestone is named = %v, want %v: %q",
+				tt.width, got, tt.wantMilestone, line)
+		}
+		if got := strings.Contains(line, "0/1"); got != tt.wantTally {
+			t.Errorf("at %d columns the tally is drawn = %v, want %v: %q",
+				tt.width, got, tt.wantTally, line)
+		}
+		if !strings.Contains(line, "nat") {
+			t.Errorf("at %d columns the heading = %q, want the app's segment kept", tt.width, line)
+		}
+	}
+}
+
+// headingLineOf is the heading line of a framed window: the line under the header
+// box's top border.
+func headingLineOf(a *App) string {
+	return strings.Split(a.View().Content, "\n")[1]
+}
+
+// A plan with nothing in it has no reading to take: a tally of nothing says
+// nothing, and the heading is the names alone.
+func TestAppHeadingHasNoReadingWithoutAPlanToSum(t *testing.T) {
+	a := NewApp(testConfig(), newLoadingClient())
+	a.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	a.Update(projectLoadedMsg{project: domain.Project{ID: testProjectID, Name: "empty"}})
+
+	if got := stripANSI(headingLineOf(a)); strings.Contains(got, "0/0") {
+		t.Errorf("heading = %q, want no tally on a plan with no slices", got)
 	}
 }
 
@@ -181,17 +229,17 @@ func TestAppBoxesTheHeaderAndTheBoard(t *testing.T) {
 	for _, width := range windowWidths {
 		a := sizedApp(width, 24)
 		lines := strings.Split(stripANSI(a.View().Content), "\n")
-		// The header takes the window's first five lines and the board's box
+		// The header takes the window's first four lines and the board's box
 		// follows it, closing over the hints on the bottom lines — as many as they
 		// wrapped onto; each box runs the window's full width. Nothing is drawn
 		// under them: the status bar is the tmux bar's now.
 		hints := a.hintBandHeight()
-		for _, i := range []int{0, 5} {
+		for _, i := range []int{0, 4} {
 			if !strings.HasPrefix(lines[i], "╭") || !strings.HasSuffix(lines[i], "╮") {
 				t.Errorf("at %d columns line %d = %q, want a border's top", width, i, lines[i])
 			}
 		}
-		for _, i := range []int{4, len(lines) - 1 - hints} {
+		for _, i := range []int{3, len(lines) - 1 - hints} {
 			if !strings.HasPrefix(lines[i], "╰") || !strings.HasSuffix(lines[i], "╯") {
 				t.Errorf("at %d columns line %d = %q, want a border's bottom", width, i, lines[i])
 			}
@@ -806,13 +854,13 @@ func TestAppSharesAShortWindowOutFromTheBottom(t *testing.T) {
 	// is left: too short a window loses the body, then its borders, then the
 	// hints, and the heading is the one line it keeps to the last. From 7 lines the layout is framed — the boxed
 	// header and the body's own border — and below that the bands are drawn
-	// bare. The header box gives up the progress bar's label, then the bar
-	// itself, before the body gives up its last row.
+	// bare. The header box gives up the progress bar before the body gives up
+	// its last row; the heading under it carries the plan's tally either way.
 	//
 	// At 80 columns the hints fit on one line, so the body keeps the row they
 	// would otherwise wrap onto.
 	for _, tt := range []struct{ height, header, body int }{
-		{20, 5, 12}, {12, 5, 4}, {9, 5, 1}, {8, 4, 1}, {7, 3, 1}, {6, 1, 4}, {2, 1, 0}, {1, 1, 0},
+		{20, 4, 13}, {12, 4, 5}, {9, 4, 2}, {8, 4, 1}, {7, 3, 1}, {6, 1, 4}, {2, 1, 0}, {1, 1, 0},
 	} {
 		a := tallApp(80, tt.height)
 		if got := a.headerBandHeight(); got != tt.header {

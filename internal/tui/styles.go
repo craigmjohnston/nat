@@ -78,12 +78,15 @@ type Styles struct {
 	Subtitle lipgloss.Style
 	// Header is the fill of the heading bar; HeaderApp the app's own segment on
 	// it, distinct from HeaderTitle, the project or screen name beside it; and
-	// HeaderMeta the plan's tally, right-aligned on the bar. The text styles
-	// carry the bar's background for the same reason the status segments do.
-	Header      lipgloss.Style
-	HeaderApp   lipgloss.Style
-	HeaderTitle lipgloss.Style
-	HeaderMeta  lipgloss.Style
+	// HeaderMeta the plan's tally, right-aligned on the bar, with
+	// HeaderMilestone naming the milestone the work is in beside it. The text
+	// styles carry the bar's background for the same reason the status segments
+	// do.
+	Header          lipgloss.Style
+	HeaderApp       lipgloss.Style
+	HeaderTitle     lipgloss.Style
+	HeaderMeta      lipgloss.Style
+	HeaderMilestone lipgloss.Style
 	// Box frames the body region: a real border, so the layout reads as panels
 	// rather than floating text.
 	Box lipgloss.Style
@@ -226,10 +229,11 @@ func NewStyles(isDark bool) Styles {
 		Subtitle: lipgloss.NewStyle().Foreground(t.AccentAlt),
 		Faint:    lipgloss.NewStyle().Foreground(t.Muted),
 
-		Header:      bar,
-		HeaderApp:   chip.Bold(true).Foreground(t.OnFill).Background(t.Accent),
-		HeaderTitle: bar.Bold(true).Foreground(t.Text),
-		HeaderMeta:  bar.Foreground(t.Muted),
+		Header:          bar,
+		HeaderApp:       chip.Bold(true).Foreground(t.OnFill).Background(t.Accent),
+		HeaderTitle:     bar.Bold(true).Foreground(t.Text),
+		HeaderMeta:      bar.Foreground(t.Muted),
+		HeaderMilestone: bar.Foreground(t.AccentAlt),
 
 		Box:             lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.SurfaceHi).Padding(0, 1),
 		TermBox:         lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.SurfaceHi),
