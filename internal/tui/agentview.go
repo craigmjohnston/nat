@@ -283,6 +283,9 @@ func (a *App) viewerFocused() bool {
 // The outer tmux's prefix is swallowed rather than forwarded: the hidden client
 // is a client of the same server, and a prefix reaching it would work the
 // board's own window from inside the agent's.
+//
+// Anything that stands for characters is written as those characters and only
+// the rest is handed to the emulator's key encoder — see [printableText].
 func (a *App) viewerKey(msg tea.KeyPressMsg) tea.Cmd {
 	v := a.viewer
 	switch {
@@ -293,10 +296,25 @@ func (a *App) viewerKey(msg tea.KeyPressMsg) tea.Cmd {
 		v.session.SendBytes([]byte(shiftEnterBytes))
 	case key.Matches(msg, a.keys.CtrlEnter):
 		v.session.SendBytes([]byte(ctrlEnterBytes))
+	case printableText(msg):
+		// The characters the key stands for, sent as themselves. The emulator's
+		// own encoder writes a printable key only when it carries no modifier
+		// at all, so a capital letter — shift plus the unshifted code — and
+		// every piece of shifted punctuation reached the agent as nothing.
+		v.session.SendBytes([]byte(msg.Text))
 	default:
 		v.session.SendKey(uv.KeyPressEvent(msg))
 	}
 	return nil
+}
+
+// printableText reports whether the key is text to be typed rather than a
+// keystroke to be encoded. A key that stands for characters carries them in
+// Text; the arrows, the function keys and the rest carry none, and are the
+// emulator's to encode. Ctrl is excluded because a ctrl combination is a
+// control byte however it was decoded, never the letter it was struck with.
+func printableText(msg tea.KeyPressMsg) bool {
+	return msg.Text != "" && msg.Mod&tea.ModCtrl == 0
 }
 
 // viewerMouse is every mouse event while a terminal is on the board. Until the

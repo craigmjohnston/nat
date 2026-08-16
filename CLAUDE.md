@@ -122,7 +122,12 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   agent goes on living in its own tmux session and survives a board restart. One
   is on show at a time; it opens unfocused (`tab` focuses, `ctrl+\` comes back)
   and while it is focused every key is the agent's — `ctrl+c` included, which is
-  deliberate — bar the outer tmux prefix, which is swallowed. It is drawn only on
+  deliberate — bar the outer tmux prefix, which is swallowed. A key that stands
+  for characters is written as those characters and only the rest goes to the
+  emulator's key encoder, which writes a printable key only when it carries no
+  modifier at all and so typed nothing for a capital letter or any shifted
+  punctuation; ctrl is excluded, since a ctrl combination is a control byte
+  however it was decoded. It is drawn only on
   the board and only in a framed window, and stays alive undrawn behind help,
   info and a form. An agent that exits leaves its last frame on screen marked
   `exited`, and the after-viewing refetch — the slice's page, or the whole plan

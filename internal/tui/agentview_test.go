@@ -31,6 +31,7 @@ type fakeTerm struct {
 	err       error
 
 	keys    []string
+	events  []uv.KeyPressEvent
 	raw     []string
 	mice    []fakeMouse
 	pastes  []string
@@ -66,6 +67,7 @@ func (f *fakeTerm) Cursor() (int, int, bool) { return f.cursor[0], f.cursor[1], 
 
 func (f *fakeTerm) SendKey(k uv.KeyPressEvent) {
 	f.keys = append(f.keys, uv.Key(k).String())
+	f.events = append(f.events, k)
 }
 
 func (f *fakeTerm) SendBytes(p []byte) { f.raw = append(f.raw, string(p)) }
@@ -362,8 +364,12 @@ func TestAppFocusedTerminalTakesEveryKey(t *testing.T) {
 		}
 	}
 
-	want := []string{"j", "q", "l", "esc", "ctrl+c"}
-	if !reflect.DeepEqual(term.keys, want) {
+	// The letters are text and go as their own bytes; the two that stand for no
+	// character are the emulator's to encode.
+	if want := []string{"j", "q", "l"}; !reflect.DeepEqual(term.raw, want) {
+		t.Errorf("raw = %q, want %q", term.raw, want)
+	}
+	if want := []string{"esc", "ctrl+c"}; !reflect.DeepEqual(term.keys, want) {
 		t.Errorf("keys = %v, want %v", term.keys, want)
 	}
 	if app.board.cursor != cursor {
@@ -401,6 +407,69 @@ func TestAppFocusedTerminalSendsTheModifiedEnters(t *testing.T) {
 	}
 	if len(term.keys) != 0 {
 		t.Errorf("keys = %v, want the enters sent raw", term.keys)
+	}
+}
+
+// Everything that stands for characters is typed at the agent as those
+// characters: a capital letter and shifted punctuation both arrive as a
+// modified key the emulator's encoder would write nothing for, and an accented
+// character is a rune the keyboard never had a code for on its own.
+func TestAppFocusedTerminalTypesTheTextOfAKey(t *testing.T) {
+	app, _, term := viewerApp(t)
+	focus(t, app)
+
+	for _, k := range []tea.Key{
+		{Code: 'a', Mod: tea.ModShift, ShiftedCode: 'A', Text: "A"},
+		{Code: '1', Mod: tea.ModShift, ShiftedCode: '!', Text: "!"},
+		{Code: ';', Mod: tea.ModShift, ShiftedCode: ':', Text: ":"},
+		{Code: '-', Mod: tea.ModShift, ShiftedCode: '_', Text: "_"},
+		{Code: 'é', Text: "é"},
+	} {
+		pressKey(app, k)
+	}
+
+	if want := []string{"A", "!", ":", "_", "é"}; !reflect.DeepEqual(term.raw, want) {
+		t.Errorf("raw = %q, want %q", term.raw, want)
+	}
+	if len(term.keys) != 0 {
+		t.Errorf("keys = %v, want the text sent as itself", term.keys)
+	}
+}
+
+// An alt-modified key carries no text of its own — the decoder drops it for
+// anything beyond shift — so it stays the emulator's to encode, which is where
+// the escape prefix comes from.
+func TestAppFocusedTerminalLeavesAltToTheEncoder(t *testing.T) {
+	app, _, term := viewerApp(t)
+	focus(t, app)
+
+	pressKey(app, tea.Key{Code: 'a', Mod: tea.ModAlt})
+	pressKey(app, tea.Key{Code: tea.KeyUp})
+
+	if want := []string{"alt+a", "up"}; !reflect.DeepEqual(term.keys, want) {
+		t.Errorf("keys = %v, want %v", term.keys, want)
+	}
+	if len(term.raw) != 0 {
+		t.Errorf("raw = %q, want the keys left to the encoder", term.raw)
+	}
+}
+
+// A ctrl combination is a control byte however it was decoded, so a terminal
+// that reported text alongside it does not get the letter typed at it.
+func TestAppFocusedTerminalPrefersCtrlOverText(t *testing.T) {
+	app, _, term := viewerApp(t)
+	focus(t, app)
+
+	pressKey(app, tea.Key{Code: 'd', Mod: tea.ModCtrl, Text: "d"})
+
+	// The key's own String is its text, so the modifier is read off the event
+	// the encoder was handed.
+	want := []uv.KeyPressEvent{{Code: 'd', Mod: uv.ModCtrl, Text: "d"}}
+	if !reflect.DeepEqual(term.events, want) {
+		t.Errorf("events = %+v, want %+v", term.events, want)
+	}
+	if len(term.raw) != 0 {
+		t.Errorf("raw = %q, want the combination encoded", term.raw)
 	}
 }
 
