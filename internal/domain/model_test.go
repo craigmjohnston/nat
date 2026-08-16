@@ -37,6 +37,7 @@ func TestSliceFromPage(t *testing.T) {
 					"Milestone": {"type": "select", "select": {"name": "M1: Groundwork"}},
 					"Assignee": {"type": "people", "people": [{"id": "u1", "name": "Craig Johnston"}]},
 					"Repo": {"type": "rich_text", "rich_text": [{"plain_text": "/repos/other"}]},
+					"Branch": {"type": "rich_text", "rich_text": [{"plain_text": "slice/domain-model"}]},
 					"PR": {"type": "url", "url": "https://github.test/pr/1"}
 				}
 			}`,
@@ -44,7 +45,8 @@ func TestSliceFromPage(t *testing.T) {
 				ID: "s1", Name: "Domain model", Status: SliceClaimed, StatusName: "In progress",
 				MilestoneID:  "M1: Groundwork",
 				AssigneeName: "Craig Johnston", Repo: "/repos/other",
-				PRURL: "https://github.test/pr/1", URL: "https://notion.test/s1",
+				Branch: "slice/domain-model",
+				PRURL:  "https://github.test/pr/1", URL: "https://notion.test/s1",
 			},
 		},
 		{

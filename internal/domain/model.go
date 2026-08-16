@@ -62,6 +62,11 @@ func (m Milestone) Ref() notion.PropertyValue {
 // the workflow status, normalised across the two spellings of in-progress;
 // StatusName is what the project's own Status column calls it, so a message
 // naming a slice's status says what someone would see in Notion.
+//
+// Branch is the branch an agent pushed its work to and handed back on, empty
+// until it does and on every project whose Slices table has no such column. A
+// slice in progress that names one is work waiting to be reviewed, which is
+// what the board's approve action opens a pull request from.
 type Slice struct {
 	ID           string
 	Name         string
@@ -70,6 +75,7 @@ type Slice struct {
 	MilestoneID  string
 	AssigneeName string
 	Repo         string
+	Branch       string
 	PRURL        string
 	URL          string
 }
@@ -110,6 +116,7 @@ func SliceFromPage(p notion.Page) Slice {
 		Status:     SliceStatus(name),
 		StatusName: name,
 		Repo:       p.Properties[notion.PropRepo].Text(),
+		Branch:     p.Properties[notion.PropBranch].Text(),
 		PRURL:      p.Properties[notion.PropPR].URL,
 		URL:        p.URL,
 	}

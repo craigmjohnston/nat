@@ -231,6 +231,9 @@ type App struct {
 	// each slice it last reported an agent running for to that agent's session.
 	launcher AgentLauncher
 	live     map[string]string
+	// prs opens the pull request the approve key asks for, which is the one
+	// thing nat does through the GitHub CLI.
+	prs PRCreator
 	// viewer is the agent terminal beside the board, or nil when the board has
 	// the window to itself. Exactly one is on show at a time: it is a split, not
 	// a stack of panes.
@@ -293,7 +296,7 @@ func NewApp(cfg config.Config, client NotionAPI) *App {
 	sp := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(s.Spinner))
 	a := &App{cfg: cfg, client: client, styles: s, keys: defaultKeyMap(),
 		promptKeys: defaultPromptKeyMap(), spinner: sp,
-		board: NewBoard(s), info: NewInfo(s), launcher: newLauncher(),
+		board: NewBoard(s), info: NewInfo(s), launcher: newLauncher(), prs: newPRCreator(),
 		boardVP: viewport.New(), helpVP: viewport.New()}
 	a.helpVP.SetContent(a.helpBody())
 	return a
@@ -408,6 +411,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case sliceBodyMsg:
 		return a.sliceBodyLoaded(msg)
+	case prOpenedMsg:
+		return a.prOpened(msg)
 	case sliceSavedMsg:
 		return a.saved(msg)
 	case sliceRefreshedMsg:
@@ -592,6 +597,8 @@ func (a *App) boardWrite(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.moveSliceFlow(), true
 	case key.Matches(msg, a.board.keys.Delete):
 		return a.deleteSliceFlow(), true
+	case key.Matches(msg, a.board.keys.Approve):
+		return a.approveSliceFlow(), true
 	case key.Matches(msg, a.board.keys.Launch):
 		return a.launchAgentFlow(), true
 	case key.Matches(msg, a.board.keys.Attach):

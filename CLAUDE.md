@@ -82,6 +82,17 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   set. Only the client command replaces `TERM` (with `xterm-256color`): the
   terminal on the far end of its PTY is the viewer's emulator, where the
   full-screen attach's is the user's own.
+- `internal/gh/` — the GitHub CLI, wrapped as thinly as it can be. Agents open
+  no pull requests; they hand a slice back on a pushed branch, and the board's
+  approve action turns that branch into one with `gh pr create --head <branch>
+  --fill`, run in the slice's repo. `--fill` because the summary of the work is
+  already on the Notion page and a board key cannot answer a prompt; no
+  `--base`, because gh's own answer — the repository's default branch — is the
+  right one. `Runner` is the seam the tests replace, and it takes a working
+  directory, which is the whole reason it is not `agent.Runner`. A gh that ran
+  and refused comes back as an `*ExitError` whose message is the first line of
+  its stderr, since "a pull request for branch X already exists" is the entire
+  point of showing the failure.
 - `internal/cli/` — the headless commands (`nat info [--json]`,
   `nat next-slice [--json]`, which claims the next Todo slice under the
   lowest-ordered open milestone and prints its brief,
@@ -131,7 +142,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   emulator's own `Close`, which races the reply pump. `internal/tui/agentview.go`
   is its one caller.
 - `internal/tui/` — bubbletea v2 (`charm.land/*/v2` imports); root model in
-  `app.go` routes screens; all Notion I/O via tea.Cmd → typed msgs. `poll.go` is
+  `app.go` routes screens; all Notion I/O via tea.Cmd → typed msgs.
+  `approve.go` is the `p` key, the board's one action that reaches outside
+  Notion — the domain rule on `Branch` says what it does and why gh's failures
+  are toasts. `poll.go` is
   the background refetch of the plan, for the changes no nudge reports because
   no `nat` command made them: a tick every `poll_seconds` (default 30, bounded)
   running the same load the refresh key does, so the plan stays on screen while
@@ -241,6 +255,20 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   property, the configured real Notion user) where the project has that column.
   Without one, ownership is decided on status alone.
 - Slices ↔ PRs are 1:1 when work is code; PR URL recorded in the `PR` property.
+- A slice may carry a `Branch` — the branch an agent pushed its work to and
+  handed back on. It is optional, read off the page like any other property and
+  empty on a project whose Slices table has no such column, and a slice in
+  progress that names one is work waiting to be reviewed. `p` on the board is
+  what ends that wait: it confirms on the row, runs `gh pr create` in the
+  slice's repo from that branch, and writes the URL it gets back onto the `PR`
+  property as it sets the status to `Done` — the one board key that reaches
+  outside Notion, and the only place a slice's PR is recorded from the TUI. The
+  page is re-read first for the type of its `Status` column, exactly as
+  `complete-slice` does. gh refusing is a toast naming its own reason, not an
+  error banner: the branch is still there and the slice is still handed back. A
+  pull request opened and then not recorded is the one half-done state there is,
+  and running the key again says so rather than opening a second one, since gh
+  refuses a branch that already has one.
 - Slices may carry a `Repo` override; otherwise the project default working
   dir from local config applies.
 - A project keeps its whole plan on one page: no Milestones database, and a
