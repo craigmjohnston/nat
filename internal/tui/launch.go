@@ -415,7 +415,16 @@ func (a *App) liveLoaded(msg liveSessionsMsg) tea.Cmd {
 			cmds = append(cmds, a.viewerExited(nil))
 		}
 	}
+	// A classification of an agent that has gone says nothing about the one
+	// that takes its place on the slice, so it goes with the agent.
+	for id := range a.activity {
+		if a.live[id] == "" {
+			delete(a.activity, id)
+		}
+	}
 	a.board.SetLive(a.live)
+	a.board.SetActivity(a.activity)
+	cmds = append(cmds, a.startPulse())
 	a.syncBoard()
 	// A planning agent that has exited has been editing the plan, so the board
 	// re-reads it rather than showing what was there before the session.

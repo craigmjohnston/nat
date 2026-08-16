@@ -606,7 +606,7 @@ func newLongRowBoard(width int) *Board {
 func TestBoardWrapsRowsAsItNarrows(t *testing.T) {
 	parts := []string{"Degrade slice rows gracefully as the board narrows",
 		"Keep the status bar and header inside the window",
-		"●", "@Craig Johnston", "#9", "0/2", "Active"}
+		pulseFrames[0], "@Craig Johnston", "#9", "0/2", "Active"}
 
 	// At 80 every part of the row fits on the one line.
 	view := newLongRowBoard(80).View()
@@ -653,7 +653,7 @@ func TestBoardWithoutAWidthDropsNothing(t *testing.T) {
 	b := newLongRowBoard(0)
 
 	view := b.View()
-	for _, want := range []string{"●", "@Craig Johnston", "#9", "Active"} {
+	for _, want := range []string{pulseFrames[0], "@Craig Johnston", "#9", "Active"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("an unmeasured board should draw everything, missing %q:\n%s", want, view)
 		}
