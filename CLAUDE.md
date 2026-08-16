@@ -19,7 +19,18 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   nothing to hand back on the way out.
 - `internal/config/` — XDG config (`~/.config/notion-agent-tracker/config.json`)
   + the Notion bearer token, read from Notion's official CLI via
-  `ntn auth token` (the app stores no credential of its own)
+  `ntn auth token` (the app stores no credential of its own).
+  `AgentModel` — a `model` and an `effort`, exactly as Claude Code's own flags
+  take them — is which Claude Code a launched agent runs as, and the config
+  holds two of them: `workshop_agent` for the planning agent and `slice_agent`
+  for a slice's, because workshopping a plan is conversation and often wants a
+  lighter model than the agent that writes the code. Either half of either may
+  be unset, and an unset half contributes no flag at all, which is the launch
+  saying nothing and Claude Code deciding as it always did. Both are defaults
+  rather than settings a launch is bound by: the planning form and the launch
+  options show the pair prefilled and editable for that one launch, which
+  writes nothing back. `W` is the exception, as it always is — it asks nothing
+  at all, so it takes the workshop pair as it stands.
 - `internal/notion/` — hand-rolled stdlib Notion client (no third-party client
   supports data sources); minimal structs, only fields we use. Built with
   `NewWithToken(TokenFunc)`: the token is fetched per attempt and a 401 is

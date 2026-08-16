@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,7 +30,7 @@ import (
 type AgentLauncher interface {
 	LiveSlices() (map[string]string, error)
 	Activity() (map[string]agent.Activity, error)
-	Launch(session, workdir, promptFile, sliceID string) error
+	Launch(session, workdir, promptFile, sliceID string, model config.AgentModel) error
 	AttachClientCmd(session string) *exec.Cmd
 	AttachCmd(session string) *exec.Cmd
 	ReclaimStrays(hostPane string) (int, error)
@@ -103,29 +104,33 @@ const (
 )
 
 // LaunchForm is the modal behind l. The resolved defaults are on display and
-// enter launches on them straight away; the directory is only opened for
-// editing when the user asks, because the default — the slice's own repo, or
-// the project's — is nearly always right.
+// enter launches on them straight away; the directory and the model are only
+// opened for editing when the user asks, because the defaults — the slice's own
+// repo or the project's, and the model the config names for slice work — are
+// nearly always right.
 type LaunchForm struct {
 	form    *huh.Form
 	heading string
 
 	slice   domain.Slice
 	workdir string
+	model   config.AgentModel
 	action  launchAction
 }
 
 // newLaunchForm returns the form for launching an agent on a slice, showing
-// the working directory the config resolves to.
-func newLaunchForm(theme huh.Theme, s domain.Slice, workdir string) *LaunchForm {
-	f := &LaunchForm{heading: "Launch an agent for " + s.Name, slice: s, workdir: workdir}
+// the working directory the config resolves to and the model it names for
+// slice work.
+func newLaunchForm(theme huh.Theme, s domain.Slice, workdir string, m config.AgentModel) *LaunchForm {
+	f := &LaunchForm{heading: "Launch an agent for " + s.Name, slice: s, workdir: workdir, model: m}
 	f.form = newForm(theme,
 		huh.NewGroup(
 			huh.NewSelect[launchAction]().
 				Title("Working directory: "+workdir).
+				Description(modelSummary(m)).
 				Options(
 					huh.NewOption("Launch and show the agent", actionLaunch),
-					huh.NewOption("Edit the working directory first", actionEdit),
+					huh.NewOption("Edit the options first", actionEdit),
 					huh.NewOption("Launch in the background", actionBackground),
 				).
 				Value(&f.action).
@@ -139,13 +144,14 @@ func newLaunchForm(theme huh.Theme, s domain.Slice, workdir string) *LaunchForm 
 					return existingDir(f.workdir)
 				}),
 		),
-		huh.NewGroup(
+		huh.NewGroup(append([]huh.Field{
 			huh.NewInput().
 				Title("Working directory").
 				Description("Where the agent's session starts; ~ is expanded.").
 				Value(&f.workdir).
 				Validate(existingDir),
-		).WithHideFunc(func() bool { return f.action != actionEdit }),
+		}, modelFields(&f.model)...)...).
+			WithHideFunc(func() bool { return f.action != actionEdit }),
 	)
 	return f
 }
@@ -174,6 +180,53 @@ func (f *LaunchForm) SetSize(width, height int) {
 	f.form = f.form.WithWidth(width).WithHeight(height)
 }
 
+// effortLevels are what Claude Code's --effort takes, in the order it lists
+// them.
+var effortLevels = []string{"low", "medium", "high", "xhigh", "max"}
+
+// modelFields are the two fields every launch form carries: which Claude Code
+// the session runs as. Both are prefilled from the config pair the flow is
+// launching on and both may be left empty, which is the launch saying nothing
+// and letting Claude Code decide.
+//
+// The model is typed because the aliases change faster than this binary does;
+// the effort is chosen, because it is a fixed set the CLI rejects anything
+// outside of. An effort the config names that is not in that set is offered
+// too rather than dropped: it is what the user asked for, and this form is not
+// the place to find out the CLI disagrees.
+func modelFields(m *config.AgentModel) []huh.Field {
+	options := []huh.Option[string]{huh.NewOption("Claude Code's own default", "")}
+	for _, level := range effortLevels {
+		options = append(options, huh.NewOption(level, level))
+	}
+	if m.Effort != "" && !slices.Contains(effortLevels, m.Effort) {
+		options = append(options, huh.NewOption(m.Effort, m.Effort))
+	}
+	return []huh.Field{
+		huh.NewInput().
+			Title("Model").
+			Description("An alias (sonnet, opus) or a full name; empty leaves it to Claude Code.").
+			Value(&m.Model),
+		huh.NewSelect[string]().
+			Title("Effort").
+			Options(options...).
+			Value(&m.Effort),
+	}
+}
+
+// modelSummary is the model pair as the launch prompt shows it, so the user can
+// see what enter is about to launch on without opening the options.
+func modelSummary(m config.AgentModel) string {
+	model, effort := m.Model, m.Effort
+	if model == "" {
+		model = "default"
+	}
+	if effort == "" {
+		effort = "default"
+	}
+	return fmt.Sprintf("Model: %s · effort: %s", model, effort)
+}
+
 // launchNote is what the status bar says while a session starts, whichever way
 // the launch was asked for.
 const launchNote = "Launching the agent…"
@@ -184,34 +237,44 @@ func (f *LaunchForm) busyNote() string { return launchNote }
 // save starts the session the completed form describes. Attaching is the
 // default; only the background launch leaves the pane unshown.
 func (f *LaunchForm) save(a *App) tea.Cmd {
-	return a.startAgent(f.slice, f.workdir, f.action != actionBackground)
+	return a.startAgent(f.slice, f.workdir, f.model, f.action != actionBackground)
 }
 
 // startAgent is the launch itself, shared by the prompt's default choice and
 // the options form behind its other one: the directory as resolved, expanded,
 // and the project the flow was opened against — the flows only ever open on a
 // configured one, so this is that project.
-func (a *App) startAgent(s domain.Slice, workdir string, attach bool) tea.Cmd {
+func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, attach bool) tea.Cmd {
 	project, _ := a.activeProject()
 	return launchAgent(a.launcher, agent.PromptContext{
 		Slice:        s,
 		Project:      project,
 		WorkingDir:   expandHome(strings.TrimSpace(workdir)),
 		AssigneeName: a.cfg.AssigneeUserName,
-	}, attach)
+	}, trimModel(m), attach)
+}
+
+// trimModel is the model pair as a launch sends it: what the user typed, with
+// the spaces around it gone, since a flag value of " sonnet" is not one Claude
+// Code answers to.
+func trimModel(m config.AgentModel) config.AgentModel {
+	return config.AgentModel{
+		Model:  strings.TrimSpace(m.Model),
+		Effort: strings.TrimSpace(m.Effort),
+	}
 }
 
 // launchAgent writes the agent's prompt out and starts the detached session
 // that reads it. Nothing in Notion is touched: the agent claims its own slice,
 // which is what keeps the claim honest when two of them race.
-func launchAgent(l AgentLauncher, c agent.PromptContext, attach bool) tea.Cmd {
+func launchAgent(l AgentLauncher, c agent.PromptContext, m config.AgentModel, attach bool) tea.Cmd {
 	return func() tea.Msg {
 		session := agent.SessionName(c.Slice.ID)
 		file, err := agent.WritePromptFile(session, agent.Prompt(c))
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch agent: %w", err)}
 		}
-		if err := l.Launch(session, c.WorkingDir, file, c.Slice.ID); err != nil {
+		if err := l.Launch(session, c.WorkingDir, file, c.Slice.ID, m); err != nil {
 			return agentLaunchedMsg{err: err}
 		}
 		return agentLaunchedMsg{slice: c.Slice, session: session, attach: attach}
@@ -280,13 +343,13 @@ func (a *App) launchAgentFlow() tea.Cmd {
 // past it.
 func (a *App) launchChosen(s domain.Slice, workdir string, choice int) tea.Cmd {
 	if choice == choiceConfigure {
-		return a.openForm(newLaunchForm(a.styles.FormTheme, s, workdir))
+		return a.openForm(newLaunchForm(a.styles.FormTheme, s, workdir, a.cfg.SliceAgent))
 	}
 	if err := existingDir(workdir); err != nil {
 		return a.showConfirm(fmt.Sprintf("Cannot launch an agent for %q: %v.", s.Name, err), sevError)
 	}
 	a.busy, a.note = true, launchNote
-	return a.startAgent(s, workdir, true)
+	return a.startAgent(s, workdir, a.cfg.SliceAgent, true)
 }
 
 // workdirFor is the directory a slice's agent starts in: its own repo

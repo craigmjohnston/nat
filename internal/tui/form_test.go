@@ -41,6 +41,8 @@ func TestAppPlanPromptBreaksTheLineOnShiftEnter(t *testing.T) {
 		t.Fatal("shift+enter submitted the form, want a newline")
 	}
 	typeText(app, "and slim the first slice down")
+	feed(t, app, press(app, "enter")) // past the request
+	feed(t, app, press(app, "enter")) // past the model
 	drive(t, app, press(app, "enter"))
 
 	if len(launcher.launches) != 1 {

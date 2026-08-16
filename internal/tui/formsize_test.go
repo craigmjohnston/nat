@@ -40,7 +40,7 @@ func everyModal(t *testing.T) map[string]modal {
 		"edit slice":     newEditSliceForm(DefaultStyles().FormTheme, s, "The brief."),
 		"move slice":     newMoveSliceForm(DefaultStyles().FormTheme, s, []domain.Milestone{m}),
 		"delete slice":   newDeleteSliceForm(DefaultStyles().FormTheme, s),
-		"launch":         newLaunchForm(DefaultStyles().FormTheme, s, t.TempDir()),
+		"launch":         newLaunchForm(DefaultStyles().FormTheme, s, t.TempDir(), config.AgentModel{}),
 		"new project":    newNewProjectForm(DefaultStyles().FormTheme),
 		"switch project": newSwitchProjectForm(DefaultStyles().FormTheme, cfg),
 	}

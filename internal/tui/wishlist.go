@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/craigmjohnston/nat/internal/agent"
+	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
@@ -82,20 +83,21 @@ func (a *App) workshopFlow() tea.Cmd {
 	if a.live[agent.PlanSentinel] != "" {
 		return nil
 	}
-	return launchWishlistAgent(a.launcher, project.Name, expandHome(project.WorkingDir), a.wishlist)
+	return launchWishlistAgent(a.launcher, project.Name, expandHome(project.WorkingDir), a.wishlist,
+		trimModel(a.cfg.WorkshopAgent))
 }
 
 // launchWishlistAgent writes the planning prompt out with the wishlist folded
 // into it and starts the detached session that reads it. It is the wishlist's
 // half of launchPlanAgent, and comes back as the same message, so the pane and
 // the failure reporting are handled in one place.
-func launchWishlistAgent(l AgentLauncher, projectName, workdir string, items []notion.WishlistItem) tea.Cmd {
+func launchWishlistAgent(l AgentLauncher, projectName, workdir string, items []notion.WishlistItem, m config.AgentModel) tea.Cmd {
 	return func() tea.Msg {
 		file, err := agent.WritePromptFile(agent.PlanSession, agent.WishlistPrompt(projectName, workdir, items))
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch planning agent: %w", err)}
 		}
-		if err := l.Launch(agent.PlanSession, workdir, file, agent.PlanSentinel); err != nil {
+		if err := l.Launch(agent.PlanSession, workdir, file, agent.PlanSentinel, m); err != nil {
 			return agentLaunchedMsg{err: err}
 		}
 		return agentLaunchedMsg{slice: planSlice(), session: agent.PlanSession, attach: true}

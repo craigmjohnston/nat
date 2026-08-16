@@ -8,6 +8,7 @@ import (
 	"charm.land/huh/v2"
 
 	"github.com/craigmjohnston/nat/internal/agent"
+	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 )
 
@@ -21,19 +22,23 @@ func planSlice() domain.Slice {
 
 // PlanForm is the modal behind w when no planning agent is running: what the
 // user wants to workshop, carried into the agent's prompt so the session
-// starts on it. There is no directory question — the planning commands work
-// wherever they are typed, so the project's default is always right — and an
-// empty answer launches a plain planning session.
+// starts on it, and which Claude Code to workshop it with, prefilled from the
+// config's workshop pair and editable for this one launch. There is no
+// directory question — the planning commands work wherever they are typed, so
+// the project's default is always right — and an empty request launches a
+// plain planning session.
 type PlanForm struct {
 	form *huh.Form
 
 	request string
+	model   config.AgentModel
 }
 
-// newPlanForm returns the form for launching a planning agent.
-func newPlanForm(theme huh.Theme) *PlanForm {
-	f := &PlanForm{}
-	f.form = newForm(theme, huh.NewGroup(
+// newPlanForm returns the form for launching a planning agent, on the model
+// the config names for workshopping.
+func newPlanForm(theme huh.Theme, m config.AgentModel) *PlanForm {
+	f := &PlanForm{model: m}
+	f.form = newForm(theme, huh.NewGroup(append([]huh.Field{
 		// A text field rather than an input, so a longer request can be
 		// composed: enter still submits, and shift+enter breaks the line —
 		// see formKeyMap. No external editor — the board's pane is not for handing to
@@ -43,7 +48,7 @@ func newPlanForm(theme huh.Theme) *PlanForm {
 			Description("Goes into the agent's prompt; empty starts a plain session.").
 			ExternalEditor(false).
 			Value(&f.request),
-	))
+	}, modelFields(&f.model)...)...))
 	return f
 }
 
@@ -81,20 +86,20 @@ func (f *PlanForm) save(a *App) tea.Cmd {
 	// was opened against.
 	project, _ := a.activeProject()
 	return launchPlanAgent(a.launcher, project.Name, expandHome(project.WorkingDir),
-		strings.TrimSpace(f.request))
+		strings.TrimSpace(f.request), trimModel(f.model))
 }
 
 // launchPlanAgent writes the planning prompt out — the user's request folded
 // in — and starts the detached session that reads it, tagged with the sentinel
 // rather than a slice ID. It comes back as the same message a slice launch
 // does, so the failure reporting is shared.
-func launchPlanAgent(l AgentLauncher, projectName, workdir, request string) tea.Cmd {
+func launchPlanAgent(l AgentLauncher, projectName, workdir, request string, m config.AgentModel) tea.Cmd {
 	return func() tea.Msg {
 		file, err := agent.WritePromptFile(agent.PlanSession, agent.PlanPrompt(projectName, workdir, request))
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch planning agent: %w", err)}
 		}
-		if err := l.Launch(agent.PlanSession, workdir, file, agent.PlanSentinel); err != nil {
+		if err := l.Launch(agent.PlanSession, workdir, file, agent.PlanSentinel, m); err != nil {
 			return agentLaunchedMsg{err: err}
 		}
 		// A planning launch always attaches: the user has just said what they
@@ -123,5 +128,5 @@ func (a *App) planAgentFlow() tea.Cmd {
 	if a.busy {
 		return nil
 	}
-	return a.openForm(newPlanForm(a.styles.FormTheme))
+	return a.openForm(newPlanForm(a.styles.FormTheme, a.cfg.WorkshopAgent))
 }

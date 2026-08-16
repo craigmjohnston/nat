@@ -340,6 +340,56 @@ func TestPollSecondsRoundTrip(t *testing.T) {
 	}
 }
 
+// The two agent models are hand-written like the split and the poll, so Load
+// has to read them — and Save must leave an unset pair out entirely rather than
+// writing empty flags into the config of someone who never asked for either.
+func TestAgentModelRoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	if err := Save(sampleConfig()); err != nil {
+		t.Fatal(err)
+	}
+	path, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"workshop_agent", "slice_agent"} {
+		if strings.Contains(string(data), key) {
+			t.Errorf("an unset %s was written out:\n%s", key, data)
+		}
+	}
+
+	set := sampleConfig()
+	set.WorkshopAgent = AgentModel{Model: "sonnet", Effort: "low"}
+	// Half a pair is a setting too: a model with no effort names the model and
+	// leaves the effort to Claude Code.
+	set.SliceAgent = AgentModel{Model: "opus"}
+	if err := Save(set); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.WorkshopAgent != set.WorkshopAgent {
+		t.Errorf("WorkshopAgent = %+v, want %+v", got.WorkshopAgent, set.WorkshopAgent)
+	}
+	if got.SliceAgent != set.SliceAgent {
+		t.Errorf("SliceAgent = %+v, want %+v", got.SliceAgent, set.SliceAgent)
+	}
+	data, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), `"effort"`) && !strings.Contains(string(data), `"effort": "low"`) {
+		t.Errorf("an unset effort was written out:\n%s", data)
+	}
+}
+
 func TestSaveErrors(t *testing.T) {
 	t.Run("path error", func(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", "")

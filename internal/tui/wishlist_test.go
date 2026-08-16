@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/craigmjohnston/nat/internal/agent"
+	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
@@ -198,6 +199,24 @@ func TestAppWorkshopKeyLaunchesAPlanningAgentOnTheWishlist(t *testing.T) {
 
 // Nothing pending, nothing to workshop: the key is not even named on the bar
 // when the wishlist is empty, and pressing it anyway does nothing.
+// W asks nothing, so the workshop pair is the whole answer: the same setting
+// the typed planning launch prefills, used as it stands.
+func TestAppWorkshopKeyCarriesTheConfiguredWorkshopModel(t *testing.T) {
+	app, launcher, _ := workshopApp(t, 2)
+	app.cfg.WorkshopAgent = config.AgentModel{Model: "haiku", Effort: "low"}
+	app.cfg.SliceAgent = config.AgentModel{Model: "opus", Effort: "high"}
+
+	drive(t, app, press(app, "W"))
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
+	want := config.AgentModel{Model: "haiku", Effort: "low"}
+	if got := launcher.launches[0].model; got != want {
+		t.Errorf("model = %+v, want the configured %+v", got, want)
+	}
+}
+
 func TestAppWorkshopKeyDoesNothingWithAnEmptyWishlist(t *testing.T) {
 	app, launcher, _ := workshopApp(t, 0)
 
@@ -258,7 +277,7 @@ func TestLaunchWishlistAgentReportsAFailedPromptFile(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
 	launcher := &fakeLauncher{}
 
-	msg := runMsg(t, launchWishlistAgent(launcher, "tracker", "/tmp", wishlistItems(1))).(agentLaunchedMsg)
+	msg := runMsg(t, launchWishlistAgent(launcher, "tracker", "/tmp", wishlistItems(1), config.AgentModel{})).(agentLaunchedMsg)
 
 	if msg.err == nil || !strings.Contains(msg.err.Error(), "launch planning agent: create prompt dir") {
 		t.Errorf("err = %v, want the failed prompt file", msg.err)

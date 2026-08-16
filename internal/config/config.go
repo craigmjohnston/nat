@@ -27,6 +27,16 @@ type ProjectConfig struct {
 	WorkingDir string `json:"working_dir"`
 }
 
+// AgentModel is which Claude Code an agent is launched as: the model and the
+// effort level, exactly as the CLI's own --model and --effort take them. Both
+// are optional and empty means unset — the flag is left off and Claude Code
+// falls back to whatever the user's own configuration says, which is what
+// every launch did before this existed.
+type AgentModel struct {
+	Model  string `json:"model,omitempty"`
+	Effort string `json:"effort,omitempty"`
+}
+
 // Config is the local configuration persisted as JSON in the XDG config dir.
 type Config struct {
 	ProjectDBID           string `json:"project_db_id"`
@@ -42,8 +52,15 @@ type Config struct {
 	// changes no nudge marker reports: the ones made in Notion itself. Written
 	// by hand like the split, and omitted until it is — unset means
 	// [DefaultPollSeconds].
-	PollSeconds int                      `json:"poll_seconds,omitempty"`
-	Projects    map[string]ProjectConfig `json:"projects"`
+	PollSeconds int `json:"poll_seconds,omitempty"`
+	// WorkshopAgent and SliceAgent are what a planning agent and a slice's
+	// agent are launched as. They are two settings rather than one because the
+	// two jobs are not the same size: workshopping a plan is conversation, and
+	// often wants a lighter model than the agent that goes and writes the code.
+	// Hand-written like the split and the poll, and omitted until they are.
+	WorkshopAgent AgentModel               `json:"workshop_agent,omitzero"`
+	SliceAgent    AgentModel               `json:"slice_agent,omitzero"`
+	Projects      map[string]ProjectConfig `json:"projects"`
 }
 
 // The share of the window an agent's pane takes beside the board. The default

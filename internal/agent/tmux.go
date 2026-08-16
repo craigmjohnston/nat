@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/logging"
 )
 
@@ -410,15 +411,15 @@ func (t *Tmux) breakOutAll(panes []pane, want func(pane) bool) (int, error) {
 
 // Launch starts a detached tmux session named session, with workdir as its
 // working directory, running an agent seeded with the prompt in promptFile for
-// the slice with page ID sliceID.
+// the slice with page ID sliceID, as the model and effort m asks for.
 //
 // The pane the session starts in is tagged with sliceID, which is what
 // [Tmux.LiveSlices] reads the running agents back out of, and with the label
 // the board's status bar shows it by. A session whose pane
 // could not be tagged is left running — its agent is already working — but the
 // failure is reported, because until it is tagged nothing will find it again.
-func (t *Tmux) Launch(session, workdir, promptFile, sliceID string) error {
-	out, err := t.runner.Run(TmuxBinary, LaunchArgs(session, workdir, promptFile)...)
+func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.AgentModel) error {
+	out, err := t.runner.Run(TmuxBinary, LaunchArgs(session, workdir, promptFile, m)...)
 	if err != nil {
 		return fmt.Errorf("launch tmux session %s: %w", session, err)
 	}
@@ -442,13 +443,13 @@ func (t *Tmux) Launch(session, workdir, promptFile, sliceID string) error {
 // session prints its pane's ID, which is the handle the slice tag goes on:
 // pane IDs are unique for the life of the server, where a name is whatever it
 // has last been set to.
-func LaunchArgs(session, workdir, promptFile string) []string {
+func LaunchArgs(session, workdir, promptFile string, m config.AgentModel) []string {
 	args := append([]string{
 		"new-session", "-d",
 		"-s", session,
 		"-c", workdir,
 		"-P", "-F", "#{pane_id}",
-		"sh", "-c", agentCommand(promptFile),
+		"sh", "-c", agentCommand(promptFile, m),
 	}, statusOffArgs(session)...)
 	args = append(args, mouseOnArgs(session)...)
 	args = append(args, inputFeatureArgs()...)
@@ -770,9 +771,20 @@ func inputFeatureArgs() []string {
 }
 
 // agentCommand is the shell command the session runs: start Claude Code with
-// the contents of promptFile as its prompt.
-func agentCommand(promptFile string) string {
-	return fmt.Sprintf(`claude "$(cat %s)"`, shellQuote(promptFile))
+// the contents of promptFile as its prompt, as the model the launch asked for.
+//
+// Either half of the model may be unset, and an unset one contributes no flag
+// at all rather than an empty value: Claude Code then decides for itself, which
+// is what it did before there was anywhere to say otherwise.
+func agentCommand(promptFile string, m config.AgentModel) string {
+	var flags string
+	if m.Model != "" {
+		flags += " --model " + shellQuote(m.Model)
+	}
+	if m.Effort != "" {
+		flags += " --effort " + shellQuote(m.Effort)
+	}
+	return fmt.Sprintf(`claude%s "$(cat %s)"`, flags, shellQuote(promptFile))
 }
 
 // SessionEnv is set by tmux in every pane it runs, to the socket and session

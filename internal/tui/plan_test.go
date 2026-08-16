@@ -11,10 +11,13 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/craigmjohnston/nat/internal/agent"
+	"github.com/craigmjohnston/nat/internal/config"
 )
 
 // planLaunch presses w, types the request into the form it opens, and submits
-// it, which launches the agent and shows its pane straight away.
+// it, which launches the agent and shows its pane straight away. The model and
+// the effort behind the request are left as the config prefilled them, so the
+// enters past them are enters over a field nothing has typed into.
 func planLaunch(t *testing.T, a *App, request string) {
 	t.Helper()
 	feed(t, a, press(a, "w"))
@@ -22,6 +25,8 @@ func planLaunch(t *testing.T, a *App, request string) {
 		t.Fatalf("no planning form opened: %s", a.note)
 	}
 	typeText(a, request)
+	feed(t, a, press(a, "enter")) // past the request
+	feed(t, a, press(a, "enter")) // past the model
 	drive(t, a, press(a, "enter"))
 }
 
@@ -138,6 +143,8 @@ func TestAppPlanLaunchAcceptsAMultilineRequest(t *testing.T) {
 	_, cmd := app.Update(tea.KeyPressMsg(tea.Key{Code: 'j', Mod: tea.ModCtrl}))
 	feed(t, app, cmd)
 	typeText(app, "and slim the first slice down")
+	feed(t, app, press(app, "enter")) // past the request
+	feed(t, app, press(app, "enter")) // past the model
 	drive(t, app, press(app, "enter"))
 
 	if len(launcher.launches) != 1 {
@@ -150,6 +157,53 @@ func TestAppPlanLaunchAcceptsAMultilineRequest(t *testing.T) {
 	want := "split the reporting milestone\nand slim the first slice down"
 	if !strings.Contains(string(prompt), want) {
 		t.Errorf("the prompt is missing the two lines:\n%s", prompt)
+	}
+}
+
+// Workshopping and slice work are two settings, not one: the planning agent
+// runs as the workshop pair, whatever the slice pair says.
+func TestAppPlanLaunchCarriesTheConfiguredWorkshopModel(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	app.cfg.WorkshopAgent = config.AgentModel{Model: "haiku", Effort: "low"}
+	app.cfg.SliceAgent = config.AgentModel{Model: "opus", Effort: "high"}
+
+	planLaunch(t, app, "")
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
+	want := config.AgentModel{Model: "haiku", Effort: "low"}
+	if got := launcher.launches[0].model; got != want {
+		t.Errorf("model = %+v, want the configured %+v", got, want)
+	}
+}
+
+// The pair is prefilled and editable, like the request above it: what the form
+// is left showing is what the session runs as. An effort the config names that
+// is not one of the levels this binary knows is offered rather than dropped —
+// the user asked for it, and the CLI is the one that gets to disagree.
+func TestAppPlanFormEditsTheModelAndKeepsAnUnknownEffort(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	app.cfg.WorkshopAgent = config.AgentModel{Effort: "glacial"}
+
+	feed(t, app, press(app, "w"))
+	view := stripANSI(app.View().Content)
+	for _, want := range []string{"Model", "Effort", "glacial"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view is missing %q:\n%s", want, view)
+		}
+	}
+	feed(t, app, press(app, "enter")) // past the request
+	typeText(app, "haiku")
+	feed(t, app, press(app, "enter")) // past the model
+	drive(t, app, press(app, "enter"))
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
+	want := config.AgentModel{Model: "haiku", Effort: "glacial"}
+	if got := launcher.launches[0].model; got != want {
+		t.Errorf("model = %+v, want %+v", got, want)
 	}
 }
 
@@ -196,7 +250,7 @@ func TestLaunchPlanAgentReportsAFailedPromptFile(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
 	launcher := &fakeLauncher{}
 
-	msg := runMsg(t, launchPlanAgent(launcher, "tracker", "/tmp", "")).(agentLaunchedMsg)
+	msg := runMsg(t, launchPlanAgent(launcher, "tracker", "/tmp", "", config.AgentModel{})).(agentLaunchedMsg)
 
 	if msg.err == nil || !strings.Contains(msg.err.Error(), "launch planning agent: create prompt dir") {
 		t.Errorf("err = %v, want the failed prompt file", msg.err)
@@ -313,7 +367,7 @@ func TestAppPlanKeyIsRefusedWithNothingToLaunchWith(t *testing.T) {
 }
 
 func TestPlanFormBusyNote(t *testing.T) {
-	f := newPlanForm(DefaultStyles().FormTheme)
+	f := newPlanForm(DefaultStyles().FormTheme, config.AgentModel{})
 	if got := busyNoteOf(f); got != "Launching the planning agent…" {
 		t.Errorf("busyNoteOf = %q, want the planning launch note", got)
 	}
