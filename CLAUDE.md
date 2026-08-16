@@ -65,10 +65,12 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `Tmux.Activity` scans the panes once and reads the screen of each tagged one
   (`capture-pane -p -J`), answering working / waiting / gone / unknown per slice
   page ID — the same keys `LiveSlices` uses, so one map lays over the other. The
-  signal is Claude Code's own interrupt hint (`esc to interrupt`), matched
-  case-folded against the visible screen alone: it is on every busy screen and
-  no idle one, where enumerating the shapes it stops for — a permission prompt,
-  a question, the end of a turn — would be a list that goes stale. A dead pane
+  signal is Claude Code's running status line, matched against the visible
+  screen alone by its shape rather than its wording — a verb that trails off and
+  then the turn's elapsed time in brackets, `✻ Quantumizing… (1m 6s · …)`: it is
+  on every busy screen and no idle one, where enumerating the shapes it stops
+  for — a permission prompt, a question, the end of a turn — would be a list
+  that goes stale, and so would any of the words in the line itself. A dead pane
   (`pane_dead`, which only appears where the user has set remain-on-exit) is
   gone without a capture, as is one that vanishes between the scan and the
   capture; a capture that fails outright leaves the state unread rather than

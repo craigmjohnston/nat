@@ -6,17 +6,52 @@ import (
 	"testing"
 )
 
-// busyScreen is a pane mid-turn, as Claude Code draws it: the status line
-// carrying the interrupt hint is the whole of the signal.
+// busyScreen is a pane mid-turn, as Claude Code draws it: the running status
+// line, counting up the turn it is in, is the whole of the signal.
 const busyScreen = `● Reading internal/agent/tmux.go
 
-✻ Cogitating… (12s · ↓ 1.2k tokens · esc to interrupt)`
+✻ Cogitating… (12s · ↓ 1.2k tokens · thinking with medium effort)`
 
-// promptScreen is a pane stopped on a permission prompt — no interrupt hint
-// anywhere on it, because nothing is running to interrupt.
+// promptScreen is a pane stopped on a permission prompt — no running line
+// anywhere on it, because nothing is running to count.
 const promptScreen = `Do you want to make this edit to activity.go?
 ❯ 1. Yes
   2. No, and tell Claude what to do differently`
+
+// TestActivityReadsTheRunningLine pins the shape the signal is read by, off
+// screens Claude Code really draws: a turn in flight counts up in brackets
+// after a verb that trails off, and everything it leaves behind does not.
+func TestActivityReadsTheRunningLine(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		line string
+		want Activity
+	}{
+		{"thinking", "✢ Channelling… (3s · thinking with medium effort)", ActivityWorking},
+		{"streaming", "✻ Fluttering… (4s · ↓ 177 tokens · thinking with medium effort)", ActivityWorking},
+		{"past the minute", "✽ Quantumizing… (1m 6s · ↓ 2.1k tokens · almost done thinking)", ActivityWorking},
+		{"an older build's hint", "✻ Cogitating… (12s · esc to interrupt)", ActivityWorking},
+		{"the turn it leaves behind", "✻ Crunched for 4s", ActivityWaiting},
+		{"a turn done with a shell still up", "✻ Churned for 4s · 1 shell still running", ActivityWaiting},
+		{"a line tmux truncated", "tmux focus-events off · add 'set -g focus-events on' to ~/.tmux.conf and re…", ActivityWaiting},
+		{"an idle composer", "❯ ", ActivityWaiting},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			agentPane := pane{slice: "slice", id: "%1", session: "nat-1", window: "@1", index: "0", width: 80}
+			r := &fakeRunner{
+				outs:     map[string]string{"list-panes": panesOutput(agentPane)},
+				captures: map[string]string{"%1": tc.line},
+			}
+			activity, err := NewTmuxWithRunner(r).Activity()
+			if err != nil {
+				t.Fatalf("Activity: %v", err)
+			}
+			if got := activity["slice"]; got != tc.want {
+				t.Errorf("activity = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
 
 func TestActivityClassifiesEachAgentPane(t *testing.T) {
 	working := pane{slice: "slice-working", id: "%1", session: "nat-1", window: "@1", index: "0", width: 80}
@@ -52,14 +87,13 @@ func TestActivityClassifiesEachAgentPane(t *testing.T) {
 	}
 }
 
-// The marker is matched against the visible screen whatever case it arrives in,
-// and joined across a wrap: -J is what makes a narrow pane's status line one
-// line again.
+// The running line is read off the visible screen, joined across a wrap: -J is
+// what makes a narrow pane's status line one line again.
 func TestActivityCaptureArguments(t *testing.T) {
 	agentPane := pane{slice: "slice", id: "%1", session: "nat-1", window: "@1", index: "0", width: 80}
 	r := &fakeRunner{
 		outs:     map[string]string{"list-panes": panesOutput(agentPane)},
-		captures: map[string]string{"%1": "✻ Cogitating… (ESC TO INTERRUPT)"},
+		captures: map[string]string{"%1": busyScreen},
 	}
 
 	activity, err := NewTmuxWithRunner(r).Activity()
