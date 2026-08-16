@@ -30,8 +30,10 @@ Work in the working directory above; if that is not where this session
 started, use absolute paths or `git -C`. Honour the brief's acceptance
 criteria and the project's verification gate before calling it done.
 
-If the work is code: branch for the slice, keep it to exactly ONE pull
-request, commit, push the branch, and open the PR (do not merge it).
+If the work is code: branch for the slice — one branch, and exactly ONE
+change on it — commit, and push the branch. Do not run `gh`, and do not
+open a pull request: you hand the branch back and the user opens the
+pull request from the board once they have reviewed it.
 
 If the work is not code — docs, research, written-up findings — produce
 the deliverable the brief asks for and link it in the summary below.
@@ -40,12 +42,16 @@ the deliverable the brief asks for and link it in the summary below.
 
 On completion, record the outcome:
 
-    nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --pr <URL> --summary '<what you did>'
+    nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --branch <branch> --summary '<what you did>'
 
-That marks the slice Done and writes the summary onto its page: what you
-did, key decisions, follow-ups worth queueing. Leave `--pr` off when the
-slice produced no pull request. A summary too long for one argument can
-be piped in on stdin instead of passing `--summary`.
+That records the branch you pushed and hands the slice back for review,
+writing the summary onto its page: what you did, key decisions, follow-ups
+worth queueing. It leaves the slice in progress on purpose — approving it
+on the board is what opens the pull request and marks it Done.
+
+Leave `--branch` off when the slice produced no branch — a docs or
+research slice — and it is marked Done there and then. A summary too long
+for one argument can be piped in on stdin instead of passing `--summary`.
 
 If you cannot complete it, say what stopped you and leave the slice
 in progress, so nobody else picks it up on top of your work:
@@ -57,4 +63,4 @@ in progress, so nobody else picks it up on top of your work:
 - One slice per session. Never pick up another when this one is done.
 - The `nat` commands are the only way to record anything about the slice.
 - Never touch other slices, other milestones, or the plan itself.
-- Never merge a PR or push to the main branch.
+- Never open or merge a pull request, and never push to the main branch.

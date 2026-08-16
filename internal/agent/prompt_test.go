@@ -78,7 +78,7 @@ func TestPromptRoutesEverythingThroughTheCLI(t *testing.T) {
 	got := Prompt(testContext())
 	for _, want := range []string{
 		"nat start-slice 3b738308-f654-8170-8c99-eccab4463d8f",
-		"nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --pr",
+		"nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --branch",
 		"--blocked",
 	} {
 		if !strings.Contains(got, want) {
@@ -89,6 +89,28 @@ func TestPromptRoutesEverythingThroughTheCLI(t *testing.T) {
 		if strings.Contains(got, unwanted) {
 			t.Errorf("prompt still tells the agent about %s rather than the commands", unwanted)
 		}
+	}
+}
+
+// An agent ends by handing its branch back, not by opening a pull request:
+// the board's approve key is the review the hand-back is waiting for, and an
+// agent that opened its own would put the work straight past it. The prompt is
+// the only place a launched agent is told this, so it has to say it outright
+// rather than merely leaving it out.
+func TestPromptTellsTheAgentToHandTheBranchBack(t *testing.T) {
+	got := Prompt(testContext())
+	for _, want := range []string{
+		"push the branch",
+		"Do not run `gh`",
+		"do not\nopen a pull request",
+		"Never open or merge a pull request",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt does not say %q", want)
+		}
+	}
+	if strings.Contains(got, "--pr") {
+		t.Error("prompt still offers the agent the --pr ending")
 	}
 }
 

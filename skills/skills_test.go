@@ -58,6 +58,33 @@ func TestSkillsWriteThroughTheCLI(t *testing.T) {
 	}
 }
 
+// The next-slice skill ships inside the binary, so an ending it names wrongly
+// cannot be corrected where it is read. A slice ends handed back on a pushed
+// branch — the board's approve key is what turns that into a pull request —
+// and a skill that still told the agent to open one would route the work past
+// the review the hand-back exists for.
+func TestNextSliceHandsTheBranchBack(t *testing.T) {
+	body, err := fs.ReadFile(FS(), "next-slice/SKILL.md")
+	if err != nil {
+		t.Fatalf("read the next-slice skill: %v", err)
+	}
+	text := string(body)
+	for _, want := range []string{
+		"nat complete-slice <slice> --branch <branch>",
+		"push the branch",
+		"do not open a pull request",
+		"Never open or merge a pull request",
+		"never push to main",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the next-slice skill does not say %q", want)
+		}
+	}
+	if strings.Contains(text, "--pr") {
+		t.Error("the next-slice skill still offers the agent the --pr ending")
+	}
+}
+
 // A project keeps its whole plan on one page: a milestone is an option of the
 // slices' Milestone column, with no status of its own and no page to name it
 // by. The skills ship inside the binary, so an instruction that assumes

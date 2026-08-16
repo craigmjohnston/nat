@@ -256,7 +256,11 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
 - `skills/` — the agent skills (/queue-work planning, /next-slice execution),
   embedded in the binary with `go:embed` and installed by `nat setup`. A
   checkout works on them in place by symlinking them into `~/.claude/skills/`,
-  which `nat setup` leaves alone rather than writing back through.
+  which `nat setup` leaves alone rather than writing back through. /next-slice
+  and `internal/agent`'s slice prompt end the same way and say so in the same
+  words: the branch pushed and handed back with `complete-slice --branch`, no
+  `gh` and no pull request, since opening one is the board's `p` after the user
+  has reviewed the branch.
 
 ## Domain rules
 

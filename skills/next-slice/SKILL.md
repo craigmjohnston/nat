@@ -1,6 +1,6 @@
 ---
 name: next-slice
-description: Pick up and complete the next available slice of a project tracked in the Notion agent tracker — claim it, do the work per project conventions, and mark it Done. Use when the user says things like "pick up the next slice", "work on the next slice for <project>", or "grab a slice".
+description: Pick up and complete the next available slice of a project tracked in the Notion agent tracker — claim it, do the work per project conventions, and hand the branch back for review. Use when the user says things like "pick up the next slice", "work on the next slice for <project>", or "grab a slice".
 ---
 
 # /next-slice — pick up and complete the next slice
@@ -39,9 +39,10 @@ Tell the user which slice you claimed, with its Notion URL.
   session started, work there explicitly (absolute paths / `git -C`).
 - Honour the brief's acceptance criteria and the project's verification gate
   before calling anything done.
-- **If the work is code**: create a branch for the slice, keep the change to
-  exactly ONE pull request, commit, push the branch, and open the PR — do not
-  merge it.
+- **If the work is code**: create one branch for the slice, keep the change to
+  exactly ONE branch's worth of work, commit, and push the branch. Do not run
+  `gh` and do not open a pull request — you hand the branch back, and the user
+  opens the pull request from the board once they have reviewed it.
 - **If the work is not code** (docs, research, written-up findings): produce
   the deliverable the brief asks for and link it in the summary below.
 
@@ -50,13 +51,17 @@ Tell the user which slice you claimed, with its Notion URL.
 Record the outcome with the slice's page ID or URL, as printed in the brief:
 
 ```
-nat complete-slice <slice> --pr <URL> --summary '<what you did>'
+nat complete-slice <slice> --branch <branch> --summary '<what you did>'
 ```
 
-That marks it Done and writes the summary onto the slice page: what you did,
-key decisions, follow-ups worth queueing. Leave `--pr` off when there was no
-pull request; pipe the summary in on stdin when it is too long for an
-argument.
+That records the branch you pushed and hands the slice back for review, writing
+the summary onto the slice page: what you did, key decisions, follow-ups worth
+queueing. It leaves the slice in progress deliberately — approving it on the
+board is what opens the pull request and marks it Done.
+
+Leave `--branch` off when there was no branch — a docs or research slice — and
+the slice is marked Done there and then. Pipe the summary in on stdin when it
+is too long for an argument.
 
 If you cannot complete the slice, leave it claimed and say what stopped you:
 
@@ -73,4 +78,6 @@ too — a milestone's status follows its slices, and there is nothing to set.
 - Every write to the tracker goes through `nat`. Never edit Notion directly,
   and never work a slice the CLI would not hand you.
 - Never touch other slices, milestones, or the project page.
-- Never merge PRs or push to main.
+- One branch per slice, and never push to main.
+- Never open or merge a pull request. Opening one is the board's job, after the
+  user has reviewed the branch you handed back.

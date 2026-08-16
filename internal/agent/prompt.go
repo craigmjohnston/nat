@@ -33,6 +33,13 @@ type PromptContext struct {
 // that Notion is what is behind the commands — because the commands are the
 // only writes it is allowed to make, and a prompt that also explained the
 // underlying pages would be describing a second way to do the same thing.
+//
+// The ending it is told to reach is a hand-back: the branch pushed and recorded
+// with `complete-slice --branch`, the slice left in progress for the user to
+// review on the board, which is where the pull request is opened from. So the
+// prompt tells the agent not to run `gh` at all — an agent that opened its own
+// pull request would put the work past the review the board's approve key is,
+// and `gh pr create` on a branch that already has one refuses anyway.
 func Prompt(c PromptContext) string {
 	var b strings.Builder
 
@@ -67,18 +74,23 @@ func Prompt(c PromptContext) string {
 	b.WriteString("Work in the working directory above; if that is not where this session\n")
 	b.WriteString("started, use absolute paths or `git -C`. Honour the brief's acceptance\n")
 	b.WriteString("criteria and the project's verification gate before calling it done.\n\n")
-	b.WriteString("If the work is code: branch for the slice, keep it to exactly ONE pull\n")
-	b.WriteString("request, commit, push the branch, and open the PR (do not merge it).\n\n")
+	b.WriteString("If the work is code: branch for the slice — one branch, and exactly ONE\n")
+	b.WriteString("change on it — commit, and push the branch. Do not run `gh`, and do not\n")
+	b.WriteString("open a pull request: you hand the branch back and the user opens the\n")
+	b.WriteString("pull request from the board once they have reviewed it.\n\n")
 	b.WriteString("If the work is not code — docs, research, written-up findings — produce\n")
 	b.WriteString("the deliverable the brief asks for and link it in the summary below.\n")
 
 	b.WriteString("\n## Finish\n\n")
 	b.WriteString("On completion, record the outcome:\n\n")
-	fmt.Fprintf(&b, "    nat complete-slice %s --pr <URL> --summary '<what you did>'\n\n", c.Slice.ID)
-	b.WriteString("That marks the slice Done and writes the summary onto its page: what you\n")
-	b.WriteString("did, key decisions, follow-ups worth queueing. Leave `--pr` off when the\n")
-	b.WriteString("slice produced no pull request. A summary too long for one argument can\n")
-	b.WriteString("be piped in on stdin instead of passing `--summary`.\n\n")
+	fmt.Fprintf(&b, "    nat complete-slice %s --branch <branch> --summary '<what you did>'\n\n", c.Slice.ID)
+	b.WriteString("That records the branch you pushed and hands the slice back for review,\n")
+	b.WriteString("writing the summary onto its page: what you did, key decisions, follow-ups\n")
+	b.WriteString("worth queueing. It leaves the slice in progress on purpose — approving it\n")
+	b.WriteString("on the board is what opens the pull request and marks it Done.\n\n")
+	b.WriteString("Leave `--branch` off when the slice produced no branch — a docs or\n")
+	b.WriteString("research slice — and it is marked Done there and then. A summary too long\n")
+	b.WriteString("for one argument can be piped in on stdin instead of passing `--summary`.\n\n")
 	b.WriteString("If you cannot complete it, say what stopped you and leave the slice\n")
 	b.WriteString("in progress, so nobody else picks it up on top of your work:\n\n")
 	fmt.Fprintf(&b, "    nat complete-slice %s --blocked --summary '<what is blocking>'\n", c.Slice.ID)
@@ -87,7 +99,7 @@ func Prompt(c PromptContext) string {
 	b.WriteString("- One slice per session. Never pick up another when this one is done.\n")
 	b.WriteString("- The `nat` commands are the only way to record anything about the slice.\n")
 	b.WriteString("- Never touch other slices, other milestones, or the plan itself.\n")
-	b.WriteString("- Never merge a PR or push to the main branch.\n")
+	b.WriteString("- Never open or merge a pull request, and never push to the main branch.\n")
 
 	return b.String()
 }
