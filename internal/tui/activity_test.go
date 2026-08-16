@@ -117,6 +117,9 @@ func TestWatcherStopsWithTheLastAgent(t *testing.T) {
 }
 
 // A tick with an agent still running takes a reading and schedules the next.
+// The tick is fed in as the message the timer really sends, so the route
+// through Update is exercised too and the timer is wired to the loop rather
+// than only to a handler a test can reach.
 func TestWatcherTickReadsAndReschedules(t *testing.T) {
 	app, launcher, _ := launchApp(t)
 	id, session := sliceAt(t, app, rowTodoSlice)
@@ -133,7 +136,8 @@ func TestWatcherTickReadsAndReschedules(t *testing.T) {
 	}
 	t.Cleanup(func() { activityTick = restore })
 
-	drive(t, app, app.activityTicked())
+	_, cmd := app.Update(activityTickMsg{})
+	drive(t, app, cmd)
 
 	if launcher.reads != before+1 {
 		t.Errorf("readings = %d, want one more than %d", launcher.reads, before)
