@@ -437,8 +437,15 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
 - Tests: aim for 100% coverage of new code. httptest for the Notion client
   (assert exact request JSON), interfaces + fakes for the ntn CLI/tmux, teatest
   for TUI flows, golden snapshots for renders.
-- Gate before claiming done: `go vet ./... && go test -race -cover ./... &&
-  golangci-lint run`. All three run in CI, so a failing lint fails the PR;
+- Gate before claiming done: `go vet ./... && go test -race
+  -coverprofile=coverage.out ./... && ./scripts/no-uncovered.sh &&
+  golangci-lint run`. The profile rather than `-cover`, because the percentage
+  is printed to one decimal and a single unrun statement in a package of
+  thousands reads as 100.0%; `scripts/no-uncovered.sh` reads the profile itself,
+  which does not round, and prints the blocks nothing ran. One `go test ./...`
+  writes it, since the blocks are merged across packages — a helper covered only
+  by another package's tests is still covered. All four run in CI, so a failing
+  lint or an unrun statement fails the PR;
   `brew install golangci-lint` if the binary is missing. `.golangci.yml` runs
   the default linter set with one exclusion — see the file — so an unchecked
   error is either handled or assigned to `_` where the reason can be read.
