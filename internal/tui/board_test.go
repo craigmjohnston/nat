@@ -589,11 +589,13 @@ func longRowProject() domain.Project {
 }
 
 // newLongRowBoard returns a board showing longRowProject at width, with an agent
-// live on its claimed slice.
+// live on its claimed slice, pulsed to [testPulseFrame] so the star it draws
+// can be looked for by its glyph alone.
 func newLongRowBoard(width int) *Board {
 	b := NewBoard(DefaultStyles())
 	b.SetWidth(width)
 	b.SetLive(map[string]string{"s1": agent.SessionName("s1")})
+	b.Pulse(testPulseFrame)
 	p := longRowProject()
 	b.SetProject(&p)
 	return &b
@@ -606,7 +608,7 @@ func newLongRowBoard(width int) *Board {
 func TestBoardWrapsRowsAsItNarrows(t *testing.T) {
 	parts := []string{"Degrade slice rows gracefully as the board narrows",
 		"Keep the status bar and header inside the window",
-		pulseFrames[0], "@Craig Johnston", "#9", "0/2", "Active"}
+		pulseFrames[testPulseFrame], "@Craig Johnston", "#9", "0/2", "Active"}
 
 	// At 80 every part of the row fits on the one line.
 	view := newLongRowBoard(80).View()
@@ -653,7 +655,7 @@ func TestBoardWithoutAWidthDropsNothing(t *testing.T) {
 	b := newLongRowBoard(0)
 
 	view := b.View()
-	for _, want := range []string{pulseFrames[0], "@Craig Johnston", "#9", "Active"} {
+	for _, want := range []string{pulseFrames[testPulseFrame], "@Craig Johnston", "#9", "Active"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("an unmeasured board should draw everything, missing %q:\n%s", want, view)
 		}

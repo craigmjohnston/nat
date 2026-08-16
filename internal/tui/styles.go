@@ -34,6 +34,13 @@ type Tokens struct {
 	Success color.Color
 	Warning color.Color
 	Danger  color.Color
+	// Working is the colour of an agent getting on with a slice: the orange
+	// Claude Code itself thinks in, taken from the palette rather than from
+	// Claude's own brand hex, so it restyles with every other token. It is its
+	// own role because none of the outcome colours mean this — an agent at work
+	// is neither a success nor a warning — and because it has to read apart
+	// from the Warning an agent stopped for input is marked with.
+	Working color.Color
 	// OnFill is the text drawn over an Accent/Warning/Danger fill, where the
 	// ordinary Text would not contrast.
 	OnFill color.Color
@@ -54,6 +61,7 @@ func NewTokens(isDark bool) Tokens {
 		Success:   ld(lipgloss.Color("#40a02b"), lipgloss.Color("#a6e3a1")), // green
 		Warning:   ld(lipgloss.Color("#df8e1d"), lipgloss.Color("#f9e2af")), // yellow
 		Danger:    ld(lipgloss.Color("#d20f39"), lipgloss.Color("#f38ba8")), // red
+		Working:   ld(lipgloss.Color("#fe640b"), lipgloss.Color("#fab387")), // peach
 		OnFill:    ld(lipgloss.Color("#eff1f5"), lipgloss.Color("#11111b")), // base/crust
 	}
 }
@@ -170,10 +178,12 @@ type Styles struct {
 	PR       lipgloss.Style
 	Live     lipgloss.Style
 	// StarDim, StarMid and StarPeak are the star of a slice with an agent
-	// working on it, brightening and settling as the pulse swells, and
-	// StarWaiting the steady star of one that has stopped for input — the
-	// pending yellow, because it is the board's colour for something waiting on
-	// a person.
+	// working on it, brightening and settling as the pulse swells: all three
+	// the Working orange, separated by weight the way Claude Code's own
+	// spinner separates them. StarWaiting is the steady star of one that has
+	// stopped for input — the pending yellow, because it is the board's colour
+	// for something waiting on a person, and because it has to read apart from
+	// the orange at a glance.
 	StarDim     lipgloss.Style
 	StarMid     lipgloss.Style
 	StarPeak    lipgloss.Style
@@ -268,9 +278,9 @@ func NewStyles(isDark bool) Styles {
 		PR:       lipgloss.NewStyle().Foreground(t.Accent),
 		Live:     lipgloss.NewStyle().Bold(true).Foreground(t.Success),
 
-		StarDim:     lipgloss.NewStyle().Foreground(t.Muted),
-		StarMid:     lipgloss.NewStyle().Foreground(t.Success),
-		StarPeak:    lipgloss.NewStyle().Bold(true).Foreground(t.Success),
+		StarDim:     lipgloss.NewStyle().Faint(true).Foreground(t.Working),
+		StarMid:     lipgloss.NewStyle().Foreground(t.Working),
+		StarPeak:    lipgloss.NewStyle().Bold(true).Foreground(t.Working),
 		StarWaiting: lipgloss.NewStyle().Bold(true).Foreground(t.Warning),
 
 		BarFill:     lipgloss.NewStyle().Foreground(t.Accent),

@@ -30,23 +30,33 @@ const (
 // through pulseFrames — the same star swelling and settling — and waiting, it
 // holds waitingStar steady.
 //
+// The frames are Claude Code's own thinking sparkle, read off the binary rather
+// than approximated: it cycles a dot up to a full sparkle and back down again,
+// which is that sequence followed by its own reverse. Marking an agent with the
+// glyph the agent itself is showing is the point — the board says "Claude is
+// thinking" in Claude's own hand.
+//
 // The animation is in the glyph as well as the colour because a selected row is
 // drawn without either chip's styling (see [paint]), and a star that pulsed in
 // colour alone would go still exactly when the cursor was on it. Every frame is
 // one cell wide, so the row's layout does not shift under the animation and the
 // star sheds and wraps on a narrow board like any other chip.
-var pulseFrames = [...]string{"✦", "✶", "✳", "✶"}
+var pulseFrames = [...]string{
+	"·", "✢", "✳", "✶", "✻", "✽",
+	"✽", "✻", "✶", "✳", "✢", "·",
+}
 
 // waitingStar is the steady mark of an agent that has stopped for input. It is
 // a star of its own rather than a held pulse frame, so the two states still
 // read apart on a selected row, where the colour that separates them is gone.
 const waitingStar = "✻"
 
-// pulseInterval is how long each frame of the pulse is on screen. One full
-// swell takes len(pulseFrames) of them — slow enough to read as breathing
-// rather than flicker, and cheap: one timer for the whole board, however many
-// agents are running.
-const pulseInterval = 450 * time.Millisecond
+// pulseInterval is how long each frame of the pulse is on screen. It is Claude
+// Code's own spinner rate, read off the binary with the frames, so a star on
+// the board breathes at exactly the pace the agent's terminal beside it does.
+// One full swell takes len(pulseFrames) of them, and it stays cheap: one timer
+// for the whole board, however many agents are running.
+const pulseInterval = 120 * time.Millisecond
 
 // pulseTick is held as a variable so the tests can pin the animation quiet
 // rather than wait out real frames.
@@ -138,12 +148,19 @@ func (a *App) pulsed() tea.Cmd {
 }
 
 // starPulse is the style of one frame of the pulse, brightening with the star
-// as it swells and settling back with it.
+// as it swells and settling back with it. The frames run out to the full
+// sparkle and back, so how far a frame is into the swell is its distance from
+// whichever end of the cycle is nearer: the colour turns around where the
+// glyphs do.
 func (s Styles) starPulse(frame int) lipgloss.Style {
-	switch frame {
-	case 2:
+	swell := frame
+	if back := len(pulseFrames) - 1 - frame; back < swell {
+		swell = back
+	}
+	switch {
+	case swell >= 4:
 		return s.StarPeak
-	case 0:
+	case swell <= 1:
 		return s.StarDim
 	}
 	return s.StarMid

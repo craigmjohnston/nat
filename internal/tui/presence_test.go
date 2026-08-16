@@ -12,6 +12,13 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 )
 
+// testPulseFrame is the frame a test pulses to when it means to find the star
+// by its glyph alone: the pulse begins and ends on a middle dot, which is also
+// the board's unknown-status glyph and the separator in its aggregates, so
+// looking for frame 0 in a view would find one whether or not a star was drawn.
+// The middle of the cycle is the full sparkle, which nothing else draws.
+const testPulseFrame = len(pulseFrames) / 2
+
 // liveBoard is a board with an agent on the claimed slice and one working a
 // slice of another project entirely, which is the state the star tests draw.
 func liveBoard(activity map[string]Presence) *Board {
@@ -64,9 +71,13 @@ func TestBoardDrawsNoStarWithoutASession(t *testing.T) {
 	// A classification with no session behind it any more.
 	b.SetActivity(map[string]Presence{"s4": PresenceWaiting})
 
+	// The star is looked for where it would be drawn rather than anywhere in
+	// the view: the dot the pulse starts and ends on is also the board's own
+	// unknown-status glyph and its aggregate separator, so a bare containment
+	// check would find one on a board with no agent at all.
 	view := stripANSI(b.View())
 	for _, glyph := range append(pulseFrames[:], waitingStar) {
-		if strings.Contains(view, glyph) {
+		if strings.Contains(view, "Board screen "+glyph) {
 			t.Errorf("a slice with no session is starred with %q:\n%s", glyph, view)
 		}
 	}
@@ -81,7 +92,7 @@ func TestStarWrapsWithTheRestOfANarrowRow(t *testing.T) {
 		activity map[string]Presence
 		glyph    string
 	}{
-		{"working", nil, pulseFrames[0]},
+		{"working", nil, pulseFrames[testPulseFrame]},
 		{"waiting", map[string]Presence{"s1": PresenceWaiting}, waitingStar},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
