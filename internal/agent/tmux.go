@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -830,15 +831,72 @@ func agentCommand(promptFile string) string {
 	return fmt.Sprintf(`claude "$(cat %s)"`, shellQuote(promptFile))
 }
 
+// SessionEnv is set by tmux in every pane it runs, to the socket and session
+// the pane belongs to. tmux refuses to attach a client from inside one of its
+// own panes when it is non-empty, so an attach that runs under the board — the
+// full-screen one, and the embedded viewer's — has to be launched without it.
+const SessionEnv = "TMUX"
+
+// ViewerFeatures is the client-features list every attach declares with tmux's
+// top-level -T: 256 colours and direct RGB, extended keys so shift+enter still
+// arrives distinguishable, and focus reporting. It deliberately omits sync and
+// sixel: the embedded viewer's emulator speaks neither, and a client that
+// claims them gets sequences it would only have to discard. The kitty and
+// extended-keys negotiation between claude and tmux is untouched by this —
+// extended-keys is already on server-wide from [LaunchArgs].
+const ViewerFeatures = "256,RGB,extkeys,focus"
+
+// attachArgs is the tmux argv shared by both attaches. -T is a top-level client
+// flag, so it goes before the command, not after it.
+func attachArgs(session string) []string {
+	return []string{"-T", ViewerFeatures, "attach-session", "-t", session}
+}
+
+// scrubEnv is env with every entry naming one of names removed. Both attaches
+// need the pane variables gone — tmux reads them to decide it is being nested —
+// and the viewer's needs TERM gone so it can set its own.
+func scrubEnv(env []string, names ...string) []string {
+	out := make([]string, 0, len(env))
+	for _, entry := range env {
+		name, _, found := strings.Cut(entry, "=")
+		if found && slices.Contains(names, name) {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
 // AttachCmd is the command that attaches the terminal to a running session,
 // for the caller to hand to tea.ExecProcess.
+//
+// It usually runs from inside [TUISession], so the pane variables are scrubbed
+// or tmux refuses the nested attach. The caller's TERM is kept: the terminal on
+// the other end of this one is the user's real one, which knows itself better
+// than we do.
 func AttachCmd(session string) *exec.Cmd {
-	return exec.Command(TmuxBinary, "attach-session", "-t", session)
+	cmd := exec.Command(TmuxBinary, attachArgs(session)...)
+	cmd.Env = scrubEnv(os.Environ(), SessionEnv, PaneEnv)
+	return cmd
 }
 
 // AttachCmd is the command attaching to a session, as a method so a caller
 // that already holds a Tmux can launch and attach through the one thing.
 func (t *Tmux) AttachCmd(session string) *exec.Cmd { return AttachCmd(session) }
+
+// AttachClientCmd is the command the embedded viewer runs on a PTY of its own:
+// the same attach, but with TERM replaced by what the viewer's emulator
+// actually is, since the client on the far end of that PTY is the emulator and
+// not the user's terminal.
+func AttachClientCmd(session string) *exec.Cmd {
+	cmd := exec.Command(TmuxBinary, attachArgs(session)...)
+	cmd.Env = append(scrubEnv(os.Environ(), SessionEnv, PaneEnv, "TERM"), "TERM=xterm-256color")
+	return cmd
+}
+
+// AttachClientCmd is the viewer's attach command, as a method for the same
+// reason [Tmux.AttachCmd] is one.
+func (t *Tmux) AttachClientCmd(session string) *exec.Cmd { return AttachClientCmd(session) }
 
 // WritePromptFile writes an agent's opening prompt somewhere the session it is
 // launched for can read it back, returning the file's path.

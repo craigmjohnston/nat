@@ -46,6 +46,14 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   A joined pane dies with the board's window, so `BreakOutJoined` frees every
   such pane as the app leaves (deferred in `main`, so a panic frees them too)
   and `ReclaimStrays` re-homes on startup whatever an earlier run left joined.
+  Both ways of attaching to a session — `AttachCmd`, full-screen through
+  `tea.ExecProcess`, and `AttachClientCmd`, the hidden client the embedded
+  viewer runs on a PTY of its own — build the same argv, `tmux -T
+  <ViewerFeatures> attach-session -t <session>`, and drop `TMUX`/`TMUX_PANE`
+  from the environment, since tmux refuses to nest an attach while they are
+  set. Only the client command replaces `TERM` (with `xterm-256color`): the
+  terminal on the far end of its PTY is the viewer's emulator, where the
+  full-screen attach's is the user's own.
 - `internal/cli/` — the headless commands (`nat info [--json]`,
   `nat next-slice [--json]`, which claims the next Todo slice under the
   lowest-ordered open milestone and prints its brief,
