@@ -256,6 +256,10 @@ func TestAppLaunchOpensTheAgentTerminal(t *testing.T) {
 	app, launcher, _ := launchApp(t)
 	term := fakeTermFor(t)
 	app.board.cursor = rowTodoSlice
+	// The refresh that follows the launch sees the session running, as the real
+	// tmux would; without it the viewer would be closed as an agent that has
+	// already gone.
+	launcher.live = map[string]string{"s5": agent.SessionName("s5")}
 
 	launch(t, app)
 
@@ -496,7 +500,7 @@ func TestAppUnfocusAlwaysWorks(t *testing.T) {
 }
 
 // There is nothing to type at without a terminal on show, and nothing to type
-// at one whose agent has gone.
+// into while one is behind something else.
 func TestAppFocusNeedsATerminalToType(t *testing.T) {
 	app, _, _ := launchApp(t)
 	app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
@@ -506,10 +510,10 @@ func TestAppFocusNeedsATerminalToType(t *testing.T) {
 	}
 
 	app, _, _ = viewerApp(t)
-	app.viewer.exited = true
-	press(app, "tab")
+	app.screen = screenHelp
+	app.focusViewer()
 	if app.viewerFocused() {
-		t.Error("an agent that has gone cannot be typed at")
+		t.Error("a terminal nobody can see cannot be typed at")
 	}
 }
 
@@ -569,8 +573,8 @@ func TestAppIgnoresMessagesFromAClosedTerminal(t *testing.T) {
 	if app.viewer.frame != "the terminal on show" {
 		t.Errorf("frame = %q, want the stale frame ignored", app.viewer.frame)
 	}
-	if app.viewer.exited {
-		t.Error("a stale exit should not retire the terminal on show")
+	if app.viewer.session != term {
+		t.Error("a stale exit should not close the terminal on show")
 	}
 
 	app.viewer = nil
@@ -580,7 +584,8 @@ func TestAppIgnoresMessagesFromAClosedTerminal(t *testing.T) {
 
 // The two orders the news of an agent's exit can arrive in — the client
 // reporting EOF first, and the live poll noticing first — settle the same way:
-// the frame stays on screen, marked exited, and the slice is refetched once.
+// the terminal closes, the board has its width back, and the slice is refetched
+// once rather than once per piece of news.
 func TestAppTerminalExitConverges(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -606,11 +611,14 @@ func TestAppTerminalExitConverges(t *testing.T) {
 				feed(t, app, mustCmd(app.Update(msg(term))))
 			}
 
-			if app.viewer == nil {
-				t.Fatal("the frame should stay on screen after the agent has gone")
+			if app.viewer != nil {
+				t.Fatalf("viewer = %+v, want the terminal closed with its agent", app.viewer)
 			}
-			if !app.viewer.exited {
-				t.Error("the viewer should be marked exited")
+			if term.closes != 1 {
+				t.Errorf("closes = %d, want the session closed exactly once", term.closes)
+			}
+			if got := app.boardWidth(); got != app.innerWidth() {
+				t.Errorf("board width = %d, want the whole band of %d back", got, app.innerWidth())
 			}
 			if app.viewerFocused() {
 				t.Error("there is nothing left to type at")
@@ -622,18 +630,30 @@ func TestAppTerminalExitConverges(t *testing.T) {
 	}
 }
 
-// A failed read of the child is reported rather than passed off as the agent
-// finishing.
+// A client that died while its session ran on takes its box with it like any
+// other, but the failure is reported rather than passed off as the agent
+// finishing — and the toast names the session, so the user can reattach.
 func TestAppReportsATerminalThatFailed(t *testing.T) {
+	client := &fakeNotion{getPage: pageFor("s5", "Info view", notion.SliceInProgress, "M2: Board")}
 	app, _, term := viewerApp(t)
+	app.client = client
 
 	feed(t, app, mustCmd(app.Update(termExitedMsg{session: term, err: errors.New("read pty")})))
 
 	if !strings.Contains(app.toast, "read pty") {
 		t.Errorf("toast = %q, want the failure reported", app.toast)
 	}
-	if !app.viewer.exited {
-		t.Error("the viewer should still be marked exited")
+	if !strings.Contains(app.toast, agent.SessionName("s5")) {
+		t.Errorf("toast = %q, want the session named for a reattach", app.toast)
+	}
+	if app.viewer != nil {
+		t.Errorf("viewer = %+v, want the terminal closed", app.viewer)
+	}
+	if term.closes != 1 {
+		t.Errorf("closes = %d, want the session closed exactly once", term.closes)
+	}
+	if client.fetchedPages != nil {
+		t.Errorf("fetched %v, want the failure reported in place of a refetch", client.fetchedPages)
 	}
 }
 
@@ -647,27 +667,8 @@ func TestAppKeepsTheTerminalThroughAFailedPoll(t *testing.T) {
 
 	app.Update(liveSessionsMsg{err: errors.New("no server")})
 
-	if app.viewer == nil || app.viewer.exited {
-		t.Errorf("viewer = %+v, want it left alone", app.viewer)
-	}
-}
-
-// Closing an exited terminal is only the frame being dismissed: its refetch
-// happened when the agent went.
-func TestAppClosingAnExitedTerminalRefetchesNothing(t *testing.T) {
-	client := &fakeNotion{getPage: pageFor("s5", "Info view", notion.SliceDone, "M2: Board")}
-	app, _, term := viewerApp(t)
-	app.client = client
-	feed(t, app, mustCmd(app.Update(termExitedMsg{session: term})))
-	fetched := len(client.fetchedPages)
-
-	feed(t, app, press(app, "t"))
-
-	if app.viewer != nil {
-		t.Errorf("viewer = %+v, want the frame dismissed", app.viewer)
-	}
-	if len(client.fetchedPages) != fetched {
-		t.Errorf("fetched %v, want no second refetch", client.fetchedPages)
+	if app.viewer == nil {
+		t.Error("viewer = nil, want it left alone")
 	}
 }
 
@@ -964,15 +965,11 @@ func TestViewerDropsAnUnknownMouseKind(t *testing.T) {
 	}
 }
 
-// A terminal nobody can see, and one whose agent has gone, take no mouse: the
-// first is behind something else, the second a frame being read.
+// A terminal nobody can see takes no mouse, and nor does a board with none on
+// it at all.
 func TestViewerTakesNoMouseWhenItIsNotLive(t *testing.T) {
 	app, _, term := viewerApp(t)
 	originX, originY := termOrigin(app)
-
-	app.viewer.exited = true
-	mouseAt(app, vterm.MousePress, originX, originY)
-	app.viewer.exited = false
 
 	app.screen = screenHelp
 	mouseAt(app, vterm.MousePress, originX, originY)
@@ -1021,11 +1018,7 @@ func TestAppViewerHints(t *testing.T) {
 		t.Errorf("hints = %q, want only the way back", got)
 	}
 
-	app.viewer.focused, app.viewer.exited = false, true
-	if got := hintText(app); !strings.Contains(got, "t close the agent") {
-		t.Errorf("hints = %q, want the way to dismiss the frame", got)
-	}
-
+	app.viewer.focused = false
 	feed(t, app, press(app, "t"))
 	if got := hintText(app); !strings.Contains(got, "? help") {
 		t.Errorf("hints = %q, want the ordinary hints back", got)
@@ -1160,19 +1153,6 @@ func TestAppAgentViewerGolden(t *testing.T) {
 
 	a.viewer.focused = true
 	golden(t, "app-agent-viewer-focused-80", a.View().Content)
-}
-
-// An exited agent says so in its title, in place of the live mark.
-func TestViewerTitleMarksAnExitedAgent(t *testing.T) {
-	app, _, term := viewerApp(t)
-	term.frame = "done"
-
-	feed(t, app, mustCmd(app.Update(termExitedMsg{session: term})))
-
-	view := stripANSI(app.View().Content)
-	if !strings.Contains(view, "exited") {
-		t.Errorf("view is missing the exited mark:\n%s", view)
-	}
 }
 
 // A frame wider or taller than the box it is drawn in is cut rather than

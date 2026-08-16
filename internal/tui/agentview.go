@@ -130,10 +130,8 @@ type agentViewer struct {
 	name        string
 	tmuxSession string
 
-	// focused says the keyboard belongs to the terminal rather than the board;
-	// exited that the child has gone and the frame is its last words.
+	// focused says the keyboard belongs to the terminal rather than the board.
 	focused bool
-	exited  bool
 
 	frame       string
 	cursorX     int
@@ -226,12 +224,19 @@ func (a *App) termOutput(msg termOutputMsg) (tea.Model, tea.Cmd) {
 	return a, awaitFrame(msg.session)
 }
 
-// termExited takes the child's last frame and marks the viewer done.
+// termExited takes the terminal off the board: the client has reported EOF,
+// which is the pseudo-terminal's way of saying the session it was attached to
+// has gone.
+//
+// The news is the end of the PTY rather than the status the client exited with
+// — `tmux attach-session` exits zero whether its session ended under it or the
+// user detached, so a code would say nothing anyway, and [vterm.Session.Err]
+// reports only a PTY that failed, never a child's exit. A message about a
+// session no longer on screen is one the close raced.
 func (a *App) termExited(msg termExitedMsg) (tea.Model, tea.Cmd) {
 	if !a.viewing(msg.session) {
 		return a, nil
 	}
-	a.viewer.capture()
 	return a, tea.Batch(a.viewerExited(msg.err), a.refreshLive())
 }
 
@@ -242,31 +247,41 @@ func (a *App) viewing(s termSession) bool {
 
 // viewerExited is what a viewer whose agent has gone does, whichever way the
 // news arrives first: the client reporting EOF, or the live poll finding the
-// session no longer running. Both land here, and the second finds it already
-// done.
+// session no longer running. Whichever it is, the terminal goes — a box holding
+// a frame nothing will ever write to again is the board's width being held by a
+// dead agent — and the one that arrives second finds nothing on show and says
+// nothing.
 //
-// The frame is left on screen rather than closed out from under the user — an
-// agent's last words are worth reading — so this is also where the refetch that
-// follows a viewing goes.
+// That the terminal closes either way is also what keeps the refetch to one:
+// dropping the viewer is what the second piece of news is recognised by.
 func (a *App) viewerExited(err error) tea.Cmd {
-	v := a.viewer
-	if v == nil || v.exited {
+	v := a.dropViewer()
+	if v == nil {
 		return nil
 	}
-	v.exited, v.focused = true, false
 	if err != nil {
-		// The session the client was attached to is named: it is running still,
-		// and reattaching to it is what the user will want next.
+		// The client died with its session still running: the session is named,
+		// because reattaching to it is what the user will want next.
 		return a.showToast(fmt.Sprintf("Lost the terminal for %q (%s): %v",
 			v.name, v.tmuxSession, err), sevError)
 	}
 	return a.afterViewing(v)
 }
 
-// closeViewer takes the terminal off the board and hands its pseudo-terminal
-// back. A viewer whose agent has already exited has had its refetch — this is
-// only the frame being dismissed — so it asks for nothing more.
+// closeViewer takes the terminal off the board at the user's asking, and brings
+// the board up to date with whatever the agent did while it was on show.
 func (a *App) closeViewer() tea.Cmd {
+	v := a.dropViewer()
+	if v == nil {
+		return nil
+	}
+	return a.afterViewing(v)
+}
+
+// dropViewer takes the terminal off the board and hands its pseudo-terminal
+// back, returning the viewer that was there — or nil where there was none, which
+// is how a second report of the same exit is told from the first.
+func (a *App) dropViewer() *agentViewer {
 	v := a.viewer
 	if v == nil {
 		return nil
@@ -275,10 +290,7 @@ func (a *App) closeViewer() tea.Cmd {
 	v.session.Close()
 	// The board has the window's width back.
 	a.resize()
-	if v.exited {
-		return nil
-	}
-	return a.afterViewing(v)
+	return v
 }
 
 // afterViewing brings the board up to date with what the agent did while it was
@@ -361,11 +373,8 @@ func printableText(msg tea.KeyPressMsg) bool {
 // way to type at an agent. An event anywhere else is not the terminal's, and it
 // says so — a press there hands the keyboard back on its way past, and the
 // board takes the event from [App.mouseEvent].
-//
-// An exited terminal is a frame being read rather than a child to click at, so
-// it takes no mouse at all.
 func (a *App) viewerMouse(msg tea.MouseMsg) (tea.Cmd, bool) {
-	if !a.viewerVisible() || a.viewer.exited {
+	if !a.viewerVisible() {
 		return nil, false
 	}
 	kind, ok := mouseKind(msg)
@@ -422,11 +431,10 @@ func (a *App) termCell(mx, my int) (x, y int, ok bool) {
 	return x, y, true
 }
 
-// focusViewer hands the keyboard to the terminal. There is nothing to type at
-// when the agent has gone, and nothing to type into when the terminal is not
-// on screen.
+// focusViewer hands the keyboard to the terminal. There is nothing to type
+// into when the terminal is not on screen.
 func (a *App) focusViewer() tea.Cmd {
-	if !a.viewerVisible() || a.viewer.exited {
+	if !a.viewerVisible() {
 		return nil
 	}
 	a.viewer.focused = true
@@ -521,13 +529,13 @@ func (a *App) viewerRegion(width, height int) []string {
 }
 
 // viewerTitle is the box's top border with the agent's name let into it, and
-// beside the name whether the agent is still running.
+// beside it the mark that says an agent is running. There is no other state to
+// draw: a
+// terminal on the board is one with an agent behind it, since the box goes as
+// soon as the agent does.
 func (a *App) viewerTitle(edge lipgloss.Style, width int) string {
 	border := lipgloss.RoundedBorder()
 	mark := a.styles.Live.Render("●")
-	if a.viewer.exited {
-		mark = a.styles.Faint.Render("exited")
-	}
 	head := edge.Render(border.TopLeft+border.Top+" ") +
 		a.styles.Selected.Render(a.viewer.name) + " " + mark + " "
 	fill := max(width-lipgloss.Width(head)-lipgloss.Width(border.TopRight), 0)
@@ -590,9 +598,6 @@ func (a *App) viewerHints() []hint {
 	}
 	if a.viewer.focused {
 		return []hint{{orClick(a.keys.Unfocus), 1}}
-	}
-	if a.viewer.exited {
-		return []hint{{shortHint(closeKey, "close the agent"), 1}}
 	}
 	return []hint{
 		{orClick(a.board.keys.Focus), 3},
