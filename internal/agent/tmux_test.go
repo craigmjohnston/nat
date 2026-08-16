@@ -95,10 +95,10 @@ func TestSessionNameDistinguishesIDsSharingAPrefix(t *testing.T) {
 
 func TestLiveSlices(t *testing.T) {
 	r := &fakeRunner{out: strings.Join([]string{
-		"\t%0\tuser-shell\t@0\t0\t80\t\t0", // a pane of the user's own, untagged
-		"3b738308…8f\t%1\tnat-b4463d8f\t@1\t0\t80\tb4463d8f\t0",
-		"3b738308…09\t%2\tnat-0dfecb09\t@2\t0\t80\t0dfecb09\t0",
-		"3b738308…8f\t%3\tnat-moved\t@3\t0\t80\tb4463d8f\t0", // a second pane claiming a slice already found
+		"\t%0\tuser-shell\t@0\t0", // a pane of the user's own, untagged
+		"3b738308…8f\t%1\tnat-b4463d8f\t@1\t0",
+		"3b738308…09\t%2\tnat-0dfecb09\t@2\t0",
+		"3b738308…8f\t%3\tnat-moved\t@3\t0", // a second pane claiming a slice already found
 		"a line tmux did not write",
 		"",
 	}, "\n")}
@@ -115,8 +115,7 @@ func TestLiveSlices(t *testing.T) {
 
 	wantCall := call{name: "tmux", args: []string{
 		"list-panes", "-a", "-F",
-		"#{@nat_slice}\t#{pane_id}\t#{session_name}\t#{window_id}\t#{pane_index}\t#{pane_width}\t#{@nat_label}" +
-			"\t#{pane_dead}",
+		"#{@nat_slice}\t#{pane_id}\t#{session_name}\t#{window_id}\t#{pane_dead}",
 	}}
 	if len(r.calls) != 1 || !reflect.DeepEqual(r.calls[0], wantCall) {
 		t.Errorf("calls = %+v, want exactly %+v", r.calls, wantCall)
@@ -126,7 +125,7 @@ func TestLiveSlices(t *testing.T) {
 // A pane moved into another session is still the agent for its slice, and is
 // reported under the session it has ended up in.
 func TestLiveSlicesFollowsAPaneToAnotherSession(t *testing.T) {
-	r := &fakeRunner{out: "3b738308…8f\t%1\tsomewhere-else\t@0\t0\t80\tb4463d8f\t0\n"}
+	r := &fakeRunner{out: "3b738308…8f\t%1\tsomewhere-else\t@0\t0\n"}
 	live, err := NewTmuxWithRunner(r).LiveSlices()
 	if err != nil {
 		t.Fatalf("LiveSlices: %v", err)
@@ -196,10 +195,8 @@ func TestLaunch(t *testing.T) {
 			";", "set-option", "-s", "extended-keys", "on",
 			";", "set-option", "-s", "-a", "terminal-features", "*:extkeys:hyperlinks",
 		}, clickBindingArgs()...)},
-		// The tag the agent is found by, and — chained onto it, so a pane is
-		// never one without the other — the label the board's bar shows it by.
-		{name: "tmux", args: []string{"set-option", "-p", "-t", "%7", "@nat_slice", id,
-			";", "set-option", "-p", "-t", "%7", "@nat_label", "b4463d8f"}},
+		// The tag the agent is found by.
+		{name: "tmux", args: []string{"set-option", "-p", "-t", "%7", "@nat_slice", id}},
 	}
 	if !reflect.DeepEqual(r.calls, want) {
 		t.Errorf("calls = %+v, want %+v", r.calls, want)
@@ -297,8 +294,7 @@ func panesOutput(panes ...pane) string {
 		if p.dead {
 			dead = "1"
 		}
-		fmt.Fprintf(&b, "%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
-			p.slice, p.id, p.session, p.window, p.index, p.width, p.label, dead)
+		fmt.Fprintf(&b, "%s\t%s\t%s\t%s\t%s\n", p.slice, p.id, p.session, p.window, dead)
 	}
 	return b.String()
 }
@@ -306,22 +302,10 @@ func panesOutput(panes ...pane) string {
 // The board's pane and an agent's, in windows of their own: the state before
 // the agent has been shown.
 var (
-	boardPane  = pane{id: "%0", session: "nat-tui", window: "@0", index: "0", width: 80}
+	boardPane  = pane{id: "%0", session: "nat-tui", window: "@0"}
 	agentApart = pane{slice: "3b738308-f654-8170-8c99-eccab4463d8f",
-		id: "%1", session: "nat-b4463d8f", window: "@1", index: "0", width: 80,
-		label: PaneLabel("3b738308-f654-8170-8c99-eccab4463d8f")}
+		id: "%1", session: "nat-b4463d8f", window: "@1"}
 )
-
-// refreshCalls is the tmux argv sequence that redraws the bar of host's session
-// for the panes of its window — the pair of calls every layout change ends
-// with.
-func refreshCalls(host pane, window ...pane) []call {
-	return []call{
-		{name: "tmux", args: []string{"list-panes", "-a", "-F", listPanesFormat()}},
-		{name: "tmux", args: []string{"set-option", "-t", host.session, statusFormatOption,
-			buildStatusFormat(sectionsFor(window))}},
-	}
-}
 
 // breakOutCalls is the tmux argv sequence that sends one pane back to a
 // session of its own, with placeholder as the pane the new session came up on.
@@ -363,7 +347,6 @@ func TestReclaimStraysReHomesThePanesAnEarlierRunLeft(t *testing.T) {
 	want := []call{{name: "tmux", args: []string{"list-panes", "-a", "-F", listPanesFormat()}}}
 	want = append(want, breakOutCalls(stray.id, SessionName(stray.slice), "%9")...)
 	want = append(want, breakOutCalls(inWindow.id, SessionName(inWindow.slice), "%9")...)
-	want = append(want, refreshCalls(boardPane, boardPane, inWindow)...)
 	if !reflect.DeepEqual(r.calls, want) {
 		t.Errorf("calls = %+v, want %+v", r.calls, want)
 	}
@@ -567,7 +550,7 @@ func TestHostArgs(t *testing.T) {
 	// No mouse-on for the board's session: it gets its mouse at join time, the
 	// way it always has.
 	want := append([]string{"new-session", "-A", "-s", "nat-tui", "/usr/local/bin/nat"},
-		statusBarArgs("nat-tui")...)
+		boardStyleArgs("nat-tui")...)
 	want = append(want, []string{
 		";", "set-option", "-s", "extended-keys", "on",
 		";", "set-option", "-s", "-a", "terminal-features", "*:extkeys:hyperlinks"}...)
@@ -631,10 +614,11 @@ func TestSessionsNatCreatesEnableExtendedKeysAndHyperlinks(t *testing.T) {
 	}
 }
 
-// The board's session gets the bar back, themed as nat's own, and every one of
-// the options is chained onto the new-session rather than run on its own.
-func TestStatusBarArgsSetTheBarOnTheBoardsSession(t *testing.T) {
-	args := statusBarArgs("nat-tui")
+// The board's session hides tmux's own bar — nat draws a status band of its
+// own inside its frame — and every one of the options is chained onto the
+// new-session rather than run on its own.
+func TestBoardStyleArgsHideTheTmuxBar(t *testing.T) {
+	args := boardStyleArgs("nat-tui")
 	for i := 0; i < len(args); i += 6 {
 		if args[i] != ";" {
 			t.Fatalf("args = %v, want every option chained with %q", args, ";")
@@ -643,24 +627,23 @@ func TestStatusBarArgsSetTheBarOnTheBoardsSession(t *testing.T) {
 			t.Errorf("args = %v, want each option set on the named session", got)
 		}
 	}
-
+	// Off rather than blanked: a bar left on still costs the row under nat's
+	// bottom border, which is the row the band is drawn in now.
 	joined := strings.Join(args, " ")
-	for _, want := range []string{
-		"; set-option -t nat-tui status on",
-		// Under the frames whose width its sections are, so it reads as their
-		// footer rather than a row of its own.
-		"; set-option -t nat-tui status-position bottom",
-	} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("statusBarArgs = %q, want it to contain %q", joined, want)
+	if want := "; set-option -t nat-tui status off"; !strings.Contains(joined, want) {
+		t.Errorf("boardStyleArgs = %q, want it to contain %q", joined, want)
+	}
+	for _, unwanted := range []string{"status on", "status-position", "status-style", "status-format"} {
+		if strings.Contains(joined, unwanted) {
+			t.Errorf("boardStyleArgs = %q, want no %q: the bar is nat's own now", joined, unwanted)
 		}
 	}
 }
 
-// Both borders in the one neutral colour, so the split reads as a seam and the
+// Both borders in the one neutral colour, so a split reads as a seam and the
 // stock green highlight on the focused edge is gone.
-func TestStatusBarArgsNeutraliseThePaneBorders(t *testing.T) {
-	args := statusBarArgs("nat-tui")
+func TestBoardStyleArgsNeutraliseThePaneBorders(t *testing.T) {
+	args := boardStyleArgs("nat-tui")
 	styles := map[string]string{}
 	for i, a := range args {
 		if a == "pane-border-style" || a == "pane-active-border-style" {
@@ -668,204 +651,13 @@ func TestStatusBarArgsNeutraliseThePaneBorders(t *testing.T) {
 		}
 	}
 	if len(styles) != 2 {
-		t.Fatalf("statusBarArgs = %v, want both border styles set", args)
+		t.Fatalf("boardStyleArgs = %v, want both border styles set", args)
 	}
 	if styles["pane-border-style"] != styles["pane-active-border-style"] {
 		t.Errorf("border styles = %v, want the active one to match the inactive one", styles)
 	}
 	if !strings.Contains(styles["pane-border-style"], paneBorderFG) {
 		t.Errorf("border style = %q, want nat's neutral %q", styles["pane-border-style"], paneBorderFG)
-	}
-}
-
-// One section per pane, each exactly as wide as its pane, with the one column
-// of pane border between them: the sections total the window width, so the bar
-// reads as a footer to the frames.
-func TestBuildStatusFormatSizesEachSectionToItsPane(t *testing.T) {
-	format := buildStatusFormat([]statusSection{
-		{index: "0", content: paneTitleContent, width: 40},
-		{index: "1", content: literalContent("b4463d8f"), width: 39},
-	})
-	for _, want := range []string{"#{=40;p40:", "#{=39;p39:", paneTitleContent, "b4463d8f", statusSeparator} {
-		if !strings.Contains(format, want) {
-			t.Errorf("format = %q, want it to contain %q", format, want)
-		}
-	}
-	// tmux resolves the focus itself at redraw: each section asks whether the
-	// window's focused pane is the one it was built for, so moving the focus
-	// needs no command sent.
-	for _, want := range []string{
-		"#{?#{==:#{pane_index},0}," + activeSectionStyle + "," + inactiveSectionStyle + "}",
-		"#{?#{==:#{pane_index},1}," + activeSectionStyle + "," + inactiveSectionStyle + "}",
-	} {
-		if !strings.Contains(format, want) {
-			t.Errorf("format = %q, want it to contain %q", format, want)
-		}
-	}
-	// A comma inside the branches of #{?...} is where tmux splits them, so the
-	// styles have to be spelled with spaces.
-	for _, style := range []string{statusBarFG, statusBarBG, statusBarAccent, statusBarOnFill} {
-		if strings.Contains(format, style+",") {
-			t.Errorf("format = %q, want no comma after the style %q", format, style)
-		}
-	}
-	// A pane ID would not survive: tmux passes the format through strftime,
-	// which eats the % an ID begins with.
-	if strings.Contains(format, "pane_id") {
-		t.Errorf("format = %q, want the focus decided on the pane index", format)
-	}
-}
-
-// The board alone: one section, the whole window wide, and in the accent
-// without asking — the sole pane of a window is the focused one.
-func TestBuildStatusFormatDrawsTheBoardAloneAsOneSection(t *testing.T) {
-	format := buildStatusFormat([]statusSection{{index: "0", content: paneTitleContent, width: 80}})
-	if want := activeSectionStyle + "#{=80;p80:#{l: }#{pane_title}}#[default]"; format != want {
-		t.Errorf("format = %q, want %q", format, want)
-	}
-}
-
-// The bar a board session comes up with, before there is a window to measure:
-// one section, wider than any terminal, which tmux clips at the window's edge.
-func TestInitialStatusFormatFillsTheRow(t *testing.T) {
-	format := initialStatusFormat()
-	if want := fmt.Sprintf("#{=%d;p%d:", initialStatusWidth, initialStatusWidth); !strings.Contains(format, want) {
-		t.Errorf("format = %q, want it to contain %q", format, want)
-	}
-	if !strings.Contains(format, paneTitleContent) {
-		t.Errorf("format = %q, want the board's section drawn from its pane title", format)
-	}
-}
-
-// What each pane's section draws: its own label, the bare word for a pane an
-// earlier run tagged before there were labels, and its own title — where nat
-// writes its messages — for the untagged pane nat itself is drawing in.
-func TestPaneStatusContent(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		pane pane
-		want string
-	}{
-		{"a labelled agent", pane{slice: "3b73", label: "b4463d8f"}, literalContent("b4463d8f")},
-		{"an agent from before the labels", pane{slice: "3b73"}, literalContent(agentLabel)},
-		{"the board's own pane", pane{}, paneTitleContent},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.pane.statusContent(); got != tc.want {
-				t.Errorf("statusContent() = %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
-// The bar is pushed onto the board's own session, built from the panes of the
-// window its pane is in — the panes of other windows are another bar's.
-func TestRefreshStatusBarBuildsTheBarFromTheWindowsPanes(t *testing.T) {
-	joined := agentApart
-	joined.session, joined.window, joined.id = boardPane.session, boardPane.window, "%1"
-	joined.index, joined.width = "1", 39
-	board := boardPane
-	board.width = 40
-	elsewhere := agentApart
-	elsewhere.id, elsewhere.window, elsewhere.label = "%3", "@9", "eeeeeeee"
-	r := &fakeRunner{outs: map[string]string{"list-panes": panesOutput(board, joined, elsewhere)}}
-
-	if err := NewTmuxWithRunner(r).RefreshStatusBar(board.id); err != nil {
-		t.Fatalf("RefreshStatusBar: %v", err)
-	}
-
-	want := refreshCalls(board, board, joined)
-	if !reflect.DeepEqual(r.calls, want) {
-		t.Errorf("calls = %+v, want %+v", r.calls, want)
-	}
-	format := r.calls[1].args[4]
-	if !strings.Contains(format, "#{=40;p40:") || !strings.Contains(format, "#{=39;p39:") {
-		t.Errorf("format = %q, want a section the width of each pane", format)
-	}
-	if strings.Contains(format, elsewhere.label) {
-		t.Errorf("format = %q, want nothing from another window in it", format)
-	}
-}
-
-// The board is not a pane on this server, so there is no bar of ours under it
-// to redraw.
-func TestRefreshStatusBarWithoutABoardPane(t *testing.T) {
-	r := &fakeRunner{outs: map[string]string{"list-panes": panesOutput(agentApart)}}
-
-	if err := NewTmuxWithRunner(r).RefreshStatusBar("%404"); err != nil {
-		t.Fatalf("RefreshStatusBar: %v", err)
-	}
-	if len(r.calls) != 1 {
-		t.Errorf("calls = %+v, want only the pane list", r.calls)
-	}
-}
-
-func TestRefreshStatusBarErrors(t *testing.T) {
-	boom := &ExitError{Code: 2, Stderr: "boom"}
-	for _, tc := range []struct {
-		name   string
-		runner *fakeRunner
-		want   string
-	}{
-		{
-			name:   "the panes cannot be listed",
-			runner: &fakeRunner{errs: map[string]error{"list-panes": boom}},
-			want:   "list tmux panes",
-		},
-		{
-			name: "the option cannot be set",
-			runner: &fakeRunner{
-				outs: map[string]string{"list-panes": panesOutput(boardPane)},
-				errs: map[string]error{"set-option": boom},
-			},
-			want: "redraw the status bar of nat-tui",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			err := NewTmuxWithRunner(tc.runner).RefreshStatusBar(boardPane.id)
-			if err == nil {
-				t.Fatal("RefreshStatusBar: want error, got nil")
-			}
-			if !strings.Contains(err.Error(), tc.want) {
-				t.Errorf("err = %v, want it to name %q", err, tc.want)
-			}
-		})
-	}
-}
-
-// A bar that will not redraw is chrome the re-homing can do without: the panes
-// have already gone where they were asked to go, and saying how many is what
-// the caller is waiting on.
-func TestReclaimStraysSurvivesABarThatWillNotRedraw(t *testing.T) {
-	stray := agentApart
-	stray.session, stray.window = TUISession, "@4"
-	r := &fakeRunner{
-		outs: map[string]string{"list-panes": panesOutput(boardPane, stray)},
-		out:  "%9\n",
-		// The break-out's own set-options are chained into the new-session
-		// argv, so the only bare one in this path is the redraw's.
-		errs: map[string]error{"set-option": &ExitError{Code: 2, Stderr: "boom"}},
-	}
-
-	moved, err := NewTmuxWithRunner(r).ReclaimStrays(boardPane.id)
-	if err != nil {
-		t.Fatalf("ReclaimStrays: %v", err)
-	}
-	if moved != 1 {
-		t.Errorf("moved = %d, want the stray reported despite the bar", moved)
-	}
-}
-
-// The label is the session name a user attaches the agent by, without the
-// prefix every pane on nat's own bar would carry.
-func TestPaneLabel(t *testing.T) {
-	for _, tc := range []struct{ id, want string }{
-		{"3b738308-f654-8170-8c99-eccab4463d8f", "b4463d8f"},
-		{PlanSentinel, PlanSentinel},
-	} {
-		if got := PaneLabel(tc.id); got != tc.want {
-			t.Errorf("PaneLabel(%q) = %q, want %q", tc.id, got, tc.want)
-		}
 	}
 }
 
@@ -1117,8 +909,8 @@ func TestLaunchTagsWhatLiveSlicesReads(t *testing.T) {
 	if err := NewTmuxWithRunner(launch).Launch(session, "/tmp", "/tmp/prompt.md", id, config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
-	// The tagging call sets the slice tag first and the status bar's label
-	// after it, so the tag is the option-and-value the call opens with.
+	// The tagging call sets the slice tag, which is the option-and-value the
+	// call opens with.
 	tag := launch.calls[1].args
 	option, value := tag[4], tag[5]
 
@@ -1129,7 +921,7 @@ func TestLaunchTagsWhatLiveSlicesReads(t *testing.T) {
 		t.Fatalf("format %q does not read back %q", format, option)
 	}
 
-	read := &fakeRunner{out: fmt.Sprintf("%s\t%%1\t%s\t@0\t0\t80\t\t0\n", value, session)}
+	read := &fakeRunner{out: fmt.Sprintf("%s\t%%1\t%s\t@0\t0\n", value, session)}
 	live, err := NewTmuxWithRunner(read).LiveSlices()
 	if err != nil {
 		t.Fatalf("LiveSlices: %v", err)

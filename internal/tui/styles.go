@@ -80,8 +80,8 @@ type Styles struct {
 	// it, distinct from HeaderTitle, the project or screen name beside it; and
 	// HeaderMeta the plan's tally, right-aligned on the bar, with
 	// HeaderMilestone naming the milestone the work is in beside it. The text
-	// styles carry the bar's background for the same reason the status segments
-	// do.
+	// styles carry the bar's own background: a segment styled with a foreground
+	// alone would reset the fill and cut a hole in it.
 	Header          lipgloss.Style
 	HeaderApp       lipgloss.Style
 	HeaderTitle     lipgloss.Style
@@ -108,9 +108,9 @@ type Styles struct {
 	// Faint is for text that should recede: hints, placeholders, counts.
 	Faint lipgloss.Style
 	// StatusKey, StatusDesc and StatusNote are the text of the status line the
-	// tmux bar draws under the pane. Each of them carries the bar's own
-	// background: a segment styled with a foreground alone would reset the fill
-	// and cut a hole in it.
+	// app draws in its bottom band. None of them fills a background: the band is
+	// a bordered section like the header and the body, and a fill under the line
+	// would read as a bar sitting inside the frame rather than as part of it.
 	StatusKey  lipgloss.Style
 	StatusDesc lipgloss.Style
 	StatusNote lipgloss.Style
@@ -121,8 +121,9 @@ type Styles struct {
 	HintSep  lipgloss.Style
 	// Error is the status line of a failed Notion call.
 	Error lipgloss.Style
-	// ToastSuccess, ToastWarning and ToastError are the status-bar toasts for
-	// events not scoped to a row, each the severity's colour on the bar's fill.
+	// ToastSuccess, ToastWarning and ToastError are the status band's toasts for
+	// events not scoped to a row, each the severity's colour on the band's own
+	// background.
 	ToastSuccess lipgloss.Style
 	ToastWarning lipgloss.Style
 	ToastError   lipgloss.Style
@@ -144,8 +145,8 @@ type Styles struct {
 	PromptOption  lipgloss.Style
 	PromptFocused lipgloss.Style
 	PromptFade    lipgloss.Style
-	// ModeChip is the status line's leading segment: the project's name on the
-	// board, the screen's name everywhere else.
+	// ModeChip is the status line's leading segment: the name of the screen over
+	// the board. The board itself draws no chip — its heading names the app.
 	ModeChip lipgloss.Style
 	// Spinner styles the loading indicator.
 	Spinner lipgloss.Style
@@ -221,7 +222,7 @@ func NewStyles(isDark bool) Styles {
 	// chip is the shape every badge shares: a space of background either side,
 	// so the fill reads as a chip rather than tinted text.
 	chip := lipgloss.NewStyle().Padding(0, 1)
-	// bar is the tmux bar's fill, which every segment drawn on it inherits.
+	// bar is the heading bar's fill, which every segment drawn on it inherits.
 	bar := lipgloss.NewStyle().Background(t.Surface)
 	return Styles{
 		Frame:    lipgloss.NewStyle().Padding(0, framePadX),
@@ -244,9 +245,9 @@ func NewStyles(isDark bool) Styles {
 		Modal: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.AccentDim).Padding(0, 1),
 		Scrim: lipgloss.NewStyle().Foreground(t.SurfaceHi),
 
-		StatusKey:  bar.Bold(true).Foreground(t.Accent),
-		StatusDesc: bar.Foreground(t.Text),
-		StatusNote: bar.Foreground(t.Success),
+		StatusKey:  lipgloss.NewStyle().Bold(true).Foreground(t.Accent),
+		StatusDesc: lipgloss.NewStyle().Foreground(t.Text),
+		StatusNote: lipgloss.NewStyle().Foreground(t.Success),
 
 		HintKey:  lipgloss.NewStyle().Bold(true).Foreground(t.Accent),
 		HintDesc: lipgloss.NewStyle().Foreground(t.Text),
@@ -254,9 +255,9 @@ func NewStyles(isDark bool) Styles {
 
 		Error: chip.Bold(true).Foreground(t.OnFill).Background(t.Danger),
 
-		ToastSuccess: bar.Foreground(t.Success),
-		ToastWarning: bar.Foreground(t.Warning),
-		ToastError:   bar.Foreground(t.Danger),
+		ToastSuccess: lipgloss.NewStyle().Foreground(t.Success),
+		ToastWarning: lipgloss.NewStyle().Foreground(t.Warning),
+		ToastError:   lipgloss.NewStyle().Foreground(t.Danger),
 
 		ConfirmSuccess:     chip.Foreground(t.OnFill).Background(t.Success),
 		ConfirmWarning:     chip.Foreground(t.OnFill).Background(t.Warning),
@@ -306,7 +307,7 @@ func NewStyles(isDark bool) Styles {
 	}
 }
 
-// toastStyle is the status-bar style a toast of the given severity renders in.
+// toastStyle is the status band's style for a toast of the given severity.
 func (s Styles) toastStyle(sev severity) lipgloss.Style {
 	switch sev {
 	case sevWarning:

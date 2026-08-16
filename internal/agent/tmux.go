@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -46,16 +45,6 @@ const sessionIDLen = 8
 // moved into another session.
 const SlicePaneOption = "@nat_slice"
 
-// LabelPaneOption is the tmux pane option carrying the human label the status
-// bar shows a pane by — the slice's short session ID, or "plan" for the
-// planning agent. It is set beside [SlicePaneOption] rather than derived from
-// it in the status format, because tmux's formats can compare and choose but
-// not slice a string down to its last eight digits.
-//
-// The board's own pane carries neither option, which is how the bar tells it
-// from an agent's.
-const LabelPaneOption = "@nat_label"
-
 // PlanSentinel is the value [SlicePaneOption] carries on the planning agent's
 // pane, in place of a slice page ID: the planning agent works the plan itself
 // and has no slice to be tagged with. It cannot collide with a real slice —
@@ -70,8 +59,8 @@ const PlanSentinel = "plan"
 const PlanSession = SessionPrefix + PlanSentinel
 
 // PaneEnv is set by tmux in every pane it runs, to the pane's own ID. It is how
-// the TUI finds the pane it is drawing in, which is the one the status bar is
-// drawn under.
+// the TUI finds the pane it is drawing in, which is the window the strays are
+// swept from.
 const PaneEnv = "TMUX_PANE"
 
 // tmuxTimeout caps how long we wait for a tmux command. These are local calls
@@ -167,15 +156,6 @@ func SessionName(slicePageID string) string {
 	return SessionPrefix + hex
 }
 
-// PaneLabel is what the status bar calls the pane an agent for slicePageID
-// runs in: its session name without the shared prefix, so the label reads as
-// the eight hex digits the user attaches that session by ("plan" for the
-// planning agent). The prefix is dropped because the bar is nat's own — every
-// pane on it would carry it.
-func PaneLabel(slicePageID string) string {
-	return strings.TrimPrefix(SessionName(slicePageID), SessionPrefix)
-}
-
 // LiveSlices maps the page ID of every slice with an agent running to the tmux
 // session that agent's pane is currently in — the ID to mark the slice by, and
 // the session to attach to it with. Panes that are not ours carry no slice tag
@@ -206,50 +186,18 @@ func (t *Tmux) LiveSlices() (map[string]string, error) {
 }
 
 // pane is one of the tmux server's panes: which slice it is the agent for, if
-// any, where it currently is, whether the command in it has exited, and what
-// the status bar needs to draw a section for it — its index within the window,
-// how wide it is, and its label.
+// any, where it currently is, and whether the command in it has exited.
 type pane struct {
 	slice   string
 	id      string
 	session string
 	window  string
-	index   string
-	width   int
-	label   string
 	// dead is a pane whose command has exited but which tmux is still listing,
 	// which only happens where remain-on-exit is on. nat never sets it, so this
 	// is all but always false for the panes nat made — but a user who has set it
 	// server-wide would otherwise have every finished agent read as one still
 	// sitting there with nothing to say.
 	dead bool
-}
-
-// statusContent is what the bar draws in a pane's section, as the tmux format
-// that yields it: the label an agent's pane was tagged with, or the pane's own
-// title for the pane with no tag at all — the one nat itself is drawing in.
-//
-// The board's section is its title because that is how nat's messages reach the
-// bar: the app writes the line the in-TUI status bar used to draw as its
-// terminal title (OSC 2), which inside tmux is the pane's, and tmux redraws the
-// status line itself whenever a title changes — so the bar follows the app with
-// no tmux command sent per keystroke. tmux does not re-expand what it
-// substitutes, so a title carrying `#{...}`, `#[...]` or a `%` reaches the bar
-// as the text it is.
-//
-// A pane an earlier run launched carries the slice tag but no label, and would
-// otherwise read as the board; it falls back to the bare word, which is at
-// least true of it. The agents outlive the run that started them, so this is
-// the ordinary state of things for a while after an upgrade, not a corner.
-func (p pane) statusContent() string {
-	switch {
-	case p.label != "":
-		return literalContent(p.label)
-	case p.slice == "":
-		return paneTitleContent
-	default:
-		return literalContent(agentLabel)
-	}
 }
 
 // panes lists every pane on the server. Panes that are not ours carry no slice
@@ -277,35 +225,28 @@ func (t *Tmux) panes() ([]pane, error) {
 		if len(fields) != listPanesFields {
 			continue
 		}
-		// A width tmux could not give us is no reason to drop the pane: it is
-		// still an agent to be found and moved, and a zero-width section is
-		// simply one the bar has nothing to draw.
-		width, _ := strconv.Atoi(fields[5])
 		panes = append(panes, pane{slice: fields[0], id: fields[1], session: fields[2], window: fields[3],
-			index: fields[4], width: width, label: fields[6], dead: fields[7] == "1"})
+			dead: fields[4] == "1"})
 	}
 	return panes, nil
 }
 
 // listPanesFields is how many fields [listPanesFormat] asks for; a line with
 // any other number of them is not one tmux wrote for us.
-const listPanesFields = 8
+const listPanesFields = 5
 
 // listPanesFormat is what [Tmux.panes] asks tmux to print for each pane: the
 // slice tag, then the pane, the session it is in and the window within it, and
-// then what the status bar draws a section for it from — its index in the
-// window, its width, and its label — and last whether the pane is dead, which
-// is what the activity watcher reads liveness from. Tabs separate them because
-// a session name can hold anything but that.
+// last whether the pane is dead, which is what the activity watcher reads
+// liveness from. Tabs separate them because a session name can hold anything
+// but that.
 func listPanesFormat() string {
-	return fmt.Sprintf(
-		"#{%s}\t#{pane_id}\t#{session_name}\t#{window_id}\t#{pane_index}\t#{pane_width}\t#{%s}\t#{pane_dead}",
-		SlicePaneOption, LabelPaneOption)
+	return fmt.Sprintf("#{%s}\t#{pane_id}\t#{session_name}\t#{window_id}\t#{pane_dead}", SlicePaneOption)
 }
 
 // HostPane is the tmux pane this process is drawing in, or "" when it is not
 // inside tmux at all — in which case there is no window of the board's own to
-// draw a status bar under or to sweep strays from.
+// sweep strays from.
 func HostPane() string { return os.Getenv(PaneEnv) }
 
 // find returns the first pane matching want.
@@ -378,12 +319,6 @@ func (t *Tmux) ReclaimStrays(hostPane string) (int, error) {
 	moved, err := t.breakOutAll(panes, func(p pane) bool {
 		return p.session == TUISession || (hosted && p.window == host.window)
 	})
-	// A stray taken out of the board's window is a section the bar no longer
-	// has a pane for; one taken out of another window is not, but the bar is
-	// rebuilt from what is there either way.
-	if moved > 0 {
-		t.refreshAfterLayout(hostPane)
-	}
 	return moved, err
 }
 
@@ -414,8 +349,7 @@ func (t *Tmux) breakOutAll(panes []pane, want func(pane) bool) (int, error) {
 // the slice with page ID sliceID, as the model and effort m asks for.
 //
 // The pane the session starts in is tagged with sliceID, which is what
-// [Tmux.LiveSlices] reads the running agents back out of, and with the label
-// the board's status bar shows it by. A session whose pane
+// [Tmux.LiveSlices] reads the running agents back out of. A session whose pane
 // could not be tagged is left running — its agent is already working — but the
 // failure is reported, because until it is tagged nothing will find it again.
 func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.AgentModel) error {
@@ -425,8 +359,7 @@ func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.Age
 	}
 	pane := strings.TrimSpace(out)
 	if _, err := t.runner.Run(TmuxBinary,
-		"set-option", "-p", "-t", pane, SlicePaneOption, sliceID,
-		";", "set-option", "-p", "-t", pane, LabelPaneOption, PaneLabel(sliceID)); err != nil {
+		"set-option", "-p", "-t", pane, SlicePaneOption, sliceID); err != nil {
 		return fmt.Errorf("tag tmux pane %s for slice %s: %w", pane, sliceID, err)
 	}
 	logging.Action("agent launched", "session", session, "slice", sliceID, "workdir", workdir, "pane", pane)
@@ -465,10 +398,10 @@ func LaunchArgs(session, workdir, promptFile string, m config.AgentModel) []stri
 // path with spaces in it needs no quoting.
 //
 // [TUISession] only ever exists because a launch outside tmux made it — a
-// launch inside tmux never gets here — so styling its status bar and borders
-// touches no session the user was already in.
+// launch inside tmux never gets here — so hiding its status bar and styling its
+// borders touches no session the user was already in.
 func HostArgs(binary string) []string {
-	args := append([]string{"new-session", "-A", "-s", TUISession, binary}, statusBarArgs(TUISession)...)
+	args := append([]string{"new-session", "-A", "-s", TUISession, binary}, boardStyleArgs(TUISession)...)
 	args = append(args, inputFeatureArgs()...)
 	return append(args, hyperlinkClickArgs()...)
 }
@@ -480,9 +413,9 @@ func HostArgs(binary string) []string {
 // per-session option on a named session, so the sessions the user was already
 // running keep their bars.
 //
-// The board's session gets a bar of nat's own instead — see [statusBarArgs] —
-// because that is the one window an agent's pane is ever joined into, and so
-// the one place the bar has something to say.
+// The board's session hides it too — see [boardStyleArgs] — because nat draws a
+// status band of its own inside its frame, and a tmux bar under it would be a
+// second one saying less.
 //
 // The lone ";" is tmux's own command separator, read from argv the way `\;` is
 // from a shell: everything before it belongs to new-session, and the set-option
@@ -491,186 +424,29 @@ func statusOffArgs(session string) []string {
 	return []string{";", "set-option", "-t", session, "status", "off"}
 }
 
-// nat's palette as tmux takes it: the colours the TUI's dark theme draws with,
-// spelled out because tmux has no notion of a theme that follows the terminal.
-const (
-	statusBarBG     = "#313244" // surface0
-	statusBarFG     = "#7f849c" // overlay1
-	statusBarAccent = "#cba6f7" // mauve
-	statusBarOnFill = "#11111b" // crust, for text on the accent
-	paneBorderFG    = "#45475a" // surface1
-)
+// paneBorderFG is nat's palette as tmux takes it: the surface the TUI's dark
+// theme draws its own borders in, spelled out because tmux has no notion of a
+// theme that follows the terminal.
+const paneBorderFG = "#45475a" // surface1
 
-// agentLabel is the word the bar falls back to for an agent's pane that carries
-// no label of its own: one an earlier run launched has the slice tag but no
-// label yet.
-const agentLabel = "agent"
-
-// paneTitleContent draws a pane's own title, and literalContent a fixed word.
-// The word goes through `#{l:...}` because the body of a padding is read as a
-// format: a bare word in there is a variable name, and expands to nothing.
-const paneTitleContent = "#{pane_title}"
-
-func literalContent(label string) string { return "#{l:" + label + "}" }
-
-// The two styles a section is drawn in, picked between by the focus. Attributes
-// are separated by spaces rather than commas: a comma inside `#{?...}` is where
-// tmux splits its branches, and would cut a style in half.
-const (
-	activeSectionStyle   = "#[fg=" + statusBarOnFill + " bg=" + statusBarAccent + " bold]"
-	inactiveSectionStyle = "#[fg=" + statusBarFG + " bg=" + statusBarBG + " nobold]"
-)
-
-// statusSeparator is the one column between two sections — the pane border
-// standing between the panes above them, drawn in the bar's own style so it
-// reads as the same seam. It is what makes the sections total the window width:
-// tmux counts the border column in the window's width but in no pane's.
-const statusSeparator = "#[default] "
-
-// statusFormatOption is the status line's one row, which is the whole bar: nat
-// sets no status-left or status-right, so row zero is all there is.
-const statusFormatOption = "status-format[0]"
-
-// statusSection is one pane as the bar draws it: the pane's index within the
-// window, the tmux format for what it has to say, and how wide the pane is.
-type statusSection struct {
-	index   string
-	content string
-	width   int
-}
-
-// sectionsFor turns the panes of one window into the sections of its bar, in
-// the order tmux listed them — which for the board's window, split left to
-// right, is the order they sit in.
-func sectionsFor(panes []pane) []statusSection {
-	sections := make([]statusSection, 0, len(panes))
-	for _, p := range panes {
-		sections = append(sections, statusSection{index: p.index, content: p.statusContent(), width: p.width})
-	}
-	return sections
-}
-
-// buildStatusFormat is the whole status line for a window's panes: one section
-// per pane, each exactly as wide as the pane above it, so the bar reads as a
-// footer to the frames rather than a row of chips of its own.
+// boardStyleArgs is the command chain that hides tmux's own status bar in the
+// board's session and takes the highlight off the pane borders.
 //
-// The widths are baked in because tmux will not expand a format inside a
-// padding width — `#{p#{pane_width}:...}` pads to nothing — so the bar has to
-// be rebuilt whenever the layout changes. The focus, though, is left to tmux:
-// each section carries a condition comparing the window's focused pane against
-// the index it was built for, so moving the focus redraws the bar with no
-// command sent and nothing to poll.
+// The bar goes because nat draws its own: a band inside its bottom border,
+// saying what the tmux bar used to say. Set off rather than left blank, so the
+// row it occupied goes back to the board — a blanked bar still costs the line.
 //
-// The comparison is on the pane's index rather than its ID because tmux passes
-// a status format through strftime, which eats the `%` an ID begins with — and
-// eats it once more for every `#{?...}` the comparison sits inside, so no
-// amount of escaping survives reliably. An index is current for exactly as long
-// as the layout it was read from, which is exactly how long this format lives.
-//
-// A window with only the board in it renders as one full-width section, always
-// in the accent: the sole pane of a window is the focused one, so the condition
-// would have nothing to decide.
-func buildStatusFormat(sections []statusSection) string {
-	var b strings.Builder
-	for i, s := range sections {
-		if i > 0 {
-			b.WriteString(statusSeparator)
-		}
-		if len(sections) == 1 {
-			b.WriteString(activeSectionStyle)
-		} else {
-			b.WriteString("#{?#{==:#{pane_index}," + s.index + "}," +
-				activeSectionStyle + "," + inactiveSectionStyle + "}")
-		}
-		// Cut before padding: a section holding more than its pane is wide —
-		// the board's title carrying a long error — would otherwise push every
-		// section after it out of line with the pane above it.
-		fmt.Fprintf(&b, "#{=%d;p%d:#{l: }%s}", s.width, s.width, s.content)
-	}
-	b.WriteString("#[default]")
-	return b.String()
-}
-
-// initialStatusWidth is how wide the board's one section is drawn before the
-// first rebuild, when the window it will sit in does not exist yet and its
-// width cannot be asked for. It is wider than any terminal, and tmux clips the
-// status line at the window's edge, so the section fills the row whatever that
-// turns out to be.
-const initialStatusWidth = 1024
-
-// initialStatusFormat is the bar a freshly made board session starts with: the
-// one section for the pane it starts with. The first layout change — the first
-// resize, which the TUI takes as it starts — replaces it with one built from
-// the panes actually there.
-func initialStatusFormat() string {
-	return buildStatusFormat([]statusSection{{content: paneTitleContent, width: initialStatusWidth}})
-}
-
-// RefreshStatusBar redraws the status bar of the session hostPane's window
-// belongs to, with one section per pane as the panes now are. It is what every
-// layout change owes the bar: a section's width is baked into the format, so a
-// pane joined, broken out or resized leaves the old sections lined up against
-// nothing.
-//
-// A host pane that is not on the server — the board is not in tmux at all, or
-// its pane has already gone — means there is no bar of ours to redraw, which is
-// nothing to do rather than a failure.
-func (t *Tmux) RefreshStatusBar(hostPane string) error {
-	panes, err := t.panes()
-	if err != nil {
-		return err
-	}
-	host, ok := find(panes, func(p pane) bool { return p.id == hostPane })
-	if !ok {
-		return nil
-	}
-	var window []pane
-	for _, p := range panes {
-		if p.window == host.window {
-			window = append(window, p)
-		}
-	}
-	format := buildStatusFormat(sectionsFor(window))
-	if _, err := t.runner.Run(TmuxBinary, "set-option", "-t", host.session, statusFormatOption, format); err != nil {
-		return fmt.Errorf("redraw the status bar of %s: %w", host.session, err)
-	}
-	return nil
-}
-
-// refreshAfterLayout redraws the bar for a layout that has just changed, and
-// keeps a failure to itself. The panes have already moved by then, and a bar
-// still showing the sections of a moment ago is not worth failing the move the
-// user asked for over — it is logged and corrected by the next change.
-func (t *Tmux) refreshAfterLayout(hostPane string) {
-	if err := t.RefreshStatusBar(hostPane); err != nil {
-		logging.Error("could not redraw the board's status bar", "error", err)
-	}
-}
-
-// statusBarArgs is the command chain that gives the board's session a status
-// bar of nat's own and takes the highlight off the pane borders.
-//
-// The bar is there to say which pane the keyboard is talking to, which is the
-// question the border highlight used to answer badly: tmux's stock active
+// The borders are both set to the same neutral grey because tmux's stock active
 // border is a green edge that reads as an alert, and against nat's own frames
-// it is one line of chrome too many. Both border styles are set to the same
-// neutral grey, so the split shows as a seam and the bar alone says where the
-// focus is.
+// it is one line of chrome too many.
 //
-// It sits at the bottom, under the frames its sections are the width of, so it
-// reads as their footer rather than a row of its own.
-//
-// Per session, like the bar we hide in an agent's own — except the border
+// Per session, like the bar hidden in an agent's own — except the border
 // styles, which tmux keeps per window; targeting the session sets them on the
 // window it currently has, which for the board's session is the window it was
 // made with and never leaves.
-func statusBarArgs(session string) []string {
-	var args []string
+func boardStyleArgs(session string) []string {
+	args := statusOffArgs(session)
 	for _, opt := range [][2]string{
-		{"status", "on"},
-		{"status-position", "bottom"},
-		{"status-style", "fg=" + statusBarFG + " bg=" + statusBarBG},
-		{statusFormatOption, initialStatusFormat()},
 		{"pane-border-style", "fg=" + paneBorderFG},
 		{"pane-active-border-style", "fg=" + paneBorderFG},
 	} {

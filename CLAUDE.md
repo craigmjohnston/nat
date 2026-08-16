@@ -13,10 +13,11 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   Started outside tmux it re-execs itself into a `nat-tui` session
   (`tmux new-session -A`, so a second launch attaches rather than starting a
   rival); started inside tmux it runs in place and does not nest. `NAT_NO_TMUX=1`
-  opts out. The board is a pane so the tmux bar under it can draw the status
-  line and so the agents it launches have a server to live in; viewing one no
-  longer needs it — the terminal beside the board is nat's own, and there is
-  nothing to hand back on the way out.
+  opts out. The board is hosted in tmux so the agents it launches have a server
+  to live in; nothing else needs it — the status line is drawn inside nat's own
+  frame and tmux's bar is set off in that session, so the row it held goes back
+  to the board, and the terminal beside the board is nat's own with nothing to
+  hand back on the way out.
 - `internal/config/` — XDG config (`~/.config/notion-agent-tracker/config.json`)
   + the Notion bearer token, read from Notion's official CLI via
   `ntn auth token` (the app stores no credential of its own).
@@ -67,6 +68,12 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `breakOut`/`breakOutAll`/`placeholderCommand`, all under one deprecation
   comment — is the exception, still run at startup to re-home the panes a
   pre-upgrade nat left joined, and comes out next release.
+  Every session nat makes has tmux's own status bar off: an agent's because the
+  bar says nothing its session does not, and the board's (`boardStyleArgs`)
+  because nat draws a status band inside its own frame and a bar under it would
+  cost the row twice — off rather than blanked, since a blank bar still holds
+  the line. The same chain sets both pane border styles to one neutral grey,
+  tmux's stock green active edge reading as an alert against nat's own frames.
   `activity.go` is how those agents are told apart from each other's states:
   `Tmux.Activity` scans the panes once and reads the screen of each tagged one
   (`capture-pane -p -J`), answering working / waiting / gone / unknown per slice
@@ -166,6 +173,16 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   is its one caller.
 - `internal/tui/` — bubbletea v2 (`charm.land/*/v2` imports); root model in
   `app.go` routes screens; all Notion I/O via tea.Cmd → typed msgs.
+  The window is four bands, shared out from the bottom: the status band, the
+  boxed header, the hints row and the body with what is left. The status band is
+  the last of them — the mode of a screen over the board (the board itself has
+  no chip: its heading names the app), the error or toast waiting, and the
+  standing indicators — drawn inside a border like the header and the body and
+  in the frame's own colour, with no fill of its own, so nat's bottom border is
+  the last line of the terminal. Below the framed threshold every band is drawn
+  bare, the status line included, and a window of one line is that line alone.
+  The same text goes out as the terminal's title, stripped of its styling, since
+  a title is text.
   `approve.go` is the `p` key, the board's one action that reaches outside
   Notion — the domain rule on `Branch` says what it does and why gh's failures
   are toasts.

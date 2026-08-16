@@ -16,17 +16,15 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/logging"
 )
 
 // AgentLauncher is what the launch flow needs of tmux: which slices have an
 // agent running and in which session, how each of them is getting on, how to
 // start one, the two commands that
 // attach to one — the hidden client the embedded viewer runs, and the
-// full-screen attach behind the hatch — the reconcile that re-homes what an
-// earlier run left joined beside a board, and the redraw of the bar under the
-// board's pane. It is an interface so the flow can be driven without a tmux
-// server.
+// full-screen attach behind the hatch — and the reconcile that re-homes what an
+// earlier run left joined beside a board. It is an interface so the flow can be
+// driven without a tmux server.
 type AgentLauncher interface {
 	LiveSlices() (map[string]string, error)
 	Activity() (map[string]agent.Activity, error)
@@ -34,7 +32,6 @@ type AgentLauncher interface {
 	AttachClientCmd(session string) *exec.Cmd
 	AttachCmd(session string) *exec.Cmd
 	ReclaimStrays(hostPane string) (int, error)
-	RefreshStatusBar(hostPane string) error
 }
 
 // liveInterval is how often the board re-reads which sessions are running. An
@@ -433,30 +430,6 @@ func (a *App) reclaimStrays() tea.Cmd {
 	return func() tea.Msg {
 		count, err := l.ReclaimStrays(host)
 		return straysReclaimedMsg{count: count, err: err}
-	}
-}
-
-// refreshStatusBar redraws the tmux bar under the board's window for the panes
-// at the size they now are. The bar's sections are as wide as the panes above
-// them, so a window that has been resized leaves them lined up against nothing
-// until this runs.
-//
-// tmux moving the panes is handled where the panes are moved; this is the one
-// change nothing else sees — the terminal resizing under a layout that has not
-// otherwise altered. A failure is logged rather than raised: the bar is chrome
-// around a board that is still entirely usable, and the next resize corrects
-// it.
-func (a *App) refreshStatusBar() tea.Cmd {
-	host := agent.HostPane()
-	if a.launcher == nil || host == "" {
-		return nil
-	}
-	l := a.launcher
-	return func() tea.Msg {
-		if err := l.RefreshStatusBar(host); err != nil {
-			logging.Error("could not redraw the board's status bar", "error", err)
-		}
-		return nil
 	}
 }
 
