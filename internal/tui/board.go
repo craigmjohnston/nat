@@ -195,6 +195,12 @@ type Board struct {
 	// live maps the ID of each slice with an agent running to the session it
 	// runs in, so a slice with an agent on it can be marked.
 	live map[string]string
+	// blocked maps the ID of each slice waiting on unfinished work to the
+	// slices it waits on, keyed the way domain.SlicesByID keys them. It is
+	// computed from the whole plan whenever one is loaded, since a slice's
+	// dependencies are other rows of the same board, and it is what both the
+	// blocked chip and the launch key's refusal are read from.
+	blocked map[string][]domain.Slice
 	// activity is how those agents are getting on, and pulse the frame the
 	// star animation is on. Both are only ever read through the star chip —
 	// see presence.go.
@@ -330,9 +336,10 @@ func defaultExpanded(g domain.Group) bool {
 // a wall of them. The section starts collapsed and remembers its state like any
 // group; expanding it reveals the Done milestones, which behave as usual.
 func (b *Board) rebuild() {
-	b.groups = nil
+	b.groups, b.blocked = nil, nil
 	if b.project != nil {
 		b.groups = b.project.Groups()
+		b.blocked = blockedSlices(b.project.Slices)
 	}
 	b.rows = nil
 	sectionEmitted := false
@@ -503,6 +510,31 @@ func (b Board) SelectedSlice() (domain.Slice, bool) {
 		return domain.Slice{}, false
 	}
 	return b.groups[r.group].Slices[r.slice], true
+}
+
+// Blockers is the slices s is waiting on that are not Done, in the order s
+// names them, and nothing at all for a slice that waits on none — which is
+// every slice of a project whose table has no dependency column. It answers
+// off the index built with the plan, so the launch key and the chip on the row
+// say the same thing about the same slice.
+func (b Board) Blockers(s domain.Slice) []domain.Slice {
+	return b.blocked[domain.NormaliseID(s.ID)]
+}
+
+// blockedSlices indexes a plan's blocked slices by ID: those waiting on slices
+// that are not Done, mapped to what they wait on. The whole plan is the index a
+// dependency is looked up in, since every slice a dependency can name is a row
+// of this board; one it does not hold is a page the project cannot see, which
+// domain.Blockers passes over rather than counting as unfinished.
+func blockedSlices(slices []domain.Slice) map[string][]domain.Slice {
+	byID := domain.SlicesByID(slices)
+	blocked := map[string][]domain.Slice{}
+	for _, s := range slices {
+		if blocking, _ := domain.Blockers(s, byID); len(blocking) > 0 {
+			blocked[domain.NormaliseID(s.ID)] = blocking
+		}
+	}
+	return blocked
 }
 
 // SelectedMilestone is the milestone under the cursor, if the cursor is on a
@@ -1032,12 +1064,13 @@ func (b Board) renderDoneSection(marker string, selected bool, l boardLayout) []
 }
 
 // renderSlice draws one slice: its status chip, its name, the star of an agent
-// live on it — see [Board.star] — who holds it, and the pull request it
-// produced.
+// live on it — see [Board.star] — the slices it is still waiting on, who holds
+// it, and the pull request it produced.
 //
 // The PR chip comes last of the chips, so it is the first of them to give way
 // as the board narrows: the slice's own state is worth more of a cramped row
-// than a link out of the app.
+// than a link out of the app. The blocked chip comes first of the three, since
+// it says the row cannot be worked at all.
 //
 // A row too wide for the board wraps rather than shedding any of its chips,
 // and the status chip carries on down the wrapped lines as a bare strip of its
@@ -1046,6 +1079,9 @@ func (b Board) renderSlice(head string, s domain.Slice, selected bool) []string 
 	var chips []string
 	if star, live := b.star(s.ID, selected); live {
 		chips = append(chips, star)
+	}
+	if len(b.Blockers(s)) > 0 {
+		chips = append(chips, b.blockedChip(selected))
 	}
 	if s.AssigneeName != "" {
 		chips = append(chips, paint(selected, b.styles.Assignee, "@"+s.AssigneeName))
@@ -1098,6 +1134,15 @@ func (b Board) sliceStrip(s domain.SliceStatus, selected bool) string {
 	}
 	_, st := b.sliceStatus(s)
 	return st.Render(" ")
+}
+
+// blockedChip is the badge a slice waiting on unfinished slices carries. It
+// names no dependency: the row has no space for a list, and the slices it waits
+// on are rows of this same board — the launch key is what says which they are.
+// The glyph leads, so the chip still reads as a refusal on a row drawn without
+// its colour, which is every selected row.
+func (b Board) blockedChip(selected bool) string {
+	return paint(selected, b.styles.Blocked, "⊘ blocked")
 }
 
 // prNumberPath is the number a pull request URL ends its path with — the 71 of

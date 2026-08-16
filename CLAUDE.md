@@ -295,7 +295,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   and says which slices wait on what only when every candidate is blocked, and
   `start-slice`, which was pointed at one slice and so has nothing to skip,
   refuses it by name and lists what it waits on, before it claims anything. The
-  board draws none of this yet.
+  board honours it too: it indexes the blocked slices of the plan whenever one
+  is loaded (`Board.Blockers`, off the whole plan, since a dependency is another
+  row of the same board), draws a muted `⊘ blocked` chip on such a row — first
+  of the row's chips, since it says the row cannot be worked at all — and
+  refuses `l` on one with a status-bar toast naming what it waits on and how far
+  off each is. A toast rather than an error banner: nothing has gone wrong, and
+  the slice is still there to launch once its dependencies land.
 - A project keeps its whole plan on one page: no Milestones database, and a
   `Milestone` **select** on the Slices data source whose options are the
   milestones, in plan order. `domain.MilestonesFromOptions` maps them —

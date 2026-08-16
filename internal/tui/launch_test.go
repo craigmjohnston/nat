@@ -867,6 +867,49 @@ func TestAppLaunchRefusesASliceThatIsNotTodo(t *testing.T) {
 	}
 }
 
+// A blocked slice is refused with a toast on the status bar rather than the
+// inline confirmation the other refusals take: the toast has room to name the
+// slices the wait is on, which is what the chip on the row cannot say.
+func TestAppLaunchRefusesABlockedSlice(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	// Info view waits on the slice in progress and on the stray, and on one
+	// already Done, which is no wait at all.
+	app.project.Slices[4].DependsOn = []string{"s4", "s1", "s6"}
+	app.board.SetProject(app.project)
+	app.board.cursor = rowTodoSlice
+
+	press(app, "l")
+
+	if app.form != nil {
+		t.Errorf("form = %T, want no launch form", app.form)
+	}
+	if app.board.Prompting() {
+		t.Error("a blocked slice should not be offered a launch prompt")
+	}
+	if len(launcher.launches) != 0 {
+		t.Errorf("launched %+v, want nothing", launcher.launches)
+	}
+	want := `"Info view" waits on "Board screen" (In progress), "Stray" (Unknown).`
+	if app.toast != want {
+		t.Errorf("toast = %q, want %q", app.toast, want)
+	}
+	if app.toastSev != sevWarning {
+		t.Errorf("severity = %v, want a warning — nothing has gone wrong", app.toastSev)
+	}
+	if app.err != nil {
+		t.Errorf("err = %v, want a refusal rather than an error banner", app.err)
+	}
+
+	// Once what it waited on is Done, the same key opens the prompt.
+	app.project.Slices[3].Status = domain.SliceDone
+	app.project.Slices[5].Status = domain.SliceDone
+	app.board.SetProject(app.project)
+	press(app, "l")
+	if !app.board.Prompting() {
+		t.Error("the slice is unblocked, want the launch prompt")
+	}
+}
+
 func TestAppLaunchRefusesASliceAlreadyRunning(t *testing.T) {
 	app, _, _ := launchApp(t)
 	id, session := sliceAt(t, app, rowTodoSlice)

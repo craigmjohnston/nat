@@ -312,6 +312,11 @@ const (
 // launchAgentFlow anchors the launch prompt to the slice the cursor is on. Only
 // a Todo slice can be launched: a slice in progress is work an agent already
 // holds, and Done is finished — a second agent on either would fight the first.
+//
+// A blocked slice is refused too, and refused with a toast rather than the
+// error banner a failure gets: nothing has gone wrong, and the slice is still
+// there to launch once the slices it waits on are Done. The toast names them,
+// since the chip on the row only says that there are some.
 func (a *App) launchAgentFlow() tea.Cmd {
 	project, ok := a.activeProject()
 	if !ok || a.launcher == nil || a.busy {
@@ -326,6 +331,9 @@ func (a *App) launchAgentFlow() tea.Cmd {
 	}
 	if s.Status != domain.SliceTodo {
 		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices can be launched.", s.Name, statusWord(s)), sevWarning)
+	}
+	if blockers := a.board.Blockers(s); len(blockers) > 0 {
+		return a.showToast(fmt.Sprintf("%q waits on %s.", s.Name, blockerList(blockers)), sevWarning)
 	}
 	workdir := workdirFor(s, project)
 	return a.openPrompt(launchChoices, func(choice int) tea.Cmd {
@@ -350,6 +358,17 @@ func (a *App) launchChosen(s domain.Slice, workdir string, choice int) tea.Cmd {
 	}
 	a.busy, a.note = true, launchNote
 	return a.startAgent(s, workdir, a.cfg.SliceAgent, true)
+}
+
+// blockerList names the slices a blocked one is waiting on, in the order it
+// names them and with the status each is at, so the toast says both what the
+// wait is on and how far off it is.
+func blockerList(blockers []domain.Slice) string {
+	parts := make([]string, len(blockers))
+	for i, b := range blockers {
+		parts[i] = fmt.Sprintf("%q (%s)", b.Name, statusWord(b))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // workdirFor is the directory a slice's agent starts in: its own repo

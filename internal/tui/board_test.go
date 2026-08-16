@@ -446,6 +446,78 @@ func TestBoardRendersAsATable(t *testing.T) {
 	}
 }
 
+// blockedBoard is testProject with the Todo slice waiting on the one in
+// progress: "Info view" draws the blocked chip and every other row — "Domain
+// model" among them, which waits on a slice already Done — draws none.
+func blockedBoard() *Board {
+	b := NewBoard(DefaultStyles())
+	b.hideDone = false
+	b.SetWidth(60)
+	p := testProject()
+	p.Slices[4].DependsOn = []string{"s4"} // Info view waits on Board screen
+	p.Slices[2].DependsOn = []string{"s1"} // Domain model waited on one now Done
+	b.SetProject(&p)
+	return &b
+}
+
+func TestBoardMarksABlockedSlice(t *testing.T) {
+	b := blockedBoard()
+
+	golden(t, "board-blocked", b.View())
+
+	// The chip is on the blocked row and on no other: a slice whose
+	// dependencies are all Done is not waiting on anything.
+	for _, line := range strings.Split(ansi.ReplaceAllString(b.View(), ""), "\n") {
+		if want := strings.Contains(line, "Info view"); strings.Contains(line, "⊘ blocked") != want {
+			t.Errorf("the blocked chip is on the wrong row:\n%s", line)
+		}
+	}
+}
+
+// A blocked row is a row like any other as the board narrows: the chip gives
+// way with the rest of it rather than pushing anything off the board.
+func TestBoardWrapsABlockedRow(t *testing.T) {
+	b := blockedBoard()
+	b.SetWidth(30)
+
+	view := b.View()
+	golden(t, "board-blocked-narrow", view)
+	flat := strings.Join(strings.Fields(ansi.ReplaceAllString(view, "")), " ")
+	for _, want := range []string{"Info view", "⊘ blocked"} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("the narrow board is missing %q:\n%s", want, view)
+		}
+	}
+}
+
+// A dependency the plan does not hold — a trashed slice, or one filed outside
+// the project — blocks nothing: a slice waiting forever on a page nobody can
+// see would never be launchable again.
+func TestBoardPassesOverAnUnreadableDependency(t *testing.T) {
+	b := NewBoard(DefaultStyles())
+	b.SetWidth(60)
+	p := testProject()
+	p.Slices[4].DependsOn = []string{"gone"}
+	b.SetProject(&p)
+
+	if got := b.Blockers(p.Slices[4]); len(got) != 0 {
+		t.Errorf("blockers = %+v, want none", got)
+	}
+	if view := ansi.ReplaceAllString(b.View(), ""); strings.Contains(view, "blocked") {
+		t.Errorf("a slice waiting on a page the plan cannot see is drawn blocked:\n%s", view)
+	}
+}
+
+// The index is rebuilt with the plan, so a board that had one and lost it —
+// the state it starts in — answers for a slice from anywhere.
+func TestBoardWithNoPlanBlocksNothing(t *testing.T) {
+	b := NewBoard(DefaultStyles())
+
+	if got := b.Blockers(domain.Slice{ID: "s5", DependsOn: []string{"s4"}}); len(got) != 0 {
+		t.Errorf("blockers = %+v, want none", got)
+	}
+}
+
 func TestBoardMarksSlicesWithALiveSession(t *testing.T) {
 	b := newTestBoard()
 	// The claimed slice's agent, and one working a slice of another project.
