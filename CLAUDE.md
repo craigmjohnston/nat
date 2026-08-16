@@ -71,6 +71,23 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   config file, since it is what a machine with only the binary runs first), what
   the binary does when given a subcommand. Run before the tmux hosting step and with no TUI
   code in the path: a command prints to the terminal it was typed in and exits.
+- `internal/vterm/` — a child command run on a PTY (`x/xpty`) with its screen
+  mirrored by an in-process VT emulator (`x/vt`), so the TUI can draw an agent
+  as a widget instead of joining its tmux pane. `Start` returns a `Session`:
+  `Render`/`Cursor` to draw it, `SendKey`/`SendBytes`/`Paste` to type at it,
+  `Resize`, `Output` to know when to redraw and `Done`/`Err` when it has gone.
+  Two goroutines: the read pump feeds the PTY into the emulator under the
+  Session's own mutex (`vt.SafeEmulator`'s lock is not trusted alone — an
+  upstream race fix there was merged and reverted), and the reply pump drains
+  the emulator's answers to the child's startup queries back to the PTY, which
+  a child that asks DA1/DSR stalls without. Two seams for fakes, `newPty` and
+  `waitProcess`. Three details the packages make you find out the hard way: the
+  parent's copy of the PTY's child end has to be closed after `Start` or the
+  read never ends; the screen is read only through `Render`, since the damage
+  list `Draw`/`Touched` work from goes nil across a resize; and the emulator's
+  input pipe is ended by closing it directly rather than through the
+  emulator's own `Close`, which races the reply pump. Not yet imported by the
+  app.
 - `internal/tui/` — bubbletea v2 (`charm.land/*/v2` imports); root model in
   `app.go` routes screens; all Notion I/O via tea.Cmd → typed msgs. `poll.go` is
   the background refetch of the plan, for the changes no nudge reports because
