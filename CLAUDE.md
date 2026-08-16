@@ -130,10 +130,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   live poll notices first. `T` is the hatch to the old full-screen attach. The
   mouse is the terminal's too: all-motion reporting is asked for on the view
   only while one is on show — with it off the user's own selection and
-  scrollback are left alone, and the board has no use for a click — and an event
-  inside the box is turned into a cell of the child's screen and handed to
-  `SendMouse` with the modifiers it arrived with, a press there taking the
-  keyboard as well. Everything outside the box is dropped, bar a press, which
+  scrollback are left alone, and there is nothing on screen a key does not reach
+  — and an event inside the box is turned into a cell of the child's screen and
+  handed to `SendMouse` with the modifiers it arrived with, a press there taking
+  the keyboard as well. Everything outside the box is dropped, bar a press, which
   hands the keyboard back. Nothing between swallows it: tmux passes mouse
   reporting through unless its own `mouse` option is on, which nat sets for the
   sessions it makes for agents and never for the one it hosts the board in. What
@@ -141,6 +141,19 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   an OSC 8 hyperlink fires the `MouseDown1Pane` binding and opens it, and a wheel
   enters copy-mode over the pane's scrollback and leaves it again on the way back
   down (tmux's stock `copy-mode -e`), exactly as they did through a joined pane.
+  `boardmouse.go` is the other half of that, since reporting takes the mouse off
+  the outer terminal over the whole window rather than over the terminal's box:
+  what the viewer does not take, the board does. A left click selects the row
+  the line it landed on belongs to — `Board.RowAtLine`, off the same `rowLines`
+  the cursor's own span and the animation's re-sync are measured from — and the
+  wheel scrolls the plan three lines a notch, dragging the cursor no further than
+  the nearest row still whole on screen, because `syncBoard` would otherwise
+  scroll straight back to it. A click on the PR chip opens the pull request:
+  `Board.LinkAt` walks the drawn row for the OSC 8 hyperlink covering that cell
+  and the app hands the URL to the platform opener (`agent.URLOpener`), which is
+  what the terminal itself would have done with the click had nat not taken it.
+  The board is deaf to all of it while the wizard, a form or a row prompt is up,
+  for the same reason the keys are.
   `presence.go` is the star a slice with an agent on it is marked with: it
   pulses — the same star swelling and settling, one cell wide at every frame so
   the row does not shift under it — while the agent works, and holds a star of

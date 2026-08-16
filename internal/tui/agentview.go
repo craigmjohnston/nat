@@ -308,18 +308,19 @@ func (a *App) viewerKey(msg tea.KeyPressMsg) tea.Cmd {
 // whatever modifiers were held as it happened — the tmux on the far end binds
 // ctrl+click as well as click, and a click stripped of its ctrl is a different
 // gesture. A press there also hands the keyboard over, so tab is not the only
-// way to type at an agent. An event anywhere else is not the terminal's and is
-// dropped — bar a press, which is the board asking for the keyboard back.
+// way to type at an agent. An event anywhere else is not the terminal's, and it
+// says so — a press there hands the keyboard back on its way past, and the
+// board takes the event from [App.mouseEvent].
 //
 // An exited terminal is a frame being read rather than a child to click at, so
 // it takes no mouse at all.
-func (a *App) viewerMouse(msg tea.MouseMsg) tea.Cmd {
+func (a *App) viewerMouse(msg tea.MouseMsg) (tea.Cmd, bool) {
 	if !a.viewerVisible() || a.viewer.exited {
-		return nil
+		return nil, false
 	}
 	kind, ok := mouseKind(msg)
 	if !ok {
-		return nil
+		return nil, false
 	}
 	m := msg.Mouse()
 	x, y, inside := a.termCell(m.X, m.Y)
@@ -327,13 +328,13 @@ func (a *App) viewerMouse(msg tea.MouseMsg) tea.Cmd {
 		if kind == vterm.MousePress {
 			a.viewer.focused = false
 		}
-		return nil
+		return nil, false
 	}
 	if kind == vterm.MousePress {
 		a.viewer.focused = true
 	}
 	a.viewer.session.SendMouse(x, y, m.Button, m.Mod, kind)
-	return nil
+	return nil, true
 }
 
 // mouseKind is the session's name for the kind of event a message is, and

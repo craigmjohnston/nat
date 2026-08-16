@@ -261,8 +261,8 @@ func TestURLOpenerPerPlatform(t *testing.T) {
 	if got := urlOpenerFor("linux"); got != "xdg-open" {
 		t.Errorf(`urlOpenerFor("linux") = %q, want "xdg-open"`, got)
 	}
-	if got, want := urlOpener(), urlOpenerFor(runtime.GOOS); got != want {
-		t.Errorf("urlOpener() = %q, want the pick for this platform, %q", got, want)
+	if got, want := URLOpener(), urlOpenerFor(runtime.GOOS); got != want {
+		t.Errorf("URLOpener() = %q, want the pick for this platform, %q", got, want)
 	}
 }
 
