@@ -266,6 +266,110 @@ func TestPasteIsBracketedOnlyWhenTheChildAsks(t *testing.T) {
 	})
 }
 
+// setMode turns a mode on and waits until the emulator has taken it in: the
+// marker fed after it renders only once the sequence before it was processed.
+func setMode(t *testing.T, f *fakePty, s *Session, mode, marker string) {
+	t.Helper()
+	f.feed(t, mode+marker)
+	waitFor(t, "mode "+mode+" to be read", func() bool {
+		return strings.Contains(s.Render(), marker)
+	})
+	f.resetOut()
+}
+
+// mouseMarker follows a mouse event down the same pipe, so waiting for it tells
+// an event the emulator dropped apart from one not yet written.
+const mouseMarker = "\x00marker\x00"
+
+// sentMouse returns everything the child was sent for one mouse event.
+func sentMouse(t *testing.T, f *fakePty, s *Session, send func()) string {
+	t.Helper()
+	send()
+	s.SendBytes([]byte(mouseMarker))
+	waitOut(t, f, mouseMarker)
+	return strings.TrimSuffix(f.out(), mouseMarker)
+}
+
+func TestSendMouseFollowsTheChildsMouseModes(t *testing.T) {
+	// Every reporting mode without an extended encoding uses X10's: a press of
+	// the left button (button byte 0) at cell (3, 1), each coordinate offset by
+	// one and then by the encoding's 32.
+	const x10Press = "\x1b[M \x24\x22"
+
+	tests := []struct {
+		name string
+		mode string
+		want string
+	}{
+		{"no mouse reporting", "", ""},
+		{"x10", "\x1b[?9h", x10Press},
+		{"normal", "\x1b[?1000h", x10Press},
+		{"button event", "\x1b[?1002h", x10Press},
+		{"any event", "\x1b[?1003h", x10Press},
+		{"sgr", "\x1b[?1000h\x1b[?1006h", "\x1b[<0;4;2M"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFakePty()
+			s := startFake(t, f, 20, 4)
+
+			if tt.mode == "" {
+				f.resetOut()
+			} else {
+				setMode(t, f, s, tt.mode, "m")
+			}
+
+			got := sentMouse(t, f, s, func() {
+				s.SendMouse(3, 1, uv.MouseLeft, MousePress)
+			})
+			if got != tt.want {
+				t.Fatalf("child was sent %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSendMouseEncodesEachKindOfEvent(t *testing.T) {
+	tests := []struct {
+		name   string
+		button uv.MouseButton
+		kind   MouseKind
+		want   string
+	}{
+		{"press", uv.MouseLeft, MousePress, "\x1b[<0;4;2M"},
+		{"release", uv.MouseLeft, MouseRelease, "\x1b[<0;4;2m"},
+		{"motion", uv.MouseNone, MouseMotion, "\x1b[<35;4;2M"},
+		{"wheel", uv.MouseWheelUp, MouseWheel, "\x1b[<64;4;2M"},
+		{"unknown kind", uv.MouseLeft, MouseKind(-1), ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFakePty()
+			s := startFake(t, f, 20, 4)
+			setMode(t, f, s, "\x1b[?1000h\x1b[?1006h", "m")
+
+			got := sentMouse(t, f, s, func() {
+				s.SendMouse(3, 1, tt.button, tt.kind)
+			})
+			if got != tt.want {
+				t.Fatalf("child was sent %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSendMouseStaysOrderedWithKeys(t *testing.T) {
+	f := newFakePty()
+	s := startFake(t, f, 20, 4)
+	setMode(t, f, s, "\x1b[?1000h\x1b[?1006h", "m")
+
+	s.SendBytes([]byte("a"))
+	s.SendMouse(3, 1, uv.MouseLeft, MousePress)
+	s.SendKey(uv.KeyPressEvent{Code: 'b', Text: "b"})
+
+	waitOut(t, f, "a\x1b[<0;4;2Mb")
+}
+
 func TestSendBytesStaysOrderedWithKeys(t *testing.T) {
 	f := newFakePty()
 	s := startFake(t, f, 20, 4)

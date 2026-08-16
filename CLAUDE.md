@@ -86,7 +86,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
 - `internal/vterm/` — a child command run on a PTY (`x/xpty`) with its screen
   mirrored by an in-process VT emulator (`x/vt`), so the TUI can draw an agent
   as a widget instead of joining its tmux pane. `Start` returns a `Session`:
-  `Render`/`Cursor` to draw it, `SendKey`/`SendBytes`/`Paste` to type at it,
+  `Render`/`Cursor` to draw it, `SendKey`/`SendBytes`/`Paste` to type at it and
+  `SendMouse` to click and scroll at it — a cell, a button and a kind of event
+  (press, release, motion, wheel), which the emulator encodes for the child's
+  active mouse modes, or drops where the child has asked for no reporting,
   `Resize`, `Output` to know when to redraw and `Done`/`Err` when it has gone.
   Two goroutines: the read pump feeds the PTY into the emulator under the
   Session's own mutex (`vt.SafeEmulator`'s lock is not trusted alone — an
