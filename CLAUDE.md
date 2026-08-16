@@ -129,7 +129,15 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   punctuation; ctrl is excluded, since a ctrl combination is a control byte
   however it was decoded. It is drawn only on
   the board and only in a framed window, and stays alive undrawn behind help,
-  info and a form. An agent that exits leaves its last frame on screen marked
+  info and a form. Its redraw is capped at the renderer's own frame: the wait
+  re-armed after a capture (`awaitFrame`) holds off `frameInterval` — 1/60s —
+  before listening again, and the session coalesces everything the child wrote
+  meanwhile into its one pending notification, so a burst costs one read of the
+  emulator's screen and one render of the window per frame instead of one per
+  write. The board beside it is drawn once and kept (`App.boardBox`, dropped by
+  `syncBoard`, which everything that changes what the board shows goes through),
+  so an agent writing flat out redraws only its own box.
+  An agent that exits leaves its last frame on screen marked
   `exited`, and the after-viewing refetch — the slice's page, or the whole plan
   for the planning agent — happens once, whichever of the client's EOF and the
   live poll notices first. `T` is the hatch to the old full-screen attach. The
