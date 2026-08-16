@@ -78,10 +78,25 @@ const (
 // or the default when it does not — a value outside the bounds being a typo
 // rather than an instruction.
 func (c Config) SplitPercent() int {
-	if c.AgentSplitPercent < minSplitPercent || c.AgentSplitPercent > maxSplitPercent {
+	if c.AgentSplitPercent == 0 || ValidSplitPercent(c.AgentSplitPercent) != nil {
 		return DefaultSplitPercent
 	}
 	return c.AgentSplitPercent
+}
+
+// ValidSplitPercent says whether a split is one the config would keep, so a
+// form can refuse a typo while the user is still looking at it rather than
+// writing a number the next read silently swaps the default back in for. Zero
+// is valid and is what "unset" is written as: the bounds only describe the
+// numbers that mean something.
+func ValidSplitPercent(v int) error {
+	if v == 0 {
+		return nil
+	}
+	if v < minSplitPercent || v > maxSplitPercent {
+		return fmt.Errorf("the agent's share must be between %d%% and %d%%", minSplitPercent, maxSplitPercent)
+	}
+	return nil
 }
 
 // How often the board refetches the plan by itself. Half a minute is often
@@ -100,10 +115,23 @@ const (
 // asks for it or the default when it does not — a value outside the bounds
 // being a typo rather than an instruction.
 func (c Config) PollInterval() time.Duration {
-	if c.PollSeconds < minPollSeconds || c.PollSeconds > maxPollSeconds {
+	if c.PollSeconds == 0 || ValidPollSeconds(c.PollSeconds) != nil {
 		return DefaultPollSeconds * time.Second
 	}
 	return time.Duration(c.PollSeconds) * time.Second
+}
+
+// ValidPollSeconds is the poll's half of [ValidSplitPercent], and reads the
+// same way: zero is unset, and everything else has to be a poll the config
+// would actually keep.
+func ValidPollSeconds(v int) error {
+	if v == 0 {
+		return nil
+	}
+	if v < minPollSeconds || v > maxPollSeconds {
+		return fmt.Errorf("the poll must be between %d and %d seconds", minPollSeconds, maxPollSeconds)
+	}
+	return nil
 }
 
 // Dir returns the app's config directory: $XDG_CONFIG_HOME/notion-agent-tracker,

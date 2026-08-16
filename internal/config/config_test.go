@@ -464,3 +464,63 @@ func assertConfigEqual(t *testing.T, got, want Config) {
 		t.Errorf("config mismatch:\n got: %s\nwant: %s", gotJSON, wantJSON)
 	}
 }
+
+// The bounds the form checks against are the ones the getters would otherwise
+// have quietly swapped the default in for: exactly the values a hand-edited
+// config loses, and nothing else.
+func TestValidSplitPercent(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		set  int
+		ok   bool
+	}{
+		{"unset", 0, true},
+		{"at the lower bound", minSplitPercent, true},
+		{"at the upper bound", maxSplitPercent, true},
+		{"too narrow", minSplitPercent - 1, false},
+		{"too wide", maxSplitPercent + 1, false},
+		{"negative", -20, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidSplitPercent(tt.set)
+			if tt.ok != (err == nil) {
+				t.Fatalf("ValidSplitPercent(%d) = %v, want ok=%v", tt.set, err, tt.ok)
+			}
+			// A value the form accepts is one the getter keeps, unless it is the
+			// unset zero the default stands in for.
+			if err == nil && tt.set != 0 {
+				if got := (Config{AgentSplitPercent: tt.set}).SplitPercent(); got != tt.set {
+					t.Errorf("SplitPercent() = %d, want the accepted %d kept", got, tt.set)
+				}
+			}
+		})
+	}
+}
+
+func TestValidPollSeconds(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		set  int
+		ok   bool
+	}{
+		{"unset", 0, true},
+		{"at the lower bound", minPollSeconds, true},
+		{"at the upper bound", maxPollSeconds, true},
+		{"too often", minPollSeconds - 1, false},
+		{"too rare", maxPollSeconds + 1, false},
+		{"negative", -30, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidPollSeconds(tt.set)
+			if tt.ok != (err == nil) {
+				t.Fatalf("ValidPollSeconds(%d) = %v, want ok=%v", tt.set, err, tt.ok)
+			}
+			if err == nil && tt.set != 0 {
+				want := time.Duration(tt.set) * time.Second
+				if got := (Config{PollSeconds: tt.set}).PollInterval(); got != want {
+					t.Errorf("PollInterval() = %v, want the accepted %v kept", got, want)
+				}
+			}
+		})
+	}
+}

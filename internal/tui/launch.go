@@ -194,7 +194,17 @@ var effortLevels = []string{"low", "medium", "high", "xhigh", "max"}
 // outside of. An effort the config names that is not in that set is offered
 // too rather than dropped: it is what the user asked for, and this form is not
 // the place to find out the CLI disagrees.
-func modelFields(m *config.AgentModel) []huh.Field {
+func modelFields(m *config.AgentModel) []huh.Field { return modelFieldsFor("", m) }
+
+// modelFieldsFor is the same pair titled for a form that carries more than one
+// of them: the settings form asks for the slice agent's and the planning
+// agent's together, where "Model" twice over would say nothing about which is
+// which. An empty label is the launch form's single pair, titled plainly.
+func modelFieldsFor(what string, m *config.AgentModel) []huh.Field {
+	model, effort := "Model", "Effort"
+	if what != "" {
+		model, effort = what+" model", what+" effort"
+	}
 	options := []huh.Option[string]{huh.NewOption("Claude Code's own default", "")}
 	for _, level := range effortLevels {
 		options = append(options, huh.NewOption(level, level))
@@ -204,11 +214,11 @@ func modelFields(m *config.AgentModel) []huh.Field {
 	}
 	return []huh.Field{
 		huh.NewInput().
-			Title("Model").
+			Title(model).
 			Description("An alias (sonnet, opus) or a full name; empty leaves it to Claude Code.").
 			Value(&m.Model),
 		huh.NewSelect[string]().
-			Title("Effort").
+			Title(effort).
 			Options(options...).
 			Value(&m.Effort),
 	}
