@@ -205,8 +205,9 @@ func (t *Tmux) LiveSlices() (map[string]string, error) {
 }
 
 // pane is one of the tmux server's panes: which slice it is the agent for, if
-// any, where it currently is, and what the status bar needs to draw a section
-// for it — its index within the window, how wide it is, and its label.
+// any, where it currently is, whether the command in it has exited, and what
+// the status bar needs to draw a section for it — its index within the window,
+// how wide it is, and its label.
 type pane struct {
 	slice   string
 	id      string
@@ -215,6 +216,12 @@ type pane struct {
 	index   string
 	width   int
 	label   string
+	// dead is a pane whose command has exited but which tmux is still listing,
+	// which only happens where remain-on-exit is on. nat never sets it, so this
+	// is all but always false for the panes nat made — but a user who has set it
+	// server-wide would otherwise have every finished agent read as one still
+	// sitting there with nothing to say.
+	dead bool
 }
 
 // statusContent is what the bar draws in a pane's section, as the tmux format
@@ -274,22 +281,24 @@ func (t *Tmux) panes() ([]pane, error) {
 		// simply one the bar has nothing to draw.
 		width, _ := strconv.Atoi(fields[5])
 		panes = append(panes, pane{slice: fields[0], id: fields[1], session: fields[2], window: fields[3],
-			index: fields[4], width: width, label: fields[6]})
+			index: fields[4], width: width, label: fields[6], dead: fields[7] == "1"})
 	}
 	return panes, nil
 }
 
 // listPanesFields is how many fields [listPanesFormat] asks for; a line with
 // any other number of them is not one tmux wrote for us.
-const listPanesFields = 7
+const listPanesFields = 8
 
 // listPanesFormat is what [Tmux.panes] asks tmux to print for each pane: the
 // slice tag, then the pane, the session it is in and the window within it, and
 // then what the status bar draws a section for it from — its index in the
-// window, its width, and its label. Tabs separate them because a session name
-// can hold anything but that.
+// window, its width, and its label — and last whether the pane is dead, which
+// is what the activity watcher reads liveness from. Tabs separate them because
+// a session name can hold anything but that.
 func listPanesFormat() string {
-	return fmt.Sprintf("#{%s}\t#{pane_id}\t#{session_name}\t#{window_id}\t#{pane_index}\t#{pane_width}\t#{%s}",
+	return fmt.Sprintf(
+		"#{%s}\t#{pane_id}\t#{session_name}\t#{window_id}\t#{pane_index}\t#{pane_width}\t#{%s}\t#{pane_dead}",
 		SlicePaneOption, LabelPaneOption)
 }
 
