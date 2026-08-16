@@ -44,10 +44,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   running agent is identified by its pane's `@nat_slice` option (the full slice
   page ID); the session name `nat-<last-8-hex-of-slice-page-id>` is only a
   human label, and takes the tail because page IDs share a leading prefix.
-  `ShowPane`/`BreakOutJoined` — the join-pane view the embedded viewer replaced
-  — are unused by the app and kept until the retirement slice; `ReclaimStrays`
-  is still run at startup, to re-home whatever an earlier run of that version
-  left joined. Both ways of attaching to a session — `AttachCmd`, full-screen through
+  Viewing an agent joins no panes: the board runs an attach client on a PTY of
+  its own and draws it, so an agent's pane stays in the session it launched in
+  and nothing here makes a stray. `ReclaimStrays` — with its private
+  `breakOut`/`breakOutAll`/`placeholderCommand`, all under one deprecation
+  comment — is the exception, still run at startup to re-home the panes a
+  pre-upgrade nat left joined, and comes out next release.
+  Both ways of attaching to a session — `AttachCmd`, full-screen through
   `tea.ExecProcess`, and `AttachClientCmd`, the hidden client the embedded
   viewer runs on a PTY of its own — build the same argv, `tmux -T
   <ViewerFeatures> attach-session -t <session>`, and drop `TMUX`/`TMUX_PANE`

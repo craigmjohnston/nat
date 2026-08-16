@@ -59,8 +59,8 @@ const LabelPaneOption = "@nat_label"
 // pane, in place of a slice page ID: the planning agent works the plan itself
 // and has no slice to be tagged with. It cannot collide with a real slice —
 // page IDs are hex, and "plan" is not — so everything that reads the tag
-// (LiveSlices, ShowPane, the break-outs) handles the planning pane the same
-// way it handles a slice's.
+// (LiveSlices, the pane scan, the break-outs) handles the planning pane the
+// same way it handles a slice's.
 const PlanSentinel = "plan"
 
 // PlanSession is the tmux session the planning agent launches in. There is
@@ -69,21 +69,13 @@ const PlanSentinel = "plan"
 const PlanSession = SessionPrefix + PlanSentinel
 
 // PaneEnv is set by tmux in every pane it runs, to the pane's own ID. It is how
-// the TUI finds the pane it is drawing in, which is the one an agent's pane is
-// joined beside.
+// the TUI finds the pane it is drawing in, which is the one the status bar is
+// drawn under.
 const PaneEnv = "TMUX_PANE"
 
 // tmuxTimeout caps how long we wait for a tmux command. These are local calls
 // to a socket in /tmp, so anything slower than this is a hang.
 const tmuxTimeout = 10 * time.Second
-
-// placeholderCommand is what the throwaway pane of a freshly made session runs
-// while the agent's pane is moved in beside it. A pane cannot be broken out
-// into a session that does not exist yet, and a session cannot be made without
-// a pane — so one is made, used as a destination, and killed. It sleeps rather
-// than starting a shell: there are no rc files worth running for the moment it
-// is alive, and a sleep that outlives its kill dies on its own.
-const placeholderCommand = "sleep 3600"
 
 // Runner executes a command and returns its standard output. It exists so the
 // tmux calls can be faked in tests; there is no mock mode for a subprocess.
@@ -302,44 +294,9 @@ func listPanesFormat() string {
 }
 
 // HostPane is the tmux pane this process is drawing in, or "" when it is not
-// inside tmux at all — in which case there is no window to show an agent beside
-// and the caller falls back to attaching full-screen.
+// inside tmux at all — in which case there is no window of the board's own to
+// draw a status bar under or to sweep strays from.
 func HostPane() string { return os.Getenv(PaneEnv) }
-
-// ShowPane shows the agent working sliceID beside the pane the board is drawing
-// in, or — when it is already there — sends it back to a session of its own. It
-// reports which of the two happened.
-//
-// The agent is found by its slice tag rather than by session, because a pane
-// that has been joined here no longer has a session of its own: the session it
-// was launched in is gone the moment its only pane leaves.
-func (t *Tmux) ShowPane(sliceID, hostPane string, percent int) (bool, error) {
-	panes, err := t.panes()
-	if err != nil {
-		return false, err
-	}
-	agentPane, ok := find(panes, func(p pane) bool { return p.slice == sliceID })
-	if !ok {
-		return false, fmt.Errorf("no agent pane is tagged for slice %s", sliceID)
-	}
-	host, ok := find(panes, func(p pane) bool { return p.id == hostPane })
-	if !ok {
-		return false, fmt.Errorf("the board's own pane %s is not in tmux", hostPane)
-	}
-
-	if agentPane.window == host.window {
-		if err := t.breakOut(agentPane.id, SessionName(sliceID)); err != nil {
-			return false, err
-		}
-		t.refreshAfterLayout(hostPane)
-		return false, nil
-	}
-	if err := t.join(agentPane.id, host, percent); err != nil {
-		return true, err
-	}
-	t.refreshAfterLayout(hostPane)
-	return true, nil
-}
 
 // find returns the first pane matching want.
 func find(panes []pane, want func(pane) bool) (pane, bool) {
@@ -351,24 +308,19 @@ func find(panes []pane, want func(pane) bool) (pane, bool) {
 	return pane{}, false
 }
 
-// join moves an agent's pane in beside the board, giving it percent of the
-// width. The board keeps the keyboard (`-d`), so the plan stays usable with the
-// agent working next to it; the mouse is what moves between them.
-//
-// Mouse mode is turned on for the board's own session rather than globally: it
-// is a session option, so whatever the user has set for their own sessions is
-// left as they set it.
-func (t *Tmux) join(paneID string, host pane, percent int) error {
-	if _, err := t.runner.Run(TmuxBinary, "set-option", "-t", host.session, "mouse", "on"); err != nil {
-		return fmt.Errorf("enable the mouse in %s: %w", host.session, err)
-	}
-	if _, err := t.runner.Run(TmuxBinary, "join-pane", "-h", "-d",
-		"-l", fmt.Sprintf("%d%%", percent), "-s", paneID, "-t", host.id); err != nil {
-		return fmt.Errorf("join pane %s beside the board: %w", paneID, err)
-	}
-	logging.Action("agent pane joined beside the board", "pane", paneID, "host", host.id, "percent", percent)
-	return nil
-}
+// Everything from here to [Tmux.breakOutAll] is deprecated. Viewing an agent
+// no longer joins its pane into the board's window — the board runs an attach
+// client on a PTY of its own and draws it — so nothing here makes a stray any
+// more. It is kept for one release to re-home the panes a pre-upgrade nat left
+// joined, and comes out in the next.
+
+// placeholderCommand is what the throwaway pane of a freshly made session runs
+// while the agent's pane is moved in beside it. A pane cannot be broken out
+// into a session that does not exist yet, and a session cannot be made without
+// a pane — so one is made, used as a destination, and killed. It sleeps rather
+// than starting a shell: there are no rc files worth running for the moment it
+// is alive, and a sleep that outlives its kill dies on its own.
+const placeholderCommand = "sleep 3600"
 
 // breakOut sends a joined pane back to a session of its own, named after its
 // slice the way it was when it launched — so it is attachable from any terminal
@@ -400,32 +352,13 @@ func (t *Tmux) breakOut(paneID, session string) error {
 	return nil
 }
 
-// BreakOutJoined sends every agent pane sharing hostPane's window back to a
-// session of its own, reporting how many it moved. It is what the board owes
-// its agents on the way out: a joined pane belongs to the board's window, so a
-// window that closes with one still in it kills the agent working there.
-//
-// A host pane that is not on the server — the board is not in tmux at all, or
-// its pane has already gone — means there is no window to empty, which is
-// nothing to do rather than a failure.
-func (t *Tmux) BreakOutJoined(hostPane string) (int, error) {
-	panes, err := t.panes()
-	if err != nil {
-		return 0, err
-	}
-	host, ok := find(panes, func(p pane) bool { return p.id == hostPane })
-	if !ok {
-		return 0, nil
-	}
-	return t.breakOutAll(panes, func(p pane) bool { return p.window == host.window })
-}
-
 // ReclaimStrays sends the agent panes a previous run left joined back to
-// sessions of their own, reporting how many it moved. A run that died without
-// getting to [Tmux.BreakOutJoined] — a panic, a kill — leaves its agents in a
-// window that will take them with it when it closes, and a board starting up
-// has joined nothing itself yet: every agent pane in [TUISession], or in the
-// window the new board is starting in, is one of those strays.
+// sessions of their own, reporting how many it moved. A run of the version
+// that joined them and died before putting them back — a panic, a kill — left
+// its agents in a window that will take them with it when it closes, and a
+// board starting up has joined nothing itself yet: every agent pane in
+// [TUISession], or in the window the new board is starting in, is one of those
+// strays.
 func (t *Tmux) ReclaimStrays(hostPane string) (int, error) {
 	panes, err := t.panes()
 	if err != nil {
