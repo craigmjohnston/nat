@@ -13,7 +13,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   Started outside tmux it re-execs itself into a `nat-tui` session
   (`tmux new-session -A`, so a second launch attaches rather than starting a
   rival); started inside tmux it runs in place and does not nest. `NAT_NO_TMUX=1`
-  opts out. The board has to be a pane for an agent's pane to be joined beside it.
+  opts out. The board is a pane so the tmux bar under it can draw the status
+  line and so the agents it launches have a server to live in; viewing one no
+  longer needs it — the terminal beside the board is nat's own, and there is
+  nothing to hand back on the way out.
 - `internal/config/` — XDG config (`~/.config/notion-agent-tracker/config.json`)
   + the Notion bearer token, read from Notion's official CLI via
   `ntn auth token` (the app stores no credential of its own)
@@ -41,12 +44,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   running agent is identified by its pane's `@nat_slice` option (the full slice
   page ID); the session name `nat-<last-8-hex-of-slice-page-id>` is only a
   human label, and takes the tail because page IDs share a leading prefix.
-  `ShowPane` toggles that pane between the board's window (`join-pane`, sized by
-  `agent_split_percent`, default 65% to the agent) and a session of its own.
-  A joined pane dies with the board's window, so `BreakOutJoined` frees every
-  such pane as the app leaves (deferred in `main`, so a panic frees them too)
-  and `ReclaimStrays` re-homes on startup whatever an earlier run left joined.
-  Both ways of attaching to a session — `AttachCmd`, full-screen through
+  `ShowPane`/`BreakOutJoined` — the join-pane view the embedded viewer replaced
+  — are unused by the app and kept until the retirement slice; `ReclaimStrays`
+  is still run at startup, to re-home whatever an earlier run of that version
+  left joined. Both ways of attaching to a session — `AttachCmd`, full-screen through
   `tea.ExecProcess`, and `AttachClientCmd`, the hidden client the embedded
   viewer runs on a PTY of its own — build the same argv, `tmux -T
   <ViewerFeatures> attach-session -t <session>`, and drop `TMUX`/`TMUX_PANE`
@@ -94,8 +95,8 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   read never ends; the screen is read only through `Render`, since the damage
   list `Draw`/`Touched` work from goes nil across a resize; and the emulator's
   input pipe is ended by closing it directly rather than through the
-  emulator's own `Close`, which races the reply pump. Not yet imported by the
-  app.
+  emulator's own `Close`, which races the reply pump. `internal/tui/agentview.go`
+  is its one caller.
 - `internal/tui/` — bubbletea v2 (`charm.land/*/v2` imports); root model in
   `app.go` routes screens; all Notion I/O via tea.Cmd → typed msgs. `poll.go` is
   the background refetch of the plan, for the changes no nudge reports because
@@ -104,7 +105,20 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   it is in flight and a failure leaves the board as it was. It is passed over —
   never cancelled, so it resumes on the next tick by itself — while the wizard,
   a form, a row prompt, a write or another load is in flight, since a plan
-  landing under any of those would clobber what the user is in the middle of.
+  landing under any of those would clobber what the user is in the middle of. An
+  open agent terminal never suspends it: the plan behind the split stays live.
+  `agentview.go` is that terminal — `t` (and `w` for the planning agent) runs
+  `AttachClientCmd` on a `vterm.Session` and draws it in a box beside the board,
+  sized from `agent_split_percent`, so nat owns the whole rectangle while the
+  agent goes on living in its own tmux session and survives a board restart. One
+  is on show at a time; it opens unfocused (`tab` focuses, `ctrl+\` comes back)
+  and while it is focused every key is the agent's — `ctrl+c` included, which is
+  deliberate — bar the outer tmux prefix, which is swallowed. It is drawn only on
+  the board and only in a framed window, and stays alive undrawn behind help,
+  info and a form. An agent that exits leaves its last frame on screen marked
+  `exited`, and the after-viewing refetch — the slice's page, or the whole plan
+  for the planning agent — happens once, whichever of the client's EOF and the
+  live poll notices first. `T` is the hatch to the old full-screen attach.
 - `skills/` — the agent skills (/queue-work planning, /next-slice execution),
   embedded in the binary with `go:embed` and installed by `nat setup`. A
   checkout works on them in place by symlinking them into `~/.claude/skills/`,

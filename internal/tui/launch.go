@@ -19,17 +19,17 @@ import (
 )
 
 // AgentLauncher is what the launch flow needs of tmux: which slices have an
-// agent running and in which session, how to start one, how to show one beside
-// the board, the command that attaches to it full-screen, and the two ways a
-// joined pane is given back — on the way out, and on the way in after a run
-// that never got to. It is an interface so the flow can be driven without a
-// tmux server.
+// agent running and in which session, how to start one, the two commands that
+// attach to one — the hidden client the embedded viewer runs, and the
+// full-screen attach behind the hatch — the reconcile that re-homes what an
+// earlier run left joined beside a board, and the redraw of the bar under the
+// board's pane. It is an interface so the flow can be driven without a tmux
+// server.
 type AgentLauncher interface {
 	LiveSlices() (map[string]string, error)
 	Launch(session, workdir, promptFile, sliceID string) error
-	ShowPane(sliceID, hostPane string, percent int) (bool, error)
+	AttachClientCmd(session string) *exec.Cmd
 	AttachCmd(session string) *exec.Cmd
-	BreakOutJoined(hostPane string) (int, error)
 	ReclaimStrays(hostPane string) (int, error)
 	RefreshStatusBar(hostPane string) error
 }
@@ -74,15 +74,12 @@ type (
 	}
 	// liveTickMsg is the periodic prod to re-read them.
 	liveTickMsg struct{}
-	// agentAttachedMsg reports a terminal handed to a session and given back.
-	// When the message is a pane moving instead, slice names whose agent moved
-	// and joined says whether it is now beside the board — which is what the
-	// status bar's pane guidance follows.
+	// agentAttachedMsg reports the terminal handed to a session and given back,
+	// naming the slice that session was about.
 	agentAttachedMsg struct {
-		note   string
-		err    error
-		slice  string
-		joined bool
+		note  string
+		err   error
+		slice string
 	}
 	// straysReclaimedMsg reports the startup reconcile: how many panes a
 	// previous run had left joined, or the read that failed instead.
@@ -219,41 +216,6 @@ func launchAgent(l AgentLauncher, c agent.PromptContext, attach bool) tea.Cmd {
 	}
 }
 
-// showAgent is what the board does with a slice's agent: shows it in a pane
-// beside the plan when the board is itself a tmux pane, and hands the whole
-// terminal over when it is not.
-//
-// The full-screen attach is the fallback rather than the other way round
-// because there is nowhere to put a second pane without a window to put it in —
-// and attaching from inside tmux would be nesting a session in a pane, which
-// tmux refuses.
-func (a *App) showAgent(s domain.Slice, session string) tea.Cmd {
-	host := agent.HostPane()
-	if host == "" {
-		return attach(a.launcher, s.ID, session)
-	}
-	return showPane(a.launcher, s, host, a.cfg.SplitPercent())
-}
-
-// showPane joins the slice's agent in beside the board, or sends it back to a
-// session of its own when it is already there. A join carries no note: the
-// status bar's pane guidance takes over the moment the pane is beside the
-// board, and says how to send it back.
-func showPane(l AgentLauncher, s domain.Slice, host string, percent int) tea.Cmd {
-	return func() tea.Msg {
-		joined, err := l.ShowPane(s.ID, host, percent)
-		switch {
-		case err != nil:
-			return agentAttachedMsg{err: fmt.Errorf("show the agent for %q: %w", s.Name, err)}
-		case joined:
-			return agentAttachedMsg{slice: s.ID, joined: true}
-		default:
-			return agentAttachedMsg{note: fmt.Sprintf("Sent the agent for %q back to %s.", s.Name, agent.SessionName(s.ID)),
-				slice: s.ID}
-		}
-	}
-}
-
 // attach hands the terminal to a session until the user detaches from it.
 func attach(l AgentLauncher, sliceID, session string) tea.Cmd {
 	return tea.ExecProcess(l.AttachCmd(session), attached(sliceID, session))
@@ -334,43 +296,34 @@ func workdirFor(s domain.Slice, p config.ProjectConfig) string {
 	return p.WorkingDir
 }
 
-// attachAgentFlow shows the agent of the slice the cursor is on, beside the
-// board or full-screen. Any slice with a live session can be shown, whatever
-// its status: an agent is worth watching from the moment it starts until it
-// exits, and it spends nearly all of that time holding a slice it has already
-// claimed.
+// attachAgentFlow toggles the agent of the slice the cursor is on into the
+// terminal beside the board. Any slice with a live session can be shown,
+// whatever its status: an agent is worth watching from the moment it starts
+// until it exits, and it spends nearly all of that time holding a slice it has
+// already claimed.
+//
+// The close is checked before the session is, so a viewer whose agent has
+// already exited closes on the same key that opened it rather than being
+// refused for having nothing running.
+//
+// Nothing is marked busy: the terminal is a widget on the board, not something
+// the board is waiting on, and the plan behind it stays live throughout.
 func (a *App) attachAgentFlow() tea.Cmd {
-	if a.launcher == nil || a.busy {
+	if a.launcher == nil {
 		return nil
 	}
 	s, ok := a.board.SelectedSlice()
 	if !ok {
 		return a.showConfirm("Move to a slice to attach to its agent.", sevWarning)
 	}
+	if a.viewer != nil && a.viewer.sliceID == s.ID {
+		return a.closeViewer()
+	}
 	session := a.live[s.ID]
 	if session == "" {
 		return a.showConfirm(fmt.Sprintf("No agent session is running for %q.", s.Name), sevWarning)
 	}
-	a.busy, a.note = true, ""
-	return a.showAgent(s, session)
-}
-
-// Release sends the agents joined into the board's window back to sessions of
-// their own. The window goes when the board does, and it would take a pane
-// still in it along — so this is the last thing the app owes anything, and the
-// caller runs it however it is leaving, quit or panic.
-//
-// A board that is not itself a tmux pane has never joined anything: there is
-// nothing to give back, and nothing to ask tmux about.
-func (a *App) Release() error {
-	host := agent.HostPane()
-	if a.launcher == nil || host == "" {
-		return nil
-	}
-	if _, err := a.launcher.BreakOutJoined(host); err != nil {
-		return fmt.Errorf("return the agents to their own sessions: %w", err)
-	}
-	return nil
+	return a.openAgentViewer(s.ID, s.Name, session)
 }
 
 // reclaimStrays kicks off the startup reconcile, re-homing the panes a run
@@ -448,19 +401,18 @@ func (a *App) refreshLive() tea.Cmd {
 // worth looking at without knowing what is running.
 func (a *App) liveLoaded(msg liveSessionsMsg) tea.Cmd {
 	planWasLive := a.live[agent.PlanSentinel] != ""
-	var failed tea.Cmd
+	var cmds []tea.Cmd
 	if msg.err != nil {
 		a.live = nil
-		failed = a.showToast(fmt.Sprintf("Could not read tmux panes: %v", msg.err), sevError)
+		cmds = append(cmds, a.showToast(fmt.Sprintf("Could not read tmux panes: %v", msg.err), sevError))
 	} else {
 		a.live = msg.live
-		// A joined agent that is no longer live has exited, taking its pane
-		// with it — the pane guidance would be advice about nothing. A failed
-		// read proves no such thing, so it does not touch the marks.
-		for id := range a.joined {
-			if a.live[id] == "" {
-				delete(a.joined, id)
-			}
+		// An agent on show that is no longer live has exited, and the client in
+		// the viewer is on its way out behind it: whichever of the two the board
+		// hears about first, the viewer is marked exited exactly once. A failed
+		// read proves no such thing, so it leaves the viewer alone.
+		if a.viewer != nil && a.live[a.viewer.sliceID] == "" {
+			cmds = append(cmds, a.viewerExited(nil))
 		}
 	}
 	a.board.SetLive(a.live)
@@ -468,29 +420,15 @@ func (a *App) liveLoaded(msg liveSessionsMsg) tea.Cmd {
 	// A planning agent that has exited has been editing the plan, so the board
 	// re-reads it rather than showing what was there before the session.
 	if msg.err == nil && planWasLive && a.live[agent.PlanSentinel] == "" {
-		return a.startLoad()
+		cmds = append(cmds, a.startLoad())
 	}
-	return failed
+	return tea.Batch(cmds...)
 }
 
-// paneMoved keeps the joined marks in step with a pane movement the message
-// reports. Messages that moved nothing — an attach, a detach, a failure —
-// name no slice and change nothing.
-func (a *App) paneMoved(msg agentAttachedMsg) {
-	if msg.slice == "" {
-		return
-	}
-	if msg.joined {
-		a.joined[msg.slice] = true
-	} else {
-		delete(a.joined, msg.slice)
-	}
-}
-
-// agentLaunched takes a finished launch to its pane: attaching is the default,
-// so the session is shown straight away — t toggles it from there. A launch
-// sent to the background is confirmed instead, naming the key that attaches,
-// so the session is not left running unannounced.
+// agentLaunched takes a finished launch to the terminal beside the board:
+// attaching is the default, so the session is shown straight away — t toggles
+// it from there. A launch sent to the background is confirmed instead, naming
+// the key that attaches, so the session is not left running unannounced.
 func (a *App) agentLaunched(msg agentLaunchedMsg) (tea.Model, tea.Cmd) {
 	a.busy = false
 	if msg.err != nil {
@@ -501,8 +439,8 @@ func (a *App) agentLaunched(msg agentLaunchedMsg) (tea.Model, tea.Cmd) {
 		confirm := a.showConfirm(fmt.Sprintf("Launched %s for %q — t attaches.", msg.session, msg.slice.Name), sevSuccess)
 		return a, tea.Batch(confirm, a.refreshLive())
 	}
-	a.busy, a.note = true, ""
-	return a, tea.Batch(a.showAgent(msg.slice, msg.session), a.refreshLive())
+	a.note = ""
+	return a, tea.Batch(a.openAgentViewer(msg.slice.ID, msg.slice.Name, msg.session), a.refreshLive())
 }
 
 // expandHome expands a leading ~ to the user's home directory. tmux is handed

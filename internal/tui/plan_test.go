@@ -11,7 +11,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/craigmjohnston/nat/internal/agent"
-	"github.com/craigmjohnston/nat/internal/config"
 )
 
 // planLaunch presses w, types the request into the form it opens, and submits
@@ -95,16 +94,15 @@ func TestAppPlanLaunchStartsTheSessionAndAttaches(t *testing.T) {
 		t.Errorf("the prompt carries a request nobody typed:\n%s", prompt)
 	}
 
-	// No offer to attach: outside tmux the launch hands the terminal straight
-	// to the session.
+	// No offer to attach: the launch shows the agent straight away.
 	if app.form != nil {
-		t.Fatalf("form = %T, want the pane shown with nothing to confirm", app.form)
+		t.Fatalf("form = %T, want the agent shown with nothing to confirm", app.form)
 	}
-	if want := []string{agent.PlanSession}; !equal(launcher.attached, want) {
-		t.Errorf("attached = %v, want %v", launcher.attached, want)
+	if want := []string{agent.PlanSession}; !equal(launcher.clients, want) {
+		t.Errorf("clients = %v, want %v", launcher.clients, want)
 	}
-	if !app.busy {
-		t.Error("the terminal is the session's until it is given back")
+	if app.busy {
+		t.Error("the launch is over; the board is live again")
 	}
 }
 
@@ -155,27 +153,25 @@ func TestAppPlanLaunchAcceptsAMultilineRequest(t *testing.T) {
 	}
 }
 
-// Inside tmux the launch joins the agent's pane beside the board straight
-// away, with no confirm between the input and the pane.
-func TestAppPlanLaunchJoinsThePaneBesideTheBoard(t *testing.T) {
+// A launch shows the planning agent in the terminal beside the board straight
+// away, with no confirm between the input and the frame.
+func TestAppPlanLaunchOpensTheViewer(t *testing.T) {
 	app, launcher, _ := launchApp(t)
-	t.Setenv(agent.PaneEnv, "%0")
-	launcher.joined = true
+	fakeTermFor(t)
 	// The refresh that follows the launch sees the session running, as the
-	// real tmux would; without it the joined mark would be read as an exit.
+	// real tmux would; without it the viewer would be read as exited.
 	launcher.live = map[string]string{agent.PlanSentinel: agent.PlanSession}
 
 	planLaunch(t, app, "")
 
-	want := []showCall{{sliceID: agent.PlanSentinel, host: "%0", percent: config.DefaultSplitPercent}}
-	if !reflect.DeepEqual(launcher.shown, want) {
-		t.Errorf("shown = %+v, want %+v", launcher.shown, want)
+	if want := []string{agent.PlanSession}; !reflect.DeepEqual(launcher.clients, want) {
+		t.Errorf("clients = %v, want %v", launcher.clients, want)
 	}
-	if !app.joined[agent.PlanSentinel] {
-		t.Error("the planning agent should be marked joined")
+	if app.viewer == nil || app.viewer.sliceID != agent.PlanSentinel {
+		t.Errorf("viewer = %+v, want the planning agent on show", app.viewer)
 	}
 	if app.form != nil {
-		t.Fatalf("form = %T, want the pane shown with nothing to confirm", app.form)
+		t.Fatalf("form = %T, want the agent shown with nothing to confirm", app.form)
 	}
 }
 
@@ -211,66 +207,48 @@ func TestLaunchPlanAgentReportsAFailedPromptFile(t *testing.T) {
 }
 
 // With a planning agent already running, w is the same toggle t is for a
-// slice's agent: attach full-screen outside tmux, and never a second launch.
-func TestAppPlanKeyAttachesToTheRunningAgent(t *testing.T) {
+// slice's agent: it shows the running one and never launches a second, and w
+// again takes it off the board.
+func TestAppPlanKeyTogglesTheRunningAgent(t *testing.T) {
 	app, launcher, _ := launchApp(t)
+	term := fakeTermFor(t)
 	app.live = map[string]string{agent.PlanSentinel: agent.PlanSession}
 
-	if cmd := press(app, "w"); cmd == nil {
-		t.Fatal("w should attach to the live session")
-	}
+	feed(t, app, press(app, "w"))
+
 	if app.form != nil {
 		t.Fatalf("form = %T, want no second planning agent", app.form)
 	}
-	if want := []string{agent.PlanSession}; !equal(launcher.attached, want) {
-		t.Errorf("attached = %v, want %v", launcher.attached, want)
+	if want := []string{agent.PlanSession}; !equal(launcher.clients, want) {
+		t.Errorf("clients = %v, want %v", launcher.clients, want)
 	}
-	if !app.busy {
-		t.Error("the terminal is the session's until it is given back")
+	if app.viewer == nil || app.viewer.sliceID != agent.PlanSentinel {
+		t.Errorf("viewer = %+v, want the planning agent on show", app.viewer)
 	}
-}
-
-// Inside tmux the board stays on screen: the planning agent is joined in
-// beside it, and w again sends it back.
-func TestAppPlanKeyTogglesThePaneBesideTheBoard(t *testing.T) {
-	app, launcher, _ := launchApp(t)
-	t.Setenv(agent.PaneEnv, "%0")
-	launcher.joined = true
-	app.live = map[string]string{agent.PlanSentinel: agent.PlanSession}
 
 	feed(t, app, press(app, "w"))
 
-	want := []showCall{{sliceID: agent.PlanSentinel, host: "%0", percent: config.DefaultSplitPercent}}
-	if !reflect.DeepEqual(launcher.shown, want) {
-		t.Errorf("shown = %+v, want %+v", launcher.shown, want)
+	if app.viewer != nil {
+		t.Errorf("viewer = %+v, want the agent taken off the board", app.viewer)
 	}
-	if !app.joined[agent.PlanSentinel] {
-		t.Error("the planning agent should be marked joined")
-	}
-
-	launcher.joined = false
-	feed(t, app, press(app, "w"))
-
-	if want := `Sent the agent for "the plan" back to nat-plan.`; app.toast != want {
-		t.Errorf("toast = %q, want %q", app.toast, want)
-	}
-	if app.joined[agent.PlanSentinel] {
-		t.Error("the joined mark should go with the pane")
+	if term.closes != 1 {
+		t.Errorf("closes = %d, want the session closed exactly once", term.closes)
 	}
 }
 
-// The pane guidance names the key that put the pane there: w for the planning
-// agent's pane, and t the moment any slice's pane is beside the board too.
-func TestAppPaneGuidanceNamesThePlanKey(t *testing.T) {
+// The viewer's guidance names the key that opened it: w for the planning
+// agent, t for a slice's.
+func TestAppViewerHintsNameThePlanKey(t *testing.T) {
 	app, _, _ := launchApp(t)
+	app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
-	app.joined[agent.PlanSentinel] = true
-	if line := stripANSI(strings.Join(app.wrapHints(app.paneHints(), 60, 1), "\n")); !strings.Contains(line, "w hide agent pane") {
+	app.viewer = &agentViewer{session: newFakeTerm(), sliceID: agent.PlanSentinel, name: "the plan"}
+	if line := stripANSI(strings.Join(app.wrapHints(app.viewerHints(), 60, 1), "\n")); !strings.Contains(line, "w hide the agent") {
 		t.Errorf("line = %q, want the planning key named", line)
 	}
 
-	app.joined["s5"] = true
-	if line := stripANSI(strings.Join(app.wrapHints(app.paneHints(), 60, 1), "\n")); !strings.Contains(line, "t hide agent pane") {
+	app.viewer.sliceID = "s5"
+	if line := stripANSI(strings.Join(app.wrapHints(app.viewerHints(), 60, 1), "\n")); !strings.Contains(line, "t hide the agent") {
 		t.Errorf("line = %q, want the slice key named", line)
 	}
 }

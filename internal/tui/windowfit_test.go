@@ -62,6 +62,23 @@ func TestAppFillsTheWindowAtEveryWidth(t *testing.T) {
 	}
 }
 
+// The same, with an agent's terminal beside the board: the split has to add up
+// to the window at every width, however overflowing the frame it is drawing.
+func TestAppFillsTheWindowWithATerminalOnShow(t *testing.T) {
+	for _, width := range windowWidths {
+		const height = 24
+		a := sizedApp(width, height)
+		a.launcher = &fakeLauncher{}
+		term := newFakeTerm()
+		term.frame = strings.Repeat(strings.Repeat("x", 200)+"\n", 40)
+		a.viewer = &agentViewer{session: term, sliceID: "s1", name: "a name too long for a narrow split"}
+		a.viewer.capture()
+		a.resize()
+
+		checkFits(t, a.View().Content, width, height)
+	}
+}
+
 func TestAppGoldenAtEachWidth(t *testing.T) {
 	for _, width := range windowWidths {
 		a := sizedApp(width, 16)

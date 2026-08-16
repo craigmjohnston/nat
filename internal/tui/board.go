@@ -34,6 +34,10 @@ type boardKeyMap struct {
 	Launch key.Binding
 	Attach key.Binding
 	Plan   key.Binding
+	// Focus hands the keyboard to the agent terminal beside the board, and
+	// FullAttach is the hatch that gives it the whole window instead.
+	Focus      key.Binding
+	FullAttach key.Binding
 
 	NewProject    key.Binding
 	SwitchProject key.Binding
@@ -56,6 +60,9 @@ func defaultBoardKeyMap() boardKeyMap {
 		Attach: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "show/hide agent")),
 		Plan:   key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "planning agent")),
 
+		Focus:      key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "type at the agent")),
+		FullAttach: key.NewBinding(key.WithKeys("T"), key.WithHelp("T", "agent full-screen")),
+
 		NewProject:    key.NewBinding(key.WithKeys("N"), key.WithHelp("N", "new project")),
 		SwitchProject: key.NewBinding(key.WithKeys("P"), key.WithHelp("P", "switch project")),
 	}
@@ -64,7 +71,7 @@ func defaultBoardKeyMap() boardKeyMap {
 // agents are the bindings that act on an agent session: a slice's, or the
 // planning agent's.
 func (k boardKeyMap) agents() []key.Binding {
-	return []key.Binding{k.Launch, k.Attach, k.Plan}
+	return []key.Binding{k.Launch, k.Attach, k.Plan, k.Focus, k.FullAttach}
 }
 
 // projects are the bindings that act on the plan the board is showing rather

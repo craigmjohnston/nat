@@ -118,10 +118,10 @@ func command(tokens config.TokenSource) error {
 }
 
 // host puts the TUI inside tmux, by replacing this process with a tmux session
-// running the same binary. Showing an agent beside the board means joining its
-// pane into the TUI's window, and there is no window to join it into unless the
-// board is itself a pane — so rather than ask the user to remember to start us
-// under tmux, we do it for them.
+// running the same binary. The board's own status line is drawn by the tmux bar
+// under its pane, and the agents it launches are tmux sessions — so rather than
+// ask the user to remember to start us under tmux, we do it for them. Viewing
+// an agent no longer needs it: the terminal beside the board is nat's own.
 //
 // It returns only when the app should carry on in this process: already inside
 // tmux (running in place, because nesting a server inside a pane is not what
@@ -160,32 +160,17 @@ func tmuxHint(err error) error {
 
 // run builds the root model and hands it to Bubble Tea.
 //
-// The agents are given back through a defer rather than after the program
-// returns, so that a panic unwinding through here frees them too: a pane joined
-// into the board's window dies with that window, and a crash is exactly when
-// nobody is left to notice that an agent went with it.
+// There is nothing to hand back on the way out: an agent watched from the board
+// lives in a tmux session of its own throughout, and the hidden client nat runs
+// on a pseudo-terminal to draw it hangs up when this process goes — however it
+// goes.
 func run(tokens config.TokenSource, in io.Reader, out io.Writer) error {
 	app, err := buildApp(tokens)
 	if err != nil {
 		return err
 	}
-	defer release(app)
 	_, err = tea.NewProgram(app, tea.WithInput(in), tea.WithOutput(out)).Run()
 	return err
-}
-
-// releaser is the app as the way out sees it: the one call that hands the
-// joined agent panes back.
-type releaser interface{ Release() error }
-
-// release gives the agents back, reporting a failure on stderr. There is
-// nowhere better to say it: the terminal has been given up by the time this
-// runs, and on the panic path the error being returned is not ours.
-func release(r releaser) {
-	if err := r.Release(); err != nil {
-		logging.Error("could not return the agents to their own sessions", "err", err)
-		_, _ = fmt.Fprintln(stderr, "nat:", err)
-	}
 }
 
 // buildApp decides which screen the app starts on: the first-run wizard when
