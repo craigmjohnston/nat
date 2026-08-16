@@ -43,6 +43,7 @@ func everyModal(t *testing.T) map[string]modal {
 		"launch":         newLaunchForm(DefaultStyles().FormTheme, s, t.TempDir(), config.AgentModel{}),
 		"new project":    newNewProjectForm(DefaultStyles().FormTheme),
 		"switch project": newSwitchProjectForm(DefaultStyles().FormTheme, cfg),
+		"settings":       newSettingsForm(DefaultStyles().FormTheme, cfg),
 	}
 }
 

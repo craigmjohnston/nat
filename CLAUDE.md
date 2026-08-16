@@ -31,6 +31,12 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   options show the pair prefilled and editable for that one launch, which
   writes nothing back. `W` is the exception, as it always is — it asks nothing
   at all, so it takes the workshop pair as it stands.
+  `SplitPercent()` and `PollInterval()` swap the default back in for a number
+  outside the bounds, which is a typo read as an instruction and lost without a
+  word; `ValidSplitPercent`/`ValidPollSeconds` are the same bounds said out
+  loud, so the settings form refuses exactly what a later read would have
+  discarded. Zero passes both: it is how the config writes "unset", and the
+  getters answer it with the default of their own accord.
 - `internal/notion/` — hand-rolled stdlib Notion client (no third-party client
   supports data sources); minimal structs, only fields we use. Built with
   `NewWithToken(TokenFunc)`: the token is fetched per attempt and a 401 is
@@ -162,7 +168,28 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `app.go` routes screens; all Notion I/O via tea.Cmd → typed msgs.
   `approve.go` is the `p` key, the board's one action that reaches outside
   Notion — the domain rule on `Branch` says what it does and why gh's failures
-  are toasts. `poll.go` is
+  are toasts.
+  `settings.go` is `S`, the config file as a form, so nothing local has to be
+  edited by hand: the active project's working directory, the agent split, the
+  poll interval and the two model pairs — and nothing else in the file, since
+  the workspace's databases and the assignee are wiring the wizard and the
+  project keys write rather than text to type over, and the Notion token is not
+  in the config at all. The numbers are held as the strings they were typed as,
+  so a field cleared back to empty is "unset" and not a zero to render; both are
+  validated against `config`'s own bounds rather than a copy of them, so the
+  form refuses exactly what a later read would have swapped the default in for.
+  It is one huh group and not a section apiece, because huh pages a form group
+  by group and a settings screen is somewhere the user arrives knowing which
+  field they came for: every field is on the one page and tab reaches any of
+  them, and what the two model pairs belong to is said in their titles
+  (`modelFieldsFor`) rather than in a group heading above them.
+  The key is global rather than the board's — the config is the app's, not any
+  one screen's — and out of the hints row for the reason `W` is: it is pressed
+  rarely and once. Saving applies to the session first and persists after, the
+  bargain `persist` describes, and it re-shares the window on the spot, which is
+  what makes the split live; the poll takes its new interval on the next tick,
+  and the directory and the models are read at the next launch, which the
+  fields' own descriptions say. `poll.go` is
   the background refetch of the plan, for the changes no nudge reports because
   no `nat` command made them: a tick every `poll_seconds` (default 30, bounded)
   running the same load the refresh key does, so the plan stays on screen while

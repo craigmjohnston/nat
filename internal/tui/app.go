@@ -97,6 +97,11 @@ type keyMap struct {
 	// anything, and a standing hint for it would take room from keys that
 	// always work.
 	Workshop key.Binding
+	// Settings opens the config as a form. It is out of the hints row for the
+	// same reason as the workshop key — it is a key pressed rarely and once —
+	// and it is global rather than the board's because the config is the app's
+	// and not any one screen's.
+	Settings key.Binding
 }
 
 // defaultKeyMap returns the bindings the app runs with.
@@ -110,6 +115,7 @@ func defaultKeyMap() keyMap {
 		Back:      key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		Dismiss:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "dismiss")),
 		Workshop:  key.NewBinding(key.WithKeys("W"), key.WithHelp("W", "workshop")),
+		Settings:  key.NewBinding(key.WithKeys("S"), key.WithHelp("S", "settings")),
 
 		Unfocus:    key.NewBinding(key.WithKeys(`ctrl+\`), key.WithHelp(`ctrl+\`, "back to the board")),
 		TmuxPrefix: key.NewBinding(key.WithKeys("ctrl+b")),
@@ -176,17 +182,17 @@ func (k keyMap) statusHints() []hint {
 }
 
 // helpBindings are the bindings listed to the user, in the order they read.
-// The workshop key is among them although it is not among the hints, and so is
-// the way back from a focused agent terminal, which is only ever hinted while
-// one has the keyboard: the help screen is where a key the hints row has no
-// room for is still findable.
+// The workshop and settings keys are among them although neither is among the
+// hints, and so is the way back from a focused agent terminal, which is only
+// ever hinted while one has the keyboard: the help screen is where a key the
+// hints row has no room for is still findable.
 func (k keyMap) helpBindings() []key.Binding {
 	hints := k.statusHints()
 	bindings := make([]key.Binding, 0, len(hints)+1)
 	for _, h := range hints {
 		bindings = append(bindings, h.binding)
 	}
-	return append(bindings, k.Workshop, k.Unfocus)
+	return append(bindings, k.Workshop, k.Settings, k.Unfocus)
 }
 
 // App is the root model. It owns the config, the Notion client, the loaded
@@ -423,6 +429,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.projectCreated(msg)
 	case projectSwitchedMsg:
 		return a.projectSwitched(msg)
+	case settingsSavedMsg:
+		return a.settingsSaved(msg)
 	case agentLaunchedMsg:
 		return a.agentLaunched(msg)
 	case agentAttachedMsg:
@@ -552,6 +560,8 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a, cmd
 	case key.Matches(msg, a.keys.Workshop):
 		return a, a.workshopFlow()
+	case key.Matches(msg, a.keys.Settings):
+		return a, a.settingsFlow()
 	case key.Matches(msg, a.keys.Help):
 		a.setScreen(toggle(a.screen, screenHelp))
 	case key.Matches(msg, a.keys.Info):

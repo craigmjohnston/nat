@@ -66,6 +66,15 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "pin the host pane:", err)
 		os.Exit(1)
 	}
+	// The config file is pinned somewhere disposable, because the app's own
+	// answer to a settings save or a project switch is to write one. A test that
+	// means to write catches it at saveConfig; this is what a test that did not
+	// mean to lands in, rather than the config of whoever is running the suite —
+	// which on this project is the machine the board itself runs on.
+	if err := os.Setenv("XDG_CONFIG_HOME", filepath.Join(os.TempDir(), "nat-test-config")); err != nil {
+		fmt.Fprintln(os.Stderr, "pin the config dir:", err)
+		os.Exit(1)
+	}
 	os.Exit(m.Run())
 }
 
