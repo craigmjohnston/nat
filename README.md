@@ -90,6 +90,31 @@ To change the interval, add `poll_seconds` to
 
 Anything outside 5–3600 is treated as a typo and the default is used instead.
 
+### Which Claude Code an agent runs as
+
+Agents are launched with whatever model and effort your own Claude Code is
+configured for. To say otherwise, add `slice_agent` and `workshop_agent` to
+`~/.config/notion-agent-tracker/config.json`:
+
+```json
+{
+  "workshop_agent": { "model": "sonnet", "effort": "low" },
+  "slice_agent": { "model": "opus", "effort": "high" }
+}
+```
+
+They are two settings because the two jobs are not the same size: workshopping
+a plan (`w` and `W`) is conversation, and often wants a lighter model than the
+agent that goes and writes the code (`l`). Either half of either pair may be
+left out, and what is left out is left to Claude Code — the values are its own
+`--model` and `--effort` flags, so an alias (`sonnet`, `opus`) or a full model
+name works, and the effort levels are `low`, `medium`, `high`, `xhigh` and
+`max`.
+
+Both are prefilled defaults, not fixed: the planning form and the launch
+options (`l`, then "configure & launch") show the pair and let you change it
+for that one launch, leaving the config as it is.
+
 ### Watching an agent
 
 `t` on a slice with a running agent shows that agent in a pane beside the board;

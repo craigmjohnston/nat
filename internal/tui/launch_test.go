@@ -70,7 +70,10 @@ func TestMain(m *testing.M) {
 }
 
 // launchCall is one session the launcher was asked to start.
-type launchCall struct{ session, workdir, promptFile, sliceID string }
+type launchCall struct {
+	session, workdir, promptFile, sliceID string
+	model                                 config.AgentModel
+}
 
 // fakeLauncher records what it was asked to do, in place of a tmux server.
 type fakeLauncher struct {
@@ -117,8 +120,8 @@ func (f *fakeLauncher) Activity() (map[string]agent.Activity, error) {
 	return f.activity, nil
 }
 
-func (f *fakeLauncher) Launch(session, workdir, promptFile, sliceID string) error {
-	f.launches = append(f.launches, launchCall{session, workdir, promptFile, sliceID})
+func (f *fakeLauncher) Launch(session, workdir, promptFile, sliceID string, model config.AgentModel) error {
+	f.launches = append(f.launches, launchCall{session, workdir, promptFile, sliceID, model})
 	return f.launchErr
 }
 
@@ -399,10 +402,111 @@ func TestAppLaunchConfigureOpensTheOptionsForm(t *testing.T) {
 	// window edge may truncate the path, so only its head is asserted on —
 	// with launching, not editing, as the first, pre-selected choice.
 	for _, want := range []string{"Working directory: " + workdir[:9], "Launch and show the agent",
-		"Edit the working directory first", "Launch in the background"} {
+		"Edit the options first", "Launch in the background"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view is missing %q:\n%s", want, view)
 		}
+	}
+}
+
+// The slice pair the config names is what a plain launch runs Claude Code as,
+// with nothing asked: the model is a default, not a question.
+func TestAppLaunchCarriesTheConfiguredSliceModel(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	app.cfg.SliceAgent = config.AgentModel{Model: "opus", Effort: "high"}
+	// The workshop pair is the other one, and no launch of a slice reads it.
+	app.cfg.WorkshopAgent = config.AgentModel{Model: "haiku", Effort: "low"}
+	app.board.cursor = rowTodoSlice
+
+	launch(t, app)
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
+	want := config.AgentModel{Model: "opus", Effort: "high"}
+	if got := launcher.launches[0].model; got != want {
+		t.Errorf("model = %+v, want the configured %+v", got, want)
+	}
+}
+
+// A config that names neither leaves both off, which is the launch saying
+// nothing at all and Claude Code deciding for itself, as it did before there
+// was anywhere to say otherwise.
+func TestAppLaunchWithoutAConfiguredModelSaysNothing(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	app.board.cursor = rowTodoSlice
+
+	launch(t, app)
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
+	if got := launcher.launches[0].model; got != (config.AgentModel{}) {
+		t.Errorf("model = %+v, want it unset", got)
+	}
+}
+
+// The options form shows what enter would launch on before it is opened for
+// editing, so the model is never a thing the user has to guess at.
+func TestAppLaunchOptionsShowTheConfiguredModel(t *testing.T) {
+	app, _, _ := launchApp(t)
+	app.cfg.SliceAgent = config.AgentModel{Model: "opus", Effort: "high"}
+	app.board.cursor = rowTodoSlice
+
+	configure(t, app)
+
+	view := stripANSI(app.View().Content)
+	if want := "Model: opus · effort: high"; !strings.Contains(view, want) {
+		t.Errorf("view is missing %q:\n%s", want, view)
+	}
+}
+
+// Editing the options edits the model too: what is typed there is what this
+// one launch runs as, spaces around it trimmed off, and the config is left
+// exactly as it was.
+func TestAppLaunchEditsTheModelOnDemand(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	app.cfg.SliceAgent = config.AgentModel{}
+	app.board.cursor = rowTodoSlice
+
+	configure(t, app)
+	drive(t, app, press(app, "down")) // to "Edit the options first"
+	step(t, app, press(app, "enter"))
+	step(t, app, press(app, "enter")) // past the working directory
+	typeText(app, " opus ")
+	step(t, app, press(app, "enter")) // past the model
+	step(t, app, press(app, "down"))  // off the default effort, onto the first level
+	finishForm(t, app, press(app, "enter"))
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
+	want := config.AgentModel{Model: "opus", Effort: effortLevels[0]}
+	if got := launcher.launches[0].model; got != want {
+		t.Errorf("model = %+v, want the edited %+v", got, want)
+	}
+	if app.cfg.SliceAgent != (config.AgentModel{}) {
+		t.Errorf("SliceAgent = %+v, want the config untouched by one launch", app.cfg.SliceAgent)
+	}
+}
+
+func TestModelSummary(t *testing.T) {
+	tests := []struct {
+		name  string
+		model config.AgentModel
+		want  string
+	}{
+		{"unset", config.AgentModel{}, "Model: default · effort: default"},
+		{"both", config.AgentModel{Model: "opus", Effort: "max"}, "Model: opus · effort: max"},
+		{"model only", config.AgentModel{Model: "opus"}, "Model: opus · effort: default"},
+		{"effort only", config.AgentModel{Effort: "max"}, "Model: default · effort: max"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := modelSummary(tt.model); got != tt.want {
+				t.Errorf("modelSummary(%+v) = %q, want %q", tt.model, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -595,12 +699,14 @@ func TestAppLaunchEditsTheWorkingDirectoryOnDemand(t *testing.T) {
 	app.board.cursor = rowTodoSlice
 
 	configure(t, app)
-	drive(t, app, press(app, "down")) // to "Edit the working directory first"
+	drive(t, app, press(app, "down")) // to "Edit the options first"
 	step(t, app, press(app, "enter"))
 	if app.form == nil {
 		t.Fatal("choosing to edit should keep the form open on the directory")
 	}
-	typeText(app, "/sub") // appended to the prefilled default
+	typeText(app, "/sub")             // appended to the prefilled default
+	step(t, app, press(app, "enter")) // past the directory
+	step(t, app, press(app, "enter")) // past the model
 	finishForm(t, app, press(app, "enter"))
 
 	if len(launcher.launches) != 1 {
@@ -722,7 +828,7 @@ func TestLaunchAgentReportsAFailedPromptFile(t *testing.T) {
 
 	msg := runMsg(t, launchAgent(launcher, agent.PromptContext{
 		Slice: domain.Slice{ID: "s5", Name: "Info view"},
-	}, true)).(agentLaunchedMsg)
+	}, config.AgentModel{}, true)).(agentLaunchedMsg)
 
 	if msg.err == nil || !strings.Contains(msg.err.Error(), "launch agent: create prompt dir") {
 		t.Errorf("err = %v, want the failed prompt file", msg.err)
@@ -1230,7 +1336,7 @@ func TestBusyNoteOf(t *testing.T) {
 		want  string
 	}{
 		{"a write", newDeleteSliceForm(DefaultStyles().FormTheme, domain.Slice{Name: "x"}), "Saving…"},
-		{"a launch", newLaunchForm(DefaultStyles().FormTheme, domain.Slice{Name: "x"}, "/tmp"), "Launching the agent…"},
+		{"a launch", newLaunchForm(DefaultStyles().FormTheme, domain.Slice{Name: "x"}, "/tmp", config.AgentModel{}), "Launching the agent…"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
