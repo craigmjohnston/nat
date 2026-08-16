@@ -34,6 +34,10 @@ type boardKeyMap struct {
 	// branch, and marks it Done. It is the last step of a slice's workflow, and
 	// the only board key that reaches outside Notion.
 	Approve key.Binding
+	// Release hands a slice in progress back to the plan — Todo and unassigned
+	// — for when the session working it ended without finishing it. It is the
+	// way out of the one state a slice otherwise gets stuck in.
+	Release key.Binding
 
 	Launch key.Binding
 	Attach key.Binding
@@ -61,6 +65,7 @@ func defaultBoardKeyMap() boardKeyMap {
 		Delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete slice")),
 
 		Approve: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "approve & open PR")),
+		Release: key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "release slice")),
 
 		Launch: key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "launch agent")),
 		Attach: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "show/hide agent")),
@@ -88,7 +93,7 @@ func (k boardKeyMap) projects() []key.Binding {
 
 // writes are the bindings the root model handles rather than the board.
 func (k boardKeyMap) writes() []key.Binding {
-	return []key.Binding{k.Add, k.Edit, k.Move, k.Delete, k.Approve}
+	return []key.Binding{k.Add, k.Edit, k.Move, k.Delete, k.Approve, k.Release}
 }
 
 // sliceHints are the hints row's bindings while the cursor is on a slice: the
@@ -100,6 +105,10 @@ func (k boardKeyMap) writes() []key.Binding {
 // Approve ranks below all of them but the board-wide toggle: it is the one key
 // here that does nothing at all on most rows, since only a slice handed back on
 // a branch can be approved.
+//
+// Release is not here at all. It is rarer than any of these — a session that
+// died, rather than anything the plan does in its ordinary course — and the
+// row has less room than the help screen, which is where it is named.
 func (b Board) sliceHints() []hint {
 	k := b.keys
 	return []hint{

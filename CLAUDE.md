@@ -107,6 +107,9 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   was pushed to and leaves the slice in progress, handed back for review, which
   is how an agent ends now; `--pr` records a pull request and marks the slice
   Done; `--blocked` leaves it in progress with a note saying what stopped it —
+  `nat release-slice <slice>`, which is the fourth ending and the only one that
+  goes backwards: Status to `Todo`, the Assignee cleared and one line on the
+  page saying so, for a session that ended without finishing at all,
   and the one-off additions
   `nat milestone-add <name>` (Queued, at the end of the plan) and
   `nat slice-add <title> --milestone <name> [--description TEXT|-]
@@ -268,6 +271,26 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
 - Claiming = Status → `In progress`, plus Assignee (people
   property, the configured real Notion user) where the project has that column.
   Without one, ownership is decided on status alone.
+- Releasing is the claim undone, and the way out of the one state a slice gets
+  stuck in: a session that died — a crashed agent, a killed pane, a context that
+  ran out — leaves its slice in progress and held, where `next-slice` steps over
+  it, `start-slice` refuses it and `complete-slice` only goes forward. Status
+  back to `Todo` and the Assignee cleared (`NewPeople()` with no user, the empty
+  list Notion reads as nobody, which is why `PropertyValue.People` is a pointer
+  — the same reason `Relation` is), and nothing else on the page touched: the
+  description, `Depends on`, `Repo` and any `Branch` are exactly the brief and
+  the work-so-far the next session wants. One line goes on the page first, so a
+  slice that went round twice reads as having done so; it is written before the
+  status for the reason `complete-slice` writes its note first, since a slice
+  already back at `Todo` is one the command would refuse to add a line to. Only
+  a slice the configured user holds can be released — the same ownership rule
+  `complete-slice` applies (`notOursError`, which now names the action it
+  refused) — and the page is re-read for the type of its `Status` column, as
+  every other write to a slice is. `nat release-slice <slice>` is the headless
+  half; `R` on the board is the other, confirmed on the row the way `p` is,
+  ignored on a slice that is not in progress, and refused with a toast on a
+  slice an agent is still live on, since releasing one out from under a working
+  session is how two sessions end up on one branch.
 - Slices ↔ PRs are 1:1 when work is code; PR URL recorded in the `PR` property.
 - A slice may carry a `Branch` — the branch an agent pushed its work to and
   handed back on. It is read off the page like any other property and empty on a

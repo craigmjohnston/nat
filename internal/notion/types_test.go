@@ -173,7 +173,7 @@ func TestPropertyValueDecodesNotionShapes(t *testing.T) {
 	if got := props["Milestone"].RelationIDs(); len(got) != 1 || got[0] != "m1" {
 		t.Errorf("Milestone = %v", got)
 	}
-	if got := props["Assignee"].People; len(got) != 1 || got[0].Name != "Craig Johnston" {
+	if got := props["Assignee"].Users(); len(got) != 1 || got[0].Name != "Craig Johnston" {
 		t.Errorf("Assignee = %v", got)
 	}
 	if got := props["PR"].URL; got != "https://example.test/pr/1" {
@@ -200,9 +200,9 @@ func TestListDecodesEnvelope(t *testing.T) {
 	}
 }
 
-// A relation is the one property this app clears, so the empty list has to
-// survive being marshalled: an omitted key would leave the write saying nothing
-// and the slice waiting on exactly what it was.
+// A relation is one of the two properties this app clears, so the empty list
+// has to survive being marshalled: an omitted key would leave the write saying
+// nothing and the slice waiting on exactly what it was.
 func TestNewRelation(t *testing.T) {
 	tests := []struct {
 		name string
@@ -225,5 +225,41 @@ func TestNewRelation(t *testing.T) {
 				t.Errorf("RelationIDs() = %v, want %v", got, tt.ids)
 			}
 		})
+	}
+}
+
+// People is the other, and for the same reason: a slice released back to Todo
+// is held by nobody, and an omitted key would leave it held by whoever the
+// session that died claimed it for.
+func TestNewPeople(t *testing.T) {
+	tests := []struct {
+		name string
+		ids  []string
+		want string
+	}{
+		{"naming a user", []string{"u1"}, `{"people":[{"id":"u1"}]}`},
+		{"naming none clears the property", nil, `{"people":[]}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := json.Marshal(NewPeople(tt.ids...))
+			if err != nil {
+				t.Fatalf("marshalling: %v", err)
+			}
+			if string(b) != tt.want {
+				t.Errorf("marshalled to %s, want %s", b, tt.want)
+			}
+			if got := NewPeople(tt.ids...).PeopleIDs(); !reflect.DeepEqual(got, tt.ids) {
+				t.Errorf("PeopleIDs() = %v, want %v", got, tt.ids)
+			}
+		})
+	}
+}
+
+// A property that is not a people property at all names nobody, rather than
+// dereferencing the nil the field is on every other kind of value.
+func TestUsersOfANonPeopleProperty(t *testing.T) {
+	if got := NewSelect("Todo").Users(); got != nil {
+		t.Errorf("Users() = %v, want none", got)
 	}
 }

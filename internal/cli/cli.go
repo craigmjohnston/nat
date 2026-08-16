@@ -104,6 +104,10 @@ usage:
                       request; with --pr, Done with its pull request recorded;
                       with --blocked, left in progress with a note saying what
                       stopped it. A summary is appended to the page either way
+  nat release-slice <slice>
+                      hand a slice you claimed back to the plan: Todo and
+                      unassigned, its brief and any branch left as they are, for
+                      when the session working it ended without finishing it
   nat help            show this message
 `
 
@@ -158,6 +162,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return planApply(ctx, args[1:], env)
 	case "complete-slice":
 		return completeSlice(ctx, args[1:], env)
+	case "release-slice":
+		return releaseSlice(ctx, args[1:], env)
 	case "help", "-h", "--help":
 		_, err := io.WriteString(env.Out, Usage)
 		return err

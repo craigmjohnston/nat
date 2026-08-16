@@ -137,7 +137,7 @@ func SliceFromPage(p notion.Page) Slice {
 		DependsOn:  p.Properties[notion.PropDependsOn].RelationIDs(),
 	}
 	s.MilestoneID = p.Properties[notion.PropMilestone].SelectName()
-	if people := p.Properties[notion.PropAssignee].People; len(people) > 0 {
+	if people := p.Properties[notion.PropAssignee].Users(); len(people) > 0 {
 		s.AssigneeName = people[0].Name
 	}
 	return s

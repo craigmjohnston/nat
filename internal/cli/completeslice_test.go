@@ -22,7 +22,7 @@ func heldSlice(id, name, status, userID, assignee string) notion.Page {
 	p := slicePage(id, name, status, "m2", "", "")
 	if userID != "" {
 		p.Properties[notion.PropAssignee] = notion.PropertyValue{
-			People: []notion.User{{ID: userID, Name: assignee}},
+			People: &[]notion.User{{ID: userID, Name: assignee}},
 		}
 	}
 	return p

@@ -599,6 +599,8 @@ func (a *App) boardWrite(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.deleteSliceFlow(), true
 	case key.Matches(msg, a.board.keys.Approve):
 		return a.approveSliceFlow(), true
+	case key.Matches(msg, a.board.keys.Release):
+		return a.releaseSliceFlow(), true
 	case key.Matches(msg, a.board.keys.Launch):
 		return a.launchAgentFlow(), true
 	case key.Matches(msg, a.board.keys.Attach):

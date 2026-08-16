@@ -147,10 +147,11 @@ func (u User) Email() string {
 // reads and writes. Every field is omitted when empty, so a value built by one
 // of the New* constructors serialises to exactly the property being written.
 //
-// Relation is the one exception, and a pointer for exactly that reason: a
-// relation is the one property this app clears, and an empty list is how Notion
-// is told to — which `omitempty` on a plain slice would drop, leaving the write
-// saying nothing at all. A nil pointer is the property being left out; a
+// Relation and People are the exceptions, and pointers for exactly that
+// reason: they are the two properties this app clears — a slice freed of what
+// it waited on, a slice released back to nobody — and an empty list is how
+// Notion is told to, which `omitempty` on a plain slice would drop, leaving the
+// write saying nothing at all. A nil pointer is the property being left out; a
 // pointer to an empty list is the property being emptied.
 type PropertyValue struct {
 	Type     string        `json:"type,omitempty"`
@@ -159,7 +160,7 @@ type PropertyValue struct {
 	Select   *SelectOption `json:"select,omitempty"`
 	Status   *SelectOption `json:"status,omitempty"`
 	Relation *[]Relation   `json:"relation,omitempty"`
-	People   []User        `json:"people,omitempty"`
+	People   *[]User       `json:"people,omitempty"`
 	URL      string        `json:"url,omitempty"`
 	Number   *float64      `json:"number,omitempty"`
 }
@@ -212,13 +213,15 @@ func NewChoice(propertyType, name string) PropertyValue {
 	return NewSelect(name)
 }
 
-// NewPeople builds a people property value naming the given user IDs.
+// NewPeople builds a people property value naming the given user IDs, and —
+// given none — the value that empties the property, which is how a slice
+// released back to Todo is told it is held by nobody.
 func NewPeople(userIDs ...string) PropertyValue {
 	people := make([]User, len(userIDs))
 	for i, id := range userIDs {
 		people[i] = User{ID: id}
 	}
-	return PropertyValue{People: people}
+	return PropertyValue{People: &people}
 }
 
 // NewRelation builds a relation property value naming the given pages, and —
@@ -273,11 +276,26 @@ func (p PropertyValue) RelationIDs() []string {
 	return ids
 }
 
-// PeopleIDs returns the user IDs of a people property.
+// PeopleIDs returns the user IDs of a people property, and none for a property
+// that is not one or names nobody.
 func (p PropertyValue) PeopleIDs() []string {
-	ids := make([]string, len(p.People))
-	for i, u := range p.People {
+	users := p.Users()
+	if len(users) == 0 {
+		return nil
+	}
+	ids := make([]string, len(users))
+	for i, u := range users {
 		ids[i] = u.ID
 	}
 	return ids
+}
+
+// Users is the people a property names, and none where it names nobody or is
+// not a people property at all. It is what reads the property instead of the
+// field, which is a pointer so that a write can empty it.
+func (p PropertyValue) Users() []User {
+	if p.People == nil {
+		return nil
+	}
+	return *p.People
 }
