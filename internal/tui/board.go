@@ -30,6 +30,10 @@ type boardKeyMap struct {
 	Edit   key.Binding
 	Move   key.Binding
 	Delete key.Binding
+	// Approve opens the pull request for a slice an agent handed back on a
+	// branch, and marks it Done. It is the last step of a slice's workflow, and
+	// the only board key that reaches outside Notion.
+	Approve key.Binding
 
 	Launch key.Binding
 	Attach key.Binding
@@ -55,6 +59,8 @@ func defaultBoardKeyMap() boardKeyMap {
 		Edit:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit slice")),
 		Move:   key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "move slice")),
 		Delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete slice")),
+
+		Approve: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "approve & open PR")),
 
 		Launch: key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "launch agent")),
 		Attach: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "show/hide agent")),
@@ -82,7 +88,7 @@ func (k boardKeyMap) projects() []key.Binding {
 
 // writes are the bindings the root model handles rather than the board.
 func (k boardKeyMap) writes() []key.Binding {
-	return []key.Binding{k.Add, k.Edit, k.Move, k.Delete}
+	return []key.Binding{k.Add, k.Edit, k.Move, k.Delete, k.Approve}
 }
 
 // sliceHints are the hints row's bindings while the cursor is on a slice: the
@@ -90,12 +96,17 @@ func (k boardKeyMap) writes() []key.Binding {
 // tracker is for, so they survive a narrow row longest. The write keys drop
 // the word "slice" their help carries — the hints only show on one, and the
 // row has less room than the help screen.
+//
+// Approve ranks below all of them but the board-wide toggle: it is the one key
+// here that does nothing at all on most rows, since only a slice handed back on
+// a branch can be approved.
 func (b Board) sliceHints() []hint {
 	k := b.keys
 	return []hint{
 		{shortHint(k.Edit, "edit"), 5},
 		{shortHint(k.Move, "move"), 3},
 		{shortHint(k.Delete, "delete"), 4},
+		{shortHint(k.Approve, "approve"), 2},
 		{k.Launch, 7},
 		{k.Attach, 6},
 		b.doneHint(),

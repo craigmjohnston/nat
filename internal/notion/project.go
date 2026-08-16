@@ -21,6 +21,11 @@ const (
 	PropAssignee  = "Assignee"
 	PropRepo      = "Repo"
 	PropPR        = "PR"
+	// PropBranch is the branch an agent handed its work back on, before there
+	// is a pull request to record. It is optional: a project whose Slices table
+	// has no such column simply never has a branch to read, and reads back
+	// empty rather than failing.
+	PropBranch = "Branch"
 )
 
 // Milestone status options, in workflow order.
