@@ -286,6 +286,9 @@ func TestSettingsSavedAppliesPersistsAndReports(t *testing.T) {
 
 func TestSettingsSavedResharesTheWindowAtOnce(t *testing.T) {
 	a, _, _ := viewerApp(t)
+	// The write is caught before it leaves: a settings test that reaches
+	// config.Save writes over the config of whoever is running the tests.
+	capturedConfig(t)
 	before := a.boardWidth()
 
 	_, cmd := a.settingsSaved(settingsSavedMsg{settings: Settings{SplitPercent: "20"}})
