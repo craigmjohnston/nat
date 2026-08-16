@@ -1086,3 +1086,45 @@ func equal(a, b []string) bool {
 	}
 	return true
 }
+
+// handedBackBoard is testProject with the slice in progress handed back on a
+// branch, which is what an agent finishing its session leaves behind.
+func handedBackBoard() *Board {
+	b := NewBoard(DefaultStyles())
+	b.hideDone = false
+	b.SetWidth(60)
+	p := testProject()
+	p.Slices[3].Branch = "slice/board-screen" // Board screen, in progress
+	b.SetProject(&p)
+	return &b
+}
+
+// A slice handed back is drawn as its own thing rather than as another slice in
+// progress: the work is finished and the review has not started.
+func TestBoardMarksAHandedBackSlice(t *testing.T) {
+	b := handedBackBoard()
+
+	golden(t, "board-handed-back", b.View())
+
+	for _, line := range strings.Split(ansi.ReplaceAllString(b.View(), ""), "\n") {
+		if want := strings.Contains(line, "Board screen"); strings.Contains(line, "↑ review") != want {
+			t.Errorf("the review chip is on the wrong row:\n%s", line)
+		}
+	}
+}
+
+// A branch on a slice that is not in progress marks nothing: a Todo slice has
+// had no agent on it, and a Done one has been reviewed already.
+func TestBoardMarksNoReviewOnASliceNotInProgress(t *testing.T) {
+	b := NewBoard(DefaultStyles())
+	b.hideDone = false
+	b.SetWidth(60)
+	p := testProject()
+	p.Slices[2].Branch = "slice/domain-model" // Done
+	p.Slices[4].Branch = "slice/info-view"    // Todo
+	b.SetProject(&p)
+
+	if view := ansi.ReplaceAllString(b.View(), ""); strings.Contains(view, "review") {
+		t.Errorf("board marks a slice nobody is waiting on:\n%s", view)
+	}
+}

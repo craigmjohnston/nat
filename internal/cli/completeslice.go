@@ -14,10 +14,16 @@ import (
 )
 
 // completeSlice closes out the slice an agent was working: Status to Done, the
-// PR recorded, and a summary appended to the page body. --blocked is the other
-// way a session ends — the slice stays in progress and the note says what
+// PR recorded, and a summary appended to the page body. --blocked is one of the
+// other ways a session ends — the slice stays in progress and the note says what
 // stopped it, so the work is not lost and nobody else picks the slice up
 // either.
+//
+// --branch is the third, and the one an agent ends on now: the branch the work
+// was pushed to is recorded and the slice is left in progress, which on the
+// board is a slice handed back and waiting to be reviewed. Approving it there
+// is what opens the pull request and marks it Done. The --pr ending stays for
+// whoever already has a pull request to record.
 //
 // Only a slice this user already holds can be finished. An agent that never
 // claimed the slice has no business saying it is done, and a slice held by
@@ -26,6 +32,7 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("complete-slice", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	pr := flags.String("pr", "", "URL of the pull request this slice produced")
+	branch := flags.String("branch", "", "the branch this slice's work was pushed to, handed back for review")
 	summary := flags.String("summary", "", "the note to append; read from stdin when absent")
 	blocked := flags.Bool("blocked", false, "leave the slice in progress and record what is blocking it")
 	rest, err := parseFlags(flags, args)
@@ -34,6 +41,10 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	}
 	if len(rest) != 1 {
 		return usageErrorf("complete-slice: want exactly one slice, by URL or ID, given %d", len(rest))
+	}
+	*branch = strings.TrimSpace(*branch)
+	if err := endings(*branch, *pr, *blocked); err != nil {
+		return err
 	}
 	pageID, err := pageID("complete-slice", rest[0])
 	if err != nil {
@@ -59,6 +70,14 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
+	// A branch nothing can hold is a hand-back that would be silently lost, so
+	// it is refused here — before the note is written — rather than written
+	// nowhere. Every project the app has loaded since has the column; one whose
+	// column of that name is something other than text is the case left.
+	if *branch != "" && !shape.HasBranch {
+		return fmt.Errorf("this project's %s table has no %s text column to hand a branch back on: add one in Notion",
+			notion.SlicesDBTitle, notion.PropBranch)
+	}
 	page, err := client.GetPage(ctx, pageID)
 	if err != nil {
 		return fmt.Errorf("load the slice: %w", err)
@@ -71,14 +90,20 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	// two half-finished states this is the recoverable one: an in-progress slice
 	// carrying its summary can be completed by running this again, whereas a
 	// Done slice with no summary refuses every attempt to add one.
-	if _, err := client.AppendBlockChildren(ctx, page.ID, noteBlocks(noteHeading(*blocked), note)); err != nil {
+	if _, err := client.AppendBlockChildren(ctx, page.ID, noteBlocks(noteHeading(*blocked, *branch), note)); err != nil {
 		return fmt.Errorf("append the note to the slice: %w", err)
 	}
 	props := map[string]notion.PropertyValue{}
 	if *pr != "" {
 		props[notion.PropPR] = notion.NewURL(*pr)
 	}
-	if !*blocked {
+	if *branch != "" {
+		props[notion.PropBranch] = notion.NewRichText(*branch)
+	}
+	// A handed-back slice stays in progress: the work is done but nobody has
+	// reviewed it, and the board is where that ends — its approve key opens the
+	// pull request and marks the slice Done.
+	if !*blocked && *branch == "" {
 		props[notion.PropStatus] = notion.NewChoice(page.Properties[notion.PropStatus].Type, notion.SliceDone)
 	}
 	if len(props) > 0 {
@@ -90,9 +115,31 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	}
 
 	env.nudged()
-	logging.Action("slice closed out", "slice", page.ID, "blocked", *blocked, "pr", *pr)
-	_, err = io.WriteString(env.Out, outcomeMarkdown(domain.SliceFromPage(*page), *blocked, cfg.AssigneeUserName))
+	logging.Action("slice closed out", "slice", page.ID, "blocked", *blocked,
+		"pr", *pr, "branch", *branch)
+	_, err = io.WriteString(env.Out,
+		outcomeMarkdown(domain.SliceFromPage(*page), *blocked, *branch, cfg.AssigneeUserName))
 	return err
+}
+
+// endings settles how the session is being ended before anything is read or
+// written, since the three are three different endings and no two of them are
+// the same slice. Handing a branch back leaves work to review; recording a pull
+// request closes the slice; blocked leaves it unfinished. Asking for two at once
+// is a mistake in the command line, not a state to pick between.
+func endings(branch, pr string, blocked bool) error {
+	if branch == "" {
+		return nil
+	}
+	if pr != "" {
+		return usageErrorf("complete-slice: --branch and --pr are two different endings: " +
+			"hand the branch back, or record the pull request that came of it")
+	}
+	if blocked {
+		return usageErrorf("complete-slice: --branch and --blocked are two different endings: " +
+			"a slice handed back is finished work waiting to be reviewed, not stopped work")
+	}
+	return nil
 }
 
 // parseFlags parses a command line whose flags may come either side of its
@@ -184,14 +231,18 @@ func notOursError(page notion.Page, shape notion.SliceShape, assignee, action st
 // The headings the appended note is filed under, so a page read later says
 // which kind of ending it was.
 const (
-	summaryHeading = "Summary"
-	blockedHeading = "Blocked"
+	summaryHeading    = "Summary"
+	blockedHeading    = "Blocked"
+	handedBackHeading = "Handed back"
 )
 
 // noteHeading names the note by how the session ended.
-func noteHeading(blocked bool) string {
-	if blocked {
+func noteHeading(blocked bool, branch string) string {
+	switch {
+	case blocked:
 		return blockedHeading
+	case branch != "":
+		return handedBackHeading
 	}
 	return summaryHeading
 }
@@ -227,17 +278,32 @@ func textBlock(blockType, text string) map[string]any {
 
 // outcomeMarkdown reports what was written, so the agent that ran the command —
 // and the person reading over its shoulder — can see the slice really did move.
-func outcomeMarkdown(s domain.Slice, blocked bool, assignee string) string {
+// The branch is the one just handed back rather than the one read back off the
+// page: what was written is known here, and a page Notion echoes is a read of
+// the same thing at best.
+func outcomeMarkdown(s domain.Slice, blocked bool, branch, assignee string) string {
+	if branch == "" {
+		branch = s.Branch
+	}
+	handedBack := branch != "" && !blocked && s.PRURL == ""
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", s.Name)
-	if blocked {
+	switch {
+	case blocked:
 		fmt.Fprintf(&b, "Still in progress, held by %s. The note is on the slice page.\n\n", assignee)
-	} else {
+	case handedBack:
+		fmt.Fprintf(&b, "Handed back for review, still held by %s. "+
+			"The summary is on the slice page, and approving it on the board is what opens the pull request.\n\n",
+			assignee)
+	default:
 		b.WriteString("Done. The summary is on the slice page.\n\n")
 	}
 	fmt.Fprintf(&b, "- Notion page: %s\n", s.ID)
 	if s.URL != "" {
 		fmt.Fprintf(&b, "- Notion URL: %s\n", s.URL)
+	}
+	if branch != "" {
+		fmt.Fprintf(&b, "- Branch: %s\n", branch)
 	}
 	if s.PRURL != "" {
 		fmt.Fprintf(&b, "- PR: %s\n", s.PRURL)

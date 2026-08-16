@@ -50,6 +50,15 @@ func dependsOnColumn(dsID string) notion.PropertySchema {
 	return schema
 }
 
+// branchColumn is the Branch column as a read returns it, there for the same
+// reason dependsOnColumn is: a fixture without one is a project the load-time
+// back-fill writes to before anything the test is about.
+func branchColumn() notion.PropertySchema {
+	schema := notion.SchemaRichText()
+	schema.Type = notion.TypeRichText
+	return schema
+}
+
 // milestoneColumn is a Milestone column offering the named milestones, as a
 // read returns it: with its type on it, which is how a write back to it knows
 // the shape to take.
@@ -74,6 +83,7 @@ func newLoadingClient() *loadingClient {
 			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceInProgress, notion.SliceDone),
 			notion.PropMilestone: milestoneColumn("M1"),
 			notion.PropDependsOn: dependsOnColumn(id),
+			notion.PropBranch:    branchColumn(),
 		}}, nil
 	}
 	c.query = func(id string, _ map[string]any, sorts []notion.Sort) ([]notion.Page, error) {
@@ -246,6 +256,7 @@ func newSelectShapedClient() *loadingClient {
 			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceInProgress, notion.SliceDone),
 			notion.PropMilestone: milestoneColumn("M1: Client", "M2: Board"),
 			notion.PropDependsOn: dependsOnColumn(id),
+			notion.PropBranch:    branchColumn(),
 		}}, nil
 	}
 	c.query = func(id string, _ map[string]any, sorts []notion.Sort) ([]notion.Page, error) {
@@ -899,6 +910,7 @@ func TestAppMigratesAnOldProjectAndSaysSo(t *testing.T) {
 		return &notion.DataSource{ID: id, Properties: map[string]notion.PropertySchema{
 			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceClaimed, notion.SliceDone),
 			notion.PropDependsOn: dependsOnColumn(id),
+			notion.PropBranch:    branchColumn(),
 			notion.PropMilestone: {
 				Type:     "relation",
 				Relation: &notion.RelationConfig{DataSourceID: "ms-ds"},

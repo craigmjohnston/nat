@@ -22,9 +22,9 @@ const (
 	PropRepo      = "Repo"
 	PropPR        = "PR"
 	// PropBranch is the branch an agent handed its work back on, before there
-	// is a pull request to record. It is optional: a project whose Slices table
-	// has no such column simply never has a branch to read, and reads back
-	// empty rather than failing.
+	// is a pull request to record. It is optional in the reading: a project
+	// whose Slices table has no such column simply never has a branch to read,
+	// and reads back empty rather than failing.
 	PropBranch = "Branch"
 	// PropDependsOn is the slices a slice waits on: a relation from the Slices
 	// data source to itself, which is what makes a slice blocked while any of
@@ -78,6 +78,7 @@ func SlicesSchema(assignee bool) map[string]PropertySchema {
 		PropMilestone: SchemaSelect(),
 		PropRepo:      SchemaRichText(),
 		PropPR:        SchemaURL(),
+		PropBranch:    SchemaRichText(),
 	}
 	if assignee {
 		schema[PropAssignee] = SchemaPeople()
@@ -96,6 +97,11 @@ type SliceShape struct {
 	StatusType string
 	// HasAssignee says whether the Assignee people property is there to write.
 	HasAssignee bool
+	// HasBranch says whether the Branch text property is there to write. A
+	// project whose table has no such column — or whose column of that name is
+	// something other than text — cannot record a hand-back, and the command
+	// that would says so rather than writing a branch nowhere.
+	HasBranch bool
 	// MilestoneType is the property type of the Milestone column, so a slice can
 	// be filed under a milestone in the shape that column was read in.
 	MilestoneType string
@@ -109,6 +115,9 @@ func ShapeOf(ds *DataSource) SliceShape {
 	shape := SliceShape{StatusType: ds.Properties[PropStatus].Type}
 	if assignee, ok := ds.Properties[PropAssignee]; ok && assignee.Type == TypePeople {
 		shape.HasAssignee = true
+	}
+	if branch, ok := ds.Properties[PropBranch]; ok && branch.Type == TypeRichText {
+		shape.HasBranch = true
 	}
 	milestone := ds.Properties[PropMilestone]
 	shape.MilestoneType = milestone.Type
@@ -222,7 +231,9 @@ type expectedProperty struct {
 // offer nothing in particular — its options are the plan, which a project this
 // new has none of yet. Depends on is expected because CreateProject adds it: a
 // project made without one is a project whose second write silently did
-// nothing, and this is where that would be caught.
+// nothing, and this is where that would be caught. Branch is expected for the
+// same reason — it is optional only in the sense that a project older than
+// hand-backs has none until it is migrated.
 func expectedSliceProperties() []expectedProperty {
 	return []expectedProperty{
 		{Name: PropName, Type: "title"},
@@ -230,6 +241,7 @@ func expectedSliceProperties() []expectedProperty {
 		{Name: PropMilestone, Type: "select"},
 		{Name: PropRepo, Type: "rich_text"},
 		{Name: PropPR, Type: "url"},
+		{Name: PropBranch, Type: TypeRichText},
 		{Name: PropDependsOn, Type: "relation"},
 	}
 }

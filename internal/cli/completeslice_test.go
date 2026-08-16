@@ -694,3 +694,126 @@ func TestCompleteSliceReportsAFailedSchemaRead(t *testing.T) {
 		t.Errorf("appends = %+v, want nothing written", api.appends)
 	}
 }
+
+// The ending an agent runs now: the branch it pushed is recorded, the slice is
+// left in progress for someone to review, and the note is filed as a hand-back
+// rather than as the last word on the slice.
+func TestCompleteSliceHandsBackABranch(t *testing.T) {
+	api := completableAPI()
+	env, out := completeEnv(api)
+
+	err := Run(context.Background(), []string{
+		"complete-slice", sliceID, "--branch", " slice/render-the-board ",
+		"--summary", "Wrote the renderer.",
+	}, env)
+	if err != nil {
+		t.Fatalf("complete-slice: %v", err)
+	}
+
+	if len(api.appends) != 1 {
+		t.Fatalf("appends = %+v, want exactly one", api.appends)
+	}
+	want := []string{"heading_3: Handed back", "paragraph: Wrote the renderer."}
+	if got := blockTexts(t, api.appends[0].children); !equalLines(got, want) {
+		t.Errorf("blocks = %v, want %v", got, want)
+	}
+
+	if len(api.updates) != 1 {
+		t.Fatalf("updates = %+v, want exactly one", api.updates)
+	}
+	props := api.updates[0].props
+	// Asserted on the spans rather than through Text(), which reads the plain
+	// text Notion answers with and a write does not carry.
+	if spans := props[notion.PropBranch].RichText; len(spans) != 1 ||
+		spans[0].Text == nil || spans[0].Text.Content != "slice/render-the-board" {
+		t.Errorf("branch = %+v, want the branch, trimmed", spans)
+	}
+	if _, wrote := props[notion.PropStatus]; wrote {
+		t.Errorf("props = %+v, want the status left in progress", props)
+	}
+	if _, wrote := props[notion.PropPR]; wrote {
+		t.Errorf("props = %+v, want no pull request recorded", props)
+	}
+
+	wantOut := fmt.Sprintf(`# Render the board
+
+Handed back for review, still held by Craig Johnston. The summary is on the slice page, and approving it on the board is what opens the pull request.
+
+- Notion page: %[1]s
+- Notion URL: https://notion.so/%[1]s
+- Branch: slice/render-the-board
+`, sliceID)
+	if out.String() != wantOut {
+		t.Errorf("output =\n%s\nwant:\n%s", out.String(), wantOut)
+	}
+}
+
+// The three endings are three different ones, and asking for two at once is a
+// misuse: nothing is read and nothing is written.
+func TestCompleteSliceRefusesTwoEndingsAtOnce(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			"a branch and a pull request",
+			[]string{"--branch", "slice/x", "--pr", "https://github.com/x/y/pull/1"},
+			"--branch and --pr",
+		},
+		{
+			"a branch and blocked",
+			[]string{"--branch", "slice/x", "--blocked"},
+			"--branch and --blocked",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			api := completableAPI()
+			env, out := completeEnv(api)
+
+			args := append([]string{"complete-slice", sliceID, "--summary", "Done."}, tt.args...)
+			err := Run(context.Background(), args, env)
+
+			var usage *UsageError
+			if !errors.As(err, &usage) {
+				t.Fatalf("err = %v, want a usage error", err)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("err = %q, want it to mention %q", err, tt.want)
+			}
+			if len(api.gets) != 0 || len(api.appends) != 0 || len(api.updates) != 0 {
+				t.Errorf("reads %v, writes %+v %+v; want none", api.gets, api.appends, api.updates)
+			}
+			if out.Len() != 0 {
+				t.Errorf("output = %q, want nothing", out.String())
+			}
+		})
+	}
+}
+
+// A project whose Branch column is not text cannot hold a hand-back — the
+// back-fill leaves such a column alone rather than converting somebody's — so
+// the branch is refused before the note is written and the slice is left exactly
+// as it was.
+func TestCompleteSliceRefusesABranchWithNoColumnToHoldIt(t *testing.T) {
+	api := completableAPI()
+	ds := assigneeSlicesDS()
+	ds.Properties[notion.PropBranch] = notion.PropertySchema{Type: "url"}
+	api.dataSources = map[string]notion.DataSource{"slices-ds": ds}
+	env, out := completeEnv(api)
+
+	err := Run(context.Background(), []string{
+		"complete-slice", sliceID, "--branch", "slice/x", "--summary", "Done.",
+	}, env)
+
+	if err == nil || !strings.Contains(err.Error(), `no Branch text column`) {
+		t.Fatalf("err = %v, want the missing column named", err)
+	}
+	if len(api.appends) != 0 || len(api.updates) != 0 {
+		t.Errorf("writes = %+v %+v, want none", api.appends, api.updates)
+	}
+	if out.Len() != 0 {
+		t.Errorf("output = %q, want nothing", out.String())
+	}
+}

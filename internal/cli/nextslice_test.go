@@ -615,6 +615,7 @@ func TestNextSliceMigratesAnOldProject(t *testing.T) {
 	old := notion.DataSource{ID: "slices-ds", Properties: map[string]notion.PropertySchema{
 		notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceClaimed, notion.SliceDone),
 		notion.PropDependsOn: dependsOnColumn("slices-ds"),
+		notion.PropBranch:    branchColumn(),
 		notion.PropMilestone: {
 			Type:     "relation",
 			Relation: &notion.RelationConfig{DataSourceID: "milestones-ds"},

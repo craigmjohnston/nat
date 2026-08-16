@@ -1073,13 +1073,15 @@ func (b Board) renderDoneSection(marker string, selected bool, l boardLayout) []
 }
 
 // renderSlice draws one slice: its status chip, its name, the star of an agent
-// live on it — see [Board.star] — the slices it is still waiting on, who holds
-// it, and the pull request it produced.
+// live on it — see [Board.star] — the slices it is still waiting on, whether it
+// has been handed back for review, who holds it, and the pull request it
+// produced.
 //
 // The PR chip comes last of the chips, so it is the first of them to give way
 // as the board narrows: the slice's own state is worth more of a cramped row
-// than a link out of the app. The blocked chip comes first of the three, since
-// it says the row cannot be worked at all.
+// than a link out of the app. The blocked chip comes first of them, since it
+// says the row cannot be worked at all, and the review chip next, since it says
+// the row is done being worked.
 //
 // A row too wide for the board wraps rather than shedding any of its chips,
 // and the status chip carries on down the wrapped lines as a bare strip of its
@@ -1091,6 +1093,9 @@ func (b Board) renderSlice(head string, s domain.Slice, selected bool) []string 
 	}
 	if len(b.Blockers(s)) > 0 {
 		chips = append(chips, b.blockedChip(selected))
+	}
+	if s.HandedBack() {
+		chips = append(chips, b.reviewChip(selected))
 	}
 	if s.AssigneeName != "" {
 		chips = append(chips, paint(selected, b.styles.Assignee, "@"+s.AssigneeName))
@@ -1152,6 +1157,16 @@ func (b Board) sliceStrip(s domain.SliceStatus, selected bool) string {
 // its colour, which is every selected row.
 func (b Board) blockedChip(selected bool) string {
 	return paint(selected, b.styles.Blocked, "⊘ blocked")
+}
+
+// reviewChip is the badge a slice handed back on a branch carries: work an
+// agent has finished and nobody has reviewed, which would otherwise read as
+// just another slice in progress. It names no branch — the row has no space for
+// one, and the approve key is what acts on it — and the glyph leads for the same
+// reason the blocked one's does: a selected row is drawn without the chip's
+// colour, and the shape has to carry it alone.
+func (b Board) reviewChip(selected bool) string {
+	return paint(selected, b.styles.Review, "↑ review")
 }
 
 // prNumberPath is the number a pull request URL ends its path with — the 71 of

@@ -29,6 +29,7 @@ const slicesDSJSON = `{
 			"Milestone":{"id":"m","name":"Milestone","type":"select","select":{"options":[]}},
 			"Repo":{"id":"r","name":"Repo","type":"rich_text","rich_text":{}},
 			"PR":{"id":"p","name":"PR","type":"url","url":{}},
+			"Branch":{"id":"b","name":"Branch","type":"rich_text","rich_text":{}},
 			"Depends on":{"id":"d","name":"Depends on","type":"relation","relation":{"data_source_id":"ds-slices","type":"single_property","single_property":{}}}
 		}
 	}`
@@ -49,6 +50,7 @@ const assigneeSlicesDSJSON = `{
 			"Assignee":{"id":"a","name":"Assignee","type":"people","people":{}},
 			"Repo":{"id":"r","name":"Repo","type":"rich_text","rich_text":{}},
 			"PR":{"id":"p","name":"PR","type":"url","url":{}},
+			"Branch":{"id":"b","name":"Branch","type":"rich_text","rich_text":{}},
 			"Depends on":{"id":"d","name":"Depends on","type":"relation","relation":{"data_source_id":"ds-slices","type":"single_property","single_property":{}}}
 		}
 	}`
@@ -114,6 +116,7 @@ func TestCreateProject(t *testing.T) {
 			`POST /pages {"parent":{"type":"data_source_id","data_source_id":"ds-projects"},` +
 				`"properties":{"Name":{"title":[{"type":"text","text":{"content":"notion-agent-tracker"}}]}}}`,
 			`POST /databases {"initial_data_source":{"properties":{` +
+				`"Branch":{"rich_text":{}},` +
 				`"Milestone":{"select":{}},` +
 				`"Name":{"title":{}},` +
 				`"PR":{"url":{}},` +
@@ -315,6 +318,7 @@ func TestVerifyProjectSchema(t *testing.T) {
 			`property "Milestone" is a relation, want select`,
 			`property "Repo" is a url, want rich_text`,
 			`missing property "PR" (url)`,
+			`missing property "Branch" (rich_text)`,
 			`missing property "Depends on" (relation)`,
 		}
 		if len(schemaErr.Problems) != len(want) {
@@ -360,14 +364,14 @@ func TestProjectSchemas(t *testing.T) {
 		{
 			"slices",
 			SlicesSchema(false),
-			`{"Milestone":{"select":{}},` +
+			`{"Branch":{"rich_text":{}},"Milestone":{"select":{}},` +
 				`"Name":{"title":{}},"PR":{"url":{}},"Repo":{"rich_text":{}},` +
 				`"Status":{"select":{"options":[{"name":"Todo"},{"name":"In progress"},{"name":"Done"}]}}}`,
 		},
 		{
 			"slices with an assignee",
 			SlicesSchema(true),
-			`{"Assignee":{"people":{}},"Milestone":{"select":{}},` +
+			`{"Assignee":{"people":{}},"Branch":{"rich_text":{}},"Milestone":{"select":{}},` +
 				`"Name":{"title":{}},"PR":{"url":{}},"Repo":{"rich_text":{}},` +
 				`"Status":{"select":{"options":[{"name":"Todo"},{"name":"In progress"},{"name":"Done"}]}}}`,
 		},
@@ -461,6 +465,22 @@ func TestShapeOf(t *testing.T) {
 				StatusType:    TypeSelect,
 				MilestoneType: TypeStatus, MilestoneOptions: []string{"M1: Groundwork"},
 			},
+		},
+		{
+			"a project that can hold a hand-back",
+			DataSource{Properties: map[string]PropertySchema{
+				PropStatus: {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceInProgress})}},
+				PropBranch: {Type: TypeRichText},
+			}},
+			SliceShape{StatusType: TypeSelect, HasBranch: true},
+		},
+		{
+			"a Branch column of another type is not one to write to",
+			DataSource{Properties: map[string]PropertySchema{
+				PropStatus: {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceInProgress})}},
+				PropBranch: {Type: "url"},
+			}},
+			SliceShape{StatusType: TypeSelect},
 		},
 		{"an empty data source", DataSource{}, SliceShape{}},
 	}

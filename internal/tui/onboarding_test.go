@@ -135,6 +135,7 @@ func (f *fakeNotion) GetDataSource(_ context.Context, id string) (*notion.DataSo
 			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceInProgress, notion.SliceDone),
 			notion.PropMilestone: milestoneColumn(),
 			notion.PropDependsOn: dependsOnColumn(id),
+			notion.PropBranch:    branchColumn(),
 		}}, nil
 	}
 	return f.getDS(id)
