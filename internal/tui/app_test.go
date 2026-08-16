@@ -568,17 +568,17 @@ func TestAppPutsANoteOnTheStatusLine(t *testing.T) {
 
 func TestAppStatusBarChipNamesTheScreen(t *testing.T) {
 	app := NewApp(config.Config{}, nil)
-	// No window yet and no project loaded: the chip's fallback, uncut.
-	if got := app.chipText(); got != "nat" {
-		t.Errorf("chip = %q, want the app's own name with no project", got)
+	// The board has no chip at all: the heading names the app already, and a
+	// chip repeating it would say nothing.
+	if got := app.chipText(); got != "" {
+		t.Errorf("chip = %q, want none on the board", got)
 	}
 
-	// The board's chip stays the app's own name even with a project loaded:
-	// the heading names the project already.
+	// A screen over the board names itself there instead.
 	p := testProject()
 	app.project = &p
 	tests := map[screen]string{
-		screenBoard: "nat",
+		screenBoard: "",
 		screenHelp:  "help",
 		screenInfo:  "info",
 		screenForm:  "edit",
@@ -794,9 +794,9 @@ func TestAppSizesTheInfoViewport(t *testing.T) {
 
 	// The info screen is the body box's interior: the window less the box's
 	// border and padding, and less the boxed header — no plan is loaded, so it
-	// holds the heading alone — and the hints row.
+	// holds the heading alone — the hints row and the status band's own box.
 	wantW := 80 - 2*framePadX
-	wantH := 24 - (headerHeight + 2) - hintsHeight - 2
+	wantH := 24 - (headerHeight + 2) - hintsHeight - statusBoxHeight - 2
 	if got := app.info.vp.Width(); got != wantW {
 		t.Errorf("viewport width = %d, want %d", got, wantW)
 	}

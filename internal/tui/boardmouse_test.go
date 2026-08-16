@@ -417,6 +417,9 @@ func TestCursorToVisibleEdges(t *testing.T) {
 // of those points at no row at all.
 func TestBoardClickUnderAShortPlan(t *testing.T) {
 	app, _, _ := viewerApp(t)
+	// Taller than the window the viewer opens in, so the band outruns the plan:
+	// with the status band's box on the bottom rows, 24 lines hold it exactly.
+	app.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
 	app.board.SelectRow(1)
 	app.syncBoard()
 	line := boardLines(app)

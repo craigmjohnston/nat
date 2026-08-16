@@ -30,7 +30,6 @@ func TestStylesDrawFromTheTokens(t *testing.T) {
 	}{
 		{"Title foreground", s.Title.GetForeground(), tok.Accent},
 		{"Faint foreground", s.Faint.GetForeground(), tok.Muted},
-		{"StatusNote background", s.StatusNote.GetBackground(), tok.Surface},
 		{"StatusKey foreground", s.StatusKey.GetForeground(), tok.Accent},
 		{"StatusNote foreground", s.StatusNote.GetForeground(), tok.Success},
 		{"Error background", s.Error.GetBackground(), tok.Danger},
@@ -46,6 +45,22 @@ func TestStylesDrawFromTheTokens(t *testing.T) {
 	for _, c := range checks {
 		if c.got != c.want {
 			t.Errorf("%s = %v, want %v", c.name, c.got, c.want)
+		}
+	}
+}
+
+// The status band is a bordered section like the header and the body, so the
+// text on it fills nothing: a background here would read as a bar sitting
+// inside nat's frame rather than as part of it.
+func TestStatusTextFillsNoBackground(t *testing.T) {
+	s := NewStyles(true)
+	unset := lipgloss.NewStyle().GetBackground()
+	for name, style := range map[string]lipgloss.Style{
+		"StatusKey": s.StatusKey, "StatusDesc": s.StatusDesc, "StatusNote": s.StatusNote,
+		"ToastSuccess": s.ToastSuccess, "ToastWarning": s.ToastWarning, "ToastError": s.ToastError,
+	} {
+		if got := style.GetBackground(); got != unset {
+			t.Errorf("%s background = %v, want none", name, got)
 		}
 	}
 }

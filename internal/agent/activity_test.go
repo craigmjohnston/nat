@@ -37,7 +37,7 @@ func TestActivityReadsTheRunningLine(t *testing.T) {
 		{"an idle composer", "❯ ", ActivityWaiting},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			agentPane := pane{slice: "slice", id: "%1", session: "nat-1", window: "@1", index: "0", width: 80}
+			agentPane := pane{slice: "slice", id: "%1", session: "nat-1", window: "@1"}
 			r := &fakeRunner{
 				outs:     map[string]string{"list-panes": panesOutput(agentPane)},
 				captures: map[string]string{"%1": tc.line},
@@ -54,9 +54,9 @@ func TestActivityReadsTheRunningLine(t *testing.T) {
 }
 
 func TestActivityClassifiesEachAgentPane(t *testing.T) {
-	working := pane{slice: "slice-working", id: "%1", session: "nat-1", window: "@1", index: "0", width: 80}
-	waiting := pane{slice: "slice-waiting", id: "%2", session: "nat-2", window: "@2", index: "0", width: 80}
-	dead := pane{slice: "slice-dead", id: "%3", session: "nat-3", window: "@3", index: "0", width: 80, dead: true}
+	working := pane{slice: "slice-working", id: "%1", session: "nat-1", window: "@1"}
+	waiting := pane{slice: "slice-waiting", id: "%2", session: "nat-2", window: "@2"}
+	dead := pane{slice: "slice-dead", id: "%3", session: "nat-3", window: "@3", dead: true}
 
 	r := &fakeRunner{
 		outs: map[string]string{"list-panes": panesOutput(boardPane, working, waiting, dead)},
@@ -90,7 +90,7 @@ func TestActivityClassifiesEachAgentPane(t *testing.T) {
 // The running line is read off the visible screen, joined across a wrap: -J is
 // what makes a narrow pane's status line one line again.
 func TestActivityCaptureArguments(t *testing.T) {
-	agentPane := pane{slice: "slice", id: "%1", session: "nat-1", window: "@1", index: "0", width: 80}
+	agentPane := pane{slice: "slice", id: "%1", session: "nat-1", window: "@1"}
 	r := &fakeRunner{
 		outs:     map[string]string{"list-panes": panesOutput(agentPane)},
 		captures: map[string]string{"%1": busyScreen},
@@ -122,8 +122,8 @@ func TestActivityCaptureArguments(t *testing.T) {
 // A slice with two panes tagged for it is answered for once, by the same pane
 // LiveSlices names — the first one found.
 func TestActivityAnswersOncePerSlice(t *testing.T) {
-	first := pane{slice: "slice", id: "%1", session: "nat-1", window: "@1", index: "0", width: 80}
-	second := pane{slice: "slice", id: "%2", session: "nat-2", window: "@2", index: "0", width: 80}
+	first := pane{slice: "slice", id: "%1", session: "nat-1", window: "@1"}
+	second := pane{slice: "slice", id: "%2", session: "nat-2", window: "@2"}
 	r := &fakeRunner{
 		outs:     map[string]string{"list-panes": panesOutput(first, second)},
 		captures: map[string]string{"%1": busyScreen, "%2": promptScreen},
@@ -144,7 +144,7 @@ func TestActivityAnswersOncePerSlice(t *testing.T) {
 // A pane that has gone between the scan and the capture reads as gone, not as
 // an agent sitting there with nothing to say.
 func TestActivityPaneVanishesMidRead(t *testing.T) {
-	agentPane := pane{slice: "slice", id: "%1", session: "nat-1", window: "@1", index: "0", width: 80}
+	agentPane := pane{slice: "slice", id: "%1", session: "nat-1", window: "@1"}
 	r := &fakeRunner{
 		outs: map[string]string{"list-panes": panesOutput(agentPane)},
 		errs: map[string]error{"capture-pane": &ExitError{Code: 1, Stderr: "can't find pane: %1"}},
@@ -162,7 +162,7 @@ func TestActivityPaneVanishesMidRead(t *testing.T) {
 // A capture that failed for any other reason — no tmux binary at all — leaves
 // the state unread rather than declaring a running agent gone.
 func TestActivityCaptureFailsOutright(t *testing.T) {
-	agentPane := pane{slice: "slice", id: "%1", session: "nat-1", window: "@1", index: "0", width: 80}
+	agentPane := pane{slice: "slice", id: "%1", session: "nat-1", window: "@1"}
 	r := &fakeRunner{
 		outs: map[string]string{"list-panes": panesOutput(agentPane)},
 		errs: map[string]error{"capture-pane": errors.New("exec: \"tmux\": executable file not found in $PATH")},

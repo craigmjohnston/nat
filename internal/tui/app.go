@@ -349,17 +349,11 @@ func (a *App) Init() tea.Cmd {
 // Update handles the global keys and the app's own messages, and routes
 // everything else to the screen on show.
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// The one message that falls out of the switch to the screen behind it also
-	// has something to do on the way, so its command is carried down there.
-	var bar tea.Cmd
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		// Recorded, then handed on: every band of the layout is sized from it.
 		a.width, a.height = msg.Width, msg.Height
 		a.resize()
-		// The panes under the tmux bar have changed width, and its sections are
-		// drawn to the width they were.
-		bar = a.refreshStatusBar()
 	case tea.KeyPressMsg:
 		return a.keyPressed(msg)
 	case tea.MouseMsg:
@@ -491,12 +485,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if a.onboarding != nil {
 		o, cmd := a.onboarding.Update(msg)
 		a.onboarding = o
-		return a, tea.Batch(bar, cmd)
+		return a, cmd
 	}
 	if a.form != nil {
-		return a, tea.Batch(bar, a.formUpdate(msg))
+		return a, a.formUpdate(msg)
 	}
-	return a, bar
+	return a, nil
 }
 
 // keyPressed handles a key press. ctrl+c quits — the wizard's forms
@@ -977,22 +971,17 @@ func (a *App) mouseMode() tea.MouseMode {
 	return tea.MouseModeAllMotion
 }
 
-// windowTitle is what the app calls its terminal window: the line the in-TUI
-// status bar used to draw — the mode chip, and beside it the error waiting to
-// be dismissed, a transient note or an open form's prompt.
+// windowTitle is what the app calls its terminal window: the same line the
+// status band draws — the mode, and beside it the error waiting to be
+// dismissed, a transient note or an open form's prompt — so a nat in a
+// background tab says what it is waiting on without being looked at.
 //
-// The title is how those messages reach the screen now: inside tmux the title
-// (OSC 2) is the pane's own, and the board's section of the status bar renders
-// `#{pane_title}`, so tmux redraws the bar itself as the content changes and
-// nat sends no tmux command per keystroke. The renderer writes the sequence
-// only when the string changes, so an idle app writes nothing at all.
-//
-// The styling goes: a title is text, and tmux does not re-expand what it
-// substitutes, so the chip's fill and the error's red are stripped here rather
-// than reaching the bar as escape codes to be shown literally.
+// The styling goes: a title is text, and a terminal shows the escape codes
+// rather than obeying them, so the chip's fill and the error's red are stripped
+// here. The band on screen keeps them.
 func (a *App) windowTitle() string {
-	// The room is the whole window: the section drawing this is the pane's own
-	// width, not the width inside the app's frame.
+	// The room is the whole window rather than the width inside the app's
+	// frame: a title bar is not indented by nat's own border.
 	return strings.TrimSpace(xansi.Strip(a.statusLeft(a.width)))
 }
 
@@ -1013,8 +1002,9 @@ func (a *App) progressBar() *tea.ProgressBar {
 
 // The layout's fixed measurements: the columns each band is held away from the
 // window's edges by, the height of the heading bar and of the progress bar
-// under it, the least lines the body's box is worth drawing in, and the least
-// and most lines the key hints on the bottom row wrap onto.
+// under it, the least lines the body's box is worth drawing in, the least and
+// most lines the key hints above the status band wrap onto, and the height of
+// the status band itself — one line bare, or three inside its box.
 const (
 	framePadX = 2
 	// headerHeight is the heading bar's own line, and headerBarHeight the
@@ -1027,17 +1017,17 @@ const (
 	bodyBoxMin      = 3
 	hintsHeight     = 1
 	hintsMaxHeight  = 3
+	statusHeight    = 1
+	statusBoxHeight = statusHeight + 2
 )
 
 // content is the rendered screen, without the terminal-level settings: the
 // heading and the progress bar boxed in a section of their own, the body of the
-// screen on show boxed under it, and the key hints on the bottom row. The bands
-// are cut and padded to fill the window exactly, so nothing a screen draws can
-// push the hints off the bottom.
-//
-// There is no status bar of the app's own: what it carried goes out as the
-// terminal title — see [App.windowTitle] — and is drawn by the tmux bar under
-// the pane, so the screen ends at its own border.
+// screen on show boxed under it, the key hints on a row of their own, and the
+// status band boxed across the window's bottom rows. The bands are cut and
+// padded to fill the window exactly, so nothing a screen draws can push the
+// band off the bottom — the window ends at nat's own border, with no row left
+// under it for anything else to draw on.
 func (a *App) content() string {
 	if a.onboarding != nil {
 		return a.onboarding.View()
@@ -1045,28 +1035,31 @@ func (a *App) content() string {
 	if a.width <= 0 || a.height <= 0 {
 		// Before the first resize there is no window to lay out to, so the bands
 		// are simply drawn one after another at whatever size they come out.
-		return a.headerView() + "\n" + a.body() + "\n" + a.hintsView()
+		return a.headerView() + "\n" + a.body() + "\n" + a.hintsView() + "\n" + a.statusBar()
 	}
 	if a.framed() {
 		lines := a.headerRegion()
 		lines = append(lines, a.bodyRegion()...)
-		return strings.Join(append(lines, a.band(a.hintsView(), a.hintBandHeight())...), "\n")
+		lines = append(lines, a.band(a.hintsView(), a.hintBandHeight())...)
+		return strings.Join(append(lines, a.statusRegion()...), "\n")
 	}
 	var lines []string
 	if a.headerBandHeight() > 0 {
 		lines = append(lines, a.headerView())
 	}
 	lines = append(lines, a.band(a.body(), a.bodyHeight())...)
-	return strings.Join(append(lines, a.band(a.hintsView(), a.hintBandHeight())...), "\n")
+	lines = append(lines, a.band(a.hintsView(), a.hintBandHeight())...)
+	return strings.Join(append(lines, a.statusBar()), "\n")
 }
 
 // framed reports whether the window is big enough for the bordered layout: a
 // border costs two lines and two columns per region, and the layout boxes the
-// header as well as the body, so there has to be room for the header's own box,
-// a body box with a line in it, and the hints row under them. Below that the
-// bands are drawn bare rather than boxed, so the content is never all frame.
+// header and the status band as well as the body, so there has to be room for
+// the header's own box, a body box with a line in it, the hints row and the
+// status band's box under them. Below that the bands are drawn bare rather than
+// boxed, so the content is never all frame.
 func (a *App) framed() bool {
-	return a.height >= headerBoxMin+bodyBoxMin+hintsHeight &&
+	return a.height >= headerBoxMin+bodyBoxMin+hintsHeight+statusBoxHeight &&
 		a.width >= 2*framePadX+1
 }
 
@@ -1088,18 +1081,28 @@ func (a *App) band(s string, height int) []string {
 	return out[:height]
 }
 
-// headerBandHeight and the body heights are how the window's lines are shared
-// out. The header takes its own height first, because a window too short for
-// everything is still worth telling the user where they are and what the keys
-// do: its own box when the window is framed, one bare line when it is not. The
-// box gives up the progress bar before the body gives up its rows, so a short
-// window keeps the plan on show and loses the bar, then nothing more — the
-// heading, which carries the tally, always stays.
+// statusBandHeight, headerBandHeight and the body heights are how the window's
+// lines are shared out. The status band takes the bottom rows first — its own
+// box when the window is framed, one bare line when it is not — and the header
+// what is left of its own height, because a window too short for everything is
+// still worth telling the user where they are and what the keys do.
+func (a *App) statusBandHeight() int {
+	if a.framed() {
+		return statusBoxHeight
+	}
+	return statusHeight
+}
+
+// headerBandHeight is the lines the header takes: its own box when the window
+// is framed, one bare line when it is not. The box gives up the progress bar
+// before the body gives up its rows, so a short window keeps the plan on show
+// and loses the bar, then nothing more — the heading, which carries the tally,
+// always stays.
 func (a *App) headerBandHeight() int {
 	if !a.framed() {
-		return min(headerHeight, max(a.height, 0))
+		return min(headerHeight, max(a.height-a.statusBandHeight(), 0))
 	}
-	spare := max(a.height-hintsHeight-bodyBoxMin, headerBoxMin)
+	spare := max(a.height-a.statusBandHeight()-hintsHeight-bodyBoxMin, headerBoxMin)
 	return min(a.headerContentHeight()+2, spare)
 }
 
@@ -1114,8 +1117,9 @@ func (a *App) headerContentHeight() int {
 
 // hintAllowance is the most lines the hints may wrap onto before they start
 // dropping by rank: their own line whenever the window has one to give after
-// the header has taken its — a short window loses the body before it loses the
-// hints — and beyond that only lines the body can spare, never more than
+// the status band and the header have taken theirs — a short window loses the
+// body before it loses the hints — and beyond that only lines the body can
+// spare, never more than
 // hintsMaxHeight. A tall window is not a reason to stack hints the width could
 // have held on one line; the width decides that, and this only says how far the
 // stack may grow.
@@ -1125,7 +1129,7 @@ func (a *App) hintAllowance() int {
 		// after another at whatever size they come out.
 		return hintsHeight
 	}
-	room := max(a.height-a.headerBandHeight(), 0)
+	room := max(a.height-a.statusBandHeight()-a.headerBandHeight(), 0)
 	if room <= hintsHeight {
 		return room
 	}
@@ -1139,7 +1143,7 @@ func (a *App) hintBandHeight() int { return len(a.hintLines()) }
 // bodyBoxHeight is the lines the body region occupies, border included;
 // bodyHeight is the lines a screen can actually draw on inside it.
 func (a *App) bodyBoxHeight() int {
-	return max(a.height-a.headerBandHeight()-a.hintBandHeight(), 0)
+	return max(a.height-a.statusBandHeight()-a.headerBandHeight()-a.hintBandHeight(), 0)
 }
 
 func (a *App) bodyHeight() int {
@@ -1546,14 +1550,43 @@ func (a *App) helpLines(bindings []key.Binding) []string {
 	return lines
 }
 
+// statusRegion is the status band inside its border, docked to the window's
+// bottom rows: the same box the header and the body are drawn in, so the band
+// reads as the last of the layout's sections rather than a bar of its own —
+// hence a border in the frame's colour and no fill under the line.
+func (a *App) statusRegion() []string {
+	return a.boxRegion(a.statusLeft(a.innerWidth()), a.statusBandHeight())
+}
+
+// statusBar is the bare line at the window's full width: what a window too
+// small for the box gets, and the unmeasured fallback. It is one line however
+// narrow the window gets — a band that wrapped would take a line the bands
+// above it have already spent.
+func (a *App) statusBar() string {
+	if a.width <= 0 {
+		// No window to spread across, so the line simply sits at its own size.
+		return a.statusLeft(0)
+	}
+	// The indent is the first thing a window too narrow for the line loses, so
+	// it is cut to the window rather than to the room inside it.
+	line := strings.Repeat(" ", framePadX) + a.statusLeft(a.innerWidth())
+	return lipgloss.NewStyle().Width(a.width).Render(fit(line, a.width))
+}
+
 // statusLeft is the status line's content: the mode chip, beside it the error
 // waiting to be dismissed, a transient note, or an open form's prompt, and last
 // the standing indicators — how fresh the board is, and the wishlist count when
-// the project has items pending. It is drawn by the tmux bar under the pane
-// rather than by the app — see [App.windowTitle] — and so is cut to one line at
-// the width the pane has.
+// the project has items pending. It is one line, cut to the width the band has
+// for it.
+//
+// The board has no chip at all: naming the app there is what the heading
+// already does, and a chip saying so on every screen would say nothing. Only a
+// screen over the board — help, info, a form — leads with one.
 func (a *App) statusLeft(width int) string {
-	chip := a.styles.ModeChip.Render(a.chipText())
+	var chip string
+	if text := a.chipText(); text != "" {
+		chip = a.styles.ModeChip.Render(text)
+	}
 	room := 0
 	if width > 0 {
 		// A window with no room beside the chip gets the chip alone, cut to fit.
@@ -1567,7 +1600,10 @@ func (a *App) statusLeft(width int) string {
 	// the wishlist count only says something on some.
 	content := chip
 	if message := a.statusMessage(room); message != "" {
-		content += " " + message
+		if content != "" {
+			content += " "
+		}
+		content += message
 	}
 	content, joined := a.withIndicator(content, a.freshnessIndicator(), width, false)
 	content, _ = a.withIndicator(content, a.wishlistIndicator(), width, joined)
@@ -1582,13 +1618,20 @@ func (a *App) statusLeft(width int) string {
 // joined says whether an indicator is already on the line, in which case the
 // two are separated by the hints' dot rather than a space: side by side, two
 // readings a space apart read as one sentence.
+//
+// A line with nothing on it yet — the board with no chip, no error and no note
+// — takes the indicator at its start rather than a column in, so the band's
+// content lines up with the header's above it.
 func (a *App) withIndicator(content, indicator string, width int, joined bool) (string, bool) {
 	if indicator == "" {
 		return content, joined
 	}
 	sep := " "
-	if joined {
+	switch {
+	case joined:
 		sep = a.styles.HintSep.Render(" · ")
+	case content == "":
+		sep = ""
 	}
 	if width > 0 && lipgloss.Width(content)+lipgloss.Width(sep)+lipgloss.Width(indicator) > width {
 		return content, joined
@@ -1596,11 +1639,11 @@ func (a *App) withIndicator(content, indicator string, width int, joined bool) (
 	return content + sep + indicator, true
 }
 
-// chipText is what the status line's chip says: the screen's name, or the app's
-// own on the board — the heading already names the project — cut to a third of
-// the line so the message beside the chip keeps most of the room.
+// chipText is what the status line's chip says: the name of the screen over the
+// board, cut to a third of the line so the message beside the chip keeps most
+// of the room. The board itself has no chip — see [App.statusLeft].
 func (a *App) chipText() string {
-	text := appName
+	var text string
 	switch a.screen {
 	case screenHelp:
 		text = "help"
@@ -1608,6 +1651,8 @@ func (a *App) chipText() string {
 		text = "info"
 	case screenForm:
 		text = "edit"
+	default:
+		return ""
 	}
 	if w := a.innerWidth(); w > 0 {
 		text = fit(text, w/3)

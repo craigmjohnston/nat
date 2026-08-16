@@ -118,10 +118,10 @@ func command(tokens config.TokenSource) error {
 }
 
 // host puts the TUI inside tmux, by replacing this process with a tmux session
-// running the same binary. The board's own status line is drawn by the tmux bar
-// under its pane, and the agents it launches are tmux sessions — so rather than
-// ask the user to remember to start us under tmux, we do it for them. Viewing
-// an agent no longer needs it: the terminal beside the board is nat's own.
+// running the same binary. The agents the board launches are tmux sessions — so
+// rather than ask the user to remember to start us under tmux, we do it for
+// them. Nothing else needs it: the board draws its own status line inside its
+// frame and turns tmux's bar off, and the terminal beside it is nat's own.
 //
 // It returns only when the app should carry on in this process: already inside
 // tmux (running in place, because nesting a server inside a pane is not what
