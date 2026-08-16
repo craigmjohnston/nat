@@ -36,11 +36,17 @@ type Migration struct {
 	// MilestonesTrashed reports the old Milestones database moved to Notion's
 	// trash, its milestones now living entirely on the Milestone column.
 	MilestonesTrashed bool
+	// DependsOnAdded reports the Depends on column added to a project made
+	// before a slice could declare what it waits on. CreateProject writes that
+	// column, but only for the projects it creates, so an older project reaches
+	// this with nothing to record a dependency on.
+	DependsOnAdded bool
 }
 
 // Empty reports whether nothing was migrated.
 func (m Migration) Empty() bool {
-	return len(m.Milestones) == 0 && m.Slices == 0 && !m.StatusRenamed && !m.MilestonesTrashed
+	return len(m.Milestones) == 0 && m.Slices == 0 && !m.StatusRenamed &&
+		!m.MilestonesTrashed && !m.DependsOnAdded
 }
 
 // Summary says what changed, in one line, for a status bar or a log.
@@ -58,6 +64,9 @@ func (m Migration) Summary() string {
 	}
 	if m.MilestonesTrashed {
 		parts = append(parts, "the old Milestones database moved to Notion's trash")
+	}
+	if m.DependsOnAdded {
+		parts = append(parts, fmt.Sprintf("a %q column added", PropDependsOn))
 	}
 	if len(parts) == 0 {
 		return "nothing to migrate"
@@ -91,6 +100,12 @@ func pluralise(word string, n int) string {
 //     renaming an option in place, so it is done the long way: In progress is
 //     appended, every slice sitting on Claimed is moved onto it, and Claimed is
 //     dropped once nothing holds it.
+//   - A missing Depends on column is added. CreateProject writes that column,
+//     but only for the projects it creates, so a project older than slice
+//     dependencies has nothing for a dependency to be recorded on and every
+//     slice-depends against it is refused by the API. It goes on last, after
+//     the shape changes above and whether or not there were any, since it is
+//     the one step every project is due rather than only an old-shape one.
 //
 // The Slices database itself — a full-page child of the project page, its first
 // view the table the plan's order is read from — is left exactly as it is.
@@ -113,9 +128,6 @@ func MigrateProject(ctx context.Context, api MigrationAPI, slicesDSID string) (*
 
 	milestone, status := ds.Properties[PropMilestone], ds.Properties[PropStatus]
 	replaceStatus := renamesClaimed(status)
-	if milestone.Relation == nil && !replaceStatus {
-		return ds, Migration{}, nil
-	}
 	if replaceStatus && status.Select == nil {
 		return nil, Migration{}, fmt.Errorf(
 			"the %s column is a %s, whose options this app cannot write: "+
@@ -123,10 +135,16 @@ func MigrateProject(ctx context.Context, api MigrationAPI, slicesDSID string) (*
 			PropStatus, status.Type, SliceClaimed, SliceInProgress)
 	}
 
+	var report Migration
+	if milestone.Relation == nil && !replaceStatus {
+		// Nothing of the old shape is left, but the dependency column may still
+		// be owed: that step is every project's, not an old-shape project's.
+		return addDependsOn(ctx, api, slicesDSID, ds, report)
+	}
+
 	// Read everything before the first write: the schema change discards the
 	// relations the plan is read from, and a refusal here leaves the project
 	// exactly as it was.
-	var report Migration
 	var names []string
 	var byPage map[string]string
 	var milestonesDB string
@@ -194,10 +212,43 @@ func MigrateProject(ctx context.Context, api MigrationAPI, slicesDSID string) (*
 		report.MilestonesTrashed = true
 	}
 
+	if updated, report, err = addDependsOn(ctx, api, slicesDSID, updated, report); err != nil {
+		return nil, Migration{}, err
+	}
+
 	logging.Action("project migrated", "data_source", slicesDSID,
 		"milestones", len(report.Milestones), "slices", report.Slices,
 		"status_renamed", report.StatusRenamed,
-		"milestones_trashed", report.MilestonesTrashed)
+		"milestones_trashed", report.MilestonesTrashed,
+		"depends_on_added", report.DependsOnAdded)
+	return updated, report, nil
+}
+
+// addDependsOn gives a project's Slices data source the Depends on column where
+// it has none, and returns the data source as it now stands with the report
+// that brought it in. A project created before slices could declare what they
+// wait on has no such column — CreateProject writes it, but only for what it
+// creates — and every dependency written against it is refused by the API until
+// this runs.
+//
+// It is the last thing a migration does, so a project refused or failed part way
+// through the shape changes is left exactly as those steps found it, and the one
+// thing an already-migrated project may still be due. A column of that name
+// which is not a relation is left alone: the schema verification is where a
+// column of the wrong type is reported, and converting somebody's column is not
+// this function's decision to make.
+func addDependsOn(ctx context.Context, api MigrationAPI, slicesDSID string, ds *DataSource,
+	report Migration) (*DataSource, Migration, error) {
+	if _, ok := ds.Properties[PropDependsOn]; ok {
+		return ds, report, nil
+	}
+	updated, err := api.UpdateDataSourceProperties(ctx, slicesDSID,
+		map[string]PropertySchema{PropDependsOn: SchemaRelation(slicesDSID)})
+	if err != nil {
+		return nil, Migration{}, fmt.Errorf("add the %q column: %w", PropDependsOn, err)
+	}
+	report.DependsOnAdded = true
+	logging.Action("dependency column added", "data_source", slicesDSID)
 	return updated, report, nil
 }
 

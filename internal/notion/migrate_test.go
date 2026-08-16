@@ -104,13 +104,26 @@ func (s *migrateStub) DeleteBlock(_ context.Context, id string) error {
 	return s.deleteBlockErr
 }
 
+// dependsOnColumn is the Depends on column as a data source read returns it —
+// what a project that has already been given one carries, so a test about
+// anything else is not also a test of the back-fill.
+func dependsOnColumn() PropertySchema {
+	s := SchemaRelation("ds-slices")
+	s.Type = "relation"
+	return s
+}
+
 // oldShape is a Slices data source as this app first made one: milestones in a
-// database of their own, and Claimed for the status an agent holds.
+// database of their own, and Claimed for the status an agent holds. It carries
+// the dependency column, which such a project would not have — the back-fill is
+// covered on its own, so the migrations tested through this one are the shape
+// changes alone.
 func oldShape() *DataSource {
 	return &DataSource{
 		ID: "ds-slices",
 		Properties: map[string]PropertySchema{
-			PropName: {Type: "title"},
+			PropName:      {Type: "title"},
+			PropDependsOn: dependsOnColumn(),
 			PropStatus: {Type: TypeSelect, Select: &OptionsConfig{Options: []SelectOption{
 				{ID: "1", Name: SliceTodo, Color: "gray"},
 				{ID: "2", Name: SliceClaimed, Color: "blue"},
@@ -259,6 +272,7 @@ func TestMigrateProjectIsIdempotent(t *testing.T) {
 	migrated := &DataSource{ID: "ds-slices", Properties: map[string]PropertySchema{
 		PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceTodo, SliceInProgress, SliceDone})}},
 		PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{"M1: Groundwork"})}},
+		PropDependsOn: dependsOnColumn(),
 	}}
 	stub := &migrateStub{dataSource: migrated}
 
@@ -277,6 +291,65 @@ func TestMigrateProjectIsIdempotent(t *testing.T) {
 	}
 }
 
+// A project made before slices could declare what they wait on has no Depends
+// on column, and every dependency written against it is refused by the API
+// until it gains one. Nothing else about such a project is old, so the column
+// is all that is written.
+func TestMigrateProjectAddsTheDependencyColumn(t *testing.T) {
+	stub := &migrateStub{dataSource: &DataSource{ID: "ds-slices", Properties: map[string]PropertySchema{
+		PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceTodo, SliceInProgress, SliceDone})}},
+		PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
+	}}}
+
+	ds, migration, err := MigrateProject(context.Background(), stub, "ds-slices")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []map[string]PropertySchema{{PropDependsOn: SchemaRelation("ds-slices")}}
+	if !reflect.DeepEqual(stub.writes, want) {
+		t.Errorf("schema writes = %+v, want %+v", stub.writes, want)
+	}
+	if !reflect.DeepEqual(migration, Migration{DependsOnAdded: true}) {
+		t.Errorf("migration = %+v, want the column added and nothing else", migration)
+	}
+	if _, ok := ds.Properties[PropDependsOn]; !ok {
+		t.Errorf("data source = %+v, want the column it was just written", ds)
+	}
+	if stub.queried != nil {
+		t.Errorf("queried %v, want nothing: no slice is read to add a column", stub.queried)
+	}
+}
+
+// The column goes on last, after the shape changes, so a project refused or
+// failed part way through them is left as those steps found it.
+func TestMigrateProjectAddsTheDependencyColumnLast(t *testing.T) {
+	stub := oldShapeStub()
+	delete(stub.dataSource.Properties, PropDependsOn)
+	stub.queries = map[string][]Page{
+		"ds-milestones": milestonePages(),
+		"ds-slices":     {relatedSlice("s-1", "m-1")},
+	}
+
+	_, migration, err := MigrateProject(context.Background(), stub, "ds-slices")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wantCalls := []string{
+		"schema ds-slices", "page s-1", "schema ds-slices",
+		"trash db-milestones", "schema ds-slices",
+	}
+	if !reflect.DeepEqual(stub.calls, wantCalls) {
+		t.Errorf("calls =\n%v\nwant\n%v", stub.calls, wantCalls)
+	}
+	if last := stub.writes[len(stub.writes)-1]; !reflect.DeepEqual(last,
+		map[string]PropertySchema{PropDependsOn: SchemaRelation("ds-slices")}) {
+		t.Errorf("last schema write = %+v, want the dependency column", last)
+	}
+	if !migration.DependsOnAdded || !migration.MilestonesTrashed {
+		t.Errorf("migration = %+v, want both the shape changes and the column", migration)
+	}
+}
+
 // A project already on one page whose status still says Claimed has only that
 // to migrate: the option is appended, the slices holding the old name are moved,
 // and the old option is dropped — with nothing else touched.
@@ -287,6 +360,7 @@ func TestMigrateProjectStatusOnly(t *testing.T) {
 				{ID: "2", Name: SliceClaimed},
 			}}},
 			PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
+			PropDependsOn: dependsOnColumn(),
 		}},
 		queries: map[string][]Page{"ds-slices": {
 			claimedSlice("s-1", ""),
@@ -322,6 +396,7 @@ func TestMigrateProjectLeavesBothNamesAlone(t *testing.T) {
 			Options: selectOptions([]string{SliceTodo, SliceClaimed, SliceInProgress}),
 		}},
 		PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
+		PropDependsOn: dependsOnColumn(),
 	}}}
 
 	_, migration, err := MigrateProject(context.Background(), stub, "ds-slices")
@@ -338,6 +413,9 @@ func TestMigrateProjectLeavesBothNamesAlone(t *testing.T) {
 // project is not left half-migrated.
 func TestMigrateProjectRefusesAStatusColumn(t *testing.T) {
 	stub := oldShapeStub()
+	// Without the dependency column too, so that nothing at all being written
+	// is something to assert rather than something there was none of.
+	delete(stub.dataSource.Properties, PropDependsOn)
 	stub.dataSource.Properties[PropStatus] = PropertySchema{Type: TypeStatus, Status: &OptionsConfig{
 		Options: selectOptions([]string{SliceTodo, SliceClaimed}),
 	}}
@@ -361,6 +439,7 @@ func TestMigrateProjectRefusesAStatusColumn(t *testing.T) {
 // half-migrated.
 func TestMigrateProjectRefusesWithoutMilestonesDatabase(t *testing.T) {
 	stub := oldShapeStub()
+	delete(stub.dataSource.Properties, PropDependsOn)
 	stub.dataSourceDS["ds-milestones"] = &DataSource{ID: "ds-milestones"}
 	stub.queries = map[string][]Page{"ds-milestones": milestonePages()}
 
@@ -480,6 +559,7 @@ func TestMigrateProjectErrors(t *testing.T) {
 					dataSource: &DataSource{ID: "ds-slices", Properties: map[string]PropertySchema{
 						PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: []SelectOption{{ID: "2", Name: SliceClaimed}}}},
 						PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
+						PropDependsOn: dependsOnColumn(),
 					}},
 					queries: map[string][]Page{"ds-slices": {claimedSlice("s-1", "")}},
 					pageErr: boom,
@@ -495,6 +575,28 @@ func TestMigrateProjectErrors(t *testing.T) {
 				return stub
 			},
 			`retire the "Claimed" option`,
+		},
+		{
+			"the dependency column cannot be added",
+			func() *migrateStub {
+				stub := &migrateStub{dataSource: &DataSource{ID: "ds-slices", Properties: map[string]PropertySchema{
+					PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceTodo})}},
+					PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
+				}}}
+				stub.schemaErrOn, stub.schemaErr = 1, boom
+				return stub
+			},
+			`add the "Depends on" column`,
+		},
+		{
+			"the dependency column cannot be added after the shape changes",
+			func() *migrateStub {
+				stub := planned()
+				delete(stub.dataSource.Properties, PropDependsOn)
+				stub.schemaErrOn, stub.schemaErr = 3, boom
+				return stub
+			},
+			`add the "Depends on" column`,
 		},
 		{
 			"the Milestones database cannot be trashed",
@@ -528,14 +630,20 @@ func TestMigrationSummary(t *testing.T) {
 		{"nothing", Migration{}, "nothing to migrate"},
 		{
 			"one of each",
-			Migration{Milestones: []string{"M1"}, Slices: 1, StatusRenamed: true, MilestonesTrashed: true},
+			Migration{Milestones: []string{"M1"}, Slices: 1, StatusRenamed: true, MilestonesTrashed: true, DependsOnAdded: true},
 			`Migrated this project: 1 milestone moved onto the slices, 1 slice refiled, ` +
-				`"Claimed" renamed to "In progress", the old Milestones database moved to Notion's trash.`,
+				`"Claimed" renamed to "In progress", the old Milestones database moved to Notion's trash, ` +
+				`a "Depends on" column added.`,
 		},
 		{
 			"several",
 			Migration{Milestones: []string{"M1", "M2"}, Slices: 7},
 			"Migrated this project: 2 milestones moved onto the slices, 7 slices refiled.",
+		},
+		{
+			"the column alone",
+			Migration{DependsOnAdded: true},
+			`Migrated this project: a "Depends on" column added.`,
 		},
 	}
 	for _, tt := range tests {

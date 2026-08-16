@@ -148,8 +148,18 @@ func selectMilestoneSlicesDS(milestones ...string) notion.DataSource {
 		Properties: map[string]notion.PropertySchema{
 			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceInProgress, notion.SliceDone),
 			notion.PropMilestone: notion.SchemaSelect(milestones...),
+			notion.PropDependsOn: dependsOnColumn("slices-ds"),
 		},
 	}
+}
+
+// dependsOnColumn is the Depends on column as a read returns it. Every current
+// project has one, and a fixture without it is a project the load-time
+// back-fill writes to before anything else the test is about.
+func dependsOnColumn(dsID string) notion.PropertySchema {
+	schema := notion.SchemaRelation(dsID)
+	schema.Type = "relation"
+	return schema
 }
 
 // A project with nothing in it yet still prints its headings, so the output
