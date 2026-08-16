@@ -636,7 +636,8 @@ func TestPlanApplyWritesTheRequestsNotionExpects(t *testing.T) {
 			"Milestone":{"id":"m","name":"Milestone","type":"select","select":{"options":[
 				{"id":"o1","name":"M1: Client","color":"blue"},{"id":"o2","name":"M2: Board","color":"green"}]}},
 			"Depends on":{"id":"d","name":"Depends on","type":"relation","relation":{
-				"data_source_id":"slices-ds","type":"single_property","single_property":{}}}}}`,
+				"data_source_id":"slices-ds","type":"single_property","single_property":{}}},
+			"Branch":{"id":"b","name":"Branch","type":"rich_text","rich_text":{}}}}`,
 		`{"id":"slices-ds","properties":{"Milestone":{"type":"select","select":{"options":[
 			{"id":"o1","name":"M1: Client"},{"id":"o2","name":"M2: Board"},{"id":"o3","name":"M3: Agents"}]}}}}`,
 		`{"id":"new-1","url":"https://notion.so/new-1"}`,

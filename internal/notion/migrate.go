@@ -41,12 +41,17 @@ type Migration struct {
 	// column, but only for the projects it creates, so an older project reaches
 	// this with nothing to record a dependency on.
 	DependsOnAdded bool
+	// BranchAdded reports the Branch column added to a project made before an
+	// agent handed its work back on one, for the same reason as DependsOnAdded:
+	// without the column there is nothing for complete-slice to record a branch
+	// on.
+	BranchAdded bool
 }
 
 // Empty reports whether nothing was migrated.
 func (m Migration) Empty() bool {
 	return len(m.Milestones) == 0 && m.Slices == 0 && !m.StatusRenamed &&
-		!m.MilestonesTrashed && !m.DependsOnAdded
+		!m.MilestonesTrashed && !m.DependsOnAdded && !m.BranchAdded
 }
 
 // Summary says what changed, in one line, for a status bar or a log.
@@ -67,6 +72,9 @@ func (m Migration) Summary() string {
 	}
 	if m.DependsOnAdded {
 		parts = append(parts, fmt.Sprintf("a %q column added", PropDependsOn))
+	}
+	if m.BranchAdded {
+		parts = append(parts, fmt.Sprintf("a %q column added", PropBranch))
 	}
 	if len(parts) == 0 {
 		return "nothing to migrate"
@@ -100,12 +108,13 @@ func pluralise(word string, n int) string {
 //     renaming an option in place, so it is done the long way: In progress is
 //     appended, every slice sitting on Claimed is moved onto it, and Claimed is
 //     dropped once nothing holds it.
-//   - A missing Depends on column is added. CreateProject writes that column,
+//   - A missing Depends on or Branch column is added. CreateProject writes both,
 //     but only for the projects it creates, so a project older than slice
-//     dependencies has nothing for a dependency to be recorded on and every
-//     slice-depends against it is refused by the API. It goes on last, after
-//     the shape changes above and whether or not there were any, since it is
-//     the one step every project is due rather than only an old-shape one.
+//     dependencies, or than handing work back on a branch, has nothing for one
+//     to be recorded on and every write against it is refused by the API. They
+//     go on last, in one write, after the shape changes above and whether or not
+//     there were any, since this is the one step every project is due rather
+//     than only an old-shape one.
 //
 // The Slices database itself — a full-page child of the project page, its first
 // view the table the plan's order is read from — is left exactly as it is.
@@ -137,9 +146,9 @@ func MigrateProject(ctx context.Context, api MigrationAPI, slicesDSID string) (*
 
 	var report Migration
 	if milestone.Relation == nil && !replaceStatus {
-		// Nothing of the old shape is left, but the dependency column may still
-		// be owed: that step is every project's, not an old-shape project's.
-		return addDependsOn(ctx, api, slicesDSID, ds, report)
+		// Nothing of the old shape is left, but the optional columns may still be
+		// owed: that step is every project's, not an old-shape project's.
+		return addColumns(ctx, api, slicesDSID, ds, report)
 	}
 
 	// Read everything before the first write: the schema change discards the
@@ -212,7 +221,7 @@ func MigrateProject(ctx context.Context, api MigrationAPI, slicesDSID string) (*
 		report.MilestonesTrashed = true
 	}
 
-	if updated, report, err = addDependsOn(ctx, api, slicesDSID, updated, report); err != nil {
+	if updated, report, err = addColumns(ctx, api, slicesDSID, updated, report); err != nil {
 		return nil, Migration{}, err
 	}
 
@@ -220,36 +229,56 @@ func MigrateProject(ctx context.Context, api MigrationAPI, slicesDSID string) (*
 		"milestones", len(report.Milestones), "slices", report.Slices,
 		"status_renamed", report.StatusRenamed,
 		"milestones_trashed", report.MilestonesTrashed,
-		"depends_on_added", report.DependsOnAdded)
+		"depends_on_added", report.DependsOnAdded, "branch_added", report.BranchAdded)
 	return updated, report, nil
 }
 
-// addDependsOn gives a project's Slices data source the Depends on column where
-// it has none, and returns the data source as it now stands with the report
-// that brought it in. A project created before slices could declare what they
-// wait on has no such column — CreateProject writes it, but only for what it
-// creates — and every dependency written against it is refused by the API until
-// this runs.
+// addColumns gives a project's Slices data source the columns every project is
+// due but only the projects CreateProject made were born with — Depends on, and
+// Branch — and returns the data source as it now stands with the report that
+// brought them in. A project created before slices could declare what they wait
+// on, or before an agent handed its work back on a branch, has no such column,
+// and every write against it is refused by the API until this runs.
 //
-// It is the last thing a migration does, so a project refused or failed part way
-// through the shape changes is left exactly as those steps found it, and the one
-// thing an already-migrated project may still be due. A column of that name
-// which is not a relation is left alone: the schema verification is where a
-// column of the wrong type is reported, and converting somebody's column is not
-// this function's decision to make.
-func addDependsOn(ctx context.Context, api MigrationAPI, slicesDSID string, ds *DataSource,
+// Both go on in one write, and it is the last thing a migration does, so a
+// project refused or failed part way through the shape changes is left exactly
+// as those steps found it, and this is the one thing an already-migrated project
+// may still be due. A column of the right name and the wrong type is left alone:
+// the schema verification is where that is reported, and converting somebody's
+// column is not this function's decision to make.
+func addColumns(ctx context.Context, api MigrationAPI, slicesDSID string, ds *DataSource,
 	report Migration) (*DataSource, Migration, error) {
-	if _, ok := ds.Properties[PropDependsOn]; ok {
+	properties := map[string]PropertySchema{}
+	if _, ok := ds.Properties[PropDependsOn]; !ok {
+		properties[PropDependsOn] = SchemaRelation(slicesDSID)
+	}
+	if _, ok := ds.Properties[PropBranch]; !ok {
+		properties[PropBranch] = SchemaRichText()
+	}
+	if len(properties) == 0 {
 		return ds, report, nil
 	}
-	updated, err := api.UpdateDataSourceProperties(ctx, slicesDSID,
-		map[string]PropertySchema{PropDependsOn: SchemaRelation(slicesDSID)})
+	updated, err := api.UpdateDataSourceProperties(ctx, slicesDSID, properties)
 	if err != nil {
-		return nil, Migration{}, fmt.Errorf("add the %q column: %w", PropDependsOn, err)
+		return nil, Migration{}, fmt.Errorf("add the %s: %w", columnList(properties), err)
 	}
-	report.DependsOnAdded = true
-	logging.Action("dependency column added", "data_source", slicesDSID)
+	_, report.DependsOnAdded = properties[PropDependsOn]
+	_, report.BranchAdded = properties[PropBranch]
+	logging.Action("columns added", "data_source", slicesDSID,
+		"depends_on", report.DependsOnAdded, "branch", report.BranchAdded)
 	return updated, report, nil
+}
+
+// columnList names the columns a failed back-fill was adding, so the error says
+// which write was refused rather than only that one was.
+func columnList(properties map[string]PropertySchema) string {
+	var names []string
+	for _, name := range []string{PropDependsOn, PropBranch} {
+		if _, ok := properties[name]; ok {
+			names = append(names, fmt.Sprintf("%q", name))
+		}
+	}
+	return strings.Join(names, " and ") + " " + pluralise("column", len(names))
 }
 
 // renamesClaimed reports whether a Status column still offers the old name for

@@ -636,3 +636,25 @@ func TestBlockers(t *testing.T) {
 		})
 	}
 }
+
+// A slice is handed back only while it is in progress with a branch on it:
+// finished work waiting for someone to review it.
+func TestSliceHandedBack(t *testing.T) {
+	tests := []struct {
+		name  string
+		slice Slice
+		want  bool
+	}{
+		{"in progress on a branch", Slice{Status: SliceClaimed, Branch: "slice/x"}, true},
+		{"in progress with no branch", Slice{Status: SliceClaimed}, false},
+		{"Todo with a branch", Slice{Status: SliceTodo, Branch: "slice/x"}, false},
+		{"Done with a branch", Slice{Status: SliceDone, Branch: "slice/x"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.slice.HandedBack(); got != tt.want {
+				t.Errorf("HandedBack() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

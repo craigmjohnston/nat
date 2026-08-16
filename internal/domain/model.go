@@ -86,6 +86,15 @@ type Slice struct {
 	DependsOn    []string
 }
 
+// HandedBack reports whether the slice is finished work waiting to be reviewed:
+// still in progress, with the branch an agent pushed it to recorded on it. It is
+// the one state a slice is in that nothing is being done about — the agent has
+// stopped and the review has not started — which is why the board draws it as
+// its own thing rather than as another slice in progress.
+func (s Slice) HandedBack() bool {
+	return s.Status == SliceClaimed && s.Branch != ""
+}
+
 // Project is a tracked project's whole plan, as loaded from Notion.
 type Project struct {
 	ID         string
