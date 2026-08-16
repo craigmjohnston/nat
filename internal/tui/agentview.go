@@ -24,6 +24,7 @@ type termSession interface {
 	Cursor() (x, y int, visible bool)
 	SendKey(uv.KeyPressEvent)
 	SendBytes(p []byte)
+	SendMouse(x, y int, button uv.MouseButton, kind vterm.MouseKind)
 	Paste(text string)
 	Resize(cols, rows int) error
 	Output() <-chan struct{}
@@ -298,6 +299,76 @@ func (a *App) viewerKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
+// viewerMouse is every mouse event while a terminal is on the board. Until the
+// join-pane split was retired the outer tmux delivered clicks straight to the
+// agent's own pane; nat draws the rectangle itself now, so it carries the mouse
+// there too.
+//
+// An event inside the box goes to the agent at the cell it landed on, and a
+// press there also hands the keyboard over, so tab is not the only way to type
+// at an agent. An event anywhere else is not the terminal's and is dropped —
+// bar a press, which is the board asking for the keyboard back.
+//
+// An exited terminal is a frame being read rather than a child to click at, so
+// it takes no mouse at all.
+func (a *App) viewerMouse(msg tea.MouseMsg) tea.Cmd {
+	if !a.viewerVisible() || a.viewer.exited {
+		return nil
+	}
+	kind, ok := mouseKind(msg)
+	if !ok {
+		return nil
+	}
+	m := msg.Mouse()
+	x, y, inside := a.termCell(m.X, m.Y)
+	if !inside {
+		if kind == vterm.MousePress {
+			a.viewer.focused = false
+		}
+		return nil
+	}
+	if kind == vterm.MousePress {
+		a.viewer.focused = true
+	}
+	a.viewer.session.SendMouse(x, y, m.Button, kind)
+	return nil
+}
+
+// mouseKind is the session's name for the kind of event a message is, and
+// whether it is one the terminal takes at all.
+func mouseKind(msg tea.MouseMsg) (vterm.MouseKind, bool) {
+	switch msg.(type) {
+	case tea.MouseClickMsg:
+		return vterm.MousePress, true
+	case tea.MouseReleaseMsg:
+		return vterm.MouseRelease, true
+	case tea.MouseMotionMsg:
+		return vterm.MouseMotion, true
+	case tea.MouseWheelMsg:
+		return vterm.MouseWheel, true
+	default:
+		return 0, false
+	}
+}
+
+// termCell turns a cell of the window into a cell of the terminal's screen, and
+// reports whether the event landed on that screen at all. It is the inverse of
+// what [App.viewerCursor] does with the cursor: the frame starts a column in
+// from the box's left edge, which the split puts at the board's width, and a
+// line down from the title, in a body band that starts under the header.
+func (a *App) termCell(mx, my int) (x, y int, ok bool) {
+	board, term := a.splitWidths()
+	x, y = mx-board-1, my-a.headerBandHeight()-1
+	// The interior of the box as it is drawn, which the emulator is never
+	// smaller than: a window too small for [minTermCols] rows and columns
+	// leaves the child a screen wider than the box showing it.
+	cols, rows := term-2, a.bodyBoxHeight()-2
+	if x < 0 || y < 0 || x >= cols || y >= rows {
+		return 0, 0, false
+	}
+	return x, y, true
+}
+
 // focusViewer hands the keyboard to the terminal. There is nothing to type at
 // when the agent has gone, and nothing to type into when the terminal is not
 // on screen.
@@ -456,20 +527,29 @@ func (a *App) viewerCursor() (x, y int, ok bool) {
 // keyboard is handed over and back, how the terminal is dismissed, and the
 // hatch to the full-screen attach. A focused terminal has every key but one, so
 // that one is all there is to name.
+//
+// Both ways over the line name the mouse beside the key, since a click inside
+// the terminal takes the keyboard and a click on the board hands it back.
 func (a *App) viewerHints() []hint {
 	closeKey := a.board.keys.Attach
 	if a.viewer.sliceID == agent.PlanSentinel {
 		closeKey = a.board.keys.Plan
 	}
 	if a.viewer.focused {
-		return []hint{{a.keys.Unfocus, 1}}
+		return []hint{{orClick(a.keys.Unfocus), 1}}
 	}
 	if a.viewer.exited {
 		return []hint{{shortHint(closeKey, "close the agent"), 1}}
 	}
 	return []hint{
-		{a.board.keys.Focus, 3},
+		{orClick(a.board.keys.Focus), 3},
 		{shortHint(closeKey, "hide the agent"), 2},
 		{a.board.keys.FullAttach, 1},
 	}
+}
+
+// orClick is a hint for something a click does as well as a key: the binding's
+// own words, over a key the click is named in.
+func orClick(b key.Binding) key.Binding {
+	return key.NewBinding(key.WithHelp(b.Help().Key+"/click", b.Help().Desc))
 }

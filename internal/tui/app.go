@@ -342,6 +342,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		bar = a.refreshStatusBar()
 	case tea.KeyPressMsg:
 		return a.keyPressed(msg)
+	case tea.MouseMsg:
+		// The mouse is only ever reported while a terminal is beside the board —
+		// see [App.View] — and only the terminal has anything to do with it.
+		return a, a.viewerMouse(msg)
 	case tea.BackgroundColorMsg:
 		a.setStyles(NewStyles(msg.IsDark()))
 		return a, nil
@@ -904,12 +908,33 @@ func (a *App) View() tea.View {
 	v.AltScreen = true
 	v.WindowTitle = a.windowTitle()
 	v.ProgressBar = a.progressBar()
+	v.MouseMode = a.mouseMode()
 	// The terminal's own cursor is the app's only while the agent has the
 	// keyboard: it is where what the user types is going.
 	if x, y, ok := a.viewerCursor(); ok {
 		v.Cursor = tea.NewCursor(x, y)
 	}
 	return v
+}
+
+// mouseMode is whether the terminal reports the mouse to nat, and how much of
+// it: all motion while an agent's terminal is on the board, so a drag and a
+// wheel over it reach the agent as well as a click, and nothing at all
+// otherwise.
+//
+// It is asked for only while there is a terminal to route it to, because
+// reporting takes the mouse off the terminal emulator itself: with it on, the
+// user's own selection and scrollback need a modifier held. The board has
+// nothing it would do with a click, so it leaves the mouse where it was.
+//
+// Nothing between here and the agent swallows it: tmux hands mouse reporting
+// straight through unless its own `mouse` option is on, which nat sets for the
+// sessions it makes for agents but never for the one it hosts the board in.
+func (a *App) mouseMode() tea.MouseMode {
+	if !a.viewerVisible() {
+		return tea.MouseModeNone
+	}
+	return tea.MouseModeAllMotion
 }
 
 // windowTitle is what the app calls its terminal window: the line the in-TUI

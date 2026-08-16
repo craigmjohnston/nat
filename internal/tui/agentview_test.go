@@ -13,6 +13,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/vterm"
 )
 
 // fakeTerm stands in for a vterm session: it records what was typed at it and
@@ -31,6 +32,7 @@ type fakeTerm struct {
 
 	keys    []string
 	raw     []string
+	mice    []fakeMouse
 	pastes  []string
 	resizes [][2]int
 	closes  int
@@ -42,6 +44,13 @@ type fakeTerm struct {
 
 	output chan struct{}
 	done   chan struct{}
+}
+
+// fakeMouse is one mouse event as the fake was asked to send it.
+type fakeMouse struct {
+	x, y   int
+	button uv.MouseButton
+	kind   vterm.MouseKind
 }
 
 var _ termSession = (*fakeTerm)(nil)
@@ -59,6 +68,10 @@ func (f *fakeTerm) SendKey(k uv.KeyPressEvent) {
 }
 
 func (f *fakeTerm) SendBytes(p []byte) { f.raw = append(f.raw, string(p)) }
+
+func (f *fakeTerm) SendMouse(x, y int, button uv.MouseButton, kind vterm.MouseKind) {
+	f.mice = append(f.mice, fakeMouse{x: x, y: y, button: button, kind: kind})
+}
 
 func (f *fakeTerm) Paste(text string) { f.pastes = append(f.pastes, text) }
 
@@ -628,13 +641,170 @@ func TestPollRunsWithATerminalOnShow(t *testing.T) {
 	}
 }
 
+// termOrigin is the window cell the terminal's own (0, 0) is drawn at: a column
+// in from the box the split puts beside the board, and a line under its title.
+func termOrigin(a *App) (x, y int) {
+	board, _ := a.splitWidths()
+	return board + 1, a.headerBandHeight() + 1
+}
+
+// mouseAt sends one mouse event of the given kind at a window cell.
+func mouseAt(a *App, kind vterm.MouseKind, x, y int) {
+	m := tea.Mouse{X: x, Y: y, Button: tea.MouseLeft}
+	var msg tea.Msg
+	switch kind {
+	case vterm.MousePress:
+		msg = tea.MouseClickMsg(m)
+	case vterm.MouseRelease:
+		msg = tea.MouseReleaseMsg(m)
+	case vterm.MouseMotion:
+		msg = tea.MouseMotionMsg(m)
+	case vterm.MouseWheel:
+		msg = tea.MouseWheelMsg(m)
+	}
+	a.Update(msg)
+}
+
+// A mouse event inside the terminal's box reaches the agent at the cell it
+// landed on, whichever kind it is.
+func TestViewerMouseInsideTheBoxReachesTheAgent(t *testing.T) {
+	app, _, term := viewerApp(t)
+	originX, originY := termOrigin(app)
+	_, termWidth := app.splitWidths()
+
+	for _, kind := range []vterm.MouseKind{
+		vterm.MousePress, vterm.MouseRelease, vterm.MouseMotion, vterm.MouseWheel,
+	} {
+		mouseAt(app, kind, originX, originY)
+	}
+	// The far corner of the box's interior, which is the last cell the child has.
+	lastX, lastY := termWidth-3, app.bodyBoxHeight()-3
+	mouseAt(app, vterm.MouseWheel, originX+lastX, originY+lastY)
+
+	want := []fakeMouse{
+		{x: 0, y: 0, button: tea.MouseLeft, kind: vterm.MousePress},
+		{x: 0, y: 0, button: tea.MouseLeft, kind: vterm.MouseRelease},
+		{x: 0, y: 0, button: tea.MouseLeft, kind: vterm.MouseMotion},
+		{x: 0, y: 0, button: tea.MouseLeft, kind: vterm.MouseWheel},
+		{x: lastX, y: lastY, button: tea.MouseLeft, kind: vterm.MouseWheel},
+	}
+	if !reflect.DeepEqual(term.mice, want) {
+		t.Errorf("mice = %+v, want %+v", term.mice, want)
+	}
+}
+
+// A click inside the box takes the keyboard, so tab is not the only way to type
+// at an agent, and a click on the board hands it straight back.
+func TestViewerClickMovesTheFocus(t *testing.T) {
+	app, _, term := viewerApp(t)
+	originX, originY := termOrigin(app)
+
+	mouseAt(app, vterm.MousePress, originX+3, originY+2)
+	if !app.viewerFocused() {
+		t.Fatal("a click in the terminal should have focused it")
+	}
+
+	mouseAt(app, vterm.MousePress, 0, originY)
+	if app.viewerFocused() {
+		t.Error("a click on the board should have taken the keyboard back")
+	}
+	if want := []fakeMouse{{x: 3, y: 2, button: tea.MouseLeft, kind: vterm.MousePress}}; !reflect.DeepEqual(term.mice, want) {
+		t.Errorf("mice = %+v, want only the click inside the box %+v", term.mice, want)
+	}
+}
+
+// Everything outside the box belongs to whatever else the window is drawing.
+func TestViewerDropsMouseOutsideTheBox(t *testing.T) {
+	app, _, term := viewerApp(t)
+	originX, originY := termOrigin(app)
+	_, termWidth := app.splitWidths()
+
+	for _, at := range [][2]int{
+		{originX - 1, originY},                       // the box's left border
+		{originX, originY - 1},                       // its title line
+		{originX + termWidth - 2, originY},           // its right border
+		{originX, originY + app.bodyBoxHeight() - 2}, // its bottom border
+		{0, 0}, // the header, above the band entirely
+	} {
+		mouseAt(app, vterm.MouseMotion, at[0], at[1])
+	}
+
+	if term.mice != nil {
+		t.Errorf("mice = %+v, want nothing sent from outside the box", term.mice)
+	}
+	if app.viewerFocused() {
+		t.Error("motion outside the box should not have moved the keyboard")
+	}
+}
+
+// oddMouseMsg is a mouse message of no kind the terminal knows, which the
+// library could grow one of.
+type oddMouseMsg struct{ at tea.Mouse }
+
+func (m oddMouseMsg) Mouse() tea.Mouse { return m.at }
+
+func (m oddMouseMsg) String() string { return m.at.String() }
+
+// A kind of mouse event the session has no name for goes nowhere, rather than
+// reaching the agent as some other kind.
+func TestViewerDropsAnUnknownMouseKind(t *testing.T) {
+	app, _, term := viewerApp(t)
+	originX, originY := termOrigin(app)
+
+	app.Update(oddMouseMsg{at: tea.Mouse{X: originX, Y: originY, Button: tea.MouseLeft}})
+
+	if term.mice != nil {
+		t.Errorf("mice = %+v, want nothing sent", term.mice)
+	}
+	if app.viewerFocused() {
+		t.Error("an event of no known kind should not have moved the keyboard")
+	}
+}
+
+// A terminal nobody can see, and one whose agent has gone, take no mouse: the
+// first is behind something else, the second a frame being read.
+func TestViewerTakesNoMouseWhenItIsNotLive(t *testing.T) {
+	app, _, term := viewerApp(t)
+	originX, originY := termOrigin(app)
+
+	app.viewer.exited = true
+	mouseAt(app, vterm.MousePress, originX, originY)
+	app.viewer.exited = false
+
+	app.screen = screenHelp
+	mouseAt(app, vterm.MousePress, originX, originY)
+	app.screen = screenBoard
+
+	app.viewer = nil
+	mouseAt(app, vterm.MousePress, originX, originY)
+
+	if term.mice != nil {
+		t.Errorf("mice = %+v, want nothing sent", term.mice)
+	}
+}
+
+// The mouse is reported only while there is a terminal to route it to, so the
+// user's own selection and scrollback are left alone the rest of the time.
+func TestAppAsksForTheMouseOnlyWithATerminalUp(t *testing.T) {
+	app, _, _ := viewerApp(t)
+
+	if got := app.View().MouseMode; got != tea.MouseModeAllMotion {
+		t.Errorf("mouse mode = %v, want all motion beside a terminal", got)
+	}
+
+	feed(t, app, press(app, "t"))
+	if got := app.View().MouseMode; got != tea.MouseModeNone {
+		t.Errorf("mouse mode = %v, want the mouse handed back with the terminal gone", got)
+	}
+}
+
 // The hints say what the keys do while a terminal is up, and each state says
 // only what applies to it.
 func TestAppViewerHints(t *testing.T) {
 	app, _, _ := viewerApp(t)
 
 	shown := hintText(app)
-	for _, want := range []string{"tab type at the agent", "t hide the agent", "T agent full-screen"} {
+	for _, want := range []string{"tab/click type at the agent", "t hide the agent", "T agent full-screen"} {
 		if !strings.Contains(shown, want) {
 			t.Errorf("hints = %q, want %q", shown, want)
 		}
@@ -644,7 +814,7 @@ func TestAppViewerHints(t *testing.T) {
 	}
 
 	focus(t, app)
-	if got := hintText(app); !strings.Contains(got, `ctrl+\ back to the board`) || strings.Contains(got, "tab") {
+	if got := hintText(app); !strings.Contains(got, `ctrl+\/click back to the board`) || strings.Contains(got, "tab") {
 		t.Errorf("hints = %q, want only the way back", got)
 	}
 
