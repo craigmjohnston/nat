@@ -304,9 +304,9 @@ func workdirFor(s domain.Slice, p config.ProjectConfig) string {
 // until it exits, and it spends nearly all of that time holding a slice it has
 // already claimed.
 //
-// The close is checked before the session is, so a viewer whose agent has
-// already exited closes on the same key that opened it rather than being
-// refused for having nothing running.
+// The close is checked before the session is, so a terminal already on the
+// board hides on the same key that opened it rather than being refused because
+// the live map has meanwhile stopped naming its session.
 //
 // Nothing is marked busy: the terminal is a widget on the board, not something
 // the board is waiting on, and the plan behind it stays live throughout.
@@ -411,8 +411,9 @@ func (a *App) liveLoaded(msg liveSessionsMsg) tea.Cmd {
 		a.live = msg.live
 		// An agent on show that is no longer live has exited, and the client in
 		// the viewer is on its way out behind it: whichever of the two the board
-		// hears about first, the viewer is marked exited exactly once. A failed
-		// read proves no such thing, so it leaves the viewer alone.
+		// hears about first closes the terminal, and the other finds nothing on
+		// show. A failed read proves no such thing, so it leaves the viewer
+		// alone.
 		if a.viewer != nil && a.live[a.viewer.sliceID] == "" {
 			cmds = append(cmds, a.viewerExited(nil))
 		}

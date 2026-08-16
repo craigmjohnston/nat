@@ -150,10 +150,19 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   write. The board beside it is drawn once and kept (`App.boardBox`, dropped by
   `syncBoard`, which everything that changes what the board shows goes through),
   so an agent writing flat out redraws only its own box.
-  An agent that exits leaves its last frame on screen marked
-  `exited`, and the after-viewing refetch — the slice's page, or the whole plan
-  for the planning agent — happens once, whichever of the client's EOF and the
-  live poll notices first. `T` is the hatch to the old full-screen attach. The
+  An agent that exits takes its box with it: the terminal closes
+  (`dropViewer` — the viewer dropped, the session closed, the board resized back
+  to full width), because a frame nothing will write to again is the board's
+  columns held by a dead agent. That happens whichever way the news arrives —
+  the hidden client's EOF, or the live poll finding the session gone — and
+  dropping the viewer is what the second one is recognised by, so the
+  after-viewing refetch (the slice's page, or the whole plan for the planning
+  agent) runs exactly once. The trigger is the end of the client's
+  pseudo-terminal, not the status it exited with: `tmux attach-session` exits
+  zero whether its session ended under it or the user detached. A client that
+  dies with its session still running closes the box too, but says so in a toast
+  naming the session, since reattaching is what the user wants next.
+  `T` is the hatch to the old full-screen attach. The
   mouse is the terminal's too: all-motion reporting is asked for on the view
   only while one is on show — with it off the user's own selection and
   scrollback are left alone, and there is nothing on screen a key does not reach
