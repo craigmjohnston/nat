@@ -382,16 +382,16 @@ func TestAppFocusedTerminalTakesEveryKey(t *testing.T) {
 	}
 }
 
-// The outer tmux's prefix is swallowed: the hidden client is a client of the
-// same server, and a prefix reaching it would drive the board's own window.
-func TestAppFocusedTerminalSwallowsTheTmuxPrefix(t *testing.T) {
+// tmux's prefix goes to the agent's own session like any other key: nat no
+// longer sits in a session of its own for it to drive by mistake.
+func TestAppFocusedTerminalForwardsTheTmuxPrefix(t *testing.T) {
 	app, _, term := viewerApp(t)
 	focus(t, app)
 
 	pressKey(app, tea.Key{Code: 'b', Mod: tea.ModCtrl})
 
-	if len(term.keys) != 0 || len(term.raw) != 0 {
-		t.Errorf("keys = %v, raw = %q, want the prefix swallowed", term.keys, term.raw)
+	if want := []string{"ctrl+b"}; !reflect.DeepEqual(term.keys, want) {
+		t.Errorf("keys = %v, want %v", term.keys, want)
 	}
 	if !app.viewerFocused() {
 		t.Error("the prefix should not have taken the keyboard back")

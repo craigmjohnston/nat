@@ -28,9 +28,10 @@ const TmuxBinary = "tmux"
 // session list can be told apart from whatever else they have running.
 const SessionPrefix = "nat-"
 
-// TUISession is the session the TUI hosts itself in. It is a fixed name, not a
-// per-run one, so a second launch attaches to the window already running rather
-// than standing up a rival next to it.
+// TUISession is the session a pre-upgrade nat hosted itself in. Nat runs in
+// the terminal it was started in now, so nothing makes this session any more —
+// it is only the name [Tmux.ReclaimStrays] recognises the agents such a run
+// left behind by, and goes with it.
 const TUISession = SessionPrefix + "tui"
 
 // sessionIDLen is how much of a slice's page ID goes into its session name.
@@ -389,33 +390,12 @@ func LaunchArgs(session, workdir, promptFile string, m config.AgentModel) []stri
 	return append(args, hyperlinkClickArgs()...)
 }
 
-// HostArgs is the tmux argv that runs binary as the TUI, inside [TUISession].
-//
-// `-A` is what makes a second launch attach to the session already there
-// instead of failing on the duplicate name; the command is only used when the
-// session is being created, so the attaching launch cannot start a second copy
-// of the binary. The command is run directly rather than through a shell, so a
-// path with spaces in it needs no quoting.
-//
-// [TUISession] only ever exists because a launch outside tmux made it — a
-// launch inside tmux never gets here — so hiding its status bar and styling its
-// borders touches no session the user was already in.
-func HostArgs(binary string) []string {
-	args := append([]string{"new-session", "-A", "-s", TUISession, binary}, boardStyleArgs(TUISession)...)
-	args = append(args, inputFeatureArgs()...)
-	return append(args, hyperlinkClickArgs()...)
-}
-
 // statusOffArgs is the command that hides the tmux status bar in an agent's own
 // session, chained onto the new-session that makes it so the bar is never up
 // even for a moment. tmux's stock bar under an agent is noise beside the
 // agent's output, and says nothing the agent's own session does not. It is a
 // per-session option on a named session, so the sessions the user was already
 // running keep their bars.
-//
-// The board's session hides it too — see [boardStyleArgs] — because nat draws a
-// status band of its own inside its frame, and a tmux bar under it would be a
-// second one saying less.
 //
 // The lone ";" is tmux's own command separator, read from argv the way `\;` is
 // from a shell: everything before it belongs to new-session, and the set-option
@@ -424,44 +404,13 @@ func statusOffArgs(session string) []string {
 	return []string{";", "set-option", "-t", session, "status", "off"}
 }
 
-// paneBorderFG is nat's palette as tmux takes it: the surface the TUI's dark
-// theme draws its own borders in, spelled out because tmux has no notion of a
-// theme that follows the terminal.
-const paneBorderFG = "#45475a" // surface1
-
-// boardStyleArgs is the command chain that hides tmux's own status bar in the
-// board's session and takes the highlight off the pane borders.
-//
-// The bar goes because nat draws its own: a band inside its bottom border,
-// saying what the tmux bar used to say. Set off rather than left blank, so the
-// row it occupied goes back to the board — a blanked bar still costs the line.
-//
-// The borders are both set to the same neutral grey because tmux's stock active
-// border is a green edge that reads as an alert, and against nat's own frames
-// it is one line of chrome too many.
-//
-// Per session, like the bar hidden in an agent's own — except the border
-// styles, which tmux keeps per window; targeting the session sets them on the
-// window it currently has, which for the board's session is the window it was
-// made with and never leaves.
-func boardStyleArgs(session string) []string {
-	args := statusOffArgs(session)
-	for _, opt := range [][2]string{
-		{"pane-border-style", "fg=" + paneBorderFG},
-		{"pane-active-border-style", "fg=" + paneBorderFG},
-	} {
-		args = append(args, ";", "set-option", "-t", session, opt[0], opt[1])
-	}
-	return args
-}
-
 // mouseOnArgs is the command chained onto an agent session's creation that
 // turns tmux's own mouse handling on for it. The hyperlink click binding only
 // fires in a session where tmux holds the mouse: with the option off, tmux
 // hands mouse reporting straight through to the agent, and a click on a link
 // reaches Claude Code instead of the binding. Session-scoped like the status
-// bar, so the user's own sessions keep whatever they had; the board's session
-// gets its mouse at join time, where it always has.
+// bar, so the user's own sessions keep whatever they had — including one nat
+// itself was started in, which never becomes nat's to set options on.
 func mouseOnArgs(session string) []string {
 	return []string{";", "set-option", "-t", session, "mouse", "on"}
 }
@@ -498,8 +447,8 @@ func urlOpenerFor(goos string) string {
 
 // hyperlinkClickArgs is the command chain that makes a link in a pane open on
 // click. tmux ends up holding the mouse everywhere an agent's links show — its
-// own mouse option is on in the sessions nat makes and in the board's at join,
-// and Claude Code asks for mouse reporting besides — so no click ever reaches
+// own mouse option is on in the sessions nat makes, and Claude Code asks for
+// mouse reporting besides — so no click ever reaches
 // the outer terminal's own link handling; the OSC 8 hyperlink reaches it fine
 // (that is what the terminal-features entry above arranges), but the gesture
 // to open it never does. So tmux is taught the gesture instead: it knows the
@@ -602,8 +551,9 @@ func scrubEnv(env []string, names ...string) []string {
 // AttachCmd is the command that attaches the terminal to a running session,
 // for the caller to hand to tea.ExecProcess.
 //
-// It usually runs from inside [TUISession], so the pane variables are scrubbed
-// or tmux refuses the nested attach. The caller's TERM is kept: the terminal on
+// The pane variables are scrubbed because nat may itself have been started in a
+// tmux pane, and tmux refuses a nested attach while they are set. The caller's
+// TERM is kept: the terminal on
 // the other end of this one is the user's real one, which knows itself better
 // than we do.
 func AttachCmd(session string) *exec.Cmd {

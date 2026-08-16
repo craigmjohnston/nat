@@ -40,24 +40,19 @@ To build from a clone instead: `make build && ./nat`.
 
 ## Running
 
-`nat` hosts itself in tmux: started from an ordinary terminal it re-execs into a
-tmux session called `nat-tui`, so that a running agent's pane can later be shown
-beside the board. Run it again and you attach to the session already there
-rather than starting a second board. Started from inside tmux it runs in place,
-in whatever window you are in — it never nests a session inside a pane.
+`nat` runs in the terminal you start it in, and hosts itself in nothing: the
+board draws its own status band and shows an agent in a box of its own beside
+it. Started from inside a tmux session of your own it behaves exactly the same.
 
-To run without tmux at all — accepting that the split view is unavailable — set
-`NAT_NO_TMUX=1`:
-
-```sh
-NAT_NO_TMUX=1 nat
-```
+tmux is still needed for the agents — each one runs in a detached session, which
+is what lets it outlive the board and be shown again later — so `nat` checks for
+it on startup and says how to install it if it is missing. The headless commands
+launch nothing and need none of it.
 
 ### Headless commands
 
-Given a subcommand, `nat` runs it and exits rather than opening the board — and
-without tmux, so the output lands in the terminal it was typed in. `nat help`
-lists them.
+Given a subcommand, `nat` runs it and exits rather than opening the board,
+printing to the terminal it was typed in. `nat help` lists them.
 
 `nat info` prints the active project as markdown: its conventions (the project
 page body), its milestones in plan order, and its slices grouped under them with
@@ -119,8 +114,9 @@ for that one launch, leaving the config as it is.
 
 `t` on a slice with a running agent shows that agent in a pane beside the board;
 `t` again sends it back to a session of its own. The board keeps the keyboard
-while the agent runs next to it, and the mouse — enabled for the `nat-tui`
-session only, so your own tmux settings are left alone — moves between the two:
+while the agent runs next to it, and the mouse — reported to nat only while an
+agent is on show, so your own selection and scrollback are otherwise left
+alone — moves between the two:
 click the agent to type at it, click the board to come back.
 
 The agent's share of the window defaults to 65%. To change it, add
@@ -134,9 +130,8 @@ The agent's share of the window defaults to 65%. To change it, add
 
 Anything outside 10–90 is treated as a typo and the default is used instead.
 
-Started outside tmux (`NAT_NO_TMUX=1`, or with tmux unavailable), there is no
-window to split: `t` hands the whole terminal to the agent's session instead,
-and detaching with `ctrl-b d` comes back to the board.
+`T` is the way out of the split: it hands the whole terminal to the agent's
+session, and detaching with `ctrl-b d` comes back to the board.
 
 ## Skills
 

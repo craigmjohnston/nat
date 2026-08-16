@@ -136,18 +136,15 @@ var lastExit struct {
 }
 
 // stubProcess points main at test doubles for the process's edges, restoring
-// the real ones afterwards.
-//
-// It also pretends the test binary is already inside tmux, so that main's
-// hosting step is a no-op: without it, a run on a machine with tmux installed
-// would exec tmux over the test binary. The arguments are emptied for the same
-// reason — the test binary's own flags would otherwise read as a subcommand.
+// the real ones afterwards. The arguments are emptied because the test binary's
+// own flags would otherwise read as a subcommand, and the tmux check is stubbed
+// into finding one, so the suite passes on a machine without it.
 //
 // The home directory is a temporary one because main opens a log file under it,
 // and a test suite has no business writing to the log the real binary keeps.
 func stubProcess(t *testing.T, tokens config.TokenSource, in io.Reader, out, errOut io.Writer) {
 	t.Helper()
-	t.Setenv(tmuxEnv, "/private/tmp/tmux-501/default,1,0")
+	stubLookPath(t, "/opt/homebrew/bin/tmux", nil)
 	tempLogHome(t)
 	oldTokens, oldIn, oldOut, oldErr, oldExit, oldArgs := newTokens, stdin, stdout, stderr, exit, args
 	t.Cleanup(func() {
@@ -184,9 +181,8 @@ func logContents(t *testing.T) string {
 	return string(data)
 }
 
-// A startup failure has to survive the terminal it was reported on: started
-// outside tmux the TUI re-execs itself into a session, and a process that dies
-// on the way up takes the pane with it.
+// A startup failure has to survive the terminal it was reported on: a nat
+// started in something that closes with the process takes the message with it.
 func TestMainLogsAStartupFailureAndSaysWhereTheLogIs(t *testing.T) {
 	writeConfig(t, "{not json")
 	var out, errOut bytes.Buffer
@@ -277,140 +273,45 @@ func exitCode(t *testing.T) (int, bool) {
 	return lastExit.code, lastExit.exited
 }
 
-// execCall records the arguments host handed to exec.
-type execCall struct {
-	argv0 string
-	argv  []string
-	env   []string
-}
-
-// stubHost points host at test doubles for the process's edges: the PATH
-// lookup, this binary's path, and the exec that would otherwise replace the
-// test binary with tmux. It returns the exec calls made, which is empty when
-// host decided to run in place.
-func stubHost(t *testing.T, tmuxPath string, lookErr, selfErr, execErr error) *[]execCall {
+// stubLookPath points the tmux check at a test double for the PATH lookup, so
+// the suite neither depends on a tmux being installed nor on one not being.
+func stubLookPath(t *testing.T, tmuxPath string, lookErr error) {
 	t.Helper()
-	oldLook, oldSelf, oldExec := lookPath, executable, execProcess
-	t.Cleanup(func() { lookPath, executable, execProcess = oldLook, oldSelf, oldExec })
-
-	var calls []execCall
+	old := lookPath
+	t.Cleanup(func() { lookPath = old })
 	lookPath = func(string) (string, error) { return tmuxPath, lookErr }
-	executable = func() (string, error) { return "/usr/local/bin/nat", selfErr }
-	execProcess = func(argv0 string, argv, env []string) error {
-		calls = append(calls, execCall{argv0: argv0, argv: argv, env: env})
-		return execErr
-	}
-	return &calls
 }
 
-// outsideTmux clears both the marker tmux sets in its panes and the opt-out, so
-// host takes the re-exec path.
-func outsideTmux(t *testing.T) {
-	t.Helper()
-	t.Setenv(tmuxEnv, "")
-	t.Setenv(noTmuxEnv, "")
-}
+// nat runs in the terminal it was started in: the check is that the binary the
+// agents need is there, and nothing is launched to host the board.
+func TestRequireTmuxAcceptsATmuxOnPath(t *testing.T) {
+	stubLookPath(t, "/opt/homebrew/bin/tmux", nil)
 
-func TestHostRunsTheTUIInsideTmux(t *testing.T) {
-	outsideTmux(t)
-	calls := stubHost(t, "/opt/homebrew/bin/tmux", nil, nil, nil)
-
-	if err := host(); err != nil {
+	if err := requireTmux(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(*calls) != 1 {
-		t.Fatalf("exec calls = %d, want 1", len(*calls))
-	}
-	got := (*calls)[0]
-	if got.argv0 != "/opt/homebrew/bin/tmux" {
-		t.Errorf("argv0 = %q, want the tmux found on PATH", got.argv0)
-	}
-	// The chain's exact shape is the agent package's contract, asserted in its
-	// own tests; what matters here is that host hands it to tmux unaltered.
-	want := append([]string{"tmux"}, agent.HostArgs("/usr/local/bin/nat")...)
-	if !reflect.DeepEqual(got.argv, want) {
-		t.Errorf("argv = %q, want %q", got.argv, want)
-	}
-	if len(got.env) == 0 {
-		t.Error("want the environment passed through to tmux")
-	}
 }
 
-// Inside a pane there is already a window to join agents into, and nesting a
-// session in one is not what hosting means.
-func TestHostRunsInPlaceInsideTmux(t *testing.T) {
-	t.Setenv(tmuxEnv, "/private/tmp/tmux-501/default,1,0")
-	calls := stubHost(t, "/opt/homebrew/bin/tmux", nil, nil, nil)
+func TestRequireTmuxExplainsHowToInstallTmux(t *testing.T) {
+	stubLookPath(t, "", exec.ErrNotFound)
 
-	if err := host(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(*calls) != 0 {
-		t.Errorf("exec calls = %v, want none", *calls)
-	}
-}
-
-func TestHostRunsInPlaceWhenOptedOut(t *testing.T) {
-	t.Setenv(tmuxEnv, "")
-	t.Setenv(noTmuxEnv, "1")
-	calls := stubHost(t, "/opt/homebrew/bin/tmux", nil, nil, nil)
-
-	if err := host(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(*calls) != 0 {
-		t.Errorf("exec calls = %v, want none", *calls)
-	}
-}
-
-func TestHostExplainsHowToInstallTmux(t *testing.T) {
-	outsideTmux(t)
-	stubHost(t, "", exec.ErrNotFound, nil, nil)
-
-	err := host()
+	err := requireTmux()
 	if !errors.Is(err, exec.ErrNotFound) {
 		t.Fatalf("err = %v, want it to wrap ErrNotFound", err)
 	}
-	for _, want := range []string{"brew install tmux", noTmuxEnv + "=1"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("err = %q, want it to mention %q", err, want)
-		}
-	}
-}
-
-func TestHostReportsAnUnfindableBinary(t *testing.T) {
-	outsideTmux(t)
-	sentinel := errors.New("no such file")
-	calls := stubHost(t, "/opt/homebrew/bin/tmux", nil, sentinel, nil)
-
-	err := host()
-	if !errors.Is(err, sentinel) {
-		t.Fatalf("err = %v, want it to wrap %v", err, sentinel)
-	}
-	if len(*calls) != 0 {
-		t.Errorf("exec calls = %v, want none", *calls)
-	}
-}
-
-func TestHostReportsAFailedExec(t *testing.T) {
-	outsideTmux(t)
-	sentinel := errors.New("permission denied")
-	stubHost(t, "/opt/homebrew/bin/tmux", nil, nil, sentinel)
-
-	err := host()
-	if !errors.Is(err, sentinel) {
-		t.Fatalf("err = %v, want it to wrap %v", err, sentinel)
+	if !strings.Contains(err.Error(), "brew install tmux") {
+		t.Errorf("err = %q, want it to say how to install tmux", err)
 	}
 }
 
 // A missing tmux has to be reported plainly on stderr, before Bubble Tea has
-// taken the terminal over — and the app must not go on to start without it.
+// taken the terminal over — and the app must not go on to start without it: an
+// agent it could not launch is the whole point of the board.
 func TestMainReportsAMissingTmux(t *testing.T) {
 	tokens := configuredHome(t)
 	var out, errOut bytes.Buffer
 	stubProcess(t, tokens, strings.NewReader("q"), &out, &errOut)
-	outsideTmux(t)
-	stubHost(t, "", exec.ErrNotFound, nil, nil)
+	stubLookPath(t, "", exec.ErrNotFound)
 
 	main()
 
@@ -587,14 +488,13 @@ func (s stubAPI) UpdatePageProperties(context.Context, string, map[string]notion
 	return &notion.Page{}, s.err
 }
 
-// A subcommand runs headless and exits: no board, and no tmux, which would send
-// the output somewhere nobody is looking.
+// A subcommand runs headless and exits: no board, and no tmux check either —
+// none of them launches an agent, so a machine without tmux runs them all.
 func TestMainRunsACommandInsteadOfTheBoard(t *testing.T) {
 	tokens := configuredHome(t)
 	var out, errOut bytes.Buffer
 	stubProcess(t, tokens, strings.NewReader(""), &out, &errOut)
-	outsideTmux(t)
-	calls := stubHost(t, "/opt/homebrew/bin/tmux", nil, nil, nil)
+	stubLookPath(t, "", exec.ErrNotFound)
 	stubCommand(t, []string{"help"}, stubAPI{})
 
 	main()
@@ -607,9 +507,6 @@ func TestMainRunsACommandInsteadOfTheBoard(t *testing.T) {
 	}
 	if code, exited := exitCode(t); exited {
 		t.Errorf("exited with %d, want a clean return", code)
-	}
-	if len(*calls) != 0 {
-		t.Errorf("exec calls = %+v, want none: a command does not go through tmux", *calls)
 	}
 }
 

@@ -543,31 +543,10 @@ func TestLaunchArgsCarryTheModelFlags(t *testing.T) {
 	}
 }
 
-// The TUI's own session shares the prefix agent sessions use, so a session list
-// still reads as one family, and `-A` is what lets a second launch attach.
-func TestHostArgs(t *testing.T) {
-	got := HostArgs("/usr/local/bin/nat")
-	// No mouse-on for the board's session: it gets its mouse at join time, the
-	// way it always has.
-	want := append([]string{"new-session", "-A", "-s", "nat-tui", "/usr/local/bin/nat"},
-		boardStyleArgs("nat-tui")...)
-	want = append(want, []string{
-		";", "set-option", "-s", "extended-keys", "on",
-		";", "set-option", "-s", "-a", "terminal-features", "*:extkeys:hyperlinks"}...)
-	want = append(want, clickBindingArgs()...)
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("args = %v, want %v", got, want)
-	}
-	if !strings.HasPrefix(TUISession, SessionPrefix) {
-		t.Errorf("TUISession = %q, want the %q prefix", TUISession, SessionPrefix)
-	}
-}
-
 // An agent's own session hides the tmux status bar as part of the one command
 // that makes it, so it is never up even for a moment. The inherited case needs
-// no test of its own: running inside the user's tmux makes no session at all,
-// and the argv above are the only places one is made. The board's session is
-// the exception, and gets a bar of nat's own — see the status bar tests below.
+// no test of its own: nat itself makes no session — it runs in the terminal it
+// was started in — so a launch is the only place one is made.
 func TestAgentSessionsChainStatusOff(t *testing.T) {
 	launch := LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md", config.AgentModel{})
 	chained := append(statusOffArgs("nat-1"), mouseOnArgs("nat-1")...)
@@ -604,60 +583,9 @@ func TestSessionsNatCreatesEnableExtendedKeysAndHyperlinks(t *testing.T) {
 		}
 	}
 	suffix = append(suffix, hyperlinkClickArgs()...)
-	for _, args := range [][]string{
-		LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md", config.AgentModel{}),
-		HostArgs("/usr/local/bin/nat"),
-	} {
-		if !reflect.DeepEqual(args[len(args)-len(suffix):], suffix) {
-			t.Errorf("args = %v, want them to end with %v", args, suffix)
-		}
-	}
-}
-
-// The board's session hides tmux's own bar — nat draws a status band of its
-// own inside its frame — and every one of the options is chained onto the
-// new-session rather than run on its own.
-func TestBoardStyleArgsHideTheTmuxBar(t *testing.T) {
-	args := boardStyleArgs("nat-tui")
-	for i := 0; i < len(args); i += 6 {
-		if args[i] != ";" {
-			t.Fatalf("args = %v, want every option chained with %q", args, ";")
-		}
-		if got := args[i+1 : i+4]; !reflect.DeepEqual(got, []string{"set-option", "-t", "nat-tui"}) {
-			t.Errorf("args = %v, want each option set on the named session", got)
-		}
-	}
-	// Off rather than blanked: a bar left on still costs the row under nat's
-	// bottom border, which is the row the band is drawn in now.
-	joined := strings.Join(args, " ")
-	if want := "; set-option -t nat-tui status off"; !strings.Contains(joined, want) {
-		t.Errorf("boardStyleArgs = %q, want it to contain %q", joined, want)
-	}
-	for _, unwanted := range []string{"status on", "status-position", "status-style", "status-format"} {
-		if strings.Contains(joined, unwanted) {
-			t.Errorf("boardStyleArgs = %q, want no %q: the bar is nat's own now", joined, unwanted)
-		}
-	}
-}
-
-// Both borders in the one neutral colour, so a split reads as a seam and the
-// stock green highlight on the focused edge is gone.
-func TestBoardStyleArgsNeutraliseThePaneBorders(t *testing.T) {
-	args := boardStyleArgs("nat-tui")
-	styles := map[string]string{}
-	for i, a := range args {
-		if a == "pane-border-style" || a == "pane-active-border-style" {
-			styles[a] = args[i+1]
-		}
-	}
-	if len(styles) != 2 {
-		t.Fatalf("boardStyleArgs = %v, want both border styles set", args)
-	}
-	if styles["pane-border-style"] != styles["pane-active-border-style"] {
-		t.Errorf("border styles = %v, want the active one to match the inactive one", styles)
-	}
-	if !strings.Contains(styles["pane-border-style"], paneBorderFG) {
-		t.Errorf("border style = %q, want nat's neutral %q", styles["pane-border-style"], paneBorderFG)
+	args := LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md", config.AgentModel{})
+	if !reflect.DeepEqual(args[len(args)-len(suffix):], suffix) {
+		t.Errorf("args = %v, want them to end with %v", args, suffix)
 	}
 }
 

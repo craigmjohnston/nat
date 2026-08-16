@@ -86,11 +86,9 @@ type keyMap struct {
 	// the one key that terminal does not get, so it is deliberately one no
 	// agent is likely to want.
 	Unfocus key.Binding
-	// TmuxPrefix, ShiftEnter and CtrlEnter are the keys the focused terminal
-	// handles by hand rather than through the emulator's own encoding: the
-	// outer tmux's prefix, which is swallowed, and the two enters claude tells
-	// apart, which go as CSI-u.
-	TmuxPrefix key.Binding
+	// ShiftEnter and CtrlEnter are the keys the focused terminal handles by hand
+	// rather than through the emulator's own encoding: the two enters claude
+	// tells apart, which go as CSI-u.
 	ShiftEnter key.Binding
 	CtrlEnter  key.Binding
 	// Workshop launches a planning agent on the project's wishlist. It is out
@@ -120,7 +118,6 @@ func defaultKeyMap() keyMap {
 		Settings:  key.NewBinding(key.WithKeys("S"), key.WithHelp("S", "settings")),
 
 		Unfocus:    key.NewBinding(key.WithKeys(`ctrl+\`), key.WithHelp(`ctrl+\`, "back to the board")),
-		TmuxPrefix: key.NewBinding(key.WithKeys("ctrl+b")),
 		ShiftEnter: key.NewBinding(key.WithKeys("shift+enter")),
 		CtrlEnter:  key.NewBinding(key.WithKeys("ctrl+enter")),
 	}
@@ -981,7 +978,7 @@ func (a *App) View() tea.View {
 //
 // Nothing between here and the agent swallows it: tmux hands mouse reporting
 // straight through unless its own `mouse` option is on, which nat sets for the
-// sessions it makes for agents but never for the one it hosts the board in.
+// sessions it makes for agents and never for one the user started nat in.
 func (a *App) mouseMode() tea.MouseMode {
 	if !a.viewerVisible() {
 		return tea.MouseModeNone

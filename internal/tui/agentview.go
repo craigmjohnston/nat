@@ -324,10 +324,6 @@ func (a *App) viewerFocused() bool {
 // being typed at is one where ctrl+c means "stop what you are doing", not "quit
 // nat", and ctrl+\ is the way back either way.
 //
-// The outer tmux's prefix is swallowed rather than forwarded: the hidden client
-// is a client of the same server, and a prefix reaching it would work the
-// board's own window from inside the agent's.
-//
 // Anything that stands for characters is written as those characters and only
 // the rest is handed to the emulator's key encoder — see [printableText].
 func (a *App) viewerKey(msg tea.KeyPressMsg) tea.Cmd {
@@ -335,7 +331,6 @@ func (a *App) viewerKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, a.keys.Unfocus):
 		v.focused = false
-	case key.Matches(msg, a.keys.TmuxPrefix):
 	case key.Matches(msg, a.keys.ShiftEnter):
 		v.session.SendBytes([]byte(shiftEnterBytes))
 	case key.Matches(msg, a.keys.CtrlEnter):
