@@ -42,6 +42,10 @@ func TestMain(m *testing.M) {
 	// a live agent in it redrawing twice a second. Its own tests put a firing
 	// version in.
 	pulseTick = func() tea.Cmd { return nil }
+	// And so is the activity watcher, which would otherwise poll a real tmux
+	// every two seconds behind every app with a live agent in it. Its own tests
+	// put a firing version in.
+	activityTick = func() tea.Cmd { return nil }
 	// The embedded agent terminal is pinned away from a real pseudo-terminal
 	// the same way: nothing is started, and nothing waits on a channel that
 	// would never fire. Tests about the viewer put a fake in with
@@ -74,6 +78,12 @@ type fakeLauncher struct {
 	liveErr   error
 	launchErr error
 
+	// activity is what the watcher reads back, and activityErr the failure that
+	// stops it; reads counts the readings taken.
+	activity    map[string]agent.Activity
+	activityErr error
+	reads       int
+
 	// reclaimed is what the startup reconcile reports: how many panes an
 	// earlier run had left joined, and the failure that stopped it.
 	reclaimed  int
@@ -97,6 +107,14 @@ func (f *fakeLauncher) LiveSlices() (map[string]string, error) {
 		return nil, f.liveErr
 	}
 	return f.live, nil
+}
+
+func (f *fakeLauncher) Activity() (map[string]agent.Activity, error) {
+	f.reads++
+	if f.activityErr != nil {
+		return nil, f.activityErr
+	}
+	return f.activity, nil
 }
 
 func (f *fakeLauncher) Launch(session, workdir, promptFile, sliceID string) error {

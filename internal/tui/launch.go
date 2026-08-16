@@ -19,7 +19,8 @@ import (
 )
 
 // AgentLauncher is what the launch flow needs of tmux: which slices have an
-// agent running and in which session, how to start one, the two commands that
+// agent running and in which session, how each of them is getting on, how to
+// start one, the two commands that
 // attach to one — the hidden client the embedded viewer runs, and the
 // full-screen attach behind the hatch — the reconcile that re-homes what an
 // earlier run left joined beside a board, and the redraw of the bar under the
@@ -27,6 +28,7 @@ import (
 // server.
 type AgentLauncher interface {
 	LiveSlices() (map[string]string, error)
+	Activity() (map[string]agent.Activity, error)
 	Launch(session, workdir, promptFile, sliceID string) error
 	AttachClientCmd(session string) *exec.Cmd
 	AttachCmd(session string) *exec.Cmd
@@ -424,7 +426,9 @@ func (a *App) liveLoaded(msg liveSessionsMsg) tea.Cmd {
 	}
 	a.board.SetLive(a.live)
 	a.board.SetActivity(a.activity)
-	cmds = append(cmds, a.startPulse())
+	// An agent found where there was none arms the watcher; it stops itself
+	// again once the last one has gone.
+	cmds = append(cmds, a.startWatch(), a.startPulse())
 	a.syncBoard()
 	// A planning agent that has exited has been editing the plan, so the board
 	// re-reads it rather than showing what was there before the session.

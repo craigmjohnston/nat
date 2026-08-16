@@ -50,6 +50,19 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `breakOut`/`breakOutAll`/`placeholderCommand`, all under one deprecation
   comment — is the exception, still run at startup to re-home the panes a
   pre-upgrade nat left joined, and comes out next release.
+  `activity.go` is how those agents are told apart from each other's states:
+  `Tmux.Activity` scans the panes once and reads the screen of each tagged one
+  (`capture-pane -p -J`), answering working / waiting / gone / unknown per slice
+  page ID — the same keys `LiveSlices` uses, so one map lays over the other. The
+  signal is Claude Code's own interrupt hint (`esc to interrupt`), matched
+  case-folded against the visible screen alone: it is on every busy screen and
+  no idle one, where enumerating the shapes it stops for — a permission prompt,
+  a question, the end of a turn — would be a list that goes stale. A dead pane
+  (`pane_dead`, which only appears where the user has set remain-on-exit) is
+  gone without a capture, as is one that vanishes between the scan and the
+  capture; a capture that fails outright leaves the state unread rather than
+  declaring a running agent gone. It is a poll, with no timer of its own — the
+  TUI decides how often to take a reading.
   Both ways of attaching to a session — `AttachCmd`, full-screen through
   `tea.ExecProcess`, and `AttachClientCmd`, the hidden client the embedded
   viewer runs on a PTY of its own — build the same argv, `tmux -T
@@ -173,11 +186,22 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   its own steady when the agent has stopped for input. Liveness is the live
   map's answer and the classification only refines it, so an agent that has gone
   has no star whatever was last read of it, and one nobody has classified draws
-  as working — which is every agent until the activity watcher lands. The whole
+  as working. The whole
   board animates off one timer, armed by the live read and stopping itself as
   soon as nothing is pulsing; each frame re-syncs the board, since its rows are
   cached in a viewport. Both the glyph and the colour move, because a selected
   row is drawn without any chip's styling.
+  `activity.go` is what does the classifying: a reading of
+  `agent.Tmux.Activity` every two seconds — far shorter than the live read's
+  half a minute, because this is the reading a star moves with — turned into the
+  presence map the board draws from. Like the pulse it runs off one timer, armed
+  by a live read that finds an agent and stopping itself once the last one has
+  gone, and it takes no reading at all with nothing running. A failed reading is
+  logged and dropped rather than toasted or written to the board: the stars go
+  on saying what they last said, which for an agent still running is true for a
+  while yet. An agent read as gone is left out of the map entirely — whether
+  there is an agent at all is the live map's answer, and a second opinion here
+  would only be a staler one.
 - `skills/` — the agent skills (/queue-work planning, /next-slice execution),
   embedded in the binary with `go:embed` and installed by `nat setup`. A
   checkout works on them in place by symlinking them into `~/.claude/skills/`,

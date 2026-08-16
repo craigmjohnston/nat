@@ -236,11 +236,12 @@ type App struct {
 	// a stack of panes.
 	viewer *agentViewer
 	// activity is how those agents are getting on, which is what the star on a
-	// slice row is animated from. Nothing classifies them yet — the activity
-	// watcher is a slice of its own — so it stays empty and every live agent
-	// draws as working; it is pruned as agents go, so a reading can never
-	// outlive the agent it was about.
+	// slice row is animated from: the activity watcher's last reading, taken
+	// while watching is true and stopping itself when no agent is left. An agent
+	// no reading mentions draws as working, and the map is pruned as agents go,
+	// so a reading can never outlive the agent it was about.
 	activity map[string]Presence
+	watching bool
 	// pulse is the frame the star animation is on, and pulsing whether its
 	// timer is running. One timer draws every star on the board, and it stops
 	// itself as soon as there is nothing left pulsing.
@@ -445,6 +446,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.straysReclaimed(msg)
 	case liveTickMsg:
 		return a, tea.Batch(a.refreshLive(), liveTick())
+	case activityTickMsg:
+		return a, a.activityTicked()
+	case agentActivityMsg:
+		return a, a.activityLoaded(msg)
 	case pulseTickMsg:
 		return a, a.pulsed()
 	case nudgeTickMsg:
