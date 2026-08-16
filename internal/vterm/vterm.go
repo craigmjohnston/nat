@@ -319,11 +319,52 @@ func (s *Session) SendKey(key uv.KeyPressEvent) {
 	s.emu.SendKey(key)
 }
 
+// MouseKind is which kind of mouse event is being sent: which of the emulator's
+// event types the position and button are wrapped in.
+type MouseKind int
+
+// The kinds of mouse event a child can be sent.
+const (
+	MousePress MouseKind = iota
+	MouseRelease
+	MouseMotion
+	MouseWheel
+)
+
+// SendMouse sends a mouse event at cell (x, y) to the child, encoded as the
+// child's active mouse modes ask for it — X10, normal, button-event or
+// any-event reporting, in the plain or the SGR encoding. A child that has asked
+// for no mouse reporting at all is sent nothing.
+//
+// The encoding is entirely the emulator's; this only names the event. A kind
+// outside the four above is dropped.
+func (s *Session) SendMouse(x, y int, button uv.MouseButton, kind MouseKind) {
+	m := uv.Mouse{X: x, Y: y, Button: button}
+
+	var event uv.MouseEvent
+	switch kind {
+	case MousePress:
+		event = uv.MouseClickEvent(m)
+	case MouseRelease:
+		event = uv.MouseReleaseEvent(m)
+	case MouseMotion:
+		event = uv.MouseMotionEvent(m)
+	case MouseWheel:
+		event = uv.MouseWheelEvent(m)
+	default:
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.emu.SendMouse(event)
+}
+
 // SendBytes sends raw bytes to the child.
 //
 // They go through the emulator's input pipe rather than to the PTY directly,
-// so they stay in order with what [Session.SendKey], [Session.Paste] and the
-// emulator's own query replies write.
+// so they stay in order with what [Session.SendKey], [Session.SendMouse],
+// [Session.Paste] and the emulator's own query replies write.
 func (s *Session) SendBytes(p []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
