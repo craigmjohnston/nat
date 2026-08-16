@@ -105,16 +105,23 @@ func launchPlanAgent(l AgentLauncher, projectName, workdir, request string) tea.
 
 // planAgentFlow is what w does: launches a planning agent when none is
 // running, and shows or hides the one that is — the same toggle t is for a
-// slice's agent. One planning agent is enough: a second would workshop the
-// same plan the first is already holding in its head.
+// slice's agent, and it works the same way round, closing what is on show
+// before it looks for a session. One planning agent is enough: a second would
+// workshop the same plan the first is already holding in its head.
 func (a *App) planAgentFlow() tea.Cmd {
 	_, ok := a.activeProject()
-	if !ok || a.launcher == nil || a.busy {
+	if !ok || a.launcher == nil {
 		return nil
 	}
+	if a.viewer != nil && a.viewer.sliceID == agent.PlanSentinel {
+		return a.closeViewer()
+	}
 	if session := a.live[agent.PlanSentinel]; session != "" {
-		a.busy, a.note = true, ""
-		return a.showAgent(planSlice(), session)
+		return a.openAgentViewer(agent.PlanSentinel, planSlice().Name, session)
+	}
+	// Only the launch is a write, and only it waits on one already in flight.
+	if a.busy {
+		return nil
 	}
 	return a.openForm(newPlanForm(a.styles.FormTheme))
 }

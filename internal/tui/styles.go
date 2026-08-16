@@ -79,6 +79,16 @@ type Styles struct {
 	// Box frames the body region: a real border, so the layout reads as panels
 	// rather than floating text.
 	Box lipgloss.Style
+	// TermBox frames the embedded agent terminal beside the board, and
+	// TermBoxFocused the same box while the keyboard is the terminal's. Neither
+	// pads: the emulator's cells map one to one onto the box's interior, and a
+	// column of padding would shift every one of them. TermEdge and
+	// TermEdgeFocused draw the box's own border characters where the title line
+	// builds them by hand, in the colour the matching box's border has.
+	TermBox         lipgloss.Style
+	TermBoxFocused  lipgloss.Style
+	TermEdge        lipgloss.Style
+	TermEdgeFocused lipgloss.Style
 	// Modal frames a form floating over the board, and Scrim redraws the board
 	// behind it knocked back to one quiet colour, so the modal is the only
 	// surface at full strength while it is up.
@@ -193,7 +203,12 @@ func NewStyles(isDark bool) Styles {
 		HeaderTitle: bar.Bold(true).Foreground(t.Text),
 		HeaderMeta:  bar.Foreground(t.Muted),
 
-		Box:   lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.SurfaceHi).Padding(0, 1),
+		Box:             lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.SurfaceHi).Padding(0, 1),
+		TermBox:         lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.SurfaceHi),
+		TermBoxFocused:  lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Accent),
+		TermEdge:        lipgloss.NewStyle().Foreground(t.SurfaceHi),
+		TermEdgeFocused: lipgloss.NewStyle().Foreground(t.Accent),
+
 		Modal: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.AccentDim).Padding(0, 1),
 		Scrim: lipgloss.NewStyle().Foreground(t.SurfaceHi),
 

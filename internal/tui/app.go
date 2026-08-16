@@ -17,7 +17,6 @@ import (
 	"charm.land/lipgloss/v2"
 	xansi "github.com/charmbracelet/x/ansi"
 
-	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
@@ -81,6 +80,17 @@ type keyMap struct {
 	Info      key.Binding
 	Back      key.Binding
 	Dismiss   key.Binding
+	// Unfocus takes the keyboard back from the embedded agent terminal. It is
+	// the one key that terminal does not get, so it is deliberately one no
+	// agent is likely to want.
+	Unfocus key.Binding
+	// TmuxPrefix, ShiftEnter and CtrlEnter are the keys the focused terminal
+	// handles by hand rather than through the emulator's own encoding: the
+	// outer tmux's prefix, which is swallowed, and the two enters claude tells
+	// apart, which go as CSI-u.
+	TmuxPrefix key.Binding
+	ShiftEnter key.Binding
+	CtrlEnter  key.Binding
 	// Workshop launches a planning agent on the project's wishlist. It is out
 	// of the hints row on purpose: the wishlist indicator names it whenever
 	// there is something to workshop, which is the only time the key does
@@ -100,6 +110,11 @@ func defaultKeyMap() keyMap {
 		Back:      key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		Dismiss:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "dismiss")),
 		Workshop:  key.NewBinding(key.WithKeys("W"), key.WithHelp("W", "workshop")),
+
+		Unfocus:    key.NewBinding(key.WithKeys(`ctrl+\`), key.WithHelp(`ctrl+\`, "back to the board")),
+		TmuxPrefix: key.NewBinding(key.WithKeys("ctrl+b")),
+		ShiftEnter: key.NewBinding(key.WithKeys("shift+enter")),
+		CtrlEnter:  key.NewBinding(key.WithKeys("ctrl+enter")),
 	}
 }
 
@@ -161,15 +176,17 @@ func (k keyMap) statusHints() []hint {
 }
 
 // helpBindings are the bindings listed to the user, in the order they read.
-// The workshop key is among them although it is not among the hints: the help
-// screen is where a key the hints row has no room for is still findable.
+// The workshop key is among them although it is not among the hints, and so is
+// the way back from a focused agent terminal, which is only ever hinted while
+// one has the keyboard: the help screen is where a key the hints row has no
+// room for is still findable.
 func (k keyMap) helpBindings() []key.Binding {
 	hints := k.statusHints()
 	bindings := make([]key.Binding, 0, len(hints)+1)
 	for _, h := range hints {
 		bindings = append(bindings, h.binding)
 	}
-	return append(bindings, k.Workshop)
+	return append(bindings, k.Workshop, k.Unfocus)
 }
 
 // App is the root model. It owns the config, the Notion client, the loaded
@@ -204,9 +221,10 @@ type App struct {
 	// each slice it last reported an agent running for to that agent's session.
 	launcher AgentLauncher
 	live     map[string]string
-	// joined marks the slices whose agent pane is beside the board right now.
-	// While any is, the hints row swaps its keys for the pane guidance.
-	joined map[string]bool
+	// viewer is the agent terminal beside the board, or nil when the board has
+	// the window to itself. Exactly one is on show at a time: it is a split, not
+	// a stack of panes.
+	viewer *agentViewer
 
 	project *domain.Project
 	// wishlist is the pending items the project page's wishlist held when it
@@ -253,7 +271,7 @@ func NewApp(cfg config.Config, client NotionAPI) *App {
 	sp := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(s.Spinner))
 	a := &App{cfg: cfg, client: client, styles: s, keys: defaultKeyMap(),
 		promptKeys: defaultPromptKeyMap(), spinner: sp,
-		board: NewBoard(s), info: NewInfo(s), launcher: newLauncher(), joined: map[string]bool{},
+		board: NewBoard(s), info: NewInfo(s), launcher: newLauncher(),
 		boardVP: viewport.New(), helpVP: viewport.New()}
 	a.helpVP.SetContent(a.helpBody())
 	return a
@@ -374,21 +392,25 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case agentLaunchedMsg:
 		return a.agentLaunched(msg)
 	case agentAttachedMsg:
-		a.paneMoved(msg)
-		// The agent has had the pane to itself, so the slice it was working on
-		// is refetched rather than trusted. The planning agent works the whole
-		// plan, not a page of it, so its exit reloads the lot — and its report
-		// is a toast, not a row confirm, since it is about no row.
-		if msg.slice == agent.PlanSentinel {
-			if msg.err == nil && msg.note != "" {
-				a.busy = false
-				return a, tea.Batch(a.startLoad(), a.refreshLive(), a.showToast(msg.note, sevSuccess))
-			}
-			model, cmd := a.saved(sliceSavedMsg{note: msg.note, err: msg.err})
-			return model, tea.Batch(cmd, a.refreshLive())
-		}
+		// The agent has had the whole terminal to itself, so the slice it was
+		// working on is refetched rather than trusted. Only a slice's agent is
+		// ever attached to this way — the planning agent is watched in the
+		// viewer, which reloads the whole plan when it is done with.
 		model, cmd := a.saved(sliceSavedMsg{note: msg.note, err: msg.err, sliceID: msg.slice})
 		return model, tea.Batch(cmd, a.refreshLive())
+	case termStartedMsg:
+		return a.termStarted(msg)
+	case termOutputMsg:
+		return a.termOutput(msg)
+	case termExitedMsg:
+		return a.termExited(msg)
+	case tea.PasteMsg:
+		// A focused terminal takes the paste; otherwise it goes wherever a
+		// paste went before there was one.
+		if a.viewerFocused() {
+			a.viewer.session.Paste(msg.Content)
+			return a, nil
+		}
 	case liveSessionsMsg:
 		return a, a.liveLoaded(msg)
 	case straysReclaimedMsg:
@@ -429,11 +451,16 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, bar
 }
 
-// keyPressed handles a key press. ctrl+c always quits — the wizard's forms
+// keyPressed handles a key press. ctrl+c quits — the wizard's forms
 // handle it themselves, but a wizard that failed has no form left to catch it —
 // and the rest belong to the wizard while it is on show, so that typing into a
 // form field does not steer the app.
 func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// A focused agent terminal is above even the force quit: while the keyboard
+	// is the agent's, ctrl+c is the agent's too — see [App.viewerKey].
+	if a.viewerFocused() {
+		return a, a.viewerKey(msg)
+	}
 	if key.Matches(msg, a.keys.ForceQuit) {
 		return a, tea.Quit
 	}
@@ -468,7 +495,7 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case a.err != nil && key.Matches(msg, a.keys.Dismiss):
 		a.err = nil
 	case a.screen != screenBoard && key.Matches(msg, a.keys.Back):
-		a.screen = screenBoard
+		a.setScreen(screenBoard)
 	case key.Matches(msg, a.keys.Quit):
 		return a, tea.Quit
 	case key.Matches(msg, a.keys.Refresh):
@@ -486,9 +513,9 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, a.keys.Workshop):
 		return a, a.workshopFlow()
 	case key.Matches(msg, a.keys.Help):
-		a.screen = toggle(a.screen, screenHelp)
+		a.setScreen(toggle(a.screen, screenHelp))
 	case key.Matches(msg, a.keys.Info):
-		a.screen = toggle(a.screen, screenInfo)
+		a.setScreen(toggle(a.screen, screenInfo))
 		if a.screen == screenInfo {
 			return a, a.startInfoLoad()
 		}
@@ -536,6 +563,10 @@ func (a *App) boardWrite(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.attachAgentFlow(), true
 	case key.Matches(msg, a.board.keys.Plan):
 		return a.planAgentFlow(), true
+	case key.Matches(msg, a.board.keys.Focus):
+		return a.focusViewer(), true
+	case key.Matches(msg, a.board.keys.FullAttach):
+		return a.fullAttachFlow(), true
 	case key.Matches(msg, a.board.keys.NewProject):
 		return a.newProjectFlow(), true
 	case key.Matches(msg, a.board.keys.SwitchProject):
@@ -635,7 +666,8 @@ func (a *App) sliceBodyLoaded(msg sliceBodyMsg) (tea.Model, tea.Cmd) {
 // openForm shows a form over the board, at the size the window it is opening
 // into leaves for it.
 func (a *App) openForm(f modal) tea.Cmd {
-	a.form, a.screen, a.note = f, screenForm, ""
+	a.form, a.note = f, ""
+	a.setScreen(screenForm)
 	f.SetSize(a.formSize())
 	return f.Init()
 }
@@ -706,7 +738,10 @@ func busyNoteOf(f modal) string {
 }
 
 // closeForm dismisses the form and goes back to the board.
-func (a *App) closeForm() { a.form, a.screen = nil, screenBoard }
+func (a *App) closeForm() {
+	a.form = nil
+	a.setScreen(screenBoard)
+}
 
 // saved reports a finished write and brings the board up to date with it: the
 // one page the write touched is refetched and patched into the plan — a deleted
@@ -748,7 +783,8 @@ func toggle(current, want screen) screen {
 // onboardingDone takes over from the wizard with the config it wrote, and
 // loads the plan if there is a project to load.
 func (a *App) onboardingDone(msg OnboardingDoneMsg) (tea.Model, tea.Cmd) {
-	a.cfg, a.onboarding, a.screen = msg.Config, nil, screenBoard
+	a.cfg, a.onboarding = msg.Config, nil
+	a.setScreen(screenBoard)
 	if msg.NeedsProject {
 		// Nothing to load, and nothing to look at until there is: the wizard hands
 		// straight over to the flow that makes the first project.
@@ -855,6 +891,11 @@ func (a *App) View() tea.View {
 	v.AltScreen = true
 	v.WindowTitle = a.windowTitle()
 	v.ProgressBar = a.progressBar()
+	// The terminal's own cursor is the app's only while the agent has the
+	// keyboard: it is where what the user types is going.
+	if x, y, ok := a.viewerCursor(); ok {
+		v.Cursor = tea.NewCursor(x, y)
+	}
 	return v
 }
 
@@ -1099,19 +1140,50 @@ func (a *App) headerName() string {
 // bodyRegion is the body band inside its border: the screen's content clipped
 // to the box's interior — a body taller than the box would push the borders
 // apart rather than scroll — and the box run out to the window's width.
+//
+// With an agent terminal on show the band is two boxes side by side instead,
+// zipped line by line: the board in what the split leaves it, and the terminal
+// beside it.
 func (a *App) bodyRegion() []string {
-	// framed has already made sure the box has at least its own border lines.
-	return a.boxRegion(a.body(), a.bodyBoxHeight())
+	height := a.bodyBoxHeight()
+	if !a.viewerVisible() {
+		// framed has already made sure the box has at least its own border lines.
+		return a.boxRegionAt(a.body(), a.width, height)
+	}
+	boardWidth, termWidth := a.splitWidths()
+	board := a.boxRegionAt(a.body(), boardWidth, height)
+	term := a.viewerRegion(termWidth, height)
+	lines := make([]string, height)
+	for i := range lines {
+		lines[i] = fit(lineAt(board, i)+lineAt(term, i), a.width)
+	}
+	return lines
 }
 
-// boxRegion is content inside the layout's border, as exactly height lines of
-// the window's width: clipped to the box's interior — content taller than the
-// box would push the borders apart rather than scroll — and the box run out to
-// the window's width.
+// lineAt is one line of a region, or nothing when the region is shorter than
+// the band it is being laid into.
+func lineAt(lines []string, i int) string {
+	if i < len(lines) {
+		return lines[i]
+	}
+	return ""
+}
+
+// boxRegion is content inside the layout's border, run out to the window's
+// width.
 func (a *App) boxRegion(content string, height int) []string {
-	content = clipLines(fit(content, a.innerWidth()), max(height-2, 0))
-	// Width and Height count the border, so the box is sized to the window.
-	box := a.styles.Box.Width(a.width).Height(height).Render(content)
+	return a.boxRegionAt(content, a.width, height)
+}
+
+// boxRegionAt is content inside the layout's border, as exactly height lines of
+// the given width: clipped to the box's interior — content taller than the box
+// would push the borders apart rather than scroll — and the box run out to that
+// width.
+func (a *App) boxRegionAt(content string, width, height int) []string {
+	interior := max(width-a.styles.Box.GetHorizontalFrameSize(), 0)
+	content = clipLines(fit(content, interior), max(height-2, 0))
+	// Width and Height count the border, so the box is sized to the region.
+	box := a.styles.Box.Width(width).Height(height).Render(content)
 	// Cut to the band's lines however the box came out: a region that overran
 	// would push the bands below it off the window.
 	lines := strings.Split(box, "\n")
@@ -1234,8 +1306,12 @@ func (a *App) syncBoard() {
 // from them.
 func (a *App) resize() {
 	width, height := a.innerWidth(), a.bodyHeight()
-	a.board.SetWidth(width)
-	a.boardVP.SetWidth(width)
+	// The board is the one band that gives up columns to an agent terminal;
+	// everything else takes the whole width, because nothing else is drawn
+	// beside one.
+	boardWidth := a.boardWidth()
+	a.board.SetWidth(boardWidth)
+	a.boardVP.SetWidth(boardWidth)
 	a.boardVP.SetHeight(height)
 	a.helpVP.SetWidth(width)
 	a.helpVP.SetHeight(height)
@@ -1243,6 +1319,20 @@ func (a *App) resize() {
 	a.syncBoard()
 	if a.form != nil {
 		a.form.SetSize(a.formSize())
+	}
+	a.resizeTerm()
+}
+
+// setScreen shows a screen, re-sharing the window when there is an agent
+// terminal to share it with: whether that terminal is drawn depends on which
+// screen is up, and the board's columns depend on whether it is. With no
+// terminal open every screen has the whole band either way, and there is
+// nothing to measure again.
+func (a *App) setScreen(s screen) {
+	was := a.viewerVisible()
+	a.screen = s
+	if was || a.viewerVisible() {
+		a.resize()
 	}
 }
 
@@ -1399,9 +1489,9 @@ func (a *App) hintsView() string { return strings.Join(a.hintLines(), "\n") }
 // contextHints are the hints the window's bottom row draws: what acts on
 // the selection — the slice's actions, the milestone's — and otherwise the
 // global set. An open form owns every key, so naming any would be a lie, and
-// an open prompt names what answers it instead; a
-// joined agent pane swaps in the split guidance, since the pane has the keys
-// until it is hidden again. Each contextual set carries the help key near the
+// an open prompt names what answers it instead; an agent terminal beside the
+// board swaps in its own guidance, since what the keys do while one is up is
+// what needs saying. Each contextual set carries the help key near the
 // lowest rank, so the way to the full list is among the first hints a narrow
 // row gives up — only the board-wide hide-done toggle goes before it.
 func (a *App) contextHints() []hint {
@@ -1413,8 +1503,8 @@ func (a *App) contextHints() []hint {
 	if a.board.Prompting() {
 		return a.promptKeys.promptHints()
 	}
-	if len(a.joined) > 0 {
-		return a.paneHints()
+	if a.viewerVisible() {
+		return a.viewerHints()
 	}
 	if a.screen == screenBoard {
 		if _, ok := a.board.SelectedSlice(); ok {
@@ -1425,23 +1515,6 @@ func (a *App) contextHints() []hint {
 		}
 	}
 	return a.keys.statusHints()
-}
-
-// paneHints are the hints while an agent's pane is joined beside the board:
-// how the split is handled, in place of hints for keys the user already knows.
-// The key that hides the pane matters more than the zoom, so the zoom goes
-// first when the row runs out of room. When the joined pane is the planning
-// agent's, the guidance names its own key rather than t's — pressing t there
-// would find no slice to act on.
-func (a *App) paneHints() []hint {
-	hideKey := a.board.keys.Attach.Help().Key
-	if len(a.joined) == 1 && a.joined[agent.PlanSentinel] {
-		hideKey = a.board.keys.Plan.Help().Key
-	}
-	return []hint{
-		{key.NewBinding(key.WithHelp(hideKey, "hide agent pane")), 2},
-		{key.NewBinding(key.WithHelp("prefix+z", "zoom the split")), 1},
-	}
 }
 
 // wrapHints renders hints over as many lines as they need, up to maxLines: a

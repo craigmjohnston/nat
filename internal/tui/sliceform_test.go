@@ -102,7 +102,19 @@ func finishForm(t *testing.T, a *App, cmd tea.Cmd) {
 	if a.form != nil {
 		t.Fatalf("the form did not finish:\n%s", a.View().Content)
 	}
-	feed(t, a, cmd)
+	// What the form dispatched may take a few rounds to land — a launch reaches
+	// the agent's terminal through the message its session start comes back as.
+	for range 4 {
+		if cmd == nil {
+			return
+		}
+		var next []tea.Cmd
+		for _, msg := range run(cmd) {
+			_, c := a.Update(msg)
+			next = append(next, c)
+		}
+		cmd = tea.Batch(next...)
+	}
 }
 
 // feed runs a command and threads the messages it produced back through the

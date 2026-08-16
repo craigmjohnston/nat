@@ -8,7 +8,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
@@ -275,46 +274,5 @@ func TestAppRefreshesTheSliceTheAgentPaneWasAbout(t *testing.T) {
 	patched := app.project.Slices[sliceIndex(app.project.Slices, "s5")]
 	if patched.Status != domain.SliceClaimed {
 		t.Errorf("status = %v, want the claim the agent made picked up", patched.Status)
-	}
-}
-
-func TestAppPlanAgentExitStillReloadsTheWholePlan(t *testing.T) {
-	// The planning agent works the plan, not a page of it: its exit is the one
-	// agent report that still reloads everything.
-	client := newLoadingClient()
-	app := NewApp(testConfig(), client)
-	p := testProject()
-	app.project = &p
-
-	_, cmd := app.Update(agentAttachedMsg{note: "Planned.", slice: agent.PlanSentinel})
-	run(cmd)
-
-	if client.fetchedPages != nil {
-		t.Errorf("fetched %v, want no single-page refetch of the sentinel", client.fetchedPages)
-	}
-	if len(client.queriedDSIDs) != 1 {
-		t.Errorf("queried %v, want the full load", client.queriedDSIDs)
-	}
-	if app.toast != "Planned." {
-		t.Errorf("toast = %q, want the plan report as a toast", app.toast)
-	}
-}
-
-func TestAppPlanAgentPaneJoinStillReloadsTheWholePlan(t *testing.T) {
-	client := newLoadingClient()
-	app := NewApp(testConfig(), client)
-	p := testProject()
-	app.project = &p
-
-	// Joining carries no note, so it takes the ordinary saved path — which
-	// must not mistake the sentinel for a page to fetch.
-	_, cmd := app.Update(agentAttachedMsg{slice: agent.PlanSentinel, joined: true})
-	run(cmd)
-
-	if client.fetchedPages != nil {
-		t.Errorf("fetched %v, want no single-page refetch of the sentinel", client.fetchedPages)
-	}
-	if len(client.queriedDSIDs) != 1 {
-		t.Errorf("queried %v, want the full load", client.queriedDSIDs)
 	}
 }

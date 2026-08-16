@@ -25,9 +25,9 @@ import (
 //
 // The host pane is pinned empty for the same reason. The app reads it from the
 // environment, so a suite run from inside tmux — an agent working this very
-// project — would otherwise see a pane the same suite run from a plain terminal
-// does not, and take the branches that join panes beside the board. Tests that
-// want a host pane set one with t.Setenv, which puts this value back after.
+// project — would otherwise ask the real tmux about a real pane where the same
+// suite run from a plain terminal asks nothing. Tests that want a host pane set
+// one with t.Setenv, which puts this value back after.
 func TestMain(m *testing.M) {
 	newLauncher = func() AgentLauncher { return &fakeLauncher{} }
 	liveTick = func() tea.Cmd { return nil }
@@ -38,6 +38,12 @@ func TestMain(m *testing.M) {
 	nudgeStat = func() (time.Time, bool) { return time.Time{}, false }
 	// So is the background poll: its own tests put a firing version in.
 	pollTick = func(time.Duration) tea.Cmd { return nil }
+	// The embedded agent terminal is pinned away from a real pseudo-terminal
+	// the same way: nothing is started, and nothing waits on a channel that
+	// would never fire. Tests about the viewer put a fake in with
+	// fakeTermFor, and the one test of the real wait arms its own channels.
+	startTerm = func(*exec.Cmd, int, int) (termSession, error) { return newFakeTerm(), nil }
+	awaitTerm = func(termSession) tea.Cmd { return nil }
 	// The dismissal timers never fire on their own either: a pending 4-second
 	// tick would hold every teatest program open, and the confirmations under
 	// test would vanish before they could be asserted on. The auto-dismiss
@@ -55,37 +61,24 @@ func TestMain(m *testing.M) {
 // launchCall is one session the launcher was asked to start.
 type launchCall struct{ session, workdir, promptFile, sliceID string }
 
-// showCall is one agent the launcher was asked to show beside the board.
-type showCall struct {
-	sliceID string
-	host    string
-	percent int
-}
-
 // fakeLauncher records what it was asked to do, in place of a tmux server.
 type fakeLauncher struct {
 	live      map[string]string
 	liveErr   error
 	launchErr error
-	// joined is what ShowPane reports back: whether the pane ended up beside
-	// the board, and the failure that stopped it.
-	joined  bool
-	showErr error
 
-	// brokenOut and reclaimed are what the two ways of giving a joined pane
-	// back report: how many panes moved, and the failure that stopped them.
-	brokenOut    int
-	brokenOutErr error
-	reclaimed    int
-	reclaimErr   error
-	refreshErr   error
+	// reclaimed is what the startup reconcile reports: how many panes an
+	// earlier run had left joined, and the failure that stopped it.
+	reclaimed  int
+	reclaimErr error
+	refreshErr error
 
 	launches []launchCall
-	shown    []showCall
+	// attached and clients record the sessions each of the two attaches was
+	// asked for: the full-screen one, and the viewer's hidden client.
 	attached []string
-	// releases, reclaims and refreshes record the host pane each was asked
-	// about.
-	releases  []string
+	clients  []string
+	// reclaims and refreshes record the host pane each was asked about.
 	reclaims  []string
 	refreshes []string
 }
@@ -104,11 +97,6 @@ func (f *fakeLauncher) Launch(session, workdir, promptFile, sliceID string) erro
 	return f.launchErr
 }
 
-func (f *fakeLauncher) ShowPane(sliceID, host string, percent int) (bool, error) {
-	f.shown = append(f.shown, showCall{sliceID, host, percent})
-	return f.joined, f.showErr
-}
-
 func (f *fakeLauncher) AttachCmd(session string) *exec.Cmd {
 	f.attached = append(f.attached, session)
 	// Something harmless: the test runtime never runs it, but nothing here
@@ -116,9 +104,10 @@ func (f *fakeLauncher) AttachCmd(session string) *exec.Cmd {
 	return exec.Command("true")
 }
 
-func (f *fakeLauncher) BreakOutJoined(hostPane string) (int, error) {
-	f.releases = append(f.releases, hostPane)
-	return f.brokenOut, f.brokenOutErr
+func (f *fakeLauncher) AttachClientCmd(session string) *exec.Cmd {
+	f.clients = append(f.clients, session)
+	// The viewer never really runs it: startTerm is stood in for.
+	return exec.Command("true")
 }
 
 func (f *fakeLauncher) ReclaimStrays(hostPane string) (int, error) {
@@ -139,9 +128,9 @@ func launchApp(t *testing.T) (*App, *fakeLauncher, string) {
 	t.Helper()
 	workdir := t.TempDir()
 	t.Setenv("TMPDIR", t.TempDir())
-	// Whether the board is itself a tmux pane decides how an agent is shown,
-	// and the suite may well be run from inside tmux: the tests that want the
-	// split say so, and the rest get the full-screen attach either way.
+	// The suite may well be run from inside tmux, and the board reads its own
+	// pane from the environment: the tests about the tmux bar set one, and the
+	// rest are about a board that has none.
 	t.Setenv(agent.PaneEnv, "")
 
 	cfg := testConfig()
@@ -562,11 +551,11 @@ func TestAppLaunchStartsTheSessionAndAttaches(t *testing.T) {
 	if app.form != nil {
 		t.Fatalf("form = %T, want the launch to finish without a form", app.form)
 	}
-	if want := []string{agent.SessionName("s5")}; !equal(launcher.attached, want) {
-		t.Errorf("attached = %v, want %v", launcher.attached, want)
+	if want := []string{agent.SessionName("s5")}; !equal(launcher.clients, want) {
+		t.Errorf("clients = %v, want the agent shown beside the board", launcher.clients)
 	}
-	if !app.busy {
-		t.Error("the terminal is the session's until it is given back")
+	if app.busy {
+		t.Error("the launch is over; the board is live again")
 	}
 }
 
@@ -596,8 +585,8 @@ func TestAppLaunchEditsTheWorkingDirectoryOnDemand(t *testing.T) {
 		t.Errorf("workdir = %q, want the edited %q", got, sub)
 	}
 	// Confirming from the edit launches likewise: straight to the agent.
-	if want := []string{agent.SessionName("s5")}; !equal(launcher.attached, want) {
-		t.Errorf("attached = %v, want %v", launcher.attached, want)
+	if want := []string{agent.SessionName("s5")}; !equal(launcher.clients, want) {
+		t.Errorf("clients = %v, want %v", launcher.clients, want)
 	}
 }
 
@@ -784,13 +773,12 @@ func TestAppTellsApartAgentsOnSlicesSharingAnIDPrefix(t *testing.T) {
 		t.Errorf("a slice with no agent of its own is marked:\n%s", view)
 	}
 
-	// t on the claimed slice attaches to its agent, not to the other one.
+	// t on the claimed slice shows its agent, not the other one.
 	app.board.cursor = rowClaimedSlice
-	press(app, "t")
-	if want := []string{agent.SessionName(claimed)}; !equal(launcher.attached, want) {
-		t.Errorf("attached = %v, want %v", launcher.attached, want)
+	feed(t, app, press(app, "t"))
+	if want := []string{agent.SessionName(claimed)}; !equal(launcher.clients, want) {
+		t.Errorf("clients = %v, want %v", launcher.clients, want)
 	}
-	app.busy = false // as detaching would leave it
 
 	// And the slice with no agent can still be launched, under a session name
 	// of its own rather than one tmux would refuse as a duplicate.
@@ -846,7 +834,7 @@ func TestAppLaunchIsRefusedWithNothingToLaunchWith(t *testing.T) {
 	}
 }
 
-func TestAppAttachesToALiveSessionWhateverTheSlicesStatus(t *testing.T) {
+func TestAppShowsALiveSessionWhateverTheSlicesStatus(t *testing.T) {
 	// An agent claims its slice as it starts and marks it Done as it finishes,
 	// so it is watchable from a row of any status.
 	tests := []struct {
@@ -860,139 +848,19 @@ func TestAppAttachesToALiveSessionWhateverTheSlicesStatus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			app, launcher, _ := launchApp(t)
+			fakeTermFor(t)
 			id, session := sliceAt(t, app, tt.cursor)
 			app.live = map[string]string{id: session}
 
-			if cmd := press(app, "t"); cmd == nil {
-				t.Fatal("t should attach to the live session")
+			feed(t, app, press(app, "t"))
+
+			if want := []string{session}; !equal(launcher.clients, want) {
+				t.Errorf("clients = %v, want %v", launcher.clients, want)
 			}
-			if want := []string{session}; !equal(launcher.attached, want) {
-				t.Errorf("attached = %v, want %v", launcher.attached, want)
-			}
-			if !app.busy {
-				t.Error("the terminal is the session's until it is given back")
+			if app.viewer == nil || app.viewer.sliceID != id {
+				t.Errorf("viewer = %+v, want the slice's agent on show", app.viewer)
 			}
 		})
-	}
-}
-
-// Inside tmux the board stays on screen: the agent is joined in beside it
-// rather than taking the terminal.
-func TestAppShowsTheAgentBesideTheBoard(t *testing.T) {
-	app, launcher, _ := launchApp(t)
-	t.Setenv(agent.PaneEnv, "%0")
-	launcher.joined = true
-	id, session := sliceAt(t, app, rowTodoSlice)
-	app.live = map[string]string{id: session}
-
-	feed(t, app, press(app, "t"))
-
-	want := []showCall{{sliceID: id, host: "%0", percent: config.DefaultSplitPercent}}
-	if !reflect.DeepEqual(launcher.shown, want) {
-		t.Errorf("shown = %+v, want %+v", launcher.shown, want)
-	}
-	if len(launcher.attached) != 0 {
-		t.Errorf("attached = %v, want the terminal left to the board", launcher.attached)
-	}
-	// No confirmation: the status bar's pane guidance says how to send it back,
-	// and a report would sit on top of it.
-	if app.note != "" || app.board.confirmText != "" {
-		t.Errorf("note = %q, confirm = %q, want the pane guidance to speak instead", app.note, app.board.confirmText)
-	}
-	if !app.joined[id] {
-		t.Error("the slice should be marked joined")
-	}
-	if app.busy {
-		t.Error("the pane is joined; nothing is still in flight")
-	}
-}
-
-// Pressing t again sends it back, which is the same key and the same call —
-// tmux is what knows which way round it currently is.
-func TestAppSendsAShownAgentBack(t *testing.T) {
-	app, launcher, _ := launchApp(t)
-	t.Setenv(agent.PaneEnv, "%0")
-	launcher.joined = false
-	id, session := sliceAt(t, app, rowTodoSlice)
-	app.live = map[string]string{id: session}
-	app.joined[id] = true
-
-	feed(t, app, press(app, "t"))
-
-	if want := fmt.Sprintf("Sent the agent for %q back to %s.", "Info view", session); app.board.confirmText != want {
-		t.Errorf("confirm = %q, want %q", app.board.confirmText, want)
-	}
-	if app.joined[id] {
-		t.Error("the joined mark should go with the pane")
-	}
-}
-
-// While an agent's pane is beside the board, the hints row explains how the
-// split is handled; the ordinary hints come back once the pane is returned.
-func TestAppHintsRowGuidesAJoinedPane(t *testing.T) {
-	app, launcher, _ := launchApp(t)
-	t.Setenv(agent.PaneEnv, "%0")
-	launcher.joined = true
-	id, session := sliceAt(t, app, rowTodoSlice)
-	app.live = map[string]string{id: session}
-
-	feed(t, app, press(app, "t"))
-	joined := stripANSI(app.View().Content)
-	for _, want := range []string{"t hide agent pane", "prefix+z zoom the split"} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("joined view is missing %q:\n%s", want, joined)
-		}
-	}
-	if strings.Contains(joined, "? help") {
-		t.Errorf("the ordinary hints should have made way:\n%s", joined)
-	}
-
-	launcher.joined = false
-	feed(t, app, press(app, "t"))
-	app.board.ClearConfirm()
-	returned := stripANSI(app.View().Content)
-	if strings.Contains(returned, "hide agent pane") {
-		t.Errorf("the guidance should go with the pane:\n%s", returned)
-	}
-	if !strings.Contains(returned, "? help") {
-		t.Errorf("the ordinary hints should be back:\n%s", returned)
-	}
-}
-
-// The row drops the zoom before the key that hides the pane: with only room
-// for one of them, the way back is the one that matters.
-func TestAppPaneGuidanceDropsTheZoomFirst(t *testing.T) {
-	app, _, _ := launchApp(t)
-	line := stripANSI(strings.Join(app.wrapHints(app.paneHints(), 22, 1), "\n"))
-	if !strings.Contains(line, "t hide agent pane") {
-		t.Errorf("line = %q, want the hide key kept", line)
-	}
-	if strings.Contains(line, "zoom") {
-		t.Errorf("line = %q, want the zoom dropped", line)
-	}
-}
-
-// An agent that exits while joined takes its pane with it, so the next live
-// poll retires the guidance too. A poll that failed proves nothing and leaves
-// the marks alone.
-func TestAppRetiresTheJoinedMarkWhenTheAgentDies(t *testing.T) {
-	app, _, _ := launchApp(t)
-	id, session := sliceAt(t, app, rowTodoSlice)
-	app.joined[id] = true
-
-	app.Update(liveSessionsMsg{err: errors.New("boom")})
-	if !app.joined[id] {
-		t.Error("a failed poll should not retire the mark")
-	}
-
-	app.Update(liveSessionsMsg{live: map[string]string{id: session}})
-	if !app.joined[id] {
-		t.Error("a live agent's mark should stay")
-	}
-
-	app.Update(liveSessionsMsg{live: map[string]string{}})
-	if app.joined[id] {
-		t.Error("the mark should go with the agent's pane")
 	}
 }
 
@@ -1007,77 +875,6 @@ func TestAppLaunchPromptGolden(t *testing.T) {
 	feed(t, a, press(a, "l"))
 
 	golden(t, "app-launch-prompt", a.View().Content)
-}
-
-// How the whole window reads while an agent's pane is joined: the plan on
-// show, and the pane guidance where the key hints were.
-func TestAppPaneGuidanceGolden(t *testing.T) {
-	a := sizedApp(80, 16)
-	a.joined["s1"] = true
-	golden(t, "app-pane-joined", a.View().Content)
-}
-
-// Attaches and detaches move no pane, so they leave the joined marks alone.
-func TestPaneMovedIgnoresMessagesThatMovedNothing(t *testing.T) {
-	app, _, _ := launchApp(t)
-	app.joined["s5"] = true
-
-	app.Update(agentAttachedMsg{note: "Detached from nat-5."})
-
-	if !app.joined["s5"] {
-		t.Error("a detach should not touch the joined marks")
-	}
-}
-
-func TestAppSplitsAtTheConfiguredWidth(t *testing.T) {
-	app, launcher, _ := launchApp(t)
-	t.Setenv(agent.PaneEnv, "%0")
-	app.cfg.AgentSplitPercent = 80
-	id, session := sliceAt(t, app, rowTodoSlice)
-	app.live = map[string]string{id: session}
-
-	feed(t, app, press(app, "t"))
-
-	if len(launcher.shown) != 1 || launcher.shown[0].percent != 80 {
-		t.Errorf("shown = %+v, want the configured 80%%", launcher.shown)
-	}
-}
-
-func TestAppReportsAFailedSplit(t *testing.T) {
-	app, launcher, _ := launchApp(t)
-	t.Setenv(agent.PaneEnv, "%0")
-	launcher.showErr = errors.New("no agent pane is tagged for slice s5")
-	id, session := sliceAt(t, app, rowTodoSlice)
-	app.live = map[string]string{id: session}
-
-	feed(t, app, press(app, "t"))
-
-	if app.err == nil || !strings.Contains(app.err.Error(), `show the agent for "Info view"`) {
-		t.Errorf("err = %v, want the failed split", app.err)
-	}
-	if app.busy {
-		t.Error("a failed split should leave nothing in flight")
-	}
-}
-
-// The attach that follows a launch goes the same way as t does, so launching
-// from inside tmux joins the pane beside the board rather than trying to nest
-// a session in a pane.
-func TestAppLaunchShowsTheAgentBesideTheBoard(t *testing.T) {
-	app, launcher, _ := launchApp(t)
-	t.Setenv(agent.PaneEnv, "%0")
-	launcher.joined = true
-	app.board.cursor = rowTodoSlice
-
-	launch(t, app)
-
-	want := []showCall{{sliceID: "s5", host: "%0", percent: config.DefaultSplitPercent}}
-	if !reflect.DeepEqual(launcher.shown, want) {
-		t.Errorf("shown = %+v, want %+v", launcher.shown, want)
-	}
-	if len(launcher.attached) != 0 {
-		t.Errorf("attached = %v, want the board kept on screen", launcher.attached)
-	}
 }
 
 func TestAppAttachNeedsALiveSession(t *testing.T) {
@@ -1111,7 +908,6 @@ func TestAppAttachIsRefusedWithNothingToAttachWith(t *testing.T) {
 		disable func(*App)
 	}{
 		{"no launcher", func(a *App) { a.launcher = nil }},
-		{"already in flight", func(a *App) { a.busy = true }},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			app, _, _ := launchApp(t)
@@ -1279,60 +1075,6 @@ func TestAppDoesNotPollWithoutAProject(t *testing.T) {
 	app := NewApp(config.Config{}, &fakeNotion{})
 	if cmd := app.refreshLive(); cmd != nil {
 		t.Error("there are no slices to mark")
-	}
-}
-
-// Quitting with an agent joined into the board's window: the pane is handed
-// back before the window it is in goes away with the app.
-func TestReleaseFreesTheJoinedAgents(t *testing.T) {
-	app, launcher, _ := launchApp(t)
-	t.Setenv(agent.PaneEnv, "%0")
-	launcher.brokenOut = 1
-
-	if err := app.Release(); err != nil {
-		t.Fatalf("Release: %v", err)
-	}
-
-	if !reflect.DeepEqual(launcher.releases, []string{"%0"}) {
-		t.Errorf("releases = %v, want the board's own pane asked about once", launcher.releases)
-	}
-}
-
-// A board that is not a tmux pane has never joined anything, so there is
-// nothing to hand back and no reason to ask tmux.
-func TestReleaseOutsideTmux(t *testing.T) {
-	app, launcher, _ := launchApp(t)
-	t.Setenv(agent.PaneEnv, "")
-
-	if err := app.Release(); err != nil {
-		t.Fatalf("Release: %v", err)
-	}
-	if len(launcher.releases) != 0 {
-		t.Errorf("releases = %v, want tmux left alone", launcher.releases)
-	}
-}
-
-func TestReleaseWithoutALauncher(t *testing.T) {
-	app, _, _ := launchApp(t)
-	app.launcher = nil
-	t.Setenv(agent.PaneEnv, "%0")
-
-	if err := app.Release(); err != nil {
-		t.Fatalf("Release: %v", err)
-	}
-}
-
-func TestReleaseReportsAFailure(t *testing.T) {
-	app, launcher, _ := launchApp(t)
-	t.Setenv(agent.PaneEnv, "%0")
-	launcher.brokenOutErr = errors.New("no server")
-
-	err := app.Release()
-	if err == nil {
-		t.Fatal("Release: want the failure reported, got nil")
-	}
-	if !strings.Contains(err.Error(), "no server") {
-		t.Errorf("err = %v, want it to carry what tmux said", err)
 	}
 }
 

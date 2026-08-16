@@ -187,12 +187,12 @@ func TestAppWorkshopKeyLaunchesAPlanningAgentOnTheWishlist(t *testing.T) {
 		}
 	}
 
-	// The pane is attached on launch, as a typed planning launch is.
-	if want := []string{agent.PlanSession}; !equal(launcher.attached, want) {
-		t.Errorf("attached = %v, want %v", launcher.attached, want)
+	// The agent is shown on launch, as a typed planning launch is.
+	if want := []string{agent.PlanSession}; !equal(launcher.clients, want) {
+		t.Errorf("clients = %v, want %v", launcher.clients, want)
 	}
-	if !app.busy {
-		t.Error("the terminal is the session's until it is given back")
+	if app.busy {
+		t.Error("the launch is over; the board is live again")
 	}
 }
 
@@ -225,8 +225,8 @@ func TestAppWorkshopKeyDoesNothingWithAPlanningAgentRunning(t *testing.T) {
 	if len(launcher.launches) != 0 {
 		t.Errorf("launches = %+v, want no second planning agent", launcher.launches)
 	}
-	if len(launcher.attached) != 0 || len(launcher.shown) != 0 {
-		t.Errorf("attached = %v, shown = %+v, want the pane untouched", launcher.attached, launcher.shown)
+	if len(launcher.attached) != 0 || len(launcher.clients) != 0 {
+		t.Errorf("attached = %v, clients = %v, want the agent untouched", launcher.attached, launcher.clients)
 	}
 }
 
