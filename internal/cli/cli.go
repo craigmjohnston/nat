@@ -97,10 +97,13 @@ usage:
   nat plan-apply [FILE] [--json]
                       create a whole plan of milestones and slices from a JSON
                       document, read from FILE or stdin
-  nat complete-slice <slice> [--pr URL] [--summary TEXT] [--blocked]
-                      close out a slice you claimed: Done, its PR, and a
-                      summary appended to its page — or, with --blocked, left
-                      in progress with a note saying what stopped it
+  nat complete-slice <slice> [--branch NAME] [--pr URL] [--summary TEXT] [--blocked]
+                      close out a slice you claimed: with --branch, handed back
+                      for review — the branch recorded, the slice left in
+                      progress, and the board's approve key what opens the pull
+                      request; with --pr, Done with its pull request recorded;
+                      with --blocked, left in progress with a note saying what
+                      stopped it. A summary is appended to the page either way
   nat help            show this message
 `
 

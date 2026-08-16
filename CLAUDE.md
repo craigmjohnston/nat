@@ -101,8 +101,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `nat start-slice <slice> [--json]`, which claims one named Todo slice and
   prints the same brief — the command a board-launched agent runs, since it is
   pointed at a slice rather than choosing one —
-  `nat complete-slice <slice> [--pr URL] [--summary TEXT] [--blocked]`, which
-  closes out a slice the configured user holds, and the one-off additions
+  `nat complete-slice <slice> [--branch NAME] [--pr URL] [--summary TEXT]
+  [--blocked]`, which closes out a slice the configured user holds — three
+  endings, and no two of them at once: `--branch` records the branch the work
+  was pushed to and leaves the slice in progress, handed back for review, which
+  is how an agent ends now; `--pr` records a pull request and marks the slice
+  Done; `--blocked` leaves it in progress with a note saying what stopped it —
+  and the one-off additions
   `nat milestone-add <name>` (Queued, at the end of the plan) and
   `nat slice-add <title> --milestone <name> [--description TEXT|-]
   [--repo DIR] [--depends-on <slice>]...` (Todo and unassigned, description as
@@ -259,16 +264,22 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   (`notion.MigrateProject`) rather than read anywhere. `notion.ShapeOf` still
   reads the types of the `Status` and `Milestone` columns off the Slices data
   source — either may have been converted to Notion's own status type in the UI
-  — and whether the project has an `Assignee` column at all.
+  — and whether the project has an `Assignee` or a `Branch` column at all.
 - Claiming = Status → `In progress`, plus Assignee (people
   property, the configured real Notion user) where the project has that column.
   Without one, ownership is decided on status alone.
 - Slices ↔ PRs are 1:1 when work is code; PR URL recorded in the `PR` property.
 - A slice may carry a `Branch` — the branch an agent pushed its work to and
-  handed back on. It is optional, read off the page like any other property and
-  empty on a project whose Slices table has no such column, and a slice in
-  progress that names one is work waiting to be reviewed. `p` on the board is
-  what ends that wait: it confirms on the row, runs `gh pr create` in the
+  handed back on. It is read off the page like any other property and empty on a
+  project whose Slices table has no such column, and a slice in progress that
+  names one is work waiting to be reviewed (`domain.Slice.HandedBack`), which
+  the board draws as a green `↑ review` chip so a hand-back does not read as
+  another slice being worked. `complete-slice --branch` is what writes it: the
+  branch recorded, the status left alone, and the note filed under a
+  `Handed back` heading rather than `Summary`. A branch is refused outright
+  where `notion.ShapeOf` reads no `Branch` text column — a hand-back written
+  nowhere is one lost — and refused before the note goes on, so the slice is
+  left as it was. `p` on the board is what ends that wait: it confirms on the row, runs `gh pr create` in the
   slice's repo from that branch, and writes the URL it gets back onto the `PR`
   property as it sets the status to `Done` — the one board key that reaches
   outside Notion, and the only place a slice's PR is recorded from the TUI. The
@@ -333,12 +344,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   already in the one shape is read and left alone, which is what every load
   after the first does. What changed is logged, and the board says so in a
   toast. One step there is every project's rather than an old-shape project's:
-  a missing `Depends on` column is added (`addDependsOn`). `CreateProject`
-  writes that column, but only for the projects it creates, so a project older
-  than slice dependencies has nothing for one to be recorded on and Notion
-  refuses every write against it — and it goes on last, after the shape changes
-  and whether or not there were any, so a project refused part way through them
-  is left as those steps found it.
+  a missing `Depends on` or `Branch` column is added (`addColumns`).
+  `CreateProject` writes both, but only for the projects it creates, so a
+  project older than slice dependencies, or than handing work back on a branch,
+  has nothing for one to be recorded on and Notion refuses every write against
+  it — and they go on last, in one write, after the shape changes and whether or
+  not there were any, so a project refused part way through them is left as
+  those steps found it.
 - Filing a slice under a milestone — the board's `a` and `m`, `slice-add`,
   `plan-apply` — writes the option naming it (`domain.Milestone.Ref()`, sent as
   `SelectType`, the column's own type). `milestone-add` and `plan-apply` add

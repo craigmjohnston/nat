@@ -149,8 +149,18 @@ func selectMilestoneSlicesDS(milestones ...string) notion.DataSource {
 			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceInProgress, notion.SliceDone),
 			notion.PropMilestone: notion.SchemaSelect(milestones...),
 			notion.PropDependsOn: dependsOnColumn("slices-ds"),
+			notion.PropBranch:    branchColumn(),
 		},
 	}
+}
+
+// branchColumn is the Branch column as a read returns it, there for the same
+// reason dependsOnColumn is: every current project has one, and a fixture
+// without it is a project the load-time back-fill writes to first.
+func branchColumn() notion.PropertySchema {
+	schema := notion.SchemaRichText()
+	schema.Type = notion.TypeRichText
+	return schema
 }
 
 // dependsOnColumn is the Depends on column as a read returns it. Every current

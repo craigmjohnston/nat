@@ -113,6 +113,15 @@ func dependsOnColumn() PropertySchema {
 	return s
 }
 
+// branchColumn is the Branch column as a data source read returns it, there for
+// the same reason dependsOnColumn is: a project already given one, so a test
+// about anything else is not also a test of the back-fill.
+func branchColumn() PropertySchema {
+	s := SchemaRichText()
+	s.Type = TypeRichText
+	return s
+}
+
 // oldShape is a Slices data source as this app first made one: milestones in a
 // database of their own, and Claimed for the status an agent holds. It carries
 // the dependency column, which such a project would not have — the back-fill is
@@ -124,6 +133,7 @@ func oldShape() *DataSource {
 		Properties: map[string]PropertySchema{
 			PropName:      {Type: "title"},
 			PropDependsOn: dependsOnColumn(),
+			PropBranch:    branchColumn(),
 			PropStatus: {Type: TypeSelect, Select: &OptionsConfig{Options: []SelectOption{
 				{ID: "1", Name: SliceTodo, Color: "gray"},
 				{ID: "2", Name: SliceClaimed, Color: "blue"},
@@ -273,6 +283,7 @@ func TestMigrateProjectIsIdempotent(t *testing.T) {
 		PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceTodo, SliceInProgress, SliceDone})}},
 		PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{"M1: Groundwork"})}},
 		PropDependsOn: dependsOnColumn(),
+		PropBranch:    branchColumn(),
 	}}
 	stub := &migrateStub{dataSource: migrated}
 
@@ -299,6 +310,7 @@ func TestMigrateProjectAddsTheDependencyColumn(t *testing.T) {
 	stub := &migrateStub{dataSource: &DataSource{ID: "ds-slices", Properties: map[string]PropertySchema{
 		PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceTodo, SliceInProgress, SliceDone})}},
 		PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
+		PropBranch:    branchColumn(),
 	}}}
 
 	ds, migration, err := MigrateProject(context.Background(), stub, "ds-slices")
@@ -317,6 +329,56 @@ func TestMigrateProjectAddsTheDependencyColumn(t *testing.T) {
 	}
 	if stub.queried != nil {
 		t.Errorf("queried %v, want nothing: no slice is read to add a column", stub.queried)
+	}
+}
+
+// A project made before an agent handed its work back on a branch has no Branch
+// column, and complete-slice refuses to hand one back until it gains one. It is
+// back-filled the same way and in the same place as the dependency column.
+func TestMigrateProjectAddsTheBranchColumn(t *testing.T) {
+	stub := &migrateStub{dataSource: &DataSource{ID: "ds-slices", Properties: map[string]PropertySchema{
+		PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceTodo, SliceInProgress, SliceDone})}},
+		PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
+		PropDependsOn: dependsOnColumn(),
+	}}}
+
+	ds, migration, err := MigrateProject(context.Background(), stub, "ds-slices")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []map[string]PropertySchema{{PropBranch: SchemaRichText()}}
+	if !reflect.DeepEqual(stub.writes, want) {
+		t.Errorf("schema writes = %+v, want %+v", stub.writes, want)
+	}
+	if !reflect.DeepEqual(migration, Migration{BranchAdded: true}) {
+		t.Errorf("migration = %+v, want the column added and nothing else", migration)
+	}
+	if _, ok := ds.Properties[PropBranch]; !ok {
+		t.Errorf("data source = %+v, want the column it was just written", ds)
+	}
+}
+
+// A project older than both columns gains both, in one write: two schema writes
+// where one will do is a project touched twice for no reason.
+func TestMigrateProjectAddsBothColumnsAtOnce(t *testing.T) {
+	stub := &migrateStub{dataSource: &DataSource{ID: "ds-slices", Properties: map[string]PropertySchema{
+		PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceTodo, SliceInProgress, SliceDone})}},
+		PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
+	}}}
+
+	_, migration, err := MigrateProject(context.Background(), stub, "ds-slices")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []map[string]PropertySchema{{
+		PropDependsOn: SchemaRelation("ds-slices"),
+		PropBranch:    SchemaRichText(),
+	}}
+	if !reflect.DeepEqual(stub.writes, want) {
+		t.Errorf("schema writes = %+v, want %+v", stub.writes, want)
+	}
+	if !reflect.DeepEqual(migration, Migration{DependsOnAdded: true, BranchAdded: true}) {
+		t.Errorf("migration = %+v, want both columns added", migration)
 	}
 }
 
@@ -361,6 +423,7 @@ func TestMigrateProjectStatusOnly(t *testing.T) {
 			}}},
 			PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
 			PropDependsOn: dependsOnColumn(),
+			PropBranch:    branchColumn(),
 		}},
 		queries: map[string][]Page{"ds-slices": {
 			claimedSlice("s-1", ""),
@@ -397,6 +460,7 @@ func TestMigrateProjectLeavesBothNamesAlone(t *testing.T) {
 		}},
 		PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
 		PropDependsOn: dependsOnColumn(),
+		PropBranch:    branchColumn(),
 	}}}
 
 	_, migration, err := MigrateProject(context.Background(), stub, "ds-slices")
@@ -560,6 +624,7 @@ func TestMigrateProjectErrors(t *testing.T) {
 						PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: []SelectOption{{ID: "2", Name: SliceClaimed}}}},
 						PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
 						PropDependsOn: dependsOnColumn(),
+						PropBranch:    branchColumn(),
 					}},
 					queries: map[string][]Page{"ds-slices": {claimedSlice("s-1", "")}},
 					pageErr: boom,
@@ -577,7 +642,7 @@ func TestMigrateProjectErrors(t *testing.T) {
 			`retire the "Claimed" option`,
 		},
 		{
-			"the dependency column cannot be added",
+			"the back-filled columns cannot be added",
 			func() *migrateStub {
 				stub := &migrateStub{dataSource: &DataSource{ID: "ds-slices", Properties: map[string]PropertySchema{
 					PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceTodo})}},
@@ -586,7 +651,20 @@ func TestMigrateProjectErrors(t *testing.T) {
 				stub.schemaErrOn, stub.schemaErr = 1, boom
 				return stub
 			},
-			`add the "Depends on" column`,
+			`add the "Depends on" and "Branch" columns`,
+		},
+		{
+			"the branch column cannot be added",
+			func() *migrateStub {
+				stub := &migrateStub{dataSource: &DataSource{ID: "ds-slices", Properties: map[string]PropertySchema{
+					PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceTodo})}},
+					PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
+					PropDependsOn: dependsOnColumn(),
+				}}}
+				stub.schemaErrOn, stub.schemaErr = 1, boom
+				return stub
+			},
+			`add the "Branch" column`,
 		},
 		{
 			"the dependency column cannot be added after the shape changes",
@@ -630,10 +708,11 @@ func TestMigrationSummary(t *testing.T) {
 		{"nothing", Migration{}, "nothing to migrate"},
 		{
 			"one of each",
-			Migration{Milestones: []string{"M1"}, Slices: 1, StatusRenamed: true, MilestonesTrashed: true, DependsOnAdded: true},
+			Migration{Milestones: []string{"M1"}, Slices: 1, StatusRenamed: true, MilestonesTrashed: true,
+				DependsOnAdded: true, BranchAdded: true},
 			`Migrated this project: 1 milestone moved onto the slices, 1 slice refiled, ` +
 				`"Claimed" renamed to "In progress", the old Milestones database moved to Notion's trash, ` +
-				`a "Depends on" column added.`,
+				`a "Depends on" column added, a "Branch" column added.`,
 		},
 		{
 			"several",
@@ -641,9 +720,14 @@ func TestMigrationSummary(t *testing.T) {
 			"Migrated this project: 2 milestones moved onto the slices, 7 slices refiled.",
 		},
 		{
-			"the column alone",
+			"the dependency column alone",
 			Migration{DependsOnAdded: true},
 			`Migrated this project: a "Depends on" column added.`,
+		},
+		{
+			"the branch column alone",
+			Migration{BranchAdded: true},
+			`Migrated this project: a "Branch" column added.`,
 		},
 	}
 	for _, tt := range tests {

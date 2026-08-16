@@ -182,6 +182,10 @@ type Styles struct {
 	// is nothing to do about yet: it should read as receding rather than as
 	// something gone wrong.
 	Blocked lipgloss.Style
+	// Review marks a slice handed back on a branch and waiting to be reviewed.
+	// It takes the Success green the finished things take: the work itself is
+	// done, and what is pending is a person opening the pull request from it.
+	Review lipgloss.Style
 	// StarDim, StarMid and StarPeak are the star of a slice with an agent
 	// working on it, brightening and settling as the pulse swells: all three
 	// the Working orange, separated by weight the way Claude Code's own
@@ -283,6 +287,7 @@ func NewStyles(isDark bool) Styles {
 		PR:       lipgloss.NewStyle().Foreground(t.Accent),
 		Live:     lipgloss.NewStyle().Bold(true).Foreground(t.Success),
 		Blocked:  lipgloss.NewStyle().Foreground(t.Muted),
+		Review:   lipgloss.NewStyle().Bold(true).Foreground(t.Success),
 
 		StarDim:     lipgloss.NewStyle().Faint(true).Foreground(t.Working),
 		StarMid:     lipgloss.NewStyle().Foreground(t.Working),

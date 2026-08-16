@@ -186,6 +186,11 @@ const (
 // may or may not have one and the difference is read from the schema.
 const TypePeople = "people"
 
+// TypeRichText is the property type of a text column, named for the same reason
+// as TypePeople: a project may or may not carry the optional ones, and what is
+// there is read from the schema rather than assumed.
+const TypeRichText = "rich_text"
+
 // NewSelect builds a select property value naming an option.
 func NewSelect(name string) PropertyValue {
 	return PropertyValue{Select: &SelectOption{Name: name}}
