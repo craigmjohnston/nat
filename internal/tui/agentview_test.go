@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -531,15 +532,16 @@ func TestAppPasteReachesTheFocusedTerminal(t *testing.T) {
 }
 
 // The screen is redrawn as the child writes, and the waiting is re-armed each
-// time so the next write is noticed too.
+// time so the next write is noticed too. The re-arm is the throttled one: the
+// frame just drawn is the floor under the next read.
 func TestAppRedrawsTheTerminalAsItWrites(t *testing.T) {
 	app, _, term := viewerApp(t)
 	var waits int
-	awaitTerm = func(termSession) tea.Cmd {
+	awaitFrame = func(termSession) tea.Cmd {
 		waits++
 		return nil
 	}
-	t.Cleanup(func() { awaitTerm = func(termSession) tea.Cmd { return nil } })
+	t.Cleanup(func() { awaitFrame = func(termSession) tea.Cmd { return nil } })
 	term.frame = "a fresh frame"
 
 	_, cmd := app.Update(termOutputMsg{session: term})
@@ -686,6 +688,113 @@ func TestAwaitTermReportsWhicheverComesFirst(t *testing.T) {
 	}
 	if !errors.Is(msg.err, gone.err) {
 		t.Errorf("err = %v, want %v", msg.err, gone.err)
+	}
+}
+
+// The throttled wait reports the same thing the bare one does, a frame later:
+// a child that has already written is not read again until the frame on screen
+// has had its time.
+func TestAwaitFrameHoldsOffAFrame(t *testing.T) {
+	term := newFakeTerm()
+	close(term.output)
+
+	start := time.Now()
+	msg, ok := defaultAwaitFrame(term)().(termOutputMsg)
+	elapsed := time.Since(start)
+
+	if !ok || msg.session != term {
+		t.Fatalf("msg = %#v, want the output of %p", msg, term)
+	}
+	if elapsed < frameInterval {
+		t.Errorf("waited %v, want at least a frame (%v)", elapsed, frameInterval)
+	}
+}
+
+// A burst of output costs one capture per frame rather than one per write. The
+// child here is always ready with something — its output channel never empties
+// — which is what a chatty agent looks like to the board, and the rate the
+// screen is read at is still the frame rate.
+func TestBurstsOfOutputAreCapturedAtTheFrameRate(t *testing.T) {
+	app, _, term := viewerApp(t)
+	awaitFrame = defaultAwaitFrame
+	t.Cleanup(func() { awaitFrame = func(termSession) tea.Cmd { return nil } })
+	// Buffered and topped up after every capture, so the wait always has a
+	// notification to come back with however fast it goes round: the previous
+	// wait drained it, and the child has written again by the time the next one
+	// listens.
+	term.output = make(chan struct{}, 1)
+
+	const frames = 5
+	start := time.Now()
+	captures := 0
+	msg := tea.Msg(termOutputMsg{session: term})
+	for captures < frames {
+		_, cmd := app.Update(msg)
+		captures++
+		if cmd == nil {
+			t.Fatalf("capture %d re-armed nothing", captures)
+		}
+		term.output <- struct{}{}
+		msg = cmd()
+	}
+	elapsed := time.Since(start)
+
+	if captures != frames {
+		t.Fatalf("captured %d times, want %d", captures, frames)
+	}
+	if want := (frames - 1) * frameInterval; elapsed < want {
+		t.Errorf("%d captures took %v, want at least %v — the burst is not throttled",
+			frames, elapsed, want)
+	}
+}
+
+// The plan beside a terminal is drawn once and handed back: a change confined
+// to the terminal box costs nothing on the board's side of the split, however
+// fast the agent writes. Only something that says the board itself has changed
+// draws its rows again, and all of those go through syncBoard.
+func TestTheBoardIsNotRedrawnForTheTerminal(t *testing.T) {
+	app, _, term := viewerApp(t)
+	// Short enough that the plan overflows its band, so there is something a
+	// scroll would uncover.
+	app.Update(tea.WindowSizeMsg{Width: 80, Height: 16})
+	width, _ := app.splitWidths()
+	height := app.bodyBoxHeight()
+	region := func() string { return strings.Join(app.boardRegion(width, height), "\n") }
+	before := region()
+
+	term.frame = "the child has written"
+	app.Update(termOutputMsg{session: term})
+	// The scroll window moves under the board with nothing to say it has: only
+	// a redraw of the boxed rows could put the lines it uncovered on screen.
+	app.boardVP.SetYOffset(app.boardVP.YOffset() + 1)
+
+	if got := region(); got != before {
+		t.Error("the board was redrawn for a change confined to the terminal")
+	}
+
+	// And the scroll that does say so — the wheel over the plan — draws them.
+	app.boardVP.SetYOffset(0)
+	app.scrollBoard(wheelLines)
+	if app.boardVP.YOffset() == 0 {
+		t.Fatal("the fixture plan does not scroll, so there is nothing to redraw")
+	}
+	if got := region(); got == before {
+		t.Error("a scrolled board should have been drawn again")
+	}
+}
+
+// A plan that has not landed is the one thing not kept: what stands in for it
+// is a spinner, and a spinner held from one frame to the next is a stopped one.
+func TestTheSpinningBoardIsNotKept(t *testing.T) {
+	app, _, _ := viewerApp(t)
+	width, _ := app.splitWidths()
+	height := app.bodyBoxHeight()
+	app.project, app.loading = nil, true
+
+	first := strings.Join(app.boardRegion(width, height), "\n")
+	app.spinner, _ = app.spinner.Update(app.spinner.Tick())
+	if got := strings.Join(app.boardRegion(width, height), "\n"); got == first {
+		t.Error("the spinner should turn while the plan is still loading")
 	}
 }
 

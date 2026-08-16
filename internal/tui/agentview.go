@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -36,9 +37,16 @@ type termSession interface {
 // The viewer's edges, held as variables so the tests can stand in for them: the
 // real ones open a pseudo-terminal and block on a channel.
 var (
-	startTerm = defaultStartTerm
-	awaitTerm = defaultAwaitTerm
+	startTerm  = defaultStartTerm
+	awaitTerm  = defaultAwaitTerm
+	awaitFrame = defaultAwaitFrame
 )
+
+// frameInterval is the floor under the time between two reads of the agent's
+// screen, and so under the time between two redraws the child causes. It is the
+// renderer's own frame at 60fps: a capture more often than that is a screen
+// rendered to a string that nothing ever puts on the terminal.
+const frameInterval = time.Second / 60
 
 // defaultStartTerm runs cmd on a real pseudo-terminal.
 func defaultStartTerm(cmd *exec.Cmd, cols, rows int) (termSession, error) {
@@ -62,6 +70,26 @@ func defaultAwaitTerm(s termSession) tea.Cmd {
 		case <-s.Done():
 			return termExitedMsg{session: s, err: s.Err()}
 		}
+	}
+}
+
+// defaultAwaitFrame is the wait armed once a frame has been drawn: the same
+// listen as [defaultAwaitTerm], held off until the drawn frame's time is up.
+//
+// It is what keeps a chatty agent from costing a capture and a redraw per
+// write. The session hands its screen over a byte at a time as the child
+// produces it, and every notification that reaches the board is a render of the
+// whole emulator screen followed by a render of the whole window — at the rate
+// a PTY delivers a burst, most of them for a frame the terminal never shows. A
+// write during the pause is not lost: the session holds one pending
+// notification and coalesces the rest into it, so the wait comes straight back
+// with everything written while it slept, and the screen is at most one frame
+// behind the child however fast it writes.
+func defaultAwaitFrame(s termSession) tea.Cmd {
+	next := defaultAwaitTerm(s)
+	return func() tea.Msg {
+		time.Sleep(frameInterval)
+		return next()
 	}
 }
 
@@ -186,12 +214,16 @@ func (a *App) termStarted(msg termStartedMsg) (tea.Model, tea.Cmd) {
 // termOutput redraws the frame and waits for the next change. A message about a
 // session that is no longer on screen is one the close raced, and says nothing
 // about the terminal that is.
+//
+// The wait it re-arms is the throttled one: a frame has just been drawn, and
+// the next is not worth reading off the emulator until this one has been on
+// screen — see [defaultAwaitFrame].
 func (a *App) termOutput(msg termOutputMsg) (tea.Model, tea.Cmd) {
 	if !a.viewing(msg.session) {
 		return a, nil
 	}
 	a.viewer.capture()
-	return a, awaitTerm(msg.session)
+	return a, awaitFrame(msg.session)
 }
 
 // termExited takes the child's last frame and marks the viewer done.

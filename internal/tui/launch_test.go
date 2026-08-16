@@ -48,6 +48,9 @@ func TestMain(m *testing.M) {
 	// fakeTermFor, and the one test of the real wait arms its own channels.
 	startTerm = func(*exec.Cmd, int, int) (termSession, error) { return newFakeTerm(), nil }
 	awaitTerm = func(termSession) tea.Cmd { return nil }
+	// The throttled re-arm goes the same way, so no test pays a frame's sleep
+	// for a redraw it drove by hand.
+	awaitFrame = func(termSession) tea.Cmd { return nil }
 	// The dismissal timers never fire on their own either: a pending 4-second
 	// tick would hold every teatest program open, and the confirmations under
 	// test would vanish before they could be asserted on. The auto-dismiss

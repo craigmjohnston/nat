@@ -216,6 +216,16 @@ type App struct {
 	// so is set once.
 	boardVP viewport.Model
 	helpVP  viewport.Model
+	// boardBox is the board's boxed region as [App.bodyRegion] last drew it
+	// beside an agent terminal, with the width and height it was drawn at. An
+	// agent writing flat out redraws the window at the frame rate, and all of it
+	// but the terminal's own box is the same lines over again: the rows are
+	// cached in boardVP already, and this is the scroll window cut out of them
+	// and the border around it. It is dropped by [App.syncBoard], which
+	// everything that changes what the board shows goes through.
+	boardBox  []string
+	boardBoxW int
+	boardBoxH int
 
 	// launcher starts and attaches to the agents' tmux sessions, and live maps
 	// each slice it last reported an agent running for to that agent's session.
@@ -1195,13 +1205,34 @@ func (a *App) bodyRegion() []string {
 		return a.boxRegionAt(a.body(), a.width, height)
 	}
 	boardWidth, termWidth := a.splitWidths()
-	board := a.boxRegionAt(a.body(), boardWidth, height)
+	board := a.boardRegion(boardWidth, height)
 	term := a.viewerRegion(termWidth, height)
 	lines := make([]string, height)
 	for i := range lines {
 		lines[i] = fit(lineAt(board, i)+lineAt(term, i), a.width)
 	}
 	return lines
+}
+
+// boardRegion is the board's half of the split, drawn once per change rather
+// than once per frame. The terminal beside it is redrawn as fast as the agent
+// writes, and the plan does not move while it does — so the boxed lines are
+// kept and handed back until [App.syncBoard] drops them.
+//
+// The rendered board is only ever the board while there is a terminal beside
+// it: help, info and a form each take the whole band, so bodyRegion has already
+// settled that a.body() here is the plan. A plan that has not landed is the one
+// thing not cached: what stands in for it is a spinner, which is a different
+// frame every tick.
+func (a *App) boardRegion(width, height int) []string {
+	if a.project == nil {
+		return a.boxRegionAt(a.body(), width, height)
+	}
+	if a.boardBox == nil || a.boardBoxW != width || a.boardBoxH != height {
+		a.boardBox = a.boxRegionAt(a.body(), width, height)
+		a.boardBoxW, a.boardBoxH = width, height
+	}
+	return a.boardBox
 }
 
 // lineAt is one line of a region, or nothing when the region is shorter than
@@ -1325,6 +1356,9 @@ func (a *App) progressBarView() string {
 // least it can to bring the cursor back on screen. The board draws every row it
 // has; holding a plan taller than the window to the window is the layout's job.
 func (a *App) syncBoard() {
+	// Whatever brought us here changed what the board draws, so the region drawn
+	// beside an agent terminal is no longer the one to hand back.
+	a.boardBox = nil
 	// The hints band says what the row under the cursor can do, and a slice's
 	// hints run to more lines than a milestone's — so the lines left for the
 	// board change as the cursor moves, not only as the window resizes.
