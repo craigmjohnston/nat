@@ -76,6 +76,8 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	milestoneRef := flags.String("milestone", "", "the milestone to file the slice under, by name")
 	description := flags.String("description", "", "the brief to write on the slice page; `-` reads it from stdin")
 	repo := flags.String("repo", "", "working directory for this slice, overriding the project default")
+	var dependsOn stringList
+	flags.Var(&dependsOn, "depends-on", "a slice this one waits on, by URL or ID; repeat for more")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	rest, err := parseFlags(flags, args)
 	if err != nil {
@@ -97,6 +99,12 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
+	deps := make([]string, len(dependsOn))
+	for i, ref := range dependsOn {
+		if deps[i], err = pageID("slice-add", ref); err != nil {
+			return err
+		}
+	}
 
 	_, project, err := env.activeProject()
 	if err != nil {
@@ -113,7 +121,7 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	s, err := createSlice(ctx, client, project.SlicesDSID, milestone, title, brief, strings.TrimSpace(*repo))
+	s, err := createSlice(ctx, client, project.SlicesDSID, milestone, title, brief, strings.TrimSpace(*repo), deps)
 	if err != nil {
 		return err
 	}
@@ -203,13 +211,22 @@ func appendMilestoneOptions(ctx context.Context, client API, slicesDSID string, 
 // unclaimed, or it is not something the workflow can pick up.
 // The milestone is written in whichever shape the plan is kept in — a relation
 // to its page, or the option naming it — which the milestone itself knows.
-func createSlice(ctx context.Context, client API, slicesDSID string, milestone domain.Milestone, title, brief, repo string) (domain.Slice, error) {
-	page, err := client.CreatePage(ctx, notion.DataSourceParent(slicesDSID), map[string]notion.PropertyValue{
+//
+// dependsOn is the slices the new one waits on, and is left off the write
+// entirely when there are none: a project whose table has no dependency column
+// can still have slices added to it, and sending an empty relation to a column
+// that is not there would be the one thing stopping that.
+func createSlice(ctx context.Context, client API, slicesDSID string, milestone domain.Milestone, title, brief, repo string, dependsOn []string) (domain.Slice, error) {
+	properties := map[string]notion.PropertyValue{
 		notion.PropName:      notion.NewTitle(title),
 		notion.PropStatus:    notion.NewSelect(notion.SliceTodo),
 		notion.PropMilestone: milestone.Ref(),
 		notion.PropRepo:      notion.NewRichText(repo),
-	}, paragraphBlocks(brief))
+	}
+	if len(dependsOn) > 0 {
+		properties[notion.PropDependsOn] = notion.NewRelation(dependsOn...)
+	}
+	page, err := client.CreatePage(ctx, notion.DataSourceParent(slicesDSID), properties, paragraphBlocks(brief))
 	if err != nil {
 		return domain.Slice{}, fmt.Errorf("create the slice: %w", err)
 	}

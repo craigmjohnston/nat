@@ -38,7 +38,8 @@ func TestSliceFromPage(t *testing.T) {
 					"Assignee": {"type": "people", "people": [{"id": "u1", "name": "Craig Johnston"}]},
 					"Repo": {"type": "rich_text", "rich_text": [{"plain_text": "/repos/other"}]},
 					"Branch": {"type": "rich_text", "rich_text": [{"plain_text": "slice/domain-model"}]},
-					"PR": {"type": "url", "url": "https://github.test/pr/1"}
+					"PR": {"type": "url", "url": "https://github.test/pr/1"},
+					"Depends on": {"type": "relation", "relation": [{"id": "s0"}, {"id": "s00"}]}
 				}
 			}`,
 			Slice{
@@ -47,7 +48,13 @@ func TestSliceFromPage(t *testing.T) {
 				AssigneeName: "Craig Johnston", Repo: "/repos/other",
 				Branch: "slice/domain-model",
 				PRURL:  "https://github.test/pr/1", URL: "https://notion.test/s1",
+				DependsOn: []string{"s0", "s00"},
 			},
+		},
+		{
+			"an empty dependency relation is no dependency at all",
+			`{"id": "s10", "properties": {"Depends on": {"type": "relation", "relation": []}}}`,
+			Slice{ID: "s10"},
 		},
 		{
 			"status shape",
@@ -124,7 +131,7 @@ func TestSliceFromPage(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := SliceFromPage(page(t, tt.body)); got != tt.want {
+			if got := SliceFromPage(page(t, tt.body)); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("SliceFromPage() = %+v, want %+v", got, tt.want)
 			}
 		})
@@ -551,6 +558,80 @@ func TestMilestoneRef(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.milestone.Ref(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Ref() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+// The index is keyed on normalised IDs, so a dependency written with dashes
+// finds a slice whose ID was read without them and the other way round.
+func TestSlicesByIDNormalisesTheKey(t *testing.T) {
+	byID := SlicesByID([]Slice{{ID: "3BE38308-F654-81DC-962C-C60836E92992", Name: "Dashed"}})
+
+	got, ok := byID[NormaliseID("3be38308f65481dc962cc60836e92992")]
+	if !ok || got.Name != "Dashed" {
+		t.Errorf("lookup = %+v, %v, want the dashed slice", got, ok)
+	}
+}
+
+func TestBlockers(t *testing.T) {
+	plan := []Slice{
+		{ID: "s1", Name: "Notion client", Status: SliceDone, StatusName: "Done"},
+		{ID: "s2", Name: "Board", Status: SliceTodo, StatusName: "Todo"},
+		{ID: "s3", Name: "Agents", Status: SliceClaimed, StatusName: "In progress"},
+	}
+	byID := SlicesByID(plan)
+
+	tests := []struct {
+		name        string
+		dependsOn   []string
+		wantBlocked []string
+		wantUnknown []string
+	}{
+		{name: "a slice naming nothing waits on nothing"},
+		{
+			name:      "a dependency that is Done does not block",
+			dependsOn: []string{"s1"},
+		},
+		{
+			name:        "an unfinished dependency blocks",
+			dependsOn:   []string{"s2"},
+			wantBlocked: []string{"Board"},
+		},
+		{
+			name:        "an in-progress dependency blocks too",
+			dependsOn:   []string{"s3"},
+			wantBlocked: []string{"Agents"},
+		},
+		{
+			name:        "every unfinished dependency is named, in the order given",
+			dependsOn:   []string{"s3", "s1", "s2"},
+			wantBlocked: []string{"Agents", "Board"},
+		},
+		{
+			name:        "a dependency nobody can read is reported, not counted",
+			dependsOn:   []string{"gone", "s1"},
+			wantUnknown: []string{"gone"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := Slice{ID: "s9", Name: "Waiting", DependsOn: tt.dependsOn}
+
+			blocking, unknown := Blockers(s, byID)
+
+			var names []string
+			for _, b := range blocking {
+				names = append(names, b.Name)
+			}
+			if !reflect.DeepEqual(names, tt.wantBlocked) {
+				t.Errorf("blocking = %v, want %v", names, tt.wantBlocked)
+			}
+			if !reflect.DeepEqual(unknown, tt.wantUnknown) {
+				t.Errorf("unknown = %v, want %v", unknown, tt.wantUnknown)
+			}
+			if got := Blocked(s, byID); got != (len(tt.wantBlocked) > 0) {
+				t.Errorf("Blocked() = %v, want %v", got, len(tt.wantBlocked) > 0)
 			}
 		})
 	}

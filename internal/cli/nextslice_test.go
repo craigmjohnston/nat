@@ -688,6 +688,6 @@ func TestNextSliceMigratesAnOldProject(t *testing.T) {
 // relation to a page of a Milestones data source.
 func relatedSlicePage(id, name, status, milestoneID string) notion.Page {
 	p := slicePage(id, name, status, "", "", "")
-	p.Properties[notion.PropMilestone] = notion.PropertyValue{Relation: []notion.Relation{{ID: milestoneID}}}
+	p.Properties[notion.PropMilestone] = notion.PropertyValue{Relation: &[]notion.Relation{{ID: milestoneID}}}
 	return p
 }

@@ -28,7 +28,8 @@ const slicesDSJSON = `{
 			]}},
 			"Milestone":{"id":"m","name":"Milestone","type":"select","select":{"options":[]}},
 			"Repo":{"id":"r","name":"Repo","type":"rich_text","rich_text":{}},
-			"PR":{"id":"p","name":"PR","type":"url","url":{}}
+			"PR":{"id":"p","name":"PR","type":"url","url":{}},
+			"Depends on":{"id":"d","name":"Depends on","type":"relation","relation":{"data_source_id":"ds-slices","type":"single_property","single_property":{}}}
 		}
 	}`
 
@@ -47,7 +48,8 @@ const assigneeSlicesDSJSON = `{
 			"Milestone":{"id":"m","name":"Milestone","type":"select","select":{"options":[]}},
 			"Assignee":{"id":"a","name":"Assignee","type":"people","people":{}},
 			"Repo":{"id":"r","name":"Repo","type":"rich_text","rich_text":{}},
-			"PR":{"id":"p","name":"PR","type":"url","url":{}}
+			"PR":{"id":"p","name":"PR","type":"url","url":{}},
+			"Depends on":{"id":"d","name":"Depends on","type":"relation","relation":{"data_source_id":"ds-slices","type":"single_property","single_property":{}}}
 		}
 	}`
 
@@ -119,6 +121,10 @@ func TestCreateProject(t *testing.T) {
 				`"Status":{"select":{"options":[{"name":"Todo"},{"name":"In progress"},{"name":"Done"}]}}}},` +
 				`"parent":{"page_id":"page-1","type":"page_id"},` +
 				`"title":[{"type":"text","text":{"content":"Slices"}}]}`,
+			// The dependency column is added straight after the database, since
+			// it points at the data source the create has only just returned.
+			`PATCH /data_sources/ds-slices {"properties":{"Depends on":{"relation":` +
+				`{"data_source_id":"ds-slices","type":"single_property","single_property":{}}}}}`,
 			`GET /data_sources/ds-slices `,
 		}
 		if len(*bodies) != len(wantBodies) {
@@ -187,6 +193,33 @@ func TestCreateProject(t *testing.T) {
 		got, err := c.CreateProject(context.Background(), "ds-projects", "p", false)
 		if err == nil || !strings.Contains(err.Error(), "no data source") {
 			t.Fatalf("error = %v, want a missing data source error", err)
+		}
+		if got != nil {
+			t.Errorf("structure = %+v, want nil on error", got)
+		}
+	})
+
+	// The dependency column is a second write, and one that silently failed
+	// would leave a project whose slices could never be made to wait on each
+	// other. It is reported rather than shrugged off.
+	t.Run("propagates a failure to add the dependency column", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/pages":
+				w.Write([]byte(`{"id":"page-1"}`))
+			case "/databases":
+				w.Write([]byte(`{"id":"db-slices","data_sources":[{"id":"ds-slices"}]}`))
+			default:
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(`{"code":"validation_error","message":"no self relations"}`))
+			}
+		}))
+		defer srv.Close()
+
+		c, _ := testClient(t, srv)
+		got, err := c.CreateProject(context.Background(), "ds-projects", "p", false)
+		if err == nil || !strings.Contains(err.Error(), `add the "Depends on" column`) {
+			t.Fatalf("error = %v, want it to name the dependency column", err)
 		}
 		if got != nil {
 			t.Errorf("structure = %+v, want nil on error", got)
@@ -282,6 +315,7 @@ func TestVerifyProjectSchema(t *testing.T) {
 			`property "Milestone" is a relation, want select`,
 			`property "Repo" is a url, want rich_text`,
 			`missing property "PR" (url)`,
+			`missing property "Depends on" (relation)`,
 		}
 		if len(schemaErr.Problems) != len(want) {
 			t.Fatalf("problems = %v, want %d", schemaErr.Problems, len(want))

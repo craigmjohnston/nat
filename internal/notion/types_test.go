@@ -121,7 +121,7 @@ func TestPropertyValueAccessors(t *testing.T) {
 	})
 
 	t.Run("RelationIDs", func(t *testing.T) {
-		got := (PropertyValue{Relation: []Relation{{ID: "a"}, {ID: "b"}}}).RelationIDs()
+		got := (PropertyValue{Relation: &[]Relation{{ID: "a"}, {ID: "b"}}}).RelationIDs()
 		if len(got) != 2 || got[0] != "a" || got[1] != "b" {
 			t.Errorf("RelationIDs() = %v", got)
 		}
@@ -197,5 +197,33 @@ func TestListDecodesEnvelope(t *testing.T) {
 	}
 	if l.NextCursor == nil || *l.NextCursor != "c1" {
 		t.Errorf("NextCursor = %v", l.NextCursor)
+	}
+}
+
+// A relation is the one property this app clears, so the empty list has to
+// survive being marshalled: an omitted key would leave the write saying nothing
+// and the slice waiting on exactly what it was.
+func TestNewRelation(t *testing.T) {
+	tests := []struct {
+		name string
+		ids  []string
+		want string
+	}{
+		{"naming pages", []string{"s1", "s2"}, `{"relation":[{"id":"s1"},{"id":"s2"}]}`},
+		{"naming none clears the property", nil, `{"relation":[]}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := json.Marshal(NewRelation(tt.ids...))
+			if err != nil {
+				t.Fatalf("marshalling: %v", err)
+			}
+			if string(b) != tt.want {
+				t.Errorf("marshalled to %s, want %s", b, tt.want)
+			}
+			if got := NewRelation(tt.ids...).RelationIDs(); !reflect.DeepEqual(got, tt.ids) {
+				t.Errorf("RelationIDs() = %v, want %v", got, tt.ids)
+			}
+		})
 	}
 }

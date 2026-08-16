@@ -96,8 +96,8 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   its stderr, since "a pull request for branch X already exists" is the entire
   point of showing the failure.
 - `internal/cli/` — the headless commands (`nat info [--json]`,
-  `nat next-slice [--json]`, which claims the next Todo slice under the
-  lowest-ordered open milestone and prints its brief,
+  `nat next-slice [--json]`, which claims the next unblocked Todo slice under
+  the lowest-ordered open milestone and prints its brief,
   `nat start-slice <slice> [--json]`, which claims one named Todo slice and
   prints the same brief — the command a board-launched agent runs, since it is
   pointed at a slice rather than choosing one —
@@ -105,9 +105,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   closes out a slice the configured user holds, and the one-off additions
   `nat milestone-add <name>` (Queued, at the end of the plan) and
   `nat slice-add <title> --milestone <name> [--description TEXT|-]
-  [--repo DIR]` (Todo and unassigned, description as the page body;
-  `--description -` reads it from stdin, so a slice-add typed with no brief
-  does not wait on one), the wishlist pair `nat wishlist [--json]`, which prints
+  [--repo DIR] [--depends-on <slice>]...` (Todo and unassigned, description as
+  the page body; `--description -` reads it from stdin, so a slice-add typed
+  with no brief does not wait on one), `nat slice-depends <slice> [--on
+  <slice>]... [--clear]`, which records what a slice waits on — `--on` adds and
+  every named slice is read first, since a dependency nobody can fetch is a wait
+  with no end, and `--clear` drops what is there, so on its own it frees the
+  slice and with `--on` replaces the list outright — the wishlist pair `nat wishlist [--json]`, which prints
   the pending items written under the project page's Wishlist heading (with
   their block IDs under `--json`), and `nat wishlist-clear <block-id>...`,
   which trashes exactly the named items — never the section wholesale, so an
@@ -115,7 +119,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   holding one empty bullet, and `nat plan-apply [FILE]`, which creates a whole
   drafted plan of milestones and slices from a JSON document (read from FILE or
   stdin, validated entirely before the first write, and only ever creating
-  pages), and `nat setup`, which installs the embedded skills into
+  pages — its optional `depends_on` names slices by title, one the document
+  creates or one already in the plan, and those relations go on last, since a
+  slice may wait on one written further down and there is no page to point at
+  until every slice exists), and `nat setup`, which installs the embedded skills into
   `~/.claude/skills` — the only command that talks to neither Notion nor the
   config file, since it is what a machine with only the binary runs first), what
   the binary does when given a subcommand. Run before the tmux hosting step and with no TUI
@@ -273,6 +280,22 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   refuses a branch that already has one.
 - Slices may carry a `Repo` override; otherwise the project default working
   dir from local config applies.
+- A slice may declare the slices it waits on: `Depends on`, a single-property
+  relation from the Slices data source to itself — single so there is no
+  reciprocal `Blocks` column to keep in step — created alongside the other
+  columns, though as a second write, since a self-relation cannot name a data
+  source the create has not returned yet. The rule is one line
+  (`domain.Blockers`): a slice is blocked while any slice it names is not Done,
+  and a slice names none where the column is absent or empty, so a project whose
+  table has no such column behaves exactly as it did before there was one. A
+  dependency whose page cannot be read is logged and passed over rather than
+  counted, because a trashed slice must not wedge the plan forever. The two
+  commands that hand work out are what honour it: `next-slice` steps over a
+  blocked slice rather than stopping at it — the work below may well be ready —
+  and says which slices wait on what only when every candidate is blocked, and
+  `start-slice`, which was pointed at one slice and so has nothing to skip,
+  refuses it by name and lists what it waits on, before it claims anything. The
+  board draws none of this yet.
 - A project keeps its whole plan on one page: no Milestones database, and a
   `Milestone` **select** on the Slices data source whose options are the
   milestones, in plan order. `domain.MilestonesFromOptions` maps them —

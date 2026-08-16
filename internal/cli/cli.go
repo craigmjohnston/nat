@@ -81,9 +81,13 @@ usage:
   nat milestone-add <name> [--json]
                       add a Queued milestone at the end of the plan
   nat slice-add <title> --milestone <name> [--description TEXT|-]
-                        [--repo DIR] [--json]
+                        [--repo DIR] [--depends-on <slice>]... [--json]
                       add a Todo slice under a milestone, its description
                       written on the page; --description - reads it from stdin
+  nat slice-depends <slice> [--on <slice>]... [--clear] [--json]
+                      record the slices a slice waits on, by URL or ID; --clear
+                      drops what is there first, so on its own it frees the
+                      slice
   nat wishlist [--json]
                       print the active project's pending wishlist items, with
                       their block IDs under --json
@@ -141,6 +145,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return milestoneAdd(ctx, args[1:], env)
 	case "slice-add":
 		return sliceAdd(ctx, args[1:], env)
+	case "slice-depends":
+		return sliceDepends(ctx, args[1:], env)
 	case "wishlist":
 		return wishlist(ctx, args[1:], env)
 	case "wishlist-clear":

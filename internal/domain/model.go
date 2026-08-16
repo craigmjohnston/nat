@@ -67,6 +67,11 @@ func (m Milestone) Ref() notion.PropertyValue {
 // until it does and on every project whose Slices table has no such column. A
 // slice in progress that names one is work waiting to be reviewed, which is
 // what the board's approve action opens a pull request from.
+//
+// DependsOn is the page IDs of the slices this one waits on, in the order the
+// relation lists them, and empty both for a slice that waits on nothing and on
+// a project whose table has no such column — so a project without one behaves
+// exactly as it did before there was one.
 type Slice struct {
 	ID           string
 	Name         string
@@ -78,6 +83,7 @@ type Slice struct {
 	Branch       string
 	PRURL        string
 	URL          string
+	DependsOn    []string
 }
 
 // Project is a tracked project's whole plan, as loaded from Notion.
@@ -119,6 +125,7 @@ func SliceFromPage(p notion.Page) Slice {
 		Branch:     p.Properties[notion.PropBranch].Text(),
 		PRURL:      p.Properties[notion.PropPR].URL,
 		URL:        p.URL,
+		DependsOn:  p.Properties[notion.PropDependsOn].RelationIDs(),
 	}
 	s.MilestoneID = p.Properties[notion.PropMilestone].SelectName()
 	if people := p.Properties[notion.PropAssignee].People; len(people) > 0 {
@@ -150,7 +157,7 @@ func InViewOrder(slices []Slice, order []string) []Slice {
 	}
 	rank := make(map[string]int, len(order))
 	for i, id := range order {
-		rank[normaliseID(id)] = i
+		rank[NormaliseID(id)] = i
 	}
 	ordered := make([]Slice, len(slices))
 	copy(ordered, slices)
@@ -163,16 +170,57 @@ func InViewOrder(slices []Slice, order []string) []Slice {
 // rankOf is a slice's place in a view's order, and one past the last place for
 // a slice the order does not name.
 func rankOf(rank map[string]int, s Slice) int {
-	if i, ok := rank[normaliseID(s.ID)]; ok {
+	if i, ok := rank[NormaliseID(s.ID)]; ok {
 		return i
 	}
 	return len(rank)
 }
 
-// normaliseID puts a Notion ID in one form, so IDs read from different places
-// compare equal however they were written.
-func normaliseID(id string) string {
+// NormaliseID puts a Notion ID in one form, so IDs read from different places
+// compare equal however they were written. It is what SlicesByID keys on, so
+// anything looking a slice up in that index normalises its key the same way.
+func NormaliseID(id string) string {
 	return strings.ToLower(strings.ReplaceAll(id, "-", ""))
+}
+
+// SlicesByID indexes slices by page ID, for looking up the ones a slice
+// depends on. IDs are normalised, so an index built from a query answers a
+// lookup by an ID written the other way round.
+func SlicesByID(slices []Slice) map[string]Slice {
+	byID := make(map[string]Slice, len(slices))
+	for _, s := range slices {
+		byID[NormaliseID(s.ID)] = s
+	}
+	return byID
+}
+
+// Blockers is the slices s waits on that are not Done yet, in the order s names
+// them. That is the whole rule: a slice is blocked while any slice it depends
+// on is unfinished, and a slice naming none — which is every slice of a project
+// whose table has no dependency column — is never blocked.
+//
+// unknown is the dependencies the index does not hold, which are passed over
+// rather than counted as unfinished: such a page cannot be read at all —
+// trashed, or filed outside this project — and a slice waiting forever on one
+// nobody can see is worse than one that goes ahead. They are returned so the
+// caller doing the reading can say so in the log.
+func Blockers(s Slice, byID map[string]Slice) (blocking []Slice, unknown []string) {
+	for _, id := range s.DependsOn {
+		dep, ok := byID[NormaliseID(id)]
+		switch {
+		case !ok:
+			unknown = append(unknown, id)
+		case dep.Status != SliceDone:
+			blocking = append(blocking, dep)
+		}
+	}
+	return blocking, unknown
+}
+
+// Blocked reports whether s is waiting on any unfinished slice.
+func Blocked(s Slice, byID map[string]Slice) bool {
+	blocking, _ := Blockers(s, byID)
+	return len(blocking) > 0
 }
 
 // Progress is the tally of one set of slices by status, as the segmented

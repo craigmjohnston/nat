@@ -61,7 +61,19 @@ func planApply(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	existing := milestonesOf(notion.ShapeOf(ds))
-	targets, err := validatePlan(p, existing)
+	// The project's own slices are only read when the plan names one: they are
+	// what a depends_on title may be resolved against, and a plan that declares
+	// no dependency has nothing to resolve.
+	var filed []domain.Slice
+	if p.dependsOnAnything() {
+		pages, err := client.QueryDataSource(ctx, project.SlicesDSID, nil,
+			[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
+		if err != nil {
+			return fmt.Errorf("load slices: %w", err)
+		}
+		filed = domain.SlicesFromPages(pages)
+	}
+	targets, err := validatePlan(p, existing, filed)
 	if err != nil {
 		return err
 	}
@@ -106,11 +118,30 @@ type planMilestone struct {
 // milestones or an existing one of the project, by name — the same way
 // slice-add's --milestone does, and for the same reason: a milestone is an
 // option of the slices' Milestone column and so is nothing but its name.
+//
+// DependsOn names the slices this one waits on, by title. A title may be one
+// the same document creates — including one written further down it, since
+// nothing is filed until the whole plan has been read — or one the project
+// already has, which is what lets a plan hang new work off work already
+// queued.
 type planSlice struct {
-	Title       string `json:"title"`
-	Milestone   string `json:"milestone"`
-	Description string `json:"description"`
-	Repo        string `json:"repo"`
+	Title       string   `json:"title"`
+	Milestone   string   `json:"milestone"`
+	Description string   `json:"description"`
+	Repo        string   `json:"repo"`
+	DependsOn   []string `json:"depends_on"`
+}
+
+// dependsOnAnything reports whether any slice in the plan names a dependency,
+// which is the whole reason to read the project's existing slices: a plan that
+// declares none needs no more of Notion than it ever did.
+func (p plan) dependsOnAnything() bool {
+	for _, s := range p.Slices {
+		if len(s.DependsOn) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // readPlan reads the document from a file, or from the reader when the source
@@ -149,16 +180,33 @@ func readPlan(source string, in io.Reader) (plan, error) {
 // sliceTarget is the milestone one planned slice lands under: an index into the
 // plan's own new milestones, or an existing milestone of the project. It is
 // worked out during validation so that applying the plan has nothing left to
-// resolve, and therefore nothing left to fail on halfway through.
+// resolve, and therefore nothing left to fail on halfway through. dependsOn is
+// resolved the same way and for the same reason.
 type sliceTarget struct {
 	// newIndex indexes plan.Milestones, or is -1 when Existing holds the answer.
 	newIndex int
 	existing domain.Milestone
+	// dependsOn is the slices this one waits on, in the order the plan names
+	// them.
+	dependsOn []planDep
+}
+
+// planDep is one resolved dependency: a slice the same plan creates, by its
+// index into plan.Slices, or one the project already has, by page ID. A slice
+// the plan is about to create has no ID to record until it exists, which is why
+// the two are told apart rather than both being an ID.
+type planDep struct {
+	// newIndex indexes plan.Slices, or is -1 when id holds the answer.
+	newIndex int
+	id       string
 }
 
 // validatePlan checks the whole document and resolves every milestone
-// reference, returning one target per slice in the plan's order.
-func validatePlan(p plan, existing []domain.Milestone) ([]sliceTarget, error) {
+// reference and every dependency, returning one target per slice in the plan's
+// order. existingSlices are the project's own slices, which a dependency may
+// name; it is empty when the plan declares no dependencies, because then there
+// is nothing to resolve against.
+func validatePlan(p plan, existing []domain.Milestone, existingSlices []domain.Slice) ([]sliceTarget, error) {
 	if len(p.Milestones) == 0 && len(p.Slices) == 0 {
 		return nil, fmt.Errorf("the plan creates nothing: it has no milestones and no slices")
 	}
@@ -203,7 +251,69 @@ func validatePlan(p plan, existing []domain.Milestone) ([]sliceTarget, error) {
 		}
 		targets[i] = sliceTarget{newIndex: -1, existing: m}
 	}
+	if err := resolveDependencies(p, existingSlices, targets); err != nil {
+		return nil, err
+	}
 	return targets, nil
+}
+
+// resolveDependencies turns every depends_on title into the slice it names,
+// filling in the targets. A title is looked for among the plan's own slices
+// first and the project's afterwards: a plan that creates a slice and then
+// depends on it means the one it just wrote, whatever else happens to share the
+// name.
+func resolveDependencies(p plan, existingSlices []domain.Slice, targets []sliceTarget) error {
+	planned := map[string][]int{}
+	for i, s := range p.Slices {
+		key := strings.ToLower(strings.TrimSpace(s.Title))
+		planned[key] = append(planned[key], i)
+	}
+	filed := map[string][]domain.Slice{}
+	for _, s := range existingSlices {
+		key := strings.ToLower(strings.TrimSpace(s.Name))
+		filed[key] = append(filed[key], s)
+	}
+
+	for i, s := range p.Slices {
+		title := strings.TrimSpace(s.Title)
+		for _, ref := range s.DependsOn {
+			dep, err := resolveDependency(strings.TrimSpace(ref), i, planned, filed)
+			if err != nil {
+				return fmt.Errorf("slice %d (%q): %w", i+1, title, err)
+			}
+			targets[i].dependsOn = append(targets[i].dependsOn, dep)
+		}
+	}
+	return nil
+}
+
+// resolveDependency finds the one slice a depends_on title names, refusing
+// anything that could mean more than one thing — and a slice depending on
+// itself, which is a slice nothing could ever unblock.
+func resolveDependency(ref string, self int, planned map[string][]int, filed map[string][]domain.Slice) (planDep, error) {
+	if ref == "" {
+		return planDep{}, fmt.Errorf("names an empty dependency")
+	}
+	key := strings.ToLower(ref)
+	switch matches := planned[key]; len(matches) {
+	case 1:
+		if matches[0] == self {
+			return planDep{}, fmt.Errorf("depends on itself")
+		}
+		return planDep{newIndex: matches[0]}, nil
+	case 0:
+	default:
+		return planDep{}, fmt.Errorf("depends on %q, which the plan creates %d times", ref, len(matches))
+	}
+	switch matches := filed[key]; len(matches) {
+	case 1:
+		return planDep{newIndex: -1, id: matches[0].ID}, nil
+	case 0:
+		return planDep{}, fmt.Errorf("depends on %q, which is neither in the plan nor in the project", ref)
+	default:
+		return planDep{}, fmt.Errorf("depends on %q, which the project already has %d slices named: "+
+			"rename one in Notion", ref, len(matches))
+	}
 }
 
 // appliedPlan is what the run created: the new milestones, and the slices each
@@ -219,7 +329,10 @@ type appliedSlice struct {
 }
 
 // applyPlan writes the plan: milestones first, because the slices are filed
-// under them, then the slices in the order they were written.
+// under them, then the slices in the order they were written, and last the
+// dependencies between them — which have to come last, since a slice may wait
+// on one the plan creates further down and there is no page to point at until
+// every slice exists.
 //
 // A write that fails stops the run, and whatever was created stays created —
 // there is no transaction to roll back, and deleting pages to tidy up would be
@@ -242,13 +355,41 @@ func applyPlan(ctx context.Context, client API, project config.ProjectConfig, ds
 			m = applied.Milestones[targets[i].newIndex]
 		}
 		s, err := createSlice(ctx, client, project.SlicesDSID, m,
-			strings.TrimSpace(ps.Title), strings.TrimSpace(ps.Description), strings.TrimSpace(ps.Repo))
+			strings.TrimSpace(ps.Title), strings.TrimSpace(ps.Description), strings.TrimSpace(ps.Repo), nil)
 		if err != nil {
 			return applied, appliedErr(applied, err)
 		}
 		applied.Slices = append(applied.Slices, appliedSlice{Slice: s, Milestone: m})
 	}
+	if err := applyDependencies(ctx, client, targets, applied.Slices); err != nil {
+		return applied, appliedErr(applied, err)
+	}
 	return applied, nil
+}
+
+// applyDependencies writes the relations between slices, once every page in the
+// plan exists to be pointed at. A slice naming none is not written to at all:
+// there is nothing to say, and a project whose table has no dependency column
+// applies such a plan exactly as it always did.
+func applyDependencies(ctx context.Context, client API, targets []sliceTarget, created []appliedSlice) error {
+	for i, t := range targets {
+		if len(t.dependsOn) == 0 {
+			continue
+		}
+		ids := make([]string, len(t.dependsOn))
+		for j, d := range t.dependsOn {
+			ids[j] = d.id
+			if d.newIndex >= 0 {
+				ids[j] = created[d.newIndex].Slice.ID
+			}
+		}
+		if _, err := client.UpdatePageProperties(ctx, created[i].Slice.ID,
+			map[string]notion.PropertyValue{notion.PropDependsOn: notion.NewRelation(ids...)}); err != nil {
+			return fmt.Errorf("record what %q waits on: %w", created[i].Slice.Name, err)
+		}
+		logging.Action("plan dependencies recorded", "slice", created[i].Slice.ID, "depends_on", len(ids))
+	}
+	return nil
 }
 
 // appliedErr says what a failed run had already written, so nobody re-runs a

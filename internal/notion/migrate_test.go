@@ -154,7 +154,7 @@ func milestonePages() []Page {
 // relatedSlice is a slice page related to one milestone page.
 func relatedSlice(id, milestoneID string) Page {
 	return Page{ID: id, Properties: map[string]PropertyValue{
-		PropMilestone: {Relation: []Relation{{ID: milestoneID}}},
+		PropMilestone: {Relation: &[]Relation{{ID: milestoneID}}},
 	}}
 }
 
@@ -165,7 +165,7 @@ func claimedSlice(id, milestoneID string) Page {
 		PropStatus: {Select: &SelectOption{Name: SliceClaimed}},
 	}}
 	if milestoneID != "" {
-		p.Properties[PropMilestone] = PropertyValue{Relation: []Relation{{ID: milestoneID}}}
+		p.Properties[PropMilestone] = PropertyValue{Relation: &[]Relation{{ID: milestoneID}}}
 	}
 	return p
 }
