@@ -690,6 +690,39 @@ func TestAppLaunchStartsTheSessionAndAttaches(t *testing.T) {
 	}
 }
 
+// nat runs in the terminal it was started in: a board with no tmux session of
+// its own still launches an agent into one and still attaches the viewer to it.
+func TestAppLaunchFromABareTerminal(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	t.Setenv(agent.SessionEnv, "")
+	t.Setenv(agent.PaneEnv, "")
+	app.board.cursor = rowTodoSlice
+
+	launch(t, app)
+
+	if want := []string{agent.SessionName("s5")}; !equal(sessionsOf(launcher.launches), want) {
+		t.Errorf("launches = %+v, want the agent's own session made", launcher.launches)
+	}
+	if want := []string{agent.SessionName("s5")}; !equal(launcher.clients, want) {
+		t.Errorf("clients = %v, want the viewer attached to it", launcher.clients)
+	}
+	// Nothing to re-home either: with no pane of its own the board joined
+	// nothing, and the panes it would find are another board's to look after.
+	if cmd := app.reclaimStrays(); cmd != nil {
+		t.Error("there is no window to reconcile")
+	}
+}
+
+// sessionsOf is the session name of each launch, which is all the launch above
+// asserts against.
+func sessionsOf(calls []launchCall) []string {
+	names := make([]string, 0, len(calls))
+	for _, c := range calls {
+		names = append(names, c.session)
+	}
+	return names
+}
+
 // The edit path: configuring reaches the options form, with the directory
 // opened for editing on demand and confirming from there launching likewise.
 func TestAppLaunchEditsTheWorkingDirectoryOnDemand(t *testing.T) {

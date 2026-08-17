@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"syscall"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -21,17 +20,9 @@ import (
 	"github.com/craigmjohnston/nat/internal/tui"
 )
 
-// tmuxEnv is set by tmux inside every pane it runs, and is how a process tells
-// that it is already in one.
-const tmuxEnv = "TMUX"
-
-// noTmuxEnv opts out of hosting the TUI in tmux, for running it somewhere the
-// split view is not wanted. Set to any non-empty value.
-const noTmuxEnv = "NAT_NO_TMUX"
-
 // The process's edges, held as variables so tests can stand in for them: main
-// is otherwise unexercisable without the real Notion CLI, a terminal, an exit
-// that would take the test binary with it, and an exec that would replace it.
+// is otherwise unexercisable without the real Notion CLI, a terminal, and an
+// exit that would take the test binary with it.
 var (
 	newTokens                      = ntnCLI
 	args                           = processArgs
@@ -42,8 +33,6 @@ var (
 	newClient    tui.NewClientFunc = tui.DefaultNewClient
 	newCLIClient cli.NewClientFunc = cli.DefaultNewClient
 	lookPath                       = exec.LookPath
-	executable                     = os.Executable
-	execProcess                    = syscall.Exec
 )
 
 // ntnCLI is where the Notion credential really comes from.
@@ -62,7 +51,7 @@ func main() {
 		}
 		return
 	}
-	if err := host(); err != nil {
+	if err := requireTmux(); err != nil {
 		fail(logPath, err)
 		return
 	}
@@ -86,11 +75,12 @@ func openLog() string {
 
 // fail reports a failure that stops the app, in both the places it has to go.
 //
-// stderr alone is not enough: started outside tmux the TUI re-execs itself into
-// a session, and a process that dies on the way up takes the pane it was
-// writing to with it — which is how a startup crash becomes a binary that
-// appears to do nothing at all. The log is where that run can still be read
-// afterwards, so the message says where to find it.
+// stderr alone is not always enough: a nat launched from something that closes
+// the terminal with the process — a window a launcher opened for it, a tmux
+// pane the user started it in — takes the message with it, which is how a
+// startup crash becomes a binary that appears to do nothing at all. The log is
+// where that run can still be read afterwards, so the message says where to
+// find it.
 func fail(logPath string, err error) {
 	logging.Error("nat exiting on a failure", "err", err)
 	// A stderr that will not take the message is exactly the case the log is
@@ -103,9 +93,9 @@ func fail(logPath string, err error) {
 	exit(1)
 }
 
-// command runs a headless subcommand. It deliberately runs before host: a
-// command prints to the terminal it was typed in and exits, and re-execing it
-// into a tmux session would send its output somewhere nobody is looking.
+// command runs a headless subcommand. It deliberately runs before the tmux
+// check: a command prints to the terminal it was typed in and exits, and none
+// of them launches an agent, so a machine without tmux runs them all the same.
 func command(tokens config.TokenSource) error {
 	return cli.Run(context.Background(), args(), cli.Env{
 		Tokens:    tokens,
@@ -117,45 +107,27 @@ func command(tokens config.TokenSource) error {
 	})
 }
 
-// host puts the TUI inside tmux, by replacing this process with a tmux session
-// running the same binary. The agents the board launches are tmux sessions — so
-// rather than ask the user to remember to start us under tmux, we do it for
-// them. Nothing else needs it: the board draws its own status line inside its
-// frame and turns tmux's bar off, and the terminal beside it is nat's own.
+// requireTmux checks that the board will be able to launch an agent before it
+// takes the terminal over.
 //
-// It returns only when the app should carry on in this process: already inside
-// tmux (running in place, because nesting a server inside a pane is not what
-// anyone means by it), or opted out through [noTmuxEnv]. On success there is
-// nothing to return to — exec has replaced us.
-//
-// The binary is resolved through [os.Executable] rather than argv[0] so that a
-// launch through a relative path or a PATH lookup still names something tmux
-// can run from a session whose working directory is its own.
-func host() error {
-	if os.Getenv(tmuxEnv) != "" || os.Getenv(noTmuxEnv) != "" {
-		return nil
-	}
-	tmux, err := lookPath(agent.TmuxBinary)
-	if err != nil {
+// The board runs in the terminal it was started in: it draws its own status
+// band and the agent terminal beside it is its own widget, so there is nothing
+// left that a session of nat's own would provide. The agents still live in tmux
+// — that is what lets one outlive the board and be attached to again — and the
+// server they need is the one the first detached launch starts, so all nat has
+// to do for them is make sure the binary is there.
+func requireTmux() error {
+	if _, err := lookPath(agent.TmuxBinary); err != nil {
 		return tmuxHint(err)
-	}
-	self, err := executable()
-	if err != nil {
-		return fmt.Errorf("find the running binary: %w", err)
-	}
-	argv := append([]string{agent.TmuxBinary}, agent.HostArgs(self)...)
-	if err := execProcess(tmux, argv, os.Environ()); err != nil {
-		return fmt.Errorf("start tmux: %w", err)
 	}
 	return nil
 }
 
-// tmuxHint appends the commands that fix a missing tmux, the same way an
-// authentication failure is reported with the command that fixes it — including
-// the way out for someone who would rather not install it at all.
+// tmuxHint appends the command that fixes a missing tmux, the same way an
+// authentication failure is reported with the command that fixes it.
 func tmuxHint(err error) error {
-	return fmt.Errorf("%s not found on PATH: %w\ninstall it with: brew install %s\nor run without it: %s=1 nat",
-		agent.TmuxBinary, err, agent.TmuxBinary, noTmuxEnv)
+	return fmt.Errorf("%s not found on PATH: %w\ninstall it with: brew install %s",
+		agent.TmuxBinary, err, agent.TmuxBinary)
 }
 
 // run builds the root model and hands it to Bubble Tea.

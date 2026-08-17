@@ -10,14 +10,15 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
 
 - `main.go` — entrypoint; module path `github.com/craigmjohnston/nat`, so
   `go install github.com/craigmjohnston/nat@latest` yields a `nat` binary.
-  Started outside tmux it re-execs itself into a `nat-tui` session
-  (`tmux new-session -A`, so a second launch attaches rather than starting a
-  rival); started inside tmux it runs in place and does not nest. `NAT_NO_TMUX=1`
-  opts out. The board is hosted in tmux so the agents it launches have a server
-  to live in; nothing else needs it — the status line is drawn inside nat's own
-  frame and tmux's bar is set off in that session, so the row it held goes back
-  to the board, and the terminal beside the board is nat's own with nothing to
-  hand back on the way out.
+  It runs in the terminal it was started in and hosts itself in nothing: the
+  status band is drawn inside nat's own frame and the agent terminal beside the
+  board is nat's own widget, so there is nothing a session of its own would
+  provide, and inside a tmux session the user made it behaves exactly the same.
+  The agents still live in tmux — that is what lets one outlive the board and be
+  attached to again — and the server they need is the one the first detached
+  launch starts, so all `requireTmux` does for them is check the binary is on
+  PATH before the terminal is taken over, naming `brew install tmux` when it is
+  not. A subcommand runs before even that: none of them launches an agent.
 - `internal/config/` — XDG config (`~/.config/notion-agent-tracker/config.json`)
   + the Notion bearer token, read from Notion's official CLI via
   `ntn auth token` (the app stores no credential of its own).
@@ -48,8 +49,8 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   macOS, the XDG state dir elsewhere, size-capped with one previous file kept.
   Opened by `main` and discarded until then, so importing it writes nothing.
   Failures and writes are logged by the Notion client and the tmux layer
-  themselves; startup failures name the log path on stderr, because the TUI's
-  tmux pane dies with the process and takes stderr with it. Everything on its
+  themselves; startup failures name the log path on stderr, because a terminal
+  that closes with the process takes stderr with it. Everything on its
   way to the file passes through a redactor — never log a token or a request
   body.
 - `internal/nudge/` — the marker file the headless commands touch after a
@@ -67,13 +68,12 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   and nothing here makes a stray. `ReclaimStrays` — with its private
   `breakOut`/`breakOutAll`/`placeholderCommand`, all under one deprecation
   comment — is the exception, still run at startup to re-home the panes a
-  pre-upgrade nat left joined, and comes out next release.
-  Every session nat makes has tmux's own status bar off: an agent's because the
-  bar says nothing its session does not, and the board's (`boardStyleArgs`)
-  because nat draws a status band inside its own frame and a bar under it would
-  cost the row twice — off rather than blanked, since a blank bar still holds
-  the line. The same chain sets both pane border styles to one neutral grey,
-  tmux's stock green active edge reading as an alert against nat's own frames.
+  pre-upgrade nat left joined, and comes out next release — `TUISession` is
+  kept for it alone, the name of the session nat used to host itself in and
+  makes no more.
+  Every session nat makes is an agent's, and has tmux's own status bar off: the
+  bar says nothing its session does not. The sessions the user was already in
+  are never nat's to set options on, nat's own terminal included.
   `activity.go` is how those agents are told apart from each other's states:
   `Tmux.Activity` scans the panes once and reads the screen of each tagged one
   (`capture-pane -p -J`), answering working / waiting / gone / unknown per slice
@@ -167,8 +167,9 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   until every slice exists), and `nat setup`, which installs the embedded skills into
   `~/.claude/skills` — the only command that talks to neither Notion nor the
   config file, since it is what a machine with only the binary runs first), what
-  the binary does when given a subcommand. Run before the tmux hosting step and with no TUI
-  code in the path: a command prints to the terminal it was typed in and exits.
+  the binary does when given a subcommand. Run before even the tmux check and
+  with no TUI code in the path: a command prints to the terminal it was typed in
+  and exits.
 - `internal/vterm/` — a child command run on a PTY (`x/xpty`) with its screen
   mirrored by an in-process VT emulator (`x/vt`), so the TUI can draw an agent
   as a widget instead of joining its tmux pane. `Start` returns a `Session`:
@@ -259,8 +260,9 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   sized from `agent_split_percent`, so nat owns the whole rectangle while the
   agent goes on living in its own tmux session and survives a board restart. One
   is on show at a time; it opens unfocused (`tab` focuses, `ctrl+\` comes back)
-  and while it is focused every key is the agent's — `ctrl+c` included, which is
-  deliberate — bar the outer tmux prefix, which is swallowed. A key that stands
+  and while it is focused every key is the agent's — `ctrl+c` and tmux's own
+  prefix included, which is deliberate: nat sits in no session of its own for a
+  prefix to drive by mistake, so it belongs to the agent's. A key that stands
   for characters is written as those characters and only the rest goes to the
   emulator's key encoder, which writes a printable key only when it carries no
   modifier at all and so typed nothing for a capital letter or any shifted
@@ -296,7 +298,7 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   the keyboard as well. Everything outside the box is dropped, bar a press, which
   hands the keyboard back. Nothing between swallows it: tmux passes mouse
   reporting through unless its own `mouse` option is on, which nat sets for the
-  sessions it makes for agents and never for the one it hosts the board in. What
+  sessions it makes for agents and never for one the user started nat in. What
   the agent's own tmux does with what arrives is unchanged by the hop: a click on
   an OSC 8 hyperlink fires the `MouseDown1Pane` binding and opens it, and a wheel
   enters copy-mode over the pane's scrollback and leaves it again on the way back
