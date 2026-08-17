@@ -26,6 +26,9 @@ func (a *App) mouseEvent(msg tea.MouseMsg) tea.Cmd {
 	if cmd, taken := a.viewerMouse(msg); taken {
 		return cmd
 	}
+	if a.screen == screenDiff {
+		return a.diffMouse(msg)
+	}
 	return a.boardMouse(msg)
 }
 
@@ -102,20 +105,31 @@ func (a *App) boardClick(col, line int) tea.Cmd {
 
 // boardCell turns a cell of the window into a column of the board and a line of
 // the whole plan it draws, and reports whether the event landed on the board at
-// all. The board's content starts two columns in from the window's edge either
-// way the layout is drawn — a border and a column of padding when it is framed,
-// the bare band's own indent when it is not — and the line it starts on is the
-// first under the header, plus the box's top border where there is one.
+// all.
 func (a *App) boardCell(mx, my int) (col, line int, ok bool) {
+	col, row, ok := a.bodyCell(mx, my)
+	if !ok || col >= a.boardWidth() {
+		return 0, 0, false
+	}
+	return col, row + a.boardTopLine(), true
+}
+
+// bodyCell turns a cell of the window into a column and a row of the body band,
+// and reports whether the event landed on that band at all. The band's content
+// starts two columns in from the window's edge either way the layout is drawn —
+// a border and a column of padding when it is framed, the bare band's own indent
+// when it is not — and the line it starts on is the first under the header, plus
+// the box's top border where there is one.
+func (a *App) bodyCell(mx, my int) (col, row int, ok bool) {
 	top := a.headerBandHeight()
 	if a.framed() {
 		top++
 	}
-	col, line = mx-framePadX, my-top
-	if col < 0 || line < 0 || col >= a.boardWidth() || line >= a.bodyHeight() {
+	col, row = mx-framePadX, my-top
+	if col < 0 || row < 0 || row >= a.bodyHeight() {
 		return 0, 0, false
 	}
-	return col, line + a.boardTopLine(), true
+	return col, row, true
 }
 
 // boardTopLine is the line of the plan the body band starts at: whatever the

@@ -201,7 +201,7 @@ func TestDiffContentLineFindsTheNearestLineOfTheDiff(t *testing.T) {
 		t.Errorf("contentLine(0) = %d, want the first line of the first box, %d", got, want)
 	}
 	last := len(d.lines) - 1
-	if got := d.lines[last]; got != separator {
+	if got := d.lines[last]; got.line != boxFooterRow {
 		t.Fatalf("body line %d is %+v, want the last box's footer row", last, got)
 	}
 	if got, want := d.contentLine(last), last-1; got != want {

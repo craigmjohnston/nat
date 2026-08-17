@@ -239,8 +239,9 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `diffref.go` names a comment's lines by, so the gutter and the prompt are one
   answer. The number columns are as wide as the widest number anywhere in the
   diff, so code starts at the same column in every box; a box's own two rows
-  belong to no file's section, which is what the line cursor steps over and what
-  a jump scrolls to, since the row that names the file is worth the line it
+  belong to no file's section, which is what the line cursor steps over — bar
+  the header row of a collapsed file, which is all that file has — and what a
+  jump scrolls to, since the row that names the file is worth the line it
   costs. A binary or otherwise described file keeps the one line git wrote for it
   inside its box like any other. The file list beside it is what `n`/`p` move
   through, and it
@@ -254,6 +255,20 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   a failure would be showing the wrong change; the refresh key reads the branch
   again while the screen is up, which is what an agent pushing another commit is
   worth asking about.
+  `diffmouse.go` and the fold beside it are how a file that has been read is put
+  away, GitHub's viewed checkbox as a box row: `enter` on the file the cursor is
+  in — or a left click on either of its box's own two rows — collapses it to its
+  header row alone, ticked where the rule would be, and does it again in
+  reverse. That header is then the one place in the file the cursor stops, so
+  `j`/`k`, `n`/`p` and the file list all move over a collapsed file and land on
+  it, and `v`/`c` find nothing to say about a row that shows no lines. It is the
+  screen's own state and nothing else's — never written anywhere, and dropped
+  entirely by any read of the branch, since a fold says the user has seen what
+  was there and that is exactly what a fresh read may have changed. A pending
+  comment on a folded file is untouched: it is about lines, which are still
+  there. The screen asks for the mouse while it is up (the button events alone,
+  where the agent terminal wants all motion), which is what takes the wheel off
+  the outer terminal, so the wheel scrolls the diff from here too.
   `diffcomment.go` and `diffref.go` are the review left on what that screen
   shows: `j`/`k` are a line cursor rather than the scroll they were, `v` marks
   the other end of a range — never leaving the file it was started in, since a

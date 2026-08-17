@@ -46,11 +46,13 @@ const commentMark = "▌"
 
 // diffKeyMap is what the diff screen answers to beyond the viewport's own
 // scrolling: the jumps from one file's section to the next, which is what makes
-// a diff of twenty files readable without hunting for the boundaries, and the
-// three keys of a review — mark a range, comment on it, send what is pending.
+// a diff of twenty files readable without hunting for the boundaries, the key
+// that folds a file away once it has been read, and the three keys of a review
+// — mark a range, comment on it, send what is pending.
 type diffKeyMap struct {
 	NextFile key.Binding
 	PrevFile key.Binding
+	Viewed   key.Binding
 	Select   key.Binding
 	Comment  key.Binding
 	Send     key.Binding
@@ -61,10 +63,15 @@ type diffKeyMap struct {
 // line cursor and the two pairs should not read as versions of each other; v is
 // the range mark for the one reason it is in vim, and c and s are the two ends
 // of leaving a comment.
+//
+// enter is the viewed toggle: it is the key a list answers on the thing under
+// the cursor, and the one key the screen wanted that nothing else here — nor
+// the viewport under it, which pages on space — had already taken.
 func defaultDiffKeyMap() diffKeyMap {
 	return diffKeyMap{
 		NextFile: key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "next file")),
 		PrevFile: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "previous file")),
+		Viewed:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "collapse file")),
 		Select:   key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "select lines")),
 		Comment:  key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "comment")),
 		Send:     key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "send comments")),
@@ -85,8 +92,20 @@ func (d Diff) hints(back key.Binding) []hint {
 		{d.sendBinding(), 5},
 		{d.keys.NextFile, 3},
 		{d.keys.PrevFile, 2},
+		{d.viewedBinding(), 2},
 		{back, 1},
 	}
+}
+
+// viewedBinding is the viewed toggle as the hints row names it: what the key
+// will do to the file the cursor is in rather than what it does in general,
+// since the one key is both halves of a fold and the row is where the user
+// finds out which half is next.
+func (d Diff) viewedBinding() key.Binding {
+	if !d.viewedFile(d.cursor) {
+		return d.keys.Viewed
+	}
+	return key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "expand file"))
 }
 
 // sendBinding is the send key as the hints row names it: the pending count when
@@ -102,7 +121,7 @@ func (d Diff) sendBinding() key.Binding {
 
 // bindings are the diff screen's keys as the help screen lists them.
 func (k diffKeyMap) bindings() []key.Binding {
-	return []key.Binding{k.NextFile, k.PrevFile, k.Select, k.Comment, k.Send}
+	return []key.Binding{k.NextFile, k.PrevFile, k.Viewed, k.Select, k.Comment, k.Send}
 }
 
 // Diff is the review screen: the unified diff of a slice's handed-back branch
@@ -132,10 +151,12 @@ type Diff struct {
 	base  string
 	files []git.File
 
-	// offsets[i] is the line of the rendered body file i's first diff line sits
-	// on — the line after its box's header row, which is what the file jumps
-	// scroll to and what the list's cursor is kept in step with. It is rebuilt
-	// with the body, since a resize moves every one of them.
+	// tops[i] is the line of the rendered body file i's box opens on — its
+	// header row, which is what a file jump scrolls to — and offsets[i] the
+	// first line of that box the cursor rests on: the line under the header, or
+	// the header itself where the file is collapsed and that row is all it has.
+	// Both are rebuilt with the body, since a resize moves every one of them.
+	tops    []int
 	offsets []int
 	// lines says where each line of the rendered body came from, in step with
 	// it: the line cursor and the comments are in body-line space, and this is
@@ -145,6 +166,12 @@ type Diff struct {
 	// a change of forty files has a longer list than the band is tall.
 	cursor  int
 	listTop int
+
+	// viewed[i] is whether file i has been marked read and folded away to its
+	// header row, in step with the files themselves. It is the screen's own and
+	// nobody else's: a read of the branch drops it, since the diff it was an
+	// opinion about may have changed underneath.
+	viewed []bool
 
 	// line is the body line the cursor is on, and anchor the other end of a
 	// selected range while anchored — the two are the lines a comment is left
@@ -171,14 +198,19 @@ type Diff struct {
 }
 
 // bodyLine is where one line of the rendered body came from: the file's index
-// in the diff and the line's index within that file's section. A box's own
-// header and footer rows are lines of the diff's own furniture rather than of
-// any file's section, and carry a file of -1.
+// in the diff and the line's index within that file's section. A box's own two
+// rows belong to the file they are drawn around rather than to its section, and
+// say which row they are in place of a line index.
 type bodyLine struct{ file, line int }
 
-// separator is the bodyLine of a body line belonging to no file's section: the
-// header or the footer row of a box.
-var separator = bodyLine{file: -1}
+// The line indexes a box's own rows carry, in place of a line of the file's
+// section: there is nothing on either to put a comment on. The header row is
+// still a place the cursor rests where its file is collapsed, since it is then
+// the only row that file has.
+const (
+	boxHeaderRow = -1
+	boxFooterRow = -2
+)
 
 // NewDiff returns an empty diff screen, waiting for a branch to be read into it.
 func NewDiff(styles Styles) Diff {
@@ -223,7 +255,8 @@ func (d *Diff) Start(sliceID, slice, branch, dir string) {
 	}
 	d.sliceID, d.slice, d.branch, d.dir = sliceID, slice, branch, dir
 	d.state, d.err = diffLoading, nil
-	d.base, d.files, d.offsets = "", nil, nil
+	d.base, d.files, d.tops, d.offsets = "", nil, nil, nil
+	d.viewed = nil
 	d.cursor, d.listTop = 0, 0
 	d.clearSelection()
 	d.render()
@@ -237,8 +270,14 @@ func (d *Diff) Start(sliceID, slice, branch, dir string) {
 // a re-read that moved them takes it along, and one that changed or removed
 // them drops it, because a comment about lines that are no longer there is one
 // the agent would be sent looking for.
+//
+// What has been read is not carried over at all: unlike a comment, which says
+// where in the file it belongs, a file marked viewed says only that the user
+// has seen what was there — and what was there is exactly what a fresh read may
+// have changed.
 func (d *Diff) SetFiles(base string, files []git.File) int {
 	d.base, d.files = base, files
+	d.viewed = make([]bool, len(files))
 	d.state, d.err = diffReady, nil
 	d.cursor, d.listTop, d.line = 0, 0, 0
 	d.clearSelection()
@@ -317,7 +356,7 @@ func matchAt(lines, want []string, i int) bool {
 // the last one up under a failure would be showing the wrong change.
 func (d *Diff) Fail(err error) {
 	d.state, d.err = diffFailed, err
-	d.files, d.offsets = nil, nil
+	d.files, d.tops, d.offsets, d.viewed = nil, nil, nil, nil
 	d.render()
 }
 
@@ -435,7 +474,9 @@ func (d Diff) Selection() (path string, start, span int, text string, ok bool) {
 		return "", 0, 0, "", false
 	}
 	at := d.lines[d.line]
-	if at.file < 0 {
+	if at.line < 0 {
+		// A collapsed file's header row: there is nothing on show to say
+		// anything about, and the file has to be opened before there is.
 		return "", 0, 0, "", false
 	}
 	from, to := at.line, at.line
@@ -465,7 +506,9 @@ func (d *Diff) ToggleSelect() bool {
 		d.render()
 		return false
 	}
-	if len(d.lines) == 0 {
+	// A collapsed file's header row is no end of a range: the lines a range
+	// would cover are the ones the fold has taken off the screen.
+	if len(d.lines) == 0 || d.lines[d.line].line < 0 {
 		return false
 	}
 	d.anchor, d.anchored = d.line, true
@@ -520,6 +563,7 @@ var (
 )
 
 // Update handles the screen's keys: the line cursor, the jumps between files,
+// the fold that puts a file it has been read behind its own header row,
 // and otherwise the viewport's own scrolling — after which the cursor is
 // brought back onto the screen, so the line a comment would go on is always one
 // the user can see. Everything else — leaving the screen, commenting, sending,
@@ -538,6 +582,9 @@ func (d *Diff) Update(msg tea.Msg) tea.Cmd {
 			return nil
 		case key.Matches(press, d.keys.PrevFile):
 			d.jump(-1)
+			return nil
+		case key.Matches(press, d.keys.Viewed):
+			d.ToggleViewed()
 			return nil
 		}
 	}
@@ -564,7 +611,7 @@ func (d *Diff) moveCursor(delta int) {
 			return
 		}
 		want = next
-		if d.lines[want].file >= 0 {
+		if d.stop(want) {
 			d.setLine(want)
 			return
 		}
@@ -579,27 +626,24 @@ func (d Diff) clamp(line int) int {
 	if !d.anchored || d.anchor >= len(d.lines) {
 		return line
 	}
-	first, last, ok := d.fileSpan(d.lines[d.anchor].file)
-	if !ok {
-		return line
-	}
+	first, last := d.fileSpan(d.lines[d.anchor].file)
 	return min(max(line, first), last)
 }
 
-// fileSpan is the first and last body line of a file's section.
-func (d Diff) fileSpan(file int) (first, last int, ok bool) {
-	if file < 0 || file >= len(d.files) || file >= len(d.offsets) {
-		return 0, 0, false
-	}
+// fileSpan is the first and last body line of a file's section. It is only ever
+// asked about the file a range is being marked in, which is one whose lines are
+// on the body: a fold clears the mark, and there is no marking one from a
+// collapsed file's header row.
+func (d Diff) fileSpan(file int) (first, last int) {
 	first = d.offsets[file]
-	return first, first + len(d.files[file].Lines) - 1, true
+	return first, first + len(d.files[file].Lines) - 1
 }
 
 // setLine puts the cursor on a body line, marks the file it lands in on the
 // list beside the diff, and redraws.
 func (d *Diff) setLine(line int) {
 	d.line = line
-	if line < len(d.lines) && d.lines[line].file >= 0 {
+	if line < len(d.lines) {
 		d.cursor = d.lines[line].file
 		d.syncList()
 	}
@@ -653,7 +697,7 @@ func (d *Diff) jump(delta int) {
 	}
 	d.cursor = min(max(d.cursor+delta, 0), len(d.files)-1)
 	if d.cursor < len(d.offsets) {
-		d.vp.SetYOffset(max(d.offsets[d.cursor]-1, 0))
+		d.vp.SetYOffset(d.tops[d.cursor])
 		// The line cursor goes with the jump: it is what a comment is left on,
 		// and leaving it in the file the jump was away from would be a comment
 		// on a section that is no longer on screen.
@@ -690,7 +734,7 @@ func (d Diff) listRows() int { return max(d.height-1, 0) }
 // came from are recorded as it goes.
 func (d *Diff) render() {
 	if len(d.files) == 0 {
-		d.offsets, d.lines, d.marks = nil, nil, nil
+		d.tops, d.offsets, d.lines, d.marks = nil, nil, nil, nil
 		d.vp.SetContent("")
 		return
 	}
@@ -698,23 +742,33 @@ func (d *Diff) render() {
 	nums := d.lineNumbers()
 	numWidth := numberWidth(nums)
 
-	offsets := make([]int, len(d.files))
+	tops, offsets := make([]int, len(d.files)), make([]int, len(d.files))
 	var from []bodyLine
 	for i, f := range d.files {
-		from = append(from, separator) // the box's header row
+		tops[i] = len(from)
+		from = append(from, bodyLine{file: i, line: boxHeaderRow})
+		if d.viewedFile(i) {
+			// A collapsed file is its header row and nothing else: no diff lines
+			// to walk, and no footer row, since there is no interior to close.
+			offsets[i] = tops[i]
+			continue
+		}
 		offsets[i] = len(from)
 		for j := range f.Lines {
 			from = append(from, bodyLine{file: i, line: j})
 		}
-		from = append(from, separator) // the box's footer row
+		from = append(from, bodyLine{file: i, line: boxFooterRow})
 	}
-	d.offsets, d.lines = offsets, from
+	d.tops, d.offsets, d.lines = tops, offsets, from
 	d.marks = d.commentMarks()
 	d.line = d.contentLine(d.line)
 
 	lines := make([]string, 0, len(from))
 	for i, f := range d.files {
-		lines = append(lines, d.boxTop(f, inner))
+		lines = append(lines, d.boxTop(f, inner, d.viewedFile(i)))
+		if d.viewedFile(i) {
+			continue
+		}
 		for j, line := range f.Lines {
 			lines = append(lines, d.boxLine(line, nums[i].was[j], nums[i].now[j], numWidth, inner,
 				d.marks[commentKey{path: f.Path, start: j}], d.selected(len(lines))))
@@ -724,22 +778,85 @@ func (d *Diff) render() {
 	d.vp.SetContent(strings.Join(lines, "\n"))
 }
 
-// contentLine is the nearest body line carrying a line of the diff, searched
-// forward from line and then back: a box's header and footer rows are furniture,
-// with nothing on them to put the cursor on or leave a comment about.
+// viewedFile reports whether a file has been marked read, which is what folds
+// its box away to the header row.
+func (d Diff) viewedFile(i int) bool { return i >= 0 && i < len(d.viewed) && d.viewed[i] }
+
+// ToggleViewed marks the file the cursor is in as read, folding its box away to
+// the header row — or unfolds it again — and reports which of the two it did.
+// The cursor goes to the top of the box either way: the row that names the file
+// is all a collapsed one has, and the first of its lines is where an unfolded
+// one is read from.
+func (d *Diff) ToggleViewed() bool {
+	if d.cursor < 0 || d.cursor >= len(d.viewed) {
+		return false
+	}
+	d.viewed[d.cursor] = !d.viewed[d.cursor]
+	// A range being marked in the file cannot survive its lines going away, and
+	// a range marked anywhere else would be no easier to see once the body has
+	// moved under it.
+	d.clearSelection()
+	d.render()
+	d.setLine(d.offsets[d.cursor])
+	return d.viewed[d.cursor]
+}
+
+// ToggleViewedAt folds the box a body line belongs to, for the click that
+// landed on one of that box's own two rows, and reports whether it was one of
+// them: a click on a line of the diff itself is not a fold.
+func (d *Diff) ToggleViewedAt(line int) bool {
+	if line < 0 || line >= len(d.lines) || d.lines[line].line >= 0 {
+		return false
+	}
+	d.cursor = d.lines[line].file
+	d.ToggleViewed()
+	return true
+}
+
+// LineAt is the body line drawn at a cell of the band the screen has, and
+// whether that cell is on the diff at all — the file list beside it is not, and
+// nor is a row past the end of the body.
+func (d Diff) LineAt(col, row int) (int, bool) {
+	if row < 0 || row >= d.vp.Height() {
+		return 0, false
+	}
+	if d.splitVisible() {
+		col -= diffListWidth + diffRuleWidth
+	}
+	if col < 0 || col >= d.diffWidth() {
+		return 0, false
+	}
+	if line := d.vp.YOffset() + row; line < len(d.lines) {
+		return line, true
+	}
+	return 0, false
+}
+
+// contentLine is the nearest body line the cursor rests on, searched forward
+// from line and then back: a box's footer row is furniture, and so is the header
+// row of a box that is open, with nothing on either to put the cursor on.
 func (d Diff) contentLine(line int) int {
 	line = min(max(line, 0), max(len(d.lines)-1, 0))
 	for i := line; i < len(d.lines); i++ {
-		if d.lines[i].file >= 0 {
+		if d.stop(i) {
 			return i
 		}
 	}
 	for i := line - 1; i >= 0; i-- {
-		if d.lines[i].file >= 0 {
+		if d.stop(i) {
 			return i
 		}
 	}
 	return 0
+}
+
+// stop reports whether the cursor rests on the body line at i, which every
+// caller has already held inside the body: a line of a file's diff, or the
+// header row of a collapsed file, which is the only row that file has and so
+// the only place a cursor moving through it can be.
+func (d Diff) stop(i int) bool {
+	at := d.lines[i]
+	return at.line >= 0 || (at.line == boxHeaderRow && d.viewedFile(at.file))
 }
 
 // commentMarks is which of a file's lines a pending comment covers, so the

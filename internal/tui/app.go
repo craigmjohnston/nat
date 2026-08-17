@@ -983,25 +983,29 @@ func (a *App) View() tea.View {
 
 // mouseMode is whether the terminal reports the mouse to nat, and how much of
 // it: all motion while an agent's terminal is on the board, so a drag and a
-// wheel over it reach the agent as well as a click, and nothing at all
+// wheel over it reach the agent as well as a click; the button events alone
+// over the diff, which answers a click and nothing finer; and nothing at all
 // otherwise.
 //
-// It is asked for only while there is a terminal to route it to, because
+// It is asked for only while there is something to route it to, because
 // reporting takes the mouse off the terminal emulator itself: with it on, the
-// user's own selection and scrollback need a modifier held. With no terminal on
-// show there is nothing the mouse could reach that a key does not, so it is
-// left where it was — and while there is one the board handles its own half of
-// the window, since the terminal's link handling has gone for both halves at
-// once; see [App.mouseEvent].
+// user's own selection and scrollback need a modifier held. On a screen with
+// nothing the mouse could reach that a key does not, it is left where it was —
+// and while a terminal has it the board handles its own half of the window,
+// since the terminal's link handling has gone for both halves at once; see
+// [App.mouseEvent].
 //
 // Nothing between here and the agent swallows it: tmux hands mouse reporting
 // straight through unless its own `mouse` option is on, which nat sets for the
 // sessions it makes for agents and never for one the user started nat in.
 func (a *App) mouseMode() tea.MouseMode {
-	if !a.viewerVisible() {
-		return tea.MouseModeNone
+	if a.viewerVisible() {
+		return tea.MouseModeAllMotion
 	}
-	return tea.MouseModeAllMotion
+	if a.screen == screenDiff {
+		return tea.MouseModeCellMotion
+	}
+	return tea.MouseModeNone
 }
 
 // windowTitle is what the app calls its terminal window: the same line the
