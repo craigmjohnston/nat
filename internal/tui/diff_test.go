@@ -56,7 +56,7 @@ Binary files a/docs/shot.png and b/docs/shot.png differ
 func newTestDiff() *Diff {
 	d := NewDiff(DefaultStyles())
 	d.SetSize(diffTestWidth, diffTestHeight)
-	d.Start("Diff viewer", "slice/diff-viewer", "/repos/nat")
+	d.Start("slice-1", "Diff viewer", "slice/diff-viewer", "/repos/nat")
 	d.SetFiles("origin/main", git.ParseFiles(sampleDiff))
 	return &d
 }
@@ -85,7 +85,7 @@ func TestDiffStatesEachSayWhatIsGoingOn(t *testing.T) {
 		t.Errorf("idle view = %q, want it to say where a diff comes from", got)
 	}
 
-	d.Start("Diff viewer", "slice/diff-viewer", "/repos/nat")
+	d.Start("slice-1", "Diff viewer", "slice/diff-viewer", "/repos/nat")
 	if !d.Busy() {
 		t.Error("Busy() = false while a read is in flight")
 	}
@@ -216,12 +216,16 @@ func manyFiles(n int) []git.File {
 }
 
 // TestDiffScrollsWithTheViewportKeys covers the keys the screen does not claim
-// for itself, which belong to the viewport under it.
+// for itself, which belong to the viewport under it — and the cursor being
+// brought back onto the body after one of them has scrolled out from under it.
 func TestDiffScrollsWithTheViewportKeys(t *testing.T) {
 	d := newTestDiff()
-	d.Update(keyPress("j"))
+	d.Update(keyPress("f"))
 	if d.vp.YOffset() == 0 {
-		t.Error("j should scroll the diff")
+		t.Error("a page key should scroll the diff")
+	}
+	if d.line < d.vp.YOffset() {
+		t.Errorf("cursor left at line %d above the view at %d", d.line, d.vp.YOffset())
 	}
 }
 
@@ -355,5 +359,99 @@ func TestDiffListMarksABinaryFile(t *testing.T) {
 	row := xansi.Strip(d.fileRow(d.cursor))
 	if !strings.Contains(row, "shot.png") || !strings.Contains(row, "bin") {
 		t.Errorf("selected row = %q, want the binary file marked under the cursor", row)
+	}
+}
+
+// TestDiffCursorMovesByLine covers the line cursor: j and k step it, the ends
+// hold it, and the blank line between two sections is stepped over — there is
+// nothing there to comment on.
+func TestDiffCursorMovesByLine(t *testing.T) {
+	d := newTestDiff()
+	if d.line != 0 {
+		t.Fatalf("line = %d, want the cursor on the first line", d.line)
+	}
+	d.Update(keyPress("j"))
+	if d.line != 1 {
+		t.Errorf("line = %d after j, want 1", d.line)
+	}
+	d.Update(keyPress("k"))
+	d.Update(keyPress("k"))
+	if d.line != 0 {
+		t.Errorf("line = %d at the top, want the cursor to hold there", d.line)
+	}
+
+	// The last line of the first file, then one more: the separator is stepped
+	// over onto the first line of the next.
+	last := len(d.files[0].Lines) - 1
+	for range last {
+		d.Update(keyPress("j"))
+	}
+	d.Update(keyPress("j"))
+	if got := d.lines[d.line]; got != (bodyLine{file: 1, line: 0}) {
+		t.Errorf("cursor at %+v, want the first line of the second file", got)
+	}
+	d.Update(keyPress("k"))
+	if got := d.lines[d.line]; got != (bodyLine{file: 0, line: last}) {
+		t.Errorf("cursor at %+v, want the last line of the first file", got)
+	}
+}
+
+// TestDiffCursorHoldsAtTheEnd covers the bottom of the body, where a step down
+// has nowhere to go.
+func TestDiffCursorHoldsAtTheEnd(t *testing.T) {
+	d := newTestDiff()
+	for range len(d.lines) + 2 {
+		d.Update(keyPress("j"))
+	}
+	if d.line != len(d.lines)-1 {
+		t.Errorf("line = %d, want the last of %d", d.line, len(d.lines))
+	}
+}
+
+// TestDiffCursorMovesOnAnEmptyDiff covers the keys on a screen with nothing on
+// it, which is a read that has not landed.
+func TestDiffCursorMovesOnAnEmptyDiff(t *testing.T) {
+	d := NewDiff(DefaultStyles())
+	d.SetSize(diffTestWidth, diffTestHeight)
+	d.Update(keyPress("j"))
+	d.Update(keyPress("f"))
+	if d.line != 0 {
+		t.Errorf("line = %d on an empty screen, want 0", d.line)
+	}
+}
+
+// TestDiffCursorScrolls covers the body following the cursor down and back up:
+// the line a comment goes on is always one the user can see.
+func TestDiffCursorScrolls(t *testing.T) {
+	d := newTestDiff()
+	for range d.vp.Height() + 2 {
+		d.Update(keyPress("j"))
+	}
+	if d.vp.YOffset() == 0 {
+		t.Error("the body should scroll to keep the cursor on screen")
+	}
+	if d.line < d.vp.YOffset() || d.line >= d.vp.YOffset()+d.vp.Height() {
+		t.Errorf("cursor at %d is outside the view at %d", d.line, d.vp.YOffset())
+	}
+	for range len(d.lines) {
+		d.Update(keyPress("k"))
+	}
+	if d.vp.YOffset() != 0 {
+		t.Errorf("YOffset = %d back at the top, want 0", d.vp.YOffset())
+	}
+}
+
+// TestDiffJumpTakesTheCursorWithIt covers n and p moving the line cursor as
+// well as the view: it is what a comment is left on, and leaving it in the file
+// the jump was away from would comment on a section that is no longer up.
+func TestDiffJumpTakesTheCursorWithIt(t *testing.T) {
+	d := newTestDiff()
+	d.Update(keyPress("n"))
+	if got := d.lines[d.line]; got != (bodyLine{file: 1, line: 0}) {
+		t.Errorf("cursor at %+v after n, want the top of the second file", got)
+	}
+	d.Update(keyPress("p"))
+	if got := d.lines[d.line]; got != (bodyLine{file: 0, line: 0}) {
+		t.Errorf("cursor at %+v after p, want the top of the first file", got)
 	}
 }

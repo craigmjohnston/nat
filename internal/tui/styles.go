@@ -205,6 +205,12 @@ type Styles struct {
 	// DiffRule the rule between the list and the diff beside it.
 	DiffCount lipgloss.Style
 	DiffRule  lipgloss.Style
+	// DiffComment marks a line of the diff carrying a review comment waiting to
+	// be sent. It takes the pending yellow rather than either of the diff's own
+	// colours: the mark sits beside added and removed lines alike, and a green
+	// or red one would read as part of the change rather than as something
+	// waiting on a person.
+	DiffComment lipgloss.Style
 
 	// StarDim, StarMid and StarPeak are the star of a slice with an agent
 	// working on it, brightening and settling as the pulse swells: all three
@@ -317,6 +323,8 @@ func NewStyles(isDark bool) Styles {
 		DiffDel:   lipgloss.NewStyle().Foreground(t.Danger),
 		DiffCount: lipgloss.NewStyle().Foreground(t.Muted),
 		DiffRule:  lipgloss.NewStyle().Foreground(t.SurfaceHi),
+
+		DiffComment: lipgloss.NewStyle().Bold(true).Foreground(t.Warning),
 
 		StarDim:     lipgloss.NewStyle().Faint(true).Foreground(t.Working),
 		StarMid:     lipgloss.NewStyle().Foreground(t.Working),

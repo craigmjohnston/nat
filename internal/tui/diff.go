@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -24,43 +26,82 @@ const (
 )
 
 // The diff screen's measurements: the columns the file list takes beside the
-// diff, the rule between them, and the narrowest window worth splitting in two
-// — below it the list goes and the diff has the band, since a diff squeezed
-// into thirty columns says nothing at all.
+// diff, the rule between them, the gutter every body line carries its comment
+// mark in, and the narrowest window worth splitting in two — below it the list
+// goes and the diff has the band, since a diff squeezed into thirty columns
+// says nothing at all.
 const (
-	diffListWidth = 28
-	diffRuleWidth = 1
-	diffSplitMin  = 60
+	diffListWidth   = 28
+	diffRuleWidth   = 1
+	diffGutterWidth = 2
+	diffSplitMin    = 60
 )
+
+// commentMark is what a line carrying a pending comment is marked with, in the
+// gutter every body line reserves for it. One cell wide and unambiguously so,
+// since it is drawn on every line of the diff and a mark that measured two
+// columns in some terminals would shift the whole body in them.
+const commentMark = "▌"
 
 // diffKeyMap is what the diff screen answers to beyond the viewport's own
 // scrolling: the jumps from one file's section to the next, which is what makes
-// a diff of twenty files readable without hunting for the boundaries.
+// a diff of twenty files readable without hunting for the boundaries, and the
+// three keys of a review — mark a range, comment on it, send what is pending.
 type diffKeyMap struct {
 	NextFile key.Binding
 	PrevFile key.Binding
+	Select   key.Binding
+	Comment  key.Binding
+	Send     key.Binding
 }
 
 // defaultDiffKeyMap returns the bindings the diff screen runs with. n and p are
 // the file jumps rather than anything vim-shaped, because j/k are already the
-// scroll and the two pairs should not read as versions of each other.
+// line cursor and the two pairs should not read as versions of each other; v is
+// the range mark for the one reason it is in vim, and c and s are the two ends
+// of leaving a comment.
 func defaultDiffKeyMap() diffKeyMap {
 	return diffKeyMap{
 		NextFile: key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "next file")),
 		PrevFile: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "previous file")),
+		Select:   key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "select lines")),
+		Comment:  key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "comment")),
+		Send:     key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "send comments")),
 	}
 }
 
-// hints are the diff screen's own hints row: how to move between files, and the
-// way back to the board. Scrolling is not among them — it is the keys everyone
-// tries first — and the help screen lists it.
-func (k diffKeyMap) hints(back key.Binding) []hint {
-	return []hint{{k.NextFile, 3}, {k.PrevFile, 2}, {back, 1}}
+// hints are the diff screen's own hints row: how to move between files, the two
+// keys a comment is left and sent with, and the way back to the board.
+// Scrolling is not among them — it is the keys everyone tries first — and the
+// help screen lists it.
+//
+// The send key says how many comments are waiting, since that count is the one
+// thing about a review that is nowhere else on the screen at a glance; with
+// none pending it says what the key is for instead.
+func (d Diff) hints(back key.Binding) []hint {
+	return []hint{
+		{d.keys.Comment, 4},
+		{d.sendBinding(), 5},
+		{d.keys.NextFile, 3},
+		{d.keys.PrevFile, 2},
+		{back, 1},
+	}
+}
+
+// sendBinding is the send key as the hints row names it: the pending count when
+// there is one, so the row itself is the tally of the review so far.
+func (d Diff) sendBinding() key.Binding {
+	n := len(d.comments)
+	if n == 0 {
+		return d.keys.Send
+	}
+	return key.NewBinding(key.WithKeys("s"),
+		key.WithHelp("s", fmt.Sprintf("send %d %s", n, plural(n, "comment", "comments"))))
 }
 
 // bindings are the diff screen's keys as the help screen lists them.
 func (k diffKeyMap) bindings() []key.Binding {
-	return []key.Binding{k.NextFile, k.PrevFile}
+	return []key.Binding{k.NextFile, k.PrevFile, k.Select, k.Comment, k.Send}
 }
 
 // Diff is the review screen: the unified diff of a slice's handed-back branch
@@ -76,12 +117,15 @@ type Diff struct {
 	keys   diffKeyMap
 	vp     viewport.Model
 
-	// slice, branch and dir are what was asked for, kept so the refresh key can
-	// ask for it again: an agent that pushes another commit while the diff is on
-	// screen is exactly when a reread is wanted.
-	slice  string
-	branch string
-	dir    string
+	// sliceID is the page ID of the slice whose branch is on show, which is how
+	// the comments find the agent they are sent to; slice, branch and dir are
+	// what was asked for, kept so the refresh key can ask for it again: an agent
+	// that pushes another commit while the diff is on screen is exactly when a
+	// reread is wanted.
+	sliceID string
+	slice   string
+	branch  string
+	dir     string
 	// base is what git diffed the branch against, which the screen says out
 	// loud: a diff means little without it.
 	base  string
@@ -91,16 +135,46 @@ type Diff struct {
 	// what the file jumps scroll to and what the list's cursor is kept in step
 	// with. It is rebuilt with the body, since a resize moves every one of them.
 	offsets []int
+	// lines says where each line of the rendered body came from, in step with
+	// it: the line cursor and the comments are in body-line space, and this is
+	// how a body line becomes a file and a line within it.
+	lines []bodyLine
 	// cursor is the file the list marks, and listTop the first file it draws —
 	// a change of forty files has a longer list than the band is tall.
 	cursor  int
 	listTop int
+
+	// line is the body line the cursor is on, and anchor the other end of a
+	// selected range while anchored — the two are the lines a comment is left
+	// on. A range never leaves the file it was started in: a comment spanning
+	// two files is two comments.
+	line     int
+	anchor   int
+	anchored bool
+
+	// comments are the review comments waiting to be sent, by the file and the
+	// line each was left on. They live no longer than the session: nothing here
+	// is written to Notion or to GitHub, and sending them is what empties this.
+	comments map[commentKey]comment
+	// marks is which of a file's lines a comment covers, so the gutter is one
+	// lookup per line as the body is drawn. It is keyed by the file and line a
+	// comment names rather than by where the body draws them, which is what
+	// keeps it a map built from the comments alone.
+	marks map[commentKey]bool
 
 	state diffState
 	err   error
 
 	width, height int
 }
+
+// bodyLine is where one line of the rendered body came from: the file's index
+// in the diff and the line's index within that file's section. The blank line
+// between two sections belongs to neither, and carries a file of -1.
+type bodyLine struct{ file, line int }
+
+// separator is the bodyLine of a line between two file sections.
+var separator = bodyLine{file: -1}
 
 // NewDiff returns an empty diff screen, waiting for a branch to be read into it.
 func NewDiff(styles Styles) Diff {
@@ -134,22 +208,104 @@ func (d Diff) splitVisible() bool { return d.width >= diffSplitMin }
 
 // Start marks a read of slice's branch as in flight, so the screen shows
 // progress and whatever was on it before does not read as this branch's diff.
-func (d *Diff) Start(slice, branch, dir string) {
-	d.slice, d.branch, d.dir = slice, branch, dir
+//
+// The pending comments survive a read of the same slice's branch — that read is
+// the refresh key, and an agent pushing another commit is no reason to throw
+// away what the user has typed about the last one — and go with a read of any
+// other, since a comment is about the lines of one branch.
+func (d *Diff) Start(sliceID, slice, branch, dir string) {
+	if sliceID != d.sliceID {
+		d.comments = nil
+	}
+	d.sliceID, d.slice, d.branch, d.dir = sliceID, slice, branch, dir
 	d.state, d.err = diffLoading, nil
 	d.base, d.files, d.offsets = "", nil, nil
 	d.cursor, d.listTop = 0, 0
+	d.clearSelection()
 	d.render()
 	d.vp.GotoTop()
 }
 
-// SetFiles shows a diff that came back, from the top of the first file.
-func (d *Diff) SetFiles(base string, files []git.File) {
+// SetFiles shows a diff that came back, from the top of the first file, and
+// reports how many pending comments it could not carry over.
+//
+// A comment is anchored to the lines it was left on rather than to a position:
+// a re-read that moved them takes it along, and one that changed or removed
+// them drops it, because a comment about lines that are no longer there is one
+// the agent would be sent looking for.
+func (d *Diff) SetFiles(base string, files []git.File) int {
 	d.base, d.files = base, files
 	d.state, d.err = diffReady, nil
-	d.cursor, d.listTop = 0, 0
+	d.cursor, d.listTop, d.line = 0, 0, 0
+	d.clearSelection()
+	dropped := d.reanchor()
 	d.render()
 	d.vp.GotoTop()
+	return dropped
+}
+
+// reanchor moves every pending comment onto the freshly read diff, dropping the
+// ones whose lines it can no longer find and reporting how many went.
+func (d *Diff) reanchor() int {
+	if len(d.comments) == 0 {
+		return 0
+	}
+	kept, dropped := make(map[commentKey]comment, len(d.comments)), 0
+	for _, c := range d.comments {
+		f, ok := d.fileNamed(c.path)
+		if !ok {
+			dropped++
+			continue
+		}
+		start, ok := findLines(d.files[f].Lines, c.lines, c.start)
+		if !ok {
+			dropped++
+			continue
+		}
+		c.start = start
+		c.ref = lineRef(d.files[f].Lines, start, len(c.lines))
+		kept[commentKey{path: c.path, start: start}] = c
+	}
+	d.comments = kept
+	return dropped
+}
+
+// fileNamed is the index of the file with this path in the diff on screen.
+func (d Diff) fileNamed(path string) (int, bool) {
+	for i, f := range d.files {
+		if f.Path == path {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// findLines is where want sits in lines: at from if it is still there, and
+// otherwise at the one other place it occurs. A run that occurs twice is no
+// longer an anchor — the comment cannot be re-homed without guessing which of
+// them the user meant.
+func findLines(lines, want []string, from int) (int, bool) {
+	if matchAt(lines, want, from) {
+		return from, true
+	}
+	found, at := 0, 0
+	for i := range lines {
+		if matchAt(lines, want, i) {
+			found, at = found+1, i
+		}
+	}
+	if found != 1 {
+		return 0, false
+	}
+	return at, true
+}
+
+// matchAt reports whether want sits in lines starting at i.
+func matchAt(lines, want []string, i int) bool {
+	if i < 0 || i+len(want) > len(lines) {
+		return false
+	}
+	return slices.Equal(lines[i:i+len(want)], want)
 }
 
 // Fail reports a read that did not come back. What was on screen goes with it,
@@ -161,9 +317,175 @@ func (d *Diff) Fail(err error) {
 	d.render()
 }
 
+// commentKey identifies a pending comment: the file it is on and the first of
+// the lines it covers. The path rather than the file's index, so a re-read that
+// adds or drops a file elsewhere in the diff leaves it where it was.
+type commentKey struct {
+	path  string
+	start int
+}
+
+// comment is one pending review comment: the lines it was left on, as git wrote
+// them, and what the user had to say about them.
+//
+// The lines are held rather than looked up, because they are what the prompt
+// quotes and what re-anchors the comment onto a freshly read diff; ref is where
+// in the file they sit, in the words the prompt names them by.
+type comment struct {
+	path  string
+	start int
+	lines []string
+	ref   string
+	text  string
+}
+
+// Comment is one pending comment as the prompt is composed from it: the file,
+// where in it the lines sit, those lines, and what was said.
+type Comment struct {
+	Path  string
+	Ref   string
+	Lines []string
+	Text  string
+}
+
 // Busy reports whether a read is in flight, which is what keeps the root
 // model's spinner turning.
 func (d Diff) Busy() bool { return d.state == diffLoading }
+
+// Pending is how many comments are waiting to be sent.
+func (d Diff) Pending() int { return len(d.comments) }
+
+// Comments are the pending comments in the order the diff draws them: by file
+// in the order the change touches them, and by line within a file. They are
+// built from the comments themselves rather than from the diff on screen, so a
+// read that failed after they were left does not swallow them — a comment on a
+// file the diff no longer holds simply sorts after the ones it does, by path.
+func (d Diff) Comments() []Comment {
+	order := make(map[string]int, len(d.files))
+	for i, f := range d.files {
+		if _, seen := order[f.Path]; !seen {
+			order[f.Path] = i
+		}
+	}
+	rank := func(path string) int {
+		if i, ok := order[path]; ok {
+			return i
+		}
+		return len(d.files)
+	}
+	cs := make([]comment, 0, len(d.comments))
+	for _, c := range d.comments {
+		cs = append(cs, c)
+	}
+	slices.SortFunc(cs, func(a, b comment) int {
+		if ra, rb := rank(a.path), rank(b.path); ra != rb {
+			return cmp.Compare(ra, rb)
+		}
+		if a.path != b.path {
+			return strings.Compare(a.path, b.path)
+		}
+		return cmp.Compare(a.start, b.start)
+	})
+	out := make([]Comment, len(cs))
+	for i, c := range cs {
+		out[i] = Comment{Path: c.path, Ref: c.ref, Lines: c.lines, Text: c.text}
+	}
+	return out
+}
+
+// SetComment records what the user typed about a run of lines, replacing
+// whatever was on them. Text that is nothing but spaces removes the comment
+// instead: an emptied comment box is how one is taken back.
+func (d *Diff) SetComment(path string, start, span int, text string) {
+	f, ok := d.fileNamed(path)
+	if !ok || start < 0 || span <= 0 || start+span > len(d.files[f].Lines) {
+		return
+	}
+	key := commentKey{path: path, start: start}
+	if strings.TrimSpace(text) == "" {
+		delete(d.comments, key)
+		d.render()
+		return
+	}
+	if d.comments == nil {
+		d.comments = map[commentKey]comment{}
+	}
+	lines := slices.Clone(d.files[f].Lines[start : start+span])
+	d.comments[key] = comment{path: path, start: start, lines: lines,
+		ref: lineRef(d.files[f].Lines, start, span), text: strings.TrimSpace(text)}
+	d.render()
+}
+
+// ClearComments drops every pending comment, which is what sending them does:
+// they are held only until the agent has been told.
+func (d *Diff) ClearComments() {
+	d.comments = nil
+	d.render()
+}
+
+// Selection is the file and the run of lines a comment would go on: the cursor
+// line, or the whole marked range. It also hands back whatever comment is
+// already there, so the box opens on what was said rather than empty.
+func (d Diff) Selection() (path string, start, span int, text string, ok bool) {
+	if len(d.files) == 0 || d.line >= len(d.lines) {
+		return "", 0, 0, "", false
+	}
+	at := d.lines[d.line]
+	if at.file < 0 {
+		return "", 0, 0, "", false
+	}
+	from, to := at.line, at.line
+	if d.anchored && d.anchor < len(d.lines) && d.lines[d.anchor].file == at.file {
+		from = min(from, d.lines[d.anchor].line)
+		to = max(to, d.lines[d.anchor].line)
+	}
+	path = d.files[at.file].Path
+	return path, from, to - from + 1, d.comments[commentKey{path: path, start: from}].text, true
+}
+
+// SelectionRef is where the lines a comment would go on sit in the file, which
+// is what the comment box names them by.
+func (d Diff) SelectionRef(path string, start, span int) string {
+	f, ok := d.fileNamed(path)
+	if !ok {
+		return ""
+	}
+	return lineRef(d.files[f].Lines, start, span)
+}
+
+// ToggleSelect marks the cursor line as one end of a range, or takes the mark
+// off again, and reports whether a range is now being marked.
+func (d *Diff) ToggleSelect() bool {
+	if d.anchored {
+		d.clearSelection()
+		d.render()
+		return false
+	}
+	if len(d.lines) == 0 {
+		return false
+	}
+	d.anchor, d.anchored = d.line, true
+	d.render()
+	return true
+}
+
+// Selecting reports whether a range is being marked, which is what makes esc
+// mean "drop the range" rather than "leave the screen".
+func (d Diff) Selecting() bool { return d.anchored }
+
+// clearSelection takes the range mark off without redrawing, for the callers
+// that are about to redraw anyway.
+func (d *Diff) clearSelection() { d.anchor, d.anchored = 0, false }
+
+// CancelSelect drops the range being marked, reporting whether there was one.
+func (d *Diff) CancelSelect() bool {
+	if !d.anchored {
+		return false
+	}
+	d.clearSelection()
+	d.render()
+	return true
+}
 
 // Loadable reports whether there is a branch to read again — a diff the screen
 // has been pointed at, which the refresh key can ask for a second time.
@@ -172,20 +494,41 @@ func (d Diff) Loadable() bool { return d.branch != "" && d.dir != "" }
 // Target is the slice, branch and directory the screen was last pointed at.
 func (d Diff) Target() (slice, branch, dir string) { return d.slice, d.branch, d.dir }
 
-// Reset drops the diff and what it was of, so nothing of one slice's branch is
-// left on the screen the next slice's opens.
+// SliceID is the page ID of the slice whose branch is on show, which is how the
+// comments left here find the agent working it.
+func (d Diff) SliceID() string { return d.sliceID }
+
+// Reset drops the diff and what it was of — the pending comments included, since
+// they are about a branch that is no longer on show — so nothing of one slice's
+// branch is left on the screen the next slice's opens.
 func (d *Diff) Reset() {
 	*d = Diff{styles: d.styles, keys: d.keys, vp: d.vp, width: d.width, height: d.height}
 	d.render()
 	d.vp.GotoTop()
 }
 
-// Update handles the screen's keys: the jumps between files, and otherwise the
-// viewport's own scrolling. Everything else — leaving the screen, refreshing —
-// belongs to the root model.
+// The keys the line cursor moves on: the same ones the viewport scrolls with,
+// taken before it sees them. A cursor that moved and a body that scrolled under
+// a still cursor would be two answers to one key.
+var (
+	diffLineDown = key.NewBinding(key.WithKeys("down", "j"))
+	diffLineUp   = key.NewBinding(key.WithKeys("up", "k"))
+)
+
+// Update handles the screen's keys: the line cursor, the jumps between files,
+// and otherwise the viewport's own scrolling — after which the cursor is
+// brought back onto the screen, so the line a comment would go on is always one
+// the user can see. Everything else — leaving the screen, commenting, sending,
+// refreshing — belongs to the root model.
 func (d *Diff) Update(msg tea.Msg) tea.Cmd {
 	if press, ok := msg.(tea.KeyPressMsg); ok {
 		switch {
+		case key.Matches(press, diffLineDown):
+			d.moveCursor(1)
+			return nil
+		case key.Matches(press, diffLineUp):
+			d.moveCursor(-1)
+			return nil
 		case key.Matches(press, d.keys.NextFile):
 			d.jump(1)
 			return nil
@@ -196,7 +539,92 @@ func (d *Diff) Update(msg tea.Msg) tea.Cmd {
 	}
 	vp, cmd := d.vp.Update(msg)
 	d.vp = vp
+	d.followView()
 	return cmd
+}
+
+// moveCursor moves the line cursor one line up or down — delta is 1 or -1 —
+// stepping over the blank line between two file sections, since there is
+// nothing there to comment on, and scrolling the least it can to keep the
+// cursor on screen.
+func (d *Diff) moveCursor(delta int) {
+	if len(d.lines) == 0 {
+		return
+	}
+	want := d.clamp(d.line + delta)
+	if d.lines[want].file < 0 {
+		// A separator is only ever one line, so one more step the same way is
+		// the next line of the next file — or, at the ends, back where the
+		// cursor already was.
+		want = d.clamp(want + delta)
+	}
+	d.setLine(want)
+}
+
+// clamp holds a body line inside the diff, and inside the file a range is being
+// marked in: a selection that ran into the next file would be a comment on two
+// files at once, which is two comments.
+func (d Diff) clamp(line int) int {
+	line = min(max(line, 0), len(d.lines)-1)
+	if !d.anchored || d.anchor >= len(d.lines) {
+		return line
+	}
+	first, last, ok := d.fileSpan(d.lines[d.anchor].file)
+	if !ok {
+		return line
+	}
+	return min(max(line, first), last)
+}
+
+// fileSpan is the first and last body line of a file's section.
+func (d Diff) fileSpan(file int) (first, last int, ok bool) {
+	if file < 0 || file >= len(d.files) || file >= len(d.offsets) {
+		return 0, 0, false
+	}
+	first = d.offsets[file]
+	return first, first + len(d.files[file].Lines) - 1, true
+}
+
+// setLine puts the cursor on a body line, marks the file it lands in on the
+// list beside the diff, and redraws.
+func (d *Diff) setLine(line int) {
+	d.line = line
+	if line < len(d.lines) && d.lines[line].file >= 0 {
+		d.cursor = d.lines[line].file
+		d.syncList()
+	}
+	d.render()
+	d.scrollToCursor()
+}
+
+// scrollToCursor scrolls the body the least it can to bring the cursor line
+// back onto it.
+func (d *Diff) scrollToCursor() {
+	h := d.vp.Height()
+	if h <= 0 {
+		return
+	}
+	switch top := d.vp.YOffset(); {
+	case d.line < top:
+		d.vp.SetYOffset(d.line)
+	case d.line >= top+h:
+		d.vp.SetYOffset(d.line - h + 1)
+	}
+}
+
+// followView brings the cursor back onto the body after the viewport has been
+// scrolled out from under it, which is what the page and half-page keys do.
+func (d *Diff) followView() {
+	h := d.vp.Height()
+	if len(d.lines) == 0 || h <= 0 {
+		return
+	}
+	top := d.vp.YOffset()
+	line := min(max(d.line, top), min(top+h-1, len(d.lines)-1))
+	if line == d.line {
+		return
+	}
+	d.setLine(d.clamp(line))
 }
 
 // jump moves the cursor by delta files and scrolls the diff to the top of the
@@ -209,6 +637,10 @@ func (d *Diff) jump(delta int) {
 	d.cursor = min(max(d.cursor+delta, 0), len(d.files)-1)
 	if d.cursor < len(d.offsets) {
 		d.vp.SetYOffset(d.offsets[d.cursor])
+		// The line cursor goes with the jump: it is what a comment is left on,
+		// and leaving it in the file the jump was away from would be a comment
+		// on a section that is no longer on screen.
+		d.setLine(d.clamp(d.offsets[d.cursor]))
 	}
 	d.syncList()
 }
@@ -235,40 +667,95 @@ func (d *Diff) syncList() {
 func (d Diff) listRows() int { return max(d.height-1, 0) }
 
 // render rebuilds the viewport's content from the files at the current width,
-// recording where each file's section starts as it goes.
+// recording where each file's section starts and where each body line came from
+// as it goes.
 func (d *Diff) render() {
 	if len(d.files) == 0 {
-		d.offsets = nil
+		d.offsets, d.lines, d.marks = nil, nil, nil
 		d.vp.SetContent("")
 		return
 	}
 	width := max(d.diffWidth(), 1)
 	offsets := make([]int, len(d.files))
-	var lines []string
+	var from []bodyLine
 	for i, f := range d.files {
 		if i > 0 {
 			// A blank line between sections, so two files do not run together.
-			lines = append(lines, "")
+			from = append(from, separator)
 		}
-		offsets[i] = len(lines)
-		for _, line := range f.Lines {
-			lines = append(lines, d.styleLine(line, width))
+		offsets[i] = len(from)
+		for j := range f.Lines {
+			from = append(from, bodyLine{file: i, line: j})
 		}
 	}
-	d.offsets = offsets
+	d.offsets, d.lines = offsets, from
+	d.marks = d.commentMarks()
+	d.line = min(max(d.line, 0), max(len(from)-1, 0))
+	lines := make([]string, len(from))
+	for i, at := range from {
+		if at.file < 0 {
+			lines[i] = ""
+			continue
+		}
+		f := d.files[at.file]
+		lines[i] = d.styleLine(f.Lines[at.line], width,
+			d.marks[commentKey{path: f.Path, start: at.line}], d.selected(i))
+	}
 	d.vp.SetContent(strings.Join(lines, "\n"))
 }
 
-// styleLine colours one line of the diff by its shape and cuts it to the
+// commentMarks is which of a file's lines a pending comment covers, so the
+// gutter is one lookup per line rather than a walk of every comment.
+func (d Diff) commentMarks() map[commentKey]bool {
+	if len(d.comments) == 0 {
+		return nil
+	}
+	marks := map[commentKey]bool{}
+	for _, c := range d.comments {
+		for i := range c.lines {
+			marks[commentKey{path: c.path, start: c.start + i}] = true
+		}
+	}
+	return marks
+}
+
+// styleLine draws one line of the body: the gutter that says whether a comment
+// is pending on it, then the line itself, coloured by its shape and cut to the
 // columns the body has.
 //
 // A long line is truncated rather than wrapped, so that one line of the diff is
-// one line of the body: the file jumps scroll to a line number, and a body
-// whose lines did not correspond to git's would send them to the wrong place.
-// This is a first-pass read-only viewer, and a truncated line is a line you can
-// see is long.
-func (d Diff) styleLine(line string, width int) string {
-	return d.lineStyle(line).Render(fit(line, width))
+// one line of the body: the file jumps and the line cursor are line numbers into
+// the body, and a body whose lines did not correspond to git's would send them
+// to the wrong place. A truncated line is a line you can see is long.
+//
+// A selected line is filled across the body the way the board fills the row
+// under its cursor, and drawn plain underneath: a line's own colour would break
+// the run of background, exactly as a chip's does there.
+func (d Diff) styleLine(line string, width int, marked, selected bool) string {
+	text := fit(line, max(width-diffGutterWidth, 1))
+	gutter := " "
+	if marked {
+		gutter = commentMark
+	}
+	if selected {
+		// The fill is one style across the line, so the mark inside it is drawn
+		// plain: its own colour would break the run of background, exactly as a
+		// chip's does on the board's selected row.
+		return d.styles.SelectedRow.Width(width).Render(fit(gutter+" "+text, width))
+	}
+	if marked {
+		gutter = d.styles.DiffComment.Render(gutter)
+	}
+	return gutter + " " + d.lineStyle(line).Render(text)
+}
+
+// selected reports whether a body line is under the cursor, or inside the range
+// being marked from it.
+func (d Diff) selected(i int) bool {
+	if !d.anchored {
+		return i == d.line
+	}
+	return i >= min(d.line, d.anchor) && i <= max(d.line, d.anchor)
 }
 
 // lineStyle is the style a diff line is drawn in, chosen by its prefix. The
