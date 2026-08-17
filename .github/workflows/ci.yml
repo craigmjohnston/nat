@@ -34,6 +34,12 @@ jobs:
           files: coverage.out
           fail_ci_if_error: true
 
+      # After the upload, so a run that fails here has still reported what it
+      # did cover. The profile is read rather than the percentage `go test`
+      # prints, which rounds a single missed statement away — see the script.
+      - name: No uncovered statements
+        run: ./scripts/no-uncovered.sh coverage.out
+
   lint:
     runs-on: ubuntu-latest
     steps:
