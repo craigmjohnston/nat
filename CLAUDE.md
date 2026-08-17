@@ -232,7 +232,18 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   cut to the width it is drawn at and a resize renders again. One diff line is
   one body line, truncated rather than wrapped: the file jumps scroll to a line
   number, and a body whose lines did not correspond to git's would send them to
-  the wrong place. The file list beside it is what `n`/`p` move through, and it
+  the wrong place. `diffbox.go` is the shape the body takes: one bordered box per
+  file, GitHub-fashion — a header row naming the path with its ± tally, the
+  file's diff verbatim inside it, a footer row closing it, and the old and new
+  line numbers of every line down the left, read off the same hunk headers
+  `diffref.go` names a comment's lines by, so the gutter and the prompt are one
+  answer. The number columns are as wide as the widest number anywhere in the
+  diff, so code starts at the same column in every box; a box's own two rows
+  belong to no file's section, which is what the line cursor steps over and what
+  a jump scrolls to, since the row that names the file is worth the line it
+  costs. A binary or otherwise described file keeps the one line git wrote for it
+  inside its box like any other. The file list beside it is what `n`/`p` move
+  through, and it
   goes entirely on a window under 60 columns, where the columns are worth more to
   the diff than to a list of paths — the jumps go on working either way, which is
   what per-file navigation actually needs. Lines are coloured by their shape

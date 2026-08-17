@@ -71,8 +71,8 @@ func TestDiffWithoutRoomForTheFileList(t *testing.T) {
 	d := newTestDiff()
 	d.SetSize(diffSplitMin-1, diffTestHeight)
 	golden(t, "diff-narrow", d.View(""))
-	if strings.Contains(xansi.Strip(d.View("")), "│") {
-		t.Error("a narrow window should draw no rule, and so no file list")
+	if strings.Contains(xansi.Strip(d.View("")), d.listHeading()) {
+		t.Error("a narrow window should draw no file list")
 	}
 }
 
@@ -132,7 +132,9 @@ func TestDiffJumpsBetweenFiles(t *testing.T) {
 		if d.cursor != want {
 			t.Fatalf("after %d jumps the cursor is on file %d, want %d", want, d.cursor, want)
 		}
-		wantLine := min(d.offsets[want], bottom)
+		// The box's header row rather than its first diff line: a jump lands on
+		// the row that names the file.
+		wantLine := min(d.offsets[want]-1, bottom)
 		if got := d.vp.YOffset(); got != wantLine {
 			t.Errorf("file %d is scrolled to line %d, want %d", want, got, wantLine)
 		}
@@ -248,8 +250,8 @@ func TestDiffOneLineIsOneLine(t *testing.T) {
 	for _, f := range d.files {
 		want += len(f.Lines)
 	}
-	// One blank line between each pair of sections.
-	want += len(d.files) - 1
+	// A header and a footer row for each file's box.
+	want += 2 * len(d.files)
 	if got := strings.Count(d.vp.GetContent(), "\n") + 1; got != want {
 		t.Errorf("body is %d lines, want %d — one per line of the diff", got, want)
 	}
@@ -367,21 +369,22 @@ func TestDiffListMarksABinaryFile(t *testing.T) {
 // nothing there to comment on.
 func TestDiffCursorMovesByLine(t *testing.T) {
 	d := newTestDiff()
-	if d.line != 0 {
-		t.Fatalf("line = %d, want the cursor on the first line", d.line)
+	if got := d.lines[d.line]; got != (bodyLine{file: 0, line: 0}) {
+		t.Fatalf("cursor at %+v, want the first line of the first file", got)
 	}
+	first := d.line
 	d.Update(keyPress("j"))
-	if d.line != 1 {
-		t.Errorf("line = %d after j, want 1", d.line)
+	if d.line != first+1 {
+		t.Errorf("line = %d after j, want %d", d.line, first+1)
 	}
 	d.Update(keyPress("k"))
 	d.Update(keyPress("k"))
-	if d.line != 0 {
-		t.Errorf("line = %d at the top, want the cursor to hold there", d.line)
+	if d.line != first {
+		t.Errorf("line = %d at the top, want the cursor to hold at %d", d.line, first)
 	}
 
-	// The last line of the first file, then one more: the separator is stepped
-	// over onto the first line of the next.
+	// The last line of the first file, then one more: the border rows between
+	// the two boxes are stepped over onto the first line of the next.
 	last := len(d.files[0].Lines) - 1
 	for range last {
 		d.Update(keyPress("j"))
@@ -397,14 +400,16 @@ func TestDiffCursorMovesByLine(t *testing.T) {
 }
 
 // TestDiffCursorHoldsAtTheEnd covers the bottom of the body, where a step down
-// has nowhere to go.
+// has nowhere to go: the last box's footer row is not a line to stop on, so the
+// cursor holds on the last line of the diff itself.
 func TestDiffCursorHoldsAtTheEnd(t *testing.T) {
 	d := newTestDiff()
 	for range len(d.lines) + 2 {
 		d.Update(keyPress("j"))
 	}
-	if d.line != len(d.lines)-1 {
-		t.Errorf("line = %d, want the last of %d", d.line, len(d.lines))
+	last := len(d.files) - 1
+	if got := d.lines[d.line]; got != (bodyLine{file: last, line: len(d.files[last].Lines) - 1}) {
+		t.Errorf("cursor at %+v, want the last line of the last file", got)
 	}
 }
 
