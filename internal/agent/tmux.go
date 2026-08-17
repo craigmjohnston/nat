@@ -512,6 +512,42 @@ func agentCommand(promptFile string, m config.AgentModel) string {
 	return fmt.Sprintf(`claude%s "$(cat %s)"`, flags, shellQuote(promptFile))
 }
 
+// promptBuffer is the tmux paste buffer a prompt goes through on its way into
+// an agent's pane, named after the session so two sends at once cannot land in
+// one another's text.
+func promptBuffer(session string) string { return SessionPrefix + "prompt-" + session }
+
+// SendPrompt types text at the agent running in session and submits it, as
+// though the user had pasted it into the pane themselves.
+//
+// It goes through a paste buffer rather than send-keys' own literal mode
+// because a prompt is several lines: keys sent one at a time would submit at
+// the first newline and send the rest of the comments to whatever the agent
+// asked next. The paste is bracketed (-p), which is how Claude Code's composer
+// tells a pasted newline from a typed one, and the enter after it is the
+// separate keystroke that sends the turn.
+//
+// The text itself is never logged: a review comment is the user's own words
+// about their own code, and the log is not where they belong.
+func (t *Tmux) SendPrompt(session, text string) error {
+	buffer := promptBuffer(session)
+	if _, err := t.runner.Run(TmuxBinary, "set-buffer", "-b", buffer, "--", text); err != nil {
+		return fmt.Errorf("stage the prompt for %s: %w", session, err)
+	}
+	if _, err := t.runner.Run(TmuxBinary, "paste-buffer", "-d", "-p", "-b", buffer, "-t", session); err != nil {
+		// -d deletes the buffer as it pastes; a paste that never happened leaves
+		// it behind, holding the user's words in the tmux server until something
+		// else overwrites it.
+		_, _ = t.runner.Run(TmuxBinary, "delete-buffer", "-b", buffer)
+		return fmt.Errorf("paste the prompt into %s: %w", session, err)
+	}
+	if _, err := t.runner.Run(TmuxBinary, "send-keys", "-t", session, "Enter"); err != nil {
+		return fmt.Errorf("submit the prompt in %s: %w", session, err)
+	}
+	logging.Action("prompt sent to an agent", "session", session, "bytes", len(text))
+	return nil
+}
+
 // SessionEnv is set by tmux in every pane it runs, to the socket and session
 // the pane belongs to. tmux refuses to attach a client from inside one of its
 // own panes when it is non-empty, so an attach that runs under the board — the

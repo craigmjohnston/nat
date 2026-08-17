@@ -84,11 +84,18 @@ type launchCall struct {
 	model                                 config.AgentModel
 }
 
+// sendCall is one prompt the launcher was asked to type at a session.
+type sendCall struct{ session, text string }
+
 // fakeLauncher records what it was asked to do, in place of a tmux server.
 type fakeLauncher struct {
 	live      map[string]string
 	liveErr   error
 	launchErr error
+	// prompts records what was sent to which session, and sendErr is the
+	// failure that stops a send.
+	prompts []sendCall
+	sendErr error
 
 	// activity is what the watcher reads back, and activityErr the failure that
 	// stops it; reads counts the readings taken.
@@ -130,6 +137,11 @@ func (f *fakeLauncher) Activity() (map[string]agent.Activity, error) {
 func (f *fakeLauncher) Launch(session, workdir, promptFile, sliceID string, model config.AgentModel) error {
 	f.launches = append(f.launches, launchCall{session, workdir, promptFile, sliceID, model})
 	return f.launchErr
+}
+
+func (f *fakeLauncher) SendPrompt(session, text string) error {
+	f.prompts = append(f.prompts, sendCall{session: session, text: text})
+	return f.sendErr
 }
 
 func (f *fakeLauncher) AttachCmd(session string) *exec.Cmd {

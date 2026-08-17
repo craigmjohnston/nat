@@ -20,7 +20,8 @@ import (
 
 // AgentLauncher is what the launch flow needs of tmux: which slices have an
 // agent running and in which session, how each of them is getting on, how to
-// start one, the two commands that
+// start one, how to say something to one — which is how the diff screen's review
+// comments reach the agent that wrote the branch — the two commands that
 // attach to one — the hidden client the embedded viewer runs, and the
 // full-screen attach behind the hatch — and the reconcile that re-homes what an
 // earlier run left joined beside a board. It is an interface so the flow can be
@@ -29,6 +30,7 @@ type AgentLauncher interface {
 	LiveSlices() (map[string]string, error)
 	Activity() (map[string]agent.Activity, error)
 	Launch(session, workdir, promptFile, sliceID string, model config.AgentModel) error
+	SendPrompt(session, text string) error
 	AttachClientCmd(session string) *exec.Cmd
 	AttachCmd(session string) *exec.Cmd
 	ReclaimStrays(hostPane string) (int, error)

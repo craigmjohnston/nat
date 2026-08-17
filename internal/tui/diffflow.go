@@ -65,7 +65,7 @@ func (a *App) diffSliceFlow() tea.Cmd {
 	if err := existingDir(dir); err != nil {
 		return a.showConfirm(fmt.Sprintf("Cannot read the diff for %q: %v.", s.Name, err), sevError)
 	}
-	a.diff.Start(s.Name, s.Branch, dir)
+	a.diff.Start(s.ID, s.Name, s.Branch, dir)
 	a.setScreen(screenDiff)
 	return tea.Batch(a.spinner.Tick, readDiff(a.differ, s.Branch, dir))
 }
@@ -79,7 +79,7 @@ func (a *App) startDiffLoad() tea.Cmd {
 		return nil
 	}
 	slice, branch, dir := a.diff.Target()
-	a.diff.Start(slice, branch, dir)
+	a.diff.Start(a.diff.SliceID(), slice, branch, dir)
 	return tea.Batch(a.spinner.Tick, readDiff(a.differ, branch, dir))
 }
 
@@ -107,11 +107,19 @@ func (a *App) diffHeading() string {
 }
 
 // diffLoaded shows the diff that came back, or the failure that came instead.
+//
+// A read that moved the lines a pending comment was left on takes that comment
+// with it, which is said out loud: the comments are held nowhere else, and one
+// that vanished from the gutter without a word would be one the user goes on
+// believing they have left.
 func (a *App) diffLoaded(msg diffLoadedMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		a.diff.Fail(msg.err)
 		return a, nil
 	}
-	a.diff.SetFiles(msg.base, msg.files)
+	if dropped := a.diff.SetFiles(msg.base, msg.files); dropped > 0 {
+		return a, a.showToast(fmt.Sprintf("%d %s dropped — the lines they were on have changed.",
+			dropped, plural(dropped, "comment", "comments")), sevWarning)
+	}
 	return a, nil
 }

@@ -91,6 +91,16 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   capture; a capture that fails outright leaves the state unread rather than
   declaring a running agent gone. It is a poll, with no timer of its own — the
   TUI decides how often to take a reading.
+  `SendPrompt` is the one thing nat says to a running agent rather than about
+  one: the diff screen's review comments, typed at the session's pane and
+  submitted. It goes through a paste buffer of the session's own
+  (`set-buffer`, then `paste-buffer -d -p`) rather than send-keys' literal
+  mode, because a prompt is several lines and keys sent one at a time would
+  submit at the first newline; the enter after the paste is what sends the turn,
+  and the bracketing is how Claude Code's composer tells a pasted newline from a
+  typed one. A paste that never happened takes its buffer back off the server,
+  and the text is never logged — a review comment is the user's own words about
+  their own code.
   Both ways of attaching to a session — `AttachCmd`, full-screen through
   `tea.ExecProcess`, and `AttachClientCmd`, the hidden client the embedded
   viewer runs on a PTY of its own — build the same argv, `tmux -T
@@ -233,6 +243,27 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   a failure would be showing the wrong change; the refresh key reads the branch
   again while the screen is up, which is what an agent pushing another commit is
   worth asking about.
+  `diffcomment.go` and `diffref.go` are the review left on what that screen
+  shows: `j`/`k` are a line cursor rather than the scroll they were, `v` marks
+  the other end of a range — never leaving the file it was started in, since a
+  comment across two files is two comments — `c` opens a huh box on the lines
+  under it, prefilled with whatever was said about them before and emptied to
+  take it back, and `s` hands every pending comment to the agent as one prompt.
+  They are ephemeral by design: held in the session alone, never written to
+  Notion or to GitHub, marked in a gutter column the body reserves on every line
+  and cleared once they have actually reached the pane — a send that failed
+  leaves them where they are, because nothing else is holding them. The prompt
+  names each comment's lines by the numbers they sit at in the file
+  (`diffref.go`, read off the hunk headers — the new side's, or the base's for a
+  run that is nothing but deletions) and quotes them as git wrote them, since the
+  numbers are what an agent opens the file by and the text is what tells it it
+  has landed in the right place. A re-read of the branch carries a comment onto
+  the lines it was left on wherever they have got to, and drops it — saying so —
+  when they have changed or now occur twice; a fresh read of the same slice keeps
+  them, and any other slice starts with none. `openForm` remembers the screen it
+  was opened over for this one form's sake: every other form is the board's and
+  closes back onto it, where dropping the user there after typing a comment would
+  lose their place in a change they are half way through reading.
   `settings.go` is `S`, the config file as a form, so nothing local has to be
   edited by hand: the active project's working directory, the agent split, the
   poll interval and the two model pairs — and nothing else in the file, since
@@ -401,7 +432,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   left as it was. `v` on the board is how that wait is read — the branch's diff
   against the base it was cut from, on a screen of its own — and only a
   handed-back slice has one to read, the same rule and the same refusals `p`
-  applies. `p` on the board is what ends that wait: it confirms on the row, runs `gh pr create` in the
+  applies. A review can go back rather than only be read: comments left on the
+  diff's lines are sent to the agent that wrote the branch, all of them in one
+  prompt, which needs that agent's session to still be running — one that has
+  exited is not there to be told anything, and the comments stay pending until
+  there is one that is. They are recorded nowhere: not on the slice, not on
+  Notion, not on GitHub.
+  `p` on the board is what ends that wait: it confirms on the row, runs `gh pr create` in the
   slice's repo from that branch, and writes the URL it gets back onto the `PR`
   property as it sets the status to `Done` — the one board key that reaches
   outside Notion, and the only place a slice's PR is recorded from the TUI. The

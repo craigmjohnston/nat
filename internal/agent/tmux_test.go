@@ -858,3 +858,61 @@ func TestLaunchTagsWhatLiveSlicesReads(t *testing.T) {
 		t.Errorf("live[%q] = %q, want %q", id, got, session)
 	}
 }
+
+// TestSendPrompt covers a prompt typed at a running agent: staged in a buffer
+// of its own, pasted into the session bracketed, and submitted with an enter of
+// its own — which is what keeps a prompt of several lines one turn rather than
+// one turn per line.
+func TestSendPrompt(t *testing.T) {
+	runner := &fakeRunner{}
+	session := "nat-b4463d8f"
+	text := "line one\nline two"
+	if err := NewTmuxWithRunner(runner).SendPrompt(session, text); err != nil {
+		t.Fatalf("SendPrompt: %v", err)
+	}
+	if len(runner.calls) != 3 {
+		t.Fatalf("calls = %v, want a set-buffer, a paste-buffer and a send-keys", runner.calls)
+	}
+	buffer := promptBuffer(session)
+	want := [][]string{
+		{"set-buffer", "-b", buffer, "--", text},
+		{"paste-buffer", "-d", "-p", "-b", buffer, "-t", session},
+		{"send-keys", "-t", session, "Enter"},
+	}
+	for i, args := range want {
+		if runner.calls[i].name != TmuxBinary || !slices.Equal(runner.calls[i].args, args) {
+			t.Errorf("call %d = %v %v, want tmux %v", i, runner.calls[i].name, runner.calls[i].args, args)
+		}
+	}
+}
+
+// TestSendPromptFailures covers each step giving out: the failure names the
+// session, and a paste that never happened takes the buffer holding the user's
+// words back off the server rather than leaving them there.
+func TestSendPromptFailures(t *testing.T) {
+	tests := []struct {
+		sub  string
+		want string
+	}{
+		{"set-buffer", "stage the prompt"},
+		{"paste-buffer", "paste the prompt"},
+		{"send-keys", "submit the prompt"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.sub, func(t *testing.T) {
+			runner := &fakeRunner{errs: map[string]error{tt.sub: errors.New("boom")}}
+			err := NewTmuxWithRunner(runner).SendPrompt("nat-1", "hello")
+			if err == nil || !strings.Contains(err.Error(), tt.want) ||
+				!strings.Contains(err.Error(), "nat-1") {
+				t.Fatalf("SendPrompt error = %v, want %q and the session named", err, tt.want)
+			}
+			if tt.sub != "paste-buffer" {
+				return
+			}
+			last := runner.calls[len(runner.calls)-1]
+			if last.args[0] != "delete-buffer" {
+				t.Errorf("last call = %v, want the staged buffer deleted", last.args)
+			}
+		})
+	}
+}

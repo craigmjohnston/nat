@@ -212,6 +212,9 @@ type App struct {
 	info       Info
 	diff       Diff
 	form       modal
+	// formReturn is the screen an open form was opened over, which is where
+	// closing it goes back to — the board for all but the diff's comment box.
+	formReturn screen
 	// prompt is what answering the board's open row prompt does, held by the
 	// flow that opened it; nil when no prompt is up.
 	prompt func(choice int) tea.Cmd
@@ -415,6 +418,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case diffLoadedMsg:
 		return a.diffLoaded(msg)
+	case commentSavedMsg:
+		return a.commentSaved(msg)
+	case commentsSentMsg:
+		return a.commentsSent(msg)
 	case sliceBodyMsg:
 		return a.sliceBodyLoaded(msg)
 	case prOpenedMsg:
@@ -542,6 +549,10 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// screen that was pushed over the board, else quit.
 	case a.err != nil && key.Matches(msg, a.keys.Dismiss):
 		a.err = nil
+	// A range being marked on the diff is the nearer undo of the two: esc drops
+	// it, and the esc after that leaves the screen.
+	case a.screen == screenDiff && key.Matches(msg, a.keys.Back) && a.diff.Selecting():
+		a.diff.CancelSelect()
 	case a.screen != screenBoard && key.Matches(msg, a.keys.Back):
 		a.setScreen(screenBoard)
 	case key.Matches(msg, a.keys.Quit):
@@ -589,6 +600,9 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case screenInfo:
 			return a, a.info.Update(msg)
 		case screenDiff:
+			if cmd, ok := a.diffKey(msg); ok {
+				return a, cmd
+			}
 			return a, a.diff.Update(msg)
 		case screenHelp:
 			// The key list is longer than a short window, so it scrolls.
@@ -726,10 +740,14 @@ func (a *App) sliceBodyLoaded(msg sliceBodyMsg) (tea.Model, tea.Cmd) {
 	return a, a.openForm(newEditSliceForm(a.styles.FormTheme, msg.slice, msg.markdown))
 }
 
-// openForm shows a form over the board, at the size the window it is opening
-// into leaves for it.
+// openForm shows a form over the screen it was asked for from, at the size the
+// window it is opening into leaves for it. Where it goes back to is remembered
+// here rather than assumed: nearly every form is opened on the board and closes
+// back onto it, but the diff's comment box is opened over the diff, and
+// dropping the user onto the board after typing a comment would lose their place
+// in a change they are half way through reading.
 func (a *App) openForm(f modal) tea.Cmd {
-	a.form, a.note = f, ""
+	a.form, a.note, a.formReturn = f, "", a.screen
 	a.setScreen(screenForm)
 	f.SetSize(a.formSize())
 	return f.Init()
@@ -800,10 +818,10 @@ func busyNoteOf(f modal) string {
 	return "Saving…"
 }
 
-// closeForm dismisses the form and goes back to the board.
+// closeForm dismisses the form and goes back to the screen it was opened over.
 func (a *App) closeForm() {
 	a.form = nil
-	a.setScreen(screenBoard)
+	a.setScreen(a.formReturn)
 }
 
 // saved reports a finished write and brings the board up to date with it: the
@@ -1417,11 +1435,16 @@ func (a *App) modalView() string {
 	return canvas.Render()
 }
 
-// scrimView is the board as a modal's backdrop: every colour it draws with
-// stripped and the whole of it redrawn receded, so the form on top is the only
-// thing at full strength.
+// scrimView is what a modal floats over as its backdrop — the screen the form
+// was opened from, which is the board for all but the diff's comment box —
+// with every colour it draws with stripped and the whole of it redrawn receded,
+// so the form on top is the only thing at full strength.
 func (a *App) scrimView() string {
-	return a.styles.Scrim.Render(xansi.Strip(a.boardView()))
+	body := a.boardView()
+	if a.formReturn == screenDiff {
+		body = a.diff.View(a.spinner.View())
+	}
+	return a.styles.Scrim.Render(xansi.Strip(body))
 }
 
 // boardView is the main screen: the plan, scrolled to the body band. Loading
@@ -1763,7 +1786,7 @@ func (a *App) contextHints() []hint {
 	// The diff screen's keys are its own, and the board's say nothing while it
 	// is up: it is a screen over the board, not a state of it.
 	if a.screen == screenDiff {
-		return a.diff.keys.hints(a.keys.Back)
+		return a.diff.hints(a.keys.Back)
 	}
 	if a.screen == screenBoard {
 		if _, ok := a.board.SelectedSlice(); ok {
