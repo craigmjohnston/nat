@@ -188,8 +188,8 @@ func TestDiffSelectionWithNothingToSelect(t *testing.T) {
 
 	d := newTestDiff()
 	d.line = d.offsets[1] - 1
-	if got := d.lines[d.line]; got != separator {
-		t.Fatalf("line %d is %+v, want the separator between two sections", d.line, got)
+	if got := d.lines[d.line]; got.line != boxHeaderRow {
+		t.Fatalf("line %d is %+v, want the header row of the second file's box", d.line, got)
 	}
 	if _, _, _, _, ok := d.Selection(); ok {
 		t.Error("Selection() should find nothing on the line between two files")

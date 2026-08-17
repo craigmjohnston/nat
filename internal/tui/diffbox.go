@@ -22,6 +22,15 @@ const (
 	boxRule        = "─"
 )
 
+// viewedMark is what the header row of a file marked viewed opens with, in the
+// cell the rule would otherwise have. One column wide and unambiguously so, like
+// the comment mark, since the row it is on is measured to the box's own width.
+//
+// A collapsed box keeps the top corners it opened with rather than borrowing the
+// bottom ones: the row is its header, and the file's own diff is not gone but
+// folded, which is what the user presses the key again to undo.
+const viewedMark = "✓"
+
 // sideNumbers is the line each of one file's diff lines sits at on either side
 // of the change, as the gutter draws them: was in the base, now in the file as
 // the branch leaves it. A line only one side has is numbered only there, and a
@@ -64,8 +73,18 @@ func numberWidth(nums []sideNumbers) int {
 // file is the end of its path; the tally goes altogether where there is no room
 // for both, because the list beside the diff carries it too and the path is what
 // the box is for.
-func (d Diff) boxTop(f git.File, inner int) string {
+//
+// A file marked viewed takes the first cell of the rule for a tick, so the row
+// says it has been read as well as showing it — the fold below it is the same
+// news, but a row that is the whole of its box is a row with nothing below it to
+// compare against. It costs the rule a column and no more: the path and the
+// tally sit where they sat, so a fold does not shuffle the row it collapses.
+func (d Diff) boxTop(f git.File, inner int, viewed bool) string {
 	edge := d.styles.DiffRule
+	head := edge.Render(boxRule)
+	if viewed {
+		head = d.styles.DiffAdd.Render(viewedMark)
+	}
 	// The tally spends its own two spaces and a closing rule character, and
 	// leaves at least a rule of two between itself and the path; without room for
 	// all of that the path has the row to itself.
@@ -76,7 +95,7 @@ func (d Diff) boxTop(f git.File, inner int) string {
 	}
 	name := elideLeft(f.Path, max(inner-tallyWidth-5, 0))
 	rule := max(inner-lipgloss.Width(name)-tallyWidth-3, 0)
-	return d.boxRow(boxTopLeft, edge.Render(boxRule)+" "+d.styles.DiffFile.Render(name)+" "+
+	return d.boxRow(boxTopLeft, head+" "+d.styles.DiffFile.Render(name)+" "+
 		edge.Render(strings.Repeat(boxRule, rule))+tally, boxTopRight, inner)
 }
 
