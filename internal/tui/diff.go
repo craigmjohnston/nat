@@ -27,13 +27,14 @@ const (
 
 // The diff screen's measurements: the columns the file list takes beside the
 // diff, the rule between them, the gutter every body line carries its comment
-// mark in, and the narrowest window worth splitting in two — below it the list
-// goes and the diff has the band, since a diff squeezed into thirty columns
-// says nothing at all.
+// mark in, the columns a file's box spends on its own two borders, and the
+// narrowest window worth splitting in two — below it the list goes and the diff
+// has the band, since a diff squeezed into thirty columns says nothing at all.
 const (
 	diffListWidth   = 28
 	diffRuleWidth   = 1
 	diffGutterWidth = 2
+	diffBorderWidth = 2
 	diffSplitMin    = 60
 )
 
@@ -105,8 +106,8 @@ func (k diffKeyMap) bindings() []key.Binding {
 }
 
 // Diff is the review screen: the unified diff of a slice's handed-back branch
-// against the base it was cut from, scrolled in a viewport with a list of the
-// files it touches beside it.
+// against the base it was cut from, one bordered box per file, scrolled in a
+// viewport with a list of the files it touches beside it.
 //
 // It holds the parsed files rather than the rendered body, because the body is
 // cut to the width it is drawn at: every resize renders again from the files.
@@ -131,9 +132,10 @@ type Diff struct {
 	base  string
 	files []git.File
 
-	// offsets[i] is the line of the rendered body file i starts on, which is
-	// what the file jumps scroll to and what the list's cursor is kept in step
-	// with. It is rebuilt with the body, since a resize moves every one of them.
+	// offsets[i] is the line of the rendered body file i's first diff line sits
+	// on — the line after its box's header row, which is what the file jumps
+	// scroll to and what the list's cursor is kept in step with. It is rebuilt
+	// with the body, since a resize moves every one of them.
 	offsets []int
 	// lines says where each line of the rendered body came from, in step with
 	// it: the line cursor and the comments are in body-line space, and this is
@@ -169,11 +171,13 @@ type Diff struct {
 }
 
 // bodyLine is where one line of the rendered body came from: the file's index
-// in the diff and the line's index within that file's section. The blank line
-// between two sections belongs to neither, and carries a file of -1.
+// in the diff and the line's index within that file's section. A box's own
+// header and footer rows are lines of the diff's own furniture rather than of
+// any file's section, and carry a file of -1.
 type bodyLine struct{ file, line int }
 
-// separator is the bodyLine of a line between two file sections.
+// separator is the bodyLine of a body line belonging to no file's section: the
+// header or the footer row of a box.
 var separator = bodyLine{file: -1}
 
 // NewDiff returns an empty diff screen, waiting for a branch to be read into it.
@@ -544,21 +548,27 @@ func (d *Diff) Update(msg tea.Msg) tea.Cmd {
 }
 
 // moveCursor moves the line cursor one line up or down — delta is 1 or -1 —
-// stepping over the blank line between two file sections, since there is
-// nothing there to comment on, and scrolling the least it can to keep the
-// cursor on screen.
+// stepping over the border rows between two boxes, since there is nothing there
+// to comment on, and scrolling the least it can to keep the cursor on screen.
+//
+// The step is a walk rather than a single hop over one row: between two files
+// there is a footer and a header, and the last box's footer is the end of the
+// body, where the cursor holds where it was.
 func (d *Diff) moveCursor(delta int) {
 	if len(d.lines) == 0 {
 		return
 	}
-	want := d.clamp(d.line + delta)
-	if d.lines[want].file < 0 {
-		// A separator is only ever one line, so one more step the same way is
-		// the next line of the next file — or, at the ends, back where the
-		// cursor already was.
-		want = d.clamp(want + delta)
+	for want := d.line; ; {
+		next := d.clamp(want + delta)
+		if next == want {
+			return
+		}
+		want = next
+		if d.lines[want].file >= 0 {
+			d.setLine(want)
+			return
+		}
 	}
-	d.setLine(want)
 }
 
 // clamp holds a body line inside the diff, and inside the file a range is being
@@ -598,15 +608,21 @@ func (d *Diff) setLine(line int) {
 }
 
 // scrollToCursor scrolls the body the least it can to bring the cursor line
-// back onto it.
+// back onto it, and the header row of its box with it where the cursor is on the
+// first line of a file: the row that names the file is worth the one line it
+// costs, and a diff scrolled to an unnamed first line reads as starting nowhere.
 func (d *Diff) scrollToCursor() {
 	h := d.vp.Height()
 	if h <= 0 {
 		return
 	}
+	reveal := d.line
+	if d.line < len(d.lines) && d.lines[d.line].line == 0 {
+		reveal = max(d.line-1, 0)
+	}
 	switch top := d.vp.YOffset(); {
-	case d.line < top:
-		d.vp.SetYOffset(d.line)
+	case reveal < top:
+		d.vp.SetYOffset(reveal)
 	case d.line >= top+h:
 		d.vp.SetYOffset(d.line - h + 1)
 	}
@@ -624,19 +640,20 @@ func (d *Diff) followView() {
 	if line == d.line {
 		return
 	}
-	d.setLine(d.clamp(line))
+	d.setLine(d.contentLine(d.clamp(line)))
 }
 
 // jump moves the cursor by delta files and scrolls the diff to the top of the
-// one it lands on. The ends hold rather than wrap: a jump that came back round
-// to the first file would read as having done nothing at all.
+// box the one it lands on is drawn in — the header row, so the file the jump
+// landed on is named on screen. The ends hold rather than wrap: a jump that came
+// back round to the first file would read as having done nothing at all.
 func (d *Diff) jump(delta int) {
 	if len(d.files) == 0 {
 		return
 	}
 	d.cursor = min(max(d.cursor+delta, 0), len(d.files)-1)
 	if d.cursor < len(d.offsets) {
-		d.vp.SetYOffset(d.offsets[d.cursor])
+		d.vp.SetYOffset(max(d.offsets[d.cursor]-1, 0))
 		// The line cursor goes with the jump: it is what a comment is left on,
 		// and leaving it in the file the jump was away from would be a comment
 		// on a section that is no longer on screen.
@@ -666,42 +683,63 @@ func (d *Diff) syncList() {
 // the heading that names how many there are.
 func (d Diff) listRows() int { return max(d.height-1, 0) }
 
-// render rebuilds the viewport's content from the files at the current width,
-// recording where each file's section starts and where each body line came from
-// as it goes.
+// render rebuilds the viewport's content from the files at the current width:
+// one bordered box per file, its header row naming the path and its footer row
+// closing it, and the file's diff between them with the line numbers of either
+// side down the left. Where each file's diff starts and where each body line
+// came from are recorded as it goes.
 func (d *Diff) render() {
 	if len(d.files) == 0 {
 		d.offsets, d.lines, d.marks = nil, nil, nil
 		d.vp.SetContent("")
 		return
 	}
-	width := max(d.diffWidth(), 1)
+	inner := max(d.diffWidth()-diffBorderWidth, 1)
+	nums := d.lineNumbers()
+	numWidth := numberWidth(nums)
+
 	offsets := make([]int, len(d.files))
 	var from []bodyLine
 	for i, f := range d.files {
-		if i > 0 {
-			// A blank line between sections, so two files do not run together.
-			from = append(from, separator)
-		}
+		from = append(from, separator) // the box's header row
 		offsets[i] = len(from)
 		for j := range f.Lines {
 			from = append(from, bodyLine{file: i, line: j})
 		}
+		from = append(from, separator) // the box's footer row
 	}
 	d.offsets, d.lines = offsets, from
 	d.marks = d.commentMarks()
-	d.line = min(max(d.line, 0), max(len(from)-1, 0))
-	lines := make([]string, len(from))
-	for i, at := range from {
-		if at.file < 0 {
-			lines[i] = ""
-			continue
+	d.line = d.contentLine(d.line)
+
+	lines := make([]string, 0, len(from))
+	for i, f := range d.files {
+		lines = append(lines, d.boxTop(f, inner))
+		for j, line := range f.Lines {
+			lines = append(lines, d.boxLine(line, nums[i].was[j], nums[i].now[j], numWidth, inner,
+				d.marks[commentKey{path: f.Path, start: j}], d.selected(len(lines))))
 		}
-		f := d.files[at.file]
-		lines[i] = d.styleLine(f.Lines[at.line], width,
-			d.marks[commentKey{path: f.Path, start: at.line}], d.selected(i))
+		lines = append(lines, d.boxBottom(inner))
 	}
 	d.vp.SetContent(strings.Join(lines, "\n"))
+}
+
+// contentLine is the nearest body line carrying a line of the diff, searched
+// forward from line and then back: a box's header and footer rows are furniture,
+// with nothing on them to put the cursor on or leave a comment about.
+func (d Diff) contentLine(line int) int {
+	line = min(max(line, 0), max(len(d.lines)-1, 0))
+	for i := line; i < len(d.lines); i++ {
+		if d.lines[i].file >= 0 {
+			return i
+		}
+	}
+	for i := line - 1; i >= 0; i-- {
+		if d.lines[i].file >= 0 {
+			return i
+		}
+	}
+	return 0
 }
 
 // commentMarks is which of a file's lines a pending comment covers, so the
@@ -717,36 +755,6 @@ func (d Diff) commentMarks() map[commentKey]bool {
 		}
 	}
 	return marks
-}
-
-// styleLine draws one line of the body: the gutter that says whether a comment
-// is pending on it, then the line itself, coloured by its shape and cut to the
-// columns the body has.
-//
-// A long line is truncated rather than wrapped, so that one line of the diff is
-// one line of the body: the file jumps and the line cursor are line numbers into
-// the body, and a body whose lines did not correspond to git's would send them
-// to the wrong place. A truncated line is a line you can see is long.
-//
-// A selected line is filled across the body the way the board fills the row
-// under its cursor, and drawn plain underneath: a line's own colour would break
-// the run of background, exactly as a chip's does there.
-func (d Diff) styleLine(line string, width int, marked, selected bool) string {
-	text := fit(line, max(width-diffGutterWidth, 1))
-	gutter := " "
-	if marked {
-		gutter = commentMark
-	}
-	if selected {
-		// The fill is one style across the line, so the mark inside it is drawn
-		// plain: its own colour would break the run of background, exactly as a
-		// chip's does on the board's selected row.
-		return d.styles.SelectedRow.Width(width).Render(fit(gutter+" "+text, width))
-	}
-	if marked {
-		gutter = d.styles.DiffComment.Render(gutter)
-	}
-	return gutter + " " + d.lineStyle(line).Render(text)
 }
 
 // selected reports whether a body line is under the cursor, or inside the range
