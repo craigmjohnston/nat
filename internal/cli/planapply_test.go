@@ -199,6 +199,7 @@ func TestPlanApplyPrintsJSON(t *testing.T) {
 				Repo: "/tmp/other", URL: "https://notion.so/new-3",
 			},
 		},
+		Dependencies: []addedDependencyJSON{},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("json =\n%+v\nwant:\n%+v", got, want)
@@ -215,8 +216,10 @@ func TestPlanApplyPrintsEmptyJSONLists(t *testing.T) {
 		t.Fatalf("plan-apply: %v", err)
 	}
 
-	if !strings.Contains(out, `"slices": []`) {
-		t.Errorf("json =\n%s\nwant an empty slices list", out)
+	for _, want := range []string{`"slices": []`, `"dependencies": []`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("json =\n%s\nwant %s", out, want)
+		}
 	}
 }
 
@@ -269,7 +272,7 @@ func TestPlanApplyRejectsAnInvalidPlan(t *testing.T) {
 			doc:  `{"slices": [{"title": "Do it", "milestone": "M2: Board", "descriptoin": "oops"}]}`,
 			want: "unknown field",
 		},
-		{name: "nothing to create", doc: `{}`, want: "creates nothing"},
+		{name: "nothing to create", doc: `{}`, want: "creates nothing and records nothing"},
 		{name: "a milestone with no name", doc: `{"milestones": [{"name": "  "}]}`, want: "milestone 1 has no name"},
 		{
 			name: "two milestones of one name",
