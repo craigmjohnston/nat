@@ -1698,14 +1698,38 @@ func (a *App) statusMessage(width int) string {
 		return a.styles.StatusNote.Render(fit(oneLine(a.note), width))
 	}
 	// An open form has the keys the hints name, so all that is left to say is
-	// the one key it does not handle itself.
+	// the keys it does not handle itself.
 	if a.form != nil {
-		return fit(a.styles.StatusKey.Render("esc")+" "+a.styles.StatusDesc.Render("cancel"), width)
+		return fit(a.formKeys(), width)
 	}
 	if a.toast != "" {
 		return a.styles.toastStyle(a.toastSev).Render(fit(oneLine(a.toast), width))
 	}
 	return ""
+}
+
+// formHinter is a modal with a key of its own — one huh knows nothing about,
+// so the field's own bindings under the form never name it. The bool is
+// whether the key is worth naming yet: a key that has already done its work
+// says nothing.
+type formHinter interface{ formHint() (key.Binding, bool) }
+
+// formKeys are the keys the status line names while a form is up: the form's
+// own, where it has one, and esc, which is the app's rather than huh's.
+func (a *App) formKeys() string {
+	keys := []string{a.statusKey("esc", "cancel")}
+	if h, ok := a.form.(formHinter); ok {
+		if b, named := h.formHint(); named {
+			help := b.Help()
+			keys = append([]string{a.statusKey(help.Key, help.Desc)}, keys...)
+		}
+	}
+	return strings.Join(keys, a.styles.HintSep.Render(" · "))
+}
+
+// statusKey draws one key and what it does in the status line's own colours.
+func (a *App) statusKey(k, desc string) string {
+	return a.styles.StatusKey.Render(k) + " " + a.styles.StatusDesc.Render(desc)
 }
 
 // hintLines are the contextual hints wrapped to the width the band has, and

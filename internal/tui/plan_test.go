@@ -15,9 +15,9 @@ import (
 )
 
 // planLaunch presses w, types the request into the form it opens, and submits
-// it, which launches the agent and shows its pane straight away. The model and
-// the effort behind the request are left as the config prefilled them, so the
-// enters past them are enters over a field nothing has typed into.
+// it with the one enter that takes, which launches the agent and shows its
+// pane straight away. The model and the effort are left as the config named
+// them: the form never asks, and nothing here presses the key that would.
 func planLaunch(t *testing.T, a *App, request string) {
 	t.Helper()
 	feed(t, a, press(a, "w"))
@@ -25,9 +25,14 @@ func planLaunch(t *testing.T, a *App, request string) {
 		t.Fatalf("no planning form opened: %s", a.note)
 	}
 	typeText(a, request)
-	feed(t, a, press(a, "enter")) // past the request
-	feed(t, a, press(a, "enter")) // past the model
 	drive(t, a, press(a, "enter"))
+}
+
+// planConfigure presses the key that reveals the model pair on an open
+// planning form.
+func planConfigure(t *testing.T, a *App) {
+	t.Helper()
+	feed(t, a, pressKey(a, tea.Key{Code: 'o', Mod: tea.ModCtrl}))
 }
 
 func TestAppPlanKeyOpensTheForm(t *testing.T) {
@@ -143,8 +148,6 @@ func TestAppPlanLaunchAcceptsAMultilineRequest(t *testing.T) {
 	_, cmd := app.Update(tea.KeyPressMsg(tea.Key{Code: 'j', Mod: tea.ModCtrl}))
 	feed(t, app, cmd)
 	typeText(app, "and slim the first slice down")
-	feed(t, app, press(app, "enter")) // past the request
-	feed(t, app, press(app, "enter")) // past the model
 	drive(t, app, press(app, "enter"))
 
 	if len(launcher.launches) != 1 {
@@ -178,15 +181,17 @@ func TestAppPlanLaunchCarriesTheConfiguredWorkshopModel(t *testing.T) {
 	}
 }
 
-// The pair is prefilled and editable, like the request above it: what the form
-// is left showing is what the session runs as. An effort the config names that
-// is not one of the levels this binary knows is offered rather than dropped —
-// the user asked for it, and the CLI is the one that gets to disagree.
+// Revealed, the pair is prefilled and editable, like the request above it:
+// what the form is left showing is what the session runs as. An effort the
+// config names that is not one of the levels this binary knows is offered
+// rather than dropped — the user asked for it, and the CLI is the one that
+// gets to disagree.
 func TestAppPlanFormEditsTheModelAndKeepsAnUnknownEffort(t *testing.T) {
 	app, launcher, _ := launchApp(t)
 	app.cfg.WorkshopAgent = config.AgentModel{Effort: "glacial"}
 
 	feed(t, app, press(app, "w"))
+	planConfigure(t, app)
 	view := stripANSI(app.View().Content)
 	for _, want := range []string{"Model", "Effort", "glacial"} {
 		if !strings.Contains(view, want) {
@@ -204,6 +209,83 @@ func TestAppPlanFormEditsTheModelAndKeepsAnUnknownEffort(t *testing.T) {
 	want := config.AgentModel{Model: "haiku", Effort: "glacial"}
 	if got := launcher.launches[0].model; got != want {
 		t.Errorf("model = %+v, want %+v", got, want)
+	}
+}
+
+// The form opens on the request and nothing else: the model pair is behind the
+// key the status line names, and the enter that would have walked onto it
+// launches instead.
+func TestAppPlanFormOpensWithThePromptAlone(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+
+	feed(t, app, press(app, "w"))
+
+	view := stripANSI(app.View().Content)
+	for _, unwanted := range []string{"Model", "Effort"} {
+		if strings.Contains(view, unwanted) {
+			t.Errorf("view carries %q before it was asked for:\n%s", unwanted, view)
+		}
+	}
+	if line := stripANSI(app.statusMessage(80)); !strings.Contains(line, "ctrl+o config") {
+		t.Errorf("status = %q, want the config key named", line)
+	}
+
+	typeText(app, "split the reporting milestone")
+	drive(t, app, press(app, "enter"))
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want the one enter to have launched", launcher.launches)
+	}
+	if app.form != nil {
+		t.Errorf("form = %T, want the form committed", app.form)
+	}
+}
+
+// The config key reveals the pair for that one launch: the request typed so far
+// rides through the rebuild, the key itself types nothing into it, and the
+// status line stops offering what is already on show. Pressed again it is the
+// field's — a key with nothing left to reveal must not rebuild the form out
+// from under what has been typed since.
+func TestAppPlanFormConfigKeyRevealsTheModelFields(t *testing.T) {
+	app, _, _ := launchApp(t)
+	app.cfg.WorkshopAgent = config.AgentModel{Model: "haiku", Effort: "low"}
+
+	feed(t, app, press(app, "w"))
+	typeText(app, "split it")
+	planConfigure(t, app)
+
+	form := app.form.(*PlanForm)
+	if form.request != "split it" {
+		t.Errorf("request = %q, want what was typed before the key", form.request)
+	}
+	view := stripANSI(app.View().Content)
+	for _, want := range []string{"split it", "Model", "haiku", "Effort", "low"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view is missing %q:\n%s", want, view)
+		}
+	}
+	if line := stripANSI(app.statusMessage(80)); strings.Contains(line, "config") {
+		t.Errorf("status = %q, want nothing left to reveal", line)
+	}
+
+	built := form.form
+	planConfigure(t, app)
+	if form.form != built {
+		t.Error("the second press rebuilt the form")
+	}
+	if got := form.request; got != "split it" {
+		t.Errorf("request = %q, want the second press to have changed nothing", got)
+	}
+}
+
+// A form with no key of its own says only what the app handles for it.
+func TestAppFormKeysWithoutAFormHint(t *testing.T) {
+	app, _, _ := launchApp(t)
+
+	feed(t, app, press(app, "S"))
+
+	if line := stripANSI(app.statusMessage(80)); line != "esc cancel" {
+		t.Errorf("status = %q, want esc alone", line)
 	}
 }
 

@@ -31,7 +31,9 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   saying nothing and Claude Code deciding as it always did. Both are defaults
   rather than settings a launch is bound by: the planning form and the launch
   options show the pair prefilled and editable for that one launch, which
-  writes nothing back. `W` is the exception, as it always is — it asks nothing
+  writes nothing back — the planning form only once `ctrl+o` has asked for it,
+  since a workshop launch nearly always wants the pair the config already
+  names. `W` is the exception, as it always is — it asks nothing
   at all, so it takes the workshop pair as it stands.
   `SplitPercent()` and `PollInterval()` swap the default back in for a number
   outside the bounds, which is a typo read as an instruction and lost without a

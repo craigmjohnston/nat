@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 
@@ -22,23 +23,49 @@ func planSlice() domain.Slice {
 
 // PlanForm is the modal behind w when no planning agent is running: what the
 // user wants to workshop, carried into the agent's prompt so the session
-// starts on it, and which Claude Code to workshop it with, prefilled from the
-// config's workshop pair and editable for this one launch. There is no
-// directory question — the planning commands work wherever they are typed, so
-// the project's default is always right — and an empty request launches a
-// plain planning session.
+// starts on it, and — once the config key has asked for them — which Claude
+// Code to workshop it with, prefilled from the config's workshop pair and
+// editable for this one launch. There is no directory question — the planning
+// commands work wherever they are typed, so the project's default is always
+// right — and an empty request launches a plain planning session.
+//
+// The request is what the form opens on and nearly always all of it: enter
+// from the prompt commits the whole form and launches, on the pair the config
+// already names. The pair is a keystroke away rather than two enters away,
+// because a launch that wants a different model is the exception.
 type PlanForm struct {
-	form *huh.Form
+	form  *huh.Form
+	theme huh.Theme
 
-	request string
-	model   config.AgentModel
+	request   string
+	model     config.AgentModel
+	configure bool
+
+	width, height int
 }
+
+// planConfigKey reveals the planning form's model pair. It is nat's rather
+// than huh's — the form is rebuilt around it rather than any field handling it
+// — so the status line is where it is named, beside the other key an open form
+// does not handle itself.
+var planConfigKey = key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "config"))
 
 // newPlanForm returns the form for launching a planning agent, on the model
 // the config names for workshopping.
 func newPlanForm(theme huh.Theme, m config.AgentModel) *PlanForm {
-	f := &PlanForm{model: m}
-	f.form = newForm(theme, huh.NewGroup(append([]huh.Field{
+	f := &PlanForm{theme: theme, model: m}
+	f.build()
+	return f
+}
+
+// build lays the form out for the state it is in: the request alone, or the
+// request with the model pair under it once the config key has revealed them.
+// It is a rebuild rather than a group huh hides, because huh shows one group
+// at a time and a reveal nothing appears for says nothing. What the user has
+// typed rides through it — the fields are bound to the form's own values, and
+// the text field is seeded from the request as it stands.
+func (f *PlanForm) build() {
+	fields := []huh.Field{
 		// A text field rather than an input, so a longer request can be
 		// composed: enter still submits, and shift+enter breaks the line —
 		// see formKeyMap. No external editor — the board's pane is not for handing to
@@ -48,19 +75,36 @@ func newPlanForm(theme huh.Theme, m config.AgentModel) *PlanForm {
 			Description("Goes into the agent's prompt; empty starts a plain session.").
 			ExternalEditor(false).
 			Value(&f.request),
-	}, modelFields(&f.model)...)...))
-	return f
+	}
+	if f.configure {
+		fields = append(fields, modelFields(&f.model)...)
+	}
+	// A rebuilt form takes the room the one it replaces was given; the first
+	// build has none yet and huh ignores a size of nothing, which is the app
+	// sizing it a moment later.
+	f.form = newForm(f.theme, huh.NewGroup(fields...)).WithWidth(f.width).WithHeight(f.height)
 }
 
 // Init starts the form.
 func (f *PlanForm) Init() tea.Cmd { return f.form.Init() }
 
-// Update feeds a message to the form.
+// Update feeds a message to the form. The config key is the form's own and
+// never the field's: it rebuilds the form around the model pair and the key
+// itself goes no further, so it types nothing into the request it was pressed
+// over. Pressed again it does nothing — the fields are already there.
 func (f *PlanForm) Update(msg tea.Msg) tea.Cmd {
+	if k, ok := msg.(tea.KeyPressMsg); ok && !f.configure && key.Matches(k, planConfigKey) {
+		f.configure = true
+		f.build()
+		return f.form.Init()
+	}
 	form, cmd := f.form.Update(msg)
 	f.form = form.(*huh.Form)
 	return cmd
 }
+
+// formHint names the config key while there is anything left for it to reveal.
+func (f *PlanForm) formHint() (key.Binding, bool) { return planConfigKey, !f.configure }
 
 // State is how far the form has got.
 func (f *PlanForm) State() huh.FormState { return f.form.State }
@@ -71,8 +115,10 @@ func (f *PlanForm) View() string { return f.form.View() }
 // Heading is the title drawn over the form.
 func (f *PlanForm) Heading() string { return "Launch a planning agent" }
 
-// SetSize gives the form the room the window leaves it.
+// SetSize gives the form the room the window leaves it, and remembers it for
+// the rebuild the config key runs.
 func (f *PlanForm) SetSize(width, height int) {
+	f.width, f.height = width, height
 	f.form = f.form.WithWidth(width).WithHeight(height)
 }
 
