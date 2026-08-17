@@ -160,11 +160,16 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   idea typed while a workshop session runs survives it — and leaves the section
   holding one empty bullet, and `nat plan-apply [FILE]`, which creates a whole
   drafted plan of milestones and slices from a JSON document (read from FILE or
-  stdin, validated entirely before the first write, and only ever creating
-  pages — its optional `depends_on` names slices by title, one the document
-  creates or one already in the plan, and those relations go on last, since a
-  slice may wait on one written further down and there is no page to point at
-  until every slice exists), and `nat setup`, which installs the embedded skills into
+  stdin, validated entirely before the first write, and creating pages and
+  nothing else bar one relation — its optional `depends_on` names slices by
+  title, one the document creates or one already in the plan, and those
+  relations go on last, since a slice may wait on one written further down and
+  there is no page to point at until every slice exists; the document's
+  optional top-level `dependencies` list — `{"slice": <title>, "on":
+  [<titles>]}` — is how it reaches a slice already on the board, added to what
+  that slice already waits on the way `slice-depends --on` is and written in
+  that same last phase, and it is the one thing a plan changes rather than
+  creates, which is why a document may hold it and nothing else), and `nat setup`, which installs the embedded skills into
   `~/.claude/skills` — the only command that talks to neither Notion nor the
   config file, since it is what a machine with only the binary runs first), what
   the binary does when given a subcommand. Run before even the tmux check and

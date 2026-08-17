@@ -658,3 +658,279 @@ func TestSliceDependsNeedsAnActiveProject(t *testing.T) {
 		t.Errorf("gets = %v, want nothing read", api.gets)
 	}
 }
+
+// boardSlices is the project's own slices as the dependencies list finds them:
+// one that already waits on a finished slice, and one that waits on nothing.
+func boardSlices(api *fakeAPI) {
+	api.pages = map[string][]notion.Page{
+		"slices-ds": {
+			dependentSlicePage(depBlocker, "Style the board", notion.SliceTodo, "M2: Board", depDone),
+			slicePage(depSpare, "Queued work", notion.SliceTodo, "M2: Board", "", ""),
+		},
+	}
+}
+
+// The dependencies list is how a plan reaches a slice it does not create: what
+// it names is added to what that slice already waits on, never in place of it.
+func TestPlanApplyAddsDependenciesToAnExistingSlice(t *testing.T) {
+	api := planAPI(1)
+	boardSlices(api)
+	doc := `{
+	  "slices": [{"title": "Frame the board", "milestone": "M2: Board"}],
+	  "dependencies": [{"slice": "style the board", "on": ["Frame the board", "Queued work"]}]
+	}`
+
+	out, err := runPlan(t, api, doc)
+	if err != nil {
+		t.Fatalf("plan-apply: %v", err)
+	}
+
+	if len(api.updates) != 1 || api.updates[0].id != depBlocker {
+		t.Fatalf("updates = %+v, want the existing slice written once", api.updates)
+	}
+	// The slice it was made to wait on is the page this run created, and what it
+	// already waited on is still first.
+	want := []string{depDone, "new-1", depSpare}
+	if got := dependencyIDsOf(t, api.updates[0]); !reflect.DeepEqual(got, want) {
+		t.Errorf("dependencies = %v, want %v", got, want)
+	}
+	if !strings.Contains(out, "## Dependencies added\n\n- Style the board — now waits on 2 more slices\n") {
+		t.Errorf("output =\n%s\nwant the addition reported", out)
+	}
+}
+
+// A plan re-run over dependencies already recorded writes nothing at all: there
+// is nothing to add, and a write that changes nothing is still a write.
+func TestPlanApplyWritesNothingWhereTheDependencyIsAlreadyRecorded(t *testing.T) {
+	api := planAPI(0)
+	boardSlices(api)
+	doc := `{"dependencies": [{"slice": "Style the board", "on": ["Notion client"]}]}`
+	api.pages["slices-ds"] = append(api.pages["slices-ds"],
+		slicePage(depDone, "Notion client", notion.SliceDone, "M1: Client", "", ""))
+
+	out, err := runPlan(t, api, doc)
+	if err != nil {
+		t.Fatalf("plan-apply: %v", err)
+	}
+
+	if len(api.updates) != 0 {
+		t.Errorf("updates = %+v, want the page left alone", api.updates)
+	}
+	if strings.Contains(out, "Dependencies added") {
+		t.Errorf("output =\n%s\nwant nothing reported: nothing was written", out)
+	}
+}
+
+// An entry naming a slice the plan itself creates is folded into that slice's
+// own relation — the page does not exist yet, so there is nothing to add to —
+// and a dependency named twice is written once.
+func TestPlanApplyFoldsADependenciesEntryIntoASliceItCreates(t *testing.T) {
+	api := planAPI(2)
+	boardSlices(api)
+	doc := `{
+	  "slices": [
+	    {"title": "Frame the board", "milestone": "M2: Board", "depends_on": ["Queued work"]},
+	    {"title": "Colour the chips", "milestone": "M2: Board"}
+	  ],
+	  "dependencies": [{"slice": "Frame the board", "on": ["Queued work", "Colour the chips"]}]
+	}`
+
+	if _, err := runPlan(t, api, doc); err != nil {
+		t.Fatalf("plan-apply: %v", err)
+	}
+
+	if len(api.updates) != 1 || api.updates[0].id != "new-1" {
+		t.Fatalf("updates = %+v, want the created slice written once", api.updates)
+	}
+	want := []string{depSpare, "new-2"}
+	if got := dependencyIDsOf(t, api.updates[0]); !reflect.DeepEqual(got, want) {
+		t.Errorf("dependencies = %v, want %v", got, want)
+	}
+}
+
+// Two entries naming one slice are two lists of what to add, so they are merged
+// rather than refused: adding twice is adding once.
+func TestPlanApplyMergesTwoDependenciesEntriesForOneSlice(t *testing.T) {
+	api := planAPI(1)
+	boardSlices(api)
+	doc := `{
+	  "slices": [{"title": "Frame the board", "milestone": "M2: Board"}],
+	  "dependencies": [
+	    {"slice": "Style the board", "on": ["Queued work"]},
+	    {"slice": "Style the board", "on": ["Frame the board", "Queued work"]}
+	  ]
+	}`
+
+	if _, err := runPlan(t, api, doc); err != nil {
+		t.Fatalf("plan-apply: %v", err)
+	}
+
+	if len(api.updates) != 1 {
+		t.Fatalf("updates = %+v, want one write", api.updates)
+	}
+	want := []string{depDone, depSpare, "new-1"}
+	if got := dependencyIDsOf(t, api.updates[0]); !reflect.DeepEqual(got, want) {
+		t.Errorf("dependencies = %v, want %v", got, want)
+	}
+}
+
+// A document that creates nothing and only records dependencies is a plan all
+// the same: it is the whole point of the list.
+func TestPlanApplyAppliesADependenciesOnlyDocument(t *testing.T) {
+	api := planAPI(0)
+	boardSlices(api)
+	doc := `{"dependencies": [{"slice": "Style the board", "on": ["Queued work"]}]}`
+
+	out, err := runPlan(t, api, doc, "--json")
+	if err != nil {
+		t.Fatalf("plan-apply: %v", err)
+	}
+
+	if len(api.creates) != 0 {
+		t.Errorf("creates = %+v, want nothing created", api.creates)
+	}
+	var doc2 planAppliedJSON
+	if err := json.Unmarshal([]byte(out), &doc2); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out)
+	}
+	want := []addedDependencyJSON{{
+		ID: depBlocker, Name: "Style the board", URL: "https://notion.so/" + depBlocker,
+		Added: []string{depSpare},
+	}}
+	if !reflect.DeepEqual(doc2.Dependencies, want) {
+		t.Errorf("dependencies =\n%+v\nwant:\n%+v", doc2.Dependencies, want)
+	}
+}
+
+// The whole document is validated before the first write, so an entry naming a
+// slice nobody has lands nothing at all.
+func TestPlanApplyRefusesABadDependenciesEntry(t *testing.T) {
+	tests := []struct {
+		name string
+		doc  string
+		want string
+	}{
+		{
+			name: "naming no slice",
+			doc:  `{"dependencies": [{"slice": " ", "on": ["Queued work"]}]}`,
+			want: "dependencies 1 names no slice",
+		},
+		{
+			name: "waiting on nothing",
+			doc:  `{"dependencies": [{"slice": "Style the board"}]}`,
+			want: `dependencies 1 ("Style the board") names nothing for it to wait on`,
+		},
+		{
+			name: "a slice nobody has",
+			doc:  `{"dependencies": [{"slice": "Nowhere", "on": ["Queued work"]}]}`,
+			want: `dependencies 1: names "Nowhere", which is neither in the plan nor in the project`,
+		},
+		{
+			name: "waiting on a title nobody has",
+			doc:  `{"dependencies": [{"slice": "Style the board", "on": ["Nowhere"]}]}`,
+			want: `dependencies 1 ("Style the board"): depends on "Nowhere", which is neither`,
+		},
+		{
+			name: "waiting on itself",
+			doc:  `{"dependencies": [{"slice": "Style the board", "on": ["style the board"]}]}`,
+			want: "depends on itself",
+		},
+		{
+			name: "waiting on an empty title",
+			doc:  `{"dependencies": [{"slice": "Style the board", "on": ["  "]}]}`,
+			want: "names an empty dependency",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			api := planAPI(1)
+			boardSlices(api)
+
+			out, err := runPlan(t, api, tt.doc)
+
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("err = %v, want it to say %q", err, tt.want)
+			}
+			if len(api.creates) != 0 || len(api.updates) != 0 {
+				t.Errorf("creates = %+v, updates = %+v, want nothing written", api.creates, api.updates)
+			}
+			if out != "" {
+				t.Errorf("output = %q, want nothing", out)
+			}
+		})
+	}
+}
+
+// Two slices of the project sharing a title cannot be told apart by one, so an
+// entry naming it is refused with the one edit to make.
+func TestPlanApplyRefusesAnAmbiguousDependenciesEntry(t *testing.T) {
+	api := planAPI(0)
+	api.pages = map[string][]notion.Page{
+		"slices-ds": {
+			slicePage(depBlocker, "Style the board", notion.SliceTodo, "M2: Board", "", ""),
+			slicePage(depSpare, "Style the board", notion.SliceTodo, "M2: Board", "", ""),
+		},
+	}
+	doc := `{"dependencies": [{"slice": "Style the board", "on": ["Style the board"]}]}`
+
+	_, err := runPlan(t, api, doc)
+
+	if err == nil || !strings.Contains(err.Error(), "already has 2 slices named") {
+		t.Fatalf("err = %v, want the ambiguity refused", err)
+	}
+}
+
+func TestPlanApplyReportsAFailedDependencyAddition(t *testing.T) {
+	api := planAPI(0)
+	boardSlices(api)
+	api.updateErr = errors.New("notion is down")
+	doc := `{"dependencies": [{"slice": "Style the board", "on": ["Queued work"]}]}`
+
+	_, err := runPlan(t, api, doc)
+
+	if err == nil || !strings.Contains(err.Error(), `record what "Style the board" waits on`) {
+		t.Fatalf("err = %v, want the failing step named", err)
+	}
+	// Nothing was written before it failed, so there is nothing to warn about.
+	if strings.Contains(err.Error(), "still in Notion") {
+		t.Errorf("err = %v, want no warning: the run wrote nothing", err)
+	}
+}
+
+// failAfter writes as the fake does until it has written enough, so a run can
+// fail with dependencies already recorded.
+type failAfter struct {
+	*fakeAPI
+	writes int
+	err    error
+}
+
+func (f *failAfter) UpdatePageProperties(ctx context.Context, id string, props map[string]notion.PropertyValue) (*notion.Page, error) {
+	if len(f.updates) >= f.writes {
+		return nil, f.err
+	}
+	return f.fakeAPI.UpdatePageProperties(ctx, id, props)
+}
+
+// A run that failed partway through the additions says what it already recorded,
+// so nobody re-runs the document wondering which half landed.
+func TestPlanApplySaysWhatItAddedBeforeAFailure(t *testing.T) {
+	api := planAPI(0)
+	boardSlices(api)
+	failing := &failAfter{fakeAPI: api, writes: 1, err: errors.New("notion is down")}
+	env, _ := testEnv(testConfig(), api)
+	env.NewClient = func(notion.TokenFunc) API { return failing }
+	env.In = strings.NewReader(`{"dependencies": [
+	  {"slice": "Style the board", "on": ["Queued work"]},
+	  {"slice": "Queued work", "on": ["Style the board"]}
+	]}`)
+
+	err := Run(context.Background(), []string{"plan-apply"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "1 slice already on the board") {
+		t.Fatalf("err = %v, want what was recorded named", err)
+	}
+	if !strings.Contains(err.Error(), "still in Notion") {
+		t.Errorf("err = %v, want it to say the addition stands", err)
+	}
+}

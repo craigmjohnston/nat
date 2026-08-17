@@ -56,6 +56,9 @@ and rerun — the CLI has no project switch of its own.
          "repo": "/path/only/when/it/differs",
          "depends_on": ["A slice that has to be finished first"]
        }
+     ],
+     "dependencies": [
+       { "slice": "A slice already on the board", "on": ["Do the thing"] }
      ]
    }
    ```
@@ -63,15 +66,23 @@ and rerun — the CLI has no project switch of its own.
    `milestone` names one of the plan's own new milestones, or an existing one
    of the project, by name — a milestone is an option of the slices' own
    `Milestone` column, so its name is all there is to name it by.
-   `description`, `repo` and `depends_on` are optional; nothing else is, and any
-   other key is rejected. The whole document is validated before the first page
-   is created.
+   `description`, `repo` and `depends_on` are optional, as is the whole
+   top-level `dependencies` list; nothing else is, and any other key is
+   rejected. The whole document is validated before the first page is created.
 
    `depends_on` names slices by title — one the same document creates, wherever
    in it, or one the project already has. A slice is blocked while anything it
    names is not Done: `nat next-slice` steps over it and `nat start-slice`
    refuses it, so use it for work that genuinely cannot start yet, not for work
    that merely reads better in order.
+
+   `depends_on` only says what a *new* slice waits on. The top-level
+   `dependencies` list is how the plan makes a slice **already on the board**
+   wait on something — a `slice` by title and the titles it waits `on`, both
+   sides naming a slice the document creates or one the project already has. It
+   is additive, exactly as `nat slice-depends --on` is: what it names is added
+   to whatever that slice already waits on, and nothing is ever dropped. A
+   document may hold it and nothing else.
 4. Report the created page URLs, grouped by milestone — `plan-apply` prints
    them.
 
