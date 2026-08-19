@@ -11,7 +11,6 @@ import (
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
-	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
 // PRCreator is what the approve flow needs of the GitHub CLI: one pull request,
@@ -29,24 +28,11 @@ var newPRCreator = defaultPRCreator
 // defaultPRCreator is the real gh on PATH.
 func defaultPRCreator() PRCreator { return gh.New() }
 
-// WorktreeRemover is what the approve flow needs of worktrunk: the worktree a
-// slice's agent was given, taken off the repository once the work has become a
-// pull request. It is an interface for the reason [PRCreator] is one.
-type WorktreeRemover interface {
-	Remove(dir, branch string) error
-}
-
-// The other edge of the same action, held as a variable for the same reason:
-// the real one shells out to wt.
-var newWorktreeRemover = defaultWorktreeRemover
-
-// defaultWorktreeRemover is the real worktrunk on PATH.
-func defaultWorktreeRemover() WorktreeRemover { return worktree.New() }
-
 // prOpenedMsg reports the pull request gh opened for a handed-back slice, or
 // the failure that stopped it. The write that records the URL is a second step,
 // so that a gh that refused is reported as itself rather than as a Notion
 // write that never happened.
+//
 // The repository is carried along because the step after the write runs there
 // too: the worktree the slice's agent was given is taken off the same checkout
 // gh was run in.
@@ -126,11 +112,8 @@ func (a *App) approveChosen(s domain.Slice, dir string, choice int) tea.Cmd {
 // worktrunk refuses a dirty worktree outright and deletes the branch only where
 // it has been merged. gh was run in the shared checkout, so nothing here can
 // pull the ground out from under it either.
-func removeWorktree(wt WorktreeRemover, dir, branch string) {
-	if wt == nil || dir == "" || branch == "" {
-		return
-	}
-	if err := wt.Remove(dir, branch); err != nil {
+func removeWorktree(w Worktrees, dir, branch string) {
+	if err := w.Remove(dir, branch); err != nil {
 		// worktrunk's own failure is already in the log; this is the decision
 		// taken about it.
 		logging.Action("left the slice's worktree in place", "dir", dir, "branch", branch, "error", err)
@@ -163,7 +146,7 @@ func (a *App) prOpened(msg prOpenedMsg) (tea.Model, tea.Cmd) {
 	}
 	// Still busy: the pull request exists but nothing records it yet, and the
 	// write that does is the other half of the same action.
-	return a, recordPR(a.client, a.worktrees, msg.slice, msg.dir, msg.url)
+	return a, recordPR(a.client, newWorktrees(), msg.slice, msg.dir, msg.url)
 }
 
 // recordPR writes the pull request onto the slice and marks it Done, which is
@@ -180,7 +163,7 @@ func (a *App) prOpened(msg prOpenedMsg) (tea.Model, tea.Cmd) {
 // The slice's worktree goes once that write has landed, and only then: the
 // checkout is what the branch was written in, and a slice still handed back is
 // one whose work is still being reviewed.
-func recordPR(client NotionAPI, wt WorktreeRemover, s domain.Slice, dir, url string) tea.Cmd {
+func recordPR(client NotionAPI, w Worktrees, s domain.Slice, dir, url string) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 		page, err := client.GetPage(ctx, s.ID)
@@ -194,7 +177,7 @@ func recordPR(client NotionAPI, wt WorktreeRemover, s domain.Slice, dir, url str
 		if _, err := client.UpdatePageProperties(ctx, s.ID, properties); err != nil {
 			return sliceSavedMsg{err: fmt.Errorf("record the pull request for %q: %w", s.Name, err)}
 		}
-		removeWorktree(wt, dir, s.Branch)
+		removeWorktree(w, dir, s.Branch)
 		return sliceSavedMsg{note: fmt.Sprintf("Opened the pull request for %q.", s.Name), sliceID: s.ID}
 	}
 }

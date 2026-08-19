@@ -32,23 +32,6 @@ func (f *fakePRs) CreatePR(dir, branch string) (string, error) {
 	return f.url, f.err
 }
 
-// wtCall is one worktree the approve flow asked worktrunk to remove.
-type wtCall struct{ dir, branch string }
-
-// fakeWorktrees stands in for worktrunk: it records what it was asked to remove
-// and answers with the refusal — if any — the test wants wt to have given.
-type fakeWorktrees struct {
-	err     error
-	removed []wtCall
-}
-
-var _ WorktreeRemover = (*fakeWorktrees)(nil)
-
-func (f *fakeWorktrees) Remove(dir, branch string) error {
-	f.removed = append(f.removed, wtCall{dir, branch})
-	return f.err
-}
-
 // The plan the approve tests work on: one milestone holding a slice of each
 // state the key has an answer for, the first of them the handed-back one.
 const (
@@ -90,19 +73,18 @@ func approveApp(t *testing.T) (*App, *fakePRs, *fakeNotion, string) {
 	app.board.SetProject(&p)
 	prs := &fakePRs{url: "https://github.test/craig/nat/pull/9"}
 	app.prs = prs
-	app.worktrees = &fakeWorktrees{}
 	return app, prs, client, workdir
 }
 
-// worktreesOf is the fake approveApp gave the app, for the tests that are about
-// the removal rather than the pull request.
-func worktreesOf(t *testing.T, a *App) *fakeWorktrees {
+// approveWorktrees puts a fake worktrunk in for the length of one test, since
+// the removal is the second half of the approve and the suite's own fake is
+// shared. It answers as a working worktrunk unless the test says otherwise.
+func approveWorktrees(t *testing.T) *fakeWorktrees {
 	t.Helper()
-	wt, ok := a.worktrees.(*fakeWorktrees)
-	if !ok {
-		t.Fatalf("worktrees = %T, want the fake", a.worktrees)
-	}
-	return wt
+	trees := &fakeWorktrees{}
+	newWorktrees = func() Worktrees { return trees }
+	t.Cleanup(func() { newWorktrees = func() Worktrees { return &fakeWorktrees{} } })
+	return trees
 }
 
 // cursorOn puts the board's cursor on the named slice's row.
@@ -403,23 +385,23 @@ func TestApproveWaitsForTheBoard(t *testing.T) {
 // handed back.
 func TestApproveRemovesTheWorktree(t *testing.T) {
 	app, _, _, workdir := approveApp(t)
-	wt := worktreesOf(t, app)
+	trees := approveWorktrees(t)
 	cursorOn(t, app, handedBack)
 
 	approve(t, app)
 
-	want := wtCall{workdir, "slice/approve"}
-	if len(wt.removed) != 1 || wt.removed[0] != want {
-		t.Fatalf("wt was asked to remove %v, want %v", wt.removed, want)
+	want := worktreeCall{workdir, "slice/approve"}
+	if len(trees.removes) != 1 || trees.removes[0] != want {
+		t.Fatalf("wt was asked to remove %v, want %v", trees.removes, want)
 	}
 }
 
 // TestApproveRemovesTheWorktreeFromTheSlicesOwnRepo covers a slice whose Repo
-// overrides the project's default: the worktree is that checkout's, the way the
-// pull request is.
+// overrides the project's default: that is the checkout the worktree was cut
+// from, the way it is the one gh runs in.
 func TestApproveRemovesTheWorktreeFromTheSlicesOwnRepo(t *testing.T) {
 	app, _, _, _ := approveApp(t)
-	wt := worktreesOf(t, app)
+	trees := approveWorktrees(t)
 	repo := t.TempDir()
 	slices := append([]domain.Slice(nil), app.project.Slices...)
 	slices[0].Repo = repo
@@ -430,8 +412,8 @@ func TestApproveRemovesTheWorktreeFromTheSlicesOwnRepo(t *testing.T) {
 
 	approve(t, app)
 
-	if len(wt.removed) != 1 || wt.removed[0].dir != repo {
-		t.Errorf("wt ran in %v, want the slice's own repo %q", wt.removed, repo)
+	if len(trees.removes) != 1 || trees.removes[0].dir != repo {
+		t.Errorf("wt ran in %v, want the slice's own repo %q", trees.removes, repo)
 	}
 }
 
@@ -441,8 +423,8 @@ func TestApproveRemovesTheWorktreeFromTheSlicesOwnRepo(t *testing.T) {
 // and the refusal is left in the log rather than raised on the board.
 func TestApproveSurvivesAFailedRemoval(t *testing.T) {
 	app, _, client, _ := approveApp(t)
-	wt := worktreesOf(t, app)
-	wt.err = errors.New("worktree has uncommitted changes")
+	trees := approveWorktrees(t)
+	trees.removeErr = &worktree.ExitError{Code: 1, Stderr: "worktree has uncommitted changes\n"}
 	cursorOn(t, app, handedBack)
 
 	approve(t, app)
@@ -481,52 +463,16 @@ func TestApproveKeepsTheWorktreeUntilTheSliceIsDone(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			app, _, client, _ := approveApp(t)
-			wt := worktreesOf(t, app)
+			trees := approveWorktrees(t)
 			tt.brk(app, client)
 			cursorOn(t, app, handedBack)
 
 			approve(t, app)
 
-			if len(wt.removed) != 0 {
-				t.Errorf("wt was asked to remove %v on a slice still handed back", wt.removed)
+			if len(trees.removes) != 0 {
+				t.Errorf("wt was asked to remove %v on a slice still handed back", trees.removes)
 			}
 		})
-	}
-}
-
-// TestRemoveWorktreeWithNothingToRemove covers the flow reaching the removal
-// with nothing to act on: a machine whose app was built without worktrunk, a
-// slice with no repository resolved, a slice with no branch. None of them is a
-// failure, and none of them calls anything.
-func TestRemoveWorktreeWithNothingToRemove(t *testing.T) {
-	tests := []struct {
-		name        string
-		wt          WorktreeRemover
-		dir, branch string
-	}{
-		{"no worktrunk", nil, "/repo", "slice/approve"},
-		{"no repository", &fakeWorktrees{}, "", "slice/approve"},
-		{"no branch", &fakeWorktrees{}, "/repo", ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			removeWorktree(tt.wt, tt.dir, tt.branch)
-
-			if f, ok := tt.wt.(*fakeWorktrees); ok && len(f.removed) != 0 {
-				t.Errorf("wt was asked to remove %v", f.removed)
-			}
-		})
-	}
-}
-
-// TestDefaultWorktreeRemoverIsWorktrunk pins what a real app removes worktrees
-// through.
-func TestDefaultWorktreeRemoverIsWorktrunk(t *testing.T) {
-	if _, ok := defaultWorktreeRemover().(worktree.CLI); !ok {
-		t.Errorf("defaultWorktreeRemover() = %T, want the worktrunk CLI", defaultWorktreeRemover())
-	}
-	if NewApp(testConfig(), &fakeNotion{}).worktrees == nil {
-		t.Error("a new app has nothing to remove worktrees with")
 	}
 }
 

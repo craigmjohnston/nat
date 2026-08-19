@@ -16,6 +16,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
 // TestMain keeps the package's tests away from the real tmux: every app polls
@@ -31,6 +32,10 @@ import (
 func TestMain(m *testing.M) {
 	newLauncher = func() AgentLauncher { return &fakeLauncher{} }
 	liveTick = func() tea.Cmd { return nil }
+	// Worktrunk is pinned away for the same reason tmux is: a launch would
+	// otherwise cut a real worktree of whatever repository the suite is being
+	// run in. The tests about placement put their own in.
+	newWorktrees = func() Worktrees { return &fakeWorktrees{} }
 	// The nudge watcher is pinned quiet the same way: no timer, and no stat of
 	// the real marker in the home directory. Tests about the watcher put their
 	// own readings in.
@@ -702,6 +707,111 @@ func TestAppLaunchStartsTheSessionAndAttaches(t *testing.T) {
 	}
 }
 
+// The launch a repository gets: worktrunk cuts the slice's branch a worktree,
+// the session starts in it rather than in the checkout the user is working in,
+// and the prompt the agent reads names the same directory and branch.
+func TestAppLaunchStartsTheAgentInAWorktree(t *testing.T) {
+	app, launcher, workdir := launchApp(t)
+	if err := os.Mkdir(filepath.Join(workdir, ".git"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	trees := &fakeWorktrees{}
+	newWorktrees = func() Worktrees { return trees }
+	t.Cleanup(func() { newWorktrees = func() Worktrees { return &fakeWorktrees{} } })
+	app.board.cursor = rowTodoSlice
+
+	launch(t, app)
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
+	want := filepath.Join(workdir+"-worktrees", "slice/info-view")
+	if got := launcher.launches[0].workdir; got != want {
+		t.Errorf("workdir = %q, want the worktree at %q", got, want)
+	}
+	if got := trees.creates; len(got) != 1 || got[0].dir != workdir || got[0].branch != "slice/info-view" {
+		t.Errorf("creates = %v, want the slice's branch cut in %q", got, workdir)
+	}
+	prompt, err := os.ReadFile(launcher.launches[0].promptFile)
+	if err != nil {
+		t.Fatalf("read the prompt file: %v", err)
+	}
+	for _, line := range []string{want, "slice/info-view", "already on"} {
+		if !strings.Contains(string(prompt), line) {
+			t.Errorf("the prompt is missing %q:\n%s", line, prompt)
+		}
+	}
+	if app.toast != "" {
+		t.Errorf("toast = %q, want nothing said about an ordinary launch", app.toast)
+	}
+}
+
+// A working directory that is not a repository has no worktree to give, so the
+// agent goes where it always went — with the status bar saying why, since that
+// is the difference between an agent on a branch of its own and one in the
+// checkout the user is also working in.
+func TestAppLaunchFallsBackToTheSharedCheckout(t *testing.T) {
+	app, launcher, workdir := launchApp(t)
+	app.board.cursor = rowTodoSlice
+
+	launch(t, app)
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want the launch to go ahead", launcher.launches)
+	}
+	if got := launcher.launches[0].workdir; got != workdir {
+		t.Errorf("workdir = %q, want the shared checkout %q", got, workdir)
+	}
+	if !strings.Contains(app.toast, "not a git repository") || !strings.Contains(app.toast, "shared checkout") {
+		t.Errorf("toast = %q, want it to say why there is no worktree", app.toast)
+	}
+	if app.toastSev != sevWarning {
+		t.Errorf("severity = %v, want a warning: the launch worked", app.toastSev)
+	}
+	// The fallback is the launch that was always there, so the agent is told to
+	// make its own branch and nothing claims one for it.
+	prompt, err := os.ReadFile(launcher.launches[0].promptFile)
+	if err != nil {
+		t.Fatalf("read the prompt file: %v", err)
+	}
+	if !strings.Contains(string(prompt), "branch for the slice") {
+		t.Errorf("the prompt does not ask the agent to branch:\n%s", prompt)
+	}
+}
+
+// A worktrunk that ran and refused stops the launch outright: an agent placed
+// half way is one working somewhere nobody chose. It is a toast rather than an
+// error banner — nothing about the board is wrong, and l is the way to try
+// again once the repository is sorted out.
+func TestAppLaunchReportsAWorktreeThatCouldNotBeMade(t *testing.T) {
+	app, launcher, workdir := launchApp(t)
+	if err := os.Mkdir(filepath.Join(workdir, ".git"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	trees := &fakeWorktrees{createErr: &worktree.ExitError{Code: 1, Stderr: "the repository has no commits\n"}}
+	newWorktrees = func() Worktrees { return trees }
+	t.Cleanup(func() { newWorktrees = func() Worktrees { return &fakeWorktrees{} } })
+	app.board.cursor = rowTodoSlice
+
+	launch(t, app)
+
+	if len(launcher.launches) != 0 {
+		t.Errorf("launched %+v, want no agent placed half way", launcher.launches)
+	}
+	if !strings.Contains(app.toast, "the repository has no commits") {
+		t.Errorf("toast = %q, want worktrunk's own reason", app.toast)
+	}
+	if app.toastSev != sevError {
+		t.Errorf("severity = %v, want an error", app.toastSev)
+	}
+	if app.err != nil {
+		t.Errorf("err = %v, want a toast rather than a banner", app.err)
+	}
+	if app.busy || app.note != "" {
+		t.Error("a launch that did not happen leaves nothing in flight")
+	}
+}
+
 // nat runs in the terminal it was started in: a board with no tmux session of
 // its own still launches an agent into one and still attaches the viewer to it.
 func TestAppLaunchFromABareTerminal(t *testing.T) {
@@ -873,7 +983,7 @@ func TestLaunchAgentReportsAFailedPromptFile(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
 	launcher := &fakeLauncher{}
 
-	msg := runMsg(t, launchAgent(launcher, agent.PromptContext{
+	msg := runMsg(t, launchAgent(launcher, &fakeWorktrees{}, agent.PromptContext{
 		Slice: domain.Slice{ID: "s5", Name: "Info view"},
 	}, config.AgentModel{}, true)).(agentLaunchedMsg)
 
@@ -1289,6 +1399,11 @@ func TestTheRealEdgesAreThere(t *testing.T) {
 	}
 	if _, ok := liveTicked(time.Time{}).(liveTickMsg); !ok {
 		t.Error("the timer going off should prod the app to re-read them")
+	}
+	// The third is worktrunk, and is not exercised either: it would cut a real
+	// worktree of whatever repository the suite is being run in.
+	if defaultWorktrees() == nil {
+		t.Error("the app should make worktrees through the real worktrunk")
 	}
 }
 
