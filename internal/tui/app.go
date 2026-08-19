@@ -243,8 +243,11 @@ type App struct {
 	// prs opens the pull request the approve key asks for, which is the one
 	// thing nat does through the GitHub CLI; differ reads the diff the review
 	// key shows, which is the one thing it does through git.
-	prs    PRCreator
-	differ Differ
+	// worktrees is the other half of that key: the worktree the slice's agent
+	// was given, taken off the repository once the pull request exists.
+	prs       PRCreator
+	differ    Differ
+	worktrees WorktreeRemover
 	// viewer is the agent terminal beside the board, or nil when the board has
 	// the window to itself. Exactly one is on show at a time: it is a split, not
 	// a stack of panes.
@@ -309,6 +312,7 @@ func NewApp(cfg config.Config, client NotionAPI) *App {
 		promptKeys: defaultPromptKeyMap(), spinner: sp,
 		board: NewBoard(s), info: NewInfo(s), diff: NewDiff(s),
 		launcher: newLauncher(), prs: newPRCreator(), differ: newDiffer(),
+		worktrees: newWorktreeRemover(),
 		boardVP: viewport.New(), helpVP: viewport.New()}
 	a.helpVP.SetContent(a.helpBody())
 	return a

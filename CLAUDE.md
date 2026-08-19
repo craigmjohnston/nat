@@ -518,7 +518,16 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   error banner: the branch is still there and the slice is still handed back. A
   pull request opened and then not recorded is the one half-done state there is,
   and running the key again says so rather than opening a second one, since gh
-  refuses a branch that already has one.
+  refuses a branch that already has one. Once that write has landed the slice's
+  worktree goes with it — `worktree.Remove` on the branch, in the same repo gh
+  ran in, and only then, since a slice still handed back is one whose work is
+  still being reviewed. A removal that fails — a dirty worktree, a slice that
+  never had one, a machine with no worktrunk — is one line in the log and
+  nothing else: the pull request is open and the slice is Done whatever became
+  of the checkout, and worktrunk's own rules mean a refusal never costs any
+  work. gh stays in the shared checkout, so the removal cannot strand it, and
+  `R` deliberately keeps its worktree — the work so far is exactly what the
+  next session wants.
 - Slices may carry a `Repo` override; otherwise the project default working
   dir from local config applies.
 - A slice may declare the slices it waits on: `Depends on`, a single-property
