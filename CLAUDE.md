@@ -228,11 +228,18 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   it: the unified diff of the same branch, read through `internal/git` and drawn
   as a screen over the board like help and info, which is where the work is read
   before it is approved. It is read-only — nothing on it writes anything — and it
-  holds the parsed files rather than the rendered body, because a body line is
-  cut to the width it is drawn at and a resize renders again. One diff line is
-  one body line, truncated rather than wrapped: the file jumps scroll to a line
-  number, and a body whose lines did not correspond to git's would send them to
-  the wrong place. `diffbox.go` is the shape the body takes: one bordered box per
+  holds the parsed files rather than the rendered body, because a body row is
+  wrapped to the width it is drawn at and a resize renders again. A line too wide
+  for the box takes as many rows as it needs rather than being cut off, since the
+  tail of a long line is often what changed; `bodyLine.seg` is what tells a row
+  that continues a line from one that starts one, so the cursor stops only where
+  a line begins, a range covers whole lines, and the +/- colour carries onto a
+  continuation while its numbers do not. The file jumps, the line cursor and the
+  comments are all row numbers into that body, so `render` records where each
+  file opens after the wrapping rather than before, and every one of those
+  numbers is rebuilt with the body — the cursor and any range mark put back on
+  the line they were on rather than the row it used to be at.
+  `diffbox.go` is the shape the body takes: one bordered box per
   file, GitHub-fashion — a header row naming the path with its ± tally, the
   file's diff verbatim inside it, a footer row closing it, and the old and new
   line numbers of every line down the left, read off the same hunk headers

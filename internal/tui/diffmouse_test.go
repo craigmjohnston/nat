@@ -56,7 +56,7 @@ func TestDiffClickAwayFromABoxRow(t *testing.T) {
 		t.Error("a click on a line of the diff should fold nothing and move nothing")
 	}
 
-	footer := app.diff.offsets[0] + len(app.diff.files[0].Lines)
+	footer := footerRow(&app.diff, 0)
 	clickDiff(app, 2, footer)
 	if !app.diff.viewedFile(0) {
 		t.Error("a click on the footer row should fold the file")

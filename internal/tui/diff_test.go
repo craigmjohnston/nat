@@ -61,8 +61,42 @@ func newTestDiff() *Diff {
 	return &d
 }
 
+// rowAt is the body row a file's line starts on. The cursor, the range mark and
+// every click are numbers into the body, and a line too wide for the box takes
+// more than one row of it, so a test cannot count them off an offset.
+func rowAt(d *Diff, file, line int) int {
+	return d.rowOf(bodyLine{file: file, line: line}, -1)
+}
+
+// footerRow is the row that closes a file's box, which is the row before the
+// next box opens — or the last row of the body, for the last file.
+func footerRow(d *Diff, file int) int {
+	if file+1 < len(d.tops) {
+		return d.tops[file+1] - 1
+	}
+	return len(d.lines) - 1
+}
+
+// TestDiffRendersTheBranch pins the screen at a width the sample's longest
+// lines do not fit: they are wrapped onto the rows below them, in the colour of
+// the line they continue and with the numbers only on the row it starts on.
 func TestDiffRendersTheBranch(t *testing.T) {
 	golden(t, "diff-files", newTestDiff().View(""))
+}
+
+// TestDiffRendersABranchThatFits pins the same diff on a window wide enough to
+// hold every one of its lines outright, where nothing is wrapped at all.
+func TestDiffRendersABranchThatFits(t *testing.T) {
+	d := newTestDiff()
+	d.SetSize(160, diffTestHeight)
+	for _, f := range d.files {
+		for _, line := range f.Lines {
+			if rows := wrapLine(line, d.textWidth(numberWidth(d.lineNumbers()))); len(rows) != 1 {
+				t.Fatalf("%q takes %d rows at this width, want the whole diff to fit", line, len(rows))
+			}
+		}
+	}
+	golden(t, "diff-wide", d.View(""))
 }
 
 // TestDiffWithoutRoomForTheFileList covers a narrow window: the columns go to
@@ -242,18 +276,172 @@ func TestDiffRerendersOnResize(t *testing.T) {
 	}
 }
 
-// TestDiffOneLineIsOneLine covers what the file jumps depend on: a body line
-// per diff line, however long the diff's lines are.
-func TestDiffOneLineIsOneLine(t *testing.T) {
+// TestDiffBodyIsTheWrappedLines covers what the file jumps and the line cursor
+// are numbers into: a body row per row a line is wrapped onto, plus the two
+// rows of every file's box.
+func TestDiffBodyIsTheWrappedLines(t *testing.T) {
 	d := newTestDiff()
-	var want int
+	want, wrapped := 2*len(d.files), 0
 	for _, f := range d.files {
-		want += len(f.Lines)
+		for _, line := range f.Lines {
+			rows := len(wrapLine(line, d.textWidth(numberWidth(d.lineNumbers()))))
+			want += rows
+			if rows > 1 {
+				wrapped++
+			}
+		}
 	}
-	// A header and a footer row for each file's box.
-	want += 2 * len(d.files)
+	if wrapped == 0 {
+		t.Fatal("the sample should have lines too wide for the box at the test width")
+	}
 	if got := strings.Count(d.vp.GetContent(), "\n") + 1; got != want {
-		t.Errorf("body is %d lines, want %d — one per line of the diff", got, want)
+		t.Errorf("body is %d rows, want %d — one per wrapped row of the diff", got, want)
+	}
+	if got := len(d.lines); got != want {
+		t.Errorf("%d rows are accounted for, want %d — one per row of the body", got, want)
+	}
+}
+
+// TestDiffShowsTheTailOfALongLine covers the whole point of the wrap: the end
+// of a line too wide for the box is on the screen rather than cut off it.
+func TestDiffShowsTheTailOfALongLine(t *testing.T) {
+	d := newTestDiff()
+	body := strings.Join(bodyRows(d), "")
+	width := d.textWidth(numberWidth(d.lineNumbers()))
+	long := 0
+	for _, f := range d.files {
+		for _, line := range f.Lines {
+			rows := wrapLine(line, width)
+			if len(rows) == 1 {
+				continue
+			}
+			long++
+			if tail := rows[len(rows)-1]; !strings.Contains(body, tail) {
+				t.Errorf("the body does not hold %q, the end of %q", tail, line)
+			}
+		}
+	}
+	if long == 0 {
+		t.Fatal("the sample should have lines too wide for the box at the test width")
+	}
+}
+
+// TestDiffWrapKeepsTheLineWhole covers what a continuation row is drawn as: the
+// line's own colour carries onto it, so a wrapped removal does not read as an
+// added or removed line of its own, and only the row the line starts on carries
+// its numbers.
+func TestDiffWrapKeepsTheLineWhole(t *testing.T) {
+	d := newTestDiff()
+	head := rowAt(d, 0, 6) // -	return strings.Join(lines, "\n")
+	if d.lines[head+1] != (bodyLine{file: 0, line: 6, seg: 1}) {
+		t.Fatalf("row %d is %+v, want the second row of the wrapped removal", head+1, d.lines[head+1])
+	}
+	cont := strings.Split(d.vp.GetContent(), "\n")[head+1]
+	if strings.Contains(xansi.Strip(cont), "13") {
+		t.Errorf("continuation row = %q, want the numbers only on the row the line starts on",
+			xansi.Strip(cont))
+	}
+	// The escape the removal's own style opens with, which is what says the
+	// continuation is still part of that line rather than a plain one.
+	red := strings.Split(DefaultStyles().DiffDel.Render("x"), "x")[0]
+	if !strings.Contains(cont, red) {
+		t.Errorf("continuation row = %q, want the removed line's own colour carried onto it", cont)
+	}
+}
+
+// TestWrapLineBreaksOnTheColumn covers the wrap itself: a line that fits comes
+// back whole, a wider one is cut on the column, a tab is expanded to what the
+// renderer draws it as, and a rune too wide for the width still gets a row.
+func TestWrapLineBreaksOnTheColumn(t *testing.T) {
+	for _, tt := range []struct {
+		line  string
+		width int
+		want  []string
+	}{
+		{"short", 10, []string{"short"}},
+		{"abcdef", 3, []string{"abc", "def"}},
+		{"abcdefg", 3, []string{"abc", "def", "g"}},
+		{"", 3, []string{""}},
+		{"\tx", 4, []string{"    ", "x"}},
+		{"日本", 1, []string{"日", "本"}},
+		{"anything at all", 0, []string{"anything at all"}},
+	} {
+		got := wrapLine(tt.line, tt.width)
+		if strings.Join(got, "|") != strings.Join(tt.want, "|") {
+			t.Errorf("wrapLine(%q, %d) = %q, want %q", tt.line, tt.width, got, tt.want)
+		}
+	}
+}
+
+// TestDiffJumpsSurviveAResize covers the numbers a jump is made of being
+// rebuilt with the body: a narrower window wraps more lines, so every row moves,
+// and n still lands on the row that names the file it moved to.
+func TestDiffJumpsSurviveAResize(t *testing.T) {
+	d := newTestDiff()
+	for _, width := range []int{160, diffTestWidth, 44, 160} {
+		d.SetSize(width, diffTestHeight)
+		d.jump(-d.cursor) // back to the first file
+		for want := 1; want < len(d.files); want++ {
+			d.Update(keyPress("n"))
+			if d.cursor != want {
+				t.Fatalf("at %d columns, %d jumps reach file %d, want %d", width, want, d.cursor, want)
+			}
+			if got := d.lines[d.line]; got != (bodyLine{file: want, line: 0}) {
+				t.Errorf("at %d columns, the cursor is at %+v, want the first line of file %d",
+					width, got, want)
+			}
+			if got := d.lines[d.tops[want]]; got.line != boxHeaderRow {
+				t.Errorf("at %d columns, file %d opens at row %+v, want its header row",
+					width, want, got)
+			}
+		}
+	}
+}
+
+// TestDiffResizeKeepsTheCursorOnItsLine covers where the cursor is put back
+// after a re-render: on the line it was on rather than the row that line used
+// to be at, since a resize wraps differently and moves every row under it.
+func TestDiffResizeKeepsTheCursorOnItsLine(t *testing.T) {
+	d := newTestDiff()
+	for range 7 {
+		d.Update(keyPress("j"))
+	}
+	was := d.lines[d.line]
+	if was.line == 0 {
+		t.Fatalf("cursor at %+v, want it well into the first file", was)
+	}
+	d.SetSize(160, diffTestHeight)
+	if got := d.lines[d.line]; got != was {
+		t.Errorf("cursor at %+v after a resize, want the line it was on, %+v", got, was)
+	}
+	d.SetSize(44, diffTestHeight)
+	if got := d.lines[d.line]; got != was {
+		t.Errorf("cursor at %+v after a second resize, want %+v", got, was)
+	}
+}
+
+// TestDiffCursorOnALineTallerThanTheBand covers a line wrapped onto more rows
+// than the band has: there is no offset that holds all of it, so the body is
+// scrolled to where the line starts rather than to where it ends.
+func TestDiffCursorOnALineTallerThanTheBand(t *testing.T) {
+	d := NewDiff(DefaultStyles())
+	d.SetSize(40, 3)
+	d.SetFiles("origin/main", git.ParseFiles("diff --git a/x.go b/x.go\n@@ -1 +1 @@\n-old\n+"+
+		strings.Repeat("wide ", 40)+"\n"))
+	long := len(d.files[0].Lines) - 1
+	for range long {
+		d.Update(keyPress("j"))
+	}
+	start := rowAt(&d, 0, long)
+	if d.line != start {
+		t.Fatalf("cursor at row %d, want the long line's own row %d", d.line, start)
+	}
+	if d.lineEnd(start) < start+d.vp.Height() {
+		t.Fatalf("the long line takes rows %d..%d, want more than the band's %d",
+			start, d.lineEnd(start), d.vp.Height())
+	}
+	if got := d.vp.YOffset(); got != start {
+		t.Errorf("body scrolled to %d, want the row the long line starts on, %d", got, start)
 	}
 }
 
@@ -374,8 +562,8 @@ func TestDiffCursorMovesByLine(t *testing.T) {
 	}
 	first := d.line
 	d.Update(keyPress("j"))
-	if d.line != first+1 {
-		t.Errorf("line = %d after j, want %d", d.line, first+1)
+	if want := rowAt(d, 0, 1); d.line != want {
+		t.Errorf("line = %d after j, want the row the second line starts on, %d", d.line, want)
 	}
 	d.Update(keyPress("k"))
 	d.Update(keyPress("k"))

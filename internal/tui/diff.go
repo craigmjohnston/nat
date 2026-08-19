@@ -129,7 +129,8 @@ func (k diffKeyMap) bindings() []key.Binding {
 // viewport with a list of the files it touches beside it.
 //
 // It holds the parsed files rather than the rendered body, because the body is
-// cut to the width it is drawn at: every resize renders again from the files.
+// wrapped to the width it is drawn at: every resize renders again from the
+// files, and every row number the screen holds is rebuilt with it.
 // Nothing here writes anything — reading the change is the whole of it, and the
 // key that acts on what was read is the board's approve.
 type Diff struct {
@@ -197,11 +198,17 @@ type Diff struct {
 	width, height int
 }
 
-// bodyLine is where one line of the rendered body came from: the file's index
-// in the diff and the line's index within that file's section. A box's own two
-// rows belong to the file they are drawn around rather than to its section, and
-// say which row they are in place of a line index.
-type bodyLine struct{ file, line int }
+// bodyLine is where one row of the rendered body came from: the file's index in
+// the diff, the line's index within that file's section, and which of the rows
+// that line is wrapped onto this one is. A box's own two rows belong to the file
+// they are drawn around rather than to its section, and say which row they are
+// in place of a line index.
+//
+// A line too wide for the box takes more than one row, so a body row is no
+// longer a line of the diff. seg is what tells the two apart: everything that
+// acts on a line — the cursor, a range mark, a comment — is on the row where seg
+// is zero, and the rows after it are the tail of that same line.
+type bodyLine struct{ file, line, seg int }
 
 // The line indexes a box's own rows carry, in place of a line of the file's
 // section: there is nothing on either to put a comment on. The header row is
@@ -234,6 +241,22 @@ func (d Diff) diffWidth() int {
 		return d.width
 	}
 	return d.width - diffListWidth - diffRuleWidth
+}
+
+// textWidth is the columns a line of a file's diff has inside its box, and so
+// the width it is wrapped to: the band the diff has, less the box's own two
+// borders, the comment gutter and the two line-number columns with the space
+// each is followed by.
+//
+// An unmeasured window comes out as zero, which is no width to wrap to, exactly
+// as it is no width to cut to: its lines go in whole and the first measure
+// renders them again.
+func (d Diff) textWidth(numWidth int) int {
+	w := d.diffWidth()
+	if w <= 0 {
+		return 0
+	}
+	return max(w-diffBorderWidth-diffGutterWidth-2*numWidth-2, 1)
 }
 
 // splitVisible reports whether the file list is drawn beside the diff. A window
@@ -630,13 +653,24 @@ func (d Diff) clamp(line int) int {
 	return min(max(line, first), last)
 }
 
-// fileSpan is the first and last body line of a file's section. It is only ever
-// asked about the file a range is being marked in, which is one whose lines are
-// on the body: a fold clears the mark, and there is no marking one from a
-// collapsed file's header row.
+// fileSpan is the first and last body row the cursor rests on inside a file's
+// section — the row its last line starts on rather than the row that line ends
+// at, since the cursor stops only where a line begins. It is read off the body
+// rather than counted from the file, because a wrapped line takes more rows than
+// one and how many is a question about the width it was drawn at.
+//
+// It is only ever asked about the file a range is being marked in, which is one
+// whose lines are on the body: a fold clears the mark, and there is no marking
+// one from a collapsed file's header row.
 func (d Diff) fileSpan(file int) (first, last int) {
 	first = d.offsets[file]
-	return first, first + len(d.files[file].Lines) - 1
+	last = first
+	for i := first; i < len(d.lines) && d.lines[i].file == file; i++ {
+		if d.lines[i].line >= 0 && d.lines[i].seg == 0 {
+			last = i
+		}
+	}
+	return first, last
 }
 
 // setLine puts the cursor on a body line, marks the file it lands in on the
@@ -652,24 +686,44 @@ func (d *Diff) setLine(line int) {
 }
 
 // scrollToCursor scrolls the body the least it can to bring the cursor line
-// back onto it, and the header row of its box with it where the cursor is on the
-// first line of a file: the row that names the file is worth the one line it
-// costs, and a diff scrolled to an unnamed first line reads as starting nowhere.
+// back onto it — the whole of it, since a wrapped line is several rows and the
+// tail is as much the line as the head — and the header row of its box with it
+// where the cursor is on the first line of a file: the row that names the file
+// is worth the one line it costs, and a diff scrolled to an unnamed first line
+// reads as starting nowhere.
+//
+// A line taller than the band is shown from where it starts: there is no
+// offset that holds all of it, and the end of a line whose beginning is off the
+// screen is the harder half to read.
 func (d *Diff) scrollToCursor() {
 	h := d.vp.Height()
 	if h <= 0 {
 		return
 	}
-	reveal := d.line
-	if d.line < len(d.lines) && d.lines[d.line].line == 0 {
-		reveal = max(d.line-1, 0)
+	reveal, end := d.line, d.line
+	if d.line < len(d.lines) {
+		if d.lines[d.line].line == 0 {
+			reveal = max(d.line-1, 0)
+		}
+		end = d.lineEnd(d.line)
 	}
 	switch top := d.vp.YOffset(); {
 	case reveal < top:
 		d.vp.SetYOffset(reveal)
-	case d.line >= top+h:
-		d.vp.SetYOffset(d.line - h + 1)
+	case end >= top+h:
+		d.vp.SetYOffset(min(end-h+1, reveal))
 	}
+}
+
+// lineEnd is the last body row the diff line starting at line is wrapped onto,
+// which is that row itself for a line the box had room for. Its caller has
+// already held line inside the body.
+func (d Diff) lineEnd(line int) int {
+	at, end := d.lines[line], line
+	for i := line + 1; i < len(d.lines) && d.lines[i].file == at.file && d.lines[i].line == at.line; i++ {
+		end = i
+	}
+	return end
 }
 
 // followView brings the cursor back onto the body after the viewport has been
@@ -730,8 +784,15 @@ func (d Diff) listRows() int { return max(d.height-1, 0) }
 // render rebuilds the viewport's content from the files at the current width:
 // one bordered box per file, its header row naming the path and its footer row
 // closing it, and the file's diff between them with the line numbers of either
-// side down the left. Where each file's diff starts and where each body line
-// came from are recorded as it goes.
+// side down the left. A line too wide for the box is wrapped onto as many rows
+// as it needs, so the tail of it — which is often what changed — is on screen
+// rather than cut off.
+//
+// Where each file's box opens and where every body row came from are recorded
+// after the wrapping rather than before, since that is what a jump and the line
+// cursor are numbers into. The cursor and any range mark are put back on the
+// diff line they were on rather than the row it was at, because a resize wraps
+// differently and moves every row under them.
 func (d *Diff) render() {
 	if len(d.files) == 0 {
 		d.tops, d.offsets, d.lines, d.marks = nil, nil, nil, nil
@@ -741,7 +802,12 @@ func (d *Diff) render() {
 	inner := max(d.diffWidth()-diffBorderWidth, 1)
 	nums := d.lineNumbers()
 	numWidth := numberWidth(nums)
+	textWidth := d.textWidth(numWidth)
+	wasLine, wasAnchor := d.at(d.line), d.at(d.anchor)
 
+	// segs[i][j] is file i's line j broken into the rows it takes at this width,
+	// worked out once: the body rows are numbered off it and then drawn from it.
+	segs := make([][][]string, len(d.files))
 	tops, offsets := make([]int, len(d.files)), make([]int, len(d.files))
 	var from []bodyLine
 	for i, f := range d.files {
@@ -754,14 +820,21 @@ func (d *Diff) render() {
 			continue
 		}
 		offsets[i] = len(from)
-		for j := range f.Lines {
-			from = append(from, bodyLine{file: i, line: j})
+		segs[i] = make([][]string, len(f.Lines))
+		for j, line := range f.Lines {
+			segs[i][j] = wrapLine(line, textWidth)
+			for s := range segs[i][j] {
+				from = append(from, bodyLine{file: i, line: j, seg: s})
+			}
 		}
 		from = append(from, bodyLine{file: i, line: boxFooterRow})
 	}
 	d.tops, d.offsets, d.lines = tops, offsets, from
 	d.marks = d.commentMarks()
-	d.line = d.contentLine(d.line)
+	d.line = d.contentLine(d.rowOf(wasLine, d.line))
+	if d.anchored {
+		d.anchor = d.rowOf(wasAnchor, d.anchor)
+	}
 
 	lines := make([]string, 0, len(from))
 	for i, f := range d.files {
@@ -770,13 +843,80 @@ func (d *Diff) render() {
 			continue
 		}
 		for j, line := range f.Lines {
-			lines = append(lines, d.boxLine(line, nums[i].was[j], nums[i].now[j], numWidth, inner,
-				d.marks[commentKey{path: f.Path, start: j}], d.selected(len(lines))))
+			style := d.lineStyle(line)
+			marked := d.marks[commentKey{path: f.Path, start: j}]
+			for s, text := range segs[i][j] {
+				// Only the row the line starts on carries its numbers: a
+				// continuation numbered again would read as a line of its own.
+				was, now := nums[i].was[j], nums[i].now[j]
+				if s > 0 {
+					was, now = 0, 0
+				}
+				lines = append(lines, d.boxLine(text, style, was, now, numWidth, inner,
+					marked, d.selected(len(lines))))
+			}
 		}
 		lines = append(lines, d.boxBottom(inner))
 	}
 	d.vp.SetContent(strings.Join(lines, "\n"))
 }
+
+// at is the body row at a line number, for the callers that hold one across a
+// re-render. A row past the end of the body — which is what every number is
+// against a body that has not been built yet — is the top of the first file.
+func (d Diff) at(line int) bodyLine {
+	if line < 0 || line >= len(d.lines) {
+		return bodyLine{line: boxHeaderRow}
+	}
+	return d.lines[line]
+}
+
+// rowOf is the row the freshly built body draws a diff line at, for a cursor or
+// a range mark recorded against the body the last render built: a resize wraps
+// the lines differently and moves every row under them, and what the user is
+// looking at is the line rather than the row. A line the new body does not hold
+// falls back to the number it was at, which contentLine then holds inside it.
+func (d Diff) rowOf(at bodyLine, fallback int) int {
+	for i, l := range d.lines {
+		if l.file == at.file && l.line == at.line && l.seg == 0 {
+			return i
+		}
+	}
+	return fallback
+}
+
+// wrapLine breaks one line of the diff into the rows it takes at width columns,
+// cut on the column rather than on a word: a diff is code, where the run of
+// spaces at the front of a line is what says where it sits and a break moved to
+// the last space before the edge would say something else.
+//
+// Tabs are expanded first, to the four spaces the renderer draws them as: a tab
+// measures nothing at all, and a row wrapped on that measure would be cut back
+// down by the box it is drawn in and lose exactly the tail this is for.
+func wrapLine(line string, width int) []string {
+	line = strings.ReplaceAll(line, "\t", tabSpaces)
+	if width <= 0 || lipgloss.Width(line) <= width {
+		return []string{line}
+	}
+	var out []string
+	var b strings.Builder
+	w := 0
+	for _, r := range line {
+		rw := lipgloss.Width(string(r))
+		if w > 0 && w+rw > width {
+			out = append(out, b.String())
+			b.Reset()
+			w = 0
+		}
+		b.WriteRune(r)
+		w += rw
+	}
+	return append(out, b.String())
+}
+
+// tabSpaces is what a tab is expanded to before a line is measured: lipgloss
+// renders one as this many spaces, so the two agree.
+const tabSpaces = "    "
 
 // viewedFile reports whether a file has been marked read, which is what folds
 // its box away to the header row.
@@ -850,12 +990,19 @@ func (d Diff) contentLine(line int) int {
 	return 0
 }
 
-// stop reports whether the cursor rests on the body line at i, which every
-// caller has already held inside the body: a line of a file's diff, or the
-// header row of a collapsed file, which is the only row that file has and so
-// the only place a cursor moving through it can be.
+// stop reports whether the cursor rests on the body row at i, which every
+// caller has already held inside the body: the first row of a line of a file's
+// diff, or the header row of a collapsed file, which is the only row that file
+// has and so the only place a cursor moving through it can be.
+//
+// The rows a wrapped line continues onto are not among them: they are the tail
+// of the line above, and a cursor that stopped on one would offer to comment on
+// the same line twice.
 func (d Diff) stop(i int) bool {
 	at := d.lines[i]
+	if at.seg > 0 {
+		return false
+	}
 	return at.line >= 0 || (at.line == boxHeaderRow && d.viewedFile(at.file))
 }
 
@@ -874,13 +1021,26 @@ func (d Diff) commentMarks() map[commentKey]bool {
 	return marks
 }
 
-// selected reports whether a body line is under the cursor, or inside the range
+// selected reports whether a body row is under the cursor, or inside the range
 // being marked from it.
+//
+// It is asked about the line a row belongs to rather than the row itself, so
+// every row a wrapped line takes is filled: the selection is of lines, and half
+// a highlighted line would read as half a line selected.
+//
+// It is asked as the body is drawn and about a row of the body being drawn, so
+// the row and the cursor are both inside it.
 func (d Diff) selected(i int) bool {
-	if !d.anchored {
-		return i == d.line
+	at, cur := d.lines[i], d.lines[d.line]
+	if at.file != cur.file {
+		return false
 	}
-	return i >= min(d.line, d.anchor) && i <= max(d.line, d.anchor)
+	if !d.anchored || d.anchor >= len(d.lines) {
+		return at.line == cur.line
+	}
+	anc := d.lines[d.anchor]
+	return at.file == anc.file &&
+		at.line >= min(cur.line, anc.line) && at.line <= max(cur.line, anc.line)
 }
 
 // lineStyle is the style a diff line is drawn in, chosen by its prefix. The

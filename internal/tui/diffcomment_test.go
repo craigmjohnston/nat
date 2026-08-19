@@ -142,7 +142,7 @@ func TestDiffSelectionMarksARange(t *testing.T) {
 		t.Errorf("Selection() = %q %d %d %q %v, want three lines of the first file",
 			path, start, span, text, ok)
 	}
-	if !d.selected(d.offsets[0]+1) || d.selected(d.offsets[0]+4) {
+	if !d.selected(rowAt(d, 0, 1)) || d.selected(rowAt(d, 0, 4)) {
 		t.Error("the marked range should be drawn as selected, and nothing beyond it")
 	}
 
@@ -596,7 +596,7 @@ func TestDiffCursorWithNoBandToDrawIn(t *testing.T) {
 	d.SetFiles("origin/main", git.ParseFiles(sampleDiff))
 	d.Update(keyPress("j"))
 	d.Update(keyPress("f"))
-	if want := d.offsets[0] + 1; d.line != want {
+	if want := rowAt(&d, 0, 1); d.line != want {
 		t.Errorf("line = %d, want the cursor moved once, to %d, and left alone by the scroll",
 			d.line, want)
 	}
@@ -608,7 +608,7 @@ func TestDiffScrollThatMovesNothing(t *testing.T) {
 	d := newTestDiff()
 	d.Update(keyPress("j"))
 	d.Update(keyPress("b"))
-	if d.line != d.offsets[0]+1 || d.vp.YOffset() != 0 {
+	if d.line != rowAt(d, 0, 1) || d.vp.YOffset() != 0 {
 		t.Errorf("cursor at %d, view at %d, want both left alone", d.line, d.vp.YOffset())
 	}
 }

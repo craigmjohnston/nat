@@ -27,11 +27,13 @@ func headerRows(d *Diff) []string {
 func TestDiffViewedCollapsesTheBox(t *testing.T) {
 	d := newTestDiff()
 	whole := bodyRows(d)
+	// The rows the first file's lines take at this width, and its footer row.
+	folded := d.tops[1] - d.offsets[0]
 
 	d.Update(keyPress("enter"))
 
 	rows := bodyRows(d)
-	if want := len(whole) - len(d.files[0].Lines) - 1; len(rows) != want {
+	if want := len(whole) - folded; len(rows) != want {
 		t.Errorf("body is %d rows, want %d — the first file's lines and its footer gone",
 			len(rows), want)
 	}
@@ -227,7 +229,7 @@ func TestDiffViewedHintSaysWhichHalf(t *testing.T) {
 // itself is not a fold.
 func TestDiffToggleViewedAtTakesTheBoxRows(t *testing.T) {
 	d := newTestDiff()
-	footer := d.offsets[0] + len(d.files[0].Lines)
+	footer := footerRow(d, 0)
 	if got := d.lines[footer]; got.line != boxFooterRow {
 		t.Fatalf("body line %d is %+v, want the first box's footer row", footer, got)
 	}
