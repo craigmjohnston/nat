@@ -498,10 +498,15 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   and `internal/agent`'s slice prompt end the same way and say so in the same
   words: the branch pushed and handed back with `complete-slice --branch`, no
   `gh` and no pull request, since opening one is the board's `p` after the user
-  has reviewed the branch. Where they differ is which branch: a board launch
+  has reviewed the branch. They arrive at the same branch too: a board launch
   puts its agent in a worktree already on one and names it, and /next-slice is
-  run by a session that is wherever the user was, so it still asks for one to be
-  made.
+  run by a session that is wherever the user was, so it cuts that worktree
+  itself — `wt switch --create slice/<the title slugged> --no-cd` in the working
+  directory the brief names, the slug rule `tui.sliceBranch` applies written out
+  rather than shared, since a skill is read by an agent and not compiled.
+  A machine with no worktrunk and a working directory in no repository fall
+  back to branching in place, the two the board falls back to the shared
+  checkout for.
 
 ## Domain rules
 

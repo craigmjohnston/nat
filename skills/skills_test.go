@@ -85,6 +85,29 @@ func TestNextSliceHandsTheBranchBack(t *testing.T) {
 	}
 }
 
+// A slice launched from the board is placed in a worktree of its own, and a
+// session started from the skill has to arrive at the same branch in the same
+// way — otherwise the same slice hands back one branch from the board and
+// another from the terminal. The command and the branch rule are what the
+// agent acts on, so they are worth naming here; the fallbacks are too, since a
+// machine with no worktrunk is one that would otherwise do nothing at all.
+func TestNextSliceCutsTheSlicesWorktree(t *testing.T) {
+	body, err := fs.ReadFile(FS(), "next-slice/SKILL.md")
+	if err != nil {
+		t.Fatalf("read the next-slice skill: %v", err)
+	}
+	text := string(body)
+	for _, want := range []string{
+		"wt switch --create slice/<slug> --no-cd",
+		"`slice/` followed by the name lowercased",
+		"If `wt` is not installed, or the working directory is not a git repository",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the next-slice skill does not say %q", want)
+		}
+	}
+}
+
 // A project keeps its whole plan on one page: a milestone is an option of the
 // slices' Milestone column, with no status of its own and no page to name it
 // by. The skills ship inside the binary, so an instruction that assumes
