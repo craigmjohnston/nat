@@ -748,6 +748,184 @@ Handed back for review, still held by Craig Johnston. The summary is on the slic
 	}
 }
 
+// A hand-back may say what the pull request should be opened with, and that
+// goes on the page under a heading of its own, beside the summary of what was
+// done: the board reads it back off the page whenever the user gets round to
+// approving the branch.
+func TestCompleteSliceRecordsAPRDescription(t *testing.T) {
+	api := completableAPI()
+	env, _ := completeEnv(api)
+
+	err := Run(context.Background(), []string{
+		"complete-slice", sliceID, "--branch", "slice/render-the-board",
+		"--summary", "Wrote the renderer.",
+		"--pr-description", "Render the board\n\nDraws the plan.\n\nWhy: it was a list.",
+	}, env)
+	if err != nil {
+		t.Fatalf("complete-slice: %v", err)
+	}
+
+	if len(api.appends) != 1 {
+		t.Fatalf("appends = %+v, want exactly one", api.appends)
+	}
+	want := []string{
+		"heading_3: Handed back",
+		"paragraph: Wrote the renderer.",
+		"heading_3: " + notion.PRDescriptionHeading,
+		"paragraph: Render the board",
+		"paragraph: Draws the plan.",
+		"paragraph: Why: it was a list.",
+	}
+	if got := blockTexts(t, api.appends[0].children); !equalLines(got, want) {
+		t.Errorf("blocks = %v, want %v", got, want)
+	}
+}
+
+// A description too long for an argument is piped in, the way a summary is —
+// and since there is one stdin, the summary has to be the flag then.
+func TestCompleteSliceReadsThePRDescriptionFromStdin(t *testing.T) {
+	api := completableAPI()
+	env, _ := completeEnv(api)
+	env.In = strings.NewReader("Render the board\n\nDraws the plan.\n")
+
+	err := Run(context.Background(), []string{
+		"complete-slice", sliceID, "--branch", "slice/render-the-board",
+		"--summary", "Wrote the renderer.", "--pr-description", "-",
+	}, env)
+	if err != nil {
+		t.Fatalf("complete-slice: %v", err)
+	}
+
+	want := []string{
+		"heading_3: Handed back",
+		"paragraph: Wrote the renderer.",
+		"heading_3: " + notion.PRDescriptionHeading,
+		"paragraph: Render the board",
+		"paragraph: Draws the plan.",
+	}
+	if got := blockTexts(t, api.appends[0].children); !equalLines(got, want) {
+		t.Errorf("blocks = %v, want %v", got, want)
+	}
+}
+
+// The two flags cannot both have stdin, so a `-` description with no --summary
+// beside it is a misuse rather than a summary read from the same stream.
+func TestCompleteSlicePRDescriptionFromStdinNeedsASummaryFlag(t *testing.T) {
+	api := completableAPI()
+	env, out := completeEnv(api)
+	env.In = strings.NewReader("Render the board\n")
+
+	err := Run(context.Background(), []string{
+		"complete-slice", sliceID, "--branch", "slice/x", "--pr-description", "-",
+	}, env)
+
+	var usage *UsageError
+	if !errors.As(err, &usage) {
+		t.Fatalf("err = %v, want a usage error", err)
+	}
+	if !strings.Contains(err.Error(), "--summary") {
+		t.Errorf("err = %q, want it to say the summary has to be given", err)
+	}
+	if len(api.appends) != 0 || len(api.updates) != 0 || out.Len() != 0 {
+		t.Errorf("writes %+v %+v, output %q; want none", api.appends, api.updates, out.String())
+	}
+}
+
+// A stdin that cannot be read is the failure itself rather than a misuse, and
+// it stops the command before anything is written.
+func TestCompleteSliceReportsAnUnreadablePRDescription(t *testing.T) {
+	api := completableAPI()
+	env, _ := completeEnv(api)
+	env.In = failingReader{}
+
+	err := Run(context.Background(), []string{
+		"complete-slice", sliceID, "--branch", "slice/x",
+		"--summary", "Done.", "--pr-description", "-",
+	}, env)
+
+	if !errors.Is(err, errRead) {
+		t.Fatalf("err = %v, want the read failure", err)
+	}
+	if !strings.Contains(err.Error(), "pull request description") {
+		t.Errorf("err = %q, want it to say what could not be read", err)
+	}
+	if len(api.appends) != 0 {
+		t.Errorf("wrote %+v, want nothing", api.appends)
+	}
+}
+
+// The other two stdin misuses: nothing to read from at all, and nothing on it.
+func TestCompleteSlicePRDescriptionWithNothingOnStdin(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		in   func(env *Env)
+		want string
+	}{
+		{"no stdin at all", func(env *Env) { env.In = nil }, "no stdin"},
+		{"nothing on it", func(env *Env) { env.In = strings.NewReader("  \n") }, "nothing on stdin"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			api := completableAPI()
+			env, _ := completeEnv(api)
+			tt.in(&env)
+
+			err := Run(context.Background(), []string{
+				"complete-slice", sliceID, "--branch", "slice/x",
+				"--summary", "Done.", "--pr-description", "-",
+			}, env)
+
+			var usage *UsageError
+			if !errors.As(err, &usage) {
+				t.Fatalf("err = %v, want a usage error", err)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("err = %q, want it to mention %q", err, tt.want)
+			}
+			if len(api.appends) != 0 {
+				t.Errorf("wrote %+v, want nothing", api.appends)
+			}
+		})
+	}
+}
+
+// A description only means something for the one ending that still has a pull
+// request to open. Every other ending is refused before anything is read, since
+// the text would otherwise be filed where nothing ever reads it.
+func TestCompleteSliceRefusesAPRDescriptionWithoutABranch(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"with a pull request", []string{"--pr", "https://github.com/x/y/pull/1"}, "--pr records one that is already open"},
+		{"with blocked", []string{"--blocked"}, "not for stopped work"},
+		{"with neither", nil, "needs the --branch it describes"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			api := completableAPI()
+			env, out := completeEnv(api)
+
+			args := append([]string{"complete-slice", sliceID, "--summary", "Done.",
+				"--pr-description", "Render the board"}, tt.args...)
+			err := Run(context.Background(), args, env)
+
+			var usage *UsageError
+			if !errors.As(err, &usage) {
+				t.Fatalf("err = %v, want a usage error", err)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("err = %q, want it to mention %q", err, tt.want)
+			}
+			if len(api.gets) != 0 || len(api.appends) != 0 || len(api.updates) != 0 {
+				t.Errorf("reads %v, writes %+v %+v; want none", api.gets, api.appends, api.updates)
+			}
+			if out.Len() != 0 {
+				t.Errorf("output = %q, want nothing", out.String())
+			}
+		})
+	}
+}
+
 // The three endings are three different ones, and asking for two at once is a
 // misuse: nothing is read and nothing is written.
 func TestCompleteSliceRefusesTwoEndingsAtOnce(t *testing.T) {

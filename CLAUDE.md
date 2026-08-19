@@ -111,11 +111,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   full-screen attach's is the user's own.
 - `internal/gh/` — the GitHub CLI, wrapped as thinly as it can be. Agents open
   no pull requests; they hand a slice back on a pushed branch, and the board's
-  approve action turns that branch into one with `gh pr create --head <branch>
-  --fill`, run in the slice's repo. `--fill` because the summary of the work is
-  already on the Notion page and a board key cannot answer a prompt; no
-  `--base`, because gh's own answer — the repository's default branch — is the
-  right one. `Runner` is the seam the tests replace, and it takes a working
+  approve action turns that branch into one with `gh pr create --head <branch>`,
+  run in the slice's repo, titled and bodied with the description the agent
+  recorded at hand-back and read back off the slice page. A hand-back that left
+  none — every one written before there was a flag for it — falls back to
+  `--fill`, which is what the key always did: nothing is ever asked for at a
+  prompt, since a board key cannot answer one. No `--base`, because gh's own
+  answer — the repository's default branch — is the right one. `Runner` is the seam the tests replace, and it takes a working
   directory, which is the whole reason it is not `agent.Runner`. A gh that ran
   and refused comes back as an `*ExitError` whose message is the first line of
   its stderr, since "a pull request for branch X already exists" is the entire
@@ -168,11 +170,18 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   prints the same brief — the command a board-launched agent runs, since it is
   pointed at a slice rather than choosing one —
   `nat complete-slice <slice> [--branch NAME] [--pr URL] [--summary TEXT]
-  [--blocked]`, which closes out a slice the configured user holds — three
+  [--pr-description TEXT|-] [--blocked]`, which closes out a slice the
+  configured user holds — three
   endings, and no two of them at once: `--branch` records the branch the work
   was pushed to and leaves the slice in progress, handed back for review, which
   is how an agent ends now; `--pr` records a pull request and marks the slice
-  Done; `--blocked` leaves it in progress with a note saying what stopped it —
+  Done; `--blocked` leaves it in progress with a note saying what stopped it.
+  `--pr-description` belongs to the first of those alone — the only ending with
+  a pull request still to open — and is filed on the page under a `PR
+  description` heading beside the `Handed back` note, where it outlives the
+  agent's session and is what the board's `p` opens the pull request with days
+  later. `-` reads it from stdin, so a description too long for an argument
+  gets in; there is one stdin, so `--summary` is then the flag —
   `nat release-slice <slice>`, which is the fourth ending and the only one that
   goes backwards: Status to `Todo`, the Assignee cleared and one line on the
   page saying so, for a session that ended without finishing at all,
@@ -452,9 +461,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   checkout works on them in place by symlinking them into `~/.claude/skills/`,
   which `nat setup` leaves alone rather than writing back through. /next-slice
   and `internal/agent`'s slice prompt end the same way and say so in the same
-  words: the branch pushed and handed back with `complete-slice --branch`, no
-  `gh` and no pull request, since opening one is the board's `p` after the user
-  has reviewed the branch.
+  words: the branch pushed and handed back with `complete-slice --branch`, its
+  `--pr-description` written ready to publish rather than as a report of the
+  session, and no `gh` and no pull request, since opening one is the board's `p`
+  after the user has reviewed the branch.
 
 ## Domain rules
 
@@ -497,7 +507,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   the board draws as a green `↑ review` chip so a hand-back does not read as
   another slice being worked. `complete-slice --branch` is what writes it: the
   branch recorded, the status left alone, and the note filed under a
-  `Handed back` heading rather than `Summary`. A branch is refused outright
+  `Handed back` heading rather than `Summary` — with whatever
+  `--pr-description` was given beside it under a `PR description` heading of its
+  own, in the same write, since the two are one hand-back. That is where the
+  description lives rather than only in the command that carried it, so it
+  outlasts the agent's session and the approve can happen whenever the review
+  does; `notion.PRDescriptionOf` is the read, taking the last such section, as a
+  slice handed back twice has one per hand-back. A branch is refused outright
   where `notion.ShapeOf` reads no `Branch` text column — a hand-back written
   nowhere is one lost — and refused before the note goes on, so the slice is
   left as it was. `v` on the board is how that wait is read — the branch's diff
@@ -512,8 +528,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `p` on the board is what ends that wait: it confirms on the row, runs `gh pr create` in the
   slice's repo from that branch, and writes the URL it gets back onto the `PR`
   property as it sets the status to `Done` — the one board key that reaches
-  outside Notion, and the only place a slice's PR is recorded from the TUI. The
-  page is re-read first for the type of its `Status` column, exactly as
+  outside Notion, and the only place a slice's PR is recorded from the TUI. What
+  it opens the pull request with is read off the slice page first: the last `PR
+  description` section, its first line the title and the rest the body, or
+  nothing at all for a hand-back that recorded none, which is gh's `--fill`
+  again. A read that fails stops the approve rather than falling back, since a
+  pull request opened under the wrong title is not one this key can open twice.
+  The page is re-read for the type of its `Status` column before the write, exactly as
   `complete-slice` does. gh refusing is a toast naming its own reason, not an
   error banner: the branch is still there and the slice is still handed back. A
   pull request opened and then not recorded is the one half-done state there is,

@@ -2,6 +2,7 @@ package skills
 
 import (
 	"io/fs"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -80,10 +81,16 @@ func TestNextSliceHandsTheBranchBack(t *testing.T) {
 			t.Errorf("the next-slice skill does not say %q", want)
 		}
 	}
-	if strings.Contains(text, "--pr") {
+	// `--pr` itself and not `--pr-description`, which is the hand-back's own
+	// flag: the description the board opens the pull request with.
+	if prEnding.MatchString(text) {
 		t.Error("the next-slice skill still offers the agent the --pr ending")
 	}
 }
+
+// prEnding matches the --pr flag alone, so the --pr-description one it prefixes
+// does not read as it.
+var prEnding = regexp.MustCompile(`--pr($|[^-\w])`)
 
 // A project keeps its whole plan on one page: a milestone is an option of the
 // slices' Milestone column, with no status of its own and no page to name it

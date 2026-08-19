@@ -43,16 +43,26 @@ the deliverable the brief asks for and link it in the summary below.
 
 On completion, record the outcome:
 
-    nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --branch <branch> --summary '<what you did>'
+    nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --branch <branch> --summary '<what you did>' \
+        --pr-description '<title line>
+
+<what the PR does and why>'
 
 That records the branch you pushed and hands the slice back for review,
 writing the summary onto its page: what you did, key decisions, follow-ups
 worth queueing. It leaves the slice in progress on purpose — approving it
 on the board is what opens the pull request and marks it Done.
 
+`--pr-description` is what that pull request is opened with: its first
+line is the title and the rest the body, so write it ready to publish —
+what the change does and why, for whoever reviews it on GitHub, not a
+report of your session. Pass `--pr-description -` to read it from stdin
+when it is too long for an argument, and give `--summary` as a flag then.
+
 Leave `--branch` off when the slice produced no branch — a docs or
-research slice — and it is marked Done there and then. A summary too long
-for one argument can be piped in on stdin instead of passing `--summary`.
+research slice — and it is marked Done there and then, with no pull
+request to describe. A summary too long for one argument can be piped in
+on stdin instead of passing `--summary`.
 
 If you cannot complete it, say what stopped you and leave the slice
 in progress, so nobody else picks it up on top of your work:

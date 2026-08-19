@@ -51,7 +51,10 @@ Tell the user which slice you claimed, with its Notion URL.
 Record the outcome with the slice's page ID or URL, as printed in the brief:
 
 ```
-nat complete-slice <slice> --branch <branch> --summary '<what you did>'
+nat complete-slice <slice> --branch <branch> --summary '<what you did>' \
+    --pr-description '<title line>
+
+<what the PR does and why>'
 ```
 
 That records the branch you pushed and hands the slice back for review, writing
@@ -59,9 +62,17 @@ the summary onto the slice page: what you did, key decisions, follow-ups worth
 queueing. It leaves the slice in progress deliberately — approving it on the
 board is what opens the pull request and marks it Done.
 
+`--pr-description` is what that pull request is opened with — its first line
+becomes the title and the rest the body — so write it ready to publish: what
+the change does and why, addressed to whoever reviews it on GitHub, not a
+report of your session. It is filed on the slice page under its own heading, so
+the user can approve the branch days later and still get it. Pass
+`--pr-description -` to read it from stdin when it is too long for an argument,
+and give `--summary` as a flag then, since stdin is taken.
+
 Leave `--branch` off when there was no branch — a docs or research slice — and
-the slice is marked Done there and then. Pipe the summary in on stdin when it
-is too long for an argument.
+the slice is marked Done there and then, with no pull request to describe. Pipe
+the summary in on stdin when it is too long for an argument.
 
 If you cannot complete the slice, leave it claimed and say what stopped you:
 

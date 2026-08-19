@@ -29,12 +29,13 @@ func (f *fakeRunner) Run(dir, name string, args ...string) (string, error) {
 	return f.out, f.err
 }
 
-// TestCreatePRRunsGh pins the invocation: gh, in the slice's repository, told
-// which branch to open the pull request from and to fill the title and body in
-// from its commits rather than asking.
+// TestCreatePRRunsGh pins the invocation for a hand-back that left no
+// description: gh, in the slice's repository, told which branch to open the
+// pull request from and to fill the title and body in from its commits rather
+// than asking.
 func TestCreatePRRunsGh(t *testing.T) {
 	runner := &fakeRunner{out: "https://github.test/craig/nat/pull/7\n"}
-	url, err := NewWithRunner(runner).CreatePR("/repos/nat", "slice/approve")
+	url, err := NewWithRunner(runner).CreatePR("/repos/nat", "slice/approve", "", "")
 	if err != nil {
 		t.Fatalf("CreatePR() = %v, want a pull request", err)
 	}
@@ -53,12 +54,42 @@ func TestCreatePRRunsGh(t *testing.T) {
 	}
 }
 
+// TestCreatePRWithADescription pins the other invocation: a hand-back that
+// recorded a description opens the pull request with it, title and body, and
+// --fill goes — there is nothing left for gh to fill in.
+func TestCreatePRWithADescription(t *testing.T) {
+	runner := &fakeRunner{out: "https://github.test/craig/nat/pull/7\n"}
+	_, err := NewWithRunner(runner).CreatePR("/repos/nat", "slice/approve",
+		"Open the PR with the recorded description", "What it does, and why.")
+	if err != nil {
+		t.Fatalf("CreatePR() = %v, want a pull request", err)
+	}
+	want := []string{"pr", "create", "--head", "slice/approve",
+		"--title", "Open the PR with the recorded description", "--body", "What it does, and why."}
+	if !reflect.DeepEqual(runner.args, want) {
+		t.Errorf("args = %v, want %v", runner.args, want)
+	}
+}
+
+// TestCreatePRWithATitleAlone covers a one-line description: gh is still told
+// the title, and the body it is given is the empty one there is.
+func TestCreatePRWithATitleAlone(t *testing.T) {
+	runner := &fakeRunner{out: "https://github.test/craig/nat/pull/7\n"}
+	if _, err := NewWithRunner(runner).CreatePR("/repos/nat", "slice/approve", "One line", ""); err != nil {
+		t.Fatalf("CreatePR() = %v, want a pull request", err)
+	}
+	want := []string{"pr", "create", "--head", "slice/approve", "--title", "One line", "--body", ""}
+	if !reflect.DeepEqual(runner.args, want) {
+		t.Errorf("args = %v, want %v", runner.args, want)
+	}
+}
+
 // TestCreatePRTakesTheLastURL covers gh printing something before the URL: the
 // pull request is the last URL on stdout, not the first line of it.
 func TestCreatePRTakesTheLastURL(t *testing.T) {
 	runner := &fakeRunner{out: "https://github.test/craig/nat/tree/slice/approve\n" +
 		"https://github.test/craig/nat/pull/7\n\n"}
-	url, err := NewWithRunner(runner).CreatePR("/repos/nat", "slice/approve")
+	url, err := NewWithRunner(runner).CreatePR("/repos/nat", "slice/approve", "", "")
 	if err != nil {
 		t.Fatalf("CreatePR() = %v, want a pull request", err)
 	}
@@ -71,7 +102,7 @@ func TestCreatePRTakesTheLastURL(t *testing.T) {
 // record: there is no pull request to write down, so it is a failure here.
 func TestCreatePRWithoutAURL(t *testing.T) {
 	runner := &fakeRunner{out: "Creating pull request…\n"}
-	_, err := NewWithRunner(runner).CreatePR("/repos/nat", "slice/approve")
+	_, err := NewWithRunner(runner).CreatePR("/repos/nat", "slice/approve", "", "")
 	if err == nil || !strings.Contains(err.Error(), "no pull request URL") {
 		t.Errorf("CreatePR() = %v, want it to report the missing URL", err)
 	}
@@ -82,7 +113,7 @@ func TestCreatePRWithoutAURL(t *testing.T) {
 func TestCreatePRFailure(t *testing.T) {
 	refused := &ExitError{Code: 1, Stderr: "\na pull request for branch \"slice/approve\" already exists\nUsage: gh pr create\n"}
 	runner := &fakeRunner{err: refused}
-	_, err := NewWithRunner(runner).CreatePR("/repos/nat", "slice/approve")
+	_, err := NewWithRunner(runner).CreatePR("/repos/nat", "slice/approve", "", "")
 	if !errors.Is(err, error(refused)) {
 		t.Fatalf("CreatePR() = %v, want gh's own error", err)
 	}
