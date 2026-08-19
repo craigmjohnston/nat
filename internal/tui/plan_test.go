@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
@@ -452,5 +453,103 @@ func TestPlanFormBusyNote(t *testing.T) {
 	f := newPlanForm(DefaultStyles().FormTheme, config.AgentModel{})
 	if got := busyNoteOf(f); got != "Launching the planning agent…" {
 		t.Errorf("busyNoteOf = %q, want the planning launch note", got)
+	}
+}
+
+// sizedPlanApp returns an app of a given window size with the planning form
+// open, started the way the runtime starts one.
+func sizedPlanApp(t *testing.T, width, height int) (*App, *PlanForm) {
+	t.Helper()
+	app, _, _ := launchApp(t)
+	app.Update(tea.WindowSizeMsg{Width: width, Height: height})
+	feed(t, app, press(app, "w"))
+	f, ok := app.form.(*PlanForm)
+	if !ok {
+		t.Fatalf("form = %T, want the planning form", app.form)
+	}
+	return app, f
+}
+
+// requestFills says whether the request field takes every line the modal has
+// left it: the fields' share of the form's height is everything but huh's own
+// key hints, and on a form of one field that is the request field alone.
+func requestFills(t *testing.T, a *App, f *PlanForm) {
+	t.Helper()
+	_, height := a.formSize()
+	want := height - planFormFooterHeight
+	if got := lipgloss.Height(f.text.View()); got != want {
+		t.Errorf("request field is %d lines of a %d-line modal, want %d:\n%s",
+			got, height, want, f.text.View())
+	}
+}
+
+func TestPlanFormRequestFillsTheModal(t *testing.T) {
+	for _, size := range []struct{ width, height int }{{80, 24}, {120, 44}} {
+		app, f := sizedPlanApp(t, size.width, size.height)
+
+		requestFills(t, app, f)
+		if f.lines <= planFormLines {
+			t.Errorf("%dx%d: request field is %d lines, want it grown past the default of %d",
+				size.width, size.height, f.lines, planFormLines)
+		}
+	}
+}
+
+func TestPlanFormRefitsWhenTheWindowChanges(t *testing.T) {
+	app, f := sizedPlanApp(t, 120, 44)
+	tall := f.lines
+
+	app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	if f.lines >= tall {
+		t.Errorf("request field is %d lines in the shorter window, want fewer than %d", f.lines, tall)
+	}
+	requestFills(t, app, f)
+}
+
+// The model pair takes its room out of the request field's, so a form that has
+// been asked to configure the launch still ends inside the modal.
+func TestPlanFormLeavesTheModelPairItsRoom(t *testing.T) {
+	app, f := sizedPlanApp(t, 120, 44)
+	alone := f.lines
+
+	planConfigure(t, app)
+
+	if f.lines >= alone {
+		t.Errorf("request field is %d lines beside the model pair, want fewer than %d", f.lines, alone)
+	}
+	_, height := app.formSize()
+	got := lipgloss.Height(f.text.View()) + planFormFooterHeight
+	for _, field := range f.rest {
+		got += lipgloss.Height(field.View()) + planFormGapHeight
+	}
+	if got != height {
+		t.Errorf("form is %d lines of a %d-line modal, want the modal filled exactly", got, height)
+	}
+}
+
+// A modal with less room than the fields want is not a reason to draw a
+// textarea of no lines at all.
+func TestPlanFormKeepsALineOfRequestInATinyModal(t *testing.T) {
+	f := newPlanForm(DefaultStyles().FormTheme, config.AgentModel{})
+	f.SetSize(30, 3)
+
+	if f.lines != 1 {
+		t.Errorf("request field is %d lines, want the one line the floor leaves it", f.lines)
+	}
+}
+
+func TestPlanFormGoldenAtEachSize(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		width, height int
+	}{
+		{"plan-form-short", 80, 24},
+		{"plan-form-tall", 120, 44},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			app, _ := sizedPlanApp(t, tt.width, tt.height)
+			golden(t, tt.name, app.View().Content)
+		})
 	}
 }
