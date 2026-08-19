@@ -46,7 +46,7 @@ func TestDiffViewedCollapsesTheBox(t *testing.T) {
 	if !strings.HasPrefix(head, boxTopLeft+viewedMark) || !strings.HasSuffix(head, boxTopRight) {
 		t.Errorf("header row = %q, want it marked viewed and closed", head)
 	}
-	if !strings.Contains(head, "internal/tui/board.go") || !strings.Contains(head, "+1 -1") {
+	if !strings.Contains(head, "internal/tui/board.go") || !strings.Contains(head, "+3 -3") {
 		t.Errorf("header row = %q, want the path and the tally still on it", head)
 	}
 	if width := len([]rune(head)); width != d.diffWidth() {
@@ -81,7 +81,7 @@ func TestDiffViewedFoldsTheFileTheCursorIsIn(t *testing.T) {
 	// Unfolding puts it back on the first line of the file's diff, which is
 	// where the box is read from.
 	d.Update(keyPress("enter"))
-	if got := d.lines[d.line]; got != (bodyLine{file: 1, line: 0}) {
+	if got := d.lines[d.line]; got != (bodyLine{file: 1, line: firstShown(d.files[1])}) {
 		t.Errorf("cursor at %+v, want the first line of the file it unfolded", got)
 	}
 }
@@ -96,7 +96,7 @@ func TestDiffCursorMovesOverACollapsedFile(t *testing.T) {
 	d.Update(keyPress("p"))
 
 	// Down through the rest of the first file, then onto the fold and past it.
-	for range len(d.files[0].Lines) - 1 {
+	for range len(shownLines(d.files[0])) - 1 {
 		d.Update(keyPress("j"))
 	}
 	d.Update(keyPress("j"))
@@ -104,7 +104,7 @@ func TestDiffCursorMovesOverACollapsedFile(t *testing.T) {
 		t.Fatalf("cursor at %+v, want the collapsed file's header row", got)
 	}
 	d.Update(keyPress("j"))
-	if got := d.lines[d.line]; got != (bodyLine{file: 2, line: 0}) {
+	if got := d.lines[d.line]; got != (bodyLine{file: 2, line: firstShown(d.files[2])}) {
 		t.Errorf("cursor at %+v, want the first line of the file after the fold", got)
 	}
 	d.Update(keyPress("k"))
@@ -129,7 +129,10 @@ func TestDiffJumpsLandOnACollapsedHeader(t *testing.T) {
 	if got := d.lines[d.line]; got != (bodyLine{file: 1, line: boxHeaderRow}) {
 		t.Errorf("cursor at %+v, want the collapsed file's header row", got)
 	}
-	if got, want := d.vp.YOffset(), d.tops[1]; got != want {
+	// The fold leaves the body barely longer than the band, so the viewport
+	// holds at its own bottom rather than scrolling the header row to the top.
+	bottom := strings.Count(d.vp.GetContent(), "\n") + 1 - diffTestHeight
+	if got, want := d.vp.YOffset(), min(d.tops[1], bottom); got != want {
 		t.Errorf("scrolled to line %d, want the box's own row, %d", got, want)
 	}
 	d.Update(keyPress("n"))

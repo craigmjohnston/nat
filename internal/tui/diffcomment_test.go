@@ -131,6 +131,7 @@ func TestDiffCommentsAreOrderedByFileAndLine(t *testing.T) {
 // was started in.
 func TestDiffSelectionMarksARange(t *testing.T) {
 	d := newTestDiff()
+	shown := shownLines(d.files[0])
 	d.Update(keyPress("j"))
 	if !d.ToggleSelect() || !d.Selecting() {
 		t.Fatal("v should mark the cursor line as one end of a range")
@@ -138,11 +139,11 @@ func TestDiffSelectionMarksARange(t *testing.T) {
 	d.Update(keyPress("j"))
 	d.Update(keyPress("j"))
 	path, start, span, text, ok := d.Selection()
-	if !ok || path != firstFile || start != 1 || span != 3 || text != "" {
+	if !ok || path != firstFile || start != shown[1] || span != 3 || text != "" {
 		t.Errorf("Selection() = %q %d %d %q %v, want three lines of the first file",
 			path, start, span, text, ok)
 	}
-	if !d.selected(rowAt(d, 0, 1)) || d.selected(rowAt(d, 0, 4)) {
+	if !d.selected(rowAt(d, 0, shown[1])) || d.selected(rowAt(d, 0, shown[0])) {
 		t.Error("the marked range should be drawn as selected, and nothing beyond it")
 	}
 
@@ -204,7 +205,7 @@ func TestDiffSelectionAcrossFilesIsOneFile(t *testing.T) {
 	d.anchor, d.anchored = 0, true
 	d.line = d.offsets[1]
 	path, start, span, _, ok := d.Selection()
-	if !ok || path != "internal/tui/diff.go" || start != 0 || span != 1 {
+	if !ok || path != "internal/tui/diff.go" || start != firstShown(d.files[1]) || span != 1 {
 		t.Errorf("Selection() = %q %d %d %v, want the cursor's own line alone", path, start, span, ok)
 	}
 }
@@ -333,7 +334,7 @@ func TestCommentKeyRecordsAComment(t *testing.T) {
 	}
 	// The box floats over the diff rather than the board, so the change being
 	// read is still there behind it.
-	if !strings.Contains(xansi.Strip(app.scrimView()), "diff --git") {
+	if !strings.Contains(xansi.Strip(app.scrimView()), "lines := b.rows") {
 		t.Error("the backdrop should be the diff the box was opened over")
 	}
 
@@ -358,7 +359,7 @@ func TestCommentKeyRecordsAComment(t *testing.T) {
 // how a comment is removed.
 func TestCommentKeyEmptiedTakesItBack(t *testing.T) {
 	app, _ := commentApp(t)
-	app.diff.SetComment(firstFile, 0, 1, "x")
+	app.diff.SetComment(firstFile, firstShown(app.diff.files[0]), 1, "x")
 
 	press(app, "c")
 	// The box opens on what was said, so taking it back is deleting it.
@@ -583,7 +584,7 @@ func TestDiffSelectionAnchoredOnASeparator(t *testing.T) {
 	d.anchor, d.anchored = d.offsets[1]-1, true
 	d.line = d.offsets[1]
 	d.Update(keyPress("j"))
-	if got := d.lines[d.line]; got != (bodyLine{file: 1, line: 1}) {
+	if got := d.lines[d.line]; got != (bodyLine{file: 1, line: shownLines(d.files[1])[1]}) {
 		t.Errorf("cursor at %+v, want it free to move under a mark that is on no file", got)
 	}
 }
@@ -596,7 +597,7 @@ func TestDiffCursorWithNoBandToDrawIn(t *testing.T) {
 	d.SetFiles("origin/main", git.ParseFiles(sampleDiff))
 	d.Update(keyPress("j"))
 	d.Update(keyPress("f"))
-	if want := rowAt(&d, 0, 1); d.line != want {
+	if want := rowAt(&d, 0, shownLines(d.files[0])[1]); d.line != want {
 		t.Errorf("line = %d, want the cursor moved once, to %d, and left alone by the scroll",
 			d.line, want)
 	}
@@ -608,7 +609,7 @@ func TestDiffScrollThatMovesNothing(t *testing.T) {
 	d := newTestDiff()
 	d.Update(keyPress("j"))
 	d.Update(keyPress("b"))
-	if d.line != rowAt(d, 0, 1) || d.vp.YOffset() != 0 {
+	if d.line != rowAt(d, 0, shownLines(d.files[0])[1]) || d.vp.YOffset() != 0 {
 		t.Errorf("cursor at %d, view at %d, want both left alone", d.line, d.vp.YOffset())
 	}
 }

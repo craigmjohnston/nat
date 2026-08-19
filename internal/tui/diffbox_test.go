@@ -46,7 +46,7 @@ func TestDiffBoxesEachFileSeparately(t *testing.T) {
 			tops, bottoms, len(d.files))
 	}
 	if want := "internal/tui/board.go ─"; !strings.Contains(rows[0], want) ||
-		!strings.Contains(rows[0], "+1 -1") {
+		!strings.Contains(rows[0], "+3 -3") {
 		t.Errorf("first header row = %q, want the path and its tally", rows[0])
 	}
 }
@@ -66,7 +66,7 @@ func rowHolding(t *testing.T, rows []string, text string) string {
 
 // TestDiffBoxNumbersTheLines covers the gutter down the left of a box: the old
 // and new numbers of every line the hunk headers cover, one side alone for a
-// line only one side has, and neither for a header or a hunk marker.
+// line only one side has, and neither for a line no hunk covers.
 func TestDiffBoxNumbersTheLines(t *testing.T) {
 	d := newTestDiff()
 	rows := bodyRows(d)
@@ -75,8 +75,7 @@ func TestDiffBoxNumbersTheLines(t *testing.T) {
 		holds string
 		want  string
 	}{
-		{"diff --git", ""},                   // a header line is at no line number at all
-		{"@@ -12,7", ""},                     // nor is a hunk marker
+		{"new file mode", ""},                // a line above the first hunk is at no number at all
 		{"lines := b.rows", "12 12"},         // context: the same line on both sides
 		{"return strings.Join(lines", "13"},  // removed: the number it had in the base
 		{"return strings.Join(fitRow", "13"}, // added: the one it has on the branch
