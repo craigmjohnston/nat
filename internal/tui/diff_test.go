@@ -20,7 +20,8 @@ const (
 
 // sampleDiff is a diff with one of every line shape the screen colours: a file
 // header, a hunk, context, additions, removals, a created file and a binary one
-// — and enough files that the list scrolls and the jumps have somewhere to go.
+// — a file of two hunks, so the break between them has somewhere to be drawn,
+// and enough files that the list scrolls and the jumps have somewhere to go.
 const sampleDiff = `diff --git a/internal/tui/board.go b/internal/tui/board.go
 index 1111111..2222222 100644
 --- a/internal/tui/board.go
@@ -30,6 +31,14 @@ index 1111111..2222222 100644
 -	return strings.Join(lines, "\n")
 +	return strings.Join(fitRow(lines), "\n")
  }
+@@ -30,5 +30,5 @@ func (b Board) rowLines() int {
+ 	total := 0
+ 	for _, r := range b.rows {
+ 		total += len(r.lines)
+-	}
+-	return total
++	}
++	return total + 1
 diff --git a/internal/tui/diff.go b/internal/tui/diff.go
 new file mode 100644
 index 0000000..3333333
@@ -67,6 +76,23 @@ func newTestDiff() *Diff {
 func rowAt(d *Diff, file, line int) int {
 	return d.rowOf(bodyLine{file: file, line: line}, -1)
 }
+
+// shownLines is the lines of a file's section the body draws, by their index in
+// it: the render strips git's own headers and its hunk markers, so the first
+// line on screen is no longer the section's line 0.
+func shownLines(f git.File) []int {
+	var out []int
+	for i, role := range lineRoles(f.Lines) {
+		if role == roleDraw {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// firstShown is the first line of a file's section the body draws, which is
+// where a jump into that file leaves the line cursor.
+func firstShown(f git.File) int { return shownLines(f)[0] }
 
 // footerRow is the row that closes a file's box, which is the row before the
 // next box opens — or the last row of the body, for the last file.
@@ -283,8 +309,16 @@ func TestDiffBodyIsTheWrappedLines(t *testing.T) {
 	d := newTestDiff()
 	want, wrapped := 2*len(d.files), 0
 	for _, f := range d.files {
-		for _, line := range f.Lines {
-			rows := len(wrapLine(line, d.textWidth(numberWidth(d.lineNumbers()))))
+		for j, role := range lineRoles(f.Lines) {
+			if role != roleDraw {
+				// A dropped line takes no row at all, and a hunk break takes the
+				// one row the header it stands in for would have.
+				if role == roleBreak {
+					want++
+				}
+				continue
+			}
+			rows := len(wrapLine(f.Lines[j], d.textWidth(numberWidth(d.lineNumbers()))))
 			want += rows
 			if rows > 1 {
 				wrapped++
@@ -310,7 +344,8 @@ func TestDiffShowsTheTailOfALongLine(t *testing.T) {
 	width := d.textWidth(numberWidth(d.lineNumbers()))
 	long := 0
 	for _, f := range d.files {
-		for _, line := range f.Lines {
+		for _, j := range shownLines(f) {
+			line := f.Lines[j]
 			rows := wrapLine(line, width)
 			if len(rows) == 1 {
 				continue
@@ -386,7 +421,7 @@ func TestDiffJumpsSurviveAResize(t *testing.T) {
 			if d.cursor != want {
 				t.Fatalf("at %d columns, %d jumps reach file %d, want %d", width, want, d.cursor, want)
 			}
-			if got := d.lines[d.line]; got != (bodyLine{file: want, line: 0}) {
+			if got := d.lines[d.line]; got != (bodyLine{file: want, line: firstShown(d.files[want])}) {
 				t.Errorf("at %d columns, the cursor is at %+v, want the first line of file %d",
 					width, got, want)
 			}
@@ -557,12 +592,13 @@ func TestDiffListMarksABinaryFile(t *testing.T) {
 // nothing there to comment on.
 func TestDiffCursorMovesByLine(t *testing.T) {
 	d := newTestDiff()
-	if got := d.lines[d.line]; got != (bodyLine{file: 0, line: 0}) {
+	shown := shownLines(d.files[0])
+	if got := d.lines[d.line]; got != (bodyLine{file: 0, line: shown[0]}) {
 		t.Fatalf("cursor at %+v, want the first line of the first file", got)
 	}
 	first := d.line
 	d.Update(keyPress("j"))
-	if want := rowAt(d, 0, 1); d.line != want {
+	if want := rowAt(d, 0, shown[1]); d.line != want {
 		t.Errorf("line = %d after j, want the row the second line starts on, %d", d.line, want)
 	}
 	d.Update(keyPress("k"))
@@ -573,12 +609,12 @@ func TestDiffCursorMovesByLine(t *testing.T) {
 
 	// The last line of the first file, then one more: the border rows between
 	// the two boxes are stepped over onto the first line of the next.
-	last := len(d.files[0].Lines) - 1
-	for range last {
+	last := shown[len(shown)-1]
+	for range len(shown) - 1 {
 		d.Update(keyPress("j"))
 	}
 	d.Update(keyPress("j"))
-	if got := d.lines[d.line]; got != (bodyLine{file: 1, line: 0}) {
+	if got := d.lines[d.line]; got != (bodyLine{file: 1, line: firstShown(d.files[1])}) {
 		t.Errorf("cursor at %+v, want the first line of the second file", got)
 	}
 	d.Update(keyPress("k"))
@@ -640,11 +676,11 @@ func TestDiffCursorScrolls(t *testing.T) {
 func TestDiffJumpTakesTheCursorWithIt(t *testing.T) {
 	d := newTestDiff()
 	d.Update(keyPress("n"))
-	if got := d.lines[d.line]; got != (bodyLine{file: 1, line: 0}) {
+	if got := d.lines[d.line]; got != (bodyLine{file: 1, line: firstShown(d.files[1])}) {
 		t.Errorf("cursor at %+v after n, want the top of the second file", got)
 	}
 	d.Update(keyPress("p"))
-	if got := d.lines[d.line]; got != (bodyLine{file: 0, line: 0}) {
+	if got := d.lines[d.line]; got != (bodyLine{file: 0, line: firstShown(d.files[0])}) {
 		t.Errorf("cursor at %+v after p, want the top of the first file", got)
 	}
 }

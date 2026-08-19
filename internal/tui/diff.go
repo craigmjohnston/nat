@@ -154,8 +154,9 @@ type Diff struct {
 
 	// tops[i] is the line of the rendered body file i's box opens on — its
 	// header row, which is what a file jump scrolls to — and offsets[i] the
-	// first line of that box the cursor rests on: the line under the header, or
-	// the header itself where the file is collapsed and that row is all it has.
+	// first line of that box the cursor rests on: the first line of the file's
+	// diff the body draws, or the header itself where the file is collapsed or
+	// draws no line at all and that row is all it has.
 	// Both are rebuilt with the body, since a resize moves every one of them.
 	tops    []int
 	offsets []int
@@ -219,10 +220,16 @@ type bodyLine struct{ file, line, seg int }
 // box, under the last line of the run they were left on, but they are no line of
 // the file either — the cursor steps over them the way it steps over a box's
 // borders, and there is nothing on one to comment on or to fold.
+//
+// A fourth is the break drawn where one hunk ends and the next begins, in place
+// of the header the render hides: it stands for the lines that were skipped
+// rather than being any of them, and is no more a place to put a cursor or a
+// comment than a border is.
 const (
 	boxHeaderRow  = -1
 	boxFooterRow  = -2
 	boxCommentRow = -3
+	boxBreakRow   = -4
 )
 
 // isBoxRow reports whether a body row's line index is one of a box's own two
@@ -713,7 +720,10 @@ func (d *Diff) scrollToCursor() {
 	}
 	reveal, end := d.line, d.line
 	if d.line < len(d.lines) {
-		if d.lines[d.line].line == 0 {
+		// The first row of a file's section rather than its line 0: the lines
+		// above it are git's own headers, which the body does not draw. A
+		// collapsed file's header row is not one — it is the row itself.
+		if at := d.lines[d.line]; at.line >= 0 && d.line == d.offsets[at.file] {
 			reveal = max(d.line-1, 0)
 		}
 		end = d.lineEnd(d.line)
@@ -799,6 +809,13 @@ func (d Diff) listRows() int { return max(d.height-1, 0) }
 // as it needs, so the tail of it — which is often what changed — is on screen
 // rather than cut off.
 //
+// What git wrote about the file rather than in it goes altogether
+// ([lineRoles]): the box's header row names the path and its tally, the gutter
+// carries the hunks' numbers, and a hunk header leaves the break that says
+// lines were skipped. It is the render alone that skips them — a body row is
+// still a line of the section git wrote, and the numbers and the lines a
+// comment quotes are read off the whole of it.
+//
 // Where each file's box opens and where every body row came from are recorded
 // after the wrapping rather than before, since that is what a jump and the line
 // cursor are numbers into. The cursor and any range mark are put back on the
@@ -818,26 +835,41 @@ func (d *Diff) render() {
 
 	// segs[i][j] is file i's line j broken into the rows it takes at this width,
 	// worked out once: the body rows are numbered off it and then drawn from it.
-	// notes is the same for the pending comments, by the line each is drawn under.
+	// roles[i] is which of those lines are drawn at all, and notes the same for
+	// the pending comments, by the line each is drawn under.
 	segs := make([][][]string, len(d.files))
+	roles := make([][]lineRole, len(d.files))
 	notes := d.commentRows(textWidth)
 	tops, offsets := make([]int, len(d.files)), make([]int, len(d.files))
 	var from []bodyLine
 	for i, f := range d.files {
 		tops[i] = len(from)
 		from = append(from, bodyLine{file: i, line: boxHeaderRow})
+		// The header row until a line of the file is drawn: a section that is
+		// nothing but git's own headers has no line for the cursor to rest on,
+		// and the row that names it is the whole of it on screen.
+		offsets[i] = tops[i]
 		if d.viewedFile(i) {
 			// A collapsed file is its header row and nothing else: no diff lines
 			// to walk, and no footer row, since there is no interior to close.
-			offsets[i] = tops[i]
 			continue
 		}
-		offsets[i] = len(from)
+		roles[i] = lineRoles(f.Lines)
 		segs[i] = make([][]string, len(f.Lines))
+		placed := false
 		for j, line := range f.Lines {
-			segs[i][j] = wrapLine(line, textWidth)
-			for s := range segs[i][j] {
-				from = append(from, bodyLine{file: i, line: j, seg: s})
+			switch roles[i][j] {
+			case roleDrop:
+			case roleBreak:
+				from = append(from, bodyLine{file: i, line: boxBreakRow})
+			default:
+				segs[i][j] = wrapLine(line, textWidth)
+				if !placed {
+					offsets[i], placed = len(from), true
+				}
+				for s := range segs[i][j] {
+					from = append(from, bodyLine{file: i, line: j, seg: s})
+				}
 			}
 			for s := range notes[commentKey{path: f.Path, start: j}] {
 				from = append(from, bodyLine{file: i, line: boxCommentRow, seg: s})
@@ -859,17 +891,23 @@ func (d *Diff) render() {
 			continue
 		}
 		for j, line := range f.Lines {
-			style := d.lineStyle(line)
-			marked := d.marks[commentKey{path: f.Path, start: j}]
-			for s, text := range segs[i][j] {
-				// Only the row the line starts on carries its numbers: a
-				// continuation numbered again would read as a line of its own.
-				was, now := nums[i].was[j], nums[i].now[j]
-				if s > 0 {
-					was, now = 0, 0
+			switch roles[i][j] {
+			case roleDrop:
+			case roleBreak:
+				lines = append(lines, d.boxBreak(inner))
+			default:
+				style := d.lineStyle(line)
+				marked := d.marks[commentKey{path: f.Path, start: j}]
+				for s, text := range segs[i][j] {
+					// Only the row the line starts on carries its numbers: a
+					// continuation numbered again would read as a line of its own.
+					was, now := nums[i].was[j], nums[i].now[j]
+					if s > 0 {
+						was, now = 0, 0
+					}
+					lines = append(lines, d.boxLine(text, style, was, now, numWidth, inner,
+						marked, d.selected(len(lines))))
 				}
-				lines = append(lines, d.boxLine(text, style, was, now, numWidth, inner,
-					marked, d.selected(len(lines))))
 			}
 			for _, text := range notes[commentKey{path: f.Path, start: j}] {
 				lines = append(lines, d.commentLine(text, numWidth, inner))
@@ -1013,18 +1051,21 @@ func (d Diff) contentLine(line int) int {
 
 // stop reports whether the cursor rests on the body row at i, which every
 // caller has already held inside the body: the first row of a line of a file's
-// diff, or the header row of a collapsed file, which is the only row that file
-// has and so the only place a cursor moving through it can be.
+// diff, or the header row of a file that has no lines drawn — a collapsed one,
+// or one whose whole section was git's own headers — since that row is then the
+// only place in the file a cursor moving through it can be. It is what offsets
+// names, which is why the two are asked the same question here.
 //
 // The rows a wrapped line continues onto are not among them: they are the tail
 // of the line above, and a cursor that stopped on one would offer to comment on
-// the same line twice.
+// the same line twice. Neither is the break between two hunks, nor a comment's
+// own rows: there is nothing on any of them to say anything about.
 func (d Diff) stop(i int) bool {
 	at := d.lines[i]
 	if at.seg > 0 {
 		return false
 	}
-	return at.line >= 0 || (at.line == boxHeaderRow && d.viewedFile(at.file))
+	return at.line >= 0 || (at.line == boxHeaderRow && d.offsets[at.file] == i)
 }
 
 // commentMarks is which of a file's lines a pending comment covers, so the

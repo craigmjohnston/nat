@@ -20,6 +20,10 @@ const (
 	boxBottomRight = "╯"
 	boxSide        = "│"
 	boxRule        = "─"
+	// boxBreakRule is the rule the break between two hunks is drawn with: one
+	// cell wide like every other border character here, and dashed, so it reads
+	// as a gap in the file rather than an edge of the box.
+	boxBreakRule = "┈"
 )
 
 // viewedMark is what the header row of a file marked viewed opens with, in the
@@ -137,6 +141,16 @@ func (d Diff) boxLine(text string, style lipgloss.Style, was, now, numWidth, inn
 	}
 	return d.boxRow(boxSide, gutter+" "+d.styles.DiffCount.Render(nums)+
 		style.Render(text), boxSide, inner)
+}
+
+// boxBreak draws the row that stands where a hunk header was: a dashed rule
+// across the box's interior, so a jump in the gutter's numbers is not the only
+// sign that the lines between two hunks were skipped. It is drawn in the colour
+// the hunk header itself was, since it says exactly what that line said — and
+// dashed rather than solid, so it is not read as a box's own edge.
+func (d Diff) boxBreak(inner int) string {
+	return d.boxRow(boxSide, d.styles.DiffHunk.Render(strings.Repeat(boxBreakRule, inner)),
+		boxSide, inner)
 }
 
 // commentLine draws one row of a pending comment, inside the box of the file it

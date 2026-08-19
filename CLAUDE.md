@@ -241,13 +241,22 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   the line they were on rather than the row it used to be at.
   `diffbox.go` is the shape the body takes: one bordered box per
   file, GitHub-fashion — a header row naming the path with its ± tally, the
-  file's diff verbatim inside it, a footer row closing it, and the old and new
+  file's diff inside it, a footer row closing it, and the old and new
   line numbers of every line down the left, read off the same hunk headers
   `diffref.go` names a comment's lines by, so the gutter and the prompt are one
-  answer. The number columns are as wide as the widest number anywhere in the
+  answer. What git wrote about the file rather than in it is not drawn at all
+  (`diffnoise.go`): the `diff --git` line, the `index` line and the `---`/`+++`
+  pair are what the header row already says, and a hunk header is what the
+  gutter already carries — the first of a file goes silently and every later one
+  leaves a dashed break across the box, so the numbers jumping is not the only
+  sign that lines were skipped. Only the render skips them: parsing keeps every
+  line, so the numbers, the lines a comment quotes and the anchors a re-read
+  finds them by are all read off the section as git wrote it, and a body row
+  that is a line at all is still one of its lines. The number columns are as wide as the widest number anywhere in the
   diff, so code starts at the same column in every box; a box's own two rows
   belong to no file's section, which is what the line cursor steps over — bar
-  the header row of a collapsed file, which is all that file has — and what a
+  the header row of a file with no line drawn under it, collapsed or all
+  headers, which is all that file has — and what a
   jump scrolls to, since the row that names the file is worth the line it
   costs. A binary or otherwise described file keeps the one line git wrote for it
   inside its box like any other. The file list beside it is what `n`/`p` move
