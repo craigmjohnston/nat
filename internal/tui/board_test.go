@@ -447,7 +447,7 @@ func TestBoardRendersAsATable(t *testing.T) {
 }
 
 // blockedBoard is testProject with the Todo slice waiting on the one in
-// progress: "Info view" draws the blocked chip and every other row — "Domain
+// progress: "Info view" draws the blocked mark and every other row — "Domain
 // model" among them, which waits on a slice already Done — draws none.
 func blockedBoard() *Board {
 	b := NewBoard(DefaultStyles())
@@ -465,16 +465,76 @@ func TestBoardMarksABlockedSlice(t *testing.T) {
 
 	golden(t, "board-blocked", b.View())
 
-	// The chip is on the blocked row and on no other: a slice whose
+	// The mark is on the blocked row and on no other: a slice whose
 	// dependencies are all Done is not waiting on anything.
 	for _, line := range strings.Split(ansi.ReplaceAllString(b.View(), ""), "\n") {
-		if want := strings.Contains(line, "Info view"); strings.Contains(line, "⊘ blocked") != want {
-			t.Errorf("the blocked chip is on the wrong row:\n%s", line)
+		if want := strings.Contains(line, "Info view"); strings.Contains(line, blockedGlyph) != want {
+			t.Errorf("the blocked mark is on the wrong row:\n%s", line)
 		}
+	}
+
+	// The row's own text recedes with it, so a row that cannot be worked reads
+	// as such without the mark having to be found.
+	grey := b.styles.Blocked.Render("Info view")
+	if !strings.Contains(b.View(), grey) {
+		t.Errorf("a blocked row is not greyed out:\n%s", b.View())
 	}
 }
 
-// A blocked row is a row like any other as the board narrows: the chip gives
+// The star of an agent live on a slice takes the marker cell, which is the one
+// the blocked mark would have had: the two cannot both be true of a slice, and
+// the running agent is the more urgent reading where a plan has made them so.
+func TestBoardMarksALiveBlockedSliceWithItsStar(t *testing.T) {
+	b := blockedBoard()
+	b.SetLive(map[string]string{"s5": "nat-s5"})
+	b.Pulse(3)
+
+	view := ansi.ReplaceAllString(b.View(), "")
+	if strings.Contains(view, blockedGlyph) {
+		t.Errorf("the blocked mark took the cell the star wants:\n%s", view)
+	}
+	if !strings.Contains(view, pulseFrames[3]) {
+		t.Errorf("the star of the live agent is missing:\n%s", view)
+	}
+}
+
+// A blocked slice sinks to the bottom of its milestone on the board and
+// nowhere else: the rows are reordered, and the plan they were flattened from
+// is left exactly as Notion holds it.
+func TestBoardSinksABlockedSliceToTheBottomOfItsMilestone(t *testing.T) {
+	b := NewBoard(DefaultStyles())
+	b.hideDone = false
+	b.SetWidth(60)
+	p := testProject()
+	p.Slices[3].DependsOn = []string{"s5"} // Board screen waits on Info view, below it
+	b.SetProject(&p)
+
+	want := []string{
+		"Done section",
+		"M2: Board", "Domain model", "Info view", "Board screen",
+		"M3: Mutations",
+		domain.UnassignedName, "Stray",
+	}
+	if got := rowNames(&b); !equal(got, want) {
+		t.Errorf("rows = %q, want the blocked slice last of its milestone: %q", got, want)
+	}
+	if names := sliceNames(b.groups[1].Slices); !equal(names,
+		[]string{"Domain model", "Board screen", "Info view"}) {
+		t.Errorf("slices = %q, want the plan's own order untouched", names)
+	}
+}
+
+// sliceNames is a group's slices in the order the plan holds them, which is
+// what the sinking must leave alone.
+func sliceNames(slices []domain.Slice) []string {
+	names := make([]string, len(slices))
+	for i, s := range slices {
+		names[i] = s.Name
+	}
+	return names
+}
+
+// A blocked row is a row like any other as the board narrows: the mark gives
 // way with the rest of it rather than pushing anything off the board.
 func TestBoardWrapsABlockedRow(t *testing.T) {
 	b := blockedBoard()
@@ -483,7 +543,7 @@ func TestBoardWrapsABlockedRow(t *testing.T) {
 	view := b.View()
 	golden(t, "board-blocked-narrow", view)
 	flat := strings.Join(strings.Fields(ansi.ReplaceAllString(view, "")), " ")
-	for _, want := range []string{"Info view", "⊘ blocked"} {
+	for _, want := range []string{"Info view", blockedGlyph} {
 		if !strings.Contains(flat, want) {
 			t.Errorf("the narrow board is missing %q:\n%s", want, view)
 		}

@@ -944,3 +944,35 @@ func TestAppMigratesAnOldProjectAndSaysSo(t *testing.T) {
 		t.Errorf("toast = %q, want the migration reported", got)
 	}
 }
+
+// While the cursor is on a slice waiting on unfinished work, the status line
+// names each slice it waits on and where on the board that slice is filed: the
+// mark on the row says only that there is a wait, and this is what the wait is
+// on without a key having to be pressed for it.
+func TestStatusLineNamesWhatTheSelectedRowWaitsOn(t *testing.T) {
+	app, _, _ := launchApp(t)
+	// Info view waits on the slice in progress and on the stray, whose
+	// milestone is not in the plan, so the board files it under Unassigned.
+	app.project.Slices[4].DependsOn = []string{"s4", "s6"}
+	app.board.SetProject(app.project)
+	app.board.cursor = rowTodoSlice
+
+	want := "blocked by Board: Board screen, Unassigned: Stray"
+	if got := bar(app); !strings.Contains(got, want) {
+		t.Errorf("status line = %q, want %q on it", got, want)
+	}
+
+	// A row waiting on nothing has nothing to report.
+	app.board.cursor = rowClaimedSlice
+	if got := bar(app); strings.Contains(got, "blocked by") {
+		t.Errorf("status line = %q, want nothing about a row that waits on nothing", got)
+	}
+
+	// Neither has a screen over the board: it is about something other than
+	// the row underneath it.
+	app.board.cursor = rowTodoSlice
+	app.screen = screenHelp
+	if got := bar(app); strings.Contains(got, "blocked by") {
+		t.Errorf("status line = %q, want the reading only on the board itself", got)
+	}
+}

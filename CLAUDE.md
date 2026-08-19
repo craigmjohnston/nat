@@ -501,11 +501,21 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   refuses it by name and lists what it waits on, before it claims anything. The
   board honours it too: it indexes the blocked slices of the plan whenever one
   is loaded (`Board.Blockers`, off the whole plan, since a dependency is another
-  row of the same board), draws a muted `⊘ blocked` chip on such a row — first
-  of the row's chips, since it says the row cannot be worked at all — and
-  refuses `l` on one with a status-bar toast naming what it waits on and how far
-  off each is. A toast rather than an error banner: nothing has gone wrong, and
-  the slice is still there to launch once its dependencies land.
+  row of the same board) and draws such a row as one there is nothing to do
+  about yet — a `⊘` in the row's marker cell, the one the agent star takes
+  (`Board.marker`, and the star wins the cell in the case the two are somehow
+  both true), the row's own text in the muted Blocked colour, and the row itself
+  sunk to the bottom of its milestone (`appendGroup`, keeping the plan's order
+  among the sunk ones). The sinking is the drawn rows and nothing else: the view
+  order in Notion is untouched, so `next-slice` and `PlanOrder` hand work out
+  exactly as they did. What the wait is on is the status band's, not the row's:
+  while a blocked row is selected, the board's own screen reads `blocked by
+  <milestone>: <slice>` for each blocker (`Board.BlockedBy` and
+  `App.blockedIndicator`), first of the standing indicators, since it is the
+  only one about the row the user is on. `l` on such a row is refused with a
+  status-bar toast naming what it waits on and how far off each is. A toast
+  rather than an error banner: nothing has gone wrong, and the slice is still
+  there to launch once its dependencies land.
 - A project keeps its whole plan on one page: no Milestones database, and a
   `Milestone` **select** on the Slices data source whose options are the
   milestones, in plan order. `domain.MilestonesFromOptions` maps them —

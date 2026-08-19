@@ -1644,9 +1644,11 @@ func (a *App) statusLeft(width int) string {
 		}
 	}
 	// The indicators are standing readings rather than news, so they take what
-	// the message leaves rather than the other way round. Freshness goes first
-	// of the two: how current the board is says something on every board, where
-	// the wishlist count only says something on some.
+	// the message leaves rather than the other way round. What the selected row
+	// is waiting on goes first of them: it is the only one about the row the
+	// user is on, so it is the one worth the room when there is not enough for
+	// them all. Freshness goes next: how current the board is says something on
+	// every board, where the wishlist count only says something on some.
 	content := chip
 	if message := a.statusMessage(room); message != "" {
 		if content != "" {
@@ -1654,9 +1656,34 @@ func (a *App) statusLeft(width int) string {
 		}
 		content += message
 	}
-	content, joined := a.withIndicator(content, a.freshnessIndicator(), width, false)
+	content, joined := a.withIndicator(content, a.blockedIndicator(), width, false)
+	content, joined = a.withIndicator(content, a.freshnessIndicator(), width, joined)
 	content, _ = a.withIndicator(content, a.wishlistIndicator(), width, joined)
 	return content
+}
+
+// blockedIndicator is what the status line says about the row the cursor is on
+// when it is a slice waiting on unfinished work: each slice it waits on, named
+// by its milestone and its own name, which is where the user would go to find
+// it. The mark on the row says only that there is a wait; this is what it is
+// on, without a key having to be pressed for it.
+//
+// Only the board's own screen has a selected row worth reporting — a screen
+// over it is about something else — and a slice waiting on nothing has nothing
+// to report.
+func (a *App) blockedIndicator() string {
+	if a.screen != screenBoard {
+		return ""
+	}
+	s, ok := a.board.SelectedSlice()
+	if !ok {
+		return ""
+	}
+	refs := a.board.BlockedBy(s)
+	if len(refs) == 0 {
+		return ""
+	}
+	return a.styles.Blocked.Render("blocked by " + strings.Join(refs, ", "))
 }
 
 // withIndicator puts a standing indicator beside what the status line already

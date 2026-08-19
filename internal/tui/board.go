@@ -392,6 +392,12 @@ func (b *Board) rebuild() {
 
 // appendGroup flattens one group onto the rows: its own line, then its slices
 // if it is expanded. A group not seen before starts at its default fold state.
+//
+// The blocked slices of a group sink to the bottom of it, keeping the plan's
+// order among themselves: what can be worked now is what the milestone is read
+// for, and a slice waiting on another is not it. That is a fact about the rows
+// this board draws and nothing else — the plan in Notion is untouched, so
+// next-slice and the plan order it reads hand work out exactly as they did.
 func (b *Board) appendGroup(i int) {
 	g := b.groups[i]
 	key := groupKey(g)
@@ -403,12 +409,19 @@ func (b *Board) appendGroup(i int) {
 		return
 	}
 	hide := b.hideDone && !doneGroup(g)
+	var sunk []row
 	for j, s := range g.Slices {
 		if hide && s.Status == domain.SliceDone {
 			continue
 		}
-		b.rows = append(b.rows, row{kind: rowSlice, group: i, slice: j})
+		r := row{kind: rowSlice, group: i, slice: j}
+		if len(b.Blockers(s)) > 0 {
+			sunk = append(sunk, r)
+			continue
+		}
+		b.rows = append(b.rows, r)
 	}
+	b.rows = append(b.rows, sunk...)
 }
 
 // hiddenDone is how many of a group's slices the hide-done toggle is keeping
@@ -535,6 +548,38 @@ func (b Board) SelectedSlice() (domain.Slice, bool) {
 // say the same thing about the same slice.
 func (b Board) Blockers(s domain.Slice) []domain.Slice {
 	return b.blocked[domain.NormaliseID(s.ID)]
+}
+
+// BlockedBy names each slice s is waiting on the way the board files it — the
+// milestone it is under, then the slice itself — which is where the user would
+// go to find it, and nothing at all for a slice waiting on none. The
+// milestone's inline numbering goes the way the title column drops it, so the
+// two names read as one reference rather than three parts.
+//
+// It is the status line's reading of what the mark on the row can only say
+// there is; see [App.blockedIndicator].
+func (b Board) BlockedBy(s domain.Slice) []string {
+	blockers := b.Blockers(s)
+	if len(blockers) == 0 {
+		return nil
+	}
+	refs := make([]string, len(blockers))
+	for i, blocker := range blockers {
+		refs[i] = b.groupTitleOf(blocker) + ": " + blocker.Name
+	}
+	return refs
+}
+
+// groupTitleOf is the title of the group the board draws s in: its milestone's,
+// or the Unassigned group's for a slice filed under a milestone the plan does
+// not hold — which is exactly where such a slice is drawn.
+func (b Board) groupTitleOf(s domain.Slice) string {
+	for _, g := range b.groups {
+		if g.Milestone != nil && g.Milestone.ID == s.MilestoneID {
+			return groupTitle(g)
+		}
+	}
+	return domain.UnassignedName
 }
 
 // blockedSlices indexes a plan's blocked slices by ID: those waiting on slices
@@ -1079,27 +1124,27 @@ func (b Board) renderDoneSection(marker string, selected bool, l boardLayout) []
 		fitRow(b.width, head, blanks(head), name, paint(selected, b.styles.Faint, agg)))
 }
 
-// renderSlice draws one slice: its status chip, its name, the star of an agent
-// live on it — see [Board.star] — the slices it is still waiting on, whether it
-// has been handed back for review, who holds it, and the pull request it
-// produced.
+// renderSlice draws one slice: its status chip, its name, its marker — the star
+// of an agent live on it, or the mark of one waiting on unfinished work, see
+// [Board.marker] — whether it has been handed back for review, who holds it,
+// and the pull request it produced.
 //
 // The PR chip comes last of the chips, so it is the first of them to give way
 // as the board narrows: the slice's own state is worth more of a cramped row
-// than a link out of the app. The blocked chip comes first of them, since it
-// says the row cannot be worked at all, and the review chip next, since it says
-// the row is done being worked.
+// than a link out of the app. The review chip comes first of the rest, since it
+// says the row is done being worked.
+//
+// A blocked slice is drawn in the muted text a blocked row takes, so the whole
+// row recedes rather than only carrying a mark: what can be worked is what the
+// board is read for, and a row that cannot reads as such at a glance.
 //
 // A row too wide for the board wraps rather than shedding any of its chips,
 // and the status chip carries on down the wrapped lines as a bare strip of its
 // colour, so the status reads as a band beside the whole row.
 func (b Board) renderSlice(head string, s domain.Slice, selected bool) []string {
 	var chips []string
-	if star, live := b.star(s.ID, selected); live {
-		chips = append(chips, star)
-	}
-	if len(b.Blockers(s)) > 0 {
-		chips = append(chips, b.blockedChip(selected))
+	if mark, ok := b.marker(s, selected); ok {
+		chips = append(chips, mark)
 	}
 	if s.HandedBack() {
 		chips = append(chips, b.reviewChip(selected))
@@ -1110,7 +1155,11 @@ func (b Board) renderSlice(head string, s domain.Slice, selected bool) []string 
 	if s.PRURL != "" {
 		chips = append(chips, b.prChip(s.PRURL, selected))
 	}
-	name := rowName{text: s.Name, style: painter(selected, lipgloss.NewStyle())}
+	style := lipgloss.NewStyle()
+	if len(b.Blockers(s)) > 0 {
+		style = b.styles.Blocked
+	}
+	name := rowName{text: s.Name, style: painter(selected, style)}
 	return b.finishRow(selected, fitRow(b.width,
 		head+b.sliceChip(s.Status, selected),
 		blanks(head)+b.sliceStrip(s.Status, selected),
@@ -1157,21 +1206,36 @@ func (b Board) sliceStrip(s domain.SliceStatus, selected bool) string {
 	return st.Render(" ")
 }
 
-// blockedChip is the badge a slice waiting on unfinished slices carries. It
-// names no dependency: the row has no space for a list, and the slices it waits
-// on are rows of this same board — the launch key is what says which they are.
-// The glyph leads, so the chip still reads as a refusal on a row drawn without
-// its colour, which is every selected row.
-func (b Board) blockedChip(selected bool) string {
-	return paint(selected, b.styles.Blocked, "⊘ blocked")
+// blockedGlyph is the mark a slice waiting on unfinished slices carries in the
+// row's marker cell. It is a glyph and not a word: it names no dependency —
+// the cell is one column, and the slices it waits on are rows of this same
+// board — and it has to read on a selected row, which is drawn without any
+// chip's colour, so the shape carries it alone.
+const blockedGlyph = "⊘"
+
+// marker is the one cell a slice row marks its own state in, and whether it has
+// anything to mark at all: the star of an agent live on the slice, or the mark
+// of one waiting on unfinished work. The two share the cell because they cannot
+// both be true of a slice — a blocked slice is not one the launch key will
+// start an agent on — and where a plan has somehow made them both true the star
+// wins, since an agent running is the more urgent of the two and the row's
+// muted text goes on saying the slice is blocked.
+func (b Board) marker(s domain.Slice, selected bool) (string, bool) {
+	if star, live := b.star(s.ID, selected); live {
+		return star, true
+	}
+	if len(b.Blockers(s)) > 0 {
+		return paint(selected, b.styles.Blocked, blockedGlyph), true
+	}
+	return "", false
 }
 
 // reviewChip is the badge a slice handed back on a branch carries: work an
 // agent has finished and nobody has reviewed, which would otherwise read as
 // just another slice in progress. It names no branch — the row has no space for
-// one, and the approve key is what acts on it — and the glyph leads for the same
-// reason the blocked one's does: a selected row is drawn without the chip's
-// colour, and the shape has to carry it alone.
+// one, and the approve key is what acts on it — and the glyph leads for the
+// reason the blocked mark is a glyph at all: a selected row is drawn without
+// the chip's colour, and the shape has to carry it alone.
 func (b Board) reviewChip(selected bool) string {
 	return paint(selected, b.styles.Review, "↑ review")
 }
