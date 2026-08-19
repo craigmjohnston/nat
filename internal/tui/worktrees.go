@@ -12,14 +12,16 @@ import (
 	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
-// Worktrees is what the launch flow needs of worktrunk: where a slice's branch
-// is already checked out, and a worktree for it where it is not. It is an
-// interface for the reason [AgentLauncher] is one — so a launch can be driven
-// without the binary — and it is two calls rather than one because a relaunched
-// slice wants the worktree it was working in, not a second one.
+// Worktrees is what the board needs of worktrunk: where a slice's branch is
+// already checked out, a worktree for it where it is not, and that worktree
+// taken away again once the work has become a pull request. It is an interface
+// for the reason [AgentLauncher] is one — so a launch can be driven without the
+// binary — and looking up is its own call rather than part of creating because
+// a relaunched slice wants the worktree it was working in, not a second one.
 type Worktrees interface {
 	Path(dir, branch string) (string, error)
 	Create(dir, branch string) (string, error)
+	Remove(dir, branch string) error
 }
 
 // newWorktrees is the edge, held as a variable so the tests can stand in for

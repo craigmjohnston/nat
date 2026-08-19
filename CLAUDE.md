@@ -260,7 +260,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   refused is a toast too and launches nothing at all, because an agent placed
   half way is one working somewhere nobody chose. All of it is resolved inside
   the launch command rather than before it: cutting a worktree runs the
-  repository's own hooks, and that is the goroutine to be slow in.
+  repository's own hooks, and that is the goroutine to be slow in. Its
+  `Worktrees` seam is the board's whole dealing with worktrunk rather than the
+  launch's alone: `Remove` is on it too, for the approve key that takes the
+  worktree away again once the work has become a pull request.
   `approve.go` is the `p` key, the board's one action that reaches outside
   Notion — the domain rule on `Branch` says what it does and why gh's failures
   are toasts. `diff.go` and `diffflow.go` are `v`, the key that is answered with
@@ -562,7 +565,18 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   error banner: the branch is still there and the slice is still handed back. A
   pull request opened and then not recorded is the one half-done state there is,
   and running the key again says so rather than opening a second one, since gh
-  refuses a branch that already has one.
+  refuses a branch that already has one. Once that write has landed the slice's
+  worktree goes with it — `Worktrees.Remove` on the branch the slice was handed
+  back on, in the same repo gh ran in, and only then, since a slice still handed
+  back is one whose work is still being reviewed. The branch is read off the
+  slice rather than derived the way the launch derives it: what the agent pushed
+  is what its worktree is on, whatever it was cut as. A removal that fails — a dirty worktree, a slice that
+  never had one, a machine with no worktrunk — is one line in the log and
+  nothing else: the pull request is open and the slice is Done whatever became
+  of the checkout, and worktrunk's own rules mean a refusal never costs any
+  work. gh stays in the shared checkout, so the removal cannot strand it, and
+  `R` deliberately keeps its worktree — the work so far is exactly what the
+  next session wants.
 - Slices may carry a `Repo` override; otherwise the project default working
   dir from local config applies.
 - A slice may declare the slices it waits on: `Depends on`, a single-property

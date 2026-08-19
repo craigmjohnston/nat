@@ -23,13 +23,16 @@ type worktreeCall struct{ dir, branch string }
 type fakeWorktrees struct {
 	// existing are the branches already checked out somewhere, by path.
 	existing map[string]string
-	// pathErr is what a branch not in existing answers with, and createErr what
-	// the create that follows fails with; both nil is worktrunk working.
+	// pathErr is what a branch not in existing answers with, createErr what the
+	// create that follows fails with, and removeErr what a removal is refused
+	// with; all nil is worktrunk working.
 	pathErr   error
 	createErr error
+	removeErr error
 
 	looks   []worktreeCall
 	creates []worktreeCall
+	removes []worktreeCall
 }
 
 var _ Worktrees = (*fakeWorktrees)(nil)
@@ -51,6 +54,11 @@ func (f *fakeWorktrees) Create(dir, branch string) (string, error) {
 		return "", f.createErr
 	}
 	return filepath.Join(dir+"-worktrees", branch), nil
+}
+
+func (f *fakeWorktrees) Remove(dir, branch string) error {
+	f.removes = append(f.removes, worktreeCall{dir, branch})
+	return f.removeErr
 }
 
 // repoDir is a directory that looks enough like a git checkout for the launch
