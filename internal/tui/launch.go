@@ -62,11 +62,18 @@ type (
 	// agentLaunchedMsg reports a finished launch: the slice its session was
 	// started for — with whether its pane should be shown straight away — or
 	// the error that stopped it.
+	//
+	// toast is what the status bar has to say about where the session was put:
+	// the reason a worktree was not made, or the failure that stopped one being
+	// made at all. A message carrying that failure names no session, since
+	// nothing was launched.
 	agentLaunchedMsg struct {
 		slice   domain.Slice
 		session string
 		attach  bool
 		err     error
+		toast   string
+		sev     severity
 	}
 	// liveSessionsMsg carries the slices with an agent running, each mapped to
 	// the session it is running in, or the read that failed instead.
@@ -255,7 +262,7 @@ func (f *LaunchForm) save(a *App) tea.Cmd {
 // configured one, so this is that project.
 func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, attach bool) tea.Cmd {
 	project, _ := a.activeProject()
-	return launchAgent(a.launcher, agent.PromptContext{
+	return launchAgent(a.launcher, newWorktrees(), agent.PromptContext{
 		Slice:        s,
 		Project:      project,
 		WorkingDir:   expandHome(strings.TrimSpace(workdir)),
@@ -273,11 +280,23 @@ func trimModel(m config.AgentModel) config.AgentModel {
 	}
 }
 
-// launchAgent writes the agent's prompt out and starts the detached session
-// that reads it. Nothing in Notion is touched: the agent claims its own slice,
-// which is what keeps the claim honest when two of them race.
-func launchAgent(l AgentLauncher, c agent.PromptContext, m config.AgentModel, attach bool) tea.Cmd {
+// launchAgent gives the agent a worktree, writes its prompt out and starts the
+// detached session that reads it. Nothing in Notion is touched: the agent
+// claims its own slice, which is what keeps the claim honest when two of them
+// race.
+//
+// The worktree is resolved here rather than by the caller because it runs
+// worktrunk, which cuts a checkout and runs the repository's hooks over it: a
+// launch is already the slow key, and this is the goroutine it is slow in. Its
+// answer is the working directory the prompt is written with and the session is
+// started in, so the two never disagree about where the agent is.
+func launchAgent(l AgentLauncher, w Worktrees, c agent.PromptContext, m config.AgentModel, attach bool) tea.Cmd {
 	return func() tea.Msg {
+		p := placeAgent(w, c.WorkingDir, c.Slice)
+		if !p.ok {
+			return agentLaunchedMsg{toast: p.toast, sev: p.sev}
+		}
+		c.WorkingDir, c.Branch, c.Repo = p.dir, p.branch, p.repo
 		session := agent.SessionName(c.Slice.ID)
 		file, err := agent.WritePromptFile(session, agent.Prompt(c))
 		if err != nil {
@@ -286,7 +305,7 @@ func launchAgent(l AgentLauncher, c agent.PromptContext, m config.AgentModel, at
 		if err := l.Launch(session, c.WorkingDir, file, c.Slice.ID, m); err != nil {
 			return agentLaunchedMsg{err: err}
 		}
-		return agentLaunchedMsg{slice: c.Slice, session: session, attach: attach}
+		return agentLaunchedMsg{slice: c.Slice, session: session, attach: attach, toast: p.toast, sev: p.sev}
 	}
 }
 
@@ -510,18 +529,33 @@ func (a *App) liveLoaded(msg liveSessionsMsg) tea.Cmd {
 // attaching is the default, so the session is shown straight away — t toggles
 // it from there. A launch sent to the background is confirmed instead, naming
 // the key that attaches, so the session is not left running unannounced.
+//
+// The toast about where the session was put goes up either way, since it is not
+// about the launch succeeding: it is the difference between an agent on a
+// branch of its own and one in the checkout the user is also working in. A
+// launch that named no session is one the worktree stopped, and the toast is
+// the whole report.
 func (a *App) agentLaunched(msg agentLaunchedMsg) (tea.Model, tea.Cmd) {
 	a.busy = false
 	if msg.err != nil {
 		a.note, a.err = "", msg.err
 		return a, nil
 	}
+	var cmds []tea.Cmd
+	if msg.toast != "" {
+		cmds = append(cmds, a.showToast(msg.toast, msg.sev))
+	}
+	if msg.session == "" {
+		a.note = ""
+		return a, tea.Batch(cmds...)
+	}
 	if !msg.attach {
-		confirm := a.showConfirm(fmt.Sprintf("Launched %s for %q — t attaches.", msg.session, msg.slice.Name), sevSuccess)
-		return a, tea.Batch(confirm, a.refreshLive())
+		cmds = append(cmds, a.showConfirm(fmt.Sprintf("Launched %s for %q — t attaches.", msg.session, msg.slice.Name), sevSuccess))
+		return a, tea.Batch(append(cmds, a.refreshLive())...)
 	}
 	a.note = ""
-	return a, tea.Batch(a.openAgentViewer(msg.slice.ID, msg.slice.Name, msg.session), a.refreshLive())
+	cmds = append(cmds, a.openAgentViewer(msg.slice.ID, msg.slice.Name, msg.session), a.refreshLive())
+	return a, tea.Batch(cmds...)
 }
 
 // expandHome expands a leading ~ to the user's home directory. tmux is handed
