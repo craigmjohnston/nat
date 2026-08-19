@@ -214,10 +214,21 @@ type bodyLine struct{ file, line, seg int }
 // section: there is nothing on either to put a comment on. The header row is
 // still a place the cursor rests where its file is collapsed, since it is then
 // the only row that file has.
+//
+// A pending comment's own rows carry a third of them: they are drawn inside the
+// box, under the last line of the run they were left on, but they are no line of
+// the file either — the cursor steps over them the way it steps over a box's
+// borders, and there is nothing on one to comment on or to fold.
 const (
-	boxHeaderRow = -1
-	boxFooterRow = -2
+	boxHeaderRow  = -1
+	boxFooterRow  = -2
+	boxCommentRow = -3
 )
+
+// isBoxRow reports whether a body row's line index is one of a box's own two
+// rows, which is what a click folds a file by — as against a line of the file's
+// diff or a comment drawn under one.
+func isBoxRow(line int) bool { return line == boxHeaderRow || line == boxFooterRow }
 
 // NewDiff returns an empty diff screen, waiting for a branch to be read into it.
 func NewDiff(styles Styles) Diff {
@@ -807,7 +818,9 @@ func (d *Diff) render() {
 
 	// segs[i][j] is file i's line j broken into the rows it takes at this width,
 	// worked out once: the body rows are numbered off it and then drawn from it.
+	// notes is the same for the pending comments, by the line each is drawn under.
 	segs := make([][][]string, len(d.files))
+	notes := d.commentRows(textWidth)
 	tops, offsets := make([]int, len(d.files)), make([]int, len(d.files))
 	var from []bodyLine
 	for i, f := range d.files {
@@ -825,6 +838,9 @@ func (d *Diff) render() {
 			segs[i][j] = wrapLine(line, textWidth)
 			for s := range segs[i][j] {
 				from = append(from, bodyLine{file: i, line: j, seg: s})
+			}
+			for s := range notes[commentKey{path: f.Path, start: j}] {
+				from = append(from, bodyLine{file: i, line: boxCommentRow, seg: s})
 			}
 		}
 		from = append(from, bodyLine{file: i, line: boxFooterRow})
@@ -854,6 +870,9 @@ func (d *Diff) render() {
 				}
 				lines = append(lines, d.boxLine(text, style, was, now, numWidth, inner,
 					marked, d.selected(len(lines))))
+			}
+			for _, text := range notes[commentKey{path: f.Path, start: j}] {
+				lines = append(lines, d.commentLine(text, numWidth, inner))
 			}
 		}
 		lines = append(lines, d.boxBottom(inner))
@@ -943,9 +962,11 @@ func (d *Diff) ToggleViewed() bool {
 
 // ToggleViewedAt folds the box a body line belongs to, for the click that
 // landed on one of that box's own two rows, and reports whether it was one of
-// them: a click on a line of the diff itself is not a fold.
+// them: a click on a line of the diff itself is not a fold, and neither is one
+// on a comment drawn under those lines — it is inside the box rather than part
+// of it.
 func (d *Diff) ToggleViewedAt(line int) bool {
-	if line < 0 || line >= len(d.lines) || d.lines[line].line >= 0 {
+	if line < 0 || line >= len(d.lines) || !isBoxRow(d.lines[line].line) {
 		return false
 	}
 	d.cursor = d.lines[line].file
@@ -1019,6 +1040,41 @@ func (d Diff) commentMarks() map[commentKey]bool {
 		}
 	}
 	return marks
+}
+
+// commentRows is what each pending comment is drawn as, by the file and line it
+// is drawn under: its text broken into the rows it takes at the width a line of
+// the diff has, so a comment is read in place rather than hunted for behind a
+// mark in the gutter.
+//
+// A comment goes under the last of the lines it was left on, which is where a
+// remark about a run of code belongs; two comments ending on the same line are
+// drawn in the order they start, so the rows read down the file the way the
+// prompt does.
+//
+// Every line of the text is wrapped in its own right, since the box is what the
+// user typed and a paragraph break is theirs to make.
+func (d Diff) commentRows(width int) map[commentKey][]string {
+	if len(d.comments) == 0 {
+		return nil
+	}
+	under := map[commentKey][]comment{}
+	for _, c := range d.comments {
+		key := commentKey{path: c.path, start: c.start + len(c.lines) - 1}
+		under[key] = append(under[key], c)
+	}
+	rows := make(map[commentKey][]string, len(under))
+	for key, cs := range under {
+		slices.SortFunc(cs, func(a, b comment) int { return cmp.Compare(a.start, b.start) })
+		var out []string
+		for _, c := range cs {
+			for _, para := range strings.Split(c.text, "\n") {
+				out = append(out, wrapLine(para, width)...)
+			}
+		}
+		rows[key] = out
+	}
+	return rows
 }
 
 // selected reports whether a body row is under the cursor, or inside the range

@@ -183,10 +183,13 @@ func TestDiffBoxWithoutRoomForTheTally(t *testing.T) {
 func TestDiffBoxMarksACommentedLine(t *testing.T) {
 	d := newTestDiff()
 	d.SetComment(firstFile, 5, 1, "this line")
+	// The first marked row is the line itself: the comment's own rows are drawn
+	// under it and carry the mark too.
 	var marked string
 	for _, row := range bodyRows(d) {
 		if strings.Contains(row, commentMark) {
 			marked = row
+			break
 		}
 	}
 	if !strings.Contains(marked, "lines := b.rows") {
