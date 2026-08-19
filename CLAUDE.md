@@ -554,6 +554,20 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   status-bar toast naming what it waits on and how far off each is. A toast
   rather than an error banner: nothing has gone wrong, and the slice is still
   there to launch once its dependencies land.
+- Everything the board knows about a slice in flight adds up to one state
+  (`domain.StateOf`, `internal/domain/state.go`): working, waiting, blocked,
+  ready to push, awaiting review — or none at all for a slice that is not in
+  progress, since Todo and Done are in no flight to have got anywhere in. The
+  order the facts are tested in is the order they are true in: a live agent
+  wins over everything on the page, because it is the only reading taken fresh
+  — an agent running on a handed-back branch is the review going back to it —
+  then work that is out (a `Branch`, a `PR`) is what there is to do something
+  about, then the wait on a dependency, and what is left is a slice in progress
+  that nothing is happening on and nothing has come out of. The agent is passed
+  as `domain.AgentPresence`, domain's own saying of the board's two readings —
+  the live map and the activity watcher — as one value, since `internal/agent`
+  and `internal/tui` both import this package and neither's enum could be
+  reached from here. Nothing draws it yet.
 - A project keeps its whole plan on one page: no Milestones database, and a
   `Milestone` **select** on the Slices data source whose options are the
   milestones, in plan order. `domain.MilestonesFromOptions` maps them —
