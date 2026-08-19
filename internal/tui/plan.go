@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
@@ -37,7 +38,13 @@ type PlanForm struct {
 	form  *huh.Form
 	theme huh.Theme
 
-	request   string
+	// The request field and the fields under it are held so the room the modal
+	// leaves can be measured rather than guessed at — see fitRequest.
+	request string
+	text    *huh.Text
+	lines   int
+	rest    []huh.Field
+
 	model     config.AgentModel
 	configure bool
 
@@ -65,24 +72,76 @@ func newPlanForm(theme huh.Theme, m config.AgentModel) *PlanForm {
 // typed rides through it — the fields are bound to the form's own values, and
 // the text field is seeded from the request as it stands.
 func (f *PlanForm) build() {
-	fields := []huh.Field{
-		// A text field rather than an input, so a longer request can be
-		// composed: enter still submits, and shift+enter breaks the line —
-		// see formKeyMap. No external editor — the board's pane is not for handing to
-		// $EDITOR mid-form.
-		huh.NewText().
-			Title("What do you want to workshop?").
-			Description("Goes into the agent's prompt; empty starts a plain session.").
-			ExternalEditor(false).
-			Value(&f.request),
-	}
+	// A text field rather than an input, so a longer request can be
+	// composed: enter still submits, and shift+enter breaks the line —
+	// see formKeyMap. No external editor — the board's pane is not for handing to
+	// $EDITOR mid-form.
+	f.text = huh.NewText().
+		Title("What do you want to workshop?").
+		Description("Goes into the agent's prompt; empty starts a plain session.").
+		ExternalEditor(false).
+		Value(&f.request)
+	f.setLines(planFormLines)
+	f.rest = nil
 	if f.configure {
-		fields = append(fields, modelFields(&f.model)...)
+		f.rest = modelFields(&f.model)
 	}
 	// A rebuilt form takes the room the one it replaces was given; the first
 	// build has none yet and huh ignores a size of nothing, which is the app
 	// sizing it a moment later.
-	f.form = newForm(f.theme, huh.NewGroup(fields...)).WithWidth(f.width).WithHeight(f.height)
+	f.form = newForm(f.theme, huh.NewGroup(append([]huh.Field{f.text}, f.rest...)...)).
+		WithWidth(f.width).WithHeight(f.height)
+	f.fitRequest()
+}
+
+// planFormLines is the request field's height before there is a modal to
+// measure — huh's own default for a text field, said out loud so the fitting
+// below has a number it knows the field is actually drawn at.
+const planFormLines = 5
+
+// planFormFooterHeight is the key hints huh draws under the fields, out of the
+// height the form was given: the one line of the modal the fields do not get.
+const planFormFooterHeight = 1
+
+// planFormGapHeight is the blank line huh's field separator leaves between one
+// field and the next.
+const planFormGapHeight = 1
+
+// setLines gives the request field a height, and remembers it: a rendered
+// textarea says nothing about how many lines it was asked for, and the fitting
+// below subtracts it back off to learn what the title and description cost.
+func (f *PlanForm) setLines(lines int) {
+	f.lines = lines
+	f.text.Lines(lines)
+}
+
+// fitRequest grows the request field into whatever the modal has left once the
+// rest of the form has taken its share, so the box the brief is typed into is
+// as tall as the modal allows rather than a fixed few lines in a dialog that is
+// mostly empty. It measures rather than counts: what the title and description
+// wrap to at this width, and what the model pair takes when the config key has
+// revealed it, are huh's business and not worth restating here.
+//
+// With no window measured yet there is nothing to fit to — huh's own default
+// stands, and the app sizes the form a moment later.
+func (f *PlanForm) fitRequest() {
+	if f.width <= 0 || f.height <= 0 {
+		return
+	}
+	// huh shrinks a field taller than the height its group was given, behind
+	// the form's back: the request field is given its own height again before
+	// anything is measured off it, so what comes out below is the field lines
+	// counts rather than whatever huh cut it down to.
+	f.setLines(f.lines)
+	room := f.height - planFormFooterHeight
+	for _, field := range f.rest {
+		room -= lipgloss.Height(field.View()) + planFormGapHeight
+	}
+	// Everything the request field draws around its textarea: the title, the
+	// description, whatever the two of them wrap to at this width, and the
+	// field's own frame.
+	chrome := lipgloss.Height(f.text.View()) - f.lines
+	f.setLines(max(room-chrome, 1))
 }
 
 // Init starts the form.
@@ -115,11 +174,13 @@ func (f *PlanForm) View() string { return f.form.View() }
 // Heading is the title drawn over the form.
 func (f *PlanForm) Heading() string { return "Launch a planning agent" }
 
-// SetSize gives the form the room the window leaves it, and remembers it for
-// the rebuild the config key runs.
+// SetSize gives the form the room the window leaves it, remembers it for the
+// rebuild the config key runs, and re-fits the request field to it, so the box
+// the brief is typed into follows a window that changes size.
 func (f *PlanForm) SetSize(width, height int) {
 	f.width, f.height = width, height
 	f.form = f.form.WithWidth(width).WithHeight(height)
+	f.fitRequest()
 }
 
 // busyNote says what the status bar shows while the session starts.
