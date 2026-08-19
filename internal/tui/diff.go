@@ -3,6 +3,7 @@ package tui
 import (
 	"cmp"
 	"fmt"
+	"image/color"
 	"slices"
 	"strings"
 
@@ -151,6 +152,13 @@ type Diff struct {
 	// loud: a diff means little without it.
 	base  string
 	files []git.File
+	// syntax is what each file's lines lex to, in step with the files: worked
+	// out once when the branch is read rather than at every render, since the
+	// render runs on every cursor move and lexing a whole branch that often
+	// would be a great deal of work for a screen that has not changed. It holds
+	// token kinds rather than styles, so a palette swapped under the screen is
+	// picked up by the next render without a re-lex.
+	syntax []fileSyntax
 
 	// tops[i] is the line of the rendered body file i's box opens on — its
 	// header row, which is what a file jump scrolls to — and offsets[i] the
@@ -297,6 +305,7 @@ func (d *Diff) Start(sliceID, slice, branch, dir string) {
 	d.sliceID, d.slice, d.branch, d.dir = sliceID, slice, branch, dir
 	d.state, d.err = diffLoading, nil
 	d.base, d.files, d.tops, d.offsets = "", nil, nil, nil
+	d.syntax = nil
 	d.viewed = nil
 	d.cursor, d.listTop = 0, 0
 	d.clearSelection()
@@ -318,6 +327,7 @@ func (d *Diff) Start(sliceID, slice, branch, dir string) {
 // have changed.
 func (d *Diff) SetFiles(base string, files []git.File) int {
 	d.base, d.files = base, files
+	d.syntax = highlightFiles(files)
 	d.viewed = make([]bool, len(files))
 	d.state, d.err = diffReady, nil
 	d.cursor, d.listTop, d.line = 0, 0, 0
@@ -398,6 +408,7 @@ func matchAt(lines, want []string, i int) bool {
 func (d *Diff) Fail(err error) {
 	d.state, d.err = diffFailed, err
 	d.files, d.tops, d.offsets, d.viewed = nil, nil, nil, nil
+	d.syntax = nil
 	d.render()
 }
 
@@ -837,7 +848,7 @@ func (d *Diff) render() {
 	// worked out once: the body rows are numbered off it and then drawn from it.
 	// roles[i] is which of those lines are drawn at all, and notes the same for
 	// the pending comments, by the line each is drawn under.
-	segs := make([][][]string, len(d.files))
+	segs := make([][]wrapped, len(d.files))
 	roles := make([][]lineRole, len(d.files))
 	notes := d.commentRows(textWidth)
 	tops, offsets := make([]int, len(d.files)), make([]int, len(d.files))
@@ -855,15 +866,15 @@ func (d *Diff) render() {
 			continue
 		}
 		roles[i] = lineRoles(f.Lines)
-		segs[i] = make([][]string, len(f.Lines))
+		segs[i] = make([]wrapped, len(f.Lines))
 		placed := false
-		for j, line := range f.Lines {
+		for j := range f.Lines {
 			switch roles[i][j] {
 			case roleDrop:
 			case roleBreak:
 				from = append(from, bodyLine{file: i, line: boxBreakRow})
 			default:
-				segs[i][j] = wrapLine(line, textWidth)
+				segs[i][j] = wrapRuns(d.syntax[i].lines[j], textWidth)
 				if !placed {
 					offsets[i], placed = len(from), true
 				}
@@ -896,16 +907,16 @@ func (d *Diff) render() {
 			case roleBreak:
 				lines = append(lines, d.boxBreak(inner))
 			default:
-				style := d.lineStyle(line)
+				style, fill := d.lineStyle(line), d.lineFill(line, d.syntax[i].lexed)
 				marked := d.marks[commentKey{path: f.Path, start: j}]
-				for s, text := range segs[i][j] {
+				for s, row := range segs[i][j] {
 					// Only the row the line starts on carries its numbers: a
 					// continuation numbered again would read as a line of its own.
 					was, now := nums[i].was[j], nums[i].now[j]
 					if s > 0 {
 						was, now = 0, 0
 					}
-					lines = append(lines, d.boxLine(text, style, was, now, numWidth, inner,
+					lines = append(lines, d.boxLine(row, style, fill, was, now, numWidth, inner,
 						marked, d.selected(len(lines))))
 				}
 			}
@@ -940,35 +951,6 @@ func (d Diff) rowOf(at bodyLine, fallback int) int {
 		}
 	}
 	return fallback
-}
-
-// wrapLine breaks one line of the diff into the rows it takes at width columns,
-// cut on the column rather than on a word: a diff is code, where the run of
-// spaces at the front of a line is what says where it sits and a break moved to
-// the last space before the edge would say something else.
-//
-// Tabs are expanded first, to the four spaces the renderer draws them as: a tab
-// measures nothing at all, and a row wrapped on that measure would be cut back
-// down by the box it is drawn in and lose exactly the tail this is for.
-func wrapLine(line string, width int) []string {
-	line = strings.ReplaceAll(line, "\t", tabSpaces)
-	if width <= 0 || lipgloss.Width(line) <= width {
-		return []string{line}
-	}
-	var out []string
-	var b strings.Builder
-	w := 0
-	for _, r := range line {
-		rw := lipgloss.Width(string(r))
-		if w > 0 && w+rw > width {
-			out = append(out, b.String())
-			b.Reset()
-			w = 0
-		}
-		b.WriteRune(r)
-		w += rw
-	}
-	return append(out, b.String())
 }
 
 // tabSpaces is what a tab is expanded to before a line is measured: lipgloss
@@ -1140,28 +1122,89 @@ func (d Diff) selected(i int) bool {
 		at.line >= min(cur.line, anc.line) && at.line <= max(cur.line, anc.line)
 }
 
-// lineStyle is the style a diff line is drawn in, chosen by its prefix. The
-// header lines are tested before the +/- ones they look like: "+++ b/main.go"
-// is a header, not three added characters.
-func (d Diff) lineStyle(line string) lipgloss.Style {
+// lineShape is what a line of a file's section is, by the prefix git wrote it
+// with: the three things a change is made of, and the three kinds of line that
+// are about the change rather than in it.
+//
+// It is read once and answered three ways — the colour the line is drawn in,
+// the wash it is drawn on, and whether it holds code to lex at all — so those
+// three cannot drift into disagreeing about what a line is.
+type lineShape int
+
+const (
+	shapeContext lineShape = iota
+	shapeAdd
+	shapeDel
+	shapeFile
+	shapeMeta
+	shapeHunk
+)
+
+// lineShapeOf classifies a diff line by its prefix. The header lines are tested
+// before the +/- ones they look like: "+++ b/main.go" is a header, not three
+// added characters.
+func lineShapeOf(line string) lineShape {
 	switch {
 	case strings.HasPrefix(line, "diff --git "):
-		return d.styles.DiffFile
+		return shapeFile
 	case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
-		return d.styles.DiffMeta
+		return shapeMeta
 	case strings.HasPrefix(line, "@@"):
-		return d.styles.DiffHunk
+		return shapeHunk
 	case strings.HasPrefix(line, "+"):
-		return d.styles.DiffAdd
+		return shapeAdd
 	case strings.HasPrefix(line, "-"):
-		return d.styles.DiffDel
+		return shapeDel
 	case strings.HasPrefix(line, " "), line == "":
-		return lipgloss.NewStyle()
+		return shapeContext
 	default:
 		// index, mode, rename and similarity lines, and git's note about a file
 		// it would not diff: all of them are about the change rather than in it.
+		return shapeMeta
+	}
+}
+
+// lineStyle is the style a diff line is drawn in. For a file whose language was
+// found it is the style of the +/- alone, the rest of the line being the
+// language's ([Diff.runStyle]); for one whose was not, it is the whole line, as
+// it has always been.
+func (d Diff) lineStyle(line string) lipgloss.Style {
+	switch lineShapeOf(line) {
+	case shapeFile:
+		return d.styles.DiffFile
+	case shapeHunk:
+		return d.styles.DiffHunk
+	case shapeAdd:
+		return d.styles.DiffAdd
+	case shapeDel:
+		return d.styles.DiffDel
+	case shapeContext:
+		return lipgloss.NewStyle()
+	default:
 		return d.styles.DiffMeta
 	}
+}
+
+// lineFill is the wash a diff line is drawn on, which is how a highlighted line
+// still reads as added or removed at a glance: the green and the red that said
+// so are now the code's own colours, so the change moves to the background,
+// where the syntax cannot take it.
+//
+// Only a file the viewer found a language for takes one. A file it did not is
+// drawn exactly as it was before there was any highlighting at all, green and
+// red lines and no wash, which is what makes the fallback a fallback rather
+// than a third thing.
+func (d Diff) lineFill(line string, lexed bool) color.Color {
+	if !lexed {
+		return nil
+	}
+	switch lineShapeOf(line) {
+	case shapeAdd:
+		return d.styles.DiffAddFill
+	case shapeDel:
+		return d.styles.DiffDelFill
+	}
+	return nil
 }
 
 // View renders the screen's body; the layout's header is what names it. spinner

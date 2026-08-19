@@ -283,9 +283,31 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   through, and it
   goes entirely on a window under 60 columns, where the columns are worth more to
   the diff than to a list of paths — the jumps go on working either way, which is
-  what per-file navigation actually needs. Lines are coloured by their shape
-  rather than their syntax, the header lines tested before the +/- ones they look
-  like, since `+++ b/main.go` is a header and not three added characters. A read
+  what per-file navigation actually needs. A line's shape is read off its prefix
+  (`lineShapeOf`), the header lines tested before the +/- ones they look like,
+  since `+++ b/main.go` is a header and not three added characters, and answered
+  three ways: the colour it is drawn in, the wash it is drawn on, and whether it
+  holds code to lex at all.
+  `diffsyntax.go` is that lexing — the content of a line coloured by the language
+  of the file it belongs to, chroma's lexers matched on the path (chroma is in
+  the module graph either way, pulled in by glamour). It sits inside the diff's
+  own +/- colouring rather than instead of it: an added line whose foreground has
+  gone to the syntax says it is added with a wash under the whole row instead —
+  the palette's `SuccessWash`/`DangerWash`, a fifth of the outcome colour mixed
+  into the base — and the +/- itself keeps the green or the red. A file whose
+  language chroma does not know, and one git described rather than diffed, takes
+  no wash and is drawn exactly as the viewer drew everything before there was
+  any highlighting, so what falls back falls all the way back. The colours are
+  few on purpose — text, comment, keyword, string, number, and the names a file
+  declares — and come from `Styles` like everything else, so the screen restyles
+  with the light and dark palettes; the strings take the pending yellow rather
+  than the green they take in most themes, since the green is what an added line
+  is. A file is lexed once, when the branch is read, and into token kinds rather
+  than styles: the render runs on every cursor move, and a palette swapped under
+  the screen is picked up without a re-lex. Wrapping is over those runs
+  (`wrapRuns`, which `wrapLine` is one unlexed run of), so a highlighted line
+  takes exactly the rows an unhighlighted one would and `Diff.offsets` — what
+  `n`/`p` scroll to — is unmoved by any of it. A read
   that fails takes the diff it replaced with it, unlike the info screen's,
   because a diff is of one branch at one moment and leaving the last one up under
   a failure would be showing the wrong change; the refresh key reads the branch
