@@ -12,11 +12,18 @@ import (
 // PromptContext is everything a fresh agent session needs to be told about the
 // slice it is picking up. WorkingDir is the directory the agent will start in,
 // resolved by the caller — the slice's Repo override, the project default, or
-// whatever the launch form was edited to.
+// whatever the launch form was edited to, and the worktree cut from any of them
+// where there is one.
+//
+// Branch and Repo describe that worktree: the branch it is already on, and the
+// checkout it was cut from. Both are empty where the session runs in the
+// checkout itself, which is what the agent is told to branch for itself.
 type PromptContext struct {
 	Slice        domain.Slice
 	Project      config.ProjectConfig
 	WorkingDir   string
+	Branch       string
+	Repo         string
 	AssigneeName string
 }
 
@@ -55,6 +62,9 @@ func Prompt(c PromptContext) string {
 	if repoOverridden(c) {
 		fmt.Fprintf(&b, "  (this slice overrides the project default of %s)\n", c.Project.WorkingDir)
 	}
+	if c.Branch != "" {
+		fmt.Fprintf(&b, "- Branch: %s (the working directory is a worktree already on it)\n", c.Branch)
+	}
 
 	b.WriteString("\n## Claim it first\n\n")
 	b.WriteString("Before doing any work, run:\n\n")
@@ -74,16 +84,26 @@ func Prompt(c PromptContext) string {
 	b.WriteString("Work in the working directory above; if that is not where this session\n")
 	b.WriteString("started, use absolute paths or `git -C`. Honour the brief's acceptance\n")
 	b.WriteString("criteria and the project's verification gate before calling it done.\n\n")
-	b.WriteString("If the work is code: branch for the slice — one branch, and exactly ONE\n")
-	b.WriteString("change on it — commit, and push the branch. Do not run `gh`, and do not\n")
-	b.WriteString("open a pull request: you hand the branch back and the user opens the\n")
-	b.WriteString("pull request from the board once they have reviewed it.\n\n")
+	if c.Branch != "" {
+		fmt.Fprintf(&b, "That directory is a git worktree cut for this slice alone, already on\n")
+		fmt.Fprintf(&b, "the branch %s and shared with nobody. If the work is code: commit\n", c.Branch)
+		fmt.Fprintf(&b, "there — exactly ONE change, this slice's — and push %s. Do not\n", c.Branch)
+		b.WriteString("create a branch of your own and do not switch to another; this one is\n")
+		b.WriteString("yours and is what you hand back. Do not run `gh`, and do not open a\n")
+		b.WriteString("pull request: you hand the branch back and the user opens the pull\n")
+		b.WriteString("request from the board once they have reviewed it.\n\n")
+	} else {
+		b.WriteString("If the work is code: branch for the slice — one branch, and exactly ONE\n")
+		b.WriteString("change on it — commit, and push the branch. Do not run `gh`, and do not\n")
+		b.WriteString("open a pull request: you hand the branch back and the user opens the\n")
+		b.WriteString("pull request from the board once they have reviewed it.\n\n")
+	}
 	b.WriteString("If the work is not code — docs, research, written-up findings — produce\n")
 	b.WriteString("the deliverable the brief asks for and link it in the summary below.\n")
 
 	b.WriteString("\n## Finish\n\n")
 	b.WriteString("On completion, record the outcome:\n\n")
-	fmt.Fprintf(&b, "    nat complete-slice %s --branch <branch> --summary '<what you did>' \\\n", c.Slice.ID)
+	fmt.Fprintf(&b, "    nat complete-slice %s --branch %s --summary '<what you did>' \\\n", c.Slice.ID, branchArg(c))
 	b.WriteString("        --pr-description '<title line>\n\n<what the PR does and why>'\n\n")
 	b.WriteString("That records the branch you pushed and hands the slice back for review,\n")
 	b.WriteString("writing the summary onto its page: what you did, key decisions, follow-ups\n")
@@ -226,9 +246,26 @@ func planBody(projectName, workingDir string) *strings.Builder {
 	return b
 }
 
+// branchArg is what the hand-back command names: the branch the session's
+// worktree is already on, or the placeholder for an agent that will make one.
+func branchArg(c PromptContext) string {
+	if c.Branch != "" {
+		return c.Branch
+	}
+	return "<branch>"
+}
+
 // repoOverridden reports whether the agent is being sent somewhere other than
 // the project's default working directory, which is worth calling out in the
 // prompt so the agent does not assume the default.
+//
+// The comparison is against the checkout rather than the session's own
+// directory, because a worktree is never the default one: reporting every
+// worktree launch as an override would say nothing about the slice.
 func repoOverridden(c PromptContext) bool {
-	return c.Project.WorkingDir != "" && c.WorkingDir != c.Project.WorkingDir
+	dir := c.WorkingDir
+	if c.Repo != "" {
+		dir = c.Repo
+	}
+	return c.Project.WorkingDir != "" && dir != c.Project.WorkingDir
 }

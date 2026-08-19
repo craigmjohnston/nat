@@ -251,6 +251,28 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   bare, the status line included, and a window of one line is that line alone.
   The same text goes out as the terminal's title, stripped of its styling, since
   a title is text.
+  `worktrees.go` sits between the launch flow's `workdirFor` and the session it
+  starts: a slice's agent is given a worktree of its own through
+  `internal/worktree`, so it works on its own branch in its own directory rather
+  than sharing the one checkout with every other agent and with the user. The
+  branch is derived rather than recorded — `slice/<the title slugged>`, since
+  nothing holds a branch name until the agent hands the work back and a relaunch
+  has to arrive at the same string — and a branch that already has a worktree is
+  reused rather than cut a second one, because a relaunched slice wants its work
+  so far. The path it answers with is the `agent.PromptContext.WorkingDir` the
+  session is started in and the prompt is written from, so tmux and the agent
+  never disagree about where it is. Two ways out fall back to the shared
+  checkout with a toast saying which — no worktrunk on the machine, and a
+  working directory that is in no git repository at all — since both are the
+  launch that worked before there were worktrees, and where the agent is working
+  is what decides what its branch instructions mean. A worktrunk that ran and
+  refused is a toast too and launches nothing at all, because an agent placed
+  half way is one working somewhere nobody chose. All of it is resolved inside
+  the launch command rather than before it: cutting a worktree runs the
+  repository's own hooks, and that is the goroutine to be slow in. Its
+  `Worktrees` seam is the board's whole dealing with worktrunk rather than the
+  launch's alone: `Remove` is on it too, for the approve key that takes the
+  worktree away again once the work has become a pull request.
   `approve.go` is the `p` key, the board's one action that reaches outside
   Notion — the domain rule on `Branch` says what it does and why gh's failures
   are toasts. `diff.go` and `diffflow.go` are `v`, the key that is answered with
@@ -292,9 +314,31 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   through, and it
   goes entirely on a window under 60 columns, where the columns are worth more to
   the diff than to a list of paths — the jumps go on working either way, which is
-  what per-file navigation actually needs. Lines are coloured by their shape
-  rather than their syntax, the header lines tested before the +/- ones they look
-  like, since `+++ b/main.go` is a header and not three added characters. A read
+  what per-file navigation actually needs. A line's shape is read off its prefix
+  (`lineShapeOf`), the header lines tested before the +/- ones they look like,
+  since `+++ b/main.go` is a header and not three added characters, and answered
+  three ways: the colour it is drawn in, the wash it is drawn on, and whether it
+  holds code to lex at all.
+  `diffsyntax.go` is that lexing — the content of a line coloured by the language
+  of the file it belongs to, chroma's lexers matched on the path (chroma is in
+  the module graph either way, pulled in by glamour). It sits inside the diff's
+  own +/- colouring rather than instead of it: an added line whose foreground has
+  gone to the syntax says it is added with a wash under the whole row instead —
+  the palette's `SuccessWash`/`DangerWash`, a fifth of the outcome colour mixed
+  into the base — and the +/- itself keeps the green or the red. A file whose
+  language chroma does not know, and one git described rather than diffed, takes
+  no wash and is drawn exactly as the viewer drew everything before there was
+  any highlighting, so what falls back falls all the way back. The colours are
+  few on purpose — text, comment, keyword, string, number, and the names a file
+  declares — and come from `Styles` like everything else, so the screen restyles
+  with the light and dark palettes; the strings take the pending yellow rather
+  than the green they take in most themes, since the green is what an added line
+  is. A file is lexed once, when the branch is read, and into token kinds rather
+  than styles: the render runs on every cursor move, and a palette swapped under
+  the screen is picked up without a re-lex. Wrapping is over those runs
+  (`wrapRuns`, which `wrapLine` is one unlexed run of), so a highlighted line
+  takes exactly the rows an unhighlighted one would and `Diff.offsets` — what
+  `n`/`p` scroll to — is unmoved by any of it. A read
   that fails takes the diff it replaced with it, unlike the info screen's,
   because a diff is of one branch at one moment and leaving the last one up under
   a failure would be showing the wrong change; the refresh key reads the branch
@@ -464,7 +508,15 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   words: the branch pushed and handed back with `complete-slice --branch`, its
   `--pr-description` written ready to publish rather than as a report of the
   session, and no `gh` and no pull request, since opening one is the board's `p`
-  after the user has reviewed the branch.
+  after the user has reviewed the branch. They arrive at the same branch too: a board launch
+  puts its agent in a worktree already on one and names it, and /next-slice is
+  run by a session that is wherever the user was, so it cuts that worktree
+  itself — `wt switch --create slice/<the title slugged> --no-cd` in the working
+  directory the brief names, the slug rule `tui.sliceBranch` applies written out
+  rather than shared, since a skill is read by an agent and not compiled.
+  A machine with no worktrunk and a working directory in no repository fall
+  back to branching in place, the two the board falls back to the shared
+  checkout for.
 
 ## Domain rules
 
@@ -539,7 +591,18 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   error banner: the branch is still there and the slice is still handed back. A
   pull request opened and then not recorded is the one half-done state there is,
   and running the key again says so rather than opening a second one, since gh
-  refuses a branch that already has one.
+  refuses a branch that already has one. Once that write has landed the slice's
+  worktree goes with it — `Worktrees.Remove` on the branch the slice was handed
+  back on, in the same repo gh ran in, and only then, since a slice still handed
+  back is one whose work is still being reviewed. The branch is read off the
+  slice rather than derived the way the launch derives it: what the agent pushed
+  is what its worktree is on, whatever it was cut as. A removal that fails — a dirty worktree, a slice that
+  never had one, a machine with no worktrunk — is one line in the log and
+  nothing else: the pull request is open and the slice is Done whatever became
+  of the checkout, and worktrunk's own rules mean a refusal never costs any
+  work. gh stays in the shared checkout, so the removal cannot strand it, and
+  `R` deliberately keeps its worktree — the work so far is exactly what the
+  next session wants.
 - Slices may carry a `Repo` override; otherwise the project default working
   dir from local config applies.
 - A slice may declare the slices it waits on: `Depends on`, a single-property
@@ -575,6 +638,20 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   status-bar toast naming what it waits on and how far off each is. A toast
   rather than an error banner: nothing has gone wrong, and the slice is still
   there to launch once its dependencies land.
+- Everything the board knows about a slice in flight adds up to one state
+  (`domain.StateOf`, `internal/domain/state.go`): working, waiting, blocked,
+  ready to push, awaiting review — or none at all for a slice that is not in
+  progress, since Todo and Done are in no flight to have got anywhere in. The
+  order the facts are tested in is the order they are true in: a live agent
+  wins over everything on the page, because it is the only reading taken fresh
+  — an agent running on a handed-back branch is the review going back to it —
+  then work that is out (a `Branch`, a `PR`) is what there is to do something
+  about, then the wait on a dependency, and what is left is a slice in progress
+  that nothing is happening on and nothing has come out of. The agent is passed
+  as `domain.AgentPresence`, domain's own saying of the board's two readings —
+  the live map and the activity watcher — as one value, since `internal/agent`
+  and `internal/tui` both import this package and neither's enum could be
+  reached from here. Nothing draws it yet.
 - A project keeps its whole plan on one page: no Milestones database, and a
   `Milestone` **select** on the Slices data source whose options are the
   milestones, in plan order. `domain.MilestonesFromOptions` maps them —

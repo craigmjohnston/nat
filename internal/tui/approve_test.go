@@ -11,6 +11,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
 // prCall is one pull request the approve flow asked gh for.
@@ -73,6 +74,17 @@ func approveApp(t *testing.T) (*App, *fakePRs, *fakeNotion, string) {
 	prs := &fakePRs{url: "https://github.test/craig/nat/pull/9"}
 	app.prs = prs
 	return app, prs, client, workdir
+}
+
+// approveWorktrees puts a fake worktrunk in for the length of one test, since
+// the removal is the second half of the approve and the suite's own fake is
+// shared. It answers as a working worktrunk unless the test says otherwise.
+func approveWorktrees(t *testing.T) *fakeWorktrees {
+	t.Helper()
+	trees := &fakeWorktrees{}
+	newWorktrees = func() Worktrees { return trees }
+	t.Cleanup(func() { newWorktrees = func() Worktrees { return &fakeWorktrees{} } })
+	return trees
 }
 
 // cursorOn puts the board's cursor on the named slice's row.
@@ -453,6 +465,103 @@ func TestApproveWaitsForTheBoard(t *testing.T) {
 			}
 			if len(prs.made) != 0 {
 				t.Errorf("gh was asked for %v", prs.made)
+			}
+		})
+	}
+}
+
+// TestApproveRemovesTheWorktree is the other half of the action: once the pull
+// request exists and the slice is Done, the worktree its agent worked in goes,
+// taken off the same repository gh ran in and named by the branch that was
+// handed back.
+func TestApproveRemovesTheWorktree(t *testing.T) {
+	app, _, _, workdir := approveApp(t)
+	trees := approveWorktrees(t)
+	cursorOn(t, app, handedBack)
+
+	approve(t, app)
+
+	want := worktreeCall{workdir, "slice/approve"}
+	if len(trees.removes) != 1 || trees.removes[0] != want {
+		t.Fatalf("wt was asked to remove %v, want %v", trees.removes, want)
+	}
+}
+
+// TestApproveRemovesTheWorktreeFromTheSlicesOwnRepo covers a slice whose Repo
+// overrides the project's default: that is the checkout the worktree was cut
+// from, the way it is the one gh runs in.
+func TestApproveRemovesTheWorktreeFromTheSlicesOwnRepo(t *testing.T) {
+	app, _, _, _ := approveApp(t)
+	trees := approveWorktrees(t)
+	repo := t.TempDir()
+	slices := append([]domain.Slice(nil), app.project.Slices...)
+	slices[0].Repo = repo
+	p := domain.NewProject(app.project.ID, app.project.Name, app.project.Milestones, slices)
+	app.project = &p
+	app.board.SetProject(&p)
+	cursorOn(t, app, handedBack)
+
+	approve(t, app)
+
+	if len(trees.removes) != 1 || trees.removes[0].dir != repo {
+		t.Errorf("wt ran in %v, want the slice's own repo %q", trees.removes, repo)
+	}
+}
+
+// TestApproveSurvivesAFailedRemoval covers everything worktrunk refuses over —
+// a dirty worktree, a slice that never had one, a machine with no wt at all.
+// The pull request has been opened and the slice is Done: the approve stands,
+// and the refusal is left in the log rather than raised on the board.
+func TestApproveSurvivesAFailedRemoval(t *testing.T) {
+	app, _, client, _ := approveApp(t)
+	trees := approveWorktrees(t)
+	trees.removeErr = &worktree.ExitError{Code: 1, Stderr: "worktree has uncommitted changes\n"}
+	cursorOn(t, app, handedBack)
+
+	approve(t, app)
+
+	if len(client.updated) != 1 {
+		t.Fatalf("wrote %d pages, want the slice marked Done regardless", len(client.updated))
+	}
+	if app.err != nil || app.toast != "" {
+		t.Errorf("err = %v, toast = %q, want the refusal passed over", app.err, app.toast)
+	}
+	if !strings.Contains(app.board.confirmText, "Approve action") {
+		t.Errorf("confirmation = %q, want the approve reported as it always is", app.board.confirmText)
+	}
+	if app.busy {
+		t.Error("the board is still busy after the removal was passed over")
+	}
+}
+
+// TestApproveKeepsTheWorktreeUntilTheSliceIsDone covers the two ways the action
+// stops short: gh refusing, and Notion refusing to record what gh opened. The
+// slice is still handed back either way, and a slice being reviewed keeps the
+// checkout its work is in.
+func TestApproveKeepsTheWorktreeUntilTheSliceIsDone(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		brk  func(a *App, c *fakeNotion)
+	}{
+		{"gh refused", func(a *App, _ *fakeNotion) {
+			a.prs.(*fakePRs).err = errors.New("no such branch")
+		}},
+		{"the write was refused", func(_ *App, c *fakeNotion) {
+			c.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
+				return nil, errors.New("notion is down")
+			}
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			app, _, client, _ := approveApp(t)
+			trees := approveWorktrees(t)
+			tt.brk(app, client)
+			cursorOn(t, app, handedBack)
+
+			approve(t, app)
+
+			if len(trees.removes) != 0 {
+				t.Errorf("wt was asked to remove %v on a slice still handed back", trees.removes)
 			}
 		})
 	}

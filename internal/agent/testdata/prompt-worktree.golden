@@ -1,0 +1,81 @@
+You are a Claude Code agent working exactly one slice of the "notion-agent-tracker" project.
+
+## The slice
+
+- Name: tmux integration + agent prompt template
+- Notion page ID: 3b738308-f654-8170-8c99-eccab4463d8f
+- Notion URL: https://app.notion.com/p/3b738308f65481708c99eccab4463d8f
+- Working directory: /Users/craig/Projects/notion-agent-tracker-worktrees/slice/tmux-integration-agent-prompt-template
+- Branch: slice/tmux-integration-agent-prompt-template (the working directory is a worktree already on it)
+
+## Claim it first
+
+Before doing any work, run:
+
+    nat start-slice 3b738308-f654-8170-8c99-eccab4463d8f
+
+That claims the slice for Craig Johnston and prints your brief: the slice's own
+body and acceptance criteria, followed by the project's conventions.
+If it refuses — the slice is already claimed, or already done — stop and
+say so rather than working the slice anyway.
+
+## Then read
+
+1. The brief the command printed — the slice, then the conventions that
+   apply to every slice of the project.
+2. `CLAUDE.md` in the working directory — architecture and the
+   verification gate.
+
+## Do the work
+
+Work in the working directory above; if that is not where this session
+started, use absolute paths or `git -C`. Honour the brief's acceptance
+criteria and the project's verification gate before calling it done.
+
+That directory is a git worktree cut for this slice alone, already on
+the branch slice/tmux-integration-agent-prompt-template and shared with nobody. If the work is code: commit
+there — exactly ONE change, this slice's — and push slice/tmux-integration-agent-prompt-template. Do not
+create a branch of your own and do not switch to another; this one is
+yours and is what you hand back. Do not run `gh`, and do not open a
+pull request: you hand the branch back and the user opens the pull
+request from the board once they have reviewed it.
+
+If the work is not code — docs, research, written-up findings — produce
+the deliverable the brief asks for and link it in the summary below.
+
+## Finish
+
+On completion, record the outcome:
+
+    nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --branch slice/tmux-integration-agent-prompt-template --summary '<what you did>' \
+        --pr-description '<title line>
+
+<what the PR does and why>'
+
+That records the branch you pushed and hands the slice back for review,
+writing the summary onto its page: what you did, key decisions, follow-ups
+worth queueing. It leaves the slice in progress on purpose — approving it
+on the board is what opens the pull request and marks it Done.
+
+`--pr-description` is what that pull request is opened with: its first
+line is the title and the rest the body, so write it ready to publish —
+what the change does and why, for whoever reviews it on GitHub, not a
+report of your session. Pass `--pr-description -` to read it from stdin
+when it is too long for an argument, and give `--summary` as a flag then.
+
+Leave `--branch` off when the slice produced no branch — a docs or
+research slice — and it is marked Done there and then, with no pull
+request to describe. A summary too long for one argument can be piped in
+on stdin instead of passing `--summary`.
+
+If you cannot complete it, say what stopped you and leave the slice
+in progress, so nobody else picks it up on top of your work:
+
+    nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --blocked --summary '<what is blocking>'
+
+## Guardrails
+
+- One slice per session. Never pick up another when this one is done.
+- The `nat` commands are the only way to record anything about the slice.
+- Never touch other slices, other milestones, or the plan itself.
+- Never open or merge a pull request, and never push to the main branch.

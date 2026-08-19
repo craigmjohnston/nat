@@ -100,13 +100,57 @@ func TestBoardExpandsOnlyTheActiveMilestoneByDefault(t *testing.T) {
 	b := newTestBoard()
 
 	want := []string{
-		"Done section",
 		"M2: Board", "Domain model", "Board screen", "Info view",
 		"M3: Mutations",
 		domain.UnassignedName, "Stray",
+		"Done section",
 	}
 	if got := rowNames(b); !equal(got, want) {
 		t.Errorf("rows = %q, want %q", got, want)
+	}
+}
+
+// The Done section goes to the bottom whatever the plan says: M1 is the first
+// milestone of the fixture's plan and finished, and its section is drawn under
+// every milestone that is not.
+func TestBoardDrawsTheDoneSectionLast(t *testing.T) {
+	b := newTestBoard()
+
+	if got := rowNames(b); got[len(got)-1] != "Done section" {
+		t.Errorf("rows = %q, want the Done section last", got)
+	}
+
+	// It is set apart by a blank line, which belongs to the section's own row.
+	lines := b.rowLines()
+	section := lines[len(lines)-1]
+	if len(section) != 2 || section[0] != "" {
+		t.Errorf("section rows = %q, want a blank line above it", section)
+	}
+	b.SelectRow(len(b.rows) - 1)
+	top, height := b.CursorSpan()
+	if height != 2 {
+		t.Errorf("span height = %d, want the gap counted with the row", height)
+	}
+	if at, ok := b.RowAtLine(top); !ok || at != b.cursor {
+		t.Errorf("line %d is row %d (%v), want the section's own", top, at, ok)
+	}
+}
+
+// A section that is the whole board has nothing to be set apart from, so it
+// takes no gap.
+func TestBoardDoneSectionAloneTakesNoGap(t *testing.T) {
+	b := NewBoard(DefaultStyles())
+	b.SetWidth(60)
+	p := domain.NewProject(testProjectID, "tracker",
+		domain.MilestonesFromOptions([]string{"M1: Config"}, notion.TypeSelect),
+		[]domain.Slice{{ID: "s1", Name: "XDG config", Status: domain.SliceDone, MilestoneID: "M1: Config"}})
+	b.SetProject(&p)
+
+	if got := rowNames(&b); !equal(got, []string{"Done section"}) {
+		t.Fatalf("rows = %q, want the section alone", got)
+	}
+	if got := b.rowLines()[0]; len(got) != 1 {
+		t.Errorf("section rows = %q, want no gap above it", got)
 	}
 }
 
@@ -121,10 +165,10 @@ func TestBoardFoldsDoneMilestonesIntoOneSection(t *testing.T) {
 	b.SetProject(&p)
 
 	want := []string{
-		"Done section",
 		"M2: Board", "Domain model", "Board screen", "Info view",
 		"M3: Mutations",
 		domain.UnassignedName, "Stray",
+		"Done section",
 	}
 	if got := rowNames(b); !equal(got, want) {
 		t.Errorf("rows = %q, want both Done milestones behind one section: %q", got, want)
@@ -135,53 +179,56 @@ func TestBoardFoldsDoneMilestonesIntoOneSection(t *testing.T) {
 
 	// Expanding the section gathers the Done milestones under it, wherever they
 	// sat in the plan, each collapsed to its own row.
-	b.cursor = 0
+	section := len(b.rows) - 1
+	b.cursor = section
 	b.Update(keyPress("enter"))
 	want = []string{
-		"Done section", "M1: Config", "M0: Setup",
 		"M2: Board", "Domain model", "Board screen", "Info view",
 		"M3: Mutations",
 		domain.UnassignedName, "Stray",
+		"Done section", "M1: Config", "M0: Setup",
 	}
 	if got := rowNames(b); !equal(got, want) {
 		t.Errorf("rows = %q, want the section expanded: %q", got, want)
 	}
-	if b.cursor != 0 {
-		t.Errorf("cursor = %d, want it left on the section row", b.cursor)
+	if b.cursor != section {
+		t.Errorf("cursor = %d, want it left on the section row %d", b.cursor, section)
 	}
 
 	// A revealed Done milestone still expands to its slices, as it always did.
-	b.cursor = 1
+	b.cursor = section + 1
 	b.Update(keyPress("enter"))
-	if got := rowNames(b); !equal(got[:4], []string{"Done section", "M1: Config", "XDG config", "Keyring"}) {
+	if got := rowNames(b); !equal(got[section:], []string{
+		"Done section", "M1: Config", "XDG config", "Keyring", "M0: Setup",
+	}) {
 		t.Errorf("rows = %q, want M1's slices revealed", got)
 	}
 
 	// Collapsing the section from its own row hides it all again.
-	b.cursor = 0
+	b.cursor = section
 	b.Update(keyPress("enter"))
 	if got := rowNames(b); !equal(got, []string{
-		"Done section",
 		"M2: Board", "Domain model", "Board screen", "Info view",
 		"M3: Mutations",
 		domain.UnassignedName, "Stray",
+		"Done section",
 	}) {
 		t.Errorf("rows = %q, want the section collapsed again", got)
 	}
-	if b.cursor != 0 {
-		t.Errorf("cursor = %d, want it left on the section row", b.cursor)
+	if b.cursor != section {
+		t.Errorf("cursor = %d, want it left on the section row %d", b.cursor, section)
 	}
 }
 
 func TestBoardKeepsTheDoneSectionStateAcrossAReload(t *testing.T) {
 	b := newTestBoard()
-	b.cursor = 0
+	b.cursor = len(b.rows) - 1
 	b.Update(keyPress("enter")) // expand the Done section
 
 	p := testProject()
 	b.SetProject(&p)
 
-	if got := rowNames(b); !equal(got[:2], []string{"Done section", "M1: Config"}) {
+	if got := rowNames(b); !equal(got[len(got)-2:], []string{"Done section", "M1: Config"}) {
 		t.Errorf("rows = %q, want the section still expanded after a reload", got)
 	}
 }
@@ -229,10 +276,10 @@ func TestBoardHidesDoneSlicesOfUnfinishedMilestones(t *testing.T) {
 	// M2 is still in flight, so its Done slice goes; the Claimed and Todo ones
 	// stay, and so does the Unassigned group's slice, which is not Done.
 	want := []string{
-		"Done section",
 		"M2: Board", "Board screen", "Info view",
 		"M3: Mutations",
 		domain.UnassignedName, "Stray",
+		"Done section",
 	}
 	if got := rowNames(b); !equal(got, want) {
 		t.Errorf("rows = %q, want the Done slice hidden: %q", got, want)
@@ -241,10 +288,10 @@ func TestBoardHidesDoneSlicesOfUnfinishedMilestones(t *testing.T) {
 	// The toggle is a toggle: pressing it again puts them back.
 	b.Update(keyPress("z"))
 	if got := rowNames(b); !equal(got, []string{
-		"Done section",
 		"M2: Board", "Domain model", "Board screen", "Info view",
 		"M3: Mutations",
 		domain.UnassignedName, "Stray",
+		"Done section",
 	}) {
 		t.Errorf("rows = %q, want the Done slice back", got)
 	}
@@ -252,18 +299,19 @@ func TestBoardHidesDoneSlicesOfUnfinishedMilestones(t *testing.T) {
 
 func TestBoardHideDoneLeavesTheDoneSectionAlone(t *testing.T) {
 	b := newTestBoard()
-	b.cursor = 0
+	section := len(b.rows) - 1
+	b.cursor = section
 	b.Update(keyPress("enter")) // expand the Done section
-	b.cursor = 1
+	b.cursor = section + 1
 	b.Update(keyPress("enter")) // expand M1 inside it
 
 	b.Update(keyPress("z"))
 
 	want := []string{
-		"Done section", "M1: Config", "XDG config", "Keyring",
 		"M2: Board", "Board screen", "Info view",
 		"M3: Mutations",
 		domain.UnassignedName, "Stray",
+		"Done section", "M1: Config", "XDG config", "Keyring",
 	}
 	if got := rowNames(b); !equal(got, want) {
 		t.Errorf("rows = %q, want a Done milestone still listing all its slices: %q", got, want)
@@ -319,7 +367,7 @@ func TestBoardHideDoneKeepsTheCursorOnAVisibleRow(t *testing.T) {
 
 	// On the Done slice itself, which is about to go: the cursor falls back to
 	// its milestone's own row.
-	b.cursor = 2
+	b.cursor = 1
 	b.Update(keyPress("z"))
 	if got := rowNames(b)[b.cursor]; got != "M2: Board" {
 		t.Errorf("cursor is on %q, want it fallen back to the milestone row", got)
@@ -328,7 +376,7 @@ func TestBoardHideDoneKeepsTheCursorOnAVisibleRow(t *testing.T) {
 	// On a row that survives: the cursor follows it to its new index rather than
 	// staying on a number.
 	b.Update(keyPress("z"))
-	b.cursor = 4 // Info view
+	b.cursor = 3 // Info view
 	b.Update(keyPress("z"))
 	if got := rowNames(b)[b.cursor]; got != "Info view" {
 		t.Errorf("cursor is on %q, want it kept on Info view", got)
@@ -400,13 +448,16 @@ func TestBoardRendersAsATable(t *testing.T) {
 			t.Errorf("line %q still carries an inline milestone number", line)
 		}
 	}
-	for i, want := range map[int]string{0: "▸ Done", 1: "2 ▾ Board", 5: "3 ▸ Mutations", 6: "▾ Unassigned"} {
+	for i, want := range map[int]string{0: "2 ▾ Board", 4: "3 ▸ Mutations", 5: "▾ Unassigned", 8: "▸ Done"} {
 		if !strings.Contains(lines[i], want) {
 			t.Errorf("line %d = %q, want it to contain %q", i, lines[i], want)
 		}
 	}
-	if !strings.Contains(lines[0], "1 milestone · 2/2") {
-		t.Errorf("line 0 = %q, want the Done section's aggregate on it", lines[0])
+	if !strings.Contains(lines[8], "1 milestone · 2/2") {
+		t.Errorf("line 8 = %q, want the Done section's aggregate on it", lines[8])
+	}
+	if lines[7] != "" {
+		t.Errorf("line 7 = %q, want the blank line above the Done section", lines[7])
 	}
 
 	// endColumn is the display column a substring ends on, which is what has
@@ -420,7 +471,7 @@ func TestBoardRendersAsATable(t *testing.T) {
 		return lipgloss.Width(line[:at+len(sub)])
 	}
 	countEnd, pillEnd := -1, -1
-	for i, count := range map[int]string{1: "1/3", 5: "0/0", 6: "0/1"} {
+	for i, count := range map[int]string{0: "1/3", 4: "0/0", 5: "0/1"} {
 		got := endColumn(lines[i], count)
 		if got < 0 {
 			t.Fatalf("line %d = %q, want the count %q on it", i, lines[i], count)
@@ -432,7 +483,7 @@ func TestBoardRendersAsATable(t *testing.T) {
 			t.Errorf("line %d ends its count at column %d, want %d:\n%q", i, got, countEnd, lines[i])
 		}
 	}
-	for i, pill := range map[int]string{1: "Active", 5: "Queued"} {
+	for i, pill := range map[int]string{0: "Active", 4: "Queued"} {
 		got := endColumn(lines[i], pill)
 		if got < 0 {
 			t.Fatalf("line %d = %q, want the pill %q on it", i, lines[i], pill)
@@ -510,10 +561,10 @@ func TestBoardSinksABlockedSliceToTheBottomOfItsMilestone(t *testing.T) {
 	b.SetProject(&p)
 
 	want := []string{
-		"Done section",
 		"M2: Board", "Domain model", "Info view", "Board screen",
 		"M3: Mutations",
 		domain.UnassignedName, "Stray",
+		"Done section",
 	}
 	if got := rowNames(&b); !equal(got, want) {
 		t.Errorf("rows = %q, want the blocked slice last of its milestone: %q", got, want)
@@ -925,15 +976,15 @@ func TestBoardNavigatesWithoutWrapping(t *testing.T) {
 
 func TestBoardEnterCollapsesAndExpands(t *testing.T) {
 	b := newTestBoard()
-	b.cursor = 1 // the active milestone's own row
+	b.cursor = 0 // the active milestone's own row
 
 	b.Update(keyPress("enter"))
 	if got := rowNames(b); !equal(got, []string{
-		"Done section", "M2: Board", "M3: Mutations", domain.UnassignedName, "Stray",
+		"M2: Board", "M3: Mutations", domain.UnassignedName, "Stray", "Done section",
 	}) {
 		t.Errorf("rows = %q, want the active milestone collapsed", got)
 	}
-	if b.cursor != 1 {
+	if b.cursor != 0 {
 		t.Errorf("cursor = %d, want it left on the collapsed milestone", b.cursor)
 	}
 
@@ -945,11 +996,11 @@ func TestBoardEnterCollapsesAndExpands(t *testing.T) {
 
 func TestBoardEnterOnASliceCollapsesItsMilestone(t *testing.T) {
 	b := newTestBoard()
-	b.cursor = 3 // the second slice of the active milestone
+	b.cursor = 2 // the second slice of the active milestone
 
 	b.Update(keyPress("enter"))
 
-	if b.cursor != 1 {
+	if b.cursor != 0 {
 		t.Errorf("cursor = %d, want it moved to the milestone row it collapsed", b.cursor)
 	}
 	if _, ok := b.SelectedSlice(); ok {
@@ -973,7 +1024,7 @@ func TestBoardSelectedSlice(t *testing.T) {
 	if _, ok := b.SelectedSlice(); ok {
 		t.Error("the cursor starts on a milestone, not a slice")
 	}
-	b.cursor = 2
+	b.cursor = 1
 	got, ok := b.SelectedSlice()
 	if !ok || got.ID != "s3" {
 		t.Errorf("selected = %+v (ok=%v), want s3", got, ok)
@@ -986,19 +1037,20 @@ func TestBoardSelectedMilestone(t *testing.T) {
 	}
 
 	b := newTestBoard()
+	b.cursor = len(b.rows) - 1
 	if _, ok := b.SelectedMilestone(); ok {
 		t.Error("the Done section is not a milestone")
 	}
-	b.cursor = 1
+	b.cursor = 0
 	got, ok := b.SelectedMilestone()
 	if !ok || got.ID != "M2: Board" {
 		t.Errorf("selected = %+v (ok=%v), want M2: Board", got, ok)
 	}
-	b.cursor = 2
+	b.cursor = 1
 	if _, ok := b.SelectedMilestone(); ok {
 		t.Error("the cursor is on a slice, not a milestone")
 	}
-	b.cursor = len(b.rows) - 2 // the Unassigned group's own row
+	b.cursor = len(b.rows) - 3 // the Unassigned group's own row
 	if _, ok := b.SelectedMilestone(); ok {
 		t.Error("the Unassigned group is not a milestone")
 	}

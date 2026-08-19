@@ -12,7 +12,7 @@ import (
 
 // The slice rows the move and delete flows act on, beyond those sliceform_test
 // already names.
-const rowDoneSlice = 2 // Domain model
+const rowDoneSlice = 1 // Domain model
 
 // milestoneNames is the names of a set of milestones, which is what the picker
 // tests assert the order of.
