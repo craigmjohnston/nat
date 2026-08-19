@@ -128,7 +128,7 @@ func TestDiffSectionWithNothingToDraw(t *testing.T) {
 	d := NewDiff(DefaultStyles())
 	d.SetSize(diffTestWidth, diffTestHeight)
 	d.SetFiles("origin/main", git.ParseFiles(sampleDiff+
-		"diff --git a/empty.go b/empty.go\nindex 8888888..9999999 100644\n"))
+		"diff --git a/empty.go b/empty.go\nindex 8888888..9999999 100644\n"), nil)
 	last := len(d.files) - 1
 	if got := d.offsets[last]; got != d.tops[last] {
 		t.Errorf("the section opens the cursor at row %d, want its header row %d", got, d.tops[last])

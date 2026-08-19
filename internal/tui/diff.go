@@ -98,11 +98,14 @@ func (d Diff) hints(back key.Binding) []hint {
 }
 
 // viewedBinding is the viewed toggle as the hints row names it: what the key
-// will do to the file the cursor is in rather than what it does in general,
-// since the one key is both halves of a fold and the row is where the user
-// finds out which half is next.
+// will do to the row the cursor is on rather than what it does in general,
+// since the one key is both halves of a fold and an expand zone's activation
+// besides, and the row is where the user finds out which of the three is next.
 func (d Diff) viewedBinding() key.Binding {
-	if !d.viewedFile(d.cursor) {
+	switch {
+	case d.onExpandRow():
+		return key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "expand lines"))
+	case !d.viewedFile(d.cursor):
 		return d.keys.Viewed
 	}
 	return key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "expand file"))
@@ -151,6 +154,13 @@ type Diff struct {
 	// loud: a diff means little without it.
 	base  string
 	files []git.File
+	// sources is each file's own lines at the branch, by path, which is what the
+	// expand zones fill their gaps from; zones[i] is file i's gaps, in the order
+	// the file draws them, and holds how much of each has been revealed. A file
+	// git would not show — one the change deleted, or a binary one — is in
+	// neither, and its box is the diff and nothing more.
+	sources map[string][]string
+	zones   [][]expandZone
 
 	// tops[i] is the line of the rendered body file i's box opens on — its
 	// header row, which is what a file jump scrolls to — and offsets[i] the
@@ -209,7 +219,18 @@ type Diff struct {
 // longer a line of the diff. seg is what tells the two apart: everything that
 // acts on a line — the cursor, a range mark, a comment — is on the row where seg
 // is zero, and the rows after it are the tail of that same line.
-type bodyLine struct{ file, line, seg int }
+//
+// The rows an expand zone puts on the body — its controls, and the lines it has
+// revealed — say which of the file's gaps they belong to and, for a control,
+// which of the two it is: one file has as many zones as it has gaps between
+// hunks, and the row is what an activation names its zone by. Every other row
+// leaves both at their zero, which is what a row of one zone is compared
+// against.
+type bodyLine struct {
+	file, line, seg int
+	zone            int
+	whole           bool
+}
 
 // The line indexes a box's own rows carry, in place of a line of the file's
 // section: there is nothing on either to put a comment on. The header row is
@@ -225,11 +246,19 @@ type bodyLine struct{ file, line, seg int }
 // of the header the render hides: it stands for the lines that were skipped
 // rather than being any of them, and is no more a place to put a cursor or a
 // comment than a border is.
+//
+// The last two are an expand zone's: the control rows that offer the gap's
+// hidden lines, and the lines it has revealed. The cursor stops on a control,
+// since a key on it is how the zone is activated, and steps over a revealed line
+// the way it steps over a comment — a revealed line is the file's own rather than
+// the diff's, so there is no line of the section for a comment on one to name.
 const (
 	boxHeaderRow  = -1
 	boxFooterRow  = -2
 	boxCommentRow = -3
 	boxBreakRow   = -4
+	boxExpandRow  = -5
+	boxContextRow = -6
 )
 
 // isBoxRow reports whether a body row's line index is one of a box's own two
@@ -297,6 +326,7 @@ func (d *Diff) Start(sliceID, slice, branch, dir string) {
 	d.sliceID, d.slice, d.branch, d.dir = sliceID, slice, branch, dir
 	d.state, d.err = diffLoading, nil
 	d.base, d.files, d.tops, d.offsets = "", nil, nil, nil
+	d.sources, d.zones = nil, nil
 	d.viewed = nil
 	d.cursor, d.listTop = 0, 0
 	d.clearSelection()
@@ -315,10 +345,20 @@ func (d *Diff) Start(sliceID, slice, branch, dir string) {
 // What has been read is not carried over at all: unlike a comment, which says
 // where in the file it belongs, a file marked viewed says only that the user
 // has seen what was there — and what was there is exactly what a fresh read may
-// have changed.
-func (d *Diff) SetFiles(base string, files []git.File) int {
-	d.base, d.files = base, files
+// have changed. Nor is what has been expanded, and for the same reason: the gap
+// a zone was measured over is a fact about the diff that came back.
+//
+// sources is each file's own lines at the branch, by path, and is what the
+// expand zones are built over. It may be missing a file, or be nothing at all —
+// a read that could not show the files still has a diff to draw, and a diff with
+// no zones in it is the diff exactly as it was before there were any.
+func (d *Diff) SetFiles(base string, files []git.File, sources map[string][]string) int {
+	d.base, d.files, d.sources = base, files, sources
 	d.viewed = make([]bool, len(files))
+	d.zones = make([][]expandZone, len(files))
+	for i, f := range files {
+		d.zones[i] = buildZones(f, sources[f.Path])
+	}
 	d.state, d.err = diffReady, nil
 	d.cursor, d.listTop, d.line = 0, 0, 0
 	d.clearSelection()
@@ -398,6 +438,7 @@ func matchAt(lines, want []string, i int) bool {
 func (d *Diff) Fail(err error) {
 	d.state, d.err = diffFailed, err
 	d.files, d.tops, d.offsets, d.viewed = nil, nil, nil, nil
+	d.sources, d.zones = nil, nil
 	d.render()
 }
 
@@ -625,7 +666,11 @@ func (d *Diff) Update(msg tea.Msg) tea.Cmd {
 			d.jump(-1)
 			return nil
 		case key.Matches(press, d.keys.Viewed):
-			d.ToggleViewed()
+			// The key acts on the row under the cursor: an expand control is a
+			// thing to activate, and everywhere else the file itself is.
+			if !d.ExpandAt(d.line) {
+				d.ToggleViewed()
+			}
 			return nil
 		}
 	}
@@ -723,7 +768,7 @@ func (d *Diff) scrollToCursor() {
 		// The first row of a file's section rather than its line 0: the lines
 		// above it are git's own headers, which the body does not draw. A
 		// collapsed file's header row is not one — it is the row itself.
-		if at := d.lines[d.line]; at.line >= 0 && d.line == d.offsets[at.file] {
+		if at := d.lines[d.line]; at.line != boxHeaderRow && d.line == d.offsets[at.file] {
 			reveal = max(d.line-1, 0)
 		}
 		end = d.lineEnd(d.line)
@@ -741,7 +786,11 @@ func (d *Diff) scrollToCursor() {
 // already held line inside the body.
 func (d Diff) lineEnd(line int) int {
 	at, end := d.lines[line], line
-	for i := line + 1; i < len(d.lines) && d.lines[i].file == at.file && d.lines[i].line == at.line; i++ {
+	for i := line + 1; i < len(d.lines); i++ {
+		if next := d.lines[i]; next.file != at.file || next.line != at.line ||
+			next.zone != at.zone || next.whole != at.whole {
+			break
+		}
 		end = i
 	}
 	return end
@@ -833,16 +882,16 @@ func (d *Diff) render() {
 	textWidth := d.textWidth(numWidth)
 	wasLine, wasAnchor := d.at(d.line), d.at(d.anchor)
 
-	// segs[i][j] is file i's line j broken into the rows it takes at this width,
-	// worked out once: the body rows are numbered off it and then drawn from it.
-	// roles[i] is which of those lines are drawn at all, and notes the same for
-	// the pending comments, by the line each is drawn under.
-	segs := make([][][]string, len(d.files))
-	roles := make([][]lineRole, len(d.files))
+	// parts[i] is what file i's box is drawn from, worked out once and walked
+	// twice: the body rows are numbered off it, and then drawn from it. The two
+	// walks are one list rather than two loops that have to be kept in step,
+	// since a row the cursor is numbered against and a row that is drawn are the
+	// same row.
 	notes := d.commentRows(textWidth)
+	parts := make([][]boxPart, len(d.files))
 	tops, offsets := make([]int, len(d.files)), make([]int, len(d.files))
 	var from []bodyLine
-	for i, f := range d.files {
+	for i := range d.files {
 		tops[i] = len(from)
 		from = append(from, bodyLine{file: i, line: boxHeaderRow})
 		// The header row until a line of the file is drawn: a section that is
@@ -854,25 +903,32 @@ func (d *Diff) render() {
 			// to walk, and no footer row, since there is no interior to close.
 			continue
 		}
-		roles[i] = lineRoles(f.Lines)
-		segs[i] = make([][]string, len(f.Lines))
+		parts[i] = d.fileParts(i, textWidth, notes)
 		placed := false
-		for j, line := range f.Lines {
-			switch roles[i][j] {
-			case roleDrop:
-			case roleBreak:
+		for _, p := range parts[i] {
+			switch p.kind {
+			case partBreak:
 				from = append(from, bodyLine{file: i, line: boxBreakRow})
-			default:
-				segs[i][j] = wrapLine(line, textWidth)
+			case partExpand:
 				if !placed {
 					offsets[i], placed = len(from), true
 				}
-				for s := range segs[i][j] {
-					from = append(from, bodyLine{file: i, line: j, seg: s})
+				from = append(from, bodyLine{file: i, line: boxExpandRow,
+					zone: p.zone, whole: p.whole})
+			case partContext:
+				for s := range p.segs {
+					from = append(from, bodyLine{file: i, line: boxContextRow,
+						seg: s, zone: p.zone})
 				}
-			}
-			for s := range notes[commentKey{path: f.Path, start: j}] {
-				from = append(from, bodyLine{file: i, line: boxCommentRow, seg: s})
+			case partComment:
+				from = append(from, bodyLine{file: i, line: boxCommentRow, seg: p.seg})
+			default:
+				if !placed {
+					offsets[i], placed = len(from), true
+				}
+				for s := range p.segs {
+					from = append(from, bodyLine{file: i, line: p.line, seg: s})
+				}
 			}
 		}
 		from = append(from, bodyLine{file: i, line: boxFooterRow})
@@ -890,18 +946,35 @@ func (d *Diff) render() {
 		if d.viewedFile(i) {
 			continue
 		}
-		for j, line := range f.Lines {
-			switch roles[i][j] {
-			case roleDrop:
-			case roleBreak:
+		for _, p := range parts[i] {
+			switch p.kind {
+			case partBreak:
 				lines = append(lines, d.boxBreak(inner))
+			case partExpand:
+				lines = append(lines, d.boxExpand(p.text, numWidth, inner, d.selected(len(lines))))
+			case partContext:
+				// A revealed line is the file's own: numbered on both sides, since
+				// a gap is context and every line in it is on both, and drawn
+				// plain, since there is no ± on it to colour it by. Nothing is
+				// marked or selected on one — a comment names a line of the diff,
+				// and this is a line of the file.
+				for s, text := range p.segs {
+					was, now := p.old, p.num
+					if s > 0 {
+						was, now = 0, 0
+					}
+					lines = append(lines, d.boxLine(text, lipgloss.NewStyle(), was, now,
+						numWidth, inner, false, false))
+				}
+			case partComment:
+				lines = append(lines, d.commentLine(p.text, numWidth, inner))
 			default:
-				style := d.lineStyle(line)
-				marked := d.marks[commentKey{path: f.Path, start: j}]
-				for s, text := range segs[i][j] {
+				style := d.lineStyle(f.Lines[p.line])
+				marked := d.marks[commentKey{path: f.Path, start: p.line}]
+				for s, text := range p.segs {
 					// Only the row the line starts on carries its numbers: a
 					// continuation numbered again would read as a line of its own.
-					was, now := nums[i].was[j], nums[i].now[j]
+					was, now := nums[i].was[p.line], nums[i].now[p.line]
 					if s > 0 {
 						was, now = 0, 0
 					}
@@ -909,13 +982,79 @@ func (d *Diff) render() {
 						marked, d.selected(len(lines))))
 				}
 			}
-			for _, text := range notes[commentKey{path: f.Path, start: j}] {
-				lines = append(lines, d.commentLine(text, numWidth, inner))
-			}
 		}
 		lines = append(lines, d.boxBottom(inner))
 	}
 	d.vp.SetContent(strings.Join(lines, "\n"))
+}
+
+// partKind is what one part of a file's box is: a line of the section git wrote,
+// the dashed break that stands where a hunk header was, an expand zone's control
+// row, a line that zone has revealed, or one row of a pending comment.
+type partKind int
+
+const (
+	partLine partKind = iota
+	partBreak
+	partExpand
+	partContext
+	partComment
+)
+
+// boxPart is one part of a file's box, already broken into the rows it takes at
+// the width it is drawn to. Which of its fields carry anything depends on the
+// kind: a line of the section is named by its index in it, a zone's rows by the
+// zone, a revealed line by the numbers it sits at on either side, and a comment
+// row by which of the comment's rows it is.
+type boxPart struct {
+	kind  partKind
+	line  int
+	zone  int
+	whole bool
+	num   int
+	old   int
+	seg   int
+	segs  []string
+	text  string
+}
+
+// fileParts is what a file's box is drawn from, in order: the lines of its
+// section the render keeps, the expand zones that stand in its gaps, and the
+// pending comments drawn under the lines they were left on.
+//
+// A gap's zone takes the place of what the render would otherwise have done with
+// the hunk header the gap runs up to — dropped it outright for the first hunk,
+// or drawn a break for a later one — since the zone says what the break said and
+// offers the lines besides. A hunk with no zone keeps the old behaviour: a diff
+// read without the files behind it has no gaps it can measure, and the break is
+// still the honest thing to draw.
+func (d Diff) fileParts(i, width int, notes map[commentKey][]string) []boxPart {
+	f := d.files[i]
+	roles := lineRoles(f.Lines)
+	var zones []expandZone
+	if i < len(d.zones) {
+		zones = d.zones[i]
+	}
+	src := d.sources[f.Path]
+	out := make([]boxPart, 0, len(f.Lines))
+	for j, line := range f.Lines {
+		switch z, ok := zoneAt(zones, j); {
+		case ok:
+			out = append(out, zoneParts(zones[z], z, src, width)...)
+		case roles[j] == roleDrop:
+		case roles[j] == roleBreak:
+			out = append(out, boxPart{kind: partBreak})
+		default:
+			out = append(out, boxPart{kind: partLine, line: j, segs: wrapLine(line, width)})
+		}
+		for s, text := range notes[commentKey{path: f.Path, start: j}] {
+			out = append(out, boxPart{kind: partComment, seg: s, text: text})
+		}
+	}
+	if z, ok := zoneAt(zones, len(f.Lines)); ok {
+		out = append(out, zoneParts(zones[z], z, src, width)...)
+	}
+	return out
 }
 
 // at is the body row at a line number, for the callers that hold one across a
@@ -933,9 +1072,13 @@ func (d Diff) at(line int) bodyLine {
 // the lines differently and moves every row under them, and what the user is
 // looking at is the line rather than the row. A line the new body does not hold
 // falls back to the number it was at, which contentLine then holds inside it.
+// An expand zone's control row is named by its zone and by which of the two
+// controls it is as well, since every one of a file's zones draws rows with the
+// same line index and only those two fields tell them apart.
 func (d Diff) rowOf(at bodyLine, fallback int) int {
+	want := bodyLine{file: at.file, line: at.line, zone: at.zone, whole: at.whole}
 	for i, l := range d.lines {
-		if l.file == at.file && l.line == at.line && l.seg == 0 {
+		if l == want {
 			return i
 		}
 	}
@@ -1056,16 +1199,22 @@ func (d Diff) contentLine(line int) int {
 // only place in the file a cursor moving through it can be. It is what offsets
 // names, which is why the two are asked the same question here.
 //
+// An expand zone's control row is one of them too, and the one that is not a
+// line of anything: it is what a key on the row it is under activates, so the
+// cursor has to be able to reach it.
+//
 // The rows a wrapped line continues onto are not among them: they are the tail
 // of the line above, and a cursor that stopped on one would offer to comment on
 // the same line twice. Neither is the break between two hunks, nor a comment's
-// own rows: there is nothing on any of them to say anything about.
+// own rows, nor a line an expand zone has revealed: there is nothing on any of
+// them to say anything about.
 func (d Diff) stop(i int) bool {
 	at := d.lines[i]
 	if at.seg > 0 {
 		return false
 	}
-	return at.line >= 0 || (at.line == boxHeaderRow && d.offsets[at.file] == i)
+	return at.line >= 0 || at.line == boxExpandRow ||
+		(at.line == boxHeaderRow && d.offsets[at.file] == i)
 }
 
 // commentMarks is which of a file's lines a pending comment covers, so the
@@ -1127,8 +1276,15 @@ func (d Diff) commentRows(width int) map[commentKey][]string {
 //
 // It is asked as the body is drawn and about a row of the body being drawn, so
 // the row and the cursor are both inside it.
+// A row that is no line of the file — a box's own border, an expand control, a
+// line a zone revealed — is under the cursor only by being the cursor's own row.
+// The line index it carries stands for a kind of row rather than for a place in
+// the section, and every zone of a file draws control rows carrying the same one.
 func (d Diff) selected(i int) bool {
 	at, cur := d.lines[i], d.lines[d.line]
+	if at.line < 0 || cur.line < 0 {
+		return i == d.line
+	}
 	if at.file != cur.file {
 		return false
 	}

@@ -187,7 +187,7 @@ func TestDiffViewedGoesWithAFreshRead(t *testing.T) {
 		t.Fatal("the first file should be folded")
 	}
 
-	d.SetFiles("origin/main", git.ParseFiles(sampleDiff))
+	d.SetFiles("origin/main", git.ParseFiles(sampleDiff), nil)
 	if d.viewedFile(0) {
 		t.Error("a fresh read should leave nothing folded")
 	}
@@ -292,7 +292,7 @@ func TestDiffLineAtFindsTheBodyLine(t *testing.T) {
 	// A band taller than the body has rows on no line at all.
 	short := NewDiff(DefaultStyles())
 	short.SetSize(diffTestWidth, diffTestHeight)
-	short.SetFiles("origin/main", manyFiles(1))
+	short.SetFiles("origin/main", manyFiles(1), nil)
 	if got, ok := short.LineAt(inDiff, len(short.lines)); ok {
 		t.Errorf("LineAt past the end of the body = %d, %v; want nothing", got, ok)
 	}

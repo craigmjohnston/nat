@@ -66,7 +66,7 @@ func newTestDiff() *Diff {
 	d := NewDiff(DefaultStyles())
 	d.SetSize(diffTestWidth, diffTestHeight)
 	d.Start("slice-1", "Diff viewer", "slice/diff-viewer", "/repos/nat")
-	d.SetFiles("origin/main", git.ParseFiles(sampleDiff))
+	d.SetFiles("origin/main", git.ParseFiles(sampleDiff), nil)
 	return &d
 }
 
@@ -153,7 +153,7 @@ func TestDiffStatesEachSayWhatIsGoingOn(t *testing.T) {
 		t.Errorf("loading view = %q, want the spinner and the branch", got)
 	}
 
-	d.SetFiles("origin/main", nil)
+	d.SetFiles("origin/main", nil, nil)
 	if got := xansi.Strip(d.View("")); !strings.Contains(got, "slice/diff-viewer has no changes against origin/main") {
 		t.Errorf("empty view = %q, want it to name the branch and the base", got)
 	}
@@ -218,7 +218,7 @@ func TestDiffJumpsBetweenFiles(t *testing.T) {
 func TestDiffJumpsWithNothingToJumpThrough(t *testing.T) {
 	d := NewDiff(DefaultStyles())
 	d.SetSize(diffTestWidth, diffTestHeight)
-	d.SetFiles("origin/main", nil)
+	d.SetFiles("origin/main", nil, nil)
 	d.Update(keyPress("n"))
 	d.Update(keyPress("p"))
 	if d.cursor != 0 {
@@ -233,7 +233,7 @@ func TestDiffScrollsTheFileListWithTheCursor(t *testing.T) {
 	d := NewDiff(DefaultStyles())
 	// Three rows of list, and five files to move through them.
 	d.SetSize(diffTestWidth, 4)
-	d.SetFiles("origin/main", manyFiles(5))
+	d.SetFiles("origin/main", manyFiles(5), nil)
 	for range 4 {
 		d.Update(keyPress("n"))
 	}
@@ -259,7 +259,7 @@ func TestDiffScrollsTheFileListWithTheCursor(t *testing.T) {
 func TestDiffListWithNoRoomAtAll(t *testing.T) {
 	d := NewDiff(DefaultStyles())
 	d.SetSize(diffTestWidth, 0)
-	d.SetFiles("origin/main", manyFiles(3))
+	d.SetFiles("origin/main", manyFiles(3), nil)
 	d.Update(keyPress("n"))
 	if d.listTop != 0 {
 		t.Errorf("listTop = %d, want it left at the top when there are no rows", d.listTop)
@@ -462,7 +462,7 @@ func TestDiffCursorOnALineTallerThanTheBand(t *testing.T) {
 	d := NewDiff(DefaultStyles())
 	d.SetSize(40, 3)
 	d.SetFiles("origin/main", git.ParseFiles("diff --git a/x.go b/x.go\n@@ -1 +1 @@\n-old\n+"+
-		strings.Repeat("wide ", 40)+"\n"))
+		strings.Repeat("wide ", 40)+"\n"), nil)
 	long := len(d.files[0].Lines) - 1
 	for range long {
 		d.Update(keyPress("j"))
@@ -562,11 +562,11 @@ func TestElideLeftKeepsTheTail(t *testing.T) {
 func TestDiffPluralNamesOneFile(t *testing.T) {
 	d := NewDiff(DefaultStyles())
 	d.SetSize(diffTestWidth, diffTestHeight)
-	d.SetFiles("origin/main", manyFiles(1))
+	d.SetFiles("origin/main", manyFiles(1), nil)
 	if want := "1 file vs origin/main"; d.listHeading() != want {
 		t.Errorf("heading = %q, want %q", d.listHeading(), want)
 	}
-	d.SetFiles("origin/main", manyFiles(2))
+	d.SetFiles("origin/main", manyFiles(2), nil)
 	if want := "2 files vs origin/main"; d.listHeading() != want {
 		t.Errorf("heading = %q, want %q", d.listHeading(), want)
 	}

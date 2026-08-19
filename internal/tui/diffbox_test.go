@@ -108,7 +108,7 @@ index 8888888..9999999 100644
 `
 	d := NewDiff(DefaultStyles())
 	d.SetSize(diffTestWidth, diffTestHeight)
-	d.SetFiles("origin/main", git.ParseFiles(deep))
+	d.SetFiles("origin/main", git.ParseFiles(deep), nil)
 	if got := numberWidth(d.lineNumbers()); got != 4 {
 		t.Fatalf("numberWidth = %d, want the four digits of the widest number", got)
 	}
