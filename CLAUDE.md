@@ -491,6 +491,26 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   while yet. An agent read as gone is left out of the map entirely — whether
   there is an agent at all is the live map's answer, and a second opinion here
   would only be a staler one.
+  `active.go` is the board's first band: the slices in flight, boxed above the
+  plan as a vertical list rather than scattered through the milestones they
+  happen to be filed under. Membership is `domain.StateOf`'s own answer — a
+  slice it says nothing about is one there is nothing to say about — so the
+  section holds every slice in progress and nothing else, and a plan with none
+  takes no rows at all and draws exactly as it did before there was one. An
+  entry is two lines: a state dot and the slice's name, then a muted line
+  reading `<state> · <milestone>`, with the dot and the state word in the
+  state's own colour (`Board.stateStyle`, the roles the board already reads
+  those states in). The selected entry is a fill rather than a marker, merged
+  into every piece's own style through `wash` so the dot keeps its colour over
+  it — the board's usual trick of drawing a selected row plain would flatten
+  exactly what the entry is read by. The box's borders and the blank line under
+  it belong to the first and last entries' own rows, the rule the Done
+  section's gap follows: a line of the board that is no row's is one the cursor
+  and the mouse cannot account for. The entries are rows of this same board, so
+  the cursor runs from the section straight on into the plan and every key that
+  acts on a slice acts on the one under it — `Board.SelectedSlice` answers for
+  an entry as for a plan row, since it is the same page drawn a second time.
+  Nothing folds: an entry is a slice, and a slice row has never folded.
 - `skills/` — the agent skills (/queue-work planning, /next-slice execution),
   embedded in the binary with `go:embed` and installed by `nat setup`. A
   checkout works on them in place by symlinking them into `~/.claude/skills/`,
@@ -630,7 +650,8 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   as `domain.AgentPresence`, domain's own saying of the board's two readings —
   the live map and the activity watcher — as one value, since `internal/agent`
   and `internal/tui` both import this package and neither's enum could be
-  reached from here. Nothing draws it yet.
+  reached from here. The Active section is what draws it — see
+  `internal/tui/active.go`.
 - A project keeps its whole plan on one page: no Milestones database, and a
   `Milestone` **select** on the Slices data source whose options are the
   milestones, in plan order. `domain.MilestonesFromOptions` maps them —
