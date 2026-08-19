@@ -141,6 +141,26 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   them and cannot be split where a filename holds spaces of its own. `Runner` is
   its own rather than `gh.Runner`, because a package about git has no business
   importing the GitHub CLI to borrow a type off it.
+- `internal/worktree/` — the worktrunk CLI (the `wt` binary), wrapped as thinly
+  as `internal/gh` and `internal/git` are and with a `Runner` seam of its own
+  for the same reason, so a slice's agent can be given a git worktree rather
+  than made to share the project's one checkout with every other agent and with
+  the user. Two operations: `Create` runs `wt switch --create <branch> --no-cd
+  -y` in the repo — no directory to change, since a subprocess reaches the
+  binary under worktrunk's shell function, and nobody at this end to answer an
+  approval — and reads the path back through `Path` (`wt list --format json`),
+  because switch prints for a person and the list is the one machine-readable
+  answer worktrunk gives; `Remove` runs `wt remove <branch> -y` and leaves what
+  removal means to worktrunk, which deletes the branch only if merged and
+  refuses a dirty worktree outright. That refusal is synchronous — only the
+  removal itself is backgrounded — so a nil error means the worktree is going
+  rather than already gone. A wt that ran and refused comes back as an
+  `*ExitError` whose message is the first line of its stderr, exactly as gh's
+  does; a wt that is not there at all comes back as `ErrNotInstalled`, wrapped
+  around `exec.ErrNotFound` rather than replacing it, because that is the one
+  failure a caller recovers from — an agent on a machine without worktrunk runs
+  in the shared checkout the way every agent did before there were worktrees,
+  and only a distinguishable error can drive that.
 - `internal/cli/` — the headless commands (`nat info [--json]`,
   `nat next-slice [--json]`, which claims the next unblocked Todo slice under
   the lowest-ordered open milestone and prints its brief,
