@@ -242,6 +242,25 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   bare, the status line included, and a window of one line is that line alone.
   The same text goes out as the terminal's title, stripped of its styling, since
   a title is text.
+  `worktrees.go` sits between the launch flow's `workdirFor` and the session it
+  starts: a slice's agent is given a worktree of its own through
+  `internal/worktree`, so it works on its own branch in its own directory rather
+  than sharing the one checkout with every other agent and with the user. The
+  branch is derived rather than recorded — `slice/<the title slugged>`, since
+  nothing holds a branch name until the agent hands the work back and a relaunch
+  has to arrive at the same string — and a branch that already has a worktree is
+  reused rather than cut a second one, because a relaunched slice wants its work
+  so far. The path it answers with is the `agent.PromptContext.WorkingDir` the
+  session is started in and the prompt is written from, so tmux and the agent
+  never disagree about where it is. Two ways out fall back to the shared
+  checkout with a toast saying which — no worktrunk on the machine, and a
+  working directory that is in no git repository at all — since both are the
+  launch that worked before there were worktrees, and where the agent is working
+  is what decides what its branch instructions mean. A worktrunk that ran and
+  refused is a toast too and launches nothing at all, because an agent placed
+  half way is one working somewhere nobody chose. All of it is resolved inside
+  the launch command rather than before it: cutting a worktree runs the
+  repository's own hooks, and that is the goroutine to be slow in.
   `approve.go` is the `p` key, the board's one action that reaches outside
   Notion — the domain rule on `Branch` says what it does and why gh's failures
   are toasts. `diff.go` and `diffflow.go` are `v`, the key that is answered with
@@ -454,7 +473,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   and `internal/agent`'s slice prompt end the same way and say so in the same
   words: the branch pushed and handed back with `complete-slice --branch`, no
   `gh` and no pull request, since opening one is the board's `p` after the user
-  has reviewed the branch.
+  has reviewed the branch. Where they differ is which branch: a board launch
+  puts its agent in a worktree already on one and names it, and /next-slice is
+  run by a session that is wherever the user was, so it still asks for one to be
+  made.
 
 ## Domain rules
 
