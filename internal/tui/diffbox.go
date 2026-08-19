@@ -105,21 +105,22 @@ func (d Diff) boxBottom(inner int) string {
 		boxBottomRight, inner)
 }
 
-// boxLine draws one line of a file's diff inside its box: the gutter that says
+// boxLine draws one row of a file's diff inside its box: the gutter that says
 // whether a comment is pending on it, the line's number on either side of the
-// change, and the line itself coloured by its shape and cut to what is left.
+// change, and text — one row's worth of a line, already wrapped to the columns
+// the box leaves it — in the style its line was measured for.
 //
-// A long line is truncated rather than wrapped, so that one line of the diff is
-// one line of the body: the file jumps and the line cursor are line numbers into
-// the body, and a body whose lines did not correspond to git's would send them
-// to the wrong place. A truncated line is a line you can see is long.
+// The style comes from the caller rather than from the text, because a wrapped
+// line is drawn a row at a time and only the first of those rows still carries
+// the +/- that says what the line is: a continuation styled by its own leading
+// character would read as a line of its own, added or removed on its own account.
 //
 // A selected line is filled across the box's interior the way the board fills
 // the row under its cursor, and drawn plain underneath: a line's own colour
 // would break the run of background, exactly as a chip's does there.
-func (d Diff) boxLine(line string, was, now, numWidth, inner int, marked, selected bool) string {
+func (d Diff) boxLine(text string, style lipgloss.Style, was, now, numWidth, inner int,
+	marked, selected bool) string {
 	nums := numberCell(was, numWidth) + " " + numberCell(now, numWidth) + " "
-	text := fit(line, max(inner-diffGutterWidth-lipgloss.Width(nums), 1))
 	gutter := " "
 	if marked {
 		gutter = commentMark
@@ -135,7 +136,7 @@ func (d Diff) boxLine(line string, was, now, numWidth, inner int, marked, select
 		gutter = d.styles.DiffComment.Render(gutter)
 	}
 	return d.boxRow(boxSide, gutter+" "+d.styles.DiffCount.Render(nums)+
-		d.lineStyle(line).Render(text), boxSide, inner)
+		style.Render(text), boxSide, inner)
 }
 
 // boxRow is one row of a file's box: the interior held to exactly the columns

@@ -139,9 +139,14 @@ func TestDiffBoxKeepsADescribedFileInside(t *testing.T) {
 	for i, row := range rows {
 		if strings.Contains(row, "Binary files") {
 			body = row
-			// Its box's header row is the one above the "diff --git" line that
-			// opens the file's section.
-			head = rows[i-3]
+			// Its box's header row is the last one above it that opens a box:
+			// the lines between the two are as many rows as they wrapped onto.
+			for j := i - 1; j >= 0; j-- {
+				if strings.HasPrefix(rows[j], boxTopLeft) {
+					head = rows[j]
+					break
+				}
+			}
 			break
 		}
 	}
@@ -204,7 +209,7 @@ func TestDiffContentLineFindsTheNearestLineOfTheDiff(t *testing.T) {
 	if got := d.lines[last]; got.line != boxFooterRow {
 		t.Fatalf("body line %d is %+v, want the last box's footer row", last, got)
 	}
-	if got, want := d.contentLine(last), last-1; got != want {
+	if got, want := d.contentLine(last), rowAt(d, len(d.files)-1, len(d.files[len(d.files)-1].Lines)-1); got != want {
 		t.Errorf("contentLine(%d) = %d, want the line above the footer row, %d", last, got, want)
 	}
 
