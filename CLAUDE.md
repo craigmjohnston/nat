@@ -285,7 +285,16 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   They are ephemeral by design: held in the session alone, never written to
   Notion or to GitHub, marked in a gutter column the body reserves on every line
   and cleared once they have actually reached the pane — a send that failed
-  leaves them where they are, because nothing else is holding them. The prompt
+  leaves them where they are, because nothing else is holding them. A comment is
+  also drawn where it was left: its text, wrapped to the box and started at the
+  column the code starts at, on rows under the last of the lines it covers, so a
+  review is read in place rather than behind a mark. Those rows are a third kind
+  of row that belongs to no file's section (`boxCommentRow`) — the line cursor
+  steps over them the way it steps over a box's borders, `v` and `c` say nothing
+  about them and a click on one folds nothing — and they are built with the body
+  on every render like the wrapped rows and the fold offsets, so a resize wraps
+  them again and a re-read draws them under wherever their lines have got to, or
+  not at all where it dropped the comment. The prompt
   names each comment's lines by the numbers they sit at in the file
   (`diffref.go`, read off the hunk headers — the new side's, or the base's for a
   run that is nothing but deletions) and quotes them as git wrote them, since the

@@ -139,6 +139,18 @@ func (d Diff) boxLine(text string, style lipgloss.Style, was, now, numWidth, inn
 		style.Render(text), boxSide, inner)
 }
 
+// commentLine draws one row of a pending comment, inside the box of the file it
+// was left on and under the last of the lines it covers. It keeps the mark in
+// the gutter and spends the two line-number columns on nothing, so the text
+// starts where the code does and the whole comment reads as hanging off the
+// lines above it — a comment is about the file rather than in it, and numbering
+// it would say otherwise.
+func (d Diff) commentLine(text string, numWidth, inner int) string {
+	indent := strings.Repeat(" ", 2*numWidth+2)
+	return d.boxRow(boxSide, d.styles.DiffComment.Render(commentMark)+" "+indent+
+		d.styles.DiffCommentText.Render(text), boxSide, inner)
+}
+
 // boxRow is one row of a file's box: the interior held to exactly the columns
 // the box has, between the two border characters that close it.
 func (d Diff) boxRow(left, interior, right string, inner int) string {
