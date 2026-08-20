@@ -245,6 +245,15 @@ type App struct {
 	// key shows, which is the one thing it does through git.
 	prs    PRCreator
 	differ Differ
+	// prReader reads what GitHub says about the pull requests of the slices
+	// whose work is out, prState is that last reading — how ready each read
+	// pull request is, keyed by slice ID — and prReading whether one is in
+	// flight. The reading has no timer of its own: it rides the plan's, and the
+	// bit is what keeps a slow one from being started twice; see
+	// [App.refreshPRStates].
+	prReader  PRReader
+	prState   map[string]domain.PRReadiness
+	prReading bool
 	// viewer is the agent terminal beside the board, or nil when the board has
 	// the window to itself. Exactly one is on show at a time: it is a split, not
 	// a stack of panes.
@@ -309,7 +318,8 @@ func NewApp(cfg config.Config, client NotionAPI) *App {
 		promptKeys: defaultPromptKeyMap(), spinner: sp,
 		board: NewBoard(s), info: NewInfo(s), diff: NewDiff(s),
 		launcher: newLauncher(), prs: newPRCreator(), differ: newDiffer(),
-		boardVP: viewport.New(), helpVP: viewport.New()}
+		prReader: newPRReader(),
+		boardVP:  viewport.New(), helpVP: viewport.New()}
 	a.helpVP.SetContent(a.helpBody())
 	return a
 }
@@ -388,12 +398,16 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The first plan brings the bar with it, which the board's viewport has
 		// to give its lines up to; resize re-shares them and re-syncs the board.
 		a.resize()
+		// The pull requests of the slices whose work is out are read off this
+		// same landing, which is the board's own cadence: see
+		// [App.refreshPRStates].
+		cmd := a.refreshPRStates()
 		// A project that had to be migrated to be shown says so: the plan on
 		// screen is not quite the one Notion held a moment ago.
 		if !msg.migration.Empty() {
-			return a, a.showToast(msg.migration.Summary(), sevSuccess)
+			return a, tea.Batch(cmd, a.showToast(msg.migration.Summary(), sevSuccess))
 		}
-		return a, nil
+		return a, cmd
 	case notionErrMsg:
 		a.loading = false
 		// A load that fails over a board already on screen is news, not a state:
@@ -407,6 +421,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.err = msg.err
 		return a, nil
+	case prStateMsg:
+		return a, a.prStateRead(msg)
 	case wishlistLoadedMsg:
 		a.wishlistLoaded(msg)
 		return a, nil

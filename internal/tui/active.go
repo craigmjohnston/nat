@@ -42,11 +42,18 @@ func (b Board) activeSlices() []domain.Slice {
 }
 
 // state is where a slice has got to, as the section names it: the domain's own
-// classification, given what the board's two agent readings say about the slice
-// and the plan its dependencies are read from.
+// classification, given what the board's two agent readings say about the
+// slice, what gh last said about its pull request, and the plan its
+// dependencies are read from.
 func (b Board) state(s domain.Slice) domain.SliceState {
-	return domain.StateOf(s, b.agentPresence(s.ID), b.byID)
+	return domain.StateOf(s, b.agentPresence(s.ID), b.prState[s.ID], b.byID)
 }
+
+// SetPRState records how ready each read pull request is, keyed by slice ID.
+// It is the board's second background reading — see [App.refreshPRStates] —
+// and, like the activity watcher's, a slice it says nothing about simply keeps
+// the state it would have had before there was any reading at all.
+func (b *Board) SetPRState(state map[string]domain.PRReadiness) { b.prState = state }
 
 // agentPresence is the board's two readings of a slice's agent — the live map
 // of running sessions and the activity watcher's classification of them — as
@@ -73,7 +80,9 @@ func (b Board) agentPresence(sliceID string) domain.AgentPresence {
 // Success green of work waiting to be reviewed. A slice in progress with
 // nothing out yet takes AccentAlt: it is neither finished nor gone wrong —
 // often it is simply an agent running outside nat's own sessions — so it reads
-// as ordinary work rather than as something to put right.
+// as ordinary work rather than as something to put right. A pull request the
+// review is over on takes that same Success green in bold: it is the end of the
+// state the entry was already in, said louder rather than said in a new colour.
 func (b Board) stateStyle(s domain.SliceState) lipgloss.Style {
 	switch s {
 	case domain.SliceStateWorking:
@@ -84,6 +93,8 @@ func (b Board) stateStyle(s domain.SliceState) lipgloss.Style {
 		return b.styles.StateBlocked
 	case domain.SliceStateAwaitingReview:
 		return b.styles.StateAwaitingReview
+	case domain.SliceStateReadyToMerge:
+		return b.styles.StateReadyToMerge
 	}
 	return b.styles.StateReadyToPush
 }

@@ -234,6 +234,11 @@ type Board struct {
 	// see presence.go.
 	activity map[string]Presence
 	pulse    int
+	// prState maps the ID of each slice whose pull request has been read to how
+	// ready it is, which is what tells a review still to come from one that is
+	// over. A slice the map says nothing about — no pull request, or one gh
+	// could not be asked about — is a review still to come; see [Board.state].
+	prState map[string]domain.PRReadiness
 
 	// confirmText is the inline confirmation anchored to the row the cursor is
 	// on, drawn from its right edge in confirmSev's colour; empty when there is

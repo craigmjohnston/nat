@@ -31,6 +31,7 @@ func TestSliceStateString(t *testing.T) {
 		{SliceStateBlocked, "blocked"},
 		{SliceStateReadyToPush, "ready to push"},
 		{SliceStateAwaitingReview, "awaiting review"},
+		{SliceStateReadyToMerge, "ready to merge"},
 		{SliceState(42), "none"},
 	}
 	for _, tt := range tests {
@@ -40,10 +41,29 @@ func TestSliceStateString(t *testing.T) {
 	}
 }
 
+func TestPRReadinessString(t *testing.T) {
+	tests := []struct {
+		readiness PRReadiness
+		want      string
+	}{
+		{PRUnread, "unread"},
+		{PRAwaitingReview, "awaiting review"},
+		{PRReadyToMerge, "ready to merge"},
+		{PRReadiness(42), "unread"},
+	}
+	for _, tt := range tests {
+		if got := tt.readiness.String(); got != tt.want {
+			t.Errorf("PRReadiness(%d).String() = %q, want %q", tt.readiness, got, tt.want)
+		}
+	}
+}
+
 // TestStateOf walks every combination of the facts a state is derived from: the
 // four readings of the agent, a branch or none, a PR or none, and a dependency
 // that is unfinished or none — for a slice in progress, and then for the
-// statuses that are in no flight at all.
+// statuses that are in no flight at all. The reading of the pull request is
+// left at its zero value here, which is every board before gh has been asked
+// anything; TestStateOfPRReadiness is what walks the rest of it.
 func TestStateOf(t *testing.T) {
 	plan := []Slice{
 		{ID: "dep", Name: "Notion client", Status: SliceTodo, StatusName: "Todo"},
@@ -117,7 +137,54 @@ func TestStateOf(t *testing.T) {
 			if tt.blocked {
 				s.DependsOn = []string{"dep"}
 			}
-			if got := StateOf(s, tt.presence, byID); got != tt.want {
+			if got := StateOf(s, tt.presence, PRUnread, byID); got != tt.want {
+				t.Errorf("StateOf() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestStateOfPRReadiness is the refinement gh's reading makes: a pull request
+// approved and mergeable is a review that is over, and everything else — an
+// unreviewed one, and one nothing could be read of at all — is a review still
+// to come. It applies to work that is out and to nothing else: a slice with an
+// agent on it, one with nothing pushed, and one that is not in flight at all
+// are what they were whatever GitHub says about a pull request they do not
+// have.
+func TestStateOfPRReadiness(t *testing.T) {
+	byID := SlicesByID(nil)
+
+	tests := []struct {
+		name      string
+		status    SliceStatus
+		presence  AgentPresence
+		branch    string
+		prURL     string
+		readiness PRReadiness
+		want      SliceState
+	}{
+		{name: "approved and mergeable", status: SliceClaimed, prURL: "https://gh/pr/1",
+			readiness: PRReadyToMerge, want: SliceStateReadyToMerge},
+		{name: "read and still waiting", status: SliceClaimed, prURL: "https://gh/pr/1",
+			readiness: PRAwaitingReview, want: SliceStateAwaitingReview},
+		{name: "nothing read", status: SliceClaimed, prURL: "https://gh/pr/1",
+			readiness: PRUnread, want: SliceStateAwaitingReview},
+		// A branch handed back with no pull request on it yet is a review still
+		// to come whatever a stale reading says.
+		{name: "handed back, ready to merge", status: SliceClaimed, branch: "slice/x",
+			readiness: PRReadyToMerge, want: SliceStateReadyToMerge},
+		// An agent back on the branch is the review going back to it, which
+		// wins over anything GitHub says.
+		{name: "agent on it", status: SliceClaimed, presence: AgentWorking, prURL: "https://gh/pr/1",
+			readiness: PRReadyToMerge, want: SliceStateWorking},
+		{name: "nothing out", status: SliceClaimed, readiness: PRReadyToMerge, want: SliceStateReadyToPush},
+		{name: "done", status: SliceDone, prURL: "https://gh/pr/1",
+			readiness: PRReadyToMerge, want: SliceStateNone},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := Slice{ID: "s1", Name: "Board", Status: tt.status, Branch: tt.branch, PRURL: tt.prURL}
+			if got := StateOf(s, tt.presence, tt.readiness, byID); got != tt.want {
 				t.Errorf("StateOf() = %v, want %v", got, tt.want)
 			}
 		})
