@@ -1061,6 +1061,9 @@ func TestAppLaunchRefusesABlockedSlice(t *testing.T) {
 	app.project.Slices[3].Status = domain.SliceDone
 	app.project.Slices[5].Status = domain.SliceDone
 	app.board.SetProject(app.project)
+	// The slice it waited on has left the Active section, so every row below
+	// has moved up one: the cursor is put back on the slice by name.
+	cursorOn(t, app, "s5")
 	press(app, "l")
 	if !app.board.Prompting() {
 		t.Error("the slice is unblocked, want the launch prompt")

@@ -179,9 +179,14 @@ func TestBoardPromptWithNothingToAnswer(t *testing.T) {
 	}
 }
 
-// selectedLine is the line of the board's render that the cursor is on.
+// selectedLine is the last line of the board's render that the cursor's row is
+// drawn on, which is the one a confirmation is anchored to. It is read off the
+// cursor's span rather than off the cursor itself: a row is not a line — the
+// Active section takes several above the plan, and a wrapped row takes more
+// than one of its own.
 func selectedLine(b *Board) string {
-	return strings.Split(b.View(), "\n")[b.cursor]
+	top, height := b.CursorSpan()
+	return strings.Split(b.View(), "\n")[top+height-1]
 }
 
 func TestBoardConfirmOnAnUnmeasuredBoardFollowsTheRow(t *testing.T) {

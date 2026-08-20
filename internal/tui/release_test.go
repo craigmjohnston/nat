@@ -181,7 +181,7 @@ func TestReleaseRefusals(t *testing.T) {
 		set    func(a *App)
 		reason string
 	}{
-		{"on a milestone", func(a *App) { a.board.cursor = 0 }, "Move to a slice"},
+		{"on a milestone", func(a *App) { cursorOnMilestone(t, a) }, "Move to a slice"},
 		{"a Todo slice", func(a *App) { cursorOn(t, a, notStarted) }, "only a slice in progress"},
 		{"a Done slice", func(a *App) { cursorOn(t, a, allDone) }, "only a slice in progress"},
 	}

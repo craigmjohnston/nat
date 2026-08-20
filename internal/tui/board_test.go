@@ -62,6 +62,8 @@ func rowNames(b *Board) []string {
 	names := make([]string, len(b.rows))
 	for i, r := range b.rows {
 		switch r.kind {
+		case rowActive:
+			names[i] = "Active " + b.active[r.slice].Name
 		case rowSection:
 			names[i] = "Done section"
 		case rowMilestone:
@@ -96,10 +98,21 @@ func golden(t *testing.T, name, got string) {
 	}
 }
 
+// activeEntry is testProject's one slice in flight as the Active section's row
+// names it. Every board built from the fixture draws it above the plan, so it
+// leads the rows the navigation tests assert.
+const activeEntry = "Active Board screen"
+
+// planTop is the line the plan starts on in a render of the fixture: the Active
+// section's box takes the four above it — its two borders and the entry's two
+// lines — and the blank line that sets the plan apart from it.
+const planTop = 5
+
 func TestBoardExpandsOnlyTheActiveMilestoneByDefault(t *testing.T) {
 	b := newTestBoard()
 
 	want := []string{
+		activeEntry,
 		"M2: Board", "Domain model", "Board screen", "Info view",
 		"M3: Mutations",
 		domain.UnassignedName, "Stray",
@@ -165,6 +178,7 @@ func TestBoardFoldsDoneMilestonesIntoOneSection(t *testing.T) {
 	b.SetProject(&p)
 
 	want := []string{
+		activeEntry,
 		"M2: Board", "Domain model", "Board screen", "Info view",
 		"M3: Mutations",
 		domain.UnassignedName, "Stray",
@@ -183,6 +197,7 @@ func TestBoardFoldsDoneMilestonesIntoOneSection(t *testing.T) {
 	b.cursor = section
 	b.Update(keyPress("enter"))
 	want = []string{
+		activeEntry,
 		"M2: Board", "Domain model", "Board screen", "Info view",
 		"M3: Mutations",
 		domain.UnassignedName, "Stray",
@@ -208,6 +223,7 @@ func TestBoardFoldsDoneMilestonesIntoOneSection(t *testing.T) {
 	b.cursor = section
 	b.Update(keyPress("enter"))
 	if got := rowNames(b); !equal(got, []string{
+		activeEntry,
 		"M2: Board", "Domain model", "Board screen", "Info view",
 		"M3: Mutations",
 		domain.UnassignedName, "Stray",
@@ -276,6 +292,7 @@ func TestBoardHidesDoneSlicesOfUnfinishedMilestones(t *testing.T) {
 	// M2 is still in flight, so its Done slice goes; the Claimed and Todo ones
 	// stay, and so does the Unassigned group's slice, which is not Done.
 	want := []string{
+		activeEntry,
 		"M2: Board", "Board screen", "Info view",
 		"M3: Mutations",
 		domain.UnassignedName, "Stray",
@@ -288,6 +305,7 @@ func TestBoardHidesDoneSlicesOfUnfinishedMilestones(t *testing.T) {
 	// The toggle is a toggle: pressing it again puts them back.
 	b.Update(keyPress("z"))
 	if got := rowNames(b); !equal(got, []string{
+		activeEntry,
 		"M2: Board", "Domain model", "Board screen", "Info view",
 		"M3: Mutations",
 		domain.UnassignedName, "Stray",
@@ -308,6 +326,7 @@ func TestBoardHideDoneLeavesTheDoneSectionAlone(t *testing.T) {
 	b.Update(keyPress("z"))
 
 	want := []string{
+		activeEntry,
 		"M2: Board", "Board screen", "Info view",
 		"M3: Mutations",
 		domain.UnassignedName, "Stray",
@@ -367,7 +386,7 @@ func TestBoardHideDoneKeepsTheCursorOnAVisibleRow(t *testing.T) {
 
 	// On the Done slice itself, which is about to go: the cursor falls back to
 	// its milestone's own row.
-	b.cursor = 1
+	b.cursor = 2
 	b.Update(keyPress("z"))
 	if got := rowNames(b)[b.cursor]; got != "M2: Board" {
 		t.Errorf("cursor is on %q, want it fallen back to the milestone row", got)
@@ -376,7 +395,7 @@ func TestBoardHideDoneKeepsTheCursorOnAVisibleRow(t *testing.T) {
 	// On a row that survives: the cursor follows it to its new index rather than
 	// staying on a number.
 	b.Update(keyPress("z"))
-	b.cursor = 3 // Info view
+	b.cursor = 4 // Info view
 	b.Update(keyPress("z"))
 	if got := rowNames(b)[b.cursor]; got != "Info view" {
 		t.Errorf("cursor is on %q, want it kept on Info view", got)
@@ -427,7 +446,7 @@ func TestBoardRendersEveryGroupExpanded(t *testing.T) {
 		}
 		b.rebuild()
 	}
-	b.cursor = 3 // a slice row, so the cursor is shown on one
+	b.cursor = 4 // a slice row, so the cursor is shown on one
 
 	golden(t, "board-expanded", b.View())
 }
@@ -448,16 +467,21 @@ func TestBoardRendersAsATable(t *testing.T) {
 			t.Errorf("line %q still carries an inline milestone number", line)
 		}
 	}
-	for i, want := range map[int]string{0: "2 ▾ Board", 4: "3 ▸ Mutations", 5: "▾ Unassigned", 8: "▸ Done"} {
+	for i, want := range map[int]string{
+		planTop: "2 ▾ Board", planTop + 4: "3 ▸ Mutations",
+		planTop + 5: "▾ Unassigned", planTop + 8: "▸ Done",
+	} {
 		if !strings.Contains(lines[i], want) {
 			t.Errorf("line %d = %q, want it to contain %q", i, lines[i], want)
 		}
 	}
-	if !strings.Contains(lines[8], "1 milestone · 2/2") {
-		t.Errorf("line 8 = %q, want the Done section's aggregate on it", lines[8])
+	if !strings.Contains(lines[planTop+8], "1 milestone · 2/2") {
+		t.Errorf("line %d = %q, want the Done section's aggregate on it",
+			planTop+8, lines[planTop+8])
 	}
-	if lines[7] != "" {
-		t.Errorf("line 7 = %q, want the blank line above the Done section", lines[7])
+	if lines[planTop+7] != "" {
+		t.Errorf("line %d = %q, want the blank line above the Done section",
+			planTop+7, lines[planTop+7])
 	}
 
 	// endColumn is the display column a substring ends on, which is what has
@@ -471,7 +495,7 @@ func TestBoardRendersAsATable(t *testing.T) {
 		return lipgloss.Width(line[:at+len(sub)])
 	}
 	countEnd, pillEnd := -1, -1
-	for i, count := range map[int]string{0: "1/3", 4: "0/0", 5: "0/1"} {
+	for i, count := range map[int]string{planTop: "1/3", planTop + 4: "0/0", planTop + 5: "0/1"} {
 		got := endColumn(lines[i], count)
 		if got < 0 {
 			t.Fatalf("line %d = %q, want the count %q on it", i, lines[i], count)
@@ -483,7 +507,7 @@ func TestBoardRendersAsATable(t *testing.T) {
 			t.Errorf("line %d ends its count at column %d, want %d:\n%q", i, got, countEnd, lines[i])
 		}
 	}
-	for i, pill := range map[int]string{0: "Active", 4: "Queued"} {
+	for i, pill := range map[int]string{planTop: "Active", planTop + 4: "Queued"} {
 		got := endColumn(lines[i], pill)
 		if got < 0 {
 			t.Fatalf("line %d = %q, want the pill %q on it", i, lines[i], pill)
@@ -561,6 +585,7 @@ func TestBoardSinksABlockedSliceToTheBottomOfItsMilestone(t *testing.T) {
 	b.SetProject(&p)
 
 	want := []string{
+		activeEntry,
 		"M2: Board", "Domain model", "Info view", "Board screen",
 		"M3: Mutations",
 		domain.UnassignedName, "Stray",
@@ -642,22 +667,22 @@ func TestBoardMarksSlicesWithALiveSession(t *testing.T) {
 
 func TestBoardFillsTheSelectedRowToItsWidth(t *testing.T) {
 	b := newTestBoard()
-	b.cursor = 2 // a slice row
+	b.cursor = 3 // a slice row
 
 	lines := strings.Split(b.View(), "\n")
-	if got := lipgloss.Width(lines[2]); got != 60 {
+	if got := lipgloss.Width(lines[planTop+2]); got != 60 {
 		t.Errorf("the selected row is %d wide, want the fill run out to 60", got)
 	}
-	if got := lipgloss.Width(lines[3]); got >= 60 {
+	if got := lipgloss.Width(lines[planTop+3]); got >= 60 {
 		t.Errorf("an unselected row is %d wide, want it left unfilled", got)
 	}
 }
 
 func TestBoardFillsEveryLineOfASelectedWrappedRow(t *testing.T) {
 	b := newLongRowBoard(40)
-	b.cursor = 1 // the long slice row, which wraps at this width
+	b.cursor = 2 // the long slice row, which wraps at this width
 
-	lines := b.rowLines()[1]
+	lines := b.rowLines()[2]
 	if len(lines) < 2 {
 		t.Fatalf("the row is %d lines, want it wrapped", len(lines))
 	}
@@ -677,7 +702,7 @@ func TestBoardContinuesTheStatusStripDownAWrappedRow(t *testing.T) {
 	for _, r := range []struct {
 		row  int
 		want string
-	}{{1, claimedBG}, {2, todoBG}} {
+	}{{2, claimedBG}, {3, todoBG}} {
 		lines := b.rowLines()[r.row]
 		if len(lines) < 2 {
 			t.Fatalf("row %d is %d lines, want it wrapped", r.row, len(lines))
@@ -719,13 +744,13 @@ func backgroundOf(st lipgloss.Style) string {
 // the line the selected row starts on, and how many lines it takes.
 func TestBoardCursorSpanCountsAWrappedRowsLines(t *testing.T) {
 	b := newLongRowBoard(40)
-	b.cursor = 2 // the second slice, under a milestone row that wraps too
+	b.cursor = 3 // the second slice, under a milestone row that wraps too
 
 	top, height := b.CursorSpan()
 	lines := b.rowLines()
-	want := len(lines[0]) + len(lines[1])
-	if top != want || height != len(lines[2]) {
-		t.Errorf("CursorSpan() = (%d, %d), want (%d, %d)", top, height, want, len(lines[2]))
+	want := len(lines[0]) + len(lines[1]) + len(lines[2])
+	if top != want || height != len(lines[3]) {
+		t.Errorf("CursorSpan() = (%d, %d), want (%d, %d)", top, height, want, len(lines[3]))
 	}
 	if height < 2 {
 		t.Errorf("the row is %d lines, want the span to cover a wrapped row", height)
@@ -801,8 +826,8 @@ func TestBoardWrapsRowsAsItNarrows(t *testing.T) {
 			t.Errorf("at 80 the view is missing %q:\n%s", want, view)
 		}
 	}
-	if got := len(strings.Split(view, "\n")); got != 3 {
-		t.Errorf("at 80 the board is %d lines, want one per row", got)
+	if got := len(strings.Split(view, "\n")); got != planTop+3 {
+		t.Errorf("at 80 the board is %d lines, want one per row under the Active section", got)
 	}
 
 	// At 60 and at 40 the rows wrap, and nothing has gone: only the names, now
@@ -892,7 +917,7 @@ func TestBoardLinksThePRChip(t *testing.T) {
 	if !strings.Contains(view, "#9\x1b[m\x1b]8;;\a") {
 		t.Errorf("the chip should close its hyperlink after the number:\n%q", view)
 	}
-	linked := strings.Split(view, "\n")[1]
+	linked := strings.Split(view, "\n")[planTop+1]
 	if got, want := lipgloss.Width(linked), lipgloss.Width(stripANSI(linked)); got != want {
 		t.Errorf("the linked row measures %d cells, want %d — the escape draws nothing", got, want)
 	}
@@ -903,7 +928,10 @@ func TestBoardLinksThePRChip(t *testing.T) {
 // hyperlink stays, because it is what the chip is for.
 func TestBoardLinksThePRChipOnTheSelectedRow(t *testing.T) {
 	b := newLongRowBoard(0)
-	b.Update(tea.KeyPressMsg{Code: 'j'}) // onto the slice with the PR
+	// Past the Active section's entry for it and the milestone's own row.
+	for range 2 {
+		b.Update(tea.KeyPressMsg{Code: 'j'})
+	}
 
 	view := b.View()
 	if got, want := prChipURL(view), "https://example.test/pr/9"; got != want {
@@ -920,8 +948,8 @@ func TestBoardLinksThePRChipOnTheSelectedRow(t *testing.T) {
 func TestBoardDropsThePRChipLast(t *testing.T) {
 	b := newLongRowBoard(43)
 
-	// Row 1 is the slice carrying both an assignee and a PR.
-	lines := b.rowLines()[1]
+	// Row 2 is the slice carrying both an assignee and a PR.
+	lines := b.rowLines()[2]
 	if len(lines) < 2 {
 		t.Fatalf("at 43 the row should have wrapped, got %q", lines)
 	}
@@ -976,31 +1004,32 @@ func TestBoardNavigatesWithoutWrapping(t *testing.T) {
 
 func TestBoardEnterCollapsesAndExpands(t *testing.T) {
 	b := newTestBoard()
-	b.cursor = 0 // the active milestone's own row
+	b.cursor = 1 // the active milestone's own row
 
 	b.Update(keyPress("enter"))
 	if got := rowNames(b); !equal(got, []string{
+		activeEntry,
 		"M2: Board", "M3: Mutations", domain.UnassignedName, "Stray", "Done section",
 	}) {
 		t.Errorf("rows = %q, want the active milestone collapsed", got)
 	}
-	if b.cursor != 0 {
+	if b.cursor != 1 {
 		t.Errorf("cursor = %d, want it left on the collapsed milestone", b.cursor)
 	}
 
 	b.Update(keyPress("enter"))
-	if got := len(b.rows); got != 8 {
+	if got := len(b.rows); got != 9 {
 		t.Errorf("rows = %d, want the slices back", got)
 	}
 }
 
 func TestBoardEnterOnASliceCollapsesItsMilestone(t *testing.T) {
 	b := newTestBoard()
-	b.cursor = 2 // the second slice of the active milestone
+	b.cursor = 3 // the second slice of the active milestone
 
 	b.Update(keyPress("enter"))
 
-	if b.cursor != 0 {
+	if b.cursor != 1 {
 		t.Errorf("cursor = %d, want it moved to the milestone row it collapsed", b.cursor)
 	}
 	if _, ok := b.SelectedSlice(); ok {
@@ -1021,10 +1050,11 @@ func TestBoardEnterOnAnEmptyBoardDoesNothing(t *testing.T) {
 func TestBoardSelectedSlice(t *testing.T) {
 	b := newTestBoard()
 
+	b.cursor = 1 // past the Active section, onto the milestone's own row
 	if _, ok := b.SelectedSlice(); ok {
-		t.Error("the cursor starts on a milestone, not a slice")
+		t.Error("the cursor is on a milestone, not a slice")
 	}
-	b.cursor = 1
+	b.cursor = 2
 	got, ok := b.SelectedSlice()
 	if !ok || got.ID != "s3" {
 		t.Errorf("selected = %+v (ok=%v), want s3", got, ok)
@@ -1041,14 +1071,18 @@ func TestBoardSelectedMilestone(t *testing.T) {
 	if _, ok := b.SelectedMilestone(); ok {
 		t.Error("the Done section is not a milestone")
 	}
-	b.cursor = 0
+	b.cursor = 1
 	got, ok := b.SelectedMilestone()
 	if !ok || got.ID != "M2: Board" {
 		t.Errorf("selected = %+v (ok=%v), want M2: Board", got, ok)
 	}
-	b.cursor = 1
+	b.cursor = 2
 	if _, ok := b.SelectedMilestone(); ok {
 		t.Error("the cursor is on a slice, not a milestone")
+	}
+	b.cursor = 0
+	if _, ok := b.SelectedMilestone(); ok {
+		t.Error("an Active entry is a slice, not a milestone")
 	}
 	b.cursor = len(b.rows) - 3 // the Unassigned group's own row
 	if _, ok := b.SelectedMilestone(); ok {
@@ -1058,7 +1092,7 @@ func TestBoardSelectedMilestone(t *testing.T) {
 
 func TestBoardKeepsFoldStateAndClampsTheCursorAcrossAReload(t *testing.T) {
 	b := newTestBoard()
-	b.cursor = 1
+	b.cursor = 2
 	b.Update(keyPress("enter")) // collapse the active milestone
 	b.cursor = len(b.rows) - 1
 
@@ -1108,7 +1142,7 @@ func TestBoardSwallowsTheReservedKeys(t *testing.T) {
 		if cmd := b.Update(keyPress(k)); cmd != nil {
 			t.Errorf("%q should do nothing yet", k)
 		}
-		if b.cursor != 0 || len(b.rows) != 8 {
+		if b.cursor != 0 || len(b.rows) != 9 {
 			t.Errorf("%q changed the board: cursor = %d, rows = %d", k, b.cursor, len(b.rows))
 		}
 	}
@@ -1138,7 +1172,8 @@ func TestAppHelpListsTheBoardKeys(t *testing.T) {
 
 func TestAppShowsTheBoardAndRoutesKeysToIt(t *testing.T) {
 	app := NewApp(testConfig(), newLoadingClient())
-	app.Update(tea.WindowSizeMsg{Width: 60, Height: 24})
+	// Tall enough for the Active section and the whole plan under it.
+	app.Update(tea.WindowSizeMsg{Width: 60, Height: 30})
 	app.Update(projectLoadedMsg{project: testProject()})
 
 	view := app.View().Content
@@ -1218,7 +1253,9 @@ func TestBoardMarksAHandedBackSlice(t *testing.T) {
 
 	golden(t, "board-handed-back", b.View())
 
-	for _, line := range strings.Split(ansi.ReplaceAllString(b.View(), ""), "\n") {
+	// The plan's own rows: the Active section above them draws the same slice as
+	// an entry of its own, which says it is awaiting review in its own words.
+	for _, line := range strings.Split(ansi.ReplaceAllString(b.View(), ""), "\n")[planTop:] {
 		if want := strings.Contains(line, "Board screen"); strings.Contains(line, "↑ review") != want {
 			t.Errorf("the review chip is on the wrong row:\n%s", line)
 		}

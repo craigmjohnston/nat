@@ -88,6 +88,15 @@ func approveWorktrees(t *testing.T) *fakeWorktrees {
 }
 
 // cursorOn puts the board's cursor on the named slice's row.
+// cursorOnMilestone puts the cursor on the first milestone row of the board.
+// It is not row 0: the Active section's entries are drawn above the plan.
+func cursorOnMilestone(t *testing.T, a *App) {
+	t.Helper()
+	if !a.board.cursorTo(func(r row) bool { return r.kind == rowMilestone }) {
+		t.Fatal("the board has no milestone row")
+	}
+}
+
 func cursorOn(t *testing.T, a *App, id string) {
 	t.Helper()
 	for i, r := range a.board.rows {
@@ -235,7 +244,7 @@ func TestApproveRefusals(t *testing.T) {
 		set    func(a *App)
 		reason string
 	}{
-		{"on a milestone", func(a *App) { a.board.cursor = 0 }, "Move to a slice"},
+		{"on a milestone", func(a *App) { cursorOnMilestone(t, a) }, "Move to a slice"},
 		{"a Todo slice", func(a *App) { cursorOn(t, a, stillTodo) }, "only a handed-back slice"},
 		{"a Done slice", func(a *App) { cursorOn(t, a, alreadyPR) }, "only a handed-back slice"},
 		{"in progress with no branch", func(a *App) {

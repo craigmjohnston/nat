@@ -256,6 +256,29 @@ type Styles struct {
 	DiffAddFill color.Color
 	DiffDelFill color.Color
 
+	// ActiveEdge is the border of the Active section at the top of the board,
+	// ActiveTitle the heading let into that border, and ActiveName a slice's own
+	// name on the first line of its entry. ActiveFill is the subtle fill the
+	// selected entry is drawn on — a colour rather than a style, since an entry
+	// is several separately rendered pieces and each has to keep its own state
+	// colour over the fill, which is what [wash] merges it into.
+	ActiveEdge  lipgloss.Style
+	ActiveTitle lipgloss.Style
+	ActiveName  lipgloss.Style
+	ActiveFill  color.Color
+	// The State styles colour an Active entry by where the slice has got to: its
+	// dot, and the state word on the line under it. They are the roles the rest
+	// of the board already reads these states in — the Working orange of a star
+	// at work, the pending yellow of one stopped for input, the muted text of a
+	// blocked row, the Success green of work waiting to be reviewed — bar the
+	// slice in progress with nothing out yet, which takes AccentAlt because it
+	// is ordinary work rather than anything to put right.
+	StateWorking        lipgloss.Style
+	StateWaiting        lipgloss.Style
+	StateBlocked        lipgloss.Style
+	StateReadyToPush    lipgloss.Style
+	StateAwaitingReview lipgloss.Style
+
 	// StarDim, StarMid and StarPeak are the star of a slice with an agent
 	// working on it, brightening and settling as the pulse swells: all three
 	// the Working orange, separated by weight the way Claude Code's own
@@ -383,6 +406,17 @@ func NewStyles(isDark bool) Styles {
 
 		DiffAddFill: t.SuccessWash,
 		DiffDelFill: t.DangerWash,
+
+		ActiveEdge:  lipgloss.NewStyle().Foreground(t.SurfaceHi),
+		ActiveTitle: lipgloss.NewStyle().Bold(true).Foreground(t.Accent),
+		ActiveName:  lipgloss.NewStyle().Bold(true).Foreground(t.Text),
+		ActiveFill:  t.SurfaceHi,
+
+		StateWorking:        lipgloss.NewStyle().Foreground(t.Working),
+		StateWaiting:        lipgloss.NewStyle().Foreground(t.Warning),
+		StateBlocked:        lipgloss.NewStyle().Foreground(t.Muted),
+		StateReadyToPush:    lipgloss.NewStyle().Foreground(t.AccentAlt),
+		StateAwaitingReview: lipgloss.NewStyle().Foreground(t.Success),
 
 		StarDim:     lipgloss.NewStyle().Faint(true).Foreground(t.Working),
 		StarMid:     lipgloss.NewStyle().Foreground(t.Working),

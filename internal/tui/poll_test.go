@@ -102,8 +102,11 @@ func TestAPollMergesTheNewPlanIntoTheBoard(t *testing.T) {
 	if app.board.cursor != 1 {
 		t.Errorf("cursor = %d, want it left at 1", app.board.cursor)
 	}
-	if s, ok := app.board.SelectedSlice(); !ok || s.Status != domain.SliceClaimed {
-		t.Errorf("selected slice = %+v, want the status the poll brought back", s)
+	// The slice the poll found in progress is on the board with the status it
+	// brought back, drawn in the Active section that status puts it in.
+	if got := app.board.active; len(got) != 1 || got[0].ID != "s2" ||
+		got[0].Status != domain.SliceClaimed {
+		t.Errorf("active = %+v, want the status the poll brought back", got)
 	}
 }
 
