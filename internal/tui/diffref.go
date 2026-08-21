@@ -104,14 +104,30 @@ func hunkStarts(line string) (was, next int, ok bool) {
 // of a file added or removed whole reads — "+0,0" — and no line of the hunk is
 // on that side to be numbered from it.
 func sideStart(field, sign string) (int, bool) {
+	start, _, ok := sideRange(field, sign)
+	return start, ok
+}
+
+// sideRange is the whole of one side's field: the line it starts at and how many
+// lines of that side the hunk covers. A field with no count — "+12" — is git's
+// shorthand for exactly one line, which is what the expand zones need as much as
+// the start: how far a hunk reaches is where the gap after it begins.
+func sideRange(field, sign string) (start, count int, ok bool) {
 	rest, found := strings.CutPrefix(field, sign)
 	if !found {
-		return 0, false
+		return 0, 0, false
 	}
-	start, _, _ := strings.Cut(rest, ",")
-	n, err := strconv.Atoi(start)
-	if err != nil || n < 0 {
-		return 0, false
+	head, tail, hasCount := strings.Cut(rest, ",")
+	start, err := strconv.Atoi(head)
+	if err != nil || start < 0 {
+		return 0, 0, false
 	}
-	return n, true
+	if !hasCount {
+		return start, 1, true
+	}
+	count, err = strconv.Atoi(tail)
+	if err != nil || count < 0 {
+		return 0, 0, false
+	}
+	return start, count, true
 }

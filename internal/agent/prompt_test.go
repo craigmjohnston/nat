@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -109,10 +110,16 @@ func TestPromptTellsTheAgentToHandTheBranchBack(t *testing.T) {
 			t.Errorf("prompt does not say %q", want)
 		}
 	}
-	if strings.Contains(got, "--pr") {
+	// `--pr` itself and not `--pr-description`, which is the hand-back's own
+	// flag: the description the board opens the pull request with.
+	if prEnding.MatchString(got) {
 		t.Error("prompt still offers the agent the --pr ending")
 	}
 }
+
+// prEnding matches the --pr flag alone, so the --pr-description one it prefixes
+// does not read as it.
+var prEnding = regexp.MustCompile(`--pr($|[^-\w])`)
 
 func TestPromptNamesTheSlice(t *testing.T) {
 	got := Prompt(testContext())

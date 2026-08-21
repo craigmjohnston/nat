@@ -103,12 +103,19 @@ func NewWithRunner(r Runner) CLI { return CLI{runner: r} }
 // CreatePR opens a pull request for an already pushed branch of the repository
 // at dir, and returns its URL.
 //
-// The title and body are filled from the branch's commits (--fill) rather than
-// asked for: the summary of the work is already on the slice's Notion page, and
-// a prompt is not something a board key can answer. The base is left to gh,
-// which uses the repository's own default branch.
-func (c CLI) CreatePR(dir, branch string) (string, error) {
-	out, err := c.runner.Run(dir, Binary, "pr", "create", "--head", branch, "--fill")
+// The title and body are the description the agent wrote at hand-back, read off
+// the slice's Notion page by the caller. An empty title is a hand-back that left
+// none — every one written before there was a flag for it — and gh fills the
+// pull request from the branch's commits instead (--fill), which is what it
+// always did; either way nothing is asked for at a prompt, since a prompt is not
+// something a board key can answer. The base is left to gh, which uses the
+// repository's own default branch.
+func (c CLI) CreatePR(dir, branch, title, body string) (string, error) {
+	args := []string{"pr", "create", "--head", branch, "--fill"}
+	if title != "" {
+		args = []string{"pr", "create", "--head", branch, "--title", title, "--body", body}
+	}
+	out, err := c.runner.Run(dir, Binary, args...)
 	if err != nil {
 		logging.Error("could not open a pull request", "dir", dir, "branch", branch, "error", err)
 		return "", err

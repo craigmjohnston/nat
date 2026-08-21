@@ -131,6 +131,30 @@ func (c CLI) Diff(dir, branch string) (base, diff string, err error) {
 	return base, out, nil
 }
 
+// Show is a file's own lines as the branch leaves it, which is what fills the
+// gaps a unified diff leaves between its hunks: git shows a few lines of context
+// around each change and the rest of the file is simply absent, so the only
+// place the skipped lines can come from is the file itself.
+//
+// The path is the one the diff names on the branch's side, and textconv is
+// refused for the reason [CLI.Diff] refuses an external diff driver: what comes
+// back is lined up against the diff's own numbers rather than shown to a person,
+// and a repository configured to render a file through a filter would hand back
+// something with no such lines in it.
+//
+// A file the branch does not have — one the change deleted — is a refusal, and
+// so is a path git will not resolve. Neither is worth dressing up: the caller
+// has a diff either way, and only the expanding around it goes without.
+func (c CLI) Show(dir, branch, path string) ([]string, error) {
+	out, err := c.runner.Run(dir, Binary, "show", "--no-textconv", branch+":"+path)
+	if err != nil {
+		logging.Action("could not read a file's content at a branch", "dir", dir,
+			"branch", branch, "path", path, "error", err)
+		return nil, err
+	}
+	return splitLines(out), nil
+}
+
 // Base is the branch a diff is taken against: whatever origin's HEAD points at,
 // which is the repository's default branch as the clone last recorded it, and
 // [DefaultBase] when there is no such ref to read — a repository with no origin

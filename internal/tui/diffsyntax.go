@@ -52,6 +52,11 @@ type wrapped [][]tokenRun
 // a background instead.
 type fileSyntax struct {
 	lexed bool
+	// lex is the lexer the lines were run through, kept so the lines an expand
+	// zone reveals — which are the file's own and not the diff's, and so are not
+	// lexed with it — can be run through the same one at the render that draws
+	// them.
+	lex   chroma.Lexer
 	lines [][]tokenRun
 }
 
@@ -71,7 +76,7 @@ func highlightFiles(files []git.File) []fileSyntax {
 // names.
 func highlightFile(f git.File) fileSyntax {
 	lex := lexerFor(f)
-	out := fileSyntax{lexed: lex != nil, lines: make([][]tokenRun, len(f.Lines))}
+	out := fileSyntax{lexed: lex != nil, lex: lex, lines: make([][]tokenRun, len(f.Lines))}
 	for i, line := range f.Lines {
 		out.lines[i] = lineRuns(lex, line)
 	}

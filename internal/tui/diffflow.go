@@ -11,10 +11,13 @@ import (
 )
 
 // Differ is what the review screen needs of git: the change a slice's branch
-// makes to its repository, and the base it was measured against. It is an
-// interface so the flow can be driven without git, or a repository.
+// makes to its repository, the base it was measured against, and the lines of
+// each file it touches, which is what fills the gaps the diff leaves between its
+// hunks. It is an interface so the flow can be driven without git, or a
+// repository.
 type Differ interface {
 	Diff(dir, branch string) (base, diff string, err error)
+	Show(dir, branch, path string) ([]string, error)
 }
 
 // The review screen's edge, held as a variable so the tests can stand in for
@@ -29,9 +32,10 @@ func defaultDiffer() Differ { return git.New() }
 // failures, so they do not go through notionErrMsg — nothing about this one
 // came from Notion.
 type diffLoadedMsg struct {
-	base  string
-	files []git.File
-	err   error
+	base    string
+	files   []git.File
+	sources map[string][]string
+	err     error
 }
 
 // diffSliceFlow opens the review screen on the slice the cursor is on: the diff
@@ -83,16 +87,40 @@ func (a *App) startDiffLoad() tea.Cmd {
 	return tea.Batch(a.spinner.Tick, readDiff(a.differ, branch, dir))
 }
 
-// readDiff runs git in the slice's repository and splits what it wrote into
-// files.
+// readDiff runs git in the slice's repository, splits what it wrote into files,
+// and reads each of those files at the branch, which is what the expand zones
+// around the change are drawn from.
 func readDiff(differ Differ, branch, dir string) tea.Cmd {
 	return func() tea.Msg {
 		base, diff, err := differ.Diff(dir, branch)
 		if err != nil {
 			return diffLoadedMsg{base: base, err: fmt.Errorf("read the diff of %s: %w", branch, err)}
 		}
-		return diffLoadedMsg{base: base, files: git.ParseFiles(diff)}
+		files := git.ParseFiles(diff)
+		return diffLoadedMsg{base: base, files: files,
+			sources: readSources(differ, branch, dir, files)}
 	}
+}
+
+// readSources is each file's own lines at the branch, by path — the whole of a
+// file rather than the few lines around each change, so the gaps between the
+// hunks have somewhere to be filled from.
+//
+// A file git will not show is passed over rather than failing the read: a file
+// the change deleted is not on the branch at all, a binary one is not lines, and
+// what either costs is the expanding around one file's diff and not the diff.
+// git logs the refusal itself.
+func readSources(differ Differ, branch, dir string, files []git.File) map[string][]string {
+	sources := make(map[string][]string, len(files))
+	for _, f := range files {
+		if f.Binary || f.Path == "" || sources[f.Path] != nil {
+			continue
+		}
+		if lines, err := differ.Show(dir, branch, f.Path); err == nil {
+			sources[f.Path] = lines
+		}
+	}
+	return sources
 }
 
 // diffHeading is what the header calls the review screen: the branch it is
@@ -117,7 +145,7 @@ func (a *App) diffLoaded(msg diffLoadedMsg) (tea.Model, tea.Cmd) {
 		a.diff.Fail(msg.err)
 		return a, nil
 	}
-	if dropped := a.diff.SetFiles(msg.base, msg.files); dropped > 0 {
+	if dropped := a.diff.SetFiles(msg.base, msg.files, msg.sources); dropped > 0 {
 		return a, a.showToast(fmt.Sprintf("%d %s dropped — the lines they were on have changed.",
 			dropped, plural(dropped, "comment", "comments")), sevWarning)
 	}

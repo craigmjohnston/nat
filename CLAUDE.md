@@ -111,11 +111,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   full-screen attach's is the user's own.
 - `internal/gh/` — the GitHub CLI, wrapped as thinly as it can be. Agents open
   no pull requests; they hand a slice back on a pushed branch, and the board's
-  approve action turns that branch into one with `gh pr create --head <branch>
-  --fill`, run in the slice's repo. `--fill` because the summary of the work is
-  already on the Notion page and a board key cannot answer a prompt; no
-  `--base`, because gh's own answer — the repository's default branch — is the
-  right one. `Runner` is the seam the tests replace, and it takes a working
+  approve action turns that branch into one with `gh pr create --head <branch>`,
+  run in the slice's repo, titled and bodied with the description the agent
+  recorded at hand-back and read back off the slice page. A hand-back that left
+  none — every one written before there was a flag for it — falls back to
+  `--fill`, which is what the key always did: nothing is ever asked for at a
+  prompt, since a board key cannot answer one. No `--base`, because gh's own
+  answer — the repository's default branch — is the right one. `Runner` is the seam the tests replace, and it takes a working
   directory, which is the whole reason it is not `agent.Runner`. A gh that ran
   and refused comes back as an `*ExitError` whose message is the first line of
   its stderr, since "a pull request for branch X already exists" is the entire
@@ -144,6 +146,14 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   external diff driver refused (`--src-prefix=a/ --dst-prefix=b/ --no-ext-diff
   --no-color`), because the output is parsed rather than shown as it stands and a
   repository configured with `diff.noprefix` would hand back something else.
+  `Show` is the second thing it asks, and only because a unified diff is a few
+  lines of context around each change and nothing else: `git show
+  <branch>:<path>` is the whole file at the branch, which is the only place the
+  lines between the hunks can come from. Textconv is refused for the reason the
+  diff refuses an external driver — the lines are lined up against the diff's own
+  numbers rather than shown as they stand — and a file the branch does not have,
+  which is one the change deleted, comes back as git's own refusal, logged and
+  handed on: what it costs is the expanding around that one file's diff.
   `ParseFiles` splits that output into `File`s — the paths, the ± tallies,
   whether git described the file rather than diffing it, and the section's lines
   verbatim, since the viewer is read-only and the shape it needs is the shape git
@@ -179,11 +189,18 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   prints the same brief — the command a board-launched agent runs, since it is
   pointed at a slice rather than choosing one —
   `nat complete-slice <slice> [--branch NAME] [--pr URL] [--summary TEXT]
-  [--blocked]`, which closes out a slice the configured user holds — three
+  [--pr-description TEXT|-] [--blocked]`, which closes out a slice the
+  configured user holds — three
   endings, and no two of them at once: `--branch` records the branch the work
   was pushed to and leaves the slice in progress, handed back for review, which
   is how an agent ends now; `--pr` records a pull request and marks the slice
-  Done; `--blocked` leaves it in progress with a note saying what stopped it —
+  Done; `--blocked` leaves it in progress with a note saying what stopped it.
+  `--pr-description` belongs to the first of those alone — the only ending with
+  a pull request still to open — and is filed on the page under a `PR
+  description` heading beside the `Handed back` note, where it outlives the
+  agent's session and is what the board's `p` opens the pull request with days
+  later. `-` reads it from stdin, so a description too long for an argument
+  gets in; there is one stdin, so `--summary` is then the flag —
   `nat release-slice <slice>`, which is the fourth ending and the only one that
   goes backwards: Status to `Todo`, the Assignee cleared and one line on the
   page saying so, for a session that ended without finishing at all,
@@ -302,7 +319,9 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   pair are what the header row already says, and a hunk header is what the
   gutter already carries — the first of a file goes silently and every later one
   leaves a dashed break across the box, so the numbers jumping is not the only
-  sign that lines were skipped. Only the render skips them: parsing keeps every
+  sign that lines were skipped — or, where the file behind the diff could be
+  read, the expand controls `diffzones.go` puts there instead, which say the same
+  thing and offer the lines besides. Only the render skips them: parsing keeps every
   line, so the numbers, the lines a comment quotes and the anchors a re-read
   finds them by are all read off the section as git wrote it, and a body row
   that is a line at all is still one of its lines. The number columns are as wide as the widest number anywhere in the
@@ -346,6 +365,31 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   a failure would be showing the wrong change; the refresh key reads the branch
   again while the screen is up, which is what an agent pushing another commit is
   worth asking about.
+  `diffzones.go` is what fills those skipped lines back in, GitHub's expand
+  controls as box rows: every gap a file's hunks leave — above the first, between
+  each pair, below the last — is a zone, measured off the hunk headers and, for
+  the last one, off the file itself, since the diff says where its hunks end and
+  nothing about how much file follows. A zone draws a control offering the next
+  fifteen of its lines and, only where fifteen will not finish it, a second
+  offering the whole gap; `enter` on the row under the cursor and a left click
+  both activate one, and the render is what drops a control whose gap is full. A
+  revealed line is drawn with its numbers on both sides and no ± of its own,
+  since a gap is context and every line in it is on both sides — the base's
+  number is the branch's plus the offset the hunks above have accumulated. It is
+  coloured by the file's own language like every other line in the box, which is
+  why `fileSyntax` keeps the lexer it lexed with: a revealed line comes from the
+  file rather than from the diff, so it was not lexed when the branch was read
+  and the render is where it goes through the same lexer. Every
+  zone but the last reveals upwards, towards the hunk below it, and says so with
+  `↑`; the gap after the last hunk has no hunk below to reveal towards, so it
+  reveals down and out of the change, and draws `↓`. The lines are the file's
+  rather than the diff's, so the cursor steps over them the way it steps over a
+  comment's rows and there is nothing on one to comment on — the control itself
+  is the one row that is no line at all and still a place the cursor stops. What
+  has been expanded is the screen's own, like a fold, and a read of the branch
+  measures its gaps afresh. A file git would not show — one the change deleted, a
+  binary one — has no zones and draws exactly as it did before there were any,
+  hunk breaks and all.
   `diffmouse.go` and the fold beside it are how a file that has been read is put
   away, GitHub's viewed checkbox as a box row: `enter` on the file the cursor is
   in — or a left click on either of its box's own two rows — collapses it to its
@@ -542,9 +586,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   checkout works on them in place by symlinking them into `~/.claude/skills/`,
   which `nat setup` leaves alone rather than writing back through. /next-slice
   and `internal/agent`'s slice prompt end the same way and say so in the same
-  words: the branch pushed and handed back with `complete-slice --branch`, no
-  `gh` and no pull request, since opening one is the board's `p` after the user
-  has reviewed the branch. They arrive at the same branch too: a board launch
+  words: the branch pushed and handed back with `complete-slice --branch`, its
+  `--pr-description` written ready to publish rather than as a report of the
+  session, and no `gh` and no pull request, since opening one is the board's `p`
+  after the user has reviewed the branch. They arrive at the same branch too: a board launch
   puts its agent in a worktree already on one and names it, and /next-slice is
   run by a session that is wherever the user was, so it cuts that worktree
   itself — `wt switch --create slice/<the title slugged> --no-cd` in the working
@@ -595,7 +640,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   the board draws as a green `↑ review` chip so a hand-back does not read as
   another slice being worked. `complete-slice --branch` is what writes it: the
   branch recorded, the status left alone, and the note filed under a
-  `Handed back` heading rather than `Summary`. A branch is refused outright
+  `Handed back` heading rather than `Summary` — with whatever
+  `--pr-description` was given beside it under a `PR description` heading of its
+  own, in the same write, since the two are one hand-back. That is where the
+  description lives rather than only in the command that carried it, so it
+  outlasts the agent's session and the approve can happen whenever the review
+  does; `notion.PRDescriptionOf` is the read, taking the last such section, as a
+  slice handed back twice has one per hand-back. A branch is refused outright
   where `notion.ShapeOf` reads no `Branch` text column — a hand-back written
   nowhere is one lost — and refused before the note goes on, so the slice is
   left as it was. `v` on the board is how that wait is read — the branch's diff
@@ -610,8 +661,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `p` on the board is what ends that wait: it confirms on the row, runs `gh pr create` in the
   slice's repo from that branch, and writes the URL it gets back onto the `PR`
   property as it sets the status to `Done` — the one board key that reaches
-  outside Notion, and the only place a slice's PR is recorded from the TUI. The
-  page is re-read first for the type of its `Status` column, exactly as
+  outside Notion, and the only place a slice's PR is recorded from the TUI. What
+  it opens the pull request with is read off the slice page first: the last `PR
+  description` section, its first line the title and the rest the body, or
+  nothing at all for a hand-back that recorded none, which is gh's `--fill`
+  again. A read that fails stops the approve rather than falling back, since a
+  pull request opened under the wrong title is not one this key can open twice.
+  The page is re-read for the type of its `Status` column before the write, exactly as
   `complete-slice` does. gh refusing is a toast naming its own reason, not an
   error banner: the branch is still there and the slice is still handed back. A
   pull request opened and then not recorded is the one half-done state there is,

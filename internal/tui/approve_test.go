@@ -15,7 +15,7 @@ import (
 )
 
 // prCall is one pull request the approve flow asked gh for.
-type prCall struct{ dir, branch string }
+type prCall struct{ dir, branch, title, body string }
 
 // fakePRs stands in for the GitHub CLI: it records what it was asked to open
 // and answers with the URL — or the refusal — the test wants gh to have given.
@@ -27,8 +27,8 @@ type fakePRs struct {
 
 var _ PRCreator = (*fakePRs)(nil)
 
-func (f *fakePRs) CreatePR(dir, branch string) (string, error) {
-	f.made = append(f.made, prCall{dir, branch})
+func (f *fakePRs) CreatePR(dir, branch, title, body string) (string, error) {
+	f.made = append(f.made, prCall{dir, branch, title, body})
 	return f.url, f.err
 }
 
@@ -138,7 +138,7 @@ func TestApproveOpensThePullRequestAndClosesTheSlice(t *testing.T) {
 
 	approve(t, app)
 
-	want := []prCall{{workdir, "slice/approve"}}
+	want := []prCall{{workdir, "slice/approve", "", ""}}
 	if len(prs.made) != 1 || prs.made[0] != want[0] {
 		t.Fatalf("gh was asked for %v, want %v", prs.made, want)
 	}
@@ -161,6 +161,97 @@ func TestApproveOpensThePullRequestAndClosesTheSlice(t *testing.T) {
 	}
 	if app.busy {
 		t.Error("the board is still busy after the pull request was recorded")
+	}
+}
+
+// TestApproveOpensThePullRequestWithTheRecordedDescription is the other half of
+// the action: the description the agent filed at hand-back is read off the
+// slice page and is what gh is given — its first line the title, the rest the
+// body — so the pull request reads as the agent wrote it rather than as its
+// commits happen to.
+func TestApproveOpensThePullRequestWithTheRecordedDescription(t *testing.T) {
+	app, prs, client, workdir := approveApp(t)
+	client.blocks = func(id string) ([]notion.Block, error) {
+		if id != handedBack {
+			t.Errorf("read the body of %q, want the slice being approved", id)
+		}
+		return []notion.Block{
+			block(t, "heading_3", "Handed back"),
+			block(t, "paragraph", "Did the work."),
+			block(t, "heading_3", notion.PRDescriptionHeading),
+			block(t, "paragraph", "Open the PR with the recorded description"),
+			block(t, "paragraph", "What it does, and why."),
+		}, nil
+	}
+	cursorOn(t, app, handedBack)
+
+	approve(t, app)
+
+	want := prCall{workdir, "slice/approve",
+		"Open the PR with the recorded description", "What it does, and why."}
+	if len(prs.made) != 1 || prs.made[0] != want {
+		t.Fatalf("gh was asked for %v, want %v", prs.made, want)
+	}
+}
+
+// TestApproveWithoutARecordedDescription covers every hand-back written before
+// there was a flag for one: nothing is read off the page, so gh is given no
+// title and fills the pull request from the commits as it always did.
+func TestApproveWithoutARecordedDescription(t *testing.T) {
+	app, prs, client, workdir := approveApp(t)
+	client.blocks = func(string) ([]notion.Block, error) {
+		return []notion.Block{block(t, "heading_3", "Handed back"), block(t, "paragraph", "Did the work.")}, nil
+	}
+	cursorOn(t, app, handedBack)
+
+	approve(t, app)
+
+	want := prCall{workdir, "slice/approve", "", ""}
+	if len(prs.made) != 1 || prs.made[0] != want {
+		t.Fatalf("gh was asked for %v, want %v", prs.made, want)
+	}
+}
+
+// TestApproveWithAnUnreadableDescription covers the page body failing to load:
+// nothing is opened, because a pull request opened with the wrong title is not
+// one this key can open again. The reason is a toast — the branch is still
+// there and the slice is still handed back.
+func TestApproveWithAnUnreadableDescription(t *testing.T) {
+	app, prs, client, _ := approveApp(t)
+	client.blocks = func(string) ([]notion.Block, error) { return nil, errors.New("notion is down") }
+	cursorOn(t, app, handedBack)
+
+	approve(t, app)
+
+	if len(prs.made) != 0 {
+		t.Errorf("gh was asked for %v with the description unread", prs.made)
+	}
+	if len(client.updated) != 0 {
+		t.Errorf("wrote %v with the description unread", client.updated)
+	}
+	if !strings.Contains(app.toast, "pull request description") {
+		t.Errorf("toast = %q, want it to name what could not be read", app.toast)
+	}
+	if app.busy {
+		t.Error("the board is still busy after the read failed")
+	}
+}
+
+// TestPRTitleBody pins the split gh is given: the first line titles the pull
+// request and the rest is its body, a one-line description is a title alone,
+// and no description at all is neither.
+func TestPRTitleBody(t *testing.T) {
+	for _, tt := range []struct{ name, in, title, body string }{
+		{"title and body", "Title line\n\nThe body.\n", "Title line", "The body."},
+		{"title alone", "  Title line  ", "Title line", ""},
+		{"nothing at all", "  \n ", "", ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			title, body := prTitleBody(tt.in)
+			if title != tt.title || body != tt.body {
+				t.Errorf("prTitleBody(%q) = %q, %q, want %q, %q", tt.in, title, body, tt.title, tt.body)
+			}
+		})
 	}
 }
 
