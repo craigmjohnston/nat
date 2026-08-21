@@ -17,7 +17,10 @@ import (
 // The rows of the board testProject flattens to, named so the tests read.
 // They are the rows with the hide-done toggle off, which is how the fixtures
 // below set the board up: a mutation has to be able to address a Done slice.
+// The plan's own rows start under the Active section, which draws the fixture's
+// one slice in flight above all of it.
 const (
+	rowActiveEntry     = 0 // Board screen, in the Active section
 	rowActiveMilestone = 1 // M2: Board, expanded because it is active
 	rowClaimedSlice    = 3 // Board screen
 	rowTodoSlice       = 4 // Info view

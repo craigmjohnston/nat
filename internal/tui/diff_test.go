@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
+
 	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/craigmjohnston/nat/internal/git"
@@ -361,10 +363,10 @@ func TestDiffShowsTheTailOfALongLine(t *testing.T) {
 	}
 }
 
-// TestDiffWrapKeepsTheLineWhole covers what a continuation row is drawn as: the
-// line's own colour carries onto it, so a wrapped removal does not read as an
-// added or removed line of its own, and only the row the line starts on carries
-// its numbers.
+// TestDiffWrapKeepsTheLineWhole covers what a continuation row is drawn as: what
+// says the line is a removal carries onto it — the wash, this being a file the
+// viewer found a language for — so a wrapped removal does not read as a line of
+// its own, and only the row the line starts on carries its numbers.
 func TestDiffWrapKeepsTheLineWhole(t *testing.T) {
 	d := newTestDiff()
 	head := rowAt(d, 0, 6) // -	return strings.Join(lines, "\n")
@@ -376,11 +378,12 @@ func TestDiffWrapKeepsTheLineWhole(t *testing.T) {
 		t.Errorf("continuation row = %q, want the numbers only on the row the line starts on",
 			xansi.Strip(cont))
 	}
-	// The escape the removal's own style opens with, which is what says the
+	// The escape the removal's wash opens with, which is what says the
 	// continuation is still part of that line rather than a plain one.
-	red := strings.Split(DefaultStyles().DiffDel.Render("x"), "x")[0]
+	red := strings.Split(lipgloss.NewStyle().
+		Background(DefaultStyles().DiffDelFill).Render("x"), "x")[0]
 	if !strings.Contains(cont, red) {
-		t.Errorf("continuation row = %q, want the removed line's own colour carried onto it", cont)
+		t.Errorf("continuation row = %q, want the removed line's own wash carried onto it", cont)
 	}
 }
 

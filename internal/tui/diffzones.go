@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/alecthomas/chroma/v2"
+
 	"github.com/craigmjohnston/nat/internal/git"
 )
 
@@ -176,7 +178,10 @@ func expandLabel(kind zoneKind, n int, whole bool) string {
 //
 // A zone with nothing left hidden draws no control at all: the gap is filled,
 // and a control offering no lines would be a row that does nothing.
-func zoneParts(z expandZone, zone int, src []string, width int) []boxPart {
+//
+// lex is the file's own lexer, since a revealed line is a line of that file and
+// is coloured by its language exactly as the lines around it are.
+func zoneParts(z expandZone, zone int, src []string, lex chroma.Lexer, width int) []boxPart {
 	var controls []boxPart
 	if hidden := z.hidden(); hidden > 0 {
 		controls = append(controls, boxPart{kind: partExpand, zone: zone,
@@ -194,7 +199,7 @@ func zoneParts(z expandZone, zone int, src []string, width int) []boxPart {
 		// carries, so a revealed line starts in the same column as the lines
 		// around it; the ± column is what it has nothing to put in.
 		revealed = append(revealed, boxPart{kind: partContext, zone: zone, num: n,
-			old: max(n+z.delta, 0), segs: wrapLine(" "+src[n-1], width)})
+			old: max(n+z.delta, 0), segs: wrapRuns(lineRuns(lex, " "+src[n-1]), width)})
 	}
 	if z.kind == zoneUp {
 		return append(controls, revealed...)

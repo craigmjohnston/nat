@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -109,10 +110,16 @@ func TestPromptTellsTheAgentToHandTheBranchBack(t *testing.T) {
 			t.Errorf("prompt does not say %q", want)
 		}
 	}
-	if strings.Contains(got, "--pr") {
+	// `--pr` itself and not `--pr-description`, which is the hand-back's own
+	// flag: the description the board opens the pull request with.
+	if prEnding.MatchString(got) {
 		t.Error("prompt still offers the agent the --pr ending")
 	}
 }
+
+// prEnding matches the --pr flag alone, so the --pr-description one it prefixes
+// does not read as it.
+var prEnding = regexp.MustCompile(`--pr($|[^-\w])`)
 
 func TestPromptNamesTheSlice(t *testing.T) {
 	got := Prompt(testContext())
@@ -182,6 +189,80 @@ func TestPromptFlagsARepoOverrideOnlyWhenItDiffers(t *testing.T) {
 	c.Project.WorkingDir = ""
 	if got := Prompt(c); strings.Contains(got, note) {
 		t.Error("prompt flags an override with no project default set")
+	}
+}
+
+// worktreeContext is the launch as it arrives with a worktree behind it: the
+// session's directory is the worktree, and the checkout it was cut from is the
+// project default it is measured against.
+func worktreeContext() PromptContext {
+	c := testContext()
+	c.WorkingDir = "/Users/craig/Projects/notion-agent-tracker-worktrees/slice/tmux-integration-agent-prompt-template"
+	c.Branch = "slice/tmux-integration-agent-prompt-template"
+	c.Repo = "/Users/craig/Projects/notion-agent-tracker"
+	return c
+}
+
+func TestPromptWithAWorktree(t *testing.T) {
+	golden(t, "prompt-worktree", Prompt(worktreeContext()))
+}
+
+// A session launched into a worktree is already on the branch it hands back, so
+// the prompt tells it to commit and push that branch rather than to make one —
+// an agent that branched again would hand back a name the board cannot see the
+// diff of, and one that switched would take the worktree off its own work.
+func TestPromptTellsAWorktreeAgentToUseItsBranch(t *testing.T) {
+	c := worktreeContext()
+	got := Prompt(c)
+	for _, want := range []string{
+		"- Branch: " + c.Branch + " (the working directory is a worktree already on it)",
+		"git worktree cut for this slice alone",
+		"push " + c.Branch,
+		"Do not\ncreate a branch of your own",
+		"nat complete-slice " + c.Slice.ID + " --branch " + c.Branch + " --summary",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt does not say %q:\n%s", want, got)
+		}
+	}
+	for _, unwanted := range []string{"branch for the slice", "--branch <branch>"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("prompt still tells the agent to make its own branch (%q)", unwanted)
+		}
+	}
+}
+
+// The fallback launch is the one that was there before there were worktrees: no
+// branch is named anywhere, and the agent is told to make one.
+func TestPromptWithoutAWorktreeStillAsksForABranch(t *testing.T) {
+	got := Prompt(testContext())
+	for _, want := range []string{
+		"If the work is code: branch for the slice",
+		"nat complete-slice " + testContext().Slice.ID + " --branch <branch> --summary",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt does not say %q", want)
+		}
+	}
+	if strings.Contains(got, "- Branch:") {
+		t.Error("prompt names a branch for a session that has none")
+	}
+}
+
+// A worktree is never the project's own directory, so measuring the override
+// against it would flag every launch. The checkout it was cut from is what the
+// note is about.
+func TestPromptFlagsAWorktreesOverrideByItsCheckout(t *testing.T) {
+	const note = "overrides the project default"
+
+	if got := Prompt(worktreeContext()); strings.Contains(got, note) {
+		t.Error("prompt flags an override for a worktree of the project's own checkout")
+	}
+
+	c := worktreeContext()
+	c.Repo = "/Users/craig/Projects/other"
+	if got := Prompt(c); !strings.Contains(got, note) {
+		t.Error("prompt does not flag a worktree cut from another checkout")
 	}
 }
 

@@ -17,12 +17,13 @@ func TestModalFloatsOverTheDimmedBoard(t *testing.T) {
 		t.Errorf("the form should be on the modal:\n%s", view)
 	}
 	// The box floats: its top border starts past the margin rather than at the
-	// body's left edge.
+	// body's left edge. It is the rightmost box on the backdrop — the Active
+	// section behind it sits at the board's own left edge — so the corner
+	// furthest in is the modal's.
 	top := -1
 	for line := range strings.SplitSeq(view, "\n") {
-		if i := strings.IndexRune(line, '╭'); i >= 0 {
+		if i := strings.IndexRune(line, '╭'); i > top {
 			top = i
-			break
 		}
 	}
 	if top < modalMarginX {

@@ -132,7 +132,7 @@ func TestDiffKeyRefusesRowsWithNoBranch(t *testing.T) {
 		on   func(t *testing.T, a *App)
 		want string
 	}{
-		{"a milestone", func(_ *testing.T, a *App) { a.board.cursor = 0 },
+		{"a milestone", func(t *testing.T, a *App) { cursorOnMilestone(t, a) },
 			"Move to a slice"},
 		{"a Todo slice", func(t *testing.T, a *App) { cursorOn(t, a, stillTodo) },
 			"only a handed-back slice"},

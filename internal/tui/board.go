@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -172,12 +173,16 @@ const (
 	rowMilestone rowKind = iota
 	rowSlice
 	rowSection
+	rowActive
 )
 
 // row is one selectable line of the board, addressing back into the groups it
 // was flattened from. slice is meaningless for a rowMilestone, and a rowSection
 // — the Done section's own line — addresses no group at all, so its group is -1
-// rather than silently aliasing the first one.
+// rather than silently aliasing the first one. A rowActive addresses no group
+// either, for the same reason and by the same -1: its slice indexes the Active
+// section's own list, which is drawn from the whole plan rather than from any
+// one milestone.
 type row struct {
 	kind  rowKind
 	group int
@@ -199,6 +204,13 @@ type Board struct {
 	expanded map[string]bool
 	rows     []row
 	cursor   int
+	// active is the plan's slices in flight, in the order the board draws their
+	// milestones: the Active section's own list, rebuilt with the rows, and what
+	// a rowActive addresses. byID is the whole plan keyed the way
+	// domain.SlicesByID keys it, which is what a slice's state is classified
+	// against — see active.go.
+	active []domain.Slice
+	byID   map[string]domain.Slice
 	// hideDone keeps the Done slices of milestones still in flight off the
 	// board, so what is left of a half-finished milestone is what shows. It
 	// starts on, because what is left to do is what the board is read for; the
@@ -347,37 +359,45 @@ func defaultExpanded(g domain.Group) bool {
 }
 
 // rebuild recomputes the groups and the rows they flatten to. The Done groups
-// all fold behind a single section row, which sits where the first of them
-// would have and gathers the rest up to it: a mature plan is one Done line, not
-// a wall of them. The section starts collapsed and remembers its state like any
-// group; expanding it reveals the Done milestones, which behave as usual.
+// all fold behind a single section row, which gathers every one of them: a
+// mature plan is one Done line, not a wall of them. That section goes last of
+// all, whatever the plan's order says — the work still in flight is what the
+// board is read for, so finished milestones sitting in the middle of the plan
+// are drawn beneath the ones that are not, rather than splitting them. The
+// section starts collapsed and remembers its state like any group; expanding it
+// reveals the Done milestones, in plan order, behaving as usual.
+//
+// The slices in flight are gathered first and drawn above all of it, as the
+// Active section's own rows: a plan with none takes no rows for it and draws
+// exactly as it did before there was one. They are rows of this same board and
+// nothing apart from it, so the cursor runs from the section straight on into
+// the plan; see active.go.
 func (b *Board) rebuild() {
-	b.groups, b.blocked = nil, nil
+	b.groups, b.blocked, b.byID = nil, nil, nil
 	if b.project != nil {
 		b.groups = b.project.Groups()
 		b.blocked = blockedSlices(b.project.Slices)
+		b.byID = domain.SlicesByID(b.project.Slices)
 	}
-	b.rows = nil
-	sectionEmitted := false
+	b.rows, b.active = nil, b.activeSlices()
+	for i := range b.active {
+		b.rows = append(b.rows, row{kind: rowActive, group: -1, slice: i})
+	}
 	for i, g := range b.groups {
 		if !doneGroup(g) {
 			b.appendGroup(i)
-			continue
 		}
-		if sectionEmitted {
-			continue
-		}
-		sectionEmitted = true
+	}
+	if slices.ContainsFunc(b.groups, doneGroup) {
 		if _, ok := b.expanded[doneSectionKey]; !ok {
 			b.expanded[doneSectionKey] = false
 		}
 		b.rows = append(b.rows, row{kind: rowSection, group: -1})
-		if !b.expanded[doneSectionKey] {
-			continue
-		}
-		for j, d := range b.groups {
-			if doneGroup(d) {
-				b.appendGroup(j)
+		if b.expanded[doneSectionKey] {
+			for j, d := range b.groups {
+				if doneGroup(d) {
+					b.appendGroup(j)
+				}
 			}
 		}
 	}
@@ -483,6 +503,11 @@ func (b *Board) toggle() {
 	// confirmation was anchored to.
 	b.ClearConfirm()
 	r := b.rows[b.cursor]
+	if r.kind == rowActive {
+		// The Active section folds nothing: it is a list of slices, and a slice
+		// row has never folded.
+		return
+	}
 	if r.kind == rowSection {
 		b.expanded[doneSectionKey] = !b.expanded[doneSectionKey]
 		b.rebuild()
@@ -530,7 +555,14 @@ func (b *Board) cursorTo(match func(row) bool) bool {
 
 // SelectedSlice is the slice under the cursor, if the cursor is on one. The
 // keys reserved above act on it once they do something.
+//
+// An entry of the Active section is one of them: it is the same page as the row
+// further down the plan, drawn a second time where the work in flight is
+// gathered, so everything a slice row answers to it answers to as well.
 func (b Board) SelectedSlice() (domain.Slice, bool) {
+	if s, ok := b.SelectedActive(); ok {
+		return s, true
+	}
 	if b.cursor >= len(b.rows) {
 		return domain.Slice{}, false
 	}
@@ -830,8 +862,22 @@ func (b Board) renderRow(i int, r row, l boardLayout) []string {
 	if selected {
 		marker = "❯ "
 	}
+	if r.kind == rowActive {
+		// The section's entries carry no marker: they are drawn inside a box of
+		// their own, where the selected one is the one on a fill.
+		return b.renderActive(i, r)
+	}
 	if r.kind == rowSection {
-		return b.renderDoneSection(marker, selected, l)
+		lines := b.renderDoneSection(marker, selected, l)
+		// The section closes the board off from the plan above it, so it is set
+		// apart by a blank line — which belongs to the section's own row, since
+		// a line of the board that is no row's is a line the cursor and the
+		// mouse cannot account for. There is nothing to be set apart from when
+		// the section is the whole board.
+		if i > 0 {
+			lines = append([]string{""}, lines...)
+		}
+		return lines
 	}
 	if r.kind == rowMilestone {
 		return b.renderMilestone(marker, b.groups[r.group], selected, l)
@@ -1086,18 +1132,16 @@ func (b Board) renderMilestone(marker string, g domain.Group, selected bool, l b
 
 // renderDoneSection draws the row the Done milestones fold behind: the fold
 // indicator, a Done title in the title column, and a faint aggregate of what it
-// hides — how many milestones, and their slices' combined count. Its number
-// cell is blank: the section is not part of the plan's numbering.
+// hides — how many milestones, and their slices' combined count. It takes no
+// number cell at all rather than a blank one: the section is not part of the
+// plan's numbering, so it sits out at the left edge the numbers start from,
+// which is what says it is not another milestone of the plan.
 func (b Board) renderDoneSection(marker string, selected bool, l boardLayout) []string {
 	fold := "▸"
 	if b.expanded[doneSectionKey] {
 		fold = "▾"
 	}
-	head := marker
-	if l.num > 0 {
-		head += strings.Repeat(" ", l.num) + " "
-	}
-	head += fold
+	head := marker + fold
 	milestones := 0
 	var p domain.Progress
 	for _, g := range b.groups {

@@ -44,6 +44,15 @@ type Tokens struct {
 	// OnFill is the text drawn over an Accent/Warning/Danger fill, where the
 	// ordinary Text would not contrast.
 	OnFill color.Color
+	// SuccessWash and DangerWash are the outcome colours knocked almost all the
+	// way back to the terminal's own background, for a whole row tinted rather
+	// than text coloured: the added and removed lines of a syntax-highlighted
+	// diff, whose foreground belongs to the code and so cannot be the green and
+	// red as well. They are washes rather than fills — text of any colour has to
+	// stay readable on them, which is what rules out Success and Danger
+	// themselves.
+	SuccessWash color.Color
+	DangerWash  color.Color
 }
 
 // NewTokens returns the palette for a dark or light terminal background:
@@ -63,6 +72,11 @@ func NewTokens(isDark bool) Tokens {
 		Danger:    ld(lipgloss.Color("#d20f39"), lipgloss.Color("#f38ba8")), // red
 		Working:   ld(lipgloss.Color("#fe640b"), lipgloss.Color("#fab387")), // peach
 		OnFill:    ld(lipgloss.Color("#eff1f5"), lipgloss.Color("#11111b")), // base/crust
+		// The green and the red mixed a fifth of the way into the base each
+		// palette is drawn on, which is as far as a wash can go before the code
+		// on top of it stops reading.
+		SuccessWash: ld(lipgloss.Color("#d0e2d1"), lipgloss.Color("#24352d")),
+		DangerWash:  ld(lipgloss.Color("#eac8d3"), lipgloss.Color("#3e1b30")),
 	}
 }
 
@@ -191,11 +205,14 @@ type Styles struct {
 	// done, and what is pending is a person opening the pull request from it.
 	Review lipgloss.Style
 	// DiffFile, DiffMeta, DiffHunk, DiffAdd and DiffDel colour the unified diff
-	// of a slice's branch, by the shape of the line rather than by its syntax:
-	// the "diff --git" line that opens a file's section, the header lines under
-	// it, a hunk's @@ line, and the added and removed lines themselves. Added and
-	// removed take the Success and Danger colours the rest of the interface reads
-	// outcomes in — which is what a diff's green and red are anyway.
+	// of a slice's branch by the shape of the line: the "diff --git" line that
+	// opens a file's section, the header lines under it, a hunk's @@ line, and
+	// the added and removed lines themselves. Added and removed take the Success
+	// and Danger colours the rest of the interface reads outcomes in — which is
+	// what a diff's green and red are anyway. In a file the viewer found a
+	// language for they are the +/- alone, the rest of the line being the
+	// Syntax styles below; in one it did not they are the whole line, as they
+	// always were.
 	DiffFile lipgloss.Style
 	DiffMeta lipgloss.Style
 	DiffHunk lipgloss.Style
@@ -214,6 +231,53 @@ type Styles struct {
 	// since the mark is a mark and the text is several rows of prose.
 	DiffComment     lipgloss.Style
 	DiffCommentText lipgloss.Style
+	// The Syntax styles colour a diff line by what the file's own language makes
+	// of it, where the viewer could find one: ordinary text, a comment, a
+	// keyword, a string, a number, and the names a file declares — a function, a
+	// type, a package. They are few on purpose. A screen for reading a change
+	// wants those told apart and no more; a colour per token type would be a
+	// diff that is harder to read rather than easier.
+	SyntaxText    lipgloss.Style
+	SyntaxComment lipgloss.Style
+	SyntaxKeyword lipgloss.Style
+	SyntaxString  lipgloss.Style
+	SyntaxNumber  lipgloss.Style
+	SyntaxName    lipgloss.Style
+	// DiffAddFill and DiffDelFill are the wash a highlighted file's added and
+	// removed lines are drawn on. They are what keeps such a line reading as
+	// added or removed once the syntax has taken the foreground the green and
+	// the red used to have — and they are colours rather than styles because a
+	// row is several separately rendered runs, and a background applied to the
+	// finished string would not survive the reset each of them ends with: it is
+	// merged into every run's own style instead ([wash]).
+	//
+	// A file with no language keeps the foreground colouring and takes no wash,
+	// so what falls back falls all the way back.
+	DiffAddFill color.Color
+	DiffDelFill color.Color
+
+	// ActiveEdge is the border of the Active section at the top of the board,
+	// ActiveTitle the heading let into that border, and ActiveName a slice's own
+	// name on the first line of its entry. ActiveFill is the subtle fill the
+	// selected entry is drawn on — a colour rather than a style, since an entry
+	// is several separately rendered pieces and each has to keep its own state
+	// colour over the fill, which is what [wash] merges it into.
+	ActiveEdge  lipgloss.Style
+	ActiveTitle lipgloss.Style
+	ActiveName  lipgloss.Style
+	ActiveFill  color.Color
+	// The State styles colour an Active entry by where the slice has got to: its
+	// dot, and the state word on the line under it. They are the roles the rest
+	// of the board already reads these states in — the Working orange of a star
+	// at work, the pending yellow of one stopped for input, the muted text of a
+	// blocked row, the Success green of work waiting to be reviewed — bar the
+	// slice in progress with nothing out yet, which takes AccentAlt because it
+	// is ordinary work rather than anything to put right.
+	StateWorking        lipgloss.Style
+	StateWaiting        lipgloss.Style
+	StateBlocked        lipgloss.Style
+	StateReadyToPush    lipgloss.Style
+	StateAwaitingReview lipgloss.Style
 
 	// StarDim, StarMid and StarPeak are the star of a slice with an agent
 	// working on it, brightening and settling as the pulse swells: all three
@@ -329,6 +393,30 @@ func NewStyles(isDark bool) Styles {
 
 		DiffComment:     lipgloss.NewStyle().Bold(true).Foreground(t.Warning),
 		DiffCommentText: lipgloss.NewStyle().Foreground(t.Warning),
+
+		SyntaxText:    lipgloss.NewStyle().Foreground(t.Text),
+		SyntaxComment: lipgloss.NewStyle().Foreground(t.Muted),
+		SyntaxKeyword: lipgloss.NewStyle().Foreground(t.Accent),
+		// The strings take the Warning yellow rather than the green they take in
+		// most themes: the green is what an added line is, and a string drawn in
+		// it inside a diff would be saying the wrong thing twice.
+		SyntaxString: lipgloss.NewStyle().Foreground(t.Warning),
+		SyntaxNumber: lipgloss.NewStyle().Foreground(t.Working),
+		SyntaxName:   lipgloss.NewStyle().Foreground(t.AccentAlt),
+
+		DiffAddFill: t.SuccessWash,
+		DiffDelFill: t.DangerWash,
+
+		ActiveEdge:  lipgloss.NewStyle().Foreground(t.SurfaceHi),
+		ActiveTitle: lipgloss.NewStyle().Bold(true).Foreground(t.Accent),
+		ActiveName:  lipgloss.NewStyle().Bold(true).Foreground(t.Text),
+		ActiveFill:  t.SurfaceHi,
+
+		StateWorking:        lipgloss.NewStyle().Foreground(t.Working),
+		StateWaiting:        lipgloss.NewStyle().Foreground(t.Warning),
+		StateBlocked:        lipgloss.NewStyle().Foreground(t.Muted),
+		StateReadyToPush:    lipgloss.NewStyle().Foreground(t.AccentAlt),
+		StateAwaitingReview: lipgloss.NewStyle().Foreground(t.Success),
 
 		StarDim:     lipgloss.NewStyle().Faint(true).Foreground(t.Working),
 		StarMid:     lipgloss.NewStyle().Foreground(t.Working),
