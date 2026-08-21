@@ -14,11 +14,11 @@ import (
 )
 
 // PRCreator is what the approve flow needs of the GitHub CLI: one pull request,
-// from the branch an agent handed back, in the repository the slice belongs to.
-// It is an interface so the flow can be driven without gh — or a network, or a
-// GitHub account.
+// from the branch an agent handed back, in the repository the slice belongs to,
+// titled and bodied with what that agent wrote at hand-back. It is an interface
+// so the flow can be driven without gh — or a network, or a GitHub account.
 type PRCreator interface {
-	CreatePR(dir, branch string) (string, error)
+	CreatePR(dir, branch, title, body string) (string, error)
 }
 
 // The approve flow's edge, held as a variable so the tests can stand in for it:
@@ -99,7 +99,7 @@ func (a *App) approveChosen(s domain.Slice, dir string, choice int) tea.Cmd {
 		return a.showConfirm(fmt.Sprintf("Cannot open a pull request for %q: %v.", s.Name, err), sevError)
 	}
 	a.busy, a.note = true, approveNote
-	return openPR(a.prs, s, dir)
+	return openPR(a.prs, a.client, s, dir)
 }
 
 // removeWorktree takes the slice's worktree off its repository, once the pull
@@ -122,14 +122,38 @@ func removeWorktree(w Worktrees, dir, branch string) {
 
 // openPR runs gh in the slice's repository and reports the pull request it
 // opened.
-func openPR(prs PRCreator, s domain.Slice, dir string) tea.Cmd {
+//
+// The description the agent wrote at hand-back is read off the slice page
+// first: it lives there rather than in the launch that put it there, so an
+// approve days later opens the pull request with it. Its first line is the
+// title and the rest the body; a page with no such section — every hand-back
+// written before there was a flag for one — leaves both empty and gh fills the
+// pull request from the commits, as it always did. A read that fails stops the
+// approve rather than falling back, since a pull request opened with the wrong
+// title is not one this key can open again.
+func openPR(prs PRCreator, client NotionAPI, s domain.Slice, dir string) tea.Cmd {
 	return func() tea.Msg {
-		url, err := prs.CreatePR(dir, s.Branch)
+		blocks, err := client.GetBlockChildren(context.Background(), s.ID)
+		if err != nil {
+			return prOpenedMsg{slice: s, err: fmt.Errorf("read the pull request description: %w", err)}
+		}
+		title, body := prTitleBody(notion.PRDescriptionOf(blocks))
+		url, err := prs.CreatePR(dir, s.Branch, title, body)
 		if err != nil {
 			return prOpenedMsg{slice: s, dir: dir, err: err}
 		}
 		return prOpenedMsg{slice: s, dir: dir, url: url}
 	}
+}
+
+// prTitleBody splits a recorded description into what gh is given: its first
+// line as the title, everything after as the body. A description of one line is
+// a title and no body, which is a perfectly good pull request; an empty one is
+// no description at all, and both come back empty so the caller can let gh fill
+// it instead.
+func prTitleBody(description string) (title, body string) {
+	title, body, _ = strings.Cut(strings.TrimSpace(description), "\n")
+	return strings.TrimSpace(title), strings.TrimSpace(body)
 }
 
 // prOpened takes the pull request on to Notion, or reports why there is none.
