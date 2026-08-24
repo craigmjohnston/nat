@@ -135,6 +135,14 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   external diff driver refused (`--src-prefix=a/ --dst-prefix=b/ --no-ext-diff
   --no-color`), because the output is parsed rather than shown as it stands and a
   repository configured with `diff.noprefix` would hand back something else.
+  `Show` is the second thing it asks, and only because a unified diff is a few
+  lines of context around each change and nothing else: `git show
+  <branch>:<path>` is the whole file at the branch, which is the only place the
+  lines between the hunks can come from. Textconv is refused for the reason the
+  diff refuses an external driver — the lines are lined up against the diff's own
+  numbers rather than shown as they stand — and a file the branch does not have,
+  which is one the change deleted, comes back as git's own refusal, logged and
+  handed on: what it costs is the expanding around that one file's diff.
   `ParseFiles` splits that output into `File`s — the paths, the ± tallies,
   whether git described the file rather than diffing it, and the section's lines
   verbatim, since the viewer is read-only and the shape it needs is the shape git
@@ -300,7 +308,9 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   pair are what the header row already says, and a hunk header is what the
   gutter already carries — the first of a file goes silently and every later one
   leaves a dashed break across the box, so the numbers jumping is not the only
-  sign that lines were skipped. Only the render skips them: parsing keeps every
+  sign that lines were skipped — or, where the file behind the diff could be
+  read, the expand controls `diffzones.go` puts there instead, which say the same
+  thing and offer the lines besides. Only the render skips them: parsing keeps every
   line, so the numbers, the lines a comment quotes and the anchors a re-read
   finds them by are all read off the section as git wrote it, and a body row
   that is a line at all is still one of its lines. The number columns are as wide as the widest number anywhere in the
@@ -344,6 +354,31 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   a failure would be showing the wrong change; the refresh key reads the branch
   again while the screen is up, which is what an agent pushing another commit is
   worth asking about.
+  `diffzones.go` is what fills those skipped lines back in, GitHub's expand
+  controls as box rows: every gap a file's hunks leave — above the first, between
+  each pair, below the last — is a zone, measured off the hunk headers and, for
+  the last one, off the file itself, since the diff says where its hunks end and
+  nothing about how much file follows. A zone draws a control offering the next
+  fifteen of its lines and, only where fifteen will not finish it, a second
+  offering the whole gap; `enter` on the row under the cursor and a left click
+  both activate one, and the render is what drops a control whose gap is full. A
+  revealed line is drawn with its numbers on both sides and no ± of its own,
+  since a gap is context and every line in it is on both sides — the base's
+  number is the branch's plus the offset the hunks above have accumulated. It is
+  coloured by the file's own language like every other line in the box, which is
+  why `fileSyntax` keeps the lexer it lexed with: a revealed line comes from the
+  file rather than from the diff, so it was not lexed when the branch was read
+  and the render is where it goes through the same lexer. Every
+  zone but the last reveals upwards, towards the hunk below it, and says so with
+  `↑`; the gap after the last hunk has no hunk below to reveal towards, so it
+  reveals down and out of the change, and draws `↓`. The lines are the file's
+  rather than the diff's, so the cursor steps over them the way it steps over a
+  comment's rows and there is nothing on one to comment on — the control itself
+  is the one row that is no line at all and still a place the cursor stops. What
+  has been expanded is the screen's own, like a fold, and a read of the branch
+  measures its gaps afresh. A file git would not show — one the change deleted, a
+  binary one — has no zones and draws exactly as it did before there were any,
+  hunk breaks and all.
   `diffmouse.go` and the fold beside it are how a file that has been read is put
   away, GitHub's viewed checkbox as a box row: `enter` on the file the cursor is
   in — or a left click on either of its box's own two rows — collapses it to its

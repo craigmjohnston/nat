@@ -125,6 +125,55 @@ func TestDiffFailure(t *testing.T) {
 	}
 }
 
+// TestShowRunsGit pins the read of a file at the branch: the one invocation,
+// with textconv refused, and the content back as the lines the expand zones fill
+// their gaps from — without the empty last one a trailing newline leaves.
+func TestShowRunsGit(t *testing.T) {
+	runner := &fakeRunner{outs: []string{"package tui\n\nfunc main() {}\n"}}
+	lines, err := NewWithRunner(runner).Show("/repos/nat", "slice/viewer", "internal/tui/x.go")
+	if err != nil {
+		t.Fatalf("Show() = %v, want the file", err)
+	}
+	want := []string{"package tui", "", "func main() {}"}
+	if !reflect.DeepEqual(lines, want) {
+		t.Errorf("Show() = %q, want %q", lines, want)
+	}
+	if len(runner.calls) != 1 {
+		t.Fatalf("made %d calls, want the one show", len(runner.calls))
+	}
+	if runner.calls[0].dir != "/repos/nat" || runner.calls[0].name != Binary {
+		t.Errorf("ran %+v, want git in the slice's repository", runner.calls[0])
+	}
+	wantArgs := []string{"show", "--no-textconv", "slice/viewer:internal/tui/x.go"}
+	if !reflect.DeepEqual(runner.calls[0].args, wantArgs) {
+		t.Errorf("show args = %v, want %v", runner.calls[0].args, wantArgs)
+	}
+}
+
+// TestShowFailure covers a file the branch does not have — one the change
+// deleted — which is git's own refusal passed straight back, so the caller can
+// go without the expanding around that one file.
+func TestShowFailure(t *testing.T) {
+	refused := &ExitError{Code: 128, Stderr: "fatal: path 'gone.go' does not exist in 'slice/viewer'\n"}
+	runner := &fakeRunner{errs: []error{refused}}
+	lines, err := NewWithRunner(runner).Show("/repos/nat", "slice/viewer", "gone.go")
+	if !errors.Is(err, error(refused)) {
+		t.Fatalf("Show() = %v, want git's own error", err)
+	}
+	if lines != nil {
+		t.Errorf("Show() = %q, want no lines", lines)
+	}
+}
+
+// TestShowOfAnEmptyFile covers a file with nothing in it: no lines, rather than
+// the one empty line a split of nothing leaves behind.
+func TestShowOfAnEmptyFile(t *testing.T) {
+	lines, err := NewWithRunner(&fakeRunner{}).Show("/repos/nat", "slice/viewer", "empty.go")
+	if err != nil || lines != nil {
+		t.Errorf("Show() = %q, %v, want no lines and no error", lines, err)
+	}
+}
+
 // TestExitErrorWithoutStderr covers a git that failed silently: there is
 // nothing to quote, so the exit code is what there is to say.
 func TestExitErrorWithoutStderr(t *testing.T) {

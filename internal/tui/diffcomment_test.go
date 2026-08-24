@@ -223,7 +223,7 @@ func TestDiffCommentsSurviveARereadThatMovedThem(t *testing.T) {
 		" \tlines := b.rows", " \tlines := b.rows\n \tanother context line", 1)
 	moved = strings.Replace(moved, "+package tui", "+package tui // changed", 1)
 
-	if dropped := d.SetFiles("origin/main", git.ParseFiles(moved)); dropped != 1 {
+	if dropped := d.SetFiles("origin/main", git.ParseFiles(moved), nil); dropped != 1 {
 		t.Errorf("SetFiles dropped %d comments, want the one whose lines changed", dropped)
 	}
 	got := d.Comments()
@@ -240,7 +240,7 @@ func TestDiffCommentsSurviveARereadThatMovedThem(t *testing.T) {
 // on now occur twice: neither can be re-homed without guessing.
 func TestDiffCommentsDroppedWhenTheirFileGoes(t *testing.T) {
 	d := commented(t, "gone with the file")
-	if dropped := d.SetFiles("origin/main", manyFiles(2)); dropped != 1 {
+	if dropped := d.SetFiles("origin/main", manyFiles(2), nil); dropped != 1 {
 		t.Errorf("SetFiles dropped %d comments, want the one whose file went", dropped)
 	}
 	if d.Pending() != 0 {
@@ -253,7 +253,7 @@ func TestDiffCommentsDroppedWhenTheirFileGoes(t *testing.T) {
 	twice.SetComment("internal/tui/diff.go", 8, 1, "which one?")
 	doubled := strings.Replace(sampleDiff, "+// Diff is the review screen.",
 		"+// moved down by this\n+// Diff is the review screen.\n+// Diff is the review screen.", 1)
-	if dropped := twice.SetFiles("origin/main", git.ParseFiles(doubled)); dropped != 1 {
+	if dropped := twice.SetFiles("origin/main", git.ParseFiles(doubled), nil); dropped != 1 {
 		t.Error("a comment whose lines now occur twice should be dropped")
 	}
 }
@@ -538,7 +538,7 @@ func TestCommentBoxSizedWithTheWindow(t *testing.T) {
 // was.
 func TestDiffCommentsSurviveARereadThatChangedNothing(t *testing.T) {
 	d := commented(t, "still about this line")
-	if dropped := d.SetFiles("origin/main", git.ParseFiles(sampleDiff)); dropped != 0 {
+	if dropped := d.SetFiles("origin/main", git.ParseFiles(sampleDiff), nil); dropped != 0 {
 		t.Errorf("SetFiles dropped %d comments, want none", dropped)
 	}
 	if got := d.Comments(); len(got) != 1 || got[0].Ref != "line 13" {
@@ -552,7 +552,7 @@ func TestDiffCommentsDroppedWhenTheirFileShrinks(t *testing.T) {
 	d := newTestDiff()
 	d.SetComment(firstFile, removedLine, 3, "these three")
 	shrunk := strings.Replace(sampleDiff, "-\treturn strings.Join(lines, \"\\n\")\n", "", 1)
-	if dropped := d.SetFiles("origin/main", git.ParseFiles(shrunk)); dropped != 1 {
+	if dropped := d.SetFiles("origin/main", git.ParseFiles(shrunk), nil); dropped != 1 {
 		t.Errorf("SetFiles dropped %d comments, want the one that no longer fits", dropped)
 	}
 }
@@ -594,7 +594,7 @@ func TestDiffSelectionAnchoredOnASeparator(t *testing.T) {
 // no lines in it.
 func TestDiffCursorWithNoBandToDrawIn(t *testing.T) {
 	d := NewDiff(DefaultStyles())
-	d.SetFiles("origin/main", git.ParseFiles(sampleDiff))
+	d.SetFiles("origin/main", git.ParseFiles(sampleDiff), nil)
 	d.Update(keyPress("j"))
 	d.Update(keyPress("f"))
 	if want := rowAt(&d, 0, shownLines(d.files[0])[1]); d.line != want {

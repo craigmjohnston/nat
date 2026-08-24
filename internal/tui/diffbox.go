@@ -173,6 +173,26 @@ func (d Diff) boxBreak(inner int) string {
 		boxSide, inner)
 }
 
+// boxExpand draws one of an expand zone's control rows: the label saying which
+// way it reveals and how many lines, starting where the code starts, and the
+// same dashed rule the break between two hunks is drawn with running out to the
+// edge of the box. It is the break with an offer on it, and it says so by
+// looking like one.
+//
+// The row under the cursor is filled the way a selected line of the diff is,
+// since it is the one row of the screen a key does something to rather than
+// merely moves through, and a control that did not say when it was under the
+// cursor would be a key press into the dark.
+func (d Diff) boxExpand(label string, numWidth, inner int, selected bool) string {
+	text := strings.Repeat(" ", 2*numWidth+2) + label + " "
+	rule := strings.Repeat(boxBreakRule, max(inner-diffGutterWidth-lipgloss.Width(text), 0))
+	if selected {
+		return d.boxRow(boxSide, d.styles.SelectedRow.Render(cell("  "+text+rule, inner)),
+			boxSide, inner)
+	}
+	return d.boxRow(boxSide, "  "+d.styles.DiffHunk.Render(text+rule), boxSide, inner)
+}
+
 // commentLine draws one row of a pending comment, inside the box of the file it
 // was left on and under the last of the lines it covers. It keeps the mark in
 // the gutter and spends the two line-number columns on nothing, so the text

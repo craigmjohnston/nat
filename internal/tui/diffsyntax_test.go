@@ -80,7 +80,7 @@ func TestDiffFallsBackWithoutALanguage(t *testing.T) {
 	d := NewDiff(DefaultStyles())
 	d.SetSize(diffTestWidth, diffTestHeight)
 	d.Start("slice-1", "Notes", "slice/notes", "/repos/nat")
-	d.SetFiles("origin/main", git.ParseFiles(fallbackDiff))
+	d.SetFiles("origin/main", git.ParseFiles(fallbackDiff), nil)
 	golden(t, "diff-fallback", d.View(""))
 
 	s := DefaultStyles()
