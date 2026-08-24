@@ -3,6 +3,7 @@ package gh
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/craigmjohnston/nat/internal/logging"
 )
@@ -17,8 +18,16 @@ import (
 const (
 	reviewApproved = "APPROVED"
 	stateMergeable = "MERGEABLE"
-	prStatusFields = "reviewDecision,mergeable"
+	prListFields   = "url,reviewDecision,mergeable"
 )
+
+// prListLimit is how many open pull requests one listing will carry. gh's own
+// default is thirty, which a busy repository passes without saying so, and the
+// three fields asked for are small enough that a hundred costs nothing worth
+// counting. A repository with more open than that has its oldest left out of
+// the answer, which reads here as a pull request that is no longer open — the
+// same thing an unread one reads as, and the quiet direction to be wrong in.
+const prListLimit = "100"
 
 // PRStatus is what gh says about a pull request that bears on whether it is
 // still waiting to be reviewed: whether a review has approved it, and whether
@@ -30,31 +39,55 @@ type PRStatus struct {
 	Mergeable bool
 }
 
-// PRStatus reads what GitHub currently says about the pull request at url, from
-// the repository at dir.
+// OpenPRs is every pull request the repository at dir currently has open, keyed
+// by its URL as [NormaliseURL] writes it.
 //
-// It asks gh for the two fields rather than the whole pull request: the board
-// takes this reading on its own poll, for every slice whose work is out, and
-// the rest of what `gh pr view` can print is a great deal of JSON nothing here
-// reads. A gh that fails — not installed, not authenticated, no such pull
-// request, no network — is logged and returned as itself: the caller's answer
-// to that is to leave the slice where it was.
-func (c CLI) PRStatus(dir, url string) (PRStatus, error) {
-	out, err := c.runner.Run(dir, Binary, "pr", "view", url, "--json", prStatusFields)
+// It is one listing per repository rather than one view per pull request,
+// because the board takes this reading on its own poll and for every slice that
+// has a pull request recorded — a mature plan's worth of Done slices included,
+// since a slice's pull request being open is what keeps it in the board's
+// Active section. A gh per slice would grow with the plan forever; a listing
+// does not grow at all.
+//
+// Being in the answer is itself the fact the caller is after: a pull request
+// that has merged or been closed is simply not listed, which is how the board
+// tells work that has landed from work that is still out. That inference rests
+// on the listing having been read at all — a gh that fails is logged and
+// returned as itself, and nothing may be concluded from the nothing it said.
+func (c CLI) OpenPRs(dir string) (map[string]PRStatus, error) {
+	out, err := c.runner.Run(dir, Binary,
+		"pr", "list", "--state", "open", "--json", prListFields, "--limit", prListLimit)
 	if err != nil {
-		logging.Error("could not read the state of a pull request", "dir", dir, "url", url, "error", err)
-		return PRStatus{}, err
+		logging.Error("could not list the open pull requests of a repository", "dir", dir, "error", err)
+		return nil, err
 	}
-	var view struct {
+	var list []struct {
+		URL            string `json:"url"`
 		ReviewDecision string `json:"reviewDecision"`
 		Mergeable      string `json:"mergeable"`
 	}
-	if err := json.Unmarshal([]byte(out), &view); err != nil {
-		logging.Error("could not read what gh said about a pull request", "dir", dir, "url", url, "error", err)
-		return PRStatus{}, fmt.Errorf("%s pr view printed no readable JSON: %w", Binary, err)
+	if err := json.Unmarshal([]byte(out), &list); err != nil {
+		logging.Error("could not read what gh said about a repository's pull requests", "dir", dir, "error", err)
+		return nil, fmt.Errorf("%s pr list printed no readable JSON: %w", Binary, err)
 	}
-	return PRStatus{
-		Approved:  view.ReviewDecision == reviewApproved,
-		Mergeable: view.Mergeable == stateMergeable,
-	}, nil
+	open := make(map[string]PRStatus, len(list))
+	for _, pr := range list {
+		open[NormaliseURL(pr.URL)] = PRStatus{
+			Approved:  pr.ReviewDecision == reviewApproved,
+			Mergeable: pr.Mergeable == stateMergeable,
+		}
+	}
+	return open, nil
+}
+
+// NormaliseURL is a pull request URL as the listing is keyed by it, so a URL
+// typed onto a Notion page matches the canonical one gh prints. A query string
+// or a fragment is whatever the link was copied from — a review, a file, a
+// comment — and names the same pull request, a trailing slash is nothing at
+// all, and the case of an owner or a repository is not a distinction GitHub
+// makes.
+func NormaliseURL(url string) string {
+	url, _, _ = strings.Cut(url, "?")
+	url, _, _ = strings.Cut(url, "#")
+	return strings.ToLower(strings.TrimRight(strings.TrimSpace(url), "/"))
 }

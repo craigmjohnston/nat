@@ -2,6 +2,7 @@ package tui
 
 import (
 	"image/color"
+	"maps"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -39,9 +40,11 @@ const activeEntryLines = 2
 // activeSlices is the plan's slices in flight, in the order the board draws
 // their milestones. In flight is the classifier's own answer — a slice
 // [domain.StateOf] says nothing about is one there is nothing to say about —
-// which is every slice in progress and nothing else: a Todo slice has not
-// started, a Done one has finished, and a status this build does not know is
-// neither.
+// which is every slice in progress, and a Done slice for exactly as long as gh
+// says its pull request is still open. Nothing else: a Todo slice has not
+// started, a status this build does not know is neither, and a Done slice
+// whose pull request has landed, or which nothing has been read of at all, is
+// finished as far as the board is concerned.
 func (b Board) activeSlices() []domain.Slice {
 	var active []domain.Slice
 	for _, g := range b.groups {
@@ -62,11 +65,55 @@ func (b Board) state(s domain.Slice) domain.SliceState {
 	return domain.StateOf(s, b.agentPresence(s.ID), b.prState[s.ID], b.byID)
 }
 
-// SetPRState records how ready each read pull request is, keyed by slice ID.
-// It is the board's second background reading — see [App.refreshPRStates] —
-// and, like the activity watcher's, a slice it says nothing about simply keeps
-// the state it would have had before there was any reading at all.
-func (b *Board) SetPRState(state map[string]domain.PRReadiness) { b.prState = state }
+// SetPRState records how ready each pull request read as still open is, keyed
+// by slice ID. It is the board's second background reading — see
+// [App.refreshPRStates] — and, like the activity watcher's, a slice it says
+// nothing about simply keeps the state it would have had before there was any
+// reading at all.
+//
+// Unlike the other readings it can change which slices the section holds at
+// all, since a Done slice is in it for exactly as long as its pull request is
+// open. So the rows are rebuilt — but only by a reading that says something
+// new, because most of them say what the last one did and a rebuild the user
+// cannot see is one the cursor pays for.
+func (b *Board) SetPRState(state map[string]domain.PRReadiness) {
+	if maps.Equal(b.prState, state) {
+		return
+	}
+	was, wasSlice := b.cursorRow()
+	b.prState = state
+	b.rebuild()
+	b.restoreCursor(was, wasSlice)
+}
+
+// cursorRow is the row the cursor is on and, for an entry of the Active
+// section, the ID of the slice it draws. The row addresses the section by
+// position, and a position is exactly what a rebuild moves — the entries above
+// an entry are the ones that come and go.
+func (b Board) cursorRow() (row, string) {
+	if b.cursor >= len(b.rows) {
+		return row{}, ""
+	}
+	r := b.rows[b.cursor]
+	if r.kind == rowActive {
+		return r, b.active[r.slice].ID
+	}
+	return r, ""
+}
+
+// restoreCursor puts the cursor back on the row [Board.cursorRow] found, after
+// a rebuild that may have moved it: the slice it was on for an entry of the
+// section, and the row itself for everything else. A slice that has left the
+// section — its pull request has landed — leaves the cursor where the entry was
+// instead, which is the same place the plain rebuild's clamp would have left it.
+func (b *Board) restoreCursor(was row, sliceID string) {
+	if sliceID != "" && b.cursorTo(func(r row) bool {
+		return r.kind == rowActive && b.active[r.slice].ID == sliceID
+	}) {
+		return
+	}
+	b.cursorTo(func(r row) bool { return r == was })
+}
 
 // agentPresence is the board's two readings of a slice's agent — the live map
 // of running sessions and the activity watcher's classification of them — as
