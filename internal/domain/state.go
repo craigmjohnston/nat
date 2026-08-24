@@ -40,6 +40,40 @@ func (a AgentPresence) String() string {
 	}
 }
 
+// PRReadiness is what is known of a slice's pull request: whether anyone has
+// looked at it yet, and whether it could be merged as it stands. It is the
+// board's reading of the GitHub CLI said as one value, the way [AgentPresence]
+// is the reading of tmux, so a rule about work that is out can be written
+// without GitHub's own vocabulary reaching this far.
+//
+// The zero value is a slice with no pull request, and equally one whose pull
+// request nothing has been read of — an unauthenticated gh, a repository that
+// is not there, a network that is down. Both are the same to the rule below:
+// there is a review to wait on until something says otherwise.
+type PRReadiness int
+
+const (
+	// PRUnread is a slice with no pull request, or one nothing has been read of.
+	PRUnread PRReadiness = iota
+	// PRAwaitingReview is a pull request that has been read and is still
+	// waiting: unreviewed, changes asked for, or approved but unmergeable.
+	PRAwaitingReview
+	// PRReadyToMerge is a pull request approved and mergeable as it stands.
+	PRReadyToMerge
+)
+
+// String names the readiness for logs and test failures.
+func (p PRReadiness) String() string {
+	switch p {
+	case PRAwaitingReview:
+		return "awaiting review"
+	case PRReadyToMerge:
+		return "ready to merge"
+	default:
+		return "unread"
+	}
+}
+
 // SliceState is where a slice in flight has got to: the one thing worth saying
 // about a slice that is neither waiting to be started nor finished. The board
 // holds the several facts it is derived from — a live agent and what that agent
@@ -67,6 +101,10 @@ const (
 	// SliceStateAwaitingReview is a slice whose work is out — a branch handed
 	// back, or a PR recorded — and not being worked on.
 	SliceStateAwaitingReview
+	// SliceStateReadyToMerge is a slice whose pull request has been approved and
+	// can be merged as it stands: the review is over and the work is one action
+	// from landing.
+	SliceStateReadyToMerge
 )
 
 // String names the state for logs and test failures.
@@ -82,6 +120,8 @@ func (s SliceState) String() string {
 		return "ready to push"
 	case SliceStateAwaitingReview:
 		return "awaiting review"
+	case SliceStateReadyToMerge:
+		return "ready to merge"
 	default:
 		return "none"
 	}
@@ -103,7 +143,13 @@ func (s SliceState) String() string {
 // with none of that is read as blocked, since nothing is waiting on the
 // dependency but the next session. What is left is a slice in progress that
 // nothing is happening on and nothing has come out of.
-func StateOf(s Slice, presence AgentPresence, byID map[string]Slice) SliceState {
+//
+// Work that is out is where pr comes in, and only there: a pull request read as
+// approved and mergeable is the review over, and everything else about it — an
+// unreviewed one, one with changes asked for, one nobody could read at all — is
+// the review still to come, which is what a slice handed back on a branch alone
+// is too.
+func StateOf(s Slice, presence AgentPresence, pr PRReadiness, byID map[string]Slice) SliceState {
 	switch {
 	case s.Status != SliceClaimed:
 		return SliceStateNone
@@ -112,6 +158,9 @@ func StateOf(s Slice, presence AgentPresence, byID map[string]Slice) SliceState 
 	case presence != AgentNone:
 		return SliceStateWorking
 	case s.Branch != "" || s.PRURL != "":
+		if pr == PRReadyToMerge {
+			return SliceStateReadyToMerge
+		}
 		return SliceStateAwaitingReview
 	case Blocked(s, byID):
 		return SliceStateBlocked
