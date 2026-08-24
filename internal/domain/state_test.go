@@ -178,8 +178,22 @@ func TestStateOfPRReadiness(t *testing.T) {
 		{name: "agent on it", status: SliceClaimed, presence: AgentWorking, prURL: "https://gh/pr/1",
 			readiness: PRReadyToMerge, want: SliceStateWorking},
 		{name: "nothing out", status: SliceClaimed, readiness: PRReadyToMerge, want: SliceStateReadyToPush},
-		{name: "done", status: SliceDone, prURL: "https://gh/pr/1",
-			readiness: PRReadyToMerge, want: SliceStateNone},
+
+		// A Done slice is Notion's word for the slice and not for the work: the
+		// board marks it Done as it opens the pull request, and until that pull
+		// request lands the slice is still in whatever state the review is in.
+		{name: "done, ready to merge", status: SliceDone, prURL: "https://gh/pr/1",
+			readiness: PRReadyToMerge, want: SliceStateReadyToMerge},
+		{name: "done, awaiting review", status: SliceDone, prURL: "https://gh/pr/1",
+			readiness: PRAwaitingReview, want: SliceStateAwaitingReview},
+		// And nothing at all with no reading to say the pull request is open,
+		// which is what every Done slice a project ever finished must read as.
+		{name: "done, nothing read", status: SliceDone, prURL: "https://gh/pr/1",
+			readiness: PRUnread, want: SliceStateNone},
+		// It is pr's answer and nothing else on the page: a branch, and even an
+		// agent somehow still running, say nothing about a merge.
+		{name: "done, agent on it", status: SliceDone, presence: AgentWorking, branch: "slice/x",
+			prURL: "https://gh/pr/1", readiness: PRAwaitingReview, want: SliceStateAwaitingReview},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

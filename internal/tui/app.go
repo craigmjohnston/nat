@@ -246,13 +246,19 @@ type App struct {
 	prs    PRCreator
 	differ Differ
 	// prReader reads what GitHub says about the pull requests of the slices
-	// whose work is out, prState is that last reading — how ready each read
-	// pull request is, keyed by slice ID — and prReading whether one is in
-	// flight. The reading has no timer of its own: it rides the plan's, and the
-	// bit is what keeps a slow one from being started twice; see
+	// whose work is out, prState is that last reading — how ready each pull
+	// request read as still open is, keyed by slice ID — and prReading whether
+	// one is in flight. The reading has no timer of its own: it rides the plan's,
+	// and the bit is what keeps a slow one from being started twice; see
 	// [App.refreshPRStates].
+	//
+	// prSettled is the session's memory of the slices whose pull request a
+	// reading found is no longer open. They are never asked about again: a merged
+	// pull request does not unmerge, and a project's finished work is most of its
+	// plan, so without this the reading would grow with the plan forever.
 	prReader  PRReader
 	prState   map[string]domain.PRReadiness
+	prSettled map[string]bool
 	prReading bool
 	// viewer is the agent terminal beside the board, or nil when the board has
 	// the window to itself. Exactly one is on show at a time: it is a split, not

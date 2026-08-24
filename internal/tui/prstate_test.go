@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -18,36 +19,42 @@ const (
 	approvedPR   = "ap"
 	unreviewedPR = "un"
 	ownRepoPR    = "or"
+	// donePR is a slice already marked Done whose pull request is still open,
+	// and mergedPR one whose pull request has landed.
+	donePR   = "dn"
+	mergedPR = "mg"
 )
 
-// fakePRReader stands in for the GitHub CLI, recording what it was asked and
-// answering with whatever the test wants GitHub to say about each pull request.
-type fakePRReader struct {
-	status map[string]gh.PRStatus
-	err    error
-	asked  []prAsk
-}
+// The repositories that plan spans: the project's own default, and the one
+// repo override on it.
+const (
+	natRepo   = "/repos/nat"
+	otherRepo = "/repos/other"
+)
 
-// prAsk is one reading the board asked for: the repository it was taken in and
-// the pull request it was about.
-type prAsk struct {
-	dir string
-	url string
+// fakePRReader stands in for the GitHub CLI, recording which repositories it
+// was asked to list and answering with whatever the test wants GitHub to have
+// open in each.
+type fakePRReader struct {
+	open  map[string]map[string]gh.PRStatus
+	err   error
+	asked []string
 }
 
 var _ PRReader = (*fakePRReader)(nil)
 
-func (f *fakePRReader) PRStatus(dir, url string) (gh.PRStatus, error) {
-	f.asked = append(f.asked, prAsk{dir: dir, url: url})
+func (f *fakePRReader) OpenPRs(dir string) (map[string]gh.PRStatus, error) {
+	f.asked = append(f.asked, dir)
 	if f.err != nil {
-		return gh.PRStatus{}, f.err
+		return nil, f.err
 	}
-	return f.status[url], nil
+	return f.open[dir], nil
 }
 
 // prStatePlan is a plan with a pull request in each state worth reading, plus
 // the slices there is nothing to read about: one handed back on a branch alone,
-// one still Todo, and one already Done with its pull request recorded.
+// one still Todo, and one Todo carrying the pull request of a round it already
+// went.
 func prStatePlan() domain.Project {
 	return domain.NewProject(testProjectID, "tracker",
 		domain.MilestonesFromOptions([]string{"M1: Review"}, notion.TypeSelect),
@@ -57,29 +64,52 @@ func prStatePlan() domain.Project {
 			{ID: unreviewedPR, Name: "Unreviewed", Status: domain.SliceClaimed, StatusName: "In progress",
 				MilestoneID: "M1: Review", PRURL: "https://github.test/pr/2"},
 			{ID: ownRepoPR, Name: "Own repo", Status: domain.SliceClaimed, StatusName: "In progress",
-				MilestoneID: "M1: Review", PRURL: "https://github.test/pr/3", Repo: "/repos/other"},
+				MilestoneID: "M1: Review", PRURL: "https://github.test/pr/3", Repo: otherRepo},
 			{ID: "hb", Name: "Handed back", Status: domain.SliceClaimed, StatusName: "In progress",
 				MilestoneID: "M1: Review", Branch: "slice/handed-back"},
 			{ID: "td", Name: "Not started", Status: domain.SliceTodo, MilestoneID: "M1: Review"},
-			{ID: "dn", Name: "Finished", Status: domain.SliceDone, StatusName: "Done",
+			{ID: "tp", Name: "Round again", Status: domain.SliceTodo, MilestoneID: "M1: Review",
+				PRURL: "https://github.test/pr/6"},
+			{ID: donePR, Name: "Awaiting merge", Status: domain.SliceDone, StatusName: "Done",
 				MilestoneID: "M1: Review", PRURL: "https://github.test/pr/4"},
+			{ID: mergedPR, Name: "Landed", Status: domain.SliceDone, StatusName: "Done",
+				MilestoneID: "M1: Review", PRURL: "https://github.test/pr/5"},
 		})
 }
 
-// prStateApp returns an app showing that plan with a fake gh behind it, which
-// reads the first slice's pull request as approved and mergeable and the rest
-// as still waiting.
+// sliceByID is a slice of the plan by the ID the test names it with, so a test
+// about one slice does not depend on where in the plan it sits.
+func sliceByID(t *testing.T, p domain.Project, id string) domain.Slice {
+	t.Helper()
+	for _, s := range p.Slices {
+		if s.ID == id {
+			return s
+		}
+	}
+	t.Fatalf("the plan holds no slice %q", id)
+	return domain.Slice{}
+}
+
+// prStateApp returns an app showing that plan with a fake gh behind it. GitHub
+// has four of the plan's five pull requests open — the first approved and
+// mergeable, the rest still waiting — and the fifth, the one on the Landed
+// slice, is not open at all.
 func prStateApp() (*App, *fakePRReader) {
 	cfg := testConfig()
 	project := cfg.Projects[testProjectID]
-	project.WorkingDir = "/repos/nat"
+	project.WorkingDir = natRepo
 	cfg.Projects[testProjectID] = project
 
 	app := NewApp(cfg, &fakeNotion{})
-	reader := &fakePRReader{status: map[string]gh.PRStatus{
-		"https://github.test/pr/1": {Approved: true, Mergeable: true},
-		"https://github.test/pr/2": {Mergeable: true},
-		"https://github.test/pr/3": {Approved: true, Mergeable: true},
+	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
+		natRepo: {
+			"https://github.test/pr/1": {Approved: true, Mergeable: true},
+			"https://github.test/pr/2": {Mergeable: true},
+			"https://github.test/pr/4": {Mergeable: true},
+		},
+		otherRepo: {
+			"https://github.test/pr/3": {Approved: true, Mergeable: true},
+		},
 	}}
 	app.prReader = reader
 	return app, reader
@@ -100,9 +130,8 @@ func runPRRead(t *testing.T, a *App, cmd tea.Cmd) {
 }
 
 // TestPRStatesReadOnEveryPlanThatLands is the whole flow: a plan landing is
-// what takes the reading — the board has no timer of its own for it — and every
-// slice whose work is out is asked about, in its own repository, by the URL
-// recorded on it.
+// what takes the reading — the board has no timer of its own for it — and it is
+// one listing per repository the plan spans rather than one reading per slice.
 func TestPRStatesReadOnEveryPlanThatLands(t *testing.T) {
 	app, reader := prStateApp()
 	p := prStatePlan()
@@ -110,37 +139,100 @@ func TestPRStatesReadOnEveryPlanThatLands(t *testing.T) {
 	_, cmd := app.Update(projectLoadedMsg{project: p})
 	runPRRead(t, app, cmd)
 
-	want := []prAsk{
-		{dir: "/repos/nat", url: "https://github.test/pr/1"},
-		{dir: "/repos/nat", url: "https://github.test/pr/2"},
-		// The slice's own repo override, not the project's default.
-		{dir: "/repos/other", url: "https://github.test/pr/3"},
-	}
-	if len(reader.asked) != len(want) {
-		t.Fatalf("gh was asked %+v, want %+v", reader.asked, want)
-	}
-	for i, ask := range want {
-		if reader.asked[i] != ask {
-			t.Errorf("reading %d = %+v, want %+v", i, reader.asked[i], ask)
-		}
+	// The project's default repository, then the one slice's own override —
+	// once each, however many of the plan's pull requests are in them.
+	want := []string{natRepo, otherRepo}
+	if !reflect.DeepEqual(reader.asked, want) {
+		t.Errorf("gh listed %v, want %v", reader.asked, want)
 	}
 
 	// An approved and mergeable pull request is a review that is over; one
 	// nobody has approved is one still to come, exactly as it read before.
-	if got := app.board.state(p.Slices[0]); got != domain.SliceStateReadyToMerge {
+	if got := app.board.state(sliceByID(t, p, approvedPR)); got != domain.SliceStateReadyToMerge {
 		t.Errorf("the approved slice is %v, want ready to merge", got)
 	}
-	if got := app.board.state(p.Slices[1]); got != domain.SliceStateAwaitingReview {
+	if got := app.board.state(sliceByID(t, p, unreviewedPR)); got != domain.SliceStateAwaitingReview {
 		t.Errorf("the unreviewed slice is %v, want awaiting review", got)
+	}
+	if got := app.board.state(sliceByID(t, p, ownRepoPR)); got != domain.SliceStateReadyToMerge {
+		t.Errorf("the slice in its own repo is %v, want ready to merge", got)
 	}
 	if !strings.Contains(app.board.View(), domain.SliceStateReadyToMerge.String()) {
 		t.Errorf("the section says nothing about the review being over:\n%s", app.board.View())
 	}
 }
 
-// A gh that fails changes nothing: the slice keeps the state it had, the board
-// is not put into an error and nothing is toasted — the failure is in the log
-// and nowhere else.
+// A slice marked Done stays in the Active section for as long as gh says its
+// pull request is open: the board marks a slice Done as it opens the pull
+// request, and the work is not on main until that merges.
+func TestADoneSliceStaysActiveWhileItsPRIsOpen(t *testing.T) {
+	app, _ := prStateApp()
+	p := prStatePlan()
+
+	_, cmd := app.Update(projectLoadedMsg{project: p})
+	runPRRead(t, app, cmd)
+
+	if got := app.board.state(sliceByID(t, p, donePR)); got != domain.SliceStateAwaitingReview {
+		t.Errorf("the Done slice with an open pull request is %v, want awaiting review", got)
+	}
+	if !strings.Contains(app.board.View(), "Awaiting merge") {
+		t.Errorf("the section left out a Done slice whose pull request is open:\n%s", app.board.View())
+	}
+}
+
+// And drops out the moment that pull request has landed — which is the listing
+// not naming it — never to be asked about again, since a merged pull request
+// does not unmerge.
+func TestADoneSliceDropsOutOnceItsPRHasLanded(t *testing.T) {
+	app, reader := prStateApp()
+	p := prStatePlan()
+
+	_, cmd := app.Update(projectLoadedMsg{project: p})
+	runPRRead(t, app, cmd)
+
+	if got := app.board.state(sliceByID(t, p, mergedPR)); got != domain.SliceStateNone {
+		t.Errorf("the merged slice is %v, want no state at all", got)
+	}
+	if strings.Contains(app.board.View(), "Landed") {
+		t.Errorf("the section kept a slice whose pull request has merged:\n%s", app.board.View())
+	}
+	if !app.prSettled[mergedPR] {
+		t.Error("the merged pull request was not remembered as settled")
+	}
+
+	// The next plan to land asks about the repositories again, but no longer
+	// about that slice: its answer cannot change.
+	reader.open[natRepo]["https://github.test/pr/5"] = gh.PRStatus{}
+	_, cmd = app.Update(projectLoadedMsg{project: p})
+	runPRRead(t, app, cmd)
+	if got := app.board.state(sliceByID(t, p, mergedPR)); got != domain.SliceStateNone {
+		t.Errorf("the settled slice is %v, want it left out for good", got)
+	}
+}
+
+// With every pull request settled there is nothing left to ask, and the whole
+// reading is skipped — which is what a mature plan costs once its work is in.
+func TestNothingLeftToAskTakesNoReading(t *testing.T) {
+	app, reader := prStateApp()
+	p := domain.NewProject(testProjectID, "tracker",
+		domain.MilestonesFromOptions([]string{"M1: Review"}, notion.TypeSelect),
+		[]domain.Slice{{ID: mergedPR, Name: "Landed", Status: domain.SliceDone, StatusName: "Done",
+			MilestoneID: "M1: Review", PRURL: "https://github.test/pr/5"}})
+
+	_, cmd := app.Update(projectLoadedMsg{project: p})
+	runPRRead(t, app, cmd)
+	if len(reader.asked) != 1 {
+		t.Fatalf("gh listed %v, want the one repository read once", reader.asked)
+	}
+	if cmd := app.refreshPRStates(); cmd != nil {
+		t.Error("refreshPRStates() = a command, want nothing left to ask about")
+	}
+}
+
+// A gh that fails changes nothing: the slices keep the states they had, the
+// board is not put into an error and nothing is toasted — the failure is in the
+// log and nowhere else. Above all it settles nothing, since a listing that
+// never happened says nothing about what has landed.
 func TestPRStateFailureLeavesTheBoardAsItWas(t *testing.T) {
 	app, reader := prStateApp()
 	reader.err = errors.New("gh: not authenticated")
@@ -149,28 +241,73 @@ func TestPRStateFailureLeavesTheBoardAsItWas(t *testing.T) {
 	_, cmd := app.Update(projectLoadedMsg{project: p})
 	runPRRead(t, app, cmd)
 
-	if got := app.board.state(p.Slices[0]); got != domain.SliceStateAwaitingReview {
+	if got := app.board.state(sliceByID(t, p, approvedPR)); got != domain.SliceStateAwaitingReview {
 		t.Errorf("the slice is %v, want it left at awaiting review", got)
+	}
+	if got := app.board.state(sliceByID(t, p, donePR)); got != domain.SliceStateNone {
+		t.Errorf("the Done slice is %v, want it out with nothing read of it", got)
+	}
+	if len(app.prSettled) != 0 {
+		t.Errorf("prSettled = %v, want a failed listing to settle nothing", app.prSettled)
 	}
 	if app.err != nil || app.toast != "" {
 		t.Errorf("err = %v, toast = %q, want the failure kept to the log", app.err, app.toast)
 	}
-	if len(reader.asked) != 3 {
-		t.Errorf("gh was asked %d times, want every slice asked about regardless", len(reader.asked))
+	if !reflect.DeepEqual(reader.asked, []string{natRepo, otherRepo}) {
+		t.Errorf("gh listed %v, want every repository asked about regardless", reader.asked)
 	}
 }
 
-// A reading that comes back after the pull request has been merged and the
-// slice moved on says nothing about it: the classifier ignores a slice that is
-// no longer in flight, whatever GitHub last said.
-func TestPRStateOfASliceNoLongerInFlight(t *testing.T) {
+// A reading that comes back about a slice the plan has since taken off the
+// board says nothing about it: there is nothing on the board for it to refine.
+func TestPRStateOfASliceNoLongerOnThePlan(t *testing.T) {
 	app, _ := prStateApp()
 	p := prStatePlan()
-	app.Update(prStateMsg{state: map[string]domain.PRReadiness{"dn": domain.PRReadyToMerge}})
+	app.Update(prStateMsg{state: map[string]domain.PRReadiness{"gone": domain.PRReadyToMerge}})
 	app.board.SetProject(&p)
 
-	if got := app.board.state(p.Slices[5]); got != domain.SliceStateNone {
+	if got := app.board.state(sliceByID(t, p, mergedPR)); got != domain.SliceStateNone {
 		t.Errorf("the finished slice is %v, want no state at all", got)
+	}
+}
+
+// A reading that changes what the Active section holds rebuilds the rows under
+// the cursor, so it is put back on whatever it was on: the slice, for an entry
+// of the section, and the row itself for anything in the plan below it.
+func TestPRStateReadingKeepsTheCursorWhereItWas(t *testing.T) {
+	p := prStatePlan()
+	b := NewBoard(DefaultStyles())
+	b.SetProject(&p)
+	open := map[string]domain.PRReadiness{donePR: domain.PRAwaitingReview}
+
+	// On an entry of the section: the entry it is on outlives the reading, so
+	// the cursor is on the same slice however the rows moved.
+	b.cursorTo(func(r row) bool { return r.kind == rowActive && b.active[r.slice].ID == "hb" })
+	b.SetPRState(open)
+	if s, ok := b.SelectedActive(); !ok || s.ID != "hb" {
+		t.Errorf("the cursor is on %+v, want it left on the slice it was on", b.rows[b.cursor])
+	}
+
+	// On a row of the plan, with an entry appearing above it: the row moves down
+	// the board and the cursor moves with it.
+	b.cursorTo(func(r row) bool { return r.kind == rowMilestone })
+	was := b.cursor
+	b.SetPRState(nil)
+	if r := b.rows[b.cursor]; r.kind != rowMilestone {
+		t.Errorf("the cursor is on %+v, want it back on the milestone's own row", r)
+	}
+	if b.cursor == was {
+		t.Error("the milestone's row did not move, want the reading to have taken an entry away")
+	}
+
+	// And on an entry whose slice has left the section — its pull request has
+	// landed — the cursor stays where that entry was.
+	b.SetPRState(open)
+	b.cursorTo(func(r row) bool { return r.kind == rowActive && b.active[r.slice].ID == donePR })
+	was = b.cursor
+	b.SetPRState(nil)
+	if b.cursor != was {
+		t.Errorf("the cursor moved to %d, want it left at %d where the entry was", b.cursor, was)
 	}
 }
 
@@ -206,7 +343,7 @@ func TestPRStatesNotRead(t *testing.T) {
 				t.Errorf("refreshPRStates() = a command, want no reading taken")
 			}
 			if len(reader.asked) != 0 {
-				t.Errorf("gh was asked %+v, want nothing asked", reader.asked)
+				t.Errorf("gh listed %v, want nothing asked", reader.asked)
 			}
 		})
 	}
@@ -245,7 +382,31 @@ func TestPRStatesReadAlongsideAMigrationToast(t *testing.T) {
 	}
 	cmd()
 	if len(reader.asked) == 0 {
-		t.Error("gh was asked nothing about a migrated project's pull requests")
+		t.Error("gh listed nothing for a migrated project")
+	}
+}
+
+// worthReading is which slices have a pull request anything might still be
+// waiting on.
+func TestWorthReading(t *testing.T) {
+	tests := []struct {
+		name  string
+		slice domain.Slice
+		want  bool
+	}{
+		{"in progress with a PR", domain.Slice{Status: domain.SliceClaimed, PRURL: "u"}, true},
+		{"done with a PR", domain.Slice{Status: domain.SliceDone, PRURL: "u"}, true},
+		{"todo with a PR of a round it already went",
+			domain.Slice{Status: domain.SliceTodo, PRURL: "u"}, false},
+		{"in progress with no PR", domain.Slice{Status: domain.SliceClaimed}, false},
+		{"done with no PR", domain.Slice{Status: domain.SliceDone}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := worthReading(tt.slice); got != tt.want {
+				t.Errorf("worthReading(%+v) = %v, want %v", tt.slice, got, tt.want)
+			}
+		})
 	}
 }
 
