@@ -262,7 +262,16 @@ func (b Board) renderActive(i int) []string {
 	foot := wash(lipgloss.NewStyle(), fill).Render("  ") +
 		wash(st, fill).Render(state.String()) +
 		wash(b.styles.Faint, fill).Render(" · "+b.groupTitleOf(s))
-	return []string{b.activeRow(fill, head), b.activeRow(fill, foot)}
+	lines := []string{b.activeRow(fill, head), b.activeRow(fill, foot)}
+	// An entry is a row of the board like any other, so a confirmation or a
+	// prompt anchored to the cursor is anchored to this: it goes on the foot
+	// line, which is the entry's last, exactly where [Board.finishRow] puts it
+	// on a plan row. Without it `p`, `l` and `R` from the section would swallow
+	// keys with nothing on screen saying what they were waiting for.
+	if i == b.cursor {
+		lines[1] = b.overlayAnchored(lines[1], lipgloss.Width(foot))
+	}
+	return lines
 }
 
 // activeRow is one line of an entry: the body run out to the board's width with

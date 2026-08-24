@@ -960,15 +960,26 @@ func (b Board) finishRow(selected bool, lines []string) []string {
 		filled[i] = st.Render(line)
 	}
 	last := len(filled) - 1
-	raw := lipgloss.Width(lines[last])
+	filled[last] = b.overlayAnchored(filled[last], lipgloss.Width(lines[last]))
+	return filled
+}
+
+// overlayAnchored lays whatever is anchored to the row the cursor is on over
+// that row's last line — the prompt waiting to be answered, or the inline
+// confirmation when one is up — and hands the line back untouched when there is
+// neither. It is the one place that choice is made, because the Active
+// section's entries are rows the same keys act on and so answer the same
+// anchoring: see [Board.renderActive]. line is the row already filled and run
+// out to the board's width, raw the width of its content before that fill.
+func (b Board) overlayAnchored(line string, raw int) string {
 	switch {
 	case b.prompt != nil:
-		filled[last] = b.overlayChip(filled[last], raw, b.promptChip(), b.styles.PromptFade)
+		return b.overlayChip(line, raw, b.promptChip(), b.styles.PromptFade)
 	case b.confirmText != "":
 		chip, fade := b.styles.confirmStyles(b.confirmSev)
-		filled[last] = b.overlayChip(filled[last], raw, chip.Render(b.confirmText), fade)
+		return b.overlayChip(line, raw, chip.Render(b.confirmText), fade)
 	}
-	return filled
+	return line
 }
 
 // promptChip is the open prompt as one chip: its choices side by side, the
