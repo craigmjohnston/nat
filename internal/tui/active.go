@@ -10,19 +10,32 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 )
 
-// The Active section is the board's first band: the slices in flight, drawn as
-// a boxed vertical list above the plan rather than as rows of it. What is being
-// worked on is what the board is read for, and in the plan it is scattered
-// through the milestones it happens to be filed under — here it is one short
-// list, in one place, whatever the plan's shape.
+// The Active section is a panel of the body band in its own right: the slices
+// in flight, drawn as a boxed vertical list above the plan's own box rather
+// than as rows inside it. What is being worked on is what the board is read
+// for, and in the plan it is scattered through the milestones it happens to be
+// filed under — here it is one short list, in one place, whatever the plan's
+// shape.
 //
-// activeTitle is the heading let into the box's top border, and activeDot the
+// The two panels are siblings, framed the way the header and the body already
+// are, so no border sits inside another. They are still one board underneath:
+// the entries are rows of it like any other, first of them all, so the cursor
+// runs from the section straight on into the plan and every key that acts on a
+// slice acts on the entry under it.
+//
+// activeTitle is the heading let into the panel's top border, and activeDot the
 // mark each entry leads with: one cell, coloured by the state the entry is in,
 // which is what a glance at the section reads.
 const (
 	activeTitle = "Active"
 	activeDot   = "●"
 )
+
+// activeEntryLines is how many lines one entry takes: the name, and the state
+// under it. Every entry is that tall — a body too wide for the panel is cut
+// rather than wrapped — which is what lets a line of the panel be turned back
+// into the entry drawn on it by dividing.
+const activeEntryLines = 2
 
 // activeSlices is the plan's slices in flight, in the order the board draws
 // their milestones. In flight is the classifier's own answer — a slice
@@ -161,24 +174,84 @@ func (b Board) SelectedActive() (domain.Slice, bool) {
 	return b.active[r.slice], true
 }
 
-// renderActive draws one entry of the section, with the box's own edges around
-// it: a state dot and the slice's name, then a muted line naming the state and
-// the milestone the slice is filed under. Two lines rather than one because the
-// name is what the entry is read by and the state is what it is scanned for,
-// and neither should give way to the other on a narrow board.
+// ActiveCount is how many slices are in flight, which is what the layout sizes
+// the panel from, and ActiveHeight the lines their entries take. Both answer
+// off the plan alone rather than off the rows: whether the panel is drawn is
+// what the layout is deciding when it asks.
+func (b Board) ActiveCount() int  { return len(b.active) }
+func (b Board) ActiveHeight() int { return activeEntryLines * len(b.active) }
+
+// SetShowActive says whether the section is drawn at all, which is the layout's
+// answer and not the board's: a body band with no room for a second panel draws
+// none. The section's rows come off the board with it, so the cursor can never
+// be left on an entry nothing draws — a plan with the section hidden behaves
+// exactly as one with nothing in flight.
+func (b *Board) SetShowActive(show bool) {
+	if b.showActive == show {
+		return
+	}
+	b.showActive = show
+	b.rebuild()
+}
+
+// activeRowCount is how many of the board's rows are the section's. They are
+// always the first of them, which is what lets the plan's rows be addressed by
+// the same index either way: see [Board.rowLines].
+func (b Board) activeRowCount() int {
+	if !b.showActive {
+		return 0
+	}
+	return len(b.active)
+}
+
+// ActiveLines is the panel's interior: every entry as the two lines it is drawn
+// on, run out to the board's width. The panel's own frame is the layout's —
+// see [App.activeRegion] — so there are no edges here, only what goes between
+// them.
+func (b Board) ActiveLines() []string {
+	var lines []string
+	for i := range b.activeRowCount() {
+		lines = append(lines, b.renderActive(i)...)
+	}
+	return lines
+}
+
+// ActiveCursorSpan is where the entry under the cursor sits in those lines: the
+// line it starts on, and how many it takes. A cursor down in the plan is in the
+// other panel entirely, and has nothing here to bring on screen — which is what
+// a height of zero says.
+func (b Board) ActiveCursorSpan() (top, height int) {
+	if b.cursor >= b.activeRowCount() {
+		return 0, 0
+	}
+	return b.cursor * activeEntryLines, activeEntryLines
+}
+
+// ActiveRowAtLine is the board row drawn on a line of the panel, counted from
+// its first line, and whether that line is an entry's at all: the mouse's way
+// back from a line of the panel to the row it points at.
+func (b Board) ActiveRowAtLine(line int) (int, bool) {
+	if line < 0 || line >= activeEntryLines*b.activeRowCount() {
+		return 0, false
+	}
+	return line / activeEntryLines, true
+}
+
+// renderActive draws one entry of the section: a state dot and the slice's
+// name, then a muted line naming the state and the milestone the slice is filed
+// under. Two lines rather than one because the name is what the entry is read
+// by and the state is what it is scanned for, and neither should give way to
+// the other on a narrow board.
 //
-// The box's top border belongs to the first entry and its bottom border to the
-// last, along with the blank line that sets the plan apart from it — a line of
-// the board that is no row's is a line the cursor and the mouse cannot account
-// for, which is the rule the Done section's own blank line follows.
-func (b Board) renderActive(i int, r row) []string {
-	s := b.active[r.slice]
-	selected := i == b.cursor
+// The entry is addressed by its place in the section's own list, which is also
+// its row on the board — the entries are the first rows there are — so the
+// cursor picks the entry out by the same index.
+func (b Board) renderActive(i int) []string {
+	s := b.active[i]
 	var fill color.Color
-	if selected {
+	if i == b.cursor {
 		fill = b.styles.ActiveFill
 	}
-	width := b.activeWidth()
 	state := b.state(s)
 	st := b.stateStyle(state)
 
@@ -189,74 +262,166 @@ func (b Board) renderActive(i int, r row) []string {
 	foot := wash(lipgloss.NewStyle(), fill).Render("  ") +
 		wash(st, fill).Render(state.String()) +
 		wash(b.styles.Faint, fill).Render(" · "+b.groupTitleOf(s))
-	lines := []string{
-		b.activeRow(width, fill, head),
-		b.activeRow(width, fill, foot),
-	}
-	if r.slice == 0 {
-		lines = append([]string{b.activeTop(width)}, lines...)
-	}
-	if r.slice == len(b.active)-1 {
-		lines = append(lines, b.activeBottom(width), "")
-	}
-	return lines
+	return []string{b.activeRow(fill, head), b.activeRow(fill, foot)}
 }
 
-// activeRow is one line of an entry inside the box: the body between the box's
-// edges, held off them by a space either side and run out to the interior with
+// activeRow is one line of an entry: the body run out to the board's width with
 // the entry's own fill, so a selected entry's highlight is the width of the
-// section rather than of its text. A body too wide for the interior is cut
-// there — the section is a list of what is in flight, and a name that wraps
-// would cost the entry below it the line it is read on. A box too narrow for
-// any body at all is its own two edges, and one narrower still is cut to the
-// board's width like every other line of it.
-func (b Board) activeRow(width int, fill color.Color, body string) string {
-	pad := wash(lipgloss.NewStyle(), fill)
-	interior := max(width-2, 0)
-	line := ""
-	if room := interior - 2; room > 0 {
-		line = pad.Render(" ") + fit(body, room)
+// panel rather than of its text. A body too wide is cut there — the section is
+// a list of what is in flight, and a name that wraps would cost the entry below
+// it the line it is read on. An unmeasured board has no width to run out to, so
+// the line is what it says and nothing more.
+func (b Board) activeRow(fill color.Color, body string) string {
+	if b.width <= 0 {
+		return body
 	}
-	if n := interior - lipgloss.Width(line); n > 0 {
-		line += pad.Render(strings.Repeat(" ", n))
+	line := fit(body, b.width)
+	if n := b.width - lipgloss.Width(line); n > 0 {
+		line += wash(lipgloss.NewStyle(), fill).Render(strings.Repeat(" ", n))
 	}
-	border := lipgloss.RoundedBorder()
-	edge := b.styles.ActiveEdge
-	return fit(edge.Render(border.Left)+line+edge.Render(border.Right), width)
+	return line
 }
 
-// activeTop is the box's top border with the section's heading let into it,
-// shaped like the agent terminal's own title line — lipgloss has no
-// border-title API — and activeBottom the plain border that closes it.
-func (b Board) activeTop(width int) string {
+// The panel's frame, in lines: the title line let into its top border and the
+// bottom border under it when the window is framed, and the bare heading alone
+// when it is not — below the framed threshold the section follows every other
+// band and draws bare.
+const (
+	activeBoxFrame  = 2
+	activeBareFrame = 1
+)
+
+// activeFrame is what the section costs beyond its entries, given how the
+// window is drawn.
+func (a *App) activeFrame() int {
+	if a.framed() {
+		return activeBoxFrame
+	}
+	return activeBareFrame
+}
+
+// activeFits reports whether the body band has room for a panel of its own:
+// enough lines for the section's frame and an entry line, with the plan left
+// the least a band of it is worth drawing in. It is what [Board.SetShowActive]
+// is told, so a band too short simply has no section — and the board's rows
+// say so too, rather than leaving the cursor on an entry nothing draws.
+//
+// An unmeasured window has no lines to share out and draws its bands one after
+// another at whatever size they come out, so the section is drawn there like
+// everything else.
+func (a *App) activeFits() bool {
+	if a.board.ActiveCount() == 0 {
+		return false
+	}
+	if a.width <= 0 || a.height <= 0 {
+		return true
+	}
+	keep := bodyBoxMin
+	if !a.framed() {
+		keep = 1
+	}
+	return a.bodyBoxHeight()-keep >= a.activeFrame()+1
+}
+
+// activeVisible reports whether the section is drawn: there is work in flight,
+// a plan to draw it from, room in the band for a panel, and the board is the
+// screen on show. Help, info, the diff and a form each take the whole band —
+// they are what the user is looking at, and the plan behind them is not.
+func (a *App) activeVisible() bool {
+	return a.project != nil && a.screen == screenBoard && a.activeFits()
+}
+
+// activeBandHeight is the lines the section takes of the body band, frame
+// included: as many as its entries need, and never more than the band can give
+// while the plan keeps its own. Nothing at all is a band with no section in it,
+// which is the body band exactly as it was before there was one.
+func (a *App) activeBandHeight() int {
+	if !a.activeVisible() || a.width <= 0 || a.height <= 0 {
+		return 0
+	}
+	keep := bodyBoxMin
+	if !a.framed() {
+		keep = 1
+	}
+	return min(a.board.ActiveHeight()+a.activeFrame(), a.bodyBoxHeight()-keep)
+}
+
+// activeHeight is the lines inside that band the entries themselves are drawn
+// on. An unmeasured window has no band to measure, and every entry is drawn.
+func (a *App) activeHeight() int {
+	if h := a.activeBandHeight(); h > 0 {
+		return max(h-a.activeFrame(), 0)
+	}
+	return 0
+}
+
+// activeRegion is the panel: a hand-built title line — lipgloss has no
+// border-title API — over the layout's own box drawn without its top border, so
+// the two read as one panel and the plan's box below it as its sibling. It is
+// shaped like the agent terminal's own region, and for the same reason.
+func (a *App) activeRegion(width, height int) []string {
+	lines := []string{a.activeTitleLine(width)}
+	if height > 1 {
+		interior := max(width-a.styles.Box.GetHorizontalFrameSize(), 0)
+		box := a.styles.Box.BorderTop(false).Width(width).Height(height - 1).
+			Render(clipLines(fit(a.activeView(), interior), max(height-2, 0)))
+		lines = append(lines, strings.Split(box, "\n")...)
+	}
+	// Padded out and cut back, so the region is exactly the lines it was given
+	// however the box came out.
+	lines = append(lines, make([]string, max(height-len(lines), 0))...)
+	return fitLines(lines[:max(height, 0)], width)
+}
+
+// activeTitleLine is the panel's top border with the section's heading let into
+// it, drawn in the frame's own colour so it closes the box the layout draws the
+// rest of.
+func (a *App) activeTitleLine(width int) string {
 	border := lipgloss.RoundedBorder()
-	edge := b.styles.ActiveEdge
-	head := edge.Render(border.TopLeft+border.Top+" ") + b.styles.ActiveTitle.Render(activeTitle) + " "
+	edge := a.styles.ActiveEdge
+	head := edge.Render(border.TopLeft+border.Top+" ") + a.styles.ActiveTitle.Render(activeTitle) + " "
 	fill := max(width-lipgloss.Width(head)-lipgloss.Width(border.TopRight), 0)
 	return fit(head+edge.Render(strings.Repeat(border.Top, fill)+border.TopRight), width)
 }
 
-func (b Board) activeBottom(width int) string {
-	border := lipgloss.RoundedBorder()
-	fill := max(width-lipgloss.Width(border.BottomLeft)-lipgloss.Width(border.BottomRight), 0)
-	return fit(b.styles.ActiveEdge.Render(
-		border.BottomLeft+strings.Repeat(border.Bottom, fill)+border.BottomRight), width)
+// activeBandView is the section as a bare band: its heading on a line of its
+// own, where the panel has one let into its border, and the entries under it.
+// It is what a window below the framed threshold draws, and what an unmeasured
+// one does.
+func (a *App) activeBandView() string {
+	return a.styles.ActiveTitle.Render(activeTitle) + "\n" + a.activeView()
 }
 
-// activeWidth is how wide the section is drawn: the board's own width, so it
-// squares off with the plan under it. An unmeasured board has none to take, and
-// the box is sized to the widest thing in it instead — the heading, or an
-// entry's own lines — rather than drawn ragged.
-func (b Board) activeWidth() int {
-	if b.width > 0 {
-		return b.width
+// activeView is the entries as the panel shows them: the window of lines the
+// band has room for, scrolled to keep the entry under the cursor in it. A band
+// with no measured height shows every entry, since there is nothing to scroll
+// in.
+func (a *App) activeView() string {
+	lines := a.board.ActiveLines()
+	if h := a.activeHeight(); h > 0 && h < len(lines) {
+		top := min(a.activeOffset, len(lines)-h)
+		lines = lines[top : top+h]
 	}
-	// Two border cells, and a space either side of the body.
-	const frame = 4
-	width := lipgloss.Width(activeTitle) + frame
-	for _, s := range b.active {
-		width = max(width, lipgloss.Width(activeDot+" "+s.Name)+frame)
-		width = max(width, lipgloss.Width("  "+b.state(s).String()+" · "+b.groupTitleOf(s))+frame)
+	return strings.Join(lines, "\n")
+}
+
+// syncActive scrolls the panel the least it can to bring the entry under the
+// cursor into it, the way [App.syncBoard] scrolls the plan. The two panels
+// scroll independently: a cursor in one has nothing to say about where the
+// other is.
+func (a *App) syncActive() {
+	h := a.activeHeight()
+	if h <= 0 {
+		a.activeOffset = 0
+		return
 	}
-	return width
+	if top, rows := a.board.ActiveCursorSpan(); rows > 0 {
+		switch {
+		case top < a.activeOffset:
+			a.activeOffset = top
+		case top+rows > a.activeOffset+h:
+			a.activeOffset = top + rows - h
+		}
+	}
+	a.activeOffset = max(0, min(a.activeOffset, a.board.ActiveHeight()-h))
 }

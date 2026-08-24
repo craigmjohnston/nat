@@ -206,11 +206,14 @@ type Board struct {
 	cursor   int
 	// active is the plan's slices in flight, in the order the board draws their
 	// milestones: the Active section's own list, rebuilt with the rows, and what
-	// a rowActive addresses. byID is the whole plan keyed the way
-	// domain.SlicesByID keys it, which is what a slice's state is classified
-	// against — see active.go.
-	active []domain.Slice
-	byID   map[string]domain.Slice
+	// a rowActive addresses. showActive is whether the section is drawn at all,
+	// which the layout decides and [Board.SetShowActive] records: with it off the
+	// entries take no rows, so the cursor is never left on one nothing draws.
+	// byID is the whole plan keyed the way domain.SlicesByID keys it, which is
+	// what a slice's state is classified against — see active.go.
+	active     []domain.Slice
+	showActive bool
+	byID       map[string]domain.Slice
 	// hideDone keeps the Done slices of milestones still in flight off the
 	// board, so what is left of a half-finished milestone is what shows. It
 	// starts on, because what is left to do is what the board is read for; the
@@ -269,10 +272,11 @@ type rowPrompt struct {
 // NewBoard returns an empty board, waiting for a project to be loaded into it.
 func NewBoard(styles Styles) Board {
 	return Board{
-		styles:   styles,
-		keys:     defaultBoardKeyMap(),
-		expanded: map[string]bool{},
-		hideDone: true,
+		styles:     styles,
+		keys:       defaultBoardKeyMap(),
+		expanded:   map[string]bool{},
+		hideDone:   true,
+		showActive: true,
 	}
 }
 
@@ -375,11 +379,12 @@ func defaultExpanded(g domain.Group) bool {
 // section starts collapsed and remembers its state like any group; expanding it
 // reveals the Done milestones, in plan order, behaving as usual.
 //
-// The slices in flight are gathered first and drawn above all of it, as the
-// Active section's own rows: a plan with none takes no rows for it and draws
-// exactly as it did before there was one. They are rows of this same board and
-// nothing apart from it, so the cursor runs from the section straight on into
-// the plan; see active.go.
+// The slices in flight are gathered first and take the first rows of all, the
+// Active section's own: a plan with none — or a window with no room to draw the
+// section in — takes no rows for it and behaves exactly as it did before there
+// was one. They are rows of this same board and nothing apart from it, even
+// though they are drawn in a panel of their own, so the cursor runs from the
+// section straight on into the plan; see active.go.
 func (b *Board) rebuild() {
 	b.groups, b.blocked, b.byID = nil, nil, nil
 	if b.project != nil {
@@ -388,7 +393,7 @@ func (b *Board) rebuild() {
 		b.byID = domain.SlicesByID(b.project.Slices)
 	}
 	b.rows, b.active = nil, b.activeSlices()
-	for i := range b.active {
+	for i := range b.activeRowCount() {
 		b.rows = append(b.rows, row{kind: rowActive, group: -1, slice: i})
 	}
 	for i, g := range b.groups {
@@ -699,7 +704,10 @@ func groupTitle(g domain.Group) string {
 	return planPrefix.ReplaceAllString(g.Name(), "")
 }
 
-// View renders the board.
+// View renders the plan. The Active section's entries are rows of this board
+// too, but they are drawn in a panel of their own above it — see
+// [Board.ActiveLines] — so everything measured from here is measured over the
+// plan's rows alone.
 func (b Board) View() string {
 	if len(b.groups) == 0 {
 		return b.styles.Faint.Render("No milestones yet.")
@@ -711,24 +719,38 @@ func (b Board) View() string {
 	return strings.Join(lines, "\n")
 }
 
-// rowLines is every row as the lines it is drawn on, in board order. A row that
-// fits is one line and a wrapped one several, which is what the cursor's
-// position on the board is measured from as well as what View joins.
+// rowLines is every row of the plan as the lines it is drawn on, in board
+// order. A row that fits is one line and a wrapped one several, which is what
+// the cursor's position in the plan is measured from as well as what View
+// joins.
+//
+// The Active section's rows are not among them: they lead the board's rows and
+// are drawn in their own panel, so the plan's lines start at the row after the
+// last of them.
 func (b Board) rowLines() [][]string {
 	l := b.layout()
-	lines := make([][]string, len(b.rows))
-	for i, r := range b.rows {
-		lines[i] = b.renderRow(i, r, l)
+	rows := b.rows[b.activeRowCount():]
+	lines := make([][]string, len(rows))
+	for i, r := range rows {
+		lines[i] = b.renderRow(i+b.activeRowCount(), r, l)
 	}
 	return lines
 }
 
-// CursorSpan is where the row under the cursor sits in the drawn board: the
-// line it starts on, and how many lines it takes. Selection is per row, so a
-// wrapped row is brought on screen whole.
+// CursorSpan is where the row under the cursor sits in the drawn plan: the line
+// it starts on, and how many lines it takes. Selection is per row, so a wrapped
+// row is brought on screen whole.
+//
+// A cursor in the Active section is in the other panel entirely and has nothing
+// here to bring on screen, which is what a height of zero says; the section
+// scrolls itself — see [App.syncActive].
 func (b Board) CursorSpan() (top, height int) {
+	n := b.activeRowCount()
+	if b.cursor < n {
+		return 0, 0
+	}
 	for i, lines := range b.rowLines() {
-		if i == b.cursor {
+		if i+n == b.cursor {
 			return top, len(lines)
 		}
 		top += len(lines)
@@ -736,11 +758,12 @@ func (b Board) CursorSpan() (top, height int) {
 	return top, 1
 }
 
-// RowAtLine is the row drawn on a line of the board, counted from the first
-// line of the whole render, and whether that line has a row on it at all: the
+// RowAtLine is the row drawn on a line of the plan, counted from the first line
+// of the whole render, and whether that line has a row on it at all: the
 // mouse's way back from a line of the window to the row it points at, since a
 // wrapped row takes more than one line and nothing below the last row is any
-// row's.
+// row's. The row it names is the board's own index, the section's entries
+// counted, since that is what the cursor is moved by.
 func (b Board) RowAtLine(line int) (int, bool) {
 	if line < 0 {
 		return 0, false
@@ -749,7 +772,7 @@ func (b Board) RowAtLine(line int) (int, bool) {
 	for i, lines := range b.rowLines() {
 		at += len(lines)
 		if line < at {
-			return i, true
+			return i + b.activeRowCount(), true
 		}
 	}
 	return 0, false
@@ -768,17 +791,22 @@ func (b *Board) SelectRow(i int) { b.move(i - b.cursor) }
 // A band too short for the row it lands on has no whole row to offer, so the
 // cursor goes to whichever row the top line belongs to and the re-sync scrolls
 // to suit it.
+//
+// A cursor in the Active section is left where it is: that panel does not
+// scroll with the plan, so nothing has moved out from under it and there is no
+// re-sync for it to fight.
 func (b *Board) CursorToVisible(top, height int) {
-	if height <= 0 || len(b.rows) == 0 {
+	n := b.activeRowCount()
+	if height <= 0 || len(b.rows) == 0 || b.cursor < n {
 		return
 	}
 	first, last, at := -1, -1, 0
 	for i, lines := range b.rowLines() {
 		if at >= top && at+len(lines) <= top+height {
 			if first < 0 {
-				first = i
+				first = i + n
 			}
-			last = i
+			last = i + n
 		}
 		at += len(lines)
 	}
@@ -870,19 +898,15 @@ func (b Board) renderRow(i int, r row, l boardLayout) []string {
 	if selected {
 		marker = "❯ "
 	}
-	if r.kind == rowActive {
-		// The section's entries carry no marker: they are drawn inside a box of
-		// their own, where the selected one is the one on a fill.
-		return b.renderActive(i, r)
-	}
 	if r.kind == rowSection {
 		lines := b.renderDoneSection(marker, selected, l)
 		// The section closes the board off from the plan above it, so it is set
 		// apart by a blank line — which belongs to the section's own row, since
 		// a line of the board that is no row's is a line the cursor and the
 		// mouse cannot account for. There is nothing to be set apart from when
-		// the section is the whole board.
-		if i > 0 {
+		// the section is the whole plan — the Active panel above is a box of its
+		// own, and no row of this one.
+		if i > b.activeRowCount() {
 			lines = append([]string{""}, lines...)
 		}
 		return lines

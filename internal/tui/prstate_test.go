@@ -129,6 +129,10 @@ func runPRRead(t *testing.T, a *App, cmd tea.Cmd) {
 	a.Update(msg)
 }
 
+// activeSection is the Active panel's own lines: the section is a panel beside
+// the plan rather than rows of it, so what it holds is read from here.
+func activeSection(a *App) string { return strings.Join(a.board.ActiveLines(), "\n") }
+
 // TestPRStatesReadOnEveryPlanThatLands is the whole flow: a plan landing is
 // what takes the reading — the board has no timer of its own for it — and it is
 // one listing per repository the plan spans rather than one reading per slice.
@@ -157,8 +161,8 @@ func TestPRStatesReadOnEveryPlanThatLands(t *testing.T) {
 	if got := app.board.state(sliceByID(t, p, ownRepoPR)); got != domain.SliceStateReadyToMerge {
 		t.Errorf("the slice in its own repo is %v, want ready to merge", got)
 	}
-	if !strings.Contains(app.board.View(), domain.SliceStateReadyToMerge.String()) {
-		t.Errorf("the section says nothing about the review being over:\n%s", app.board.View())
+	if section := activeSection(app); !strings.Contains(section, domain.SliceStateReadyToMerge.String()) {
+		t.Errorf("the section says nothing about the review being over:\n%s", section)
 	}
 }
 
@@ -175,8 +179,8 @@ func TestADoneSliceStaysActiveWhileItsPRIsOpen(t *testing.T) {
 	if got := app.board.state(sliceByID(t, p, donePR)); got != domain.SliceStateAwaitingReview {
 		t.Errorf("the Done slice with an open pull request is %v, want awaiting review", got)
 	}
-	if !strings.Contains(app.board.View(), "Awaiting merge") {
-		t.Errorf("the section left out a Done slice whose pull request is open:\n%s", app.board.View())
+	if section := activeSection(app); !strings.Contains(section, "Awaiting merge") {
+		t.Errorf("the section left out a Done slice whose pull request is open:\n%s", section)
 	}
 }
 
@@ -193,8 +197,8 @@ func TestADoneSliceDropsOutOnceItsPRHasLanded(t *testing.T) {
 	if got := app.board.state(sliceByID(t, p, mergedPR)); got != domain.SliceStateNone {
 		t.Errorf("the merged slice is %v, want no state at all", got)
 	}
-	if strings.Contains(app.board.View(), "Landed") {
-		t.Errorf("the section kept a slice whose pull request has merged:\n%s", app.board.View())
+	if section := activeSection(app); strings.Contains(section, "Landed") {
+		t.Errorf("the section kept a slice whose pull request has merged:\n%s", section)
 	}
 	if !app.prSettled[mergedPR] {
 		t.Error("the merged pull request was not remembered as settled")
