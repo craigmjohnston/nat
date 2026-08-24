@@ -75,6 +75,13 @@ func rowNames(b *Board) []string {
 	return names
 }
 
+// rowLinesOf is the lines a board row is drawn on, addressed by the row's own
+// index: [Board.rowLines] draws the plan alone, so the Active section's rows
+// are not among them and the plan's start where they end.
+func rowLinesOf(b *Board, row int) []string {
+	return b.rowLines()[row-b.activeRowCount()]
+}
+
 // golden compares got against testdata/<name>.golden, rewriting it under
 // -update.
 func golden(t *testing.T, name, got string) {
@@ -103,10 +110,10 @@ func golden(t *testing.T, name, got string) {
 // leads the rows the navigation tests assert.
 const activeEntry = "Active Board screen"
 
-// planTop is the line the plan starts on in a render of the fixture: the Active
-// section's box takes the four above it — its two borders and the entry's two
-// lines — and the blank line that sets the plan apart from it.
-const planTop = 5
+// planTop is the line the plan starts on in a render of the fixture. The Active
+// section is a panel of its own — [Board.View] draws the plan alone — so the
+// plan's first row is the first line there is.
+const planTop = 0
 
 func TestBoardExpandsOnlyTheActiveMilestoneByDefault(t *testing.T) {
 	b := newTestBoard()
@@ -162,7 +169,7 @@ func TestBoardDoneSectionAloneTakesNoGap(t *testing.T) {
 	if got := rowNames(&b); !equal(got, []string{"Done section"}) {
 		t.Fatalf("rows = %q, want the section alone", got)
 	}
-	if got := b.rowLines()[0]; len(got) != 1 {
+	if got := rowLinesOf(&b, 0); len(got) != 1 {
 		t.Errorf("section rows = %q, want no gap above it", got)
 	}
 }
@@ -682,7 +689,7 @@ func TestBoardFillsEveryLineOfASelectedWrappedRow(t *testing.T) {
 	b := newLongRowBoard(40)
 	b.cursor = 2 // the long slice row, which wraps at this width
 
-	lines := b.rowLines()[2]
+	lines := rowLinesOf(b, 2)
 	if len(lines) < 2 {
 		t.Fatalf("the row is %d lines, want it wrapped", len(lines))
 	}
@@ -703,7 +710,7 @@ func TestBoardContinuesTheStatusStripDownAWrappedRow(t *testing.T) {
 		row  int
 		want string
 	}{{2, claimedBG}, {3, todoBG}} {
-		lines := b.rowLines()[r.row]
+		lines := rowLinesOf(b, r.row)
 		if len(lines) < 2 {
 			t.Fatalf("row %d is %d lines, want it wrapped", r.row, len(lines))
 		}
@@ -747,10 +754,12 @@ func TestBoardCursorSpanCountsAWrappedRowsLines(t *testing.T) {
 	b.cursor = 3 // the second slice, under a milestone row that wraps too
 
 	top, height := b.CursorSpan()
-	lines := b.rowLines()
-	want := len(lines[0]) + len(lines[1]) + len(lines[2])
-	if top != want || height != len(lines[3]) {
-		t.Errorf("CursorSpan() = (%d, %d), want (%d, %d)", top, height, want, len(lines[3]))
+	want := 0
+	for row := b.activeRowCount(); row < b.cursor; row++ {
+		want += len(rowLinesOf(b, row))
+	}
+	if cursor := rowLinesOf(b, b.cursor); top != want || height != len(cursor) {
+		t.Errorf("CursorSpan() = (%d, %d), want (%d, %d)", top, height, want, len(cursor))
 	}
 	if height < 2 {
 		t.Errorf("the row is %d lines, want the span to cover a wrapped row", height)
@@ -949,7 +958,7 @@ func TestBoardDropsThePRChipLast(t *testing.T) {
 	b := newLongRowBoard(43)
 
 	// Row 2 is the slice carrying both an assignee and a PR.
-	lines := b.rowLines()[2]
+	lines := rowLinesOf(b, 2)
 	if len(lines) < 2 {
 		t.Fatalf("at 43 the row should have wrapped, got %q", lines)
 	}

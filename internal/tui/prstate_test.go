@@ -133,8 +133,9 @@ func TestPRStatesReadOnEveryPlanThatLands(t *testing.T) {
 	if got := app.board.state(p.Slices[1]); got != domain.SliceStateAwaitingReview {
 		t.Errorf("the unreviewed slice is %v, want awaiting review", got)
 	}
-	if !strings.Contains(app.board.View(), domain.SliceStateReadyToMerge.String()) {
-		t.Errorf("the section says nothing about the review being over:\n%s", app.board.View())
+	section := strings.Join(app.board.ActiveLines(), "\n")
+	if !strings.Contains(section, domain.SliceStateReadyToMerge.String()) {
+		t.Errorf("the section says nothing about the review being over:\n%s", section)
 	}
 }
 

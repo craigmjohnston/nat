@@ -546,25 +546,41 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   while yet. An agent read as gone is left out of the map entirely — whether
   there is an agent at all is the live map's answer, and a second opinion here
   would only be a staler one.
-  `active.go` is the board's first band: the slices in flight, boxed above the
-  plan as a vertical list rather than scattered through the milestones they
-  happen to be filed under. Membership is `domain.StateOf`'s own answer — a
-  slice it says nothing about is one there is nothing to say about — so the
-  section holds every slice in progress and nothing else, and a plan with none
-  takes no rows at all and draws exactly as it did before there was one. An
-  entry is two lines: a state dot and the slice's name, then a muted line
+  `active.go` is the Active panel: the slices in flight, drawn as a vertical
+  list in a box of its own above the plan's box rather than scattered through
+  the milestones they happen to be filed under. The two are siblings of the
+  body band, each framed the way the header and the status band are, so no
+  border of the layout sits inside another — `App.bodyPanels` is where the band
+  splits, `App.activeRegion` the panel itself, built like the agent terminal's
+  region (a hand-made title line over a box drawn without its top border, since
+  lipgloss has no border-title API). Membership is `domain.StateOf`'s own
+  answer — a slice it says nothing about is one there is nothing to say about —
+  so the section holds every slice in progress and nothing else, and a plan with
+  none draws no panel at all and reads exactly as it did before there was one.
+  An entry is two lines: a state dot and the slice's name, then a muted line
   reading `<state> · <milestone>`, with the dot and the state word in the
   state's own colour (`Board.stateStyle`, the roles the board already reads
   those states in). The selected entry is a fill rather than a marker, merged
   into every piece's own style through `wash` so the dot keeps its colour over
   it — the board's usual trick of drawing a selected row plain would flatten
-  exactly what the entry is read by. The box's borders and the blank line under
-  it belong to the first and last entries' own rows, the rule the Done
-  section's gap follows: a line of the board that is no row's is one the cursor
-  and the mouse cannot account for. The entries are rows of this same board, so
-  the cursor runs from the section straight on into the plan and every key that
-  acts on a slice acts on the one under it — `Board.SelectedSlice` answers for
-  an entry as for a plan row, since it is the same page drawn a second time.
+  exactly what the entry is read by. The entries are rows of this same board,
+  the first rows there are, so the cursor runs from the section straight on into
+  the plan and every key that acts on a slice acts on the one under it —
+  `Board.SelectedSlice` answers for an entry as for a plan row, since it is the
+  same page drawn a second time. Everything the board measures over its rows is
+  measured over the plan's alone (`Board.rowLines`, `CursorSpan`, `RowAtLine`,
+  `CursorToVisible`, `LinkAt`), and the panel answers for its own in the lines
+  of its own box (`ActiveLines`, `ActiveCursorSpan`, `ActiveRowAtLine`); the two
+  scroll independently, the plan in `App.boardVP` and the panel on
+  `App.activeOffset`, so a cursor in one says nothing about where the other is.
+  The wheel is the plan's wherever it lands, since the panel follows the cursor
+  rather than scrolling on its own. How many lines the panel gets is the
+  layout's (`App.activeBandHeight`): as many as its entries need, never more
+  than leaves the plan a band worth drawing in, and none at all where there is
+  no room — which `Board.SetShowActive` tells the board, so the entries take no
+  rows either and the cursor is never left on one nothing draws. Below the
+  framed threshold the section follows every other band and draws bare: its
+  heading on a line of its own where the panel has one let into its border.
   Nothing folds: an entry is a slice, and a slice row has never folded.
   `prstate.go` is the second reading behind those states, beside the activity
   watcher's: what GitHub says about the pull request of every slice in progress

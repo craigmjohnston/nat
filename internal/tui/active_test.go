@@ -43,32 +43,126 @@ func activeBoard(width int) *Board {
 	return &b
 }
 
+// activeText is the section's entries as bare lines, which is what the panel's
+// own box is drawn around.
+func activeText(b *Board) []string {
+	return strings.Split(ansi.ReplaceAllString(strings.Join(b.ActiveLines(), "\n"), ""), "\n")
+}
+
 // TestBoardDrawsAnActiveEntryForEveryState pins the section: every slice in
 // flight is an entry of it, in the order the plan draws their milestones, and
 // each one names the state it is in beside the milestone it is filed under.
 func TestBoardDrawsAnActiveEntryForEveryState(t *testing.T) {
 	b := activeBoard(60)
 
-	golden(t, "board-active", b.View())
+	golden(t, "board-active", strings.Join(b.ActiveLines(), "\n"))
 
-	lines := strings.Split(ansi.ReplaceAllString(b.View(), ""), "\n")
+	lines := activeText(b)
 	for i, want := range []string{
-		"╭─ Active ",
 		"● Working", "  working · Config",
 		"● Waiting", "  waiting · Config",
 		"● Blocked", "  blocked · Board",
 		"● Ready to push", "  ready to push · Board",
 		"● Awaiting review", "  awaiting review · Board",
-		"╰─",
 	} {
 		if !strings.Contains(lines[i], want) {
 			t.Errorf("line %d = %q, want %q on it", i, lines[i], want)
 		}
 	}
+	if got := len(lines); got != activeEntryLines*len(b.active) {
+		t.Errorf("the section is %d lines, want two for each of its %d entries",
+			got, len(b.active))
+	}
 	// The Todo slice the blocked one waits on is not in flight, so the section
 	// says nothing about it.
-	if strings.Contains(strings.Join(lines[:12], "\n"), "Not started") {
-		t.Errorf("the section drew a slice that has not started:\n%s", b.View())
+	if strings.Contains(strings.Join(lines, "\n"), "Not started") {
+		t.Errorf("the section drew a slice that has not started:\n%s", strings.Join(lines, "\n"))
+	}
+}
+
+// The section is drawn in a panel of its own, so nothing of it is a row of the
+// plan: the plan's own lines hold no entry, and the lines the cursor and the
+// mouse are measured over are the plan's alone.
+func TestBoardActiveSectionIsNoRowOfThePlan(t *testing.T) {
+	b := activeBoard(60)
+
+	if got := b.View(); strings.Contains(got, activeDot) || strings.Contains(got, "╭─ ") {
+		t.Errorf("the plan drew the section inside it:\n%s", got)
+	}
+	if got, want := len(b.rowLines()), len(b.rows)-len(b.active); got != want {
+		t.Errorf("the plan draws %d rows, want %d — the board's rows less the section's",
+			got, want)
+	}
+	// The cursor starts on the first entry, which is in the other panel: there is
+	// nothing in the plan to bring on screen for it.
+	if top, height := b.CursorSpan(); top != 0 || height != 0 {
+		t.Errorf("CursorSpan = (%d, %d), want nothing of the plan for a cursor in the section",
+			top, height)
+	}
+	// The plan's first line is the plan's first row, which is the board row after
+	// the last entry.
+	if at, ok := b.RowAtLine(0); !ok || at != len(b.active) {
+		t.Errorf("line 0 is row %d (%v), want the plan's own first row %d",
+			at, ok, len(b.active))
+	}
+}
+
+// The panel names the row an entry is drawn on, and its cursor span, in the
+// lines of its own box — the mouse's way in, and the panel's own scrolling.
+func TestBoardActivePanelLines(t *testing.T) {
+	b := activeBoard(60)
+	b.SelectRow(2)
+
+	if top, height := b.ActiveCursorSpan(); top != 4 || height != activeEntryLines {
+		t.Errorf("ActiveCursorSpan = (%d, %d), want the third entry's own two lines", top, height)
+	}
+	for line, want := range map[int]int{0: 0, 1: 0, 2: 1, 9: 4} {
+		if at, ok := b.ActiveRowAtLine(line); !ok || at != want {
+			t.Errorf("line %d is entry %d (%v), want %d", line, at, ok, want)
+		}
+	}
+	for _, line := range []int{-1, activeEntryLines * len(b.active)} {
+		if _, ok := b.ActiveRowAtLine(line); ok {
+			t.Errorf("line %d is an entry, want none off the panel", line)
+		}
+	}
+	// Down in the plan the cursor is in the other panel, and has nothing here.
+	b.SelectRow(len(b.active))
+	if _, height := b.ActiveCursorSpan(); height != 0 {
+		t.Errorf("ActiveCursorSpan height = %d, want nothing for a cursor in the plan", height)
+	}
+}
+
+// With the section hidden — the layout's answer for a band with no room for a
+// second panel — the entries take no rows at all, so the cursor can never be
+// left on one nothing draws.
+func TestBoardHiddenActiveSectionTakesNoRows(t *testing.T) {
+	b := activeBoard(60)
+	rows := len(b.rows)
+
+	b.SetShowActive(false)
+
+	if b.ActiveLines() != nil {
+		t.Errorf("ActiveLines = %q, want nothing drawn", b.ActiveLines())
+	}
+	if got, want := len(b.rows), rows-len(b.active); got != want {
+		t.Errorf("rows = %d, want the plan's %d alone", got, want)
+	}
+	if got := b.rows[b.cursor].kind; got == rowActive {
+		t.Errorf("the cursor is on a row of kind %v, want one the plan draws", got)
+	}
+	if _, ok := b.SelectedActive(); ok {
+		t.Error("an entry is selected with the section hidden")
+	}
+	// The count the layout sizes the panel from is the plan's, not the rows':
+	// it is what the layout asks before it has decided.
+	if got := b.ActiveCount(); got != len(b.active) {
+		t.Errorf("ActiveCount = %d, want the %d slices in flight", got, len(b.active))
+	}
+
+	b.SetShowActive(true)
+	if got, want := len(b.rows), rows; got != want {
+		t.Errorf("rows = %d, want the section back at %d", got, want)
 	}
 }
 
@@ -79,7 +173,7 @@ func TestBoardColoursAnActiveEntryByItsState(t *testing.T) {
 	// Off the section: a selected entry is drawn over the fill, which is a
 	// colour of its own on every part of it.
 	b.SelectRow(len(b.rows) - 1)
-	view := b.View()
+	view := strings.Join(b.ActiveLines(), "\n")
 
 	for state, style := range map[domain.SliceState]lipgloss.Style{
 		domain.SliceStateWorking:        b.styles.StateWorking,
@@ -95,8 +189,8 @@ func TestBoardColoursAnActiveEntryByItsState(t *testing.T) {
 }
 
 // A plan with nothing in flight draws no section at all — not a heading, not a
-// box, not a blank line — so a board with no work under way reads exactly as it
-// did before there was one.
+// panel, not a row — so a board with no work under way reads exactly as it did
+// before there was one.
 func TestBoardWithNothingInFlightDrawsNoActiveSection(t *testing.T) {
 	b := NewBoard(DefaultStyles())
 	b.SetWidth(60)
@@ -112,9 +206,11 @@ func TestBoardWithNothingInFlightDrawsNoActiveSection(t *testing.T) {
 	if len(b.active) != 0 {
 		t.Errorf("active = %+v, want nothing in flight", b.active)
 	}
-	// The heading is looked for in the border it is let into: "Active" on its
-	// own is also what a milestone in flight is badged with.
-	if got := b.View(); strings.Contains(got, "╭─ ") || strings.Contains(got, activeDot) {
+	if b.ActiveLines() != nil || b.ActiveHeight() != 0 {
+		t.Errorf("ActiveLines = %q (%d lines), want no section at all",
+			b.ActiveLines(), b.ActiveHeight())
+	}
+	if got := b.View(); strings.Contains(got, activeDot) {
 		t.Errorf("a plan with nothing in flight drew a section:\n%s", got)
 	}
 	if got := b.rows[0].kind; got != rowMilestone {
@@ -190,13 +286,9 @@ func TestBoardActiveEntryIsASlice(t *testing.T) {
 func TestBoardFillsTheSelectedActiveEntry(t *testing.T) {
 	b := activeBoard(60)
 
-	lines := b.rowLines()[0]
-	// The box's top border, the entry's two lines.
-	if len(lines) != 3 {
-		t.Fatalf("the first entry is %d lines, want the top border and its own two", len(lines))
-	}
+	lines := b.ActiveLines()[:activeEntryLines]
 	fill := backgroundOf(lipgloss.NewStyle().Background(b.styles.ActiveFill))
-	for _, line := range lines[1:] {
+	for _, line := range lines {
 		if !strings.Contains(line, fill) {
 			t.Errorf("a selected entry's line is unfilled:\n%q", line)
 		}
@@ -204,71 +296,35 @@ func TestBoardFillsTheSelectedActiveEntry(t *testing.T) {
 			t.Errorf("line %q is %d wide, want the section run out to 60", line, got)
 		}
 	}
-	if !strings.Contains(lines[1], wash(b.styles.StateWorking, b.styles.ActiveFill).Render(activeDot)) {
-		t.Errorf("the dot lost its state colour to the fill:\n%q", lines[1])
+	if !strings.Contains(lines[0], wash(b.styles.StateWorking, b.styles.ActiveFill).Render(activeDot)) {
+		t.Errorf("the dot lost its state colour to the fill:\n%q", lines[0])
 	}
 
 	// An entry the cursor is not on carries no fill at all.
-	if strings.Contains(strings.Join(b.rowLines()[1], "\n"), fill) {
-		t.Errorf("an unselected entry is filled:\n%q", b.rowLines()[1])
+	next := b.ActiveLines()[activeEntryLines : 2*activeEntryLines]
+	if strings.Contains(strings.Join(next, "\n"), fill) {
+		t.Errorf("an unselected entry is filled:\n%q", next)
 	}
 }
 
-// The section closes with its bottom border and a blank line, and both belong
-// to the last entry's own row — a line of the board that is no row's is one the
-// cursor and the mouse cannot account for.
-func TestBoardActiveSectionClosesWithTheLastEntry(t *testing.T) {
-	b := activeBoard(60)
-	last := len(b.active) - 1
-
-	lines := b.rowLines()[last]
-	if len(lines) != 4 {
-		t.Fatalf("the last entry is %d lines, want its own two, the border and the gap", len(lines))
-	}
-	if got := ansi.ReplaceAllString(lines[2], ""); !strings.HasPrefix(got, "╰") {
-		t.Errorf("line = %q, want the box closed under the last entry", got)
-	}
-	if lines[3] != "" {
-		t.Errorf("line = %q, want the blank line that sets the plan apart", lines[3])
-	}
-
-	b.SelectRow(last)
-	top, height := b.CursorSpan()
-	if height != 4 {
-		t.Errorf("span height = %d, want the border and the gap counted with the row", height)
-	}
-	if at, ok := b.RowAtLine(top + 3); !ok || at != last {
-		t.Errorf("line %d is row %d (%v), want the entry's own", top+3, at, ok)
-	}
-}
-
-// An unmeasured board has no width to take, so the section is sized to the
-// widest thing in it and nothing of an entry is lost.
+// An unmeasured board has no width to run its entries out to, so each line is
+// what it says and nothing of it is lost.
 func TestBoardActiveSectionWithoutAWidth(t *testing.T) {
 	b := activeBoard(0)
 
-	lines := strings.Split(ansi.ReplaceAllString(b.View(), ""), "\n")
-	widest := 0
-	for _, line := range lines[:12] {
-		widest = max(widest, lipgloss.Width(line))
-	}
-	for i, line := range lines[:12] {
-		if got := lipgloss.Width(line); got != widest {
-			t.Errorf("line %d = %q is %d wide, want the box squared off at %d", i, line, got, widest)
-		}
-	}
-	if !strings.Contains(lines[9], "● Awaiting review") {
-		t.Errorf("line = %q, want the longest entry drawn whole", lines[9])
+	lines := activeText(b)
+	if got := lines[len(lines)-2]; got != "● Awaiting review" {
+		t.Errorf("line = %q, want the longest entry drawn whole and no wider", got)
 	}
 }
 
 // A section narrower than anything it holds is cut to the board's width like
-// every other row, down to a box that is nothing but its own edges.
+// every other line of it.
 func TestBoardActiveSectionNarrows(t *testing.T) {
 	for width := 1; width <= 40; width++ {
 		b := activeBoard(width)
-		for _, line := range strings.Split(b.View(), "\n") {
-			if got := lipgloss.Width(line); got > width {
+		for _, line := range b.ActiveLines() {
+			if got := lipgloss.Width(line); got != width {
 				t.Fatalf("at width %d the line %q is %d wide", width, line, got)
 			}
 		}
