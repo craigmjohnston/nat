@@ -121,18 +121,30 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   directory, which is the whole reason it is not `agent.Runner`. A gh that ran
   and refused comes back as an `*ExitError` whose message is the first line of
   its stderr, since "a pull request for branch X already exists" is the entire
-  point of showing the failure. `PRStatus` is the one thing it reads rather than
-  writes: `gh pr view <url> --json reviewDecision,mergeable`, in the slice's
-  repo, answering whether a review has approved the pull request and whether
-  GitHub can merge it as it stands. Two fields rather than the whole pull
-  request, since the board takes this reading for every slice whose work is out
-  and the rest is JSON nobody here reads; GitHub's own words are decoded where
-  they are known — only `APPROVED` and `MERGEABLE` count, and everything else it
-  says (`REVIEW_REQUIRED`, `CHANGES_REQUESTED`, `CONFLICTING`, `UNKNOWN`, and
-  the empty decision of a repository that requires no review) is the fact not
-  being true. A gh that failed is logged and handed straight back, and so is
-  output that is not the JSON it was asked for: a reading that did not happen
-  must not read as an unapproved pull request.
+  point of showing the failure. `OpenPRs` is the one thing it reads rather than
+  writes: `gh pr list --state open --json url,reviewDecision,mergeable --limit
+  100`, in the slice's repo, answering with every pull request the repository
+  currently has open — keyed by URL — and, of each, whether a review has approved
+  it and whether GitHub can merge it as it stands. One listing per repository
+  rather than one `pr view` per pull request, because the board takes this
+  reading for every slice that has a pull request recorded, a whole project's
+  Done ones included: a view per slice would grow with the plan forever and a
+  listing does not grow at all. Being in the answer is itself a fact the caller
+  reads — a merged or closed pull request is simply not listed — which is why a
+  gh that failed is logged and handed straight back, as is output that is not the
+  JSON it was asked for: nothing may be concluded from a listing that never
+  happened. Three fields rather than the whole pull request, since the rest is
+  JSON nobody here reads; GitHub's own words are decoded where they are known —
+  only `APPROVED` and `MERGEABLE` count, and everything else it says
+  (`REVIEW_REQUIRED`, `CHANGES_REQUESTED`, `CONFLICTING`, `UNKNOWN`, and the
+  empty decision of a repository that requires no review) is the fact not being
+  true. The limit is past gh's own default of thirty, and a repository with more
+  open than that has its oldest left out, which reads as a pull request no longer
+  open — the same thing an unread one reads as, and the quiet direction to be
+  wrong in. `NormaliseURL` is how a URL typed onto a Notion page finds the
+  canonical one gh prints: the query string or fragment of a link copied from a
+  review or a comment, a trailing slash, and the case of an owner or repository
+  are none of them distinctions GitHub makes.
 - `internal/git/` — git, wrapped as thinly as gh is and for the same reason: the
   one thing the board asks of it is the diff of a slice's handed-back branch, so
   the work can be read before `p` turns it into a pull request. `Diff` runs one
@@ -550,7 +562,8 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   plan as a vertical list rather than scattered through the milestones they
   happen to be filed under. Membership is `domain.StateOf`'s own answer — a
   slice it says nothing about is one there is nothing to say about — so the
-  section holds every slice in progress and nothing else, and a plan with none
+  section holds every slice in progress, plus a Done slice for as long as gh
+  says its pull request is still open, and nothing else. A plan with none
   takes no rows at all and draws exactly as it did before there was one. An
   entry is two lines: a state dot and the slice's name, then a muted line
   reading `<state> · <milestone>`, with the dot and the state word in the
@@ -566,20 +579,36 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   acts on a slice acts on the one under it — `Board.SelectedSlice` answers for
   an entry as for a plan row, since it is the same page drawn a second time.
   Nothing folds: an entry is a slice, and a slice row has never folded.
+  `SetPRState` is the one reading that can change which slices the section holds
+  at all, so it rebuilds the rows — but only when the reading says something the
+  last one did not, since a rebuild the user cannot see is one the cursor pays
+  for, and it puts the cursor back on what it was on either way: the slice for an
+  entry of the section, whose position is exactly what the rebuild moves, and the
+  row itself for anything in the plan below it.
   `prstate.go` is the second reading behind those states, beside the activity
-  watcher's: what GitHub says about the pull request of every slice in progress
-  that has one, read through `internal/gh` and kept as a map of
-  `domain.PRReadiness` the board is given like the activity map. It has no timer
-  of its own — it rides the plan's, kicked off by each plan that lands, since a
-  pull request being approved is news of the same kind and much the same age as
-  the plan itself — and it is skipped entirely on a plan with no pull request on
-  it, which is most boards most of the time. One reading runs at a time
-  (`App.prReading`), because a gh per slice on a slow network can outlast the
-  interval it was started on. A slice whose reading failed is left out of the
-  map rather than carried as a state of its own: the board reads an absent slice
-  as a review still to come, which is exactly what it said before there was any
-  reading, so a gh that is not installed or not authenticated changes nothing
-  and is logged and nowhere else. `readinessOf` is where gh's vocabulary becomes
+  watcher's: what GitHub currently has open, read through `internal/gh` and kept
+  as a map of `domain.PRReadiness` the board is given like the activity map. It
+  has no timer of its own — it rides the plan's, kicked off by each plan that
+  lands, since a pull request being approved is news of the same kind and much
+  the same age as the plan itself — and it is skipped entirely when the plan has
+  no pull request left to ask about, which is most boards most of the time. Two
+  kinds of slice are asked about and for the same reason: one in progress is
+  waiting on the review, and a Done one is waiting on the merge, since the board
+  marks a slice Done as it opens the pull request and the work is not on main
+  until that lands. It is one `OpenPRs` listing per repository the plan spans
+  rather than one reading per slice, so the cost is the number of repositories
+  rather than the number of pull requests the project has ever produced, and a
+  pull request the listing no longer names is settled for the session
+  (`App.prSettled`) and never asked about again — a merged pull request does not
+  unmerge, and a mature plan is mostly finished work. One reading runs at a time
+  (`App.prReading`), because a gh on a slow network can outlast the interval it
+  was started on. A repository whose listing failed has every slice of it left
+  out of the map, and settles nothing at all: the board reads an absent slice as
+  a review still to come while it is in flight and as nothing whatever once it is
+  Done, which is exactly what each said before there was any reading, so a gh
+  that is not installed or not authenticated changes nothing and is logged and
+  nowhere else — and, above all, a listing that never happened is never taken for
+  a pull request that has landed. `readinessOf` is where gh's vocabulary becomes
   the rule's, the way `agentPresence` is for tmux's.
 - `skills/` — the agent skills (/queue-work planning, /next-slice execution),
   embedded in the binary with `go:embed` and installed by `nat setup`. A
@@ -722,8 +751,14 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
 - Everything the board knows about a slice in flight adds up to one state
   (`domain.StateOf`, `internal/domain/state.go`): working, waiting, blocked,
   ready to push, awaiting review, ready to merge — or none at all for a slice
-  that is not in progress, since Todo and Done are in no flight to have got
-  anywhere in. The
+  that is not in flight, which is a Todo one and a Done one whose work has
+  landed. A Done slice is tested first and against its pull request alone,
+  because Done is Notion's word for the slice rather than for the work: `p`
+  marks it Done as it opens the pull request, and until that merges the work is
+  not on main and the review is not over, so such a slice is still in whatever
+  state its pull request is in. It takes a positive reading to say so — with
+  nothing read, a Done slice is in no state at all, which is what every Done
+  slice a project ever finished must go on being. After that, the
   order the facts are tested in is the order they are true in: a live agent
   wins over everything on the page, because it is the only reading taken fresh
   — an agent running on a handed-back branch is the review going back to it —
@@ -735,12 +770,18 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   and `internal/tui` both import this package and neither's enum could be
   reached from here. What tells the two endings of work that is out apart is
   `domain.PRReadiness`, the same trick for the GitHub CLI: a pull request read
-  as approved and mergeable is ready to merge, and everything else about one —
-  unreviewed, changes asked for, unmergeable, or nothing read of it at all — is
-  the review still to come, which is what a branch handed back with no pull
-  request on it is too. Its zero value is a board nobody has asked gh anything
-  on, so the whole refinement is absent rather than wrong where there is no gh
-  to ask — see `internal/tui/prstate.go`. The Active section is what draws it — see
+  as open and as approved and mergeable is ready to merge, and everything else
+  about an open one — unreviewed, changes asked for, unmergeable — is the review
+  still to come, which is what a branch handed back with no pull request on it is
+  too. Both affirmative values mean a pull request positively read as open, since
+  the reading is a listing of what a repository has open; the zero value is
+  therefore three things at once — no pull request, none read of, and one no
+  longer open — and no rule here wants them told apart. It is a board nobody has
+  asked gh anything on, so the whole refinement is absent rather than wrong where
+  there is no gh to ask, and it is the one thing keeping a Done slice in flight,
+  so a Done slice with no reading behind it is out of the section rather than
+  every Done slice in the project's history flooding it — see
+  `internal/tui/prstate.go`. The Active section is what draws it — see
   `internal/tui/active.go`.
 - A project keeps its whole plan on one page: no Milestones database, and a
   `Milestone` **select** on the Slices data source whose options are the
