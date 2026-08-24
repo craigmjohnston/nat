@@ -360,3 +360,159 @@ func TestBoardActivePresenceReadings(t *testing.T) {
 		})
 	}
 }
+
+// TestBoardDrawsAConfirmationOnTheSelectedActiveEntry pins the entry's half of
+// the anchoring: a confirmation set while the cursor is in the section is drawn
+// on the entry's foot line, exactly where a plan row's last line carries it.
+// Without it the keys that open one would swallow input with nothing on screen
+// saying why.
+func TestBoardDrawsAConfirmationOnTheSelectedActiveEntry(t *testing.T) {
+	b := activeBoard(60)
+	b.SetConfirm("Approve \"Working\"?", sevSuccess)
+
+	golden(t, "board-active-confirm", strings.Join(b.ActiveLines(), "\n"))
+
+	lines := activeText(b)
+	if strings.Contains(lines[0], "Approve") {
+		t.Errorf("the confirmation is on the entry's name line: %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "Approve \"Working\"?") {
+		t.Errorf("foot line = %q, want the confirmation anchored to it", lines[1])
+	}
+	// It belongs to the entry the cursor is on and to no other.
+	for i, line := range lines[activeEntryLines:] {
+		if strings.Contains(line, "Approve") {
+			t.Errorf("entry line %d = %q, want the confirmation on the selected entry alone",
+				i+activeEntryLines, line)
+		}
+	}
+	if got := lipgloss.Width(b.ActiveLines()[1]); got != 60 {
+		t.Errorf("the foot line is %d wide, want the section's own 60", got)
+	}
+}
+
+// TestBoardDrawsThePromptOnTheSelectedActiveEntry is the other thing anchored
+// to a row: the question waiting to be answered, with its choices side by side,
+// drawn on the entry the cursor is on.
+func TestBoardDrawsThePromptOnTheSelectedActiveEntry(t *testing.T) {
+	b := activeBoard(60)
+	b.SetPrompt([]string{"release", "cancel"})
+
+	golden(t, "board-active-prompt", strings.Join(b.ActiveLines(), "\n"))
+
+	lines := activeText(b)
+	if !strings.Contains(lines[1], "release") || !strings.Contains(lines[1], "cancel") {
+		t.Errorf("foot line = %q, want the prompt's choices on it", lines[1])
+	}
+	// A prompt takes the place of a confirmation rather than sitting beside it,
+	// the way it does on a plan row.
+	b.SetConfirm("Approve?", sevSuccess)
+	b.SetPrompt([]string{"release", "cancel"})
+	if strings.Contains(activeText(b)[1], "Approve") {
+		t.Errorf("the confirmation outlived the prompt: %q", activeText(b)[1])
+	}
+}
+
+// An unmeasured section has no right edge to anchor a chip to, so it simply
+// follows the entry's foot line — the same answer [Board.overlayChip] gives an
+// unmeasured plan.
+func TestBoardActiveEntryChipWithoutAWidth(t *testing.T) {
+	b := activeBoard(0)
+	b.SetConfirm("Approve?", sevSuccess)
+
+	if got := activeText(b)[1]; !strings.Contains(got, "· Config  Approve?") {
+		t.Errorf("foot line = %q, want the confirmation following it", got)
+	}
+}
+
+// With the cursor down in the plan the section carries nothing at all: the
+// confirmation is anchored to the row it was opened on, which is no entry of
+// this panel.
+func TestBoardActiveSectionCarriesNoChipForAPlanRow(t *testing.T) {
+	b := activeBoard(60)
+	b.cursor = b.activeRowCount()
+	b.SetConfirm("Approve?", sevSuccess)
+
+	if got := strings.Join(activeText(b), "\n"); strings.Contains(got, "Approve?") {
+		t.Errorf("the section drew a chip for a row of the plan:\n%s", got)
+	}
+}
+
+// cursorOnActive puts the cursor on the Active section's entry for the named
+// slice, which is the row the section's own keys act on.
+func cursorOnActive(t *testing.T, a *App, id string) {
+	t.Helper()
+	for i, r := range a.board.rows {
+		if r.kind == rowActive && a.board.active[r.slice].ID == id {
+			a.board.cursor = i
+			return
+		}
+	}
+	t.Fatalf("no active entry for slice %q", id)
+}
+
+// TestApproveFromAnActiveEntry is the whole point of the anchoring: p on an
+// entry opens the same prompt it opens on a plan row, the entry draws it, and
+// answering it opens the pull request.
+func TestApproveFromAnActiveEntry(t *testing.T) {
+	app, prs, _, workdir := approveApp(t)
+	app.board.SetWidth(60)
+	cursorOnActive(t, app, handedBack)
+
+	feed(t, app, press(app, "p"))
+
+	if !app.board.Prompting() {
+		t.Fatalf("p on an entry opened no prompt: %q", app.board.confirmText)
+	}
+	if got := activeText(&app.board)[1]; !strings.Contains(got, "approve") {
+		t.Errorf("entry foot line = %q, want the approve prompt drawn on it", got)
+	}
+
+	drive(t, app, press(app, "enter"))
+
+	want := prCall{workdir, "slice/approve", "", ""}
+	if len(prs.made) != 1 || prs.made[0] != want {
+		t.Fatalf("gh was asked for %v, want %v", prs.made, want)
+	}
+	// The slice is Done with nothing yet read of its pull request, so it has
+	// left the section along with the entry the prompt was drawn on — the
+	// confirmation is the board's, anchored to wherever the cursor now is.
+	if !strings.Contains(app.board.confirmText, "Approve action") {
+		t.Errorf("confirmation = %q, want it to name the slice", app.board.confirmText)
+	}
+}
+
+// R on an entry is the release prompt, anchored to the entry the way it is to
+// the row further down the plan.
+func TestReleaseFromAnActiveEntry(t *testing.T) {
+	app, _, _, _ := approveApp(t)
+	app.board.SetWidth(60)
+	cursorOnActive(t, app, handedBack)
+
+	feed(t, app, press(app, "R"))
+
+	if !app.board.Prompting() {
+		t.Fatalf("R on an entry opened no prompt: %q", app.board.confirmText)
+	}
+	if got := activeText(&app.board)[1]; !strings.Contains(got, "release") {
+		t.Errorf("entry foot line = %q, want the release prompt drawn on it", got)
+	}
+}
+
+// l on an entry is the launch key's refusal — no slice in flight is Todo — and
+// that refusal is a confirmation, which the entry has to draw for the same
+// reason: a key that says nothing is a key that looks broken.
+func TestLaunchFromAnActiveEntryIsRefusedOnTheEntry(t *testing.T) {
+	app, _, _, _ := approveApp(t)
+	app.board.SetWidth(60)
+	cursorOnActive(t, app, handedBack)
+
+	feed(t, app, press(app, "l"))
+
+	if !strings.Contains(app.board.confirmText, "only Todo slices") {
+		t.Fatalf("confirmation = %q, want the launch key's refusal", app.board.confirmText)
+	}
+	if got := activeText(&app.board)[1]; !strings.Contains(got, "only Todo slices") {
+		t.Errorf("entry foot line = %q, want the refusal drawn on it", got)
+	}
+}

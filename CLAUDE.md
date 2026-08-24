@@ -580,7 +580,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   the first rows there are, so the cursor runs from the section straight on into
   the plan and every key that acts on a slice acts on the one under it —
   `Board.SelectedSlice` answers for an entry as for a plan row, since it is the
-  same page drawn a second time. Everything the board measures over its rows is
+  same page drawn a second time. What those keys put on the row is drawn on the
+  entry too: the inline confirmation, or the prompt waiting to be answered, laid
+  over the entry's foot line — its last, which is where `Board.finishRow` puts
+  them on a plan row — through the one `Board.overlayAnchored` both go through.
+  A key that opens a prompt takes every key until it is answered, so an entry
+  that drew nothing would be a board that had stopped responding.
+  Everything the board measures over its rows is
   measured over the plan's alone (`Board.rowLines`, `CursorSpan`, `RowAtLine`,
   `CursorToVisible`, `LinkAt`), and the panel answers for its own in the lines
   of its own box (`ActiveLines`, `ActiveCursorSpan`, `ActiveRowAtLine`); the two
