@@ -28,10 +28,17 @@ import (
 //
 // It only ever creates. Nothing in a plan says which existing page to change,
 // and a command that adds work has no business editing work already filed.
+//
+// Where the plan lands is the command line's rather than the document's:
+// --project names a project of the config file and the active project is where
+// it goes without one. A document says what work there is and not whose it is,
+// which is what lets one drafted plan be applied to whichever project the
+// session is planning for.
 func planApply(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("plan-apply", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
+	projectID := flags.String("project", "", "file the plan in this project of the config file rather than the active one")
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
@@ -50,7 +57,10 @@ func planApply(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	_, project, err := env.activeProject()
+	// Which project the plan lands in is the one thing --project changes: the
+	// project resolved here is read, migrated and written exactly as the active
+	// one is, so a plan applied elsewhere is applied the same way.
+	_, project, err := env.projectFor(*projectID)
 	if err != nil {
 		return err
 	}
