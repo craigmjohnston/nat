@@ -15,7 +15,7 @@ import (
 // Each skill is named rather than matched by a wildcard, so that a directory
 // added here is a deliberate addition to what `nat setup` installs.
 //
-//go:embed next-slice queue-work
+//go:embed next-slice queue-project queue-work
 var embedded embed.FS
 
 // FS is the embedded skills: one directory per skill, at the root.

@@ -26,7 +26,7 @@ func TestFSCarriesEverySkill(t *testing.T) {
 			t.Errorf("%s has no SKILL.md: %v", e.Name(), err)
 		}
 	}
-	for _, want := range []string{"next-slice", "queue-work"} {
+	for _, want := range []string{"next-slice", "queue-project", "queue-work"} {
 		if !got[want] {
 			t.Errorf("the %s skill is not embedded", want)
 		}
@@ -39,8 +39,9 @@ func TestFSCarriesEverySkill(t *testing.T) {
 // route around every guardrail the commands enforce, and would do it quietly.
 func TestSkillsWriteThroughTheCLI(t *testing.T) {
 	for skill, want := range map[string][]string{
-		"next-slice": {"nat next-slice", "nat start-slice", "nat complete-slice"},
-		"queue-work": {"nat info", "nat plan-apply"},
+		"next-slice":    {"nat next-slice", "nat start-slice", "nat complete-slice"},
+		"queue-project": {"nat info", "nat project-create", "nat plan-apply --project"},
+		"queue-work":    {"nat info", "nat plan-apply"},
 	} {
 		body, err := fs.ReadFile(FS(), skill+"/SKILL.md")
 		if err != nil {
@@ -121,7 +122,7 @@ func TestNextSliceCutsTheSlicesWorktree(t *testing.T) {
 // otherwise cannot be corrected where it is read — an agent told to have the
 // user activate a milestone would be asking for something the board refuses.
 func TestSkillsDoNotAssumeMilestonePages(t *testing.T) {
-	for _, skill := range []string{"next-slice", "queue-work"} {
+	for _, skill := range []string{"next-slice", "queue-project", "queue-work"} {
 		body, err := fs.ReadFile(FS(), skill+"/SKILL.md")
 		if err != nil {
 			t.Errorf("read the %s skill: %v", skill, err)
@@ -138,5 +139,68 @@ func TestSkillsDoNotAssumeMilestonePages(t *testing.T) {
 				t.Errorf("the %s skill says %q: %s", skill, phrase, why)
 			}
 		}
+	}
+}
+
+// The queue-project skill drives two commands and the order is the whole of it:
+// `plan-apply` run before the project exists, or run without the `--project` the
+// create printed, files a whole plan into whichever project happens to be
+// active — the one thing here that cannot be undone by a second run. The skill
+// ships inside the binary, so an order it stated wrongly cannot be corrected
+// where it is read.
+func TestQueueProjectCreatesBeforeItFilesThePlan(t *testing.T) {
+	body, err := fs.ReadFile(FS(), "queue-project/SKILL.md")
+	if err != nil {
+		t.Fatalf("read the queue-project skill: %v", err)
+	}
+	text := string(body)
+	create := strings.Index(text, "nat project-create")
+	apply := strings.Index(text, "nat plan-apply --project")
+	if create < 0 || apply < 0 {
+		t.Fatalf("the queue-project skill does not run both commands: create at %d, apply at %d", create, apply)
+	}
+	if create > apply {
+		t.Error("the queue-project skill files the plan before it creates the project")
+	}
+	if !strings.Contains(text, "--description -") {
+		t.Error("the queue-project skill does not write the project's brief onto its page")
+	}
+}
+
+// Nothing is written before the user has approved it, and a project is the one
+// thing here with no way back: `plan-apply` only ever creates, but a project
+// created by mistake stays created, and no `nat` command deletes one.
+func TestQueueProjectWritesNothingBeforeApproval(t *testing.T) {
+	body, err := fs.ReadFile(FS(), "queue-project/SKILL.md")
+	if err != nil {
+		t.Fatalf("read the queue-project skill: %v", err)
+	}
+	text := string(body)
+	for _, want := range []string{
+		"Write nothing until the user explicitly approves",
+		"There is no `nat` command that deletes a project",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the queue-project skill does not say %q", want)
+		}
+	}
+}
+
+// A created project is not the active one — `project-create` leaves the board
+// on whatever it was on, and the headless commands have no project switch at
+// all — so the last step belongs to the user and the skill has to hand it over.
+// A skill that claimed otherwise would leave the user's next `nat next-slice`
+// silently pointed at the old project.
+func TestQueueProjectSendsTheUserToTheSwitchPicker(t *testing.T) {
+	body, err := fs.ReadFile(FS(), "queue-project/SKILL.md")
+	if err != nil {
+		t.Fatalf("read the queue-project skill: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, "not the active one") || !strings.Contains(text, "press") {
+		t.Errorf("the queue-project skill does not send the user to the board to switch to the new project")
+	}
+	if strings.Contains(strings.ToLower(text), "nat switch") {
+		t.Error("the queue-project skill invents a CLI project switch")
 	}
 }

@@ -653,7 +653,8 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   nowhere else — and, above all, a listing that never happened is never taken for
   a pull request that has landed. `readinessOf` is where gh's vocabulary becomes
   the rule's, the way `agentPresence` is for tmux's.
-- `skills/` — the agent skills (/queue-work planning, /next-slice execution),
+- `skills/` — the agent skills (/queue-work planning, /queue-project the same
+  planning for work that has no project yet, /next-slice execution),
   embedded in the binary with `go:embed` and installed by `nat setup`. A
   checkout works on them in place by symlinking them into `~/.claude/skills/`,
   which `nat setup` leaves alone rather than writing back through. /next-slice
@@ -670,6 +671,15 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   A machine with no worktrunk and a working directory in no repository fall
   back to branching in place, the two the board falls back to the shared
   checkout for.
+  /queue-project is /queue-work's drafting rules plus the two headless commands
+  that make a project to file the draft into: `project-create` with the brief on
+  stdin, then `plan-apply --project <the id it printed>`. That order and that
+  flag are the whole of it, and are what its tests hold to — `plan-apply` run
+  without `--project` would file a whole plan into whichever project happens to
+  be active, since `project-create` deliberately leaves the active one alone.
+  Which is also why the skill ends by sending the user to the board's switch
+  picker rather than pretending the CLI can switch: it cannot, and the last step
+  is the user's.
 
 ## Domain rules
 
