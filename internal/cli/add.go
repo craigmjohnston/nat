@@ -95,7 +95,7 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	}
 	// The brief is settled before anything is read from Notion, so a slice-add
 	// whose stdin cannot be read fails having written nothing.
-	brief, err := briefText(*description, env.In)
+	brief, err := briefText("slice-add", *description, env.In)
 	if err != nil {
 		return err
 	}
@@ -277,15 +277,17 @@ func knownMilestones(ms []domain.Milestone) string {
 // — and a brief is optional, so that is an ordinary way to run the command.
 const stdinRef = "-"
 
-// briefText settles the slice's body: the flag, or stdin when the flag asks for
+// briefText settles a page's body: the flag, or stdin when the flag asks for
 // it. An empty brief is allowed — a one-line slice whose title says everything
-// is a real thing to file — so this fails only when stdin cannot be read.
-func briefText(description string, in io.Reader) (string, error) {
+// is a real thing to file — so this fails only when stdin cannot be read. The
+// command is named because more than one takes a description this way, and a
+// misuse should say which one it was.
+func briefText(command, description string, in io.Reader) (string, error) {
 	if description != stdinRef {
 		return strings.TrimSpace(description), nil
 	}
 	if in == nil {
-		return "", usageErrorf("slice-add: --description - was given but there is nothing to read")
+		return "", usageErrorf("%s: --description - was given but there is nothing to read", command)
 	}
 	b, err := io.ReadAll(in)
 	if err != nil {

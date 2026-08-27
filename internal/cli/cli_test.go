@@ -83,9 +83,46 @@ type fakeAPI struct {
 	updates []update
 	// updateErr fails the write.
 	updateErr error
+	// projects records every project creation, in order.
+	projects []createdProject
+	// projectStructure is what a creation answers with, when the default one
+	// will not do; it is also what a staged projectErr comes back alongside.
+	projectStructure *notion.ProjectStructure
+	// projectErr fails the project creation.
+	projectErr error
+	// projectNothing is Notion answering with neither a project nor a reason.
+	projectNothing bool
+
 	// mangle is Notion being less obliging than asked: it is handed the page a
 	// write would have produced, and whatever it does to it is what comes back.
 	mangle func(*notion.Page)
+}
+
+// CreateProject records the whole project the command asked for and answers
+// with the structure a real create comes back with.
+func (f *fakeAPI) CreateProject(_ context.Context, projectsDSID, name string, assignee bool) (*notion.ProjectStructure, error) {
+	f.projects = append(f.projects, createdProject{dsID: projectsDSID, name: name, assignee: assignee})
+	if f.projectNothing {
+		return nil, nil
+	}
+	if f.projectErr != nil {
+		return f.projectStructure, f.projectErr
+	}
+	if f.projectStructure != nil {
+		return f.projectStructure, nil
+	}
+	return &notion.ProjectStructure{
+		PageID:     "new-project",
+		PageURL:    "https://notion.so/new-project",
+		SlicesDBID: "new-slices-db",
+		SlicesDSID: "new-slices-ds",
+	}, nil
+}
+
+type createdProject struct {
+	dsID     string
+	name     string
+	assignee bool
 }
 
 type query struct {
@@ -331,6 +368,7 @@ func testEnv(cfg config.Config, api *fakeAPI) (Env, *bytes.Buffer) {
 	return Env{
 		Tokens:    config.StaticToken("ntn_o_test"),
 		Load:      func() (config.Config, bool, error) { return cfg, true, nil },
+		Save:      func(config.Config) error { return nil },
 		NewClient: func(notion.TokenFunc) API { return api },
 		Out:       &out,
 	}, &out

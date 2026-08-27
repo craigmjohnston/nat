@@ -488,6 +488,10 @@ func (s stubAPI) UpdatePageProperties(context.Context, string, map[string]notion
 	return &notion.Page{}, s.err
 }
 
+func (s stubAPI) CreateProject(context.Context, string, string, bool) (*notion.ProjectStructure, error) {
+	return &notion.ProjectStructure{}, s.err
+}
+
 // A subcommand runs headless and exits: no board, and no tmux check either —
 // none of them launches an agent, so a machine without tmux runs them all.
 func TestMainRunsACommandInsteadOfTheBoard(t *testing.T) {
