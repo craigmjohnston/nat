@@ -27,6 +27,7 @@ type API interface {
 	AppendBlockChildrenAfter(ctx context.Context, id, after string, children []map[string]any) ([]notion.Block, error)
 	DeleteBlock(ctx context.Context, id string) error
 	UpdatePageProperties(ctx context.Context, pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
+	CreateProject(ctx context.Context, projectsDSID, name string, assignee bool) (*notion.ProjectStructure, error)
 }
 
 // NewClientFunc builds an API from a source of bearer tokens.
@@ -43,6 +44,10 @@ type Env struct {
 	Tokens config.TokenSource
 	// Load reads local config; it is config.Load in production.
 	Load func() (config.Config, bool, error)
+	// Save writes local config back, for the one command that changes it: a
+	// project created headlessly has to be recorded somewhere this machine will
+	// read it again. It is config.Save in production.
+	Save func(config.Config) error
 	// NewClient builds the Notion client a command talks through.
 	NewClient NewClientFunc
 	// Out is where a command writes its output.
@@ -78,6 +83,11 @@ usage:
   nat start-slice <slice> [--json]
                       claim one named Todo slice, by URL or ID, and print its
                       brief
+  nat project-create <name> [--repo DIR] [--description TEXT|-] [--json]
+                      create a project and its Slices database, register it in
+                      local config and write the description as its page body;
+                      --description - reads it from stdin. The board is left on
+                      whatever project it was on
   nat milestone-add <name> [--json]
                       add a Queued milestone at the end of the plan
   nat slice-add <title> --milestone <name> [--description TEXT|-]
@@ -152,6 +162,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return nextSlice(ctx, args[1:], env)
 	case "start-slice":
 		return startSlice(ctx, args[1:], env)
+	case "project-create":
+		return projectCreate(ctx, args[1:], env)
 	case "milestone-add":
 		return milestoneAdd(ctx, args[1:], env)
 	case "slice-add":

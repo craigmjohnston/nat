@@ -216,6 +216,20 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `nat release-slice <slice>`, which is the fourth ending and the only one that
   goes backwards: Status to `Todo`, the Assignee cleared and one line on the
   page saying so, for a session that ended without finishing at all,
+  `nat project-create <name> [--repo DIR] [--description TEXT|-]`, which is a
+  whole tracked project without the board — `notion.CreateProject` for the
+  project row and its Slices database, the description written as the page body
+  because that is what `nat info` prints back as the project's conventions, and
+  the entry in local config that makes it a project this machine can open
+  (`WorkingDir` from `--repo`, defaulting to the directory the command was typed
+  in, since a project is usually created from inside its own checkout). Whether
+  the Slices table carries an `Assignee` column follows the configured user, the
+  one thing there is to go on where the board would ask. It leaves
+  `ActiveProjectID` exactly as it was: there is no project switch among the
+  headless commands, so moving it would point every later `info`, `next-slice`
+  and `plan-apply` at an empty plan, and the board's switch picker — which reads
+  the config this wrote — is how the new project gets opened. It is also the one
+  command that writes local config, which is why `Env` has a `Save` at all,
   and the one-off additions
   `nat milestone-add <name>` (Queued, at the end of the plan) and
   `nat slice-add <title> --milestone <name> [--description TEXT|-]

@@ -100,6 +100,7 @@ func command(tokens config.TokenSource) error {
 	return cli.Run(context.Background(), args(), cli.Env{
 		Tokens:    tokens,
 		Load:      config.Load,
+		Save:      config.Save,
 		NewClient: newCLIClient,
 		Out:       stdout,
 		In:        stdin,
