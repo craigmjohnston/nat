@@ -467,6 +467,28 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   was opened over for this one form's sake: every other form is the board's and
   closes back onto it, where dropping the user there after typing a comment would
   lose their place in a change they are half way through reading.
+  `newproject.go` is `N` and `P`, the two ways a project comes to be on the
+  board. `P` is one picker for both halves of "which project": the ones local
+  config knows, and under them — marked, so picking one says what it does — the
+  rows of the workspace's projects database it does not, since which of the two
+  a project is is an accident of where it was created. The configured half is
+  there the moment the key is pressed and the read of the projects database
+  lands into the picker already on screen, so a database that is slow, or that
+  cannot be read at all, holds up no switch — such a read is logged and
+  otherwise passed over, and an answer arriving after the picker has closed
+  fills in nothing. That landing rebuilds the form rather than adding to the
+  field it holds, because huh measures a group's height as it is built and a
+  list that grew past it would be drawn cut off. Picking an unconfigured page
+  is a `notion.ResolveProject` first — the name and the data source its plan
+  lives in, which is exactly what config has no record of — then the config
+  entry and the very switch a configured project is (`activateProject`, what
+  both endings share). The working directory is left unset, since where the
+  code lives is this machine's answer and no part of what was read, and the
+  toast says where to give one. A page that will not resolve is a toast naming
+  the resolver's own refusal with local config untouched: half a project
+  recorded is worse than none. The key refuses only when neither half can grow
+  — one configured project and no projects database — which is why a machine
+  that has opened nothing at all still gets a picker.
   `settings.go` is `S`, the config file as a form, so nothing local has to be
   edited by hand: the active project's working directory, the agent split, the
   poll interval and the two model pairs — and nothing else in the file, since

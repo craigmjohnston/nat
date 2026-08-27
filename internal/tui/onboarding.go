@@ -33,6 +33,7 @@ type NotionAPI interface {
 	Breadcrumb(ctx context.Context, parent notion.Parent) []string
 	CreateProjectsDatabase(ctx context.Context, parentPageID, title string) (*notion.Database, error)
 	CreateProject(ctx context.Context, projectsDSID, name string, assignee bool) (*notion.ProjectStructure, error)
+	ResolveProject(ctx context.Context, pageID string) (*notion.ResolvedProject, error)
 	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
 	DataSourceOrder(ctx context.Context, dataSourceID string) ([]string, error)
 	GetBlockChildren(ctx context.Context, id string) ([]notion.Block, error)

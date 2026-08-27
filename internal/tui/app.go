@@ -465,6 +465,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.projectCreated(msg)
 	case projectSwitchedMsg:
 		return a.projectSwitched(msg)
+	case projectOpenedMsg:
+		return a.projectOpened(msg)
+	case workspaceProjectsMsg:
+		return a, a.workspaceProjectsListed(msg)
 	case settingsSavedMsg:
 		return a.settingsSaved(msg)
 	case agentLaunchedMsg:
