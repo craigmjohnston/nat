@@ -29,6 +29,7 @@ type fakeNotion struct {
 	breadcrumb  func(parent notion.Parent) []string
 	createDB    func(parentPageID, title string) (*notion.Database, error)
 	newProject  func(projectsDSID, name string) (*notion.ProjectStructure, error)
+	resolve     func(pageID string) (*notion.ResolvedProject, error)
 	query       func(id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
 	order       func(id string) ([]string, error)
 	blocks      func(id string) ([]notion.Block, error)
@@ -52,6 +53,7 @@ type fakeNotion struct {
 	blockParents  []string
 	wishlistPages []string
 	fetchedPages  []string
+	resolvedPages []string
 	createdUnder  string
 	createdTitle  string
 	// The projects created, as the data source and name each was asked for.
@@ -185,6 +187,16 @@ func (f *fakeNotion) CreateProject(_ context.Context, projectsDSID, name string,
 		return nil, nil
 	}
 	return f.newProject(projectsDSID, name)
+}
+
+// ResolveProject answers with the project page read as something openable,
+// recording which pages were asked about.
+func (f *fakeNotion) ResolveProject(_ context.Context, pageID string) (*notion.ResolvedProject, error) {
+	f.resolvedPages = append(f.resolvedPages, pageID)
+	if f.resolve == nil {
+		return nil, nil
+	}
+	return f.resolve(pageID)
 }
 
 func (f *fakeNotion) QueryDataSource(_ context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error) {

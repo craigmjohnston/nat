@@ -492,6 +492,265 @@ func TestNewProjectFormAnnouncesItsWork(t *testing.T) {
 	}
 }
 
+// projectPage is a row of the projects database as the picker reads it: the
+// title comes back as plain text, which is what a query answers with.
+func projectPage(id, name string) notion.Page {
+	return notion.Page{ID: id, Properties: map[string]notion.PropertyValue{
+		notion.PropName: {Title: []notion.RichText{{PlainText: name}}},
+	}}
+}
+
+// openingClient answers the projects database with the given rows and every
+// project page with a plan behind it, which is the whole of what opening one
+// asks of Notion.
+func openingClient(pages ...notion.Page) *loadingClient {
+	c := newLoadingClient()
+	slices := c.query
+	c.query = func(id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error) {
+		if id == testProjectsDSID {
+			return pages, nil
+		}
+		return slices(id, filter, sorts)
+	}
+	c.resolve = func(pageID string) (*notion.ResolvedProject, error) {
+		return &notion.ResolvedProject{Name: "opened", SlicesDSID: pageID + "-sl"}, nil
+	}
+	return c
+}
+
+// openingApp is the board with somewhere to list projects from, which is what
+// makes the picker offer more than local config knows.
+func openingApp(client NotionAPI) *App {
+	a := NewApp(twoProjectConfig(), client)
+	a.cfg.ProjectDBDataSourceID = testProjectsDSID
+	return a
+}
+
+// switchFormOf is the picker on show, failing the test when the modal open over
+// the board is something else.
+func switchFormOf(t *testing.T, a *App) *SwitchProjectForm {
+	t.Helper()
+	f, ok := a.form.(*SwitchProjectForm)
+	if !ok {
+		t.Fatalf("form = %T, want the project picker", a.form)
+	}
+	return f
+}
+
+func TestAppSwitchProjectOffersTheWorkspacesOwnProjects(t *testing.T) {
+	capturedConfig(t)
+	client := openingClient(projectPage("p9", "notion-only"), projectPage(testProjectID, "tracker"))
+	app := openingApp(client)
+
+	feed(t, app, press(app, "P"))
+
+	f := switchFormOf(t, app)
+	if !f.unopened["p9"] || f.unopened[testProjectID] {
+		t.Errorf("unopened = %v, want only the page config has never seen", f.unopened)
+	}
+	view := stripANSI(app.View().Content)
+	if want := "notion-only" + openSuffix; !strings.Contains(view, want) {
+		t.Errorf("view is missing %q:\n%s", want, view)
+	}
+	if got := strings.Count(view, "tracker"); got != 1 {
+		t.Errorf("the configured project is listed %d times, want once:\n%s", got, view)
+	}
+}
+
+func TestAppSwitchProjectOpensOneItHasNeverSeen(t *testing.T) {
+	saved := capturedConfig(t)
+	client := openingClient(projectPage("p9", "notion-only"))
+	app := openingApp(client)
+	feed(t, app, press(app, "P"))
+
+	// The picker opens on the active project, and the workspace's own list sits
+	// below the configured ones: one step down is the unopened page.
+	press(app, "j")
+	finishForm(t, app, press(app, "enter"))
+
+	if got := client.resolvedPages; !equal(got, []string{"p9"}) {
+		t.Fatalf("resolved %v, want the picked page read", got)
+	}
+	want := config.ProjectConfig{Name: "opened", SlicesDSID: "p9-sl"}
+	if got := saved.Projects["p9"]; got != want {
+		t.Errorf("recorded %+v, want %+v — and no working directory", got, want)
+	}
+	if saved.ActiveProjectID != "p9" || app.cfg.ActiveProjectID != "p9" {
+		t.Errorf("active project = %q/%q, want the opened one", saved.ActiveProjectID, app.cfg.ActiveProjectID)
+	}
+	if !strings.Contains(app.toast, `Opened "opened"`) || !strings.Contains(app.toast, "working directory") {
+		t.Errorf("toast = %q, want the open reported and a directory asked for", app.toast)
+	}
+	if got := client.queriedDSIDs[len(client.queriedDSIDs)-1]; got != "p9-sl" {
+		t.Errorf("last query = %q, want the board reloaded onto the opened plan", got)
+	}
+}
+
+func TestAppSwitchProjectReportsAPageThatIsNoProject(t *testing.T) {
+	saved := capturedConfig(t)
+	client := openingClient(projectPage("p9", "notion-only"))
+	client.resolve = func(string) (*notion.ResolvedProject, error) {
+		return nil, &notion.NoPlanError{PageID: "p9", Title: "notion-only", Reason: `it holds no "Slices" database`}
+	}
+	app := openingApp(client)
+	feed(t, app, press(app, "P"))
+
+	press(app, "j")
+	finishForm(t, app, press(app, "enter"))
+
+	if !strings.Contains(app.toast, `Could not open "notion-only"`) ||
+		!strings.Contains(app.toast, "holds no") {
+		t.Errorf("toast = %q, want the refusal named", app.toast)
+	}
+	if _, ok := saved.Projects["p9"]; ok || app.cfg.Projects["p9"].Name != "" {
+		t.Error("a page that would not resolve should leave local config alone")
+	}
+	if app.cfg.ActiveProjectID != testProjectID {
+		t.Errorf("active project = %q, want the board left where it was", app.cfg.ActiveProjectID)
+	}
+}
+
+func TestOpenProjectReportsAnEmptyAnswer(t *testing.T) {
+	msg := runMsg(t, openProject(&fakeNotion{}, "p9", "notion-only")).(projectOpenedMsg)
+
+	if msg.err == nil || !strings.Contains(msg.err.Error(), "no project came back") {
+		t.Errorf("err = %v, want the empty answer reported", msg.err)
+	}
+}
+
+func TestAppProjectOpenedRecordsTheFirstProjectOfAll(t *testing.T) {
+	saved := capturedConfig(t)
+	app := NewApp(config.Config{}, newLoadingClient())
+
+	app.Update(projectOpenedMsg{id: "p9", project: &notion.ResolvedProject{Name: "first", SlicesDSID: "p9-sl"}})
+
+	if got := saved.Projects["p9"]; got.SlicesDSID != "p9-sl" {
+		t.Errorf("recorded %+v, want the project in a config that had no map", got)
+	}
+}
+
+// The picker is worth opening with one project configured as long as there is a
+// projects database to list the rest of the workspace from.
+func TestAppSwitchProjectOpensOverOneConfiguredProject(t *testing.T) {
+	client := openingClient(projectPage("p9", "notion-only"))
+	app := newWriteApp(client)
+	app.cfg.ProjectDBDataSourceID = testProjectsDSID
+
+	feed(t, app, press(app, "P"))
+
+	f := switchFormOf(t, app)
+	if !f.unopened["p9"] {
+		t.Errorf("unopened = %v, want the workspace's own project offered", f.unopened)
+	}
+	if app.toast != "" {
+		t.Errorf("toast = %q, want the picker rather than a refusal", app.toast)
+	}
+}
+
+// A projects database that will not answer costs the picker nothing: the
+// configured projects are already in it, and switching between them is what the
+// key mostly does.
+func TestAppSwitchProjectSurvivesAFailedListing(t *testing.T) {
+	client := openingClient()
+	client.query = func(string, map[string]any, []notion.Sort) ([]notion.Page, error) {
+		return nil, errors.New("no")
+	}
+	app := openingApp(client)
+
+	feed(t, app, press(app, "P"))
+
+	f := switchFormOf(t, app)
+	if len(f.options) != 2 || len(f.unopened) != 0 {
+		t.Errorf("options = %d, unopened = %v, want the configured projects alone", len(f.options), f.unopened)
+	}
+	if app.toast != "" {
+		t.Errorf("toast = %q, want the failure logged rather than shown", app.toast)
+	}
+}
+
+// An answer that arrives after the picker has been closed has nothing to fill
+// in, and must not be mistaken for another form's message.
+func TestAppWorkspaceProjectsAfterThePickerClosedAreDropped(t *testing.T) {
+	app := NewApp(twoProjectConfig(), newLoadingClient())
+
+	app.Update(workspaceProjectsMsg{projects: []workspaceProject{{ID: "p9", Name: "notion-only"}}})
+
+	if app.form != nil {
+		t.Errorf("form = %T, want nothing opened by a stray answer", app.form)
+	}
+}
+
+func TestSwitchProjectFormOffersWorkspaceProjectsUnderTheConfiguredOnes(t *testing.T) {
+	f := newSwitchProjectForm(DefaultStyles().FormTheme, twoProjectConfig())
+
+	f.offer([]workspaceProject{
+		{ID: testProjectID, Name: "tracker"},
+		{ID: "p9"},
+	})
+
+	if len(f.options) != 3 {
+		t.Fatalf("options = %d, want the one unconfigured page added", len(f.options))
+	}
+	if got := f.options[2].Key; got != "p9"+openSuffix {
+		t.Errorf("label = %q, want the untitled page listed under its ID", got)
+	}
+	if f.names["p9"] != "p9" {
+		t.Errorf("name = %q, want the ID standing in for a missing title", f.names["p9"])
+	}
+}
+
+// A machine that has opened nothing yet still gets a picker: what it offers is
+// on its way from the projects database.
+func TestSwitchProjectFormOpensEmpty(t *testing.T) {
+	f := newSwitchProjectForm(DefaultStyles().FormTheme, config.Config{})
+
+	if f.chosen != "" || len(f.options) != 0 {
+		t.Fatalf("chosen = %q, options = %d, want an empty picker", f.chosen, len(f.options))
+	}
+	f.offer([]workspaceProject{{ID: "p9", Name: "notion-only"}})
+	if f.chosen != "p9" {
+		t.Errorf("chosen = %q, want the first project offered", f.chosen)
+	}
+}
+
+func TestSwitchProjectFormAnnouncesAnOpen(t *testing.T) {
+	f := newSwitchProjectForm(DefaultStyles().FormTheme, twoProjectConfig())
+	f.offer([]workspaceProject{{ID: "p9", Name: "notion-only"}})
+	f.chosen = "p9"
+
+	if got := f.busyNote(); got != "Opening the project…" {
+		t.Errorf("busy note = %q, want the open announced", got)
+	}
+}
+
+func TestListWorkspaceProjectsOrdersByNameThenID(t *testing.T) {
+	client := &fakeNotion{query: func(string, map[string]any, []notion.Sort) ([]notion.Page, error) {
+		return []notion.Page{projectPage("z", "beta"), projectPage("b", ""), projectPage("a", "beta")}, nil
+	}}
+
+	msg := runMsg(t, listWorkspaceProjects(client, testProjectsDSID)).(workspaceProjectsMsg)
+
+	if msg.err != nil {
+		t.Fatalf("err = %v, want the rows read", msg.err)
+	}
+	got := []string{msg.projects[0].ID, msg.projects[1].ID, msg.projects[2].ID}
+	if !equal(got, []string{"b", "a", "z"}) {
+		t.Errorf("order = %v, want the untitled one first and the ID breaking the tie", got)
+	}
+}
+
+func TestListWorkspaceProjectsReportsAFailedRead(t *testing.T) {
+	client := &fakeNotion{query: func(string, map[string]any, []notion.Sort) ([]notion.Page, error) {
+		return nil, errors.New("boom")
+	}}
+
+	msg := runMsg(t, listWorkspaceProjects(client, testProjectsDSID)).(workspaceProjectsMsg)
+
+	if msg.err == nil || !strings.Contains(msg.err.Error(), "read the projects database: boom") {
+		t.Errorf("err = %v, want the read failure named", msg.err)
+	}
+}
+
 func TestBoardWithNoProjectPointsAtTheNewProjectKey(t *testing.T) {
 	app := NewApp(config.Config{}, nil)
 	if view := app.View().Content; !strings.Contains(view, "Press N to create one") {
