@@ -180,6 +180,87 @@ func (c *Client) CreateProject(ctx context.Context, projectsDSID, name string, a
 	return s, nil
 }
 
+// ResolvedProject is a project page read as something that can be opened: what
+// one entry of the local config's project map is made of, bar the working
+// directory. That is left out on purpose — where the code lives is this
+// machine's answer and no part of what Notion knows, so it stays unset until
+// the user gives one.
+type ResolvedProject struct {
+	// Name is the project page's title.
+	Name string
+	// SlicesDSID is the data source of the project's Slices database, which is
+	// what every later query of the plan addresses.
+	SlicesDSID string
+}
+
+// NoPlanError reports a page that cannot be opened as a project at all: it
+// holds no Slices database, or the one it holds keeps no data source for a plan
+// to live in. It is distinct from [SchemaError], which is a plan that is there
+// and wrong rather than one that is not there — between them a caller can
+// refuse a page in words rather than half-open it.
+type NoPlanError struct {
+	// PageID is the page that was asked about.
+	PageID string
+	// Title is that page's name, empty for an untitled page.
+	Title string
+	// Reason is what was missing, as the phrase the message reads on into.
+	Reason string
+}
+
+// Error implements error.
+func (e *NoPlanError) Error() string {
+	name := e.Title
+	if name == "" {
+		name = e.PageID
+	}
+	return fmt.Sprintf("%s is not a tracked project: %s", name, e.Reason)
+}
+
+// ResolveProject reads a project page into what opening it needs: the project's
+// name, and the data source of the Slices database hanging off the page — the
+// full-page child database whose first data source is the plan. That data
+// source is verified against the very schema [Client.CreateProject] checks on
+// its way out, so a page either comes back openable or is refused saying what
+// is wrong with it: a [*NoPlanError] for a page with no such database, a
+// [*SchemaError] for one whose plan does not carry what the app reads.
+func (c *Client) ResolveProject(ctx context.Context, pageID string) (*ResolvedProject, error) {
+	page, err := c.GetPage(ctx, pageID)
+	if err != nil {
+		return nil, fmt.Errorf("read project page: %w", err)
+	}
+	title := page.TitleText()
+
+	entries, err := c.PageEntries(ctx, pageID)
+	if err != nil {
+		return nil, fmt.Errorf("read the contents of the project page: %w", err)
+	}
+	dbID := ""
+	for _, e := range entries {
+		if e.Database && e.Title == SlicesDBTitle {
+			dbID = e.ID
+			break
+		}
+	}
+	if dbID == "" {
+		return nil, &NoPlanError{PageID: pageID, Title: title,
+			Reason: fmt.Sprintf("it holds no %q database", SlicesDBTitle)}
+	}
+
+	db, err := c.GetDatabase(ctx, dbID)
+	if err != nil {
+		return nil, fmt.Errorf("read the %s database: %w", SlicesDBTitle, err)
+	}
+	dsID, ok := db.DataSourceID()
+	if !ok {
+		return nil, &NoPlanError{PageID: pageID, Title: title,
+			Reason: fmt.Sprintf("its %q database has no data source", SlicesDBTitle)}
+	}
+	if err := c.VerifyProjectSchema(ctx, dsID); err != nil {
+		return nil, err
+	}
+	return &ResolvedProject{Name: title, SlicesDSID: dsID}, nil
+}
+
 // createProjectDB creates one of a project's databases and returns it with its
 // single data source's ID.
 func (c *Client) createProjectDB(ctx context.Context, parentPageID, title string, properties map[string]PropertySchema) (*Database, string, error) {
