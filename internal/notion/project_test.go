@@ -493,3 +493,193 @@ func TestShapeOf(t *testing.T) {
 		})
 	}
 }
+
+// resolveResponses is what a page-resolving server answers with, keyed by
+// "METHOD /path". A path the test leaves out is one the code under test is not
+// expected to ask for.
+type resolveResponses map[string]string
+
+// resolveServer answers the resolve conversation — the project page, what lives
+// on it, the database it names and that database's schema — and records every
+// request in order. A response whose text starts with "!" is sent as a 404
+// error body instead, which is how a failing leg of the walk is asked for.
+func resolveServer(t *testing.T, responses resolveResponses) (*httptest.Server, *[]string) {
+	t.Helper()
+	var requests []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		key := r.Method + " " + r.URL.Path
+		requests = append(requests, strings.TrimSpace(key+" "+string(b)))
+		body, ok := responses[key]
+		if !ok {
+			t.Errorf("unexpected request: %s", key)
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"code":"object_not_found","message":"nope"}`))
+			return
+		}
+		if strings.HasPrefix(body, "!") {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"code":"object_not_found","message":"` + body[1:] + `"}`))
+			return
+		}
+		w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &requests
+}
+
+// projectPageJSON is a project page as Notion hands it back: its title is the
+// project's name, which is the whole of what resolving reads off the page.
+const projectPageJSON = `{
+		"id":"page-1",
+		"url":"https://notion.so/page-1",
+		"properties":{"Name":{"id":"title","type":"title","title":[{"type":"text","plain_text":"notion-agent-tracker"}]}}
+	}`
+
+// projectChildrenJSON is what lives on that page: a paragraph of conventions, a
+// child page that is not a database, and the Slices database itself.
+const projectChildrenJSON = `{"results":[
+		{"id":"b1","type":"paragraph","paragraph":{}},
+		{"id":"page-notes","type":"child_page","child_page":{"title":"Slices"}},
+		{"id":"db-slices","type":"child_database","child_database":{"title":"Slices"}}
+	],"has_more":false}`
+
+func resolveOK() resolveResponses {
+	return resolveResponses{
+		"GET /pages/page-1":           projectPageJSON,
+		"GET /blocks/page-1/children": projectChildrenJSON,
+		"GET /databases/db-slices":    `{"id":"db-slices","data_sources":[{"id":"ds-slices"}]}`,
+		"GET /data_sources/ds-slices": slicesDSJSON,
+	}
+}
+
+func TestResolveProject(t *testing.T) {
+	t.Run("reads the name and the verified slices data source", func(t *testing.T) {
+		srv, requests := resolveServer(t, resolveOK())
+		c, _ := testClient(t, srv)
+
+		got, err := c.ResolveProject(context.Background(), "page-1")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		want := &ResolvedProject{Name: "notion-agent-tracker", SlicesDSID: "ds-slices"}
+		if *got != *want {
+			t.Errorf("resolved = %+v, want %+v", got, want)
+		}
+
+		wantRequests := []string{
+			"GET /pages/page-1",
+			"GET /blocks/page-1/children",
+			"GET /databases/db-slices",
+			"GET /data_sources/ds-slices",
+		}
+		if !reflect.DeepEqual(*requests, wantRequests) {
+			t.Errorf("requests = %#v, want %#v", *requests, wantRequests)
+		}
+	})
+
+	t.Run("refuses a page holding no Slices database", func(t *testing.T) {
+		responses := resolveOK()
+		responses["GET /blocks/page-1/children"] = `{"results":[
+			{"id":"db-other","type":"child_database","child_database":{"title":"Reading list"}}
+		],"has_more":false}`
+		srv, _ := resolveServer(t, responses)
+		c, _ := testClient(t, srv)
+
+		_, err := c.ResolveProject(context.Background(), "page-1")
+		var noPlan *NoPlanError
+		if !errors.As(err, &noPlan) {
+			t.Fatalf("error = %v, want a *NoPlanError", err)
+		}
+		want := `notion-agent-tracker is not a tracked project: it holds no "Slices" database`
+		if noPlan.Error() != want {
+			t.Errorf("error = %q, want %q", noPlan.Error(), want)
+		}
+	})
+
+	t.Run("names an untitled page by its id", func(t *testing.T) {
+		responses := resolveOK()
+		responses["GET /pages/page-1"] = `{"id":"page-1","properties":{}}`
+		responses["GET /blocks/page-1/children"] = `{"results":[],"has_more":false}`
+		srv, _ := resolveServer(t, responses)
+		c, _ := testClient(t, srv)
+
+		_, err := c.ResolveProject(context.Background(), "page-1")
+		want := `page-1 is not a tracked project: it holds no "Slices" database`
+		if err == nil || err.Error() != want {
+			t.Errorf("error = %v, want %q", err, want)
+		}
+	})
+
+	t.Run("refuses a Slices database with no data source", func(t *testing.T) {
+		responses := resolveOK()
+		responses["GET /databases/db-slices"] = `{"id":"db-slices","data_sources":[]}`
+		srv, _ := resolveServer(t, responses)
+		c, _ := testClient(t, srv)
+
+		_, err := c.ResolveProject(context.Background(), "page-1")
+		var noPlan *NoPlanError
+		if !errors.As(err, &noPlan) {
+			t.Fatalf("error = %v, want a *NoPlanError", err)
+		}
+		want := `notion-agent-tracker is not a tracked project: its "Slices" database has no data source`
+		if noPlan.Error() != want {
+			t.Errorf("error = %q, want %q", noPlan.Error(), want)
+		}
+	})
+
+	t.Run("refuses a plan whose schema does not verify", func(t *testing.T) {
+		responses := resolveOK()
+		responses["GET /data_sources/ds-slices"] = `{"id":"ds-slices","properties":{
+			"Name":{"id":"title","name":"Name","type":"title","title":{}}
+		}}`
+		srv, _ := resolveServer(t, responses)
+		c, _ := testClient(t, srv)
+
+		_, err := c.ResolveProject(context.Background(), "page-1")
+		var schema *SchemaError
+		if !errors.As(err, &schema) {
+			t.Fatalf("error = %v, want a *SchemaError", err)
+		}
+		if schema.DataSource != SlicesDBTitle {
+			t.Errorf("data source = %q, want %q", schema.DataSource, SlicesDBTitle)
+		}
+		if !strings.Contains(schema.Error(), `missing property "Status"`) {
+			t.Errorf("error = %q, want it to name the missing Status property", schema.Error())
+		}
+	})
+
+	t.Run("reports a page that cannot be read", func(t *testing.T) {
+		srv, _ := resolveServer(t, resolveResponses{"GET /pages/page-1": "!no such page"})
+		c, _ := testClient(t, srv)
+
+		_, err := c.ResolveProject(context.Background(), "page-1")
+		if err == nil || !strings.HasPrefix(err.Error(), "read project page: ") {
+			t.Errorf("error = %v, want it to say the page could not be read", err)
+		}
+	})
+
+	t.Run("reports contents that cannot be listed", func(t *testing.T) {
+		responses := resolveOK()
+		responses["GET /blocks/page-1/children"] = "!no such block"
+		srv, _ := resolveServer(t, responses)
+		c, _ := testClient(t, srv)
+
+		_, err := c.ResolveProject(context.Background(), "page-1")
+		if err == nil || !strings.HasPrefix(err.Error(), "read the contents of the project page: ") {
+			t.Errorf("error = %v, want it to say the contents could not be read", err)
+		}
+	})
+
+	t.Run("reports a database that cannot be read", func(t *testing.T) {
+		responses := resolveOK()
+		responses["GET /databases/db-slices"] = "!no such database"
+		srv, _ := resolveServer(t, responses)
+		c, _ := testClient(t, srv)
+
+		_, err := c.ResolveProject(context.Background(), "page-1")
+		if err == nil || !strings.HasPrefix(err.Error(), "read the Slices database: ") {
+			t.Errorf("error = %v, want it to say the database could not be read", err)
+		}
+	})
+}
