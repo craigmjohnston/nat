@@ -135,9 +135,10 @@ session, and detaching with `ctrl-b d` comes back to the board.
 
 ## Skills
 
-`/queue-work` (plan work into the tracker) and `/next-slice` (pick up and
-complete the next slice) come with the binary. `nat setup` installs them into
-`~/.claude/skills`, which makes them available in any repo:
+`/queue-work` (plan work into the tracker), `/queue-project` (turn a
+workshopped plan into a whole new tracked project) and `/next-slice` (pick up
+and complete the next slice) come with the binary. `nat setup` installs them
+into `~/.claude/skills`, which makes them available in any repo:
 
 ```sh
 nat setup

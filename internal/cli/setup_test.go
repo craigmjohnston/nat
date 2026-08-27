@@ -91,7 +91,7 @@ func TestSetupInstallsTheSkillsFromNothing(t *testing.T) {
 	if got := tree(t, dir); !equalTrees(got, want) {
 		t.Errorf("installed tree = %v, want %v", keys(got), keys(want))
 	}
-	for _, name := range []string{"next-slice", "queue-work"} {
+	for _, name := range []string{"next-slice", "queue-project", "queue-work"} {
 		if !strings.Contains(out, "- "+name+" — created") {
 			t.Errorf("output does not report %s as created:\n%s", name, out)
 		}
@@ -254,6 +254,7 @@ func TestSetupWritesJSON(t *testing.T) {
 	}
 	want := []skillJSON{
 		{Name: "next-slice", Status: statusCreated, Path: filepath.Join(dir, "next-slice")},
+		{Name: "queue-project", Status: statusCreated, Path: filepath.Join(dir, "queue-project")},
 		{Name: "queue-work", Status: statusCreated, Path: filepath.Join(dir, "queue-work")},
 	}
 	if len(doc.Skills) != len(want) {
