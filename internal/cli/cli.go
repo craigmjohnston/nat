@@ -8,8 +8,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
+	"strings"
 
 	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
@@ -94,9 +97,10 @@ usage:
   nat wishlist-clear <block-id>...
                       trash exactly the named wishlist items, leaving the
                       section with one empty bullet for the next idea
-  nat plan-apply [FILE] [--json]
+  nat plan-apply [FILE] [--project ID] [--json]
                       create a whole plan of milestones and slices from a JSON
-                      document, read from FILE or stdin
+                      document, read from FILE or stdin; --project files it in
+                      that project of the config file instead of the active one
   nat complete-slice <slice> [--branch NAME] [--pr URL] [--summary TEXT] [--blocked]
                       close out a slice you claimed: with --branch, handed back
                       for review — the branch recorded, the slice left in
@@ -191,4 +195,58 @@ func (e Env) activeProject() (config.Config, config.ProjectConfig, error) {
 		return cfg, config.ProjectConfig{}, fmt.Errorf("active project %s is not in the config file", cfg.ActiveProjectID)
 	}
 	return cfg, p, nil
+}
+
+// projectFor resolves the project a command works on when it can be told which:
+// the one an --project flag names, or the active one when it was not given. It
+// is the same project either way — a ProjectConfig read from the same file —
+// so everything downstream of it is unchanged by which of the two answered.
+func (e Env) projectFor(id string) (config.Config, config.ProjectConfig, error) {
+	if strings.TrimSpace(id) == "" {
+		return e.activeProject()
+	}
+	return e.namedProject(strings.TrimSpace(id))
+}
+
+// namedProject resolves one project of the config file by its ID — a key of the
+// Projects map, which is the project page's own ID. An ID the config does not
+// know is refused by name and the ones it does know are listed, since the whole
+// difficulty of naming a project is remembering how it is spelled.
+//
+// The ID is matched as written first and normalised afterwards: the keys come
+// from Notion dashed, and an ID copied out of a page URL has no dashes at all.
+func (e Env) namedProject(id string) (config.Config, config.ProjectConfig, error) {
+	cfg, found, err := e.Load()
+	if err != nil {
+		return cfg, config.ProjectConfig{}, err
+	}
+	if !found {
+		return cfg, config.ProjectConfig{}, fmt.Errorf("no configuration yet: run `nat` once to set it up")
+	}
+	if p, ok := cfg.Projects[id]; ok {
+		return cfg, p, nil
+	}
+	want := domain.NormaliseID(id)
+	for key, p := range cfg.Projects {
+		if domain.NormaliseID(key) == want {
+			return cfg, p, nil
+		}
+	}
+	return cfg, config.ProjectConfig{}, fmt.Errorf("no project %s in the config file%s", id, knownProjects(cfg))
+}
+
+// knownProjects lists what the config file does hold, for the error that says
+// it does not hold what was asked for. Sorted, because the map's own
+// order is no order and an error that reads differently every run is one nobody
+// trusts.
+func knownProjects(cfg config.Config) string {
+	if len(cfg.Projects) == 0 {
+		return ": it tracks no projects yet"
+	}
+	known := make([]string, 0, len(cfg.Projects))
+	for id, p := range cfg.Projects {
+		known = append(known, fmt.Sprintf("%s (%s)", id, p.Name))
+	}
+	sort.Strings(known)
+	return fmt.Sprintf(": it tracks %s", strings.Join(known, ", "))
 }

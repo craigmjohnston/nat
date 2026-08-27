@@ -190,7 +190,7 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   their block IDs under `--json`), and `nat wishlist-clear <block-id>...`,
   which trashes exactly the named items — never the section wholesale, so an
   idea typed while a workshop session runs survives it — and leaves the section
-  holding one empty bullet, and `nat plan-apply [FILE]`, which creates a whole
+  holding one empty bullet, and `nat plan-apply [FILE] [--project ID]`, which creates a whole
   drafted plan of milestones and slices from a JSON document (read from FILE or
   stdin, validated entirely before the first write, and creating pages and
   nothing else bar one relation — its optional `depends_on` names slices by
@@ -201,7 +201,14 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   [<titles>]}` — is how it reaches a slice already on the board, added to what
   that slice already waits on the way `slice-depends --on` is and written in
   that same last phase, and it is the one thing a plan changes rather than
-  creates, which is why a document may hold it and nothing else), and `nat setup`, which installs the embedded skills into
+  creates, which is why a document may hold it and nothing else; where the plan
+  lands is the command line's rather than the document's — `--project` names a
+  project by a key of the config's `Projects` map, matched as written and then
+  normalised since an ID copied out of a URL has no dashes, and one the config
+  does not know is refused by name, with what it does know listed, before
+  anything is validated or written, while without the flag it is the active
+  project as it always was; everything past that resolution — the migration,
+  the validation, the write order, the nudge — is the same either way), and `nat setup`, which installs the embedded skills into
   `~/.claude/skills` — the only command that talks to neither Notion nor the
   config file, since it is what a machine with only the binary runs first), what
   the binary does when given a subcommand. Run before even the tmux check and

@@ -40,10 +40,40 @@ func planAPI(creations int) *fakeAPI {
 // runPlan applies a plan piped in on stdin.
 func runPlan(t *testing.T, api *fakeAPI, doc string, args ...string) (string, error) {
 	t.Helper()
-	env, out := testEnv(testConfig(), api)
+	return runPlanWith(t, testConfig(), api, doc, args...)
+}
+
+// runPlanWith is the same against a config of the test's own, for the plans
+// that are applied somewhere other than the active project.
+func runPlanWith(t *testing.T, cfg config.Config, api *fakeAPI, doc string, args ...string) (string, error) {
+	t.Helper()
+	env, out := testEnv(cfg, api)
 	env.In = strings.NewReader(doc)
 	err := Run(context.Background(), append([]string{"plan-apply"}, args...), env)
 	return out.String(), err
+}
+
+// twoProjectConfig is the config file with a second project in it, which is
+// what --project is for: the active one, and another the same machine tracks.
+func twoProjectConfig(id string) config.Config {
+	cfg := testConfig()
+	cfg.Projects[id] = config.ProjectConfig{
+		Name:       "other",
+		SlicesDSID: "other-ds",
+		WorkingDir: "/tmp/other",
+	}
+	return cfg
+}
+
+// twoProjectAPI is a workspace holding both projects' Slices tables, so a run
+// pointed at one can be seen to have left the other alone.
+func twoProjectAPI(creations int) *fakeAPI {
+	api := planAPI(creations)
+	other := selectMilestoneSlicesDS("N1: Groundwork")
+	other.ID = "other-ds"
+	other.Properties[notion.PropDependsOn] = dependsOnColumn("other-ds")
+	api.dataSources["other-ds"] = other
+	return api
 }
 
 // The plan every happy-path test applies: one new milestone with two slices,
@@ -712,5 +742,149 @@ func TestPlanApplyNamesAPageWithNoURLByItsID(t *testing.T) {
 
 	if !strings.Contains(out, "- Do it — new-1\n") {
 		t.Errorf("output =\n%s\nwant the slice named by its ID", out)
+	}
+}
+
+// --project files the plan in the project it names: every write goes to that
+// project's Slices table, and the active project is not read or written at all.
+func TestPlanApplyFilesThePlanInTheNamedProject(t *testing.T) {
+	api := twoProjectAPI(2)
+	api.pages = map[string][]notion.Page{
+		"other-ds": {slicePage("filed-1", "Land the schema", notion.SliceTodo, "N1: Groundwork", "", "")},
+	}
+
+	out, err := runPlanWith(t, twoProjectConfig("project-2"), api, `{
+  "milestones": [{"name": "N2: Board"}],
+  "slices": [
+    {"title": "Draw it", "milestone": "N2: Board", "depends_on": ["Land the schema"]},
+    {"title": "Poll it", "milestone": "N1: Groundwork"}
+  ]
+}`, "--project", "project-2")
+	if err != nil {
+		t.Fatalf("plan-apply: %v", err)
+	}
+
+	if !strings.Contains(out, "Added 1 milestone and 2 slices to other.\n") {
+		t.Errorf("output =\n%s\nwant the named project reported", out)
+	}
+	for _, c := range api.creates {
+		if c.parent != notion.DataSourceParent("other-ds") {
+			t.Errorf("slice parent = %+v, want the named project's data source", c.parent)
+		}
+	}
+	if len(api.schemaUpdates) != 1 || api.schemaUpdates[0].id != "other-ds" {
+		t.Errorf("schema writes = %+v, want the new milestone appended to the named project", api.schemaUpdates)
+	}
+	if len(api.queries) != 1 || api.queries[0].id != "other-ds" {
+		t.Errorf("queries = %+v, want the named project's slices read", api.queries)
+	}
+	// The dependency resolved against that project's own slices, and landed on
+	// the page this run created there.
+	if len(api.updates) != 1 || api.updates[0].id != "new-1" {
+		t.Fatalf("updates = %+v, want the created slice made to wait", api.updates)
+	}
+	if got := api.updates[0].props[notion.PropDependsOn]; !reflect.DeepEqual(got, notion.NewRelation("filed-1")) {
+		t.Errorf("depends on = %+v, want the named project's own slice", got)
+	}
+}
+
+// The ID is matched normalised as well as as-written: a project page ID copied
+// out of a URL has no dashes, and the config's own keys come from Notion with
+// them.
+func TestPlanApplyFindsTheNamedProjectByAnUndashedID(t *testing.T) {
+	const dashed = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	api := twoProjectAPI(1)
+
+	out, err := runPlanWith(t, twoProjectConfig(dashed), api,
+		`{"slices": [{"title": "Draw it", "milestone": "N1: Groundwork"}]}`,
+		"--project", "AAAAAAAABBBBCCCCDDDDEEEEEEEEEEEE")
+	if err != nil {
+		t.Fatalf("plan-apply: %v", err)
+	}
+
+	if !strings.Contains(out, "to other.\n") {
+		t.Errorf("output =\n%s\nwant the named project reported", out)
+	}
+	if len(api.creates) != 1 || api.creates[0].parent != notion.DataSourceParent("other-ds") {
+		t.Errorf("creates = %+v, want the named project's data source", api.creates)
+	}
+}
+
+// Without the flag the plan lands where it always did.
+func TestPlanApplyWithoutTheFlagFilesInTheActiveProject(t *testing.T) {
+	api := twoProjectAPI(1)
+
+	out, err := runPlanWith(t, twoProjectConfig("project-2"), api,
+		`{"slices": [{"title": "Do it", "milestone": "M2: Board"}]}`)
+	if err != nil {
+		t.Fatalf("plan-apply: %v", err)
+	}
+
+	if !strings.Contains(out, "to nat.\n") {
+		t.Errorf("output =\n%s\nwant the active project reported", out)
+	}
+	if len(api.creates) != 1 || api.creates[0].parent != notion.DataSourceParent("slices-ds") {
+		t.Errorf("creates = %+v, want the active project's data source", api.creates)
+	}
+}
+
+// An ID the config does not know is refused by name, with what it does know
+// listed, and nothing at all is written.
+func TestPlanApplyRefusesAProjectTheConfigDoesNotKnow(t *testing.T) {
+	api := twoProjectAPI(1)
+
+	_, err := runPlanWith(t, twoProjectConfig("project-2"), api, samplePlan, "--project", "project-9")
+	if err == nil {
+		t.Fatal("plan-apply: want an error naming the project")
+	}
+	want := "no project project-9 in the config file: it tracks project-1 (nat), project-2 (other)"
+	if err.Error() != want {
+		t.Errorf("error = %q, want %q", err, want)
+	}
+	if len(api.creates) != 0 || len(api.schemaUpdates) != 0 {
+		t.Errorf("writes = %+v / %+v, want nothing written", api.creates, api.schemaUpdates)
+	}
+}
+
+// A config tracking nothing yet says so rather than listing an empty list.
+func TestPlanApplyRefusesAProjectWhenTheConfigTracksNone(t *testing.T) {
+	cfg := config.Config{ActiveProjectID: "project-1"}
+
+	_, err := runPlanWith(t, cfg, planAPI(0), samplePlan, "--project", "project-1")
+	want := "no project project-1 in the config file: it tracks no projects yet"
+	if err == nil || err.Error() != want {
+		t.Errorf("error = %v, want %q", err, want)
+	}
+}
+
+// The config file is read the same way for a named project as for the active
+// one: a read that fails, and a machine with no config at all.
+func TestPlanApplyReportsAConfigItCannotRead(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		load func() (config.Config, bool, error)
+		want string
+	}{
+		{
+			name: "unreadable",
+			load: func() (config.Config, bool, error) { return config.Config{}, false, errors.New("disk gone") },
+			want: "disk gone",
+		},
+		{
+			name: "not there",
+			load: func() (config.Config, bool, error) { return config.Config{}, false, nil },
+			want: "no configuration yet: run `nat` once to set it up",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			env, _ := testEnv(testConfig(), planAPI(0))
+			env.Load = tt.load
+			env.In = strings.NewReader(samplePlan)
+
+			err := Run(context.Background(), []string{"plan-apply", "--project", "project-2"}, env)
+			if err == nil || err.Error() != tt.want {
+				t.Errorf("error = %v, want %q", err, tt.want)
+			}
+		})
 	}
 }
