@@ -101,13 +101,17 @@ usage:
                       create a whole plan of milestones and slices from a JSON
                       document, read from FILE or stdin; --project files it in
                       that project of the config file instead of the active one
-  nat complete-slice <slice> [--branch NAME] [--pr URL] [--summary TEXT] [--blocked]
+  nat complete-slice <slice> [--branch NAME] [--pr URL] [--summary TEXT]
+                      [--pr-description TEXT|-] [--blocked]
                       close out a slice you claimed: with --branch, handed back
                       for review — the branch recorded, the slice left in
                       progress, and the board's approve key what opens the pull
                       request; with --pr, Done with its pull request recorded;
                       with --blocked, left in progress with a note saying what
-                      stopped it. A summary is appended to the page either way
+                      stopped it. A summary is appended to the page either way,
+                      and --pr-description records beside it the text the board
+                      opens the pull request with: its first line the title,
+                      the rest the body
   nat release-slice <slice>
                       hand a slice you claimed back to the plan: Todo and
                       unassigned, its brief and any branch left as they are, for

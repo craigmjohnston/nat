@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -14,13 +15,20 @@ import (
 // diffCall is one diff the review flow asked git for.
 type diffCall struct{ dir, branch string }
 
+// showCall is one file the review flow asked git to show at the branch.
+type showCall struct{ dir, branch, path string }
+
 // fakeDiffer stands in for git: it records what it was asked to diff and
 // answers with the diff — or the refusal — the test wants git to have given.
+// It shows no file by default, which is a git that refused every one of them:
+// the diff still comes back, with no expand zones around it.
 type fakeDiffer struct {
-	base string
-	out  string
-	err  error
-	made []diffCall
+	base  string
+	out   string
+	err   error
+	files map[string][]string
+	made  []diffCall
+	shown []showCall
 }
 
 var _ Differ = (*fakeDiffer)(nil)
@@ -28,6 +36,15 @@ var _ Differ = (*fakeDiffer)(nil)
 func (f *fakeDiffer) Diff(dir, branch string) (string, string, error) {
 	f.made = append(f.made, diffCall{dir, branch})
 	return f.base, f.out, f.err
+}
+
+func (f *fakeDiffer) Show(dir, branch, path string) ([]string, error) {
+	f.shown = append(f.shown, showCall{dir, branch, path})
+	lines, ok := f.files[path]
+	if !ok {
+		return nil, errors.New("fatal: path does not exist in " + branch)
+	}
+	return lines, nil
 }
 
 // diffApp returns an app showing the hand-back plan with a fake git wired in,
@@ -115,7 +132,7 @@ func TestDiffKeyRefusesRowsWithNoBranch(t *testing.T) {
 		on   func(t *testing.T, a *App)
 		want string
 	}{
-		{"a milestone", func(_ *testing.T, a *App) { a.board.cursor = 0 },
+		{"a milestone", func(t *testing.T, a *App) { cursorOnMilestone(t, a) },
 			"Move to a slice"},
 		{"a Todo slice", func(t *testing.T, a *App) { cursorOn(t, a, stillTodo) },
 			"only a handed-back slice"},
@@ -178,6 +195,41 @@ func TestDiffKeyWithNothingToDiffWith(t *testing.T) {
 	}
 	if app.startDiffLoad() != nil {
 		t.Error("a reread should do nothing with no branch to read")
+	}
+}
+
+// TestDiffReadsTheFilesBehindTheChange covers the second half of a read: every
+// file the change touches is asked for at the branch, so the gaps between its
+// hunks have somewhere to be filled from. A binary one is not asked for at all —
+// it is not lines — and one git refuses costs that file its expanding and
+// nothing else.
+func TestDiffReadsTheFilesBehindTheChange(t *testing.T) {
+	app, differ, _ := diffApp(t)
+	differ.files = map[string][]string{"internal/tui/board.go": {"package tui"}}
+	cursorOn(t, app, handedBack)
+
+	msg := first[diffLoadedMsg](t, run(press(app, "v")))
+	var asked []string
+	for _, c := range differ.shown {
+		if c.branch != "slice/approve" {
+			t.Errorf("git was asked for %q at %q, want the handed-back branch", c.path, c.branch)
+		}
+		asked = append(asked, c.path)
+	}
+	want := []string{"internal/tui/board.go", "internal/tui/diff.go",
+		"a/very/deeply/nested/directory/somewhere/settings.go"}
+	if !slices.Equal(asked, want) {
+		t.Errorf("git was asked for %q, want %q — the binary file is not lines", asked, want)
+	}
+	if got := msg.sources["internal/tui/board.go"]; !slices.Equal(got, []string{"package tui"}) {
+		t.Errorf("the file came back as %q, want what git showed", got)
+	}
+	if _, ok := msg.sources["internal/tui/diff.go"]; ok {
+		t.Error("a file git refused should be left out rather than held as nothing")
+	}
+	app.Update(msg)
+	if app.diff.state != diffReady {
+		t.Errorf("state = %v, want the diff on screen whatever git would not show", app.diff.state)
 	}
 }
 

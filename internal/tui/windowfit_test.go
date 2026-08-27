@@ -751,7 +751,7 @@ func TestAppEveryScreenFitsASmallWindow(t *testing.T) {
 		"board": func(*App) {},
 		"help":  func(a *App) { press(a, "?") },
 		"info":  func(a *App) { press(a, "i") },
-		"form":  func(a *App) { a.board.cursor = 0; press(a, "a") },
+		"form":  func(a *App) { press(a, "a") },
 	}
 	for name, open := range tests {
 		t.Run(name, func(t *testing.T) {

@@ -9,15 +9,16 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
+	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // PRCreator is what the approve flow needs of the GitHub CLI: one pull request,
-// from the branch an agent handed back, in the repository the slice belongs to.
-// It is an interface so the flow can be driven without gh — or a network, or a
-// GitHub account.
+// from the branch an agent handed back, in the repository the slice belongs to,
+// titled and bodied with what that agent wrote at hand-back. It is an interface
+// so the flow can be driven without gh — or a network, or a GitHub account.
 type PRCreator interface {
-	CreatePR(dir, branch string) (string, error)
+	CreatePR(dir, branch, title, body string) (string, error)
 }
 
 // The approve flow's edge, held as a variable so the tests can stand in for it:
@@ -31,8 +32,13 @@ func defaultPRCreator() PRCreator { return gh.New() }
 // the failure that stopped it. The write that records the URL is a second step,
 // so that a gh that refused is reported as itself rather than as a Notion
 // write that never happened.
+//
+// The repository is carried along because the step after the write runs there
+// too: the worktree the slice's agent was given is taken off the same checkout
+// gh was run in.
 type prOpenedMsg struct {
 	slice domain.Slice
+	dir   string
 	url   string
 	err   error
 }
@@ -93,19 +99,61 @@ func (a *App) approveChosen(s domain.Slice, dir string, choice int) tea.Cmd {
 		return a.showConfirm(fmt.Sprintf("Cannot open a pull request for %q: %v.", s.Name, err), sevError)
 	}
 	a.busy, a.note = true, approveNote
-	return openPR(a.prs, s, dir)
+	return openPR(a.prs, a.client, s, dir)
+}
+
+// removeWorktree takes the slice's worktree off its repository, once the pull
+// request exists and the slice is Done.
+//
+// Everything it can fail on is dropped after a line in the log: a worktree with
+// uncommitted changes in it, a slice whose agent never had one, a machine with
+// no worktrunk at all. None of them is worth a toast — the approve has already
+// happened and cannot be taken back — and none of them loses any work, since
+// worktrunk refuses a dirty worktree outright and deletes the branch only where
+// it has been merged. gh was run in the shared checkout, so nothing here can
+// pull the ground out from under it either.
+func removeWorktree(w Worktrees, dir, branch string) {
+	if err := w.Remove(dir, branch); err != nil {
+		// worktrunk's own failure is already in the log; this is the decision
+		// taken about it.
+		logging.Action("left the slice's worktree in place", "dir", dir, "branch", branch, "error", err)
+	}
 }
 
 // openPR runs gh in the slice's repository and reports the pull request it
 // opened.
-func openPR(prs PRCreator, s domain.Slice, dir string) tea.Cmd {
+//
+// The description the agent wrote at hand-back is read off the slice page
+// first: it lives there rather than in the launch that put it there, so an
+// approve days later opens the pull request with it. Its first line is the
+// title and the rest the body; a page with no such section — every hand-back
+// written before there was a flag for one — leaves both empty and gh fills the
+// pull request from the commits, as it always did. A read that fails stops the
+// approve rather than falling back, since a pull request opened with the wrong
+// title is not one this key can open again.
+func openPR(prs PRCreator, client NotionAPI, s domain.Slice, dir string) tea.Cmd {
 	return func() tea.Msg {
-		url, err := prs.CreatePR(dir, s.Branch)
+		blocks, err := client.GetBlockChildren(context.Background(), s.ID)
 		if err != nil {
-			return prOpenedMsg{slice: s, err: err}
+			return prOpenedMsg{slice: s, err: fmt.Errorf("read the pull request description: %w", err)}
 		}
-		return prOpenedMsg{slice: s, url: url}
+		title, body := prTitleBody(notion.PRDescriptionOf(blocks))
+		url, err := prs.CreatePR(dir, s.Branch, title, body)
+		if err != nil {
+			return prOpenedMsg{slice: s, dir: dir, err: err}
+		}
+		return prOpenedMsg{slice: s, dir: dir, url: url}
 	}
+}
+
+// prTitleBody splits a recorded description into what gh is given: its first
+// line as the title, everything after as the body. A description of one line is
+// a title and no body, which is a perfectly good pull request; an empty one is
+// no description at all, and both come back empty so the caller can let gh fill
+// it instead.
+func prTitleBody(description string) (title, body string) {
+	title, body, _ = strings.Cut(strings.TrimSpace(description), "\n")
+	return strings.TrimSpace(title), strings.TrimSpace(body)
 }
 
 // prOpened takes the pull request on to Notion, or reports why there is none.
@@ -122,7 +170,7 @@ func (a *App) prOpened(msg prOpenedMsg) (tea.Model, tea.Cmd) {
 	}
 	// Still busy: the pull request exists but nothing records it yet, and the
 	// write that does is the other half of the same action.
-	return a, recordPR(a.client, msg.slice, msg.url)
+	return a, recordPR(a.client, newWorktrees(), msg.slice, msg.dir, msg.url)
 }
 
 // recordPR writes the pull request onto the slice and marks it Done, which is
@@ -135,7 +183,11 @@ func (a *App) prOpened(msg prOpenedMsg) (tea.Model, tea.Cmd) {
 // Only this write can leave anything half done: a pull request opened and not
 // recorded. Running the action again says so rather than opening a second one,
 // because gh refuses a branch that already has a pull request.
-func recordPR(client NotionAPI, s domain.Slice, url string) tea.Cmd {
+//
+// The slice's worktree goes once that write has landed, and only then: the
+// checkout is what the branch was written in, and a slice still handed back is
+// one whose work is still being reviewed.
+func recordPR(client NotionAPI, w Worktrees, s domain.Slice, dir, url string) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 		page, err := client.GetPage(ctx, s.ID)
@@ -149,6 +201,7 @@ func recordPR(client NotionAPI, s domain.Slice, url string) tea.Cmd {
 		if _, err := client.UpdatePageProperties(ctx, s.ID, properties); err != nil {
 			return sliceSavedMsg{err: fmt.Errorf("record the pull request for %q: %w", s.Name, err)}
 		}
+		removeWorktree(w, dir, s.Branch)
 		return sliceSavedMsg{note: fmt.Sprintf("Opened the pull request for %q.", s.Name), sliceID: s.ID}
 	}
 }

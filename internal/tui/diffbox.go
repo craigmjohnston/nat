@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"image/color"
 	"strconv"
 	"strings"
 
@@ -111,24 +112,33 @@ func (d Diff) boxBottom(inner int) string {
 
 // boxLine draws one row of a file's diff inside its box: the gutter that says
 // whether a comment is pending on it, the line's number on either side of the
-// change, and text — one row's worth of a line, already wrapped to the columns
-// the box leaves it — in the style its line was measured for.
+// change, and row — one row's worth of a line, already wrapped to the columns
+// the box leaves it and broken into the runs its language makes of it.
 //
-// The style comes from the caller rather than from the text, because a wrapped
-// line is drawn a row at a time and only the first of those rows still carries
-// the +/- that says what the line is: a continuation styled by its own leading
-// character would read as a line of its own, added or removed on its own account.
+// The shape style and the wash come from the caller rather than from the text,
+// because a wrapped line is drawn a row at a time and only the first of those
+// rows still carries the +/- that says what the line is: a continuation styled
+// by its own leading character would read as a line of its own, added or
+// removed on its own account.
 //
-// A selected line is filled across the box's interior the way the board fills
-// the row under its cursor, and drawn plain underneath: a line's own colour
-// would break the run of background, exactly as a chip's does there.
-func (d Diff) boxLine(text string, style lipgloss.Style, was, now, numWidth, inner int,
-	marked, selected bool) string {
+// The wash runs the whole width of the box's interior rather than stopping
+// where the line's text does, since it is the row that is added or removed and
+// not the words on it. It is merged into each piece's own style, because a
+// background applied to the finished string would not survive the reset every
+// rendered run ends with.
+//
+// A selected line is filled across that interior the way the board fills the
+// row under its cursor, and drawn plain underneath: a line's own colours would
+// break the run of background, exactly as a chip's does there — which is also
+// why the wash goes with them.
+func (d Diff) boxLine(row []tokenRun, style lipgloss.Style, fill color.Color,
+	was, now, numWidth, inner int, marked, selected bool) string {
 	nums := numberCell(was, numWidth) + " " + numberCell(now, numWidth) + " "
 	gutter := " "
 	if marked {
 		gutter = commentMark
 	}
+	text := rowText(row)
 	if selected {
 		// The fill is one style across the interior, so the mark and the numbers
 		// inside it are drawn plain: their own colours would break the run of
@@ -136,11 +146,21 @@ func (d Diff) boxLine(text string, style lipgloss.Style, was, now, numWidth, inn
 		return d.boxRow(boxSide, d.styles.SelectedRow.Render(cell(gutter+" "+nums+text, inner)),
 			boxSide, inner)
 	}
+	gutterStyle := lipgloss.NewStyle()
 	if marked {
-		gutter = d.styles.DiffComment.Render(gutter)
+		gutterStyle = d.styles.DiffComment
 	}
-	return d.boxRow(boxSide, gutter+" "+d.styles.DiffCount.Render(nums)+
-		style.Render(text), boxSide, inner)
+	var b strings.Builder
+	b.WriteString(wash(gutterStyle, fill).Render(gutter))
+	b.WriteString(wash(lipgloss.NewStyle(), fill).Render(" "))
+	b.WriteString(wash(d.styles.DiffCount, fill).Render(nums))
+	for _, r := range row {
+		b.WriteString(wash(d.runStyle(r.kind, style), fill).Render(r.text))
+	}
+	if pad := inner - lipgloss.Width(gutter+" "+nums+text); pad > 0 {
+		b.WriteString(wash(lipgloss.NewStyle(), fill).Render(strings.Repeat(" ", pad)))
+	}
+	return d.boxRow(boxSide, b.String(), boxSide, inner)
 }
 
 // boxBreak draws the row that stands where a hunk header was: a dashed rule
@@ -151,6 +171,26 @@ func (d Diff) boxLine(text string, style lipgloss.Style, was, now, numWidth, inn
 func (d Diff) boxBreak(inner int) string {
 	return d.boxRow(boxSide, d.styles.DiffHunk.Render(strings.Repeat(boxBreakRule, inner)),
 		boxSide, inner)
+}
+
+// boxExpand draws one of an expand zone's control rows: the label saying which
+// way it reveals and how many lines, starting where the code starts, and the
+// same dashed rule the break between two hunks is drawn with running out to the
+// edge of the box. It is the break with an offer on it, and it says so by
+// looking like one.
+//
+// The row under the cursor is filled the way a selected line of the diff is,
+// since it is the one row of the screen a key does something to rather than
+// merely moves through, and a control that did not say when it was under the
+// cursor would be a key press into the dark.
+func (d Diff) boxExpand(label string, numWidth, inner int, selected bool) string {
+	text := strings.Repeat(" ", 2*numWidth+2) + label + " "
+	rule := strings.Repeat(boxBreakRule, max(inner-diffGutterWidth-lipgloss.Width(text), 0))
+	if selected {
+		return d.boxRow(boxSide, d.styles.SelectedRow.Render(cell("  "+text+rule, inner)),
+			boxSide, inner)
+	}
+	return d.boxRow(boxSide, "  "+d.styles.DiffHunk.Render(text+rule), boxSide, inner)
 }
 
 // commentLine draws one row of a pending comment, inside the box of the file it

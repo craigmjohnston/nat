@@ -34,6 +34,8 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	pr := flags.String("pr", "", "URL of the pull request this slice produced")
 	branch := flags.String("branch", "", "the branch this slice's work was pushed to, handed back for review")
 	summary := flags.String("summary", "", "the note to append; read from stdin when absent")
+	description := flags.String("pr-description", "",
+		"the pull request description for the branch handed back; `-` reads it from stdin")
 	blocked := flags.Bool("blocked", false, "leave the slice in progress and record what is blocking it")
 	rest, err := parseFlags(flags, args)
 	if err != nil {
@@ -43,16 +45,30 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 		return usageErrorf("complete-slice: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
 	*branch = strings.TrimSpace(*branch)
-	if err := endings(*branch, *pr, *blocked); err != nil {
+	if err := endings(*branch, *pr, *description, *blocked); err != nil {
 		return err
 	}
 	pageID, err := pageID("complete-slice", rest[0])
 	if err != nil {
 		return err
 	}
-	// The note is settled before anything is written: a session with nothing to
-	// say about what it did should fail having changed nothing.
-	note, err := noteText(*summary, env.In)
+	// Both notes are settled before anything is written: a session with nothing
+	// to say about what it did should fail having changed nothing. There is one
+	// stdin and either flag may want it, so `--pr-description -` takes it and the
+	// summary has to have been given as an argument.
+	if *description == "-" && strings.TrimSpace(*summary) == "" {
+		return usageErrorf("complete-slice: --pr-description - reads stdin, " +
+			"so the summary cannot: pass --summary as well")
+	}
+	prDescription, err := descriptionText(*description, env.In)
+	if err != nil {
+		return err
+	}
+	in := env.In
+	if *description == "-" {
+		in = nil
+	}
+	note, err := noteText(*summary, in)
 	if err != nil {
 		return err
 	}
@@ -90,7 +106,15 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	// two half-finished states this is the recoverable one: an in-progress slice
 	// carrying its summary can be completed by running this again, whereas a
 	// Done slice with no summary refuses every attempt to add one.
-	if _, err := client.AppendBlockChildren(ctx, page.ID, noteBlocks(noteHeading(*blocked, *branch), note)); err != nil {
+	blocks := noteBlocks(noteHeading(*blocked, *branch), note)
+	// The description goes on in the same write, under a heading of its own: it
+	// is not the summary of what was done but the text the pull request will be
+	// opened with, and the board reads it back off the page by that heading
+	// whenever the user gets to reviewing the branch.
+	if prDescription != "" {
+		blocks = append(blocks, noteBlocks(notion.PRDescriptionHeading, prDescription)...)
+	}
+	if _, err := client.AppendBlockChildren(ctx, page.ID, blocks); err != nil {
 		return fmt.Errorf("append the note to the slice: %w", err)
 	}
 	props := map[string]notion.PropertyValue{}
@@ -127,7 +151,26 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 // the same slice. Handing a branch back leaves work to review; recording a pull
 // request closes the slice; blocked leaves it unfinished. Asking for two at once
 // is a mistake in the command line, not a state to pick between.
-func endings(branch, pr string, blocked bool) error {
+// A pull request description belongs to the one ending that still has a pull
+// request to open: the branch handed back for the user to review and approve.
+// --pr is a pull request already open, --blocked is work that stopped, and a
+// slice closed out with neither is Done — none of the three has one coming, so
+// a description given alongside any of them would be written where nothing ever
+// reads it.
+func endings(branch, pr, description string, blocked bool) error {
+	if description != "" && branch == "" {
+		switch {
+		case pr != "":
+			return usageErrorf("complete-slice: --pr-description is for the pull request --branch has yet to open: " +
+				"--pr records one that is already open")
+		case blocked:
+			return usageErrorf("complete-slice: --pr-description is for a branch handed back, not for stopped work: " +
+				"say what stopped it in --summary")
+		default:
+			return usageErrorf("complete-slice: --pr-description needs the --branch it describes: " +
+				"a slice closed out without one opens no pull request")
+		}
+	}
 	if branch == "" {
 		return nil
 	}
@@ -202,6 +245,31 @@ func noteText(summary string, in io.Reader) (string, error) {
 	}
 	if text = strings.TrimSpace(text); text == "" {
 		return "", usageErrorf("complete-slice: no summary given: pass --summary or pipe one in")
+	}
+	return text, nil
+}
+
+// descriptionText settles the pull request description: the flag as it was
+// given, or stdin for the lone `-`, which is how a description longer than a
+// shell argument gets in — the same convention `slice-add --description -`
+// follows. A `-` with nothing behind it is a misuse rather than an empty
+// description: the flag was asked for and nothing arrived, and writing no
+// heading at all would silently leave the pull request to be filled from the
+// commits.
+func descriptionText(description string, in io.Reader) (string, error) {
+	if description != "-" {
+		return strings.TrimSpace(description), nil
+	}
+	if in == nil {
+		return "", usageErrorf("complete-slice: --pr-description - has no stdin to read the description from")
+	}
+	b, err := io.ReadAll(in)
+	if err != nil {
+		return "", fmt.Errorf("read the pull request description: %w", err)
+	}
+	text := strings.TrimSpace(string(b))
+	if text == "" {
+		return "", usageErrorf("complete-slice: --pr-description - was given nothing on stdin")
 	}
 	return text, nil
 }

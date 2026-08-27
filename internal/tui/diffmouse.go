@@ -6,8 +6,10 @@ import (
 
 // diffMouse is a mouse event over the review screen: a left click on a box's
 // own header or footer row folds that file away, or unfolds it again, which is
-// the gesture GitHub's viewed checkbox is — and the wheel scrolls the diff,
-// since asking for the mouse at all is what took that off the terminal itself.
+// the gesture GitHub's viewed checkbox is; a left click on an expand control
+// reveals the lines it offers, which is the gesture that control is; and the
+// wheel scrolls the diff, since asking for the mouse at all is what took that
+// off the terminal itself.
 //
 // Everything else is dropped. A click on a line of the diff moves nothing: the
 // line cursor is what a comment is left on, and a stray click landing in a file
@@ -21,7 +23,7 @@ func (a *App) diffMouse(msg tea.MouseMsg) tea.Cmd {
 		if m.Button != tea.MouseLeft {
 			return nil
 		}
-		if line, ok := a.diffCell(m.X, m.Y); ok {
+		if line, ok := a.diffCell(m.X, m.Y); ok && !a.diff.ExpandAt(line) {
 			a.diff.ToggleViewedAt(line)
 		}
 	}

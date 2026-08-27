@@ -160,7 +160,7 @@ func TestDiffCommentRowsFollowAReadOfTheBranch(t *testing.T) {
 	// rows move down with it.
 	moved := strings.Replace(sampleDiff, "@@ -12,7 +12,7 @@ func (b Board) View() string {\n",
 		"@@ -12,7 +12,8 @@ func (b Board) View() string {\n+\t// a note\n", 1)
-	d.SetFiles("origin/main", git.ParseFiles(moved))
+	d.SetFiles("origin/main", git.ParseFiles(moved), nil)
 	if d.Pending() != 1 {
 		t.Fatalf("Pending() = %d after a re-read that moved the line, want it carried over", d.Pending())
 	}
@@ -170,7 +170,7 @@ func TestDiffCommentRowsFollowAReadOfTheBranch(t *testing.T) {
 
 	// A read the comment's lines are not in at all drops it, and the rows go.
 	d.SetFiles("origin/main", git.ParseFiles(strings.Replace(sampleDiff,
-		`+	return strings.Join(fitRow(lines), "\n")`, "+\tpanic(1)", 1)))
+		`+	return strings.Join(fitRow(lines), "\n")`, "+\tpanic(1)", 1)), nil)
 	if d.Pending() != 0 {
 		t.Fatalf("Pending() = %d after a read that changed the line, want the comment dropped", d.Pending())
 	}

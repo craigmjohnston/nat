@@ -225,8 +225,15 @@ type App struct {
 	// so is set once.
 	boardVP viewport.Model
 	helpVP  viewport.Model
-	// boardBox is the board's boxed region as [App.bodyRegion] last drew it
-	// beside an agent terminal, with the width and height it was drawn at. An
+	// activeOffset is the line of the Active panel its box starts at: the
+	// section's own scroll, kept by [App.syncActive] so the entry under the
+	// cursor is in the panel however many slices are in flight. The plan beside
+	// it scrolls in boardVP, and the two are independent — a cursor in one panel
+	// says nothing about where the other is.
+	activeOffset int
+	// boardBox is the body band's boxed region as [App.bodyRegion] last drew it
+	// beside an agent terminal — the Active panel and the plan both, since a
+	// band is drawn whole — with the width and height it was drawn at. An
 	// agent writing flat out redraws the window at the frame rate, and all of it
 	// but the terminal's own box is the same lines over again: the rows are
 	// cached in boardVP already, and this is the scroll window cut out of them
@@ -245,6 +252,21 @@ type App struct {
 	// key shows, which is the one thing it does through git.
 	prs    PRCreator
 	differ Differ
+	// prReader reads what GitHub says about the pull requests of the slices
+	// whose work is out, prState is that last reading — how ready each pull
+	// request read as still open is, keyed by slice ID — and prReading whether
+	// one is in flight. The reading has no timer of its own: it rides the plan's,
+	// and the bit is what keeps a slow one from being started twice; see
+	// [App.refreshPRStates].
+	//
+	// prSettled is the session's memory of the slices whose pull request a
+	// reading found is no longer open. They are never asked about again: a merged
+	// pull request does not unmerge, and a project's finished work is most of its
+	// plan, so without this the reading would grow with the plan forever.
+	prReader  PRReader
+	prState   map[string]domain.PRReadiness
+	prSettled map[string]bool
+	prReading bool
 	// viewer is the agent terminal beside the board, or nil when the board has
 	// the window to itself. Exactly one is on show at a time: it is a split, not
 	// a stack of panes.
@@ -309,7 +331,8 @@ func NewApp(cfg config.Config, client NotionAPI) *App {
 		promptKeys: defaultPromptKeyMap(), spinner: sp,
 		board: NewBoard(s), info: NewInfo(s), diff: NewDiff(s),
 		launcher: newLauncher(), prs: newPRCreator(), differ: newDiffer(),
-		boardVP: viewport.New(), helpVP: viewport.New()}
+		prReader: newPRReader(),
+		boardVP:  viewport.New(), helpVP: viewport.New()}
 	a.helpVP.SetContent(a.helpBody())
 	return a
 }
@@ -388,12 +411,16 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The first plan brings the bar with it, which the board's viewport has
 		// to give its lines up to; resize re-shares them and re-syncs the board.
 		a.resize()
+		// The pull requests of the slices whose work is out are read off this
+		// same landing, which is the board's own cadence: see
+		// [App.refreshPRStates].
+		cmd := a.refreshPRStates()
 		// A project that had to be migrated to be shown says so: the plan on
 		// screen is not quite the one Notion held a moment ago.
 		if !msg.migration.Empty() {
-			return a, a.showToast(msg.migration.Summary(), sevSuccess)
+			return a, tea.Batch(cmd, a.showToast(msg.migration.Summary(), sevSuccess))
 		}
-		return a, nil
+		return a, cmd
 	case notionErrMsg:
 		a.loading = false
 		// A load that fails over a board already on screen is news, not a state:
@@ -407,6 +434,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.err = msg.err
 		return a, nil
+	case prStateMsg:
+		return a, a.prStateRead(msg)
 	case wishlistLoadedMsg:
 		a.wishlistLoaded(msg)
 		return a, nil
@@ -1072,7 +1101,12 @@ func (a *App) content() string {
 	if a.width <= 0 || a.height <= 0 {
 		// Before the first resize there is no window to lay out to, so the bands
 		// are simply drawn one after another at whatever size they come out.
-		return a.headerView() + "\n" + a.body() + "\n" + a.hintsView() + "\n" + a.statusBar()
+		parts := []string{a.headerView()}
+		if a.activeVisible() {
+			parts = append(parts, a.activeBandView())
+		}
+		parts = append(parts, a.body(), a.hintsView(), a.statusBar())
+		return strings.Join(parts, "\n")
 	}
 	if a.framed() {
 		lines := a.headerRegion()
@@ -1084,7 +1118,10 @@ func (a *App) content() string {
 	if a.headerBandHeight() > 0 {
 		lines = append(lines, a.headerView())
 	}
-	lines = append(lines, a.band(a.body(), a.bodyHeight())...)
+	// Below the framed threshold the section is a band like any other: its
+	// heading and its entries, drawn bare above the plan's own lines.
+	lines = append(lines, a.band(a.activeBandView(), a.activeBandHeight())...)
+	lines = append(lines, a.band(a.body(), a.planHeight())...)
 	lines = append(lines, a.band(a.hintsView(), a.hintBandHeight())...)
 	return strings.Join(append(lines, a.statusBar()), "\n")
 }
@@ -1188,6 +1225,22 @@ func (a *App) bodyHeight() int {
 		return max(a.bodyBoxHeight()-2, 0)
 	}
 	return a.bodyBoxHeight()
+}
+
+// planBoxHeight and planHeight are the same two measurements for the plan
+// alone: what the body band has left once the Active panel above it has taken
+// its lines, and what the board can draw on inside it. With no section on show
+// they are the body's own, which is the layout exactly as it was before the
+// panel existed.
+func (a *App) planBoxHeight() int {
+	return max(a.bodyBoxHeight()-a.activeBandHeight(), 0)
+}
+
+func (a *App) planHeight() int {
+	if a.framed() {
+		return max(a.planBoxHeight()-2, 0)
+	}
+	return a.planBoxHeight()
 }
 
 // headerRegion is the header band inside its border: the heading bar and the
@@ -1328,7 +1381,7 @@ func (a *App) bodyRegion() []string {
 	height := a.bodyBoxHeight()
 	if !a.viewerVisible() {
 		// framed has already made sure the box has at least its own border lines.
-		return a.boxRegionAt(a.body(), a.width, height)
+		return a.bodyPanels(a.width, height)
 	}
 	boardWidth, termWidth := a.splitWidths()
 	board := a.boardRegion(boardWidth, height)
@@ -1338,6 +1391,19 @@ func (a *App) bodyRegion() []string {
 		lines[i] = fit(lineAt(board, i)+lineAt(term, i), a.width)
 	}
 	return lines
+}
+
+// bodyPanels is the body band's boxes: the screen on show in one box run out to
+// the whole band, or — while the board is up with work in flight — the Active
+// panel above it and the plan in what is left. The two are siblings, each
+// framed the way the header and the status band are, so no border of the layout
+// sits inside another.
+func (a *App) bodyPanels(width, height int) []string {
+	n := a.activeBandHeight()
+	if n <= 0 {
+		return a.boxRegionAt(a.body(), width, height)
+	}
+	return append(a.activeRegion(width, n), a.boxRegionAt(a.body(), width, height-n)...)
 }
 
 // boardRegion is the board's half of the split, drawn once per change rather
@@ -1352,10 +1418,10 @@ func (a *App) bodyRegion() []string {
 // frame every tick.
 func (a *App) boardRegion(width, height int) []string {
 	if a.project == nil {
-		return a.boxRegionAt(a.body(), width, height)
+		return a.bodyPanels(width, height)
 	}
 	if a.boardBox == nil || a.boardBoxW != width || a.boardBoxH != height {
-		a.boardBox = a.boxRegionAt(a.body(), width, height)
+		a.boardBox = a.bodyPanels(width, height)
 		a.boardBoxW, a.boardBoxH = width, height
 	}
 	return a.boardBox
@@ -1485,17 +1551,23 @@ func (a *App) progressBarView() string {
 	return RenderProgressBar(a.styles, a.innerWidth(), SegmentsOf(a.project.Groups()))
 }
 
-// syncBoard puts the board's rows into the body's viewport and scrolls it the
-// least it can to bring the cursor back on screen. The board draws every row it
-// has; holding a plan taller than the window to the window is the layout's job.
+// syncBoard puts the plan's rows into the body's viewport and scrolls it the
+// least it can to bring the cursor back on screen, and scrolls the Active panel
+// beside it the same way. The board draws every row it has; holding a plan
+// taller than the window to the window is the layout's job.
 func (a *App) syncBoard() {
 	// Whatever brought us here changed what the board draws, so the region drawn
 	// beside an agent terminal is no longer the one to hand back.
 	a.boardBox = nil
+	// Whether the section has a panel to be drawn in is the layout's answer, and
+	// it is settled first: with no room for one the entries take no rows, which
+	// is what everything below measures.
+	a.board.SetShowActive(a.activeFits())
+	a.syncActive()
 	// The hints band says what the row under the cursor can do, and a slice's
 	// hints run to more lines than a milestone's — so the lines left for the
 	// board change as the cursor moves, not only as the window resizes.
-	a.boardVP.SetHeight(a.bodyHeight())
+	a.boardVP.SetHeight(a.planHeight())
 	a.boardVP.SetContent(a.board.View())
 	h := a.boardVP.Height()
 	if h <= 0 {
@@ -1505,6 +1577,11 @@ func (a *App) syncBoard() {
 	// it that has to come on screen. A row taller than the band cannot, so its
 	// first line wins — that is the one carrying the cursor marker.
 	cursor, rows := a.board.CursorSpan()
+	if rows == 0 {
+		// The cursor is up in the Active panel, which has scrolled itself; there
+		// is nothing in the plan to bring on screen.
+		return
+	}
 	switch top := a.boardVP.YOffset(); {
 	case cursor < top:
 		a.boardVP.SetYOffset(cursor)
@@ -1523,7 +1600,7 @@ func (a *App) resize() {
 	boardWidth := a.boardWidth()
 	a.board.SetWidth(boardWidth)
 	a.boardVP.SetWidth(boardWidth)
-	a.boardVP.SetHeight(height)
+	a.boardVP.SetHeight(a.planHeight())
 	a.helpVP.SetWidth(width)
 	a.helpVP.SetHeight(height)
 	a.info.SetSize(width, height)
@@ -1535,15 +1612,16 @@ func (a *App) resize() {
 	a.resizeTerm()
 }
 
-// setScreen shows a screen, re-sharing the window when there is an agent
-// terminal to share it with: whether that terminal is drawn depends on which
-// screen is up, and the board's columns depend on whether it is. With no
-// terminal open every screen has the whole band either way, and there is
-// nothing to measure again.
+// setScreen shows a screen, re-sharing the window when what a screen is given
+// depends on which one it is. An agent terminal is only drawn beside the board,
+// so the board's columns depend on whether one is up; and the Active panel is
+// the board's alone, so the lines the body band has left depend on whether it
+// is drawn. With neither on show every screen has the whole band either way,
+// and there is nothing to measure again.
 func (a *App) setScreen(s screen) {
-	was := a.viewerVisible()
+	was, wasActive := a.viewerVisible(), a.activeVisible()
 	a.screen = s
-	if was || a.viewerVisible() {
+	if was || wasActive || a.viewerVisible() || a.activeVisible() {
 		a.resize()
 	}
 }

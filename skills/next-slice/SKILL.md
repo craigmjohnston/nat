@@ -31,27 +31,65 @@ own body, and the project's conventions.
 
 Tell the user which slice you claimed, with its Notion URL.
 
-## 2. Do the work
+## 2. Work in the slice's own worktree
+
+A slice launched from the board is given a git worktree of its own, so its
+agent works on its own branch in its own directory rather than sharing the one
+checkout with every other agent and with the user. A session started from this
+skill cuts the same worktree for itself, so the branch it hands back is the one
+the board would have made.
+
+The branch is derived from the slice's name, exactly as the board derives it:
+`slice/` followed by the name lowercased, with every run of anything that is
+not an ASCII letter or digit collapsed into a single hyphen and none left at
+either end. "Teach /next-slice to work in a worktree" is
+`slice/teach-next-slice-to-work-in-a-worktree`.
+
+In the working directory the brief names, run:
+
+```
+wt switch --create slice/<slug> --no-cd
+```
+
+`--no-cd` because there is no shell of yours for worktrunk to change the
+directory of — the worktree it makes is somewhere else, and you work there by
+path. `wt list --format json` is what names that path: switch prints for a
+person, and the list is the one machine-readable answer worktrunk gives. Work
+in that directory from here on, explicitly (absolute paths / `git -C`) if it is
+not where this session started.
+
+If `wt` is not installed, or the working directory is not a git repository,
+branch in place instead: those are the launch that worked before there were
+worktrees, and the fallback is to make one branch for the slice in the working
+directory the brief names. A `wt` that ran and refused is different — something
+is wrong with the repository — so report what it said and stop rather than
+working half-placed.
+
+## 3. Do the work
 
 - The brief is what the command printed: the slice's body first, then the
   project conventions. Read `CLAUDE.md` in the working directory too.
-- Work in the working directory the brief names. If that is not where this
-  session started, work there explicitly (absolute paths / `git -C`).
 - Honour the brief's acceptance criteria and the project's verification gate
   before calling anything done.
-- **If the work is code**: create one branch for the slice, keep the change to
-  exactly ONE branch's worth of work, commit, and push the branch. Do not run
-  `gh` and do not open a pull request — you hand the branch back, and the user
-  opens the pull request from the board once they have reviewed it.
+- **If the work is code**: the worktree is already on the slice's branch, so
+  keep the change to exactly ONE branch's worth of work, commit there, and
+  push the branch — do not create a branch of your own and do not switch to
+  another. (Where you fell back to branching in place, that one branch is
+  yours in the same way.) Do not run `gh` and do not open a pull request — you
+  hand the branch back, and the user opens the pull request from the board once
+  they have reviewed it.
 - **If the work is not code** (docs, research, written-up findings): produce
   the deliverable the brief asks for and link it in the summary below.
 
-## 3. Finish
+## 4. Finish
 
 Record the outcome with the slice's page ID or URL, as printed in the brief:
 
 ```
-nat complete-slice <slice> --branch <branch> --summary '<what you did>'
+nat complete-slice <slice> --branch <branch> --summary '<what you did>' \
+    --pr-description '<title line>
+
+<what the PR does and why>'
 ```
 
 That records the branch you pushed and hands the slice back for review, writing
@@ -59,9 +97,17 @@ the summary onto the slice page: what you did, key decisions, follow-ups worth
 queueing. It leaves the slice in progress deliberately — approving it on the
 board is what opens the pull request and marks it Done.
 
+`--pr-description` is what that pull request is opened with — its first line
+becomes the title and the rest the body — so write it ready to publish: what
+the change does and why, addressed to whoever reviews it on GitHub, not a
+report of your session. It is filed on the slice page under its own heading, so
+the user can approve the branch days later and still get it. Pass
+`--pr-description -` to read it from stdin when it is too long for an argument,
+and give `--summary` as a flag then, since stdin is taken.
+
 Leave `--branch` off when there was no branch — a docs or research slice — and
-the slice is marked Done there and then. Pipe the summary in on stdin when it
-is too long for an argument.
+the slice is marked Done there and then, with no pull request to describe. Pipe
+the summary in on stdin when it is too long for an argument.
 
 If you cannot complete the slice, leave it claimed and say what stopped you:
 

@@ -32,9 +32,15 @@ func (a *App) mouseEvent(msg tea.MouseMsg) tea.Cmd {
 	return a.boardMouse(msg)
 }
 
-// boardMouse is a mouse event over the plan: the wheel scrolls it, and a left
-// click selects the row it lands on — and opens the PR chip when it lands on
-// one of those.
+// boardMouse is a mouse event over the body band's own panels: the wheel
+// scrolls the plan, and a left click selects the row it lands on — in the
+// Active panel or in the plan, since an entry is a row like any other — and
+// opens the PR chip when it lands on one of those.
+//
+// The wheel is the plan's wherever it lands. The Active panel scrolls with the
+// cursor rather than on its own, and it is the short list of what is in flight:
+// a notch over it is far likelier to mean the plan than to mean those few
+// lines.
 //
 // It is ignored whenever the keyboard is not the board's either: while the
 // wizard, a modal form or an inline prompt is up, the board must not move out
@@ -45,8 +51,8 @@ func (a *App) boardMouse(msg tea.MouseMsg) tea.Cmd {
 		return nil
 	}
 	m := msg.Mouse()
-	col, line, ok := a.boardCell(m.X, m.Y)
-	if !ok {
+	col, row, ok := a.bodyCell(m.X, m.Y)
+	if !ok || col >= a.boardWidth() {
 		return nil
 	}
 	switch msg.(type) {
@@ -54,7 +60,7 @@ func (a *App) boardMouse(msg tea.MouseMsg) tea.Cmd {
 		a.scrollBoard(wheelDelta(m.Button))
 	case tea.MouseClickMsg:
 		if m.Button == tea.MouseLeft {
-			return a.boardClick(col, line)
+			return a.boardClick(col, row)
 		}
 	}
 	return nil
@@ -86,11 +92,25 @@ func (a *App) scrollBoard(delta int) {
 	a.syncBoard()
 }
 
-// boardClick selects the row a click landed on, and opens the pull request when
-// the cell it landed on is a PR chip. The chip is an OSC 8 hyperlink, which the
-// terminal itself would have opened — but not while nat is holding the mouse,
-// so the gesture is answered here instead.
-func (a *App) boardClick(col, line int) tea.Cmd {
+// boardClick selects the row a click landed on — an entry of the Active panel,
+// or a row of the plan below it — and opens the pull request when the cell it
+// landed on is a PR chip. The chip is an OSC 8 hyperlink, which the terminal
+// itself would have opened — but not while nat is holding the mouse, so the
+// gesture is answered here instead. Only the plan draws one: an entry of the
+// section carries no chips at all.
+//
+// A click on a border between the panels is a click on no row, and says
+// nothing.
+func (a *App) boardClick(col, row int) tea.Cmd {
+	if i, ok := a.board.ActiveRowAtLine(a.activeLineAt(row)); ok {
+		a.board.SelectRow(i)
+		a.syncBoard()
+		return nil
+	}
+	line, ok := a.planLineAt(row)
+	if !ok {
+		return nil
+	}
 	i, ok := a.board.RowAtLine(line)
 	if !ok {
 		return nil
@@ -103,15 +123,31 @@ func (a *App) boardClick(col, line int) tea.Cmd {
 	return nil
 }
 
-// boardCell turns a cell of the window into a column of the board and a line of
-// the whole plan it draws, and reports whether the event landed on the board at
-// all.
-func (a *App) boardCell(mx, my int) (col, line int, ok bool) {
-	col, row, ok := a.bodyCell(mx, my)
-	if !ok || col >= a.boardWidth() {
-		return 0, 0, false
+// activeLineAt turns a row of the body band into a line of the Active panel's
+// own entries, scroll counted, and a line no entry is on for a row outside it —
+// which is what [Board.ActiveRowAtLine] is answered with. A framed window has
+// the panel's title in its border and [App.bodyCell] has already stepped over
+// it; a bare one draws that heading as a line of the band like any other, and
+// this is where it is stepped over instead.
+func (a *App) activeLineAt(row int) int {
+	if !a.framed() {
+		row -= activeBareFrame
 	}
-	return col, row + a.boardTopLine(), true
+	if h := a.activeHeight(); h <= 0 || row < 0 || row >= h {
+		return -1
+	}
+	return row + a.activeOffset
+}
+
+// planLineAt turns a row of the body band into a line of the whole plan, and
+// reports whether the row is the plan's at all: the lines above it belong to
+// the Active panel, and the border between the two panels to neither.
+func (a *App) planLineAt(row int) (int, bool) {
+	n := a.activeBandHeight()
+	if row < n {
+		return 0, false
+	}
+	return row - n + a.boardTopLine(), true
 }
 
 // bodyCell turns a cell of the window into a column and a row of the body band,

@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -172,12 +173,16 @@ const (
 	rowMilestone rowKind = iota
 	rowSlice
 	rowSection
+	rowActive
 )
 
 // row is one selectable line of the board, addressing back into the groups it
 // was flattened from. slice is meaningless for a rowMilestone, and a rowSection
 // — the Done section's own line — addresses no group at all, so its group is -1
-// rather than silently aliasing the first one.
+// rather than silently aliasing the first one. A rowActive addresses no group
+// either, for the same reason and by the same -1: its slice indexes the Active
+// section's own list, which is drawn from the whole plan rather than from any
+// one milestone.
 type row struct {
 	kind  rowKind
 	group int
@@ -199,6 +204,16 @@ type Board struct {
 	expanded map[string]bool
 	rows     []row
 	cursor   int
+	// active is the plan's slices in flight, in the order the board draws their
+	// milestones: the Active section's own list, rebuilt with the rows, and what
+	// a rowActive addresses. showActive is whether the section is drawn at all,
+	// which the layout decides and [Board.SetShowActive] records: with it off the
+	// entries take no rows, so the cursor is never left on one nothing draws.
+	// byID is the whole plan keyed the way domain.SlicesByID keys it, which is
+	// what a slice's state is classified against — see active.go.
+	active     []domain.Slice
+	showActive bool
+	byID       map[string]domain.Slice
 	// hideDone keeps the Done slices of milestones still in flight off the
 	// board, so what is left of a half-finished milestone is what shows. It
 	// starts on, because what is left to do is what the board is read for; the
@@ -222,6 +237,14 @@ type Board struct {
 	// see presence.go.
 	activity map[string]Presence
 	pulse    int
+	// prState maps the ID of each slice whose pull request was read as still
+	// open to how ready it is, which is what tells a review still to come from
+	// one that is over, and what keeps a Done slice in the Active section until
+	// its pull request lands. A slice the map says nothing about — no pull
+	// request, one gh could not be asked about, or one that has merged — is a
+	// review still to come while the slice is in flight, and nothing at all once
+	// it is Done; see [Board.state].
+	prState map[string]domain.PRReadiness
 
 	// confirmText is the inline confirmation anchored to the row the cursor is
 	// on, drawn from its right edge in confirmSev's colour; empty when there is
@@ -249,10 +272,11 @@ type rowPrompt struct {
 // NewBoard returns an empty board, waiting for a project to be loaded into it.
 func NewBoard(styles Styles) Board {
 	return Board{
-		styles:   styles,
-		keys:     defaultBoardKeyMap(),
-		expanded: map[string]bool{},
-		hideDone: true,
+		styles:     styles,
+		keys:       defaultBoardKeyMap(),
+		expanded:   map[string]bool{},
+		hideDone:   true,
+		showActive: true,
 	}
 }
 
@@ -347,37 +371,46 @@ func defaultExpanded(g domain.Group) bool {
 }
 
 // rebuild recomputes the groups and the rows they flatten to. The Done groups
-// all fold behind a single section row, which sits where the first of them
-// would have and gathers the rest up to it: a mature plan is one Done line, not
-// a wall of them. The section starts collapsed and remembers its state like any
-// group; expanding it reveals the Done milestones, which behave as usual.
+// all fold behind a single section row, which gathers every one of them: a
+// mature plan is one Done line, not a wall of them. That section goes last of
+// all, whatever the plan's order says — the work still in flight is what the
+// board is read for, so finished milestones sitting in the middle of the plan
+// are drawn beneath the ones that are not, rather than splitting them. The
+// section starts collapsed and remembers its state like any group; expanding it
+// reveals the Done milestones, in plan order, behaving as usual.
+//
+// The slices in flight are gathered first and take the first rows of all, the
+// Active section's own: a plan with none — or a window with no room to draw the
+// section in — takes no rows for it and behaves exactly as it did before there
+// was one. They are rows of this same board and nothing apart from it, even
+// though they are drawn in a panel of their own, so the cursor runs from the
+// section straight on into the plan; see active.go.
 func (b *Board) rebuild() {
-	b.groups, b.blocked = nil, nil
+	b.groups, b.blocked, b.byID = nil, nil, nil
 	if b.project != nil {
 		b.groups = b.project.Groups()
 		b.blocked = blockedSlices(b.project.Slices)
+		b.byID = domain.SlicesByID(b.project.Slices)
 	}
-	b.rows = nil
-	sectionEmitted := false
+	b.rows, b.active = nil, b.activeSlices()
+	for i := range b.activeRowCount() {
+		b.rows = append(b.rows, row{kind: rowActive, group: -1, slice: i})
+	}
 	for i, g := range b.groups {
 		if !doneGroup(g) {
 			b.appendGroup(i)
-			continue
 		}
-		if sectionEmitted {
-			continue
-		}
-		sectionEmitted = true
+	}
+	if slices.ContainsFunc(b.groups, doneGroup) {
 		if _, ok := b.expanded[doneSectionKey]; !ok {
 			b.expanded[doneSectionKey] = false
 		}
 		b.rows = append(b.rows, row{kind: rowSection, group: -1})
-		if !b.expanded[doneSectionKey] {
-			continue
-		}
-		for j, d := range b.groups {
-			if doneGroup(d) {
-				b.appendGroup(j)
+		if b.expanded[doneSectionKey] {
+			for j, d := range b.groups {
+				if doneGroup(d) {
+					b.appendGroup(j)
+				}
 			}
 		}
 	}
@@ -483,6 +516,11 @@ func (b *Board) toggle() {
 	// confirmation was anchored to.
 	b.ClearConfirm()
 	r := b.rows[b.cursor]
+	if r.kind == rowActive {
+		// The Active section folds nothing: it is a list of slices, and a slice
+		// row has never folded.
+		return
+	}
 	if r.kind == rowSection {
 		b.expanded[doneSectionKey] = !b.expanded[doneSectionKey]
 		b.rebuild()
@@ -530,7 +568,14 @@ func (b *Board) cursorTo(match func(row) bool) bool {
 
 // SelectedSlice is the slice under the cursor, if the cursor is on one. The
 // keys reserved above act on it once they do something.
+//
+// An entry of the Active section is one of them: it is the same page as the row
+// further down the plan, drawn a second time where the work in flight is
+// gathered, so everything a slice row answers to it answers to as well.
 func (b Board) SelectedSlice() (domain.Slice, bool) {
+	if s, ok := b.SelectedActive(); ok {
+		return s, true
+	}
 	if b.cursor >= len(b.rows) {
 		return domain.Slice{}, false
 	}
@@ -659,7 +704,10 @@ func groupTitle(g domain.Group) string {
 	return planPrefix.ReplaceAllString(g.Name(), "")
 }
 
-// View renders the board.
+// View renders the plan. The Active section's entries are rows of this board
+// too, but they are drawn in a panel of their own above it — see
+// [Board.ActiveLines] — so everything measured from here is measured over the
+// plan's rows alone.
 func (b Board) View() string {
 	if len(b.groups) == 0 {
 		return b.styles.Faint.Render("No milestones yet.")
@@ -671,24 +719,38 @@ func (b Board) View() string {
 	return strings.Join(lines, "\n")
 }
 
-// rowLines is every row as the lines it is drawn on, in board order. A row that
-// fits is one line and a wrapped one several, which is what the cursor's
-// position on the board is measured from as well as what View joins.
+// rowLines is every row of the plan as the lines it is drawn on, in board
+// order. A row that fits is one line and a wrapped one several, which is what
+// the cursor's position in the plan is measured from as well as what View
+// joins.
+//
+// The Active section's rows are not among them: they lead the board's rows and
+// are drawn in their own panel, so the plan's lines start at the row after the
+// last of them.
 func (b Board) rowLines() [][]string {
 	l := b.layout()
-	lines := make([][]string, len(b.rows))
-	for i, r := range b.rows {
-		lines[i] = b.renderRow(i, r, l)
+	rows := b.rows[b.activeRowCount():]
+	lines := make([][]string, len(rows))
+	for i, r := range rows {
+		lines[i] = b.renderRow(i+b.activeRowCount(), r, l)
 	}
 	return lines
 }
 
-// CursorSpan is where the row under the cursor sits in the drawn board: the
-// line it starts on, and how many lines it takes. Selection is per row, so a
-// wrapped row is brought on screen whole.
+// CursorSpan is where the row under the cursor sits in the drawn plan: the line
+// it starts on, and how many lines it takes. Selection is per row, so a wrapped
+// row is brought on screen whole.
+//
+// A cursor in the Active section is in the other panel entirely and has nothing
+// here to bring on screen, which is what a height of zero says; the section
+// scrolls itself — see [App.syncActive].
 func (b Board) CursorSpan() (top, height int) {
+	n := b.activeRowCount()
+	if b.cursor < n {
+		return 0, 0
+	}
 	for i, lines := range b.rowLines() {
-		if i == b.cursor {
+		if i+n == b.cursor {
 			return top, len(lines)
 		}
 		top += len(lines)
@@ -696,11 +758,12 @@ func (b Board) CursorSpan() (top, height int) {
 	return top, 1
 }
 
-// RowAtLine is the row drawn on a line of the board, counted from the first
-// line of the whole render, and whether that line has a row on it at all: the
+// RowAtLine is the row drawn on a line of the plan, counted from the first line
+// of the whole render, and whether that line has a row on it at all: the
 // mouse's way back from a line of the window to the row it points at, since a
 // wrapped row takes more than one line and nothing below the last row is any
-// row's.
+// row's. The row it names is the board's own index, the section's entries
+// counted, since that is what the cursor is moved by.
 func (b Board) RowAtLine(line int) (int, bool) {
 	if line < 0 {
 		return 0, false
@@ -709,7 +772,7 @@ func (b Board) RowAtLine(line int) (int, bool) {
 	for i, lines := range b.rowLines() {
 		at += len(lines)
 		if line < at {
-			return i, true
+			return i + b.activeRowCount(), true
 		}
 	}
 	return 0, false
@@ -728,17 +791,22 @@ func (b *Board) SelectRow(i int) { b.move(i - b.cursor) }
 // A band too short for the row it lands on has no whole row to offer, so the
 // cursor goes to whichever row the top line belongs to and the re-sync scrolls
 // to suit it.
+//
+// A cursor in the Active section is left where it is: that panel does not
+// scroll with the plan, so nothing has moved out from under it and there is no
+// re-sync for it to fight.
 func (b *Board) CursorToVisible(top, height int) {
-	if height <= 0 || len(b.rows) == 0 {
+	n := b.activeRowCount()
+	if height <= 0 || len(b.rows) == 0 || b.cursor < n {
 		return
 	}
 	first, last, at := -1, -1, 0
 	for i, lines := range b.rowLines() {
 		if at >= top && at+len(lines) <= top+height {
 			if first < 0 {
-				first = i
+				first = i + n
 			}
-			last = i
+			last = i + n
 		}
 		at += len(lines)
 	}
@@ -831,7 +899,17 @@ func (b Board) renderRow(i int, r row, l boardLayout) []string {
 		marker = "❯ "
 	}
 	if r.kind == rowSection {
-		return b.renderDoneSection(marker, selected, l)
+		lines := b.renderDoneSection(marker, selected, l)
+		// The section closes the board off from the plan above it, so it is set
+		// apart by a blank line — which belongs to the section's own row, since
+		// a line of the board that is no row's is a line the cursor and the
+		// mouse cannot account for. There is nothing to be set apart from when
+		// the section is the whole plan — the Active panel above is a box of its
+		// own, and no row of this one.
+		if i > b.activeRowCount() {
+			lines = append([]string{""}, lines...)
+		}
+		return lines
 	}
 	if r.kind == rowMilestone {
 		return b.renderMilestone(marker, b.groups[r.group], selected, l)
@@ -882,15 +960,26 @@ func (b Board) finishRow(selected bool, lines []string) []string {
 		filled[i] = st.Render(line)
 	}
 	last := len(filled) - 1
-	raw := lipgloss.Width(lines[last])
+	filled[last] = b.overlayAnchored(filled[last], lipgloss.Width(lines[last]))
+	return filled
+}
+
+// overlayAnchored lays whatever is anchored to the row the cursor is on over
+// that row's last line — the prompt waiting to be answered, or the inline
+// confirmation when one is up — and hands the line back untouched when there is
+// neither. It is the one place that choice is made, because the Active
+// section's entries are rows the same keys act on and so answer the same
+// anchoring: see [Board.renderActive]. line is the row already filled and run
+// out to the board's width, raw the width of its content before that fill.
+func (b Board) overlayAnchored(line string, raw int) string {
 	switch {
 	case b.prompt != nil:
-		filled[last] = b.overlayChip(filled[last], raw, b.promptChip(), b.styles.PromptFade)
+		return b.overlayChip(line, raw, b.promptChip(), b.styles.PromptFade)
 	case b.confirmText != "":
 		chip, fade := b.styles.confirmStyles(b.confirmSev)
-		filled[last] = b.overlayChip(filled[last], raw, chip.Render(b.confirmText), fade)
+		return b.overlayChip(line, raw, chip.Render(b.confirmText), fade)
 	}
-	return filled
+	return line
 }
 
 // promptChip is the open prompt as one chip: its choices side by side, the
@@ -1086,18 +1175,16 @@ func (b Board) renderMilestone(marker string, g domain.Group, selected bool, l b
 
 // renderDoneSection draws the row the Done milestones fold behind: the fold
 // indicator, a Done title in the title column, and a faint aggregate of what it
-// hides — how many milestones, and their slices' combined count. Its number
-// cell is blank: the section is not part of the plan's numbering.
+// hides — how many milestones, and their slices' combined count. It takes no
+// number cell at all rather than a blank one: the section is not part of the
+// plan's numbering, so it sits out at the left edge the numbers start from,
+// which is what says it is not another milestone of the plan.
 func (b Board) renderDoneSection(marker string, selected bool, l boardLayout) []string {
 	fold := "▸"
 	if b.expanded[doneSectionKey] {
 		fold = "▾"
 	}
-	head := marker
-	if l.num > 0 {
-		head += strings.Repeat(" ", l.num) + " "
-	}
-	head += fold
+	head := marker + fold
 	milestones := 0
 	var p domain.Progress
 	for _, g := range b.groups {

@@ -2,6 +2,7 @@ package skills
 
 import (
 	"io/fs"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -80,8 +81,37 @@ func TestNextSliceHandsTheBranchBack(t *testing.T) {
 			t.Errorf("the next-slice skill does not say %q", want)
 		}
 	}
-	if strings.Contains(text, "--pr") {
+	// `--pr` itself and not `--pr-description`, which is the hand-back's own
+	// flag: the description the board opens the pull request with.
+	if prEnding.MatchString(text) {
 		t.Error("the next-slice skill still offers the agent the --pr ending")
+	}
+}
+
+// prEnding matches the --pr flag alone, so the --pr-description one it prefixes
+// does not read as it.
+var prEnding = regexp.MustCompile(`--pr($|[^-\w])`)
+
+// A slice launched from the board is placed in a worktree of its own, and a
+// session started from the skill has to arrive at the same branch in the same
+// way — otherwise the same slice hands back one branch from the board and
+// another from the terminal. The command and the branch rule are what the
+// agent acts on, so they are worth naming here; the fallbacks are too, since a
+// machine with no worktrunk is one that would otherwise do nothing at all.
+func TestNextSliceCutsTheSlicesWorktree(t *testing.T) {
+	body, err := fs.ReadFile(FS(), "next-slice/SKILL.md")
+	if err != nil {
+		t.Fatalf("read the next-slice skill: %v", err)
+	}
+	text := string(body)
+	for _, want := range []string{
+		"wt switch --create slice/<slug> --no-cd",
+		"`slice/` followed by the name lowercased",
+		"If `wt` is not installed, or the working directory is not a git repository",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the next-slice skill does not say %q", want)
+		}
 	}
 }
 

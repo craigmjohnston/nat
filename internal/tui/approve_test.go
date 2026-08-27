@@ -11,10 +11,11 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
 // prCall is one pull request the approve flow asked gh for.
-type prCall struct{ dir, branch string }
+type prCall struct{ dir, branch, title, body string }
 
 // fakePRs stands in for the GitHub CLI: it records what it was asked to open
 // and answers with the URL — or the refusal — the test wants gh to have given.
@@ -26,8 +27,8 @@ type fakePRs struct {
 
 var _ PRCreator = (*fakePRs)(nil)
 
-func (f *fakePRs) CreatePR(dir, branch string) (string, error) {
-	f.made = append(f.made, prCall{dir, branch})
+func (f *fakePRs) CreatePR(dir, branch, title, body string) (string, error) {
+	f.made = append(f.made, prCall{dir, branch, title, body})
 	return f.url, f.err
 }
 
@@ -75,7 +76,27 @@ func approveApp(t *testing.T) (*App, *fakePRs, *fakeNotion, string) {
 	return app, prs, client, workdir
 }
 
+// approveWorktrees puts a fake worktrunk in for the length of one test, since
+// the removal is the second half of the approve and the suite's own fake is
+// shared. It answers as a working worktrunk unless the test says otherwise.
+func approveWorktrees(t *testing.T) *fakeWorktrees {
+	t.Helper()
+	trees := &fakeWorktrees{}
+	newWorktrees = func() Worktrees { return trees }
+	t.Cleanup(func() { newWorktrees = func() Worktrees { return &fakeWorktrees{} } })
+	return trees
+}
+
 // cursorOn puts the board's cursor on the named slice's row.
+// cursorOnMilestone puts the cursor on the first milestone row of the board.
+// It is not row 0: the Active section's entries are drawn above the plan.
+func cursorOnMilestone(t *testing.T, a *App) {
+	t.Helper()
+	if !a.board.cursorTo(func(r row) bool { return r.kind == rowMilestone }) {
+		t.Fatal("the board has no milestone row")
+	}
+}
+
 func cursorOn(t *testing.T, a *App, id string) {
 	t.Helper()
 	for i, r := range a.board.rows {
@@ -117,7 +138,7 @@ func TestApproveOpensThePullRequestAndClosesTheSlice(t *testing.T) {
 
 	approve(t, app)
 
-	want := []prCall{{workdir, "slice/approve"}}
+	want := []prCall{{workdir, "slice/approve", "", ""}}
 	if len(prs.made) != 1 || prs.made[0] != want[0] {
 		t.Fatalf("gh was asked for %v, want %v", prs.made, want)
 	}
@@ -140,6 +161,97 @@ func TestApproveOpensThePullRequestAndClosesTheSlice(t *testing.T) {
 	}
 	if app.busy {
 		t.Error("the board is still busy after the pull request was recorded")
+	}
+}
+
+// TestApproveOpensThePullRequestWithTheRecordedDescription is the other half of
+// the action: the description the agent filed at hand-back is read off the
+// slice page and is what gh is given — its first line the title, the rest the
+// body — so the pull request reads as the agent wrote it rather than as its
+// commits happen to.
+func TestApproveOpensThePullRequestWithTheRecordedDescription(t *testing.T) {
+	app, prs, client, workdir := approveApp(t)
+	client.blocks = func(id string) ([]notion.Block, error) {
+		if id != handedBack {
+			t.Errorf("read the body of %q, want the slice being approved", id)
+		}
+		return []notion.Block{
+			block(t, "heading_3", "Handed back"),
+			block(t, "paragraph", "Did the work."),
+			block(t, "heading_3", notion.PRDescriptionHeading),
+			block(t, "paragraph", "Open the PR with the recorded description"),
+			block(t, "paragraph", "What it does, and why."),
+		}, nil
+	}
+	cursorOn(t, app, handedBack)
+
+	approve(t, app)
+
+	want := prCall{workdir, "slice/approve",
+		"Open the PR with the recorded description", "What it does, and why."}
+	if len(prs.made) != 1 || prs.made[0] != want {
+		t.Fatalf("gh was asked for %v, want %v", prs.made, want)
+	}
+}
+
+// TestApproveWithoutARecordedDescription covers every hand-back written before
+// there was a flag for one: nothing is read off the page, so gh is given no
+// title and fills the pull request from the commits as it always did.
+func TestApproveWithoutARecordedDescription(t *testing.T) {
+	app, prs, client, workdir := approveApp(t)
+	client.blocks = func(string) ([]notion.Block, error) {
+		return []notion.Block{block(t, "heading_3", "Handed back"), block(t, "paragraph", "Did the work.")}, nil
+	}
+	cursorOn(t, app, handedBack)
+
+	approve(t, app)
+
+	want := prCall{workdir, "slice/approve", "", ""}
+	if len(prs.made) != 1 || prs.made[0] != want {
+		t.Fatalf("gh was asked for %v, want %v", prs.made, want)
+	}
+}
+
+// TestApproveWithAnUnreadableDescription covers the page body failing to load:
+// nothing is opened, because a pull request opened with the wrong title is not
+// one this key can open again. The reason is a toast — the branch is still
+// there and the slice is still handed back.
+func TestApproveWithAnUnreadableDescription(t *testing.T) {
+	app, prs, client, _ := approveApp(t)
+	client.blocks = func(string) ([]notion.Block, error) { return nil, errors.New("notion is down") }
+	cursorOn(t, app, handedBack)
+
+	approve(t, app)
+
+	if len(prs.made) != 0 {
+		t.Errorf("gh was asked for %v with the description unread", prs.made)
+	}
+	if len(client.updated) != 0 {
+		t.Errorf("wrote %v with the description unread", client.updated)
+	}
+	if !strings.Contains(app.toast, "pull request description") {
+		t.Errorf("toast = %q, want it to name what could not be read", app.toast)
+	}
+	if app.busy {
+		t.Error("the board is still busy after the read failed")
+	}
+}
+
+// TestPRTitleBody pins the split gh is given: the first line titles the pull
+// request and the rest is its body, a one-line description is a title alone,
+// and no description at all is neither.
+func TestPRTitleBody(t *testing.T) {
+	for _, tt := range []struct{ name, in, title, body string }{
+		{"title and body", "Title line\n\nThe body.\n", "Title line", "The body."},
+		{"title alone", "  Title line  ", "Title line", ""},
+		{"nothing at all", "  \n ", "", ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			title, body := prTitleBody(tt.in)
+			if title != tt.title || body != tt.body {
+				t.Errorf("prTitleBody(%q) = %q, %q, want %q, %q", tt.in, title, body, tt.title, tt.body)
+			}
+		})
 	}
 }
 
@@ -223,7 +335,7 @@ func TestApproveRefusals(t *testing.T) {
 		set    func(a *App)
 		reason string
 	}{
-		{"on a milestone", func(a *App) { a.board.cursor = 0 }, "Move to a slice"},
+		{"on a milestone", func(a *App) { cursorOnMilestone(t, a) }, "Move to a slice"},
 		{"a Todo slice", func(a *App) { cursorOn(t, a, stillTodo) }, "only a handed-back slice"},
 		{"a Done slice", func(a *App) { cursorOn(t, a, alreadyPR) }, "only a handed-back slice"},
 		{"in progress with no branch", func(a *App) {
@@ -362,6 +474,103 @@ func TestApproveWaitsForTheBoard(t *testing.T) {
 			}
 			if len(prs.made) != 0 {
 				t.Errorf("gh was asked for %v", prs.made)
+			}
+		})
+	}
+}
+
+// TestApproveRemovesTheWorktree is the other half of the action: once the pull
+// request exists and the slice is Done, the worktree its agent worked in goes,
+// taken off the same repository gh ran in and named by the branch that was
+// handed back.
+func TestApproveRemovesTheWorktree(t *testing.T) {
+	app, _, _, workdir := approveApp(t)
+	trees := approveWorktrees(t)
+	cursorOn(t, app, handedBack)
+
+	approve(t, app)
+
+	want := worktreeCall{workdir, "slice/approve"}
+	if len(trees.removes) != 1 || trees.removes[0] != want {
+		t.Fatalf("wt was asked to remove %v, want %v", trees.removes, want)
+	}
+}
+
+// TestApproveRemovesTheWorktreeFromTheSlicesOwnRepo covers a slice whose Repo
+// overrides the project's default: that is the checkout the worktree was cut
+// from, the way it is the one gh runs in.
+func TestApproveRemovesTheWorktreeFromTheSlicesOwnRepo(t *testing.T) {
+	app, _, _, _ := approveApp(t)
+	trees := approveWorktrees(t)
+	repo := t.TempDir()
+	slices := append([]domain.Slice(nil), app.project.Slices...)
+	slices[0].Repo = repo
+	p := domain.NewProject(app.project.ID, app.project.Name, app.project.Milestones, slices)
+	app.project = &p
+	app.board.SetProject(&p)
+	cursorOn(t, app, handedBack)
+
+	approve(t, app)
+
+	if len(trees.removes) != 1 || trees.removes[0].dir != repo {
+		t.Errorf("wt ran in %v, want the slice's own repo %q", trees.removes, repo)
+	}
+}
+
+// TestApproveSurvivesAFailedRemoval covers everything worktrunk refuses over —
+// a dirty worktree, a slice that never had one, a machine with no wt at all.
+// The pull request has been opened and the slice is Done: the approve stands,
+// and the refusal is left in the log rather than raised on the board.
+func TestApproveSurvivesAFailedRemoval(t *testing.T) {
+	app, _, client, _ := approveApp(t)
+	trees := approveWorktrees(t)
+	trees.removeErr = &worktree.ExitError{Code: 1, Stderr: "worktree has uncommitted changes\n"}
+	cursorOn(t, app, handedBack)
+
+	approve(t, app)
+
+	if len(client.updated) != 1 {
+		t.Fatalf("wrote %d pages, want the slice marked Done regardless", len(client.updated))
+	}
+	if app.err != nil || app.toast != "" {
+		t.Errorf("err = %v, toast = %q, want the refusal passed over", app.err, app.toast)
+	}
+	if !strings.Contains(app.board.confirmText, "Approve action") {
+		t.Errorf("confirmation = %q, want the approve reported as it always is", app.board.confirmText)
+	}
+	if app.busy {
+		t.Error("the board is still busy after the removal was passed over")
+	}
+}
+
+// TestApproveKeepsTheWorktreeUntilTheSliceIsDone covers the two ways the action
+// stops short: gh refusing, and Notion refusing to record what gh opened. The
+// slice is still handed back either way, and a slice being reviewed keeps the
+// checkout its work is in.
+func TestApproveKeepsTheWorktreeUntilTheSliceIsDone(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		brk  func(a *App, c *fakeNotion)
+	}{
+		{"gh refused", func(a *App, _ *fakeNotion) {
+			a.prs.(*fakePRs).err = errors.New("no such branch")
+		}},
+		{"the write was refused", func(_ *App, c *fakeNotion) {
+			c.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
+				return nil, errors.New("notion is down")
+			}
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			app, _, client, _ := approveApp(t)
+			trees := approveWorktrees(t)
+			tt.brk(app, client)
+			cursorOn(t, app, handedBack)
+
+			approve(t, app)
+
+			if len(trees.removes) != 0 {
+				t.Errorf("wt was asked to remove %v on a slice still handed back", trees.removes)
 			}
 		})
 	}

@@ -17,7 +17,7 @@ import (
 func boardMouseApp(t *testing.T) *App {
 	t.Helper()
 	app, _, _ := viewerApp(t)
-	app.Update(tea.WindowSizeMsg{Width: 80, Height: 16})
+	app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	if total := boardLines(app); total <= app.boardVP.Height() {
 		t.Fatalf("the plan is %d lines in a band of %d, want one that overflows",
 			total, app.boardVP.Height())
@@ -34,16 +34,19 @@ func boardLines(a *App) int {
 	return total
 }
 
-// boardOrigin is the window cell the board's own first line and column are
-// drawn at, measured the way the test can see it rather than from the code
-// under test: the layout's own indent, and the line under the header's box.
-func boardOrigin(a *App) (x, y int) { return framePadX, a.headerBandHeight() + 1 }
+// boardOrigin is the window cell the plan's own first line and column are drawn
+// at, measured the way the test can see it rather than from the code under
+// test: the layout's own indent, and the line under the header's box — plus the
+// Active panel's own lines, since the plan is the box below it.
+func boardOrigin(a *App) (x, y int) {
+	return framePadX, a.headerBandHeight() + 1 + a.activeBandHeight()
+}
 
 // lineOfRow is the line of the whole plan a row starts on.
 func lineOfRow(b *Board, row int) int {
 	at := 0
 	for i, lines := range b.rowLines() {
-		if i == row {
+		if i+b.activeRowCount() == row {
 			return at
 		}
 		at += len(lines)
@@ -140,7 +143,9 @@ func TestBoardWheelScrollsThePlan(t *testing.T) {
 // behind would drag the board back where it was.
 func TestBoardWheelKeepsTheCursorOnScreen(t *testing.T) {
 	app := boardMouseApp(t)
-	app.board.SelectRow(0)
+	// The plan's own first row: a cursor up in the Active panel is in the other
+	// box and has nothing to be kept on screen here.
+	app.board.SelectRow(app.board.activeRowCount())
 	app.syncBoard()
 
 	wheelBoard(app, tea.MouseWheelDown)
@@ -417,9 +422,9 @@ func TestCursorToVisibleEdges(t *testing.T) {
 // of those points at no row at all.
 func TestBoardClickUnderAShortPlan(t *testing.T) {
 	app, _, _ := viewerApp(t)
-	// Taller than the window the viewer opens in, so the band outruns the plan:
-	// with the status band's box on the bottom rows, 24 lines hold it exactly.
-	app.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	// Taller than the window the viewer opens in, so the band outruns the plan
+	// — the Active section and every row of it, with lines to spare under them.
+	app.Update(tea.WindowSizeMsg{Width: 80, Height: 36})
 	app.board.SelectRow(1)
 	app.syncBoard()
 	line := boardLines(app)

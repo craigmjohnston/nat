@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
+
 	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/craigmjohnston/nat/internal/git"
@@ -66,7 +68,7 @@ func newTestDiff() *Diff {
 	d := NewDiff(DefaultStyles())
 	d.SetSize(diffTestWidth, diffTestHeight)
 	d.Start("slice-1", "Diff viewer", "slice/diff-viewer", "/repos/nat")
-	d.SetFiles("origin/main", git.ParseFiles(sampleDiff))
+	d.SetFiles("origin/main", git.ParseFiles(sampleDiff), nil)
 	return &d
 }
 
@@ -153,7 +155,7 @@ func TestDiffStatesEachSayWhatIsGoingOn(t *testing.T) {
 		t.Errorf("loading view = %q, want the spinner and the branch", got)
 	}
 
-	d.SetFiles("origin/main", nil)
+	d.SetFiles("origin/main", nil, nil)
 	if got := xansi.Strip(d.View("")); !strings.Contains(got, "slice/diff-viewer has no changes against origin/main") {
 		t.Errorf("empty view = %q, want it to name the branch and the base", got)
 	}
@@ -218,7 +220,7 @@ func TestDiffJumpsBetweenFiles(t *testing.T) {
 func TestDiffJumpsWithNothingToJumpThrough(t *testing.T) {
 	d := NewDiff(DefaultStyles())
 	d.SetSize(diffTestWidth, diffTestHeight)
-	d.SetFiles("origin/main", nil)
+	d.SetFiles("origin/main", nil, nil)
 	d.Update(keyPress("n"))
 	d.Update(keyPress("p"))
 	if d.cursor != 0 {
@@ -233,7 +235,7 @@ func TestDiffScrollsTheFileListWithTheCursor(t *testing.T) {
 	d := NewDiff(DefaultStyles())
 	// Three rows of list, and five files to move through them.
 	d.SetSize(diffTestWidth, 4)
-	d.SetFiles("origin/main", manyFiles(5))
+	d.SetFiles("origin/main", manyFiles(5), nil)
 	for range 4 {
 		d.Update(keyPress("n"))
 	}
@@ -259,7 +261,7 @@ func TestDiffScrollsTheFileListWithTheCursor(t *testing.T) {
 func TestDiffListWithNoRoomAtAll(t *testing.T) {
 	d := NewDiff(DefaultStyles())
 	d.SetSize(diffTestWidth, 0)
-	d.SetFiles("origin/main", manyFiles(3))
+	d.SetFiles("origin/main", manyFiles(3), nil)
 	d.Update(keyPress("n"))
 	if d.listTop != 0 {
 		t.Errorf("listTop = %d, want it left at the top when there are no rows", d.listTop)
@@ -361,10 +363,10 @@ func TestDiffShowsTheTailOfALongLine(t *testing.T) {
 	}
 }
 
-// TestDiffWrapKeepsTheLineWhole covers what a continuation row is drawn as: the
-// line's own colour carries onto it, so a wrapped removal does not read as an
-// added or removed line of its own, and only the row the line starts on carries
-// its numbers.
+// TestDiffWrapKeepsTheLineWhole covers what a continuation row is drawn as: what
+// says the line is a removal carries onto it — the wash, this being a file the
+// viewer found a language for — so a wrapped removal does not read as a line of
+// its own, and only the row the line starts on carries its numbers.
 func TestDiffWrapKeepsTheLineWhole(t *testing.T) {
 	d := newTestDiff()
 	head := rowAt(d, 0, 6) // -	return strings.Join(lines, "\n")
@@ -376,11 +378,12 @@ func TestDiffWrapKeepsTheLineWhole(t *testing.T) {
 		t.Errorf("continuation row = %q, want the numbers only on the row the line starts on",
 			xansi.Strip(cont))
 	}
-	// The escape the removal's own style opens with, which is what says the
+	// The escape the removal's wash opens with, which is what says the
 	// continuation is still part of that line rather than a plain one.
-	red := strings.Split(DefaultStyles().DiffDel.Render("x"), "x")[0]
+	red := strings.Split(lipgloss.NewStyle().
+		Background(DefaultStyles().DiffDelFill).Render("x"), "x")[0]
 	if !strings.Contains(cont, red) {
-		t.Errorf("continuation row = %q, want the removed line's own colour carried onto it", cont)
+		t.Errorf("continuation row = %q, want the removed line's own wash carried onto it", cont)
 	}
 }
 
@@ -462,7 +465,7 @@ func TestDiffCursorOnALineTallerThanTheBand(t *testing.T) {
 	d := NewDiff(DefaultStyles())
 	d.SetSize(40, 3)
 	d.SetFiles("origin/main", git.ParseFiles("diff --git a/x.go b/x.go\n@@ -1 +1 @@\n-old\n+"+
-		strings.Repeat("wide ", 40)+"\n"))
+		strings.Repeat("wide ", 40)+"\n"), nil)
 	long := len(d.files[0].Lines) - 1
 	for range long {
 		d.Update(keyPress("j"))
@@ -562,11 +565,11 @@ func TestElideLeftKeepsTheTail(t *testing.T) {
 func TestDiffPluralNamesOneFile(t *testing.T) {
 	d := NewDiff(DefaultStyles())
 	d.SetSize(diffTestWidth, diffTestHeight)
-	d.SetFiles("origin/main", manyFiles(1))
+	d.SetFiles("origin/main", manyFiles(1), nil)
 	if want := "1 file vs origin/main"; d.listHeading() != want {
 		t.Errorf("heading = %q, want %q", d.listHeading(), want)
 	}
-	d.SetFiles("origin/main", manyFiles(2))
+	d.SetFiles("origin/main", manyFiles(2), nil)
 	if want := "2 files vs origin/main"; d.listHeading() != want {
 		t.Errorf("heading = %q, want %q", d.listHeading(), want)
 	}
