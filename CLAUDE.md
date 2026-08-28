@@ -222,7 +222,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   the lowest-ordered open milestone and prints its brief,
   `nat start-slice <slice> [--json]`, which claims one named Todo slice and
   prints the same brief — the command a board-launched agent runs, since it is
-  pointed at a slice rather than choosing one —
+  pointed at a slice rather than choosing one. That brief names the project's
+  own page ID and says it is what `--project` takes, so a session that reads
+  only the brief is not left running commands against whatever project the
+  board is on —
   `nat complete-slice <slice> [--branch NAME] [--pr URL] [--summary TEXT]
   [--pr-description TEXT|-] [--blocked]`, which closes out a slice the
   configured user holds — three

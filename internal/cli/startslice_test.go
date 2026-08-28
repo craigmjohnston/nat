@@ -46,6 +46,7 @@ func TestStartSliceClaimsTheNamedSliceAndPrintsTheBrief(t *testing.T) {
 Claimed for Craig Johnston. Work exactly this slice.
 
 - Project: nat
+- Project page ID: project-1 (pass it as --project on every nat command)
 - Milestone: M2: Board
 - Notion page: 3b838308f654816da085f46dd135ade3
 - Notion URL: https://notion.so/3b838308f654816da085f46dd135ade3

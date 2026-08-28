@@ -81,6 +81,7 @@ func TestNextSliceClaimsAndPrintsTheBrief(t *testing.T) {
 Claimed for Craig Johnston. Work exactly this slice.
 
 - Project: nat
+- Project page ID: project-1 (pass it as --project on every nat command)
 - Milestone: M2: Board
 - Notion page: s3
 - Notion URL: https://notion.so/s3

@@ -25,6 +25,9 @@ Settle the ID once, before anything else:
 - If you were launched from the board, your prompt already names it. Use that.
 - Otherwise read it off the active project: `nat info --json` prints it as
   `project.id`. That one call is the only unpinned command in this skill.
+- Either way the brief you are about to claim repeats it, as its
+  `- Project page ID:` line. Check the two agree: an ID that is not the one the
+  slice came from is one you were given for a different project.
 - If the user asked for a project other than the active one, you need its page
   ID too. `nat info --project <whatever they called it>` refuses an ID the
   config does not know by listing every project it does know, ID and name —
@@ -37,9 +40,9 @@ Everything below writes `<project>` where that ID goes.
 Run `nat next-slice --project <project>`. It claims the next unclaimed Todo
 slice under the lowest-ordered milestone that is not Done — a milestone has no
 status of its own, so what is unfinished is what work is taken from — and
-prints its brief:
-the slice's name, page ID and URL, the working directory to use, the slice's
-own body, and the project's conventions.
+prints its brief: the slice's name, page ID and URL, the project's own page ID,
+the working directory to use, the slice's own body, and the project's
+conventions.
 
 - If the user asked for a particular slice, run
   `nat start-slice <URL|ID> --project <project>` instead — same claim, same
