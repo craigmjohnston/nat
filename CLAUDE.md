@@ -768,12 +768,17 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   the user presses on the review screen once they have read the branch. They arrive at the same branch too: a board launch
   puts its agent in a worktree already on one and names it, and /next-slice is
   run by a session that is wherever the user was, so it cuts that worktree
-  itself — `git fetch origin` and then
-  `wt switch --create slice/<the title slugged> --no-cd --base <origin's default
-  branch>` in the working directory the brief names, the slug rule
-  `tui.sliceBranch` applies and the base rule `git.CLI.Base` applies both written
-  out rather than shared, since a skill is read by an agent and not compiled.
-  A machine with no worktrunk and a working directory in no repository fall
+  itself, with the same plain git the board cuts one with — `git worktree list
+  --porcelain` for a worktree the branch already has, and otherwise `git fetch
+  origin` and then `git worktree add <repo>.worktrees/<the branch slugged> -b
+  slice/<the title slugged> <origin's default branch>` in the working directory
+  the brief names — so both sides arrive at the same branch in the same place.
+  The slug rule `tui.sliceBranch` applies, the path rule
+  `worktree.pathSlug` and `worktree.dirSuffix` apply (the repository read off
+  `rev-parse --path-format=absolute --git-common-dir`, as `worktree.CLI.root`
+  reads it) and the base rule `git.CLI.Base` applies are all written out rather
+  than shared, since a skill is read by an agent and not compiled.
+  A machine with no git and a working directory in no repository fall
   back to branching in place, the two the board falls back to the shared
   checkout for.
   /queue-project is /queue-work's drafting rules plus the two headless commands

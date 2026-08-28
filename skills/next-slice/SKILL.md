@@ -64,39 +64,66 @@ not an ASCII letter or digit collapsed into a single hyphen and none left at
 either end. "Teach /next-slice to work in a worktree" is
 `slice/teach-next-slice-to-work-in-a-worktree`.
 
-In the working directory the brief names, run:
+Where that worktree goes is nat's convention rather than anything git decides,
+and it has to be followed exactly, because a relaunch from either side finds
+the worktree by arriving at the same path: a sibling `<repo>.worktrees`
+directory, one entry per branch, named by the branch with every run of anything
+that is not a letter, a digit, a dot, a hyphen or an underscore collapsed into
+a single hyphen — so `slice/teach-next-slice` under a repository at
+`/repos/nat` is `/repos/nat.worktrees/slice-teach-next-slice`. `<repo>` is the
+directory holding the git directory every worktree of the repository shares,
+which is what `git rev-parse --path-format=absolute --git-common-dir` names the
+parent of — the common one, so a session already inside a worktree still cuts
+the next one beside the repository.
+
+First look for a worktree the branch already has, in the working directory the
+brief names:
+
+```
+git worktree list --porcelain
+```
+
+One record per worktree, opened by its path and naming the branch it has
+checked out as a full ref, so the path under `branch refs/heads/slice/<slug>`
+is the answer. If there is one, work there: it is where the last session on
+this slice left off, and its commits are exactly what a relaunch wants. Nothing
+below is run in that case — a worktree that already exists is not re-cut and
+not rebased.
+
+Otherwise cut it:
 
 ```
 git fetch origin
-wt switch --create slice/<slug> --no-cd --base <origin's default branch>
+git worktree add <repo>.worktrees/<path slug> -b slice/<slug> <origin's default branch>
 ```
 
-The fetch first, and the base explicitly, because otherwise worktrunk cuts the
-branch from the local default branch — whatever stale state the shared checkout
-was last left in — and the work starts life behind. The base is whatever
-`git symbolic-ref --short refs/remotes/origin/HEAD` names (`origin/main`,
-`origin/master`); where there is no such ref, `origin/main`. Git writes
-origin/HEAD at clone time and nothing maintains it afterwards, so plenty of
-checkouts have none — and falling back to the local `main` there would put you
-back on whatever the checkout last pulled, which is the thing the fetch was
-for. Only a repository with no origin at all falls back to `main`, where the
-local branch is all there is. A fetch that fails is not a reason to stop: work
-against the refs as last fetched.
+The fetch first, and the base explicitly, because otherwise git cuts the branch
+from wherever the repository happens to be — whatever stale state the shared
+checkout was last left in — and the work starts life behind. The base is
+whatever `git symbolic-ref --short refs/remotes/origin/HEAD` names
+(`origin/main`, `origin/master`); where there is no such ref, `origin/main` if
+the repository has one. Git writes origin/HEAD at clone time and nothing
+maintains it afterwards, so plenty of checkouts have none — and falling back to
+the local `main` there would put you back on whatever the checkout last pulled,
+which is the thing the fetch was for. Only a repository with no origin at all
+falls back to `main`, where the local branch is all there is. A fetch that
+fails is not a reason to stop: work against the refs as last fetched.
 
-`--no-cd` because there is no shell of yours for worktrunk to change the
-directory of — the worktree it makes is somewhere else, and you work there by
-path. `wt list --format json` is what names that path: switch prints for a
-person, and the list is the one machine-readable answer worktrunk gives. Work
-in that directory from here on, explicitly (absolute paths / `git -C`) if it is
-not where this session started.
+If the branch already exists but has no worktree — a slice whose branch was
+pushed and merged, since a squash merge leaves the branch behind — check it out
+instead of cutting it again, and do not consult the base at all:
+`git worktree add <repo>.worktrees/<path slug> slice/<slug>`.
 
-If `wt` is not installed, or the working directory is not a git repository,
+Work in the worktree's directory from here on, explicitly (absolute paths /
+`git -C`) if it is not where this session started.
+
+If git is not installed, or the working directory is not a git repository,
 branch in place instead: those are the launch that worked before there were
 worktrees, and the fallback is to make one branch for the slice in the working
 directory the brief names — off the same fetched base, `git fetch origin` and
-then `git switch -c slice/<slug> <origin's default branch>`. A `wt` that ran and refused is different — something
-is wrong with the repository — so report what it said and stop rather than
-working half-placed.
+then `git switch -c slice/<slug> <origin's default branch>`. A git that ran and
+refused is different — something is wrong with the repository — so report what
+it said and stop rather than working half-placed.
 
 ## 3. Do the work
 
