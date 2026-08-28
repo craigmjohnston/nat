@@ -48,8 +48,17 @@ either end. "Teach /next-slice to work in a worktree" is
 In the working directory the brief names, run:
 
 ```
-wt switch --create slice/<slug> --no-cd
+git fetch origin
+wt switch --create slice/<slug> --no-cd --base <origin's default branch>
 ```
+
+The fetch first, and the base explicitly, because otherwise worktrunk cuts the
+branch from the local default branch — whatever stale state the shared checkout
+was last left in — and the work starts life behind. The base is whatever
+`git symbolic-ref --short refs/remotes/origin/HEAD` names (`origin/main`,
+`origin/master`), and `main` for a repository with no origin at all, where the
+local branch is all there is. A fetch that fails is not a reason to stop: work
+against the refs as last fetched.
 
 `--no-cd` because there is no shell of yours for worktrunk to change the
 directory of — the worktree it makes is somewhere else, and you work there by
@@ -61,7 +70,8 @@ not where this session started.
 If `wt` is not installed, or the working directory is not a git repository,
 branch in place instead: those are the launch that worked before there were
 worktrees, and the fallback is to make one branch for the slice in the working
-directory the brief names. A `wt` that ran and refused is different — something
+directory the brief names — off the same fetched base, `git fetch origin` and
+then `git switch -c slice/<slug> <origin's default branch>`. A `wt` that ran and refused is different — something
 is wrong with the repository — so report what it said and stop rather than
 working half-placed.
 

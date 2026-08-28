@@ -5,17 +5,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
-// worktreeCall is one thing the fake was asked about: the repository, and the
-// branch it was asked about there.
-type worktreeCall struct{ dir, branch string }
+// worktreeCall is one thing the fake was asked about: the repository, the
+// branch it was asked about there, and — for a create — the ref that branch was
+// to be cut from.
+type worktreeCall struct{ dir, branch, base string }
 
 // fakeWorktrees stands in for worktrunk. Nothing it is asked about exists
 // unless the test says so, which is the ordinary case: a slice nobody has
@@ -38,7 +41,7 @@ type fakeWorktrees struct {
 var _ Worktrees = (*fakeWorktrees)(nil)
 
 func (f *fakeWorktrees) Path(dir, branch string) (string, error) {
-	f.looks = append(f.looks, worktreeCall{dir, branch})
+	f.looks = append(f.looks, worktreeCall{dir: dir, branch: branch})
 	if path, ok := f.existing[branch]; ok {
 		return path, nil
 	}
@@ -48,8 +51,8 @@ func (f *fakeWorktrees) Path(dir, branch string) (string, error) {
 	return "", fmt.Errorf("wt list names no worktree for %s", branch)
 }
 
-func (f *fakeWorktrees) Create(dir, branch string) (string, error) {
-	f.creates = append(f.creates, worktreeCall{dir, branch})
+func (f *fakeWorktrees) Create(dir, branch, base string) (string, error) {
+	f.creates = append(f.creates, worktreeCall{dir, branch, base})
 	if f.createErr != nil {
 		return "", f.createErr
 	}
@@ -57,9 +60,24 @@ func (f *fakeWorktrees) Create(dir, branch string) (string, error) {
 }
 
 func (f *fakeWorktrees) Remove(dir, branch string) error {
-	f.removes = append(f.removes, worktreeCall{dir, branch})
+	f.removes = append(f.removes, worktreeCall{dir: dir, branch: branch})
 	return f.removeErr
 }
+
+// fakeRepo stands in for git: what the fetch was asked of, and what origin's
+// HEAD is read as afterwards. The real one never fails at either — a fetch that
+// could not reach the remote is swallowed, and an unreadable HEAD falls back to
+// main — so there is nothing here for a test to make go wrong.
+type fakeRepo struct {
+	base    string
+	fetches []string
+}
+
+var _ Repo = (*fakeRepo)(nil)
+
+func (f *fakeRepo) Fetch(dir string) { f.fetches = append(f.fetches, dir) }
+
+func (f *fakeRepo) Base(string) string { return f.base }
 
 // repoDir is a directory that looks enough like a git checkout for the launch
 // flow's own test: what it reads is whether there is a .git in it.
@@ -106,8 +124,9 @@ func TestSliceBranch(t *testing.T) {
 func TestPlaceAgentCutsAWorktree(t *testing.T) {
 	dir := repoDir(t)
 	w := &fakeWorktrees{}
+	r := &fakeRepo{base: "origin/main"}
 
-	p := placeAgent(w, dir, domain.Slice{Name: "Info view"})
+	p := placeAgent(w, r, dir, domain.Slice{Name: "Info view"})
 
 	if !p.ok {
 		t.Fatalf("placement refused: %s", p.toast)
@@ -124,7 +143,26 @@ func TestPlaceAgentCutsAWorktree(t *testing.T) {
 	if p.toast != "" {
 		t.Errorf("toast = %q, want nothing said about an ordinary launch", p.toast)
 	}
-	if want := []worktreeCall{{dir, "slice/info-view"}}; !equalCalls(w.creates, want) {
+	if want := []worktreeCall{{dir, "slice/info-view", "origin/main"}}; !equalCalls(w.creates, want) {
+		t.Errorf("creates = %v, want %v", w.creates, want)
+	}
+	if want := []string{dir}; !slices.Equal(r.fetches, want) {
+		t.Errorf("fetches = %v, want origin fetched in %v before the cut", r.fetches, want)
+	}
+}
+
+// The base is whatever git answers with, passed through as it stands: a
+// repository with no origin to read falls back to its local default branch,
+// which is all such a checkout has to cut from.
+func TestPlaceAgentCutsFromTheFallbackBase(t *testing.T) {
+	dir := repoDir(t)
+	w := &fakeWorktrees{}
+	r := &fakeRepo{base: git.DefaultBase}
+
+	if p := placeAgent(w, r, dir, domain.Slice{Name: "Info view"}); !p.ok {
+		t.Fatalf("placement refused: %s", p.toast)
+	}
+	if want := []worktreeCall{{dir, "slice/info-view", git.DefaultBase}}; !equalCalls(w.creates, want) {
 		t.Errorf("creates = %v, want %v", w.creates, want)
 	}
 }
@@ -134,8 +172,9 @@ func TestPlaceAgentCutsAWorktree(t *testing.T) {
 func TestPlaceAgentReusesTheBranchesWorktree(t *testing.T) {
 	dir := repoDir(t)
 	w := &fakeWorktrees{existing: map[string]string{"slice/info-view": "/repos/nat-info-view"}}
+	r := &fakeRepo{base: "origin/main"}
 
-	p := placeAgent(w, dir, domain.Slice{Name: "Info view"})
+	p := placeAgent(w, r, dir, domain.Slice{Name: "Info view"})
 
 	if !p.ok || p.dir != "/repos/nat-info-view" {
 		t.Fatalf("placement = %+v, want the worktree the branch already has", p)
@@ -146,6 +185,9 @@ func TestPlaceAgentReusesTheBranchesWorktree(t *testing.T) {
 	if len(w.creates) != 0 {
 		t.Errorf("creates = %v, want the existing worktree left alone", w.creates)
 	}
+	if len(r.fetches) != 0 {
+		t.Errorf("fetches = %v, want nothing fetched for a worktree that already exists", r.fetches)
+	}
 }
 
 // A machine with no worktrunk on it launches the way every agent did before
@@ -154,8 +196,9 @@ func TestPlaceAgentReusesTheBranchesWorktree(t *testing.T) {
 func TestPlaceAgentWithoutWorktrunk(t *testing.T) {
 	dir := repoDir(t)
 	w := &fakeWorktrees{pathErr: worktree.ErrNotInstalled}
+	r := &fakeRepo{base: "origin/main"}
 
-	p := placeAgent(w, dir, domain.Slice{Name: "Info view"})
+	p := placeAgent(w, r, dir, domain.Slice{Name: "Info view"})
 
 	if !p.ok || p.dir != dir {
 		t.Fatalf("placement = %+v, want the shared checkout at %q", p, dir)
@@ -179,8 +222,9 @@ func TestPlaceAgentWithoutWorktrunk(t *testing.T) {
 func TestPlaceAgentWithoutWorktrunkOnTheCreate(t *testing.T) {
 	dir := repoDir(t)
 	w := &fakeWorktrees{createErr: fmt.Errorf("%w: %w", worktree.ErrNotInstalled, errors.New("exec: not found"))}
+	r := &fakeRepo{base: "origin/main"}
 
-	p := placeAgent(w, dir, domain.Slice{Name: "Info view"})
+	p := placeAgent(w, r, dir, domain.Slice{Name: "Info view"})
 
 	if !p.ok || p.dir != dir || p.branch != "" {
 		t.Fatalf("placement = %+v, want the shared checkout at %q", p, dir)
@@ -195,8 +239,9 @@ func TestPlaceAgentWithoutWorktrunkOnTheCreate(t *testing.T) {
 func TestPlaceAgentOutsideARepository(t *testing.T) {
 	dir := t.TempDir()
 	w := &fakeWorktrees{}
+	r := &fakeRepo{base: "origin/main"}
 
-	p := placeAgent(w, dir, domain.Slice{Name: "Info view"})
+	p := placeAgent(w, r, dir, domain.Slice{Name: "Info view"})
 
 	if !p.ok || p.dir != dir || p.branch != "" {
 		t.Fatalf("placement = %+v, want the directory as it stands", p)
@@ -204,8 +249,8 @@ func TestPlaceAgentOutsideARepository(t *testing.T) {
 	if !strings.Contains(p.toast, dir) || !strings.Contains(p.toast, "not a git repository") {
 		t.Errorf("toast = %q, want it to name the directory and why", p.toast)
 	}
-	if len(w.looks)+len(w.creates) != 0 {
-		t.Error("worktrunk should not be asked about a directory that is not a repository")
+	if len(w.looks)+len(w.creates)+len(r.fetches) != 0 {
+		t.Error("neither worktrunk nor git should be asked about a directory that is not a repository")
 	}
 }
 
@@ -215,8 +260,9 @@ func TestPlaceAgentOutsideARepository(t *testing.T) {
 func TestPlaceAgentWhenTheWorktreeCannotBeMade(t *testing.T) {
 	dir := repoDir(t)
 	w := &fakeWorktrees{createErr: &worktree.ExitError{Code: 1, Stderr: "branch 'slice/info-view' already exists\n"}}
+	r := &fakeRepo{base: "origin/main"}
 
-	p := placeAgent(w, dir, domain.Slice{Name: "Info view"})
+	p := placeAgent(w, r, dir, domain.Slice{Name: "Info view"})
 
 	if p.ok {
 		t.Fatalf("placement = %+v, want nothing launched", p)

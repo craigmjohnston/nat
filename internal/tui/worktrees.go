@@ -9,6 +9,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
@@ -20,16 +21,31 @@ import (
 // a relaunched slice wants the worktree it was working in, not a second one.
 type Worktrees interface {
 	Path(dir, branch string) (string, error)
-	Create(dir, branch string) (string, error)
+	Create(dir, branch, base string) (string, error)
 	Remove(dir, branch string) error
 }
 
-// newWorktrees is the edge, held as a variable so the tests can stand in for
-// it: the real one drives the wt binary on PATH.
-var newWorktrees = defaultWorktrees
+// Repo is what a launch needs of git, and worktrunk cannot answer for it: the
+// remote's news, and the branch the remote calls its default. Together they are
+// the ref a fresh worktree is cut from — the tip origin is at now, rather than
+// wherever the shared checkout's own main was last left.
+type Repo interface {
+	Fetch(dir string)
+	Base(dir string) string
+}
+
+// The launch's two edges onto the outside, held as variables so the tests can
+// stand in for them: the real ones drive the wt and git binaries on PATH.
+var (
+	newWorktrees = defaultWorktrees
+	newRepo      = defaultRepo
+)
 
 // defaultWorktrees is the real worktrunk.
 func defaultWorktrees() Worktrees { return worktree.New() }
+
+// defaultRepo is the real git.
+func defaultRepo() Repo { return git.New() }
 
 // branchPrefix is what every slice's branch is named under, matching the
 // convention the project's own branches already follow.
@@ -89,7 +105,15 @@ type placement struct {
 // every other agent and with the user.
 //
 // The branch's existing worktree wins where there is one: a relaunched slice
-// wants its work so far, not an empty second copy of the repository.
+// wants its work so far, not an empty second copy of the repository — and only
+// a fresh cut goes near the remote, since a worktree that already exists is
+// where the last session left it and rebasing it is nobody's business here.
+//
+// A fresh one is cut from the remote's default branch as it stands now: origin
+// is fetched first and [Repo.Base] read after it, so the agent starts from the
+// tip rather than from whatever state the shared checkout's own main was last
+// left in. The fetch is allowed to fail — an offline launch cuts from the refs
+// as last fetched, which is what it would have had anyway.
 //
 // Two ways out fall back to the shared checkout — a machine with no worktrunk
 // on it, and a working directory that is not in a git repository at all — since
@@ -98,7 +122,7 @@ type placement struct {
 // because where the agent is working decides what its branch instructions mean.
 // A worktrunk that ran and refused is different: something is wrong with the
 // repository, and the agent is not launched half-placed on the strength of it.
-func placeAgent(w Worktrees, dir string, s domain.Slice) placement {
+func placeAgent(w Worktrees, r Repo, dir string, s domain.Slice) placement {
 	shared := func(why string) placement {
 		return placement{dir: dir, toast: why + " — the agent runs in the shared checkout.", sev: sevWarning, ok: true}
 	}
@@ -113,7 +137,8 @@ func placeAgent(w Worktrees, dir string, s domain.Slice) placement {
 	} else if errors.Is(err, worktree.ErrNotInstalled) {
 		return shared(err.Error())
 	}
-	path, err := w.Create(dir, branch)
+	r.Fetch(dir)
+	path, err := w.Create(dir, branch, r.Base(dir))
 	if err != nil {
 		if errors.Is(err, worktree.ErrNotInstalled) {
 			return shared(err.Error())

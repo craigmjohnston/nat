@@ -262,7 +262,7 @@ func (f *LaunchForm) save(a *App) tea.Cmd {
 // configured one, so this is that project.
 func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, attach bool) tea.Cmd {
 	project, _ := a.activeProject()
-	return launchAgent(a.launcher, newWorktrees(), agent.PromptContext{
+	return launchAgent(a.launcher, newWorktrees(), newRepo(), agent.PromptContext{
 		Slice:        s,
 		Project:      project,
 		WorkingDir:   expandHome(strings.TrimSpace(workdir)),
@@ -285,14 +285,15 @@ func trimModel(m config.AgentModel) config.AgentModel {
 // claims its own slice, which is what keeps the claim honest when two of them
 // race.
 //
-// The worktree is resolved here rather than by the caller because it runs
-// worktrunk, which cuts a checkout and runs the repository's hooks over it: a
-// launch is already the slow key, and this is the goroutine it is slow in. Its
+// The worktree is resolved here rather than by the caller because it fetches
+// origin and then runs worktrunk, which cuts a checkout and runs the
+// repository's hooks over it: a launch is already the slow key, and this is the
+// goroutine it is slow in — the board redraws throughout. Its
 // answer is the working directory the prompt is written with and the session is
 // started in, so the two never disagree about where the agent is.
-func launchAgent(l AgentLauncher, w Worktrees, c agent.PromptContext, m config.AgentModel, attach bool) tea.Cmd {
+func launchAgent(l AgentLauncher, w Worktrees, r Repo, c agent.PromptContext, m config.AgentModel, attach bool) tea.Cmd {
 	return func() tea.Msg {
-		p := placeAgent(w, c.WorkingDir, c.Slice)
+		p := placeAgent(w, r, c.WorkingDir, c.Slice)
 		if !p.ok {
 			return agentLaunchedMsg{toast: p.toast, sev: p.sev}
 		}

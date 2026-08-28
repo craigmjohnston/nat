@@ -129,25 +129,35 @@ func New() CLI { return CLI{runner: ExecRunner{}} }
 // NewWithRunner returns a CLI that executes through r.
 func NewWithRunner(r Runner) CLI { return CLI{runner: r} }
 
-// Create cuts branch as a new worktree of the repository at dir and returns the
-// path worktrunk put it at.
+// Create cuts branch as a new worktree of the repository at dir, based on base,
+// and returns the path worktrunk put it at.
+//
+// The base is the caller's to resolve and is passed through as it stands
+// (--base), which is what keeps this wrapper thin: what the right ref is — the
+// remote's default branch, and how current it is — is a question about the
+// project rather than about worktrunk. An empty base says nothing at all, and
+// leaves worktrunk to its own answer.
 //
 // The switch is told not to change directory (--no-cd) because there is no
 // shell here for it to change, and to skip approvals (-y) because there is
 // nobody at this end to answer one. The path is read back with a second call
 // rather than parsed out of the first: switch prints for a person, and
 // [CLI.Path] asks worktrunk for JSON.
-func (c CLI) Create(dir, branch string) (string, error) {
-	if _, err := c.runner.Run(dir, Binary, "switch", "--create", branch, "--no-cd", "-y"); err != nil {
+func (c CLI) Create(dir, branch, base string) (string, error) {
+	args := []string{"switch", "--create", branch, "--no-cd", "-y"}
+	if base != "" {
+		args = append(args, "--base", base)
+	}
+	if _, err := c.runner.Run(dir, Binary, args...); err != nil {
 		err = classify(err)
-		logging.Error("could not create a worktree", "dir", dir, "branch", branch, "error", err)
+		logging.Error("could not create a worktree", "dir", dir, "branch", branch, "base", base, "error", err)
 		return "", err
 	}
 	path, err := c.Path(dir, branch)
 	if err != nil {
 		return "", err
 	}
-	logging.Action("worktree created", "dir", dir, "branch", branch, "path", path)
+	logging.Action("worktree created", "dir", dir, "branch", branch, "base", base, "path", path)
 	return path, nil
 }
 
