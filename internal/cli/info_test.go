@@ -72,7 +72,7 @@ func populatedAPI(t *testing.T) *fakeAPI {
 func TestInfoPrintsTheProjectAsMarkdown(t *testing.T) {
 	env, out := testEnv(testConfig(), populatedAPI(t))
 
-	if err := Run(context.Background(), []string{"info"}, env); err != nil {
+	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info: %v", err)
 	}
 
@@ -111,7 +111,7 @@ func TestInfoQueriesOnlyTheSlices(t *testing.T) {
 	api := populatedAPI(t)
 	env, _ := testEnv(testConfig(), api)
 
-	if err := Run(context.Background(), []string{"info"}, env); err != nil {
+	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info: %v", err)
 	}
 
@@ -130,7 +130,7 @@ func TestInfoReportsAFailedSchemaRead(t *testing.T) {
 	boom := errors.New("boom")
 	env, _ := testEnv(testConfig(), &fakeAPI{dataSourceErr: boom})
 
-	err := Run(context.Background(), []string{"info"}, env)
+	err := Run(context.Background(), []string{"info", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "load the slices schema") {
 		t.Fatalf("err = %v, want the schema read reported", err)
 	}
@@ -177,7 +177,7 @@ func dependsOnColumn(dsID string) notion.PropertySchema {
 func TestInfoPrintsAnEmptyProject(t *testing.T) {
 	env, out := testEnv(testConfig(), &fakeAPI{})
 
-	if err := Run(context.Background(), []string{"info"}, env); err != nil {
+	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info: %v", err)
 	}
 
@@ -199,7 +199,7 @@ _none_
 func TestInfoPrintsJSON(t *testing.T) {
 	env, out := testEnv(testConfig(), populatedAPI(t))
 
-	if err := Run(context.Background(), []string{"info", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"info", "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info --json: %v", err)
 	}
 
@@ -229,7 +229,7 @@ func TestInfoPrintsJSON(t *testing.T) {
 func TestInfoJSONHasEmptyListsNotNulls(t *testing.T) {
 	env, out := testEnv(testConfig(), &fakeAPI{})
 
-	if err := Run(context.Background(), []string{"info", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"info", "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info --json: %v", err)
 	}
 
@@ -242,7 +242,7 @@ func TestInfoJSONReportsAFailedWrite(t *testing.T) {
 	env, _ := testEnv(testConfig(), &fakeAPI{})
 	env.Out = failingWriter{}
 
-	err := Run(context.Background(), []string{"info", "--json"}, env)
+	err := Run(context.Background(), []string{"info", "--json", "--project", "project-1"}, env)
 
 	if !errors.Is(err, errWrite) {
 		t.Errorf("err = %v, want %v", err, errWrite)
@@ -253,7 +253,7 @@ func TestInfoMarkdownReportsAFailedWrite(t *testing.T) {
 	env, _ := testEnv(testConfig(), &fakeAPI{})
 	env.Out = failingWriter{}
 
-	err := Run(context.Background(), []string{"info"}, env)
+	err := Run(context.Background(), []string{"info", "--project", "project-1"}, env)
 
 	if !errors.Is(err, errWrite) {
 		t.Errorf("err = %v, want %v", err, errWrite)
@@ -282,7 +282,7 @@ func TestInfoReportsAFailedCall(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			env, out := testEnv(testConfig(), tt.api)
 
-			err := Run(context.Background(), []string{"info"}, env)
+			err := Run(context.Background(), []string{"info", "--project", "project-1"}, env)
 
 			if !errors.Is(err, boom) {
 				t.Fatalf("err = %v, want %v", err, boom)
@@ -303,8 +303,8 @@ func TestInfoRejectsAMisusedCommandLine(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "unknown flag", args: []string{"info", "--nope"}, want: "not defined"},
-		{name: "stray argument", args: []string{"info", "extra"}, want: `unexpected argument "extra"`},
+		{name: "unknown flag", args: []string{"info", "--nope", "--project", "project-1"}, want: "not defined"},
+		{name: "stray argument", args: []string{"info", "extra", "--project", "project-1"}, want: `unexpected argument "extra"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -330,16 +330,14 @@ func TestInfoRejectsAMisusedCommandLine(t *testing.T) {
 	}
 }
 
-// The command reads the project named by the config's active project, whichever
-// of several that is.
-func TestInfoReadsTheActiveProject(t *testing.T) {
+// The command reads the project --project names, whichever of several that is.
+func TestInfoReadsTheProjectItWasGiven(t *testing.T) {
 	cfg := testConfig()
-	cfg.ActiveProjectID = "project-2"
 	cfg.Projects["project-2"] = config.ProjectConfig{Name: "other", SlicesDSID: "other-slices"}
 	api := &fakeAPI{}
 	env, out := testEnv(cfg, api)
 
-	if err := Run(context.Background(), []string{"info"}, env); err != nil {
+	if err := Run(context.Background(), []string{"info", "--project", "project-2"}, env); err != nil {
 		t.Fatalf("info: %v", err)
 	}
 
@@ -374,7 +372,7 @@ func TestInfoOrdersThePlanByItsBoard(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(), api)
 
-	if err := Run(context.Background(), []string{"info"}, env); err != nil {
+	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info: %v", err)
 	}
 
@@ -397,7 +395,7 @@ func TestInfoPrintsThePlanWhenTheOrderCannotBeRead(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(), api)
 
-	if err := Run(context.Background(), []string{"info"}, env); err != nil {
+	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info: %v", err)
 	}
 	if !strings.Contains(out.String(), "- First read — Todo") {
@@ -417,7 +415,7 @@ func TestInfoLeavesAnEmptyMilestoneOutOfTheSlices(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(), api)
 
-	if err := Run(context.Background(), []string{"info"}, env); err != nil {
+	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info: %v", err)
 	}
 

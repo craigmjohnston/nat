@@ -82,7 +82,7 @@ func TestCompleteSliceFinishesTheSlice(t *testing.T) {
 
 	err := Run(context.Background(), []string{
 		"complete-slice", sliceID, "--pr", "https://github.com/x/y/pull/1",
-		"--summary", "Wrote the renderer.",
+		"--summary", "Wrote the renderer.", "--project", "project-1",
 	}, env)
 	if err != nil {
 		t.Fatalf("complete-slice: %v", err)
@@ -152,7 +152,7 @@ func TestCompleteSliceAppendsAParagraphPerChunk(t *testing.T) {
 	env, _ := completeEnv(api)
 
 	err := Run(context.Background(), []string{
-		"complete-slice", sliceID, "--summary", "Wrote the renderer.\r\n\r\n\r\n\r\nFollow-up: style it.\n",
+		"complete-slice", sliceID, "--summary", "Wrote the renderer.\r\n\r\n\r\n\r\nFollow-up: style it.\n", "--project", "project-1",
 	}, env)
 	if err != nil {
 		t.Fatalf("complete-slice: %v", err)
@@ -171,7 +171,7 @@ func TestCompleteSliceReadsTheSummaryFromStdin(t *testing.T) {
 	env, _ := completeEnv(api)
 	env.In = strings.NewReader("  Wrote the renderer.\n")
 
-	if err := Run(context.Background(), []string{"complete-slice", sliceID}, env); err != nil {
+	if err := Run(context.Background(), []string{"complete-slice", sliceID, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("complete-slice: %v", err)
 	}
 
@@ -188,7 +188,7 @@ func TestCompleteSliceBlockedLeavesTheSliceInProgress(t *testing.T) {
 	env, out := completeEnv(api)
 
 	err := Run(context.Background(), []string{
-		"complete-slice", sliceID, "--blocked", "--summary", "The API has no endpoint for it.",
+		"complete-slice", sliceID, "--blocked", "--summary", "The API has no endpoint for it.", "--project", "project-1",
 	}, env)
 	if err != nil {
 		t.Fatalf("complete-slice --blocked: %v", err)
@@ -222,7 +222,7 @@ func TestCompleteSliceBlockedStillRecordsThePR(t *testing.T) {
 
 	err := Run(context.Background(), []string{
 		"complete-slice", sliceID, "--blocked", "--pr", "https://github.com/x/y/pull/1",
-		"--summary", "Review found a design problem.",
+		"--summary", "Review found a design problem.", "--project", "project-1",
 	}, env)
 	if err != nil {
 		t.Fatalf("complete-slice --blocked: %v", err)
@@ -252,7 +252,7 @@ func TestCompleteSliceWritesTheStatusShapeItRead(t *testing.T) {
 	}
 	env, _ := completeEnv(api)
 
-	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done."}, env)
+	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
 	if err != nil {
 		t.Fatalf("complete-slice: %v", err)
 	}
@@ -286,7 +286,7 @@ func TestCompleteSliceAcceptsEveryWayOfNamingTheSlice(t *testing.T) {
 			api.pages["slices-ds"][0].ID = tt.want
 			env, _ := completeEnv(api)
 
-			err := Run(context.Background(), []string{"complete-slice", tt.ref, "--summary", "Done."}, env)
+			err := Run(context.Background(), []string{"complete-slice", tt.ref, "--summary", "Done.", "--project", "project-1"}, env)
 
 			if err != nil {
 				t.Fatalf("complete-slice %s: %v", tt.ref, err)
@@ -302,9 +302,9 @@ func TestCompleteSliceAcceptsEveryWayOfNamingTheSlice(t *testing.T) {
 // the first argument, and the order anyone writes this in puts the slice first.
 func TestCompleteSliceTakesFlagsEitherSideOfTheSlice(t *testing.T) {
 	for _, args := range [][]string{
-		{"complete-slice", sliceID, "--summary", "Done."},
-		{"complete-slice", "--summary", "Done.", sliceID},
-		{"complete-slice", "--summary", "Done.", sliceID, "--pr", "https://github.com/x/y/pull/1"},
+		{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"},
+		{"complete-slice", "--summary", "Done.", sliceID, "--project", "project-1"},
+		{"complete-slice", "--summary", "Done.", sliceID, "--pr", "https://github.com/x/y/pull/1", "--project", "project-1"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			api := completableAPI()
@@ -359,7 +359,7 @@ func TestCompleteSliceRefusesASliceItDoesNotHold(t *testing.T) {
 			api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {tt.page}}}
 			env, out := completeEnv(api)
 
-			err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done."}, env)
+			err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
 
 			if err == nil {
 				t.Fatal("err = nil, want a refusal")
@@ -388,9 +388,9 @@ func TestCompleteSliceNeedsASummary(t *testing.T) {
 		args []string
 		in   string
 	}{
-		{name: "no summary anywhere", args: []string{"complete-slice", sliceID}},
-		{name: "blank flag", args: []string{"complete-slice", sliceID, "--summary", "   "}},
-		{name: "blank stdin", args: []string{"complete-slice", sliceID}, in: "\n\n"},
+		{name: "no summary anywhere", args: []string{"complete-slice", sliceID, "--project", "project-1"}},
+		{name: "blank flag", args: []string{"complete-slice", sliceID, "--summary", "   ", "--project", "project-1"}},
+		{name: "blank stdin", args: []string{"complete-slice", sliceID, "--project", "project-1"}, in: "\n\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -424,7 +424,7 @@ func TestCompleteSliceWithoutAnInput(t *testing.T) {
 	env, _ := completeEnv(api)
 	env.In = nil
 
-	err := Run(context.Background(), []string{"complete-slice", sliceID}, env)
+	err := Run(context.Background(), []string{"complete-slice", sliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no summary given") {
 		t.Fatalf("err = %v, want it to ask for a summary", err)
@@ -471,7 +471,7 @@ func TestCompleteSliceReportsAFailedCall(t *testing.T) {
 			api := tt.api()
 			env, out := completeEnv(api)
 
-			err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done."}, env)
+			err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
 
 			if !errors.Is(err, boom) {
 				t.Fatalf("err = %v, want %v", err, boom)
@@ -493,7 +493,7 @@ func TestCompleteSliceLeavesTheStatusAloneWhenTheNoteFails(t *testing.T) {
 	api.appendErr = errors.New("notion: 500")
 	env, _ := completeEnv(api)
 
-	_ = Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done."}, env)
+	_ = Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
 
 	if len(api.updates) != 0 {
 		t.Errorf("updates = %+v, want none: the summary never landed", api.updates)
@@ -505,7 +505,7 @@ func TestCompleteSliceReportsAnUnreadableSummary(t *testing.T) {
 	env, _ := completeEnv(api)
 	env.In = failingReader{}
 
-	err := Run(context.Background(), []string{"complete-slice", sliceID}, env)
+	err := Run(context.Background(), []string{"complete-slice", sliceID, "--project", "project-1"}, env)
 
 	if !errors.Is(err, errRead) {
 		t.Fatalf("err = %v, want %v", err, errRead)
@@ -529,7 +529,7 @@ func TestCompleteSliceNeedsAnAssignee(t *testing.T) {
 	env, _ := testEnv(testConfig(), api)
 	env.In = strings.NewReader("")
 
-	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done."}, env)
+	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no assignee in the config") {
 		t.Fatalf("err = %v, want it to ask for an assignee", err)
@@ -545,7 +545,7 @@ func TestCompleteSliceReportsUnfinishedSetup(t *testing.T) {
 	env, _ := completeEnv(api)
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 
-	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done."}, env)
+	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "run `nat` once to set it up") {
 		t.Fatalf("err = %v, want it to point at setup", err)
@@ -559,7 +559,7 @@ func TestCompleteSliceReportsAFailedWrite(t *testing.T) {
 	env, _ := completeEnv(completableAPI())
 	env.Out = failingWriter{}
 
-	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done."}, env)
+	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
 
 	if !errors.Is(err, errWrite) {
 		t.Errorf("err = %v, want %v", err, errWrite)
@@ -572,12 +572,12 @@ func TestCompleteSliceRejectsAMisusedCommandLine(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "unknown flag", args: []string{"complete-slice", "--nope", sliceID}, want: "not defined"},
-		{name: "no slice", args: []string{"complete-slice", "--summary", "Done."}, want: "want exactly one slice"},
-		{name: "two slices", args: []string{"complete-slice", sliceID, "s4", "--summary", "Done."}, want: "want exactly one slice"},
+		{name: "unknown flag", args: []string{"complete-slice", "--nope", sliceID, "--project", "project-1"}, want: "not defined"},
+		{name: "no slice", args: []string{"complete-slice", "--summary", "Done.", "--project", "project-1"}, want: "want exactly one slice"},
+		{name: "two slices", args: []string{"complete-slice", sliceID, "s4", "--summary", "Done.", "--project", "project-1"}, want: "want exactly one slice"},
 		{
 			name: "not a slice",
-			args: []string{"complete-slice", "the board", "--summary", "Done."},
+			args: []string{"complete-slice", "the board", "--summary", "Done.", "--project", "project-1"},
 			want: `"the board" is not a slice`,
 		},
 	}
@@ -620,7 +620,7 @@ func TestCompleteSliceClosesOutAProjectWithNoAssigneeColumn(t *testing.T) {
 	}
 	env, out := completeEnv(api)
 
-	if err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done."}, env); err != nil {
+	if err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("complete-slice: %v", err)
 	}
 
@@ -646,7 +646,7 @@ func TestCompleteSliceRefusesATodoSliceOfAProjectWithNoAssigneeColumn(t *testing
 	}
 	env, _ := completeEnv(api)
 
-	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done."}, env)
+	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "is Todo, not In progress") {
 		t.Fatalf("err = %v, want it to name the project's own in-progress status", err)
 	}
@@ -663,7 +663,7 @@ func TestCompleteSliceClosesOutASliceOfAOnePagePlan(t *testing.T) {
 	}
 	env, out := completeEnv(api)
 
-	if err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done."}, env); err != nil {
+	if err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("complete-slice: %v", err)
 	}
 
@@ -686,7 +686,7 @@ func TestCompleteSliceReportsAFailedSchemaRead(t *testing.T) {
 	api.dataSourceErr = errors.New("boom")
 	env, _ := completeEnv(api)
 
-	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done."}, env)
+	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "load the slices schema") {
 		t.Fatalf("err = %v, want the schema read named", err)
 	}
@@ -704,7 +704,7 @@ func TestCompleteSliceHandsBackABranch(t *testing.T) {
 
 	err := Run(context.Background(), []string{
 		"complete-slice", sliceID, "--branch", " slice/render-the-board ",
-		"--summary", "Wrote the renderer.",
+		"--summary", "Wrote the renderer.", "--project", "project-1",
 	}, env)
 	if err != nil {
 		t.Fatalf("complete-slice: %v", err)
@@ -759,7 +759,7 @@ func TestCompleteSliceRecordsAPRDescription(t *testing.T) {
 	err := Run(context.Background(), []string{
 		"complete-slice", sliceID, "--branch", "slice/render-the-board",
 		"--summary", "Wrote the renderer.",
-		"--pr-description", "Render the board\n\nDraws the plan.\n\nWhy: it was a list.",
+		"--pr-description", "Render the board\n\nDraws the plan.\n\nWhy: it was a list.", "--project", "project-1",
 	}, env)
 	if err != nil {
 		t.Fatalf("complete-slice: %v", err)
@@ -790,7 +790,7 @@ func TestCompleteSliceReadsThePRDescriptionFromStdin(t *testing.T) {
 
 	err := Run(context.Background(), []string{
 		"complete-slice", sliceID, "--branch", "slice/render-the-board",
-		"--summary", "Wrote the renderer.", "--pr-description", "-",
+		"--summary", "Wrote the renderer.", "--pr-description", "-", "--project", "project-1",
 	}, env)
 	if err != nil {
 		t.Fatalf("complete-slice: %v", err)
@@ -816,7 +816,7 @@ func TestCompleteSlicePRDescriptionFromStdinNeedsASummaryFlag(t *testing.T) {
 	env.In = strings.NewReader("Render the board\n")
 
 	err := Run(context.Background(), []string{
-		"complete-slice", sliceID, "--branch", "slice/x", "--pr-description", "-",
+		"complete-slice", sliceID, "--branch", "slice/x", "--pr-description", "-", "--project", "project-1",
 	}, env)
 
 	var usage *UsageError
@@ -840,7 +840,7 @@ func TestCompleteSliceReportsAnUnreadablePRDescription(t *testing.T) {
 
 	err := Run(context.Background(), []string{
 		"complete-slice", sliceID, "--branch", "slice/x",
-		"--summary", "Done.", "--pr-description", "-",
+		"--summary", "Done.", "--pr-description", "-", "--project", "project-1",
 	}, env)
 
 	if !errors.Is(err, errRead) {
@@ -871,7 +871,7 @@ func TestCompleteSlicePRDescriptionWithNothingOnStdin(t *testing.T) {
 
 			err := Run(context.Background(), []string{
 				"complete-slice", sliceID, "--branch", "slice/x",
-				"--summary", "Done.", "--pr-description", "-",
+				"--summary", "Done.", "--pr-description", "-", "--project", "project-1",
 			}, env)
 
 			var usage *UsageError
@@ -906,7 +906,7 @@ func TestCompleteSliceRefusesAPRDescriptionWithoutABranch(t *testing.T) {
 			env, out := completeEnv(api)
 
 			args := append([]string{"complete-slice", sliceID, "--summary", "Done.",
-				"--pr-description", "Render the board"}, tt.args...)
+				"--pr-description", "Render the board", "--project", "project-1"}, tt.args...)
 			err := Run(context.Background(), args, env)
 
 			var usage *UsageError
@@ -950,7 +950,7 @@ func TestCompleteSliceRefusesTwoEndingsAtOnce(t *testing.T) {
 			api := completableAPI()
 			env, out := completeEnv(api)
 
-			args := append([]string{"complete-slice", sliceID, "--summary", "Done."}, tt.args...)
+			args := append([]string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, tt.args...)
 			err := Run(context.Background(), args, env)
 
 			var usage *UsageError
@@ -982,7 +982,7 @@ func TestCompleteSliceRefusesABranchWithNoColumnToHoldIt(t *testing.T) {
 	env, out := completeEnv(api)
 
 	err := Run(context.Background(), []string{
-		"complete-slice", sliceID, "--branch", "slice/x", "--summary", "Done.",
+		"complete-slice", sliceID, "--branch", "slice/x", "--summary", "Done.", "--project", "project-1",
 	}, env)
 
 	if err == nil || !strings.Contains(err.Error(), `no Branch text column`) {

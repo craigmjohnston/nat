@@ -37,7 +37,7 @@ func TestReleaseSliceHandsTheSliceBack(t *testing.T) {
 	var nudges int
 	env.Nudge = func() { nudges++ }
 
-	if err := Run(context.Background(), []string{"release-slice", sliceID}, env); err != nil {
+	if err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("release-slice: %v", err)
 	}
 
@@ -98,7 +98,7 @@ func TestReleaseSliceWithoutAnAssigneeColumn(t *testing.T) {
 	delete(api.pages["slices-ds"][0].Properties, notion.PropAssignee)
 	env, _ := releaseEnv(api)
 
-	if err := Run(context.Background(), []string{"release-slice", sliceID}, env); err != nil {
+	if err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("release-slice: %v", err)
 	}
 
@@ -119,7 +119,7 @@ func TestReleaseSliceWritesTheStatusShapeItRead(t *testing.T) {
 	}
 	env, _ := releaseEnv(api)
 
-	if err := Run(context.Background(), []string{"release-slice", sliceID}, env); err != nil {
+	if err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("release-slice: %v", err)
 	}
 
@@ -167,7 +167,7 @@ func TestReleaseSliceRefusals(t *testing.T) {
 			var nudges int
 			env.Nudge = func() { nudges++ }
 
-			err := Run(context.Background(), []string{"release-slice", sliceID}, env)
+			err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env)
 			if err == nil || err.Error() != tt.want {
 				t.Fatalf("error = %v, want %q", err, tt.want)
 			}
@@ -191,10 +191,10 @@ func TestReleaseSliceMisuse(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"no slice", []string{"release-slice"}, "want exactly one slice"},
-		{"two slices", []string{"release-slice", sliceID, sliceID}, "want exactly one slice"},
-		{"not a slice", []string{"release-slice", "the one about the board"}, "is not a slice"},
-		{"an unknown flag", []string{"release-slice", sliceID, "--why"}, "flag provided but not defined"},
+		{"no slice", []string{"release-slice", "--project", "project-1"}, "want exactly one slice"},
+		{"two slices", []string{"release-slice", sliceID, sliceID, "--project", "project-1"}, "want exactly one slice"},
+		{"not a slice", []string{"release-slice", "the one about the board", "--project", "project-1"}, "is not a slice"},
+		{"an unknown flag", []string{"release-slice", sliceID, "--why", "--project", "project-1"}, "flag provided but not defined"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -253,7 +253,7 @@ func TestReleaseSliceFailures(t *testing.T) {
 				tt.env(&env)
 			}
 
-			err := Run(context.Background(), []string{"release-slice", sliceID}, env)
+			err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error = %v, want it to mention %q", err, tt.want)
 			}

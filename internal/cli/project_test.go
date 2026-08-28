@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -57,9 +58,9 @@ func everyCommandConfig() config.Config {
 }
 
 // Every command that acts on a project acts on the one --project names, and on
-// nothing of the active one: the two projects here share no page and no data
-// source, so a command that fell back to the active project would be caught by
-// the ID it reached for.
+// nothing of the other: the two projects here share no page and no data source,
+// so a command that reached for the wrong one would be caught by the ID it
+// reached for.
 func TestEveryProjectScopedCommandTakesAProjectFlag(t *testing.T) {
 	tests := []struct {
 		name string
@@ -108,7 +109,7 @@ func TestEveryProjectScopedCommandTakesAProjectFlag(t *testing.T) {
 			touched := touchedIDs(api)
 			for _, id := range touched {
 				if id == "project-1" || id == "slices-ds" || id == "s1" {
-					t.Errorf("touched %q of the active project; the run reached for %v", id, touched)
+					t.Errorf("touched %q of the other project; the run reached for %v", id, touched)
 				}
 			}
 			if tt.touched != "" && !touches(touched, tt.touched) {
@@ -175,18 +176,60 @@ func TestProjectFlagRefusesAProjectTheConfigDoesNotHold(t *testing.T) {
 	}
 }
 
-// Left off, every command is the active project's, which is what an agent
-// working the project the board is on runs.
-func TestWithoutTheFlagCommandsRunAgainstTheActiveProject(t *testing.T) {
-	api := everyCommandAPI(t)
-	env, _ := testEnv(everyCommandConfig(), api)
+// Left off, the flag has nothing to fall back to: the project the board is on
+// is the board's own, and the user switches it while a session runs, so a
+// command that took it could write into a plan the session never read. Every
+// project-scoped command is refused instead, before anything is read, and the
+// refusal lists what this machine tracks — so the ID to pass is one failed call
+// away.
+func TestWithoutTheFlagEveryProjectScopedCommandIsRefused(t *testing.T) {
+	for _, args := range [][]string{
+		{"info"},
+		{"next-slice"},
+		{"start-slice", otherTodoID},
+		{"milestone-add", "M2: Other"},
+		{"slice-add", "Wire it up", "--milestone", "M1: Other"},
+		{"slice-depends", otherTodoID, "--on", otherWorkingID},
+		{"wishlist"},
+		{"wishlist-clear", "w1"},
+		{"complete-slice", otherWorkingID, "--branch", "slice/ship-it"},
+		{"release-slice", otherWorkingID},
+		{"plan-apply"},
+	} {
+		t.Run(args[0], func(t *testing.T) {
+			api := everyCommandAPI(t)
+			env, out := testEnv(everyCommandConfig(), api)
+			env.In = strings.NewReader(`{"milestones": [{"name": "M2: Other"}]}`)
 
-	if err := Run(context.Background(), []string{"wishlist"}, env); err != nil {
-		t.Fatalf("wishlist: %v", err)
+			err := Run(context.Background(), args, env)
+
+			want := "no project given: pass --project with a project's page ID: " +
+				"it tracks project-1 (nat), project-2 (other)"
+			if err == nil || err.Error() != want {
+				t.Errorf("err = %v, want %q", err, want)
+			}
+			if ids := touchedIDs(api); len(ids) != 0 {
+				t.Errorf("touched %v, want nothing read", ids)
+			}
+			if out.Len() != 0 {
+				t.Errorf("output = %q, want nothing", out.String())
+			}
+		})
 	}
+}
 
-	if !touches(api.blockReads, "project-1") {
-		t.Errorf("read %v, want the active project", api.blockReads)
+// A config that will not load lists no projects rather than replacing the
+// missing flag with a complaint about the file: the flag is missing either way,
+// and a second error would only bury the first.
+func TestWithoutTheFlagAnUnreadableConfigStillNamesTheFlag(t *testing.T) {
+	env, _ := testEnv(everyCommandConfig(), everyCommandAPI(t))
+	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, errors.New("disk gone") }
+
+	err := Run(context.Background(), []string{"info"}, env)
+
+	want := "no project given: pass --project with a project's page ID: it tracks no projects yet"
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
 	}
 }
 
@@ -205,10 +248,10 @@ func TestAProjectScopedCommandNamesTheProjectItRanAgainst(t *testing.T) {
 	}
 }
 
-// The usage text says the flag once, for all of the commands that take it,
+// The usage text says the flag once, for all of the commands that require it,
 // rather than leaving each line to explain it.
 func TestUsageDescribesTheProjectFlag(t *testing.T) {
-	if !strings.Contains(Usage, "Every command below that acts on a project takes --project") {
+	if !strings.Contains(Usage, "Every command below that acts on a project requires --project") {
 		t.Errorf("usage does not describe --project:\n%s", Usage)
 	}
 }

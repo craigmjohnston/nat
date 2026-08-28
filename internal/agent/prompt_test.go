@@ -366,11 +366,10 @@ func natCommands(text string) []string {
 	return cmds
 }
 
-// A command with no --project acts on whatever project the board is on, which
-// the user can switch while the session runs: an agent launched on one project
-// would then claim, hand back or plan into another. Every command a prompt
-// names is pinned to the project of the launch, so there is no bare one left to
-// copy.
+// A command with no --project is refused outright, so a bare one in a prompt is
+// a call an agent would copy and get nowhere with. Every command a prompt names
+// is pinned to the project of the launch, which is the project the session is
+// actually working.
 func TestEveryCommandInAPromptNamesTheProject(t *testing.T) {
 	const name, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
 	for prompt, text := range map[string]string{
@@ -402,7 +401,7 @@ func TestPromptsSayWhyTheProjectIsPinned(t *testing.T) {
 		"plan":  PlanPrompt(testProjectID, name, dir, ""),
 	} {
 		for _, want := range []string{
-			"whatever project the user's board is on",
+			"A command given no project is refused",
 			"    --project " + testProjectID,
 		} {
 			if !strings.Contains(text, want) {

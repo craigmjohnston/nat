@@ -14,24 +14,21 @@ prints the brief, and records the outcome. You never write to Notion yourself.
 
 ## The project, pinned first
 
-Every `nat` command below takes `--project <id>`, naming the project by its
-page ID, and every one you run should carry it. Without it a command acts on
-whichever project the user's board is on — and that is something they switch
-while you work, so an unpinned claim or hand-back can land in a plan you never
-read.
+Every `nat` command below requires `--project <id>`, naming the project by its
+page ID, and every one you run must carry it. A command given none refuses
+outright: there is no project the tracker falls back to, because the one the
+user's board is on is theirs to switch while you work and a claim or hand-back
+that landed there would land in a plan you never read.
 
 Settle the ID once, before anything else:
 
 - If you were launched from the board, your prompt already names it. Use that.
-- Otherwise read it off the active project: `nat info --json` prints it as
-  `project.id`. That one call is the only unpinned command in this skill.
+- Otherwise ask the CLI what this machine tracks: `nat info` with no
+  `--project` refuses and lists every project the config holds, ID and name.
+  Pick the one the user asked for; ask them if more than one could be it.
 - Either way the brief you are about to claim repeats it, as its
   `- Project page ID:` line. Check the two agree: an ID that is not the one the
   slice came from is one you were given for a different project.
-- If the user asked for a project other than the active one, you need its page
-  ID too. `nat info --project <whatever they called it>` refuses an ID the
-  config does not know by listing every project it does know, ID and name —
-  which is where the right one is. They do not need to switch the board.
 
 Everything below writes `<project>` where that ID goes.
 
