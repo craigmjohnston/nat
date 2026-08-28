@@ -403,8 +403,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   cutting a worktree runs the repository's own hooks, and that is the goroutine
   to be slow in. Its
   `Worktrees` seam is the board's whole dealing with worktrees rather than the
-  launch's alone: `Remove` is on it too, for the approve key that takes the
-  worktree away again once the work has become a pull request.
+  launch's alone: `Remove` is on it too, and `landed.go` is what calls it —
+  the worktree of a slice whose pull request has merged, taken away at the
+  transition that news arrives on and swept for again on every plan load. See
+  the domain rule below.
   `approve.go` is `a` on the review screen, the app's one action that reaches
   outside Notion — the domain rule on `Branch` says what it does and why gh's
   failures are toasts. The board has no approve key: approving is offered where
@@ -889,18 +891,36 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   error banner: the branch is still there and the slice is still handed back. A
   pull request opened and then not recorded is the one half-done state there is,
   and running the key again says so rather than opening a second one, since gh
-  refuses a branch that already has one. Once that write has landed the slice's
-  worktree goes with it — `Worktrees.Remove` on the branch the slice was handed
-  back on, in the same repo gh ran in, and only then, since a slice still handed
-  back is one whose work is still being reviewed. The branch is read off the
-  slice rather than derived the way the launch derives it: what the agent pushed
-  is what its worktree is on, whatever it was cut as. A removal that fails — a dirty worktree, a slice that
-  never had one, a repository git will not answer about — is one line in the log and
-  nothing else: the pull request is open and the slice is Done whatever became
-  of the checkout, and git's own rules mean a refusal never costs any
-  work. gh stays in the shared checkout, so the removal cannot strand it, and
-  `R` deliberately keeps its worktree — the work so far is exactly what the
-  next session wants.
+  refuses a branch that already has one. The slice's worktree stays exactly
+  where it is: approving is the review starting rather than the work ending, and
+  a review that asks for one more commit needs the checkout that commit is
+  written in. What takes a worktree away is the merge — see
+  `internal/tui/landed.go`. gh stays in the shared checkout, so nothing there is
+  ever stranded, and `R` deliberately keeps its worktree too — the work so far
+  is exactly what the next session wants.
+- A slice's worktree goes when its pull request merges, and nowhere else
+  (`internal/tui/landed.go`). The removal rides the transition the board already
+  watches: the gh reading finding a Done slice's pull request no longer open,
+  which is the same edge that drops the slice from the Active panel, so it is
+  witnessed exactly once. Because it has to be witnessed, every plan load sweeps
+  the slices already settled (`App.settledSlices`) through the same
+  `Worktrees.Remove`, which is the retry for a removal git refused at the
+  transition; a removal that succeeded — or found no worktree to make — is
+  remembered for the session (`App.worktreeGone`, the same trick as
+  `App.prSettled`) and asked about no more, so the sweep is git nobody pays for
+  twice. Only a Done slice is swept: one in progress whose pull request was
+  closed rather than merged is work going round again, and the checkout it is
+  going round in is what the next session wants. The branch is the one recorded
+  at hand-back rather than the one the launch derives — what the agent pushed is
+  what its worktree is on, whatever it was cut as — falling back to the derived
+  name for a slice finished before there was a `Branch` column. A branch git
+  names no worktree for passes silently, since that is every settled slice on
+  every later sweep; a removal git refuses — a dirty worktree, a repository it
+  will not answer about — is one line in the log and nothing else: the pull
+  request is merged and the slice is Done whatever became of the checkout, and
+  git's own rules mean a refusal never costs any work. A board with no gh to ask
+  observes no merge and so removes nothing, which is the same nothing it did
+  before there was any reading.
 - Slices may carry a `Repo` override; otherwise the project default working
   dir from local config applies.
 - A slice may declare the slices it waits on: `Depends on`, a single-property

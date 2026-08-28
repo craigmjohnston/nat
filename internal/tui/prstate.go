@@ -147,6 +147,11 @@ func readinessOf(status gh.PRStatus) domain.PRReadiness {
 // found had landed. Nothing is toasted and nothing fails: a reading that could
 // not be taken is already logged, and what it would have refined is a state the
 // board is drawing perfectly well without it.
+//
+// A pull request that has just landed is also the end of the work it was cut
+// for, so the worktrees of the slices this reading settled go with it — the
+// same edge that drops those slices from the Active panel, witnessed once. See
+// [App.removeLanded].
 func (a *App) prStateRead(msg prStateMsg) tea.Cmd {
 	a.prReading = false
 	a.prState = msg.state
@@ -160,5 +165,5 @@ func (a *App) prStateRead(msg prStateMsg) tea.Cmd {
 	// The board's rows are drawn into a viewport and cached there, so a reading
 	// that is not synced never reaches the screen.
 	a.syncBoard()
-	return nil
+	return a.removeLanded(msg.settled)
 }
