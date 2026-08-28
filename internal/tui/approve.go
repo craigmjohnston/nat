@@ -101,14 +101,14 @@ func (a *App) startApprove(s domain.Slice, dir string) tea.Cmd {
 //
 // Everything it can fail on is dropped after a line in the log: a worktree with
 // uncommitted changes in it, a slice whose agent never had one, a machine with
-// no worktrunk at all. None of them is worth a toast — the approve has already
+// no git at all. None of them is worth a toast — the approve has already
 // happened and cannot be taken back — and none of them loses any work, since
-// worktrunk refuses a dirty worktree outright and deletes the branch only where
+// git refuses a dirty worktree outright and deletes the branch only where
 // it has been merged. gh was run in the shared checkout, so nothing here can
 // pull the ground out from under it either.
 func removeWorktree(w Worktrees, dir, branch string) {
 	if err := w.Remove(dir, branch); err != nil {
-		// worktrunk's own failure is already in the log; this is the decision
+		// git's own failure is already in the log; this is the decision
 		// taken about it.
 		logging.Action("left the slice's worktree in place", "dir", dir, "branch", branch, "error", err)
 	}
