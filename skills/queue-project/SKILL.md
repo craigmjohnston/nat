@@ -11,7 +11,7 @@ conventions its agents will read, and the milestones and slices under it.
 
 Use this when there is no project for the work yet. If the work belongs to a
 project the tracker already has, use `/queue-work` instead: it files milestones
-and slices into the active project and creates nothing else.
+and slices into a project already there and creates nothing else.
 
 You draft everything in chat first. You write **only after the user explicitly
 approves**, and only through the `nat` CLI.
@@ -23,21 +23,20 @@ Two things settle before you draft:
 - **The repo the plan is for.** Ordinarily the checkout this session is in —
   that is where its agents will work. Say which directory you mean, and use an
   absolute path.
-- **Whether `nat` is set up on this machine at all.** `nat info` on a machine
-  that has never been onboarded says so; if it does, stop and tell the user to
-  run the board (`nat`) once, since creating a project needs the workspace the
-  onboarding picked.
-
-`nat info` also prints whatever project is currently active. That project is
-not the one you are creating and nothing you do here changes it — read it only
-to be sure the work really has no home yet.
+- **Whether `nat` is set up on this machine at all.** `nat info` with no
+  `--project` refuses and lists the projects the config holds, ID and name.
+  Read that list twice over: it is how you check the work really has no home
+  yet, and a machine that tracks nothing at all has never been onboarded — stop
+  there and tell the user to run the board (`nat`) once, since creating a
+  project needs the workspace the onboarding picked.
 
 That setup read, and `project-create` itself, are the only `nat` commands here
-that name no project: one because there is no project yet to name, the other
+that name no project: one because it is asking what the projects are, the other
 because it makes one. Every command after step 3 carries `--project <id>` with
-the ID `project-create` printed, and so should any other `nat` command you run
-about the new project. Without it a command acts on
-whichever project the user's board is on, which is never the one you just made.
+the ID `project-create` printed, and so must any other `nat` command you run
+about the new project. A command given none refuses outright: there is
+no project the tracker falls back to, and in particular not whichever project
+the user's board is on, which is never the one you just made.
 
 ## Drafting rules
 
@@ -126,10 +125,9 @@ every slice: anything true of one slice alone belongs in that slice's brief.
    PLAN
    ```
 
-   `--project` is what makes this land in the new project rather than in
-   whatever project is active — `project-create` deliberately does not switch
-   the active project, so **without `--project` the whole plan goes into the
-   wrong one**. Pass the page ID it printed.
+   `--project` is what makes this land in the new project, and **without it
+   `plan-apply` files nothing at all** — it is refused before it
+   writes anything. Pass the page ID `project-create` printed.
 
    `milestone` names one of the plan's own new milestones by name. `description`,
    `repo` and `depends_on` are optional; nothing else is, and any other key is
@@ -145,9 +143,9 @@ every slice: anything true of one slice alone belongs in that slice's brief.
    > The new project is not the active one. Open the board (`nat`) and press
    > `P` to switch to it.
 
-   Say it plainly — until they do, a `nat` command left unpinned still means
-   the old project: that is what `--project` is for, and what every command in
-   step 4 carried.
+   Say it plainly — the board is the only thing there is a switch for, and
+   until they use it the new project is reached by `--project` alone, which is
+   what every command in step 4 carried.
 
 ## Guardrails
 
@@ -156,8 +154,8 @@ every slice: anything true of one slice alone belongs in that slice's brief.
   milestone, not one slice.
 - `project-create` creates a project every time it is run. If you are unsure
   whether you already created one, check the URL it printed rather than running
-  it again — a bare `nat info` cannot see it, since the new project is not the
-  active one.
+  it again — or run `nat info` bare and read the list of projects it refuses
+  with, which the new one is now in.
 - `plan-apply` only ever creates, and if a run fails partway it says what it
   had already created. Trim those out of the plan before running it again
   rather than filing them twice.

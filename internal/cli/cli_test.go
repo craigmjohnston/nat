@@ -470,19 +470,19 @@ func TestRunRejectsAnEmptyCommandLine(t *testing.T) {
 	}
 }
 
-func TestActiveProjectReportsAFailedConfigRead(t *testing.T) {
+func TestNamedProjectReportsAFailedConfigRead(t *testing.T) {
 	want := errors.New("disk gone")
 	env, _ := testEnv(config.Config{}, &fakeAPI{})
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, want }
 
-	err := Run(context.Background(), []string{"info"}, env)
+	err := Run(context.Background(), []string{"info", "--project", "project-1"}, env)
 
 	if !errors.Is(err, want) {
 		t.Errorf("err = %v, want %v", err, want)
 	}
 }
 
-func TestActiveProjectReportsUnfinishedSetup(t *testing.T) {
+func TestNamedProjectReportsUnfinishedSetup(t *testing.T) {
 	tests := []struct {
 		name  string
 		cfg   config.Config
@@ -490,12 +490,11 @@ func TestActiveProjectReportsUnfinishedSetup(t *testing.T) {
 		want  string
 	}{
 		{name: "no config file", found: false, want: "run `nat` once to set it up"},
-		{name: "no active project", cfg: config.Config{}, found: true, want: "no active project"},
 		{
-			name:  "active project missing from the config",
-			cfg:   config.Config{ActiveProjectID: "gone"},
+			name:  "a config file that tracks nothing",
+			cfg:   config.Config{},
 			found: true,
-			want:  "is not in the config file",
+			want:  "no project project-1 in the config file: it tracks no projects yet",
 		},
 	}
 	for _, tt := range tests {
@@ -503,7 +502,7 @@ func TestActiveProjectReportsUnfinishedSetup(t *testing.T) {
 			env, _ := testEnv(config.Config{}, &fakeAPI{})
 			env.Load = func() (config.Config, bool, error) { return tt.cfg, tt.found, nil }
 
-			err := Run(context.Background(), []string{"info"}, env)
+			err := Run(context.Background(), []string{"info", "--project", "project-1"}, env)
 
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want it to mention %q", err, tt.want)

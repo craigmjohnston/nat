@@ -25,11 +25,12 @@ var getwd = os.Getwd
 // a session that has just workshopped a plan runs before `nat plan-apply` files
 // that plan — the one step of the workflow that otherwise needed the TUI.
 //
-// It deliberately does not make the new project the active one. There is no
-// project switch among the headless commands, so a command that quietly moved
-// the active project would point every later `nat info`, `nat next-slice` and
-// `nat plan-apply` at an empty plan; the board's own switch picker is how a new
-// project gets opened, and it reads the config this wrote.
+// It deliberately does not make the new project the active one. The active
+// project is the board's alone — every headless command names the project it
+// works on — so moving it from here would move the board out from under the
+// user for no gain; the board's own switch picker is how a new project gets
+// opened, and it reads the config this wrote. Until then `--project` with the
+// ID this printed is how a session reaches the project it just made.
 func projectCreate(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("project-create", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)

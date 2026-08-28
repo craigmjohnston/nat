@@ -78,19 +78,21 @@ func (e Env) nudged() {
 // Usage is the help text, listing every way the binary can be run.
 const Usage = `nat — track project work in Notion
 
-Every command below that acts on a project takes --project, naming one of the
-config file's projects by its page ID; without it they act on the active
-project, the one the board is on. setup and project-create take no such flag:
-neither acts on a project already tracked.
+Every command below that acts on a project requires --project, naming one of
+the config file's projects by its page ID; run one without it to be told the
+projects this machine tracks. There is no fallback to the project the board is
+on: that is the board's own, and the user moves it while an agent works. setup
+and project-create take no such flag: neither acts on a project already
+tracked.
 
 usage:
   nat                 open the board
   nat setup [--json]  install the agent skills into ~/.claude/skills
-  nat info [--json] [--project ID]
+  nat info [--json] --project ID
                       print the project's conventions, milestones and slices
-  nat next-slice [--json] [--project ID]
+  nat next-slice [--json] --project ID
                       claim the next Todo slice and print its brief
-  nat start-slice <slice> [--json] [--project ID]
+  nat start-slice <slice> [--json] --project ID
                       claim one named Todo slice, by URL or ID, and print its
                       brief
   nat project-create <name> [--repo DIR] [--description TEXT|-] [--json]
@@ -98,28 +100,28 @@ usage:
                       local config and write the description as its page body;
                       --description - reads it from stdin. The board is left on
                       whatever project it was on
-  nat milestone-add <name> [--json] [--project ID]
+  nat milestone-add <name> [--json] --project ID
                       add a Queued milestone at the end of the plan
   nat slice-add <title> --milestone <name> [--description TEXT|-]
                         [--repo DIR] [--depends-on <slice>]... [--json]
-                        [--project ID]
+                        --project ID
                       add a Todo slice under a milestone, its description
                       written on the page; --description - reads it from stdin
-  nat slice-depends <slice> [--on <slice>]... [--clear] [--json] [--project ID]
+  nat slice-depends <slice> [--on <slice>]... [--clear] [--json] --project ID
                       record the slices a slice waits on, by URL or ID; --clear
                       drops what is there first, so on its own it frees the
                       slice
-  nat wishlist [--json] [--project ID]
+  nat wishlist [--json] --project ID
                       print the project's pending wishlist items, with their
                       block IDs under --json
-  nat wishlist-clear <block-id>... [--project ID]
+  nat wishlist-clear <block-id>... --project ID
                       trash exactly the named wishlist items, leaving the
                       section with one empty bullet for the next idea
-  nat plan-apply [FILE] [--json] [--project ID]
+  nat plan-apply [FILE] [--json] --project ID
                       create a whole plan of milestones and slices from a JSON
                       document, read from FILE or stdin
   nat complete-slice <slice> [--branch NAME] [--pr URL] [--summary TEXT]
-                      [--pr-description TEXT|-] [--blocked] [--project ID]
+                      [--pr-description TEXT|-] [--blocked] --project ID
                       close out a slice you claimed: with --branch, handed back
                       for review — the branch recorded, the slice left in
                       progress, and the board's approve key what opens the pull
@@ -129,7 +131,7 @@ usage:
                       and --pr-description records beside it the text the board
                       opens the pull request with: its first line the title,
                       the rest the body
-  nat release-slice <slice> [--project ID]
+  nat release-slice <slice> --project ID
                       hand a slice you claimed back to the plan: Todo and
                       unassigned, its brief and any branch left as they are, for
                       when the session working it ended without finishing it
@@ -199,51 +201,41 @@ func Run(ctx context.Context, args []string, env Env) error {
 	}
 }
 
-// activeProject resolves the project a command works on when it was not told
-// which: the one local config points at. A missing config file is reported as
-// the setup that has not happened yet rather than as a parse failure, because
-// that is what it is.
-func (e Env) activeProject() (config.Config, string, config.ProjectConfig, error) {
-	cfg, found, err := e.Load()
-	if err != nil {
-		return cfg, "", config.ProjectConfig{}, err
-	}
-	if !found {
-		return cfg, "", config.ProjectConfig{}, fmt.Errorf("no configuration yet: run `nat` once to set it up")
-	}
-	if cfg.ActiveProjectID == "" {
-		return cfg, "", config.ProjectConfig{}, fmt.Errorf("no active project: open the board with `nat` and pick one")
-	}
-	p, ok := cfg.Projects[cfg.ActiveProjectID]
-	if !ok {
-		return cfg, "", config.ProjectConfig{}, fmt.Errorf("active project %s is not in the config file", cfg.ActiveProjectID)
-	}
-	return cfg, cfg.ActiveProjectID, p, nil
-}
-
 // projectFlag registers --project on a command's flag set. Every command that
 // acts on a project already tracked takes it, and every one of them takes it
-// the same way — one of the config file's projects by its page ID, and the
-// active project when it is left off, so an agent working the project the board
-// is on need say nothing at all.
+// the same way — one of the config file's projects by its page ID — and every
+// one of them requires it.
 func projectFlag(flags *flag.FlagSet) *string {
 	return flags.String("project", "",
-		"the project to act on, by page `ID`; the active project when absent")
+		"the project to act on, by page `ID` (required)")
 }
 
-// projectFor resolves the project a command works on when it can be told which:
-// the one an --project flag names, or the active one when it was not given. It
-// is the same project either way — a ProjectConfig read from the same file —
-// so everything downstream of it is unchanged by which of the two answered.
+// projectFor resolves the project a command works on: the one its --project
+// flag names, and nothing at all when it names none. There is no fallback to
+// the active project, because the active project is the board's own idea of
+// where the user is looking and the user moves it while an agent works — a
+// headless write that took it would land in whichever project the board had got
+// to rather than the one the session was launched on.
 //
 // The project's page ID comes back beside its config entry, since a command
-// that reads the project page itself — its conventions, its wishlist — can no
-// longer take that from the active project.
+// that reads the project page itself — its conventions, its wishlist — has no
+// other source for it.
 func (e Env) projectFor(id string) (config.Config, string, config.ProjectConfig, error) {
 	if strings.TrimSpace(id) == "" {
-		return e.activeProject()
+		return e.noProject()
 	}
 	return e.namedProject(strings.TrimSpace(id))
+}
+
+// noProject is the refusal a project-scoped command gives when it was told no
+// project at all. It lists what the config file does hold, so the ID to pass is
+// one failed call away rather than something to go and read the config for; a
+// config that will not load or is not there yet lists nothing, since the flag is
+// missing either way and a second complaint would only bury the first.
+func (e Env) noProject() (config.Config, string, config.ProjectConfig, error) {
+	cfg, _, _ := e.Load()
+	return cfg, "", config.ProjectConfig{}, fmt.Errorf(
+		"no project given: pass --project with a project's page ID%s", knownProjects(cfg))
 }
 
 // namedProject resolves one project of the config file by its ID — a key of the

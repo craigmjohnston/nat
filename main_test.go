@@ -537,7 +537,7 @@ func TestMainExplainsHowToLogInFromACommand(t *testing.T) {
 	writeConfig(t, `{"active_project_id":"p1","projects":{"p1":{"name":"nat"}}}`)
 	var out, errOut bytes.Buffer
 	stubProcess(t, config.StaticToken(""), strings.NewReader(""), &out, &errOut)
-	stubCommand(t, []string{"info"}, stubAPI{err: config.ErrNtnNotLoggedIn})
+	stubCommand(t, []string{"info", "--project", "p1"}, stubAPI{err: config.ErrNtnNotLoggedIn})
 
 	main()
 

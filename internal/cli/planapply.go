@@ -30,8 +30,8 @@ import (
 // and a command that adds work has no business editing work already filed.
 //
 // Where the plan lands is the command line's rather than the document's:
-// --project names a project of the config file and the active project is where
-// it goes without one. A document says what work there is and not whose it is,
+// --project names a project of the config file, and a run that names none
+// applies nothing. A document says what work there is and not whose it is,
 // which is what lets one drafted plan be applied to whichever project the
 // session is planning for.
 func planApply(ctx context.Context, args []string, env Env) error {
@@ -57,9 +57,8 @@ func planApply(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	// Which project the plan lands in is the one thing --project changes: the
-	// project resolved here is read, migrated and written exactly as the active
-	// one is, so a plan applied elsewhere is applied the same way.
+	// Which project the plan lands in is the one thing --project decides, and
+	// everything past this line is the same whichever project it named.
 	_, _, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err

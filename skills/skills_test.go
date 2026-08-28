@@ -236,12 +236,10 @@ func fencedNatCommands(text string) []string {
 	return cmds
 }
 
-// A command with no --project acts on whichever project the board is on, which
-// the user switches while a session runs: a skill that ran one bare would claim,
-// hand back or file a whole plan somewhere it never read. Every command a skill
-// spells out for copying names its project, bar the two that cannot — the one
-// read that finds the ID in the first place, and `project-create`, which is what
-// makes the project there is no ID for yet.
+// A command with no --project is refused outright, so a skill that spelled one
+// out bare would have an agent copy a call that cannot run at all. Every command
+// a skill gives for copying names its project, bar the one that cannot —
+// `project-create`, which is what makes the project there is no ID for yet.
 func TestSkillCommandsNameTheProject(t *testing.T) {
 	for _, skill := range []string{"next-slice", "queue-project", "queue-work"} {
 		body, err := fs.ReadFile(FS(), skill+"/SKILL.md")
@@ -250,7 +248,7 @@ func TestSkillCommandsNameTheProject(t *testing.T) {
 			continue
 		}
 		for _, cmd := range fencedNatCommands(string(body)) {
-			if strings.HasPrefix(cmd, "nat project-create") || cmd == "nat info --json" {
+			if strings.HasPrefix(cmd, "nat project-create") {
 				continue
 			}
 			if !strings.Contains(cmd, "--project ") {
@@ -261,27 +259,26 @@ func TestSkillCommandsNameTheProject(t *testing.T) {
 }
 
 // The commands a skill names in prose are run just as the fenced ones are, and
-// the pin is worth explaining as well as applying: an agent that knows why puts
-// --project on the calls it makes of its own accord.
+// the pin is worth explaining as well as applying: an agent that knows there is
+// nothing to fall back to puts --project on the calls it makes of its own
+// accord rather than waiting to be refused.
 func TestSkillsPinTheProjectTheyWereGiven(t *testing.T) {
 	for skill, want := range map[string][]string{
 		"next-slice": {
 			"nat next-slice --project <project>",
 			"nat start-slice <URL|ID> --project <project>",
-			"nat info --json",
-			"whichever project the user's board is on",
+			"no project the tracker falls back to",
 		},
 		"queue-work": {
 			"nat info --project <project>",
 			"nat plan-apply --project <project>",
 			"nat wishlist --project <project>",
 			"nat wishlist-clear <block-id>... --project <project>",
-			"nat info --json",
-			"whichever project the user's board is on",
+			"no project the tracker falls back to",
 		},
 		"queue-project": {
 			"nat plan-apply --project <the id project-create printed>",
-			"whichever project the user's board is on",
+			"no project the tracker falls back to",
 		},
 	} {
 		body, err := fs.ReadFile(FS(), skill+"/SKILL.md")

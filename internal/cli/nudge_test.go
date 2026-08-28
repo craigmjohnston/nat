@@ -25,7 +25,7 @@ func TestMutatingCommandsNudgeTheBoardOnce(t *testing.T) {
 	}{
 		{
 			name: "next-slice",
-			args: []string{"next-slice"},
+			args: []string{"next-slice", "--project", "project-1"},
 			env: func(t *testing.T) Env {
 				env, _ := testEnv(testClaimConfig(), claimableAPI(t))
 				return env
@@ -33,7 +33,7 @@ func TestMutatingCommandsNudgeTheBoardOnce(t *testing.T) {
 		},
 		{
 			name: "start-slice",
-			args: []string{"start-slice", startSliceID},
+			args: []string{"start-slice", startSliceID, "--project", "project-1"},
 			env: func(t *testing.T) Env {
 				env, _ := testEnv(testClaimConfig(), startableAPI(t))
 				return env
@@ -41,7 +41,7 @@ func TestMutatingCommandsNudgeTheBoardOnce(t *testing.T) {
 		},
 		{
 			name: "complete-slice",
-			args: []string{"complete-slice", sliceID, "--summary", "Rendered the board."},
+			args: []string{"complete-slice", sliceID, "--summary", "Rendered the board.", "--project", "project-1"},
 			env: func(t *testing.T) Env {
 				env, _ := completeEnv(completableAPI())
 				return env
@@ -49,7 +49,7 @@ func TestMutatingCommandsNudgeTheBoardOnce(t *testing.T) {
 		},
 		{
 			name: "milestone-add",
-			args: []string{"milestone-add", "M4: Polish"},
+			args: []string{"milestone-add", "M4: Polish", "--project", "project-1"},
 			env: func(t *testing.T) Env {
 				env, _ := testEnv(testConfig(), plannedAPI(addedMilestoneID))
 				return env
@@ -57,7 +57,7 @@ func TestMutatingCommandsNudgeTheBoardOnce(t *testing.T) {
 		},
 		{
 			name: "slice-add",
-			args: []string{"slice-add", "Frame the board", "--milestone", "M2: Board"},
+			args: []string{"slice-add", "Frame the board", "--milestone", "M2: Board", "--project", "project-1"},
 			env: func(t *testing.T) Env {
 				env, _ := testEnv(testConfig(), plannedAPI(addedSliceID))
 				return env
@@ -65,7 +65,7 @@ func TestMutatingCommandsNudgeTheBoardOnce(t *testing.T) {
 		},
 		{
 			name: "plan-apply",
-			args: []string{"plan-apply"},
+			args: []string{"plan-apply", "--project", "project-1"},
 			env: func(t *testing.T) Env {
 				env, _ := testEnv(testConfig(), planAPI(3))
 				env.In = strings.NewReader(samplePlan)
@@ -95,7 +95,7 @@ func TestARefusedCommandDoesNotNudge(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(), api)
 	nudges := nudgeCounter(&env)
 
-	err := Run(context.Background(), []string{"milestone-add", "M1: Client"}, env)
+	err := Run(context.Background(), []string{"milestone-add", "M1: Client", "--project", "project-1"}, env)
 
 	if err == nil {
 		t.Fatal("milestone-add should refuse a name the plan already holds")
@@ -113,7 +113,7 @@ func TestAClaimThatLandsNudgesThoughTheBriefFails(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(), api)
 	nudges := nudgeCounter(&env)
 
-	err := Run(context.Background(), []string{"start-slice", startSliceID}, env)
+	err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env)
 
 	if err == nil {
 		t.Fatal("start-slice should report the brief it could not read")
@@ -133,7 +133,7 @@ func TestAHalfAppliedPlanStillNudges(t *testing.T) {
 	env.In = strings.NewReader(samplePlan)
 	nudges := nudgeCounter(&env)
 
-	err := Run(context.Background(), []string{"plan-apply"}, env)
+	err := Run(context.Background(), []string{"plan-apply", "--project", "project-1"}, env)
 
 	if err == nil {
 		t.Fatal("plan-apply should report the create that failed")
@@ -151,7 +151,7 @@ func TestAPlanThatWroteNothingDoesNotNudge(t *testing.T) {
 	env.In = strings.NewReader(samplePlan)
 	nudges := nudgeCounter(&env)
 
-	err := Run(context.Background(), []string{"plan-apply"}, env)
+	err := Run(context.Background(), []string{"plan-apply", "--project", "project-1"}, env)
 
 	if err == nil {
 		t.Fatal("plan-apply should report the schema write that failed")

@@ -12,19 +12,16 @@ after the user explicitly approves**, and only through the `nat` CLI.
 ## Setup
 
 Settle which project you are planning into before you read anything, because
-every `nat` command takes `--project <id>` — the project's page ID — and every
-one you run should carry it. Without it a command acts on
-whichever project the user's board is on, and that is something they switch
-while you work: an unpinned `plan-apply` files the whole plan into the wrong
-project.
+every `nat` command requires `--project <id>` — the project's page ID — and
+every one you run must carry it. A command given none refuses outright: there
+is no project the tracker falls back to, since the one the user's board is on
+is theirs to switch while you work and an unpinned `plan-apply` would have
+filed the whole plan wherever it had got to.
 
 - If you were launched from the board, your prompt already names the ID.
-- Otherwise read it off the active project: `nat info --json` prints it as
-  `project.id`. That one call is the only unpinned command in this skill.
-- If the user meant a project other than the active one, `--project` is how you
-  reach it — you just need its page ID. `nat info --project <whatever they
-  called it>` refuses an ID the config does not know by listing every project it
-  does know, ID and name. They do not need to switch the board.
+- Otherwise ask the CLI what this machine tracks: `nat info` with no
+  `--project` refuses and lists every project the config holds, ID and name.
+  Pick the one the user means; ask them if more than one could be it.
 
 Then run `nat info --project <project>` to see what you are planning into: its
 conventions, its milestones in plan order, and its slices grouped under them.

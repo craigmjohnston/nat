@@ -37,14 +37,15 @@ func planAPI(creations int) *fakeAPI {
 	return api
 }
 
-// runPlan applies a plan piped in on stdin.
+// runPlan applies a plan piped in on stdin to the config's one project, which
+// is the project every test below is about bar the handful that name another.
 func runPlan(t *testing.T, api *fakeAPI, doc string, args ...string) (string, error) {
 	t.Helper()
-	return runPlanWith(t, testConfig(), api, doc, args...)
+	return runPlanWith(t, testConfig(), api, doc, append([]string{"--project", "project-1"}, args...)...)
 }
 
 // runPlanWith is the same against a config of the test's own, for the plans
-// that are applied somewhere other than the active project.
+// that name a project themselves.
 func runPlanWith(t *testing.T, cfg config.Config, api *fakeAPI, doc string, args ...string) (string, error) {
 	t.Helper()
 	env, out := testEnv(cfg, api)
@@ -54,7 +55,8 @@ func runPlanWith(t *testing.T, cfg config.Config, api *fakeAPI, doc string, args
 }
 
 // twoProjectConfig is the config file with a second project in it, which is
-// what --project is for: the active one, and another the same machine tracks.
+// what --project is for: two projects the same machine tracks, and a command
+// that must say which of them it means.
 func twoProjectConfig(id string) config.Config {
 	cfg := testConfig()
 	cfg.Projects[id] = config.ProjectConfig{
@@ -261,7 +263,7 @@ func TestPlanApplyReadsAPlanFile(t *testing.T) {
 	api := planAPI(1)
 	env, out := testEnv(testConfig(), api)
 
-	if err := Run(context.Background(), []string{"plan-apply", path}, env); err != nil {
+	if err := Run(context.Background(), []string{"plan-apply", path, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("plan-apply: %v", err)
 	}
 
@@ -358,8 +360,8 @@ func TestPlanApplyRejectsAMisusedCommandLine(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "two plan files", args: []string{"plan-apply", "a.json", "b.json"}, want: "given 2"},
-		{name: "unknown flag", args: []string{"plan-apply", "--nope"}, want: "not defined"},
+		{name: "two plan files", args: []string{"plan-apply", "a.json", "b.json", "--project", "project-1"}, want: "given 2"},
+		{name: "unknown flag", args: []string{"plan-apply", "--nope", "--project", "project-1"}, want: "not defined"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -385,7 +387,7 @@ func TestPlanApplyRejectsAMisusedCommandLine(t *testing.T) {
 func TestPlanApplyRejectsHavingNothingToRead(t *testing.T) {
 	env, _ := testEnv(testConfig(), planAPI(1))
 
-	err := Run(context.Background(), []string{"plan-apply"}, env)
+	err := Run(context.Background(), []string{"plan-apply", "--project", "project-1"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -396,7 +398,7 @@ func TestPlanApplyRejectsHavingNothingToRead(t *testing.T) {
 func TestPlanApplyReportsAnUnreadableFile(t *testing.T) {
 	env, _ := testEnv(testConfig(), planAPI(1))
 
-	err := Run(context.Background(), []string{"plan-apply", filepath.Join(t.TempDir(), "gone.json")}, env)
+	err := Run(context.Background(), []string{"plan-apply", filepath.Join(t.TempDir(), "gone.json"), "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "read the plan") {
 		t.Errorf("err = %v, want it to report the unreadable plan", err)
@@ -404,14 +406,14 @@ func TestPlanApplyReportsAnUnreadableFile(t *testing.T) {
 }
 
 // The plan parses before the config is read, so an unfinished setup is still
-// what a plan-apply run with no active project is told about.
+// what a plan-apply run on a machine with no config is told about.
 func TestPlanApplyReportsUnfinishedSetup(t *testing.T) {
 	api := planAPI(1)
 	env, _ := testEnv(testConfig(), api)
 	env.In = strings.NewReader(samplePlan)
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 
-	err := Run(context.Background(), []string{"plan-apply"}, env)
+	err := Run(context.Background(), []string{"plan-apply", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "run `nat` once to set it up") {
 		t.Errorf("err = %v, want it to report the unfinished setup", err)
@@ -459,7 +461,7 @@ func textSpan(content string) map[string]any {
 }
 
 func TestPlanApplyReportsAFailedWrite(t *testing.T) {
-	for _, args := range [][]string{{"plan-apply"}, {"plan-apply", "--json"}} {
+	for _, args := range [][]string{{"plan-apply", "--project", "project-1"}, {"plan-apply", "--json", "--project", "project-1"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			env, _ := testEnv(testConfig(), planAPI(1))
 			env.In = strings.NewReader(`{"milestones": [{"name": "M4"}]}`)
@@ -686,7 +688,7 @@ func TestPlanApplyWritesTheRequestsNotionExpects(t *testing.T) {
 	  "slices": [{"title": "Frame the board", "milestone": "M3: Agents", "description": "Draw a border."}]
 	}`)
 
-	if err := Run(context.Background(), []string{"plan-apply"}, env); err != nil {
+	if err := Run(context.Background(), []string{"plan-apply", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("plan-apply: %v", err)
 	}
 
@@ -746,7 +748,7 @@ func TestPlanApplyNamesAPageWithNoURLByItsID(t *testing.T) {
 }
 
 // --project files the plan in the project it names: every write goes to that
-// project's Slices table, and the active project is not read or written at all.
+// project's Slices table, and the other project is not read or written at all.
 func TestPlanApplyFilesThePlanInTheNamedProject(t *testing.T) {
 	api := twoProjectAPI(2)
 	api.pages = map[string][]notion.Page{
@@ -810,24 +812,6 @@ func TestPlanApplyFindsTheNamedProjectByAnUndashedID(t *testing.T) {
 	}
 }
 
-// Without the flag the plan lands where it always did.
-func TestPlanApplyWithoutTheFlagFilesInTheActiveProject(t *testing.T) {
-	api := twoProjectAPI(1)
-
-	out, err := runPlanWith(t, twoProjectConfig("project-2"), api,
-		`{"slices": [{"title": "Do it", "milestone": "M2: Board"}]}`)
-	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
-	}
-
-	if !strings.Contains(out, "to nat.\n") {
-		t.Errorf("output =\n%s\nwant the active project reported", out)
-	}
-	if len(api.creates) != 1 || api.creates[0].parent != notion.DataSourceParent("slices-ds") {
-		t.Errorf("creates = %+v, want the active project's data source", api.creates)
-	}
-}
-
 // An ID the config does not know is refused by name, with what it does know
 // listed, and nothing at all is written.
 func TestPlanApplyRefusesAProjectTheConfigDoesNotKnow(t *testing.T) {
@@ -848,7 +832,7 @@ func TestPlanApplyRefusesAProjectTheConfigDoesNotKnow(t *testing.T) {
 
 // A config tracking nothing yet says so rather than listing an empty list.
 func TestPlanApplyRefusesAProjectWhenTheConfigTracksNone(t *testing.T) {
-	cfg := config.Config{ActiveProjectID: "project-1"}
+	cfg := config.Config{}
 
 	_, err := runPlanWith(t, cfg, planAPI(0), samplePlan, "--project", "project-1")
 	want := "no project project-1 in the config file: it tracks no projects yet"

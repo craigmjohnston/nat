@@ -54,12 +54,13 @@ type PromptContext struct {
 // pull request would put the work past the review the board's approve key is,
 // and `gh pr create` on a branch that already has one refuses anyway.
 //
-// Every one of those commands names the project it acts on with --project.
-// Without it a command acts on whatever project the board is on, which is a
-// thing the user changes: switch projects while an agent runs and its writes
-// would land in the plan it was never launched from. The prompt pins them to
-// the project of the launch instead, since that is the one the slice is in and
-// it cannot change under a session.
+// Every one of those commands names the project it acts on with --project,
+// which they require: a command given none is refused rather than falling back
+// to the project the board is on, since the user changes that while an agent
+// runs. The prompt pins them to the project of the launch, which is the one the
+// slice is in and cannot change under a session, and says why, since the
+// commands an agent runs of its own accord are the ones no template can spell
+// out.
 func Prompt(c PromptContext) string {
 	var b strings.Builder
 
@@ -88,10 +89,10 @@ func Prompt(c PromptContext) string {
 	b.WriteString("say so rather than working the slice anyway.\n\n")
 	b.WriteString("Every `nat` command below names the project this slice is in:\n\n")
 	fmt.Fprintf(&b, "    --project %s\n\n", c.ProjectID)
-	b.WriteString("Put it on any other one you run too. Without it a command acts on\n")
-	b.WriteString("whatever project the user's board is on, which they can switch while\n")
-	b.WriteString("you work — and your writes would land in a plan you were never\n")
-	b.WriteString("launched on.\n")
+	b.WriteString("Put it on any other one you run too.\n")
+	b.WriteString("A command given no project is refused: there is nothing for it to fall\n")
+	b.WriteString("back to, and in particular not the project the user's board is on,\n")
+	b.WriteString("which they can switch while you work.\n")
 
 	b.WriteString("\n## Then read\n\n")
 	b.WriteString("1. The brief the command printed — the slice, then the conventions that\n")
@@ -251,9 +252,9 @@ func planBody(projectID, projectName, workingDir string) *strings.Builder {
 	b.WriteString("in plan order, and the slices under them (`--json` to parse it instead).\n\n")
 	b.WriteString("Every `nat` command you run names the project you are planning:\n\n")
 	fmt.Fprintf(b, "    --project %s\n\n", projectID)
-	b.WriteString("Without it a command acts on whatever project the user's board is on,\n")
-	b.WriteString("which they can switch while you work — and a plan written into the\n")
-	b.WriteString("wrong project is the one mistake none of the rules below would catch.\n")
+	b.WriteString("A command given no project is refused: there is nothing for it to fall\n")
+	b.WriteString("back to, and in particular not the project the user's board is on,\n")
+	b.WriteString("which they can switch while you work.\n")
 
 	b.WriteString("\n## Applying changes\n\n")
 	b.WriteString("Draft in conversation first, and write only after the user explicitly\n")

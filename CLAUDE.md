@@ -79,9 +79,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   launch carries in (`PromptContext.ProjectID`, and the first argument of
   `PlanPrompt`/`WishlistPrompt`; a `ProjectConfig` cannot supply it, being the
   value of the config's Projects map rather than the key). An unpinned command
-  acts on whatever project the board is on, which is a thing the user changes
-  while an agent runs, so a session launched on one project would go on writing
-  wherever the board went. The prompts say so as well as doing it, since the
+  is refused outright now that the active-project fallback is gone, and that
+  refusal is the point: a fallback would have had a session launched on one
+  project go on writing wherever the board got to. The prompts say so as well
+  as doing it, since the
   commands an agent runs of its own accord are the ones no template can spell
   out. The golden files hold the exact commands, and one test walks every
   template for a `nat` invocation naming no project.
@@ -262,10 +263,11 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   in, since a project is usually created from inside its own checkout). Whether
   the Slices table carries an `Assignee` column follows the configured user, the
   one thing there is to go on where the board would ask. It leaves
-  `ActiveProjectID` exactly as it was: there is no project switch among the
-  headless commands, so moving it would point every later `info`, `next-slice`
-  and `plan-apply` at an empty plan, and the board's switch picker — which reads
-  the config this wrote — is how the new project gets opened. It is also the one
+  `ActiveProjectID` exactly as it was: the active project is the board's alone,
+  and moving it from a headless command would move the board out from under the
+  user. The board's switch picker — which reads the config this wrote — is how
+  the new project gets opened, and `--project <the id it printed>` is how a
+  session reaches it in the meantime. It is also the one
   command that writes local config, which is why `Env` has a `Save` at all,
   and the one-off additions
   `nat milestone-add <name>` (Queued, at the end of the plan) and
@@ -302,21 +304,26 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   the binary does when given a subcommand. Run before even the tmux check and
   with no TUI code in the path: a command prints to the terminal it was typed in
   and exits.
-  Every command that acts on a project already tracked takes `--project`, naming
-  one by a key of the config's `Projects` map — the project page's own ID —
-  which is what lets a session work a project other than the one the board
+  Every command that acts on a project already tracked requires `--project`,
+  naming one by a key of the config's `Projects` map — the project page's own
+  ID — which is what lets a session work a project other than the one the board
   happens to be on without editing local config. `setup` and `project-create`
-  are the two that do not: neither acts on a project already there. The flag
-  stays optional, and a command that names none is the active project's, which
-  is what every agent launched from the board runs.
-  `Env.projectFor` is the one place that is decided, `activeProject` and
-  `namedProject` its two halves: the ID is matched as written and then
+  are the two that do not: neither acts on a project already there. There is no
+  fallback behind the flag. The active project is the board's own idea of where
+  the user is looking, and the user moves it while an agent runs, so a headless
+  write that took it would land in whichever project the board had got to rather
+  than the one the session was launched on — which is exactly the failure a
+  command run anonymously used to be one keystroke away from.
+  `Env.projectFor` is the one place that is decided, `noProject` and
+  `namedProject` its two halves: an ID is matched as written and then
   normalised, since one copied out of a page URL has no dashes, and a project
   the config does not know is refused by name — with what it does know listed —
-  before anything is read or written. All three answer with the project's page
-  ID beside its config entry, because a command that reads the project page
-  itself, its conventions or its wishlist, can no longer take that from
-  `ActiveProjectID`.
+  before anything is read or written; no ID at all is refused with that same
+  listing (`knownProjects`), so the ID to pass is one failed call away rather
+  than something to go and read the config file for. Both answer with the
+  project's page ID beside its config entry, because a command that reads the
+  project page itself, its conventions or its wishlist, can no longer take that
+  from `ActiveProjectID` — which nothing outside `internal/tui` reads at all.
 - `internal/vterm/` — a child command run on a PTY (`x/xpty`) with its screen
   mirrored by an in-process VT emulator (`x/vt`), so the TUI can draw an agent
   as a widget instead of joining its tmux pane. `Start` returns a `Session`:
@@ -755,8 +762,9 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   that make a project to file the draft into: `project-create` with the brief on
   stdin, then `plan-apply --project <the id it printed>`. That order and that
   flag are the whole of it, and are what its tests hold to — `plan-apply` run
-  without `--project` would file a whole plan into whichever project happens to
-  be active, since `project-create` deliberately leaves the active one alone.
+  without `--project` files nothing at all, since `project-create` deliberately
+  leaves the active project alone and there is nothing else for the flag to
+  fall back to.
   Which is also why the skill ends by sending the user to the board's switch
   picker rather than the CLI, which has no switch of its own: the last step is
   the user's, and `--project` is how a skill reaches a project that is not the
@@ -764,12 +772,14 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   Every `nat` command a skill spells out carries `--project`, exactly as the
   prompts do and for the same reason. A skill is not launched with an ID the
   way a prompt is written with one, so each says where its own comes from — the
-  launch prompt where there was one, and otherwise the `project.id` of one
-  `nat info --json`, the single unpinned read the pinning is bootstrapped from.
-  /queue-project's other exception is `project-create` itself, which is what
+  launch prompt where there was one, and otherwise the refusal a project-scoped
+  command gives when it is run bare, which lists every project this machine
+  tracks with its ID. That listing is the whole bootstrap: there is no read to
+  leave unpinned, because there is no unpinned read.
+  /queue-project's exception is `project-create` itself, which is what
   makes the project there is no ID for yet. The rest is held to by tests over
   the embedded files: a command inside a fenced block names a project or it is
-  one an agent would copy and run bare.
+  one an agent would copy and find refused.
 
 ## Domain rules
 

@@ -72,7 +72,7 @@ func TestNextSliceClaimsAndPrintsTheBrief(t *testing.T) {
 	api := claimableAPI(t)
 	env, out := testEnv(testClaimConfig(), api)
 
-	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
+	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
 	}
 
@@ -107,7 +107,7 @@ func TestNextSliceClaimsTheRightSlice(t *testing.T) {
 	api := claimableAPI(t)
 	env, _ := testEnv(testClaimConfig(), api)
 
-	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
+	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
 	}
 
@@ -145,7 +145,7 @@ func TestNextSliceWritesTheStatusShapeItRead(t *testing.T) {
 	api.dataSources = map[string]notion.DataSource{"slices-ds": ds}
 	env, _ := testEnv(testClaimConfig(), api)
 
-	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
+	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
 	}
 
@@ -161,7 +161,7 @@ func TestNextSliceQueriesOnlyTheSlices(t *testing.T) {
 	api := claimableAPI(t)
 	env, _ := testEnv(testClaimConfig(), api)
 
-	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
+	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
 	}
 
@@ -183,7 +183,7 @@ func TestNextSliceHonoursARepoOverride(t *testing.T) {
 	}
 	env, out := testEnv(testClaimConfig(), api)
 
-	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
+	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
 	}
 
@@ -199,7 +199,7 @@ func TestNextSlicePrintsEmptyBodies(t *testing.T) {
 	api.blocksByID = nil
 	env, out := testEnv(testClaimConfig(), api)
 
-	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
+	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
 	}
 
@@ -217,7 +217,7 @@ func TestNextSliceOmitsAMissingURL(t *testing.T) {
 	cfg.Projects["project-1"] = config.ProjectConfig{Name: "nat", SlicesDSID: "slices-ds"}
 	env, out := testEnv(cfg, api)
 
-	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
+	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
 	}
 
@@ -230,7 +230,7 @@ func TestNextSlicePrintsJSON(t *testing.T) {
 	api := claimableAPI(t)
 	env, out := testEnv(testClaimConfig(), api)
 
-	if err := Run(context.Background(), []string{"next-slice", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"next-slice", "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice --json: %v", err)
 	}
 
@@ -281,7 +281,7 @@ func TestNextSliceReportsAClaimThatDidNotStick(t *testing.T) {
 			api.mangle = tt.mangle
 			env, out := testEnv(testClaimConfig(), api)
 
-			err := Run(context.Background(), []string{"next-slice"}, env)
+			err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
 
 			if err == nil || !strings.Contains(err.Error(), "did not stick") {
 				t.Fatalf("err = %v, want a refused claim", err)
@@ -342,7 +342,7 @@ func TestNextSliceReportsAFailedCall(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			env, out := testEnv(testClaimConfig(), tt.api(t))
 
-			err := Run(context.Background(), []string{"next-slice"}, env)
+			err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
 
 			if !errors.Is(err, boom) {
 				t.Fatalf("err = %v, want %v", err, boom)
@@ -363,7 +363,7 @@ func TestNextSliceNeedsAnAssignee(t *testing.T) {
 	api := claimableAPI(t)
 	env, out := testEnv(testConfig(), api)
 
-	err := Run(context.Background(), []string{"next-slice"}, env)
+	err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no assignee in the config") {
 		t.Fatalf("err = %v, want it to ask for an assignee", err)
@@ -382,7 +382,7 @@ func TestNextSliceReportsUnfinishedSetup(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(), api)
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 
-	err := Run(context.Background(), []string{"next-slice"}, env)
+	err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "run `nat` once to set it up") {
 		t.Fatalf("err = %v, want it to point at setup", err)
@@ -393,7 +393,7 @@ func TestNextSliceReportsUnfinishedSetup(t *testing.T) {
 }
 
 func TestNextSliceReportsAFailedWrite(t *testing.T) {
-	for _, args := range [][]string{{"next-slice"}, {"next-slice", "--json"}} {
+	for _, args := range [][]string{{"next-slice", "--project", "project-1"}, {"next-slice", "--json", "--project", "project-1"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			env, _ := testEnv(testClaimConfig(), claimableAPI(t))
 			env.Out = failingWriter{}
@@ -413,8 +413,8 @@ func TestNextSliceRejectsAMisusedCommandLine(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "unknown flag", args: []string{"next-slice", "--nope"}, want: "not defined"},
-		{name: "stray argument", args: []string{"next-slice", "extra"}, want: `unexpected argument "extra"`},
+		{name: "unknown flag", args: []string{"next-slice", "--nope", "--project", "project-1"}, want: "not defined"},
+		{name: "stray argument", args: []string{"next-slice", "extra", "--project", "project-1"}, want: `unexpected argument "extra"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -453,7 +453,7 @@ func TestNextSliceClaimsAProjectWithNoAssigneeColumn(t *testing.T) {
 	}
 	env, out := testEnv(testClaimConfig(), api)
 
-	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
+	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
 	}
 
@@ -481,7 +481,7 @@ func TestNextSliceTakesTheTopSliceOfTheBoard(t *testing.T) {
 	api.order = map[string][]string{"slices-ds": {"s1", "s2", "s5", "s4", "s3"}}
 	env, _ := testEnv(testClaimConfig(), api)
 
-	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
+	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
 	}
 
@@ -500,7 +500,7 @@ func TestNextSliceWorksWithoutAReadableBoardOrder(t *testing.T) {
 	api.orderErr = errors.New("notion: 500")
 	env, _ := testEnv(testClaimConfig(), api)
 
-	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
+	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
 	}
 
@@ -553,7 +553,7 @@ func TestNextSliceReportsNothingToClaim(t *testing.T) {
 			}
 			env, out := testEnv(testClaimConfig(), api)
 
-			err := Run(context.Background(), []string{"next-slice"}, env)
+			err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
 
 			if err == nil {
 				t.Fatal("err = nil, want a refusal")
@@ -583,7 +583,7 @@ func TestNextSlicePassesOverASliceOutsideThePlan(t *testing.T) {
 	}
 	env, _ := testEnv(testClaimConfig(), api)
 
-	err := Run(context.Background(), []string{"next-slice"}, env)
+	err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no unclaimed Todo slice") {
 		t.Fatalf("err = %v, want the orphan passed over", err)
@@ -600,7 +600,7 @@ func TestNextSliceReportsAFailedSchemaRead(t *testing.T) {
 	api.dataSourceErr = errors.New("boom")
 	env, _ := testEnv(testClaimConfig(), api)
 
-	err := Run(context.Background(), []string{"next-slice"}, env)
+	err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "load the slices schema") {
 		t.Fatalf("err = %v, want the schema read named", err)
 	}
@@ -646,7 +646,7 @@ func TestNextSliceMigratesAnOldProject(t *testing.T) {
 	}
 	env, out := testEnv(testClaimConfig(), api)
 
-	if err := Run(context.Background(), []string{"next-slice"}, env); err != nil {
+	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
 	}
 

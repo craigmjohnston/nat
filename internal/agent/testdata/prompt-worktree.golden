@@ -23,10 +23,10 @@ Every `nat` command below names the project this slice is in:
 
     --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
 
-Put it on any other one you run too. Without it a command acts on
-whatever project the user's board is on, which they can switch while
-you work — and your writes would land in a plan you were never
-launched on.
+Put it on any other one you run too.
+A command given no project is refused: there is nothing for it to fall
+back to, and in particular not the project the user's board is on,
+which they can switch while you work.
 
 ## Then read
 

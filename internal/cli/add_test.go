@@ -89,7 +89,7 @@ func TestMilestoneAddAppendsAnOptionWhereThePlanIsOne(t *testing.T) {
 	api := plannedAPI(addedMilestoneID)
 	env, out := testEnv(testConfig(), api)
 
-	if err := Run(context.Background(), []string{"milestone-add", "M4: Polish"}, env); err != nil {
+	if err := Run(context.Background(), []string{"milestone-add", "M4: Polish", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("milestone-add: %v", err)
 	}
 
@@ -121,7 +121,7 @@ func TestMilestoneAddAppendsToAnEmptyOptionList(t *testing.T) {
 	api.dataSources["slices-ds"] = selectMilestoneSlicesDS()
 	env, out := testEnv(testConfig(), api)
 
-	if err := Run(context.Background(), []string{"milestone-add", "M1: Client"}, env); err != nil {
+	if err := Run(context.Background(), []string{"milestone-add", "M1: Client", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("milestone-add: %v", err)
 	}
 
@@ -142,7 +142,7 @@ func TestMilestoneAddRefusesAnOptionThePlanAlreadyHas(t *testing.T) {
 			api := plannedAPI(addedMilestoneID)
 			env, out := testEnv(testConfig(), api)
 
-			err := Run(context.Background(), []string{"milestone-add", name}, env)
+			err := Run(context.Background(), []string{"milestone-add", name, "--project", "project-1"}, env)
 
 			if err == nil {
 				t.Fatal("err = nil, want a refusal")
@@ -173,7 +173,7 @@ func TestMilestoneAddRefusesAColumnItCannotWrite(t *testing.T) {
 	api.dataSources["slices-ds"] = ds
 	env, _ := testEnv(testConfig(), api)
 
-	err := Run(context.Background(), []string{"milestone-add", "M4: Polish"}, env)
+	err := Run(context.Background(), []string{"milestone-add", "M4: Polish", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "can only be added to it in Notion") {
 		t.Fatalf("err = %v, want the column reported as unwritable", err)
@@ -189,7 +189,7 @@ func TestMilestoneAddRefusesAColumnItCannotWrite(t *testing.T) {
 func TestMilestoneAddPrintsJSON(t *testing.T) {
 	env, out := testEnv(testConfig(), plannedAPI(addedMilestoneID))
 
-	if err := Run(context.Background(), []string{"milestone-add", "M4: Polish", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"milestone-add", "M4: Polish", "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("milestone-add: %v", err)
 	}
 
@@ -213,7 +213,7 @@ func TestMilestoneAddReportsAFailedSchemaWrite(t *testing.T) {
 	api.schemaUpdateErr = boom
 	env, out := testEnv(testConfig(), api)
 
-	err := Run(context.Background(), []string{"milestone-add", "M4: Polish"}, env)
+	err := Run(context.Background(), []string{"milestone-add", "M4: Polish", "--project", "project-1"}, env)
 
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want %v", err, boom)
@@ -232,7 +232,7 @@ func TestMilestoneAddReportsAFailedSchemaRead(t *testing.T) {
 	api.dataSourceErr = boom
 	env, _ := testEnv(testConfig(), api)
 
-	err := Run(context.Background(), []string{"milestone-add", "M4: Polish"}, env)
+	err := Run(context.Background(), []string{"milestone-add", "M4: Polish", "--project", "project-1"}, env)
 
 	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "load the slices schema") {
 		t.Fatalf("err = %v, want the schema read reported", err)
@@ -246,7 +246,7 @@ func TestSliceAddNamesTheMilestoneWhereThePlanIsOptions(t *testing.T) {
 	api := plannedAPI(addedSliceID)
 	env, out := testEnv(testConfig(), api)
 
-	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "m2: bOARD"}, env)
+	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "m2: bOARD", "--project", "project-1"}, env)
 
 	if err != nil {
 		t.Fatalf("slice-add: %v", err)
@@ -274,7 +274,7 @@ func TestSliceAddRefusesAnUnknownOption(t *testing.T) {
 	api := plannedAPI(addedSliceID)
 	env, _ := testEnv(testConfig(), api)
 
-	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "M4: Polish"}, env)
+	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "M4: Polish", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), `no milestone named "M4: Polish"`) {
 		t.Fatalf("err = %v, want the milestone refused", err)
@@ -293,10 +293,10 @@ func TestMilestoneAddRejectsAMisusedCommandLine(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "no name", args: []string{"milestone-add"}, want: "given 0"},
-		{name: "two names", args: []string{"milestone-add", "M4", "M5"}, want: "given 2"},
-		{name: "blank name", args: []string{"milestone-add", "   "}, want: "name is empty"},
-		{name: "unknown flag", args: []string{"milestone-add", "M4", "--nope"}, want: "not defined"},
+		{name: "no name", args: []string{"milestone-add", "--project", "project-1"}, want: "given 0"},
+		{name: "two names", args: []string{"milestone-add", "M4", "M5", "--project", "project-1"}, want: "given 2"},
+		{name: "blank name", args: []string{"milestone-add", "   ", "--project", "project-1"}, want: "name is empty"},
+		{name: "unknown flag", args: []string{"milestone-add", "M4", "--nope", "--project", "project-1"}, want: "not defined"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -348,7 +348,7 @@ func TestMilestoneAddReportsAFailedCall(t *testing.T) {
 			tt.fail(api)
 			env, out := testEnv(testConfig(), api)
 
-			err := Run(context.Background(), []string{"milestone-add", "M4"}, env)
+			err := Run(context.Background(), []string{"milestone-add", "M4", "--project", "project-1"}, env)
 
 			if !errors.Is(err, boom) {
 				t.Fatalf("err = %v, want %v", err, boom)
@@ -371,7 +371,7 @@ func TestMilestoneAddNeedsAConfiguredProject(t *testing.T) {
 	env, _ := testEnv(testConfig(), api)
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 
-	err := Run(context.Background(), []string{"milestone-add", "M4"}, env)
+	err := Run(context.Background(), []string{"milestone-add", "M4", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "run `nat` once to set it up") {
 		t.Fatalf("err = %v, want the setup reported", err)
@@ -380,7 +380,7 @@ func TestMilestoneAddNeedsAConfiguredProject(t *testing.T) {
 }
 
 func TestMilestoneAddReportsAFailedWrite(t *testing.T) {
-	for _, args := range [][]string{{"milestone-add", "M4"}, {"milestone-add", "M4", "--json"}} {
+	for _, args := range [][]string{{"milestone-add", "M4", "--project", "project-1"}, {"milestone-add", "M4", "--json", "--project", "project-1"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			env, _ := testEnv(testConfig(), plannedAPI(addedMilestoneID))
 			env.Out = failingWriter{}
@@ -399,7 +399,7 @@ func TestSliceAddFilesATodoSliceUnderTheNamedMilestone(t *testing.T) {
 	env, out := testEnv(testConfig(), api)
 
 	err := Run(context.Background(), []string{"slice-add", "Render the board",
-		"--milestone", "M2: Board", "--description", "Draw the groups.\n\nThen stop."}, env)
+		"--milestone", "M2: Board", "--description", "Draw the groups.\n\nThen stop.", "--project", "project-1"}, env)
 
 	if err != nil {
 		t.Fatalf("slice-add: %v", err)
@@ -463,7 +463,7 @@ func TestSliceAddResolvesTheMilestoneByName(t *testing.T) {
 			api := plannedAPI(addedSliceID)
 			env, _ := testEnv(testConfig(), api)
 
-			err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", ref}, env)
+			err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", ref, "--project", "project-1"}, env)
 
 			if err != nil {
 				t.Fatalf("slice-add: %v", err)
@@ -520,7 +520,7 @@ func TestSliceAddRefusesAMilestoneItCannotResolve(t *testing.T) {
 			}
 			env, out := testEnv(testConfig(), api)
 
-			err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", tt.ref}, env)
+			err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", tt.ref, "--project", "project-1"}, env)
 
 			if err == nil {
 				t.Fatal("err = nil, want a refusal")
@@ -551,7 +551,7 @@ func TestSliceAddReadsTheDescriptionFromStdin(t *testing.T) {
 	env.In = strings.NewReader("  Draw the groups.  \n")
 
 	err := Run(context.Background(), []string{"slice-add", "Render the board",
-		"--milestone", "M2: Board", "--description", "-"}, env)
+		"--milestone", "M2: Board", "--description", "-", "--project", "project-1"}, env)
 
 	if err != nil {
 		t.Fatalf("slice-add: %v", err)
@@ -573,7 +573,7 @@ func TestSliceAddFilesASliceWithNoDescription(t *testing.T) {
 			env, _ := testEnv(testConfig(), api)
 
 			err := Run(context.Background(), []string{"slice-add", "Render the board",
-				"--milestone", "M2: Board", "--description", description}, env)
+				"--milestone", "M2: Board", "--description", description, "--project", "project-1"}, env)
 
 			if err != nil {
 				t.Fatalf("slice-add: %v", err)
@@ -592,7 +592,7 @@ func TestSliceAddReportsAnUnreadableDescription(t *testing.T) {
 	env.In = failingReader{}
 
 	err := Run(context.Background(), []string{"slice-add", "Render the board",
-		"--milestone", "M2: Board", "--description", "-"}, env)
+		"--milestone", "M2: Board", "--description", "-", "--project", "project-1"}, env)
 
 	if !errors.Is(err, errRead) {
 		t.Fatalf("err = %v, want %v", err, errRead)
@@ -607,7 +607,7 @@ func TestSliceAddRejectsAPipedDescriptionWithNoInput(t *testing.T) {
 	env, _ := testEnv(testConfig(), api)
 
 	err := Run(context.Background(), []string{"slice-add", "Render the board",
-		"--milestone", "M2: Board", "--description", "-"}, env)
+		"--milestone", "M2: Board", "--description", "-", "--project", "project-1"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -623,7 +623,7 @@ func TestSliceAddHonoursARepoOverride(t *testing.T) {
 	env, out := testEnv(testConfig(), api)
 
 	err := Run(context.Background(), []string{"slice-add", "Render the board",
-		"--milestone", "M2: Board", "--repo", "  /tmp/other  "}, env)
+		"--milestone", "M2: Board", "--repo", "  /tmp/other  ", "--project", "project-1"}, env)
 
 	if err != nil {
 		t.Fatalf("slice-add: %v", err)
@@ -645,7 +645,7 @@ func TestSliceAddOmitsAnUnknownWorkingDirectory(t *testing.T) {
 	cfg.Projects["project-1"] = project
 	env, out := testEnv(cfg, plannedAPI(addedSliceID))
 
-	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "M2: Board"}, env)
+	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "M2: Board", "--project", "project-1"}, env)
 
 	if err != nil {
 		t.Fatalf("slice-add: %v", err)
@@ -657,8 +657,8 @@ func TestSliceAddOmitsAnUnknownWorkingDirectory(t *testing.T) {
 
 func TestSliceAddPrintsJSON(t *testing.T) {
 	for _, args := range [][]string{
-		{"slice-add", "Render the board", "--milestone", "M2: Board", "--json"},
-		{"slice-add", "--milestone", "M2: Board", "--json", "Render the board"},
+		{"slice-add", "Render the board", "--milestone", "M2: Board", "--json", "--project", "project-1"},
+		{"slice-add", "--milestone", "M2: Board", "--json", "Render the board", "--project", "project-1"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			env, out := testEnv(testConfig(), plannedAPI(addedSliceID))
@@ -689,12 +689,12 @@ func TestSliceAddRejectsAMisusedCommandLine(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "no title", args: []string{"slice-add", "--milestone", "M2: Board"}, want: "given 0"},
-		{name: "two titles", args: []string{"slice-add", "one", "two", "--milestone", "M2: Board"}, want: "given 2"},
-		{name: "blank title", args: []string{"slice-add", "  ", "--milestone", "M2: Board"}, want: "title is empty"},
-		{name: "no milestone", args: []string{"slice-add", "Render the board"}, want: "pass --milestone"},
-		{name: "blank milestone", args: []string{"slice-add", "Render the board", "--milestone", " "}, want: "pass --milestone"},
-		{name: "unknown flag", args: []string{"slice-add", "Render the board", "--nope"}, want: "not defined"},
+		{name: "no title", args: []string{"slice-add", "--milestone", "M2: Board", "--project", "project-1"}, want: "given 0"},
+		{name: "two titles", args: []string{"slice-add", "one", "two", "--milestone", "M2: Board", "--project", "project-1"}, want: "given 2"},
+		{name: "blank title", args: []string{"slice-add", "  ", "--milestone", "M2: Board", "--project", "project-1"}, want: "title is empty"},
+		{name: "no milestone", args: []string{"slice-add", "Render the board", "--project", "project-1"}, want: "pass --milestone"},
+		{name: "blank milestone", args: []string{"slice-add", "Render the board", "--milestone", " ", "--project", "project-1"}, want: "pass --milestone"},
+		{name: "unknown flag", args: []string{"slice-add", "Render the board", "--nope", "--project", "project-1"}, want: "not defined"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -745,7 +745,7 @@ func TestSliceAddReportsAFailedCall(t *testing.T) {
 			tt.fail(api)
 			env, out := testEnv(testConfig(), api)
 
-			err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "M2: Board"}, env)
+			err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "M2: Board", "--project", "project-1"}, env)
 
 			if !errors.Is(err, boom) {
 				t.Fatalf("err = %v, want %v", err, boom)
@@ -768,7 +768,7 @@ func TestSliceAddNeedsAConfiguredProject(t *testing.T) {
 	env, _ := testEnv(testConfig(), api)
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 
-	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "M2: Board"}, env)
+	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "M2: Board", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "run `nat` once to set it up") {
 		t.Fatalf("err = %v, want the setup reported", err)
@@ -778,8 +778,8 @@ func TestSliceAddNeedsAConfiguredProject(t *testing.T) {
 
 func TestSliceAddReportsAFailedWrite(t *testing.T) {
 	for _, args := range [][]string{
-		{"slice-add", "Render the board", "--milestone", "M2: Board"},
-		{"slice-add", "Render the board", "--milestone", "M2: Board", "--json"},
+		{"slice-add", "Render the board", "--milestone", "M2: Board", "--project", "project-1"},
+		{"slice-add", "Render the board", "--milestone", "M2: Board", "--json", "--project", "project-1"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			env, _ := testEnv(testConfig(), plannedAPI(addedSliceID))
@@ -802,7 +802,7 @@ func TestSliceAddReportsAFailedSchemaRead(t *testing.T) {
 	api.dataSourceErr = boom
 	env, _ := testEnv(testConfig(), api)
 
-	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "M2: Board"}, env)
+	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "M2: Board", "--project", "project-1"}, env)
 
 	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "load the slices schema") {
 		t.Fatalf("err = %v, want the schema read reported", err)
