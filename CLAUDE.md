@@ -205,31 +205,45 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   them and cannot be split where a filename holds spaces of its own. `Runner` is
   its own rather than `gh.Runner`, because a package about git has no business
   importing the GitHub CLI to borrow a type off it.
-- `internal/worktree/` — the worktrunk CLI (the `wt` binary), wrapped as thinly
-  as `internal/gh` and `internal/git` are and with a `Runner` seam of its own
-  for the same reason, so a slice's agent can be given a git worktree rather
-  than made to share the project's one checkout with every other agent and with
-  the user. Two operations: `Create` runs `wt switch --create <branch> --no-cd
-  -y --base <ref>` in the repo — no directory to change, since a subprocess
-  reaches the binary under worktrunk's shell function, and nobody at this end to
-  answer an approval — and reads the path back through `Path`
-  (`wt list --format json`),
-  because switch prints for a person and the list is the one machine-readable
-  answer worktrunk gives. The base is the caller's to resolve and goes through
-  as it stands, an empty one saying nothing at all and leaving worktrunk its own
-  answer, because which ref a slice is cut from — and how current it is — is a
-  question about the project rather than about worktrunk. `Remove` runs
-  `wt remove <branch> -y` and leaves what
-  removal means to worktrunk, which deletes the branch only if merged and
-  refuses a dirty worktree outright. That refusal is synchronous — only the
-  removal itself is backgrounded — so a nil error means the worktree is going
-  rather than already gone. A wt that ran and refused comes back as an
-  `*ExitError` whose message is the first line of its stderr, exactly as gh's
-  does; a wt that is not there at all comes back as `ErrNotInstalled`, wrapped
-  around `exec.ErrNotFound` rather than replacing it, because that is the one
-  failure a caller recovers from — an agent on a machine without worktrunk runs
-  in the shared checkout the way every agent did before there were worktrees,
-  and only a distinguishable error can drive that.
+- `internal/worktree/` — git's own worktrees, driven through the `git` binary
+  and wrapped as thinly as `internal/gh` and `internal/git` are, with a `Runner`
+  seam of its own for the same reason, so a slice's agent can be given a
+  worktree rather than made to share the project's one checkout with every other
+  agent and with the user. Three operations, and one convention git has no
+  opinion about: where a new worktree goes, which is nat's rule because a
+  relaunch has to arrive at the same answer — a sibling `<repo>.worktrees/`
+  directory, one entry per branch, named by `pathSlug` (every run of anything
+  but a letter, a digit, a dot, a hyphen or an underscore collapsed to one
+  hyphen, so `slice/worktrees` is `slice-worktrees`). A sibling rather than a
+  child, so nothing nat cuts appears inside the checkout the user works in or
+  the diffs taken from it, and beside the repository every worktree shares
+  (`rev-parse --path-format=absolute --git-common-dir`, its directory) rather
+  than beside whichever worktree nat was launched from. `Create` runs
+  `git worktree add <path> -b <branch> <base>` in the repo; the base is the
+  caller's to resolve and goes through as it stands, an empty one saying nothing
+  at all and leaving git to cut from where the repository is, because which ref
+  a slice is cut from — and how current it is — is a question about the project
+  rather than about git. A branch that already exists is checked out instead
+  (`git worktree add <path> <branch>`, the base not consulted at all), since its
+  commits are the work a relaunch wants; that is not a rare path, because a
+  squash-merged slice keeps its branch. `Path` reads
+  `git worktree list --porcelain` — one record per worktree, opened by its path
+  and naming the branch it has checked out as a full ref — and a branch with no
+  worktree is reported as such rather than as an empty path, which is the
+  ordinary answer for a slice nobody has worked yet. `Remove` finds that path
+  and runs `git worktree remove <path>`, leaving what removal refuses to git,
+  which keeps a worktree holding modified or untracked files: a refusal is
+  recoverable and work thrown away is not. The branch goes after it with
+  `git branch -d`, whose own refusal is logged and swallowed — a squash merge
+  leaves a branch nothing else reaches, and a leftover branch costs nothing,
+  since `Create` checks an existing one out rather than tripping over it. A git
+  that ran and refused comes back as an `*ExitError` whose message is the first
+  line of its stderr, exactly as gh's does; a git that is not there at all comes
+  back as `ErrNotInstalled`, wrapped around `exec.ErrNotFound` rather than
+  replacing it, because that is the one failure a caller recovers from — an
+  agent on a machine that cannot cut a worktree runs in the shared checkout the
+  way every agent did before there were worktrees, and only a distinguishable
+  error can drive that.
 - `internal/cli/` — the headless commands (`nat info [--json]`,
   `nat next-slice [--json]`, which claims the next unblocked Todo slice under
   the lowest-ordered open milestone and prints its brief,
@@ -377,16 +391,16 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   launch would have had anyway. The path it answers with is the `agent.PromptContext.WorkingDir` the
   session is started in and the prompt is written from, so tmux and the agent
   never disagree about where it is. Two ways out fall back to the shared
-  checkout with a toast saying which — no worktrunk on the machine, and a
+  checkout with a toast saying which — no git on the machine, and a
   working directory that is in no git repository at all — since both are the
   launch that worked before there were worktrees, and where the agent is working
-  is what decides what its branch instructions mean. A worktrunk that ran and
+  is what decides what its branch instructions mean. A git that ran and
   refused is a toast too and launches nothing at all, because an agent placed
   half way is one working somewhere nobody chose. All of it is resolved inside
   the launch command rather than before it: fetching reaches the network and
   cutting a worktree runs the repository's own hooks, and that is the goroutine
   to be slow in. Its
-  `Worktrees` seam is the board's whole dealing with worktrunk rather than the
+  `Worktrees` seam is the board's whole dealing with worktrees rather than the
   launch's alone: `Remove` is on it too, for the approve key that takes the
   worktree away again once the work has become a pull request.
   `approve.go` is `a` on the review screen, the app's one action that reaches
@@ -873,9 +887,9 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   back is one whose work is still being reviewed. The branch is read off the
   slice rather than derived the way the launch derives it: what the agent pushed
   is what its worktree is on, whatever it was cut as. A removal that fails — a dirty worktree, a slice that
-  never had one, a machine with no worktrunk — is one line in the log and
+  never had one, a machine with no git — is one line in the log and
   nothing else: the pull request is open and the slice is Done whatever became
-  of the checkout, and worktrunk's own rules mean a refusal never costs any
+  of the checkout, and git's own rules mean a refusal never costs any
   work. gh stays in the shared checkout, so the removal cannot strand it, and
   `R` deliberately keeps its worktree — the work so far is exactly what the
   next session wants.

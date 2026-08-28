@@ -287,7 +287,7 @@ func trimModel(m config.AgentModel) config.AgentModel {
 // race.
 //
 // The worktree is resolved here rather than by the caller because it fetches
-// origin and then runs worktrunk, which cuts a checkout and runs the
+// origin and then cuts the worktree, which is a checkout and runs the
 // repository's hooks over it: a launch is already the slow key, and this is the
 // goroutine it is slow in — the board redraws throughout. Its
 // answer is the working directory the prompt is written with and the session is

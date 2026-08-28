@@ -13,7 +13,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
-// Worktrees is what the board needs of worktrunk: where a slice's branch is
+// Worktrees is what the board needs of git's worktrees: where a slice's branch is
 // already checked out, a worktree for it where it is not, and that worktree
 // taken away again once the work has become a pull request. It is an interface
 // for the reason [AgentLauncher] is one — so a launch can be driven without the
@@ -25,7 +25,7 @@ type Worktrees interface {
 	Remove(dir, branch string) error
 }
 
-// Repo is what a launch needs of git, and worktrunk cannot answer for it: the
+// Repo is what a launch needs of git that the worktree package does not ask: the
 // remote's news, and the branch the remote calls its default. Together they are
 // the ref a fresh worktree is cut from — the tip origin is at now, rather than
 // wherever the shared checkout's own main was last left.
@@ -35,13 +35,13 @@ type Repo interface {
 }
 
 // The launch's two edges onto the outside, held as variables so the tests can
-// stand in for them: the real ones drive the wt and git binaries on PATH.
+// stand in for them: the real ones drive the git binary on PATH.
 var (
 	newWorktrees = defaultWorktrees
 	newRepo      = defaultRepo
 )
 
-// defaultWorktrees is the real worktrunk.
+// defaultWorktrees is the real git.
 func defaultWorktrees() Worktrees { return worktree.New() }
 
 // defaultRepo is the real git.
@@ -115,12 +115,12 @@ type placement struct {
 // left in. The fetch is allowed to fail — an offline launch cuts from the refs
 // as last fetched, which is what it would have had anyway.
 //
-// Two ways out fall back to the shared checkout — a machine with no worktrunk
+// Two ways out fall back to the shared checkout — a machine with no git
 // on it, and a working directory that is not in a git repository at all — since
 // both are launches that worked before there were worktrees and neither is
 // anything gone wrong. They say so on the status bar rather than silently,
 // because where the agent is working decides what its branch instructions mean.
-// A worktrunk that ran and refused is different: something is wrong with the
+// A git that ran and refused is different: something is wrong with the
 // repository, and the agent is not launched half-placed on the strength of it.
 func placeAgent(w Worktrees, r Repo, dir string, s domain.Slice) placement {
 	shared := func(why string) placement {
@@ -130,7 +130,7 @@ func placeAgent(w Worktrees, r Repo, dir string, s domain.Slice) placement {
 		return shared(dir + " is not a git repository")
 	}
 	branch := sliceBranch(s)
-	// A branch worktrunk has no worktree for is the ordinary case — a slice
+	// A branch git has no worktree for is the ordinary case — a slice
 	// nobody has worked yet — so only the missing binary is read off this.
 	if path, err := w.Path(dir, branch); err == nil {
 		return placement{dir: path, branch: branch, repo: dir, ok: true}
