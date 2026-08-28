@@ -51,7 +51,7 @@ type PromptContext struct {
 // with `complete-slice --branch`, the slice left in progress for the user to
 // review on the board, which is where the pull request is opened from. So the
 // prompt tells the agent not to run `gh` at all — an agent that opened its own
-// pull request would put the work past the review the board's approve key is,
+// pull request would put the work past the review the approve key answers,
 // and `gh pr create` on a branch that already has one refuses anyway.
 //
 // Every one of those commands names the project it acts on with --project,

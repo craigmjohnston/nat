@@ -329,7 +329,7 @@ func TestDiffScreenHintsAreItsOwn(t *testing.T) {
 			t.Errorf("hints = %q, want %q on them", hints, want)
 		}
 	}
-	if strings.Contains(hints, "approve") {
+	if strings.Contains(hints, "launch agent") {
 		t.Errorf("hints = %q, want the board's keys off them", hints)
 	}
 }

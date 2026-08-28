@@ -104,9 +104,9 @@ func (f *CommentForm) save(*App) tea.Cmd {
 }
 
 // diffKey handles the diff screen's review keys, reporting whether the key was
-// one of them. They live here rather than on the screen itself because two of
-// the three reach past it — one opens a form, the other talks to tmux — the way
-// the board's own write keys do.
+// one of them. They live here rather than on the screen itself because three of
+// the four reach past it — one opens a form, one talks to tmux, and one to gh
+// and Notion — the way the board's own write keys do.
 func (a *App) diffKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch {
 	case key.Matches(msg, a.diff.keys.Select):
@@ -116,6 +116,8 @@ func (a *App) diffKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.commentFlow(), true
 	case key.Matches(msg, a.diff.keys.Send):
 		return a.sendCommentsFlow(), true
+	case key.Matches(msg, a.diff.keys.Approve):
+		return a.approveDiffFlow(), true
 	}
 	return nil, false
 }

@@ -123,13 +123,14 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   terminal on the far end of its PTY is the viewer's emulator, where the
   full-screen attach's is the user's own.
 - `internal/gh/` — the GitHub CLI, wrapped as thinly as it can be. Agents open
-  no pull requests; they hand a slice back on a pushed branch, and the board's
-  approve action turns that branch into one with `gh pr create --head <branch>`,
+  no pull requests; they hand a slice back on a pushed branch, and the review
+  screen's approve action turns that branch into one with
+  `gh pr create --head <branch>`,
   run in the slice's repo, titled and bodied with the description the agent
   recorded at hand-back and read back off the slice page. A hand-back that left
   none — every one written before there was a flag for it — falls back to
   `--fill`, which is what the key always did: nothing is ever asked for at a
-  prompt, since a board key cannot answer one. No `--base`, because gh's own
+  prompt, since a key pressed on a screen cannot answer one. No `--base`, because gh's own
   answer — the repository's default branch — is the right one. `Runner` is the seam the tests replace, and it takes a working
   directory, which is the whole reason it is not `agent.Runner`. A gh that ran
   and refused comes back as an `*ExitError` whose message is the first line of
@@ -160,7 +161,7 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   are none of them distinctions GitHub makes.
 - `internal/git/` — git, wrapped as thinly as gh is and for the same reason: the
   one thing the board asks of it is the diff of a slice's handed-back branch, so
-  the work can be read before `p` turns it into a pull request. `Diff` runs one
+  the work can be read before `a` on that screen turns it into a pull request. `Diff` runs one
   `git diff --merge-base <base> <branch>` in the slice's repo and hands back what
   git wrote alongside the base it measured against — the merge base rather than
   the tip, since what the branch did is the point and not everything main has
@@ -248,7 +249,7 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `--pr-description` belongs to the first of those alone — the only ending with
   a pull request still to open — and is filed on the page under a `PR
   description` heading beside the `Handed back` note, where it outlives the
-  agent's session and is what the board's `p` opens the pull request with days
+  agent's session and is what the review screen's approve opens the pull request with days
   later. `-` reads it from stdin, so a description too long for an argument
   gets in; there is one stdin, so `--summary` is then the flag —
   `nat release-slice <slice>`, which is the fourth ending and the only one that
@@ -388,12 +389,15 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `Worktrees` seam is the board's whole dealing with worktrunk rather than the
   launch's alone: `Remove` is on it too, for the approve key that takes the
   worktree away again once the work has become a pull request.
-  `approve.go` is the `p` key, the board's one action that reaches outside
-  Notion — the domain rule on `Branch` says what it does and why gh's failures
-  are toasts. `diff.go` and `diffflow.go` are `v`, the key that is answered with
-  it: the unified diff of the same branch, read through `internal/git` and drawn
+  `approve.go` is `a` on the review screen, the app's one action that reaches
+  outside Notion — the domain rule on `Branch` says what it does and why gh's
+  failures are toasts. The board has no approve key: approving is offered where
+  the change has actually been read, so `v` is the only way to it. `diff.go` and
+  `diffflow.go` are that `v`:
+  the unified diff of a handed-back branch, read through `internal/git` and drawn
   as a screen over the board like help and info, which is where the work is read
-  before it is approved. It is read-only — nothing on it writes anything — and it
+  before it is approved. It is read-only — nothing on it writes anything, the
+  approve being the root model's — and it
   holds the parsed files rather than the rendered body, because a body row is
   wrapped to the width it is drawn at and a resize renders again. A line too wide
   for the box takes as many rows as it needs rather than being cut off, since the
@@ -746,8 +750,8 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   and `internal/agent`'s slice prompt end the same way and say so in the same
   words: the branch pushed and handed back with `complete-slice --branch`, its
   `--pr-description` written ready to publish rather than as a report of the
-  session, and no `gh` and no pull request, since opening one is the board's `p`
-  after the user has reviewed the branch. They arrive at the same branch too: a board launch
+  session, and no `gh` and no pull request, since opening one is the approve key
+  the user presses on the review screen once they have read the branch. They arrive at the same branch too: a board launch
   puts its agent in a worktree already on one and names it, and /next-slice is
   run by a session that is wherever the user was, so it cuts that worktree
   itself — `git fetch origin` and then
@@ -810,7 +814,7 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `complete-slice` applies (`notOursError`, which now names the action it
   refused) — and the page is re-read for the type of its `Status` column, as
   every other write to a slice is. `nat release-slice <slice>` is the headless
-  half; `R` on the board is the other, confirmed on the row the way `p` is,
+  half; `R` on the board is the other, confirmed on the row the way `d` is,
   ignored on a slice that is not in progress, and refused with a toast on a
   slice an agent is still live on, since releasing one out from under a working
   session is how two sessions end up on one branch.
@@ -833,17 +837,26 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   nowhere is one lost — and refused before the note goes on, so the slice is
   left as it was. `v` on the board is how that wait is read — the branch's diff
   against the base it was cut from, on a screen of its own — and only a
-  handed-back slice has one to read, the same rule and the same refusals `p`
-  applies. A review can go back rather than only be read: comments left on the
+  handed-back slice has one to read, which is now the one place that rule is
+  applied, since approving is a key on that screen rather than on the board.
+  A review can go back rather than only be read: comments left on the
   diff's lines are sent to the agent that wrote the branch, all of them in one
   prompt, which needs that agent's session to still be running — one that has
   exited is not there to be told anything, and the comments stay pending until
   there is one that is. They are recorded nowhere: not on the slice, not on
   Notion, not on GitHub.
-  `p` on the board is what ends that wait: it confirms on the row, runs `gh pr create` in the
+  `a` on that review screen is what ends the wait: it runs `gh pr create` in the
   slice's repo from that branch, and writes the URL it gets back onto the `PR`
-  property as it sets the status to `Done` — the one board key that reaches
-  outside Notion, and the only place a slice's PR is recorded from the TUI. What
+  property as it sets the status to `Done` — the one TUI key that reaches
+  outside Notion, and the only place a slice's PR is recorded from the TUI. It
+  asks nothing before doing it: the screen is the confirmation, since nothing
+  reaches this key without the change having been put in front of the user,
+  which is exactly what a key on the board could not say, and the board's own
+  `p` is gone rather than moved. Pending comments are the one thing that stops
+  it — a review with something still to say is not one that approves the work,
+  and the comments live nowhere but the session — and the review closes back
+  onto the board either way, since the confirmation this ends in is anchored to
+  the slice's row. What
   it opens the pull request with is read off the slice page first: the last `PR
   description` section, its first line the title and the rest the body, or
   nothing at all for a hand-back that recorded none, which is gh's `--fill`
@@ -906,7 +919,7 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   ready to push, awaiting review, ready to merge — or none at all for a slice
   that is not in flight, which is a Todo one and a Done one whose work has
   landed. A Done slice is tested first and against its pull request alone,
-  because Done is Notion's word for the slice rather than for the work: `p`
+  because Done is Notion's word for the slice rather than for the work: approving
   marks it Done as it opens the pull request, and until that merges the work is
   not on main and the review is not over, so such a slice is still in whatever
   state its pull request is in. It takes a positive reading to say so — with

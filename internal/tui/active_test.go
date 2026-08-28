@@ -451,31 +451,23 @@ func cursorOnActive(t *testing.T, a *App, id string) {
 	t.Fatalf("no active entry for slice %q", id)
 }
 
-// TestApproveFromAnActiveEntry is the whole point of the anchoring: p on an
-// entry opens the same prompt it opens on a plan row, the entry draws it, and
-// answering it opens the pull request.
+// TestApproveFromAnActiveEntry covers an entry taken all the way: v on it reads
+// the same slice a plan row would, and approving what that shows opens the pull
+// request. An entry is the slice drawn a second time, so every key that acts on
+// one has to find it there.
 func TestApproveFromAnActiveEntry(t *testing.T) {
 	app, prs, _, workdir := approveApp(t)
 	app.board.SetWidth(60)
 	cursorOnActive(t, app, handedBack)
 
-	feed(t, app, press(app, "p"))
-
-	if !app.board.Prompting() {
-		t.Fatalf("p on an entry opened no prompt: %q", app.board.confirmText)
-	}
-	if got := activeText(&app.board)[1]; !strings.Contains(got, "approve") {
-		t.Errorf("entry foot line = %q, want the approve prompt drawn on it", got)
-	}
-
-	drive(t, app, press(app, "enter"))
+	approve(t, app)
 
 	want := prCall{workdir, "slice/approve", "", ""}
 	if len(prs.made) != 1 || prs.made[0] != want {
 		t.Fatalf("gh was asked for %v, want %v", prs.made, want)
 	}
 	// The slice is Done with nothing yet read of its pull request, so it has
-	// left the section along with the entry the prompt was drawn on — the
+	// left the section along with the entry the review was opened from — the
 	// confirmation is the board's, anchored to wherever the cursor now is.
 	if !strings.Contains(app.board.confirmText, "Approve action") {
 		t.Errorf("confirmation = %q, want it to name the slice", app.board.confirmText)

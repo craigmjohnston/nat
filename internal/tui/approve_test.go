@@ -2,11 +2,12 @@ package tui
 
 import (
 	"errors"
-	"path/filepath"
+	"os"
 	"strings"
 	"testing"
 
 	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
@@ -56,6 +57,10 @@ func approvePlan() domain.Project {
 
 // approveApp returns an app showing that plan, with a fake gh and a real
 // working directory for the flow to find, and the directory it resolves to.
+//
+// It has a git behind it and a window to draw in as well, because approving is
+// the review screen's key: every test here reaches it by reading the diff, which
+// is the whole of the change this slice made.
 func approveApp(t *testing.T) (*App, *fakePRs, *fakeNotion, string) {
 	t.Helper()
 	workdir := t.TempDir()
@@ -73,6 +78,8 @@ func approveApp(t *testing.T) (*App, *fakePRs, *fakeNotion, string) {
 	app.board.SetProject(&p)
 	prs := &fakePRs{url: "https://github.test/craig/nat/pull/9"}
 	app.prs = prs
+	app.differ = &fakeDiffer{base: "origin/main", out: sampleDiff}
+	app.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	return app, prs, client, workdir
 }
 
@@ -111,15 +118,23 @@ func cursorOn(t *testing.T, a *App, id string) {
 	t.Fatalf("no row for slice %q", id)
 }
 
-// approve presses p on the row the cursor is on and takes the prompt's first
-// choice, which is the one that opens the pull request.
+// review opens the review screen on the row the cursor is on and lets the diff
+// land, which is how every approve is reached now.
+func review(t *testing.T, a *App) {
+	t.Helper()
+	a.Update(first[diffLoadedMsg](t, run(press(a, "v"))))
+	if a.screen != screenDiff {
+		t.Fatalf("no review screen opened: %s", a.board.confirmText)
+	}
+}
+
+// approve reads the slice's diff and presses the approve key on it, which opens
+// the pull request there and then: the screen is the confirmation, so there is
+// no prompt to answer.
 func approve(t *testing.T, a *App) {
 	t.Helper()
-	feed(t, a, press(a, "p"))
-	if !a.board.Prompting() {
-		t.Fatalf("no approve prompt opened: %s", a.board.confirmText)
-	}
-	drive(t, a, press(a, "enter"))
+	review(t, a)
+	drive(t, a, press(a, "a"))
 }
 
 // TestApproveOpensThePullRequestAndClosesTheSlice is the whole action: gh is
@@ -293,87 +308,89 @@ func TestApproveUsesTheSlicesOwnRepo(t *testing.T) {
 	}
 }
 
-// TestApproveCancelled takes the prompt's other choice: nothing is opened and
-// nothing is written.
-func TestApproveCancelled(t *testing.T) {
+// TestApproveClosesTheReview covers where the user is left: the review is over,
+// so the board is what the confirmation — and any refusal — is read on.
+func TestApproveClosesTheReview(t *testing.T) {
+	app, _, _, _ := approveApp(t)
+	cursorOn(t, app, handedBack)
+
+	approve(t, app)
+
+	if app.screen != screenBoard {
+		t.Errorf("screen = %v, want the board back once the work is approved", app.screen)
+	}
+}
+
+// TestTheBoardHasNoApproveKey covers the other half of moving the action: p on
+// a handed-back row does nothing at all, since reading the change is how it is
+// approved now.
+func TestTheBoardHasNoApproveKey(t *testing.T) {
 	app, prs, client, _ := approveApp(t)
 	cursorOn(t, app, handedBack)
 
 	feed(t, app, press(app, "p"))
-	feed(t, app, press(app, "right"))
-	drive(t, app, press(app, "enter"))
 
-	if len(prs.made) != 0 || len(client.updated) != 0 {
-		t.Errorf("cancelling opened %v and wrote %v", prs.made, client.updated)
+	if app.board.Prompting() || app.board.confirmText != "" {
+		t.Errorf("p answered with %q, want nothing at all", app.board.confirmText)
 	}
-	if app.board.Prompting() {
-		t.Error("the prompt is still up after it was answered")
+	if len(prs.made) != 0 || len(client.updated) != 0 {
+		t.Errorf("p opened %v and wrote %v", prs.made, client.updated)
 	}
 }
 
-// TestApproveAbandoned covers esc, which leaves without an answer at all.
-func TestApproveAbandoned(t *testing.T) {
+// TestApproveWithCommentsPending covers a review that still has something to
+// say: the comments are held nowhere but this session, so approving over them
+// would lose them. The key reports them instead and the screen stays up.
+func TestApproveWithCommentsPending(t *testing.T) {
 	app, prs, _, _ := approveApp(t)
 	cursorOn(t, app, handedBack)
+	review(t, app)
+	path, start, span, _, ok := app.diff.Selection()
+	if !ok {
+		t.Fatal("the diff has no line to comment on")
+	}
+	app.diff.SetComment(path, start, span, "this wants a test")
 
-	feed(t, app, press(app, "p"))
-	feed(t, app, press(app, "esc"))
+	drive(t, app, press(app, "a"))
 
-	if app.board.Prompting() {
-		t.Error("esc left the prompt up")
+	if len(prs.made) != 0 {
+		t.Errorf("gh was asked for %v with a comment still pending", prs.made)
+	}
+	if !strings.Contains(app.toast, "still pending") {
+		t.Errorf("toast = %q, want it to name the pending comments", app.toast)
+	}
+	if app.screen != screenDiff {
+		t.Errorf("screen = %v, want the review still up", app.screen)
+	}
+	if app.diff.Pending() != 1 {
+		t.Errorf("%d comments pending, want the comment left where it was", app.diff.Pending())
+	}
+}
+
+// TestApproveWithoutABranchOnScreen covers the key pressed on a screen that has
+// never been pointed at one, which has nothing to approve.
+func TestApproveWithoutABranchOnScreen(t *testing.T) {
+	app, prs, _, _ := approveApp(t)
+	if cmd := app.approveDiffFlow(); cmd != nil {
+		t.Error("the key should do nothing with no branch on screen")
 	}
 	if len(prs.made) != 0 {
-		t.Errorf("esc opened %v", prs.made)
+		t.Errorf("gh was asked for %v", prs.made)
 	}
 }
 
-// TestApproveRefusals covers the rows the key has nothing to do on: it says why
-// on the row and opens no prompt, so nothing is opened by mistake.
-func TestApproveRefusals(t *testing.T) {
-	tests := []struct {
-		name   string
-		set    func(a *App)
-		reason string
-	}{
-		{"on a milestone", func(a *App) { cursorOnMilestone(t, a) }, "Move to a slice"},
-		{"a Todo slice", func(a *App) { cursorOn(t, a, stillTodo) }, "only a handed-back slice"},
-		{"a Done slice", func(a *App) { cursorOn(t, a, alreadyPR) }, "only a handed-back slice"},
-		{"in progress with no branch", func(a *App) {
-			cursorOn(t, a, handedBack)
-			a.board.groups[a.board.rows[a.board.cursor].group].Slices[0].Branch = ""
-		}, "no branch handed back yet"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			app, prs, _, _ := approveApp(t)
-			tt.set(app)
-
-			feed(t, app, press(app, "p"))
-
-			if app.board.Prompting() {
-				t.Fatal("a prompt opened on a row that cannot be approved")
-			}
-			if !strings.Contains(app.board.confirmText, tt.reason) {
-				t.Errorf("said %q, want it to mention %q", app.board.confirmText, tt.reason)
-			}
-			if len(prs.made) != 0 {
-				t.Errorf("gh was asked for %v", prs.made)
-			}
-		})
-	}
-}
-
-// TestApproveWithoutTheRepo covers a working directory that is not there: the
-// board says so rather than letting gh fail inside a subprocess.
+// TestApproveWithoutTheRepo covers a working directory that went while the diff
+// was being read: the app says so rather than letting gh fail inside a
+// subprocess over it.
 func TestApproveWithoutTheRepo(t *testing.T) {
 	app, prs, _, workdir := approveApp(t)
-	project := app.cfg.Projects[testProjectID]
-	project.WorkingDir = filepath.Join(workdir, "gone")
-	app.cfg.Projects[testProjectID] = project
 	cursorOn(t, app, handedBack)
+	review(t, app)
+	if err := os.RemoveAll(workdir); err != nil {
+		t.Fatal(err)
+	}
 
-	feed(t, app, press(app, "p"))
-	drive(t, app, press(app, "enter"))
+	drive(t, app, press(app, "a"))
 
 	if len(prs.made) != 0 {
 		t.Errorf("gh was asked for %v with no repo to run in", prs.made)
@@ -382,7 +399,7 @@ func TestApproveWithoutTheRepo(t *testing.T) {
 		t.Errorf("said %q, want it to name the missing directory", app.board.confirmText)
 	}
 	if app.busy {
-		t.Error("the board was left busy by a launch that never started")
+		t.Error("the board was left busy by an approve that never started")
 	}
 }
 
@@ -465,12 +482,19 @@ func TestApproveWaitsForTheBoard(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			app, prs, _, _ := approveApp(t)
 			cursorOn(t, app, handedBack)
+			// The review is opened first: each of these is the state the app is
+			// in when the key is pressed, not a reason it could not be read.
+			review(t, app)
 			tt.set(app)
 
-			feed(t, app, press(app, "p"))
+			feed(t, app, press(app, "a"))
 
-			if app.board.Prompting() || app.board.confirmText != "" {
-				t.Errorf("the key answered with %q, want nothing at all", app.board.confirmText)
+			if app.toast != "" || app.board.confirmText != "" {
+				t.Errorf("the key answered with %q / %q, want nothing at all",
+					app.toast, app.board.confirmText)
+			}
+			if app.screen != screenDiff {
+				t.Errorf("screen = %v, want the review left up", app.screen)
 			}
 			if len(prs.made) != 0 {
 				t.Errorf("gh was asked for %v", prs.made)
@@ -586,15 +610,21 @@ func TestDefaultPRCreatorIsGh(t *testing.T) {
 	}
 }
 
-// TestApproveIsInTheHintsAndHelp keeps the key discoverable: the hints row
-// offers it on a slice, and the help screen lists it among the writes.
+// TestApproveIsInTheHintsAndHelp keeps the key discoverable where it now lives:
+// the review screen's hints row offers a, and the help screen lists it among
+// that screen's keys. The board offers no approve at all — p there is nothing,
+// and the diff key is the way to it.
 func TestApproveIsInTheHintsAndHelp(t *testing.T) {
-	b := newTestBoard()
-	if !hintedKey(b.sliceHints(), "p") {
-		t.Errorf("the slice hints do not offer p: %v", b.sliceHints())
+	d := NewDiff(NewStyles(true))
+	if !hintedKey(d.hints(defaultKeyMap().Back), "a") {
+		t.Errorf("the review hints do not offer a: %v", d.hints(defaultKeyMap().Back))
 	}
-	if !bindsKey(b.helpBindings(), "p") {
-		t.Error("the help screen does not list p")
+	if !bindsKey(d.keys.bindings(), "a") {
+		t.Error("the help screen does not list a")
+	}
+	b := newTestBoard()
+	if hintedKey(b.sliceHints(), "p") || bindsKey(b.helpBindings(), "p") {
+		t.Error("the board still offers an approve key of its own")
 	}
 }
 
