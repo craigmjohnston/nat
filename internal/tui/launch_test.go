@@ -983,7 +983,7 @@ func TestLaunchAgentReportsAFailedPromptFile(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
 	launcher := &fakeLauncher{}
 
-	msg := runMsg(t, launchAgent(launcher, &fakeWorktrees{}, agent.PromptContext{
+	msg := runMsg(t, launchAgent(launcher, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, agent.PromptContext{
 		Slice: domain.Slice{ID: "s5", Name: "Info view"},
 	}, config.AgentModel{}, true)).(agentLaunchedMsg)
 

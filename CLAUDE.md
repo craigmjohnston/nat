@@ -154,7 +154,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   moved on by. The base is whatever `refs/remotes/origin/HEAD` names and `main`
   when there is no such ref, which is logged and swallowed rather than returned:
   the fallback is the project's own convention, and refusing a diff over it would
-  be worse than showing one against main. The prefixes are pinned and any
+  be worse than showing one against main. `Fetch` is the one call that goes to
+  the network: `git fetch origin` in the repo, so the base a slice's worktree is
+  cut from is origin's tip rather than whatever the shared checkout last heard
+  about. It returns nothing — a fetch with no network, no origin or a remote that
+  refused is logged and swallowed, since working from the refs as last fetched is
+  what every offline git command already does and far better than refusing to
+  launch an agent over it. The prefixes are pinned and any
   external diff driver refused (`--src-prefix=a/ --dst-prefix=b/ --no-ext-diff
   --no-color`), because the output is parsed rather than shown as it stands and a
   repository configured with `diff.noprefix` would hand back something else.
@@ -179,11 +185,16 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   for the same reason, so a slice's agent can be given a git worktree rather
   than made to share the project's one checkout with every other agent and with
   the user. Two operations: `Create` runs `wt switch --create <branch> --no-cd
-  -y` in the repo — no directory to change, since a subprocess reaches the
-  binary under worktrunk's shell function, and nobody at this end to answer an
-  approval — and reads the path back through `Path` (`wt list --format json`),
+  -y --base <ref>` in the repo — no directory to change, since a subprocess
+  reaches the binary under worktrunk's shell function, and nobody at this end to
+  answer an approval — and reads the path back through `Path`
+  (`wt list --format json`),
   because switch prints for a person and the list is the one machine-readable
-  answer worktrunk gives; `Remove` runs `wt remove <branch> -y` and leaves what
+  answer worktrunk gives. The base is the caller's to resolve and goes through
+  as it stands, an empty one saying nothing at all and leaving worktrunk its own
+  answer, because which ref a slice is cut from — and how current it is — is a
+  question about the project rather than about worktrunk. `Remove` runs
+  `wt remove <branch> -y` and leaves what
   removal means to worktrunk, which deletes the branch only if merged and
   refuses a dirty worktree outright. That refusal is synchronous — only the
   removal itself is backgrounded — so a nil error means the worktree is going
@@ -323,7 +334,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   nothing holds a branch name until the agent hands the work back and a relaunch
   has to arrive at the same string — and a branch that already has a worktree is
   reused rather than cut a second one, because a relaunched slice wants its work
-  so far. The path it answers with is the `agent.PromptContext.WorkingDir` the
+  so far — and only a fresh cut goes near the remote, since a worktree that
+  already exists is where the last session left it. A fresh one is cut from the
+  remote's default branch as it stands: its `Repo` seam is git's other half of
+  the launch, `Fetch` then `Base`, so the branch starts at origin's tip rather
+  than at whatever state the shared checkout's own `main` was last left in — a
+  fetch that failed cuts from the refs as last fetched, which is what an offline
+  launch would have had anyway. The path it answers with is the `agent.PromptContext.WorkingDir` the
   session is started in and the prompt is written from, so tmux and the agent
   never disagree about where it is. Two ways out fall back to the shared
   checkout with a toast saying which — no worktrunk on the machine, and a
@@ -332,8 +349,9 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   is what decides what its branch instructions mean. A worktrunk that ran and
   refused is a toast too and launches nothing at all, because an agent placed
   half way is one working somewhere nobody chose. All of it is resolved inside
-  the launch command rather than before it: cutting a worktree runs the
-  repository's own hooks, and that is the goroutine to be slow in. Its
+  the launch command rather than before it: fetching reaches the network and
+  cutting a worktree runs the repository's own hooks, and that is the goroutine
+  to be slow in. Its
   `Worktrees` seam is the board's whole dealing with worktrunk rather than the
   launch's alone: `Remove` is on it too, for the approve key that takes the
   worktree away again once the work has become a pull request.
@@ -699,9 +717,11 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   after the user has reviewed the branch. They arrive at the same branch too: a board launch
   puts its agent in a worktree already on one and names it, and /next-slice is
   run by a session that is wherever the user was, so it cuts that worktree
-  itself — `wt switch --create slice/<the title slugged> --no-cd` in the working
-  directory the brief names, the slug rule `tui.sliceBranch` applies written out
-  rather than shared, since a skill is read by an agent and not compiled.
+  itself — `git fetch origin` and then
+  `wt switch --create slice/<the title slugged> --no-cd --base <origin's default
+  branch>` in the working directory the brief names, the slug rule
+  `tui.sliceBranch` applies and the base rule `git.CLI.Base` applies both written
+  out rather than shared, since a skill is read by an agent and not compiled.
   A machine with no worktrunk and a working directory in no repository fall
   back to branching in place, the two the board falls back to the shared
   checkout for.

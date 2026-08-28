@@ -24,14 +24,17 @@ import (
 // Binary is git as it is invoked, found on PATH.
 const Binary = "git"
 
-// gitTimeout bounds a call to git. Every call here is a local read — no fetch,
-// no network — so it is tighter than the GitHub CLI's, but it is bounded all
-// the same, because the board is waiting on it.
+// gitTimeout bounds a call to git. Nearly every call here is a local read, and
+// [CLI.Fetch] — the one that goes to the network — is allowed to fail: a fetch
+// that outruns this bound is the same as one that could not reach the remote,
+// which leaves the repository at the state it last fetched rather than stopping
+// anything. The bound matters because the board is waiting on all of it.
 const gitTimeout = 30 * time.Second
 
-// DefaultBase is what a slice's branch is diffed against when the repository
-// does not say what its default branch is. The project's own convention is that
-// every branch is cut from main and every pull request merges into it.
+// DefaultBase is what a slice's branch is diffed against, and what a slice's
+// worktree is cut from, when the repository does not say what its default
+// branch is. The project's own convention is that every branch is cut from main
+// and every pull request merges into it.
 const DefaultBase = "main"
 
 // Runner runs a command in a working directory and returns its standard
@@ -155,13 +158,14 @@ func (c CLI) Show(dir, branch, path string) ([]string, error) {
 	return splitLines(out), nil
 }
 
-// Base is the branch a diff is taken against: whatever origin's HEAD points at,
-// which is the repository's default branch as the clone last recorded it, and
-// [DefaultBase] when there is no such ref to read — a repository with no origin
-// at all, or one cloned without it. A failure here is logged and swallowed
-// rather than returned: the fallback is right for every repository this project
-// works on, and refusing to show a diff over it would be worse than showing one
-// against main.
+// Base is the branch a diff is taken against, and the one a slice's worktree is
+// cut from: whatever origin's HEAD points at, which is the repository's default
+// branch as the clone last recorded it, and [DefaultBase] when there is no such
+// ref to read — a repository with no origin at all, or one cloned without it,
+// where the local branch is all there is to work from. A failure here is logged
+// and swallowed rather than returned: the fallback is right for every repository
+// this project works on, and refusing to show a diff over it would be worse than
+// showing one against main.
 func (c CLI) Base(dir string) string {
 	out, err := c.runner.Run(dir, Binary, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
 	if err != nil {
@@ -173,4 +177,20 @@ func (c CLI) Base(dir string) string {
 		return ref
 	}
 	return DefaultBase
+}
+
+// Fetch brings origin's refs up to date, so [CLI.Base] names a tip that is
+// current rather than whatever the checkout last happened to hear about. It is
+// what a worktree is cut after: a branch based on a stale origin/main starts
+// life behind, and nothing later in the slice puts that right.
+//
+// Nothing is returned. A fetch that fails — no network, no origin, a remote
+// that refused — is logged and swallowed, because working against the refs as
+// last fetched is what every offline git command already does, and it is far
+// better than refusing to launch an agent over it.
+func (c CLI) Fetch(dir string) {
+	if _, err := c.runner.Run(dir, Binary, "fetch", "origin"); err != nil {
+		logging.Action("could not fetch origin; working from the refs as last fetched",
+			"dir", dir, "error", err)
+	}
 }

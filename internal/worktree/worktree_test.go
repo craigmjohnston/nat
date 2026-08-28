@@ -50,11 +50,12 @@ const listJSON = `[
 ]`
 
 // TestCreateRunsWorktrunk pins the invocation: worktrunk, in the slice's
-// repository, told to cut the branch, not to change a directory there is no
-// shell for and not to ask anyone anything — then asked where it put it.
+// repository, told to cut the branch from the base it was given, not to change
+// a directory there is no shell for and not to ask anyone anything — then asked
+// where it put it.
 func TestCreateRunsWorktrunk(t *testing.T) {
 	runner := &fakeRunner{replies: []reply{{}, {out: listJSON}}}
-	path, err := NewWithRunner(runner).Create("/repos/nat", "slice/worktrees")
+	path, err := NewWithRunner(runner).Create("/repos/nat", "slice/worktrees", "origin/main")
 	if err != nil {
 		t.Fatalf("Create() = %v, want a worktree", err)
 	}
@@ -72,7 +73,7 @@ func TestCreateRunsWorktrunk(t *testing.T) {
 			t.Errorf("call %d ran %q, want %q", i, c.name, Binary)
 		}
 	}
-	want := []string{"switch", "--create", "slice/worktrees", "--no-cd", "-y"}
+	want := []string{"switch", "--create", "slice/worktrees", "--no-cd", "-y", "--base", "origin/main"}
 	if !reflect.DeepEqual(runner.calls[0].args, want) {
 		t.Errorf("args = %v, want %v", runner.calls[0].args, want)
 	}
@@ -82,12 +83,26 @@ func TestCreateRunsWorktrunk(t *testing.T) {
 	}
 }
 
+// TestCreateWithoutABase covers the caller that resolved no ref: worktrunk is
+// told nothing about a base and answers with whatever it would have on its own,
+// which is the behaviour this wrapper had before there was a base at all.
+func TestCreateWithoutABase(t *testing.T) {
+	runner := &fakeRunner{replies: []reply{{}, {out: listJSON}}}
+	if _, err := NewWithRunner(runner).Create("/repos/nat", "slice/worktrees", ""); err != nil {
+		t.Fatalf("Create() = %v, want a worktree", err)
+	}
+	want := []string{"switch", "--create", "slice/worktrees", "--no-cd", "-y"}
+	if !reflect.DeepEqual(runner.calls[0].args, want) {
+		t.Errorf("args = %v, want %v", runner.calls[0].args, want)
+	}
+}
+
 // TestCreateFailure passes worktrunk's own refusal straight back, and asks for
 // no path: there is no worktree to name.
 func TestCreateFailure(t *testing.T) {
 	refused := &ExitError{Code: 1, Stderr: "\nbranch 'slice/worktrees' already exists\nhint: switch to it instead\n"}
 	runner := &fakeRunner{replies: []reply{{err: refused}}}
-	_, err := NewWithRunner(runner).Create("/repos/nat", "slice/worktrees")
+	_, err := NewWithRunner(runner).Create("/repos/nat", "slice/worktrees", "origin/main")
 	if !errors.Is(err, error(refused)) {
 		t.Fatalf("Create() = %v, want worktrunk's own error", err)
 	}
@@ -105,7 +120,7 @@ func TestCreateFailure(t *testing.T) {
 func TestCreateWithoutWorktrunk(t *testing.T) {
 	missing := &exec.Error{Name: Binary, Err: exec.ErrNotFound}
 	runner := &fakeRunner{replies: []reply{{err: missing}}}
-	_, err := NewWithRunner(runner).Create("/repos/nat", "slice/worktrees")
+	_, err := NewWithRunner(runner).Create("/repos/nat", "slice/worktrees", "origin/main")
 	if !errors.Is(err, ErrNotInstalled) {
 		t.Fatalf("Create() = %v, want it to say worktrunk is not installed", err)
 	}
@@ -119,7 +134,7 @@ func TestCreateWithoutWorktrunk(t *testing.T) {
 func TestCreateWhenTheListFails(t *testing.T) {
 	refused := &ExitError{Code: 2, Stderr: "not a git repository\n"}
 	runner := &fakeRunner{replies: []reply{{}, {err: refused}}}
-	_, err := NewWithRunner(runner).Create("/repos/nat", "slice/worktrees")
+	_, err := NewWithRunner(runner).Create("/repos/nat", "slice/worktrees", "origin/main")
 	if !errors.Is(err, error(refused)) {
 		t.Fatalf("Create() = %v, want the list's own error", err)
 	}

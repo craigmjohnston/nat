@@ -105,6 +105,38 @@ func TestBaseFallsBackOnAnEmptyAnswer(t *testing.T) {
 	}
 }
 
+// TestFetchRunsGit pins the invocation: origin fetched in the slice's
+// repository, which is what makes the base a fresh worktree is cut from the tip
+// rather than whatever the checkout last heard about.
+func TestFetchRunsGit(t *testing.T) {
+	runner := &fakeRunner{}
+	NewWithRunner(runner).Fetch("/repos/nat")
+	if len(runner.calls) != 1 {
+		t.Fatalf("made %d calls, want the fetch alone", len(runner.calls))
+	}
+	c := runner.calls[0]
+	if c.dir != "/repos/nat" || c.name != Binary {
+		t.Errorf("ran %q in %q, want %q in the slice's repository", c.name, c.dir, Binary)
+	}
+	if want := []string{"fetch", "origin"}; !reflect.DeepEqual(c.args, want) {
+		t.Errorf("args = %v, want %v", c.args, want)
+	}
+}
+
+// TestFetchSwallowsItsFailure covers the offline launch: a fetch that could not
+// reach the remote says nothing and stops nothing, since the refs as last
+// fetched are what the caller would have had anyway.
+func TestFetchSwallowsItsFailure(t *testing.T) {
+	runner := &fakeRunner{errs: []error{&ExitError{Code: 128, Stderr: "fatal: could not read from remote repository\n"}}}
+	NewWithRunner(runner).Fetch("/repos/nat")
+	if len(runner.calls) != 1 {
+		t.Fatalf("made %d calls, want the fetch alone", len(runner.calls))
+	}
+	if base := NewWithRunner(runner).Base("/repos/nat"); base != DefaultBase {
+		t.Errorf("Base() = %q, want the read after a failed fetch to go ahead", base)
+	}
+}
+
 // TestDiffFailure passes git's own refusal straight back, with the branch it
 // was asked about named: the reason is what the screen shows.
 func TestDiffFailure(t *testing.T) {

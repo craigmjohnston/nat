@@ -490,7 +490,7 @@ func TestApproveRemovesTheWorktree(t *testing.T) {
 
 	approve(t, app)
 
-	want := worktreeCall{workdir, "slice/approve"}
+	want := worktreeCall{dir: workdir, branch: "slice/approve"}
 	if len(trees.removes) != 1 || trees.removes[0] != want {
 		t.Fatalf("wt was asked to remove %v, want %v", trees.removes, want)
 	}
