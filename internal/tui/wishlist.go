@@ -83,17 +83,17 @@ func (a *App) workshopFlow() tea.Cmd {
 	if a.live[agent.PlanSentinel] != "" {
 		return nil
 	}
-	return launchWishlistAgent(a.launcher, project.Name, expandHome(project.WorkingDir), a.wishlist,
-		trimModel(a.cfg.WorkshopAgent))
+	return launchWishlistAgent(a.launcher, a.cfg.ActiveProjectID, project.Name, expandHome(project.WorkingDir),
+		a.wishlist, trimModel(a.cfg.WorkshopAgent))
 }
 
 // launchWishlistAgent writes the planning prompt out with the wishlist folded
 // into it and starts the detached session that reads it. It is the wishlist's
 // half of launchPlanAgent, and comes back as the same message, so the pane and
 // the failure reporting are handled in one place.
-func launchWishlistAgent(l AgentLauncher, projectName, workdir string, items []notion.WishlistItem, m config.AgentModel) tea.Cmd {
+func launchWishlistAgent(l AgentLauncher, projectID, projectName, workdir string, items []notion.WishlistItem, m config.AgentModel) tea.Cmd {
 	return func() tea.Msg {
-		file, err := agent.WritePromptFile(agent.PlanSession, agent.WishlistPrompt(projectName, workdir, items))
+		file, err := agent.WritePromptFile(agent.PlanSession, agent.WishlistPrompt(projectID, projectName, workdir, items))
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch planning agent: %w", err)}
 		}

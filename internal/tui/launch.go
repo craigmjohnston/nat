@@ -265,6 +265,7 @@ func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, at
 	return launchAgent(a.launcher, newWorktrees(), newRepo(), agent.PromptContext{
 		Slice:        s,
 		Project:      project,
+		ProjectID:    a.cfg.ActiveProjectID,
 		WorkingDir:   expandHome(strings.TrimSpace(workdir)),
 		AssigneeName: a.cfg.AssigneeUserName,
 	}, trimModel(m), attach)

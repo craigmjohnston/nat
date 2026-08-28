@@ -95,7 +95,8 @@ func TestAppPlanLaunchStartsTheSessionAndAttaches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the prompt file: %v", err)
 	}
-	for _, want := range []string{"planning agent", "tracker", "/queue-work", "nat plan-apply"} {
+	for _, want := range []string{"planning agent", "tracker", "/queue-work",
+		"nat plan-apply", "--project " + testProjectID} {
 		if !strings.Contains(string(prompt), want) {
 			t.Errorf("the prompt is missing %q:\n%s", want, prompt)
 		}
@@ -333,7 +334,7 @@ func TestLaunchPlanAgentReportsAFailedPromptFile(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
 	launcher := &fakeLauncher{}
 
-	msg := runMsg(t, launchPlanAgent(launcher, "tracker", "/tmp", "", config.AgentModel{})).(agentLaunchedMsg)
+	msg := runMsg(t, launchPlanAgent(launcher, "project-1", "tracker", "/tmp", "", config.AgentModel{})).(agentLaunchedMsg)
 
 	if msg.err == nil || !strings.Contains(msg.err.Error(), "launch planning agent: create prompt dir") {
 		t.Errorf("err = %v, want the failed prompt file", msg.err)

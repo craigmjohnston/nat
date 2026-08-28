@@ -32,6 +32,13 @@ Two things settle before you draft:
 not the one you are creating and nothing you do here changes it — read it only
 to be sure the work really has no home yet.
 
+That setup read, and `project-create` itself, are the only `nat` commands here
+that name no project: one because there is no project yet to name, the other
+because it makes one. Every command after step 3 carries `--project <id>` with
+the ID `project-create` printed, and so should any other `nat` command you run
+about the new project. Without it a command acts on
+whichever project the user's board is on, which is never the one you just made.
+
 ## Drafting rules
 
 Draft three things. All of them are the user's to approve before anything is
@@ -138,9 +145,9 @@ every slice: anything true of one slice alone belongs in that slice's brief.
    > The new project is not the active one. Open the board (`nat`) and press
    > `P` to switch to it.
 
-   Say it plainly — the CLI has no project switch, so until they do that
-   `nat info`, `nat next-slice` and a plain `nat plan-apply` all still mean the
-   old project.
+   Say it plainly — until they do, a `nat` command left unpinned still means
+   the old project: that is what `--project` is for, and what every command in
+   step 4 carried.
 
 ## Guardrails
 
@@ -148,8 +155,9 @@ every slice: anything true of one slice alone belongs in that slice's brief.
 - Nothing is written before the user approves — not the project, not a
   milestone, not one slice.
 - `project-create` creates a project every time it is run. If you are unsure
-  whether you already created one, check `nat info` or the URL you printed
-  rather than running it again.
+  whether you already created one, check the URL it printed rather than running
+  it again — a bare `nat info` cannot see it, since the new project is not the
+  active one.
 - `plan-apply` only ever creates, and if a run fails partway it says what it
   had already created. Trim those out of the plan before running it again
   rather than filing them twice.

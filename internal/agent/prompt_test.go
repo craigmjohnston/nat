@@ -15,6 +15,10 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the golden files")
 
+// testProjectID is the project every test prompt is pinned to: the page ID the
+// launch carried, which is what --project names on every command in a prompt.
+const testProjectID = "3b738308-f654-8117-9f2e-c3b0a9b7f001"
+
 // golden compares got against testdata/<name>.golden, rewriting it under
 // -update.
 func golden(t *testing.T, name, got string) {
@@ -49,6 +53,7 @@ func testContext() PromptContext {
 			Name:       "notion-agent-tracker",
 			WorkingDir: "/Users/craig/Projects/notion-agent-tracker",
 		},
+		ProjectID:    testProjectID,
 		WorkingDir:   "/Users/craig/Projects/notion-agent-tracker",
 		AssigneeName: "Craig Johnston",
 	}
@@ -78,8 +83,9 @@ func TestPromptWithoutOptionalContext(t *testing.T) {
 func TestPromptRoutesEverythingThroughTheCLI(t *testing.T) {
 	got := Prompt(testContext())
 	for _, want := range []string{
-		"nat start-slice 3b738308-f654-8170-8c99-eccab4463d8f",
-		"nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --branch",
+		"nat start-slice 3b738308-f654-8170-8c99-eccab4463d8f --project " + testProjectID,
+		"nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --project " + testProjectID,
+		"--branch",
 		"--blocked",
 	} {
 		if !strings.Contains(got, want) {
@@ -137,11 +143,11 @@ func TestPromptNamesTheSlice(t *testing.T) {
 }
 
 func TestPlanPrompt(t *testing.T) {
-	golden(t, "plan-prompt", PlanPrompt("notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", ""))
+	golden(t, "plan-prompt", PlanPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", ""))
 }
 
 func TestPlanPromptWithRequest(t *testing.T) {
-	golden(t, "plan-prompt-request", PlanPrompt("notion-agent-tracker",
+	golden(t, "plan-prompt-request", PlanPrompt(testProjectID, "notion-agent-tracker",
 		"/Users/craig/Projects/notion-agent-tracker", "Split the reporting milestone into smaller slices."))
 }
 
@@ -151,7 +157,7 @@ func TestPlanPromptWithRequest(t *testing.T) {
 // from executing the plan instead of workshopping it — and so does Notion, for
 // the same reason the slice prompt keeps quiet about it.
 func TestPlanPromptRoutesEverythingThroughThePlanningCommands(t *testing.T) {
-	got := PlanPrompt("notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", "")
+	got := PlanPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", "")
 	for _, want := range []string{
 		"notion-agent-tracker",
 		"/Users/craig/Projects/notion-agent-tracker",
@@ -219,7 +225,8 @@ func TestPromptTellsAWorktreeAgentToUseItsBranch(t *testing.T) {
 		"git worktree cut for this slice alone",
 		"push " + c.Branch,
 		"Do not\ncreate a branch of your own",
-		"nat complete-slice " + c.Slice.ID + " --branch " + c.Branch + " --summary",
+		"nat complete-slice " + c.Slice.ID + " --project " + testProjectID,
+		"--branch " + c.Branch + " --summary",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q:\n%s", want, got)
@@ -238,7 +245,8 @@ func TestPromptWithoutAWorktreeStillAsksForABranch(t *testing.T) {
 	got := Prompt(testContext())
 	for _, want := range []string{
 		"If the work is code: branch for the slice",
-		"nat complete-slice " + testContext().Slice.ID + " --branch <branch> --summary",
+		"nat complete-slice " + testContext().Slice.ID + " --project " + testProjectID,
+		"--branch <branch> --summary",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q", want)
@@ -276,7 +284,7 @@ func testWishlist() []notion.WishlistItem {
 }
 
 func TestWishlistPrompt(t *testing.T) {
-	golden(t, "wishlist-prompt", WishlistPrompt("notion-agent-tracker",
+	golden(t, "wishlist-prompt", WishlistPrompt(testProjectID, "notion-agent-tracker",
 		"/Users/craig/Projects/notion-agent-tracker", testWishlist()))
 }
 
@@ -284,7 +292,7 @@ func TestWishlistPrompt(t *testing.T) {
 // clears them names every one of them — the IDs, not the text, because that is
 // what `nat wishlist-clear` addresses.
 func TestWishlistPromptCarriesTheItemsAndTheirIDs(t *testing.T) {
-	got := WishlistPrompt("notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", testWishlist())
+	got := WishlistPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", testWishlist())
 	for _, want := range []string{
 		"## The request",
 		"- Add a newline between the status bar and the key hints",
@@ -308,7 +316,7 @@ func TestWishlistPromptCarriesTheItemsAndTheirIDs(t *testing.T) {
 // cleared before the plan is written is an idea lost, and one typed while the
 // session ran belongs to nobody but the user.
 func TestWishlistPromptClearsOnlyAfterThePlanIsWritten(t *testing.T) {
-	got := WishlistPrompt("notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", testWishlist())
+	got := WishlistPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", testWishlist())
 	for _, want := range []string{
 		"once the plan is written, and not before",
 		"Name only the items above",
@@ -324,11 +332,82 @@ func TestWishlistPromptClearsOnlyAfterThePlanIsWritten(t *testing.T) {
 // nothing to clear afterwards.
 func TestWishlistPromptWithNoItemsIsThePlainPlanningPrompt(t *testing.T) {
 	const project, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
-	got := WishlistPrompt(project, dir, nil)
-	if want := PlanPrompt(project, dir, ""); got != want {
+	got := WishlistPrompt(testProjectID, project, dir, nil)
+	if want := PlanPrompt(testProjectID, project, dir, ""); got != want {
 		t.Errorf("prompt = %q, want the plain planning prompt %q", got, want)
 	}
 	if strings.Contains(got, "wishlist-clear") {
 		t.Errorf("prompt tells the agent to clear a wishlist it was not given:\n%s", got)
+	}
+}
+
+// natCommand matches a `nat` invocation by its subcommand, so the prose that
+// merely says "the `nat` commands" is not read as one. wishlist-clear comes
+// before wishlist, since the alternation is tried in order.
+var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|release-slice|milestone-add|slice-add|slice-depends|wishlist-clear|wishlist|plan-apply|project-create)\b`)
+
+// natCommands are the invocations a prompt names: each from the command word to
+// the end of its line, and on through the lines a trailing backslash continues
+// it onto — which is what an agent copying the prompt would actually run.
+func natCommands(text string) []string {
+	lines := strings.Split(text, "\n")
+	var cmds []string
+	for i, line := range lines {
+		loc := natCommand.FindStringIndex(line)
+		if loc == nil {
+			continue
+		}
+		cmd := line[loc[0]:]
+		for j := i; j+1 < len(lines) && strings.HasSuffix(strings.TrimRight(lines[j], " "), `\`); j++ {
+			cmd += " " + strings.TrimSpace(lines[j+1])
+		}
+		cmds = append(cmds, cmd)
+	}
+	return cmds
+}
+
+// A command with no --project acts on whatever project the board is on, which
+// the user can switch while the session runs: an agent launched on one project
+// would then claim, hand back or plan into another. Every command a prompt
+// names is pinned to the project of the launch, so there is no bare one left to
+// copy.
+func TestEveryCommandInAPromptNamesTheProject(t *testing.T) {
+	const name, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
+	for prompt, text := range map[string]string{
+		"slice":          Prompt(testContext()),
+		"slice worktree": Prompt(worktreeContext()),
+		"plan":           PlanPrompt(testProjectID, name, dir, ""),
+		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone."),
+		"wishlist":       WishlistPrompt(testProjectID, name, dir, testWishlist()),
+	} {
+		cmds := natCommands(text)
+		if len(cmds) == 0 {
+			t.Errorf("the %s prompt names no `nat` command at all:\n%s", prompt, text)
+		}
+		for _, cmd := range cmds {
+			if !strings.Contains(cmd, "--project "+testProjectID) {
+				t.Errorf("the %s prompt runs %q without naming the project", prompt, cmd)
+			}
+		}
+	}
+}
+
+// The pin is worth explaining as well as applying: an agent that understands
+// why puts --project on the commands it runs of its own accord, which are the
+// ones no prompt can spell out for it.
+func TestPromptsSayWhyTheProjectIsPinned(t *testing.T) {
+	const name, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
+	for prompt, text := range map[string]string{
+		"slice": Prompt(testContext()),
+		"plan":  PlanPrompt(testProjectID, name, dir, ""),
+	} {
+		for _, want := range []string{
+			"whatever project the user's board is on",
+			"    --project " + testProjectID,
+		} {
+			if !strings.Contains(text, want) {
+				t.Errorf("the %s prompt does not say %q", prompt, want)
+			}
+		}
 	}
 }

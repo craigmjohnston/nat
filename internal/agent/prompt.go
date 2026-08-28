@@ -18,9 +18,15 @@ import (
 // Branch and Repo describe that worktree: the branch it is already on, and the
 // checkout it was cut from. Both are empty where the session runs in the
 // checkout itself, which is what the agent is told to branch for itself.
+//
+// ProjectID is the project's own page ID, which is what every `nat` command in
+// the prompt names with --project. It comes from the caller rather than from
+// Project, since a ProjectConfig is a value of the config file's Projects map
+// and the ID is the key it is filed under.
 type PromptContext struct {
 	Slice        domain.Slice
 	Project      config.ProjectConfig
+	ProjectID    string
 	WorkingDir   string
 	Branch       string
 	Repo         string
@@ -47,6 +53,13 @@ type PromptContext struct {
 // prompt tells the agent not to run `gh` at all — an agent that opened its own
 // pull request would put the work past the review the board's approve key is,
 // and `gh pr create` on a branch that already has one refuses anyway.
+//
+// Every one of those commands names the project it acts on with --project.
+// Without it a command acts on whatever project the board is on, which is a
+// thing the user changes: switch projects while an agent runs and its writes
+// would land in the plan it was never launched from. The prompt pins them to
+// the project of the launch instead, since that is the one the slice is in and
+// it cannot change under a session.
 func Prompt(c PromptContext) string {
 	var b strings.Builder
 
@@ -68,11 +81,17 @@ func Prompt(c PromptContext) string {
 
 	b.WriteString("\n## Claim it first\n\n")
 	b.WriteString("Before doing any work, run:\n\n")
-	fmt.Fprintf(&b, "    nat start-slice %s\n\n", c.Slice.ID)
+	fmt.Fprintf(&b, "    nat start-slice %s --project %s\n\n", c.Slice.ID, c.ProjectID)
 	fmt.Fprintf(&b, "That claims the slice for %s and prints your brief: the slice's own\n", c.AssigneeName)
 	b.WriteString("body and acceptance criteria, followed by the project's conventions.\n")
 	b.WriteString("If it refuses — the slice is already claimed, or already done — stop and\n")
-	b.WriteString("say so rather than working the slice anyway.\n")
+	b.WriteString("say so rather than working the slice anyway.\n\n")
+	b.WriteString("Every `nat` command below names the project this slice is in:\n\n")
+	fmt.Fprintf(&b, "    --project %s\n\n", c.ProjectID)
+	b.WriteString("Put it on any other one you run too. Without it a command acts on\n")
+	b.WriteString("whatever project the user's board is on, which they can switch while\n")
+	b.WriteString("you work — and your writes would land in a plan you were never\n")
+	b.WriteString("launched on.\n")
 
 	b.WriteString("\n## Then read\n\n")
 	b.WriteString("1. The brief the command printed — the slice, then the conventions that\n")
@@ -103,7 +122,8 @@ func Prompt(c PromptContext) string {
 
 	b.WriteString("\n## Finish\n\n")
 	b.WriteString("On completion, record the outcome:\n\n")
-	fmt.Fprintf(&b, "    nat complete-slice %s --branch %s --summary '<what you did>' \\\n", c.Slice.ID, branchArg(c))
+	fmt.Fprintf(&b, "    nat complete-slice %s --project %s \\\n", c.Slice.ID, c.ProjectID)
+	fmt.Fprintf(&b, "        --branch %s --summary '<what you did>' \\\n", branchArg(c))
 	b.WriteString("        --pr-description '<title line>\n\n<what the PR does and why>'\n\n")
 	b.WriteString("That records the branch you pushed and hands the slice back for review,\n")
 	b.WriteString("writing the summary onto its page: what you did, key decisions, follow-ups\n")
@@ -120,11 +140,13 @@ func Prompt(c PromptContext) string {
 	b.WriteString("on stdin instead of passing `--summary`.\n\n")
 	b.WriteString("If you cannot complete it, say what stopped you and leave the slice\n")
 	b.WriteString("in progress, so nobody else picks it up on top of your work:\n\n")
-	fmt.Fprintf(&b, "    nat complete-slice %s --blocked --summary '<what is blocking>'\n", c.Slice.ID)
+	fmt.Fprintf(&b, "    nat complete-slice %s --project %s \\\n", c.Slice.ID, c.ProjectID)
+	b.WriteString("        --blocked --summary '<what is blocking>'\n")
 
 	b.WriteString("\n## Guardrails\n\n")
 	b.WriteString("- One slice per session. Never pick up another when this one is done.\n")
 	b.WriteString("- The `nat` commands are the only way to record anything about the slice.\n")
+	fmt.Fprintf(&b, "- Every one of them carries `--project %s`.\n", c.ProjectID)
 	b.WriteString("- Never touch other slices, other milestones, or the plan itself.\n")
 	b.WriteString("- Never open or merge a pull request, and never push to the main branch.\n")
 
@@ -144,8 +166,13 @@ func Prompt(c PromptContext) string {
 // request is what the user typed into the launch input: the thing they want to
 // workshop, carried in the prompt so the agent starts on it rather than
 // opening with a question. Empty means a plain planning session.
-func PlanPrompt(projectName, workingDir, request string) string {
-	b := planBody(projectName, workingDir)
+//
+// projectID is the project's own page ID, which every command in the prompt
+// names with --project: a planning session outlives the board's idea of which
+// project is active, and a plan written into the project the user has since
+// switched to is the one mistake none of the drafting rules would catch.
+func PlanPrompt(projectID, projectName, workingDir, request string) string {
+	b := planBody(projectID, projectName, workingDir)
 
 	if request != "" {
 		b.WriteString("\n## The request\n\n")
@@ -168,11 +195,11 @@ func PlanPrompt(projectName, workingDir, request string) string {
 // The clear is deliberately spelled out as the last step rather than the first:
 // an item cleared before the plan lands is an idea lost, and an item the agent
 // never read is somebody's newer idea, typed while the session ran.
-func WishlistPrompt(projectName, workingDir string, items []notion.WishlistItem) string {
+func WishlistPrompt(projectID, projectName, workingDir string, items []notion.WishlistItem) string {
 	if len(items) == 0 {
-		return PlanPrompt(projectName, workingDir, "")
+		return PlanPrompt(projectID, projectName, workingDir, "")
 	}
-	b := planBody(projectName, workingDir)
+	b := planBody(projectID, projectName, workingDir)
 
 	b.WriteString("\n## The request\n\n")
 	b.WriteString("The user launched you on their wishlist — the ideas they have been\n")
@@ -185,7 +212,8 @@ func WishlistPrompt(projectName, workingDir string, items []notion.WishlistItem)
 	b.WriteString("\n## Clearing them\n\n")
 	b.WriteString("An item that the approved plan now covers has been captured, so take it\n")
 	b.WriteString("off the wishlist — once the plan is written, and not before:\n\n")
-	fmt.Fprintf(b, "    nat wishlist-clear %s\n\n", strings.Join(itemIDs(items), " "))
+	fmt.Fprintf(b, "    nat wishlist-clear %s \\\n        --project %s\n\n",
+		strings.Join(itemIDs(items), " "), projectID)
 	b.WriteString("Name only the items above, and only the ones the plan covers: an idea\n")
 	b.WriteString("the user set aside stays on the wishlist, and so does one typed while\n")
 	b.WriteString("this session ran — which is why the command names items rather than\n")
@@ -208,7 +236,7 @@ func itemIDs(items []notion.WishlistItem) []string {
 // launched on: the job, the workflow, the commands, the guardrails. Both
 // planning prompts open with it, so a wishlist launch and a typed one differ
 // only in what they are pointed at.
-func planBody(projectName, workingDir string) *strings.Builder {
+func planBody(projectID, projectName, workingDir string) *strings.Builder {
 	b := &strings.Builder{}
 
 	fmt.Fprintf(b, "You are a Claude Code planning agent for the %q project.\n\n", projectName)
@@ -218,20 +246,26 @@ func planBody(projectName, workingDir string) *strings.Builder {
 	b.WriteString("\n## How to work\n\n")
 	b.WriteString("Follow the /queue-work skill: it is the planning workflow for this\n")
 	b.WriteString("tracker. Start by running:\n\n")
-	b.WriteString("    nat info\n\n")
+	fmt.Fprintf(b, "    nat info --project %s\n\n", projectID)
 	b.WriteString("That prints the current plan: the project's conventions, its milestones\n")
-	b.WriteString("in plan order, and the slices under them (`--json` to parse it instead).\n")
+	b.WriteString("in plan order, and the slices under them (`--json` to parse it instead).\n\n")
+	b.WriteString("Every `nat` command you run names the project you are planning:\n\n")
+	fmt.Fprintf(b, "    --project %s\n\n", projectID)
+	b.WriteString("Without it a command acts on whatever project the user's board is on,\n")
+	b.WriteString("which they can switch while you work — and a plan written into the\n")
+	b.WriteString("wrong project is the one mistake none of the rules below would catch.\n")
 
 	b.WriteString("\n## Applying changes\n\n")
 	b.WriteString("Draft in conversation first, and write only after the user explicitly\n")
 	b.WriteString("approves. The `nat` planning commands are the only way to change the\n")
 	b.WriteString("plan:\n\n")
-	b.WriteString("- `nat plan-apply [FILE]` — a whole drafted plan of milestones and\n")
-	b.WriteString("  slices at once, from a JSON document (stdin without FILE)\n")
-	b.WriteString("- `nat milestone-add <name>` — one new milestone, Queued, at the end of\n")
-	b.WriteString("  the plan\n")
-	b.WriteString("- `nat slice-add <title> --milestone <name> [--description -]` — one new\n")
-	b.WriteString("  Todo slice, its brief read from stdin\n")
+	fmt.Fprintf(b, "- `nat plan-apply [FILE] --project %s` — a whole drafted\n", projectID)
+	b.WriteString("  plan of milestones and slices at once, from a JSON document (stdin\n")
+	b.WriteString("  without FILE)\n")
+	fmt.Fprintf(b, "- `nat milestone-add <name> --project %s` — one new\n", projectID)
+	b.WriteString("  milestone, Queued, at the end of the plan\n")
+	fmt.Fprintf(b, "- `nat slice-add <title> --milestone <name> [--description -] --project %s`\n", projectID)
+	b.WriteString("  — one new Todo slice, its brief read from stdin\n")
 
 	b.WriteString("\n## Guardrails\n\n")
 	b.WriteString("- Plan only. Never claim, start, or complete a slice — launching work is\n")
@@ -240,6 +274,7 @@ func planBody(projectName, workingDir string) *strings.Builder {
 	b.WriteString("  milestones holding them, are records of what happened.\n")
 	b.WriteString("- The commands above are the only way to change the plan; write nothing\n")
 	b.WriteString("  until the user has approved the draft.\n")
+	fmt.Fprintf(b, "- Every one of them carries `--project %s`.\n", projectID)
 	fmt.Fprintf(b, "- This session starts in %s; the user's board picks up\n", workingDir)
 	b.WriteString("  your changes when you exit, or on its refresh key.\n")
 

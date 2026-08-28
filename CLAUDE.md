@@ -73,6 +73,18 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   pre-upgrade nat left joined, and comes out next release — `TUISession` is
   kept for it alone, the name of the session nat used to host itself in and
   makes no more.
+  `prompt.go` writes what a fresh session is told, and every `nat` command in
+  any of its templates — the slice prompt's, the planning one's, the wishlist
+  clear — names its project with `--project <the project's page ID>`, which the
+  launch carries in (`PromptContext.ProjectID`, and the first argument of
+  `PlanPrompt`/`WishlistPrompt`; a `ProjectConfig` cannot supply it, being the
+  value of the config's Projects map rather than the key). An unpinned command
+  acts on whatever project the board is on, which is a thing the user changes
+  while an agent runs, so a session launched on one project would go on writing
+  wherever the board went. The prompts say so as well as doing it, since the
+  commands an agent runs of its own accord are the ones no template can spell
+  out. The golden files hold the exact commands, and one test walks every
+  template for a `nat` invocation naming no project.
   Every session nat makes is an agent's, and has tmux's own status bar off: the
   bar says nothing its session does not. The sessions the user was already in
   are never nat's to set options on, nat's own terminal included.
@@ -732,8 +744,18 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   without `--project` would file a whole plan into whichever project happens to
   be active, since `project-create` deliberately leaves the active one alone.
   Which is also why the skill ends by sending the user to the board's switch
-  picker rather than pretending the CLI can switch: it cannot, and the last step
-  is the user's.
+  picker rather than the CLI, which has no switch of its own: the last step is
+  the user's, and `--project` is how a skill reaches a project that is not the
+  active one in the meantime.
+  Every `nat` command a skill spells out carries `--project`, exactly as the
+  prompts do and for the same reason. A skill is not launched with an ID the
+  way a prompt is written with one, so each says where its own comes from — the
+  launch prompt where there was one, and otherwise the `project.id` of one
+  `nat info --json`, the single unpinned read the pinning is bootstrapped from.
+  /queue-project's other exception is `project-create` itself, which is what
+  makes the project there is no ID for yet. The rest is held to by tests over
+  the embedded files: a command inside a fenced block names a project or it is
+  one an agent would copy and run bare.
 
 ## Domain rules
 

@@ -12,12 +12,21 @@ You are a Claude Code agent working exactly one slice of the "notion-agent-track
 
 Before doing any work, run:
 
-    nat start-slice 3b738308-f654-8170-8c99-eccab4463d8f
+    nat start-slice 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
 
 That claims the slice for Craig Johnston and prints your brief: the slice's own
 body and acceptance criteria, followed by the project's conventions.
 If it refuses — the slice is already claimed, or already done — stop and
 say so rather than working the slice anyway.
+
+Every `nat` command below names the project this slice is in:
+
+    --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
+
+Put it on any other one you run too. Without it a command acts on
+whatever project the user's board is on, which they can switch while
+you work — and your writes would land in a plan you were never
+launched on.
 
 ## Then read
 
@@ -44,7 +53,8 @@ the deliverable the brief asks for and link it in the summary below.
 
 On completion, record the outcome:
 
-    nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --branch <branch> --summary '<what you did>' \
+    nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
+        --branch <branch> --summary '<what you did>' \
         --pr-description '<title line>
 
 <what the PR does and why>'
@@ -68,11 +78,13 @@ on stdin instead of passing `--summary`.
 If you cannot complete it, say what stopped you and leave the slice
 in progress, so nobody else picks it up on top of your work:
 
-    nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --blocked --summary '<what is blocking>'
+    nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
+        --blocked --summary '<what is blocking>'
 
 ## Guardrails
 
 - One slice per session. Never pick up another when this one is done.
 - The `nat` commands are the only way to record anything about the slice.
+- Every one of them carries `--project 3b738308-f654-8117-9f2e-c3b0a9b7f001`.
 - Never touch other slices, other milestones, or the plan itself.
 - Never open or merge a pull request, and never push to the main branch.

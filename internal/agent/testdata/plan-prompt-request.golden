@@ -8,10 +8,18 @@ milestones, draft new slices — not to execute any slice.
 Follow the /queue-work skill: it is the planning workflow for this
 tracker. Start by running:
 
-    nat info
+    nat info --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
 
 That prints the current plan: the project's conventions, its milestones
 in plan order, and the slices under them (`--json` to parse it instead).
+
+Every `nat` command you run names the project you are planning:
+
+    --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
+
+Without it a command acts on whatever project the user's board is on,
+which they can switch while you work — and a plan written into the
+wrong project is the one mistake none of the rules below would catch.
 
 ## Applying changes
 
@@ -19,12 +27,13 @@ Draft in conversation first, and write only after the user explicitly
 approves. The `nat` planning commands are the only way to change the
 plan:
 
-- `nat plan-apply [FILE]` — a whole drafted plan of milestones and
-  slices at once, from a JSON document (stdin without FILE)
-- `nat milestone-add <name>` — one new milestone, Queued, at the end of
-  the plan
-- `nat slice-add <title> --milestone <name> [--description -]` — one new
-  Todo slice, its brief read from stdin
+- `nat plan-apply [FILE] --project 3b738308-f654-8117-9f2e-c3b0a9b7f001` — a whole drafted
+  plan of milestones and slices at once, from a JSON document (stdin
+  without FILE)
+- `nat milestone-add <name> --project 3b738308-f654-8117-9f2e-c3b0a9b7f001` — one new
+  milestone, Queued, at the end of the plan
+- `nat slice-add <title> --milestone <name> [--description -] --project 3b738308-f654-8117-9f2e-c3b0a9b7f001`
+  — one new Todo slice, its brief read from stdin
 
 ## Guardrails
 
@@ -34,6 +43,7 @@ plan:
   milestones holding them, are records of what happened.
 - The commands above are the only way to change the plan; write nothing
   until the user has approved the draft.
+- Every one of them carries `--project 3b738308-f654-8117-9f2e-c3b0a9b7f001`.
 - This session starts in /Users/craig/Projects/notion-agent-tracker; the user's board picks up
   your changes when you exit, or on its refresh key.
 

@@ -72,7 +72,7 @@ func TestNextSliceHandsTheBranchBack(t *testing.T) {
 	}
 	text := string(body)
 	for _, want := range []string{
-		"nat complete-slice <slice> --branch <branch>",
+		"nat complete-slice <slice> --project <project> --branch <branch>",
 		"push the branch",
 		"do not open a pull request",
 		"Never open or merge a pull request",
@@ -202,5 +202,97 @@ func TestQueueProjectSendsTheUserToTheSwitchPicker(t *testing.T) {
 	}
 	if strings.Contains(strings.ToLower(text), "nat switch") {
 		t.Error("the queue-project skill invents a CLI project switch")
+	}
+}
+
+// natCommand matches a `nat` invocation by its subcommand, so the prose that
+// describes what a command does is not read as a call to it. wishlist-clear
+// comes before wishlist, since the alternation is tried in order.
+var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|release-slice|milestone-add|slice-add|slice-depends|wishlist-clear|wishlist|plan-apply|project-create)\b`)
+
+// fencedNatCommands are the `nat` invocations inside a skill's fenced code
+// blocks: the lines an agent copies and runs, as against the backticked prose
+// around them, which as often as not is describing a command rather than
+// calling it. A line continued with a trailing backslash is read whole.
+func fencedNatCommands(text string) []string {
+	lines := strings.Split(text, "\n")
+	var cmds []string
+	fenced := false
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			fenced = !fenced
+			continue
+		}
+		loc := natCommand.FindStringIndex(line)
+		if !fenced || loc == nil {
+			continue
+		}
+		cmd := line[loc[0]:]
+		for j := i; j+1 < len(lines) && strings.HasSuffix(strings.TrimRight(lines[j], " "), `\`); j++ {
+			cmd += " " + strings.TrimSpace(lines[j+1])
+		}
+		cmds = append(cmds, cmd)
+	}
+	return cmds
+}
+
+// A command with no --project acts on whichever project the board is on, which
+// the user switches while a session runs: a skill that ran one bare would claim,
+// hand back or file a whole plan somewhere it never read. Every command a skill
+// spells out for copying names its project, bar the two that cannot — the one
+// read that finds the ID in the first place, and `project-create`, which is what
+// makes the project there is no ID for yet.
+func TestSkillCommandsNameTheProject(t *testing.T) {
+	for _, skill := range []string{"next-slice", "queue-project", "queue-work"} {
+		body, err := fs.ReadFile(FS(), skill+"/SKILL.md")
+		if err != nil {
+			t.Errorf("read the %s skill: %v", skill, err)
+			continue
+		}
+		for _, cmd := range fencedNatCommands(string(body)) {
+			if strings.HasPrefix(cmd, "nat project-create") || cmd == "nat info --json" {
+				continue
+			}
+			if !strings.Contains(cmd, "--project ") {
+				t.Errorf("the %s skill runs %q without naming the project", skill, cmd)
+			}
+		}
+	}
+}
+
+// The commands a skill names in prose are run just as the fenced ones are, and
+// the pin is worth explaining as well as applying: an agent that knows why puts
+// --project on the calls it makes of its own accord.
+func TestSkillsPinTheProjectTheyWereGiven(t *testing.T) {
+	for skill, want := range map[string][]string{
+		"next-slice": {
+			"nat next-slice --project <project>",
+			"nat start-slice <URL|ID> --project <project>",
+			"nat info --json",
+			"whichever project the user's board is on",
+		},
+		"queue-work": {
+			"nat info --project <project>",
+			"nat plan-apply --project <project>",
+			"nat wishlist --project <project>",
+			"nat wishlist-clear <block-id>... --project <project>",
+			"nat info --json",
+			"whichever project the user's board is on",
+		},
+		"queue-project": {
+			"nat plan-apply --project <the id project-create printed>",
+			"whichever project the user's board is on",
+		},
+	} {
+		body, err := fs.ReadFile(FS(), skill+"/SKILL.md")
+		if err != nil {
+			t.Errorf("read the %s skill: %v", skill, err)
+			continue
+		}
+		for _, command := range want {
+			if !strings.Contains(string(body), command) {
+				t.Errorf("the %s skill does not say %q", skill, command)
+			}
+		}
 	}
 }
