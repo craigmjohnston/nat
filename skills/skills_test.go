@@ -94,11 +94,13 @@ func TestNextSliceHandsTheBranchBack(t *testing.T) {
 var prEnding = regexp.MustCompile(`--pr($|[^-\w])`)
 
 // A slice launched from the board is placed in a worktree of its own, and a
-// session started from the skill has to arrive at the same branch in the same
-// way — otherwise the same slice hands back one branch from the board and
-// another from the terminal. The command and the branch rule are what the
-// agent acts on, so they are worth naming here; the fallbacks are too, since a
-// machine with no worktrunk is one that would otherwise do nothing at all.
+// session started from the skill has to arrive at the same branch — and the
+// same worktree path — in the same way, otherwise the same slice hands back one
+// branch from the board and another from the terminal, and a relaunch from
+// either side cuts a second copy of the repository. The commands, the branch
+// rule and the path convention are what the agent acts on, so they are worth
+// naming here; the fallbacks are too, since a machine with no git is one that
+// would otherwise do nothing at all.
 func TestNextSliceCutsTheSlicesWorktree(t *testing.T) {
 	body, err := fs.ReadFile(FS(), "next-slice/SKILL.md")
 	if err != nil {
@@ -106,15 +108,26 @@ func TestNextSliceCutsTheSlicesWorktree(t *testing.T) {
 	}
 	text := string(body)
 	for _, want := range []string{
-		"wt switch --create slice/<slug> --no-cd",
+		"git worktree add <repo>.worktrees/<path slug> -b slice/<slug> <origin's default branch>",
+		"git worktree list --porcelain",
+		"git rev-parse --path-format=absolute --git-common-dir",
 		"`slice/` followed by the name lowercased",
-		"If `wt` is not installed, or the working directory is not a git repository",
+		"If git is not installed, or the working directory is not a git repository",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the next-slice skill does not say %q", want)
 		}
 	}
+	// worktrunk is gone: a `wt` the skill still named is one the agent would
+	// try to run on a machine that has no such binary.
+	if wtCommand.MatchString(text) {
+		t.Error("the next-slice skill still names a wt command")
+	}
 }
+
+// wtCommand matches worktrunk's binary as a command word, so the ordinary
+// English the skill is written in does not read as it.
+var wtCommand = regexp.MustCompile(`\bwt\s+(switch|list|add|remove)\b`)
 
 // A project keeps its whole plan on one page: a milestone is an option of the
 // slices' Milestone column, with no status of its own and no page to name it
