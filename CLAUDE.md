@@ -163,10 +163,21 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `git diff --merge-base <base> <branch>` in the slice's repo and hands back what
   git wrote alongside the base it measured against — the merge base rather than
   the tip, since what the branch did is the point and not everything main has
-  moved on by. The base is whatever `refs/remotes/origin/HEAD` names and `main`
-  when there is no such ref, which is logged and swallowed rather than returned:
-  the fallback is the project's own convention, and refusing a diff over it would
-  be worse than showing one against main. `Fetch` is the one call that goes to
+  moved on by. The base is whatever `refs/remotes/origin/HEAD` names, and where
+  there is no such ref `origin/main`, falling back to a bare `main` only where
+  that is unreadable too. Both steps are logged and swallowed rather than
+  returned: the fallback is the project's own convention, and refusing a diff
+  over it would be worse than showing one against main. The remote ref comes
+  first because the local branch is precisely the staleness `Fetch` runs to get
+  past — a shared checkout nobody has pulled in a fortnight has a `main` a
+  fortnight behind what the fetch just brought down, and a slice cut from it
+  starts life exactly that far behind, which is what a fetch and no base at all
+  did. The bare `main` is kept for the one repository the remote ref cannot
+  serve, one with no origin, where the local branch is all there is. That
+  fallback is not the rare path it sounds: git writes `origin/HEAD` at clone
+  time and nothing maintains it afterwards, so a checkout made any other way —
+  or one it was pruned from — has none until
+  `git remote set-head origin --auto` puts it back. `Fetch` is the one call that goes to
   the network: `git fetch origin` in the repo, so the base a slice's worktree is
   cut from is origin's tip rather than whatever the shared checkout last heard
   about. It returns nothing — a fetch with no network, no origin or a remote that

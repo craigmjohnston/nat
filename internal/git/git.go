@@ -37,6 +37,11 @@ const gitTimeout = 30 * time.Second
 // and every pull request merges into it.
 const DefaultBase = "main"
 
+// RemoteDefaultBase is origin's own copy of that branch, and the base a
+// repository that names no default branch falls back to before the local one:
+// see [CLI.fallbackBase] for why the order matters.
+const RemoteDefaultBase = "origin/" + DefaultBase
+
 // Runner runs a command in a working directory and returns its standard
 // output. It is the seam the tests replace: the real one starts a subprocess.
 type Runner interface {
@@ -160,23 +165,55 @@ func (c CLI) Show(dir, branch, path string) ([]string, error) {
 
 // Base is the branch a diff is taken against, and the one a slice's worktree is
 // cut from: whatever origin's HEAD points at, which is the repository's default
-// branch as the clone last recorded it, and [DefaultBase] when there is no such
-// ref to read — a repository with no origin at all, or one cloned without it,
-// where the local branch is all there is to work from. A failure here is logged
-// and swallowed rather than returned: the fallback is right for every repository
-// this project works on, and refusing to show a diff over it would be worse than
-// showing one against main.
+// branch as the clone last recorded it, and [CLI.fallbackBase] when there is no
+// such ref to read. A failure here is logged and swallowed rather than returned:
+// the fallback is right for every repository this project works on, and refusing
+// to show a diff over it would be worse than showing one against main.
+//
+// The ref is missing more often than it sounds: git writes it at clone time and
+// nothing maintains it afterwards, so a checkout made any other way — or one it
+// was pruned from — has none, and only `git remote set-head origin --auto` puts
+// it back.
 func (c CLI) Base(dir string) string {
 	out, err := c.runner.Run(dir, Binary, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
 	if err != nil {
-		logging.Action("could not read the repository's default branch; diffing against "+DefaultBase,
-			"dir", dir, "error", err)
-		return DefaultBase
+		logging.Action("could not read the repository's default branch", "dir", dir, "error", err)
+		return c.fallbackBase(dir)
 	}
 	if ref := strings.TrimSpace(out); ref != "" {
 		return ref
 	}
-	return DefaultBase
+	logging.Action("the repository names no default branch", "dir", dir)
+	return c.fallbackBase(dir)
+}
+
+// fallbackBase is the base for a repository whose origin/HEAD says nothing:
+// origin's own copy of the project's default branch where there is one, and the
+// local branch only where there is not.
+//
+// The remote ref first, because the local one is the very staleness [CLI.Fetch]
+// runs before a worktree to avoid. A shared checkout the user has not pulled in
+// a fortnight has a `main` a fortnight behind whatever the fetch just brought
+// down, and a slice cut from it starts life behind by exactly that much —
+// which is no better than not fetching at all. `origin/main` is current the
+// moment the fetch returns.
+//
+// The local branch is kept for the one repository the remote ref cannot serve:
+// one with no origin at all, where it is the only thing there is to cut from
+// or diff against. A repository whose default branch is neither main nor named
+// by origin/HEAD is beyond guessing, and gets the project's own convention.
+func (c CLI) fallbackBase(dir string) string {
+	// The full ref rather than the short name, since a local branch may be
+	// called origin/main and rev-parse would answer for that one instead.
+	_, err := c.runner.Run(dir, Binary, "rev-parse", "--verify", "--quiet",
+		"refs/remotes/"+RemoteDefaultBase)
+	if err != nil {
+		logging.Action("no "+RemoteDefaultBase+" either; falling back to "+DefaultBase,
+			"dir", dir, "error", err)
+		return DefaultBase
+	}
+	logging.Action("falling back to "+RemoteDefaultBase, "dir", dir)
+	return RemoteDefaultBase
 }
 
 // Fetch brings origin's refs up to date, so [CLI.Base] names a tip that is

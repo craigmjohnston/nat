@@ -78,7 +78,11 @@ The fetch first, and the base explicitly, because otherwise worktrunk cuts the
 branch from the local default branch — whatever stale state the shared checkout
 was last left in — and the work starts life behind. The base is whatever
 `git symbolic-ref --short refs/remotes/origin/HEAD` names (`origin/main`,
-`origin/master`), and `main` for a repository with no origin at all, where the
+`origin/master`); where there is no such ref, `origin/main`. Git writes
+origin/HEAD at clone time and nothing maintains it afterwards, so plenty of
+checkouts have none — and falling back to the local `main` there would put you
+back on whatever the checkout last pulled, which is the thing the fetch was
+for. Only a repository with no origin at all falls back to `main`, where the
 local branch is all there is. A fetch that fails is not a reason to stop: work
 against the refs as last fetched.
 

@@ -79,29 +79,59 @@ func TestDiffRunsGit(t *testing.T) {
 	}
 }
 
-// TestDiffFallsBackToMain covers a repository with no origin to read a default
-// branch off: the project's own convention is what stands in for it, and the
-// diff is still taken.
-func TestDiffFallsBackToMain(t *testing.T) {
-	runner := &fakeRunner{errs: []error{&ExitError{Code: 128, Stderr: "fatal: ref refs/remotes/origin/HEAD is not a symbolic ref\n"}}}
+// noOriginHead is what git says in the repository this fallback exists for: one
+// with an origin, but no origin/HEAD — the ref git writes at clone time and
+// nothing maintains afterwards.
+var noOriginHead = &ExitError{Code: 128, Stderr: "fatal: ref refs/remotes/origin/HEAD is not a symbolic ref\n"}
+
+// TestDiffFallsBackToTheRemoteDefaultBranch covers a repository that names no
+// default branch but has an origin: the fallback is origin's own copy of the
+// project's default branch and not the local one, which is the branch the
+// checkout last happened to pull and is exactly what the fetch before a
+// worktree exists to get past.
+func TestDiffFallsBackToTheRemoteDefaultBranch(t *testing.T) {
+	runner := &fakeRunner{errs: []error{noOriginHead}}
 	base, _, err := NewWithRunner(runner).Diff("/repos/nat", "slice/viewer")
 	if err != nil {
-		t.Fatalf("Diff() = %v, want a diff against %s", err, DefaultBase)
+		t.Fatalf("Diff() = %v, want a diff against %s", err, RemoteDefaultBase)
 	}
-	if base != DefaultBase {
-		t.Errorf("base = %q, want %q", base, DefaultBase)
+	if base != RemoteDefaultBase {
+		t.Errorf("base = %q, want %q", base, RemoteDefaultBase)
 	}
-	if got := runner.calls[1].args[len(runner.calls[1].args)-2]; got != DefaultBase {
-		t.Errorf("diffed against %q, want %q", got, DefaultBase)
+	if len(runner.calls) != 3 {
+		t.Fatalf("made %d calls, want the base read, the fallback check and the diff", len(runner.calls))
+	}
+	// The full ref, since a local branch may be called origin/main and
+	// rev-parse would answer for that one instead.
+	wantCheck := []string{"rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"}
+	if !reflect.DeepEqual(runner.calls[1].args, wantCheck) {
+		t.Errorf("fallback args = %v, want %v", runner.calls[1].args, wantCheck)
+	}
+	if got := runner.calls[2].args[len(runner.calls[2].args)-2]; got != RemoteDefaultBase {
+		t.Errorf("diffed against %q, want %q", got, RemoteDefaultBase)
+	}
+}
+
+// TestBaseFallsBackToTheLocalBranchWithNoOrigin covers the one repository the
+// remote ref cannot serve: no origin at all, so origin/main is no more readable
+// than origin/HEAD was and the local branch is all there is.
+func TestBaseFallsBackToTheLocalBranchWithNoOrigin(t *testing.T) {
+	runner := &fakeRunner{errs: []error{noOriginHead, &ExitError{Code: 128}}}
+	if base := NewWithRunner(runner).Base("/repos/nat"); base != DefaultBase {
+		t.Errorf("Base() = %q, want %q", base, DefaultBase)
+	}
+	if len(runner.calls) != 2 {
+		t.Fatalf("made %d calls, want the base read and the fallback check", len(runner.calls))
 	}
 }
 
 // TestBaseFallsBackOnAnEmptyAnswer covers a git that succeeded and said
-// nothing, which names no branch to diff against either.
+// nothing, which names no branch to diff against either: the same fallback as a
+// git that refused, and not an empty base handed on to the diff.
 func TestBaseFallsBackOnAnEmptyAnswer(t *testing.T) {
 	runner := &fakeRunner{outs: []string{" \n"}}
-	if base := NewWithRunner(runner).Base("/repos/nat"); base != DefaultBase {
-		t.Errorf("Base() = %q, want %q", base, DefaultBase)
+	if base := NewWithRunner(runner).Base("/repos/nat"); base != RemoteDefaultBase {
+		t.Errorf("Base() = %q, want %q", base, RemoteDefaultBase)
 	}
 }
 
@@ -132,7 +162,7 @@ func TestFetchSwallowsItsFailure(t *testing.T) {
 	if len(runner.calls) != 1 {
 		t.Fatalf("made %d calls, want the fetch alone", len(runner.calls))
 	}
-	if base := NewWithRunner(runner).Base("/repos/nat"); base != DefaultBase {
+	if base := NewWithRunner(runner).Base("/repos/nat"); base != RemoteDefaultBase {
 		t.Errorf("Base() = %q, want the read after a failed fetch to go ahead", base)
 	}
 }
