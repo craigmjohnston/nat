@@ -33,6 +33,7 @@ import (
 func releaseSlice(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("release-slice", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
+	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
@@ -45,7 +46,7 @@ func releaseSlice(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	cfg, project, err := env.activeProject()
+	cfg, _, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}

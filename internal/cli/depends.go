@@ -29,6 +29,7 @@ func sliceDepends(ctx context.Context, args []string, env Env) error {
 	flags.Var(&on, "on", "a slice this one waits on, by URL or ID; repeat for more")
 	clear := flags.Bool("clear", false, "drop the dependencies already recorded before adding any")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
+	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
@@ -50,7 +51,7 @@ func sliceDepends(ctx context.Context, args []string, env Env) error {
 		}
 	}
 
-	if _, _, err := env.activeProject(); err != nil {
+	if _, _, _, err := env.projectFor(*projectRef); err != nil {
 		return err
 	}
 	client := env.NewClient(env.Tokens.Token)

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"strings"
@@ -11,23 +12,23 @@ import (
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
-// wishlist prints the pending wishlist items written on the active project's
-// page: markdown for a person, and --json — text with the block ID beside it —
-// for the workshop agent, whose next move is to clear the items it has turned
-// into a plan.
+// wishlist prints the pending wishlist items written on the project's page:
+// markdown for a person, and --json — text with the block ID beside it — for
+// the workshop agent, whose next move is to clear the items it has turned into
+// a plan.
 func wishlist(ctx context.Context, args []string, env Env) error {
-	asJSON, err := parseJSONFlag("wishlist", args)
+	asJSON, projectRef, err := parseJSONFlag("wishlist", args)
 	if err != nil {
 		return err
 	}
 
-	cfg, _, err := env.activeProject()
+	_, projectID, _, err := env.projectFor(projectRef)
 	if err != nil {
 		return err
 	}
 	client := env.NewClient(env.Tokens.Token)
 
-	blocks, err := client.GetBlockChildren(ctx, cfg.ActiveProjectID)
+	blocks, err := client.GetBlockChildren(ctx, projectID)
 	if err != nil {
 		return fmt.Errorf("load project page: %w", err)
 	}
@@ -87,18 +88,18 @@ func wishlistMarkdown(items []notion.WishlistItem) string {
 // already trashed, which no longer reads as part of the section — is reported
 // and left alone rather than failing the run.
 func wishlistClear(ctx context.Context, args []string, env Env) error {
-	ids, err := parseWishlistClearArgs(args)
+	ids, projectRef, err := parseWishlistClearArgs(args)
 	if err != nil {
 		return err
 	}
 
-	cfg, _, err := env.activeProject()
+	_, projectID, _, err := env.projectFor(projectRef)
 	if err != nil {
 		return err
 	}
 	client := env.NewClient(env.Tokens.Token)
 
-	blocks, err := client.GetBlockChildren(ctx, cfg.ActiveProjectID)
+	blocks, err := client.GetBlockChildren(ctx, projectID)
 	if err != nil {
 		return fmt.Errorf("load project page: %w", err)
 	}
@@ -119,7 +120,7 @@ func wishlistClear(ctx context.Context, args []string, env Env) error {
 	seeded := false
 	if len(trashed) > 0 {
 		if after, need := section.EmptyItemAfter(trashed); need {
-			if _, err := client.AppendBlockChildrenAfter(ctx, cfg.ActiveProjectID, after,
+			if _, err := client.AppendBlockChildrenAfter(ctx, projectID, after,
 				[]map[string]any{notion.EmptyItemBlock()}); err != nil {
 				return fmt.Errorf("leave an empty wishlist item: %w", err)
 			}
@@ -134,23 +135,29 @@ func wishlistClear(ctx context.Context, args []string, env Env) error {
 
 // parseWishlistClearArgs reads the block IDs off the command line, dropping the
 // ones repeated: the same ID given twice would be a second delete of a block
-// already gone, which Notion refuses.
-func parseWishlistClearArgs(args []string) ([]string, error) {
+// already gone, which Notion refuses. --project is the one flag it takes, and
+// is read off the line wherever it was written, the same way every other
+// command reads its flags.
+func parseWishlistClearArgs(args []string) ([]string, string, error) {
+	flags := flag.NewFlagSet("wishlist-clear", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	projectRef := projectFlag(flags)
+	rest, err := parseFlags(flags, args)
+	if err != nil {
+		return nil, "", err
+	}
 	var ids []string
 	seen := map[string]bool{}
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "-") {
-			return nil, usageErrorf("wishlist-clear: unknown flag %q", arg)
-		}
+	for _, arg := range rest {
 		if id := normalizeID(arg); !seen[id] {
 			seen[id] = true
 			ids = append(ids, arg)
 		}
 	}
 	if len(ids) == 0 {
-		return nil, usageErrorf("wishlist-clear: no block IDs given: name the items to clear, as `nat wishlist --json` lists them")
+		return nil, "", usageErrorf("wishlist-clear: no block IDs given: name the items to clear, as `nat wishlist --json` lists them")
 	}
-	return ids, nil
+	return ids, *projectRef, nil
 }
 
 // normalizeID matches block IDs the way Notion's own are written: lowercase,
