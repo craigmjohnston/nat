@@ -680,7 +680,11 @@ func TestAppLaunchStartsTheSessionAndAttaches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the prompt file: %v", err)
 	}
-	for _, want := range []string{"Info view", "s5", workdir, "Craig Johnston"} {
+	// The project among them: the prompt pins every command to the project the
+	// launch was for, so a board switched to another one mid-session cannot
+	// take the agent's writes with it.
+	for _, want := range []string{"Info view", "s5", workdir, "Craig Johnston",
+		"--project " + testProjectID} {
 		if !strings.Contains(string(prompt), want) {
 			t.Errorf("the prompt is missing %q:\n%s", want, prompt)
 		}

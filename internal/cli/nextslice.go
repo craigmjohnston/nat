@@ -61,7 +61,7 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 	if asJSON {
 		return writeBriefJSON(env.Out, b, projectID, project.Name)
 	}
-	_, err = io.WriteString(env.Out, briefMarkdown(b, project.Name))
+	_, err = io.WriteString(env.Out, briefMarkdown(b, projectID, project.Name))
 	return err
 }
 
@@ -300,12 +300,18 @@ func writeBriefJSON(out io.Writer, b brief, projectID, projectName string) error
 // briefMarkdown renders the brief: what was claimed, then the facts an agent
 // needs before it starts, then the slice's own body and the project conventions
 // as they were written.
-func briefMarkdown(b brief, projectName string) string {
+//
+// The project's page ID is among those facts, and says what it is for: it is
+// what --project names, and a session that reads only the brief would otherwise
+// have to go looking for it — leaving every command it ran acting on whatever
+// project the user's board happened to be on.
+func briefMarkdown(b brief, projectID, projectName string) string {
 	var s strings.Builder
 	fmt.Fprintf(&s, "# %s\n\n", b.Slice.Name)
 	fmt.Fprintf(&s, "Claimed for %s. Work exactly this slice.\n\n", b.Assignee)
 
 	fmt.Fprintf(&s, "- Project: %s\n", projectName)
+	fmt.Fprintf(&s, "- Project page ID: %s (pass it as --project on every nat command)\n", projectID)
 	if b.Milestone.Name != "" {
 		fmt.Fprintf(&s, "- Milestone: %s\n", b.Milestone.Name)
 	}

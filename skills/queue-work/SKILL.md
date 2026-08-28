@@ -11,13 +11,24 @@ after the user explicitly approves**, and only through the `nat` CLI.
 
 ## Setup
 
-Run `nat info` to see the project you are planning into: its conventions, its
-milestones in plan order, and its slices grouped under them. (`nat info
---json` if you would rather parse it.)
+Settle which project you are planning into before you read anything, because
+every `nat` command takes `--project <id>` — the project's page ID — and every
+one you run should carry it. Without it a command acts on
+whichever project the user's board is on, and that is something they switch
+while you work: an unpinned `plan-apply` files the whole plan into the wrong
+project.
 
-`nat` works on whichever project local config marks active. If the user meant
-a different one, tell them to switch the active project on the board (`nat`)
-and rerun — the CLI has no project switch of its own.
+- If you were launched from the board, your prompt already names the ID.
+- Otherwise read it off the active project: `nat info --json` prints it as
+  `project.id`. That one call is the only unpinned command in this skill.
+- If the user meant a project other than the active one, `--project` is how you
+  reach it — you just need its page ID. `nat info --project <whatever they
+  called it>` refuses an ID the config does not know by listing every project it
+  does know, ID and name. They do not need to switch the board.
+
+Then run `nat info --project <project>` to see what you are planning into: its
+conventions, its milestones in plan order, and its slices grouped under them.
+(`--json` if you would rather parse it.) `<project>` below is that ID.
 
 ## Drafting rules
 
@@ -43,7 +54,7 @@ and rerun — the CLI has no project switch of its own.
 2. **Write nothing until the user explicitly approves.** Iterate on their
    feedback by revising the proposal, not by writing part of it.
 3. On approval, write the whole plan in one go by piping this document to
-   `nat plan-apply`:
+   `nat plan-apply --project <project>`:
 
    ```json
    {
@@ -91,13 +102,14 @@ and rerun — the CLI has no project switch of its own.
 The board can start you on the project's wishlist — the ideas the user has
 been jotting on the project page — in which case your prompt carries the items
 and their block IDs, and they are the request: draft from them rather than
-asking what to work on. If you were not launched that way, `nat wishlist` (or
-`nat wishlist --json`, which gives the IDs) reads the same items.
+asking what to work on. If you were not launched that way,
+`nat wishlist --project <project>` (add `--json` for the IDs) reads the same
+items.
 
 Clearing captured items is the last step, after step 4 above:
 
 ```
-nat wishlist-clear <block-id>...
+nat wishlist-clear <block-id>... --project <project>
 ```
 
 - Only after the plan is written. An item cleared before that is an idea lost.
@@ -110,9 +122,11 @@ nat wishlist-clear <block-id>...
 ## Guardrails
 
 - Everything you write goes through `nat`. Never edit Notion directly.
+- Every `nat` command carries `--project <project>`, the ID you settled in
+  setup — the one read that finds it is the only exception.
 - `plan-apply` only ever creates. Existing milestones and slices — and above
   all anything in progress or `Done` — are left exactly as they are.
 - If a run fails partway, it says what it had already created. Trim those out
   of the plan before running it again rather than filing them twice.
-- If `nat info` shows a tracker that does not match what the user described,
-  stop and tell them instead of improvising.
+- If `nat info --project <project>` shows a tracker that does not match what
+  the user described, stop and tell them instead of improvising.

@@ -88,7 +88,7 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	if *asJSON {
 		return writeBriefJSON(env.Out, b, projectID, project.Name)
 	}
-	_, err = io.WriteString(env.Out, briefMarkdown(b, project.Name))
+	_, err = io.WriteString(env.Out, briefMarkdown(b, projectID, project.Name))
 	return err
 }
 

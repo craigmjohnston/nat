@@ -182,7 +182,7 @@ func TestAppWorkshopKeyLaunchesAPlanningAgentOnTheWishlist(t *testing.T) {
 		t.Fatalf("read the prompt file: %v", err)
 	}
 	for _, want := range []string{"/queue-work", "## The request",
-		"nat wishlist-clear a-block b-block"} {
+		"nat wishlist-clear a-block b-block", "--project " + testProjectID} {
 		if !strings.Contains(string(prompt), want) {
 			t.Errorf("the prompt is missing %q:\n%s", want, prompt)
 		}
@@ -277,7 +277,7 @@ func TestLaunchWishlistAgentReportsAFailedPromptFile(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
 	launcher := &fakeLauncher{}
 
-	msg := runMsg(t, launchWishlistAgent(launcher, "tracker", "/tmp", wishlistItems(1), config.AgentModel{})).(agentLaunchedMsg)
+	msg := runMsg(t, launchWishlistAgent(launcher, "project-1", "tracker", "/tmp", wishlistItems(1), config.AgentModel{})).(agentLaunchedMsg)
 
 	if msg.err == nil || !strings.Contains(msg.err.Error(), "launch planning agent: create prompt dir") {
 		t.Errorf("err = %v, want the failed prompt file", msg.err)

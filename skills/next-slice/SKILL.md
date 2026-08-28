@@ -12,22 +12,44 @@ when this one is done.
 The `nat` CLI is how you reach the tracker: it chooses the slice, claims it,
 prints the brief, and records the outcome. You never write to Notion yourself.
 
+## The project, pinned first
+
+Every `nat` command below takes `--project <id>`, naming the project by its
+page ID, and every one you run should carry it. Without it a command acts on
+whichever project the user's board is on — and that is something they switch
+while you work, so an unpinned claim or hand-back can land in a plan you never
+read.
+
+Settle the ID once, before anything else:
+
+- If you were launched from the board, your prompt already names it. Use that.
+- Otherwise read it off the active project: `nat info --json` prints it as
+  `project.id`. That one call is the only unpinned command in this skill.
+- Either way the brief you are about to claim repeats it, as its
+  `- Project page ID:` line. Check the two agree: an ID that is not the one the
+  slice came from is one you were given for a different project.
+- If the user asked for a project other than the active one, you need its page
+  ID too. `nat info --project <whatever they called it>` refuses an ID the
+  config does not know by listing every project it does know, ID and name —
+  which is where the right one is. They do not need to switch the board.
+
+Everything below writes `<project>` where that ID goes.
+
 ## 1. Claim the next slice
 
-Run `nat next-slice`. It claims the next unclaimed Todo slice under the
-lowest-ordered milestone that is not Done — a milestone has no status of its
-own, so what is unfinished is what work is taken from — and prints its brief:
-the slice's name, page ID and URL, the working directory to use, the slice's
-own body, and the project's conventions.
+Run `nat next-slice --project <project>`. It claims the next unclaimed Todo
+slice under the lowest-ordered milestone that is not Done — a milestone has no
+status of its own, so what is unfinished is what work is taken from — and
+prints its brief: the slice's name, page ID and URL, the project's own page ID,
+the working directory to use, the slice's own body, and the project's
+conventions.
 
-- If the user asked for a particular slice, run `nat start-slice <URL|ID>`
-  instead — same claim, same brief, for the slice you name.
+- If the user asked for a particular slice, run
+  `nat start-slice <URL|ID> --project <project>` instead — same claim, same
+  brief, for the slice you name.
 - If the command refuses — every milestone finished, or nothing unclaimed under
   the ones that are not — report what it said and stop. The plan is the user's:
   suggest they add to it on the board (`nat`) and rerun.
-- `nat` works on whichever project local config marks active. If the user
-  asked for a different one, tell them to switch the active project on the
-  board and rerun — the CLI has no project switch of its own.
 
 Tell the user which slice you claimed, with its Notion URL.
 
@@ -56,7 +78,11 @@ The fetch first, and the base explicitly, because otherwise worktrunk cuts the
 branch from the local default branch — whatever stale state the shared checkout
 was last left in — and the work starts life behind. The base is whatever
 `git symbolic-ref --short refs/remotes/origin/HEAD` names (`origin/main`,
-`origin/master`), and `main` for a repository with no origin at all, where the
+`origin/master`); where there is no such ref, `origin/main`. Git writes
+origin/HEAD at clone time and nothing maintains it afterwards, so plenty of
+checkouts have none — and falling back to the local `main` there would put you
+back on whatever the checkout last pulled, which is the thing the fetch was
+for. Only a repository with no origin at all falls back to `main`, where the
 local branch is all there is. A fetch that fails is not a reason to stop: work
 against the refs as last fetched.
 
@@ -96,7 +122,8 @@ working half-placed.
 Record the outcome with the slice's page ID or URL, as printed in the brief:
 
 ```
-nat complete-slice <slice> --branch <branch> --summary '<what you did>' \
+nat complete-slice <slice> --project <project> --branch <branch> \
+    --summary '<what you did>' \
     --pr-description '<title line>
 
 <what the PR does and why>'
@@ -122,7 +149,8 @@ the summary in on stdin when it is too long for an argument.
 If you cannot complete the slice, leave it claimed and say what stopped you:
 
 ```
-nat complete-slice <slice> --blocked --summary '<what is blocking>'
+nat complete-slice <slice> --project <project> --blocked \
+    --summary '<what is blocking>'
 ```
 
 Then tell the user. If every slice in the milestone is now Done, mention that
@@ -133,6 +161,8 @@ too — a milestone's status follows its slices, and there is nothing to set.
 - One slice per session. Never claim more than one.
 - Every write to the tracker goes through `nat`. Never edit Notion directly,
   and never work a slice the CLI would not hand you.
+- Every `nat` command carries `--project <project>`, the ID you settled at the
+  start — the one read that finds it is the only exception.
 - Never touch other slices, milestones, or the project page.
 - One branch per slice, and never push to main.
 - Never open or merge a pull request. Opening one is the board's job, after the

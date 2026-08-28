@@ -192,7 +192,7 @@ func (f *PlanForm) save(a *App) tea.Cmd {
 	// The form only ever opens on a configured project, so this is the one it
 	// was opened against.
 	project, _ := a.activeProject()
-	return launchPlanAgent(a.launcher, project.Name, expandHome(project.WorkingDir),
+	return launchPlanAgent(a.launcher, a.cfg.ActiveProjectID, project.Name, expandHome(project.WorkingDir),
 		strings.TrimSpace(f.request), trimModel(f.model))
 }
 
@@ -200,9 +200,9 @@ func (f *PlanForm) save(a *App) tea.Cmd {
 // in — and starts the detached session that reads it, tagged with the sentinel
 // rather than a slice ID. It comes back as the same message a slice launch
 // does, so the failure reporting is shared.
-func launchPlanAgent(l AgentLauncher, projectName, workdir, request string, m config.AgentModel) tea.Cmd {
+func launchPlanAgent(l AgentLauncher, projectID, projectName, workdir, request string, m config.AgentModel) tea.Cmd {
 	return func() tea.Msg {
-		file, err := agent.WritePromptFile(agent.PlanSession, agent.PlanPrompt(projectName, workdir, request))
+		file, err := agent.WritePromptFile(agent.PlanSession, agent.PlanPrompt(projectID, projectName, workdir, request))
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch planning agent: %w", err)}
 		}
