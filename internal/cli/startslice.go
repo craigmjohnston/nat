@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
@@ -15,13 +16,20 @@ import (
 // knows which slice the agent is for, so there is nothing to choose — only the
 // claim to take and the brief to hand over.
 //
-// Only a slice nobody has started can be taken. A slice already in progress, or
-// Done, is somebody's work or somebody's finished work, and either way an
-// agent must not be told to start it again; that refusal happens before any
-// write, so a mistaken invocation leaves the plan exactly as it was. So does
-// the other refusal: a slice waiting on work that is not finished is named
-// along with what it waits on, rather than claimed and handed to an agent that
-// cannot do it yet.
+// Two kinds of slice can be started: one nobody has taken, which is claimed
+// here, and one this user already holds, which is simply re-opened — the brief
+// printed exactly as a fresh claim prints it and no write made at all, since
+// there is nothing about the slice left to change. That second case is what
+// lets something else claim a slice before the agent runs: the board claims it
+// as it launches, and the session the launch starts finds its own claim rather
+// than a refusal.
+//
+// Every other slice is refused. One in progress held by somebody else, and a
+// Done one, are somebody's work or somebody's finished work, and either way an
+// agent must not be told to start it; that refusal happens before any write, so
+// a mistaken invocation leaves the plan exactly as it was. So does the other
+// refusal: a slice waiting on work that is not finished is named along with
+// what it waits on, rather than handed to an agent that cannot do it yet.
 func startSlice(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("start-slice", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -56,7 +64,8 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return fmt.Errorf("load the slice: %w", err)
 	}
-	if err := takeable(*page); err != nil {
+	reopen, err := takeable(*page, shape, cfg.AssigneeUserID)
+	if err != nil {
 		return err
 	}
 	// The dependencies are read one page at a time rather than off the plan:
@@ -66,13 +75,20 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	if blockers, _ := domain.Blockers(waiting, dependencyIndex(ctx, client, waiting)); len(blockers) > 0 {
 		return blockedError(waiting, blockers)
 	}
-	claimed, err := claim(ctx, client, page.ID, shape, cfg.AssigneeUserID)
-	if err != nil {
-		return err
+	// A re-opened slice is already exactly what a claim would make it, so there
+	// is nothing to write and nothing to nudge the board about: this run changed
+	// nothing about the plan.
+	claimed := domain.SliceFromPage(*page)
+	if reopen {
+		logging.Action("slice re-opened", "slice", claimed.ID, "name", claimed.Name, "user", cfg.AssigneeUserID)
+	} else {
+		if claimed, err = claim(ctx, client, page.ID, shape, cfg.AssigneeUserID); err != nil {
+			return err
+		}
+		// The claim is the write, so the board is nudged here — even a run that
+		// fails to read the brief afterwards has already moved the slice.
+		env.nudged()
 	}
-	// The claim is the write, so the board is nudged here — even a run that
-	// fails to read the brief afterwards has already moved the slice.
-	env.nudged()
 
 	milestone := milestoneOf(claimed, shape)
 	brief, err := body(ctx, client, claimed.ID)
@@ -92,19 +108,27 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// takeable reports why a slice cannot be started, or nil when it can. Being
-// Todo is not enough on its own: a Todo slice already assigned to somebody is
-// one next-slice would pass over too, and taking it would step on their work.
-func takeable(page notion.Page) error {
+// takeable reports why a slice cannot be started, or how it can be: a slice
+// this user already holds is re-opened rather than claimed, which is what the
+// true means. That is tested first, since such a slice is in progress and every
+// refusal below is about a slice that is somebody else's.
+//
+// Being Todo is not enough on its own: a Todo slice already assigned to
+// somebody is one next-slice would pass over too, and taking it would step on
+// their work.
+func takeable(page notion.Page, shape notion.SliceShape, userID string) (bool, error) {
+	if holds(page, shape, userID) {
+		return true, nil
+	}
 	s := domain.SliceFromPage(page)
 	if s.Status != domain.SliceTodo {
-		return fmt.Errorf("%q is %s, not Todo: only a slice nobody has started can be claimed",
+		return false, fmt.Errorf("%q is %s, not Todo: only a slice nobody has started can be claimed",
 			s.Name, blank(s.StatusName))
 	}
 	if s.AssigneeName != "" {
-		return fmt.Errorf("%q is Todo but assigned to %s: leave it to them", s.Name, s.AssigneeName)
+		return false, fmt.Errorf("%q is Todo but assigned to %s: leave it to them", s.Name, s.AssigneeName)
 	}
-	return nil
+	return false, nil
 }
 
 // milestoneOf is the milestone a slice belongs to, so the brief can name it. A

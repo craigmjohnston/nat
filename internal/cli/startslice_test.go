@@ -15,6 +15,37 @@ import (
 // the command insists on: a real Notion ID, not a fixture's shorthand.
 const startSliceID = "3b838308f654816da085f46dd135ade3"
 
+// startSliceBrief is what the command prints for that slice, held to by the
+// claim and by the re-open alike: a slice this user already holds is handed
+// back exactly the brief its first claim printed.
+const startSliceBrief = `# Render the board
+
+Claimed for Craig Johnston. Work exactly this slice.
+
+- Project: nat
+- Project page ID: project-1 (pass it as --project on every nat command)
+- Milestone: M2: Board
+- Notion page: 3b838308f654816da085f46dd135ade3
+- Notion URL: https://notion.so/3b838308f654816da085f46dd135ade3
+- Working directory: /tmp/nat
+
+## Brief
+
+Render the board, then stop.
+
+## Project conventions
+
+Branch per slice.
+`
+
+// heldBy puts a page in somebody else's hands: slicePage names every assignee
+// with the configured user's own ID, which is the one thing a slice held by
+// another agent must not have.
+func heldBy(page notion.Page, userID, name string) notion.Page {
+	page.Properties[notion.PropAssignee] = notion.PropertyValue{People: &[]notion.User{{ID: userID, Name: name}}}
+	return page
+}
+
 // startableAPI answers with a plan holding one takeable slice under one
 // milestone, which is all a command handed a slice by name ever looks at.
 func startableAPI(t *testing.T) *fakeAPI {
@@ -41,27 +72,8 @@ func TestStartSliceClaimsTheNamedSliceAndPrintsTheBrief(t *testing.T) {
 		t.Fatalf("start-slice: %v", err)
 	}
 
-	want := `# Render the board
-
-Claimed for Craig Johnston. Work exactly this slice.
-
-- Project: nat
-- Project page ID: project-1 (pass it as --project on every nat command)
-- Milestone: M2: Board
-- Notion page: 3b838308f654816da085f46dd135ade3
-- Notion URL: https://notion.so/3b838308f654816da085f46dd135ade3
-- Working directory: /tmp/nat
-
-## Brief
-
-Render the board, then stop.
-
-## Project conventions
-
-Branch per slice.
-`
-	if out.String() != want {
-		t.Errorf("output =\n%s\nwant:\n%s", out.String(), want)
+	if out.String() != startSliceBrief {
+		t.Errorf("output =\n%s\nwant:\n%s", out.String(), startSliceBrief)
 	}
 	if len(api.updates) != 1 || api.updates[0].id != startSliceID {
 		t.Fatalf("updates = %+v, want exactly the named slice claimed", api.updates)
@@ -211,8 +223,13 @@ func TestStartSliceRefusesASliceAlreadyUnderway(t *testing.T) {
 		want  []string
 	}{
 		{
-			name:  "in progress",
-			slice: slicePage(startSliceID, "Render the board", notion.SliceInProgress, "M2: Board", "Craig Johnston", ""),
+			name:  "in progress, held by somebody else",
+			slice: heldBy(slicePage(startSliceID, "Render the board", notion.SliceInProgress, "M2: Board", "x", ""), "u2", "Someone Else"),
+			want:  []string{`"Render the board" is In progress, not Todo`},
+		},
+		{
+			name:  "in progress, held by nobody",
+			slice: slicePage(startSliceID, "Render the board", notion.SliceInProgress, "M2: Board", "", ""),
 			want:  []string{`"Render the board" is In progress, not Todo`},
 		},
 		{
@@ -258,6 +275,77 @@ func TestStartSliceRefusesASliceAlreadyUnderway(t *testing.T) {
 				t.Errorf("output = %q, want nothing", out.String())
 			}
 		})
+	}
+}
+
+// A slice this user already holds is re-opened rather than refused: the brief
+// is printed exactly as the first claim printed it, and nothing is written,
+// since the slice is already everything a claim would make it. That is what
+// lets the board claim a slice as it launches the agent that works it.
+func TestStartSliceReOpensASliceThisUserHolds(t *testing.T) {
+	tests := []struct {
+		name  string
+		ds    notion.DataSource
+		slice notion.Page
+	}{
+		{
+			name:  "assigned to this user",
+			ds:    assigneeSlicesDS("M1: Client", "M2: Board"),
+			slice: slicePage(startSliceID, "Render the board", notion.SliceInProgress, "M2: Board", "Craig Johnston", ""),
+		},
+		{
+			// With no Assignee column there is nobody a slice could belong to
+			// but whoever is running this, so being in progress is the whole
+			// answer — the same rule complete-slice and release-slice apply.
+			name:  "no assignee column",
+			ds:    selectMilestoneSlicesDS("M1: Client", "M2: Board"),
+			slice: slicePage(startSliceID, "Render the board", notion.SliceInProgress, "M2: Board", "", ""),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			api := startableAPI(t)
+			api.dataSources = map[string]notion.DataSource{"slices-ds": tt.ds}
+			api.pages["slices-ds"][0] = tt.slice
+			env, out := testEnv(testClaimConfig(), api)
+			nudges := nudgeCounter(&env)
+
+			if err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env); err != nil {
+				t.Fatalf("start-slice: %v", err)
+			}
+
+			if out.String() != startSliceBrief {
+				t.Errorf("output =\n%s\nwant the same brief the claim printed:\n%s", out.String(), startSliceBrief)
+			}
+			if len(api.updates) != 0 || len(api.appends) != 0 {
+				t.Errorf("writes = %+v %+v, want none: the slice was already claimed", api.updates, api.appends)
+			}
+			if *nudges != 0 {
+				t.Errorf("nudges = %d, want none: nothing was written", *nudges)
+			}
+		})
+	}
+}
+
+// A re-opened slice waiting on unfinished work is refused like any other, and
+// the refusal is the same one a fresh claim would have been given.
+func TestStartSliceRefusesABlockedSliceThisUserHolds(t *testing.T) {
+	api := dependsAPI(t)
+	held := slicePage(depWaiting, "Render the board", notion.SliceInProgress, "M2: Board", "Craig Johnston", "")
+	held.Properties[notion.PropDependsOn] = notion.NewRelation(depBlocker)
+	api.pages["slices-ds"][1] = held
+	env, out := testEnv(testClaimConfig(), api)
+
+	err := Run(context.Background(), []string{"start-slice", depWaiting, "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), `"Style the board" (Todo)`) {
+		t.Fatalf("err = %v, want the slice it waits on named", err)
+	}
+	if len(api.updates) != 0 {
+		t.Errorf("updates = %+v, want nothing written", api.updates)
+	}
+	if out.Len() != 0 {
+		t.Errorf("output = %q, want nothing", out.String())
 	}
 }
 
