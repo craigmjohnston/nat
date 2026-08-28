@@ -48,8 +48,11 @@ const commentMark = "▌"
 // diffKeyMap is what the diff screen answers to beyond the viewport's own
 // scrolling: the jumps from one file's section to the next, which is what makes
 // a diff of twenty files readable without hunting for the boundaries, the key
-// that folds a file away once it has been read, and the three keys of a review
-// — mark a range, comment on it, send what is pending.
+// that folds a file away once it has been read, the three keys of a review —
+// mark a range, comment on it, send what is pending — and the key that ends
+// one: approve, which opens the pull request for the branch on show and is
+// offered here rather than on the board, since this is where the change has
+// actually been read.
 type diffKeyMap struct {
 	NextFile key.Binding
 	PrevFile key.Binding
@@ -57,6 +60,7 @@ type diffKeyMap struct {
 	Select   key.Binding
 	Comment  key.Binding
 	Send     key.Binding
+	Approve  key.Binding
 }
 
 // defaultDiffKeyMap returns the bindings the diff screen runs with. n and p are
@@ -68,6 +72,9 @@ type diffKeyMap struct {
 // enter is the viewed toggle: it is the key a list answers on the thing under
 // the cursor, and the one key the screen wanted that nothing else here — nor
 // the viewport under it, which pages on space — had already taken.
+//
+// Approving is a rather than the board's old p, which is the previous-file jump
+// here and has been for as long as there has been a file to jump to.
 func defaultDiffKeyMap() diffKeyMap {
 	return diffKeyMap{
 		NextFile: key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "next file")),
@@ -76,21 +83,27 @@ func defaultDiffKeyMap() diffKeyMap {
 		Select:   key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "select lines")),
 		Comment:  key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "comment")),
 		Send:     key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "send comments")),
+		Approve:  key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "approve & open PR")),
 	}
 }
 
 // hints are the diff screen's own hints row: how to move between files, the two
-// keys a comment is left and sent with, and the way back to the board.
-// Scrolling is not among them — it is the keys everyone tries first — and the
-// help screen lists it.
+// keys a comment is left and sent with, what a read review ends in, and the way
+// back to the board. Scrolling is not among them — it is the keys everyone tries
+// first — and the help screen lists it.
 //
 // The send key says how many comments are waiting, since that count is the one
 // thing about a review that is nowhere else on the screen at a glance; with
 // none pending it says what the key is for instead.
+//
+// Approve ranks highest of them, so it is the last hint a narrowing row keeps:
+// it is what the screen is read towards, and the one key here that is offered
+// nowhere else at all now that the board has none.
 func (d Diff) hints(back key.Binding) []hint {
 	return []hint{
 		{d.keys.Comment, 4},
 		{d.sendBinding(), 5},
+		{d.keys.Approve, 6},
 		{d.keys.NextFile, 3},
 		{d.keys.PrevFile, 2},
 		{d.viewedBinding(), 2},
@@ -125,7 +138,7 @@ func (d Diff) sendBinding() key.Binding {
 
 // bindings are the diff screen's keys as the help screen lists them.
 func (k diffKeyMap) bindings() []key.Binding {
-	return []key.Binding{k.NextFile, k.PrevFile, k.Viewed, k.Select, k.Comment, k.Send}
+	return []key.Binding{k.NextFile, k.PrevFile, k.Viewed, k.Select, k.Comment, k.Send, k.Approve}
 }
 
 // Diff is the review screen: the unified diff of a slice's handed-back branch
@@ -135,8 +148,9 @@ func (k diffKeyMap) bindings() []key.Binding {
 // It holds the parsed files rather than the rendered body, because the body is
 // wrapped to the width it is drawn at: every resize renders again from the
 // files, and every row number the screen holds is rebuilt with it.
-// Nothing here writes anything — reading the change is the whole of it, and the
-// key that acts on what was read is the board's approve.
+// Nothing here writes anything — reading the change is the whole of it. The key
+// that acts on what was read is the root model's: approve, which the screen
+// names and the app runs.
 type Diff struct {
 	styles Styles
 	keys   diffKeyMap

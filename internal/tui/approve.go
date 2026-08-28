@@ -46,54 +46,48 @@ type prOpenedMsg struct {
 // approveNote is what the status bar says while gh is opening the pull request.
 const approveNote = "Opening the pull request…"
 
-// The choices the approve prompt offers, in the order they read. Approving
-// comes first, so a single enter opens the pull request; the way out is beside
-// it as well as on esc, because this is the one board action that reaches
-// outside Notion and cannot be taken back from here.
-var approveChoices = []string{"approve", "cancel"}
-
-const (
-	choiceApprove = iota
-	choiceCancelApprove
-)
-
-// approveSliceFlow anchors the approve prompt to the slice the cursor is on.
-// Only a handed-back slice can be approved: one still in progress with a branch
-// recorded on it, which is work waiting to be reviewed. A Todo slice has had no
-// agent on it, a Done one is finished, and one in progress with no branch is
-// still being worked.
-func (a *App) approveSliceFlow() tea.Cmd {
-	project, ok := a.activeProject()
-	if !ok || !a.canWrite() || a.prs == nil {
+// approveDiffFlow is the approve key on the review screen, which is the one
+// place approving is offered: the diff on show is the work, and approving it is
+// what reading it is answered with. It acts on the spot rather than asking to be
+// confirmed — the screen is the confirmation, since nothing gets here without
+// the change having been put in front of the user, which is exactly what a key
+// on the board could not say.
+//
+// Only a handed-back slice is ever opened here — in progress with a branch
+// recorded on it — so that rule is applied where the screen is opened rather
+// than a second time here; what is left to refuse is a screen that has never
+// been pointed at a branch, which has nothing to approve.
+//
+// Pending comments stop it. A review with something still to say is not one that
+// approves the work, and the comments are held nowhere but this session: sending
+// them is what empties them, and until it has they are what the key reports
+// instead.
+func (a *App) approveDiffFlow() tea.Cmd {
+	if !a.canWrite() || a.prs == nil {
 		return nil
 	}
-	s, ok := a.board.SelectedSlice()
-	if !ok {
-		return a.showConfirm("Move to a slice to approve it.", sevWarning)
+	name, branch, dir := a.diff.Target()
+	if branch == "" {
+		return nil
 	}
-	if s.Status != domain.SliceClaimed {
-		return a.showConfirm(fmt.Sprintf("%q is %s — only a handed-back slice can be approved.",
-			s.Name, statusWord(s)), sevWarning)
+	if n := a.diff.Pending(); n > 0 {
+		return a.showToast(fmt.Sprintf("%d %s still pending — send them with s, or take them back, before approving.",
+			n, plural(n, "comment", "comments")), sevWarning)
 	}
-	if s.Branch == "" {
-		return a.showConfirm(fmt.Sprintf("%q has no branch handed back yet — nothing to open a pull request from.",
-			s.Name), sevWarning)
-	}
-	dir := workdirFor(s, project)
-	return a.openPrompt(approveChoices, func(choice int) tea.Cmd {
-		return a.approveChosen(s, dir, choice)
-	})
+	s := domain.Slice{ID: a.diff.SliceID(), Name: name, Branch: branch}
+	// The review is over either way: the pull request is about to exist, and a
+	// gh that refuses is read on the board like every other refusal — the
+	// confirmation this ends in is anchored to the slice's row.
+	a.setScreen(screenBoard)
+	return a.startApprove(s, dir)
 }
 
-// approveChosen is what answering the prompt does. Cancelling says nothing —
-// nothing was in flight, and the row is as it was.
+// startApprove is the approve itself: gh in the slice's repository, and the
+// status bar saying so until it answers.
 //
 // The repository is checked here rather than left to gh, which would otherwise
 // fail deep inside a subprocess over something the board already knows.
-func (a *App) approveChosen(s domain.Slice, dir string, choice int) tea.Cmd {
-	if choice != choiceApprove {
-		return nil
-	}
+func (a *App) startApprove(s domain.Slice, dir string) tea.Cmd {
 	dir = expandHome(strings.TrimSpace(dir))
 	if err := existingDir(dir); err != nil {
 		return a.showConfirm(fmt.Sprintf("Cannot open a pull request for %q: %v.", s.Name, err), sevError)

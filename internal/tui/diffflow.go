@@ -43,9 +43,9 @@ type diffLoadedMsg struct {
 // from.
 //
 // Only a handed-back slice has one — in progress with a branch recorded on it —
-// which is the same rule the approve key applies, and for the same reason: a
-// branch is what there is to read, and reading it is what the approve key is
-// answered with.
+// and this is now the one place that rule is applied, since approving is the
+// review screen's own key: a branch is what there is to read, and approving it
+// is what reading it is answered with.
 func (a *App) diffSliceFlow() tea.Cmd {
 	project, ok := a.activeProject()
 	if !ok || a.differ == nil {
