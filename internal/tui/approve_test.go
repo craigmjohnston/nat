@@ -12,7 +12,6 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/notion"
-	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
 // prCall is one pull request the approve flow asked gh for.
@@ -503,101 +502,23 @@ func TestApproveWaitsForTheBoard(t *testing.T) {
 	}
 }
 
-// TestApproveRemovesTheWorktree is the other half of the action: once the pull
-// request exists and the slice is Done, the worktree its agent worked in goes,
-// taken off the same repository gh ran in and named by the branch that was
-// handed back.
-func TestApproveRemovesTheWorktree(t *testing.T) {
-	app, _, _, workdir := approveApp(t)
-	trees := approveWorktrees(t)
-	cursorOn(t, app, handedBack)
-
-	approve(t, app)
-
-	want := worktreeCall{dir: workdir, branch: "slice/approve"}
-	if len(trees.removes) != 1 || trees.removes[0] != want {
-		t.Fatalf("git was asked to remove %v, want %v", trees.removes, want)
-	}
-}
-
-// TestApproveRemovesTheWorktreeFromTheSlicesOwnRepo covers a slice whose Repo
-// overrides the project's default: that is the checkout the worktree was cut
-// from, the way it is the one gh runs in.
-func TestApproveRemovesTheWorktreeFromTheSlicesOwnRepo(t *testing.T) {
-	app, _, _, _ := approveApp(t)
-	trees := approveWorktrees(t)
-	repo := t.TempDir()
-	slices := append([]domain.Slice(nil), app.project.Slices...)
-	slices[0].Repo = repo
-	p := domain.NewProject(app.project.ID, app.project.Name, app.project.Milestones, slices)
-	app.project = &p
-	app.board.SetProject(&p)
-	cursorOn(t, app, handedBack)
-
-	approve(t, app)
-
-	if len(trees.removes) != 1 || trees.removes[0].dir != repo {
-		t.Errorf("git ran in %v, want the slice's own repo %q", trees.removes, repo)
-	}
-}
-
-// TestApproveSurvivesAFailedRemoval covers everything git refuses over — a
-// dirty worktree, a slice that never had one, a repository it will not answer
-// about.
-// The pull request has been opened and the slice is Done: the approve stands,
-// and the refusal is left in the log rather than raised on the board.
-func TestApproveSurvivesAFailedRemoval(t *testing.T) {
+// TestApproveLeavesTheWorktreeInPlace is what approving does not do: the pull
+// request is open and the slice is Done, but the review has only just started
+// and a review that asks for one more commit needs the checkout that commit is
+// written in. Git is asked nothing at all — what takes the worktree away is the
+// merge; see landed_test.go.
+func TestApproveLeavesTheWorktreeInPlace(t *testing.T) {
 	app, _, client, _ := approveApp(t)
 	trees := approveWorktrees(t)
-	trees.removeErr = &worktree.ExitError{Code: 1, Stderr: "worktree has uncommitted changes\n"}
 	cursorOn(t, app, handedBack)
 
 	approve(t, app)
 
 	if len(client.updated) != 1 {
-		t.Fatalf("wrote %d pages, want the slice marked Done regardless", len(client.updated))
+		t.Fatalf("wrote %d pages, want the slice marked Done", len(client.updated))
 	}
-	if app.err != nil || app.toast != "" {
-		t.Errorf("err = %v, toast = %q, want the refusal passed over", app.err, app.toast)
-	}
-	if !strings.Contains(app.board.confirmText, "Approve action") {
-		t.Errorf("confirmation = %q, want the approve reported as it always is", app.board.confirmText)
-	}
-	if app.busy {
-		t.Error("the board is still busy after the removal was passed over")
-	}
-}
-
-// TestApproveKeepsTheWorktreeUntilTheSliceIsDone covers the two ways the action
-// stops short: gh refusing, and Notion refusing to record what gh opened. The
-// slice is still handed back either way, and a slice being reviewed keeps the
-// checkout its work is in.
-func TestApproveKeepsTheWorktreeUntilTheSliceIsDone(t *testing.T) {
-	for _, tt := range []struct {
-		name string
-		brk  func(a *App, c *fakeNotion)
-	}{
-		{"gh refused", func(a *App, _ *fakeNotion) {
-			a.prs.(*fakePRs).err = errors.New("no such branch")
-		}},
-		{"the write was refused", func(_ *App, c *fakeNotion) {
-			c.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
-				return nil, errors.New("notion is down")
-			}
-		}},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			app, _, client, _ := approveApp(t)
-			trees := approveWorktrees(t)
-			tt.brk(app, client)
-			cursorOn(t, app, handedBack)
-
-			approve(t, app)
-
-			if len(trees.removes) != 0 {
-				t.Errorf("git was asked to remove %v on a slice still handed back", trees.removes)
-			}
-		})
+	if len(trees.removes) != 0 || len(trees.looks) != 0 {
+		t.Errorf("git was asked about %v / %v, want the worktree left alone", trees.looks, trees.removes)
 	}
 }
 

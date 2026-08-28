@@ -116,17 +116,21 @@ func prStateApp() (*App, *fakePRReader) {
 }
 
 // runPRRead takes the reading the app started and hands the result back to it,
-// which is the round trip a landed plan makes through the event loop.
+// which is the round trip a landed plan makes through the event loop. A plan
+// landing does more than read gh — it sweeps up the worktrees of the pull
+// requests that have already landed — so everything the load produced is
+// threaded back, and so is everything the reading itself sets off.
 func runPRRead(t *testing.T, a *App, cmd tea.Cmd) {
 	t.Helper()
 	if cmd == nil {
 		t.Fatal("no reading was started")
 	}
-	msg, ok := cmd().(prStateMsg)
-	if !ok {
-		t.Fatalf("the reading came back as %T, want a prStateMsg", msg)
+	msgs := run(cmd)
+	first[prStateMsg](t, msgs)
+	for _, msg := range msgs {
+		_, next := a.Update(msg)
+		drive(t, a, next)
 	}
-	a.Update(msg)
 }
 
 // activeSection is the Active panel's own lines: the section is a panel beside

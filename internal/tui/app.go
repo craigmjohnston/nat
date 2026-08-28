@@ -263,10 +263,16 @@ type App struct {
 	// reading found is no longer open. They are never asked about again: a merged
 	// pull request does not unmerge, and a project's finished work is most of its
 	// plan, so without this the reading would grow with the plan forever.
-	prReader  PRReader
-	prState   map[string]domain.PRReadiness
-	prSettled map[string]bool
-	prReading bool
+	//
+	// worktreeGone is the same memory one step further on: the slices whose
+	// worktree the landing has already taken away, so the sweep every plan load
+	// runs asks git nothing about them again. A removal git refused is left out
+	// of it, which is what makes that sweep the retry — see [App.removeLanded].
+	prReader     PRReader
+	prState      map[string]domain.PRReadiness
+	prSettled    map[string]bool
+	worktreeGone map[string]bool
+	prReading    bool
 	// viewer is the agent terminal beside the board, or nil when the board has
 	// the window to itself. Exactly one is on show at a time: it is a split, not
 	// a stack of panes.
@@ -413,8 +419,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.resize()
 		// The pull requests of the slices whose work is out are read off this
 		// same landing, which is the board's own cadence: see
-		// [App.refreshPRStates].
-		cmd := a.refreshPRStates()
+		// [App.refreshPRStates]. The landing is also where the worktrees of the
+		// slices whose pull requests have already landed are swept up, which is
+		// the retry for a removal git refused at the transition — see
+		// [App.removeLanded].
+		cmd := tea.Batch(a.refreshPRStates(), a.removeLanded(a.settledSlices()))
 		// A project that had to be migrated to be shown says so: the plan on
 		// screen is not quite the one Notion held a moment ago.
 		if !msg.migration.Empty() {
@@ -436,6 +445,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case prStateMsg:
 		return a, a.prStateRead(msg)
+	case worktreesRemovedMsg:
+		a.worktreesRemoved(msg)
+		return a, nil
 	case wishlistLoadedMsg:
 		a.wishlistLoaded(msg)
 		return a, nil
