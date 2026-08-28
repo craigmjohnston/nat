@@ -256,18 +256,30 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   that slice already waits on the way `slice-depends --on` is and written in
   that same last phase, and it is the one thing a plan changes rather than
   creates, which is why a document may hold it and nothing else; where the plan
-  lands is the command line's rather than the document's — `--project` names a
-  project by a key of the config's `Projects` map, matched as written and then
-  normalised since an ID copied out of a URL has no dashes, and one the config
-  does not know is refused by name, with what it does know listed, before
-  anything is validated or written, while without the flag it is the active
-  project as it always was; everything past that resolution — the migration,
-  the validation, the write order, the nudge — is the same either way), and `nat setup`, which installs the embedded skills into
+  lands is the command line's rather than the document's, which is what the
+  shared `--project` below is for — a document says what work there is and not
+  whose it is, and everything past that resolution — the migration, the
+  validation, the write order, the nudge — is the same either way), and `nat setup`, which installs the embedded skills into
   `~/.claude/skills` — the only command that talks to neither Notion nor the
   config file, since it is what a machine with only the binary runs first), what
   the binary does when given a subcommand. Run before even the tmux check and
   with no TUI code in the path: a command prints to the terminal it was typed in
   and exits.
+  Every command that acts on a project already tracked takes `--project`, naming
+  one by a key of the config's `Projects` map — the project page's own ID —
+  which is what lets a session work a project other than the one the board
+  happens to be on without editing local config. `setup` and `project-create`
+  are the two that do not: neither acts on a project already there. The flag
+  stays optional, and a command that names none is the active project's, which
+  is what every agent launched from the board runs.
+  `Env.projectFor` is the one place that is decided, `activeProject` and
+  `namedProject` its two halves: the ID is matched as written and then
+  normalised, since one copied out of a page URL has no dashes, and a project
+  the config does not know is refused by name — with what it does know listed —
+  before anything is read or written. All three answer with the project's page
+  ID beside its config entry, because a command that reads the project page
+  itself, its conventions or its wishlist, can no longer take that from
+  `ActiveProjectID`.
 - `internal/vterm/` — a child command run on a PTY (`x/xpty`) with its screen
   mirrored by an in-process VT emulator (`x/vt`), so the TUI can draw an agent
   as a widget instead of joining its tmux pane. `Start` returns a `Session`:

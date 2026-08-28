@@ -56,6 +56,11 @@ type fakeAPI struct {
 	// schemaUpdateErr fails the schema write.
 	schemaUpdateErr error
 
+	// dataSourceReads records the ID of every schema fetch, in order.
+	dataSourceReads []string
+	// blockReads records the ID of every page-body read, in order.
+	blockReads []string
+
 	// dataSources answers a schema fetch by data source ID. One not named here
 	// answers with the shape every project created before the app asked about
 	// an assignee has, which is what a test saying nothing about the schema is
@@ -252,6 +257,7 @@ func (f *fakeAPI) DeleteBlock(_ context.Context, id string) error {
 }
 
 func (f *fakeAPI) GetBlockChildren(_ context.Context, id string) ([]notion.Block, error) {
+	f.blockReads = append(f.blockReads, id)
 	if err := f.blocksErrByID[id]; err != nil {
 		return nil, err
 	}
@@ -297,6 +303,7 @@ func (f *fakeAPI) UpdatePageProperties(_ context.Context, id string, props map[s
 // GetDataSource answers with the schema of the named data source, which is how
 // a command learns the shape of the project's Slices table.
 func (f *fakeAPI) GetDataSource(_ context.Context, id string) (*notion.DataSource, error) {
+	f.dataSourceReads = append(f.dataSourceReads, id)
 	if f.dataSourceErr != nil {
 		return nil, f.dataSourceErr
 	}

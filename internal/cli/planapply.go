@@ -38,7 +38,7 @@ func planApply(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("plan-apply", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
-	projectID := flags.String("project", "", "file the plan in this project of the config file rather than the active one")
+	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
@@ -60,7 +60,7 @@ func planApply(ctx context.Context, args []string, env Env) error {
 	// Which project the plan lands in is the one thing --project changes: the
 	// project resolved here is read, migrated and written exactly as the active
 	// one is, so a plan applied elsewhere is applied the same way.
-	_, project, err := env.projectFor(*projectID)
+	_, _, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}

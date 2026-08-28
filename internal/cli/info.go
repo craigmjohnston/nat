@@ -13,23 +13,23 @@ import (
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
-// info prints everything an agent needs to know about the active project: the
+// info prints everything an agent needs to know about a project: the
 // conventions written on its project page, its milestones in plan order, and
 // its slices grouped under them. Markdown by default, because the reader is
 // usually a person or a model; --json for anything parsing it.
 func info(ctx context.Context, args []string, env Env) error {
-	asJSON, err := parseJSONFlag("info", args)
+	asJSON, projectRef, err := parseJSONFlag("info", args)
 	if err != nil {
 		return err
 	}
 
-	cfg, project, err := env.activeProject()
+	_, projectID, project, err := env.projectFor(projectRef)
 	if err != nil {
 		return err
 	}
 	client := env.NewClient(env.Tokens.Token)
 
-	blocks, err := client.GetBlockChildren(ctx, cfg.ActiveProjectID)
+	blocks, err := client.GetBlockChildren(ctx, projectID)
 	if err != nil {
 		return fmt.Errorf("load project page: %w", err)
 	}
@@ -43,7 +43,7 @@ func info(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("load slices: %w", err)
 	}
 
-	p := domain.NewProject(cfg.ActiveProjectID, project.Name, milestonesOf(shape), domain.InViewOrder(
+	p := domain.NewProject(projectID, project.Name, milestonesOf(shape), domain.InViewOrder(
 		domain.SlicesFromPages(slices), notion.PlanOrder(ctx, client, project.SlicesDSID)))
 	conventions := strings.TrimSpace(notion.Markdown(blocks))
 
@@ -61,21 +61,23 @@ func milestonesOf(shape notion.SliceShape) []domain.Milestone {
 	return domain.MilestonesFromOptions(shape.MilestoneOptions, shape.MilestoneType)
 }
 
-// parseJSONFlag reads the command line of a command whose only flag is --json
-// and which takes no arguments, which is every command here so far. The flag
-// package's own error output is thrown away and the failure returned instead, so
-// a bad flag is reported the same way every other misuse is.
-func parseJSONFlag(command string, args []string) (bool, error) {
+// parseJSONFlag reads the command line of a command whose only flags are --json
+// and --project and which takes no arguments, which is every command here so
+// far. The flag package's own error output is thrown away and the failure
+// returned instead, so a bad flag is reported the same way every other misuse
+// is.
+func parseJSONFlag(command string, args []string) (bool, string, error) {
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
+	projectRef := projectFlag(flags)
 	if err := flags.Parse(args); err != nil {
-		return false, usageErrorf("%s: %s", command, err)
+		return false, "", usageErrorf("%s: %s", command, err)
 	}
 	if flags.NArg() > 0 {
-		return false, usageErrorf("%s: unexpected argument %q", command, flags.Arg(0))
+		return false, "", usageErrorf("%s: unexpected argument %q", command, flags.Arg(0))
 	}
-	return *asJSON, nil
+	return *asJSON, *projectRef, nil
 }
 
 // infoJSON is the structured form of the info output. Milestones and slices are

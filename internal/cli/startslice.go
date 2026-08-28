@@ -26,6 +26,7 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("start-slice", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
+	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
@@ -38,7 +39,7 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	cfg, project, err := env.activeProject()
+	cfg, projectID, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}
@@ -78,14 +79,14 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return fmt.Errorf("claimed %q but could not read its brief: %w", claimed.Name, err)
 	}
-	conventions, err := body(ctx, client, cfg.ActiveProjectID)
+	conventions, err := body(ctx, client, projectID)
 	if err != nil {
 		return fmt.Errorf("claimed %q but could not read the project conventions: %w", claimed.Name, err)
 	}
 
 	b := briefOf(claimed, milestone, project, cfg.AssigneeUserName, brief, conventions)
 	if *asJSON {
-		return writeBriefJSON(env.Out, b, cfg.ActiveProjectID, project.Name)
+		return writeBriefJSON(env.Out, b, projectID, project.Name)
 	}
 	_, err = io.WriteString(env.Out, briefMarkdown(b, project.Name))
 	return err

@@ -25,6 +25,7 @@ func milestoneAdd(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("milestone-add", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
+	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
@@ -37,7 +38,7 @@ func milestoneAdd(ctx context.Context, args []string, env Env) error {
 		return usageErrorf("milestone-add: the milestone name is empty")
 	}
 
-	_, project, err := env.activeProject()
+	_, _, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}
@@ -79,6 +80,7 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	var dependsOn stringList
 	flags.Var(&dependsOn, "depends-on", "a slice this one waits on, by URL or ID; repeat for more")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
+	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
@@ -106,7 +108,7 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 		}
 	}
 
-	_, project, err := env.activeProject()
+	_, _, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}

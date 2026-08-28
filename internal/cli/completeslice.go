@@ -37,6 +37,7 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	description := flags.String("pr-description", "",
 		"the pull request description for the branch handed back; `-` reads it from stdin")
 	blocked := flags.Bool("blocked", false, "leave the slice in progress and record what is blocking it")
+	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
@@ -73,7 +74,7 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	cfg, project, err := env.activeProject()
+	cfg, _, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}
