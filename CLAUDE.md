@@ -239,11 +239,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   since `Create` checks an existing one out rather than tripping over it. A git
   that ran and refused comes back as an `*ExitError` whose message is the first
   line of its stderr, exactly as gh's does; a git that is not there at all comes
-  back as `ErrNotInstalled`, wrapped around `exec.ErrNotFound` rather than
-  replacing it, because that is the one failure a caller recovers from — an
-  agent on a machine that cannot cut a worktree runs in the shared checkout the
-  way every agent did before there were worktrees, and only a distinguishable
-  error can drive that.
+  back as os/exec's own report, told apart from nothing, because no caller acts
+  on the difference — git is what the board reads a diff with as well as what it
+  cuts a worktree with, so a machine without it has no working board to fall
+  back to.
 - `internal/cli/` — the headless commands (`nat info [--json]`,
   `nat next-slice [--json]`, which claims the next unblocked Todo slice under
   the lowest-ordered open milestone and prints its brief,
@@ -390,13 +389,16 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   fetch that failed cuts from the refs as last fetched, which is what an offline
   launch would have had anyway. The path it answers with is the `agent.PromptContext.WorkingDir` the
   session is started in and the prompt is written from, so tmux and the agent
-  never disagree about where it is. Two ways out fall back to the shared
-  checkout with a toast saying which — no git on the machine, and a
-  working directory that is in no git repository at all — since both are the
-  launch that worked before there were worktrees, and where the agent is working
-  is what decides what its branch instructions mean. A git that ran and
-  refused is a toast too and launches nothing at all, because an agent placed
-  half way is one working somewhere nobody chose. All of it is resolved inside
+  never disagree about where it is. One way out falls back to the shared
+  checkout with a toast saying so — a working directory that is in no git
+  repository at all — since that is the launch that worked before there were
+  worktrees, and where the agent is working is what decides what its branch
+  instructions mean. A machine with no git on it is not a second way out: git is
+  what the diff screen reads a branch with too, so there is nothing for such a
+  machine to fall back to, and a look-up that fails for any reason is simply not
+  read — the cut that follows is what says whether the agent can be placed. A
+  git that ran and refused is a toast too and launches nothing at all, because
+  an agent placed half way is one working somewhere nobody chose. All of it is resolved inside
   the launch command rather than before it: fetching reaches the network and
   cutting a worktree runs the repository's own hooks, and that is the goroutine
   to be slow in. Its
@@ -779,8 +781,9 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   reads it) and the base rule `git.CLI.Base` applies are all written out rather
   than shared, since a skill is read by an agent and not compiled.
   A machine with no git and a working directory in no repository fall
-  back to branching in place, the two the board falls back to the shared
-  checkout for.
+  back to branching in place — the second of those is what the board falls back
+  to the shared checkout for, and the first is the skill's own belt and braces,
+  since a session that cannot run git at all still has to end somewhere.
   /queue-project is /queue-work's drafting rules plus the two headless commands
   that make a project to file the draft into: `project-create` with the brief on
   stdin, then `plan-apply --project <the id it printed>`. That order and that
@@ -892,7 +895,7 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   back is one whose work is still being reviewed. The branch is read off the
   slice rather than derived the way the launch derives it: what the agent pushed
   is what its worktree is on, whatever it was cut as. A removal that fails — a dirty worktree, a slice that
-  never had one, a machine with no git — is one line in the log and
+  never had one, a repository git will not answer about — is one line in the log and
   nothing else: the pull request is open and the slice is Done whatever became
   of the checkout, and git's own rules mean a refusal never costs any
   work. gh stays in the shared checkout, so the removal cannot strand it, and

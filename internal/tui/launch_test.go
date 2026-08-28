@@ -32,7 +32,7 @@ import (
 func TestMain(m *testing.M) {
 	newLauncher = func() AgentLauncher { return &fakeLauncher{} }
 	liveTick = func() tea.Cmd { return nil }
-	// Worktrunk is pinned away for the same reason tmux is: a launch would
+	// The worktree layer is pinned away for the same reason tmux is: a launch would
 	// otherwise cut a real worktree of whatever repository the suite is being
 	// run in. The tests about placement put their own in.
 	newWorktrees = func() Worktrees { return &fakeWorktrees{} }
@@ -711,7 +711,7 @@ func TestAppLaunchStartsTheSessionAndAttaches(t *testing.T) {
 	}
 }
 
-// The launch a repository gets: worktrunk cuts the slice's branch a worktree,
+// The launch a repository gets: git cuts the slice's branch a worktree,
 // the session starts in it rather than in the checkout the user is working in,
 // and the prompt the agent reads names the same directory and branch.
 func TestAppLaunchStartsTheAgentInAWorktree(t *testing.T) {
@@ -783,7 +783,7 @@ func TestAppLaunchFallsBackToTheSharedCheckout(t *testing.T) {
 	}
 }
 
-// A worktrunk that ran and refused stops the launch outright: an agent placed
+// A git that ran and refused stops the launch outright: an agent placed
 // half way is one working somewhere nobody chose. It is a toast rather than an
 // error banner — nothing about the board is wrong, and l is the way to try
 // again once the repository is sorted out.
@@ -803,7 +803,7 @@ func TestAppLaunchReportsAWorktreeThatCouldNotBeMade(t *testing.T) {
 		t.Errorf("launched %+v, want no agent placed half way", launcher.launches)
 	}
 	if !strings.Contains(app.toast, "the repository has no commits") {
-		t.Errorf("toast = %q, want worktrunk's own reason", app.toast)
+		t.Errorf("toast = %q, want git's own reason", app.toast)
 	}
 	if app.toastSev != sevError {
 		t.Errorf("severity = %v, want an error", app.toastSev)
@@ -1407,10 +1407,10 @@ func TestTheRealEdgesAreThere(t *testing.T) {
 	if _, ok := liveTicked(time.Time{}).(liveTickMsg); !ok {
 		t.Error("the timer going off should prod the app to re-read them")
 	}
-	// The third is worktrunk, and is not exercised either: it would cut a real
+	// The third is the worktree layer, and is not exercised either: it would cut a real
 	// worktree of whatever repository the suite is being run in.
 	if defaultWorktrees() == nil {
-		t.Error("the app should make worktrees through the real worktrunk")
+		t.Error("the app should make worktrees through the real git")
 	}
 }
 

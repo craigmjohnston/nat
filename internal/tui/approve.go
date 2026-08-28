@@ -100,9 +100,9 @@ func (a *App) startApprove(s domain.Slice, dir string) tea.Cmd {
 // request exists and the slice is Done.
 //
 // Everything it can fail on is dropped after a line in the log: a worktree with
-// uncommitted changes in it, a slice whose agent never had one, a machine with
-// no git at all. None of them is worth a toast — the approve has already
-// happened and cannot be taken back — and none of them loses any work, since
+// uncommitted changes in it, a slice whose agent never had one, a repository
+// git will not answer about. None of them is worth a toast — the approve has
+// already happened and cannot be taken back — and none loses any work, since
 // git refuses a dirty worktree outright and deletes the branch only where
 // it has been merged. gh was run in the shared checkout, so nothing here can
 // pull the ground out from under it either.

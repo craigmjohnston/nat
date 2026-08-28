@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -115,13 +114,15 @@ type placement struct {
 // left in. The fetch is allowed to fail — an offline launch cuts from the refs
 // as last fetched, which is what it would have had anyway.
 //
-// Two ways out fall back to the shared checkout — a machine with no git
-// on it, and a working directory that is not in a git repository at all — since
-// both are launches that worked before there were worktrees and neither is
-// anything gone wrong. They say so on the status bar rather than silently,
-// because where the agent is working decides what its branch instructions mean.
-// A git that ran and refused is different: something is wrong with the
-// repository, and the agent is not launched half-placed on the strength of it.
+// One way out falls back to the shared checkout — a working directory that is
+// not in a git repository at all — since that is a launch that worked before
+// there were worktrees and is nothing gone wrong. It says so on the status bar
+// rather than silently, because where the agent is working decides what its
+// branch instructions mean. A git that ran and refused is different: something
+// is wrong with the repository, and the agent is not launched half-placed on
+// the strength of it. A machine with no git at all is no case of its own: git
+// is what the board reads a diff with too, so there is nothing here for such a
+// machine to fall back to.
 func placeAgent(w Worktrees, r Repo, dir string, s domain.Slice) placement {
 	shared := func(why string) placement {
 		return placement{dir: dir, toast: why + " — the agent runs in the shared checkout.", sev: sevWarning, ok: true}
@@ -131,18 +132,14 @@ func placeAgent(w Worktrees, r Repo, dir string, s domain.Slice) placement {
 	}
 	branch := sliceBranch(s)
 	// A branch git has no worktree for is the ordinary case — a slice
-	// nobody has worked yet — so only the missing binary is read off this.
+	// nobody has worked yet — so a failure here is not read at all: it is
+	// the cut below that says whether the agent can be placed.
 	if path, err := w.Path(dir, branch); err == nil {
 		return placement{dir: path, branch: branch, repo: dir, ok: true}
-	} else if errors.Is(err, worktree.ErrNotInstalled) {
-		return shared(err.Error())
 	}
 	r.Fetch(dir)
 	path, err := w.Create(dir, branch, r.Base(dir))
 	if err != nil {
-		if errors.Is(err, worktree.ErrNotInstalled) {
-			return shared(err.Error())
-		}
 		return placement{toast: fmt.Sprintf("Could not make a worktree for %q: %v.", s.Name, err), sev: sevError}
 	}
 	return placement{dir: path, branch: branch, repo: dir, ok: true}

@@ -175,31 +175,7 @@ func TestCreateFailure(t *testing.T) {
 	}
 }
 
-// TestCreateWithoutGit covers the machine the launch path falls back to the
-// shared checkout on: the missing binary is its own error, and os/exec's report
-// is still inside it.
-func TestCreateWithoutGit(t *testing.T) {
-	missing := &exec.Error{Name: Binary, Err: exec.ErrNotFound}
-	runner := &fakeRunner{replies: []reply{{err: missing}}}
-	_, err := NewWithRunner(runner).Create("/repos/nat", "slice/worktrees", "origin/main")
-	if !errors.Is(err, ErrNotInstalled) {
-		t.Fatalf("Create() = %v, want it to say git is not installed", err)
-	}
-	if !errors.Is(err, exec.ErrNotFound) {
-		t.Errorf("Create() = %v, want os/exec's own report kept", err)
-	}
-}
 
-// TestCreateWithoutGitOnTheAdd covers the same failure on the call that does the
-// work, since the root is read with a different command.
-func TestCreateWithoutGitOnTheAdd(t *testing.T) {
-	missing := &exec.Error{Name: Binary, Err: exec.ErrNotFound}
-	runner := &fakeRunner{replies: []reply{{out: commonDir}, {err: noBranch}, {err: missing}}}
-	_, err := NewWithRunner(runner).Create("/repos/nat", "slice/worktrees", "origin/main")
-	if !errors.Is(err, ErrNotInstalled) {
-		t.Errorf("Create() = %v, want it to say git is not installed", err)
-	}
-}
 
 // TestRemoveTakesTheWorktreeAndTheBranch pins the invocations: the worktree
 // found by branch, removed by path, and then the branch deleted the safe way.
@@ -265,15 +241,6 @@ func TestRemoveFailure(t *testing.T) {
 	}
 }
 
-// TestRemoveWithoutGit covers the missing binary on the removal itself.
-func TestRemoveWithoutGit(t *testing.T) {
-	missing := &exec.Error{Name: Binary, Err: exec.ErrNotFound}
-	runner := &fakeRunner{replies: []reply{{out: listPorcelain}, {err: missing}}}
-	err := NewWithRunner(runner).Remove("/repos/nat", "slice/worktrees")
-	if !errors.Is(err, ErrNotInstalled) {
-		t.Errorf("Remove() = %v, want it to say git is not installed", err)
-	}
-}
 
 // TestPathReadsTheListing covers the ordinary read: the branch's own record,
 // past the main worktree and whatever else the repository has out.
@@ -326,15 +293,6 @@ func TestPathFailure(t *testing.T) {
 	}
 }
 
-// TestPathWithoutGit covers the missing binary on the read the launch path takes
-// first, which is where a machine without git falls back to the shared checkout.
-func TestPathWithoutGit(t *testing.T) {
-	runner := &fakeRunner{replies: []reply{{err: &exec.Error{Name: Binary, Err: exec.ErrNotFound}}}}
-	_, err := NewWithRunner(runner).Path("/repos/nat", "slice/worktrees")
-	if !errors.Is(err, ErrNotInstalled) {
-		t.Errorf("Path() = %v, want it to say git is not installed", err)
-	}
-}
 
 // TestPathSlug covers the branch names that are not directory names: the
 // separators collapse, the ends come off, and a branch with nothing usable in it
@@ -410,8 +368,7 @@ func TestExecRunnerReportsAnExit(t *testing.T) {
 }
 
 // TestExecRunnerReportsAMissingBinary covers the failure a machine without git
-// gives: os/exec's own, passed through rather than dressed up as an exit, which
-// is what [classify] recognises it by.
+// gives: os/exec's own, passed through rather than dressed up as an exit.
 func TestExecRunnerReportsAMissingBinary(t *testing.T) {
 	_, err := ExecRunner{}.Run(t.TempDir(), "nat-no-such-binary")
 	if err == nil {
