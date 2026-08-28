@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,7 +19,7 @@ import (
 // to be cut from.
 type worktreeCall struct{ dir, branch, base string }
 
-// fakeWorktrees stands in for worktrunk. Nothing it is asked about exists
+// fakeWorktrees stands in for git's worktrees. Nothing it is asked about exists
 // unless the test says so, which is the ordinary case: a slice nobody has
 // worked yet has no worktree and no branch.
 type fakeWorktrees struct {
@@ -28,7 +27,7 @@ type fakeWorktrees struct {
 	existing map[string]string
 	// pathErr is what a branch not in existing answers with, createErr what the
 	// create that follows fails with, and removeErr what a removal is refused
-	// with; all nil is worktrunk working.
+	// with; all nil is git working.
 	pathErr   error
 	createErr error
 	removeErr error
@@ -48,7 +47,7 @@ func (f *fakeWorktrees) Path(dir, branch string) (string, error) {
 	if f.pathErr != nil {
 		return "", f.pathErr
 	}
-	return "", fmt.Errorf("wt list names no worktree for %s", branch)
+	return "", fmt.Errorf("git names no worktree for %s", branch)
 }
 
 func (f *fakeWorktrees) Create(dir, branch, base string) (string, error) {
@@ -190,47 +189,24 @@ func TestPlaceAgentReusesTheBranchesWorktree(t *testing.T) {
 	}
 }
 
-// A machine with no worktrunk on it launches the way every agent did before
-// there were worktrees. It is not a failure — but where the agent is working
-// decides what its branch instructions mean, so it is said out loud.
-func TestPlaceAgentWithoutWorktrunk(t *testing.T) {
+// A look-up that fails is not read for a reason of its own: whatever git could
+// not say about the branch's worktree, the answer is to cut one, and it is that
+// cut which says whether the agent can be placed at all.
+func TestPlaceAgentWhenTheLookUpFails(t *testing.T) {
 	dir := repoDir(t)
-	w := &fakeWorktrees{pathErr: worktree.ErrNotInstalled}
+	w := &fakeWorktrees{pathErr: &worktree.ExitError{Code: 128, Stderr: "fatal: not a git repository\n"}}
 	r := &fakeRepo{base: "origin/main"}
 
 	p := placeAgent(w, r, dir, domain.Slice{Name: "Info view"})
 
-	if !p.ok || p.dir != dir {
-		t.Fatalf("placement = %+v, want the shared checkout at %q", p, dir)
+	if !p.ok || p.branch != "slice/info-view" || p.repo != dir {
+		t.Fatalf("placement = %+v, want a worktree cut for the slice", p)
 	}
-	if p.branch != "" || p.repo != "" {
-		t.Errorf("placement = %+v, want no worktree claimed", p)
+	if p.toast != "" {
+		t.Errorf("toast = %q, want nothing said about a launch that worked", p.toast)
 	}
-	if !strings.Contains(p.toast, "is not installed") || !strings.Contains(p.toast, "shared checkout") {
-		t.Errorf("toast = %q, want it to say why the agent is in the shared checkout", p.toast)
-	}
-	if p.sev != sevWarning {
-		t.Errorf("severity = %v, want a warning rather than an error", p.sev)
-	}
-	if len(w.creates) != 0 {
-		t.Errorf("creates = %v, want nothing asked of a worktrunk that is not there", w.creates)
-	}
-}
-
-// The same fallback, found on the create instead: the list may fail for its own
-// reasons, and the missing binary is only reached on the call that follows.
-func TestPlaceAgentWithoutWorktrunkOnTheCreate(t *testing.T) {
-	dir := repoDir(t)
-	w := &fakeWorktrees{createErr: fmt.Errorf("%w: %w", worktree.ErrNotInstalled, errors.New("exec: not found"))}
-	r := &fakeRepo{base: "origin/main"}
-
-	p := placeAgent(w, r, dir, domain.Slice{Name: "Info view"})
-
-	if !p.ok || p.dir != dir || p.branch != "" {
-		t.Fatalf("placement = %+v, want the shared checkout at %q", p, dir)
-	}
-	if !strings.Contains(p.toast, "shared checkout") {
-		t.Errorf("toast = %q, want the fallback said out loud", p.toast)
+	if want := []worktreeCall{{dir, "slice/info-view", "origin/main"}}; !equalCalls(w.creates, want) {
+		t.Errorf("creates = %v, want %v", w.creates, want)
 	}
 }
 
@@ -250,11 +226,11 @@ func TestPlaceAgentOutsideARepository(t *testing.T) {
 		t.Errorf("toast = %q, want it to name the directory and why", p.toast)
 	}
 	if len(w.looks)+len(w.creates)+len(r.fetches) != 0 {
-		t.Error("neither worktrunk nor git should be asked about a directory that is not a repository")
+		t.Error("git should not be asked anything about a directory that is not a repository")
 	}
 }
 
-// A worktrunk that ran and refused is not a fallback: something is wrong with
+// A git that ran and refused is not a fallback: something is wrong with
 // the repository, and an agent half-placed on the strength of it would be
 // working somewhere nobody chose.
 func TestPlaceAgentWhenTheWorktreeCannotBeMade(t *testing.T) {
@@ -268,7 +244,7 @@ func TestPlaceAgentWhenTheWorktreeCannotBeMade(t *testing.T) {
 		t.Fatalf("placement = %+v, want nothing launched", p)
 	}
 	if !strings.Contains(p.toast, `"Info view"`) || !strings.Contains(p.toast, "already exists") {
-		t.Errorf("toast = %q, want the slice and worktrunk's own reason", p.toast)
+		t.Errorf("toast = %q, want the slice and git's own reason", p.toast)
 	}
 	if p.sev != sevError {
 		t.Errorf("severity = %v, want an error", p.sev)

@@ -118,16 +118,7 @@ func TestNextSliceCutsTheSlicesWorktree(t *testing.T) {
 			t.Errorf("the next-slice skill does not say %q", want)
 		}
 	}
-	// worktrunk is gone: a `wt` the skill still named is one the agent would
-	// try to run on a machine that has no such binary.
-	if wtCommand.MatchString(text) {
-		t.Error("the next-slice skill still names a wt command")
-	}
 }
-
-// wtCommand matches worktrunk's binary as a command word, so the ordinary
-// English the skill is written in does not read as it.
-var wtCommand = regexp.MustCompile(`\bwt\s+(switch|list|add|remove)\b`)
 
 // A project keeps its whole plan on one page: a milestone is an option of the
 // slices' Milestone column, with no status of its own and no page to name it

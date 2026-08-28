@@ -16,11 +16,10 @@
 // finds the worktree the last session was working in by asking git for it —
 // [CLI.Path] — and cuts a fresh one only where there is none.
 //
-// A missing git binary is its own error ([ErrNotInstalled]) rather than one
-// failure among many, because it is the one the caller recovers from: an agent
-// launched on a machine that cannot cut a worktree runs in the shared checkout
-// the way every agent did before there were worktrees, and that is a decision
-// only a distinguishable error can drive.
+// Nothing here tells a missing git binary apart from any other failure, because
+// no caller acts on the difference: git is what the board reads a diff with as
+// well as what it cuts a worktree with, so a machine without it has no working
+// board to fall back to.
 package worktree
 
 import (
@@ -50,11 +49,6 @@ const gitTimeout = 60 * time.Second
 // sibling rather than a child, so nothing nat cuts ever appears inside the
 // checkout the user works in or the diffs taken from it.
 const dirSuffix = ".worktrees"
-
-// ErrNotInstalled is a machine with no git on it. It is wrapped around os/exec's
-// own report rather than replacing it, so a caller may test for either, and it
-// is what the launch path falls back to the shared checkout on.
-var ErrNotInstalled = errors.New(Binary + " is not installed")
 
 // Runner runs a command in a working directory and returns its standard
 // output. It is the seam the tests replace: the real one starts a subprocess.
@@ -119,16 +113,6 @@ func firstLine(stderr string) string {
 	return ""
 }
 
-// classify turns os/exec's missing-binary report into [ErrNotInstalled],
-// wrapping rather than replacing it, and leaves every other failure — an exit,
-// a timeout — exactly as it arrived.
-func classify(err error) error {
-	if errors.Is(err, exec.ErrNotFound) {
-		return fmt.Errorf("%w: %w", ErrNotInstalled, err)
-	}
-	return err
-}
-
 // CLI manages worktrees through the git binary.
 type CLI struct {
 	runner Runner
@@ -177,7 +161,6 @@ func (c CLI) Create(dir, branch, base string) (string, error) {
 		}
 	}
 	if _, err := c.runner.Run(dir, Binary, args...); err != nil {
-		err = classify(err)
 		logging.Error("could not create a worktree", "dir", dir, "branch", branch,
 			"base", base, "path", path, "error", err)
 		return "", err
@@ -205,7 +188,6 @@ func (c CLI) Remove(dir, branch string) error {
 		return err
 	}
 	if _, err := c.runner.Run(dir, Binary, "worktree", "remove", path); err != nil {
-		err = classify(err)
 		logging.Error("could not remove a worktree", "dir", dir, "branch", branch,
 			"path", path, "error", err)
 		return err
@@ -226,7 +208,6 @@ func (c CLI) Remove(dir, branch string) error {
 func (c CLI) Path(dir, branch string) (string, error) {
 	out, err := c.runner.Run(dir, Binary, "worktree", "list", "--porcelain")
 	if err != nil {
-		err = classify(err)
 		logging.Error("could not list worktrees", "dir", dir, "error", err)
 		return "", err
 	}
@@ -265,7 +246,7 @@ func worktreeOf(list, branch string) string {
 func (c CLI) root(dir string) (string, error) {
 	out, err := c.runner.Run(dir, Binary, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {
-		return "", classify(err)
+		return "", err
 	}
 	common := strings.TrimSpace(out)
 	if common == "" {

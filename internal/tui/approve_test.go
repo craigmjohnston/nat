@@ -83,9 +83,9 @@ func approveApp(t *testing.T) (*App, *fakePRs, *fakeNotion, string) {
 	return app, prs, client, workdir
 }
 
-// approveWorktrees puts a fake worktrunk in for the length of one test, since
-// the removal is the second half of the approve and the suite's own fake is
-// shared. It answers as a working worktrunk unless the test says otherwise.
+// approveWorktrees puts a fake worktree layer in for the length of one test,
+// since the removal is the second half of the approve and the suite's own fake
+// is shared. It answers as a working git unless the test says otherwise.
 func approveWorktrees(t *testing.T) *fakeWorktrees {
 	t.Helper()
 	trees := &fakeWorktrees{}
@@ -516,7 +516,7 @@ func TestApproveRemovesTheWorktree(t *testing.T) {
 
 	want := worktreeCall{dir: workdir, branch: "slice/approve"}
 	if len(trees.removes) != 1 || trees.removes[0] != want {
-		t.Fatalf("wt was asked to remove %v, want %v", trees.removes, want)
+		t.Fatalf("git was asked to remove %v, want %v", trees.removes, want)
 	}
 }
 
@@ -537,12 +537,13 @@ func TestApproveRemovesTheWorktreeFromTheSlicesOwnRepo(t *testing.T) {
 	approve(t, app)
 
 	if len(trees.removes) != 1 || trees.removes[0].dir != repo {
-		t.Errorf("wt ran in %v, want the slice's own repo %q", trees.removes, repo)
+		t.Errorf("git ran in %v, want the slice's own repo %q", trees.removes, repo)
 	}
 }
 
-// TestApproveSurvivesAFailedRemoval covers everything worktrunk refuses over —
-// a dirty worktree, a slice that never had one, a machine with no wt at all.
+// TestApproveSurvivesAFailedRemoval covers everything git refuses over — a
+// dirty worktree, a slice that never had one, a repository it will not answer
+// about.
 // The pull request has been opened and the slice is Done: the approve stands,
 // and the refusal is left in the log rather than raised on the board.
 func TestApproveSurvivesAFailedRemoval(t *testing.T) {
@@ -594,7 +595,7 @@ func TestApproveKeepsTheWorktreeUntilTheSliceIsDone(t *testing.T) {
 			approve(t, app)
 
 			if len(trees.removes) != 0 {
-				t.Errorf("wt was asked to remove %v on a slice still handed back", trees.removes)
+				t.Errorf("git was asked to remove %v on a slice still handed back", trees.removes)
 			}
 		})
 	}
