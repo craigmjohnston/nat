@@ -165,6 +165,26 @@ func TestAppPlanLaunchAcceptsAMultilineRequest(t *testing.T) {
 	}
 }
 
+// A slice launch claims its slice and refetches the row it moved. A planning
+// launch has no slice at all — the sentinel it is tagged with names no page —
+// so it writes nothing and reads nothing.
+func TestAppPlanLaunchTouchesNoSlice(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+
+	planLaunch(t, app, "split the reporting milestone")
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
+	client := app.client.(*fakeNotion)
+	if len(client.updated) != 0 {
+		t.Errorf("writes = %+v, want none: there is no slice to claim", client.updated)
+	}
+	if len(client.fetchedPages) != 0 {
+		t.Errorf("read %v, want no page read for a launch with no slice", client.fetchedPages)
+	}
+}
+
 // Workshopping and slice work are two settings, not one: the planning agent
 // runs as the workshop pair, whatever the slice pair says.
 func TestAppPlanLaunchCarriesTheConfiguredWorkshopModel(t *testing.T) {

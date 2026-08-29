@@ -16,6 +16,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
@@ -690,9 +691,15 @@ func TestAppLaunchStartsTheSessionAndAttaches(t *testing.T) {
 		}
 	}
 
-	// Nothing was written to Notion: the agent claims its own slice.
-	if client := app.client.(*fakeNotion); len(client.updated) != 0 {
-		t.Errorf("wrote %+v to Notion, want the claim left to the agent", client.updated)
+	// The slice was claimed on the way, so the row says an agent has it from the
+	// moment the key was pressed rather than once the session gets to
+	// start-slice.
+	client := app.client.(*fakeNotion)
+	if len(client.updated) != 1 || client.updated[0].pageID != "s5" {
+		t.Fatalf("writes = %+v, want exactly the launched slice claimed", client.updated)
+	}
+	if name := client.updated[0].properties[notion.PropStatus].SelectName(); name != notion.SliceInProgress {
+		t.Errorf("status = %q, want %q", name, notion.SliceInProgress)
 	}
 
 	// One enter is the whole flow: the prompt is gone, no form was opened at
@@ -714,6 +721,145 @@ func TestAppLaunchStartsTheSessionAndAttaches(t *testing.T) {
 // The launch a repository gets: git cuts the slice's branch a worktree,
 // the session starts in it rather than in the checkout the user is working in,
 // and the prompt the agent reads names the same directory and branch.
+// todoPage is the slice the launch reads for the type of its Status column and
+// for whether there is an Assignee to record: a Todo slice, held by nobody.
+func todoPage(id string, assignee bool) *notion.Page {
+	properties := map[string]notion.PropertyValue{notion.PropStatus: notion.NewSelect(notion.SliceTodo)}
+	if assignee {
+		properties[notion.PropAssignee] = notion.NewPeople()
+	}
+	return &notion.Page{ID: id, Properties: properties}
+}
+
+// The claim is the board's own write and it happens before tmux is asked for
+// anything: a fresh Claude Code takes seconds to reach start-slice, and a row
+// that reads Todo all the while is one a second agent can be launched on.
+func TestAppLaunchClaimsTheSliceBeforeTheSession(t *testing.T) {
+	tests := []struct {
+		name     string
+		userID   string
+		assignee bool
+		want     []string
+	}{
+		{"with an assignee column", "u1", true, []string{"u1"}},
+		{"a project that tracks no assignee", "u1", false, nil},
+		{"nobody configured to claim as", "", true, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app, launcher, _ := launchApp(t)
+			app.cfg.AssigneeUserID = tt.userID
+			client := app.client.(*fakeNotion)
+			client.getPage = func(id string) (*notion.Page, error) { return todoPage(id, tt.assignee), nil }
+			// What tmux had been asked for by the time the claim was written,
+			// which is the whole point of the order.
+			launchesAtClaim := -1
+			client.updatePage = func(id string, _ map[string]notion.PropertyValue) (*notion.Page, error) {
+				launchesAtClaim = len(launcher.launches)
+				return &notion.Page{ID: id}, nil
+			}
+			app.board.cursor = rowTodoSlice
+
+			launch(t, app)
+
+			if len(launcher.launches) != 1 {
+				t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+			}
+			if launchesAtClaim != 0 {
+				t.Errorf("tmux had been called %d times at the claim, want the claim first", launchesAtClaim)
+			}
+			if len(client.updated) != 1 || client.updated[0].pageID != "s5" {
+				t.Fatalf("writes = %+v, want exactly the launched slice claimed", client.updated)
+			}
+			props := client.updated[0].properties
+			if name := props[notion.PropStatus].SelectName(); name != notion.SliceInProgress {
+				t.Errorf("status = %q, want %q", name, notion.SliceInProgress)
+			}
+			if got := props[notion.PropAssignee].PeopleIDs(); !equal(got, tt.want) {
+				t.Errorf("assignee = %v, want %v", got, tt.want)
+			}
+			if app.err != nil {
+				t.Errorf("err = %v, want the launch to have gone through", app.err)
+			}
+		})
+	}
+}
+
+// The row is refetched behind the launch, the way the row of any other write
+// the board makes is, so the plan says In progress without waiting for a poll or
+// for the agent's own nudge.
+func TestAppLaunchShowsTheClaimOnTheRow(t *testing.T) {
+	app, _, _ := launchApp(t)
+	app.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	client := app.client.(*fakeNotion)
+	client.getPage = func(id string) (*notion.Page, error) {
+		return &notion.Page{ID: id, Properties: map[string]notion.PropertyValue{
+			notion.PropName:   notion.NewTitle("Info view"),
+			notion.PropStatus: notion.NewSelect(notion.SliceInProgress),
+		}}, nil
+	}
+	app.board.cursor = rowTodoSlice
+
+	launch(t, app)
+
+	s, ok := app.board.SelectedSlice()
+	if !ok {
+		t.Fatal("the launched slice should still be the row the cursor is on")
+	}
+	if s.Status != domain.SliceClaimed {
+		t.Errorf("status = %v, want the claim on the row", s.Status)
+	}
+}
+
+// A claim Notion refused stops the launch outright: no session, and a toast
+// naming what it said. Nothing has gone wrong with the board, and the slice is
+// still there to launch — which is what a toast says and an error banner does
+// not.
+func TestAppLaunchRefusesToStartWithoutTheClaim(t *testing.T) {
+	tests := []struct {
+		name string
+		fail func(*fakeNotion)
+	}{
+		{"the read", func(c *fakeNotion) {
+			c.getPage = func(string) (*notion.Page, error) { return nil, errors.New("notion: 500") }
+		}},
+		{"the write", func(c *fakeNotion) {
+			c.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
+				return nil, errors.New("notion: 500")
+			}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app, launcher, _ := launchApp(t)
+			tt.fail(app.client.(*fakeNotion))
+			app.board.cursor = rowTodoSlice
+
+			launch(t, app)
+
+			if len(launcher.launches) != 0 {
+				t.Errorf("launched %+v, want nothing without the claim", launcher.launches)
+			}
+			if len(launcher.clients) != 0 {
+				t.Errorf("clients = %v, want no terminal for an agent that never started", launcher.clients)
+			}
+			want := `Could not claim "Info view": notion: 500 — no agent was launched.`
+			if app.toast != want {
+				t.Errorf("toast = %q, want %q", app.toast, want)
+			}
+			if app.toastSev != sevError {
+				t.Errorf("severity = %v, want an error", app.toastSev)
+			}
+			if app.err != nil {
+				t.Errorf("err = %v, want the refusal said on the status bar alone", app.err)
+			}
+			if app.busy {
+				t.Error("a launch that was refused leaves nothing in flight")
+			}
+		})
+	}
+}
+
 func TestAppLaunchStartsTheAgentInAWorktree(t *testing.T) {
 	app, launcher, workdir := launchApp(t)
 	if err := os.Mkdir(filepath.Join(workdir, ".git"), 0o750); err != nil {
@@ -987,15 +1133,23 @@ func TestLaunchAgentReportsAFailedPromptFile(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
 	launcher := &fakeLauncher{}
 
-	msg := runMsg(t, launchAgent(launcher, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, agent.PromptContext{
-		Slice: domain.Slice{ID: "s5", Name: "Info view"},
-	}, config.AgentModel{}, true)).(agentLaunchedMsg)
+	client := &fakeNotion{}
+
+	msg := runMsg(t, launchAgent(launcher, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client, "u1",
+		agent.PromptContext{
+			Slice: domain.Slice{ID: "s5", Name: "Info view"},
+		}, config.AgentModel{}, true)).(agentLaunchedMsg)
 
 	if msg.err == nil || !strings.Contains(msg.err.Error(), "launch agent: create prompt dir") {
 		t.Errorf("err = %v, want the failed prompt file", msg.err)
 	}
 	if len(launcher.launches) != 0 {
 		t.Error("no session should start without a prompt to seed it")
+	}
+	// The claim comes after the prompt file, so a launch that got no further
+	// leaves the slice exactly where it was.
+	if len(client.updated) != 0 {
+		t.Errorf("writes = %+v, want the slice untouched", client.updated)
 	}
 }
 
@@ -1053,6 +1207,11 @@ func TestAppLaunchRefusesABlockedSlice(t *testing.T) {
 	want := `"Info view" waits on "Board screen" (In progress), "Stray" (Unknown).`
 	if app.toast != want {
 		t.Errorf("toast = %q, want %q", app.toast, want)
+	}
+	// The refusal comes before the claim, so a blocked slice is left Todo for
+	// whenever the work it waits on lands.
+	if client := app.client.(*fakeNotion); len(client.updated) != 0 {
+		t.Errorf("writes = %+v, want a blocked slice left exactly as it was", client.updated)
 	}
 	if app.toastSev != sevWarning {
 		t.Errorf("severity = %v, want a warning — nothing has gone wrong", app.toastSev)
