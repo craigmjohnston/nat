@@ -606,8 +606,8 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   neither merged nor closed is open whatever it is called), the number and the
   title, and under them what the pull request would move, `head → base`. The
   body is the description, rendered through the same glamour the
-  info screen renders the project page with, and under it the checks, both
-  scrolled in one viewport of its
+  info screen renders the project page with, and under it the checks and the
+  merge box, all three scrolled in one viewport of its
   own, which is why the screen holds gh's answer rather than the rendered text:
   a resize renders it again. `prchecks.go` is that second half — the status
   check rollup as a heading with one line summarising the lot beside it and a
@@ -625,7 +625,26 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   will go under it, and inside the viewport rather than pinned above it, since
   a repository with a workflow per platform has more checks than a screen has
   lines. A pull request nothing runs on is one line saying so: an empty section
-  under a heading would read as checks yet to report. `r` reads the pull request again while the screen
+  under a heading would read as checks yet to report. `prmerge.go` is what those
+  rows are read into — GitHub's merge box as one section under them, three
+  verdicts answering "can this merge": the review decision, the checks, and the
+  branch itself. Each is one line with a mark and a colour, and they are the
+  same `checkOutcome` the checks are drawn in rather than an enum of their own,
+  since a verdict is read exactly as a check is; the heading says what the three
+  come to — ready to merge, not ready to merge, cannot merge — coloured by the
+  worst of them, so green across the board is the section's yes. The checks line
+  is `checkSummary`/`checkRollup` themselves rather than a second reading of the
+  same rollup, which is what makes it impossible for the two sections to
+  disagree. The review's empty decision — a repository that requires no review at
+  all — is the question never having been asked rather than an approval, and
+  mergeability is read off `mergeable` and `mergeStateStatus` together, so a
+  branch that conflicts with its base is named as conflicting and one merely
+  behind it as behind: "unmergeable" says what is not true and nothing about why.
+  Anything either field says that this build does not know is a verdict still to
+  come, for the reason an unrecognised check is pending. A merged or closed pull
+  request has the whole section replaced by that ending, since three verdicts
+  about a branch already in — or already given up on — would read as a question
+  still open. `r` reads the pull request again while the screen
   is up — a review left, a check finished or a merge since it came up is
   exactly what a refresh is being asked about — and a read that fails is a state
   of the screen rather than an error over the app, taking the last reading with
