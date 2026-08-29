@@ -248,7 +248,16 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   the lowest-ordered open milestone and prints its brief,
   `nat start-slice <slice> [--json]`, which claims one named Todo slice and
   prints the same brief — the command a board-launched agent runs, since it is
-  pointed at a slice rather than choosing one. That brief names the project's
+  pointed at a slice rather than choosing one. It takes a second kind of slice
+  besides: one already in progress that the configured user holds (or, on a
+  project with no Assignee column, simply in progress) is re-opened rather than
+  refused — the same brief printed and no write made at all, since such a slice
+  is already everything a claim would make it. That is what lets something else
+  claim a slice before the agent runs, so a session finds its own claim rather
+  than a refusal. Every other refusal stands and still happens before any
+  write: a slice in progress held by somebody else, a Done one, and a blocked
+  one, which is refused by name along with what it waits on whichever of the
+  two kinds it is. That brief names the project's
   own page ID and says it is what `--project` takes, so a session that reads
   only the brief is not left running commands against whatever project the
   board is on —
