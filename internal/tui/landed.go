@@ -81,22 +81,10 @@ func (a *App) landedWorktrees(ids []string) []landedWorktree {
 		jobs = append(jobs, landedWorktree{
 			id:     s.ID,
 			dir:    expandHome(strings.TrimSpace(workdirFor(s, project))),
-			branch: landedBranch(s),
+			branch: agentBranch(s),
 		})
 	}
 	return jobs
-}
-
-// landedBranch is the branch a slice's worktree is on: the one recorded at
-// hand-back where there is one, since what the agent actually pushed is what
-// its worktree is checked out on, and otherwise the branch a launch derives, so
-// a slice finished before there was a Branch column to record one still has its
-// worktree found.
-func landedBranch(s domain.Slice) string {
-	if b := strings.TrimSpace(s.Branch); b != "" {
-		return b
-	}
-	return sliceBranch(s)
 }
 
 // settledSlices is every slice this session has watched a pull request settle

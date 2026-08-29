@@ -393,9 +393,14 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   starts: a slice's agent is given a worktree of its own through
   `internal/worktree`, so it works on its own branch in its own directory rather
   than sharing the one checkout with every other agent and with the user. The
-  branch is derived rather than recorded — `slice/<the title slugged>`, since
+  branch is `agentBranch`: the one the slice records where an agent has handed
+  one back, since what was actually pushed is what its worktree is checked out
+  on and is what a relaunch wants, and otherwise derived —
+  `slice/<the title slugged>`, since
   nothing holds a branch name until the agent hands the work back and a relaunch
-  has to arrive at the same string — and a branch that already has a worktree is
+  has to arrive at the same string. It is the same answer `landed.go` removes a
+  worktree by, so the launch and the merge never disagree about which one a
+  slice has. A branch that already has a worktree is
   reused rather than cut a second one, because a relaunched slice wants its work
   so far — and only a fresh cut goes near the remote, since a worktree that
   already exists is where the last session left it. A fresh one is cut from the
@@ -867,6 +872,20 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   ignored on a slice that is not in progress, and refused with a toast on a
   slice an agent is still live on, since releasing one out from under a working
   session is how two sessions end up on one branch.
+- `l` launches an agent on a slice nothing is happening on, which is both of
+  the states short of Done: `Todo`, work not yet started, and in progress with
+  no live session — a session that died, or one the board has been restarted
+  since (`tui.launchable`). A slice with a live session is refused whatever its
+  status, with the key that attaches to the agent already there, and that
+  refusal is checked first, since it is the one with somewhere to send the user.
+  Done is refused, and so is any status a project has invented. The launch
+  writes nothing to Notion either way — the agent's own `start-slice` is the
+  claim, and that command re-opens a slice its holder already claimed rather
+  than refusing it, which is what makes the second state work at all. A
+  relaunched slice is placed back on `agentBranch`, so one with a branch handed
+  back gets the worktree that work is in; the prompt says so and tells the agent
+  it is continuing rather than starting (`agent.resuming`), and a slice with no
+  branch reads as the fresh start it is.
 - Slices ↔ PRs are 1:1 when work is code; PR URL recorded in the `PR` property.
 - A slice may carry a `Branch` — the branch an agent pushed its work to and
   handed back on. It is read off the page like any other property and empty on a
@@ -935,8 +954,9 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `App.prSettled`) and asked about no more, so the sweep is git nobody pays for
   twice. Only a Done slice is swept: one in progress whose pull request was
   closed rather than merged is work going round again, and the checkout it is
-  going round in is what the next session wants. The branch is the one recorded
-  at hand-back rather than the one the launch derives — what the agent pushed is
+  going round in is what the next session wants. The branch is `agentBranch`,
+  the same answer the launch places an agent on: the one recorded at hand-back
+  rather than the one a title derives — what the agent pushed is
   what its worktree is on, whatever it was cut as — falling back to the derived
   name for a slice finished before there was a `Branch` column. A branch git
   names no worktree for passes silently, since that is every settled slice on
