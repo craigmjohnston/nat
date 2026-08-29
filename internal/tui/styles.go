@@ -214,6 +214,17 @@ type Styles struct {
 	PRDraft  lipgloss.Style
 	PRMerged lipgloss.Style
 	PRClosed lipgloss.Style
+	// CheckPass, CheckFail, CheckPending and CheckSkip colour a status check on
+	// the pull request screen — its mark, its state word, and the rollup line
+	// summarising the lot — in the same four roles the rest of the interface
+	// reads outcomes in: the Success green of something that stands, the Danger
+	// red of something that did not, the Warning yellow of something still
+	// waiting on a machine, and the muted text of a check that never ran, which
+	// is nothing gone wrong and nothing to wait for either.
+	CheckPass    lipgloss.Style
+	CheckFail    lipgloss.Style
+	CheckPending lipgloss.Style
+	CheckSkip    lipgloss.Style
 	// DiffFile, DiffMeta, DiffHunk, DiffAdd and DiffDel colour the unified diff
 	// of a slice's branch by the shape of the line: the "diff --git" line that
 	// opens a file's section, the header lines under it, a hunk's @@ line, and
@@ -400,6 +411,11 @@ func NewStyles(isDark bool) Styles {
 		PRDraft:  chip.Foreground(t.Text).Background(t.Surface),
 		PRMerged: chip.Foreground(t.OnFill).Background(t.Accent),
 		PRClosed: chip.Foreground(t.OnFill).Background(t.Danger),
+
+		CheckPass:    lipgloss.NewStyle().Foreground(t.Success),
+		CheckFail:    lipgloss.NewStyle().Bold(true).Foreground(t.Danger),
+		CheckPending: lipgloss.NewStyle().Foreground(t.Warning),
+		CheckSkip:    lipgloss.NewStyle().Foreground(t.Muted),
 
 		DiffFile:  lipgloss.NewStyle().Bold(true).Foreground(t.Accent),
 		DiffMeta:  lipgloss.NewStyle().Foreground(t.Muted),

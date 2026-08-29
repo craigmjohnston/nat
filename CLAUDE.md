@@ -605,10 +605,27 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   this build does not know reads as open, because a pull request that has
   neither merged nor closed is open whatever it is called), the number and the
   title, and under them what the pull request would move, `head → base`. The
-  body is the description alone for now, rendered through the same glamour the
-  info screen renders the project page with and scrolled in a viewport of its
+  body is the description, rendered through the same glamour the
+  info screen renders the project page with, and under it the checks, both
+  scrolled in one viewport of its
   own, which is why the screen holds gh's answer rather than the rendered text:
-  a resize renders it again. `r` reads the pull request again while the screen
+  a resize renders it again. `prchecks.go` is that second half — the status
+  check rollup as a heading with one line summarising the lot beside it and a
+  row per check under it, the name, GitHub's own word for where it stands, and
+  a mark and a colour saying what that word amounts to. That is
+  `checkOutcome`, the four things a check is to a reader — passing, failing,
+  pending, skipped — since GitHub has a word for every way each of them
+  happens and a summary counting words would have a column apiece; a state this
+  build does not know is pending rather than passing, because a check nobody
+  can classify is exactly the one to keep watching and calling it a pass would
+  have the rollup line say the work is ready when nothing said so. The rollup
+  names only the outcomes some check is in, worst first, and is coloured by the
+  worst of them, so it says what the rows do and nothing else. The section goes
+  under the description rather than over it, which is where the conversation
+  will go under it, and inside the viewport rather than pinned above it, since
+  a repository with a workflow per platform has more checks than a screen has
+  lines. A pull request nothing runs on is one line saying so: an empty section
+  under a heading would read as checks yet to report. `r` reads the pull request again while the screen
   is up — a review left, a check finished or a merge since it came up is
   exactly what a refresh is being asked about — and a read that fails is a state
   of the screen rather than an error over the app, taking the last reading with
