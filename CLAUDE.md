@@ -158,7 +158,27 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   wrong in. `NormaliseURL` is how a URL typed onto a Notion page finds the
   canonical one gh prints: the query string or fragment of a link copied from a
   review or a comment, a trailing slash, and the case of an owner or repository
-  are none of them distinctions GitHub makes.
+  are none of them distinctions GitHub makes. `ViewPR` is the second read, and
+  the opposite reading to `OpenPRs`: one pull request in full rather than a
+  repository's open ones in three fields, `gh pr view <ref> --json <the viewer's
+  fields>` in the slice's repo, for the screen that draws one. The ref is
+  whatever names it — a branch, a number, or the URL the slice's `PR` property
+  holds — handed to gh as it stands, since gh reads all three; an empty one is
+  refused before gh is run at all, because gh with nothing named reads the pull
+  request of whatever branch the directory happens to be on, which in a shared
+  checkout is nobody's slice in particular. The fields asked for are the screen's
+  own contents written out and nothing else, the way `OpenPRs` asks for three:
+  what the pull request is, whether it is open, merged or a draft, what stands
+  between it and main, and what has been said on it. GitHub's vocabulary is kept
+  as GitHub writes it — `State`, `ReviewDecision`, `Mergeable`,
+  `MergeStateStatus` — because what any of those words means is the caller's
+  question and a word invented here would only have to be turned back; the two
+  shapes GitHub reports a check in are the one place that does not hold, since
+  a `CheckRun` and a `StatusContext` differ in their wording rather than in
+  anything a viewer draws differently, so both arrive as a name, a state and a
+  link, a finished run worth its conclusion and one still going worth its status.
+  A gh that refuses comes back as its `*ExitError` exactly as everything else
+  here does — "no pull requests found for branch X" is the sentence to show.
 - `internal/git/` — git, wrapped as thinly as gh is and for the same reason: the
   one thing the board asks of it is the diff of a slice's handed-back branch, so
   the work can be read before `a` on that screen turns it into a pull request. `Diff` runs one

@@ -1,0 +1,28 @@
+{
+  "author": { "id": "MDQ6VXNlcjE=", "is_bot": false, "login": "craigmjohnston", "name": "Craig Johnston" },
+  "baseRefName": "main",
+  "body": "",
+  "comments": [],
+  "headRefName": "slice/claim-the-slice-on-the-board",
+  "isDraft": false,
+  "mergeStateStatus": "UNKNOWN",
+  "mergeable": "UNKNOWN",
+  "number": 168,
+  "reviewDecision": "APPROVED",
+  "reviews": [
+    {
+      "id": "PRR_kwDO2",
+      "author": { "login": "reviewer" },
+      "authorAssociation": "COLLABORATOR",
+      "body": "",
+      "includesCreatedEdit": false,
+      "reactionGroups": [],
+      "state": "APPROVED",
+      "submittedAt": "2026-08-27T16:45:00Z"
+    }
+  ],
+  "state": "MERGED",
+  "statusCheckRollup": [],
+  "title": "Claim the slice on the board before launching its agent",
+  "url": "https://github.com/craigmjohnston/nat/pull/168"
+}
