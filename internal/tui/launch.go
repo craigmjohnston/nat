@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -262,7 +263,7 @@ func (f *LaunchForm) save(a *App) tea.Cmd {
 // configured one, so this is that project.
 func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, attach bool) tea.Cmd {
 	project, _ := a.activeProject()
-	return launchAgent(a.launcher, newWorktrees(), newRepo(), agent.PromptContext{
+	return launchAgent(a.launcher, newWorktrees(), newRepo(), a.client, a.cfg.AssigneeUserID, agent.PromptContext{
 		Slice:        s,
 		Project:      project,
 		ProjectID:    a.cfg.ActiveProjectID,
@@ -281,10 +282,22 @@ func trimModel(m config.AgentModel) config.AgentModel {
 	}
 }
 
-// launchAgent gives the agent a worktree, writes its prompt out and starts the
-// detached session that reads it. Nothing in Notion is touched: the agent
-// claims its own slice, which is what keeps the claim honest when two of them
-// race.
+// launchAgent gives the agent a worktree, writes its prompt out, claims the
+// slice and starts the detached session that reads it. The claim is the board's
+// rather than the agent's: a fresh Claude Code takes seconds to get as far as
+// start-slice, and a row that reads Todo all the while is one the user can
+// launch a second agent on. The prompt still tells the agent to run start-slice,
+// which re-opens the slice it was launched on and prints the brief — and which
+// refuses where somebody else holds it, so a race is settled before any agent is
+// handed a brief.
+//
+// The claim goes last of the things that can fail before tmux is asked for
+// anything, so a worktree that could not be cut or a prompt that could not be
+// written leaves the slice where it was; a launch that fails after it leaves the
+// slice in progress with no session, which is the state R releases. It is
+// refused with a toast rather than the error banner, for the reason a worktree
+// failure is: nothing has gone wrong with the board, and the slice is still
+// there to launch.
 //
 // The worktree is resolved here rather than by the caller because it fetches
 // origin and then cuts the worktree, which is a checkout and runs the
@@ -292,7 +305,8 @@ func trimModel(m config.AgentModel) config.AgentModel {
 // goroutine it is slow in — the board redraws throughout. Its
 // answer is the working directory the prompt is written with and the session is
 // started in, so the two never disagree about where the agent is.
-func launchAgent(l AgentLauncher, w Worktrees, r Repo, c agent.PromptContext, m config.AgentModel, attach bool) tea.Cmd {
+func launchAgent(l AgentLauncher, w Worktrees, r Repo, client NotionAPI, assigneeID string,
+	c agent.PromptContext, m config.AgentModel, attach bool) tea.Cmd {
 	return func() tea.Msg {
 		p := placeAgent(w, r, c.WorkingDir, c.Slice)
 		if !p.ok {
@@ -303,6 +317,9 @@ func launchAgent(l AgentLauncher, w Worktrees, r Repo, c agent.PromptContext, m 
 		file, err := agent.WritePromptFile(session, agent.Prompt(c))
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch agent: %w", err)}
+		}
+		if err := claimSlice(context.Background(), client, c.Slice, assigneeID); err != nil {
+			return agentLaunchedMsg{toast: fmt.Sprintf("Could not %v — no agent was launched.", err), sev: sevError}
 		}
 		if err := l.Launch(session, c.WorkingDir, file, c.Slice.ID, m); err != nil {
 			return agentLaunchedMsg{err: err}
@@ -535,8 +552,8 @@ func (a *App) liveLoaded(msg liveSessionsMsg) tea.Cmd {
 // The toast about where the session was put goes up either way, since it is not
 // about the launch succeeding: it is the difference between an agent on a
 // branch of its own and one in the checkout the user is also working in. A
-// launch that named no session is one the worktree stopped, and the toast is
-// the whole report.
+// launch that named no session is one the worktree or the claim stopped, and
+// the toast is the whole report.
 func (a *App) agentLaunched(msg agentLaunchedMsg) (tea.Model, tea.Cmd) {
 	a.busy = false
 	if msg.err != nil {
@@ -550,6 +567,13 @@ func (a *App) agentLaunched(msg agentLaunchedMsg) (tea.Model, tea.Cmd) {
 	if msg.session == "" {
 		a.note = ""
 		return a, tea.Batch(cmds...)
+	}
+	// The launch claimed the slice, so the row it was pressed on is a page
+	// behind: it is refetched the way any other write's row is, rather than the
+	// whole plan reloaded. The planning agent comes through here too and has no
+	// slice — the sentinel names no page there would be anything to read.
+	if a.project != nil && msg.slice.ID != agent.PlanSentinel {
+		cmds = append(cmds, a.refreshSlice(msg.slice.ID))
 	}
 	if !msg.attach {
 		cmds = append(cmds, a.showConfirm(fmt.Sprintf("Launched %s for %q — t attaches.", msg.session, msg.slice.Name), sevSuccess))

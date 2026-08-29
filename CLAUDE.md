@@ -246,7 +246,7 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
 - `internal/cli/` — the headless commands (`nat info [--json]`,
   `nat next-slice [--json]`, which claims the next unblocked Todo slice under
   the lowest-ordered open milestone and prints its brief,
-  `nat start-slice <slice> [--json]`, which claims one named Todo slice and
+  `nat start-slice <slice> [--json]`, which claims one named slice and
   prints the same brief — the command a board-launched agent runs, since it is
   pointed at a slice rather than choosing one. It takes a second kind of slice
   besides: one already in progress that the configured user holds (or, on a
@@ -382,6 +382,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   bare, the status line included, and a window of one line is that line alone.
   The same text goes out as the terminal's title, stripped of its styling, since
   a title is text.
+  `claim.go` is the other thing the launch does before it starts a session:
+  `claimSlice` reads the slice's page for the type of its `Status` column and
+  for whether it carries an `Assignee` at all — the same read the release and
+  the approve make — and writes the claim. It runs last of the things that can
+  fail before tmux is asked for anything, so a worktree that could not be cut or
+  a prompt that could not be written leaves the slice exactly where it was. See
+  the domain rule below.
   `worktrees.go` sits between the launch flow's `workdirFor` and the session it
   starts: a slice's agent is given a worktree of its own through
   `internal/worktree`, so it works on its own branch in its own directory rather
@@ -830,7 +837,16 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   — and whether the project has an `Assignee` or a `Branch` column at all.
 - Claiming = Status → `In progress`, plus Assignee (people
   property, the configured real Notion user) where the project has that column.
-  Without one, ownership is decided on status alone.
+  Without one, ownership is decided on status alone. The board claims a slice
+  itself as it launches the agent (`internal/tui/claim.go`), before tmux is
+  asked for anything: a fresh Claude Code takes seconds to reach `start-slice`,
+  and a row that reads Todo all the while is one a second agent can be launched
+  on. A claim Notion refused stops the launch outright — a toast naming what it
+  said, and no session — while a launch that fails after it leaves the slice in
+  progress with no agent, which is the state `R` releases. The agent still runs
+  `start-slice`, which finds the claim it was launched on and re-opens the slice
+  rather than claiming it again — and which refuses outright where the claim did
+  not stick, so a race is settled before any agent is handed a brief.
 - Releasing is the claim undone, and the way out of the one state a slice gets
   stuck in: a session that died — a crashed agent, a killed pane, a context that
   ran out — leaves its slice in progress and held, where `next-slice` steps over
