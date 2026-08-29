@@ -257,6 +257,86 @@ func TestPromptWithoutAWorktreeStillAsksForABranch(t *testing.T) {
 	}
 }
 
+// resumeContext is the relaunch: a slice already in progress with a branch
+// recorded on it, placed back in the worktree that branch is checked out in.
+func resumeContext() PromptContext {
+	c := worktreeContext()
+	c.Slice.Status = domain.SliceClaimed
+	c.Slice.StatusName = "In progress"
+	c.Slice.Branch = c.Branch
+	return c
+}
+
+func TestPromptResumingAHandedBackSlice(t *testing.T) {
+	golden(t, "prompt-resume", Prompt(resumeContext()))
+}
+
+// A session put back on a branch that already has commits has to be told so:
+// one that read the ordinary prompt would take somebody else's work for its
+// own, and would branch again rather than pushing what it was handed.
+func TestPromptTellsAResumingAgentTheWorkIsAlreadyThere(t *testing.T) {
+	c := resumeContext()
+	got := Prompt(c)
+	for _, want := range []string{
+		"There is work on that branch already",
+		"You are continuing that work, not starting again.",
+		"the work an earlier\nsession pushed is already on it",
+		"push " + c.Branch + "\nagain",
+		"--branch " + c.Branch + " --summary",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt does not say %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "branch for the slice") {
+		t.Error("prompt tells a resuming agent to make its own branch")
+	}
+}
+
+// A slice already in progress is one start-slice re-opens rather than refuses,
+// so the prompt says as much: an agent told to stop on a refusal would stop on
+// the very answer the command gives it.
+func TestPromptSaysAnInProgressSliceIsReopened(t *testing.T) {
+	c := testContext()
+	c.Slice.Status = domain.SliceClaimed
+	got := Prompt(c)
+	for _, want := range []string{
+		"already in progress and held by Craig Johnston",
+		"re-opens it for you and writes nothing at all",
+		"somebody else\nholds the slice, or it is already done",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt does not say %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "the slice is already claimed, or already done") {
+		t.Error("prompt still tells a relaunch to stop on a claim it is meant to re-open")
+	}
+	// No branch is recorded, so nothing says there is work waiting: this is a
+	// fresh start on a slice a dead session left in progress.
+	if strings.Contains(got, "There is work on that branch already") {
+		t.Error("prompt claims work exists for a slice that handed none back")
+	}
+}
+
+// A released slice is back at Todo with its branch — and its work — still
+// recorded, so it resumes like any other relaunch. A worktree the launch fell
+// back out of does not: there is no branch to have found the work on.
+func TestPromptResumesOnTheBranchRatherThanTheStatus(t *testing.T) {
+	c := worktreeContext()
+	c.Slice.Branch = c.Branch
+	if !strings.Contains(Prompt(c), "There is work on that branch already") {
+		t.Error("a Todo slice with its branch recorded should resume")
+	}
+
+	c = testContext()
+	c.Slice.Status = domain.SliceClaimed
+	c.Slice.Branch = "slice/handed-back"
+	if strings.Contains(Prompt(c), "There is work on that branch already") {
+		t.Error("a launch with no worktree has no branch to resume on")
+	}
+}
+
 // A worktree is never the project's own directory, so measuring the override
 // against it would flag every launch. The checkout it was cut from is what the
 // note is about.

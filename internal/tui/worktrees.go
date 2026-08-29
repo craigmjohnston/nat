@@ -64,6 +64,22 @@ func sliceBranch(s domain.Slice) string {
 	return branchPrefix + agent.SessionName(s.ID)
 }
 
+// agentBranch is the branch a slice's worktree is on: the one recorded at
+// hand-back where there is one, since what an agent actually pushed is what its
+// worktree is checked out on, whatever the launch that cut it derived — and
+// otherwise [sliceBranch], which is every slice nobody has handed back yet.
+//
+// It is what a relaunch is placed on as well as what a merge takes away, so the
+// two arrive at the same worktree: a slice re-launched with work already pushed
+// is put back in the checkout that work is in, rather than in a fresh cut of a
+// branch nothing reaches.
+func agentBranch(s domain.Slice) string {
+	if b := strings.TrimSpace(s.Branch); b != "" {
+		return b
+	}
+	return sliceBranch(s)
+}
+
 // slugify lowercases a title and collapses every run of anything that is not a
 // letter or a digit into a single hyphen, with none left at either end. ASCII
 // alone counts: the result is a branch name and a directory name after it.
@@ -103,6 +119,10 @@ type placement struct {
 // own branch in its own directory rather than sharing the one checkout with
 // every other agent and with the user.
 //
+// Which branch that is is [agentBranch]: the one an agent recorded at hand-back
+// where there is one, so a slice re-launched on work already pushed is put back
+// on it, and the derived name otherwise.
+//
 // The branch's existing worktree wins where there is one: a relaunched slice
 // wants its work so far, not an empty second copy of the repository — and only
 // a fresh cut goes near the remote, since a worktree that already exists is
@@ -130,7 +150,7 @@ func placeAgent(w Worktrees, r Repo, dir string, s domain.Slice) placement {
 	if !inRepo(dir) {
 		return shared(dir + " is not a git repository")
 	}
-	branch := sliceBranch(s)
+	branch := agentBranch(s)
 	// A branch git has no worktree for is the ordinary case — a slice
 	// nobody has worked yet — so a failure here is not read at all: it is
 	// the cut below that says whether the agent can be placed.

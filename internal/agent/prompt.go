@@ -41,6 +41,13 @@ type PromptContext struct {
 // It deliberately does not restate the brief itself — the slice page is the
 // single source of truth for that, and copying it here would let the two drift.
 //
+// A relaunch is told so: a slice already in progress is one `start-slice`
+// re-opens rather than refuses, and a session placed on the very branch the
+// slice records is continuing work that is already there — see [resuming]. Both
+// are said rather than left to be discovered, since an agent that read the
+// ordinary prompt would take a refusal for a stop and a branch full of commits
+// for somebody else's.
+//
 // Every step that touches the tracker is a `nat` command. The agent is told
 // nothing about Notion — not the data sources, not the properties, not even
 // that Notion is what is behind the commands — because the commands are the
@@ -79,14 +86,27 @@ func Prompt(c PromptContext) string {
 	if c.Branch != "" {
 		fmt.Fprintf(&b, "- Branch: %s (the working directory is a worktree already on it)\n", c.Branch)
 	}
+	if resuming(c) {
+		b.WriteString("- There is work on that branch already: an earlier session pushed it and\n")
+		b.WriteString("  handed it back. You are continuing that work, not starting again.\n")
+	}
 
 	b.WriteString("\n## Claim it first\n\n")
 	b.WriteString("Before doing any work, run:\n\n")
 	fmt.Fprintf(&b, "    nat start-slice %s --project %s\n\n", c.Slice.ID, c.ProjectID)
-	fmt.Fprintf(&b, "That claims the slice for %s and prints your brief: the slice's own\n", c.AssigneeName)
-	b.WriteString("body and acceptance criteria, followed by the project's conventions.\n")
-	b.WriteString("If it refuses — the slice is already claimed, or already done — stop and\n")
-	b.WriteString("say so rather than working the slice anyway.\n\n")
+	if c.Slice.Status == domain.SliceClaimed {
+		fmt.Fprintf(&b, "The slice is already in progress and held by %s, so that\n", c.AssigneeName)
+		b.WriteString("command re-opens it for you and writes nothing at all. Either way it\n")
+		b.WriteString("prints your brief: the slice's own body and acceptance criteria,\n")
+		b.WriteString("followed by the project's conventions. If it refuses — somebody else\n")
+		b.WriteString("holds the slice, or it is already done — stop and say so rather than\n")
+		b.WriteString("working it anyway.\n\n")
+	} else {
+		fmt.Fprintf(&b, "That claims the slice for %s and prints your brief: the slice's own\n", c.AssigneeName)
+		b.WriteString("body and acceptance criteria, followed by the project's conventions.\n")
+		b.WriteString("If it refuses — the slice is already claimed, or already done — stop and\n")
+		b.WriteString("say so rather than working the slice anyway.\n\n")
+	}
 	b.WriteString("Every `nat` command below names the project this slice is in:\n\n")
 	fmt.Fprintf(&b, "    --project %s\n\n", c.ProjectID)
 	b.WriteString("Put it on any other one you run too.\n")
@@ -104,7 +124,19 @@ func Prompt(c PromptContext) string {
 	b.WriteString("Work in the working directory above; if that is not where this session\n")
 	b.WriteString("started, use absolute paths or `git -C`. Honour the brief's acceptance\n")
 	b.WriteString("criteria and the project's verification gate before calling it done.\n\n")
-	if c.Branch != "" {
+	switch {
+	case resuming(c):
+		b.WriteString("That directory is a git worktree cut for this slice alone, already on\n")
+		fmt.Fprintf(&b, "the branch %s and shared with nobody, and the work an earlier\n", c.Branch)
+		b.WriteString("session pushed is already on it. Read what is there before adding to\n")
+		b.WriteString("it — the commits on the branch, and the summary the slice page carries\n")
+		fmt.Fprintf(&b, "of what that session did. Commit your own work there and push %s\n", c.Branch)
+		b.WriteString("again: the same branch, which is the one the review is against. Do not\n")
+		b.WriteString("create a branch of your own and do not switch to another; this one is\n")
+		b.WriteString("yours and is what you hand back. Do not run `gh`, and do not open a\n")
+		b.WriteString("pull request: you hand the branch back and the user opens the pull\n")
+		b.WriteString("request from the board once they have reviewed it.\n\n")
+	case c.Branch != "":
 		fmt.Fprintf(&b, "That directory is a git worktree cut for this slice alone, already on\n")
 		fmt.Fprintf(&b, "the branch %s and shared with nobody. If the work is code: commit\n", c.Branch)
 		fmt.Fprintf(&b, "there — exactly ONE change, this slice's — and push %s. Do not\n", c.Branch)
@@ -112,7 +144,7 @@ func Prompt(c PromptContext) string {
 		b.WriteString("yours and is what you hand back. Do not run `gh`, and do not open a\n")
 		b.WriteString("pull request: you hand the branch back and the user opens the pull\n")
 		b.WriteString("request from the board once they have reviewed it.\n\n")
-	} else {
+	default:
 		b.WriteString("If the work is code: branch for the slice — one branch, and exactly ONE\n")
 		b.WriteString("change on it — commit, and push the branch. Do not run `gh`, and do not\n")
 		b.WriteString("open a pull request: you hand the branch back and the user opens the\n")
@@ -280,6 +312,18 @@ func planBody(projectID, projectName, workingDir string) *strings.Builder {
 	b.WriteString("  your changes when you exit, or on its refresh key.\n")
 
 	return b
+}
+
+// resuming reports whether the session is picking work up rather than starting
+// it: the worktree it is placed in is on the very branch the slice records, so
+// there are commits there already and an earlier session put them there.
+//
+// It is the branch matching that says so rather than the slice's status alone,
+// because a released slice is back at Todo with its branch still recorded and
+// its work still exactly what the next session wants, and because a launch that
+// fell back to the shared checkout has no worktree to have found the work in.
+func resuming(c PromptContext) bool {
+	return c.Branch != "" && c.Branch == strings.TrimSpace(c.Slice.Branch)
 }
 
 // branchArg is what the hand-back command names: the branch the session's

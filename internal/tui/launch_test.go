@@ -999,24 +999,31 @@ func TestLaunchAgentReportsAFailedPromptFile(t *testing.T) {
 	}
 }
 
-func TestAppLaunchRefusesASliceThatIsNotTodo(t *testing.T) {
+// Done is out — the work has landed and there is nothing for a second agent to
+// add — and so is a status the project has invented, which is not a state this
+// flow knows what to do with. The two that are in have tests of their own.
+func TestAppLaunchRefusesASliceItCannotStart(t *testing.T) {
+	const refusal = " — only Todo slices and slices in progress can be launched."
 	tests := []struct {
-		name   string
-		cursor int
-		want   string
+		name string
+		id   string
+		want string
 	}{
-		{"claimed", rowClaimedSlice, `"Board screen" is In progress — only Todo slices can be launched.`},
-		{"done", rowDoneSlice, `"Domain model" is Done — only Todo slices can be launched.`},
+		{"done", "s3", `"Domain model" is Done` + refusal},
+		{"unknown", "s6", `"Stray" is Unknown` + refusal},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			app, launcher, _ := launchApp(t)
-			app.board.cursor = tt.cursor
+			cursorOn(t, app, tt.id)
 
 			press(app, "l")
 
 			if app.form != nil {
 				t.Errorf("form = %T, want no launch form", app.form)
+			}
+			if app.board.Prompting() {
+				t.Error("a slice that cannot be started should be offered no launch prompt")
 			}
 			if len(launcher.launches) != 0 {
 				t.Errorf("launched %+v, want nothing", launcher.launches)
@@ -1025,6 +1032,80 @@ func TestAppLaunchRefusesASliceThatIsNotTodo(t *testing.T) {
 				t.Errorf("confirm = %q, want %q", app.board.confirmText, tt.want)
 			}
 		})
+	}
+}
+
+// A slice in progress with nothing running on it is the one a session died
+// under, or one the board has been restarted since: l puts an agent back on it
+// rather than refusing, and nothing in Notion is touched — start-slice re-opens
+// a slice its holder already claimed, so the agent's own claim is the write.
+func TestAppLaunchStartsASliceInProgressWithNoSession(t *testing.T) {
+	app, launcher, workdir := launchApp(t)
+	cursorOn(t, app, "s4")
+
+	launch(t, app)
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want the one relaunch", launcher.launches)
+	}
+	got := launcher.launches[0]
+	if got.sliceID != "s4" {
+		t.Errorf("launched slice %q, want the one in progress", got.sliceID)
+	}
+	if got.workdir != workdir {
+		t.Errorf("workdir = %q, want %q", got.workdir, workdir)
+	}
+	if app.board.confirmText != "" {
+		t.Errorf("confirm = %q, want no refusal", app.board.confirmText)
+	}
+}
+
+// A handed-back slice is the same relaunch with work already pushed: the agent
+// is placed on the branch that work is on rather than on the name a fresh
+// launch would derive, and told it is continuing it.
+func TestAppLaunchResumesAHandedBackSlice(t *testing.T) {
+	const branch = "slice/board-screen-take-two"
+	app, launcher, workdir := launchApp(t)
+	if err := os.Mkdir(filepath.Join(workdir, ".git"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	app.project.Slices[3].Branch = branch
+	app.board.SetProject(app.project)
+	cursorOn(t, app, "s4")
+
+	// The worktree the last session was working in is still there, which is
+	// what the relaunch is put back into rather than cutting a second one.
+	kept := filepath.Join(workdir+"-worktrees", "board-screen-take-two")
+	trees := &fakeWorktrees{existing: map[string]string{branch: kept}}
+	newWorktrees = func() Worktrees { return trees }
+	t.Cleanup(func() { newWorktrees = func() Worktrees { return &fakeWorktrees{} } })
+
+	launch(t, app)
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want the one relaunch", launcher.launches)
+	}
+	if got := trees.looks; len(got) != 1 || got[0].branch != branch {
+		t.Errorf("looked up %+v, want the branch the agent handed back", got)
+	}
+	if len(trees.creates) != 0 {
+		t.Errorf("creates = %+v, want the worktree already there reused", trees.creates)
+	}
+	if got := launcher.launches[0].workdir; got != kept {
+		t.Errorf("workdir = %q, want the branch's own worktree %q", got, kept)
+	}
+	prompt, err := os.ReadFile(launcher.launches[0].promptFile)
+	if err != nil {
+		t.Fatalf("read the prompt: %v", err)
+	}
+	for _, want := range []string{
+		"- Branch: slice/board-screen-take-two",
+		"an earlier session pushed it and",
+		"push slice/board-screen-take-two\nagain",
+	} {
+		if !strings.Contains(string(prompt), want) {
+			t.Errorf("prompt does not say %q:\n%s", want, prompt)
+		}
 	}
 }
 

@@ -339,9 +339,24 @@ const (
 	choiceConfigure
 )
 
-// launchAgentFlow anchors the launch prompt to the slice the cursor is on. Only
-// a Todo slice can be launched: a slice in progress is work an agent already
-// holds, and Done is finished — a second agent on either would fight the first.
+// launchAgentFlow anchors the launch prompt to the slice the cursor is on.
+//
+// A slice with an agent running on it is refused, whatever its status: a second
+// agent would fight the first, and what the user wants is the one already there,
+// so the refusal names the key that attaches to it. What is left is the slice
+// nothing is happening on, and both of the states it can be in are launchable —
+// Todo, which is work not yet started, and in progress with no live session,
+// which is work a session was doing when it died, or one the board has been
+// restarted since. That second one is a relaunch: the slice's own worktree is
+// where the last session left it, and where a branch was handed back the agent
+// is put on it and told it is continuing the work — see [placeAgent] and
+// [agent.Prompt]. Nothing is written here either way; `start-slice` re-opens a
+// slice its holder already claimed, so the agent's own claim is what it always
+// was.
+//
+// Done is out: the work has landed, and there is nothing for an agent to add to
+// a slice whose pull request is already open. So is any other status a project
+// has invented, which is not a state this flow knows what to do with.
 //
 // A blocked slice is refused too, and refused with a toast rather than the
 // error banner a failure gets: nothing has gone wrong, and the slice is still
@@ -359,8 +374,8 @@ func (a *App) launchAgentFlow() tea.Cmd {
 	if a.live[s.ID] != "" {
 		return a.showConfirm(fmt.Sprintf("An agent is already running for %q — press t to attach.", s.Name), sevWarning)
 	}
-	if s.Status != domain.SliceTodo {
-		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices can be launched.", s.Name, statusWord(s)), sevWarning)
+	if !launchable(s) {
+		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices and slices in progress can be launched.", s.Name, statusWord(s)), sevWarning)
 	}
 	if blockers := a.board.Blockers(s); len(blockers) > 0 {
 		return a.showToast(fmt.Sprintf("%q waits on %s.", s.Name, blockerList(blockers)), sevWarning)
@@ -388,6 +403,14 @@ func (a *App) launchChosen(s domain.Slice, workdir string, choice int) tea.Cmd {
 	}
 	a.busy, a.note = true, launchNote
 	return a.startAgent(s, workdir, a.cfg.SliceAgent, true)
+}
+
+// launchable reports whether a slice is one an agent can be started on: not
+// yet begun, or begun and no longer being worked. The live session is the
+// caller's check rather than this one's, since an agent already running is a
+// different refusal with a different thing to say.
+func launchable(s domain.Slice) bool {
+	return s.Status == domain.SliceTodo || s.Status == domain.SliceClaimed
 }
 
 // blockerList names the slices a blocked one is waiting on, in the order it

@@ -491,20 +491,21 @@ func TestReleaseFromAnActiveEntry(t *testing.T) {
 	}
 }
 
-// l on an entry is the launch key's refusal — no slice in flight is Todo — and
-// that refusal is a confirmation, which the entry has to draw for the same
-// reason: a key that says nothing is a key that looks broken.
-func TestLaunchFromAnActiveEntryIsRefusedOnTheEntry(t *testing.T) {
+// l on an entry is the launch prompt: a slice in flight with no session on it
+// is one an agent can be put back on, and the entry draws the prompt for the
+// same reason it draws the release one — a key that says nothing is a key that
+// looks broken.
+func TestLaunchFromAnActiveEntryPromptsOnTheEntry(t *testing.T) {
 	app, _, _, _ := approveApp(t)
 	app.board.SetWidth(60)
 	cursorOnActive(t, app, handedBack)
 
 	feed(t, app, press(app, "l"))
 
-	if !strings.Contains(app.board.confirmText, "only Todo slices") {
-		t.Fatalf("confirmation = %q, want the launch key's refusal", app.board.confirmText)
+	if !app.board.Prompting() {
+		t.Fatalf("l on an entry opened no prompt: %q", app.board.confirmText)
 	}
-	if got := activeText(&app.board)[1]; !strings.Contains(got, "only Todo slices") {
-		t.Errorf("entry foot line = %q, want the refusal drawn on it", got)
+	if got := activeText(&app.board)[1]; !strings.Contains(got, "launch") {
+		t.Errorf("entry foot line = %q, want the launch prompt drawn on it", got)
 	}
 }
