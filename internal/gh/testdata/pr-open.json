@@ -1,0 +1,88 @@
+{
+  "author": {
+    "id": "MDQ6VXNlcjE=",
+    "is_bot": false,
+    "login": "craigmjohnston",
+    "name": "Craig Johnston"
+  },
+  "baseRefName": "main",
+  "body": "Extends internal/gh with a read of one pull request.\n\nNo TUI in this slice.",
+  "comments": [
+    {
+      "id": "IC_kwDO1",
+      "author": { "login": "craigmjohnston" },
+      "authorAssociation": "OWNER",
+      "body": "Rebased on main.",
+      "createdAt": "2026-08-28T09:15:00Z",
+      "includesCreatedEdit": false,
+      "isMinimized": false,
+      "minimizedReason": "",
+      "reactionGroups": [],
+      "url": "https://github.com/craigmjohnston/nat/pull/7#issuecomment-1",
+      "viewerDidAuthor": true
+    },
+    {
+      "id": "IC_kwDO2",
+      "author": { "login": "" },
+      "authorAssociation": "NONE",
+      "body": "Looks good from here.",
+      "createdAt": "2026-08-28T10:00:00Z",
+      "includesCreatedEdit": false,
+      "isMinimized": false,
+      "minimizedReason": "",
+      "reactionGroups": [],
+      "url": "https://github.com/craigmjohnston/nat/pull/7#issuecomment-2",
+      "viewerDidAuthor": false
+    }
+  ],
+  "headRefName": "slice/read-a-pull-request-through-gh",
+  "isDraft": false,
+  "mergeStateStatus": "BLOCKED",
+  "mergeable": "MERGEABLE",
+  "number": 7,
+  "reviewDecision": "REVIEW_REQUIRED",
+  "reviews": [
+    {
+      "id": "PRR_kwDO1",
+      "author": { "login": "reviewer" },
+      "authorAssociation": "COLLABORATOR",
+      "body": "One nit inline, otherwise fine.",
+      "includesCreatedEdit": false,
+      "reactionGroups": [],
+      "state": "COMMENTED",
+      "submittedAt": "2026-08-28T11:30:00Z"
+    }
+  ],
+  "state": "OPEN",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-08-28T09:05:00Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/craigmjohnston/nat/actions/runs/1/job/1",
+      "name": "test",
+      "startedAt": "2026-08-28T09:00:00Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "0001-01-01T00:00:00Z",
+      "conclusion": "",
+      "detailsUrl": "https://github.com/craigmjohnston/nat/actions/runs/1/job/2",
+      "name": "lint",
+      "startedAt": "2026-08-28T09:00:00Z",
+      "status": "IN_PROGRESS",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "StatusContext",
+      "context": "ci/legacy",
+      "startedAt": "2026-08-28T09:00:00Z",
+      "state": "PENDING",
+      "targetUrl": "https://ci.test/build/1"
+    }
+  ],
+  "title": "Read a pull request through gh",
+  "url": "https://github.com/craigmjohnston/nat/pull/7"
+}

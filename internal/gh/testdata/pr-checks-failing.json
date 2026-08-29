@@ -1,0 +1,56 @@
+{
+  "author": { "id": "MDQ6VXNlcjE=", "is_bot": false, "login": "craigmjohnston", "name": "Craig Johnston" },
+  "baseRefName": "main",
+  "body": "Work in progress.",
+  "comments": [],
+  "headRefName": "slice/draw-a-pull-request",
+  "isDraft": true,
+  "mergeStateStatus": "DIRTY",
+  "mergeable": "CONFLICTING",
+  "number": 9,
+  "reviewDecision": "CHANGES_REQUESTED",
+  "reviews": [
+    {
+      "id": "PRR_kwDO3",
+      "author": { "login": "reviewer" },
+      "authorAssociation": "COLLABORATOR",
+      "body": "The gate is failing.",
+      "includesCreatedEdit": false,
+      "reactionGroups": [],
+      "state": "CHANGES_REQUESTED",
+      "submittedAt": "2026-08-29T08:00:00Z"
+    },
+    {
+      "id": "PRR_kwDO4",
+      "author": { "login": "reviewer" },
+      "authorAssociation": "COLLABORATOR",
+      "body": "Still reading.",
+      "includesCreatedEdit": false,
+      "reactionGroups": [],
+      "state": "PENDING",
+      "submittedAt": null
+    }
+  ],
+  "state": "OPEN",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-08-29T07:55:00Z",
+      "conclusion": "FAILURE",
+      "detailsUrl": "https://github.com/craigmjohnston/nat/actions/runs/9/job/1",
+      "name": "test",
+      "startedAt": "2026-08-29T07:50:00Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "StatusContext",
+      "context": "ci/legacy",
+      "startedAt": "2026-08-29T07:50:00Z",
+      "state": "ERROR",
+      "targetUrl": "https://ci.test/build/9"
+    }
+  ],
+  "title": "Draw a pull request on a screen of its own",
+  "url": "https://github.com/craigmjohnston/nat/pull/9"
+}
