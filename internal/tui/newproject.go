@@ -501,5 +501,8 @@ func (a *App) showActiveProject() tea.Cmd {
 	// The diff on the review screen is of a branch in the project being left,
 	// and so is what the refresh key would otherwise read again.
 	a.diff.Reset()
+	// And the pull request on the screen beside it is one of the project being
+	// left, for the same reason.
+	a.prview.Reset()
 	return tea.Batch(a.startLoad(), a.refreshLive())
 }

@@ -23,8 +23,8 @@ import (
 )
 
 // screen is one of the app's full-window views. The board is what the app is
-// for; help, info and the diff of a slice's branch are pushed over it and
-// dismissed with esc.
+// for; help, info, the diff of a slice's branch and the pull request that
+// branch became are pushed over it and dismissed with esc.
 type screen int
 
 const (
@@ -33,6 +33,7 @@ const (
 	screenInfo
 	screenForm
 	screenDiff
+	screenPR
 )
 
 // modal is a form shown over the board: it owns every key but esc, and once it
@@ -211,7 +212,10 @@ type App struct {
 	board      Board
 	info       Info
 	diff       Diff
-	form       modal
+	// prview is the pull request screen: what GitHub says about the pull request
+	// a slice records, read over the board the way the diff is.
+	prview PRView
+	form   modal
 	// formReturn is the screen an open form was opened over, which is where
 	// closing it goes back to — the board for all but the diff's comment box.
 	formReturn screen
@@ -268,7 +272,12 @@ type App struct {
 	// worktree the landing has already taken away, so the sweep every plan load
 	// runs asks git nothing about them again. A removal git refused is left out
 	// of it, which is what makes that sweep the retry — see [App.removeLanded].
+	//
+	// prViewer is the other half of that reading, and the opposite one: one pull
+	// request in full for the screen that draws it, rather than a repository's
+	// open ones in three fields for the board.
 	prReader     PRReader
+	prViewer     PRViewer
 	prState      map[string]domain.PRReadiness
 	prSettled    map[string]bool
 	worktreeGone map[string]bool
@@ -335,10 +344,10 @@ func NewApp(cfg config.Config, client NotionAPI) *App {
 	sp := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(s.Spinner))
 	a := &App{cfg: cfg, client: client, styles: s, keys: defaultKeyMap(),
 		promptKeys: defaultPromptKeyMap(), spinner: sp,
-		board: NewBoard(s), info: NewInfo(s), diff: NewDiff(s),
+		board: NewBoard(s), info: NewInfo(s), diff: NewDiff(s), prview: NewPRView(s),
 		launcher: newLauncher(), prs: newPRCreator(), differ: newDiffer(),
-		prReader: newPRReader(),
-		boardVP:  viewport.New(), helpVP: viewport.New()}
+		prReader: newPRReader(), prViewer: newPRViewer(),
+		boardVP: viewport.New(), helpVP: viewport.New()}
 	a.helpVP.SetContent(a.helpBody())
 	return a
 }
@@ -361,6 +370,7 @@ func (a *App) setStyles(s Styles) {
 	a.board.styles = s
 	a.info.styles = s
 	a.diff.styles = s
+	a.prview.styles = s
 	if a.onboarding != nil {
 		a.onboarding.SetStyles(s)
 	}
@@ -459,6 +469,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	case diffLoadedMsg:
 		return a.diffLoaded(msg)
+	case prViewLoadedMsg:
+		return a.prViewLoaded(msg)
 	case commentSavedMsg:
 		return a.commentSaved(msg)
 	case commentsSentMsg:
@@ -532,7 +544,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.confirmGone(msg)
 		return a, nil
 	case spinner.TickMsg:
-		if !a.loading && !a.info.Busy() && !a.diff.Busy() {
+		if !a.loading && !a.info.Busy() && !a.diff.Busy() && !a.prview.Busy() {
 			return a, nil
 		}
 		sp, cmd := a.spinner.Update(msg)
@@ -618,6 +630,12 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if a.screen == screenDiff {
 			cmd = tea.Batch(cmd, a.startDiffLoad())
 		}
+		// A pull request on show is read again for the same reason: a review
+		// left, a check finished or a merge since the screen came up is exactly
+		// what the refresh is being asked about.
+		if a.screen == screenPR {
+			cmd = tea.Batch(cmd, a.startPRLoad())
+		}
 		return a, cmd
 	case key.Matches(msg, a.keys.Workshop):
 		return a, a.workshopFlow()
@@ -649,6 +667,8 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				return a, cmd
 			}
 			return a, a.diff.Update(msg)
+		case screenPR:
+			return a, a.prview.Update(msg)
 		case screenHelp:
 			// The key list is longer than a short window, so it scrolls.
 			vp, cmd := a.helpVP.Update(msg)
@@ -675,6 +695,8 @@ func (a *App) boardWrite(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.deleteSliceFlow(), true
 	case key.Matches(msg, a.board.keys.Diff):
 		return a.diffSliceFlow(), true
+	case key.Matches(msg, a.board.keys.PR):
+		return a.viewPRFlow(), true
 	case key.Matches(msg, a.board.keys.Release):
 		return a.releaseSliceFlow(), true
 	case key.Matches(msg, a.board.keys.Launch):
@@ -1375,6 +1397,8 @@ func (a *App) headerName() string {
 		return "Info"
 	case screenDiff:
 		return a.diffHeading()
+	case screenPR:
+		return a.prHeading()
 	case screenForm:
 		return a.form.Heading()
 	}
@@ -1490,6 +1514,8 @@ func (a *App) body() string {
 		return a.infoView()
 	case screenDiff:
 		return a.diff.View(a.spinner.View())
+	case screenPR:
+		return a.prview.View(a.spinner.View())
 	case screenForm:
 		return a.modalView()
 	default:
@@ -1619,6 +1645,7 @@ func (a *App) resize() {
 	a.helpVP.SetHeight(height)
 	a.info.SetSize(width, height)
 	a.diff.SetSize(width, height)
+	a.prview.SetSize(width, height)
 	a.syncBoard()
 	if a.form != nil {
 		a.form.SetSize(a.formSize())
@@ -1819,6 +1846,8 @@ func (a *App) chipText() string {
 		text = "info"
 	case screenDiff:
 		text = "diff"
+	case screenPR:
+		text = "pr"
 	case screenForm:
 		text = "edit"
 	default:

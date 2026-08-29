@@ -204,6 +204,16 @@ type Styles struct {
 	// It takes the Success green the finished things take: the work itself is
 	// done, and what is pending is a person opening the pull request from it.
 	Review lipgloss.Style
+	// PROpen, PRDraft, PRMerged and PRClosed are the chip the pull request
+	// screen names a pull request's state with: GitHub's own four words, in the
+	// roles the rest of the interface reads them in — the Success green of work
+	// that stands, the quiet surface chip of one not offered for merging yet,
+	// the Accent of the one ending that is the work landing, and the Danger red
+	// of the ending that is not.
+	PROpen   lipgloss.Style
+	PRDraft  lipgloss.Style
+	PRMerged lipgloss.Style
+	PRClosed lipgloss.Style
 	// DiffFile, DiffMeta, DiffHunk, DiffAdd and DiffDel colour the unified diff
 	// of a slice's branch by the shape of the line: the "diff --git" line that
 	// opens a file's section, the header lines under it, a hunk's @@ line, and
@@ -385,6 +395,11 @@ func NewStyles(isDark bool) Styles {
 		Live:     lipgloss.NewStyle().Bold(true).Foreground(t.Success),
 		Blocked:  lipgloss.NewStyle().Foreground(t.Muted),
 		Review:   lipgloss.NewStyle().Bold(true).Foreground(t.Success),
+
+		PROpen:   chip.Foreground(t.OnFill).Background(t.Success),
+		PRDraft:  chip.Foreground(t.Text).Background(t.Surface),
+		PRMerged: chip.Foreground(t.OnFill).Background(t.Accent),
+		PRClosed: chip.Foreground(t.OnFill).Background(t.Danger),
 
 		DiffFile:  lipgloss.NewStyle().Bold(true).Foreground(t.Accent),
 		DiffMeta:  lipgloss.NewStyle().Foreground(t.Muted),

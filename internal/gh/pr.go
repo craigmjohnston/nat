@@ -42,6 +42,16 @@ type PR struct {
 	Comments         []Comment
 }
 
+// The two states a pull request is in that a reader acts on: GitHub's own
+// words, exported because what any of them means is the caller's question. OPEN
+// is not among them on purpose — it is what a pull request is when it is
+// neither of these, so a reader that tested for it would have to know every
+// word GitHub might add as well.
+const (
+	PRStateMerged = "MERGED"
+	PRStateClosed = "CLOSED"
+)
+
 // Check is one entry of the status check rollup: what it is called, where it
 // stands and where the run itself can be read. GitHub reports two kinds of
 // them — a CheckRun, which an Actions workflow produces, and a StatusContext,

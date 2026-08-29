@@ -593,6 +593,31 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   was opened over for this one form's sake: every other form is the board's and
   closes back onto it, where dropping the user there after typing a comment would
   lose their place in a change they are half way through reading.
+  `prview.go` and `prflow.go` are the reading after that one: `V` on a slice
+  whose `PR` property names a pull request opens it as a screen over the board,
+  the way `v` opens the diff, read through `internal/gh`'s `ViewPR` in the
+  slice's repo and drawn from the branch's own reading rather than the
+  repository's listing — one pull request in full, since a screen about one is
+  the one place the rest of gh's answer is worth asking for. The screen's own
+  header is two lines above the body: a state chip in GitHub's four words
+  (`prStateChip` — merged and closed are tested before the draft flag, since a
+  draft that has since merged is no longer one, and anything GitHub says that
+  this build does not know reads as open, because a pull request that has
+  neither merged nor closed is open whatever it is called), the number and the
+  title, and under them what the pull request would move, `head → base`. The
+  body is the description alone for now, rendered through the same glamour the
+  info screen renders the project page with and scrolled in a viewport of its
+  own, which is why the screen holds gh's answer rather than the rendered text:
+  a resize renders it again. `r` reads the pull request again while the screen
+  is up — a review left, a check finished or a merge since it came up is
+  exactly what a refresh is being asked about — and a read that fails is a state
+  of the screen rather than an error over the app, taking the last reading with
+  it the way the diff's does: the slice and its pull request are still there,
+  and what is stale is only what GitHub last said. The key is refused with the
+  row's own confirmation on a slice with no pull request recorded, which is
+  every slice the approve key has not been pressed on, and it is out of the
+  hints row for the reason `R` is — it does something on fewer rows than any
+  key that is in it, and the help screen names it.
   `newproject.go` is `N` and `P`, the two ways a project comes to be on the
   board. `P` is one picker for both halves of "which project": the ones local
   config knows, and under them — marked, so picking one says what it does — the
@@ -907,6 +932,11 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   it is continuing rather than starting (`agent.resuming`), and a slice with no
   branch reads as the fresh start it is.
 - Slices ↔ PRs are 1:1 when work is code; PR URL recorded in the `PR` property.
+  That URL is what `V` reads back: the board hands it to gh as the ref naming
+  the pull request, and the screen it opens is where what became of an approved
+  slice is read — see `internal/tui/prview.go`. It is the only thing on the row
+  the key needs, so a slice with none is refused rather than shown an empty
+  screen.
 - A slice may carry a `Branch` — the branch an agent pushed its work to and
   handed back on. It is read off the page like any other property and empty on a
   project whose Slices table has no such column, and a slice in progress that
