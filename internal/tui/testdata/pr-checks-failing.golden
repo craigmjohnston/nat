@@ -1,0 +1,5 @@
+[1;38;2;203;166;247mChecks[m  [1;38;2;243;139;168m2 failing · 1 passing · 1 skipped[m
+  [38;2;166;227;161m✓[m build                 [38;2;166;227;161msuccess[m
+  [1;38;2;243;139;168m✗[m test (ubuntu-latest)  [1;38;2;243;139;168mfailure[m
+  [1;38;2;243;139;168m✗[m lint                  [1;38;2;243;139;168mtimed out[m
+  [38;2;127;132;156m○[m coverage              [38;2;127;132;156mskipped[m
