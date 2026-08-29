@@ -36,6 +36,10 @@ type boardKeyMap struct {
 	// board has no approve key of its own, since approving a change nobody has
 	// looked at was never what the key was for.
 	Diff key.Binding
+	// PR opens the pull request screen on the pull request a slice records,
+	// which is the reading after the diff's: the branch is what there is to
+	// review, and the pull request is what became of it once it was approved.
+	PR key.Binding
 	// Release hands a slice in progress back to the plan — Todo and unassigned
 	// — for when the session working it ended without finishing it. It is the
 	// way out of the one state a slice otherwise gets stuck in.
@@ -67,6 +71,7 @@ func defaultBoardKeyMap() boardKeyMap {
 		Delete: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete slice")),
 
 		Diff:    key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "review diff")),
+		PR:      key.NewBinding(key.WithKeys("V"), key.WithHelp("V", "view pull request")),
 		Release: key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "release slice")),
 
 		Launch: key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "launch agent")),
@@ -95,7 +100,7 @@ func (k boardKeyMap) projects() []key.Binding {
 
 // writes are the bindings the root model handles rather than the board.
 func (k boardKeyMap) writes() []key.Binding {
-	return []key.Binding{k.Add, k.Edit, k.Move, k.Delete, k.Diff, k.Release}
+	return []key.Binding{k.Add, k.Edit, k.Move, k.Delete, k.Diff, k.PR, k.Release}
 }
 
 // sliceHints are the hints row's bindings while the cursor is on a slice: the
@@ -108,6 +113,11 @@ func (k boardKeyMap) writes() []key.Binding {
 // here that does nothing at all on most rows, since only a slice handed back on
 // a branch has a branch to read. It is also the way to approving that work,
 // which is the review screen's own key rather than anything the board offers.
+//
+// The pull request key is not in the row either, for the reason release is not:
+// it does something on fewer rows than any of these — only a slice whose work
+// has been approved has a pull request recorded — and the help screen is where
+// it is named.
 //
 // Release is not here at all. It is rarer than any of these — a session that
 // died, rather than anything the plan does in its ordinary course — and the
