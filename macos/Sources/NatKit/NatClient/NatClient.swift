@@ -5,6 +5,11 @@ private struct StatusEnvelope: Codable {
     let agents: [AgentStatus]
 }
 
+/// Envelope for `slice-approve --json`'s output.
+private struct ApproveEnvelope: Codable {
+    let url: String
+}
+
 /// A typed client for running nat commands and decoding their JSON output.
 public final class NatClient: Sendable {
     private nonisolated let commandRunner: CommandRunning
@@ -82,20 +87,43 @@ public final class NatClient: Sendable {
         _ = try await runNat(arguments: ["agent-interrupt", "--project", projectID, sliceRef])
     }
 
+    /// Send a prompt to a running agent's tmux session — the pending review
+    /// comments, typed at the pane and submitted as one turn.
+    ///
+    /// The prompt goes over stdin (`--text -`) rather than as an argument:
+    /// a review is several lines, and an argument would have to survive the
+    /// shell as well as the process boundary.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sliceRef: The slice's URL or Notion page ID
+    ///   - text: The prompt to type at the agent's pane
+    /// - Throws: NatError if the command fails or no live session exists
+    public func agentSend(projectID: String, sliceRef: String, text: String) async throws {
+        _ = try await runNatRaw(
+            arguments: ["agent-send", "--project", projectID, sliceRef, "--text", "-"],
+            standardInput: text.data(using: .utf8)
+        )
+    }
+
+    /// Open a pull request for a handed-back slice's branch and record it on
+    /// the slice, mirroring the board's own approve key
+    /// (`internal/tui/approve.go`).
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sliceRef: The slice's URL or Notion page ID
+    /// - Returns: The URL of the pull request that was opened
+    /// - Throws: NatError if the slice is not handed back, or gh refuses
+    public func sliceApprove(projectID: String, sliceRef: String) async throws -> String {
+        let output = try await runNat(arguments: ["slice-approve", "--project", projectID, "--json", sliceRef])
+        return try decodeJSON(ApproveEnvelope.self, from: output).url
+    }
+
     // MARK: - Private Helpers
 
-    private func runNat(arguments: [String]) async throws -> String {
-        let (stdout, stderr, exitCode) = try await commandRunner.run(
-            executable: "nat",
-            arguments: arguments,
-            workingDirectory: workingDirectory,
-            standardInput: nil
-        )
-
-        guard exitCode == 0 else {
-            let errorMessage = extractFirstLineOfError(from: stderr)
-            throw NatError.commandFailed(errorMessage)
-        }
+    private func runNat(arguments: [String], standardInput: Data? = nil) async throws -> String {
+        let stdout = try await runNatRaw(arguments: arguments, standardInput: standardInput)
 
         guard !stdout.isEmpty else {
             throw NatError.missingOutput
@@ -106,6 +134,24 @@ public final class NatClient: Sendable {
         }
 
         return output
+    }
+
+    /// Runs `nat` and hands back its raw stdout, without requiring any —
+    /// some commands (`agent-send`) say nothing at all on success.
+    private func runNatRaw(arguments: [String], standardInput: Data? = nil) async throws -> Data {
+        let (stdout, stderr, exitCode) = try await commandRunner.run(
+            executable: "nat",
+            arguments: arguments,
+            workingDirectory: workingDirectory,
+            standardInput: standardInput
+        )
+
+        guard exitCode == 0 else {
+            let errorMessage = extractFirstLineOfError(from: stderr)
+            throw NatError.commandFailed(errorMessage)
+        }
+
+        return stdout
     }
 
     private func decodeJSON<T: Decodable>(_ type: T.Type, from json: String) throws -> T {

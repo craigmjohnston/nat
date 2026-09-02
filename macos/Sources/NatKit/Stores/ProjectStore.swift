@@ -8,6 +8,8 @@ public protocol NatClientProtocol: Sendable {
     func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail
     func sliceDiff(projectID: String, sliceRef: String) async throws -> SliceDiff
     func agentInterrupt(projectID: String, sliceRef: String) async throws -> Void
+    func agentSend(projectID: String, sliceRef: String, text: String) async throws -> Void
+    func sliceApprove(projectID: String, sliceRef: String) async throws -> String
 }
 
 // Make NatClient conform to the protocol

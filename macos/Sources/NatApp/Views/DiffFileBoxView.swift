@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import NatKit
 
@@ -6,13 +7,31 @@ import NatKit
 /// body rows beneath it. A collapsed file is the header row alone, ticked —
 /// the fold is this view's own state, held by `DiffStore` and cleared by a
 /// re-read, never written anywhere.
+///
+/// Comments are drawn in place, under the last row they cover: a pending
+/// comment as a card (avatar, "Pending" badge, edit/delete), and a comment
+/// being written or edited as an inline text editor. Both are display rows
+/// the line cursor concept has no notion of — this view is purely a
+/// renderer, forwarding every click back to `DiffTabView`, which is the one
+/// place selection, drafting and the pending review actually live.
 struct DiffFileBoxView: View {
     let file: DiffFileModel
     let numberWidth: Int
     let isViewed: Bool
     let isCollapsed: Bool
+    let comments: [PendingComment]
+    let selection: DiffSelection?
+    let draft: CommentDraft?
+    let authorName: String
+    let authorInitials: String
     let onToggleViewed: () -> Void
     let onToggleCollapsed: () -> Void
+    let onRowClick: (DiffRow, Bool) -> Void
+    let onOpenCommentEditor: () -> Void
+    let onEditComment: (PendingComment) -> Void
+    let onDeleteComment: (PendingComment) -> Void
+    let onSaveDraft: (String) -> Void
+    let onCancelDraft: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -23,7 +42,38 @@ struct DiffFileBoxView: View {
 
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(file.rows) { row in
-                        DiffRowView(row: row, numberWidth: numberWidth)
+                        DiffRowView(
+                            row: row,
+                            numberWidth: numberWidth,
+                            isSelected: selection?.rowIDs.contains(row.id) ?? false,
+                            showCommentButton: draft == nil && row.kind != .hunkBreak && selection?.rowIDs.last == row.id,
+                            onSelect: { shift in onRowClick(row, shift) },
+                            onComment: onOpenCommentEditor
+                        )
+
+                        if let draft, draft.anchorRowIDs.last == row.id {
+                            CommentEditorView(
+                                initialText: draft.text,
+                                onSave: onSaveDraft,
+                                onCancel: onCancelDraft
+                            )
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(DesignTokens.rowAltBg)
+                        }
+
+                        ForEach(comments.filter { $0.anchorRowIDs.last == row.id }) { comment in
+                            PendingCommentCardView(
+                                comment: comment,
+                                authorName: authorName,
+                                authorInitials: authorInitials,
+                                onEdit: { onEditComment(comment) },
+                                onDelete: { onDeleteComment(comment) }
+                            )
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(DesignTokens.rowAltBg)
+                        }
                     }
                 }
             }
@@ -61,6 +111,16 @@ struct DiffFileBoxView: View {
                     .lineLimit(1)
             }
 
+            if !comments.isEmpty {
+                HStack(spacing: 3) {
+                    Image(systemName: "text.bubble")
+                        .font(.system(size: 10, weight: .regular))
+                    Text("\(comments.count)")
+                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                }
+                .foregroundStyle(DesignTokens.accent)
+            }
+
             Spacer()
 
             if file.adds > 0 {
@@ -92,11 +152,19 @@ struct DiffFileBoxView: View {
 
 /// One row of a file's body: the gutter (old/new line numbers), the +/-
 /// glyph, and the row's text. `hunkBreak` draws a dashed separator with the
-/// hunk header in tertiary instead. Plain text for now — syntax highlighting
-/// is a later task.
+/// hunk header in tertiary instead, and takes no click at all — it stands
+/// for a gap in the file, not a line of it. Every other row can be clicked to
+/// mark it (or, shift-clicked, to extend the marked range to it) as where a
+/// comment would go; the trailing "+"-bubble button only ever appears on the
+/// last row of that range, and only while nothing is already being written
+/// about it.
 struct DiffRowView: View {
     let row: DiffRow
     let numberWidth: Int
+    let isSelected: Bool
+    let showCommentButton: Bool
+    let onSelect: (Bool) -> Void
+    let onComment: () -> Void
 
     private var numberColumnWidth: CGFloat {
         CGFloat(numberWidth) * 7.5 + 4
@@ -162,10 +230,26 @@ struct DiffRowView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
+            if showCommentButton {
+                Button(action: onComment) {
+                    Image(systemName: "plus.bubble")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(DesignTokens.accent)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 8)
+                .help("Comment on this line")
+            }
+
             Spacer(minLength: 0)
         }
         .frame(minHeight: 19)
         .background(rowFill)
+        .background(isSelected ? DesignTokens.accent.opacity(0.16) : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onSelect(NSEvent.modifierFlags.contains(.shift))
+        }
     }
 
     private var glyph: String {
@@ -198,5 +282,125 @@ struct DiffRowView: View {
         case .removed: return DesignTokens.systemRed.opacity(0.32)
         default: return DesignTokens.rowAltBg
         }
+    }
+}
+
+/// A pending comment, drawn as a card right under the last line it covers:
+/// an avatar circle (the configured user's initials), their name, a yellow
+/// "Pending" badge — every comment here is, since none of them are written
+/// anywhere until they are sent — and the edit/delete icons the mock shows.
+struct PendingCommentCardView: View {
+    let comment: PendingComment
+    let authorName: String
+    let authorInitials: String
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text(authorInitials)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(DesignTokens.accent)
+                    .frame(width: 20, height: 20)
+                    .background(DesignTokens.accent.opacity(0.3))
+                    .clipShape(Circle())
+
+                Text(authorName)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(DesignTokens.label)
+
+                Text("Pending")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(DesignTokens.systemYellow)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(DesignTokens.systemYellow.opacity(0.18))
+                    .clipShape(Capsule())
+
+                Spacer()
+
+                Button(action: onEdit) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(DesignTokens.labelTertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Edit this comment")
+
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(DesignTokens.labelTertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Delete this comment")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(DesignTokens.controlFace)
+
+            Divider().frame(height: 0.5)
+
+            Text(comment.text)
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(DesignTokens.label)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(DesignTokens.controlBg)
+        .frame(maxWidth: 560, alignment: .leading)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(DesignTokens.controlBorder, lineWidth: 0.5)
+        )
+    }
+}
+
+/// The inline editor a comment (new or reopened) is written in: a bordered
+/// text box and Cancel/Comment buttons — "Comment" rather than "Save", since
+/// what it does is leave one, and disabled on empty text the same way an
+/// empty box is how the Go TUI takes a comment back rather than leaving one
+/// at all.
+struct CommentEditorView: View {
+    @State private var text: String
+    let onSave: (String) -> Void
+    let onCancel: () -> Void
+
+    init(initialText: String, onSave: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+        _text = State(initialValue: initialText)
+        self.onSave = onSave
+        self.onCancel = onCancel
+    }
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            TextEditor(text: $text)
+                .font(.system(size: 12, weight: .regular))
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 60, idealHeight: 60, maxHeight: 140)
+                .padding(6)
+                .background(DesignTokens.fieldBg)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(DesignTokens.controlBorder, lineWidth: 0.5)
+                )
+
+            HStack(spacing: 8) {
+                Button("Cancel", action: onCancel)
+                    .buttonStyle(.bordered)
+
+                // Emptied and submitted is how a comment is taken back — the
+                // Go TUI's own rule, and the reason this is never disabled on
+                // blank text: clearing an existing comment and pressing this
+                // is a second way to remove it, beside the card's trash icon.
+                Button("Comment") { onSave(text) }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignTokens.accent)
+            }
+        }
+        .frame(maxWidth: 560, alignment: .leading)
     }
 }

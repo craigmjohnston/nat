@@ -14,10 +14,19 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case sliceDiff
         case agentInterruptSuccess
         case agentInterruptNoSession
+        case agentSendSuccess
+        case agentSendNoSession
+        case sliceApproveSuccess
+        case sliceApproveFailure
     }
 
     private var fixture: Fixture
     private var shouldFailWith: Error?
+
+    /// The `standardInput` the most recent call was given, so a test can
+    /// check what a command sent over stdin (`agent-send`'s prompt).
+    private(set) var lastArguments: [String]?
+    private(set) var lastStandardInput: Data?
 
     init(fixture: Fixture = .infoWithAllFields) {
         self.fixture = fixture
@@ -29,6 +38,9 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         workingDirectory: String?,
         standardInput: Data?
     ) async throws -> (stdout: Data, stderr: Data, exitCode: Int32) {
+        lastArguments = arguments
+        lastStandardInput = standardInput
+
         if let error = shouldFailWith {
             throw error
         }
@@ -54,6 +66,15 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return ("success".data(using: .utf8)!, Data(), 0)
         case .agentInterruptNoSession:
             return (Data(), "no live session for slice-id".data(using: .utf8)!, 1)
+        case .agentSendSuccess:
+            // agent-send says nothing at all on success.
+            return (Data(), Data(), 0)
+        case .agentSendNoSession:
+            return (Data(), "no live session for slice-id".data(using: .utf8)!, 1)
+        case .sliceApproveSuccess:
+            return (fixtureSliceApprove.data(using: .utf8)!, Data(), 0)
+        case .sliceApproveFailure:
+            return (Data(), "\"Write the UI\" is not handed back".data(using: .utf8)!, 1)
         }
     }
 
@@ -186,6 +207,12 @@ let fixtureSliceShow = """
   "handed_back": true,
   "state": "awaiting_review",
   "brief": "# API Implementation\\nBuild the REST API endpoints"
+}
+"""
+
+let fixtureSliceApprove = """
+{
+  "url": "https://github.test/craig/nat/pull/42"
 }
 """
 

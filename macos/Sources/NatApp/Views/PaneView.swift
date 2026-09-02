@@ -64,7 +64,9 @@ struct PaneView: View {
                 case .agent:
                     AgentTabView(appModel: appModel, slice: slice)
                 case .diff:
-                    DiffTabView(appModel: appModel, slice: slice)
+                    DiffTabView(appModel: appModel, slice: slice, onApproved: {
+                        currentTab = .pr
+                    })
                 default:
                     VStack {
                         VStack(spacing: 8) {

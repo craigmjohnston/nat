@@ -149,6 +149,10 @@ public struct NatProjectConfig: Codable, Equatable, Sendable {
     public let pollSeconds: Int?
     public let workshopAgent: AgentModel?
     public let sliceAgent: AgentModel?
+    /// The configured real Notion user's name — whose initials a pending
+    /// comment's avatar is drawn with, since a comment left from nat is
+    /// always this user's own.
+    public let assigneeUserName: String?
 
     enum CodingKeys: String, CodingKey {
         case projects
@@ -156,6 +160,7 @@ public struct NatProjectConfig: Codable, Equatable, Sendable {
         case pollSeconds = "poll_seconds"
         case workshopAgent = "workshop_agent"
         case sliceAgent = "slice_agent"
+        case assigneeUserName = "assignee_user_name"
     }
 
     public init(
@@ -163,13 +168,15 @@ public struct NatProjectConfig: Codable, Equatable, Sendable {
         agentSplitPercent: Int? = nil,
         pollSeconds: Int? = nil,
         workshopAgent: AgentModel? = nil,
-        sliceAgent: AgentModel? = nil
+        sliceAgent: AgentModel? = nil,
+        assigneeUserName: String? = nil
     ) {
         self.projects = projects
         self.agentSplitPercent = agentSplitPercent
         self.pollSeconds = pollSeconds
         self.workshopAgent = workshopAgent
         self.sliceAgent = sliceAgent
+        self.assigneeUserName = assigneeUserName
     }
 }
 

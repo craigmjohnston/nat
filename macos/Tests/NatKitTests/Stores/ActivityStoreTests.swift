@@ -41,6 +41,14 @@ final class MockActivityClient: NatClientProtocol, @unchecked Sendable {
     func agentInterrupt(projectID: String, sliceRef: String) async throws {
         throw NSError(domain: "test", code: -1)
     }
+
+    func agentSend(projectID: String, sliceRef: String, text: String) async throws {
+        throw NSError(domain: "test", code: -1)
+    }
+
+    func sliceApprove(projectID: String, sliceRef: String) async throws -> String {
+        throw NSError(domain: "test", code: -1)
+    }
 }
 
 // MARK: - ActivityStore Tests

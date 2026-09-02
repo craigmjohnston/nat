@@ -9,6 +9,7 @@ import NatKit
 struct DiffFileSidebarView: View {
     let files: [DiffFileModel]
     let isViewed: (String) -> Bool
+    var commentCount: (String) -> Int = { _ in 0 }
     let onSelect: (String) -> Void
 
     var body: some View {
@@ -17,7 +18,7 @@ struct DiffFileSidebarView: View {
                 allCommitsStub
 
                 ForEach(files) { file in
-                    DiffFileSidebarRow(file: file, isViewed: isViewed(file.path))
+                    DiffFileSidebarRow(file: file, isViewed: isViewed(file.path), commentCount: commentCount(file.path))
                         .contentShape(Rectangle())
                         .onTapGesture {
                             onSelect(file.path)
@@ -91,6 +92,7 @@ private enum ChangeBadge {
 struct DiffFileSidebarRow: View {
     let file: DiffFileModel
     let isViewed: Bool
+    var commentCount: Int = 0
 
     private var badge: ChangeBadge { ChangeBadge(file: file) }
 
@@ -114,6 +116,16 @@ struct DiffFileSidebarRow: View {
                 .lineLimit(1)
                 .truncationMode(.head)
                 .opacity(isViewed ? 0.55 : 1)
+
+            if commentCount > 0 {
+                HStack(spacing: 3) {
+                    Image(systemName: "text.bubble")
+                        .font(.system(size: 9, weight: .regular))
+                    Text("\(commentCount)")
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                }
+                .foregroundStyle(DesignTokens.accent)
+            }
 
             Text(badge.letter)
                 .font(.system(size: 8, weight: .semibold))

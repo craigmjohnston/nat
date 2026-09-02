@@ -176,6 +176,58 @@ final class NatClientTests: XCTestCase {
         try await client.agentInterrupt(projectID: "proj-123", sliceRef: "slice-1")
     }
 
+    func testAgentSendPostsThePromptOverStdin() async throws {
+        let fakeRunner = FakeRunner(fixture: .agentSendSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.agentSend(projectID: "proj-123", sliceRef: "slice-1", text: "clamp this")
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["agent-send", "--project", "proj-123", "slice-1", "--text", "-"])
+        XCTAssertEqual(fakeRunner.lastStandardInput, "clamp this".data(using: .utf8))
+    }
+
+    func testAgentSendNoSession() async throws {
+        let fakeRunner = FakeRunner(fixture: .agentSendNoSession)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            try await client.agentSend(projectID: "proj-123", sliceRef: "slice-1", text: "clamp this")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "no live session for slice-id")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
+
+    func testSliceApproveReturnsTheURL() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceApproveSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let url = try await client.sliceApprove(projectID: "proj-123", sliceRef: "slice-1")
+
+        XCTAssertEqual(url, "https://github.test/craig/nat/pull/42")
+        XCTAssertEqual(fakeRunner.lastArguments, ["slice-approve", "--project", "proj-123", "--json", "slice-1"])
+    }
+
+    func testSliceApproveFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceApproveFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            _ = try await client.sliceApprove(projectID: "proj-123", sliceRef: "slice-1")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "\"Write the UI\" is not handed back")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
+
     func testAgentInterruptNoSession() async throws {
         let fakeRunner = FakeRunner(fixture: .agentInterruptNoSession)
         let client = NatClient(commandRunner: fakeRunner)
