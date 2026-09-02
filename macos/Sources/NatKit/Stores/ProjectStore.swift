@@ -6,7 +6,9 @@ public protocol NatClientProtocol: Sendable {
     func info(projectID: String) async throws -> ProjectInfo
     func status() async throws -> [AgentStatus]
     func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail
-    func sliceDiff(projectID: String, sliceRef: String) async throws -> SliceDiff
+    func sliceDiff(projectID: String, sliceRef: String, commit: String?) async throws -> SliceDiff
+    func sliceCommits(projectID: String, sliceRef: String) async throws -> SliceCommitsDoc
+    func sliceEdit(projectID: String, sliceRef: String, description: String) async throws -> SliceEditResult
     func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult
     func agentInterrupt(projectID: String, sliceRef: String) async throws -> Void
     func agentSend(projectID: String, sliceRef: String, text: String) async throws -> Void
@@ -18,6 +20,15 @@ public protocol NatClientProtocol: Sendable {
     func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult
     func configShow() async throws -> ConfigDoc
     func configSet(key: String, value: String) async throws -> Void
+}
+
+extension NatClientProtocol {
+    /// The whole-branch diff, without naming a commit — `sliceDiff(projectID:sliceRef:commit:)`
+    /// with `commit: nil`, kept as the two-argument spelling every caller
+    /// asking for "the diff" (rather than one commit of it) already uses.
+    public func sliceDiff(projectID: String, sliceRef: String) async throws -> SliceDiff {
+        try await sliceDiff(projectID: projectID, sliceRef: sliceRef, commit: nil)
+    }
 }
 
 // Make NatClient conform to the protocol

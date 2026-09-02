@@ -34,7 +34,15 @@ final class MockActivityClient: NatClientProtocol, @unchecked Sendable {
         throw NSError(domain: "test", code: -1)
     }
 
-    func sliceDiff(projectID: String, sliceRef: String) async throws -> SliceDiff {
+    func sliceDiff(projectID: String, sliceRef: String, commit: String?) async throws -> SliceDiff {
+        throw NSError(domain: "test", code: -1)
+    }
+
+    func sliceCommits(projectID: String, sliceRef: String) async throws -> SliceCommitsDoc {
+        throw NSError(domain: "test", code: -1)
+    }
+
+    func sliceEdit(projectID: String, sliceRef: String, description: String) async throws -> SliceEditResult {
         throw NSError(domain: "test", code: -1)
     }
 

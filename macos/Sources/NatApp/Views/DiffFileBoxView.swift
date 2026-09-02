@@ -22,6 +22,12 @@ struct DiffFileBoxView: View {
     let comments: [PendingComment]
     let selection: DiffSelection?
     let draft: CommentDraft?
+    /// Whether a new comment can be started here at all — false while a
+    /// single commit's own diff is on screen, since a comment is about the
+    /// branch's diff (`DiffStore.commentsEditable`). Existing pending
+    /// comments still draw (a comment left in "All commits" mode is still
+    /// there to look at); only starting a new one is what this gates.
+    var commentsEnabled: Bool = true
     let authorName: String
     let authorInitials: String
     let onToggleViewed: () -> Void
@@ -46,7 +52,8 @@ struct DiffFileBoxView: View {
                             row: row,
                             numberWidth: numberWidth,
                             isSelected: selection?.rowIDs.contains(row.id) ?? false,
-                            showCommentButton: draft == nil && row.kind != .hunkBreak && selection?.rowIDs.last == row.id,
+                            showCommentButton: commentsEnabled && draft == nil && row.kind != .hunkBreak
+                                && selection?.rowIDs.last == row.id,
                             onSelect: { shift in onRowClick(row, shift) },
                             onComment: onOpenCommentEditor
                         )
@@ -224,9 +231,8 @@ struct DiffRowView: View {
                 .frame(width: 12)
                 .padding(.leading, 4)
 
-            Text(row.text.isEmpty ? " " : row.text)
+            Text(rowText)
                 .font(.system(size: 12, weight: .regular, design: .monospaced))
-                .foregroundStyle(row.kind == .described ? DesignTokens.labelSecondary : DesignTokens.label)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -250,6 +256,21 @@ struct DiffRowView: View {
         .onTapGesture {
             onSelect(NSEvent.modifierFlags.contains(.shift))
         }
+    }
+
+    /// The row's text, coloured per its syntax runs where the file has any
+    /// (`DiffRow.tokens`) — always drawn on top of the row's own +/- wash,
+    /// never instead of it. A row with no tokens (no matched language, or the
+    /// blank placeholder for an empty line) renders exactly as it always did:
+    /// one plain colour, the dimmer label for a described file's message.
+    private var rowText: AttributedString {
+        let defaultColor: Color = row.kind == .described ? DesignTokens.labelSecondary : DesignTokens.label
+        guard !row.text.isEmpty else {
+            var s = AttributedString(" ")
+            s.foregroundColor = defaultColor
+            return s
+        }
+        return DiffSyntax.attributedLine(row.text, tokens: row.tokens, defaultColor: defaultColor)
     }
 
     private var glyph: String {

@@ -142,6 +142,7 @@ struct DiffTabView: View {
                                         comments: store.comments.filter { $0.path == file.path },
                                         selection: selection?.path == file.path ? selection : nil,
                                         draft: draft?.path == file.path ? draft : nil,
+                                        commentsEnabled: store.commentsEditable,
                                         authorName: authorName,
                                         authorInitials: authorInitials,
                                         onToggleViewed: { store.toggleViewed(file.path) },
@@ -163,6 +164,9 @@ struct DiffTabView: View {
                             files: diff.files,
                             isViewed: { store.isViewed($0) },
                             commentCount: { path in store.comments.filter { $0.path == path }.count },
+                            commits: store.commits,
+                            selectedCommit: store.selectedCommit,
+                            onSelectCommit: { sha in Task { await store.selectCommit(sha) } },
                             onSelect: { path in
                                 withAnimation {
                                     proxy.scrollTo(path, anchor: .top)
@@ -182,6 +186,7 @@ struct DiffTabView: View {
     private func footer(for diff: DiffModel) -> some View {
         let viewedCount = diff.files.filter { store.isViewed($0.path) }.count
         let pendingCount = store.pendingCommentCount
+        let commentsEditable = store.commentsEditable
 
         return VStack(spacing: 0) {
             if let dropNotice {
@@ -198,7 +203,10 @@ struct DiffTabView: View {
                 .frame(height: 0.5)
 
             HStack(spacing: 8) {
-                Text(footerLeftText(pendingCount: pendingCount, viewedCount: viewedCount, total: diff.files.count))
+                Text(footerLeftText(
+                    pendingCount: pendingCount, viewedCount: viewedCount, total: diff.files.count,
+                    commentsEditable: commentsEditable
+                ))
                     .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(DesignTokens.labelTertiary)
 
@@ -209,7 +217,8 @@ struct DiffTabView: View {
                         .font(.system(size: 12, weight: .regular))
                 }
                 .buttonStyle(.bordered)
-                .disabled(pendingCount == 0 || isSending)
+                .disabled(pendingCount == 0 || isSending || !commentsEditable)
+                .help(commentsEditable ? "" : "Comments are only sent while viewing All commits")
 
                 Button(action: { showApproveConfirm = true }) {
                     Text("Approve & Open PR…")
@@ -217,8 +226,10 @@ struct DiffTabView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(DesignTokens.accent)
-                .disabled(pendingCount > 0 || isApproving)
-                .help(approveHelp(pendingCount: pendingCount))
+                .disabled(pendingCount > 0 || isApproving || !commentsEditable)
+                .help(commentsEditable
+                    ? approveHelp(pendingCount: pendingCount)
+                    : "Approving is only available while viewing All commits")
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -245,7 +256,10 @@ struct DiffTabView: View {
         .padding(.top, 6)
     }
 
-    private func footerLeftText(pendingCount: Int, viewedCount: Int, total: Int) -> String {
+    private func footerLeftText(pendingCount: Int, viewedCount: Int, total: Int, commentsEditable: Bool) -> String {
+        guard commentsEditable else {
+            return "Viewing one commit — switch to All commits to comment or approve"
+        }
         let viewedText = "\(viewedCount) of \(total) viewed"
         guard pendingCount > 0 else { return viewedText }
         return "\(pendingCount) pending \(plural(pendingCount, "comment", "comments")) · \(viewedText)"
@@ -337,6 +351,7 @@ struct DiffTabView: View {
         guard let projectID = appModel.projectStore?.projectID else { return }
         await store.fetch(projectID: projectID, sliceRef: slice.id)
         updateDropNotice()
+        await store.fetchCommits(projectID: projectID, sliceRef: slice.id)
     }
 
     private func refreshDiff() async {

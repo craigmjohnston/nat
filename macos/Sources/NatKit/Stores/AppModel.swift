@@ -33,6 +33,11 @@ public final class AppModel {
     /// Live agent activity (app-wide, spans all projects).
     public private(set) var activityStore: ActivityStore?
 
+    /// Each handed-back slice's branch diff totals, for the NEEDS REVIEW
+    /// rail's "+N −N" (app-wide, spans all projects, keyed by slice id —
+    /// mirrors how `activityStore` is one store rather than one per project).
+    public private(set) var reviewStatsStore: ReviewStatsStore?
+
     /// Whether the app has anywhere to show the board at all: no config file
     /// was found, or one was found naming no projects. Project creation stays
     /// with the TUI/CLI, so this is a dead end rather than a wizard — the
@@ -109,6 +114,7 @@ public final class AppModel {
             // Create activity store (app-wide)
             let activityStore = ActivityStore()
             self.activityStore = activityStore
+            self.reviewStatsStore = ReviewStatsStore()
 
             // Activate the first project (if any)
             if let firstProjectID = sortedProjects.first?.key {
@@ -150,6 +156,7 @@ public final class AppModel {
 
         // Load the project store
         await projectStore.load()
+        await updateReviewStats(projectID: projectID, projectStore: projectStore)
 
         // Re-arm activity polling
         activityStore?.kick()
@@ -204,14 +211,30 @@ public final class AppModel {
         return count
     }
 
-    /// Manually refresh the current project.
+    /// Manually refresh the current project — also the nudge watcher's own
+    /// action, so an agent's hand-back reads that slice's stat in without
+    /// waiting for the next poll.
     public func refresh() async {
         guard let projectStore = projectStore else { return }
         await projectStore.refresh()
+        await updateReviewStats(projectID: projectStore.projectID, projectStore: projectStore)
         activityStore?.kick()
     }
 
     // MARK: - Private Helpers
+
+    /// Feeds the active project's currently handed-back slices to
+    /// `reviewStatsStore` — the store itself decides whether any of them are
+    /// worth a fresh fetch (a branch it already has a tally for is left
+    /// alone). A load that has not landed anything yet (no `projectInfo`) has
+    /// nothing to feed it.
+    private func updateReviewStats(projectID: String, projectStore: ProjectStore) async {
+        guard let info = projectStore.state.projectInfo else { return }
+        let handedBack = info.slices
+            .filter { $0.handedBack }
+            .map { ReviewStatsStore.HandedBackSlice(sliceID: $0.id, branch: $0.branch ?? "") }
+        await reviewStatsStore?.update(projectID: projectID, handedBack: handedBack)
+    }
 
     private func startNudgeWatcher(for projectStore: ProjectStore, nudgePath: String) {
         let watcher = NudgeWatcher()
@@ -260,5 +283,6 @@ public final class AppModel {
         nudgeWatcher = nil
         activityStore?.stop()
         activityStore = nil
+        reviewStatsStore = nil
     }
 }

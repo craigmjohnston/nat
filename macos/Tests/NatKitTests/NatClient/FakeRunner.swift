@@ -12,6 +12,11 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case status
         case sliceShow
         case sliceDiff
+        case sliceCommits
+        case sliceCommitsFailure
+        case sliceCommitDiff
+        case sliceEditSuccess
+        case sliceEditFailure
         case sliceLaunchSuccess
         case sliceLaunchWithWarning
         case sliceLaunchFailure
@@ -79,6 +84,16 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return (fixtureSliceShow.data(using: .utf8)!, Data(), 0)
         case .sliceDiff:
             return (fixtureSliceDiff.data(using: .utf8)!, Data(), 0)
+        case .sliceCommits:
+            return (fixtureSliceCommits.data(using: .utf8)!, Data(), 0)
+        case .sliceCommitsFailure:
+            return (Data(), "\"Write the UI\" is not handed back: only a slice with a branch has a diff to read".data(using: .utf8)!, 1)
+        case .sliceCommitDiff:
+            return (fixtureSliceCommitDiff.data(using: .utf8)!, Data(), 0)
+        case .sliceEditSuccess:
+            return (fixtureSliceEdit.data(using: .utf8)!, Data(), 0)
+        case .sliceEditFailure:
+            return (Data(), "\"Write the UI\" is in progress: a slice being worked is not edited under its agent".data(using: .utf8)!, 1)
         case .sliceLaunchSuccess:
             return (fixtureSliceLaunchSuccess.data(using: .utf8)!, Data(), 0)
         case .sliceLaunchWithWarning:
@@ -451,6 +466,60 @@ let fixtureSliceDiff = """
       ]
     }
   ]
+}
+"""
+
+// fixtureSliceCommits is a `slice-diff --commits --json` reading: the same
+// base/branch a whole-diff read carries, and three commits, newest first
+// exactly as `git log` orders them.
+let fixtureSliceCommits = """
+{
+  "base": "main",
+  "branch": "nat/diff-tab-fixture",
+  "commits": [
+    {"sha": "cccccccccccccccccccccccccccccccccccccccc", "subject": "Fix the gutter width", "author": "craig", "date": "2026-03-03T09:00:00Z"},
+    {"sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "subject": "Add the newfile.go case", "author": "craig", "date": "2026-03-02T09:00:00Z"},
+    {"sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "subject": "Start the board diff", "author": "craig", "date": "2026-03-01T09:00:00Z"}
+  ]
+}
+"""
+
+// fixtureSliceCommitDiff is `slice-diff --commit <sha> --json`: the same
+// per-file shape a whole-branch diff carries, but of one commit against its
+// own parent (base is the commit's own sha with `^`, branch is the sha).
+let fixtureSliceCommitDiff = """
+{
+  "base": "cccccccccccccccccccccccccccccccccccccccc^",
+  "branch": "cccccccccccccccccccccccccccccccccccccccc",
+  "files": [
+    {
+      "path": "internal/tui/board.go",
+      "old_path": "internal/tui/board.go",
+      "adds": 1,
+      "dels": 0,
+      "described": false,
+      "lines": [
+        "diff --git a/internal/tui/board.go b/internal/tui/board.go",
+        "index abfa861..79d4510 100644",
+        "--- a/internal/tui/board.go",
+        "+++ b/internal/tui/board.go",
+        "@@ -4,6 +4,7 @@ import \\"fmt\\"",
+        " ",
+        "+\\tfmt.Println(\\"one commit's own line\\")"
+      ]
+    }
+  ]
+}
+"""
+
+// fixtureSliceEdit is `slice-edit --json`'s success reading, mirroring
+// internal/cli/sliceedit.go's sliceEditedJSON.
+let fixtureSliceEdit = """
+{
+  "id": "slice-1",
+  "name": "Write the UI",
+  "url": "https://notion.so/slice-1",
+  "brief": "New brief text"
 }
 """
 

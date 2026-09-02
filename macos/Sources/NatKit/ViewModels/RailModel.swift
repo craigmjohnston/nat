@@ -10,10 +10,15 @@ public enum AgentActivity {
 public struct ReviewEntry: Equatable {
     public let sliceID: String
     public let name: String
+    /// The branch's own diff totals, "+N −N" tabular — nil until
+    /// `ReviewStatsStore` has fetched them (or their fetch failed), in which
+    /// case the row simply draws with no stat rather than a placeholder.
+    public let stat: String?
 
-    public init(sliceID: String, name: String) {
+    public init(sliceID: String, name: String, stat: String? = nil) {
         self.sliceID = sliceID
         self.name = name
+        self.stat = stat
     }
 }
 
@@ -143,9 +148,15 @@ public struct RailModel: Equatable {
 // MARK: - Rail Model Builder
 
 /// Builds a rail model from project info and live agents.
+///
+/// `reviewStats` is `ReviewStatsStore.stats`, keyed by slice id — passed in
+/// rather than read here, since a view model has no business reaching for a
+/// store of its own (mirrors how `liveAgents` is already handed in rather
+/// than read off `ActivityStore` directly).
 public func buildRailModel(
     from projectInfo: ProjectInfo,
-    liveAgents: [String: AgentActivity]
+    liveAgents: [String: AgentActivity],
+    reviewStats: [String: String] = [:]
 ) -> RailModel {
     let slices = projectInfo.slices
     let milestones = projectInfo.milestones
@@ -155,7 +166,7 @@ public func buildRailModel(
     // NEEDS REVIEW section
     let needsReview = reviewSlices
         .sorted { $0.name < $1.name }
-        .map { ReviewEntry(sliceID: $0.id, name: $0.name) }
+        .map { ReviewEntry(sliceID: $0.id, name: $0.name, stat: reviewStats[$0.id]) }
 
     // ACTIVE section
     let active = activeSlices

@@ -10,9 +10,14 @@ final class DiffModelTests: XCTestCase {
         adds: Int = 0,
         dels: Int = 0,
         described: Bool = false,
-        lines: [String]
+        lines: [String],
+        language: String = "",
+        tokens: [[TokenRun]]? = nil
     ) -> SliceDiffFile {
-        SliceDiffFile(path: path, oldPath: oldPath, adds: adds, dels: dels, described: described, lines: lines)
+        SliceDiffFile(
+            path: path, oldPath: oldPath, adds: adds, dels: dels, described: described, lines: lines,
+            language: language, tokens: tokens
+        )
     }
 
     // MARK: - Noise suppression
@@ -268,6 +273,74 @@ final class DiffModelTests: XCTestCase {
         let rows = diffRows(for: f)
         XCTAssertEqual(rows.count, 2)
         XCTAssertNotEqual(rows[0].id, rows[1].id)
+    }
+
+    // MARK: - Syntax tokens threaded onto rows
+
+    func testTokensAreThreadedOntoTheMatchingContentRow() {
+        let f = file(
+            lines: [
+                "diff --git a/a.go b/a.go",
+                "--- a/a.go",
+                "+++ b/a.go",
+                "@@ -1,1 +1,1 @@",
+                "-old",
+                "+new"
+            ],
+            language: "Go",
+            tokens: [
+                [], [], [], [],
+                [TokenRun(kind: .text, length: 3)],
+                [TokenRun(kind: .keyword, length: 3)]
+            ]
+        )
+        let rows = diffRows(for: f)
+        XCTAssertEqual(rows[0].tokens, [TokenRun(kind: .text, length: 3)])
+        XCTAssertEqual(rows[1].tokens, [TokenRun(kind: .keyword, length: 3)])
+    }
+
+    func testHunkBreakAndHeaderRowsCarryNoTokens() {
+        let f = file(
+            lines: [
+                "diff --git a/a.go b/a.go",
+                "--- a/a.go",
+                "+++ b/a.go",
+                "@@ -1,1 +1,2 @@",
+                " one",
+                "@@ -10,1 +11,1 @@",
+                " ten"
+            ],
+            language: "Go",
+            tokens: [[], [], [], [], [TokenRun(kind: .text, length: 3)], [], [TokenRun(kind: .text, length: 3)]]
+        )
+        let rows = diffRows(for: f)
+        // one, <break>, ten
+        XCTAssertEqual(rows.count, 3)
+        XCTAssertNil(rows[1].tokens, "a hunkBreak row stands for the header line, not a lexed one")
+    }
+
+    func testAFileWithNoTokensLeavesEveryRowNil() {
+        let f = file(lines: [
+            "diff --git a/a.go b/a.go", "--- a/a.go", "+++ b/a.go",
+            "@@ -1,1 +1,1 @@", "+new"
+        ])
+        let rows = diffRows(for: f)
+        XCTAssertNil(rows[0].tokens)
+    }
+
+    func testOutOfBoundsTokensIndexIsTreatedAsAbsent() {
+        // A malformed wire response — fewer tokens entries than lines — should
+        // not crash; it just leaves the unmatched rows uncoloured.
+        let f = file(
+            lines: [
+                "diff --git a/a.go b/a.go", "--- a/a.go", "+++ b/a.go",
+                "@@ -1,1 +1,1 @@", "+new"
+            ],
+            language: "Go",
+            tokens: []
+        )
+        let rows = diffRows(for: f)
+        XCTAssertNil(rows[0].tokens)
     }
 
     // MARK: - Malformed hunk header

@@ -21,7 +21,10 @@ struct RailView: View {
                     liveAgents[sliceID] = .working
                 }
             }
-            return buildRailModel(from: projectInfo, liveAgents: liveAgents)
+            return buildRailModel(
+                from: projectInfo, liveAgents: liveAgents,
+                reviewStats: appModel.reviewStatsStore?.stats ?? [:]
+            )
         }
         return RailModel(needsReview: [], active: [], milestoneCards: [], doneSummary: nil)
     }
@@ -123,6 +126,16 @@ struct RailView: View {
                 .lineLimit(1)
 
             Spacer()
+
+            if let stat = entry.stat {
+                Text(stat)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(
+                        appModel.selectedSliceID == entry.sliceID
+                            ? DesignTokens.accentText
+                            : DesignTokens.labelTertiary
+                    )
+            }
         }
         .frame(height: 30)
         .padding(.horizontal, 8)

@@ -36,7 +36,15 @@ final class MockNatClient: NatClientProtocol, @unchecked Sendable {
         throw TestError()
     }
 
-    func sliceDiff(projectID: String, sliceRef: String) async throws -> SliceDiff {
+    func sliceDiff(projectID: String, sliceRef: String, commit: String?) async throws -> SliceDiff {
+        throw TestError()
+    }
+
+    func sliceCommits(projectID: String, sliceRef: String) async throws -> SliceCommitsDoc {
+        throw TestError()
+    }
+
+    func sliceEdit(projectID: String, sliceRef: String, description: String) async throws -> SliceEditResult {
         throw TestError()
     }
 

@@ -49,6 +49,13 @@ public struct DiffRow: Identifiable, Equatable, Sendable {
     /// `hunkBreak` row this is the hunk header line verbatim, since that is
     /// what the break stands for.
     public let text: String
+    /// The syntax runs `text` takes, one per stretch of a single colour — nil
+    /// wherever the file has no matched language, or this row's own line took
+    /// none (a hunk break, a described file's message). Threaded straight off
+    /// `SliceDiffFile.tokens` at the same line index, so a re-lex never has to
+    /// happen on this side: the Go side already lexed it once when the branch
+    /// was read.
+    public let tokens: [TokenRun]?
 
     public init(
         id: String,
@@ -56,7 +63,8 @@ public struct DiffRow: Identifiable, Equatable, Sendable {
         oldNumber: Int?,
         newNumber: Int?,
         prefix: Character?,
-        text: String
+        text: String,
+        tokens: [TokenRun]? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -64,6 +72,7 @@ public struct DiffRow: Identifiable, Equatable, Sendable {
         self.newNumber = newNumber
         self.prefix = prefix
         self.text = text
+        self.tokens = tokens
     }
 }
 
@@ -177,7 +186,9 @@ func diffRows(for file: SliceDiffFile) -> [DiffRow] {
     var nextOld = 0
     var nextNew = 0
 
-    for line in file.lines {
+    for (lineIndex, line) in file.lines.enumerated() {
+        let tokens = tokenRuns(file, at: lineIndex)
+
         if let hunk = hunkStarts(line) {
             if inHunk {
                 rows.append(DiffRow(
@@ -220,21 +231,34 @@ func diffRows(for file: SliceDiffFile) -> [DiffRow] {
                 oldNumber: nil,
                 newNumber: nil,
                 prefix: nil,
-                text: line
+                text: line,
+                tokens: tokens
             ))
             continue
         }
 
-        rows.append(contentRow(path: file.path, line: line, nextOld: &nextOld, nextNew: &nextNew))
+        rows.append(contentRow(path: file.path, line: line, tokens: tokens, nextOld: &nextOld, nextNew: &nextNew))
     }
 
     return rows
 }
 
+/// The syntax runs the Go side lexed for one line of a file's own `lines`, by
+/// index — nil where the file carries no `tokens` at all (no matched
+/// language, or a described file), or where that particular index is out of
+/// bounds of a `tokens` array that (against the wire's own contract) turned
+/// out shorter than `lines`.
+private func tokenRuns(_ file: SliceDiffFile, at lineIndex: Int) -> [TokenRun]? {
+    guard let tokens = file.tokens, lineIndex >= 0, lineIndex < tokens.count else { return nil }
+    return tokens[lineIndex]
+}
+
 /// One row of a line inside a hunk: added, removed, context, or (for git's own
 /// "\ No newline at end of file" note) an unnumbered context row about the
 /// line above rather than a line of either side.
-private func contentRow(path: String, line: String, nextOld: inout Int, nextNew: inout Int) -> DiffRow {
+private func contentRow(
+    path: String, line: String, tokens: [TokenRun]?, nextOld: inout Int, nextNew: inout Int
+) -> DiffRow {
     switch line.first {
     case "+":
         let n = nextNew
@@ -245,7 +269,8 @@ private func contentRow(path: String, line: String, nextOld: inout Int, nextNew:
             oldNumber: nil,
             newNumber: n,
             prefix: "+",
-            text: String(line.dropFirst())
+            text: String(line.dropFirst()),
+            tokens: tokens
         )
     case "-":
         let n = nextOld
@@ -256,7 +281,8 @@ private func contentRow(path: String, line: String, nextOld: inout Int, nextNew:
             oldNumber: n,
             newNumber: nil,
             prefix: "-",
-            text: String(line.dropFirst())
+            text: String(line.dropFirst()),
+            tokens: tokens
         )
     case "\\":
         // git's "No newline at end of file": about the line above, not a line
@@ -282,7 +308,8 @@ private func contentRow(path: String, line: String, nextOld: inout Int, nextNew:
             oldNumber: old,
             newNumber: new,
             prefix: " ",
-            text: line.isEmpty ? "" : String(line.dropFirst())
+            text: line.isEmpty ? "" : String(line.dropFirst()),
+            tokens: tokens
         )
     }
 }

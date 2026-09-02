@@ -168,6 +168,88 @@ final class NatClientTests: XCTestCase {
         XCTAssertFalse(binary.isRenamed)
     }
 
+    func testSliceDiffWithNoCommitOmitsTheFlag() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceDiff)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        _ = try await client.sliceDiff(projectID: "proj-123", sliceRef: "slice-1", commit: nil)
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["slice-diff", "--project", "proj-123", "--json", "slice-1"])
+    }
+
+    func testSliceDiffWithACommitPassesTheFlag() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceCommitDiff)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let diff = try await client.sliceDiff(projectID: "proj-123", sliceRef: "slice-1", commit: "ccccccc")
+
+        XCTAssertEqual(fakeRunner.lastArguments, [
+            "slice-diff", "--project", "proj-123", "--json", "--commit", "ccccccc", "slice-1"
+        ])
+        XCTAssertEqual(diff.branch, "cccccccccccccccccccccccccccccccccccccccc")
+        XCTAssertEqual(diff.files.count, 1)
+    }
+
+    func testSliceCommitsListsThemNewestFirst() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceCommits)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let doc = try await client.sliceCommits(projectID: "proj-123", sliceRef: "slice-1")
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["slice-diff", "--project", "proj-123", "--json", "--commits", "slice-1"])
+        XCTAssertEqual(doc.base, "main")
+        XCTAssertEqual(doc.branch, "nat/diff-tab-fixture")
+        XCTAssertEqual(doc.commits.count, 3)
+        XCTAssertEqual(doc.commits[0].subject, "Fix the gutter width")
+        XCTAssertEqual(doc.commits[0].shortSHA, "cccccccc")
+    }
+
+    func testSliceCommitsFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceCommitsFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            _ = try await client.sliceCommits(projectID: "proj-123", sliceRef: "slice-1")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "\"Write the UI\" is not handed back: only a slice with a branch has a diff to read")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
+
+    func testSliceEditPostsDescriptionOverStdinAndReturnsTheResult() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceEditSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let result = try await client.sliceEdit(projectID: "proj-123", sliceRef: "slice-1", description: "New brief text")
+
+        XCTAssertEqual(fakeRunner.lastArguments, [
+            "slice-edit", "--project", "proj-123", "--json", "--description", "-", "slice-1"
+        ])
+        XCTAssertEqual(fakeRunner.lastStandardInput, "New brief text".data(using: .utf8))
+        XCTAssertEqual(result.id, "slice-1")
+        XCTAssertEqual(result.brief, "New brief text")
+    }
+
+    func testSliceEditFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceEditFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            _ = try await client.sliceEdit(projectID: "proj-123", sliceRef: "slice-1", description: "x")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "\"Write the UI\" is in progress: a slice being worked is not edited under its agent")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
+
     func testAgentInterruptSuccess() async throws {
         let fakeRunner = FakeRunner(fixture: .agentInterruptSuccess)
         let client = NatClient(commandRunner: fakeRunner)

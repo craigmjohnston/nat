@@ -60,6 +60,21 @@ final class RailModelTests: XCTestCase {
         XCTAssertEqual(model.needsReview.count, 1)
         XCTAssertEqual(model.needsReview[0].sliceID, "s-2")
         XCTAssertEqual(model.needsReview[0].name, "Feature A")
+        XCTAssertNil(model.needsReview[0].stat, "no reviewStats given at all should leave the row statless")
+    }
+
+    func testBuildRailModel_reviewSectionCarriesItsStat() {
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: testSlices)
+        let model = buildRailModel(from: projectInfo, liveAgents: [:], reviewStats: ["s-2": "+10 \u{2212}3"])
+
+        XCTAssertEqual(model.needsReview[0].stat, "+10 \u{2212}3")
+    }
+
+    func testBuildRailModel_reviewSectionLeavesAnUnfetchedStatNil() {
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: testSlices)
+        let model = buildRailModel(from: projectInfo, liveAgents: [:], reviewStats: ["some-other-slice": "+1 \u{2212}1"])
+
+        XCTAssertNil(model.needsReview[0].stat)
     }
 
     func testBuildRailModel_activeSection() {

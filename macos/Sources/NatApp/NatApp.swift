@@ -18,6 +18,12 @@ struct NatApp: App {
                     .task { await Self.snapshotIfAsked(appModel) }
             }
         }
+        // The header row IS the title bar (WindowShellView reserves room for
+        // the traffic lights and makes itself draggable) — hiding the system
+        // one is what lets the project tabs sit where the mock puts them,
+        // flush with the top of the window rather than below a bar of their
+        // own.
+        .windowStyle(.hiddenTitleBar)
 
         Settings {
             SettingsView(appModel: appModel)

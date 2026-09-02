@@ -30,6 +30,16 @@ public enum DiffLoadState: Equatable, Sendable {
     }
 }
 
+/// The state of loading a slice's branch's own commits — the "All commits"
+/// dropdown's own list, fetched once the branch diff itself has loaded and
+/// kept until the slice changes or a refresh asks for it again.
+public enum CommitsLoadState: Equatable, Sendable {
+    case idle
+    case loading
+    case loaded([SliceCommit])
+    case failed(String)
+}
+
 /// Manages a slice's diff: fetching it on demand, and the screen's own state
 /// over it — which files have been marked viewed, and which are collapsed.
 ///
@@ -60,10 +70,36 @@ public final class DiffStore {
     /// themselves are gone without a trace once dropped.
     public private(set) var lastDroppedCommentCount = 0
 
+    /// The branch's own commits since its merge base — the "All commits"
+    /// dropdown's list, fetched alongside the branch diff itself.
+    public private(set) var commits: [SliceCommit] = []
+    public private(set) var commitsLoadState: CommitsLoadState = .idle
+
+    /// Which diff `loadState` is currently showing: nil for the branch as a
+    /// whole ("All commits"), or one commit's own sha.
+    public private(set) var selectedCommit: String?
+
+    /// Whether a new comment can be created, and whatever is already pending
+    /// can be sent or the branch approved — true only while showing the
+    /// branch as a whole. A comment or an approval is about the branch's own
+    /// diff (what `reanchorComments` matches a re-read against), and one
+    /// commit's own diff is not that, however much it overlaps it.
+    public var commentsEditable: Bool { selectedCommit == nil }
+
     private let client: NatClientProtocol
     private var isFetching = false
     private var projectID: String?
     private var sliceRef: String?
+
+    /// The branch-wide diff, kept regardless of which commit (if any) is
+    /// selected: comments always anchor to it, and reanchoring on a refresh
+    /// always matches against it rather than whatever is on screen.
+    private var branchDiff: DiffModel?
+
+    /// Per-commit diffs already fetched, by sha — dropped on every refresh,
+    /// since a fresh read of the branch is the moment a stale per-commit diff
+    /// stops being trustworthy.
+    private var commitDiffCache: [String: DiffModel] = [:]
 
     public init(client: NatClientProtocol = NatClient()) {
         self.client = client
@@ -77,20 +113,77 @@ public final class DiffStore {
             return
         }
         // Another slice's branch starts with no comments on it — the pending
-        // review left on the one before is about lines this slice never had.
+        // review left on the one before is about lines this slice never had —
+        // and with no commits of its own read yet either.
         if let previous = self.sliceRef, previous != sliceRef {
             comments = []
             lastDroppedCommentCount = 0
+            commits = []
+            commitsLoadState = .idle
+            commitDiffCache = [:]
+            selectedCommit = nil
+            branchDiff = nil
         }
         self.projectID = projectID
         self.sliceRef = sliceRef
         await load()
     }
 
-    /// Re-read the current slice's branch. A no-op with nothing fetched yet.
+    /// Re-read the current slice's branch — and, if a specific commit is
+    /// selected, that commit's own diff too, so a refresh leaves the user
+    /// looking at fresh content of whichever they were reading rather than
+    /// snapping back to "All commits". The per-commit cache is dropped first:
+    /// a refresh is exactly the moment a cached commit diff stops being
+    /// trustworthy. A no-op with nothing fetched yet.
     public func refresh() async {
-        guard !isFetching, projectID != nil, sliceRef != nil else { return }
+        guard !isFetching, let projectID, let sliceRef else { return }
+        commitDiffCache = [:]
         await load()
+        if let commit = selectedCommit {
+            await loadCommitDiff(commit, projectID: projectID, sliceRef: sliceRef)
+        }
+        if case .idle = commitsLoadState {
+            // Never asked for; a refresh does not go looking for them either.
+        } else {
+            await fetchCommits(projectID: projectID, sliceRef: sliceRef, force: true)
+        }
+    }
+
+    /// Switch which diff is shown: nil for the branch as a whole ("All
+    /// commits", already held), or one commit's own sha — fetched once and
+    /// cached by sha afterwards. A no-op if it is already what is shown.
+    public func selectCommit(_ sha: String?) async {
+        guard sha != selectedCommit else { return }
+        guard let projectID, let sliceRef else { return }
+        selectedCommit = sha
+
+        guard let sha else {
+            if let branchDiff {
+                loadState = .loaded(branchDiff)
+            }
+            return
+        }
+        if let cached = commitDiffCache[sha] {
+            loadState = .loaded(cached)
+            return
+        }
+        await loadCommitDiff(sha, projectID: projectID, sliceRef: sliceRef)
+    }
+
+    /// Fetch the branch's own commits since its merge base, unless already
+    /// loaded (or loading) — `force` bypasses that, for a refresh that wants
+    /// them read fresh.
+    public func fetchCommits(projectID: String, sliceRef: String, force: Bool = false) async {
+        if case .loading = commitsLoadState { return }
+        if !force, case .loaded = commitsLoadState { return }
+        commitsLoadState = .loading
+        do {
+            let doc = try await client.sliceCommits(projectID: projectID, sliceRef: sliceRef)
+            commits = doc.commits
+            commitsLoadState = .loaded(doc.commits)
+        } catch {
+            commitsLoadState = .failed(error.localizedDescription)
+        }
     }
 
     /// Whether a file (by path) has been marked viewed.
@@ -133,6 +226,11 @@ public final class DiffStore {
         sliceRef = nil
         comments = []
         lastDroppedCommentCount = 0
+        commits = []
+        commitsLoadState = .idle
+        selectedCommit = nil
+        commitDiffCache = [:]
+        branchDiff = nil
     }
 
     // MARK: - Comments
@@ -206,12 +304,22 @@ public final class DiffStore {
 
     // MARK: - Private
 
+    /// Reads the branch-wide diff — comments always anchor to it, and
+    /// reanchoring on a refresh always matches against it — and, only while
+    /// "All commits" is what is actually shown, updates `loadState` with it
+    /// too. While a specific commit is selected, this still runs (so a
+    /// refresh keeps comments in step with the branch even though something
+    /// else is on screen), but leaves `loadState` alone; `refresh()` is what
+    /// re-reads the selected commit's own diff afterwards.
     private func load() async {
         guard let projectID, let sliceRef else { return }
         isFetching = true
         defer { isFetching = false }
 
-        loadState = .loading
+        let showingBranch = selectedCommit == nil
+        if showingBranch {
+            loadState = .loading
+        }
         // A re-read's marks are the previous diff's, not the one about to
         // replace it — cleared here regardless of how the read turns out.
         viewedFiles = []
@@ -219,17 +327,38 @@ public final class DiffStore {
         lastDroppedCommentCount = 0
 
         do {
-            let diff = try await client.sliceDiff(projectID: projectID, sliceRef: sliceRef)
+            let diff = try await client.sliceDiff(projectID: projectID, sliceRef: sliceRef, commit: nil)
             let model = buildDiffModel(from: diff)
+            branchDiff = model
             reanchorComments(to: model)
-            loadState = .loaded(model)
+            if showingBranch {
+                loadState = .loaded(model)
+            }
         } catch {
             // A read that fails takes the diff it replaced with it, but not
             // the comments left on it: they are still there to send once a
             // read succeeds again, ordered by path alone with no diff left
             // to order them by (mirrors the Go TUI's own rule).
-            loadState = .failed(error.localizedDescription)
+            branchDiff = nil
             comments.sort { $0.path < $1.path }
+            if showingBranch {
+                loadState = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    /// Fetches one commit's own diff, caching it by sha — used by
+    /// `selectCommit` for a sha not already cached, and by `refresh()` to
+    /// re-read the selected commit fresh after the cache has been dropped.
+    private func loadCommitDiff(_ sha: String, projectID: String, sliceRef: String) async {
+        loadState = .loading
+        do {
+            let diff = try await client.sliceDiff(projectID: projectID, sliceRef: sliceRef, commit: sha)
+            let model = buildDiffModel(from: diff)
+            commitDiffCache[sha] = model
+            loadState = .loaded(model)
+        } catch {
+            loadState = .failed(error.localizedDescription)
         }
     }
 

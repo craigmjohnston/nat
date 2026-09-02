@@ -27,6 +27,12 @@ struct WindowShellView: View {
                 )
             }
         }
+        // With the system title bar hidden, SwiftUI still reserves its height
+        // as a top safe-area inset by default — without this, `board`'s own
+        // header would be pushed down below where the traffic lights float,
+        // leaving a bare strip of window above it instead of the header
+        // being what sits there.
+        .ignoresSafeArea(.container, edges: .top)
         .sheet(isPresented: $showNewSliceSheet) {
             NewSliceSheetView(
                 projectID: appModel.activeProjectID ?? "",
@@ -45,13 +51,12 @@ struct WindowShellView: View {
 
     private var board: some View {
         VStack(spacing: 0) {
-            // Header
+            // Header — with the system title bar hidden (`.windowStyle(.hiddenTitleBar)`
+            // in NatApp.swift), this row IS the title bar: the leading padding
+            // is where macOS draws the traffic lights over it, and the whole
+            // row is window-draggable the way a title bar always was.
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
-                    // Traffic lights - left-aligned (handled by system)
-                    Spacer()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
                     // Project tabs
                     ProjectTabsView(appModel: appModel)
 
@@ -86,9 +91,24 @@ struct WindowShellView: View {
                     }
                     .padding(.horizontal, 16)
                 }
+                .padding(.leading, 78)
                 .background(
-                    Color(hex: "1e1e23").opacity(0.85)
-                        .blur(radius: 8)
+                    ZStack {
+                        Color(hex: "1e1e23").opacity(0.85)
+                        // color-mix(in srgb, var(--accent) 9%, var(--material-header-bg))
+                        // approximated: the accent laid over the header's own
+                        // material at 9% opacity.
+                        DesignTokens.accent.opacity(0.09)
+                    }
+                    .blur(radius: 8)
+                    // The drag lives on the background rather than the row
+                    // itself: SwiftUI still routes a tap to a Button or
+                    // onTapGesture target on top of it (the project tabs, the
+                    // toolbar buttons), and only the bare parts of the row
+                    // fall through to this gesture — which is what makes the
+                    // header behave like a title bar without swallowing its
+                    // own controls' clicks.
+                    .gesture(WindowDragGesture())
                 )
             }
             .frame(height: 40)

@@ -1,21 +1,29 @@
 import SwiftUI
 import NatKit
 
-/// The file list beside the diff: a disabled "All commits" stub (there is
-/// only ever one range to show today), then one row per file — a viewed
-/// checkmark, the path truncated from the front so its filename stays
-/// visible, an A/M/R change-kind badge, and the ± tally. Clicking a row
-/// scrolls the content pane to that file.
+/// The file list beside the diff: the "All commits" dropdown, then one row
+/// per file — a viewed checkmark, the path truncated from the front so its
+/// filename stays visible, an A/M/R change-kind badge, and the ± tally.
+/// Clicking a row scrolls the content pane to that file.
+///
+/// The dropdown is real: titled "All commits" (or, with one selected, that
+/// commit's own subject) with a count badge, it lists "All commits" first and
+/// then every commit — subject, and its short sha in a monospaced font, per
+/// the mock. Picking one is `onSelectCommit`'s to act on; this view holds no
+/// opinion about what a selection means to the diff beside it.
 struct DiffFileSidebarView: View {
     let files: [DiffFileModel]
     let isViewed: (String) -> Bool
     var commentCount: (String) -> Int = { _ in 0 }
+    var commits: [SliceCommit] = []
+    var selectedCommit: String?
+    var onSelectCommit: (String?) -> Void = { _ in }
     let onSelect: (String) -> Void
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 2) {
-                allCommitsStub
+                allCommitsMenu
 
                 ForEach(files) { file in
                     DiffFileSidebarRow(file: file, isViewed: isViewed(file.path), commentCount: commentCount(file.path))
@@ -29,31 +37,59 @@ struct DiffFileSidebarView: View {
         }
     }
 
-    private var allCommitsStub: some View {
-        HStack(spacing: 6) {
-            Text("All commits")
-                .font(.system(size: 12, weight: .regular))
-                .foregroundStyle(DesignTokens.labelSecondary)
-
-            Spacer()
-
-            Text("\(files.count)")
-                .font(.system(size: 11, weight: .regular, design: .monospaced))
-                .foregroundStyle(DesignTokens.labelTertiary)
-
-            Image(systemName: "chevron.up.chevron.down")
-                .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(DesignTokens.labelTertiary)
+    private var selectedCommitTitle: String {
+        guard let selectedCommit, let commit = commits.first(where: { $0.sha == selectedCommit }) else {
+            return "All commits"
         }
-        .padding(.horizontal, 8)
-        .frame(height: 22)
-        .background(DesignTokens.controlFace)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(DesignTokens.controlBorder, lineWidth: 0.5)
-        )
-        .opacity(0.6)
+        return commit.subject
+    }
+
+    private var allCommitsMenu: some View {
+        Menu {
+            Button {
+                onSelectCommit(nil)
+            } label: {
+                Text("All commits")
+            }
+
+            if !commits.isEmpty {
+                Divider()
+                ForEach(commits) { commit in
+                    Button {
+                        onSelectCommit(commit.sha)
+                    } label: {
+                        Text("\(commit.subject)  \(commit.shortSHA)")
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(selectedCommitTitle)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(DesignTokens.labelSecondary)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text("\(commits.count)")
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(DesignTokens.labelTertiary)
+
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(DesignTokens.labelTertiary)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 22)
+            .background(DesignTokens.controlFace)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(DesignTokens.controlBorder, lineWidth: 0.5)
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .padding(.bottom, 6)
     }
 }

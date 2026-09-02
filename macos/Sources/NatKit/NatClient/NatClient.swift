@@ -79,16 +79,38 @@ public final class NatClient: Sendable {
     }
 
     /// Get the diff of a handed-back slice's branch against the base it was cut
-    /// from, already split into files.
+    /// from, already split into files — or, with `commit` given, the diff of
+    /// exactly one commit of that branch's history against its own parent,
+    /// mirroring `nat slice-diff --commit <sha>`.
     ///
     /// - Parameters:
     ///   - projectID: The project's Notion page ID
     ///   - sliceRef: The slice's URL or Notion page ID
+    ///   - commit: A commit's sha, to diff it alone instead of the whole branch
     /// - Returns: SliceDiff with the base, branch, and per-file diff sections
     /// - Throws: NatError if the command fails or output is invalid
-    public func sliceDiff(projectID: String, sliceRef: String) async throws -> SliceDiff {
-        let output = try await runNat(arguments: ["slice-diff", "--project", projectID, "--json", sliceRef])
+    public func sliceDiff(projectID: String, sliceRef: String, commit: String?) async throws -> SliceDiff {
+        var arguments = ["slice-diff", "--project", projectID, "--json"]
+        if let commit, !commit.isEmpty {
+            arguments.append(contentsOf: ["--commit", commit])
+        }
+        arguments.append(sliceRef)
+        let output = try await runNat(arguments: arguments)
         return try decodeJSON(SliceDiff.self, from: output)
+    }
+
+    /// List a handed-back slice's branch's own commits since the merge base,
+    /// without diffing any of them — the sidebar's "All commits" dropdown,
+    /// mirroring `nat slice-diff --commits`.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sliceRef: The slice's URL or Notion page ID
+    /// - Returns: SliceCommitsDoc with the base, branch, and the commits themselves
+    /// - Throws: NatError if the command fails or output is invalid
+    public func sliceCommits(projectID: String, sliceRef: String) async throws -> SliceCommitsDoc {
+        let output = try await runNat(arguments: ["slice-diff", "--project", projectID, "--json", "--commits", sliceRef])
+        return try decodeJSON(SliceCommitsDoc.self, from: output)
     }
 
     /// Send an interrupt signal to a running agent's tmux session.
@@ -257,6 +279,28 @@ public final class NatClient: Sendable {
         }
         let output = try await runNat(arguments: arguments, standardInput: standardInput)
         return try decodeJSON(SliceAddedEnvelope.self, from: output).slice
+    }
+
+    /// Replace a Todo slice's brief outright — the Brief tab's own Edit
+    /// action, mirroring `internal/cli/sliceedit.go`'s `sliceEdit`. Refused by
+    /// the CLI for a slice in progress or Done; this client passes that
+    /// refusal straight through as `NatError.commandFailed`.
+    ///
+    /// The new brief goes over stdin (`--description -`), exactly as
+    /// `sliceAdd`'s does: a brief may run to several lines.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sliceRef: The slice's URL or Notion page ID
+    ///   - description: The new brief to write, replacing whatever was there
+    /// - Returns: SliceEditResult with the slice and the brief that landed
+    /// - Throws: NatError if the slice is not Todo, or the command fails
+    public func sliceEdit(projectID: String, sliceRef: String, description: String) async throws -> SliceEditResult {
+        let output = try await runNat(
+            arguments: ["slice-edit", "--project", projectID, "--json", "--description", "-", sliceRef],
+            standardInput: description.data(using: .utf8)
+        )
+        return try decodeJSON(SliceEditResult.self, from: output)
     }
 
     /// Read local configuration: the fields the settings scene edits and

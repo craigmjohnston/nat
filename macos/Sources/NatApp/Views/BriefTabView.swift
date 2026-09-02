@@ -10,6 +10,12 @@ struct BriefTabView: View {
     @State private var isLoading = false
     @State private var error: String?
 
+    // Brief editing UI state — one editing state behind both Edit buttons.
+    @State private var isEditingBrief = false
+    @State private var editedBriefText = ""
+    @State private var isSavingBrief = false
+    @State private var briefSaveError: String?
+
     // Launch Agent UI state
     @State private var showLaunchPopover = false
     @State private var selectedModel: String = "Default"
@@ -40,17 +46,19 @@ struct BriefTabView: View {
 
                         Spacer()
 
-                        // Edit button (disabled)
-                        Button(action: {}) {
+                        Button(action: startEditingBrief) {
                             Text("Edit…")
                                 .font(.system(size: 11, weight: .regular))
                         }
                         .buttonStyle(.borderless)
-                        .disabled(true)
+                        .disabled(!canEditBrief)
+                        .help(editBriefHelp)
                     }
 
                     // Brief content
-                    if isLoading {
+                    if isEditingBrief {
+                        briefEditor
+                    } else if isLoading {
                         VStack(spacing: 8) {
                             ProgressView()
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -139,12 +147,13 @@ struct BriefTabView: View {
 
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
-                    Button(action: {}) {
+                    Button(action: startEditingBrief) {
                         Text("Edit Brief…")
                             .font(.system(size: 11, weight: .regular))
                     }
                     .buttonStyle(.borderless)
-                    .disabled(true)
+                    .disabled(!canEditBrief)
+                    .help(editBriefHelp)
 
                     Spacer()
 
@@ -233,10 +242,105 @@ struct BriefTabView: View {
                 await loadDetail()
             }
             resetLaunchState()
+            isEditingBrief = false
+            briefSaveError = nil
+            isSavingBrief = false
         }
         .task {
             resetLaunchState()
         }
+    }
+
+    // MARK: - Brief editing
+
+    /// Only a Todo slice's brief is editable — `nat slice-edit` itself
+    /// refuses one in progress or Done, since an agent already working from
+    /// the brief it claimed with should not have it changed out from under
+    /// it, and a Done slice has nothing left to brief.
+    private var canEditBrief: Bool {
+        slice.status == "Todo" && !isEditingBrief && !isLoading
+    }
+
+    private var editBriefHelp: String {
+        guard slice.status != "Todo" else { return "" }
+        return "Only a Todo slice's brief can be edited"
+    }
+
+    private func startEditingBrief() {
+        editedBriefText = sliceDetail?.brief ?? ""
+        briefSaveError = nil
+        isEditingBrief = true
+    }
+
+    private func cancelEditingBrief() {
+        isEditingBrief = false
+        briefSaveError = nil
+    }
+
+    private var briefEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextEditor(text: $editedBriefText)
+                .font(.system(size: 13, weight: .regular))
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 160, maxHeight: 320)
+                .padding(6)
+                .background(DesignTokens.fieldBg)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(DesignTokens.controlBorder, lineWidth: 0.5)
+                )
+                .disabled(isSavingBrief)
+
+            if let briefSaveError {
+                Text(briefSaveError)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(DesignTokens.systemRed)
+            }
+
+            HStack(spacing: 8) {
+                Spacer()
+
+                Button("Cancel", action: cancelEditingBrief)
+                    .buttonStyle(.bordered)
+                    .disabled(isSavingBrief)
+
+                Button(action: { Task { await saveBrief() } }) {
+                    if isSavingBrief {
+                        ProgressView()
+                            .scaleEffect(0.7, anchor: .center)
+                    } else {
+                        Text("Save")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DesignTokens.accent)
+                .disabled(isSavingBrief)
+            }
+        }
+    }
+
+    private func saveBrief() async {
+        guard let projectID = appModel.projectStore?.projectID else { return }
+        isSavingBrief = true
+        briefSaveError = nil
+        do {
+            _ = try await NatClient().sliceEdit(projectID: projectID, sliceRef: slice.id, description: editedBriefText)
+            isEditingBrief = false
+            // Refreshes the slice detail — this view holds no cache of its
+            // own beside `sliceDetail`, so re-loading it is what "invalidate
+            // and refresh" means here.
+            await loadDetail()
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                briefSaveError = message
+            } else {
+                briefSaveError = error.localizedDescription
+            }
+        } catch {
+            briefSaveError = error.localizedDescription
+        }
+        isSavingBrief = false
     }
 
     // MARK: - Helpers

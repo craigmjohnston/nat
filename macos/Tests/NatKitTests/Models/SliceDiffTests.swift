@@ -84,4 +84,59 @@ final class SliceDiffTests: XCTestCase {
         XCTAssertEqual(a, b)
         XCTAssertNotEqual(a, c)
     }
+
+    // MARK: - Syntax highlighting: language and tokens
+
+    func testDecodingLanguageAndTokens() throws {
+        let json = """
+        {
+            "path": "a.go",
+            "adds": 1,
+            "dels": 0,
+            "described": false,
+            "lines": ["+func f() {}"],
+            "language": "Go",
+            "tokens": [[["keyword", 4], ["text", 8]]]
+        }
+        """
+        let file = try JSONDecoder().decode(SliceDiffFile.self, from: json.data(using: .utf8)!)
+
+        XCTAssertEqual(file.language, "Go")
+        XCTAssertEqual(file.tokens, [[TokenRun(kind: .keyword, length: 4), TokenRun(kind: .text, length: 8)]])
+    }
+
+    func testDecodingWithoutLanguageOrTokensDefaultsToAbsent() throws {
+        // Both keys are omitted on the wire for an unmatched or described
+        // file — decoding must not fail just because they are gone.
+        let json = """
+        {
+            "path": "a.go",
+            "adds": 0,
+            "dels": 0,
+            "described": false,
+            "lines": []
+        }
+        """
+        let file = try JSONDecoder().decode(SliceDiffFile.self, from: json.data(using: .utf8)!)
+
+        XCTAssertEqual(file.language, "")
+        XCTAssertNil(file.tokens)
+    }
+
+    func testTokenRunRoundTrips() throws {
+        let run = TokenRun(kind: .string, length: 7)
+        let data = try JSONEncoder().encode(run)
+        XCTAssertEqual(String(data: data, encoding: .utf8), "[\"string\",7]")
+
+        let decoded = try JSONDecoder().decode(TokenRun.self, from: data)
+        XCTAssertEqual(decoded, run)
+    }
+
+    func testTokenRunRefusesAWrongShapedArray() {
+        let json = "[\"string\", 7, 9]"
+        XCTAssertThrowsError(try JSONDecoder().decode(TokenRun.self, from: json.data(using: .utf8)!))
+
+        let short = "[\"string\"]"
+        XCTAssertThrowsError(try JSONDecoder().decode(TokenRun.self, from: short.data(using: .utf8)!))
+    }
 }

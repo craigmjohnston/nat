@@ -14,6 +14,21 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
     private var response: Response
     private(set) var callCount = 0
     private(set) var lastSliceRef: String?
+    /// The `commit` every `sliceDiff` call was given, in order — nil for a
+    /// whole-branch read, a sha for a per-commit one.
+    private(set) var commitCalls: [String?] = []
+
+    /// What one commit's own diff decodes to, by sha — `sliceDiff(commit:)`
+    /// looks a requested sha up here rather than in `response`, since a
+    /// commit's diff is a different shape of change than the branch's own.
+    var commitDiffs: [String: SliceDiff] = [:]
+    var commitDiffError: Error?
+
+    /// What `sliceCommits` answers with.
+    var commitsResult: Result<SliceCommitsDoc, Error> = .success(
+        SliceCommitsDoc(base: "main", branch: "nat/example", commits: [])
+    )
+    private(set) var commitsCallCount = 0
 
     /// Every `agent-send` call this client received, in order.
     private(set) var sentPrompts: [(projectID: String, sliceRef: String, text: String)] = []
@@ -43,15 +58,32 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
         throw DiffTestError()
     }
 
-    func sliceDiff(projectID: String, sliceRef: String) async throws -> SliceDiff {
+    func sliceDiff(projectID: String, sliceRef: String, commit: String?) async throws -> SliceDiff {
         callCount += 1
         lastSliceRef = sliceRef
+        commitCalls.append(commit)
+        if let commit {
+            if let commitDiffError {
+                throw commitDiffError
+            }
+            guard let diff = commitDiffs[commit] else { throw DiffTestError() }
+            return diff
+        }
         switch response {
         case .success(let diff):
             return diff
         case .failure:
             throw DiffTestError()
         }
+    }
+
+    func sliceCommits(projectID: String, sliceRef: String) async throws -> SliceCommitsDoc {
+        commitsCallCount += 1
+        return try commitsResult.get()
+    }
+
+    func sliceEdit(projectID: String, sliceRef: String, description: String) async throws -> SliceEditResult {
+        throw DiffTestError()
     }
 
     func agentInterrupt(projectID: String, sliceRef: String) async throws {
@@ -579,5 +611,230 @@ final class DiffStoreTests: XCTestCase {
         } catch {
             // expected
         }
+    }
+
+    // MARK: - Commits: listing
+
+    private func makeCommits(_ shas: [String] = ["sha1", "sha2"]) -> SliceCommitsDoc {
+        SliceCommitsDoc(
+            base: "main", branch: "nat/example",
+            commits: shas.map { SliceCommit(sha: $0, subject: "commit \($0)", author: "craig", date: Date(timeIntervalSince1970: 0)) }
+        )
+    }
+
+    @MainActor
+    func testInitialStateHasNoCommits() {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        let store = DiffStore(client: client)
+        XCTAssertTrue(store.commits.isEmpty)
+        XCTAssertEqual(store.commitsLoadState, .idle)
+        XCTAssertNil(store.selectedCommit)
+        XCTAssertTrue(store.commentsEditable)
+    }
+
+    @MainActor
+    func testFetchCommitsLoadsTheList() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        client.commitsResult = .success(makeCommits())
+        let store = DiffStore(client: client)
+
+        await store.fetchCommits(projectID: "proj-1", sliceRef: "slice-1")
+
+        XCTAssertEqual(client.commitsCallCount, 1)
+        XCTAssertEqual(store.commits.map(\.sha), ["sha1", "sha2"])
+        XCTAssertEqual(store.commitsLoadState, .loaded(store.commits))
+    }
+
+    @MainActor
+    func testFetchCommitsDoesNotRefetchOnceLoaded() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        client.commitsResult = .success(makeCommits())
+        let store = DiffStore(client: client)
+
+        await store.fetchCommits(projectID: "proj-1", sliceRef: "slice-1")
+        await store.fetchCommits(projectID: "proj-1", sliceRef: "slice-1")
+
+        XCTAssertEqual(client.commitsCallCount, 1)
+    }
+
+    @MainActor
+    func testFetchCommitsForcedRefetches() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        client.commitsResult = .success(makeCommits())
+        let store = DiffStore(client: client)
+
+        await store.fetchCommits(projectID: "proj-1", sliceRef: "slice-1")
+        await store.fetchCommits(projectID: "proj-1", sliceRef: "slice-1", force: true)
+
+        XCTAssertEqual(client.commitsCallCount, 2)
+    }
+
+    @MainActor
+    func testFetchCommitsFailureIsRecorded() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        client.commitsResult = .failure(DiffTestError())
+        let store = DiffStore(client: client)
+
+        await store.fetchCommits(projectID: "proj-1", sliceRef: "slice-1")
+
+        XCTAssertEqual(store.commitsLoadState, .failed(DiffTestError().localizedDescription))
+    }
+
+    @MainActor
+    func testANewSliceClearsTheCommitsList() async {
+        let client = MockDiffClient(response: .success(makeDiff(file: "a.go")))
+        client.commitsResult = .success(makeCommits())
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        await store.fetchCommits(projectID: "proj-1", sliceRef: "slice-1")
+        XCTAssertFalse(store.commits.isEmpty)
+
+        client.setResponse(.success(makeDiff(file: "b.go")))
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-2")
+
+        XCTAssertTrue(store.commits.isEmpty)
+        XCTAssertEqual(store.commitsLoadState, .idle)
+    }
+
+    // MARK: - Commits: selecting one to view
+
+    @MainActor
+    func testSelectingACommitFetchesAndShowsItsOwnDiff() async throws {
+        let client = MockDiffClient(response: .success(makeDiff(file: "a.go")))
+        let commitDiff = SliceDiff(
+            base: "sha1^", branch: "sha1",
+            files: [SliceDiffFile(path: "only-in-commit.go", adds: 1, dels: 0, described: false, lines: ["+x"])]
+        )
+        client.commitDiffs = ["sha1": commitDiff]
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        await store.selectCommit("sha1")
+
+        XCTAssertEqual(store.selectedCommit, "sha1")
+        XCTAssertEqual(store.loadState.diff?.files.first?.path, "only-in-commit.go")
+        XCTAssertEqual(client.commitCalls, [nil, "sha1"])
+        XCTAssertFalse(store.commentsEditable)
+    }
+
+    @MainActor
+    func testSelectingTheSameCommitAgainDoesNotRefetch() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        client.commitDiffs = ["sha1": makeDiff(file: "b.go")]
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        await store.selectCommit("sha1")
+        let callsAfterFirstSelect = client.commitCalls.count
+
+        await store.selectCommit("sha1")
+
+        XCTAssertEqual(client.commitCalls.count, callsAfterFirstSelect)
+    }
+
+    @MainActor
+    func testSelectingACommitTwiceReusesTheCache() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        client.commitDiffs = ["sha1": makeDiff(file: "b.go")]
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        await store.selectCommit("sha1")
+        await store.selectCommit(nil)
+
+        await store.selectCommit("sha1")
+
+        // Fetched once for the commit on the first visit — not again for the
+        // second, since it is still cached.
+        XCTAssertEqual(client.commitCalls.filter { $0 == "sha1" }.count, 1)
+    }
+
+    @MainActor
+    func testSelectingNilReturnsToTheBranchDiffWithoutRefetching() async {
+        let client = MockDiffClient(response: .success(makeDiff(file: "a.go")))
+        client.commitDiffs = ["sha1": makeDiff(file: "b.go")]
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        await store.selectCommit("sha1")
+        let callCountAfterSelect = client.callCount
+
+        await store.selectCommit(nil)
+
+        XCTAssertEqual(store.selectedCommit, nil)
+        XCTAssertEqual(store.loadState.diff?.files.first?.path, "a.go")
+        XCTAssertEqual(client.callCount, callCountAfterSelect, "returning to All commits should use the diff already held")
+        XCTAssertTrue(store.commentsEditable)
+    }
+
+    @MainActor
+    func testSelectingACommitThatFailsRecordsTheFailure() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        client.commitDiffError = DiffTestError()
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        await store.selectCommit("sha1")
+
+        XCTAssertNil(store.loadState.diff)
+        XCTAssertNotNil(store.loadState.errorMessage)
+    }
+
+    @MainActor
+    func testSwitchingCommitsKeepsPendingComments() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        client.commitDiffs = ["sha1": makeDiff(file: "b.go")]
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        let rowID = store.loadState.diff!.files[0].rows[0].id
+        store.setComment(path: "a.go", anchorRowIDs: [rowID], text: "still relevant")
+
+        await store.selectCommit("sha1")
+
+        XCTAssertEqual(store.pendingCommentCount, 1, "switching to a single commit should not drop pending comments")
+        XCTAssertEqual(store.comments.first?.text, "still relevant")
+    }
+
+    // MARK: - Refresh drops the per-commit cache and re-reads the selection
+
+    @MainActor
+    func testRefreshDropsThePerCommitCacheAndRereadsIt() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        client.commitDiffs = ["sha1": makeDiff(file: "b.go")]
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        await store.selectCommit("sha1")
+        let commitCallsBeforeRefresh = client.commitCalls.filter { $0 == "sha1" }.count
+
+        await store.refresh()
+
+        XCTAssertEqual(
+            client.commitCalls.filter { $0 == "sha1" }.count, commitCallsBeforeRefresh + 1,
+            "a refresh drops the cached commit diff, so the still-selected commit is read again"
+        )
+        XCTAssertEqual(store.selectedCommit, "sha1", "refresh should not snap the view back to All commits")
+    }
+
+    @MainActor
+    func testRefreshWithNoCommitSelectedDoesNotFetchAnyCommitDiff() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        await store.refresh()
+
+        XCTAssertTrue(client.commitCalls.allSatisfy { $0 == nil })
+    }
+
+    @MainActor
+    func testRefreshRefetchesCommitsOnlyIfAlreadyLoaded() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        client.commitsResult = .success(makeCommits())
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        await store.refresh()
+        XCTAssertEqual(client.commitsCallCount, 0, "commits never asked for should not be fetched by a refresh")
+
+        await store.fetchCommits(projectID: "proj-1", sliceRef: "slice-1")
+        await store.refresh()
+        XCTAssertEqual(client.commitsCallCount, 2, "once loaded, a refresh should read the commit list fresh too")
     }
 }
