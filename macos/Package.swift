@@ -10,6 +10,9 @@ let package = Package(
         .library(name: "NatKit", targets: ["NatKit"]),
         .executable(name: "NatApp", targets: ["NatApp"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm", from: "1.20.0")
+    ],
     targets: [
         .target(
             name: "NatKit",
@@ -23,7 +26,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "NatApp",
-            dependencies: ["NatKit"],
+            dependencies: [
+                "NatKit",
+                .product(name: "SwiftTerm", package: "SwiftTerm")
+            ],
             path: "Sources/NatApp"
         )
     ]
