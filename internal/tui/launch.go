@@ -2,11 +2,8 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -14,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
@@ -274,57 +272,26 @@ func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, at
 
 // trimModel is the model pair as a launch sends it: what the user typed, with
 // the spaces around it gone, since a flag value of " sonnet" is not one Claude
-// Code answers to.
-func trimModel(m config.AgentModel) config.AgentModel {
-	return config.AgentModel{
-		Model:  strings.TrimSpace(m.Model),
-		Effort: strings.TrimSpace(m.Effort),
-	}
-}
+// Code answers to. It is [actions.TrimModel].
+func trimModel(m config.AgentModel) config.AgentModel { return actions.TrimModel(m) }
 
 // launchAgent gives the agent a worktree, writes its prompt out, claims the
-// slice and starts the detached session that reads it. The claim is the board's
-// rather than the agent's: a fresh Claude Code takes seconds to get as far as
-// start-slice, and a row that reads Todo all the while is one the user can
-// launch a second agent on. The prompt still tells the agent to run start-slice,
-// which re-opens the slice it was launched on and prints the brief — and which
-// refuses where somebody else holds it, so a race is settled before any agent is
-// handed a brief.
-//
-// The claim goes last of the things that can fail before tmux is asked for
-// anything, so a worktree that could not be cut or a prompt that could not be
-// written leaves the slice where it was; a launch that fails after it leaves the
-// slice in progress with no session, which is the state R releases. It is
-// refused with a toast rather than the error banner, for the reason a worktree
-// failure is: nothing has gone wrong with the board, and the slice is still
-// there to launch.
-//
-// The worktree is resolved here rather than by the caller because it fetches
-// origin and then cuts the worktree, which is a checkout and runs the
-// repository's hooks over it: a launch is already the slow key, and this is the
-// goroutine it is slow in — the board redraws throughout. Its
-// answer is the working directory the prompt is written with and the session is
-// started in, so the two never disagree about where the agent is.
+// slice and starts the detached session that reads it — [actions.Launch],
+// which is what a headless launch reuses. Only the message this key reports
+// is left here: the toast about where the session was put, or the error
+// banner an outright failure gets — see [actions.Launch] for which is which
+// and why.
 func launchAgent(l AgentLauncher, w Worktrees, r Repo, client NotionAPI, assigneeID string,
 	c agent.PromptContext, m config.AgentModel, attach bool) tea.Cmd {
 	return func() tea.Msg {
-		p := placeAgent(w, r, c.WorkingDir, c.Slice)
-		if !p.ok {
-			return agentLaunchedMsg{toast: p.toast, sev: p.sev}
-		}
-		c.WorkingDir, c.Branch, c.Repo = p.dir, p.branch, p.repo
-		session := agent.SessionName(c.Slice.ID)
-		file, err := agent.WritePromptFile(session, agent.Prompt(c))
+		res, err := actions.Launch(context.Background(), l, w, r, client, assigneeID, c, m)
 		if err != nil {
-			return agentLaunchedMsg{err: fmt.Errorf("launch agent: %w", err)}
-		}
-		if err := claimSlice(context.Background(), client, c.Slice, assigneeID); err != nil {
-			return agentLaunchedMsg{toast: fmt.Sprintf("Could not %v — no agent was launched.", err), sev: sevError}
-		}
-		if err := l.Launch(session, c.WorkingDir, file, c.Slice.ID, m); err != nil {
 			return agentLaunchedMsg{err: err}
 		}
-		return agentLaunchedMsg{slice: c.Slice, session: session, attach: attach, toast: p.toast, sev: p.sev}
+		if res.Session == "" {
+			return agentLaunchedMsg{toast: res.Toast, sev: res.Sev}
+		}
+		return agentLaunchedMsg{slice: res.Context.Slice, session: res.Session, attach: attach, toast: res.Toast, sev: res.Sev}
 	}
 }
 
@@ -442,13 +409,8 @@ func blockerList(blockers []domain.Slice) string {
 }
 
 // workdirFor is the directory a slice's agent starts in: its own repo
-// override, or the project's default.
-func workdirFor(s domain.Slice, p config.ProjectConfig) string {
-	if s.Repo != "" {
-		return s.Repo
-	}
-	return p.WorkingDir
-}
+// override, or the project's default. It is [actions.WorkdirFor].
+func workdirFor(s domain.Slice, p config.ProjectConfig) string { return actions.WorkdirFor(s, p) }
 
 // attachAgentFlow toggles the agent of the slice the cursor is on into the
 // terminal beside the board. Any slice with a live session can be shown,
@@ -609,31 +571,11 @@ func (a *App) agentLaunched(msg agentLaunchedMsg) (tea.Model, tea.Cmd) {
 
 // expandHome expands a leading ~ to the user's home directory. tmux is handed
 // the path as-is, and the shell that would otherwise expand it never sees it.
-func expandHome(path string) string {
-	if path != "~" && !strings.HasPrefix(path, "~/") {
-		return path
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return path
-	}
-	return filepath.Join(home, strings.TrimPrefix(path, "~"))
-}
+// It is [actions.ExpandHome].
+func expandHome(path string) string { return actions.ExpandHome(path) }
 
 // existingDir validates the launch form's working directory. A session started
 // somewhere that is not there fails inside tmux, where nobody is looking, so
-// the directory is checked while there is still a form to say so on.
-func existingDir(path string) error {
-	dir := expandHome(strings.TrimSpace(path))
-	if dir == "" {
-		return errors.New("the agent needs a working directory")
-	}
-	info, err := os.Stat(dir)
-	if err != nil {
-		return fmt.Errorf("%s is not there", dir)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("%s is not a directory", dir)
-	}
-	return nil
-}
+// the directory is checked while there is still a form to say so on. It is
+// [actions.ExistingDir].
+func existingDir(path string) error { return actions.ExistingDir(path) }

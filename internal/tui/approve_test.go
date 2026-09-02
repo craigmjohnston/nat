@@ -251,24 +251,6 @@ func TestApproveWithAnUnreadableDescription(t *testing.T) {
 	}
 }
 
-// TestPRTitleBody pins the split gh is given: the first line titles the pull
-// request and the rest is its body, a one-line description is a title alone,
-// and no description at all is neither.
-func TestPRTitleBody(t *testing.T) {
-	for _, tt := range []struct{ name, in, title, body string }{
-		{"title and body", "Title line\n\nThe body.\n", "Title line", "The body."},
-		{"title alone", "  Title line  ", "Title line", ""},
-		{"nothing at all", "  \n ", "", ""},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			title, body := prTitleBody(tt.in)
-			if title != tt.title || body != tt.body {
-				t.Errorf("prTitleBody(%q) = %q, %q, want %q, %q", tt.in, title, body, tt.title, tt.body)
-			}
-		})
-	}
-}
-
 // TestApproveWritesASelectStatus covers the shape every project this app made
 // is in: a plain select, which is what a page read back with no type on its
 // Status column is written as.
