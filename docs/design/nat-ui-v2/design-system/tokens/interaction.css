@@ -1,0 +1,6 @@
+/* Interaction conventions: system focus ring (never suppressed), press states, text selection. */
+:where(button,input,select,textarea,[tabindex]):focus-visible{outline:3.5px solid var(--focus-ring);outline-offset:0}
+:where(.mac-pressable):active{filter:brightness(0.94)}
+:where(.mac-chrome){user-select:none;-webkit-user-select:none;cursor:default}
+::selection{background:color-mix(in srgb,var(--accent) 28%,transparent)}
+::placeholder{color:var(--label-tertiary);opacity:1}
