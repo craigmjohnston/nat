@@ -6,6 +6,7 @@ public protocol NatClientProtocol: Sendable {
     func info(projectID: String) async throws -> ProjectInfo
     func status() async throws -> [AgentStatus]
     func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail
+    func sliceDiff(projectID: String, sliceRef: String) async throws -> SliceDiff
     func agentInterrupt(projectID: String, sliceRef: String) async throws -> Void
 }
 

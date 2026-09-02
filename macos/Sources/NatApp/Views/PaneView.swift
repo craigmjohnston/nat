@@ -63,6 +63,8 @@ struct PaneView: View {
                     BriefTabView(appModel: appModel, slice: slice)
                 case .agent:
                     AgentTabView(appModel: appModel, slice: slice)
+                case .diff:
+                    DiffTabView(appModel: appModel, slice: slice)
                 default:
                     VStack {
                         VStack(spacing: 8) {

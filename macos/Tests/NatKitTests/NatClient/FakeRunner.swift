@@ -11,6 +11,7 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case nonJSON
         case status
         case sliceShow
+        case sliceDiff
         case agentInterruptSuccess
         case agentInterruptNoSession
     }
@@ -47,6 +48,8 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return (fixtureStatus.data(using: .utf8)!, Data(), 0)
         case .sliceShow:
             return (fixtureSliceShow.data(using: .utf8)!, Data(), 0)
+        case .sliceDiff:
+            return (fixtureSliceDiff.data(using: .utf8)!, Data(), 0)
         case .agentInterruptSuccess:
             return ("success".data(using: .utf8)!, Data(), 0)
         case .agentInterruptNoSession:
@@ -183,5 +186,106 @@ let fixtureSliceShow = """
   "handed_back": true,
   "state": "awaiting_review",
   "brief": "# API Implementation\\nBuild the REST API endpoints"
+}
+"""
+
+// fixtureSliceDiff is a real-shaped diff (git-generated, then hand-annotated
+// with adds/dels/described the way writeDiffJSON in internal/cli/slicediff.go
+// would): two files with multiple hunks between them (board.go has two, one
+// with a gap between them so the second hunk header becomes a break), an
+// add-only new file, a rename with content changes of its own, and a binary
+// file git described rather than diffed.
+let fixtureSliceDiff = """
+{
+  "base": "main",
+  "branch": "nat/diff-tab-fixture",
+  "files": [
+    {
+      "path": "internal/tui/board.go",
+      "old_path": "internal/tui/board.go",
+      "adds": 2,
+      "dels": 1,
+      "described": false,
+      "lines": [
+        "diff --git a/internal/tui/board.go b/internal/tui/board.go",
+        "index abfa861..79d4510 100644",
+        "--- a/internal/tui/board.go",
+        "+++ b/internal/tui/board.go",
+        "@@ -4,6 +4,7 @@ import \\"fmt\\"",
+        " ",
+        " func Render(width int) string {",
+        " \\tfmt.Println(\\"start\\")",
+        "+\\tfmt.Println(\\"inserted near top\\")",
+        " \\tfmt.Println(\\"line two\\")",
+        " \\tfmt.Println(\\"line three\\")",
+        " \\tfmt.Println(\\"line four\\")",
+        "@@ -12,7 +13,7 @@ func Render(width int) string {",
+        " \\tfmt.Println(\\"line seven\\")",
+        " \\tfmt.Println(\\"line eight\\")",
+        " \\tfmt.Println(\\"line nine\\")",
+        "-\\tfmt.Println(\\"line ten\\")",
+        "+\\tfmt.Println(\\"line ten (edited)\\")",
+        " \\tfmt.Println(\\"end\\")",
+        " \\treturn \\"done\\"",
+        " }"
+      ]
+    },
+    {
+      "path": "internal/tui/newfile.go",
+      "old_path": "internal/tui/newfile.go",
+      "adds": 6,
+      "dels": 0,
+      "described": false,
+      "lines": [
+        "diff --git a/internal/tui/newfile.go b/internal/tui/newfile.go",
+        "new file mode 100644",
+        "index 0000000..3a1f1d4",
+        "--- /dev/null",
+        "+++ b/internal/tui/newfile.go",
+        "@@ -0,0 +1,6 @@",
+        "+package tui",
+        "+",
+        "+// NewFile is created whole, so its diff is nothing but additions.",
+        "+func NewFile() string {",
+        "+\\treturn \\"new\\"",
+        "+}"
+      ]
+    },
+    {
+      "path": "new_name.go",
+      "old_path": "old_name.go",
+      "adds": 1,
+      "dels": 1,
+      "described": false,
+      "lines": [
+        "diff --git a/old_name.go b/new_name.go",
+        "similarity index 66%",
+        "rename from old_name.go",
+        "rename to new_name.go",
+        "index 686ae1c..1a1a054 100644",
+        "--- a/old_name.go",
+        "+++ b/new_name.go",
+        "@@ -1,5 +1,5 @@",
+        " package tui",
+        " ",
+        " func Old() string {",
+        "-\\treturn \\"old\\"",
+        "+\\treturn \\"renamed\\"",
+        " }"
+      ]
+    },
+    {
+      "path": "docs/shot.png",
+      "old_path": "docs/shot.png",
+      "adds": 0,
+      "dels": 0,
+      "described": true,
+      "lines": [
+        "diff --git a/docs/shot.png b/docs/shot.png",
+        "index 5555555..6666666 100644",
+        "Binary files a/docs/shot.png and b/docs/shot.png differ"
+      ]
+    }
+  ]
 }
 """

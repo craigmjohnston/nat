@@ -59,6 +59,19 @@ public final class NatClient: Sendable {
         return try decodeJSON(SliceDetail.self, from: output)
     }
 
+    /// Get the diff of a handed-back slice's branch against the base it was cut
+    /// from, already split into files.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sliceRef: The slice's URL or Notion page ID
+    /// - Returns: SliceDiff with the base, branch, and per-file diff sections
+    /// - Throws: NatError if the command fails or output is invalid
+    public func sliceDiff(projectID: String, sliceRef: String) async throws -> SliceDiff {
+        let output = try await runNat(arguments: ["slice-diff", "--project", projectID, "--json", sliceRef])
+        return try decodeJSON(SliceDiff.self, from: output)
+    }
+
     /// Send an interrupt signal to a running agent's tmux session.
     ///
     /// - Parameters:

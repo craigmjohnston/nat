@@ -135,6 +135,39 @@ final class NatClientTests: XCTestCase {
         XCTAssert(detail.brief.contains("API Implementation"))
     }
 
+    func testSliceDiff() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceDiff)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let diff = try await client.sliceDiff(projectID: "proj-123", sliceRef: "slice-1")
+
+        XCTAssertEqual(diff.base, "main")
+        XCTAssertEqual(diff.branch, "nat/diff-tab-fixture")
+        XCTAssertEqual(diff.files.count, 4)
+
+        let board = diff.files[0]
+        XCTAssertEqual(board.path, "internal/tui/board.go")
+        XCTAssertEqual(board.adds, 2)
+        XCTAssertEqual(board.dels, 1)
+        XCTAssertFalse(board.described)
+        XCTAssertFalse(board.isRenamed)
+        XCTAssertTrue(board.lines.contains("@@ -4,6 +4,7 @@ import \"fmt\""))
+
+        let newFile = diff.files[1]
+        XCTAssertEqual(newFile.adds, 6)
+        XCTAssertEqual(newFile.dels, 0)
+        XCTAssertFalse(newFile.isRenamed)
+
+        let renamed = diff.files[2]
+        XCTAssertEqual(renamed.path, "new_name.go")
+        XCTAssertEqual(renamed.oldPath, "old_name.go")
+        XCTAssertTrue(renamed.isRenamed)
+
+        let binary = diff.files[3]
+        XCTAssertTrue(binary.described)
+        XCTAssertFalse(binary.isRenamed)
+    }
+
     func testAgentInterruptSuccess() async throws {
         let fakeRunner = FakeRunner(fixture: .agentInterruptSuccess)
         let client = NatClient(commandRunner: fakeRunner)

@@ -36,6 +36,10 @@ final class MockNatClient: NatClientProtocol, @unchecked Sendable {
         throw TestError()
     }
 
+    func sliceDiff(projectID: String, sliceRef: String) async throws -> SliceDiff {
+        throw TestError()
+    }
+
     func agentInterrupt(projectID: String, sliceRef: String) async throws {
         throw TestError()
     }
