@@ -377,6 +377,7 @@ func testEnv(cfg config.Config, api *fakeAPI) (Env, *bytes.Buffer) {
 		Load:      func() (config.Config, bool, error) { return cfg, true, nil },
 		Save:      func(config.Config) error { return nil },
 		NewClient: func(notion.TokenFunc) API { return api },
+		NewTmux:   DefaultNewTmux,
 		Out:       &out,
 	}, &out
 }
@@ -518,5 +519,15 @@ func TestDefaultNewClientBuildsANotionClient(t *testing.T) {
 
 	if _, ok := client.(*notion.Client); !ok {
 		t.Errorf("client is %T, want *notion.Client", client)
+	}
+}
+
+// DefaultNewTmux is the one place the real tmux driver is built; nothing else
+// in the package knows the concrete type.
+func TestDefaultNewTmuxBuildsTmux(t *testing.T) {
+	tmux := DefaultNewTmux()
+
+	if tmux == nil {
+		t.Fatal("DefaultNewTmux returned nil")
 	}
 }

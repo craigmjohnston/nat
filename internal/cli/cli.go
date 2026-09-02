@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
@@ -41,6 +42,13 @@ type NewClientFunc func(token notion.TokenFunc) API
 // every request, the same way the TUI does.
 func DefaultNewClient(token notion.TokenFunc) API { return notion.NewWithToken(token) }
 
+// NewTmuxFunc builds a tmux driver for reading live agent status. It is an
+// interface so tests can inject a fake.
+type NewTmuxFunc func() *agent.Tmux
+
+// DefaultNewTmux returns a Tmux that drives the real tmux binary on PATH.
+func DefaultNewTmux() *agent.Tmux { return agent.NewTmux() }
+
 // Env is everything a command needs from the process around it, held as fields
 // so a test can stand in for each edge.
 type Env struct {
@@ -54,6 +62,9 @@ type Env struct {
 	Save func(config.Config) error
 	// NewClient builds the Notion client a command talks through.
 	NewClient NewClientFunc
+	// NewTmux builds the tmux driver for reading live agent status. It is
+	// agent.NewTmux in production.
+	NewTmux NewTmuxFunc
 	// Out is where a command writes its output.
 	Out io.Writer
 	// In is where a command reads input a flag was not given for; it is stdin
@@ -89,6 +100,7 @@ usage:
   nat                 open the board
   nat setup [--json]  install the agent skills into ~/.claude/skills
   nat paths [--json]  print the paths to config, log dir and nudge marker file
+  nat status [--json] read live tmux sessions and agent activity
   nat info [--json] --project ID
                       print the project's conventions, milestones and slices
   nat next-slice [--json] --project ID
@@ -96,6 +108,8 @@ usage:
   nat start-slice <slice> [--json] --project ID
                       claim one named Todo slice, by URL or ID, and print its
                       brief
+  nat slice-show <slice> [--json] --project ID
+                      print one slice's full status and brief, no claim
   nat project-create <name> [--repo DIR] [--description TEXT|-] [--json]
                       create a project and its Slices database, register it in
                       local config and write the description as its page body;
@@ -173,12 +187,16 @@ func Run(ctx context.Context, args []string, env Env) error {
 	case "paths":
 		// Like setup, paths needs no Notion client or config file.
 		return paths(args[1:], env)
+	case "status":
+		return status(args[1:], env)
 	case "info":
 		return info(ctx, args[1:], env)
 	case "next-slice":
 		return nextSlice(ctx, args[1:], env)
 	case "start-slice":
 		return startSlice(ctx, args[1:], env)
+	case "slice-show":
+		return sliceShow(ctx, args[1:], env)
 	case "project-create":
 		return projectCreate(ctx, args[1:], env)
 	case "milestone-add":

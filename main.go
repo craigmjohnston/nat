@@ -102,6 +102,7 @@ func command(tokens config.TokenSource) error {
 		Load:      config.Load,
 		Save:      config.Save,
 		NewClient: newCLIClient,
+		NewTmux:   cli.DefaultNewTmux,
 		Out:       stdout,
 		In:        stdin,
 		Nudge:     nudge.Touch,
