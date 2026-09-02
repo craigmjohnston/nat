@@ -3,18 +3,55 @@ import NatKit
 
 @main
 struct NatApp: App {
+    @State private var appModel = AppModel()
+
     var body: some Scene {
         WindowGroup("nat") {
             // NAT_TERM_SESSION is a debug affordance only: it lets a session
             // name be smoke-tested against a real tmux session before the
             // Agent tab has anywhere of its own to launch one from. Anyone
-            // launching NatApp normally sees the placeholder ContentView.
+            // launching NatApp normally sees the full shell view.
             if let session = ProcessInfo.processInfo.environment["NAT_TERM_SESSION"] {
                 AgentTerminalDebugView(session: session)
             } else {
-                ContentView()
+                WindowShellView(appModel: appModel)
+                    .task { await Self.snapshotIfAsked(appModel) }
             }
         }
+    }
+
+    /// NAT_SNAPSHOT is the headless eye on the window: with it set to a file
+    /// path, the app waits for the first loads to land, renders the shell
+    /// offscreen at the mock's canvas size, writes the PNG there and exits.
+    /// It exists because screencapture needs a permission a build agent does
+    /// not have, and a screen nobody can look at is a screen nobody checks.
+    @MainActor
+    private static func snapshotIfAsked(_ appModel: AppModel) async {
+        guard let path = ProcessInfo.processInfo.environment["NAT_SNAPSHOT"] else { return }
+        for _ in 0..<30 {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard let state = appModel.projectStore?.state else { continue }
+            if state.projectInfo != nil || state.errorMessage != nil { break }
+        }
+        NSLog("nat snapshot: store state = %@",
+              String(describing: appModel.projectStore?.state).prefix(300) as CVarArg)
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        // The window's own drawn pixels, not an offscreen ImageRenderer pass:
+        // the renderer skips scrollable containers' content, and a snapshot
+        // that lies about the window is worse than none.
+        if let window = NSApp.windows.first(where: { $0.isVisible }),
+           let view = window.contentView {
+            window.setContentSize(NSSize(width: 1360, height: 840))
+            window.layoutIfNeeded()
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            if let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                view.cacheDisplay(in: view.bounds, to: rep)
+                if let png = rep.representation(using: .png, properties: [:]) {
+                    try? png.write(to: URL(fileURLWithPath: path))
+                }
+            }
+        }
+        exit(0)
     }
 }
 

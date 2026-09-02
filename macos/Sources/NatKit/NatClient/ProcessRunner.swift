@@ -30,22 +30,39 @@ public final class ProcessRunner: CommandRunning {
         process.standardError = stderrPipe
         process.standardInput = stdinPipe
 
-        try process.run()
+        // Both pipes are drained while the child runs, never after it: a pipe
+        // holds 64KB, and a child with more to say than that blocks writing
+        // it, so a parent that waited first would deadlock against exactly
+        // the outputs worth reading (`nat info --json` is one).
+        async let stdoutData = drain(stdoutPipe)
+        async let stderrData = drain(stderrPipe)
 
-        // Write stdin if provided
-        if let standardInput = standardInput {
-            stdinPipe.fileHandleForWriting.write(standardInput)
-            try stdinPipe.fileHandleForWriting.close()
-        } else {
-            try stdinPipe.fileHandleForWriting.close()
+        let exitCode: Int32 = try await withCheckedThrowingContinuation { continuation in
+            process.terminationHandler = { continuation.resume(returning: $0.terminationStatus) }
+            do {
+                try process.run()
+            } catch {
+                process.terminationHandler = nil
+                continuation.resume(throwing: error)
+                return
+            }
+            if let standardInput = standardInput {
+                stdinPipe.fileHandleForWriting.write(standardInput)
+            }
+            try? stdinPipe.fileHandleForWriting.close()
         }
 
-        process.waitUntilExit()
+        return (await stdoutData, await stderrData, exitCode)
+    }
 
-        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-
-        return (stdoutData, stderrData, process.terminationStatus)
+    /// drain reads a pipe to its end off the cooperative pool, so an async
+    /// caller neither blocks a pool thread nor races the child's writes.
+    private func drain(_ pipe: Pipe) async -> Data {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: pipe.fileHandleForReading.readDataToEndOfFile())
+            }
+        }
     }
 
     private func resolveExecutable(_ executable: String) throws -> String {
@@ -54,8 +71,10 @@ public final class ProcessRunner: CommandRunning {
             return executable
         }
 
-        // Check NAT_BIN environment variable
-        if let natBin = ProcessInfo.processInfo.environment["NAT_BIN"] {
+        // NAT_BIN overrides where `nat` itself is found — and only nat, since
+        // the override exists so a dev build outruns the installed binary,
+        // and it must not hijack every other tool this runner spawns.
+        if executable == "nat", let natBin = ProcessInfo.processInfo.environment["NAT_BIN"] {
             return natBin
         }
 

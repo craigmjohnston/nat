@@ -143,7 +143,7 @@ public struct NatPaths: Codable, Equatable {
 }
 
 /// The local configuration for nat: projects, agent settings, UI preferences.
-public struct NatProjectConfig: Codable, Equatable {
+public struct NatProjectConfig: Codable, Equatable, Sendable {
     public let projects: [String: ProjectConfig]
     public let agentSplitPercent: Int?
     public let pollSeconds: Int?
@@ -174,7 +174,7 @@ public struct NatProjectConfig: Codable, Equatable {
 }
 
 /// Configuration for a single tracked project.
-public struct ProjectConfig: Codable, Equatable {
+public struct ProjectConfig: Codable, Equatable, Sendable {
     public let name: String
     public let slicesDSID: String
     public let workingDir: String
@@ -193,7 +193,7 @@ public struct ProjectConfig: Codable, Equatable {
 }
 
 /// Configuration for an agent (model and effort level).
-public struct AgentModel: Codable, Equatable {
+public struct AgentModel: Codable, Equatable, Sendable {
     public let model: String?
     public let effort: String?
 
