@@ -12,6 +12,9 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case status
         case sliceShow
         case sliceDiff
+        case sliceLaunchSuccess
+        case sliceLaunchWithWarning
+        case sliceLaunchFailure
         case agentInterruptSuccess
         case agentInterruptNoSession
         case agentSendSuccess
@@ -62,6 +65,12 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return (fixtureSliceShow.data(using: .utf8)!, Data(), 0)
         case .sliceDiff:
             return (fixtureSliceDiff.data(using: .utf8)!, Data(), 0)
+        case .sliceLaunchSuccess:
+            return (fixtureSliceLaunchSuccess.data(using: .utf8)!, Data(), 0)
+        case .sliceLaunchWithWarning:
+            return (fixtureSliceLaunchWithWarning.data(using: .utf8)!, Data(), 0)
+        case .sliceLaunchFailure:
+            return (Data(), "slice is blocked by incomplete dependencies".data(using: .utf8)!, 1)
         case .agentInterruptSuccess:
             return ("success".data(using: .utf8)!, Data(), 0)
         case .agentInterruptNoSession:
@@ -213,6 +222,23 @@ let fixtureSliceShow = """
 let fixtureSliceApprove = """
 {
   "url": "https://github.test/craig/nat/pull/42"
+}
+"""
+
+let fixtureSliceLaunchSuccess = """
+{
+  "session": "nat-abc123def",
+  "workdir": "/path/to/worktree",
+  "branch": "slice/test-slice"
+}
+"""
+
+let fixtureSliceLaunchWithWarning = """
+{
+  "session": "nat-xyz789uvw",
+  "workdir": "/path/to/worktree",
+  "branch": "slice/test-slice",
+  "warning": "worktrunk not installed; using shared checkout instead"
 }
 """
 

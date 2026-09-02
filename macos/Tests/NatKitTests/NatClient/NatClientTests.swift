@@ -243,4 +243,46 @@ final class NatClientTests: XCTestCase {
             }
         }
     }
+
+    func testSliceLaunchSuccess() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceLaunchSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let result = try await client.sliceLaunch(projectID: "proj-123", sliceRef: "slice-1", model: "opus", effort: "high")
+
+        XCTAssertEqual(result.session, "nat-abc123def")
+        XCTAssertEqual(result.workdir, "/path/to/worktree")
+        XCTAssertEqual(result.branch, "slice/test-slice")
+        XCTAssertNil(result.warning)
+        XCTAssertEqual(fakeRunner.lastArguments, ["slice-launch", "--project", "proj-123", "--json", "--model", "opus", "--effort", "high", "slice-1"])
+    }
+
+    func testSliceLaunchWithWarning() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceLaunchWithWarning)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let result = try await client.sliceLaunch(projectID: "proj-123", sliceRef: "slice-1", model: nil, effort: nil)
+
+        XCTAssertEqual(result.session, "nat-xyz789uvw")
+        XCTAssertEqual(result.workdir, "/path/to/worktree")
+        XCTAssertEqual(result.branch, "slice/test-slice")
+        XCTAssertEqual(result.warning, "worktrunk not installed; using shared checkout instead")
+        XCTAssertEqual(fakeRunner.lastArguments, ["slice-launch", "--project", "proj-123", "--json", "slice-1"])
+    }
+
+    func testSliceLaunchFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceLaunchFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            _ = try await client.sliceLaunch(projectID: "proj-123", sliceRef: "slice-1", model: nil, effort: nil)
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "slice is blocked by incomplete dependencies")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
 }

@@ -4,9 +4,19 @@ import NatKit
 struct BriefTabView: View {
     @Bindable var appModel: AppModel
     let slice: Slice
+    var onTabChange: (WorkflowTab) -> Void = { _ in }
+
     @State private var sliceDetail: SliceDetail?
     @State private var isLoading = false
     @State private var error: String?
+
+    // Launch Agent UI state
+    @State private var showLaunchPopover = false
+    @State private var selectedModel: String = "Default"
+    @State private var selectedEffort: String = "Default"
+    @State private var isLaunching = false
+    @State private var launchError: String?
+    @State private var launchWarning: String?
 
     private func briefAttributedString(_ brief: String) -> AttributedString {
         do {
@@ -127,50 +137,92 @@ struct BriefTabView: View {
             Divider()
                 .frame(height: 0.5)
 
-            HStack(spacing: 8) {
-                Button(action: {}) {
-                    Text("Edit Brief…")
-                        .font(.system(size: 11, weight: .regular))
-                }
-                .buttonStyle(.borderless)
-                .disabled(true)
-
-                Spacer()
-
-                // Split Launch Agent button
-                HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
                     Button(action: {}) {
+                        Text("Edit Brief…")
+                            .font(.system(size: 11, weight: .regular))
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(true)
+
+                    Spacer()
+
+                    // Split Launch Agent button
+                    ZStack {
                         HStack(spacing: 0) {
-                            Text("Launch Agent")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(DesignTokens.accentText)
-                                .padding(.horizontal, 10)
-                                .frame(height: 22)
+                            Button(action: performLaunch) {
+                                if isLaunching {
+                                    ProgressView()
+                                        .scaleEffect(0.7, anchor: .center)
+                                        .frame(width: 22, height: 22)
+                                } else {
+                                    Text("Launch Agent")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(DesignTokens.accentText)
+                                        .padding(.horizontal, 10)
+                                }
+                            }
+                            .frame(height: 22)
+                            .buttonStyle(.plain)
+                            .disabled(!launchIsEnabled() || isLaunching)
+
+                            Divider()
+                                .frame(maxHeight: 22)
+                                .opacity(0.25)
+
+                            Button(action: { showLaunchPopover.toggle() }) {
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(DesignTokens.accentText)
+                                    .frame(width: 20, height: 22)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!launchIsEnabled())
                         }
                         .background(DesignTokens.accent)
+                        .cornerRadius(4)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(true)
-
-                    Divider()
-                        .frame(maxHeight: 22)
-                        .opacity(0.25)
-
-                    Button(action: {}) {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(DesignTokens.accentText)
-                            .frame(width: 20, height: 22)
+                    .popover(isPresented: $showLaunchPopover, arrowEdge: .bottom) {
+                        launchPopoverContent()
+                            .padding(10)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(true)
                 }
-                .background(DesignTokens.accent)
-                .cornerRadius(4)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(DesignTokens.controlBg)
+
+                // Error or warning message
+                if let error = launchError {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(DesignTokens.systemRed)
+                            .font(.system(size: 12))
+                        Text(error)
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(DesignTokens.systemRed)
+                            .lineLimit(2)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                } else if let warning = launchWarning {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(DesignTokens.systemYellow)
+                            .font(.system(size: 12))
+                        Text(warning)
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(DesignTokens.systemYellow)
+                            .lineLimit(2)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(DesignTokens.controlBg)
         }
         .background(DesignTokens.windowBg)
         .task {
@@ -180,10 +232,144 @@ struct BriefTabView: View {
             Task {
                 await loadDetail()
             }
+            resetLaunchState()
+        }
+        .task {
+            resetLaunchState()
         }
     }
 
     // MARK: - Helpers
+
+    private func launchIsEnabled() -> Bool {
+        if isLaunching { return false }
+        guard sliceDetail != nil else { return false }
+
+        let hasLiveAgent = appModel.selectedSliceID.flatMap { sliceID in
+            appModel.activityStore?.agents[sliceID] != nil
+        } ?? false
+
+        let plan = LaunchPlan(for: slice, hasLiveAgent: hasLiveAgent)
+        return plan.canLaunch
+    }
+
+    private func resetLaunchState() {
+        showLaunchPopover = false
+        launchError = nil
+        launchWarning = nil
+        isLaunching = false
+
+        // Prefill from config
+        if let agent = appModel.config?.sliceAgent {
+            selectedModel = agent.model ?? "Default"
+            selectedEffort = agent.effort ?? "Default"
+        } else {
+            selectedModel = "Default"
+            selectedEffort = "Default"
+        }
+    }
+
+    private func performLaunch() {
+        Task {
+            isLaunching = true
+            launchError = nil
+            launchWarning = nil
+
+            do {
+                guard let projectID = appModel.projectStore?.projectID else {
+                    launchError = "No project loaded"
+                    isLaunching = false
+                    return
+                }
+
+                // Build model and effort (nil if "Default")
+                let model = selectedModel == "Default" ? nil : selectedModel
+                let effort = selectedEffort == "Default" ? nil : selectedEffort
+
+                let result = try await NatClient().sliceLaunch(
+                    projectID: projectID,
+                    sliceRef: slice.id,
+                    model: model,
+                    effort: effort
+                )
+
+                // Store warning if present
+                if let warning = result.warning {
+                    launchWarning = warning
+                }
+
+                // Refresh the project to pick up the new agent
+                await appModel.refresh()
+
+                // Switch to Agent tab
+                withAnimation {
+                    onTabChange(.agent)
+                }
+
+                // Close the popover
+                showLaunchPopover = false
+            } catch let error as NatError {
+                if case .commandFailed(let message) = error {
+                    launchError = message
+                } else {
+                    launchError = error.localizedDescription
+                }
+            } catch {
+                launchError = error.localizedDescription
+            }
+
+            isLaunching = false
+        }
+    }
+
+    @ViewBuilder
+    private func launchPopoverContent() -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Model selector
+            HStack(spacing: 8) {
+                Text("Model")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: 50, alignment: .leading)
+
+                Picker("Model", selection: $selectedModel) {
+                    Text("Default").tag("Default")
+                    Text("sonnet").tag("sonnet")
+                    Text("opus").tag("opus")
+                    Text("haiku").tag("haiku")
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+
+            Divider()
+                .padding(.vertical, 4)
+
+            // Effort selector
+            HStack(spacing: 8) {
+                Text("Effort")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: 50, alignment: .leading)
+
+                Picker("Effort", selection: $selectedEffort) {
+                    Text("Default").tag("Default")
+                    Text("low").tag("low")
+                    Text("med").tag("med")
+                    Text("high").tag("high")
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: .infinity)
+            }
+
+            Divider()
+                .padding(.vertical, 4)
+
+            // Footnote
+            Text("Runs detached in tmux — closing nat won't stop it.")
+                .font(.system(size: 10, weight: .regular))
+                .foregroundStyle(DesignTokens.labelTertiary)
+        }
+        .frame(width: 280)
+    }
 
     private func loadDetail() async {
         isLoading = true

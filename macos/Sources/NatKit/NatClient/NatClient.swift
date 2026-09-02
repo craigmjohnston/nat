@@ -106,6 +106,28 @@ public final class NatClient: Sendable {
         )
     }
 
+    /// Launch an agent on a slice in a tmux session.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sliceRef: The slice's URL or Notion page ID
+    ///   - model: Optional model name (e.g., "sonnet", "opus", "haiku")
+    ///   - effort: Optional effort level (e.g., "low", "medium", "high")
+    /// - Returns: LaunchResult with session info and optional warning
+    /// - Throws: NatError if the command fails
+    public func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult {
+        var arguments = ["slice-launch", "--project", projectID, "--json"]
+        if let model = model {
+            arguments.append(contentsOf: ["--model", model])
+        }
+        if let effort = effort {
+            arguments.append(contentsOf: ["--effort", effort])
+        }
+        arguments.append(sliceRef)
+        let output = try await runNat(arguments: arguments)
+        return try decodeJSON(LaunchResult.self, from: output)
+    }
+
     /// Open a pull request for a handed-back slice's branch and record it on
     /// the slice, mirroring the board's own approve key
     /// (`internal/tui/approve.go`).

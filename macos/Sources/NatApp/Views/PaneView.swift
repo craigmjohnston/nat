@@ -60,7 +60,11 @@ struct PaneView: View {
                 // Content area
                 switch currentTab {
                 case .brief:
-                    BriefTabView(appModel: appModel, slice: slice)
+                    BriefTabView(appModel: appModel, slice: slice, onTabChange: { tab in
+                        withAnimation {
+                            currentTab = tab
+                        }
+                    })
                 case .agent:
                     AgentTabView(appModel: appModel, slice: slice)
                 case .diff:

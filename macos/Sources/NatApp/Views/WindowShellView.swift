@@ -12,27 +12,13 @@ struct WindowShellView: View {
             VStack(spacing: 0) {
                 // Header
                 VStack(spacing: 0) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 0) {
                         // Traffic lights - left-aligned (handled by system)
                         Spacer()
                             .frame(maxWidth: .infinity, alignment: .leading)
 
-                        // Project tab (placeholder for single project)
-                        if let config = appModel.config,
-                           let projectName = config.projects
-                            .sorted(by: { $0.key < $1.key })
-                            .first?.value.name {
-                            Text(projectName)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(DesignTokens.label)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(DesignTokens.controlBg)
-                                .cornerRadius(8)
-                        }
-
-                        Spacer()
-                            .frame(maxWidth: .infinity, alignment: .trailing)
+                        // Project tabs
+                        ProjectTabsView(appModel: appModel)
 
                         // Right-side toolbar
                         HStack(spacing: 12) {
@@ -54,9 +40,8 @@ struct WindowShellView: View {
                                 .foregroundStyle(DesignTokens.labelTertiary)
                                 .opacity(0.5)
                         }
+                        .padding(.horizontal, 16)
                     }
-                    .frame(height: 40)
-                    .padding(.horizontal, 16)
                     .background(
                         Color(hex: "1e1e23").opacity(0.85)
                             .blur(radius: 8)

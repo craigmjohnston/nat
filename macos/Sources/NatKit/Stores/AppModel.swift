@@ -24,14 +24,20 @@ public final class AppModel {
     /// The current configuration.
     public private(set) var config: NatProjectConfig?
 
-    /// The active project's store.
-    public private(set) var projectStore: ProjectStore?
+    /// Ordered list of project tabs: (id, name).
+    public private(set) var projectTabs: [(id: String, name: String)] = []
 
-    /// Live agent activity.
+    /// The ID of the currently active project.
+    public private(set) var activeProjectID: String?
+
+    /// Live agent activity (app-wide, spans all projects).
     public private(set) var activityStore: ActivityStore?
 
-    /// The currently selected slice ID.
-    public var selectedSliceID: String?
+    /// Per-project selected slice IDs.
+    private var selectedSliceIDs: [String: String?] = [:]
+
+    /// Project stores keyed by project ID (lazily created).
+    private var stores: [String: ProjectStore] = [:]
 
     private let configReader: ConfigReaderProtocol
     private let pollInterval: UInt64 // in seconds
@@ -74,27 +80,89 @@ public final class AppModel {
             let loadedConfig = try await configReader.readConfig(from: configPath)
             self.config = loadedConfig
 
-            // Pick the first project
-            if let firstProject = loadedConfig.projects.sorted(by: { $0.key < $1.key }).first {
-                let projectID = firstProject.key
-                let projectStore = ProjectStore(projectID: projectID)
-                self.projectStore = projectStore
+            // Build project tabs from config, sorted by project name
+            let sortedProjects = loadedConfig.projects.sorted { $0.key < $1.key }
+            self.projectTabs = sortedProjects.map { (id: $0.key, name: $0.value.name) }
 
-                // Create activity store
-                let activityStore = ActivityStore()
-                self.activityStore = activityStore
+            // Create activity store (app-wide)
+            let activityStore = ActivityStore()
+            self.activityStore = activityStore
 
-                // Load the project
-                await projectStore.load()
-                activityStore.kick()
-
-                startNudgeWatcher(for: projectStore, nudgePath: nudgePath)
-                startPolling(for: projectStore, seconds: pollSeconds(loadedConfig))
+            // Activate the first project (if any)
+            if let firstProjectID = sortedProjects.first?.key {
+                await activateProject(firstProjectID, nudgePath: nudgePath, config: loadedConfig)
             }
         } catch {
             // Log error, but don't crash
             NSLog("Failed to load config: %@", error.localizedDescription)
         }
+    }
+
+    /// Activate a project by ID, creating and loading its store lazily.
+    public func activateProject(_ projectID: String, nudgePath: String, config: NatProjectConfig) async {
+        activeProjectID = projectID
+
+        // Create or retrieve the project store
+        if stores[projectID] == nil {
+            stores[projectID] = ProjectStore(projectID: projectID)
+        }
+
+        guard let projectStore = stores[projectID] else { return }
+
+        // Load the project store
+        await projectStore.load()
+
+        // Re-arm activity polling
+        activityStore?.kick()
+
+        // (Re)start nudge watcher and polling
+        startNudgeWatcher(for: projectStore, nudgePath: nudgePath)
+        startPolling(for: projectStore, seconds: pollSeconds(config))
+    }
+
+    /// Activate a project by ID (public convenience).
+    public func activateProject(_ projectID: String) async {
+        guard let config = config else { return }
+
+        var nudgePath = NSHomeDirectory() + "/Library/Logs/notion-agent-tracker/nudge"
+        if let paths = try? await pathsProvider() {
+            nudgePath = paths.nudge
+        }
+
+        await activateProject(projectID, nudgePath: nudgePath, config: config)
+    }
+
+    /// The active project's store (computed property for backward compatibility).
+    public var projectStore: ProjectStore? {
+        guard let activeID = activeProjectID else { return nil }
+        return stores[activeID]
+    }
+
+    /// The currently selected slice ID (per-project).
+    public var selectedSliceID: String? {
+        get {
+            guard let activeID = activeProjectID else { return nil }
+            return selectedSliceIDs[activeID] ?? nil
+        }
+        set {
+            guard let activeID = activeProjectID else { return }
+            selectedSliceIDs[activeID] = newValue
+        }
+    }
+
+    /// Return the count of live agents in a given project.
+    public func liveCount(projectID: String) -> Int {
+        guard let projectStore = stores[projectID] else { return 0 }
+        guard let projectInfo = projectStore.state.projectInfo else { return 0 }
+
+        let sliceIDs = Set(projectInfo.slices.map { $0.id })
+        var count = 0
+        for (sliceID, _) in activityStore?.agents ?? [:] {
+            if sliceIDs.contains(sliceID) {
+                count += 1
+            }
+        }
+        return count
     }
 
     /// Manually refresh the current project.

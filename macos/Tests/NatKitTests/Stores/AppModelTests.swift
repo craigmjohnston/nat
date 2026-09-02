@@ -118,4 +118,122 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertNil(appModel.projectStore)
     }
+
+    // MARK: - Multi-Project Tests
+
+    @MainActor
+    func testAppModel_multipleProjects() async {
+        let testConfig = NatProjectConfig(
+            projects: [
+                "proj-z": ProjectConfig(name: "Z Project", slicesDSID: "ds-z", workingDir: "/path/z"),
+                "proj-a": ProjectConfig(name: "A Project", slicesDSID: "ds-a", workingDir: "/path/a"),
+                "proj-m": ProjectConfig(name: "M Project", slicesDSID: "ds-m", workingDir: "/path/m")
+            ]
+        )
+
+        let mockReader = MockConfigReader(response: .success(testConfig))
+        let appModel = AppModel(configReader: mockReader)
+
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+
+        // Should create tabs sorted by project ID
+        XCTAssertEqual(appModel.projectTabs.count, 3)
+        XCTAssertEqual(appModel.projectTabs[0].id, "proj-a")
+        XCTAssertEqual(appModel.projectTabs[0].name, "A Project")
+        XCTAssertEqual(appModel.projectTabs[1].id, "proj-m")
+        XCTAssertEqual(appModel.projectTabs[2].id, "proj-z")
+    }
+
+    @MainActor
+    func testAppModel_activatesFirstProject() async {
+        let testConfig = NatProjectConfig(
+            projects: [
+                "proj-z": ProjectConfig(name: "Z Project", slicesDSID: "ds-z", workingDir: "/path/z"),
+                "proj-a": ProjectConfig(name: "A Project", slicesDSID: "ds-a", workingDir: "/path/a")
+            ]
+        )
+
+        let mockReader = MockConfigReader(response: .success(testConfig))
+        let appModel = AppModel(configReader: mockReader)
+
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+
+        // Should activate the first project alphabetically
+        XCTAssertEqual(appModel.activeProjectID, "proj-a")
+        XCTAssertNotNil(appModel.projectStore)
+        XCTAssertEqual(appModel.projectStore?.projectID, "proj-a")
+    }
+
+    @MainActor
+    func testAppModel_perProjectSelectedSliceID() async {
+        let testConfig = NatProjectConfig(
+            projects: [
+                "proj-a": ProjectConfig(name: "A Project", slicesDSID: "ds-a", workingDir: "/path/a"),
+                "proj-b": ProjectConfig(name: "B Project", slicesDSID: "ds-b", workingDir: "/path/b")
+            ]
+        )
+
+        let mockReader = MockConfigReader(response: .success(testConfig))
+        let appModel = AppModel(configReader: mockReader)
+
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+
+        // Set a selected slice for the active project
+        appModel.selectedSliceID = "slice-1"
+        XCTAssertEqual(appModel.selectedSliceID, "slice-1")
+
+        // Switch to another project
+        await appModel.activateProject("proj-b")
+        XCTAssertEqual(appModel.activeProjectID, "proj-b")
+        // Selected slice should be nil for the new project
+        XCTAssertNil(appModel.selectedSliceID)
+
+        // Switch back to the first project
+        await appModel.activateProject("proj-a")
+        XCTAssertEqual(appModel.activeProjectID, "proj-a")
+        // Should restore the previously selected slice
+        XCTAssertEqual(appModel.selectedSliceID, "slice-1")
+    }
+
+    @MainActor
+    func testAppModel_liveCountCalculation() async {
+        let testConfig = NatProjectConfig(
+            projects: [
+                "proj-a": ProjectConfig(name: "A Project", slicesDSID: "ds-a", workingDir: "/path/a")
+            ]
+        )
+
+        let mockReader = MockConfigReader(response: .success(testConfig))
+        let appModel = AppModel(configReader: mockReader)
+
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+
+        // LiveCount should be 0 when no agents are running
+        XCTAssertEqual(appModel.liveCount(projectID: "proj-a"), 0)
+    }
+
+    @MainActor
+    func testAppModel_lazyLoadingOfProjectStores() async {
+        let testConfig = NatProjectConfig(
+            projects: [
+                "proj-a": ProjectConfig(name: "A Project", slicesDSID: "ds-a", workingDir: "/path/a"),
+                "proj-b": ProjectConfig(name: "B Project", slicesDSID: "ds-b", workingDir: "/path/b")
+            ]
+        )
+
+        let mockReader = MockConfigReader(response: .success(testConfig))
+        let appModel = AppModel(configReader: mockReader)
+
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+
+        // proj-a should be loaded (active)
+        XCTAssertNotNil(appModel.projectStore)
+        XCTAssertEqual(appModel.projectStore?.projectID, "proj-a")
+
+        // Activate proj-b
+        await appModel.activateProject("proj-b")
+
+        // Now proj-b should be loaded
+        XCTAssertEqual(appModel.projectStore?.projectID, "proj-b")
+    }
 }
