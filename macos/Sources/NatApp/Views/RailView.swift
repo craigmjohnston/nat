@@ -32,6 +32,54 @@ struct RailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                // The load's own states come first: a board that swallowed
+                // its failure would read as an empty tracker, which is worse
+                // than any error. A first load spins, a failed first load
+                // says what nat said and offers the retry, and a failed
+                // refresh keeps the stale plan under one quiet warning line
+                // (the TUI convention: a failure leaves the board as it was).
+                if let state = appModel.projectStore?.state {
+                    if state.isLoading && state.projectInfo == nil {
+                        VStack(spacing: 10) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Loading the plan…")
+                                .font(.system(size: 11))
+                                .foregroundStyle(DesignTokens.labelTertiary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 60)
+                    } else if let message = state.errorMessage, state.projectInfo == nil {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Label("The plan could not be loaded", systemImage: "exclamationmark.triangle")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(DesignTokens.systemYellow)
+                            Text(message)
+                                .font(.system(size: 11))
+                                .foregroundStyle(DesignTokens.labelSecondary)
+                                .textSelection(.enabled)
+                            Button("Try Again") {
+                                Task { await appModel.refresh() }
+                            }
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(DesignTokens.controlBg)
+                        .cornerRadius(8)
+                    } else if let message = state.errorMessage {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 10))
+                            Text("Refresh failed — showing the last plan")
+                                .font(.system(size: 10))
+                        }
+                        .foregroundStyle(DesignTokens.systemYellow)
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 6)
+                        .help(message)
+                    }
+                }
+
                 // NEEDS REVIEW section
                 if !railModel.needsReview.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
@@ -78,10 +126,15 @@ struct RailView: View {
                     .padding(.bottom, 10)
                 }
 
-                Divider()
-                    .frame(height: 0.5)
-                    .foregroundStyle(DesignTokens.separator)
-                    .padding(.vertical, 10)
+                // The rule under the flight sections exists only where they
+                // do — an empty board opening with a bare line would read as
+                // chrome missing its content.
+                if !railModel.needsReview.isEmpty || !railModel.active.isEmpty {
+                    Divider()
+                        .frame(height: 0.5)
+                        .foregroundStyle(DesignTokens.separator)
+                        .padding(.vertical, 10)
+                }
 
                 // Done summary
                 if let summary = railModel.doneSummary {
