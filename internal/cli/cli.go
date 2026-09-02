@@ -53,13 +53,25 @@ type NewTmuxFunc func() *agent.Tmux
 // DefaultNewTmux returns a Tmux that drives the real tmux binary on PATH.
 func DefaultNewTmux() *agent.Tmux { return agent.NewTmux() }
 
-// NewGHFunc builds the GitHub CLI driver slice-approve opens a pull request
-// through. It answers [actions.PRCreator] rather than gh.CLI itself, so a test
-// can stand in for it without a real gh on PATH.
-type NewGHFunc func() actions.PRCreator
+// GH is everything the pull request commands need of the GitHub CLI:
+// [actions.PRCreator] for slice-approve, [PRViewer] for pr-view, [PRMerger]
+// for pr-merge and [PRReader] for pr-status. One gh.CLI answers all four, and
+// a headless command names whichever of them it actually calls, the way
+// [GitCLI] combines git's two seams for the same reason.
+type GH interface {
+	actions.PRCreator
+	PRViewer
+	PRMerger
+	PRReader
+}
+
+// NewGHFunc builds the GitHub CLI driver the pull request commands run
+// through. It answers [GH] rather than gh.CLI itself, so a test can stand in
+// for it without a real gh on PATH.
+type NewGHFunc func() GH
 
 // DefaultNewGH returns a gh.CLI that drives the real gh binary on PATH.
-func DefaultNewGH() actions.PRCreator { return gh.New() }
+func DefaultNewGH() GH { return gh.New() }
 
 // GitCLI is what a headless command needs of git: the remote's news and
 // default branch, for placing a launch's worktree, and the diff of a branch
@@ -204,6 +216,28 @@ usage:
                       hand a slice you claimed back to the plan: Todo and
                       unassigned, its brief and any branch left as they are, for
                       when the session working it ended without finishing it
+  nat pr-view <slice> [--json] --project ID
+                      print one pull request in full: its description, checks,
+                      reviews and comments, read through gh in the slice's repo
+  nat pr-merge <slice> [--json] --project ID
+                      merge a slice's pull request through gh, refused in the
+                      merge box's own words when a review, a check or the
+                      branch itself says it should not go in yet
+  nat pr-status [--json] --project ID
+                      read every slice with a pull request still worth
+                      watching and print how close each is to landing
+  nat workshop-launch [--model M] [--effort E] [--json] --project ID
+                      launch a planning agent detached in tmux on the
+                      project's working dir, on its pending wishlist when it
+                      has one and a plain session otherwise
+  nat config-show [--json]
+                      print local config: the agent split, the poll interval,
+                      the two model pairs and each project's working directory
+  nat config-set <key> <value>
+                      set one local config key: agent_split_percent,
+                      poll_seconds, workshop_agent.model, workshop_agent.effort,
+                      slice_agent.model, slice_agent.effort, or
+                      project.<id>.working_dir; an empty value unsets it
   nat help            show this message
 `
 
@@ -279,6 +313,18 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return completeSlice(ctx, args[1:], env)
 	case "release-slice":
 		return releaseSlice(ctx, args[1:], env)
+	case "pr-view":
+		return prView(ctx, args[1:], env)
+	case "pr-merge":
+		return prMerge(ctx, args[1:], env)
+	case "pr-status":
+		return prStatus(ctx, args[1:], env)
+	case "workshop-launch":
+		return workshopLaunch(ctx, args[1:], env)
+	case "config-show":
+		return configShow(args[1:], env)
+	case "config-set":
+		return configSet(args[1:], env)
 	case "help", "-h", "--help":
 		_, err := io.WriteString(env.Out, Usage)
 		return err

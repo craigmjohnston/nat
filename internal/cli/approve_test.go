@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
@@ -31,7 +30,7 @@ func TestSliceApproveRefusesNotHandedBack(t *testing.T) {
 		},
 	}
 	env, _ := testEnv(testClaimConfig(), api)
-	env.NewGH = func() actions.PRCreator { return gh.NewWithRunner(&fakeGHRunner{}) }
+	env.NewGH = func() GH { return gh.NewWithRunner(&fakeGHRunner{}) }
 	var out strings.Builder
 	env.Out = &out
 
@@ -74,7 +73,7 @@ func TestSliceApproveOpensAndRecordsPR(t *testing.T) {
 		},
 	}
 	env, _ := testEnv(testClaimConfig(), api)
-	env.NewGH = func() actions.PRCreator {
+	env.NewGH = func() GH {
 		return gh.NewWithRunner(&fakeGHRunner{out: "https://github.test/craig/nat/pull/42\n"})
 	}
 	var out strings.Builder
@@ -107,7 +106,7 @@ func TestSliceApproveGHFailure(t *testing.T) {
 		},
 	}
 	env, _ := testEnv(testClaimConfig(), api)
-	env.NewGH = func() actions.PRCreator {
+	env.NewGH = func() GH {
 		return gh.NewWithRunner(&fakeGHRunner{
 			err: &gh.ExitError{Code: 1, Stderr: "already exists"},
 		})
@@ -137,7 +136,7 @@ func TestSliceApproveReportsAFailedRecord(t *testing.T) {
 		updateErr: errors.New("notion is down"),
 	}
 	env, _ := testEnv(testClaimConfig(), api)
-	env.NewGH = func() actions.PRCreator {
+	env.NewGH = func() GH {
 		return gh.NewWithRunner(&fakeGHRunner{out: "https://github.test/craig/nat/pull/42\n"})
 	}
 	var out strings.Builder
@@ -219,7 +218,7 @@ func TestSliceApproveJSON(t *testing.T) {
 		},
 	}
 	env, _ := testEnv(testClaimConfig(), api)
-	env.NewGH = func() actions.PRCreator {
+	env.NewGH = func() GH {
 		return gh.NewWithRunner(&fakeGHRunner{out: "https://github.test/craig/nat/pull/42\n"})
 	}
 	var out strings.Builder
