@@ -84,6 +84,16 @@ type diffFile struct {
 	Dels      int      `json:"dels"`
 	Described bool     `json:"described"`
 	Lines     []string `json:"lines"`
+	// Language is chroma's own name for the lexer matched to the file's
+	// path, omitted where none matched — the same fallback rule
+	// diffsyntax.go draws by: a file with no language is drawn exactly as
+	// the viewer always drew one, and so gets no Tokens either.
+	Language string `json:"language,omitempty"`
+	// Tokens is one entry per line of Lines, each the runs — [kind,
+	// length] pairs — that line's content takes after its own +/-/space
+	// prefix. Present only alongside a Language: a file with none is left
+	// wholly to the reader's own fallback colouring.
+	Tokens [][]tokenRun `json:"tokens,omitempty"`
 }
 
 // writeDiffJSON encodes the diff result with parsed files.
@@ -91,6 +101,7 @@ func writeDiffJSON(out io.Writer, base, branch, diff string) error {
 	files := git.ParseFiles(diff)
 	docFiles := make([]diffFile, len(files))
 	for i, f := range files {
+		lex := lexerFor(f)
 		docFiles[i] = diffFile{
 			Path:      f.Path,
 			OldPath:   f.OldPath,
@@ -98,6 +109,14 @@ func writeDiffJSON(out io.Writer, base, branch, diff string) error {
 			Dels:      f.Removed,
 			Described: f.Binary,
 			Lines:     f.Lines,
+			Language:  languageOf(lex),
+		}
+		if lex != nil {
+			tokens := make([][]tokenRun, len(f.Lines))
+			for j, line := range f.Lines {
+				tokens[j] = lineTokens(lex, line)
+			}
+			docFiles[i].Tokens = tokens
 		}
 	}
 

@@ -166,6 +166,93 @@ func TestSliceDiffJSON(t *testing.T) {
 	if len(got.Files) != 1 || got.Files[0].Path != "main.go" || got.Files[0].Adds != 1 || got.Files[0].Dels != 1 {
 		t.Errorf("files = %+v, want main.go with one line added and removed", got.Files)
 	}
+	if got.Files[0].Language != "Go" {
+		t.Errorf("language = %q, want the lexer chroma matched main.go to", got.Files[0].Language)
+	}
+	// One tokens entry per line, in the same order as Lines: no runs at all
+	// for the header/meta/hunk lines, and the one run "old"/"new" lex to on
+	// their own line.
+	wantTokens := [][]tokenRun{
+		{}, {}, {}, {}, {},
+		{{Kind: kindText, Length: 3}},
+		{{Kind: kindText, Length: 3}},
+	}
+	if len(got.Files[0].Tokens) != len(wantTokens) {
+		t.Fatalf("tokens = %+v, want %d entries (one per line)", got.Files[0].Tokens, len(wantTokens))
+	}
+	for i := range wantTokens {
+		assertRuns(t, got.Files[0].Tokens[i], wantTokens[i])
+	}
+}
+
+// TestSliceDiffJSONOmitsTokensWithoutALanguage covers the file-level fallback
+// on the wire: a path chroma knows no language for gets neither a "language"
+// nor a "tokens" key at all, which is what tells the reader to fall all the
+// way back to its own unhighlighted colouring — the same rule diffsyntax.go
+// draws by.
+func TestSliceDiffJSONOmitsTokensWithoutALanguage(t *testing.T) {
+	const unmatchedDiff = "diff --git a/notes.xyzzy b/notes.xyzzy\n" +
+		"index 1111111..2222222 100644\n--- a/notes.xyzzy\n+++ b/notes.xyzzy\n" +
+		"@@ -1,1 +1,1 @@\n-old\n+new\n"
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/notes")},
+		},
+	}
+	env, _ := testEnv(testClaimConfig(), api)
+	env.NewGit = func() GitCLI { return git.NewWithRunner(&fakeGitRunner{diffOut: unmatchedDiff}) }
+	var out strings.Builder
+	env.Out = &out
+
+	err := Run(context.Background(), []string{
+		"slice-diff", testSliceID, "--json", "--project", "project-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("slice-diff: unexpected error: %v", err)
+	}
+	if strings.Contains(out.String(), `"language"`) {
+		t.Errorf("output names a language for an unmatched path:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), `"tokens"`) {
+		t.Errorf("output carries tokens for a file with no matched language:\n%s", out.String())
+	}
+}
+
+// TestSliceDiffJSONOmitsTokensForADescribedFile covers the other file-level
+// fallback: a file git described rather than diffed has no content to lex at
+// all, whatever chroma would have matched its path to.
+func TestSliceDiffJSONOmitsTokensForADescribedFile(t *testing.T) {
+	const binaryDiff = "diff --git a/docs/shot.png b/docs/shot.png\n" +
+		"index 3333333..4444444 100644\nBinary files a/docs/shot.png and b/docs/shot.png differ\n"
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/shot")},
+		},
+	}
+	env, _ := testEnv(testClaimConfig(), api)
+	env.NewGit = func() GitCLI { return git.NewWithRunner(&fakeGitRunner{diffOut: binaryDiff}) }
+	var out strings.Builder
+	env.Out = &out
+
+	err := Run(context.Background(), []string{
+		"slice-diff", testSliceID, "--json", "--project", "project-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("slice-diff: unexpected error: %v", err)
+	}
+	var got diffJSON
+	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
+	}
+	if len(got.Files) != 1 || !got.Files[0].Described {
+		t.Fatalf("files = %+v, want one described file", got.Files)
+	}
+	if got.Files[0].Language != "" {
+		t.Errorf("language = %q, want empty for a described file", got.Files[0].Language)
+	}
+	if got.Files[0].Tokens != nil {
+		t.Errorf("tokens = %+v, want omitted for a described file", got.Files[0].Tokens)
+	}
 }
 
 func TestSliceDiffRefusesWrongArgumentCount(t *testing.T) {
