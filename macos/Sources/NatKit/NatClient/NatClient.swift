@@ -18,6 +18,12 @@ private struct MergedEnvelope: Codable {
     let merged: Bool
 }
 
+/// Envelope for `slice-add --json`'s output: the created slice, wrapped the
+/// same way `add.go`'s `sliceAddedJSON` wraps it.
+private struct SliceAddedEnvelope: Codable {
+    let slice: SliceAddResult
+}
+
 /// A typed client for running nat commands and decoding their JSON output.
 public final class NatClient: Sendable {
     private nonisolated let commandRunner: CommandRunning
@@ -198,6 +204,82 @@ public final class NatClient: Sendable {
             arguments: ["pr-comment", sliceRef, "--project", projectID, "--body", "-"],
             standardInput: body.data(using: .utf8)
         )
+    }
+
+    /// Launch the planning agent, detached in tmux, on the active project —
+    /// the wand toolbar button's own action, mirroring the board's `W`
+    /// (`internal/cli/workshoplaunch.go`). The model and effort are the
+    /// caller's own to pass or leave nil; nothing here defaults them, since a
+    /// planning launch that asks nothing takes the config's `workshop_agent`
+    /// pair exactly as it stands.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - model: Optional model name, overriding the config's workshop_agent
+    ///   - effort: Optional effort level, overriding the config's workshop_agent
+    /// - Returns: The launched session, its working directory, and whether it
+    ///   was launched on the project's pending wishlist
+    /// - Throws: NatError if a planning agent is already live, or the command fails
+    public func workshopLaunch(projectID: String, model: String?, effort: String?) async throws -> WorkshopLaunchResult {
+        var arguments = ["workshop-launch", "--project", projectID, "--json"]
+        if let model = model, !model.isEmpty {
+            arguments.append(contentsOf: ["--model", model])
+        }
+        if let effort = effort, !effort.isEmpty {
+            arguments.append(contentsOf: ["--effort", effort])
+        }
+        let output = try await runNat(arguments: arguments)
+        return try decodeJSON(WorkshopLaunchResult.self, from: output)
+    }
+
+    /// File one new slice under a milestone, Todo and unassigned — the plus
+    /// toolbar button's own action, mirroring `internal/cli/add.go`'s
+    /// `sliceAdd`.
+    ///
+    /// The description goes over stdin (`--description -`) when given,
+    /// exactly as `agentSend`'s prompt and `prComment`'s body do: a brief may
+    /// run to several lines. A nil or empty description omits the flag
+    /// entirely, which is how `slice-add` itself spells "no brief".
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - title: The new slice's title
+    ///   - milestone: The milestone to file it under, by name
+    ///   - description: Optional brief to write on the slice page
+    /// - Returns: SliceAddResult with the created slice's fields
+    /// - Throws: NatError if the command fails (no such milestone, empty title, etc.)
+    public func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult {
+        var arguments = ["slice-add", title, "--project", projectID, "--milestone", milestone, "--json"]
+        var standardInput: Data?
+        if let description = description, !description.isEmpty {
+            arguments.append(contentsOf: ["--description", "-"])
+            standardInput = description.data(using: .utf8)
+        }
+        let output = try await runNat(arguments: arguments, standardInput: standardInput)
+        return try decodeJSON(SliceAddedEnvelope.self, from: output).slice
+    }
+
+    /// Read local configuration: the fields the settings scene edits and
+    /// nothing else, mirroring `internal/cli/configshow.go`.
+    ///
+    /// - Returns: ConfigDoc with the raw stored values — zero and empty mean unset
+    /// - Throws: NatError if the command fails (no configuration yet, etc.)
+    public func configShow() async throws -> ConfigDoc {
+        let output = try await runNat(arguments: ["config-show", "--json"])
+        return try decodeJSON(ConfigDoc.self, from: output)
+    }
+
+    /// Write one local config key, mirroring `internal/cli/configset.go`. An
+    /// empty value is how a field is unset, matching the settings scene's own
+    /// rule that a field cleared back to empty is "unset" rather than a value
+    /// to keep.
+    ///
+    /// - Parameters:
+    ///   - key: The config key, e.g. "agent_split_percent" or "project.<id>.working_dir"
+    ///   - value: The value to write, or "" to unset
+    /// - Throws: NatError if the key is unknown or the value is out of bounds
+    public func configSet(key: String, value: String) async throws {
+        _ = try await runNat(arguments: ["config-set", key, value])
     }
 
     // MARK: - Private Helpers

@@ -124,7 +124,7 @@ struct AgentTabView: View {
     }
 
     private func sessionStillExists() -> Bool {
-        guard let agent = liveAgent else { return false }
+        guard liveAgent != nil else { return false }
         // In a real implementation, we'd check with tmux; for now assume if it's
         // in the ActivityStore map, it still exists (the store will remove it within 2s)
         return true

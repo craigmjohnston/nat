@@ -397,4 +397,138 @@ final class NatClientTests: XCTestCase {
             }
         }
     }
+
+    func testWorkshopLaunchSuccess() async throws {
+        let fakeRunner = FakeRunner(fixture: .workshopLaunchSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let result = try await client.workshopLaunch(projectID: "proj-123", model: "opus", effort: "high")
+
+        XCTAssertEqual(result.session, "nat-plan")
+        XCTAssertEqual(result.workdir, "/path/to/repo")
+        XCTAssertTrue(result.wishlist)
+        XCTAssertEqual(
+            fakeRunner.lastArguments,
+            ["workshop-launch", "--project", "proj-123", "--json", "--model", "opus", "--effort", "high"]
+        )
+    }
+
+    func testWorkshopLaunchWithNoOverrideOmitsFlags() async throws {
+        let fakeRunner = FakeRunner(fixture: .workshopLaunchSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        _ = try await client.workshopLaunch(projectID: "proj-123", model: nil, effort: nil)
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["workshop-launch", "--project", "proj-123", "--json"])
+    }
+
+    func testWorkshopLaunchAlreadyLiveFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .workshopLaunchAlreadyLive)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            _ = try await client.workshopLaunch(projectID: "proj-123", model: nil, effort: nil)
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "a planning agent is already live: nat-plan")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
+
+    func testSliceAddPostsDescriptionOverStdin() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceAddSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let result = try await client.sliceAdd(
+            projectID: "proj-123",
+            title: "Add the settings scene",
+            milestone: "Phase 1",
+            description: "Wire up config-show and config-set."
+        )
+
+        XCTAssertEqual(result.id, "slice-new")
+        XCTAssertEqual(result.name, "Add the settings scene")
+        XCTAssertEqual(result.status, "Todo")
+        XCTAssertEqual(result.milestoneName, "Phase 1")
+        XCTAssertEqual(result.repo, "/path/to/repo")
+        XCTAssertEqual(
+            fakeRunner.lastArguments,
+            ["slice-add", "Add the settings scene", "--project", "proj-123", "--milestone", "Phase 1", "--json", "--description", "-"]
+        )
+        XCTAssertEqual(fakeRunner.lastStandardInput, "Wire up config-show and config-set.".data(using: .utf8))
+    }
+
+    func testSliceAddWithoutDescriptionOmitsTheFlag() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceAddSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        _ = try await client.sliceAdd(projectID: "proj-123", title: "Add the settings scene", milestone: "Phase 1", description: nil)
+
+        XCTAssertEqual(
+            fakeRunner.lastArguments,
+            ["slice-add", "Add the settings scene", "--project", "proj-123", "--milestone", "Phase 1", "--json"]
+        )
+        XCTAssertNil(fakeRunner.lastStandardInput)
+    }
+
+    func testSliceAddFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceAddFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            _ = try await client.sliceAdd(projectID: "proj-123", title: "Title", milestone: "Nope", description: nil)
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "no milestone named \"Nope\": the project's milestones are Phase 1, Phase 2")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
+
+    func testConfigShow() async throws {
+        let fakeRunner = FakeRunner(fixture: .configShowSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let doc = try await client.configShow()
+
+        XCTAssertEqual(doc.agentSplitPercent, 65)
+        XCTAssertEqual(doc.pollSeconds, 30)
+        XCTAssertEqual(doc.workshopAgent.model, "sonnet")
+        XCTAssertEqual(doc.workshopAgent.effort, "low")
+        XCTAssertEqual(doc.sliceAgent.model, "opus")
+        XCTAssertEqual(doc.sliceAgent.effort, "high")
+        XCTAssertEqual(doc.projects["proj-1"]?.name, "Example Project")
+        XCTAssertEqual(doc.projects["proj-1"]?.workingDir, "/path/to/repo")
+        XCTAssertEqual(fakeRunner.lastArguments, ["config-show", "--json"])
+    }
+
+    func testConfigSetSuccess() async throws {
+        let fakeRunner = FakeRunner(fixture: .configSetSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.configSet(key: "agent_split_percent", value: "70")
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["config-set", "agent_split_percent", "70"])
+    }
+
+    func testConfigSetFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .configSetFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            try await client.configSet(key: "agent_split_percent", value: "5")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "config-set: agent_split_percent must be between 10 and 90, given 5")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
 }

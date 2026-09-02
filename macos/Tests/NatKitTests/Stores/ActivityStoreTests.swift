@@ -65,6 +65,22 @@ final class MockActivityClient: NatClientProtocol, @unchecked Sendable {
     func prComment(projectID: String, sliceRef: String, body: String) async throws {
         throw NSError(domain: "test", code: -1)
     }
+
+    func workshopLaunch(projectID: String, model: String?, effort: String?) async throws -> WorkshopLaunchResult {
+        throw NSError(domain: "test", code: -1)
+    }
+
+    func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult {
+        throw NSError(domain: "test", code: -1)
+    }
+
+    func configShow() async throws -> ConfigDoc {
+        throw NSError(domain: "test", code: -1)
+    }
+
+    func configSet(key: String, value: String) async throws {
+        throw NSError(domain: "test", code: -1)
+    }
 }
 
 // MARK: - ActivityStore Tests

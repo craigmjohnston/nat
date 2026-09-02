@@ -85,6 +85,17 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
     func prComment(projectID: String, sliceRef: String, body: String) async throws {
         throw DiffTestError()
     }
+
+    func workshopLaunch(projectID: String, model: String?, effort: String?) async throws -> WorkshopLaunchResult {
+        throw DiffTestError()
+    }
+
+    func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult {
+        throw DiffTestError()
+    }
+
+    func configShow() async throws -> ConfigDoc { throw DiffTestError() }
+    func configSet(key: String, value: String) async throws { throw DiffTestError() }
 }
 
 // MARK: - Tests

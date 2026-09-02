@@ -14,6 +14,10 @@ public protocol NatClientProtocol: Sendable {
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail
     func prMerge(projectID: String, sliceRef: String) async throws -> Void
     func prComment(projectID: String, sliceRef: String, body: String) async throws -> Void
+    func workshopLaunch(projectID: String, model: String?, effort: String?) async throws -> WorkshopLaunchResult
+    func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult
+    func configShow() async throws -> ConfigDoc
+    func configSet(key: String, value: String) async throws -> Void
 }
 
 // Make NatClient conform to the protocol

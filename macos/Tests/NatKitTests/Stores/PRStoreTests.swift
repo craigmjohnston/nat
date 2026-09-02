@@ -58,6 +58,17 @@ private final class MockPRClient: NatClientProtocol, @unchecked Sendable {
         commentCalls.append((projectID, sliceRef, body))
         if let commentError { throw commentError }
     }
+
+    func workshopLaunch(projectID: String, model: String?, effort: String?) async throws -> WorkshopLaunchResult {
+        throw PRTestError()
+    }
+
+    func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult {
+        throw PRTestError()
+    }
+
+    func configShow() async throws -> ConfigDoc { throw PRTestError() }
+    func configSet(key: String, value: String) async throws { throw PRTestError() }
 }
 
 // MARK: - Tests

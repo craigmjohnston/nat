@@ -18,6 +18,10 @@ struct NatApp: App {
                     .task { await Self.snapshotIfAsked(appModel) }
             }
         }
+
+        Settings {
+            SettingsView(appModel: appModel)
+        }
     }
 
     /// NAT_SNAPSHOT is the headless eye on the window: with it set to a file

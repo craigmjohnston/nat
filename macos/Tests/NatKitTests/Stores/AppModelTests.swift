@@ -3,19 +3,29 @@ import XCTest
 
 // MARK: - Mock Config Reader
 
-struct MockConfigReader: ConfigReaderProtocol, @unchecked Sendable {
+final class MockConfigReader: ConfigReaderProtocol, @unchecked Sendable {
     enum Response: Sendable {
         case success(NatProjectConfig)
         case failure
     }
 
-    private let response: Response
+    private var response: Response
+    /// The path most recently asked for, so `reloadConfig()`'s own re-read
+    /// can be checked against `start()`'s.
+    private(set) var lastPath: String?
 
     init(response: Response) {
         self.response = response
     }
 
+    /// Swaps the response a later `readConfig` returns — what
+    /// `reloadConfig()`'s tests use to answer differently the second time.
+    func setResponse(_ response: Response) {
+        self.response = response
+    }
+
     func readConfig(from path: String) async throws -> NatProjectConfig {
+        lastPath = path
         switch response {
         case .success(let config):
             return config
@@ -235,5 +245,104 @@ final class AppModelTests: XCTestCase {
 
         // Now proj-b should be loaded
         XCTAssertEqual(appModel.projectStore?.projectID, "proj-b")
+    }
+
+    // MARK: - Onboarding
+
+    @MainActor
+    func testAppModel_needsOnboardingBeforeStart() {
+        let appModel = AppModel()
+        XCTAssertTrue(appModel.needsOnboarding)
+    }
+
+    @MainActor
+    func testAppModel_needsOnboardingWhenNoConfigFile() async {
+        let mockReader = MockConfigReader(response: .failure)
+        let appModel = AppModel(configReader: mockReader)
+
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+
+        XCTAssertTrue(appModel.needsOnboarding)
+    }
+
+    @MainActor
+    func testAppModel_needsOnboardingWhenProjectsMapIsEmpty() async {
+        let testConfig = NatProjectConfig(projects: [:])
+        let mockReader = MockConfigReader(response: .success(testConfig))
+        let appModel = AppModel(configReader: mockReader)
+
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+
+        XCTAssertTrue(appModel.needsOnboarding)
+        XCTAssertNotNil(appModel.config)
+        XCTAssertNil(appModel.projectStore)
+    }
+
+    @MainActor
+    func testAppModel_doesNotNeedOnboardingWithAProject() async {
+        let testConfig = NatProjectConfig(
+            projects: ["proj-1": ProjectConfig(name: "Project 1", slicesDSID: "ds-1", workingDir: "/path/1")]
+        )
+        let mockReader = MockConfigReader(response: .success(testConfig))
+        let appModel = AppModel(configReader: mockReader)
+
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+
+        XCTAssertFalse(appModel.needsOnboarding)
+    }
+
+    // MARK: - Reload config
+
+    @MainActor
+    func testAppModel_reloadConfigPicksUpNewValues() async {
+        let original = NatProjectConfig(
+            projects: ["proj-1": ProjectConfig(name: "Project 1", slicesDSID: "ds-1", workingDir: "/path/1")],
+            pollSeconds: 30
+        )
+        let mockReader = MockConfigReader(response: .success(original))
+        let appModel = AppModel(configReader: mockReader)
+
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+        XCTAssertEqual(appModel.config?.pollSeconds, 30)
+
+        let updated = NatProjectConfig(
+            projects: ["proj-1": ProjectConfig(name: "Project 1", slicesDSID: "ds-1", workingDir: "/path/1")],
+            pollSeconds: 90
+        )
+        mockReader.setResponse(.success(updated))
+
+        await appModel.reloadConfig()
+
+        XCTAssertEqual(appModel.config?.pollSeconds, 90)
+        // reloadConfig re-reads the same path start() loaded from.
+        XCTAssertEqual(mockReader.lastPath, "/fake/config.json")
+    }
+
+    @MainActor
+    func testAppModel_reloadConfigBeforeStartDoesNothing() async {
+        let mockReader = MockConfigReader(response: .success(NatProjectConfig(projects: [:])))
+        let appModel = AppModel(configReader: mockReader)
+
+        // Never started, so there is no path to re-read from.
+        await appModel.reloadConfig()
+
+        XCTAssertNil(appModel.config)
+        XCTAssertNil(mockReader.lastPath)
+    }
+
+    @MainActor
+    func testAppModel_reloadConfigKeepsThePreviousConfigOnReadFailure() async {
+        let original = NatProjectConfig(
+            projects: ["proj-1": ProjectConfig(name: "Project 1", slicesDSID: "ds-1", workingDir: "/path/1")]
+        )
+        let mockReader = MockConfigReader(response: .success(original))
+        let appModel = AppModel(configReader: mockReader)
+
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+        mockReader.setResponse(.failure)
+
+        await appModel.reloadConfig()
+
+        XCTAssertEqual(appModel.config, original)
     }
 }

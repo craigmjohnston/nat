@@ -28,6 +28,13 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case prMergeFailure
         case prCommentSuccess
         case prCommentFailure
+        case workshopLaunchSuccess
+        case workshopLaunchAlreadyLive
+        case sliceAddSuccess
+        case sliceAddFailure
+        case configShowSuccess
+        case configSetSuccess
+        case configSetFailure
     }
 
     private var fixture: Fixture
@@ -106,6 +113,20 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return (Data(), Data(), 0)
         case .prCommentFailure:
             return (Data(), "\"Write the UI\" has no pull request recorded: nothing to comment on".data(using: .utf8)!, 1)
+        case .workshopLaunchSuccess:
+            return (fixtureWorkshopLaunch.data(using: .utf8)!, Data(), 0)
+        case .workshopLaunchAlreadyLive:
+            return (Data(), "a planning agent is already live: nat-plan".data(using: .utf8)!, 1)
+        case .sliceAddSuccess:
+            return (fixtureSliceAdd.data(using: .utf8)!, Data(), 0)
+        case .sliceAddFailure:
+            return (Data(), "no milestone named \"Nope\": the project's milestones are Phase 1, Phase 2".data(using: .utf8)!, 1)
+        case .configShowSuccess:
+            return (fixtureConfigShow.data(using: .utf8)!, Data(), 0)
+        case .configSetSuccess:
+            return ("# Config updated\n\n- agent_split_percent: 70\n".data(using: .utf8)!, Data(), 0)
+        case .configSetFailure:
+            return (Data(), "config-set: agent_split_percent must be between 10 and 90, given 5".data(using: .utf8)!, 1)
         }
     }
 
@@ -430,5 +451,42 @@ let fixtureSliceDiff = """
       ]
     }
   ]
+}
+"""
+
+let fixtureWorkshopLaunch = """
+{
+  "session": "nat-plan",
+  "workdir": "/path/to/repo",
+  "wishlist": true
+}
+"""
+
+let fixtureSliceAdd = """
+{
+  "slice": {
+    "id": "slice-new",
+    "name": "Add the settings scene",
+    "status": "Todo",
+    "milestone_id": "Phase 1",
+    "milestone_name": "Phase 1",
+    "repo": "/path/to/repo",
+    "url": "https://notion.so/slice-new"
+  }
+}
+"""
+
+// fixtureConfigShow is a config-show --json reading with one project and both
+// model pairs set — the settings scene's own load, mirroring configShowJSON
+// in internal/cli/configshow.go.
+let fixtureConfigShow = """
+{
+  "agent_split_percent": 65,
+  "poll_seconds": 30,
+  "workshop_agent": {"model": "sonnet", "effort": "low"},
+  "slice_agent": {"model": "opus", "effort": "high"},
+  "projects": {
+    "proj-1": {"name": "Example Project", "working_dir": "/path/to/repo"}
+  }
 }
 """
