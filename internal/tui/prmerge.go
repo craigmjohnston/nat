@@ -136,6 +136,27 @@ func mergeRollup(verdicts []mergeVerdict) checkOutcome {
 	return checkPassing
 }
 
+// mergeRefusal is why the merge key will not act, read off the very verdicts
+// the merge box draws, so the reason given is the line the user is looking at.
+//
+// Only a failing verdict refuses. A verdict still to come — a review not yet
+// left, checks still running, a mergeability GitHub has not computed — is not a
+// no, and GitHub is the one to say whether it will take the merge anyway; what
+// is refused here is what the box has already answered no to, since running gh
+// over it could only produce the same answer more slowly and less clearly.
+//
+// The first failing verdict is the reason rather than all of them: the three
+// are read in the order they are read in, and the first thing standing in the
+// way is the thing to go and do something about.
+func mergeRefusal(pr gh.PR) (string, bool) {
+	for _, v := range mergeVerdicts(pr) {
+		if v.outcome == checkFailing {
+			return v.label + ": " + v.word, true
+		}
+	}
+	return "", false
+}
+
 // mergeSummary is the heading's own answer to the question the section asks:
 // green across the board means yes, one verdict still to come means not yet,
 // and a failing one means no.
@@ -174,7 +195,14 @@ func (p PRView) mergeSection() string {
 	}
 	verdicts := mergeVerdicts(p.pr)
 	rollup := mergeRollup(verdicts)
-	lines := []string{fit(heading+rollup.style(p.styles).Render(mergeSummary(rollup)), p.width)}
+	// The merge question is asked on the heading, which is the line that says
+	// whether the answer is yes: an inline prompt on the thing it is about, the
+	// way the board asks about the row the cursor is on.
+	summary := heading + rollup.style(p.styles).Render(mergeSummary(rollup))
+	if p.prompt != nil {
+		summary += "  " + promptChip(p.styles, p.prompt)
+	}
+	lines := []string{fit(summary, p.width)}
 	labels := 0
 	for _, v := range verdicts {
 		labels = max(labels, lipgloss.Width(v.label))

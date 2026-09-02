@@ -274,6 +274,33 @@ type rowPrompt struct {
 	cursor  int
 }
 
+// move steps the focused choice, stopping at either end rather than wrapping —
+// the same way the cursor moves over the rows.
+func (p *rowPrompt) move(delta int) {
+	next := p.cursor + delta
+	if next < 0 || next >= len(p.options) {
+		return
+	}
+	p.cursor = next
+}
+
+// promptChip is an open prompt as one chip: its choices side by side, the
+// focused one filled with the accent and the rest quiet, so the answer enter
+// would give is the one that stands out. It is a function rather than a method
+// on either screen because the pull request screen asks its merge question the
+// same way the board asks about a row — see [PRView.mergeSection].
+func promptChip(s Styles, p *rowPrompt) string {
+	var chip strings.Builder
+	for i, option := range p.options {
+		st := s.PromptOption
+		if i == p.cursor {
+			st = s.PromptFocused
+		}
+		chip.WriteString(st.Render(option))
+	}
+	return chip.String()
+}
+
 // NewBoard returns an empty board, waiting for a project to be loaded into it.
 func NewBoard(styles Styles) Board {
 	return Board{
@@ -340,11 +367,7 @@ func (b *Board) MovePrompt(delta int) {
 	if b.prompt == nil {
 		return
 	}
-	next := b.prompt.cursor + delta
-	if next < 0 || next >= len(b.prompt.options) {
-		return
-	}
-	b.prompt.cursor = next
+	b.prompt.move(delta)
 }
 
 // groupKey identifies a group across reloads. The implicit Unassigned group has
@@ -979,27 +1002,12 @@ func (b Board) finishRow(selected bool, lines []string) []string {
 func (b Board) overlayAnchored(line string, raw int) string {
 	switch {
 	case b.prompt != nil:
-		return b.overlayChip(line, raw, b.promptChip(), b.styles.PromptFade)
+		return b.overlayChip(line, raw, promptChip(b.styles, b.prompt), b.styles.PromptFade)
 	case b.confirmText != "":
 		chip, fade := b.styles.confirmStyles(b.confirmSev)
 		return b.overlayChip(line, raw, chip.Render(b.confirmText), fade)
 	}
 	return line
-}
-
-// promptChip is the open prompt as one chip: its choices side by side, the
-// focused one filled with the accent and the rest quiet, so the answer enter
-// would give is the one that stands out.
-func (b Board) promptChip() string {
-	var chip strings.Builder
-	for i, option := range b.prompt.options {
-		st := b.styles.PromptOption
-		if i == b.prompt.cursor {
-			st = b.styles.PromptFocused
-		}
-		chip.WriteString(st.Render(option))
-	}
-	return chip.String()
 }
 
 // confirmFadeWidth is the dithered edge a chip carries where it overlaps the

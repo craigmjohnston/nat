@@ -206,6 +206,9 @@ type App struct {
 	styles     Styles
 	keys       keyMap
 	promptKeys promptKeyMap
+	// prKeys are the pull request screen's own, held here rather than on the
+	// screen because the key they carry acts outside it — see [App.prKey].
+	prKeys prKeyMap
 
 	onboarding *Onboarding
 	screen     screen
@@ -276,8 +279,12 @@ type App struct {
 	// prViewer is the other half of that reading, and the opposite one: one pull
 	// request in full for the screen that draws it, rather than a repository's
 	// open ones in three fields for the board.
+	//
+	// prMerger is the one thing this app does to a pull request rather than
+	// reads of one: the merge key on that screen — see [App.mergePRFlow].
 	prReader     PRReader
 	prViewer     PRViewer
+	prMerger     PRMerger
 	prState      map[string]domain.PRReadiness
 	prSettled    map[string]bool
 	worktreeGone map[string]bool
@@ -343,10 +350,10 @@ func NewApp(cfg config.Config, client NotionAPI) *App {
 	s := DefaultStyles()
 	sp := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(s.Spinner))
 	a := &App{cfg: cfg, client: client, styles: s, keys: defaultKeyMap(),
-		promptKeys: defaultPromptKeyMap(), spinner: sp,
+		promptKeys: defaultPromptKeyMap(), prKeys: defaultPRKeyMap(), spinner: sp,
 		board: NewBoard(s), info: NewInfo(s), diff: NewDiff(s), prview: NewPRView(s),
 		launcher: newLauncher(), prs: newPRCreator(), differ: newDiffer(),
-		prReader: newPRReader(), prViewer: newPRViewer(),
+		prReader: newPRReader(), prViewer: newPRViewer(), prMerger: newPRMerger(),
 		boardVP: viewport.New(), helpVP: viewport.New()}
 	a.helpVP.SetContent(a.helpBody())
 	return a
@@ -422,7 +429,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.syncedAt = timeNow()
 		// A prompt is a question about a row of the plan that was on show, which
 		// the reload may have moved or taken away entirely.
-		a.closePrompt()
+		a.closeBoardPrompt()
 		a.board.SetProject(a.project)
 		// The first plan brings the bar with it, which the board's viewport has
 		// to give its lines up to; resize re-shares them and re-syncs the board.
@@ -477,6 +484,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.commentsSent(msg)
 	case sliceBodyMsg:
 		return a.sliceBodyLoaded(msg)
+	case prMergedMsg:
+		return a.prMerged(msg)
 	case prOpenedMsg:
 		return a.prOpened(msg)
 	case sliceSavedMsg:
@@ -597,7 +606,7 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// An open prompt owns every key too: it is a question about the row the
 	// cursor is on, and the board should not move out from under it while it
 	// goes unanswered. Keys it does not know are ignored rather than passed on.
-	if a.board.Prompting() {
+	if a.promptOpen() {
 		return a, a.promptKey(msg)
 	}
 
@@ -668,6 +677,9 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 			return a, a.diff.Update(msg)
 		case screenPR:
+			if cmd, ok := a.prKey(msg); ok {
+				return a, cmd
+			}
 			return a, a.prview.Update(msg)
 		case screenHelp:
 			// The key list is longer than a short window, so it scrolls.
@@ -717,6 +729,33 @@ func (a *App) boardWrite(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, false
 }
 
+// promptHost is a screen that can hold an inline prompt: the board, which
+// anchors one to the row the cursor is on, and the pull request screen, which
+// anchors one to its merge box. The two ask the same question the same way and
+// are answered by the same keys, so what they have in common is an interface
+// rather than a second copy of [App.promptKey].
+type promptHost interface {
+	Prompting() bool
+	PromptChoice() int
+	MovePrompt(delta int)
+	ClearPrompt()
+}
+
+// promptOpen reports whether any screen has a question waiting to be answered.
+// While one has, it takes every key.
+func (a *App) promptOpen() bool { return a.prview.Prompting() || a.board.Prompting() }
+
+// promptHost is the screen holding that question, and what redrawing it takes.
+// The board is cached in a viewport and has to be rendered again for a chip to
+// move on it; the pull request screen draws its own, so there is nothing to do
+// for it.
+func (a *App) promptHost() (promptHost, func()) {
+	if a.prview.Prompting() {
+		return &a.prview, func() {}
+	}
+	return &a.board, a.syncBoard
+}
+
 // openPrompt anchors a question to the row the cursor is on and remembers what
 // answering it does. It is the modal form's small sibling: one choice about one
 // row, asked on the row itself, with the plan still on screen behind it.
@@ -727,29 +766,50 @@ func (a *App) openPrompt(options []string, answer func(choice int) tea.Cmd) tea.
 	return nil
 }
 
+// openPRPrompt asks the same question on the pull request screen, where what it
+// is about is the merge box rather than a row of the plan. The screen renders
+// its own content, so there is no board to draw again.
+func (a *App) openPRPrompt(options []string, answer func(choice int) tea.Cmd) tea.Cmd {
+	a.prompt, a.note = answer, ""
+	a.prview.SetPrompt(options)
+	return nil
+}
+
+// closeBoardPrompt takes down a prompt anchored to a row of the plan, which is
+// what a reload of that plan invalidates. A question asked on the pull request
+// screen is about a pull request rather than about a row, so a plan landing
+// under it leaves it exactly where it is.
+func (a *App) closeBoardPrompt() {
+	if !a.board.Prompting() {
+		return
+	}
+	a.closePrompt(&a.board, a.syncBoard)
+}
+
 // closePrompt takes the prompt down, answered or abandoned.
-func (a *App) closePrompt() {
+func (a *App) closePrompt(host promptHost, sync func()) {
 	a.prompt = nil
-	a.board.ClearPrompt()
-	a.syncBoard()
+	host.ClearPrompt()
+	sync()
 }
 
 // promptKey answers the open prompt: the arrows step the choice, enter takes
 // it, and esc leaves without one. Abandoning it says nothing — nothing was in
-// flight to report on, and the row is as it was.
+// flight to report on, and the row, or the pull request, is as it was.
 func (a *App) promptKey(msg tea.KeyPressMsg) tea.Cmd {
+	host, sync := a.promptHost()
 	switch {
 	case key.Matches(msg, a.promptKeys.Prev):
-		a.board.MovePrompt(-1)
-		a.syncBoard()
+		host.MovePrompt(-1)
+		sync()
 	case key.Matches(msg, a.promptKeys.Next):
-		a.board.MovePrompt(1)
-		a.syncBoard()
+		host.MovePrompt(1)
+		sync()
 	case key.Matches(msg, a.promptKeys.Cancel):
-		a.closePrompt()
+		a.closePrompt(host, sync)
 	case key.Matches(msg, a.promptKeys.Pick):
-		answer, choice := a.prompt, a.board.PromptChoice()
-		a.closePrompt()
+		answer, choice := a.prompt, host.PromptChoice()
+		a.closePrompt(host, sync)
 		return answer(choice)
 	}
 	return nil
@@ -1703,6 +1763,8 @@ func (a *App) helpBody() string {
 	lines = append(lines, a.helpLines(a.board.helpBindings())...)
 	lines = append(lines, "", a.styles.Subtitle.Render("Diff"), "")
 	lines = append(lines, a.helpLines(defaultDiffKeyMap().bindings())...)
+	lines = append(lines, "", a.styles.Subtitle.Render("Pull request"), "")
+	lines = append(lines, a.helpLines(defaultPRKeyMap().bindings())...)
 	lines = append(lines, "", a.styles.Subtitle.Render("Scrolling"), "")
 	lines = append(lines, a.helpLines(infoKeys())...)
 	return strings.Join(lines, "\n")
@@ -1929,7 +1991,7 @@ func (a *App) contextHints() []hint {
 	}
 	// A prompt has the keys until it is answered, so what answers it is all
 	// there is to name.
-	if a.board.Prompting() {
+	if a.promptOpen() {
 		return a.promptKeys.promptHints()
 	}
 	if a.viewerVisible() {
@@ -1939,6 +2001,14 @@ func (a *App) contextHints() []hint {
 	// is up: it is a screen over the board, not a state of it.
 	if a.screen == screenDiff {
 		return a.diff.hints(a.keys.Back)
+	}
+	// The pull request screen's are its own for the same reason, and only while
+	// there is an open pull request on it: with none the merge key has nothing
+	// to name, and the global set says more.
+	if a.screen == screenPR {
+		if hints := a.prview.hints(a.prKeys, a.keys.Back); hints != nil {
+			return hints
+		}
 	}
 	if a.screen == screenBoard {
 		if _, ok := a.board.SelectedSlice(); ok {

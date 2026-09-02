@@ -179,6 +179,19 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   link, a finished run worth its conclusion and one still going worth its status.
   A gh that refuses comes back as its `*ExitError` exactly as everything else
   here does — "no pull requests found for branch X" is the sentence to show.
+  `MergePR` is the one thing here that changes a pull request rather than opens
+  or reads one: `gh pr merge <ref> --merge` in the slice's repo, the ref taken
+  as it stands and refused when empty for exactly the reasons `ViewPR`'s is,
+  only more so — a reading taken of the wrong pull request can be taken again
+  and a merge cannot. The strategy flag is said out loud because a `Runner` is a
+  subprocess with nothing on its standard input: without one gh asks which
+  strategy to use at a prompt and the merge hangs rather than happens, and
+  `--merge` is the one to name since a merge commit is how this repository's own
+  history reads. Whether the pull request can merge at all is asked of the merge
+  box before this is reached, so what is left for gh to refuse over is
+  everything GitHub knows and nat does not — a branch protection rule, a review
+  dismissed by a push, a check that went red between the reading and the key —
+  and all of it comes back as the same `*ExitError`.
 - `internal/git/` — git, wrapped as thinly as gh is and for the same reason: the
   one thing the board asks of it is the diff of a slice's handed-back branch, so
   the work can be read before `a` on that screen turns it into a pull request. `Diff` runs one
@@ -654,6 +667,37 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   every slice the approve key has not been pressed on, and it is out of the
   hints row for the reason `R` is — it does something on fewer rows than any
   key that is in it, and the help screen names it.
+  `prmergeflow.go` is the one key on that screen that acts rather than reads:
+  `m` merges the pull request on show, `gh pr merge` through `internal/gh`'s
+  `MergePR` in the slice's repo, on the very ref the screen was opened with. It
+  asks first, and it asks on the merge box — `PRView` holds a `rowPrompt` of the
+  board's own kind and draws it on the heading line that says whether the answer
+  is yes, since that heading is what the question is about; esc and the cancel
+  beside the merge are both ways out of it, and neither says anything, because
+  nothing was in flight. `mergeRefusal` is what the key refuses on, read off the
+  very verdicts the box draws so the toast and the line above it cannot
+  disagree: the first failing one, in its own words — `review: changes
+  requested`, `checks: 1 failing`, `mergeable: conflicting with main`. Only a
+  failing verdict refuses. A verdict still to come is not a no, and GitHub is
+  the one to say whether it will take the merge anyway; a pull request already
+  merged or closed, and a screen with no reading on it, have nothing to merge at
+  all and are refused as such (`PRView.Mergeable`, which is also what decides
+  whether the hints row names the key). gh refusing anyway is a toast carrying
+  its first stderr line rather than an error banner, exactly as the approve
+  key's refusal is: the pull request is still there and still open, and nothing
+  is read again over it. A merge that succeeded reads the pull request again, so
+  the screen says merged rather than going on offering the key that merged it,
+  and touches nothing on Notion — the slice was marked Done as its pull request
+  was opened, and merging is the work landing rather than the slice changing.
+  What the merge does move is the slice's worktree, which the board takes away
+  at the next reading that finds the pull request no longer open — see the
+  domain rule on `landed.go`. An inline prompt is now two screens' rather than
+  the board's alone, which is what `App.promptHost` is: the board and the pull
+  request screen answer the same `promptKey` through one interface, and the
+  board's redraw — the plan is cached in a viewport, the pull request screen
+  draws its own content — is what the two differ in. A plan landing closes a
+  prompt anchored to a row (`App.closeBoardPrompt`) and leaves one asked about a
+  pull request alone, since the row may have moved and the pull request has not.
   `newproject.go` is `N` and `P`, the two ways a project comes to be on the
   board. `P` is one picker for both halves of "which project": the ones local
   config knows, and under them — marked, so picking one says what it does — the
@@ -1032,7 +1076,9 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   (`internal/tui/landed.go`). The removal rides the transition the board already
   watches: the gh reading finding a Done slice's pull request no longer open,
   which is the same edge that drops the slice from the Active panel, so it is
-  witnessed exactly once. Because it has to be witnessed, every plan load sweeps
+  witnessed exactly once — and whether the merge was made on GitHub or with `m`
+  on the pull request screen, which merges and does nothing else whatever.
+  Because it has to be witnessed, every plan load sweeps
   the slices already settled (`App.settledSlices`) through the same
   `Worktrees.Remove`, which is the retry for a removal git refused at the
   transition; a removal that succeeded — or found no worktree to make — is

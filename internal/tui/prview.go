@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -63,7 +64,100 @@ type PRView struct {
 	state prViewState
 	err   error
 
+	// prompt is the merge question waiting to be answered, drawn on the merge
+	// box it is about — the screen's own inline confirmation, the way the board
+	// asks about the row the cursor is on. It is nil whenever nothing is being
+	// asked.
+	prompt *rowPrompt
+
 	width, height int
+}
+
+// prKeyMap is what the pull request screen answers to beyond the viewport's own
+// scrolling: the one key that acts rather than reads, which merges the pull
+// request on show once its merge box says it can.
+type prKeyMap struct {
+	Merge key.Binding
+}
+
+// defaultPRKeyMap returns the bindings the pull request screen runs with. m is
+// the merge because it is the word: the board's own m moves a slice between
+// milestones, and the board is not what is on screen here.
+func defaultPRKeyMap() prKeyMap {
+	return prKeyMap{
+		Merge: key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "merge")),
+	}
+}
+
+// bindings are the screen's keys as the help screen lists them.
+func (k prKeyMap) bindings() []key.Binding { return []key.Binding{k.Merge} }
+
+// hints are the screen's own hints row: the merge, and the way back to the
+// board. Scrolling is not among them, for the reason the diff screen leaves it
+// out — it is the keys everyone tries first — and neither is the refresh key,
+// which is the app's own and named on the help screen.
+//
+// The merge is offered only while there is a merge to attempt: a pull request
+// that has already merged, or been closed without merging, has nothing left for
+// the key to do, and a screen with no pull request read into it has nothing at
+// all.
+func (p PRView) hints(keys prKeyMap, back key.Binding) []hint {
+	if _, ok := p.Mergeable(); !ok {
+		return nil
+	}
+	return []hint{{keys.Merge, 3}, {back, 1}}
+}
+
+// Mergeable is the pull request the merge key would act on: the one on screen,
+// so long as it is still open. A read in flight or one that failed has none,
+// and neither has a pull request already merged or closed — what became of it
+// is the whole of what the merge box has left to say.
+func (p PRView) Mergeable() (gh.PR, bool) {
+	if p.state != prViewReady || p.pr.State == gh.PRStateMerged || p.pr.State == gh.PRStateClosed {
+		return gh.PR{}, false
+	}
+	return p.pr, true
+}
+
+// SetPrompt anchors a question to the merge box, focused on its first choice,
+// and ClearPrompt takes it down. Both render again, since the prompt is drawn
+// in the viewport's own content.
+func (p *PRView) SetPrompt(options []string) {
+	p.prompt = &rowPrompt{options: options}
+	p.render()
+	// The merge box is the last thing in the content, so the question is asked
+	// where it can be read.
+	p.vp.GotoBottom()
+}
+
+// ClearPrompt takes the prompt down, answered or abandoned.
+func (p *PRView) ClearPrompt() {
+	p.prompt = nil
+	p.render()
+}
+
+// Prompting reports whether a prompt is waiting to be answered — while one is,
+// the root model gives it the keys.
+func (p PRView) Prompting() bool { return p.prompt != nil }
+
+// PromptChoice is the index of the focused choice, which is what answering the
+// prompt answers with. With no prompt up there is nothing to answer, and the
+// first choice is as good an answer as any.
+func (p PRView) PromptChoice() int {
+	if p.prompt == nil {
+		return 0
+	}
+	return p.prompt.cursor
+}
+
+// MovePrompt steps the focused choice, stopping at either end rather than
+// wrapping, and draws the chip again where it has got to.
+func (p *PRView) MovePrompt(delta int) {
+	if p.prompt == nil {
+		return
+	}
+	p.prompt.move(delta)
+	p.render()
 }
 
 // NewPRView returns an empty pull request screen, waiting for one to be read
@@ -88,6 +182,8 @@ func (p *PRView) Start(sliceID, slice, ref, dir string) {
 	p.sliceID, p.slice, p.ref, p.dir = sliceID, slice, ref, dir
 	p.state, p.err = prViewLoading, nil
 	p.pr = gh.PR{}
+	// A question about the last reading is not one to leave open over the next.
+	p.prompt = nil
 	p.render()
 	p.vp.GotoTop()
 }
