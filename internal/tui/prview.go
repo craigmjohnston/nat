@@ -138,22 +138,24 @@ func (p *PRView) Reset() {
 	p.vp.GotoTop()
 }
 
-// render rebuilds the viewport's content at the current width: the description
-// and, under it, the checks. A pull request opened with no description at all
-// draws a line saying so rather than an empty band.
+// render rebuilds the viewport's content at the current width: the description,
+// under it the checks, and under those the merge box. A pull request opened
+// with no description at all draws a line saying so rather than an empty band.
 //
 // The checks go under the description rather than over it, which is where the
 // conversation will go under them: the description is what the pull request is
 // and is read first, and the checks are one reading of it at one moment, which
 // the refresh key is for. They are in the viewport with it rather than pinned
 // above it, since a repository with a workflow per platform has more checks
-// than a screen has lines.
+// than a screen has lines. The merge box comes last because it is the
+// conclusion the rows above are read into — see [PRView.mergeSection].
 func (p *PRView) render() {
 	body := fit(p.styles.Faint.Render("This pull request has no description."), p.width)
 	if described := strings.TrimSpace(p.pr.Body); described != "" {
 		body = renderMarkdown(described, p.style, p.width)
 	}
-	p.vp.SetContent(strings.TrimRight(body, "\n") + "\n\n" + p.checksSection())
+	p.vp.SetContent(strings.TrimRight(body, "\n") + "\n\n" + p.checksSection() +
+		"\n\n" + p.mergeSection())
 }
 
 // Update handles the screen's keys: the viewport's own scrolling. Everything
