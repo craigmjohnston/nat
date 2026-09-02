@@ -97,10 +97,11 @@ struct WindowShellView: View {
                         Color(hex: "1e1e23").opacity(0.85)
                         // color-mix(in srgb, var(--accent) 9%, var(--material-header-bg))
                         // approximated: the accent laid over the header's own
-                        // material at 9% opacity.
+                        // material at 9% opacity. Flat fill — the mock's blur
+                        // is a backdrop material over what sits behind the
+                        // window, not a blur of the band's own paint.
                         DesignTokens.accent.opacity(0.09)
                     }
-                    .blur(radius: 8)
                     // The drag lives on the background rather than the row
                     // itself: SwiftUI still routes a tap to a Button or
                     // onTapGesture target on top of it (the project tabs, the

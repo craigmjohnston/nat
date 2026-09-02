@@ -86,31 +86,14 @@ struct ProjectTabsView: View {
         }
         .frame(height: 34)
         .padding(.horizontal, 22)
-        .padding(.bottom, 6)
         .background(
-            // Only the top corners round — the mock's own "10px 10px 0 0" —
-            // so the bottom edge is flat where the two corner-notch pieces
-            // below meet it; a corner rounded on all four sides would leave a
-            // gap between the tab's own curve and theirs.
-            UnevenRoundedRectangle(topLeadingRadius: isActive ? 10 : 0, topTrailingRadius: isActive ? 10 : 0)
+            // The mock's browser tab is one silhouette: a top-rounded body
+            // with two concave flares where it meets the window below — one
+            // path, so the joins can never drift from the corners they curve
+            // out of.
+            BrowserTabShape(cornerRadius: 10, flare: 10)
                 .fill(isActive ? DesignTokens.windowBg : Color.clear)
         )
-        .overlay(alignment: .bottomLeading) {
-            if isActive {
-                TabCornerNotch(circleAt: .topLeading)
-                    .eoFilled(DesignTokens.windowBg)
-                    .frame(width: 10, height: 10)
-                    .offset(x: -10)
-            }
-        }
-        .overlay(alignment: .bottomTrailing) {
-            if isActive {
-                TabCornerNotch(circleAt: .topTrailing)
-                    .eoFilled(DesignTokens.windowBg)
-                    .frame(width: 10, height: 10)
-                    .offset(x: 10)
-            }
-        }
         .contentShape(Rectangle())
         .onTapGesture {
             Task {
@@ -137,52 +120,42 @@ struct ProjectTabsView: View {
 
 // MARK: - Helpers
 
-/// The active tab's own curved joins where it meets the window body below —
-/// two of these flank it, one on each side, per the mock's radial-gradient
-/// corner pieces (`ui-v2-shell.jsx`'s `VProjectTabs`): a small square filled
-/// solid except for a quarter-circle cut out of one corner, which is what
-/// makes the cut read as a concave curve rather than a straight diagonal.
-///
-/// `circleAt` is which corner of this piece's own square the cutout is
-/// centered on — `.topLeading` for the piece sitting to the tab's left,
-/// `.topTrailing` for the one to its right, so the curve opens toward the
-/// tab immediately above it in both cases and the piece's own outer corner
-/// (away from the tab) stays square, flush with the header's own bottom edge.
-struct TabCornerNotch: Shape {
-    enum CircleCorner {
-        case topLeading
-        case topTrailing
-    }
-
-    let circleAt: CircleCorner
+/// The mock's browser tab as one path (`ui-v2-shell.jsx`'s `VProjectTabs`,
+/// which builds it from a top-rounded rectangle plus two radial-gradient
+/// corner pieces): the body's top corners round inward by `cornerRadius`,
+/// and its bottom edge flares outward by `flare` on each side through a
+/// concave quarter-arc, which is the curve that merges the tab into the
+/// window band below it. The flares live inside this shape's own rect —
+/// the tab's content padding is what leaves them room.
+struct BrowserTabShape: Shape {
+    let cornerRadius: CGFloat
+    let flare: CGFloat
 
     func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.addRect(rect)
+        var p = Path()
+        let r = cornerRadius
+        let f = flare
+        let left = rect.minX + f
+        let right = rect.maxX - f
 
-        let center: CGPoint
-        switch circleAt {
-        case .topLeading: center = CGPoint(x: rect.minX, y: rect.minY)
-        case .topTrailing: center = CGPoint(x: rect.maxX, y: rect.minY)
-        }
-        let radius = rect.width
-        path.addEllipse(in: CGRect(
-            x: center.x - radius, y: center.y - radius,
-            width: radius * 2, height: radius * 2
-        ))
-
-        return path
-    }
-}
-
-extension TabCornerNotch {
-    /// Filled with the even-odd rule, so the rect and the circle cancel out
-    /// where they overlap — this is the shape's whole point (`Shape`'s own
-    /// plain `fill()` would just paint the union of the two, no cutout at
-    /// all, which is why this is a differently-named method rather than an
-    /// overload of it).
-    func eoFilled<S: ShapeStyle>(_ style: S) -> some View {
-        self.fill(style, style: FillStyle(eoFill: true))
+        p.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        // Concave flare up into the body's left edge.
+        p.addArc(center: CGPoint(x: rect.minX, y: rect.maxY - f), radius: f,
+                 startAngle: .degrees(90), endAngle: .degrees(0), clockwise: true)
+        p.addLine(to: CGPoint(x: left, y: rect.minY + r))
+        // Rounded top-left corner.
+        p.addArc(center: CGPoint(x: left + r, y: rect.minY + r), radius: r,
+                 startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+        p.addLine(to: CGPoint(x: right - r, y: rect.minY))
+        // Rounded top-right corner.
+        p.addArc(center: CGPoint(x: right - r, y: rect.minY + r), radius: r,
+                 startAngle: .degrees(270), endAngle: .degrees(0), clockwise: false)
+        p.addLine(to: CGPoint(x: right, y: rect.maxY - f))
+        // Concave flare back out to the band's bottom on the right.
+        p.addArc(center: CGPoint(x: rect.maxX, y: rect.maxY - f), radius: f,
+                 startAngle: .degrees(180), endAngle: .degrees(90), clockwise: true)
+        p.closeSubpath()
+        return p
     }
 }
 
