@@ -35,6 +35,13 @@ struct NatApp: App {
         }
         NSLog("nat snapshot: store state = %@",
               String(describing: appModel.projectStore?.state).prefix(300) as CVarArg)
+        if let want = ProcessInfo.processInfo.environment["NAT_SNAPSHOT_SELECT"],
+           let info = appModel.projectStore?.state.projectInfo {
+            appModel.selectedSliceID = want == "first"
+                ? info.slices.first(where: { $0.status != "Done" })?.id
+                : want
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+        }
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         // The window's own drawn pixels, not an offscreen ImageRenderer pass:
         // the renderer skips scrollable containers' content, and a snapshot

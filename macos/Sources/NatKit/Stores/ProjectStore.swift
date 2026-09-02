@@ -4,6 +4,8 @@ import SwiftUI
 /// A protocol for providing nat client functionality (allows injection for testing).
 public protocol NatClientProtocol: Sendable {
     func info(projectID: String) async throws -> ProjectInfo
+    func status() async throws -> [AgentStatus]
+    func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail
 }
 
 // Make NatClient conform to the protocol

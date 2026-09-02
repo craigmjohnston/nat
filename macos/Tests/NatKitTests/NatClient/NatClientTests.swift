@@ -101,4 +101,37 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(info1.project.name, "Example Project")
         XCTAssertEqual(info2.project.name, "Example Project")
     }
+
+    func testStatus() async throws {
+        let fakeRunner = FakeRunner(fixture: .status)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let statuses = try await client.status()
+
+        XCTAssertEqual(statuses.count, 2)
+        XCTAssertEqual(statuses[0].sliceID, "slice-1")
+        XCTAssertEqual(statuses[0].session, "nat-abc123def")
+        XCTAssertEqual(statuses[0].activity, .working)
+
+        XCTAssertEqual(statuses[1].sliceID, "slice-2")
+        XCTAssertEqual(statuses[1].activity, .waiting)
+    }
+
+    func testSliceShow() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceShow)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let detail = try await client.sliceShow(projectID: "proj-123", sliceRef: "slice-1")
+
+        XCTAssertEqual(detail.id, "slice-1")
+        XCTAssertEqual(detail.name, "Implement API")
+        XCTAssertEqual(detail.status, "In progress")
+        XCTAssertEqual(detail.milestone, "Phase 1")
+        XCTAssertEqual(detail.branch, "feature/api")
+        XCTAssertEqual(detail.repo, "/path/to/repo")
+        XCTAssertEqual(detail.pr, "https://github.com/org/repo/pull/42")
+        XCTAssertTrue(detail.handedBack)
+        XCTAssertEqual(detail.state, "awaiting_review")
+        XCTAssert(detail.brief.contains("API Implementation"))
+    }
 }

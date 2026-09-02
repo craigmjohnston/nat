@@ -27,6 +27,9 @@ public final class AppModel {
     /// The active project's store.
     public private(set) var projectStore: ProjectStore?
 
+    /// Live agent activity.
+    public private(set) var activityStore: ActivityStore?
+
     /// The currently selected slice ID.
     public var selectedSliceID: String?
 
@@ -77,8 +80,13 @@ public final class AppModel {
                 let projectStore = ProjectStore(projectID: projectID)
                 self.projectStore = projectStore
 
+                // Create activity store
+                let activityStore = ActivityStore()
+                self.activityStore = activityStore
+
                 // Load the project
                 await projectStore.load()
+                activityStore.kick()
 
                 startNudgeWatcher(for: projectStore, nudgePath: nudgePath)
                 startPolling(for: projectStore, seconds: pollSeconds(loadedConfig))
@@ -93,6 +101,7 @@ public final class AppModel {
     public func refresh() async {
         guard let projectStore = projectStore else { return }
         await projectStore.refresh()
+        activityStore?.kick()
     }
 
     // MARK: - Private Helpers
@@ -142,5 +151,7 @@ public final class AppModel {
         pollTask = nil
         nudgeWatcher?.stop()
         nudgeWatcher = nil
+        activityStore?.stop()
+        activityStore = nil
     }
 }

@@ -56,18 +56,23 @@ struct PaneView: View {
                 }
 
                 // Content area
-                VStack {
-                    VStack(spacing: 8) {
-                        Image(systemName: "doc.text")
-                            .font(.system(size: 32, weight: .regular))
-                            .foregroundStyle(DesignTokens.labelSecondary)
+                switch currentTab {
+                case .brief:
+                    BriefTabView(appModel: appModel, slice: slice)
+                default:
+                    VStack {
+                        VStack(spacing: 8) {
+                            Image(systemName: "doc.text")
+                                .font(.system(size: 32, weight: .regular))
+                                .foregroundStyle(DesignTokens.labelSecondary)
 
-                        Text("\(currentTab.rawValue) lands here")
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundStyle(DesignTokens.labelSecondary)
+                            Text("\(currentTab.rawValue) lands here")
+                                .font(.system(size: 13, weight: .regular))
+                                .foregroundStyle(DesignTokens.labelSecondary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(DesignTokens.controlBg)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(DesignTokens.controlBg)
                 }
             } else {
                 // Empty state

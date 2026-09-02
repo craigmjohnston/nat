@@ -9,6 +9,8 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case paths
         case commandError
         case nonJSON
+        case status
+        case sliceShow
     }
 
     private var fixture: Fixture
@@ -39,6 +41,10 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return (Data(), "Error: project not found".data(using: .utf8)!, 1)
         case .nonJSON:
             return ("This is not JSON".data(using: .utf8)!, Data(), 0)
+        case .status:
+            return (fixtureStatus.data(using: .utf8)!, Data(), 0)
+        case .sliceShow:
+            return (fixtureSliceShow.data(using: .utf8)!, Data(), 0)
         }
     }
 
@@ -135,5 +141,41 @@ let fixturePaths = """
   "config": "/Users/alice/.config/notion-agent-tracker/config.json",
   "log_dir": "/Users/alice/Library/Logs/notion-agent-tracker",
   "nudge": "/Users/alice/Library/Logs/notion-agent-tracker/nudge"
+}
+"""
+
+let fixtureStatus = """
+{
+  "agents": [
+    {
+      "slice_id": "slice-1",
+      "session": "nat-abc123def",
+      "activity": "working"
+    },
+    {
+      "slice_id": "slice-2",
+      "session": "nat-def456ghi",
+      "activity": "waiting"
+    }
+  ]
+}
+"""
+
+let fixtureSliceShow = """
+{
+  "id": "slice-1",
+  "name": "Implement API",
+  "url": "https://notion.so/slice-1",
+  "status": "In progress",
+  "milestone": "Phase 1",
+  "assignee": "Alice",
+  "branch": "feature/api",
+  "repo": "/path/to/repo",
+  "pr": "https://github.com/org/repo/pull/42",
+  "depends_on": [],
+  "blocked": false,
+  "handed_back": true,
+  "state": "awaiting_review",
+  "brief": "# API Implementation\\nBuild the REST API endpoints"
 }
 """

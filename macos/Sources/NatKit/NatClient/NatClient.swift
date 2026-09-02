@@ -1,5 +1,10 @@
 import Foundation
 
+/// Envelope for status response.
+private struct StatusEnvelope: Codable {
+    let agents: [AgentStatus]
+}
+
 /// A typed client for running nat commands and decoding their JSON output.
 public final class NatClient: Sendable {
     private nonisolated let commandRunner: CommandRunning
@@ -30,6 +35,28 @@ public final class NatClient: Sendable {
     public func paths() async throws -> NatPaths {
         let output = try await runNat(arguments: ["paths", "--json"])
         return try decodeJSON(NatPaths.self, from: output)
+    }
+
+    /// Get the live status of all running agents.
+    ///
+    /// - Returns: Array of AgentStatus for all running agents (gone agents omitted)
+    /// - Throws: NatError if the command fails or output is invalid
+    public func status() async throws -> [AgentStatus] {
+        let output = try await runNat(arguments: ["status", "--json"])
+        let envelope = try decodeJSON(StatusEnvelope.self, from: output)
+        return envelope.agents
+    }
+
+    /// Get full details of a slice including its brief.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sliceRef: The slice's URL or Notion page ID
+    /// - Returns: SliceDetail with all slice information
+    /// - Throws: NatError if the command fails or output is invalid
+    public func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail {
+        let output = try await runNat(arguments: ["slice-show", "--project", projectID, "--json", sliceRef])
+        return try decodeJSON(SliceDetail.self, from: output)
     }
 
     // MARK: - Private Helpers

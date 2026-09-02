@@ -27,6 +27,14 @@ final class MockNatClient: NatClientProtocol, @unchecked Sendable {
             throw TestError()
         }
     }
+
+    func status() async throws -> [AgentStatus] {
+        []
+    }
+
+    func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail {
+        throw TestError()
+    }
 }
 
 final class ProjectStoreTests: XCTestCase {

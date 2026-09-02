@@ -8,7 +8,20 @@ struct RailView: View {
 
     var railModel: RailModel {
         if let projectInfo = appModel.projectStore?.state.projectInfo {
-            return buildRailModel(from: projectInfo, liveAgents: [:])
+            // Map ActivityStore agents to the rail model's format
+            var liveAgents: [String: AgentActivity] = [:]
+            for (sliceID, status) in appModel.activityStore?.agents ?? [:] {
+                switch status.activity {
+                case .working:
+                    liveAgents[sliceID] = .working
+                case .waiting:
+                    liveAgents[sliceID] = .waiting
+                case .unknown:
+                    // Treat unknown as working (TUI convention)
+                    liveAgents[sliceID] = .working
+                }
+            }
+            return buildRailModel(from: projectInfo, liveAgents: liveAgents)
         }
         return RailModel(needsReview: [], active: [], milestoneCards: [], doneSummary: nil)
     }
