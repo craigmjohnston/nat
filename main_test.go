@@ -557,3 +557,30 @@ func TestCommandsUseTheRealNotionClient(t *testing.T) {
 		t.Errorf("client is %T, want *notion.Client", client)
 	}
 }
+
+// TestCommandsUseTheRealToolConstructors pins newCLIGH, newCLIGit and
+// newCLIWorktrees to the real gh, git and worktree drivers: each answers an
+// interface the command it serves is written against, so nothing else in the
+// package names the concrete type.
+func TestCommandsUseTheRealToolConstructors(t *testing.T) {
+	tests := []struct {
+		name    string
+		factory func() any
+		typ     string
+	}{
+		{"gh", func() any { return newCLIGH() }, "gh.CLI"},
+		{"git", func() any { return newCLIGit() }, "git.CLI"},
+		{"worktree", func() any { return newCLIWorktrees() }, "worktree.CLI"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tool := tt.factory()
+			if tool == nil {
+				t.Fatalf("%s factory returned nil", tt.name)
+			}
+			if got := reflect.TypeOf(tool).String(); !strings.Contains(got, tt.typ) {
+				t.Errorf("%s factory returned %s, want something containing %s", tt.name, got, tt.typ)
+			}
+		})
+	}
+}

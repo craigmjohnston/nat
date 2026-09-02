@@ -24,15 +24,18 @@ import (
 // is otherwise unexercisable without the real Notion CLI, a terminal, and an
 // exit that would take the test binary with it.
 var (
-	newTokens                      = ntnCLI
-	args                           = processArgs
-	stdin        io.Reader         = os.Stdin
-	stdout       io.Writer         = os.Stdout
-	stderr       io.Writer         = os.Stderr
-	exit                           = os.Exit
-	newClient    tui.NewClientFunc = tui.DefaultNewClient
-	newCLIClient cli.NewClientFunc = cli.DefaultNewClient
-	lookPath                       = exec.LookPath
+	newTokens                            = ntnCLI
+	args                                 = processArgs
+	stdin           io.Reader            = os.Stdin
+	stdout          io.Writer            = os.Stdout
+	stderr          io.Writer            = os.Stderr
+	exit                                 = os.Exit
+	newClient       tui.NewClientFunc    = tui.DefaultNewClient
+	newCLIClient    cli.NewClientFunc    = cli.DefaultNewClient
+	newCLIGH        cli.NewGHFunc        = cli.DefaultNewGH
+	newCLIGit       cli.NewGitFunc       = cli.DefaultNewGit
+	newCLIWorktrees cli.NewWorktreesFunc = cli.DefaultNewWorktrees
+	lookPath                             = exec.LookPath
 )
 
 // ntnCLI is where the Notion credential really comes from.
@@ -98,14 +101,17 @@ func fail(logPath string, err error) {
 // of them launches an agent, so a machine without tmux runs them all the same.
 func command(tokens config.TokenSource) error {
 	return cli.Run(context.Background(), args(), cli.Env{
-		Tokens:    tokens,
-		Load:      config.Load,
-		Save:      config.Save,
-		NewClient: newCLIClient,
-		NewTmux:   cli.DefaultNewTmux,
-		Out:       stdout,
-		In:        stdin,
-		Nudge:     nudge.Touch,
+		Tokens:       tokens,
+		Load:         config.Load,
+		Save:         config.Save,
+		NewClient:    newCLIClient,
+		NewTmux:      cli.DefaultNewTmux,
+		NewGH:        newCLIGH,
+		NewGit:       newCLIGit,
+		NewWorktrees: newCLIWorktrees,
+		Out:          stdout,
+		In:           stdin,
+		Nudge:        nudge.Touch,
 	})
 }
 

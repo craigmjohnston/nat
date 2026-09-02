@@ -916,3 +916,35 @@ func TestSendPromptFailures(t *testing.T) {
 		})
 	}
 }
+
+// TestInterrupt covers sending an interrupt signal to an agent session.
+func TestInterrupt(t *testing.T) {
+	runner := &fakeRunner{}
+	err := NewTmuxWithRunner(runner).Interrupt("nat-test-session")
+	if err != nil {
+		t.Fatalf("Interrupt: %v", err)
+	}
+	if len(runner.calls) != 1 {
+		t.Fatalf("calls = %d, want exactly 1", len(runner.calls))
+	}
+	call := runner.calls[0]
+	if call.name != TmuxBinary {
+		t.Errorf("command = %s, want %s", call.name, TmuxBinary)
+	}
+	want := []string{"send-keys", "-t", "nat-test-session", "Escape"}
+	if !slices.Equal(call.args, want) {
+		t.Errorf("args = %v, want %v", call.args, want)
+	}
+}
+
+// TestInterruptFailure covers a failure sending the interrupt signal.
+func TestInterruptFailure(t *testing.T) {
+	runner := &fakeRunner{errs: map[string]error{"send-keys": errors.New("tmux not responding")}}
+	err := NewTmuxWithRunner(runner).Interrupt("nat-test-session")
+	if err == nil {
+		t.Fatal("Interrupt: expected error")
+	}
+	if !strings.Contains(err.Error(), "send interrupt") || !strings.Contains(err.Error(), "nat-test-session") {
+		t.Errorf("error = %v, want to mention 'send interrupt' and session name", err)
+	}
+}

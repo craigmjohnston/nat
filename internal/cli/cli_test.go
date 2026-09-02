@@ -12,6 +12,9 @@ import (
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
+// testSliceID is a valid Notion page ID for testing.
+const testSliceID = "3b738308f654815fa843dce9c020efb4"
+
 // fakeAPI stands in for the Notion client. Each field is the answer to the one
 // call it names; the errors take precedence so a failure can be staged.
 type fakeAPI struct {
@@ -529,5 +532,20 @@ func TestDefaultNewTmuxBuildsTmux(t *testing.T) {
 
 	if tmux == nil {
 		t.Fatal("DefaultNewTmux returned nil")
+	}
+}
+
+// DefaultNewGH, DefaultNewGit and DefaultNewWorktrees are the one place the
+// real gh, git and worktree drivers are built; nothing else in the package
+// names their concrete types.
+func TestDefaultToolConstructorsBuildTheRealDrivers(t *testing.T) {
+	if gh := DefaultNewGH(); fmt.Sprintf("%T", gh) != "gh.CLI" {
+		t.Errorf("DefaultNewGH() = %T, want gh.CLI", gh)
+	}
+	if git := DefaultNewGit(); fmt.Sprintf("%T", git) != "git.CLI" {
+		t.Errorf("DefaultNewGit() = %T, want git.CLI", git)
+	}
+	if wt := DefaultNewWorktrees(); fmt.Sprintf("%T", wt) != "worktree.CLI" {
+		t.Errorf("DefaultNewWorktrees() = %T, want worktree.CLI", wt)
 	}
 }

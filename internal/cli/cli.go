@@ -12,10 +12,14 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/gh"
+	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
 // API is the part of *notion.Client the commands use. It is an interface so a
@@ -49,6 +53,37 @@ type NewTmuxFunc func() *agent.Tmux
 // DefaultNewTmux returns a Tmux that drives the real tmux binary on PATH.
 func DefaultNewTmux() *agent.Tmux { return agent.NewTmux() }
 
+// NewGHFunc builds the GitHub CLI driver slice-approve opens a pull request
+// through. It answers [actions.PRCreator] rather than gh.CLI itself, so a test
+// can stand in for it without a real gh on PATH.
+type NewGHFunc func() actions.PRCreator
+
+// DefaultNewGH returns a gh.CLI that drives the real gh binary on PATH.
+func DefaultNewGH() actions.PRCreator { return gh.New() }
+
+// GitCLI is what a headless command needs of git: the remote's news and
+// default branch, for placing a launch's worktree, and the diff of a branch
+// already pushed, for slice-diff. A single git.CLI answers both, so one
+// driver serves slice-launch and slice-diff alike.
+type GitCLI interface {
+	actions.Repo
+	Diff(dir, branch string) (base, diff string, err error)
+}
+
+// NewGitFunc builds the git driver.
+type NewGitFunc func() GitCLI
+
+// DefaultNewGit returns a git.CLI that drives the real git binary on PATH.
+func DefaultNewGit() GitCLI { return git.New() }
+
+// NewWorktreesFunc builds the git worktrees driver slice-launch places an
+// agent's checkout through.
+type NewWorktreesFunc func() actions.Worktrees
+
+// DefaultNewWorktrees returns a worktree.CLI that drives worktrunk's wt
+// binary on PATH.
+func DefaultNewWorktrees() actions.Worktrees { return worktree.New() }
+
 // Env is everything a command needs from the process around it, held as fields
 // so a test can stand in for each edge.
 type Env struct {
@@ -65,6 +100,12 @@ type Env struct {
 	// NewTmux builds the tmux driver for reading live agent status. It is
 	// agent.NewTmux in production.
 	NewTmux NewTmuxFunc
+	// NewGH builds the gh CLI driver. It is gh.New in production.
+	NewGH NewGHFunc
+	// NewGit builds the git CLI driver. It is git.New in production.
+	NewGit NewGitFunc
+	// NewWorktrees builds the git worktrees driver. It is worktree.New in production.
+	NewWorktrees NewWorktreesFunc
 	// Out is where a command writes its output.
 	Out io.Writer
 	// In is where a command reads input a flag was not given for; it is stdin
@@ -110,6 +151,19 @@ usage:
                       brief
   nat slice-show <slice> [--json] --project ID
                       print one slice's full status and brief, no claim
+  nat slice-launch <slice> [--model M] [--effort E] [--json] --project ID
+                      launch a detached agent for a slice with optional model
+                      and effort overrides
+  nat slice-approve <slice> [--json] --project ID
+                      open a pull request for a handed-back branch and mark
+                      the slice Done
+  nat slice-diff <slice> [--json] --project ID
+                      print the diff of a handed-back branch
+  nat agent-send <slice> [--text TEXT|-] --project ID
+                      send a prompt to a live agent session; - or absent reads
+                      from stdin
+  nat agent-interrupt <slice> --project ID
+                      send an interrupt signal to a live agent session
   nat project-create <name> [--repo DIR] [--description TEXT|-] [--json]
                       create a project and its Slices database, register it in
                       local config and write the description as its page body;
@@ -197,6 +251,16 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return startSlice(ctx, args[1:], env)
 	case "slice-show":
 		return sliceShow(ctx, args[1:], env)
+	case "slice-launch":
+		return sliceLaunch(ctx, args[1:], env)
+	case "slice-approve":
+		return sliceApprove(ctx, args[1:], env)
+	case "slice-diff":
+		return sliceDiff(ctx, args[1:], env)
+	case "agent-send":
+		return agentSend(ctx, args[1:], env)
+	case "agent-interrupt":
+		return agentInterrupt(ctx, args[1:], env)
 	case "project-create":
 		return projectCreate(ctx, args[1:], env)
 	case "milestone-add":
