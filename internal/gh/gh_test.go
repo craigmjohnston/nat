@@ -2,6 +2,7 @@ package gh
 
 import (
 	"errors"
+	"io"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -10,23 +11,37 @@ import (
 )
 
 // fakeRunner stands in for the gh binary, recording the one call the CLI makes
-// and answering with whatever the test wants gh to have said.
+// and answering with whatever the test wants gh to have said. It answers
+// [StdinRunner] as well as [Runner], recording whatever was on stdin, so it
+// serves every command in the package including [CLI.CommentPR].
 type fakeRunner struct {
 	out string
 	err error
 
-	dir  string
-	name string
-	args []string
-	runs int
+	dir   string
+	name  string
+	args  []string
+	runs  int
+	stdin string
 }
 
-var _ Runner = (*fakeRunner)(nil)
+var (
+	_ Runner      = (*fakeRunner)(nil)
+	_ StdinRunner = (*fakeRunner)(nil)
+)
 
 func (f *fakeRunner) Run(dir, name string, args ...string) (string, error) {
 	f.runs++
 	f.dir, f.name, f.args = dir, name, args
 	return f.out, f.err
+}
+
+func (f *fakeRunner) RunWithStdin(dir string, stdin io.Reader, name string, args ...string) (string, error) {
+	if stdin != nil {
+		b, _ := io.ReadAll(stdin)
+		f.stdin = string(b)
+	}
+	return f.Run(dir, name, args...)
 }
 
 // TestCreatePRRunsGh pins the invocation for a hand-back that left no
@@ -185,5 +200,19 @@ func TestExecRunnerReportsAMissingBinary(t *testing.T) {
 	}
 	if !errors.Is(err, exec.ErrNotFound) {
 		t.Errorf("Run() = %v, want it to say the binary is not there", err)
+	}
+}
+
+// TestExecRunnerRunWithStdinCarriesInput covers the seam [CLI.CommentPR]
+// needs: what is handed as stdin is what the command reads off it, in the
+// directory it was told to run in.
+func TestExecRunnerRunWithStdinCarriesInput(t *testing.T) {
+	dir := t.TempDir()
+	out, err := ExecRunner{}.RunWithStdin(dir, strings.NewReader("said on stdin"), "cat")
+	if err != nil {
+		t.Fatalf("RunWithStdin() = %v, want it to run", err)
+	}
+	if out != "said on stdin" {
+		t.Errorf("RunWithStdin() = %q, want the input echoed back", out)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"time"
@@ -33,21 +34,48 @@ type Runner interface {
 	Run(dir, name string, args ...string) (string, error)
 }
 
+// StdinRunner is a Runner that can also carry input on the command's own
+// standard input — the seam [CLI.CommentPR] needs, since a comment has no
+// bound on its length the way a shell's argument list does and gh reads one
+// off a pipe instead. It is kept apart from Runner rather than folded into it,
+// so every fake already standing in for Runner alone keeps working unchanged;
+// only a runner CommentPR is actually run against has to answer this one too.
+type StdinRunner interface {
+	Runner
+	RunWithStdin(dir string, stdin io.Reader, name string, args ...string) (string, error)
+}
+
 // ExecRunner is a Runner backed by real subprocesses.
 type ExecRunner struct{}
 
-var _ Runner = ExecRunner{}
+var (
+	_ Runner      = ExecRunner{}
+	_ StdinRunner = ExecRunner{}
+)
 
 // Run executes name with args in dir, returning its standard output. A
 // non-zero exit becomes an error carrying what the command wrote to stderr,
 // which explains the failure better than the exit code does; anything else — a
 // gh that is not installed, say — is returned as os/exec reported it.
 func (ExecRunner) Run(dir, name string, args ...string) (string, error) {
+	return run(dir, nil, name, args...)
+}
+
+// RunWithStdin is [ExecRunner.Run] with the command's standard input wired to
+// stdin, for the one call that has something to put there.
+func (ExecRunner) RunWithStdin(dir string, stdin io.Reader, name string, args ...string) (string, error) {
+	return run(dir, stdin, name, args...)
+}
+
+// run is Run and RunWithStdin's shared implementation, so the timeout, the
+// working directory and the exit handling are written once.
+func run(dir string, stdin io.Reader, name string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
+	cmd.Stdin = stdin
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

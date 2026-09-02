@@ -45,7 +45,8 @@ func TestViewPRRunsGh(t *testing.T) {
 	}
 	want := []string{"pr", "view", "slice/read-a-pull-request-through-gh", "--json",
 		"number,title,body,state,isDraft,author,baseRefName,headRefName,url," +
-			"reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviews,comments"}
+			"reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviews,comments," +
+			"additions,deletions,changedFiles,commits"}
 	if !reflect.DeepEqual(runner.args, want) {
 		t.Errorf("args = %v, want %v", runner.args, want)
 	}
@@ -112,6 +113,22 @@ func TestViewPROpen(t *testing.T) {
 	}
 	if !reflect.DeepEqual(pr, want) {
 		t.Errorf("ViewPR() = %+v, want %+v", pr, want)
+	}
+}
+
+// TestViewPRChangeStats covers the four fields gh's numbers pass straight
+// through as: additions, deletions and changed files kept as gh reports them,
+// and commits — a full object apiece on the wire — collapsed to how many
+// there are, since that is all this package ever reads them for.
+func TestViewPRChangeStats(t *testing.T) {
+	runner := &fakeRunner{out: `{"number":7,"additions":42,"deletions":8,"changedFiles":5,` +
+		`"commits":[{"oid":"a"},{"oid":"b"},{"oid":"c"}]}`}
+	pr, err := NewWithRunner(runner).ViewPR("/repos/nat", "7")
+	if err != nil {
+		t.Fatalf("ViewPR() = %v, want a pull request", err)
+	}
+	if pr.Additions != 42 || pr.Deletions != 8 || pr.ChangedFiles != 5 || pr.Commits != 3 {
+		t.Errorf("ViewPR() = %+v, want additions 42, deletions 8, changedFiles 5, commits 3", pr)
 	}
 }
 

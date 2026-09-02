@@ -113,6 +113,13 @@ type prDoc struct {
 	ReviewDecision   string        `json:"review_decision"`
 	Mergeable        string        `json:"mergeable"`
 	MergeStateStatus string        `json:"merge_state_status"`
+	// Additions, Deletions, ChangedFiles and Commits are the pull request's
+	// change stats — gh's own numbers, passed through as numbers rather than
+	// turned into a summary sentence.
+	Additions    int `json:"additions"`
+	Deletions    int `json:"deletions"`
+	ChangedFiles int `json:"changed_files"`
+	Commits      int `json:"commits"`
 }
 
 // prJSON maps gh's answer onto the structured form, keeping every field it
@@ -134,6 +141,10 @@ func prJSON(pr gh.PR) prDoc {
 		ReviewDecision:   pr.ReviewDecision,
 		Mergeable:        pr.Mergeable,
 		MergeStateStatus: pr.MergeStateStatus,
+		Additions:        pr.Additions,
+		Deletions:        pr.Deletions,
+		ChangedFiles:     pr.ChangedFiles,
+		Commits:          pr.Commits,
 	}
 	for _, c := range pr.Checks {
 		doc.Checks = append(doc.Checks, checkJSON{Name: c.Name, State: c.State, Link: c.URL})

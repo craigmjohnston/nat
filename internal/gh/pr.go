@@ -14,9 +14,13 @@ import (
 // written out — what the pull request is (number, title, body, author, the two
 // branches, its URL), whether it is open, merged or still a draft, what stands
 // between it and main (the review decision, mergeability, GitHub's own summary
-// of the merge state, the checks) and what has been said on it.
+// of the merge state, the checks), what has been said on it, and its change
+// stats — additions, deletions, changed files, and the commit count. gh's own
+// "commits" field is a full object per commit; only its length is kept, since
+// the commits themselves are read through internal/git instead.
 const prViewFields = "number,title,body,state,isDraft,author,baseRefName,headRefName,url," +
-	"reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviews,comments"
+	"reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviews,comments," +
+	"additions,deletions,changedFiles,commits"
 
 // PR is one pull request as it is drawn: gh's answer decoded into the fields
 // the viewer has a use for. GitHub's vocabulary is kept as GitHub writes it —
@@ -40,6 +44,14 @@ type PR struct {
 	Checks           []Check
 	Reviews          []Review
 	Comments         []Comment
+	// Additions, Deletions and ChangedFiles are the pull request's own change
+	// stats, gh's numbers passed through as numbers. Commits is how many
+	// commits it holds — a count rather than the commits themselves, which gh
+	// reports as a full object apiece and this package has no use for.
+	Additions    int
+	Deletions    int
+	ChangedFiles int
+	Commits      int
 }
 
 // The two states a pull request is in that a reader acts on: GitHub's own
@@ -154,6 +166,13 @@ type prView struct {
 		CreatedAt time.Time `json:"createdAt"`
 		URL       string    `json:"url"`
 	} `json:"comments"`
+	Additions    int `json:"additions"`
+	Deletions    int `json:"deletions"`
+	ChangedFiles int `json:"changedFiles"`
+	// Commits is decoded as raw JSON rather than a struct this package would
+	// otherwise have to keep in step with GitHub's own commit shape: only the
+	// length of it is ever read.
+	Commits []json.RawMessage `json:"commits"`
 }
 
 // ghUser is whoever GitHub names, of which only the login is drawn. A comment
@@ -217,6 +236,10 @@ func (v prView) pr() PR {
 		ReviewDecision:   v.ReviewDecision,
 		Mergeable:        v.Mergeable,
 		MergeStateStatus: v.MergeStateStatus,
+		Additions:        v.Additions,
+		Deletions:        v.Deletions,
+		ChangedFiles:     v.ChangedFiles,
+		Commits:          len(v.Commits),
 	}
 	for _, entry := range v.Rollup {
 		pr.Checks = append(pr.Checks, entry.check())

@@ -36,6 +36,7 @@ func (f *fakePRReader) OpenPRs(dir string) (map[string]gh.PRStatus, error) {
 func (f *fakePRReader) CreatePR(dir, branch, title, body string) (string, error) { return "", nil }
 func (f *fakePRReader) ViewPR(dir, ref string) (gh.PR, error)                    { return gh.PR{}, nil }
 func (f *fakePRReader) MergePR(dir, ref string) error                            { return nil }
+func (f *fakePRReader) CommentPR(dir, ref, body string) (string, error)          { return "", nil }
 
 func slicePageForStatus(id, name, status, milestone, pr string) notion.Page {
 	props := map[string]notion.PropertyValue{

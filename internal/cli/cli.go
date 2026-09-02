@@ -55,14 +55,16 @@ func DefaultNewTmux() *agent.Tmux { return agent.NewTmux() }
 
 // GH is everything the pull request commands need of the GitHub CLI:
 // [actions.PRCreator] for slice-approve, [PRViewer] for pr-view, [PRMerger]
-// for pr-merge and [PRReader] for pr-status. One gh.CLI answers all four, and
-// a headless command names whichever of them it actually calls, the way
-// [GitCLI] combines git's two seams for the same reason.
+// for pr-merge, [PRReader] for pr-status and [PRCommenter] for pr-comment. One
+// gh.CLI answers all five, and a headless command names whichever of them it
+// actually calls, the way [GitCLI] combines git's two seams for the same
+// reason.
 type GH interface {
 	actions.PRCreator
 	PRViewer
 	PRMerger
 	PRReader
+	PRCommenter
 }
 
 // NewGHFunc builds the GitHub CLI driver the pull request commands run
@@ -75,11 +77,14 @@ func DefaultNewGH() GH { return gh.New() }
 
 // GitCLI is what a headless command needs of git: the remote's news and
 // default branch, for placing a launch's worktree, and the diff of a branch
-// already pushed, for slice-diff. A single git.CLI answers both, so one
-// driver serves slice-launch and slice-diff alike.
+// already pushed — the whole of it, its commits alone, or one commit at a
+// time — for slice-diff. A single git.CLI answers all of it, so one driver
+// serves slice-launch and slice-diff alike.
 type GitCLI interface {
 	actions.Repo
 	Diff(dir, branch string) (base, diff string, err error)
+	Commits(dir, branch string) ([]git.Commit, error)
+	CommitDiff(dir, sha string) (string, error)
 }
 
 // NewGitFunc builds the git driver.
@@ -171,6 +176,18 @@ usage:
                       the slice Done
   nat slice-diff <slice> [--json] --project ID
                       print the diff of a handed-back branch
+  nat slice-diff <slice> --commits [--json] --project ID
+                      list the branch's commits against its merge base,
+                      instead of diffing it
+  nat slice-diff <slice> --commit SHA [--json] --project ID
+                      diff one commit of the branch's history against its own
+                      parent, instead of the whole branch; --commits and
+                      --commit are mutually exclusive with each other and with
+                      the whole-branch diff
+  nat slice-edit <slice> --description TEXT|- --project ID
+                      replace a Todo slice's description, its page body;
+                      refused on a slice in progress or Done. --description -
+                      reads it from stdin
   nat agent-send <slice> [--text TEXT|-] --project ID
                       send a prompt to a live agent session; - or absent reads
                       from stdin
@@ -218,7 +235,11 @@ usage:
                       when the session working it ended without finishing it
   nat pr-view <slice> [--json] --project ID
                       print one pull request in full: its description, checks,
-                      reviews and comments, read through gh in the slice's repo
+                      reviews, comments and change stats, read through gh in
+                      the slice's repo
+  nat pr-comment <slice> [--body TEXT|-] [--json] --project ID
+                      post a comment on the slice's recorded pull request;
+                      --body - or absent reads it from stdin
   nat pr-merge <slice> [--json] --project ID
                       merge a slice's pull request through gh, refused in the
                       merge box's own words when a review, a check or the
@@ -291,6 +312,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return sliceApprove(ctx, args[1:], env)
 	case "slice-diff":
 		return sliceDiff(ctx, args[1:], env)
+	case "slice-edit":
+		return sliceEdit(ctx, args[1:], env)
 	case "agent-send":
 		return agentSend(ctx, args[1:], env)
 	case "agent-interrupt":
@@ -315,6 +338,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return releaseSlice(ctx, args[1:], env)
 	case "pr-view":
 		return prView(ctx, args[1:], env)
+	case "pr-comment":
+		return prComment(ctx, args[1:], env)
 	case "pr-merge":
 		return prMerge(ctx, args[1:], env)
 	case "pr-status":

@@ -13,12 +13,21 @@ import (
 
 // fakeGitRunner is a fake git runner for testing: diff answers diffOut/diffErr,
 // symbolic-ref answers base when it is given and refuses otherwise — which is
-// what sends [git.CLI.Base] on to its own local fallback, "main".
+// what sends [git.CLI.Base] on to its own local fallback, "main" — log answers
+// logOut/logErr for [git.CLI.Commits], and rev-parse answers verifyErr for the
+// parent check [git.CLI.CommitDiff] makes, told apart from the fallback base's
+// own rev-parse call by ending in "^", which only a commit's own parent check
+// ever asks about.
 type fakeGitRunner struct {
 	diffOut string
 	diffErr error
 	base    string
 	dir     string
+	logOut  string
+	logErr  error
+	// verifyErr fails [git.CLI.CommitDiff]'s parent check; nil answers as if
+	// the commit has one.
+	verifyErr error
 }
 
 func (f *fakeGitRunner) Run(dir, _ string, args ...string) (string, error) {
@@ -35,6 +44,13 @@ func (f *fakeGitRunner) Run(dir, _ string, args ...string) (string, error) {
 			return "", errors.New("no such ref")
 		}
 		return f.base, nil
+	case "log":
+		return f.logOut, f.logErr
+	case "rev-parse":
+		if len(args) > 0 && strings.HasSuffix(args[len(args)-1], "^") {
+			return "", f.verifyErr
+		}
+		return "", errors.New("no such ref")
 	default:
 		return "", errors.New("no such ref")
 	}
@@ -313,5 +329,221 @@ func TestSliceDiffReportsAFailedRead(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "load the slice") {
 		t.Errorf("err = %v, want the failed read named", err)
+	}
+}
+
+// sliceCommitLog is a git log answer in [git.CLI.Commits]'s own NUL-delimited
+// shape, newest first.
+const sliceCommitLog = "aaa1111111\x00Add the viewer\x00Craig Johnston\x002026-08-28T11:30:00+02:00\n" +
+	"bbb2222222\x00Wire the diff screen\x00Craig Johnston\x002026-08-27T09:15:00+02:00\n"
+
+func TestSliceDiffCommitsListsTheHistory(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
+		},
+	}
+	env, _ := testEnv(testClaimConfig(), api)
+	env.NewGit = func() GitCLI {
+		return git.NewWithRunner(&fakeGitRunner{logOut: sliceCommitLog, base: "origin/main"})
+	}
+	var out strings.Builder
+	env.Out = &out
+
+	err := Run(context.Background(), []string{
+		"slice-diff", testSliceID, "--commits", "--project", "project-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("slice-diff --commits: %v", err)
+	}
+	for _, want := range []string{"origin/main..feature/ui", "aaa11111 Add the viewer — Craig Johnston, 2026-08-28",
+		"bbb22222 Wire the diff screen — Craig Johnston, 2026-08-27"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestSliceDiffCommitsJSON(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
+		},
+	}
+	env, _ := testEnv(testClaimConfig(), api)
+	env.NewGit = func() GitCLI {
+		return git.NewWithRunner(&fakeGitRunner{logOut: sliceCommitLog, base: "origin/main"})
+	}
+	var out strings.Builder
+	env.Out = &out
+
+	err := Run(context.Background(), []string{
+		"slice-diff", testSliceID, "--commits", "--json", "--project", "project-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("slice-diff --commits --json: %v", err)
+	}
+	var got commitsDoc
+	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
+	}
+	if got.Base != "origin/main" || got.Branch != "feature/ui" {
+		t.Errorf("base/branch = %q/%q, want origin/main/feature/ui", got.Base, got.Branch)
+	}
+	if len(got.Commits) != 2 || got.Commits[0].SHA != "aaa1111111" || got.Commits[0].Subject != "Add the viewer" ||
+		got.Commits[0].Author != "Craig Johnston" {
+		t.Errorf("commits = %+v", got.Commits)
+	}
+}
+
+// TestSliceDiffCommitsOfAnEmptyRange covers a branch with nothing new since
+// the base: "_none_" rather than an empty list of bullets.
+func TestSliceDiffCommitsOfAnEmptyRange(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
+		},
+	}
+	env, _ := testEnv(testClaimConfig(), api)
+	env.NewGit = func() GitCLI { return git.NewWithRunner(&fakeGitRunner{base: "origin/main"}) }
+	var out strings.Builder
+	env.Out = &out
+
+	err := Run(context.Background(), []string{
+		"slice-diff", testSliceID, "--commits", "--project", "project-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("slice-diff --commits: %v", err)
+	}
+	if !strings.Contains(out.String(), "_none_") {
+		t.Errorf("output = %q, want it to say there are none", out.String())
+	}
+}
+
+// TestSliceDiffCommitsShortSHA covers a commit whose sha is already eight
+// characters or fewer: shown whole rather than truncated further.
+func TestSliceDiffCommitsShortSHA(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
+		},
+	}
+	env, _ := testEnv(testClaimConfig(), api)
+	shortLog := "abc1234\x00Short sha\x00Craig Johnston\x002026-08-28T11:30:00+02:00\n"
+	env.NewGit = func() GitCLI {
+		return git.NewWithRunner(&fakeGitRunner{logOut: shortLog, base: "origin/main"})
+	}
+	var out strings.Builder
+	env.Out = &out
+
+	err := Run(context.Background(), []string{
+		"slice-diff", testSliceID, "--commits", "--project", "project-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("slice-diff --commits: %v", err)
+	}
+	if !strings.Contains(out.String(), "abc1234 Short sha") {
+		t.Errorf("output missing the whole short sha:\n%s", out.String())
+	}
+}
+
+func TestSliceDiffCommitsFailure(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
+		},
+	}
+	env, _ := testEnv(testClaimConfig(), api)
+	env.NewGit = func() GitCLI {
+		return git.NewWithRunner(&fakeGitRunner{base: "origin/main",
+			logErr: &git.ExitError{Code: 128, Stderr: "fatal: bad revision"}})
+	}
+
+	err := Run(context.Background(), []string{
+		"slice-diff", testSliceID, "--commits", "--project", "project-1",
+	}, env)
+	if err == nil || !strings.Contains(err.Error(), "bad revision") {
+		t.Errorf("err = %v, want git's own reason", err)
+	}
+}
+
+func TestSliceDiffCommitDiffsOneCommit(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
+		},
+	}
+	env, _ := testEnv(testClaimConfig(), api)
+	env.NewGit = func() GitCLI { return git.NewWithRunner(&fakeGitRunner{diffOut: sampleDiff}) }
+	var out strings.Builder
+	env.Out = &out
+
+	err := Run(context.Background(), []string{
+		"slice-diff", testSliceID, "--commit", "aaa111", "--project", "project-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("slice-diff --commit: %v", err)
+	}
+	if out.String() != sampleDiff {
+		t.Errorf("output = %q, want git's own diff verbatim", out.String())
+	}
+}
+
+func TestSliceDiffCommitJSON(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
+		},
+	}
+	env, _ := testEnv(testClaimConfig(), api)
+	env.NewGit = func() GitCLI { return git.NewWithRunner(&fakeGitRunner{diffOut: sampleDiff}) }
+	var out strings.Builder
+	env.Out = &out
+
+	err := Run(context.Background(), []string{
+		"slice-diff", testSliceID, "--commit", "aaa111", "--json", "--project", "project-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("slice-diff --commit --json: %v", err)
+	}
+	var got diffJSON
+	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
+	}
+	if got.Base != "aaa111^" || got.Branch != "aaa111" {
+		t.Errorf("base/branch = %q/%q, want aaa111^/aaa111", got.Base, got.Branch)
+	}
+	if len(got.Files) != 1 || got.Files[0].Path != "main.go" {
+		t.Errorf("files = %+v", got.Files)
+	}
+}
+
+func TestSliceDiffCommitRefusesARootCommit(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
+		},
+	}
+	env, _ := testEnv(testClaimConfig(), api)
+	env.NewGit = func() GitCLI {
+		return git.NewWithRunner(&fakeGitRunner{verifyErr: &git.ExitError{Code: 128}})
+	}
+
+	err := Run(context.Background(), []string{
+		"slice-diff", testSliceID, "--commit", "root111", "--project", "project-1",
+	}, env)
+	if err == nil || !strings.Contains(err.Error(), "no parent to diff against") {
+		t.Errorf("err = %v, want the root-commit refusal", err)
+	}
+}
+
+func TestSliceDiffRefusesCommitsAndCommitTogether(t *testing.T) {
+	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+
+	err := Run(context.Background(), []string{
+		"slice-diff", testSliceID, "--commits", "--commit", "aaa111", "--project", "project-1",
+	}, env)
+	if err == nil || !strings.Contains(err.Error(), "two different reads") {
+		t.Errorf("err = %v, want the mutual-exclusion refusal", err)
 	}
 }

@@ -34,7 +34,11 @@ const fullPROpenJSON = `{
   ],
   "comments": [
     {"author": {"login": "craig"}, "body": "Rebased.", "createdAt": "2026-08-28T09:15:00Z", "url": "https://github.test/craig/nat/pull/7#issuecomment-1"}
-  ]
+  ],
+  "additions": 42,
+  "deletions": 8,
+  "changedFiles": 5,
+  "commits": [{"oid": "a"}, {"oid": "b"}, {"oid": "c"}]
 }`
 
 // barePROpenJSON is gh's answer for a pull request with none of the optional
@@ -158,6 +162,10 @@ func TestPRViewJSON(t *testing.T) {
 	}
 	if len(got.Comments) != 1 || got.Comments[0].Author != "craig" || got.Comments[0].Body != "Rebased." {
 		t.Errorf("comments = %+v", got.Comments)
+	}
+	if got.Additions != 42 || got.Deletions != 8 || got.ChangedFiles != 5 || got.Commits != 3 {
+		t.Errorf("change stats = +%d/-%d files=%d commits=%d, want +42/-8 files=5 commits=3",
+			got.Additions, got.Deletions, got.ChangedFiles, got.Commits)
 	}
 }
 
