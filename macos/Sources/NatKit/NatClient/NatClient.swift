@@ -10,6 +10,14 @@ private struct ApproveEnvelope: Codable {
     let url: String
 }
 
+/// Envelope for `pr-merge --json`'s output — always `{"merged":true}` on
+/// success, since a refusal comes back as a non-zero exit rather than
+/// `false`. Decoded (and discarded) anyway, so a `nat` whose shape has
+/// drifted fails loudly here rather than being read as a silent success.
+private struct MergedEnvelope: Codable {
+    let merged: Bool
+}
+
 /// A typed client for running nat commands and decoding their JSON output.
 public final class NatClient: Sendable {
     private nonisolated let commandRunner: CommandRunning
@@ -140,6 +148,56 @@ public final class NatClient: Sendable {
     public func sliceApprove(projectID: String, sliceRef: String) async throws -> String {
         let output = try await runNat(arguments: ["slice-approve", "--project", projectID, "--json", sliceRef])
         return try decodeJSON(ApproveEnvelope.self, from: output).url
+    }
+
+    /// Read one pull request in full — the PR tab's own reading, mirroring
+    /// the board's `v` key (`internal/cli/prview.go`).
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sliceRef: The slice's URL or Notion page ID
+    /// - Returns: PRDetail with gh's own fields
+    /// - Throws: NatError if the slice has no pull request recorded, or gh fails
+    public func prView(projectID: String, sliceRef: String) async throws -> PRDetail {
+        let output = try await runNat(arguments: ["pr-view", "--project", projectID, "--json", sliceRef])
+        return try decodeJSON(PRDetail.self, from: output)
+    }
+
+    /// Merge a slice's recorded pull request, mirroring the PR screen's own
+    /// merge key (`internal/cli/prmerge.go`). The refusal is the merge box's
+    /// own: gh is asked to attempt the merge only once the pull request's own
+    /// verdicts allow it, which the CLI (and this client's caller) checks
+    /// first — a gh that still refuses comes back as `NatError.commandFailed`
+    /// with its own first line.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sliceRef: The slice's URL or Notion page ID
+    /// - Throws: NatError if the slice has no pull request recorded, or gh refuses
+    public func prMerge(projectID: String, sliceRef: String) async throws {
+        let output = try await runNat(arguments: ["pr-merge", "--project", projectID, "--json", sliceRef])
+        _ = try decodeJSON(MergedEnvelope.self, from: output)
+    }
+
+    /// Leave a top-level comment on a slice's pull request — the PR tab's own
+    /// composers, which post through `nat pr-comment` rather than write
+    /// anything of their own to GitHub. GitHub's per-line review threads have
+    /// a reply API of their own that `nat` does not wrap, so this is always a
+    /// new comment on the conversation as a whole, whichever composer sent it.
+    ///
+    /// The body goes over stdin (`--body -`), exactly as `agentSend`'s prompt
+    /// does: a comment is free-form text and may run to several lines.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sliceRef: The slice's URL or Notion page ID
+    ///   - body: The comment's markdown body
+    /// - Throws: NatError if the slice has no pull request recorded, or gh refuses
+    public func prComment(projectID: String, sliceRef: String, body: String) async throws {
+        _ = try await runNatRaw(
+            arguments: ["pr-comment", sliceRef, "--project", projectID, "--body", "-"],
+            standardInput: body.data(using: .utf8)
+        )
     }
 
     // MARK: - Private Helpers

@@ -71,20 +71,8 @@ struct PaneView: View {
                     DiffTabView(appModel: appModel, slice: slice, onApproved: {
                         currentTab = .pr
                     })
-                default:
-                    VStack {
-                        VStack(spacing: 8) {
-                            Image(systemName: "doc.text")
-                                .font(.system(size: 32, weight: .regular))
-                                .foregroundStyle(DesignTokens.labelSecondary)
-
-                            Text("\(currentTab.rawValue) lands here")
-                                .font(.system(size: 13, weight: .regular))
-                                .foregroundStyle(DesignTokens.labelSecondary)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(DesignTokens.controlBg)
-                    }
+                case .pr:
+                    PRTabView(appModel: appModel, slice: slice)
                 }
             } else {
                 // Empty state

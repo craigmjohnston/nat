@@ -11,6 +11,9 @@ public protocol NatClientProtocol: Sendable {
     func agentInterrupt(projectID: String, sliceRef: String) async throws -> Void
     func agentSend(projectID: String, sliceRef: String, text: String) async throws -> Void
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String
+    func prView(projectID: String, sliceRef: String) async throws -> PRDetail
+    func prMerge(projectID: String, sliceRef: String) async throws -> Void
+    func prComment(projectID: String, sliceRef: String, body: String) async throws -> Void
 }
 
 // Make NatClient conform to the protocol

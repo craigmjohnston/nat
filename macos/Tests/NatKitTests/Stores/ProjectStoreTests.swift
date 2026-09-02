@@ -55,6 +55,18 @@ final class MockNatClient: NatClientProtocol, @unchecked Sendable {
     func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult {
         throw TestError()
     }
+
+    func prView(projectID: String, sliceRef: String) async throws -> PRDetail {
+        throw TestError()
+    }
+
+    func prMerge(projectID: String, sliceRef: String) async throws {
+        throw TestError()
+    }
+
+    func prComment(projectID: String, sliceRef: String, body: String) async throws {
+        throw TestError()
+    }
 }
 
 final class ProjectStoreTests: XCTestCase {

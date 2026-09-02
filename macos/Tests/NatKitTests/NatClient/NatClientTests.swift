@@ -228,6 +228,118 @@ final class NatClientTests: XCTestCase {
         }
     }
 
+    func testPRViewFull() async throws {
+        let fakeRunner = FakeRunner(fixture: .prViewFull)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let pr = try await client.prView(projectID: "proj-123", sliceRef: "slice-1")
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["pr-view", "--project", "proj-123", "--json", "slice-1"])
+        XCTAssertEqual(pr.number, 42)
+        XCTAssertEqual(pr.title, "Add the PR tab")
+        XCTAssertEqual(pr.state, "OPEN")
+        XCTAssertFalse(pr.isDraft)
+        XCTAssertEqual(pr.baseRefName, "main")
+        XCTAssertEqual(pr.headRefName, "slice/add-the-pr-tab")
+        XCTAssertEqual(pr.checks.count, 2)
+        XCTAssertEqual(pr.checks[0].name, "build")
+        XCTAssertEqual(pr.reviews.count, 2)
+        // A review submitted at Go's zero-time marker decodes as no time at all.
+        XCTAssertNotNil(pr.reviews[0].submittedAt)
+        XCTAssertNil(pr.reviews[1].submittedAt)
+        XCTAssertEqual(pr.comments.count, 1)
+        XCTAssertEqual(pr.comments[0].author, "craigmjohnston")
+        XCTAssertEqual(pr.reviewDecision, "APPROVED")
+        XCTAssertEqual(pr.mergeable, "MERGEABLE")
+        XCTAssertEqual(pr.mergeStateStatus, "CLEAN")
+        XCTAssertEqual(pr.additions, 120)
+        XCTAssertEqual(pr.deletions, 8)
+        XCTAssertEqual(pr.changedFiles, 5)
+        XCTAssertEqual(pr.commits, 3)
+    }
+
+    func testPRViewMinimalOmitsTheOptionalTally() async throws {
+        let fakeRunner = FakeRunner(fixture: .prViewMinimal)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let pr = try await client.prView(projectID: "proj-123", sliceRef: "slice-1")
+
+        XCTAssertTrue(pr.checks.isEmpty)
+        XCTAssertTrue(pr.reviews.isEmpty)
+        XCTAssertTrue(pr.comments.isEmpty)
+        XCTAssertNil(pr.additions)
+        XCTAssertNil(pr.deletions)
+        XCTAssertNil(pr.changedFiles)
+        XCTAssertNil(pr.commits)
+    }
+
+    func testPRViewFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .prViewFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            _ = try await client.prView(projectID: "proj-123", sliceRef: "slice-1")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "\"Write the UI\" has no pull request recorded: nothing to view")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
+
+    func testPRMergeSuccess() async throws {
+        let fakeRunner = FakeRunner(fixture: .prMergeSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.prMerge(projectID: "proj-123", sliceRef: "slice-1")
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["pr-merge", "--project", "proj-123", "--json", "slice-1"])
+    }
+
+    func testPRMergeFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .prMergeFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            try await client.prMerge(projectID: "proj-123", sliceRef: "slice-1")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "cannot merge #12 — checks: 1 failing")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
+
+    func testPRCommentPostsTheBodyOverStdin() async throws {
+        let fakeRunner = FakeRunner(fixture: .prCommentSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.prComment(projectID: "proj-123", sliceRef: "slice-1", body: "Looks good.")
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["pr-comment", "slice-1", "--project", "proj-123", "--body", "-"])
+        XCTAssertEqual(fakeRunner.lastStandardInput, "Looks good.".data(using: .utf8))
+    }
+
+    func testPRCommentFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .prCommentFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            try await client.prComment(projectID: "proj-123", sliceRef: "slice-1", body: "Looks good.")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "\"Write the UI\" has no pull request recorded: nothing to comment on")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
+
     func testAgentInterruptNoSession() async throws {
         let fakeRunner = FakeRunner(fixture: .agentInterruptNoSession)
         let client = NatClient(commandRunner: fakeRunner)

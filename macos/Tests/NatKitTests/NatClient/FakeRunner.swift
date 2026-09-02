@@ -21,6 +21,13 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case agentSendNoSession
         case sliceApproveSuccess
         case sliceApproveFailure
+        case prViewFull
+        case prViewMinimal
+        case prViewFailure
+        case prMergeSuccess
+        case prMergeFailure
+        case prCommentSuccess
+        case prCommentFailure
     }
 
     private var fixture: Fixture
@@ -84,6 +91,21 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return (fixtureSliceApprove.data(using: .utf8)!, Data(), 0)
         case .sliceApproveFailure:
             return (Data(), "\"Write the UI\" is not handed back".data(using: .utf8)!, 1)
+        case .prViewFull:
+            return (fixturePRViewFull.data(using: .utf8)!, Data(), 0)
+        case .prViewMinimal:
+            return (fixturePRViewMinimal.data(using: .utf8)!, Data(), 0)
+        case .prViewFailure:
+            return (Data(), "\"Write the UI\" has no pull request recorded: nothing to view".data(using: .utf8)!, 1)
+        case .prMergeSuccess:
+            return (fixtureMerged.data(using: .utf8)!, Data(), 0)
+        case .prMergeFailure:
+            return (Data(), "cannot merge #12 — checks: 1 failing".data(using: .utf8)!, 1)
+        case .prCommentSuccess:
+            // pr-comment says nothing at all on success, exactly as agent-send.
+            return (Data(), Data(), 0)
+        case .prCommentFailure:
+            return (Data(), "\"Write the UI\" has no pull request recorded: nothing to comment on".data(using: .utf8)!, 1)
         }
     }
 
@@ -222,6 +244,74 @@ let fixtureSliceShow = """
 let fixtureSliceApprove = """
 {
   "url": "https://github.test/craig/nat/pull/42"
+}
+"""
+
+// fixturePRViewFull is a full-shaped nat pr-view --json reading: two checks
+// (one done, one still going), a review that approved and a second still
+// PENDING (submitted_at is Go's zero-time marker, which should decode as no
+// time at all and drop it from the conversation), one comment, and the
+// additions/deletions/changed_files/commits tally a newer nat carries.
+let fixturePRViewFull = """
+{
+  "number": 42,
+  "title": "Add the PR tab",
+  "body": "## What\\n\\nAdds the PR tab.",
+  "state": "OPEN",
+  "is_draft": false,
+  "author": "craigmjohnston",
+  "base_ref_name": "main",
+  "head_ref_name": "slice/add-the-pr-tab",
+  "url": "https://github.test/craig/nat/pull/42",
+  "checks": [
+    {"name": "build", "state": "SUCCESS", "link": "https://github.test/craig/nat/actions/1"},
+    {"name": "lint", "state": "IN_PROGRESS", "link": "https://github.test/craig/nat/actions/2"}
+  ],
+  "reviews": [
+    {"author": "reviewer", "state": "APPROVED", "body": "", "submitted_at": "2026-03-01T12:00:00Z"},
+    {"author": "reviewer2", "state": "PENDING", "body": "", "submitted_at": "0001-01-01T00:00:00Z"}
+  ],
+  "comments": [
+    {"author": "craigmjohnston", "body": "Ready for a look.", "created_at": "2026-03-01T10:00:00Z",
+     "url": "https://github.test/craig/nat/pull/42#issuecomment-1"}
+  ],
+  "review_decision": "APPROVED",
+  "mergeable": "MERGEABLE",
+  "merge_state_status": "CLEAN",
+  "additions": 120,
+  "deletions": 8,
+  "changed_files": 5,
+  "commits": 3
+}
+"""
+
+// fixturePRViewMinimal is what an older nat pr-view sends: no checks, reviews
+// or comments, and none of the additions/deletions/changed_files/commits
+// keys at all — every one of those should decode as nil rather than fail
+// the whole read.
+let fixturePRViewMinimal = """
+{
+  "number": 7,
+  "title": "Small fix",
+  "body": "",
+  "state": "OPEN",
+  "is_draft": true,
+  "author": "",
+  "base_ref_name": "main",
+  "head_ref_name": "slice/small-fix",
+  "url": "https://github.test/craig/nat/pull/7",
+  "checks": [],
+  "reviews": [],
+  "comments": [],
+  "review_decision": "",
+  "mergeable": "UNKNOWN",
+  "merge_state_status": "UNKNOWN"
+}
+"""
+
+let fixtureMerged = """
+{
+  "merged": true
 }
 """
 

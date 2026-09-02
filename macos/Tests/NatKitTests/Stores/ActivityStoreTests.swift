@@ -53,6 +53,18 @@ final class MockActivityClient: NatClientProtocol, @unchecked Sendable {
     func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult {
         throw NSError(domain: "test", code: -1)
     }
+
+    func prView(projectID: String, sliceRef: String) async throws -> PRDetail {
+        throw NSError(domain: "test", code: -1)
+    }
+
+    func prMerge(projectID: String, sliceRef: String) async throws {
+        throw NSError(domain: "test", code: -1)
+    }
+
+    func prComment(projectID: String, sliceRef: String, body: String) async throws {
+        throw NSError(domain: "test", code: -1)
+    }
 }
 
 // MARK: - ActivityStore Tests
