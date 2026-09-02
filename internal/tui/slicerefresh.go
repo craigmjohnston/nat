@@ -81,7 +81,7 @@ func (a *App) setPlanSlices(slices []domain.Slice) {
 	a.project = &p
 	a.syncedAt = timeNow()
 	// A prompt is a question about a row that may just have moved or gone.
-	a.closePrompt()
+	a.closeBoardPrompt()
 	a.board.SetProject(a.project)
 	a.syncBoard()
 }
