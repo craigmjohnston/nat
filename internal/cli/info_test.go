@@ -224,6 +224,90 @@ func TestInfoPrintsJSON(t *testing.T) {
 	}
 }
 
+// slicePageWithBranch is a slice fixture with a branch and dependencies set.
+func slicePageWithBranch(id, name, status, milestone string, branch string, deps ...string) notion.Page {
+	props := map[string]notion.PropertyValue{
+		notion.PropName:   title(name),
+		notion.PropStatus: notion.NewSelect(status),
+	}
+	if milestone != "" {
+		props[notion.PropMilestone] = notion.NewSelect(milestone)
+	}
+	if branch != "" {
+		props[notion.PropBranch] = notion.PropertyValue{RichText: []notion.RichText{{PlainText: branch, Text: &notion.TextContent{Content: branch}}}}
+	}
+	if len(deps) > 0 {
+		relations := make([]notion.Relation, len(deps))
+		for i, dep := range deps {
+			relations[i] = notion.Relation{ID: dep}
+		}
+		props[notion.PropDependsOn] = notion.PropertyValue{Relation: &relations}
+	}
+	return notion.Page{ID: id, URL: "https://notion.so/" + id, Properties: props}
+}
+
+func TestInfoJSONIncludesNewSliceFields(t *testing.T) {
+	api := &fakeAPI{
+		blocks: conventionBlocks(t),
+		dataSources: map[string]notion.DataSource{
+			"slices-ds": selectMilestoneSlicesDS("M1: Backlog"),
+		},
+		pages: map[string][]notion.Page{
+			"slices-ds": {
+				slicePageWithBranch("s1", "Feature one", notion.SliceInProgress, "M1: Backlog", "feature/one"),
+				slicePageWithBranch("s2", "Feature two", notion.SliceTodo, "M1: Backlog", "", "s1"),
+				slicePageWithBranch("s3", "Feature three", notion.SliceTodo, "M1: Backlog", "", "s2"),
+			},
+		},
+	}
+	env, out := testEnv(testConfig(), api)
+
+	if err := Run(context.Background(), []string{"info", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("info --json: %v", err)
+	}
+
+	var got infoJSON
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
+	}
+
+	// Verify s1 has branch and handed_back is true (in progress with branch)
+	if len(got.Slices) < 1 {
+		t.Fatal("expected at least 1 slice")
+	}
+	s1 := got.Slices[0]
+	if s1.Branch != "feature/one" {
+		t.Errorf("s1.Branch = %q, want %q", s1.Branch, "feature/one")
+	}
+	if !s1.HandedBack {
+		t.Errorf("s1.HandedBack = %v, want true", s1.HandedBack)
+	}
+
+	// Verify s2 depends on s1 and is blocked
+	if len(got.Slices) < 2 {
+		t.Fatal("expected at least 2 slices")
+	}
+	s2 := got.Slices[1]
+	if len(s2.DependsOn) != 1 || s2.DependsOn[0] != "s1" {
+		t.Errorf("s2.DependsOn = %v, want [s1]", s2.DependsOn)
+	}
+	if !s2.Blocked {
+		t.Errorf("s2.Blocked = %v, want true (blocked on s1)", s2.Blocked)
+	}
+
+	// Verify s3 depends on s2 and is blocked (transitively)
+	if len(got.Slices) < 3 {
+		t.Fatal("expected at least 3 slices")
+	}
+	s3 := got.Slices[2]
+	if len(s3.DependsOn) != 1 || s3.DependsOn[0] != "s2" {
+		t.Errorf("s3.DependsOn = %v, want [s2]", s3.DependsOn)
+	}
+	if !s3.Blocked {
+		t.Errorf("s3.Blocked = %v, want true (blocked on s2)", s3.Blocked)
+	}
+}
+
 // An empty project encodes as empty arrays rather than nulls, so a consumer can
 // range over them without a nil check.
 func TestInfoJSONHasEmptyListsNotNulls(t *testing.T) {

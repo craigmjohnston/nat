@@ -81,13 +81,14 @@ const Usage = `nat — track project work in Notion
 Every command below that acts on a project requires --project, naming one of
 the config file's projects by its page ID; run one without it to be told the
 projects this machine tracks. There is no fallback to the project the board is
-on: that is the board's own, and the user moves it while an agent works. setup
-and project-create take no such flag: neither acts on a project already
+on: that is the board's own, and the user moves it while an agent works. setup,
+paths and project-create take no such flag: neither acts on a project already
 tracked.
 
 usage:
   nat                 open the board
   nat setup [--json]  install the agent skills into ~/.claude/skills
+  nat paths [--json]  print the paths to config, log dir and nudge marker file
   nat info [--json] --project ID
                       print the project's conventions, milestones and slices
   nat next-slice [--json] --project ID
@@ -169,6 +170,9 @@ func Run(ctx context.Context, args []string, env Env) error {
 		// The one command that talks to no one: it lays down files, and a
 		// machine that has not been configured yet is exactly where it is run.
 		return setup(args[1:], env)
+	case "paths":
+		// Like setup, paths needs no Notion client or config file.
+		return paths(args[1:], env)
 	case "info":
 		return info(ctx, args[1:], env)
 	case "next-slice":
