@@ -619,10 +619,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   neither merged nor closed is open whatever it is called), the number and the
   title, and under them what the pull request would move, `head → base`. The
   body is the description, rendered through the same glamour the
-  info screen renders the project page with, and under it the checks and the
-  merge box, all three scrolled in one viewport of its
+  info screen renders the project page with, and under it the conversation, the
+  checks and the merge box, all four scrolled in one viewport of its
   own, which is why the screen holds gh's answer rather than the rendered text:
-  a resize renders it again. `prchecks.go` is that second half — the status
+  a resize renders it again. `prchecks.go` is that third part — the status
   check rollup as a heading with one line summarising the lot beside it and a
   row per check under it, the name, GitHub's own word for where it stands, and
   a mark and a colour saying what that word amounts to. That is
@@ -634,11 +634,39 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   have the rollup line say the work is ready when nothing said so. The rollup
   names only the outcomes some check is in, worst first, and is coloured by the
   worst of them, so it says what the rows do and nothing else. The section goes
-  under the description rather than over it, which is where the conversation
-  will go under it, and inside the viewport rather than pinned above it, since
+  under the conversation rather than over it — what people said about the work
+  is read before what the machines said about it — and directly over the merge
+  box, whose checks verdict is this very rollup, so the two lines that could
+  disagree are next to each other. It is inside the viewport rather than pinned
+  above it, since
   a repository with a workflow per platform has more checks than a screen has
   lines. A pull request nothing runs on is one line saying so: an empty section
-  under a heading would read as checks yet to report. `prmerge.go` is what those
+  under a heading would read as checks yet to report. `prconvo.go` is the part
+  above it: everything said on the pull request as one timeline, the issue
+  comments and the submitted reviews interleaved by the moment each was said,
+  oldest first, under a heading counting the two kinds in their own words. An
+  entry is its own line — a mark, the author, what they did in saying it and how
+  long ago (`ago`, the same coarse words the status line's freshness reads in,
+  off the same `timeNow`) — with whatever they wrote under it, rendered through
+  the very glamour the description is, since a comment is markdown and long ones
+  are the ones worth reading. `convoTone` is what the mark and the colour say,
+  and it is the conversation's own reading rather than `checkOutcome`: approved,
+  changes requested and dismissed take a check's marks because a person is
+  saying what a check says, and everything else — a comment, a review that is
+  only a remark — is neutral and recedes, since reading a comment as passing or
+  failing would put a colour on it that nobody wrote. Two reviews are no part of
+  the conversation at all: one never submitted, which nobody but its author can
+  see and which carries no time to place it by, and a `COMMENTED` review with no
+  words, which is the wrapper GitHub puts around comments left on lines of the
+  diff — comments `gh pr view` does not carry, so drawing it would be an entry
+  saying somebody reviewed and nothing about what they said. Every other
+  wordless review is a verdict, which is the whole of what it had to say, and
+  draws as its line alone. A state this build does not know is still a review
+  somebody submitted and is drawn in GitHub's own word rather than dropped. The
+  sort is stable over the comments first, so two things stamped with the same
+  second keep an order between readings rather than swapping. A pull request
+  nobody has said anything on is one quiet line, for the reason a pull request
+  with no checks is. `prmerge.go` is what those
   rows are read into — GitHub's merge box as one section under them, three
   verdicts answering "can this merge": the review decision, the checks, and the
   branch itself. Each is one line with a mark and a colour, and they are the
