@@ -93,7 +93,7 @@ public struct AgentTerminalHostView: NSViewRepresentable {
                 .map { name, value in "\(name)=\(value)" }
 
             view.startProcess(
-                executable: AttachSpec.executable,
+                executable: AttachSpec.resolvedExecutable(),
                 args: spec.arguments,
                 environment: environment
             )

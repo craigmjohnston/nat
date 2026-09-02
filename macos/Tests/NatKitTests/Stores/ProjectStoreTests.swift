@@ -35,6 +35,10 @@ final class MockNatClient: NatClientProtocol, @unchecked Sendable {
     func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail {
         throw TestError()
     }
+
+    func agentInterrupt(projectID: String, sliceRef: String) async throws {
+        throw TestError()
+    }
 }
 
 final class ProjectStoreTests: XCTestCase {

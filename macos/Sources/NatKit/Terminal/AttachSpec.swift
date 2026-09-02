@@ -111,4 +111,21 @@ public struct AttachSpec: Equatable {
         out[termEnvName] = viewerTerm
         return out
     }
+
+    /// The absolute path the attach actually execs. SwiftTerm spawns with
+    /// execve, which searches nothing, and an app launched from the Finder
+    /// carries a PATH with no Homebrew on it — so the bare name is resolved
+    /// here: the environment's PATH first, then the places tmux is actually
+    /// installed on a Mac. A name found nowhere is returned bare, so the
+    /// failure reads as tmux missing rather than as this code's guess.
+    public static func resolvedExecutable(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileExists: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
+    ) -> String {
+        let fromPath = (environment["PATH"] ?? "")
+            .split(separator: ":")
+            .map { "\($0)/\(executable)" }
+        let fallbacks = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"]
+        return (fromPath + fallbacks).first(where: fileExists) ?? executable
+    }
 }

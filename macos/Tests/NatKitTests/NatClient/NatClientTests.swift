@@ -134,4 +134,28 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(detail.state, "awaiting_review")
         XCTAssert(detail.brief.contains("API Implementation"))
     }
+
+    func testAgentInterruptSuccess() async throws {
+        let fakeRunner = FakeRunner(fixture: .agentInterruptSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        // Should not throw
+        try await client.agentInterrupt(projectID: "proj-123", sliceRef: "slice-1")
+    }
+
+    func testAgentInterruptNoSession() async throws {
+        let fakeRunner = FakeRunner(fixture: .agentInterruptNoSession)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            try await client.agentInterrupt(projectID: "proj-123", sliceRef: "slice-1")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "no live session for slice-id")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
 }

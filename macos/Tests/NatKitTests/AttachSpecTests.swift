@@ -94,3 +94,26 @@ final class AttachSpecTests: XCTestCase {
         XCTAssertEqual(scrubbed["SHELL"], "/bin/zsh")
     }
 }
+
+final class AttachSpecResolvedExecutableTests: XCTestCase {
+    func testPrefersThePathsEntries() {
+        let path = AttachSpec.resolvedExecutable(
+            environment: ["PATH": "/nowhere:/somewhere/bin"],
+            fileExists: { $0 == "/somewhere/bin/tmux" }
+        )
+        XCTAssertEqual(path, "/somewhere/bin/tmux")
+    }
+
+    func testFallsBackToKnownInstallLocations() {
+        let path = AttachSpec.resolvedExecutable(
+            environment: ["PATH": "/nowhere"],
+            fileExists: { $0 == "/opt/homebrew/bin/tmux" }
+        )
+        XCTAssertEqual(path, "/opt/homebrew/bin/tmux")
+    }
+
+    func testReturnsTheBareNameWhenFoundNowhere() {
+        let path = AttachSpec.resolvedExecutable(environment: [:], fileExists: { _ in false })
+        XCTAssertEqual(path, "tmux")
+    }
+}

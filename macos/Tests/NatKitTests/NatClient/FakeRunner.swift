@@ -11,6 +11,8 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case nonJSON
         case status
         case sliceShow
+        case agentInterruptSuccess
+        case agentInterruptNoSession
     }
 
     private var fixture: Fixture
@@ -45,6 +47,10 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return (fixtureStatus.data(using: .utf8)!, Data(), 0)
         case .sliceShow:
             return (fixtureSliceShow.data(using: .utf8)!, Data(), 0)
+        case .agentInterruptSuccess:
+            return ("success".data(using: .utf8)!, Data(), 0)
+        case .agentInterruptNoSession:
+            return (Data(), "no live session for slice-id".data(using: .utf8)!, 1)
         }
     }
 

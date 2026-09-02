@@ -12,7 +12,9 @@ struct PaneView: View {
 
     var workflowState: WorkflowTabState? {
         guard let slice = selectedSlice else { return nil }
-        let hasLiveAgent = false // Will be fed by ActivityStore later
+        let hasLiveAgent = appModel.selectedSliceID.flatMap { sliceID in
+            appModel.activityStore?.agents[sliceID] != nil
+        } ?? false
         return buildWorkflowTabState(for: slice, hasLiveAgent: hasLiveAgent)
     }
 
@@ -59,6 +61,8 @@ struct PaneView: View {
                 switch currentTab {
                 case .brief:
                     BriefTabView(appModel: appModel, slice: slice)
+                case .agent:
+                    AgentTabView(appModel: appModel, slice: slice)
                 default:
                     VStack {
                         VStack(spacing: 8) {
