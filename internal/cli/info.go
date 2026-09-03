@@ -103,13 +103,19 @@ type milestoneJSON struct {
 }
 
 type sliceJSON struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Status      string `json:"status"`
-	MilestoneID string `json:"milestone_id"`
-	Assignee    string `json:"assignee"`
-	PR          string `json:"pr"`
-	URL         string `json:"url"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Status      string   `json:"status"`
+	MilestoneID string   `json:"milestone_id"`
+	Assignee    string   `json:"assignee"`
+	PR          string   `json:"pr"`
+	URL         string   `json:"url"`
+	Branch      string   `json:"branch,omitempty"`
+	Repo        string   `json:"repo,omitempty"`
+	DependsOn   []string `json:"depends_on,omitempty"`
+	Blocked     bool     `json:"blocked"`
+	HandedBack  bool     `json:"handed_back"`
+	State       string   `json:"state,omitempty"`
 }
 
 // writeInfoJSON encodes the project as JSON, indented: it is read by people as
@@ -125,11 +131,22 @@ func writeInfoJSON(out io.Writer, p domain.Project, conventions string) error {
 			ID: m.ID, Name: m.Name, Order: m.Order, Status: string(m.Status),
 		})
 	}
+
+	slicesByID := domain.SlicesByID(p.Slices)
 	for _, s := range p.Slices {
-		doc.Slices = append(doc.Slices, sliceJSON{
+		sj := sliceJSON{
 			ID: s.ID, Name: s.Name, Status: s.StatusName, MilestoneID: s.MilestoneID,
 			Assignee: s.AssigneeName, PR: s.PRURL, URL: s.URL,
-		})
+			Branch: s.Branch, Repo: s.Repo, DependsOn: s.DependsOn,
+			Blocked: domain.Blocked(s, slicesByID), HandedBack: s.HandedBack(),
+		}
+		// The CLI takes no tmux or gh reading, so the state is the page's own:
+		// a Done slice reads as none, and a live agent's working/waiting are
+		// the app's to overlay from `nat status`.
+		if state := domain.StateOf(s, domain.AgentNone, domain.PRUnread, slicesByID); state != domain.SliceStateNone {
+			sj.State = state.String()
+		}
+		doc.Slices = append(doc.Slices, sj)
 	}
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")

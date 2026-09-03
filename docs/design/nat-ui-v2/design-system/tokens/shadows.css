@@ -1,0 +1,8 @@
+/* Elevation. Borders on panels are hairline strokes, not heavy outlines. */
+:root{
+--shadow-control:0 .5px 1.5px rgba(0,0,0,.12),0 0 0 .5px light-dark(rgba(0,0,0,.08),rgba(255,255,255,.06));
+--shadow-menu:0 0 0 .5px light-dark(rgba(0,0,0,.14),rgba(255,255,255,.14)),0 6px 20px rgba(0,0,0,.2);
+--shadow-popover:0 0 0 .5px light-dark(rgba(0,0,0,.14),rgba(255,255,255,.14)),0 10px 30px rgba(0,0,0,.22);
+--shadow-window:0 0 0 .5px light-dark(rgba(0,0,0,.18),rgba(255,255,255,.16)),0 22px 60px rgba(0,0,0,.33);
+--shadow-hud:0 0 0 .5px light-dark(rgba(0,0,0,.12),rgba(255,255,255,.12)),0 8px 40px rgba(0,0,0,.28);
+}

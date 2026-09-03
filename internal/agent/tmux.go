@@ -548,6 +548,17 @@ func (t *Tmux) SendPrompt(session, text string) error {
 	return nil
 }
 
+// Interrupt sends an interrupt signal (Escape) to the session running the
+// agent, which is Claude Code's own interrupt key. This allows a caller to
+// interrupt a running agent's turn without terminating the session.
+func (t *Tmux) Interrupt(session string) error {
+	if _, err := t.runner.Run(TmuxBinary, "send-keys", "-t", session, "Escape"); err != nil {
+		return fmt.Errorf("send interrupt to %s: %w", session, err)
+	}
+	logging.Action("interrupt sent to an agent", "session", session)
+	return nil
+}
+
 // SessionEnv is set by tmux in every pane it runs, to the socket and session
 // the pane belongs to. tmux refuses to attach a client from inside one of its
 // own panes when it is non-empty, so an attach that runs under the board — the
