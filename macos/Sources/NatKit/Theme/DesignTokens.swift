@@ -77,6 +77,33 @@ public enum DesignTokens {
     public static let systemGray = Color(hex: "9a9aa5")
 }
 
+/// The type ramp, the mock's own sizes grown one point after real use read
+/// them as too small on a big display. Every font in the app comes off this
+/// ramp — changing how big the app reads is changing these numbers and
+/// nothing else.
+public enum Typo {
+    /// Section headings and the PR title (mock's headline, 15).
+    public static let headline: CGFloat = 15
+    /// Body text and row labels (mock's 13px body, grown to 14).
+    public static let body: CGFloat = 14
+    /// Secondary rows, meta lines, tab labels (mock's 11px subheadline → 12).
+    public static let subhead: CGFloat = 12
+    /// Badges, timestamps, section labels (mock's 10px caption2 → 11).
+    public static let caption: CGFloat = 11
+    /// Monospaced code and diff text (mock's 12px code → 13).
+    public static let code: CGFloat = 13
+}
+
+/// Motion, per the design system's own rules (state changes at 0.15–0.35s
+/// ease-out, nothing else) and Craig's read that anything slower drags: the
+/// fast end, in one place, so turning animation off entirely is making
+/// `stateChange` nil here and nowhere else.
+public enum Motion {
+    /// The one animation state changes (expand/collapse, selection) use.
+    /// nil disables them app-wide.
+    public static let stateChange: Animation? = .easeOut(duration: 0.15)
+}
+
 // MARK: - Hex Color Initializer
 
 extension Color {
