@@ -11,11 +11,17 @@ from. The React code here is a *spec to read*, not code to run or port literally
   **nat dark palette** (the `.nat {...}` style block: `--accent:#b1a8f2`,
   `--window-bg:#1e1e23`, the system tint overrides, etc.). That palette is the
   app theme; see `macos/NatKit/Sources/NatKit/Theme/`.
+- `nat-sidebar.html` — the sidebar reference canvas (`nat Sidebar.html` in the
+  design project): four rail states — default, Done expanded, todo selection,
+  quiet — showing the empty-section rules, the TODO heading, and the DONE
+  heading at the foot of the plan.
 - `ui-v2-shell.jsx` — the window shell: header with browser-style project tabs,
   slice count, New Slice / Workshop toolbar buttons; the left rail (NEEDS
-  REVIEW, ACTIVE, milestone cards with progress rings, collapsed Done card);
-  the workflow tab strip (Brief → Agent → Diff → PR with disabled-until-reached
-  and past-checkmark states); the bottom milestone progress border.
+  REVIEW and ACTIVE when non-empty, a TODO heading over milestone cards with
+  progress rings, and a DONE heading at the bottom the finished milestones
+  expand under); the workflow tab strip (Brief → Agent → Diff → PR with
+  disabled-until-reached and past-checkmark states); the bottom milestone
+  progress border.
 - `ui-v2-views.jsx` — the five right-pane screens: `AgentView` (native
   transcript — **not built**; kept for reference), `AgentTerminalView` (the
   embedded terminal — **this is what we build**), `BriefView` (brief + split

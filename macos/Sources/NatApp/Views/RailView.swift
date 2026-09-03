@@ -1,23 +1,17 @@
 import SwiftUI
 import NatKit
 
-/// Fixed-width slots shared by every row in a milestone card (and the
-/// done-summary card above them), so that expanding, collapsing or flipping a
-/// chevron between `chevron.right` and `chevron.down` never shifts anything
-/// beside it. `glyph` is also the width of the "N done"/"N in flight" rows'
-/// own status icon — chosen so that icon lands in the same column as a slice
-/// row's glyph: those rows draw their chevron in a leading indent shrunk by
-/// exactly `chevron + spacing`, so the chevron they add sits to the left of
-/// where a plain slice row starts rather than pushing everything over.
+/// Fixed-width slots shared by the rows of a milestone card, so that flipping
+/// a chevron between `chevron.right` and `chevron.down` never shifts anything
+/// beside it. A slice row's glyph and a summary row's chevron share the
+/// `glyph` slot, so the two kinds of row read as one column down the card;
+/// `chevron` is the card header's own, and the Done heading's.
 private enum RailSlot {
     static let chevron: CGFloat = 12
-    static let glyph: CGFloat = 16
+    static let glyph: CGFloat = 13
     static let ring: CGFloat = 20
-    /// The horizontal padding every card row shares.
-    static let rowHPad: CGFloat = 8
-    /// The indent a slice row (and, after subtracting its own chevron, a
-    /// summary row) is drawn at.
-    static let indent: CGFloat = 24
+    /// The leading inset every card row shares (the mock's 5px).
+    static let rowLead: CGFloat = 5
     static let spacing: CGFloat = 8
 }
 
@@ -31,6 +25,9 @@ struct RailView: View {
     @State private var expandedDoneLists: Set<String> = []
     /// Milestone IDs whose "N in flight" row is expanded in place.
     @State private var expandedInFlightLists: Set<String> = []
+    /// Whether the Done summary card is expanded to list the milestones it
+    /// counts. The user's own fold, like `expandedMilestones`.
+    @State private var expandedDoneSummary = false
 
     var railModel: RailModel {
         if let projectInfo = appModel.projectStore?.state.projectInfo {
@@ -112,7 +109,7 @@ struct RailView: View {
                                 .foregroundStyle(DesignTokens.labelTertiary)
                         }
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
+                        .padding(.bottom, 5)
 
                         ForEach(railModel.needsReview, id: \.sliceID) { entry in
                             reviewRow(for: entry)
@@ -122,7 +119,6 @@ struct RailView: View {
                                 }
                         }
                     }
-                    .padding(.bottom, 10)
                 }
 
                 // ACTIVE section
@@ -132,7 +128,8 @@ struct RailView: View {
                             .font(.system(size: Typo.caption, weight: .semibold))
                             .foregroundStyle(DesignTokens.labelTertiary)
                             .padding(.horizontal, 8)
-                            .padding(.vertical, 10)
+                            .padding(.top, railModel.needsReview.isEmpty ? 0 : 10)
+                            .padding(.bottom, 5)
 
                         ForEach(railModel.active, id: \.sliceID) { entry in
                             activeRow(for: entry)
@@ -142,7 +139,6 @@ struct RailView: View {
                                 }
                         }
                     }
-                    .padding(.bottom, 10)
                 }
 
                 // The rule under the flight sections exists only where they
@@ -155,31 +151,61 @@ struct RailView: View {
                         .padding(.vertical, 10)
                 }
 
-                // Done summary
-                if let summary = railModel.doneSummary {
-                    doneSummaryCard(summary)
-                        .padding(.bottom, 8)
+                // TODO — the milestones still holding work, each a card.
+                if !railModel.milestoneCards.isEmpty {
+                    Text("TODO")
+                        .font(.system(size: Typo.caption, weight: .semibold))
+                        .foregroundStyle(DesignTokens.labelTertiary)
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 12)
                 }
 
-                // Milestone cards
                 VStack(spacing: 8) {
                     ForEach(railModel.milestoneCards, id: \.milestoneID) { card in
                         milestoneCard(card)
                     }
                 }
+
+                // DONE — a heading at the foot of the plan rather than a card
+                // above it: the finished milestones expand in place under it,
+                // each a regular card whose own "N done" row lists its slices.
+                if let summary = railModel.doneSummary {
+                    Divider()
+                        .frame(height: 0.5)
+                        .foregroundStyle(DesignTokens.separator)
+                        .padding(.top, 9)
+                        .padding(.bottom, 10)
+
+                    doneHeadingRow(summary)
+
+                    if expandedDoneSummary {
+                        VStack(spacing: 8) {
+                            ForEach(railModel.doneMilestoneCards, id: \.milestoneID) { card in
+                                milestoneCard(card)
+                            }
+                        }
+                    }
+                }
             }
-            .padding(.vertical, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
             .padding(.horizontal, 12)
         }
         .background(DesignTokens.windowBg)
         .rectBorderTrailing(width: 0.5, color: DesignTokens.separator)
-        // The current milestone opens itself the first time a plan lands, the
-        // way the mock draws it; everything after that is the user's folding.
+        // The first plan to land opens the milestones already moving — the
+        // current one and any with work done or in flight — and leaves the
+        // untouched ones closed, the way the mock draws Wishlist; everything
+        // after that is the user's folding.
         .onChange(of: railModel.milestoneCards.isEmpty, initial: true) { _, isEmpty in
             guard !expandedSeeded, !isEmpty else { return }
             expandedSeeded = true
-            if let current = railModel.milestoneCards.first(where: { $0.isCurrent }) ?? railModel.milestoneCards.first {
-                expandedMilestones.insert(current.milestoneID)
+            for card in railModel.milestoneCards
+            where card.isCurrent || card.done > 0 || card.inFlightElsewhereCount > 0 {
+                expandedMilestones.insert(card.milestoneID)
+            }
+            if expandedMilestones.isEmpty, let first = railModel.milestoneCards.first {
+                expandedMilestones.insert(first.milestoneID)
             }
         }
     }
@@ -264,17 +290,15 @@ struct RailView: View {
         }
     }
 
-    private func doneSummaryCard(_ summary: DoneSummary) -> some View {
-        HStack(spacing: 9) {
-            Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .semibold))
+    private func doneHeadingRow(_ summary: DoneSummary) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: expandedDoneSummary ? "chevron.down" : "chevron.right")
+                .font(.system(size: 11, weight: .bold))
                 .frame(width: RailSlot.chevron)
                 .foregroundStyle(DesignTokens.labelTertiary)
 
-            progressRing(fraction: 1.0, label: "", done: true)
-
-            Text("Done — \(summary.milestoneCount) milestone\(summary.milestoneCount > 1 ? "s" : "")")
-                .font(.system(size: Typo.subhead, weight: .regular))
+            Text("DONE — \(summary.milestoneCount) MILESTONE\(summary.milestoneCount > 1 ? "S" : "")")
+                .font(.system(size: Typo.caption, weight: .semibold))
                 .foregroundStyle(DesignTokens.labelTertiary)
 
             Spacer()
@@ -284,11 +308,14 @@ struct RailView: View {
                 .monospacedDigit()
                 .foregroundStyle(DesignTokens.labelTertiary)
         }
-        .frame(height: 32)
-        .padding(.horizontal, 6)
-        .background(DesignTokens.controlBg)
-        .rectBorder(width: 0.5, edges: .all, color: DesignTokens.separator)
-        .cornerRadius(8)
+        .padding(.horizontal, 8)
+        .padding(.bottom, 12)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(Motion.stateChange) {
+                expandedDoneSummary.toggle()
+            }
+        }
     }
 
     private func milestoneCard(_ card: MilestoneCard) -> some View {
@@ -297,7 +324,7 @@ struct RailView: View {
         return VStack(spacing: 0) {
             HStack(spacing: 9) {
                 Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 11, weight: .bold))
                     .frame(width: RailSlot.chevron)
                     .foregroundStyle(DesignTokens.labelTertiary)
 
@@ -305,6 +332,7 @@ struct RailView: View {
 
                 Text(card.title)
                     .font(.system(size: Typo.body, weight: .semibold))
+                    .foregroundStyle(DesignTokens.label)
                     .lineLimit(1)
 
                 Spacer()
@@ -314,7 +342,7 @@ struct RailView: View {
                     .monospacedDigit()
                     .foregroundStyle(DesignTokens.labelSecondary)
             }
-            .frame(height: 32)
+            .frame(height: 30)
             .padding(.horizontal, 6)
             .contentShape(Rectangle())
             .onTapGesture {
@@ -341,15 +369,20 @@ struct RailView: View {
                         expandableSummaryRow(
                             count: card.inFlightElsewhereCount,
                             label: "in flight",
-                            icon: "sparkles",
-                            iconColor: DesignTokens.systemOrange,
                             expanded: expandedInFlightLists.contains(card.milestoneID),
                             onToggle: {
                                 withAnimation(Motion.stateChange) {
                                     toggle(card.milestoneID, in: &expandedInFlightLists)
                                 }
                             }
-                        )
+                        ) {
+                            // The agent star, pulsing the way every live
+                            // marker in the app does.
+                            Text("✻")
+                                .font(.system(size: 9))
+                                .foregroundStyle(DesignTokens.systemOrange)
+                                .modifier(PulseModifier())
+                        }
 
                         if expandedInFlightLists.contains(card.milestoneID) {
                             ForEach(card.inFlightSlices, id: \.sliceID) { slice in
@@ -366,15 +399,17 @@ struct RailView: View {
                         expandableSummaryRow(
                             count: card.hiddenDoneCount,
                             label: "done",
-                            icon: "checkmark",
-                            iconColor: DesignTokens.systemGreen,
                             expanded: expandedDoneLists.contains(card.milestoneID),
                             onToggle: {
                                 withAnimation(Motion.stateChange) {
                                     toggle(card.milestoneID, in: &expandedDoneLists)
                                 }
                             }
-                        )
+                        ) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(DesignTokens.systemGreen)
+                        }
 
                         if expandedDoneLists.contains(card.milestoneID) {
                             ForEach(card.doneSlices, id: \.sliceID) { slice in
@@ -390,6 +425,8 @@ struct RailView: View {
                 .padding(.bottom, 4)
             }
         }
+        .padding(.vertical, 2)
+        .padding(.horizontal, 4)
         .background(DesignTokens.controlBg)
         .rectBorder(width: 0.5, edges: .all, color: DesignTokens.separator)
         .cornerRadius(8)
@@ -403,30 +440,24 @@ struct RailView: View {
         }
     }
 
-    /// The clickable "N done"/"N in flight" row: a chevron in the same
-    /// `RailSlot.chevron`-wide frame every other chevron in the card uses, and
-    /// a status icon in the same `RailSlot.glyph`-wide frame a slice row's own
-    /// glyph takes — reached by shrinking the row's leading indent by the
-    /// chevron and the spacing after it, so the icon (not the chevron) is what
-    /// lines up with the column above and below it.
+    /// The clickable "N done"/"N in flight" row: its chevron sits in the same
+    /// `RailSlot.glyph`-wide slot a slice row's glyph takes, so the two kinds
+    /// of row read as one column, and its status mark follows where a slice
+    /// row's name starts.
     private func expandableSummaryRow(
         count: Int,
         label: String,
-        icon: String,
-        iconColor: Color,
         expanded: Bool,
-        onToggle: @escaping () -> Void
+        onToggle: @escaping () -> Void,
+        @ViewBuilder mark: () -> some View
     ) -> some View {
         HStack(spacing: RailSlot.spacing) {
             Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                .font(.system(size: 10, weight: .semibold))
-                .frame(width: RailSlot.chevron)
+                .font(.system(size: 10, weight: .bold))
+                .frame(width: RailSlot.glyph)
                 .foregroundStyle(DesignTokens.labelQuaternary)
 
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .medium))
-                .frame(width: RailSlot.glyph)
-                .foregroundStyle(iconColor)
+            mark()
 
             Text("\(count) \(label)")
                 .font(.system(size: Typo.subhead, weight: .regular))
@@ -435,8 +466,8 @@ struct RailView: View {
             Spacer()
         }
         .frame(height: 26)
-        .padding(.horizontal, RailSlot.rowHPad)
-        .padding(.leading, RailSlot.indent - RailSlot.chevron - RailSlot.spacing)
+        .padding(.leading, RailSlot.rowLead)
+        .padding(.trailing, RailSlot.spacing)
         .contentShape(Rectangle())
         .onTapGesture(perform: onToggle)
     }
@@ -449,9 +480,9 @@ struct RailView: View {
 
         return HStack(spacing: RailSlot.spacing) {
             Image(systemName: slice.glyph.rawValue)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
                 .frame(width: RailSlot.glyph)
-                .foregroundStyle(contentColor)
+                .foregroundStyle(glyphColor(for: slice.glyph, selected: selected))
 
             Text(slice.name)
                 .font(.system(size: Typo.body, weight: .regular))
@@ -460,11 +491,23 @@ struct RailView: View {
 
             Spacer()
         }
-        .frame(height: 32)
-        .padding(.horizontal, RailSlot.rowHPad)
-        .padding(.leading, RailSlot.indent)
+        .frame(height: 28)
+        .padding(.leading, RailSlot.rowLead)
+        .padding(.trailing, RailSlot.spacing)
         .background(selected ? DesignTokens.accent : Color.clear)
         .cornerRadius(6)
+    }
+
+    /// The mock's status tints for a slice glyph — in progress orange, done
+    /// green, and the rest (todo, blocked) muted; selection recolors it along
+    /// with the rest of the row.
+    private func glyphColor(for glyph: SliceGlyph, selected: Bool) -> Color {
+        if selected { return DesignTokens.accentText }
+        switch glyph {
+        case .todo, .blocked: return DesignTokens.labelTertiary
+        case .inProgress: return DesignTokens.systemOrange
+        case .done: return DesignTokens.systemGreen
+        }
     }
 
     /// A Done slice listed under an expanded "N done" row: the checkmark
@@ -475,7 +518,7 @@ struct RailView: View {
 
         return HStack(spacing: RailSlot.spacing) {
             Image(systemName: slice.glyph.rawValue)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
                 .frame(width: RailSlot.glyph)
                 .foregroundStyle(selected ? DesignTokens.accentText : DesignTokens.systemGreen)
 
@@ -486,23 +529,28 @@ struct RailView: View {
 
             Spacer()
         }
-        .frame(height: 32)
-        .padding(.horizontal, RailSlot.rowHPad)
-        .padding(.leading, RailSlot.indent)
+        .frame(height: 28)
+        .padding(.leading, RailSlot.rowLead)
+        .padding(.trailing, RailSlot.spacing)
         .background(selected ? DesignTokens.accent : Color.clear)
         .cornerRadius(6)
     }
 
     private func progressRing(fraction: Double, label: String, done: Bool = false, current: Bool = false) -> some View {
         ZStack {
+            // The mock's ring is a conic fill between a 20pt disc and a 15pt
+            // inner one — a 2.5pt band, drawn here as a stroke inset to stay
+            // inside the same 20pt footprint.
             Circle()
-                .stroke(DesignTokens.labelQuaternary, lineWidth: 1)
+                .inset(by: 1.25)
+                .stroke(DesignTokens.labelQuaternary, lineWidth: 2.5)
 
             Circle()
+                .inset(by: 1.25)
                 .trim(from: 0, to: fraction)
                 .stroke(
                     done ? DesignTokens.systemGreen : DesignTokens.accent,
-                    style: StrokeStyle(lineWidth: 1, lineCap: .round)
+                    style: StrokeStyle(lineWidth: 2.5)
                 )
                 .rotationEffect(.degrees(-90))
 
@@ -521,7 +569,7 @@ struct RailView: View {
                         .foregroundStyle(current ? DesignTokens.accent : DesignTokens.labelSecondary)
                 }
             }
-            .frame(width: 16, height: 16)
+            .frame(width: 15, height: 15)
         }
         .frame(width: RailSlot.ring, height: RailSlot.ring)
     }

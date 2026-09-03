@@ -97,7 +97,7 @@ function VSliceRow({ s, selectedId }) {
   const [g, c] = VG[s[0]];
   const sel = s[1] === selectedId;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, height: 28, padding: "0 8px", marginLeft: 24, borderRadius: "var(--radius-highlight)", background: sel ? "var(--accent)" : "transparent", color: sel ? "var(--accent-text)" : s[0] === "blocked" ? "var(--label-tertiary)" : "var(--label)" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, height: 28, padding: "0 8px 0 5px", borderRadius: "var(--radius-highlight)", background: sel ? "var(--accent)" : "transparent", color: sel ? "var(--accent-text)" : s[0] === "blocked" ? "var(--label-tertiary)" : "var(--label)" }}>
       <span style={{ width: 13, textAlign: "center", flexShrink: 0, display: "inline-flex", justifyContent: "center" }}><VIcon name={g} size={12} color={sel ? "var(--accent-text)" : c} style={{ verticalAlign: 0 }} /></span>
       <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s[2]}</span>
       {s[3] && <span className={s[3][2] || sel ? "" : "ws-pulse"} style={{ font: "var(--font-subheadline)", color: sel ? "var(--accent-text)" : s[3][1] }}>{s[3][0]}</span>}
@@ -105,11 +105,12 @@ function VSliceRow({ s, selectedId }) {
   );
 }
 
-function VRail({ selectedId }) {
+function VRail({ selectedId, doneOpen, data = V }) {
   return (
     <div style={{ width: 372, flexShrink: 0, overflowY: "auto", borderRight: "0.5px solid var(--separator)", background: "var(--sidebar-tint, transparent)", padding: "12px 12px 16px" }}>
+      {data.review.length > 0 && <>
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px 5px" }}><VIcon name="checkmark_seal" size={11} color="var(--label-tertiary)" style={{ verticalAlign: 0 }} /><span style={{ font: "600 11px/14px var(--font-system)", color: "var(--label-tertiary)" }}>NEEDS REVIEW</span></div>
-      {V.review.map(([id, n, meta, tint]) => {
+      {data.review.map(([id, n, meta, tint]) => {
         const sel = id === selectedId;
         return (
           <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, height: 30, padding: "0 8px", borderRadius: "var(--radius-highlight)", background: sel ? "var(--accent)" : "transparent", color: sel ? "var(--accent-text)" : "var(--label)" }}>
@@ -119,8 +120,10 @@ function VRail({ selectedId }) {
           </div>
         );
       })}
-      <div style={{ font: "600 11px/14px var(--font-system)", color: "var(--label-tertiary)", padding: "10px 8px 5px" }}>ACTIVE</div>
-      {V.active.map(([id, n, st, tint, still]) => {
+      </>}
+      {data.active.length > 0 && <>
+      <div style={{ font: "600 11px/14px var(--font-system)", color: "var(--label-tertiary)", padding: data.review.length ? "10px 8px 5px" : "0 8px 5px" }}>ACTIVE</div>
+      {data.active.map(([id, n, st, tint, still]) => {
         const sel = id === selectedId;
         return (
           <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, height: 30, padding: "0 8px", borderRadius: "var(--radius-highlight)", background: sel ? "var(--accent)" : "transparent", color: sel ? "var(--accent-text)" : "var(--label)" }}>
@@ -130,36 +133,46 @@ function VRail({ selectedId }) {
           </div>
         );
       })}
-      <div style={{ borderBottom: "0.5px solid var(--separator)", margin: "10px 0" }}></div>
-      <div style={{ border: "0.5px solid var(--separator)", borderRadius: 8, background: "var(--control-bg)", marginBottom: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 9, height: 32, padding: "0 10px" }}>
-          <VIcon name="chevron_right" size={9} weight={700} color="var(--label-tertiary)" style={{ verticalAlign: 0 }} />
-          <VRing pct={100} done />
-          <span style={{ font: "var(--font-subheadline)", color: "var(--label-tertiary)", flex: 1 }}>Done — 3 milestones</span>
-          <span style={{ font: "var(--font-subheadline)", color: "var(--label-tertiary)", fontVariantNumeric: "tabular-nums" }}>21/21</span>
-        </div>
-      </div>
-      {V.ms.map((m) => (
+      </>}
+      {(data.review.length > 0 || data.active.length > 0) && <div style={{ borderBottom: "0.5px solid var(--separator)", margin: "10px 0" }}></div>}
+      <div style={{ font: "600 11px/14px var(--font-system)", color: "var(--label-tertiary)", padding: "0 8px 12px" }}>TODO</div>
+      {data.ms.map((m) => (
         <div key={m.num} style={{ border: "0.5px solid var(--separator)", borderRadius: 8, background: "var(--control-bg)", marginBottom: 8, padding: "2px 4px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, height: 30, padding: "0 6px" }}>
-            <VIcon name={m.collapsed ? "chevron_right" : "chevron_down"} size={9} weight={700} color="var(--label-tertiary)" style={{ verticalAlign: 0 }} />
+            <VIcon name={m.collapsed ? "chevron_right" : "chevron_down"} size={11} weight={700} color="var(--label-tertiary)" style={{ verticalAlign: 0 }} />
             <VRing pct={m.done / m.total * 100} label={m.num} current={m.current} />
             <span style={{ font: "var(--font-body-emphasized)", flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.title}</span>
             <span style={{ font: "var(--font-subheadline)", color: "var(--label-secondary)", fontVariantNumeric: "tabular-nums" }}>{m.done}/{m.total}</span>
           </div>
           {!m.collapsed && <div style={{ paddingBottom: 4 }}>
             {m.slices.map((s) => <VSliceRow key={s[1]} s={s} selectedId={selectedId} />)}
-            {m.elsewhere > 0 && <div style={{ display: "flex", alignItems: "center", gap: 8, height: 26, marginLeft: 24, padding: "0 8px", color: "var(--label-tertiary)", font: "var(--font-subheadline)" }}>
-              <VIcon name="chevron_right" size={8} weight={700} color="var(--label-quaternary)" style={{ verticalAlign: 0 }} />
+            {m.elsewhere > 0 && <div style={{ display: "flex", alignItems: "center", gap: 8, height: 26, padding: "0 8px 0 5px", color: "var(--label-tertiary)", font: "var(--font-subheadline)" }}>
+              <span style={{ width: 13, flexShrink: 0, display: "inline-flex", justifyContent: "center" }}><VIcon name="chevron_right" size={10} weight={700} color="var(--label-quaternary)" style={{ verticalAlign: 0 }} /></span>
               <span className="ws-pulse" style={{ color: "var(--system-orange)", fontSize: 8 }}>✻</span>
               <span>{m.elsewhere} in flight</span>
             </div>}
-            {m.hidden > 0 && <div style={{ display: "flex", alignItems: "center", gap: 8, height: 26, marginLeft: 24, padding: "0 8px", color: "var(--label-tertiary)", font: "var(--font-subheadline)" }}>
-              <VIcon name="chevron_right" size={8} weight={700} color="var(--label-quaternary)" style={{ verticalAlign: 0 }} />
+            {m.hidden > 0 && <div style={{ display: "flex", alignItems: "center", gap: 8, height: 26, padding: "0 8px 0 5px", color: "var(--label-tertiary)", font: "var(--font-subheadline)" }}>
+              <span style={{ width: 13, flexShrink: 0, display: "inline-flex", justifyContent: "center" }}><VIcon name="chevron_right" size={10} weight={700} color="var(--label-quaternary)" style={{ verticalAlign: 0 }} /></span>
               <VIcon name="checkmark" size={9} weight={700} color="var(--system-green)" style={{ verticalAlign: 0 }} />
               <span>{m.hidden} done</span>
             </div>}
           </div>}
+        </div>
+      ))}
+      <div style={{ borderBottom: "0.5px solid var(--separator)", margin: "9px 0 10px" }}></div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px 12px" }}>
+        <VIcon name={doneOpen ? "chevron_down" : "chevron_right"} size={11} weight={700} color="var(--label-tertiary)" style={{ verticalAlign: 0 }} />
+        <span style={{ font: "600 11px/14px var(--font-system)", color: "var(--label-tertiary)", flex: 1 }}>DONE — 3 MILESTONES</span>
+        <span style={{ font: "var(--font-subheadline)", color: "var(--label-tertiary)", fontVariantNumeric: "tabular-nums" }}>21/21</span>
+      </div>
+      {doneOpen && [["1", "Foundations", 7], ["2", "Sessions", 7], ["3", "Review flow", 7]].map(([num, title, n]) => (
+        <div key={num} style={{ border: "0.5px solid var(--separator)", borderRadius: 8, background: "var(--control-bg)", marginBottom: 8, padding: "2px 4px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, height: 30, padding: "0 6px" }}>
+            <VIcon name="chevron_right" size={11} weight={700} color="var(--label-tertiary)" style={{ verticalAlign: 0 }} />
+            <VRing pct={100} done label={num} />
+            <span style={{ font: "var(--font-body-emphasized)", flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</span>
+            <span style={{ font: "var(--font-subheadline)", color: "var(--label-secondary)", fontVariantNumeric: "tabular-nums" }}>{n}/{n}</span>
+          </div>
         </div>
       ))}
     </div>
@@ -200,13 +213,13 @@ function VPaneHeader({ title, meta, tabs, value, actions }) {
   );
 }
 
-function VShell({ selectedId, children }) {
+function VShell({ selectedId, doneOpen, children }) {
   return (
     <div className="nat">
       <MacWindow width={1360} height={840}>
         <V2Header />
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-          <VRail selectedId={selectedId} />
+          <VRail selectedId={selectedId} doneOpen={doneOpen} />
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", background: "var(--control-bg)" }}>{children}</div>
         </div>
         <VProgressBorder />
@@ -219,4 +232,4 @@ const V_TABS_PR = [["doc_text", "Brief", true], ["chevron_left_slash_chevron_rig
 const V_TABS_LIVE = [["doc_text", "Brief", true], ["chevron_left_slash_chevron_right", "Agent", true], ["plusminus", "Diff", true], ["arrow_branch", "PR", false]];
 const V_TABS_TODO = [["doc_text", "Brief", true], ["chevron_left_slash_chevron_right", "Agent", false], ["plusminus", "Diff", false], ["arrow_branch", "PR", false]];
 
-Object.assign(window, { V, VShell, VPaneHeader, VTabs, V_TABS_LIVE, V_TABS_TODO, V_TABS_PR, VChip });
+Object.assign(window, { V, VShell, VRail, VPaneHeader, VTabs, V_TABS_LIVE, V_TABS_TODO, V_TABS_PR, VChip });

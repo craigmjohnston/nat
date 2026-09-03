@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="design_doc_mode" content="canvas">
+<title>nat — Sidebar reference</title>
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/colors.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/typography.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/materials.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/shadows.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/motion.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/interaction.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/styles.css">
+<style>
+body{margin:0}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.frame{position:absolute}
+.frame-label{position:absolute;white-space:nowrap;font:600 12px/16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.4px;text-transform:uppercase;color:#71717a}
+.frame-note{position:absolute;white-space:nowrap;font:400 12px/16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#a1a1aa}
+@keyframes ws-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.ws-pulse{animation:ws-pulse 1.6s ease-in-out infinite;display:inline-block}
+.nat{
+--window-bg:#1e1e23;--control-bg:#242429;--row-alt-bg:#2b2b31;--field-bg:#18181d;
+--material-header-bg:rgba(30,30,35,.85);--under-window-bg:#18181d;
+--separator:rgba(235,235,245,.13);--control-border:rgba(235,235,245,.16);--control-face:#34343b;
+--label:#e9e9ef;--label-secondary:rgba(233,233,239,.66);--label-tertiary:rgba(233,233,239,.43);--label-quaternary:rgba(233,233,239,.14);
+--accent:#b1a8f2;--accent-text:#17171c;--selected-content-bg:#b1a8f2;--selected-content-bg-unemphasized:rgba(235,235,245,.14);
+--system-orange:#f2a87e;--system-yellow:#ecd495;--system-green:#a8dea1;--system-red:#ec8c9e;--system-blue:#91b7f2;--system-pink:#efb5e0;--system-teal:#95d8cc;--system-gray:#9a9aa5;
+color-scheme:dark;
+}
+.railbox{font:var(--font-body);color:var(--label);background:var(--window-bg);border:0.5px solid var(--separator);border-radius:10px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/_ds_bundle.js"></script>
+</head>
+<body>
+<div class="frame-label" style="left:60px;top:50px">Default — active slice selected</div>
+<div class="frame-note" style="left:60px;top:68px">Needs review + Active on top · TODO milestones (current expanded, Wishlist collapsed) · Done closed</div>
+<div class="frame" style="left:60px;top:98px" data-screen-label="Sidebar default"><div id="r-default"></div></div>
+<div class="frame-label" style="left:620px;top:50px">Review slice selected — Done expanded</div>
+<div class="frame-note" style="left:620px;top:68px">Done milestones present as milestone cards under the DONE heading</div>
+<div class="frame" style="left:620px;top:98px" data-screen-label="Sidebar done open"><div id="r-done"></div></div>
+<div class="frame-label" style="left:1180px;top:50px">Todo slice selected</div>
+<div class="frame-note" style="left:1180px;top:68px">Selection inside a milestone card</div>
+<div class="frame" style="left:1180px;top:98px" data-screen-label="Sidebar todo selected"><div id="r-todo"></div></div>
+<div class="frame-label" style="left:1740px;top:50px">Quiet — no sessions</div>
+<div class="frame-note" style="left:1740px;top:68px">Needs review / Active hidden when empty · TODO starts at the top</div>
+<div class="frame" style="left:1740px;top:98px" data-screen-label="Sidebar quiet"><div id="r-quiet"></div></div>
+<script type="text/babel" src="ui-shared.jsx"></script>
+<script type="text/babel" src="ui-v2-shell.jsx"></script>
+<script type="text/babel">
+const quietData = {
+  review: [],
+  active: [],
+  ms: [
+    { num: "4", title: "Diff review", done: 3, total: 5, current: true, slices: [
+      ["todo", "s-hunks", "Collapse unchanged hunks", null],
+      ["todo", "s-word", "Word-level diff highlights", null]
+    ], hidden: 3 },
+    { num: "5", title: "Board polish", done: 1, total: 4, slices: [
+      ["todo", "s-kanban", "Kanban column view", null],
+      ["blocked", "s-wheel", "Wheel scrolling in the Active panel", null]
+    ], hidden: 1 },
+    { num: "6", title: "Wishlist", done: 0, total: 3, slices: [], collapsed: true }
+  ]
+};
+function RailBox({ children }) {
+  return <div className="nat"><div className="railbox" style={{ display: "flex", height: 720 }}>{children}</div></div>;
+}
+const m = (id, el) => ReactDOM.createRoot(document.getElementById(id)).render(el);
+m("r-default", <RailBox><VRail selectedId="s-comments" /></RailBox>);
+m("r-done", <RailBox><VRail selectedId="s-syntax" doneOpen /></RailBox>);
+m("r-todo", <RailBox><VRail selectedId="s-kanban" /></RailBox>);
+m("r-quiet", <RailBox><VRail data={quietData} /></RailBox>);
+</script>
+</body>
+</html>
