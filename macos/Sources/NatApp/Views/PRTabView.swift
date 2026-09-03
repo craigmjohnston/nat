@@ -184,7 +184,6 @@ struct PRTabView: View {
                     .font(.system(size: Typo.body, weight: .regular))
                     .lineSpacing(2)
                     .foregroundStyle(DesignTokens.label)
-                    .textSelection(.enabled)
             }
         }
     }
@@ -463,7 +462,6 @@ struct PRConversationEntryView: View {
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.labelSecondary)
                     .lineSpacing(1)
-                    .textSelection(.enabled)
                     .padding(.leading, 19)
             }
         }

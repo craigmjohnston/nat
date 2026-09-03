@@ -36,7 +36,8 @@ enum CursorDebugWalker {
     /// One tick: every qualifying view under the key window's content view,
     /// then the system's own idea of the current cursor.
     private static func walkOnce() {
-        guard let contentView = NSApp.keyWindow?.contentView else {
+        let window = NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible })
+        guard let contentView = window?.contentView else {
             NSLog("nat cursor-debug: no key window")
             return
         }

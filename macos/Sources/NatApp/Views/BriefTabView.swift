@@ -76,7 +76,6 @@ struct BriefTabView: View {
                                     .font(.system(size: Typo.body, weight: .regular))
                                     .lineSpacing(2)
                                     .foregroundStyle(DesignTokens.label)
-                                    .textSelection(.enabled)
                             } else {
                                 Text("No brief yet")
                                     .font(.system(size: Typo.body, weight: .regular))

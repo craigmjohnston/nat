@@ -77,7 +77,6 @@ struct RailView: View {
                             Text(message)
                                 .font(.system(size: Typo.caption))
                                 .foregroundStyle(DesignTokens.labelSecondary)
-                                .textSelection(.enabled)
                             Button("Try Again") {
                                 Task { await appModel.refresh() }
                             }
