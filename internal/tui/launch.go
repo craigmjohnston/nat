@@ -17,6 +17,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/gh"
 )
 
 // AgentLauncher is what the launch flow needs of tmux: which slices have an
@@ -263,12 +264,13 @@ func (f *LaunchForm) save(a *App) tea.Cmd {
 // configured one, so this is that project.
 func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, attach bool) tea.Cmd {
 	project, _ := a.activeProject()
-	return launchAgent(a.launcher, newWorktrees(), newRepo(), a.client, a.cfg.AssigneeUserID, agent.PromptContext{
+	return launchAgent(a.launcher, newWorktrees(), newRepo(), a.client, a.prViewer, a.cfg.AssigneeUserID, agent.PromptContext{
 		Slice:        s,
 		Project:      project,
 		ProjectID:    a.cfg.ActiveProjectID,
 		WorkingDir:   expandHome(strings.TrimSpace(workdir)),
 		AssigneeName: a.cfg.AssigneeUserName,
+		Fix:          fixLaunch(s),
 	}, trimModel(m), attach)
 }
 
@@ -299,15 +301,27 @@ func trimModel(m config.AgentModel) config.AgentModel {
 // failure is: nothing has gone wrong with the board, and the slice is still
 // there to launch.
 //
+// A fix launch — a Done slice whose pull request is still out, see
+// [fixLaunch] — is the one that writes nothing at all: the slice is already
+// everything the claim would make it and more, and it is the pull request the
+// session is being sent at. Whether that pull request is still open is asked of
+// gh here, first of everything and before any worktree is cut, because it is
+// the one fact the board holds no fresh reading of — see [prStillOpen].
+//
 // The worktree is resolved here rather than by the caller because it fetches
 // origin and then cuts the worktree, which is a checkout and runs the
 // repository's hooks over it: a launch is already the slow key, and this is the
 // goroutine it is slow in — the board redraws throughout. Its
 // answer is the working directory the prompt is written with and the session is
 // started in, so the two never disagree about where the agent is.
-func launchAgent(l AgentLauncher, w Worktrees, r Repo, client NotionAPI, assigneeID string,
+func launchAgent(l AgentLauncher, w Worktrees, r Repo, client NotionAPI, viewer PRViewer, assigneeID string,
 	c agent.PromptContext, m config.AgentModel, attach bool) tea.Cmd {
 	return func() tea.Msg {
+		if c.Fix {
+			if toast, sev, ok := prStillOpen(viewer, c); !ok {
+				return agentLaunchedMsg{toast: toast, sev: sev}
+			}
+		}
 		p := placeAgent(w, r, c.WorkingDir, c.Slice)
 		if !p.ok {
 			return agentLaunchedMsg{toast: p.toast, sev: p.sev}
@@ -318,14 +332,56 @@ func launchAgent(l AgentLauncher, w Worktrees, r Repo, client NotionAPI, assigne
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch agent: %w", err)}
 		}
-		if err := claimSlice(context.Background(), client, c.Slice, assigneeID); err != nil {
-			return agentLaunchedMsg{toast: fmt.Sprintf("Could not %v — no agent was launched.", err), sev: sevError}
+		// A fix session claims nothing: the slice is Done, its record of what
+		// happened is written, and the work in flight is the pull request rather
+		// than the slice. Moving it back into progress would take it out of the
+		// state the approve flow left it in for a session that changes none of
+		// what that flow recorded.
+		if !c.Fix {
+			if err := claimSlice(context.Background(), client, c.Slice, assigneeID); err != nil {
+				return agentLaunchedMsg{toast: fmt.Sprintf("Could not %v — no agent was launched.", err), sev: sevError}
+			}
 		}
 		if err := l.Launch(session, c.WorkingDir, file, c.Slice.ID, m); err != nil {
 			return agentLaunchedMsg{err: err}
 		}
 		return agentLaunchedMsg{slice: c.Slice, session: session, attach: attach, toast: p.toast, sev: p.sev}
 	}
+}
+
+// prStillOpen is a fix launch's one question: does GitHub still call the slice's
+// pull request open? It is read in the slice's checkout, at the moment of the
+// launch, rather than taken from the board's background listing, which is a poll
+// and may not have run since the pull request merged.
+//
+// Only an open one is worth an agent. A merged pull request is the work landed
+// and a closed one is the work given up on, and a session started at either
+// would be a worktree cut and a Claude Code launched at a review nobody is
+// waiting on. The two are refused separately because what to do next differs:
+// one slice is finished and the other holds a decision to revisit.
+//
+// A read that failed refuses too, which is the opposite of what the board does
+// everywhere else it reads gh — there an unread pull request is no news, because
+// what it costs is a chip left undrawn. What it costs here is an agent sent at a
+// pull request that may have merged an hour ago, so the reading that never
+// happened stops the launch and says so.
+//
+// It answers in toasts rather than errors for the reason the worktree failures
+// do: nothing has gone wrong with the board, and the slice is exactly as it was.
+func prStillOpen(viewer PRViewer, c agent.PromptContext) (string, severity, bool) {
+	pr, err := viewer.ViewPR(c.WorkingDir, c.Slice.PRURL)
+	switch {
+	case err != nil:
+		return fmt.Sprintf("Could not read the pull request for %q: %v — no agent was launched.",
+			c.Slice.Name, err), sevError, false
+	case pr.State == gh.PRStateMerged:
+		return fmt.Sprintf("The pull request for %q has already merged — no agent was launched.",
+			c.Slice.Name), sevWarning, false
+	case pr.State == gh.PRStateClosed:
+		return fmt.Sprintf("The pull request for %q is closed — no agent was launched.",
+			c.Slice.Name), sevWarning, false
+	}
+	return "", sevSuccess, true
 }
 
 // attach hands the terminal to a session until the user detaches from it.
@@ -371,9 +427,21 @@ const (
 // slice its holder already claimed, so the agent's own claim is what it always
 // was.
 //
-// Done is out: the work has landed, and there is nothing for an agent to add to
-// a slice whose pull request is already open. So is any other status a project
-// has invented, which is not a state this flow knows what to do with.
+// A Done slice is launchable too, but only for as long as its pull request is:
+// Done is Notion's word for the slice and not for the work, and until that pull
+// request merges the review on it is exactly the sort of thing an agent is for.
+// Such a launch is a fix session — see [fixLaunch] — and only the pull request
+// recorded on the page can be checked here, since whether it is still open is a
+// question for gh and gh is not asked on a keystroke. A Done slice with none
+// recorded is refused on the spot, and in its own words: there is nothing to
+// read a review off, and nothing an agent could do with the slice instead.
+//
+// A status a project has invented is out: it is not a state this flow knows
+// what to do with.
+//
+// The dependencies are asked about only of work not yet finished. A Done slice
+// whose pull request is out waits on the review and on nothing else — whatever
+// order the plan has since been put in.
 //
 // A blocked slice is refused too, and refused with a toast rather than the
 // error banner a failure gets: nothing has gone wrong, and the slice is still
@@ -391,11 +459,19 @@ func (a *App) launchAgentFlow() tea.Cmd {
 	if a.live[s.ID] != "" {
 		return a.showConfirm(fmt.Sprintf("An agent is already running for %q — press t to attach.", s.Name), sevWarning)
 	}
-	if !launchable(s) {
-		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices and slices in progress can be launched.", s.Name, statusWord(s)), sevWarning)
+	if s.Status == domain.SliceDone && s.PRURL == "" {
+		return a.showConfirm(fmt.Sprintf("%q is done with no pull request recorded — there is nothing left to launch an agent on.", s.Name), sevWarning)
 	}
-	if blockers := a.board.Blockers(s); len(blockers) > 0 {
-		return a.showToast(fmt.Sprintf("%q waits on %s.", s.Name, blockerList(blockers)), sevWarning)
+	if !launchable(s) {
+		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices, slices in progress and done slices with a pull request still open can be launched.", s.Name, statusWord(s)), sevWarning)
+	}
+	if fixLaunch(s) && a.prViewer == nil {
+		return nil
+	}
+	if !fixLaunch(s) {
+		if blockers := a.board.Blockers(s); len(blockers) > 0 {
+			return a.showToast(fmt.Sprintf("%q waits on %s.", s.Name, blockerList(blockers)), sevWarning)
+		}
 	}
 	workdir := workdirFor(s, project)
 	return a.openPrompt(launchChoices, func(choice int) tea.Cmd {
@@ -423,11 +499,26 @@ func (a *App) launchChosen(s domain.Slice, workdir string, choice int) tea.Cmd {
 }
 
 // launchable reports whether a slice is one an agent can be started on: not
-// yet begun, or begun and no longer being worked. The live session is the
-// caller's check rather than this one's, since an agent already running is a
-// different refusal with a different thing to say.
+// yet begun, begun and no longer being worked, or finished and out as a pull
+// request that has not landed. The live session is the caller's check rather
+// than this one's, since an agent already running is a different refusal with a
+// different thing to say.
 func launchable(s domain.Slice) bool {
-	return s.Status == domain.SliceTodo || s.Status == domain.SliceClaimed
+	return s.Status == domain.SliceTodo || s.Status == domain.SliceClaimed || fixLaunch(s)
+}
+
+// fixLaunch reports whether launching on a slice is a fix session rather than
+// work on the slice itself: the slice is Done and a pull request is recorded on
+// it, so what is left of it is the review of work already published — comments
+// to answer and checks to get green — and nothing on the page is the session's
+// to change.
+//
+// Whether that pull request is still open is deliberately not part of it. Only
+// gh can say, and gh is a subprocess and a round trip to GitHub: the question is
+// asked once the launch is under way, in the goroutine that is already the slow
+// one — see [prStillOpen].
+func fixLaunch(s domain.Slice) bool {
+	return s.Status == domain.SliceDone && s.PRURL != ""
 }
 
 // blockerList names the slices a blocked one is waiting on, in the order it

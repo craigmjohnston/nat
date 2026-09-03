@@ -73,9 +73,15 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   pre-upgrade nat left joined, and comes out next release — `TUISession` is
   kept for it alone, the name of the session nat used to host itself in and
   makes no more.
-  `prompt.go` writes what a fresh session is told, and every `nat` command in
-  any of its templates — the slice prompt's, the planning one's, the wishlist
-  clear — names its project with `--project <the project's page ID>`, which the
+  `prompt.go` writes what a fresh session is told, and `fixprompt.go` the one
+  thing that is not a fresh session's work: `PromptContext.Fix` is the launch
+  saying it is sending an agent at the pull request a Done slice already
+  produced rather than at the slice, and `Prompt` hands such a context straight
+  to `fixPrompt`, since almost nothing about claiming, working or handing back a
+  slice applies to work that has been published — see the domain rule on `l`.
+  Every `nat` command in
+  any of its templates — the slice prompt's, the fix one's, the planning one's,
+  the wishlist clear — names its project with `--project <the project's page ID>`, which the
   launch carries in (`PromptContext.ProjectID`, and the first argument of
   `PlanPrompt`/`WishlistPrompt`; a `ProjectConfig` cannot supply it, being the
   value of the config's Projects map rather than the key). An unpinned command
@@ -1031,7 +1037,7 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   since (`tui.launchable`). A slice with a live session is refused whatever its
   status, with the key that attaches to the agent already there, and that
   refusal is checked first, since it is the one with somewhere to send the user.
-  Done is refused, and so is any status a project has invented. The launch
+  Any status a project has invented is refused. The launch
   writes nothing to Notion either way — the agent's own `start-slice` is the
   claim, and that command re-opens a slice its holder already claimed rather
   than refusing it, which is what makes the second state work at all. A
@@ -1039,6 +1045,33 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   back gets the worktree that work is in; the prompt says so and tells the agent
   it is continuing rather than starting (`agent.resuming`), and a slice with no
   branch reads as the fresh start it is.
+  A Done slice is launchable too, and for exactly as long as its pull request
+  is: Done is Notion's word for the slice and not for the work, so until that
+  pull request merges the review on it — comments to answer, checks to get
+  green — is work an agent can do. Such a launch is a fix session
+  (`tui.fixLaunch`), and it is the one launch that writes nothing at all: no
+  claim, because the slice is already everything a claim would make it and the
+  record of what was done is not the session's to rewrite, which is what leaves
+  the approve flow's own state untouched. The live-session star is what says
+  the work is in flight. Whether the pull request is still open is gh's to say
+  and gh is not asked on a keystroke, so the question is asked once the launch
+  is under way, first of everything and before any worktree is cut
+  (`tui.prStillOpen`, `gh.CLI.ViewPR` on the URL the page records): a merged
+  one, a closed one and one that could not be read at all each refuse with a
+  toast of their own, and each leaves the board exactly as it was. That last is
+  the opposite reading to everywhere else the board reads gh, where an unread
+  pull request is no news — what it costs there is an undrawn chip, and what it
+  would cost here is a session started on a review that ended an hour ago. A
+  Done slice with no pull request recorded is refused on the keystroke and in
+  its own words: there is no review to read and nothing about the slice left to
+  do. Dependencies are not asked about on that path — an open pull request
+  waits on its review and on nothing else — and the worktree is the one
+  `agentBranch` names, which is the branch the pull request is built from. What
+  such a session is told is `agent.fixPrompt` rather than the slice prompt:
+  nothing to claim, nothing to hand back, the pull request read from GitHub
+  itself (`gh pr view --comments`, `gh pr checks` — the one place the standing
+  ban on `gh` is relaxed, and only for those two reads), and an ending that is
+  a push to the same branch, since the pull request picks that up by itself.
 - Slices ↔ PRs are 1:1 when work is code; PR URL recorded in the `PR` property.
   That URL is what `V` reads back: the board hands it to gh as the ref naming
   the pull request, and the screen it opens is where what became of an approved
