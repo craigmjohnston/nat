@@ -64,7 +64,12 @@ public final class ProjectStore {
         isLoadInFlight = true
         defer { isLoadInFlight = false }
 
-        state = .loading
+        // Only a first load shows as loading: a refresh keeps the plan it
+        // already has on screen and swaps in the new one when it lands, so
+        // the board never blanks under a poll or a nudge.
+        if state.projectInfo == nil {
+            state = .loading
+        }
 
         do {
             let info = try await client.info(projectID: projectID)

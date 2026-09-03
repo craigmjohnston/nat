@@ -40,15 +40,9 @@ struct RailView: View {
                 // (the TUI convention: a failure leaves the board as it was).
                 if let state = appModel.projectStore?.state {
                     if state.isLoading && state.projectInfo == nil {
-                        VStack(spacing: 10) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Loading the plan…")
-                                .font(.system(size: 11))
-                                .foregroundStyle(DesignTokens.labelTertiary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 60)
+                        QuietLoadingView(label: "Loading the plan…")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 60)
                     } else if let message = state.errorMessage, state.projectInfo == nil {
                         VStack(alignment: .leading, spacing: 10) {
                             Label("The plan could not be loaded", systemImage: "exclamationmark.triangle")

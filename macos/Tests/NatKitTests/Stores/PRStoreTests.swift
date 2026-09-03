@@ -14,6 +14,10 @@ private final class MockPRClient: NatClientProtocol, @unchecked Sendable {
     private var response: Response
     private(set) var viewCallCount = 0
     private(set) var lastSliceRef: String?
+    /// Holds `prView` open until this many nanoseconds have passed, so a
+    /// test can assert on the store's state while a read is genuinely still
+    /// in flight rather than racing a call that already returned.
+    var viewDelayNanoseconds: UInt64 = 0
 
     private(set) var mergeCalls: [(projectID: String, sliceRef: String)] = []
     var mergeError: Error?
@@ -47,6 +51,9 @@ private final class MockPRClient: NatClientProtocol, @unchecked Sendable {
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail {
         viewCallCount += 1
         lastSliceRef = sliceRef
+        if viewDelayNanoseconds > 0 {
+            try? await Task.sleep(nanoseconds: viewDelayNanoseconds)
+        }
         switch response {
         case .success(let pr): return pr
         case .failure: throw PRTestError()
@@ -152,6 +159,76 @@ final class PRStoreTests: XCTestCase {
 
         XCTAssertNil(store.loadState.pr, "a failed read should drop the previous pull request, not keep it visible")
         XCTAssertNotNil(store.loadState.errorMessage)
+    }
+
+    @MainActor
+    func testSwitchingBackToAPreviouslyReadSliceShowsItsCacheInstantly() async {
+        let client = MockPRClient(response: .success(openPR()))
+        let store = PRStore(client: client)
+
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-2")
+        XCTAssertEqual(client.viewCallCount, 2)
+
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        XCTAssertEqual(client.viewCallCount, 2, "a slice already read this session should not be re-read on reselection")
+        XCTAssertEqual(store.loadState.pr?.number, 12)
+    }
+
+    @MainActor
+    func testCachedPullRequestStaysVisibleWhileASwitchToAnUncachedSliceIsInFlight() async {
+        let client = MockPRClient(response: .success(openPR()))
+        let store = PRStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        client.viewDelayNanoseconds = 50_000_000
+        let task = Task { await store.fetch(projectID: "proj-1", sliceRef: "slice-2") }
+        try? await Task.sleep(nanoseconds: 10_000_000)
+
+        // slice-2 has never been cached, so it is right for this to blank
+        // while it reads — the point is that it does not show slice-1's
+        // pull request mislabeled as slice-2's while doing so.
+        XCTAssertNil(store.loadState.pr)
+        await task.value
+    }
+
+    @MainActor
+    func testAFailedReadEvictsThatSlicesCacheButNotAnotherSlices() async {
+        let client = MockPRClient(response: .success(openPR()))
+        let store = PRStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-2")
+
+        client.setResponse(.failure)
+        try? await store.merge() // re-reads slice-2 (the current slice), which now fails
+        XCTAssertNil(store.loadState.pr)
+        XCTAssertEqual(client.viewCallCount, 3)
+
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        XCTAssertEqual(client.viewCallCount, 3, "slice-1 is unaffected — still cached, so no re-read was needed")
+
+        client.setResponse(.success(openPR()))
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-2")
+        XCTAssertEqual(client.viewCallCount, 4, "slice-2's failed reading should not have been cached")
+    }
+
+    @MainActor
+    func testMergeNeverBlanksTheScreenWhileRereading() async {
+        let client = MockPRClient(response: .success(openPR()))
+        let store = PRStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        client.setResponse(.success(mergedPR()))
+        client.viewDelayNanoseconds = 50_000_000
+        let task = Task { try? await store.merge() }
+        try? await Task.sleep(nanoseconds: 10_000_000)
+
+        // Still mid-merge's own background re-read — the pull request that
+        // was showing before the merge should still be there, not blanked
+        // out from under the user while the fresh reading is in flight.
+        XCTAssertNotNil(store.loadState.pr)
+        await task.value
     }
 
     @MainActor

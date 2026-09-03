@@ -74,8 +74,7 @@ struct WorkshopOverlayView: View {
             )
             .id(session)
         } else if isLaunching {
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            QuietLoadingView(label: "Launching the workshop agent…")
         } else {
             VStack(spacing: 12) {
                 Image(systemName: "exclamationmark.triangle")

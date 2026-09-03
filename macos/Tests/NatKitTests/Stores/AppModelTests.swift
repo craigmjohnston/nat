@@ -247,6 +247,48 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(appModel.projectStore?.projectID, "proj-b")
     }
 
+    // MARK: - Per-project detail/diff/PR stores
+
+    @MainActor
+    func testAppModel_sliceDetailStoreIsCreatedOnceAndReused() {
+        let appModel = AppModel()
+
+        let first = appModel.sliceDetailStore(projectID: "proj-1")
+        let second = appModel.sliceDetailStore(projectID: "proj-1")
+
+        XCTAssertTrue(first === second, "the same project should always get the same cache, not a fresh one per call")
+    }
+
+    @MainActor
+    func testAppModel_sliceDetailStoreIsSeparatePerProject() {
+        let appModel = AppModel()
+
+        let a = appModel.sliceDetailStore(projectID: "proj-a")
+        let b = appModel.sliceDetailStore(projectID: "proj-b")
+
+        XCTAssertFalse(a === b)
+    }
+
+    @MainActor
+    func testAppModel_diffStoreIsCreatedOnceAndReused() {
+        let appModel = AppModel()
+
+        let first = appModel.diffStore(projectID: "proj-1")
+        let second = appModel.diffStore(projectID: "proj-1")
+
+        XCTAssertTrue(first === second)
+    }
+
+    @MainActor
+    func testAppModel_prStoreIsCreatedOnceAndReused() {
+        let appModel = AppModel()
+
+        let first = appModel.prStore(projectID: "proj-1")
+        let second = appModel.prStore(projectID: "proj-1")
+
+        XCTAssertTrue(first === second)
+    }
+
     // MARK: - Onboarding
 
     @MainActor

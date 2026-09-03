@@ -119,7 +119,7 @@ struct WindowShellView: View {
                 RailView(appModel: appModel)
                     .frame(maxWidth: 372)
 
-                PaneView(appModel: appModel)
+                PaneView(appModel: appModel, isCovered: showWorkshopOverlay)
                     .frame(maxWidth: .infinity)
             }
             .frame(maxHeight: .infinity)

@@ -6,6 +6,10 @@ import NatKit
 struct AgentTabView: View {
     @Bindable var appModel: AppModel
     let slice: Slice
+    /// True while something is drawn over the whole board (the workshop
+    /// overlay) — see `PaneView.isCovered` for why this tears the terminal
+    /// down rather than merely leaving it painted over.
+    var isCovered: Bool = false
     @State private var interruptError: String?
     @State private var lifecycle = TerminalLifecycle()
 
@@ -16,7 +20,7 @@ struct AgentTabView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let agent = liveAgent {
+            if let agent = liveAgent, !isCovered {
                 // Terminal area
                 ZStack {
                     AgentTerminalHostView(

@@ -6,6 +6,9 @@ struct NatApp: App {
     @State private var appModel = AppModel()
 
     var body: some Scene {
+        // The mock's canvas is 1360×840 and every metric in it was chosen at
+        // that size — opening there is what makes the proportions read as
+        // designed.
         WindowGroup("nat") {
             // NAT_TERM_SESSION is a debug affordance only: it lets a session
             // name be smoke-tested against a real tmux session before the
@@ -24,6 +27,7 @@ struct NatApp: App {
         // flush with the top of the window rather than below a bar of their
         // own.
         .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1360, height: 840)
 
         Settings {
             SettingsView(appModel: appModel)

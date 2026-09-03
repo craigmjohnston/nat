@@ -197,6 +197,56 @@ final class DiffStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testSwitchingBackToAPreviouslyReadSliceShowsItsCacheInstantly() async {
+        let client = MockDiffClient(response: .success(makeDiff(file: "a.go")))
+        let store = DiffStore(client: client)
+
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        client.setResponse(.success(makeDiff(file: "b.go")))
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-2")
+        XCTAssertEqual(client.callCount, 2)
+
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        XCTAssertEqual(client.callCount, 2, "a slice already read this session should not be re-read on reselection")
+        XCTAssertEqual(store.loadState.diff?.files.first?.path, "a.go")
+    }
+
+    @MainActor
+    func testACachedSlicesFoldStateIsClearedOnReselection() async {
+        let client = MockDiffClient(response: .success(makeDiff(file: "a.go")))
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        store.toggleViewed("a.go")
+
+        client.setResponse(.success(makeDiff(file: "b.go")))
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-2")
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        XCTAssertFalse(store.isViewed("a.go"), "switching away and back is still a slice switch, which clears fold state")
+    }
+
+    @MainActor
+    func testAFailedReadEvictsThatSlicesCache() async {
+        let client = MockDiffClient(response: .success(makeDiff(file: "a.go")))
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-2")
+
+        client.setResponse(.failure)
+        await store.refresh() // re-reads slice-2, which now fails
+        XCTAssertEqual(client.callCount, 3)
+
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        XCTAssertEqual(client.callCount, 3, "slice-1 is unaffected — still cached, so no re-read was needed")
+
+        client.setResponse(.success(makeDiff(file: "b.go")))
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-2")
+
+        XCTAssertEqual(client.callCount, 4, "slice-2's failed reading should not have been cached")
+    }
+
+    @MainActor
     func testFailedFetchDropsAnyPreviousDiff() async {
         let client = MockDiffClient(response: .success(makeDiff()))
         let store = DiffStore(client: client)

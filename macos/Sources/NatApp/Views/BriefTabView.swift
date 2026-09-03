@@ -6,9 +6,15 @@ struct BriefTabView: View {
     let slice: Slice
     var onTabChange: (WorkflowTab) -> Void = { _ in }
 
-    @State private var sliceDetail: SliceDetail?
-    @State private var isLoading = false
-    @State private var error: String?
+    /// The slice's own cached detail, read through the project's shared
+    /// `SliceDetailStore` rather than a `NatClient` of this view's own — the
+    /// store is what renders a cache hit instantly on re-selection and keeps
+    /// it fresh with a background read that never blanks what is already
+    /// showing.
+    private var detailState: SliceDetailLoadState {
+        guard let projectID = appModel.projectStore?.projectID else { return .idle }
+        return appModel.sliceDetailStore(projectID: projectID).state(for: slice.id)
+    }
 
     // Brief editing UI state — one editing state behind both Edit buttons.
     @State private var isEditingBrief = false
@@ -55,16 +61,14 @@ struct BriefTabView: View {
                         .help(editBriefHelp)
                     }
 
-                    // Brief content
+                    // Brief content — a cached detail (even a stale one
+                    // still showing while a background read replaces it, or
+                    // the last good one a failed read kept) always wins over
+                    // "loading"/"failed", so re-selecting a slice already
+                    // read this session never blanks behind a spinner.
                     if isEditingBrief {
                         briefEditor
-                    } else if isLoading {
-                        VStack(spacing: 8) {
-                            ProgressView()
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                        }
-                        .frame(minHeight: 100)
-                    } else if let detail = sliceDetail {
+                    } else if let detail = detailState.detail {
                         // Render brief as markdown
                         VStack(alignment: .leading, spacing: 8) {
                             if !detail.brief.isEmpty {
@@ -105,7 +109,10 @@ struct BriefTabView: View {
                                 .font(.system(size: 12, weight: .regular))
                                 .foregroundStyle(DesignTokens.labelTertiary)
                         }
-                    } else if let errorMsg = error {
+                    } else if detailState.isLoading {
+                        QuietLoadingView(label: "Loading the brief…")
+                            .frame(minHeight: 100)
+                    } else if let errorMsg = detailState.errorMessage {
                         VStack(spacing: 8) {
                             Image(systemName: "exclamationmark.triangle")
                                 .font(.system(size: 24, weight: .regular))
@@ -258,7 +265,7 @@ struct BriefTabView: View {
     /// the brief it claimed with should not have it changed out from under
     /// it, and a Done slice has nothing left to brief.
     private var canEditBrief: Bool {
-        slice.status == "Todo" && !isEditingBrief && !isLoading
+        slice.status == "Todo" && !isEditingBrief && detailState.detail != nil
     }
 
     private var editBriefHelp: String {
@@ -267,7 +274,7 @@ struct BriefTabView: View {
     }
 
     private func startEditingBrief() {
-        editedBriefText = sliceDetail?.brief ?? ""
+        editedBriefText = detailState.detail?.brief ?? ""
         briefSaveError = nil
         isEditingBrief = true
     }
@@ -327,9 +334,8 @@ struct BriefTabView: View {
         do {
             _ = try await NatClient().sliceEdit(projectID: projectID, sliceRef: slice.id, description: editedBriefText)
             isEditingBrief = false
-            // Refreshes the slice detail — this view holds no cache of its
-            // own beside `sliceDetail`, so re-loading it is what "invalidate
-            // and refresh" means here.
+            // Reads the slice back through the shared store, so its cache
+            // holds the edited brief rather than the one it replaced.
             await loadDetail()
         } catch let error as NatError {
             if case .commandFailed(let message) = error {
@@ -347,7 +353,7 @@ struct BriefTabView: View {
 
     private func launchIsEnabled() -> Bool {
         if isLaunching { return false }
-        guard sliceDetail != nil else { return false }
+        guard detailState.detail != nil else { return false }
 
         let hasLiveAgent = appModel.selectedSliceID.flatMap { sliceID in
             appModel.activityStore?.agents[sliceID] != nil
@@ -476,20 +482,8 @@ struct BriefTabView: View {
     }
 
     private func loadDetail() async {
-        isLoading = true
-        error = nil
-        sliceDetail = nil
-
-        do {
-            if let projectID = appModel.projectStore?.projectID {
-                let detail = try await NatClient().sliceShow(projectID: projectID, sliceRef: slice.id)
-                sliceDetail = detail
-            }
-        } catch {
-            self.error = error.localizedDescription
-        }
-
-        isLoading = false
+        guard let projectID = appModel.projectStore?.projectID else { return }
+        await appModel.sliceDetailStore(projectID: projectID).fetch(sliceRef: slice.id)
     }
 
     private func dependencyText(_ detail: SliceDetail) -> String {

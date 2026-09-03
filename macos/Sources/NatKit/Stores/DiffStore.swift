@@ -101,12 +101,25 @@ public final class DiffStore {
     /// stops being trustworthy.
     private var commitDiffCache: [String: DiffModel] = [:]
 
+    /// The whole-branch diff already fetched this session, by slice ref —
+    /// what makes switching back to a slice already read show its diff
+    /// instantly rather than behind a spinner again, the same rule
+    /// `commitDiffCache` already applies to one commit's own diff. Evicted
+    /// for a slice whenever a read of it fails, so a stale reading is never
+    /// served silently under a name the user was just told failed.
+    private var branchDiffCache: [String: DiffModel] = [:]
+
     public init(client: NatClientProtocol = NatClient()) {
         self.client = client
     }
 
     /// Fetch the diff for a slice, unless it is already loaded (or loading)
-    /// for that same slice.
+    /// for that same slice. A slice whose branch was already read this
+    /// session shows that reading instantly and does not re-read at all —
+    /// mirroring `selectCommit`'s own cache for one commit's diff exactly,
+    /// since the "All commits" reading deserves the same treatment. Nothing
+    /// here re-validates it in the background; the refresh key (`refresh()`)
+    /// is what a user who wants a fresh read still has.
     public func fetch(projectID: String, sliceRef: String) async {
         guard !isFetching else { return }
         if self.projectID == projectID, self.sliceRef == sliceRef, loadState.diff != nil {
@@ -114,7 +127,8 @@ public final class DiffStore {
         }
         // Another slice's branch starts with no comments on it — the pending
         // review left on the one before is about lines this slice never had —
-        // and with no commits of its own read yet either.
+        // and with no commits of its own read yet either, nor any fold state
+        // that belonged to whatever was on screen before it.
         if let previous = self.sliceRef, previous != sliceRef {
             comments = []
             lastDroppedCommentCount = 0
@@ -123,9 +137,18 @@ public final class DiffStore {
             commitDiffCache = [:]
             selectedCommit = nil
             branchDiff = nil
+            viewedFiles = []
+            collapsedFiles = []
         }
         self.projectID = projectID
         self.sliceRef = sliceRef
+
+        if let cached = branchDiffCache[sliceRef] {
+            branchDiff = cached
+            loadState = .loaded(cached)
+            return
+        }
+
         await load()
     }
 
@@ -231,6 +254,7 @@ public final class DiffStore {
         selectedCommit = nil
         commitDiffCache = [:]
         branchDiff = nil
+        branchDiffCache = [:]
     }
 
     // MARK: - Comments
@@ -317,7 +341,10 @@ public final class DiffStore {
         defer { isFetching = false }
 
         let showingBranch = selectedCommit == nil
-        if showingBranch {
+        // A background re-read (`refresh()` on the slice already showing)
+        // never blanks the screen first — only a read with nothing already
+        // on it to show blocks behind a spinner.
+        if showingBranch && branchDiff == nil {
             loadState = .loading
         }
         // A re-read's marks are the previous diff's, not the one about to
@@ -330,6 +357,7 @@ public final class DiffStore {
             let diff = try await client.sliceDiff(projectID: projectID, sliceRef: sliceRef, commit: nil)
             let model = buildDiffModel(from: diff)
             branchDiff = model
+            branchDiffCache[sliceRef] = model
             reanchorComments(to: model)
             if showingBranch {
                 loadState = .loaded(model)
@@ -338,8 +366,11 @@ public final class DiffStore {
             // A read that fails takes the diff it replaced with it, but not
             // the comments left on it: they are still there to send once a
             // read succeeds again, ordered by path alone with no diff left
-            // to order them by (mirrors the Go TUI's own rule).
+            // to order them by (mirrors the Go TUI's own rule). The cached
+            // reading for this slice goes with it too, so a later switch back
+            // to it does not serve a diff already known to be stale.
             branchDiff = nil
+            branchDiffCache.removeValue(forKey: sliceRef)
             comments.sort { $0.path < $1.path }
             if showingBranch {
                 loadState = .failed(error.localizedDescription)

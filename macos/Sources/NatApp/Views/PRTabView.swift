@@ -16,7 +16,11 @@ struct PRTabView: View {
     @Bindable var appModel: AppModel
     let slice: Slice
 
-    @State private var store = PRStore()
+    /// The project's shared pull-request cache, rather than a `PRStore`
+    /// local to this view — see `DiffTabView.store` for why.
+    private var store: PRStore {
+        appModel.prStore(projectID: appModel.projectStore?.projectID ?? "")
+    }
 
     @State private var isMerging = false
     @State private var mergeError: String?
@@ -56,15 +60,7 @@ struct PRTabView: View {
     // MARK: - States
 
     private var loadingState: some View {
-        VStack(spacing: 8) {
-            if store.loadState.isLoading {
-                ProgressView()
-            }
-            Text("Reading the pull request of \(slice.name)…")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(DesignTokens.labelSecondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        QuietLoadingView(label: "Reading the pull request of \(slice.name)…")
     }
 
     private var failedState: some View {

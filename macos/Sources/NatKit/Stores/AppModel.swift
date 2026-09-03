@@ -51,6 +51,22 @@ public final class AppModel {
     /// Project stores keyed by project ID (lazily created).
     private var stores: [String: ProjectStore] = [:]
 
+    /// One slice-detail cache per project (lazily created) — shared by every
+    /// `BriefTabView` for that project, rather than each tab view holding its
+    /// own throwaway store that forgets everything the moment the user
+    /// switches tabs or slices away and back.
+    private var sliceDetailStores: [String: SliceDetailStore] = [:]
+
+    /// One diff cache per project (lazily created), for the same reason —
+    /// `DiffTabView` reads through this rather than owning a `DiffStore` of
+    /// its own.
+    private var diffStores: [String: DiffStore] = [:]
+
+    /// One pull-request cache per project (lazily created), for the same
+    /// reason — `PRTabView` reads through this rather than owning a
+    /// `PRStore` of its own.
+    private var prStores: [String: PRStore] = [:]
+
     private let configReader: ConfigReaderProtocol
     private let pollInterval: UInt64 // in seconds
     private var pollTask: Task<Void, Never>?
@@ -184,6 +200,34 @@ public final class AppModel {
         return stores[activeID]
     }
 
+    /// The slice-detail cache for one project, created on first use — the
+    /// same instance every call after that, so a slice's brief read once
+    /// this session stays cached across tab switches and slice reselection.
+    public func sliceDetailStore(projectID: String) -> SliceDetailStore {
+        if let existing = sliceDetailStores[projectID] { return existing }
+        let store = SliceDetailStore(projectID: projectID)
+        sliceDetailStores[projectID] = store
+        return store
+    }
+
+    /// The diff cache for one project, created on first use — see
+    /// `sliceDetailStore(projectID:)`.
+    public func diffStore(projectID: String) -> DiffStore {
+        if let existing = diffStores[projectID] { return existing }
+        let store = DiffStore()
+        diffStores[projectID] = store
+        return store
+    }
+
+    /// The pull-request cache for one project, created on first use — see
+    /// `sliceDetailStore(projectID:)`.
+    public func prStore(projectID: String) -> PRStore {
+        if let existing = prStores[projectID] { return existing }
+        let store = PRStore()
+        prStores[projectID] = store
+        return store
+    }
+
     /// The currently selected slice ID (per-project).
     public var selectedSliceID: String? {
         get {
@@ -219,6 +263,13 @@ public final class AppModel {
         await projectStore.refresh()
         await updateReviewStats(projectID: projectStore.projectID, projectStore: projectStore)
         activityStore?.kick()
+        // A slice's page may have changed underneath any reading of it taken
+        // before this refresh landed — every cached reading but the one
+        // currently on screen is dropped, so each re-reads fresh next time it
+        // is actually selected rather than serving a possibly-stale brief
+        // forever; the one on screen is left alone; blanking it here would
+        // only cost the user their brief with nothing about to refetch it.
+        sliceDetailStores[projectStore.projectID]?.invalidateCache(keeping: selectedSliceID)
     }
 
     // MARK: - Private Helpers
@@ -266,6 +317,7 @@ public final class AppModel {
 
                     if !Task.isCancelled {
                         await projectStore.refresh()
+                        self.sliceDetailStores[projectStore.projectID]?.invalidateCache(keeping: self.selectedSliceID)
                     }
                 } catch {
                     // Task was cancelled; exit the loop
@@ -284,5 +336,8 @@ public final class AppModel {
         activityStore?.stop()
         activityStore = nil
         reviewStatsStore = nil
+        sliceDetailStores = [:]
+        diffStores = [:]
+        prStores = [:]
     }
 }

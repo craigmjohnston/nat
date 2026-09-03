@@ -32,7 +32,13 @@ struct DiffTabView: View {
     let slice: Slice
     var onApproved: () -> Void = {}
 
-    @State private var store = DiffStore()
+    /// The project's shared diff cache, rather than a `DiffStore` local to
+    /// this view — reading through the same instance across tab switches
+    /// and slice reselection is what lets a branch already read this session
+    /// show up instantly instead of behind a spinner again.
+    private var store: DiffStore {
+        appModel.diffStore(projectID: appModel.projectStore?.projectID ?? "")
+    }
 
     @State private var selection: DiffSelection?
     @State private var draft: CommentDraft?
@@ -75,15 +81,7 @@ struct DiffTabView: View {
     // MARK: - States
 
     private var loadingState: some View {
-        VStack(spacing: 8) {
-            if store.loadState.isLoading {
-                ProgressView()
-            }
-            Text("Reading the diff of \(slice.branch ?? "the branch")…")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(DesignTokens.labelSecondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        QuietLoadingView(label: "Reading the diff of \(slice.branch ?? "the branch")…")
     }
 
     private var failedState: some View {

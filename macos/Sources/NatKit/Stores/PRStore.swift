@@ -51,6 +51,13 @@ public final class PRStore {
     private var projectID: String?
     private var sliceRef: String?
 
+    /// Pull requests already read this session, by slice ref — what makes
+    /// switching back to a slice already viewed show its pull request
+    /// instantly rather than behind a spinner again. Evicted for a slice
+    /// whenever a read of it fails, so a later switch back to it does not
+    /// serve a reading already known to be stale.
+    private var prCache: [String: PRDetail] = [:]
+
     /// - Parameter pollIntervalNanoseconds: how long the poll loop sleeps
     ///   between readings — 15 seconds in the app, overridable so a test does
     ///   not have to wait 15 real seconds to see it fire twice.
@@ -63,7 +70,11 @@ public final class PRStore {
     /// loading) for that same slice. Switching to a different slice's pull
     /// request stops any poll left running for the one before — a poll that
     /// kept going would end up reading the new slice under the old one's
-    /// name.
+    /// name. A slice whose pull request was already read this session shows
+    /// that reading instantly rather than behind a spinner again; the poll
+    /// this store already runs (started by the caller right after `fetch`
+    /// returns, same as any other first show) is what keeps it fresh from
+    /// here, so this does not also re-read it.
     public func fetch(projectID: String, sliceRef: String) async {
         guard !isFetching else { return }
         if self.projectID == projectID, self.sliceRef == sliceRef, loadState.pr != nil {
@@ -74,6 +85,17 @@ public final class PRStore {
         }
         self.projectID = projectID
         self.sliceRef = sliceRef
+
+        if let cached = prCache[sliceRef] {
+            loadState = .loaded(cached)
+            return
+        }
+
+        // Nothing cached for this slice: clear whatever the previous slice
+        // left in `loadState` before reading, so `load()` blanks the screen
+        // rather than showing the wrong slice's pull request under this
+        // one's name for the moment the read is in flight.
+        loadState = .idle
         await load()
     }
 
@@ -115,6 +137,7 @@ public final class PRStore {
         loadState = .idle
         projectID = nil
         sliceRef = nil
+        prCache = [:]
     }
 
     // MARK: - Polling
@@ -162,11 +185,18 @@ public final class PRStore {
         guard let projectID, let sliceRef else { return }
         isFetching = true
         defer { isFetching = false }
-        loadState = .loading
+        // A background re-read (merge, a posted comment, or an explicit
+        // refresh) never blanks the screen first — only a read with nothing
+        // already on it to show blocks behind a spinner.
+        if loadState.pr == nil {
+            loadState = .loading
+        }
         do {
             let pr = try await client.prView(projectID: projectID, sliceRef: sliceRef)
+            prCache[sliceRef] = pr
             loadState = .loaded(pr)
         } catch {
+            prCache.removeValue(forKey: sliceRef)
             loadState = .failed(error.localizedDescription)
         }
     }

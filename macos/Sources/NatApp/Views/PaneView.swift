@@ -3,6 +3,17 @@ import NatKit
 
 struct PaneView: View {
     @Bindable var appModel: AppModel
+    /// Whether something is drawn over the whole board right now (the
+    /// workshop overlay) — passed down to the Agent tab so it tears down its
+    /// embedded terminal rather than leaving it mounted underneath, alive but
+    /// unseen. SwiftTerm's terminal view sets an I-beam cursor over its own
+    /// bounds (`resetCursorRects`), and AppKit picks that cursor rect up
+    /// whenever nothing drawn in front of it registers one of its own — which
+    /// plain SwiftUI content (the overlay) never does, since `.arrow` needs
+    /// no rect at all. Left mounted, the terminal would go on winning the
+    /// cursor for whatever the board still shows underneath, however fully
+    /// something else appears to cover it.
+    var isCovered: Bool = false
     @State private var currentTab: WorkflowTab = .brief
 
     var selectedSlice: Slice? {
@@ -66,7 +77,7 @@ struct PaneView: View {
                         }
                     })
                 case .agent:
-                    AgentTabView(appModel: appModel, slice: slice)
+                    AgentTabView(appModel: appModel, slice: slice, isCovered: isCovered)
                 case .diff:
                     DiffTabView(appModel: appModel, slice: slice, onApproved: {
                         currentTab = .pr

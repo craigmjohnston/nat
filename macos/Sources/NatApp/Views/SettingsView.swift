@@ -45,8 +45,7 @@ struct SettingsView: View {
 
             Group {
                 if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    QuietLoadingView(label: "Loading configuration…")
                 } else if let loadError {
                     VStack(spacing: 8) {
                         Text("Could not load configuration")
