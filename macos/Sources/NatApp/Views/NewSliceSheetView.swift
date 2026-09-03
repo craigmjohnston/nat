@@ -27,12 +27,12 @@ struct NewSliceSheetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("New Slice")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: Typo.headline, weight: .semibold))
                 .foregroundStyle(DesignTokens.label)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Title")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: Typo.subhead, weight: .semibold))
                     .foregroundStyle(DesignTokens.labelSecondary)
                 TextField("Slice title", text: $title)
                     .textFieldStyle(.roundedBorder)
@@ -40,7 +40,7 @@ struct NewSliceSheetView: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Milestone")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: Typo.subhead, weight: .semibold))
                     .foregroundStyle(DesignTokens.labelSecondary)
                 Picker("Milestone", selection: $selectedMilestone) {
                     Text("Select a milestone").tag("")
@@ -53,13 +53,13 @@ struct NewSliceSheetView: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Description")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: Typo.subhead, weight: .semibold))
                     .foregroundStyle(DesignTokens.labelSecondary)
                 Text("Optional. Becomes the slice page's brief.")
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.labelTertiary)
                 TextEditor(text: $description)
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .scrollContentBackground(.hidden)
                     .padding(6)
                     .background(DesignTokens.fieldBg)
@@ -69,7 +69,7 @@ struct NewSliceSheetView: View {
 
             if let error {
                 Text(error)
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.systemRed)
             }
 

@@ -14,12 +14,19 @@ struct NatApp: App {
             // name be smoke-tested against a real tmux session before the
             // Agent tab has anywhere of its own to launch one from. Anyone
             // launching NatApp normally sees the full shell view.
-            if let session = ProcessInfo.processInfo.environment["NAT_TERM_SESSION"] {
-                AgentTerminalDebugView(session: session)
-            } else {
-                WindowShellView(appModel: appModel)
-                    .task { await Self.snapshotIfAsked(appModel) }
+            Group {
+                if let session = ProcessInfo.processInfo.environment["NAT_TERM_SESSION"] {
+                    AgentTerminalDebugView(session: session)
+                } else {
+                    WindowShellView(appModel: appModel)
+                        .task { await Self.snapshotIfAsked(appModel) }
+                }
             }
+            // Diagnostics only: a no-op unless NAT_CURSOR_DEBUG=1 is set, for
+            // tracking down the persistent I-beam cursor bug live. `.task`
+            // is a View modifier and so goes on the window's content, not on
+            // the WindowGroup scene below.
+            .task { CursorDebugWalker.startIfAsked() }
         }
         // The header row IS the title bar (WindowShellView reserves room for
         // the traffic lights and makes itself draggable) — hiding the system

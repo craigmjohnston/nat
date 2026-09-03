@@ -19,6 +19,12 @@ public struct AgentTerminalHostView: NSViewRepresentable {
     /// composer row) is its own later task.
     public static let backgroundHex = "121216"
 
+    /// `backgroundHex` as a SwiftUI `Color`, for the surface the caller lays
+    /// full-bleed behind this view once the terminal itself is inset from
+    /// the pane's edges — the padding belongs to the terminal, not to a
+    /// margin around a smaller dark rectangle.
+    public static let backgroundColor = Color(hex: backgroundHex)
+
     private let attachSpec: AttachSpec
 
     /// Answers whether the tmux session `attachSpec` names still exists,
@@ -46,10 +52,20 @@ public struct AgentTerminalHostView: NSViewRepresentable {
     }
 
     public func makeNSView(context: Context) -> LocalProcessTerminalView {
-        let view = LocalProcessTerminalView(frame: .zero)
+        let view = FirstLayoutTerminalView(frame: .zero)
         view.nativeBackgroundColor = NSColor(hex: Self.backgroundHex)
         view.processDelegate = context.coordinator
-        context.coordinator.attach(view, spec: attachSpec)
+        // `makeNSView` runs before AppKit has laid this view out at all, so
+        // starting the process here would open the pty at SwiftTerm's
+        // default ~80 columns and let tmux wrap its whole backlog to that
+        // width — the resize that follows, once the pane's real size
+        // arrives, is the visible reflow this was reported over. Waiting for
+        // the view's first nonzero layout is what lets the pty open at the
+        // column count the pane already has.
+        view.onFirstRealLayout = { [weak view] in
+            guard let view else { return }
+            context.coordinator.attach(view, spec: attachSpec)
+        }
         return view
     }
 
@@ -85,7 +101,22 @@ public struct AgentTerminalHostView: NSViewRepresentable {
 
         /// Starts the attach process on view, using spec for its argv and
         /// environment.
+        ///
+        /// Guarded by the lifecycle's own state rather than trusted to be
+        /// called once: `view`'s first-layout callback already fires at most
+        /// once, but a second start landing here regardless — were that
+        /// guarantee ever loosened — would open a second pty against the
+        /// same session. Only `.idle` and `.exited` are states a
+        /// `.startRequested` actually moves out of; `.attaching` and
+        /// `.attached` mean a process is already starting or running.
         func attach(_ view: LocalProcessTerminalView, spec: AttachSpec) {
+            switch lifecycle.state {
+            case .idle, .exited:
+                break
+            case .attaching, .attached:
+                return
+            }
+
             self.view = view
             lifecycle.handle(.startRequested)
 
@@ -120,6 +151,34 @@ public struct AgentTerminalHostView: NSViewRepresentable {
         public func setTerminalTitle(source: LocalProcessTerminalView, title: String) {}
 
         public func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
+    }
+}
+
+/// A `LocalProcessTerminalView` that answers one question `makeNSView` cannot:
+/// when has AppKit actually given this view a real size? SwiftUI hands back
+/// the view at `.zero` and sizes it afterward, so anything that wants the
+/// pane's true size — starting a pty at the column count it should have from
+/// the first paint, rather than SwiftTerm's own default — has to wait for a
+/// callback `LocalProcessTerminalView` does not otherwise give.
+///
+/// `setFrameSize` rather than `layout()`: it is the hook `TerminalView`
+/// itself already resizes the terminal from (`processSizeChange`, which
+/// updates `terminal.cols`/`rows` from the new frame), so by the time
+/// `super.setFrameSize` returns here, the dimensions a `startProcess` reads
+/// via `getWindowSize()` already match this size.
+final class FirstLayoutTerminalView: LocalProcessTerminalView {
+    /// Fired once, the first time AppKit sets this view to a real, nonzero
+    /// size. Never fires again after that — a later resize is a plain
+    /// resize, which SwiftTerm's own `sizeChanged` delegate callback already
+    /// reports to the pty.
+    var onFirstRealLayout: (() -> Void)?
+    private var hasFiredFirstLayout = false
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        guard !hasFiredFirstLayout, newSize.width > 0, newSize.height > 0 else { return }
+        hasFiredFirstLayout = true
+        onFirstRealLayout?()
     }
 }
 

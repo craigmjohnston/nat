@@ -65,18 +65,19 @@ struct DiffFileSidebarView: View {
         } label: {
             HStack(spacing: 6) {
                 Text(selectedCommitTitle)
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.labelSecondary)
                     .lineLimit(1)
 
                 Spacer()
 
                 Text("\(commits.count)")
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .monospacedDigit()
                     .foregroundStyle(DesignTokens.labelTertiary)
 
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(DesignTokens.labelTertiary)
             }
             .padding(.horizontal, 8)
@@ -136,18 +137,18 @@ struct DiffFileSidebarRow: View {
         HStack(spacing: 5) {
             if isViewed {
                 Image(systemName: "checkmark")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(DesignTokens.systemGreen)
-                    .frame(width: 11)
+                    .frame(width: 13)
             } else {
-                Color.clear.frame(width: 11)
+                Color.clear.frame(width: 13)
             }
 
             // Truncated from the front rather than the tail: what names a
             // file is its end, so the directory is what should give way
             // first when the path does not fit.
             Text(file.path)
-                .font(.system(size: 12, weight: .regular))
+                .font(.system(size: Typo.subhead, weight: .regular))
                 .foregroundStyle(DesignTokens.label)
                 .lineLimit(1)
                 .truncationMode(.head)
@@ -156,28 +157,31 @@ struct DiffFileSidebarRow: View {
             if commentCount > 0 {
                 HStack(spacing: 3) {
                     Image(systemName: "text.bubble")
-                        .font(.system(size: 9, weight: .regular))
+                        .font(.system(size: 12, weight: .medium))
                     Text("\(commentCount)")
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .font(.system(size: Typo.caption, weight: .regular))
+                        .monospacedDigit()
                 }
                 .foregroundStyle(DesignTokens.accent)
             }
 
             Text(badge.letter)
-                .font(.system(size: 8, weight: .semibold))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(badge.color)
-                .frame(width: 13, height: 13)
+                .frame(width: 16, height: 16)
                 .background(badge.color.opacity(0.18))
-                .clipShape(RoundedRectangle(cornerRadius: 3.5))
+                .clipShape(RoundedRectangle(cornerRadius: 4))
 
             if file.adds > 0 {
                 Text("+\(file.adds)")
-                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .font(.system(size: Typo.caption, weight: .regular))
+                    .monospacedDigit()
                     .foregroundStyle(DesignTokens.systemGreen)
             }
             if file.dels > 0 {
                 Text("\u{2212}\(file.dels)")
-                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .font(.system(size: Typo.caption, weight: .regular))
+                    .monospacedDigit()
                     .foregroundStyle(DesignTokens.systemRed)
             }
         }

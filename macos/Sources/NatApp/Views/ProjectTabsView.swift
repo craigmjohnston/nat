@@ -28,11 +28,11 @@ struct ProjectTabsView: View {
             // "+" button (disabled)
             Button(action: {}) {
                 Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .regular))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(DesignTokens.labelSecondary)
+                    .frame(width: 32, height: 32)
             }
-            .frame(width: 32, height: 32)
-            .cornerRadius(7)
+            .buttonStyle(.plain)
             .disabled(true)
             .help("Projects are created from the TUI or nat project-create")
             .padding(.bottom, 6)
@@ -40,8 +40,13 @@ struct ProjectTabsView: View {
 
             Spacer()
         }
+        // The row is 40pt tall outright — the mock's own 6pt top padding is
+        // what the `.bottom`-aligned 34pt tabs already leave above themselves
+        // inside that frame, not an addition on top of it. Padding this again
+        // on the outside was pushing the whole row 6pt below the header band
+        // it is meant to fill, which is why nothing here lined up with the
+        // toolbar cluster beside it.
         .frame(height: 40)
-        .padding(.top, 6)
     }
 
     @ViewBuilder
@@ -69,17 +74,18 @@ struct ProjectTabsView: View {
 
             // Project name
             Text(tab.name)
-                .font(.system(size: 12, weight: isActive ? .semibold : .regular))
+                .font(.system(size: Typo.subhead, weight: isActive ? .semibold : .regular))
                 .foregroundStyle(isActive ? DesignTokens.label : DesignTokens.labelSecondary)
                 .lineLimit(1)
 
-            // Count badge
+            // Count badge — tight, caption-scale, tabular digits rather than
+            // a switch to monospaced design (there's no code here to align).
             if liveCount > 0 {
                 Text("\(liveCount)")
-                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .font(.system(size: Typo.caption, weight: .regular))
+                    .monospacedDigit()
                     .foregroundStyle(isActive ? DesignTokens.labelSecondary : DesignTokens.labelTertiary)
                     .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
                     .background(DesignTokens.labelQuaternary)
                     .cornerRadius(8)
             }

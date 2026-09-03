@@ -1,6 +1,9 @@
 import Foundation
 
-/// The activity state of an agent working on a slice.
+/// The activity state of an agent working on a slice, as read fresh off the
+/// live tmux map. It refines an ACTIVE row's label only — never whether the
+/// row is drawn at all, which `buildRailModel` decides from the slice's own
+/// page.
 public enum AgentActivity {
     case working
     case waiting
@@ -22,25 +25,31 @@ public struct ReviewEntry: Equatable {
     }
 }
 
+/// The semantic tint an ACTIVE row's dot and status text take. Named for
+/// meaning rather than a color, so this view model stays free of picking a
+/// palette — `RailView` is what maps each case onto a `DesignTokens` color.
+public enum ActiveTintRole: Equatable {
+    case working
+    case waiting
+    case blocked
+    case readyToPush
+}
+
 /// A slice entry in the ACTIVE section.
 public struct ActiveEntry: Equatable {
     public let sliceID: String
     public let name: String
-    public let activity: AgentActivity
+    /// The row's own label — "Working", "Waiting for input", "Blocked" or
+    /// "Ready to push" — already resolved by `buildRailModel`, since the rule
+    /// it comes from is the view model's and not the view's to know.
+    public let displayState: String
+    public let tintRole: ActiveTintRole
 
-    public var displayState: String {
-        switch activity {
-        case .working:
-            return "Working"
-        case .waiting:
-            return "Waiting for input"
-        }
-    }
-
-    public init(sliceID: String, name: String, activity: AgentActivity) {
+    public init(sliceID: String, name: String, displayState: String, tintRole: ActiveTintRole) {
         self.sliceID = sliceID
         self.name = name
-        self.activity = activity
+        self.displayState = displayState
+        self.tintRole = tintRole
     }
 }
 
@@ -78,6 +87,13 @@ public struct MilestoneCard: Equatable {
     public let visibleSlices: [MilestoneSliceRow]
     public let hiddenDoneCount: Int
     public let inFlightElsewhereCount: Int
+    /// The Done slices `hiddenDoneCount` counts, in the plan's own order —
+    /// what the "N done" row expands in place to list.
+    public let doneSlices: [MilestoneSliceRow]
+    /// The slices `inFlightElsewhereCount` counts — the ones already drawn in
+    /// NEEDS REVIEW or ACTIVE — in the plan's own order, what the "N in
+    /// flight" row expands in place to list.
+    public let inFlightSlices: [MilestoneSliceRow]
 
     public var fraction: Double {
         guard total > 0 else { return 0 }
@@ -93,7 +109,9 @@ public struct MilestoneCard: Equatable {
         isCurrent: Bool,
         visibleSlices: [MilestoneSliceRow],
         hiddenDoneCount: Int,
-        inFlightElsewhereCount: Int
+        inFlightElsewhereCount: Int,
+        doneSlices: [MilestoneSliceRow] = [],
+        inFlightSlices: [MilestoneSliceRow] = []
     ) {
         self.milestoneID = milestoneID
         self.number = number
@@ -104,6 +122,8 @@ public struct MilestoneCard: Equatable {
         self.visibleSlices = visibleSlices
         self.hiddenDoneCount = hiddenDoneCount
         self.inFlightElsewhereCount = inFlightElsewhereCount
+        self.doneSlices = doneSlices
+        self.inFlightSlices = inFlightSlices
     }
 }
 
@@ -161,7 +181,17 @@ public func buildRailModel(
     let slices = projectInfo.slices
     let milestones = projectInfo.milestones
     let reviewSlices = slices.filter { $0.handedBack }
-    let activeSlices = slices.filter { liveAgents[$0.id] != nil }
+
+    // ACTIVE membership mirrors the gate `domain.StateOf` applies before a
+    // live agent ever enters into it: In progress, not handed back, and no
+    // pull request recorded. It is never "has a live tmux session" — a
+    // session can outlive the slice it was launched on (left idle on a Done
+    // slice, or on one already handed back), and none of that is this
+    // section's to draw. What a live agent refines is the label alone, in
+    // `activeDisplay` below.
+    let activeSlices = slices.filter {
+        $0.status == "In progress" && !$0.handedBack && $0.pr.isEmpty
+    }
 
     // NEEDS REVIEW section
     let needsReview = reviewSlices
@@ -171,9 +201,9 @@ public func buildRailModel(
     // ACTIVE section
     let active = activeSlices
         .sorted { $0.name < $1.name }
-        .compactMap { slice -> ActiveEntry? in
-            guard let activity = liveAgents[slice.id] else { return nil }
-            return ActiveEntry(sliceID: slice.id, name: slice.name, activity: activity)
+        .map { slice -> ActiveEntry in
+            let (displayState, tintRole) = activeDisplay(for: slice, liveAgent: liveAgents[slice.id])
+            return ActiveEntry(sliceID: slice.id, name: slice.name, displayState: displayState, tintRole: tintRole)
         }
 
     // Milestone cards and done summary
@@ -203,31 +233,21 @@ public func buildRailModel(
             // Visible slices: not Done, in plan order
             let visibleSlices = milestoneSlices
                 .filter { $0.status != "Done" }
-                .map { slice -> MilestoneSliceRow in
-                    let glyph: SliceGlyph
-                    if slice.blocked {
-                        glyph = .blocked
-                    } else if slice.status == "In progress" {
-                        glyph = .inProgress
-                    } else {
-                        glyph = .todo
-                    }
+                .map { sliceRow(for: $0) }
 
-                    return MilestoneSliceRow(
-                        sliceID: slice.id,
-                        name: slice.name,
-                        glyph: glyph,
-                        isBlocked: slice.blocked
-                    )
+            // The Done slices this milestone hides, in plan order — what the
+            // "N done" row expands to.
+            let doneSlices = milestoneSlices
+                .filter { $0.status == "Done" }
+                .map { sliceRow(for: $0) }
+
+            // The slices of this milestone already drawn in NEEDS REVIEW or
+            // ACTIVE, in plan order — what the "N in flight" row expands to.
+            let inFlightSlices = milestoneSlices
+                .filter { slice in
+                    reviewSlices.contains { $0.id == slice.id } || activeSlices.contains { $0.id == slice.id }
                 }
-
-            // Count hidden done slices in this milestone
-            let hiddenDoneCount = milestoneSlices.filter { $0.status == "Done" }.count
-
-            // Count slices from this milestone already shown in needsReview/active
-            let inFlightElsewhereCount = milestoneSlices.filter { slice in
-                reviewSlices.contains { $0.id == slice.id } || activeSlices.contains { $0.id == slice.id }
-            }.count
+                .map { sliceRow(for: $0) }
 
             let card = MilestoneCard(
                 milestoneID: milestone.id,
@@ -237,8 +257,10 @@ public func buildRailModel(
                 total: max(1, totalCount),
                 isCurrent: isCurrent,
                 visibleSlices: visibleSlices,
-                hiddenDoneCount: hiddenDoneCount,
-                inFlightElsewhereCount: inFlightElsewhereCount
+                hiddenDoneCount: doneSlices.count,
+                inFlightElsewhereCount: inFlightSlices.count,
+                doneSlices: doneSlices,
+                inFlightSlices: inFlightSlices
             )
             milestoneCards.append(card)
         }
@@ -254,5 +276,45 @@ public func buildRailModel(
         active: active,
         milestoneCards: milestoneCards,
         doneSummary: doneSummary
+    )
+}
+
+/// The label and tint an ACTIVE row takes, given a slice already known to
+/// qualify for the section. Mirrors `domain.StateOf`'s own precedence for a
+/// slice in flight with nothing out yet: a live agent's own reading — the
+/// only fact taken fresh — wins over everything else, waiting before working;
+/// with no agent at all, what is left on the page is whether it is blocked on
+/// a dependency, and a slice with neither is simply ready to push.
+private func activeDisplay(for slice: Slice, liveAgent: AgentActivity?) -> (String, ActiveTintRole) {
+    switch liveAgent {
+    case .waiting:
+        return ("Waiting for input", .waiting)
+    case .working:
+        return ("Working", .working)
+    case nil:
+        return slice.blocked ? ("Blocked", .blocked) : ("Ready to push", .readyToPush)
+    }
+}
+
+/// A slice as a milestone-card row: the glyph is read off its own status
+/// (blocked wins, since a blocked slice's own status is otherwise Todo) with
+/// no reference to the section it may also be drawn in.
+private func sliceRow(for slice: Slice) -> MilestoneSliceRow {
+    let glyph: SliceGlyph
+    if slice.blocked {
+        glyph = .blocked
+    } else if slice.status == "Done" {
+        glyph = .done
+    } else if slice.status == "In progress" {
+        glyph = .inProgress
+    } else {
+        glyph = .todo
+    }
+
+    return MilestoneSliceRow(
+        sliceID: slice.id,
+        name: slice.name,
+        glyph: glyph,
+        isBlocked: slice.blocked
     )
 }

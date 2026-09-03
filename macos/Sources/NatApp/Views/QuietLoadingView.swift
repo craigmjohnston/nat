@@ -30,7 +30,7 @@ public struct QuietLoadingView: View {
                     ProgressView()
                         .controlSize(.small)
                     Text(label)
-                        .font(.system(size: 11))
+                        .font(.system(size: Typo.subhead))
                         .foregroundStyle(DesignTokens.labelTertiary)
                 }
             } else {

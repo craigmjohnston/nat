@@ -42,12 +42,12 @@ struct WorkshopOverlayView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Text("Workshop — \(projectName)")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: Typo.body, weight: .semibold))
                 .foregroundStyle(DesignTokens.label)
 
             if let launchError {
                 Text(launchError)
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.systemRed)
                     .lineLimit(2)
             }
@@ -82,7 +82,7 @@ struct WorkshopOverlayView: View {
                     .foregroundStyle(DesignTokens.labelSecondary)
 
                 Text("Could not launch the workshop agent")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: Typo.body, weight: .semibold))
                     .foregroundStyle(DesignTokens.label)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -35,7 +35,7 @@ struct SettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Settings")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: Typo.headline, weight: .semibold))
                 .foregroundStyle(DesignTokens.label)
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
@@ -49,10 +49,10 @@ struct SettingsView: View {
                 } else if let loadError {
                     VStack(spacing: 8) {
                         Text("Could not load configuration")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: Typo.body, weight: .semibold))
                             .foregroundStyle(DesignTokens.label)
                         Text(loadError)
-                            .font(.system(size: 11, weight: .regular))
+                            .font(.system(size: Typo.subhead, weight: .regular))
                             .foregroundStyle(DesignTokens.systemRed)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -118,7 +118,7 @@ struct SettingsView: View {
         HStack(spacing: 8) {
             if let savedNote {
                 Text(savedNote)
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.systemGreen)
             }
 
@@ -150,17 +150,17 @@ struct SettingsView: View {
         let key = SettingsModel.workingDirKey(projectID: projectID)
         return VStack(alignment: .leading, spacing: 4) {
             Text("\(projectNames[projectID] ?? projectID) working directory")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: Typo.subhead, weight: .semibold))
                 .foregroundStyle(DesignTokens.labelSecondary)
             Text("Where its agents start, unless a slice names its own repo. Applies at the next launch.")
-                .font(.system(size: 11, weight: .regular))
+                .font(.system(size: Typo.subhead, weight: .regular))
                 .foregroundStyle(DesignTokens.labelTertiary)
             TextField("", text: workingDirBinding(projectID: projectID))
                 .textFieldStyle(.roundedBorder)
-                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
             if let error = fieldErrors[key] {
                 Text(error)
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.systemRed)
             }
         }
@@ -169,17 +169,17 @@ struct SettingsView: View {
     private func numberField(title: String, description: String, key: String, value: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: Typo.subhead, weight: .semibold))
                 .foregroundStyle(DesignTokens.labelSecondary)
             Text(description)
-                .font(.system(size: 11, weight: .regular))
+                .font(.system(size: Typo.subhead, weight: .regular))
                 .foregroundStyle(DesignTokens.labelTertiary)
             TextField("", text: value)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 100)
             if let error = fieldErrors[key] {
                 Text(error)
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.systemRed)
             }
         }
@@ -194,10 +194,10 @@ struct SettingsView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: Typo.subhead, weight: .semibold))
                 .foregroundStyle(DesignTokens.labelSecondary)
             Text("Model and effort a launch runs Claude Code as, unless the launch itself overrides them. Applies at the next launch.")
-                .font(.system(size: 11, weight: .regular))
+                .font(.system(size: Typo.subhead, weight: .regular))
                 .foregroundStyle(DesignTokens.labelTertiary)
 
             HStack(spacing: 12) {
@@ -222,12 +222,12 @@ struct SettingsView: View {
 
             if let error = fieldErrors[modelKey] {
                 Text(error)
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.systemRed)
             }
             if let error = fieldErrors[effortKey] {
                 Text(error)
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.systemRed)
             }
         }

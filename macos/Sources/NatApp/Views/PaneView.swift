@@ -36,7 +36,7 @@ struct PaneView: View {
                 VStack(spacing: 0) {
                     HStack(spacing: 14) {
                         Text(slice.name)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: Typo.body, weight: .semibold))
                             .foregroundStyle(DesignTokens.label)
                             .lineLimit(1)
 
@@ -72,9 +72,7 @@ struct PaneView: View {
                 switch currentTab {
                 case .brief:
                     BriefTabView(appModel: appModel, slice: slice, onTabChange: { tab in
-                        withAnimation {
-                            currentTab = tab
-                        }
+                        currentTab = tab
                     })
                 case .agent:
                     AgentTabView(appModel: appModel, slice: slice, isCovered: isCovered)
@@ -94,7 +92,7 @@ struct PaneView: View {
                             .foregroundStyle(DesignTokens.labelSecondary)
 
                         Text("Select a slice to begin")
-                            .font(.system(size: 13, weight: .regular))
+                            .font(.system(size: Typo.body, weight: .regular))
                             .foregroundStyle(DesignTokens.labelSecondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -110,6 +108,13 @@ struct PaneView: View {
 
     // MARK: - Tab Button
 
+    /// Each of Brief/Agent/Diff/PR takes the same fixed 76pt width whether or
+    /// not it is the current one — the underline (and the whole tab) used to
+    /// stretch to fit "Agent"'s longer label, which is what spanned the
+    /// underline across half the pane. Selection is instant: no width to
+    /// animate into and no content-swap animation either.
+    private static let tabWidth: CGFloat = 76
+
     private func tabButton(
         _ tab: WorkflowTab,
         isCurrentTab: Bool,
@@ -119,36 +124,38 @@ struct PaneView: View {
         VStack(spacing: 0) {
             HStack(spacing: 5) {
                 Image(systemName: tab.symbolName)
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(isCurrentTab ? DesignTokens.accent : DesignTokens.labelSecondary)
 
                 Text(tab.rawValue)
-                    .font(.system(size: 12, weight: isCurrentTab ? .semibold : .regular))
+                    .font(.system(size: Typo.subhead, weight: isCurrentTab ? .semibold : .regular))
                     .foregroundStyle(isCurrentTab ? DesignTokens.label : DesignTokens.labelSecondary)
 
                 if isPastTab {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(DesignTokens.systemGreen)
                 }
             }
-            .padding(.horizontal, 4)
+            .frame(width: Self.tabWidth)
             .padding(.vertical, 4)
             .opacity(isReachable ? 1 : 0.4)
             .contentShape(Rectangle())
             .onTapGesture {
                 if isReachable {
-                    withAnimation {
-                        currentTab = tab
-                    }
+                    currentTab = tab
                 }
             }
 
-            if isCurrentTab {
-                DesignTokens.accent
-                    .frame(height: 2)
-                    .cornerRadius(1)
+            ZStack {
+                if isCurrentTab {
+                    DesignTokens.accent
+                        .frame(height: 2)
+                        .clipShape(RoundedRectangle(cornerRadius: 1))
+                        .padding(.horizontal, 6)
+                }
             }
+            .frame(width: Self.tabWidth, height: 2)
         }
     }
 }

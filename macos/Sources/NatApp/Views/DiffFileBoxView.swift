@@ -96,24 +96,24 @@ struct DiffFileBoxView: View {
     private var header: some View {
         HStack(spacing: 10) {
             Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(DesignTokens.labelTertiary)
 
             if isViewed {
                 Image(systemName: "checkmark")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(DesignTokens.systemGreen)
             }
 
             Text(file.path)
-                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
                 .foregroundStyle(DesignTokens.label)
                 .lineLimit(1)
                 .truncationMode(.head)
 
             if file.isRenamed {
                 Text("was \(file.oldPath)")
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
                     .foregroundStyle(DesignTokens.labelTertiary)
                     .lineLimit(1)
             }
@@ -121,9 +121,10 @@ struct DiffFileBoxView: View {
             if !comments.isEmpty {
                 HStack(spacing: 3) {
                     Image(systemName: "text.bubble")
-                        .font(.system(size: 10, weight: .regular))
+                        .font(.system(size: 12, weight: .medium))
                     Text("\(comments.count)")
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .font(.system(size: Typo.subhead, weight: .regular))
+                        .monospacedDigit()
                 }
                 .foregroundStyle(DesignTokens.accent)
             }
@@ -132,18 +133,20 @@ struct DiffFileBoxView: View {
 
             if file.adds > 0 {
                 Text("+\(file.adds)")
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .monospacedDigit()
                     .foregroundStyle(DesignTokens.systemGreen)
             }
             if file.dels > 0 {
                 Text("\u{2212}\(file.dels)")
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .monospacedDigit()
                     .foregroundStyle(DesignTokens.systemRed)
             }
 
             Button(action: onToggleViewed) {
                 Text("Viewed")
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
             }
             .buttonStyle(.borderless)
         }
@@ -174,7 +177,11 @@ struct DiffRowView: View {
     let onComment: () -> Void
 
     private var numberColumnWidth: CGFloat {
-        CGFloat(numberWidth) * 7.5 + 4
+        // The per-character width of the gutter's monospaced digits at
+        // Typo.code — scaled up from the 7.5pt this was calibrated at when
+        // the gutter still rendered at 11pt, so the column stays exactly as
+        // wide as the numbers it holds now render at 13pt.
+        CGFloat(numberWidth) * 8.9 + 4
     }
 
     var body: some View {
@@ -195,7 +202,7 @@ struct DiffRowView: View {
                 .frame(width: numberColumnWidth * 2 + 20)
 
             Text(row.text)
-                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
                 .foregroundStyle(DesignTokens.labelTertiary)
                 .lineLimit(1)
 
@@ -219,27 +226,27 @@ struct DiffRowView: View {
                 Text(row.newNumber.map(String.init) ?? "")
                     .frame(width: numberColumnWidth, alignment: .trailing)
             }
-            .font(.system(size: 11, weight: .regular, design: .monospaced))
+            .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
             .foregroundStyle(DesignTokens.labelTertiary)
             .padding(.horizontal, 8)
             .frame(minHeight: 19)
             .background(gutterFill)
 
             Text(glyph)
-                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
                 .foregroundStyle(glyphColor)
-                .frame(width: 12)
+                .frame(width: 13)
                 .padding(.leading, 4)
 
             Text(rowText)
-                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if showCommentButton {
                 Button(action: onComment) {
                     Image(systemName: "plus.bubble")
-                        .font(.system(size: 11, weight: .regular))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(DesignTokens.accent)
                 }
                 .buttonStyle(.plain)
@@ -321,18 +328,18 @@ struct PendingCommentCardView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Text(authorInitials)
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: Typo.caption, weight: .semibold))
                     .foregroundStyle(DesignTokens.accent)
                     .frame(width: 20, height: 20)
                     .background(DesignTokens.accent.opacity(0.3))
                     .clipShape(Circle())
 
                 Text(authorName)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: Typo.subhead, weight: .semibold))
                     .foregroundStyle(DesignTokens.label)
 
                 Text("Pending")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: Typo.caption, weight: .semibold))
                     .foregroundStyle(DesignTokens.systemYellow)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -343,7 +350,7 @@ struct PendingCommentCardView: View {
 
                 Button(action: onEdit) {
                     Image(systemName: "pencil")
-                        .font(.system(size: 11, weight: .regular))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(DesignTokens.labelTertiary)
                 }
                 .buttonStyle(.plain)
@@ -351,7 +358,7 @@ struct PendingCommentCardView: View {
 
                 Button(action: onDelete) {
                     Image(systemName: "trash")
-                        .font(.system(size: 11, weight: .regular))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(DesignTokens.labelTertiary)
                 }
                 .buttonStyle(.plain)
@@ -364,7 +371,7 @@ struct PendingCommentCardView: View {
             Divider().frame(height: 0.5)
 
             Text(comment.text)
-                .font(.system(size: 12, weight: .regular))
+                .font(.system(size: Typo.subhead, weight: .regular))
                 .foregroundStyle(DesignTokens.label)
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -398,7 +405,7 @@ struct CommentEditorView: View {
     var body: some View {
         VStack(alignment: .trailing, spacing: 8) {
             TextEditor(text: $text)
-                .font(.system(size: 12, weight: .regular))
+                .font(.system(size: Typo.subhead, weight: .regular))
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 60, idealHeight: 60, maxHeight: 140)
                 .padding(6)

@@ -47,14 +47,14 @@ struct BriefTabView: View {
                     // Brief section label
                     HStack {
                         Text("BRIEF — BECOMES THE AGENT'S PROMPT")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: Typo.subhead, weight: .semibold))
                             .foregroundStyle(DesignTokens.labelTertiary)
 
                         Spacer()
 
                         Button(action: startEditingBrief) {
                             Text("Edit…")
-                                .font(.system(size: 11, weight: .regular))
+                                .font(.system(size: Typo.subhead, weight: .regular))
                         }
                         .buttonStyle(.borderless)
                         .disabled(!canEditBrief)
@@ -73,13 +73,13 @@ struct BriefTabView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             if !detail.brief.isEmpty {
                                 Text(briefAttributedString(detail.brief))
-                                    .font(.system(size: 13, weight: .regular))
+                                    .font(.system(size: Typo.body, weight: .regular))
                                     .lineSpacing(2)
                                     .foregroundStyle(DesignTokens.label)
                                     .textSelection(.enabled)
                             } else {
                                 Text("No brief yet")
-                                    .font(.system(size: 13, weight: .regular))
+                                    .font(.system(size: Typo.body, weight: .regular))
                                     .foregroundStyle(DesignTokens.labelSecondary)
                             }
                         }
@@ -90,7 +90,7 @@ struct BriefTabView: View {
                                 .padding(.vertical, 6)
 
                             Text(dependencyText(detail))
-                                .font(.system(size: 12, weight: .regular))
+                                .font(.system(size: Typo.subhead, weight: .regular))
                                 .foregroundStyle(DesignTokens.labelTertiary)
                         }
 
@@ -98,15 +98,15 @@ struct BriefTabView: View {
                         if let branch = detail.branch, !branch.isEmpty {
                             HStack(spacing: 4) {
                                 Text("branch")
-                                    .font(.system(size: 12, weight: .regular))
+                                    .font(.system(size: Typo.subhead, weight: .regular))
                                 Text(branch)
-                                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                                    .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
                                     .foregroundStyle(DesignTokens.label)
                             }
                             .foregroundStyle(DesignTokens.labelTertiary)
                         } else {
                             Text("branch assigned on launch")
-                                .font(.system(size: 12, weight: .regular))
+                                .font(.system(size: Typo.subhead, weight: .regular))
                                 .foregroundStyle(DesignTokens.labelTertiary)
                         }
                     } else if detailState.isLoading {
@@ -119,11 +119,11 @@ struct BriefTabView: View {
                                 .foregroundStyle(DesignTokens.systemRed)
 
                             Text("Failed to load")
-                                .font(.system(size: 13, weight: .regular))
+                                .font(.system(size: Typo.body, weight: .regular))
                                 .foregroundStyle(DesignTokens.label)
 
                             Text(errorMsg)
-                                .font(.system(size: 11, weight: .regular))
+                                .font(.system(size: Typo.subhead, weight: .regular))
                                 .foregroundStyle(DesignTokens.labelSecondary)
                                 .lineLimit(2)
                         }
@@ -135,7 +135,7 @@ struct BriefTabView: View {
                                 .foregroundStyle(DesignTokens.labelSecondary)
 
                             Text("No brief loaded")
-                                .font(.system(size: 13, weight: .regular))
+                                .font(.system(size: Typo.body, weight: .regular))
                                 .foregroundStyle(DesignTokens.labelSecondary)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -156,7 +156,7 @@ struct BriefTabView: View {
                 HStack(spacing: 8) {
                     Button(action: startEditingBrief) {
                         Text("Edit Brief…")
-                            .font(.system(size: 11, weight: .regular))
+                            .font(.system(size: Typo.subhead, weight: .regular))
                     }
                     .buttonStyle(.borderless)
                     .disabled(!canEditBrief)
@@ -174,7 +174,7 @@ struct BriefTabView: View {
                                         .frame(width: 22, height: 22)
                                 } else {
                                     Text("Launch Agent")
-                                        .font(.system(size: 12, weight: .semibold))
+                                        .font(.system(size: Typo.subhead, weight: .semibold))
                                         .foregroundStyle(DesignTokens.accentText)
                                         .padding(.horizontal, 10)
                                 }
@@ -189,7 +189,7 @@ struct BriefTabView: View {
 
                             Button(action: { showLaunchPopover.toggle() }) {
                                 Image(systemName: "chevron.down")
-                                    .font(.system(size: 9, weight: .bold))
+                                    .font(.system(size: 12, weight: .medium))
                                     .foregroundStyle(DesignTokens.accentText)
                                     .frame(width: 20, height: 22)
                             }
@@ -213,9 +213,9 @@ struct BriefTabView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.circle.fill")
                             .foregroundStyle(DesignTokens.systemRed)
-                            .font(.system(size: 12))
+                            .font(.system(size: 12, weight: .medium))
                         Text(error)
-                            .font(.system(size: 11, weight: .regular))
+                            .font(.system(size: Typo.subhead, weight: .regular))
                             .foregroundStyle(DesignTokens.systemRed)
                             .lineLimit(2)
                         Spacer()
@@ -227,9 +227,9 @@ struct BriefTabView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(DesignTokens.systemYellow)
-                            .font(.system(size: 12))
+                            .font(.system(size: 12, weight: .medium))
                         Text(warning)
-                            .font(.system(size: 11, weight: .regular))
+                            .font(.system(size: Typo.subhead, weight: .regular))
                             .foregroundStyle(DesignTokens.systemYellow)
                             .lineLimit(2)
                         Spacer()
@@ -287,7 +287,7 @@ struct BriefTabView: View {
     private var briefEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
             TextEditor(text: $editedBriefText)
-                .font(.system(size: 13, weight: .regular))
+                .font(.system(size: Typo.body, weight: .regular))
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 160, maxHeight: 320)
                 .padding(6)
@@ -301,7 +301,7 @@ struct BriefTabView: View {
 
             if let briefSaveError {
                 Text(briefSaveError)
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.systemRed)
             }
 
@@ -411,10 +411,9 @@ struct BriefTabView: View {
                 // Refresh the project to pick up the new agent
                 await appModel.refresh()
 
-                // Switch to Agent tab
-                withAnimation {
-                    onTabChange(.agent)
-                }
+                // Switch to Agent tab — a content swap, not a state change,
+                // so it happens instantly rather than animating.
+                onTabChange(.agent)
 
                 // Close the popover
                 showLaunchPopover = false
@@ -438,7 +437,7 @@ struct BriefTabView: View {
             // Model selector
             HStack(spacing: 8) {
                 Text("Model")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: Typo.subhead, weight: .semibold))
                     .frame(width: 50, alignment: .leading)
 
                 Picker("Model", selection: $selectedModel) {
@@ -457,7 +456,7 @@ struct BriefTabView: View {
             // Effort selector
             HStack(spacing: 8) {
                 Text("Effort")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: Typo.subhead, weight: .semibold))
                     .frame(width: 50, alignment: .leading)
 
                 Picker("Effort", selection: $selectedEffort) {
@@ -475,7 +474,7 @@ struct BriefTabView: View {
 
             // Footnote
             Text("Runs detached in tmux — closing nat won't stop it.")
-                .font(.system(size: 10, weight: .regular))
+                .font(.system(size: Typo.caption, weight: .regular))
                 .foregroundStyle(DesignTokens.labelTertiary)
         }
         .frame(width: 280)

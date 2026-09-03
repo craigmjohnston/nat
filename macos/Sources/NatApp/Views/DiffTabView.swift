@@ -91,12 +91,12 @@ struct DiffTabView: View {
                 .foregroundStyle(DesignTokens.systemRed)
 
             Text("Failed to read the diff")
-                .font(.system(size: 13, weight: .regular))
+                .font(.system(size: Typo.body, weight: .regular))
                 .foregroundStyle(DesignTokens.label)
 
             if let message = store.loadState.errorMessage {
                 Text(message)
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.labelSecondary)
                     .lineLimit(3)
                     .multilineTextAlignment(.center)
@@ -122,7 +122,7 @@ struct DiffTabView: View {
                         .foregroundStyle(DesignTokens.labelSecondary)
 
                     Text("Nothing to show — the branch matches its base")
-                        .font(.system(size: 13, weight: .regular))
+                        .font(.system(size: Typo.body, weight: .regular))
                         .foregroundStyle(DesignTokens.labelSecondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -166,7 +166,7 @@ struct DiffTabView: View {
                             selectedCommit: store.selectedCommit,
                             onSelectCommit: { sha in Task { await store.selectCommit(sha) } },
                             onSelect: { path in
-                                withAnimation {
+                                withAnimation(Motion.stateChange) {
                                     proxy.scrollTo(path, anchor: .top)
                                 }
                             }
@@ -205,14 +205,16 @@ struct DiffTabView: View {
                     pendingCount: pendingCount, viewedCount: viewedCount, total: diff.files.count,
                     commentsEditable: commentsEditable
                 ))
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .monospacedDigit()
                     .foregroundStyle(DesignTokens.labelTertiary)
 
                 Spacer()
 
                 Button(action: { Task { await sendComments() } }) {
                     Text("Send \(pendingCount) \(plural(pendingCount, "Comment", "Comments"))")
-                        .font(.system(size: 12, weight: .regular))
+                        .font(.system(size: Typo.subhead, weight: .regular))
+                        .monospacedDigit()
                 }
                 .buttonStyle(.bordered)
                 .disabled(pendingCount == 0 || isSending || !commentsEditable)
@@ -220,7 +222,7 @@ struct DiffTabView: View {
 
                 Button(action: { showApproveConfirm = true }) {
                     Text("Approve & Open PR…")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: Typo.subhead, weight: .semibold))
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(DesignTokens.accent)
@@ -245,7 +247,8 @@ struct DiffTabView: View {
     private func inlineNotice(_ text: String, color: Color) -> some View {
         HStack {
             Text(text)
-                .font(.system(size: 11, weight: .regular))
+                .font(.system(size: Typo.subhead, weight: .regular))
+                .monospacedDigit()
                 .foregroundStyle(color)
                 .lineLimit(2)
             Spacer()

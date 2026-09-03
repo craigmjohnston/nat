@@ -62,16 +62,18 @@ struct WindowShellView: View {
 
                     // Right-side toolbar
                     HStack(spacing: 12) {
-                        // Slice count
+                        // Slice count — done over total, matching the mock
+                        // ("161/199 slices"), not the count still outstanding.
                         if let projectInfo = appModel.projectStore?.state.projectInfo {
-                            Text("\(projectInfo.slices.filter { $0.status != "Done" }.count)/\(projectInfo.slices.count) slices")
-                                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                            Text("\(projectInfo.slices.filter { $0.status == "Done" }.count)/\(projectInfo.slices.count) slices")
+                                .font(.system(size: Typo.subhead, weight: .regular))
+                                .monospacedDigit()
                                 .foregroundStyle(DesignTokens.labelTertiary)
                         }
 
                         Button(action: { showNewSliceSheet = true }) {
                             Image(systemName: "plus.rectangle.on.rectangle")
-                                .font(.system(size: 12, weight: .regular))
+                                .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(DesignTokens.labelTertiary)
                         }
                         .buttonStyle(.plain)
@@ -81,7 +83,7 @@ struct WindowShellView: View {
 
                         Button(action: { showWorkshopOverlay = true }) {
                             Image(systemName: "wand.and.stars")
-                                .font(.system(size: 12, weight: .regular))
+                                .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(DesignTokens.labelTertiary)
                         }
                         .buttonStyle(.plain)

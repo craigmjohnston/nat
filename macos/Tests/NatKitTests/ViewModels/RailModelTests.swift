@@ -77,25 +77,109 @@ final class RailModelTests: XCTestCase {
         XCTAssertNil(model.needsReview[0].stat)
     }
 
-    func testBuildRailModel_activeSection() {
-        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: testSlices)
-        let liveAgents = ["s-3": AgentActivity.working]
-        let model = buildRailModel(from: projectInfo, liveAgents: liveAgents)
+    // MARK: - ACTIVE membership
+
+    // ACTIVE is a status/handedBack/pr rule on the slice's own page, never
+    // "has a live tmux session" — these cases pin that down independently of
+    // whatever a live agent map says.
+
+    func testBuildRailModel_activeSection_inProgressNoSessionIsReadyToPush() {
+        // s-3 is In progress, not handed back, no PR, not blocked, and no
+        // live agent names it: a session that ended without pushing
+        // anything, which is included and reads "Ready to push".
+        var slices = testSlices!
+        slices[2] = Slice(
+            id: "s-3", name: "Feature B", status: "In progress", milestoneID: "m-2",
+            assignee: "", pr: "", url: "", blocked: false, handedBack: false
+        )
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
+        let model = buildRailModel(from: projectInfo, liveAgents: [:])
 
         XCTAssertEqual(model.active.count, 1)
         XCTAssertEqual(model.active[0].sliceID, "s-3")
-        XCTAssertEqual(model.active[0].name, "Feature B")
-        XCTAssertEqual(model.active[0].activity, .working)
-        XCTAssertEqual(model.active[0].displayState, "Working")
+        XCTAssertEqual(model.active[0].displayState, "Ready to push")
+        XCTAssertEqual(model.active[0].tintRole, .readyToPush)
     }
 
-    func testBuildRailModel_activeSectionWaiting() {
-        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: testSlices)
-        let liveAgents = ["s-3": AgentActivity.waiting]
-        let model = buildRailModel(from: projectInfo, liveAgents: liveAgents)
+    func testBuildRailModel_activeSection_inProgressBlockedNoSessionIsBlocked() {
+        // s-4 is In progress, blocked on a dependency, and nothing is
+        // running on it: included, and reads "Blocked" rather than "Ready to
+        // push".
+        var slices = testSlices!
+        slices[3] = Slice(
+            id: "s-4", name: "Blocked Task", status: "In progress", milestoneID: "m-2",
+            assignee: "", pr: "", url: "", blocked: true, handedBack: false
+        )
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
+        let model = buildRailModel(from: projectInfo, liveAgents: [:])
 
-        XCTAssertEqual(model.active[0].activity, .waiting)
+        let entry = model.active.first { $0.sliceID == "s-4" }
+        XCTAssertNotNil(entry)
+        XCTAssertEqual(entry?.displayState, "Blocked")
+        XCTAssertEqual(entry?.tintRole, .blocked)
+    }
+
+    func testBuildRailModel_activeSection_doneSliceWithLiveSessionIsExcluded() {
+        // s-1 is Done; a live agent still attached to it (an idle session on
+        // finished work) must not resurrect it into ACTIVE.
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: testSlices)
+        let model = buildRailModel(from: projectInfo, liveAgents: ["s-1": .working])
+
+        XCTAssertFalse(model.active.contains { $0.sliceID == "s-1" })
+    }
+
+    func testBuildRailModel_activeSection_handedBackWithLiveSessionIsExcluded() {
+        // s-2 is In progress and handed back (it lives in NEEDS REVIEW). A
+        // live agent still on its branch is the review going back to it, not
+        // a reason to also draw it in ACTIVE.
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: testSlices)
+        let model = buildRailModel(from: projectInfo, liveAgents: ["s-2": .working])
+
+        XCTAssertFalse(model.active.contains { $0.sliceID == "s-2" })
+        XCTAssertEqual(model.needsReview.count, 1)
+        XCTAssertEqual(model.needsReview[0].sliceID, "s-2")
+    }
+
+    func testBuildRailModel_activeSection_prRecordedIsExcluded() {
+        // A slice with a pull request recorded is work already out, however
+        // its status reads — not ACTIVE's to draw.
+        var slices = testSlices!
+        slices[2] = Slice(
+            id: "s-3", name: "Feature B", status: "In progress", milestoneID: "m-2",
+            assignee: "", pr: "https://github.com/example/pr/1", url: "", blocked: false, handedBack: false
+        )
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
+        let model = buildRailModel(from: projectInfo, liveAgents: [:])
+
+        XCTAssertFalse(model.active.contains { $0.sliceID == "s-3" })
+    }
+
+    func testBuildRailModel_activeSection_liveAgentWorkingWins() {
+        var slices = testSlices!
+        slices[2] = Slice(
+            id: "s-3", name: "Feature B", status: "In progress", milestoneID: "m-2",
+            assignee: "", pr: "", url: "", blocked: false, handedBack: false
+        )
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
+        let model = buildRailModel(from: projectInfo, liveAgents: ["s-3": .working])
+
+        XCTAssertEqual(model.active.count, 1)
+        XCTAssertEqual(model.active[0].sliceID, "s-3")
+        XCTAssertEqual(model.active[0].displayState, "Working")
+        XCTAssertEqual(model.active[0].tintRole, .working)
+    }
+
+    func testBuildRailModel_activeSection_liveAgentWaitingWins() {
+        var slices = testSlices!
+        slices[2] = Slice(
+            id: "s-3", name: "Feature B", status: "In progress", milestoneID: "m-2",
+            assignee: "", pr: "", url: "", blocked: false, handedBack: false
+        )
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
+        let model = buildRailModel(from: projectInfo, liveAgents: ["s-3": .waiting])
+
         XCTAssertEqual(model.active[0].displayState, "Waiting for input")
+        XCTAssertEqual(model.active[0].tintRole, .waiting)
     }
 
     func testBuildRailModel_milestoneCards() {
@@ -200,5 +284,45 @@ final class RailModelTests: XCTestCase {
         let updatedCoreCard = updatedModel.milestoneCards[0]
         XCTAssertEqual(updatedCoreCard.done, 1)
         XCTAssertEqual(updatedCoreCard.fraction, 1.0 / 3.0)
+    }
+
+    // MARK: - MilestoneCard doneSlices / inFlightSlices
+
+    func testMilestoneCard_hiddenDoneSlicesAreExposed() {
+        var slices = testSlices!
+        slices[2] = Slice(
+            id: "s-3", name: "Feature B", status: "Done", milestoneID: "m-2",
+            assignee: "", pr: "", url: "", blocked: false, handedBack: false
+        )
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
+        let model = buildRailModel(from: projectInfo, liveAgents: [:])
+
+        let coreCard = model.milestoneCards[0]
+        XCTAssertEqual(coreCard.hiddenDoneCount, 1)
+        XCTAssertEqual(coreCard.doneSlices.count, 1)
+        XCTAssertEqual(coreCard.doneSlices[0].sliceID, "s-3")
+        XCTAssertEqual(coreCard.doneSlices[0].glyph, .done)
+    }
+
+    func testMilestoneCard_inFlightSlicesAreExposed() {
+        // s-2 (Feature A) is handed back, so it is counted and listed as
+        // "in flight elsewhere" (it is drawn in NEEDS REVIEW).
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: testSlices)
+        let model = buildRailModel(from: projectInfo, liveAgents: [:])
+
+        let coreCard = model.milestoneCards[0]
+        XCTAssertEqual(coreCard.inFlightElsewhereCount, 1)
+        XCTAssertEqual(coreCard.inFlightSlices.count, 1)
+        XCTAssertEqual(coreCard.inFlightSlices[0].sliceID, "s-2")
+    }
+
+    func testMilestoneCard_noHiddenOrInFlightSlicesAreEmptyLists() {
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: testSlices)
+        let model = buildRailModel(from: projectInfo, liveAgents: [:])
+
+        // Polish has neither a done slice nor one shown elsewhere.
+        let polishCard = model.milestoneCards[1]
+        XCTAssertTrue(polishCard.doneSlices.isEmpty)
+        XCTAssertTrue(polishCard.inFlightSlices.isEmpty)
     }
 }

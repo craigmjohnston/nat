@@ -23,7 +23,7 @@ struct OnboardingView: View {
                     .foregroundStyle(DesignTokens.label)
 
                 Text("A native board over the notion-agent-tracker project, for launching and reviewing agent work.")
-                    .font(.system(size: 13, weight: .regular))
+                    .font(.system(size: Typo.body, weight: .regular))
                     .foregroundStyle(DesignTokens.labelSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
@@ -38,7 +38,7 @@ struct OnboardingView: View {
                 .cornerRadius(10)
 
                 Text("Run nat in a terminal to set up your workspace, then relaunch.")
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.labelTertiary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
@@ -65,16 +65,16 @@ struct OnboardingView: View {
         return HStack(spacing: 8) {
             Image(systemName: found ? "checkmark.circle.fill" : "xmark.circle")
                 .foregroundStyle(found ? DesignTokens.systemGreen : DesignTokens.systemRed)
-                .font(.system(size: 13, weight: .regular))
+                .font(.system(size: 13, weight: .medium))
 
             Text(binary)
-                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
                 .foregroundStyle(DesignTokens.label)
 
             Spacer()
 
             Text(found ? "Found" : "Missing")
-                .font(.system(size: 11, weight: .regular))
+                .font(.system(size: Typo.subhead, weight: .regular))
                 .foregroundStyle(found ? DesignTokens.labelSecondary : DesignTokens.systemRed)
         }
         .frame(width: 220)

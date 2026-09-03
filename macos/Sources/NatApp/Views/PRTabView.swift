@@ -70,12 +70,12 @@ struct PRTabView: View {
                 .foregroundStyle(DesignTokens.systemRed)
 
             Text("Failed to read the pull request")
-                .font(.system(size: 13, weight: .regular))
+                .font(.system(size: Typo.body, weight: .regular))
                 .foregroundStyle(DesignTokens.label)
 
             if let message = store.loadState.errorMessage {
                 Text(message)
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.labelSecondary)
                     .lineLimit(3)
                     .multilineTextAlignment(.center)
@@ -140,7 +140,7 @@ struct PRTabView: View {
         let chip = prStateChip(state: pr.state, isDraft: pr.isDraft)
         return HStack(spacing: 10) {
             Text(chip.label)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: Typo.subhead, weight: .semibold))
                 .foregroundStyle(chip.tint)
                 .padding(.horizontal, 10)
                 .frame(height: 22)
@@ -148,13 +148,14 @@ struct PRTabView: View {
                 .clipShape(Capsule())
 
             Text(pr.title)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: Typo.headline, weight: .semibold))
                 .foregroundStyle(DesignTokens.label)
                 .lineLimit(1)
                 .truncationMode(.tail)
 
             Text("#\(pr.number)")
-                .font(.system(size: 13, weight: .regular))
+                .font(.system(size: Typo.body, weight: .regular))
+                .monospacedDigit()
                 .foregroundStyle(DesignTokens.labelTertiary)
 
             Spacer(minLength: 0)
@@ -163,24 +164,24 @@ struct PRTabView: View {
 
     private func branchLine(for pr: PRDetail) -> some View {
         Text("\(pr.headRefName) → \(pr.baseRefName)")
-            .font(.system(size: 12, weight: .regular, design: .monospaced))
+            .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
             .foregroundStyle(DesignTokens.labelTertiary)
     }
 
     private func descriptionSection(for pr: PRDetail) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("DESCRIPTION")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: Typo.subhead, weight: .semibold))
                 .foregroundStyle(DesignTokens.labelTertiary)
 
             let described = pr.body.trimmingCharacters(in: .whitespacesAndNewlines)
             if described.isEmpty {
                 Text("This pull request has no description.")
-                    .font(.system(size: 13, weight: .regular))
+                    .font(.system(size: Typo.body, weight: .regular))
                     .foregroundStyle(DesignTokens.labelSecondary)
             } else {
                 Text(markdownAttributed(described))
-                    .font(.system(size: 13, weight: .regular))
+                    .font(.system(size: Typo.body, weight: .regular))
                     .lineSpacing(2)
                     .foregroundStyle(DesignTokens.label)
                     .textSelection(.enabled)
@@ -193,18 +194,19 @@ struct PRTabView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Text("CONVERSATION")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: Typo.subhead, weight: .semibold))
                     .foregroundStyle(DesignTokens.labelTertiary)
                 if !entries.isEmpty {
                     Text(convoSummary(entries))
-                        .font(.system(size: 11, weight: .regular))
+                        .font(.system(size: Typo.subhead, weight: .regular))
+                        .monospacedDigit()
                         .foregroundStyle(DesignTokens.labelTertiary)
                 }
             }
 
             if entries.isEmpty {
                 Text("Nothing has been said on this pull request.")
-                    .font(.system(size: 13, weight: .regular))
+                    .font(.system(size: Typo.body, weight: .regular))
                     .foregroundStyle(DesignTokens.labelSecondary)
             } else {
                 VStack(alignment: .leading, spacing: 12) {
@@ -245,7 +247,7 @@ struct PRTabView: View {
             if let mergeError {
                 HStack {
                     Text(mergeError)
-                        .font(.system(size: 11, weight: .regular))
+                        .font(.system(size: Typo.subhead, weight: .regular))
                         .foregroundStyle(DesignTokens.systemRed)
                         .lineLimit(2)
                     Spacer()
@@ -258,11 +260,11 @@ struct PRTabView: View {
 
             HStack(spacing: 8) {
                 Image(systemName: footerMarkSymbolName(for: pr, rollup: rollup))
-                    .font(.system(size: 10, weight: .regular))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(footerTint(for: pr, rollup: rollup))
 
                 Text(footerHeadingText(for: pr))
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.labelTertiary)
 
                 Spacer()
@@ -272,7 +274,7 @@ struct PRTabView: View {
                         Text("Open in GitHub")
                         Image(systemName: "arrow.up.right.square")
                     }
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                 }
                 .buttonStyle(.borderless)
 
@@ -440,25 +442,25 @@ struct PRConversationEntryView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Image(systemName: entry.tone.markSymbolName)
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(entry.tone.tint)
 
                 Text(entry.author)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: Typo.subhead, weight: .semibold))
                     .foregroundStyle(DesignTokens.label)
 
                 Text(entry.verb)
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(entry.tone.tint)
 
                 Text(ago(Date().timeIntervalSince(entry.at)))
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.labelTertiary)
             }
 
             if !entry.body.isEmpty {
                 Text(markdownAttributed(entry.body))
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.labelSecondary)
                     .lineSpacing(1)
                     .textSelection(.enabled)
@@ -492,14 +494,14 @@ struct PRComposerView: View {
                 ZStack(alignment: .topLeading) {
                     if text.isEmpty {
                         Text(placeholder)
-                            .font(.system(size: 12, weight: .regular))
+                            .font(.system(size: Typo.subhead, weight: .regular))
                             .foregroundStyle(DesignTokens.labelTertiary)
                             .padding(.top, 8)
                             .padding(.leading, 5)
                             .allowsHitTesting(false)
                     }
                     TextEditor(text: $text)
-                        .font(.system(size: 12, weight: .regular))
+                        .font(.system(size: Typo.subhead, weight: .regular))
                         .scrollContentBackground(.hidden)
                         .frame(minHeight: compact ? 22 : 36, maxHeight: compact ? 70 : 120)
                         .padding(.horizontal, 2)
@@ -509,10 +511,10 @@ struct PRComposerView: View {
 
                 HStack(spacing: 8) {
                     Image(systemName: "textformat")
-                        .font(.system(size: 11, weight: .regular))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(DesignTokens.labelTertiary)
                     Image(systemName: "paperclip")
-                        .font(.system(size: 11, weight: .regular))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(DesignTokens.labelTertiary)
 
                     Spacer()
@@ -523,7 +525,7 @@ struct PRComposerView: View {
                                 ProgressView().scaleEffect(0.5)
                             } else {
                                 Image(systemName: "paperplane.fill")
-                                    .font(.system(size: 11, weight: .regular))
+                                    .font(.system(size: 12, weight: .medium))
                                     .foregroundStyle(DesignTokens.accentText)
                             }
                         }
@@ -548,7 +550,7 @@ struct PRComposerView: View {
 
             if let error {
                 Text(error)
-                    .font(.system(size: 10, weight: .regular))
+                    .font(.system(size: Typo.caption, weight: .regular))
                     .foregroundStyle(DesignTokens.systemRed)
                     .lineLimit(2)
             }

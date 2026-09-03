@@ -21,8 +21,13 @@ struct AgentTabView: View {
     var body: some View {
         VStack(spacing: 0) {
             if let agent = liveAgent, !isCovered {
-                // Terminal area
+                // Terminal area: the dark surface reaches the pane's edges,
+                // and the terminal itself is inset from it — a margin drawn
+                // around a smaller rectangle would leave a lighter band at
+                // the edges instead of the mock's own full-bleed panel.
                 ZStack {
+                    AgentTerminalHostView.backgroundColor
+
                     AgentTerminalHostView(
                         attachSpec: AttachSpec(session: agent.session),
                         sessionExists: { sessionStillExists() },
@@ -31,36 +36,40 @@ struct AgentTabView: View {
                         }
                     )
                     .id(agent.session) // Force recreation when session changes
+                    .padding(.vertical, 14)
+                    .padding(.horizontal, 18)
                 }
 
-                // Footer with buttons
-                Divider()
-                    .frame(height: 0.5)
-
+                // Footer with buttons — the mock's own metrics: a ~34pt row,
+                // 8pt of vertical padding and a hairline top border rather
+                // than a bare Divider, matching every other pane border in
+                // the app (see ProgressBorderView).
                 HStack(spacing: 8) {
                     Spacer()
 
                     if let error = interruptError {
                         Text(error)
-                            .font(.system(size: 11, weight: .regular))
+                            .font(.system(size: Typo.subhead, weight: .regular))
                             .foregroundStyle(DesignTokens.systemRed)
                     }
 
                     Button(action: openInTerminal) {
                         Text("Open in Terminal…")
-                            .font(.system(size: 11, weight: .regular))
+                            .font(.system(size: Typo.subhead, weight: .regular))
                     }
                     .buttonStyle(.borderless)
 
                     Button(action: sendInterrupt) {
                         Text("Interrupt")
-                            .font(.system(size: 11, weight: .regular))
+                            .font(.system(size: Typo.subhead, weight: .regular))
                     }
                     .buttonStyle(.borderless)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
+                .frame(height: 34)
                 .background(DesignTokens.controlBg)
+                .rectBorder(width: 0.5, edges: [.top], color: DesignTokens.separator)
             } else {
                 // Empty state
                 VStack(spacing: 12) {

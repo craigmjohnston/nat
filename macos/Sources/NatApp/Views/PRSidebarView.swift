@@ -26,12 +26,13 @@ struct PRSidebarView: View {
     private var checksSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(checksHeading)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: Typo.subhead, weight: .semibold))
+                .monospacedDigit()
                 .foregroundStyle(DesignTokens.labelTertiary)
 
             if pr.checks.isEmpty {
                 Text("No checks have run on this pull request.")
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.labelSecondary)
             } else {
                 ForEach(Array(pr.checks.enumerated()), id: \.offset) { _, check in
@@ -51,12 +52,12 @@ struct PRSidebarView: View {
         let outcome = checkOutcome(state: check.state)
         return HStack(spacing: 8) {
             Image(systemName: outcome.markSymbolName)
-                .font(.system(size: 12, weight: .regular))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(outcome.tint)
                 .symbolEffect(.pulse, isActive: outcome == .pending)
 
             Text(check.name)
-                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
                 .foregroundStyle(DesignTokens.label)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -64,7 +65,7 @@ struct PRSidebarView: View {
             Spacer(minLength: 6)
 
             Text(checkStateWord(check.state))
-                .font(.system(size: 11, weight: .regular))
+                .font(.system(size: Typo.subhead, weight: .regular))
                 .foregroundStyle(DesignTokens.labelTertiary)
         }
         .frame(height: 22)
@@ -76,16 +77,16 @@ struct PRSidebarView: View {
         let verdict = reviewVerdict(reviewDecision: pr.reviewDecision)
         return VStack(alignment: .leading, spacing: 6) {
             Text("REVIEW")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: Typo.subhead, weight: .semibold))
                 .foregroundStyle(DesignTokens.labelTertiary)
 
             HStack(spacing: 8) {
                 Image(systemName: verdict.outcome.markSymbolName)
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(verdict.outcome.tint)
 
                 Text(sentenceCase(verdict.word))
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.label)
             }
 
@@ -94,11 +95,11 @@ struct PRSidebarView: View {
             // pretending to add one from here.
             HStack(spacing: 8) {
                 Image(systemName: "plus.circle")
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(DesignTokens.labelTertiary)
 
                 Text("Add Reviewer…")
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.labelSecondary)
             }
             .contentShape(Rectangle())
@@ -116,7 +117,7 @@ struct PRSidebarView: View {
     private var changesSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("CHANGES")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: Typo.subhead, weight: .semibold))
                 .foregroundStyle(DesignTokens.labelTertiary)
 
             // Additions/deletions/changed files/commits are only sent by a
@@ -134,16 +135,17 @@ struct PRSidebarView: View {
                             .foregroundStyle(DesignTokens.labelSecondary)
                     }
                 }
-                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                .font(.system(size: Typo.subhead, weight: .regular))
+                .monospacedDigit()
 
                 if let commits = pr.commits {
                     Text("\(commits) \(plural(commits, "commit", "commits")) on \(pr.headRefName)")
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
                         .foregroundStyle(DesignTokens.labelTertiary)
                 }
             } else {
                 Text("\(pr.headRefName) → \(pr.baseRefName)")
-                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                    .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
                     .foregroundStyle(DesignTokens.labelSecondary)
             }
         }
