@@ -23,6 +23,13 @@ import (
 // the prompt names with --project. It comes from the caller rather than from
 // Project, since a ProjectConfig is a value of the config file's Projects map
 // and the ID is the key it is filed under.
+//
+// Fix says the session is not working the slice but the review of the pull
+// request it already produced: the slice is Done, that pull request is still
+// open, and the agent is being sent at the comments and the failing checks on
+// it. It is the launch's own word rather than something read back off the
+// slice, since it is the launch that established the pull request is open —
+// see [fixPrompt].
 type PromptContext struct {
 	Slice        domain.Slice
 	Project      config.ProjectConfig
@@ -31,6 +38,7 @@ type PromptContext struct {
 	Branch       string
 	Repo         string
 	AssigneeName string
+	Fix          bool
 }
 
 // Prompt is the opening message for an agent session working one slice.
@@ -68,7 +76,14 @@ type PromptContext struct {
 // slice is in and cannot change under a session, and says why, since the
 // commands an agent runs of its own accord are the ones no template can spell
 // out.
+// A session sent at an open pull request rather than at the slice is told
+// something else entirely — see [fixPrompt] — so it is dispatched here rather
+// than woven through the sections below: nothing about claiming, working or
+// handing back a slice applies to work that has already been published.
 func Prompt(c PromptContext) string {
+	if c.Fix {
+		return fixPrompt(c)
+	}
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "You are a Claude Code agent working exactly one slice of the %q project.\n\n", c.Project.Name)
