@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
@@ -218,6 +221,53 @@ func TestSliceLaunchClaimsAndLaunches(t *testing.T) {
 	argv := strings.Join(runner.launchArgs, " ")
 	if !strings.Contains(argv, "--model 'sonnet'") || !strings.Contains(argv, "--effort 'high'") {
 		t.Errorf("launch argv = %q, want the config's slice_agent", argv)
+	}
+}
+
+// The bug this pins down: slice-launch built its PromptContext from the
+// project's ID, the slice and the working directory alone, so the prompt told
+// the agent it was working a slice of the "" project and that start-slice
+// "claims the slice for  and prints your brief". The board's own launch fills
+// in the project and the assignee, and the headless launch must hand
+// [agent.Prompt] — whose output the golden files in internal/agent/testdata
+// pin — the same context.
+func TestSliceLaunchWritesTheFullPromptContext(t *testing.T) {
+	dir := t.TempDir()
+	page := slicePageForLaunch(dir)
+	api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {page}}}
+	cfg := testClaimConfig()
+	env, _ := testEnv(cfg, api)
+	runner := &agentTestRunner{}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+	env.NewGit = func() GitCLI { return nil }
+	env.NewWorktrees = func() actions.Worktrees { return nil }
+	var out strings.Builder
+	env.Out = &out
+
+	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
+	if err != nil {
+		t.Fatalf("slice-launch: %v", err)
+	}
+
+	argv := strings.Join(runner.launchArgs, " ")
+	m := regexp.MustCompile(`\$\(cat '([^']+)'\)`).FindStringSubmatch(argv)
+	if m == nil {
+		t.Fatalf("launch argv = %q, want the prompt file read back with $(cat ...)", argv)
+	}
+	prompt, readErr := os.ReadFile(m[1])
+	if readErr != nil {
+		t.Fatalf("read the prompt file: %v", readErr)
+	}
+
+	want := agent.Prompt(agent.PromptContext{
+		Slice:        domain.SliceFromPage(page),
+		Project:      cfg.Projects["project-1"],
+		ProjectID:    "project-1",
+		WorkingDir:   dir,
+		AssigneeName: cfg.AssigneeUserName,
+	})
+	if string(prompt) != want {
+		t.Errorf("prompt =\n%s\nwant\n%s", prompt, want)
 	}
 }
 

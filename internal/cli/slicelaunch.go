@@ -80,9 +80,11 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 	agentModel = actions.TrimModel(agentModel)
 
 	promptContext := agent.PromptContext{
-		ProjectID:  projectID,
-		Slice:      s,
-		WorkingDir: actions.WorkdirFor(s, project),
+		Slice:        s,
+		Project:      project,
+		ProjectID:    projectID,
+		WorkingDir:   actions.WorkdirFor(s, project),
+		AssigneeName: cfg.AssigneeUserName,
 	}
 
 	result, err := actions.Launch(ctx, env.NewTmux(), env.NewWorktrees(), env.NewGit(), client,
