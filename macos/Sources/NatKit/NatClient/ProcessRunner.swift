@@ -43,6 +43,16 @@ public final class ProcessRunner: CommandRunning {
                 try process.run()
             } catch {
                 process.terminationHandler = nil
+                // A process that never ran writes nothing and closes
+                // nothing: the drains above are already blocked reading
+                // pipes whose write ends only a launch would have handed
+                // over, and leaving this scope awaits them (an abandoned
+                // async let is awaited, not abandoned) — so the write ends
+                // are closed here, which is the EOF that lets the drains
+                // finish and the error actually surface. Without it, a
+                // machine with no nat at all hangs instead of erroring.
+                try? stdoutPipe.fileHandleForWriting.close()
+                try? stderrPipe.fileHandleForWriting.close()
                 continuation.resume(throwing: error)
                 return
             }

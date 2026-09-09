@@ -87,6 +87,16 @@ public final class ActivityStore {
                     // Failed reading: keep previous state and log error
                     NSLog("ActivityStore: failed to read agent status: %@", error.localizedDescription)
 
+                    // With no agent known of, there is nothing the retry is
+                    // for — the loop stops the way an empty reading stops it,
+                    // and kick() re-arms it. A client that only ever fails
+                    // would otherwise poll (and log) every two seconds
+                    // forever.
+                    if self.agents.isEmpty {
+                        self.isPolling = false
+                        break
+                    }
+
                     // Sleep briefly before retrying
                     try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
                 }

@@ -142,6 +142,7 @@ final class ActivityStoreTests: XCTestCase {
         let store = ActivityStore(client: client, now: { pinned })
 
         store.kick()
+        defer { store.stop() }
         try? await Task.sleep(nanoseconds: 100_000_000)
 
         XCTAssertEqual(store.firstSeen, ["slice-1": pinned])
@@ -154,6 +155,7 @@ final class ActivityStoreTests: XCTestCase {
         let store = ActivityStore(client: client)
 
         store.kick()
+        defer { store.stop() }
         try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
 
         XCTAssertEqual(store.agents.count, 1)
@@ -179,6 +181,7 @@ final class ActivityStoreTests: XCTestCase {
 
         // First kick
         store.kick()
+        defer { store.stop() }
         try? await Task.sleep(nanoseconds: 100_000_000)
 
         // Store should have agents
@@ -197,6 +200,7 @@ final class ActivityStoreTests: XCTestCase {
         let store = ActivityStore(client: successClient)
 
         store.kick()
+        defer { store.stop() }
         try? await Task.sleep(nanoseconds: 100_000_000)
 
         XCTAssertEqual(store.agents.count, 1)
@@ -206,10 +210,32 @@ final class ActivityStoreTests: XCTestCase {
         let failingStore = ActivityStore(client: failingClient)
 
         failingStore.kick()
+        defer { failingStore.stop() }
         try? await Task.sleep(nanoseconds: 100_000_000)
 
         // With a new store, no prior state to keep
         XCTAssertEqual(failingStore.agents, [:])
+    }
+
+    @MainActor
+    func testFailingReadsWithNoAgentsStopThePoll() async {
+        // A client that only ever fails, on a store that knows of no agents,
+        // stops the loop rather than retrying (and logging) every two seconds
+        // forever. That the loop has genuinely ended is observable through
+        // kick(), which re-arms a stopped loop and is a no-op on a live one:
+        // the second kick produces a second read only because the first
+        // loop ended.
+        let client = MockActivityClient(response: .failure(TestError()))
+        let store = ActivityStore(client: client)
+
+        store.kick()
+        defer { store.stop() }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(client.callCount, 1)
+
+        store.kick()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(client.callCount, 2)
     }
 
     @MainActor
