@@ -62,6 +62,9 @@ final class MockActivityClient: NatClientProtocol, @unchecked Sendable {
         throw NSError(domain: "test", code: -1)
     }
 
+    func prStatus(projectID: String) async throws -> PRStatusDoc {
+        throw NSError(domain: "test", code: -1)
+    }
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail {
         throw NSError(domain: "test", code: -1)
     }
@@ -74,7 +77,7 @@ final class MockActivityClient: NatClientProtocol, @unchecked Sendable {
         throw NSError(domain: "test", code: -1)
     }
 
-    func workshopLaunch(projectID: String, model: String?, effort: String?) async throws -> WorkshopLaunchResult {
+    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult {
         throw NSError(domain: "test", code: -1)
     }
 
@@ -100,6 +103,48 @@ final class ActivityStoreTests: XCTestCase {
         let store = ActivityStore(client: client)
 
         XCTAssertEqual(store.agents, [:])
+        XCTAssertEqual(store.firstSeen, [:])
+    }
+
+    // MARK: - First-seen tracking
+
+    func testMergeFirstSeenStampsANewAgent() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let merged = ActivityStore.mergeFirstSeen(existing: [:], sliceIDs: ["slice-1"], now: now)
+
+        XCTAssertEqual(merged, ["slice-1": now])
+    }
+
+    func testMergeFirstSeenKeepsAnExistingStamp() {
+        let earlier = Date(timeIntervalSince1970: 1_000)
+        let now = Date(timeIntervalSince1970: 2_000)
+        let merged = ActivityStore.mergeFirstSeen(
+            existing: ["slice-1": earlier], sliceIDs: ["slice-1", "slice-2"], now: now
+        )
+
+        XCTAssertEqual(merged, ["slice-1": earlier, "slice-2": now])
+    }
+
+    func testMergeFirstSeenDropsAGoneAgent() {
+        let earlier = Date(timeIntervalSince1970: 1_000)
+        let merged = ActivityStore.mergeFirstSeen(
+            existing: ["slice-1": earlier], sliceIDs: [] as [String], now: Date(timeIntervalSince1970: 2_000)
+        )
+
+        XCTAssertEqual(merged, [:])
+    }
+
+    @MainActor
+    func testPollStampsFirstSeen() async {
+        let status = AgentStatus(sliceID: "slice-1", session: "nat-abc123", activity: .working)
+        let client = MockActivityClient(response: .agents([status]))
+        let pinned = Date(timeIntervalSince1970: 42)
+        let store = ActivityStore(client: client, now: { pinned })
+
+        store.kick()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(store.firstSeen, ["slice-1": pinned])
     }
 
     @MainActor

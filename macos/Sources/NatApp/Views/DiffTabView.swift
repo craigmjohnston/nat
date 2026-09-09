@@ -51,6 +51,18 @@ struct DiffTabView: View {
     @State private var approveError: String?
     @State private var showApproveConfirm = false
 
+    /// The file sidebar's width, draggable at its divider and remembered
+    /// across launches — the default is the width it was fixed at before it
+    /// was resizable.
+    @AppStorage("diffSidebarWidth") private var sidebarWidth = 232.0
+
+    /// Where the file column is scrolled to, by file path. The
+    /// `scrollPosition`/`scrollTargetLayout` pair rather than a
+    /// `ScrollViewReader`: the reader's `scrollTo` walks a lazy stack by
+    /// estimated heights, and with every file box a different size it landed
+    /// the sidebar's clicks somewhere near rather than at the file.
+    @State private var fileScroll = ScrollPosition(idType: String.self)
+
     private var authorName: String { appModel.config?.assigneeUserName ?? "You" }
     private var authorInitials: String { initialsFor(appModel.config?.assigneeUserName) }
 
@@ -127,52 +139,55 @@ struct DiffTabView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollViewReader { proxy in
-                    HStack(spacing: 0) {
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 10) {
-                                ForEach(diff.files) { file in
-                                    DiffFileBoxView(
-                                        file: file,
-                                        numberWidth: diff.numberWidth,
-                                        isViewed: store.isViewed(file.path),
-                                        isCollapsed: store.isCollapsed(file.path),
-                                        comments: store.comments.filter { $0.path == file.path },
-                                        selection: selection?.path == file.path ? selection : nil,
-                                        draft: draft?.path == file.path ? draft : nil,
-                                        commentsEnabled: store.commentsEditable,
-                                        authorName: authorName,
-                                        authorInitials: authorInitials,
-                                        onToggleViewed: { store.toggleViewed(file.path) },
-                                        onToggleCollapsed: { store.toggleCollapsed(file.path) },
-                                        onRowClick: { row, shift in handleRowClick(file: file, row: row, shift: shift) },
-                                        onOpenCommentEditor: openCommentEditor,
-                                        onEditComment: editComment,
-                                        onDeleteComment: deleteComment,
-                                        onSaveDraft: saveDraft,
-                                        onCancelDraft: { draft = nil }
-                                    )
-                                    .id(file.path)
-                                }
+                HStack(spacing: 0) {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 10) {
+                            ForEach(diff.files) { file in
+                                DiffFileBoxView(
+                                    file: file,
+                                    numberWidth: diff.numberWidth,
+                                    isViewed: store.isViewed(file.path),
+                                    isCollapsed: store.isCollapsed(file.path),
+                                    comments: store.comments.filter { $0.path == file.path },
+                                    selection: selection?.path == file.path ? selection : nil,
+                                    draft: draft?.path == file.path ? draft : nil,
+                                    commentsEnabled: store.commentsEditable,
+                                    authorName: authorName,
+                                    authorInitials: authorInitials,
+                                    onToggleViewed: { store.toggleViewed(file.path) },
+                                    onToggleCollapsed: { store.toggleCollapsed(file.path) },
+                                    onRowClick: { row, shift in handleRowClick(file: file, row: row, shift: shift) },
+                                    onOpenCommentEditor: openCommentEditor,
+                                    onEditComment: editComment,
+                                    onDeleteComment: deleteComment,
+                                    onSaveDraft: saveDraft,
+                                    onCancelDraft: { draft = nil }
+                                )
                             }
-                            .padding(14)
                         }
+                        .scrollTargetLayout()
+                        .padding(14)
+                    }
+                    .scrollPosition($fileScroll, anchor: .top)
 
-                        DiffFileSidebarView(
-                            files: diff.files,
-                            isViewed: { store.isViewed($0) },
-                            commentCount: { path in store.comments.filter { $0.path == path }.count },
-                            commits: store.commits,
-                            selectedCommit: store.selectedCommit,
-                            onSelectCommit: { sha in Task { await store.selectCommit(sha) } },
-                            onSelect: { path in
-                                withAnimation(Motion.stateChange) {
-                                    proxy.scrollTo(path, anchor: .top)
-                                }
+                    DiffFileSidebarView(
+                        files: diff.files,
+                        isViewed: { store.isViewed($0) },
+                        commentCount: { path in store.comments.filter { $0.path == path }.count },
+                        commits: store.commits,
+                        selectedCommit: store.selectedCommit,
+                        onSelectCommit: { sha in Task { await store.selectCommit(sha) } },
+                        onSelect: { path in
+                            withAnimation(Motion.stateChange) {
+                                fileScroll.scrollTo(id: path, anchor: .top)
                             }
-                        )
-                        .frame(width: 232)
-                        .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator)
+                        }
+                    )
+                    .frame(width: sidebarWidth)
+                    .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator)
+                    .overlay(alignment: .leading) {
+                        PaneResizeHandle(width: $sidebarWidth, minWidth: 180, maxWidth: 420, edge: .leading)
+                            .offset(x: -4.5)
                     }
                 }
 
@@ -212,24 +227,34 @@ struct DiffTabView: View {
                 Spacer()
 
                 Button(action: { Task { await sendComments() } }) {
-                    Text("Send \(pendingCount) \(plural(pendingCount, "Comment", "Comments"))")
-                        .font(.system(size: Typo.subhead, weight: .regular))
-                        .monospacedDigit()
+                    AsyncActionLabel(isBusy: isSending) {
+                        Text("Send \(pendingCount) \(plural(pendingCount, "Comment", "Comments"))")
+                            .font(.system(size: Typo.subhead, weight: .regular))
+                            .monospacedDigit()
+                    }
                 }
                 .buttonStyle(.bordered)
                 .disabled(pendingCount == 0 || isSending || !commentsEditable)
                 .help(commentsEditable ? "" : "Comments are only sent while viewing All commits")
 
-                Button(action: { showApproveConfirm = true }) {
-                    Text("Approve & Open PR…")
-                        .font(.system(size: Typo.subhead, weight: .semibold))
+                // Only a hand-back still awaiting approval has anything to
+                // approve — a Done slice's diff is the review continuing on
+                // a pull request already open, and drawing the button there
+                // would offer exactly what the CLI refuses.
+                if slice.handedBack {
+                    Button(action: { showApproveConfirm = true }) {
+                        AsyncActionLabel(isBusy: isApproving) {
+                            Text("Approve & Open PR…")
+                                .font(.system(size: Typo.subhead, weight: .semibold))
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignTokens.accent)
+                    .disabled(pendingCount > 0 || isApproving || !commentsEditable)
+                    .help(commentsEditable
+                        ? approveHelp(pendingCount: pendingCount)
+                        : "Approving is only available while viewing All commits")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(DesignTokens.accent)
-                .disabled(pendingCount > 0 || isApproving || !commentsEditable)
-                .help(commentsEditable
-                    ? approveHelp(pendingCount: pendingCount)
-                    : "Approving is only available while viewing All commits")
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -242,6 +267,10 @@ struct DiffTabView: View {
             Button("Approve & Open PR") { Task { await approve() } }
             Button("Cancel", role: .cancel) {}
         }
+        // Without an icon of its own the dialog wears the app's, which for
+        // an unbundled dev build is the generic document icon — a seal is
+        // what the rail already marks review work with.
+        .dialogIcon(Image(systemName: "checkmark.seal"))
     }
 
     private func inlineNotice(_ text: String, color: Color) -> some View {

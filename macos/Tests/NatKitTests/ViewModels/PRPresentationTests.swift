@@ -449,3 +449,45 @@ final class PRPresentationTests: XCTestCase {
         XCTAssertEqual(convoAuthor("craig"), "craig")
     }
 }
+
+// MARK: - Avatars and the approved-by line
+
+extension PRPresentationTests {
+    func testAuthorInitials_twoWordsGiveTwoInitials() {
+        XCTAssertEqual(authorInitials("craig johnston"), "CJ")
+        XCTAssertEqual(authorInitials("craig-m-johnston"), "CM")
+        XCTAssertEqual(authorInitials("craig.johnston"), "CJ")
+    }
+
+    func testAuthorInitials_singleWordGivesItsFirstTwoLetters() {
+        XCTAssertEqual(authorInitials("craig"), "CR")
+        XCTAssertEqual(authorInitials("x"), "X")
+    }
+
+    func testAuthorInitials_agentAndBotsGetTheMark() {
+        XCTAssertEqual(authorInitials("agent"), "✦")
+        XCTAssertEqual(authorInitials("github-actions[bot]"), "✦")
+    }
+
+    func testAuthorInitials_emptyIsAQuestionMark() {
+        XCTAssertEqual(authorInitials("  "), "?")
+    }
+
+    func testApprovedBy_namesTheLatestSubmittedApprover() {
+        let reviews = [
+            PRReview(author: "early", state: "APPROVED", body: "", submittedAt: Date(timeIntervalSince1970: 100)),
+            PRReview(author: "late", state: "APPROVED", body: "", submittedAt: Date(timeIntervalSince1970: 200)),
+            PRReview(author: "critic", state: "CHANGES_REQUESTED", body: "", submittedAt: Date(timeIntervalSince1970: 300)),
+        ]
+        XCTAssertEqual(approvedBy(reviews: reviews), "late")
+    }
+
+    func testApprovedBy_ignoresAnUnsubmittedApproval() {
+        let reviews = [PRReview(author: "ghost", state: "APPROVED", body: "", submittedAt: nil)]
+        XCTAssertNil(approvedBy(reviews: reviews))
+    }
+
+    func testApprovedBy_noApprovalsIsNil() {
+        XCTAssertNil(approvedBy(reviews: []))
+    }
+}

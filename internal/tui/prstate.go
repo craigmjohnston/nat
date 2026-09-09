@@ -1,10 +1,12 @@
 package tui
 
 import (
+	"context"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/logging"
@@ -27,15 +29,17 @@ var newPRReader = defaultPRReader
 func defaultPRReader() PRReader { return gh.New() }
 
 // prStateMsg carries one reading of the pull requests of the slices whose work
-// is out: how ready each open one is, keyed by slice ID, and the slices whose
-// pull request the reading found is no longer open at all.
+// is out: how ready each open one is, keyed by slice ID, the slices whose
+// pull request the reading found is no longer open at all, and — of those —
+// the ones the reading marked Done because the pull request had merged.
 //
-// A slice in neither is one gh could not be asked about, which the board reads
-// as a review still to come on work in flight and as nothing at all on work
-// that is finished — exactly what each said before there was any reading.
+// A slice in none of them is one gh could not be asked about, which the board
+// reads as a review still to come on work in flight and as nothing at all on
+// work that is finished — exactly what each said before there was any reading.
 type prStateMsg struct {
 	state   map[string]domain.PRReadiness
 	settled []string
+	marked  []string
 }
 
 // refreshPRStates reads what GitHub says about the pull request of every slice
@@ -71,14 +75,10 @@ func (a *App) refreshPRStates() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	type read struct {
-		id  string
-		url string
-	}
 	// The directories are kept in the order the plan first names them, so a
 	// reading runs the same way twice.
 	var dirs []string
-	reads := map[string][]read{}
+	reads := map[string][]domain.Slice{}
 	for _, s := range a.project.Slices {
 		if !worthReading(s) || a.prSettled[s.ID] {
 			continue
@@ -87,13 +87,13 @@ func (a *App) refreshPRStates() tea.Cmd {
 		if _, seen := reads[dir]; !seen {
 			dirs = append(dirs, dir)
 		}
-		reads[dir] = append(reads[dir], read{id: s.ID, url: s.PRURL})
+		reads[dir] = append(reads[dir], s)
 	}
 	if len(dirs) == 0 {
 		return nil
 	}
 	a.prReading = true
-	reader := a.prReader
+	reader, viewer, client := a.prReader, a.prViewer, a.client
 	return func() tea.Msg {
 		msg := prStateMsg{state: map[string]domain.PRReadiness{}}
 		for _, dir := range dirs {
@@ -106,13 +106,30 @@ func (a *App) refreshPRStates() tea.Cmd {
 				logging.Action("left a repository's pull requests unread", "dir", dir, "error", err)
 				continue
 			}
-			for _, r := range reads[dir] {
-				status, still := open[gh.NormaliseURL(r.url)]
+			for _, s := range reads[dir] {
+				status, still := open[gh.NormaliseURL(s.PRURL)]
 				if !still {
-					msg.settled = append(msg.settled, r.id)
+					// An in-progress slice whose pull request is absent is either
+					// merged — GitHub made the merge nat would have — or closed
+					// unmerged, which is work going round again; the pull
+					// request's own reading tells them apart, and a merged one
+					// marks the slice Done here, since nothing else witnessed it.
+					// A reading that failed settles nothing: the next pass asks
+					// again rather than watching an answer nobody has.
+					if s.Status == domain.SliceClaimed && viewer != nil {
+						done, err := actions.SettleMerged(context.Background(), client, viewer, s, dir)
+						if err != nil {
+							logging.Action("left an absent pull request unsettled", "slice", s.ID, "error", err)
+							continue
+						}
+						if done {
+							msg.marked = append(msg.marked, s.ID)
+						}
+					}
+					msg.settled = append(msg.settled, s.ID)
 					continue
 				}
-				msg.state[r.id] = readinessOf(status)
+				msg.state[s.ID] = readinessOf(status)
 			}
 		}
 		return msg
@@ -165,5 +182,11 @@ func (a *App) prStateRead(msg prStateMsg) tea.Cmd {
 	// The board's rows are drawn into a viewport and cached there, so a reading
 	// that is not synced never reaches the screen.
 	a.syncBoard()
-	return a.removeLanded(msg.settled)
+	cmds := []tea.Cmd{a.removeLanded(msg.settled)}
+	// A slice the reading marked Done changed under the plan's copy of it,
+	// and the row should say so without waiting for a poll.
+	for _, id := range msg.marked {
+		cmds = append(cmds, a.refreshSlice(id))
+	}
+	return tea.Batch(cmds...)
 }

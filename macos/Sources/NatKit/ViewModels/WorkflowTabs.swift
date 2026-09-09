@@ -42,6 +42,17 @@ public struct WorkflowTabState: Equatable {
     public func isReachable(_ tab: WorkflowTab) -> Bool {
         reachable.contains(tab)
     }
+
+    /// Whether a tab's stage is behind the slice's own progress — what the
+    /// strip draws a checkmark for. A stage is behind when any stage past it
+    /// has unlocked, which is a fact about the slice alone. Not measured off
+    /// `defaultTab`: that answers where to look now, and a live agent pulls
+    /// it back to Agent on a slice whose Diff is already unlocked — which
+    /// must not untick the stages the slice has been through.
+    public func isComplete(_ tab: WorkflowTab) -> Bool {
+        guard let tabIndex = tabs.firstIndex(of: tab) else { return false }
+        return tabs[(tabIndex + 1)...].contains { reachable.contains($0) }
+    }
 }
 
 /// Determines the workflow tab state for a slice.
@@ -49,10 +60,16 @@ public struct WorkflowTabState: Equatable {
 /// Rules:
 /// - Brief is always reachable.
 /// - Agent is reachable if the slice has a live agent OR status is in progress.
-/// - Diff is reachable if the slice is handed_back (has a branch).
+/// - Diff is reachable if the slice has a branch recorded — handed back, or
+///   Done with its pull request still in review: approving opened the pull
+///   request, it did not end the review, and the branch reads until it lands.
 /// - PR is reachable if the slice has a non-empty PR URL.
 ///
-/// Default tab precedence (furthest reachable): live agent → Agent; handed back → Diff; PR recorded → PR; else Brief.
+/// Default tab precedence: a Done slice with a pull request lands on PR — its
+/// state IS the pull request, and a lingering agent session must not steal
+/// the landing, since a session can outlive the slice it was launched on.
+/// After that, furthest reachable: live agent → Agent; handed back → Diff;
+/// in progress → Agent; PR recorded → PR; else Brief.
 public func buildWorkflowTabState(
     for slice: Slice,
     hasLiveAgent: Bool
@@ -67,8 +84,8 @@ public func buildWorkflowTabState(
         reachable.insert(.agent)
     }
 
-    // Diff is reachable if handed back (has branch)
-    if slice.handedBack {
+    // Diff is reachable wherever a branch is recorded to read
+    if slice.handedBack || !(slice.branch ?? "").isEmpty {
         reachable.insert(.diff)
     }
 
@@ -77,9 +94,10 @@ public func buildWorkflowTabState(
         reachable.insert(.pr)
     }
 
-    // Determine default tab: precedent is live agent > handed back (Diff) > Agent (reachable) > PR > Brief
     let defaultTab: WorkflowTab
-    if hasLiveAgent {
+    if slice.status == "Done", !slice.pr.isEmpty {
+        defaultTab = .pr
+    } else if hasLiveAgent {
         defaultTab = .agent
     } else if slice.handedBack {
         // Handed back means there's a branch awaiting review

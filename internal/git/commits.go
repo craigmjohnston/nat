@@ -36,19 +36,28 @@ const commitLogFormat = "%H%x00%s%x00%an%x00%aI"
 // caller asking for a branch's commits and its diff is asking about the same
 // stretch of history either way.
 func (c CLI) Commits(dir, branch string) ([]Commit, error) {
-	base := c.Base(dir)
+	_, commits, err := c.CommitsFrom(dir, "", branch)
+	return commits, err
+}
+
+// CommitsFrom is [CLI.Commits] against a base the caller already knows by
+// name, resolved exactly as [CLI.DiffFrom]'s is and answering with the base
+// it measured against, so a caller labelling the history says what was
+// actually read. An empty name is [CLI.Commits] itself.
+func (c CLI) CommitsFrom(dir, baseName, branch string) (string, []Commit, error) {
+	base := c.baseNamed(dir, baseName)
 	out, err := c.runner.Run(dir, Binary, "log", "--format="+commitLogFormat, base+".."+branch)
 	if err != nil {
 		logging.Error("could not read a branch's commits", "dir", dir, "branch", branch,
 			"base", base, "error", err)
-		return nil, err
+		return base, nil, err
 	}
 	commits, err := parseCommits(out)
 	if err != nil {
 		logging.Error("could not read what git log wrote", "dir", dir, "branch", branch, "error", err)
-		return nil, err
+		return base, nil, err
 	}
-	return commits, nil
+	return base, commits, nil
 }
 
 // parseCommits splits git log's NUL-and-newline-delimited output into

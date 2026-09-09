@@ -78,8 +78,11 @@ public final class ProcessRunner: CommandRunning {
             return natBin
         }
 
-        // Search PATH for the executable
-        if let pathEnv = ProcessInfo.processInfo.environment["PATH"] {
+        // Search PATH for the executable — read live through getenv rather
+        // than ProcessInfo's snapshot, so PathBootstrap's setenv (the
+        // bundled nat's directory, the login shell's entries) is seen here
+        // whenever it ran.
+        if let pathEnv = PathBootstrap.environmentValue("PATH") {
             let pathDirs = pathEnv.split(separator: ":").map(String.init)
             for dir in pathDirs {
                 let fullPath = (dir as NSString).appendingPathComponent(executable)

@@ -48,6 +48,10 @@ func (r *agentTestRunner) Run(name string, args ...string) (string, error) {
 		sub = args[0]
 	}
 	switch sub {
+	case "-V":
+		// The version a launch asks about before carrying PATH with -e; a
+		// modern answer keeps the fake behaving as a current tmux does.
+		return "tmux 3.5a\n", nil
 	case "list-panes":
 		if r.liveFatalErr != "" {
 			return "", fmt.Errorf("%s", r.liveFatalErr)

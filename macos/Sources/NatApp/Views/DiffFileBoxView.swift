@@ -39,6 +39,13 @@ struct DiffFileBoxView: View {
     let onSaveDraft: (String) -> Void
     let onCancelDraft: () -> Void
 
+    /// Where a comment card (or the editor) starts: at the gutter's far edge
+    /// — its hairline included — so the card lines up with the code area
+    /// rather than the box.
+    private var commentLeadingInset: CGFloat {
+        DiffRowView.gutterWidth(numberWidth: numberWidth) + 0.5
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
@@ -64,7 +71,8 @@ struct DiffFileBoxView: View {
                                 onSave: onSaveDraft,
                                 onCancel: onCancelDraft
                             )
-                            .padding(.horizontal, 12)
+                            .padding(.leading, commentLeadingInset)
+                            .padding(.trailing, 12)
                             .padding(.vertical, 10)
                             .background(DesignTokens.rowAltBg)
                         }
@@ -77,7 +85,8 @@ struct DiffFileBoxView: View {
                                 onEdit: { onEditComment(comment) },
                                 onDelete: { onDeleteComment(comment) }
                             )
-                            .padding(.horizontal, 12)
+                            .padding(.leading, commentLeadingInset)
+                            .padding(.trailing, 12)
                             .padding(.vertical, 10)
                             .background(DesignTokens.rowAltBg)
                         }
@@ -176,12 +185,42 @@ struct DiffRowView: View {
     let onSelect: (Bool) -> Void
     let onComment: () -> Void
 
-    private var numberColumnWidth: CGFloat {
-        // The per-character width of the gutter's monospaced digits at
-        // Typo.code — scaled up from the 7.5pt this was calibrated at when
-        // the gutter still rendered at 11pt, so the column stays exactly as
-        // wide as the numbers it holds now render at 13pt.
+    // The per-character width of the gutter's monospaced digits at
+    // Typo.code — scaled up from the 7.5pt this was calibrated at when
+    // the gutter still rendered at 11pt, so the column stays exactly as
+    // wide as the numbers it holds now render at 13pt.
+    static func numberColumnWidth(_ numberWidth: Int) -> CGFloat {
         CGFloat(numberWidth) * 8.9 + 4
+    }
+
+    /// The gutter's full width — both number columns, their gap and the
+    /// horizontal padding — shared by the numbers, the fill drawn behind
+    /// them, and the hunk-break cell, so the three can never drift apart.
+    /// Static so the file box can start a comment card exactly where the
+    /// gutter ends.
+    static func gutterWidth(numberWidth: Int) -> CGFloat {
+        numberColumnWidth(numberWidth) * 2 + 6 + 16
+    }
+
+    private var numberColumnWidth: CGFloat {
+        Self.numberColumnWidth(numberWidth)
+    }
+
+    private var gutterWidth: CGFloat {
+        Self.gutterWidth(numberWidth: numberWidth)
+    }
+
+    /// The gutter's paint, drawn as the row's own background rather than the
+    /// numbers': a wrapped line makes the row taller than its numbers, and a
+    /// fill on the numbers alone floats in the middle of it as a block with
+    /// bare row above and below. The hairline is the mock's border between
+    /// the gutter and the code.
+    private func gutterCell(_ fill: Color) -> some View {
+        HStack(spacing: 0) {
+            fill
+            DesignTokens.separator.frame(width: 0.5)
+        }
+        .frame(width: gutterWidth + 0.5)
     }
 
     var body: some View {
@@ -194,32 +233,33 @@ struct DiffRowView: View {
     }
 
     private var hunkBreakRow: some View {
-        HStack(spacing: 8) {
-            Rectangle()
-                .fill(DesignTokens.labelQuaternary)
-                .frame(height: 0.5)
-                .overlay(dashedLine)
-                .frame(width: numberColumnWidth * 2 + 20)
+        HStack(spacing: 0) {
+            Text("···")
+                .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
+                .foregroundStyle(DesignTokens.accent)
+                .frame(width: gutterWidth)
 
             Text(row.text)
                 .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
                 .foregroundStyle(DesignTokens.labelTertiary)
                 .lineLimit(1)
+                .padding(.leading, 12)
 
             Spacer(minLength: 0)
         }
         .frame(minHeight: 24)
-        .background(DesignTokens.accent.opacity(0.1))
+        .background(alignment: .leading) {
+            gutterCell(DesignTokens.accent.opacity(0.1))
+        }
     }
 
-    private var dashedLine: some View {
-        Rectangle()
-            .fill(DesignTokens.accent)
-            .frame(height: 0.5)
-    }
-
+    // Top-aligned, not centred: a long line wraps, and everything that
+    // belongs to the line as a whole — its numbers, its +/- — belongs on the
+    // first of its rows, not floating in the middle of them. The 1.5pt
+    // vertical padding is what keeps a single-line row at the same 19pt it
+    // was when it was centred.
     private var contentRow: some View {
-        HStack(spacing: 0) {
+        HStack(alignment: .top, spacing: 0) {
             HStack(spacing: 6) {
                 Text(row.oldNumber.map(String.init) ?? "")
                     .frame(width: numberColumnWidth, alignment: .trailing)
@@ -229,14 +269,12 @@ struct DiffRowView: View {
             .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
             .foregroundStyle(DesignTokens.labelTertiary)
             .padding(.horizontal, 8)
-            .frame(minHeight: 19)
-            .background(gutterFill)
 
             Text(glyph)
                 .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
                 .foregroundStyle(glyphColor)
                 .frame(width: 13)
-                .padding(.leading, 4)
+                .padding(.leading, 12)
 
             Text(rowText)
                 .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
@@ -256,7 +294,11 @@ struct DiffRowView: View {
 
             Spacer(minLength: 0)
         }
+        .padding(.vertical, 1.5)
         .frame(minHeight: 19)
+        .background(alignment: .leading) {
+            gutterCell(gutterFill)
+        }
         .background(rowFill)
         .background(isSelected ? DesignTokens.accent.opacity(0.16) : Color.clear)
         .contentShape(Rectangle())
@@ -377,7 +419,7 @@ struct PendingCommentCardView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(DesignTokens.controlBg)
-        .frame(maxWidth: 560, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
@@ -429,6 +471,6 @@ struct CommentEditorView: View {
                     .tint(DesignTokens.accent)
             }
         }
-        .frame(maxWidth: 560, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

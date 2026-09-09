@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
@@ -28,6 +30,12 @@ type fakeGitRunner struct {
 	// verifyErr fails [git.CLI.CommitDiff]'s parent check; nil answers as if
 	// the commit has one.
 	verifyErr error
+	// knownRefs are the full refs rev-parse verifies — how a test lets a
+	// named base resolve; every other ref stays unknown.
+	knownRefs []string
+	// diffArgs is the last diff invocation verbatim, for asserting which
+	// base the comparison was actually made against.
+	diffArgs []string
 }
 
 func (f *fakeGitRunner) Run(dir, _ string, args ...string) (string, error) {
@@ -38,6 +46,7 @@ func (f *fakeGitRunner) Run(dir, _ string, args ...string) (string, error) {
 	}
 	switch sub {
 	case "diff":
+		f.diffArgs = args
 		return f.diffOut, f.diffErr
 	case "symbolic-ref":
 		if f.base == "" {
@@ -47,14 +56,41 @@ func (f *fakeGitRunner) Run(dir, _ string, args ...string) (string, error) {
 	case "log":
 		return f.logOut, f.logErr
 	case "rev-parse":
-		if len(args) > 0 && strings.HasSuffix(args[len(args)-1], "^") {
+		last := ""
+		if len(args) > 0 {
+			last = args[len(args)-1]
+		}
+		if strings.HasSuffix(last, "^") {
 			return "", f.verifyErr
+		}
+		if slices.Contains(f.knownRefs, last) {
+			return "", nil
 		}
 		return "", errors.New("no such ref")
 	default:
 		return "", errors.New("no such ref")
 	}
 }
+
+// fakePRBase answers ViewPR with a fixed base branch (or a refusal), and
+// stubs the rest of [GH], the way prstatus_test's fakePRReader does.
+type fakePRBase struct {
+	base  string
+	err   error
+	calls int
+}
+
+func (f *fakePRBase) ViewPR(dir, ref string) (gh.PR, error) {
+	f.calls++
+	if f.err != nil {
+		return gh.PR{}, f.err
+	}
+	return gh.PR{BaseRefName: f.base}, nil
+}
+func (f *fakePRBase) CreatePR(dir, branch, title, body string) (string, error) { return "", nil }
+func (f *fakePRBase) MergePR(dir, ref string) error                            { return nil }
+func (f *fakePRBase) CommentPR(dir, ref, body string) (string, error)          { return "", nil }
+func (f *fakePRBase) OpenPRs(dir string) (map[string]gh.PRStatus, error)       { return nil, nil }
 
 func TestSliceDiffRefusesNotHandedBack(t *testing.T) {
 	api := &fakeAPI{
@@ -77,22 +113,101 @@ func TestSliceDiffRefusesNotHandedBack(t *testing.T) {
 	}
 }
 
-func TestSliceDiffRefusesDone(t *testing.T) {
+// A Done slice's branch is still readable: the board marks a slice Done as
+// it opens the pull request, and the review goes on reading the branch until
+// that lands. With no pull request recorded there is no base to ask gh about,
+// and the default resolution stands without a gh call at all.
+func TestSliceDiffReadsADoneSlicesBranch(t *testing.T) {
 	api := &fakeAPI{
 		pages: map[string][]notion.Page{
-			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceDone, "m1", "main")},
+			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceDone, "m1", "slice/ui")},
 		},
 	}
 	env, _ := testEnv(testClaimConfig(), api)
+	runner := &fakeGitRunner{diffOut: sampleDiff}
+	env.NewGit = func() GitCLI { return git.NewWithRunner(runner) }
+	prs := &fakePRBase{}
+	env.NewGH = func() GH { return prs }
 	var out strings.Builder
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
 		"slice-diff", testSliceID, "--project", "project-1",
 	}, env)
-	if err == nil || !strings.Contains(err.Error(), "already Done") {
-		t.Errorf("slice-diff error = %v, want 'already Done'", err)
+	if err != nil {
+		t.Fatalf("slice-diff on a Done slice: unexpected error: %v", err)
 	}
+	if out.String() != sampleDiff {
+		t.Errorf("slice-diff output = %q, want git's own diff verbatim", out.String())
+	}
+	if prs.calls != 0 {
+		t.Errorf("gh was asked %d times about a slice with no pull request, want 0", prs.calls)
+	}
+}
+
+// A slice whose pull request records a base is diffed against that base —
+// origin's copy of it, being the freshest ref that answers to the name —
+// rather than against the repository's default branch.
+func TestSliceDiffUsesThePullRequestsBase(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithBranchAndPR(testSliceID, "Write the UI", notion.SliceDone, "m1",
+				"slice/ui", "https://github.test/craig/nat/pull/9")},
+		},
+	}
+	env, _ := testEnv(testClaimConfig(), api)
+	runner := &fakeGitRunner{diffOut: sampleDiff, knownRefs: []string{"refs/remotes/origin/release"}}
+	env.NewGit = func() GitCLI { return git.NewWithRunner(runner) }
+	env.NewGH = func() GH { return &fakePRBase{base: "release"} }
+	var out strings.Builder
+	env.Out = &out
+
+	err := Run(context.Background(), []string{
+		"slice-diff", testSliceID, "--project", "project-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("slice-diff: unexpected error: %v", err)
+	}
+	want := []string{"diff", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/",
+		"--merge-base", "origin/release", "slice/ui"}
+	if !slices.Equal(runner.diffArgs, want) {
+		t.Errorf("diff args = %v, want the merge base against origin/release", runner.diffArgs)
+	}
+}
+
+// gh refusing to answer for the pull request is logged and the default
+// resolution stands: a diff against main beats no diff over a network error.
+func TestSliceDiffFallsBackWhenThePullRequestCannotBeRead(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithBranchAndPR(testSliceID, "Write the UI", notion.SliceDone, "m1",
+				"slice/ui", "https://github.test/craig/nat/pull/9")},
+		},
+	}
+	env, _ := testEnv(testClaimConfig(), api)
+	runner := &fakeGitRunner{diffOut: sampleDiff}
+	env.NewGit = func() GitCLI { return git.NewWithRunner(runner) }
+	env.NewGH = func() GH { return &fakePRBase{err: errors.New("no network")} }
+	var out strings.Builder
+	env.Out = &out
+
+	err := Run(context.Background(), []string{
+		"slice-diff", testSliceID, "--project", "project-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("slice-diff: unexpected error: %v", err)
+	}
+	if len(runner.diffArgs) == 0 || runner.diffArgs[len(runner.diffArgs)-2] != "main" {
+		t.Errorf("diff args = %v, want the default base main", runner.diffArgs)
+	}
+}
+
+// slicePageWithBranchAndPR is slicePageWithBranch plus a recorded pull
+// request, for the reads that consult its base.
+func slicePageWithBranchAndPR(id, name, status, milestone, branch, pr string) notion.Page {
+	page := slicePageWithBranch(id, name, status, milestone, branch)
+	page.Properties[notion.PropPR] = notion.NewURL(pr)
+	return page
 }
 
 const sampleDiff = "diff --git a/main.go b/main.go\nindex 1234..5678 100644\n--- a/main.go\n+++ b/main.go\n@@ -1,1 +1,1 @@\n-old\n+new\n"

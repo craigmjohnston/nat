@@ -1,15 +1,58 @@
+import AppKit
 import SwiftUI
 import NatKit
 
 @main
 struct NatApp: App {
-    @State private var appModel = AppModel()
+    @State private var appModel: AppModel
+
+    init() {
+        // The very first thing the process does: compose the real PATH —
+        // the bundled nat's directory, the login shell's entries, whatever
+        // launchd gave us — and set it, before anything reads the
+        // environment or spawns a child. A Finder launch has no Homebrew
+        // and no nat on its PATH without this; see PathBootstrap. It runs
+        // ahead of the AppModel below, which is why the property has no
+        // default of its own — a default would be initialised first.
+        PathBootstrap.bootstrap()
+        _appModel = State(initialValue: AppModel())
+        // A bare executable launched from a terminal (swift run, or
+        // .build/debug/gnat directly) has no bundle, and AppKit leaves such
+        // a process at the `.prohibited` activation policy: its window draws,
+        // but the app can never become active, so the window never becomes
+        // key — clicks fail to land, and the cursor over the window stays
+        // whichever app is actually active. Saying `.regular` here is what a
+        // bundled app's Info.plist would have said for it. The matching
+        // activate happens when the window first appears — this early, there
+        // is no window yet and the request is ignored.
+        NSApplication.shared.setActivationPolicy(.regular)
+        Self.setDockIcon()
+    }
+
+    /// The gnat on the dock for a bare executable, which has no Info.plist
+    /// for AppKit to read an icon from — the bundled app names AppIcon.icns
+    /// there and needs none of this. The icns is found by hand rather than
+    /// through `Bundle.module`, whose generated accessor traps when the
+    /// resource bundle is missing, and missing is not an error here: an app
+    /// with no icon set still runs, it just keeps the generic one.
+    private static func setDockIcon() {
+        let candidates = [
+            // Beside the bare executable, where SwiftPM builds it.
+            Bundle.main.bundleURL.appendingPathComponent("nat_NatApp.bundle/AppIcon.icns"),
+            // A bundled app's own Resources, should this run before AppKit
+            // reads the plist's.
+            Bundle.main.resourceURL?.appendingPathComponent("AppIcon.icns"),
+        ].compactMap { $0 }
+        guard let url = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }),
+              let image = NSImage(contentsOf: url) else { return }
+        NSApplication.shared.applicationIconImage = image
+    }
 
     var body: some Scene {
         // The mock's canvas is 1360×840 and every metric in it was chosen at
         // that size — opening there is what makes the proportions read as
         // designed.
-        WindowGroup("nat") {
+        WindowGroup("gnat") {
             // NAT_TERM_SESSION is a debug affordance only: it lets a session
             // name be smoke-tested against a real tmux session before the
             // Agent tab has anywhere of its own to launch one from. Anyone
@@ -27,6 +70,16 @@ struct NatApp: App {
             // is a View modifier and so goes on the window's content, not on
             // the WindowGroup scene below.
             .task { CursorDebugWalker.startIfAsked() }
+            // The other half of init's `.regular` policy: brings the window
+            // to the front the way launching a bundled app would, now that
+            // there is a window to bring.
+            .onAppear { NSApplication.shared.activate() }
+            // The palette is the mock's and the mock is dark — every color in
+            // DesignTokens assumes a dark surface. Without pinning the scheme,
+            // a Mac in light mode hands every system-derived default (spinner
+            // tint, `Color.primary`, dividers, sheet controls) a near-black
+            // color over the dark background.
+            .preferredColorScheme(.dark)
         }
         // The header row IS the title bar (WindowShellView reserves room for
         // the traffic lights and makes itself draggable) — hiding the system
@@ -38,6 +91,7 @@ struct NatApp: App {
 
         Settings {
             SettingsView(appModel: appModel)
+                .preferredColorScheme(.dark)
         }
     }
 
@@ -58,9 +112,13 @@ struct NatApp: App {
               String(describing: appModel.projectStore?.state).prefix(300) as CVarArg)
         if let want = ProcessInfo.processInfo.environment["NAT_SNAPSHOT_SELECT"],
            let info = appModel.projectStore?.state.projectInfo {
-            appModel.selectedSliceID = want == "first"
-                ? info.slices.first(where: { $0.status != "Done" })?.id
-                : want
+            if want == "workshop" {
+                appModel.workshopSelected = true
+            } else {
+                appModel.selectedSliceID = want == "first"
+                    ? info.slices.first(where: { $0.status != "Done" })?.id
+                    : want
+            }
             try? await Task.sleep(nanoseconds: 3_000_000_000)
         }
         try? await Task.sleep(nanoseconds: 1_000_000_000)

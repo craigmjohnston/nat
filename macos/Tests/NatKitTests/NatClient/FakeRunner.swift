@@ -37,6 +37,10 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case workshopLaunchAlreadyLive
         case sliceAddSuccess
         case sliceAddFailure
+        case sliceMoveSuccess
+        case sliceMoveFailure
+        case sliceDeleteSuccess
+        case sliceDeleteFailure
         case configShowSuccess
         case configSetSuccess
         case configSetFailure
@@ -136,6 +140,14 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return (fixtureSliceAdd.data(using: .utf8)!, Data(), 0)
         case .sliceAddFailure:
             return (Data(), "no milestone named \"Nope\": the project's milestones are Phase 1, Phase 2".data(using: .utf8)!, 1)
+        case .sliceMoveSuccess:
+            return (fixtureSliceMove.data(using: .utf8)!, Data(), 0)
+        case .sliceMoveFailure:
+            return (Data(), "\"Write the UI\" is in progress: work in flight is not refiled under its agent".data(using: .utf8)!, 1)
+        case .sliceDeleteSuccess:
+            return (fixtureSliceDelete.data(using: .utf8)!, Data(), 0)
+        case .sliceDeleteFailure:
+            return (Data(), "\"Write the UI\" is in progress: work in flight is not deleted under its agent".data(using: .utf8)!, 1)
         case .configShowSuccess:
             return (fixtureConfigShow.data(using: .utf8)!, Data(), 0)
         case .configSetSuccess:
@@ -520,6 +532,28 @@ let fixtureSliceEdit = """
   "name": "Write the UI",
   "url": "https://notion.so/slice-1",
   "brief": "New brief text"
+}
+"""
+
+// fixtureSliceMove is `slice-move --json`'s success reading, mirroring
+// internal/cli/slicemove.go's sliceMovedJSON.
+let fixtureSliceMove = """
+{
+  "id": "slice-1",
+  "name": "Write the UI",
+  "url": "https://notion.so/slice-1",
+  "milestone_id": "Phase 2",
+  "milestone_name": "Phase 2"
+}
+"""
+
+// fixtureSliceDelete is `slice-delete --json`'s success reading, mirroring
+// internal/cli/slicedelete.go's sliceDeletedJSON.
+let fixtureSliceDelete = """
+{
+  "id": "slice-1",
+  "name": "Write the UI",
+  "deleted": true
 }
 """
 

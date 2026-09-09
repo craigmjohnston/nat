@@ -35,6 +35,11 @@ type fakeAPI struct {
 	// deleteErr fails the trashing.
 	deleteErr error
 
+	// trashes records the ID of every page trashed, in order.
+	trashes []string
+	// trashErr fails the trashing.
+	trashErr error
+
 	// gets records the ID of every single-page fetch, in order.
 	gets []string
 	// getErr fails the fetch.
@@ -255,6 +260,15 @@ func (f *fakeAPI) DeleteBlock(_ context.Context, id string) error {
 	f.deletes = append(f.deletes, id)
 	if f.deleteErr != nil {
 		return f.deleteErr
+	}
+	return nil
+}
+
+// TrashPage records the page trashed, in order.
+func (f *fakeAPI) TrashPage(_ context.Context, id string) error {
+	f.trashes = append(f.trashes, id)
+	if f.trashErr != nil {
+		return f.trashErr
 	}
 	return nil
 }

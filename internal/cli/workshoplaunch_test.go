@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -61,6 +62,87 @@ func TestWorkshopLaunchesOnTheWishlist(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "pending wishlist") {
 		t.Errorf("output = %q, want it to say it launched on the wishlist", out.String())
+	}
+}
+
+// launchedPlanPrompt reads back the prompt file the launch wrote — the test
+// sets TMPDIR to dir, so the file is findable without threading the path out.
+func launchedPlanPrompt(t *testing.T, dir string) string {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(dir, "nat-prompt-*", agent.PlanSession+".md"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("prompt files = %v (err %v), want exactly one", matches, err)
+	}
+	b, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func TestWorkshopLaunchFoldsTheRequestIntoThePrompt(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("TMPDIR", dir)
+	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
+
+	err := Run(context.Background(), []string{
+		"workshop-launch", "--request", "Add dark mode to the board.", "--project", "project-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("workshop-launch: %v", err)
+	}
+	prompt := launchedPlanPrompt(t, dir)
+	if !strings.Contains(prompt, "## The request") || !strings.Contains(prompt, "Add dark mode to the board.") {
+		t.Errorf("prompt = %q, want the request folded in", prompt)
+	}
+}
+
+func TestWorkshopLaunchRequestOutranksThePendingWishlist(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("TMPDIR", dir)
+	api := &fakeAPI{blocks: wishlistBlocks(t)}
+	env, out := testEnv(testConfig(), api)
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
+
+	err := Run(context.Background(), []string{
+		"workshop-launch", "--request", "Something else entirely.", "--project", "project-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("workshop-launch: %v", err)
+	}
+	if strings.Contains(out.String(), "pending wishlist") {
+		t.Errorf("output = %q, a request should not launch on the wishlist", out.String())
+	}
+	prompt := launchedPlanPrompt(t, dir)
+	if !strings.Contains(prompt, "Something else entirely.") || strings.Contains(prompt, "Add dark mode.") {
+		t.Errorf("prompt = %q, want the request and not the wishlist", prompt)
+	}
+}
+
+func TestWorkshopLaunchReadsTheRequestFromStdin(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("TMPDIR", dir)
+	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env.In = strings.NewReader("  A request too long for an argument.  \n")
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
+
+	err := Run(context.Background(), []string{"workshop-launch", "--request", "-", "--project", "project-1"}, env)
+	if err != nil {
+		t.Fatalf("workshop-launch: %v", err)
+	}
+	if !strings.Contains(launchedPlanPrompt(t, dir), "A request too long for an argument.") {
+		t.Errorf("prompt should carry the stdin request, trimmed")
+	}
+}
+
+func TestWorkshopLaunchRefusesStdinRequestWithNothingToRead(t *testing.T) {
+	env, _ := testEnv(testConfig(), &fakeAPI{})
+
+	err := Run(context.Background(), []string{"workshop-launch", "--request", "-", "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "--request - was given but there is nothing to read") {
+		t.Errorf("err = %v, want the empty stdin named", err)
 	}
 }
 
@@ -149,6 +231,10 @@ func TestWorkshopLaunchRefusesAnUnknownProject(t *testing.T) {
 func TestWorkshopLaunchReportsAFailedPageRead(t *testing.T) {
 	api := &fakeAPI{blocksErr: errors.New("notion is down")}
 	env, _ := testEnv(testConfig(), api)
+	// A fake tmux with nothing live, so the liveness check ahead of the read
+	// answers for this test rather than for whatever the machine running it
+	// happens to have launched.
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
 	err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env)
 
@@ -160,6 +246,9 @@ func TestWorkshopLaunchReportsAFailedPageRead(t *testing.T) {
 func TestWorkshopLaunchReportsAFailedPromptFile(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
 	env, _ := testEnv(testConfig(), &fakeAPI{})
+	// The fake tmux for the reason TestWorkshopLaunchReportsAFailedPageRead
+	// carries one.
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
 	err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env)
 

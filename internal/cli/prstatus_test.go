@@ -14,12 +14,19 @@ import (
 )
 
 // fakePRReader stands in for gh's own PR listing, answered by directory —
-// one entry per repository the plan spans, exactly as [PRReader.OpenPRs] does.
+// one entry per repository the plan spans, exactly as [PRReader.OpenPRs] does
+// — and for the per-pull-request reading pr-status settles an absent one by.
 type fakePRReader struct {
 	open  map[string]map[string]gh.PRStatus
 	err   map[string]error
 	dirs  []string
 	calls int
+
+	// view answers ViewPR by ref, viewErr fails it, viewed records what was
+	// asked about — the settling of an absent pull request.
+	view    map[string]gh.PR
+	viewErr error
+	viewed  []string
 }
 
 func (f *fakePRReader) OpenPRs(dir string) (map[string]gh.PRStatus, error) {
@@ -31,10 +38,17 @@ func (f *fakePRReader) OpenPRs(dir string) (map[string]gh.PRStatus, error) {
 	return f.open[dir], nil
 }
 
+func (f *fakePRReader) ViewPR(dir, ref string) (gh.PR, error) {
+	f.viewed = append(f.viewed, ref)
+	if f.viewErr != nil {
+		return gh.PR{}, f.viewErr
+	}
+	return f.view[ref], nil
+}
+
 // The rest of [GH] pr-status never calls; stubbed so *fakePRReader can stand
 // in for the whole seam.
 func (f *fakePRReader) CreatePR(dir, branch, title, body string) (string, error) { return "", nil }
-func (f *fakePRReader) ViewPR(dir, ref string) (gh.PR, error)                    { return gh.PR{}, nil }
 func (f *fakePRReader) MergePR(dir, ref string) error                            { return nil }
 func (f *fakePRReader) CommentPR(dir, ref, body string) (string, error)          { return "", nil }
 
@@ -164,6 +178,99 @@ func TestPRStatusLeavesAnUnreadableRepositoryOut(t *testing.T) {
 		t.Fatalf("pr-status: %v", err)
 	}
 	if !strings.Contains(out.String(), "Awaiting review — unread — https://github.test/craig/nat/pull/1") {
+		t.Errorf("output = %q, want the slice reported unread", out.String())
+	}
+}
+
+// An in-progress slice whose pull request the listing no longer names is
+// asked about directly, and one that merged is marked Done — with a nudge, so
+// a board watching the marker sees the change.
+func TestPRStatusMarksAMergedAbsentPRDone(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageForStatus("s1", "Merged on GitHub", notion.SliceInProgress, "",
+				"https://github.test/craig/nat/pull/7")},
+		},
+	}
+	env, out := testEnv(testConfig(), api)
+	var nudges int
+	env.Nudge = func() { nudges++ }
+	reader := &fakePRReader{
+		open: map[string]map[string]gh.PRStatus{"/tmp/nat": {}},
+		view: map[string]gh.PR{"https://github.test/craig/nat/pull/7": {State: gh.PRStateMerged}},
+	}
+	env.NewGH = func() GH { return reader }
+
+	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
+	if err != nil {
+		t.Fatalf("pr-status: %v", err)
+	}
+	if want := []string{"https://github.test/craig/nat/pull/7"}; !equalLines(reader.viewed, want) {
+		t.Errorf("viewed = %v, want the absent pull request asked about", reader.viewed)
+	}
+	if len(api.updates) != 1 || api.updates[0].id != "s1" {
+		t.Fatalf("updates = %+v, want the slice marked Done", api.updates)
+	}
+	if name := api.updates[0].props[notion.PropStatus].SelectName(); name != notion.SliceDone {
+		t.Errorf("status = %q, want %q", name, notion.SliceDone)
+	}
+	if nudges != 1 {
+		t.Errorf("nudges = %d, want one for the write", nudges)
+	}
+	if !strings.Contains(out.String(), "Merged on GitHub — unread — ") {
+		t.Errorf("output = %q, want the settled slice reported unread", out.String())
+	}
+}
+
+// The other thing absence means: a pull request closed unmerged is work going
+// round again, and the slice is left exactly as it is — no write, no nudge.
+func TestPRStatusLeavesAClosedAbsentPRAlone(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageForStatus("s1", "Closed unmerged", notion.SliceInProgress, "",
+				"https://github.test/craig/nat/pull/7")},
+		},
+	}
+	env, _ := testEnv(testConfig(), api)
+	var nudges int
+	env.Nudge = func() { nudges++ }
+	reader := &fakePRReader{
+		open: map[string]map[string]gh.PRStatus{"/tmp/nat": {}},
+		view: map[string]gh.PR{"https://github.test/craig/nat/pull/7": {State: gh.PRStateClosed}},
+	}
+	env.NewGH = func() GH { return reader }
+
+	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr-status: %v", err)
+	}
+	if len(api.updates) != 0 || nudges != 0 {
+		t.Errorf("updates = %+v, nudges = %d, want nothing written for a closed pull request", api.updates, nudges)
+	}
+}
+
+// A reading that fails settles nothing: it is logged, the slice reads unread,
+// and the next run asks again.
+func TestPRStatusLeavesAnUnviewableAbsentPRAlone(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageForStatus("s1", "Unreadable", notion.SliceInProgress, "",
+				"https://github.test/craig/nat/pull/7")},
+		},
+	}
+	env, out := testEnv(testConfig(), api)
+	reader := &fakePRReader{
+		open:    map[string]map[string]gh.PRStatus{"/tmp/nat": {}},
+		viewErr: errors.New("gh: not authenticated"),
+	}
+	env.NewGH = func() GH { return reader }
+
+	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr-status: %v", err)
+	}
+	if len(api.updates) != 0 {
+		t.Errorf("updates = %+v, want nothing concluded from a reading that never happened", api.updates)
+	}
+	if !strings.Contains(out.String(), "Unreadable — unread — ") {
 		t.Errorf("output = %q, want the slice reported unread", out.String())
 	}
 }

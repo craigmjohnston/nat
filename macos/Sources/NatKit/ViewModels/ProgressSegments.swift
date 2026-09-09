@@ -16,28 +16,60 @@ public struct ProgressSegment: Equatable {
 }
 
 /// Builds progress segments from a project's milestones.
-/// Returns one segment per milestone (including done ones), in plan order.
-public func buildProgressSegments(from projectInfo: ProjectInfo) -> [ProgressSegment] {
+///
+/// One segment per milestone still open, in plan order — each weighted by its
+/// slice count, which is what the bar divides its width by — with every Done
+/// milestone folded into a single complete segment at the head of the list,
+/// weighted by all their slices together: finished work reads as one solid
+/// run growing from the left rather than stripes scattered through the plan.
+/// The combined segment's title names the milestones it holds, since it is
+/// what the tooltip shows.
+///
+/// `openPRSliceIDs` is the PR-readiness reading — the slices whose pull
+/// request is positively read as open. A Done slice among them does not count
+/// as progress yet: the board marks a slice Done as it opens the pull request,
+/// and the work is not on main until that merges — the same rule that keeps
+/// such a slice in the rail's NEEDS REVIEW section. With no reading taken the
+/// set is empty and every Done slice counts, which is what every finished
+/// project must go on reading as.
+public func buildProgressSegments(
+    from projectInfo: ProjectInfo,
+    openPRSliceIDs: Set<String> = []
+) -> [ProgressSegment] {
     let sortedMilestones = projectInfo.milestones.sorted { $0.order < $1.order }
 
-    return sortedMilestones.map { milestone in
-        let milestoneDone = milestone.status == "Done"
+    var doneTitles: [String] = []
+    var doneWeight = 0
+    var openSegments: [ProgressSegment] = []
+
+    for milestone in sortedMilestones {
         let slices = projectInfo.slices.filter { $0.milestoneID == milestone.id }
-        let doneCount = slices.filter { $0.status == "Done" }.count
+        let doneCount = slices.filter { sliceWorkDone($0, openPRSliceIDs: openPRSliceIDs) }.count
         let totalCount = slices.count
 
-        let fraction: Double
-        if totalCount == 0 {
-            fraction = milestoneDone ? 1.0 : 0.0
-        } else {
-            fraction = Double(doneCount) / Double(totalCount)
+        // A milestone Notion reads as Done still holds moving work while any
+        // of its slices waits on a merge, so it stays an open segment until
+        // the reading lets every slice count.
+        if milestone.status == "Done" && doneCount == totalCount {
+            doneTitles.append(milestone.name)
+            doneWeight += max(1, totalCount)
+            continue
         }
 
-        return ProgressSegment(
+        openSegments.append(ProgressSegment(
             title: milestone.name,
             weight: max(1, totalCount),
-            fraction: fraction,
-            isComplete: milestoneDone
-        )
+            fraction: totalCount == 0 ? 0.0 : Double(doneCount) / Double(totalCount),
+            isComplete: false
+        ))
     }
+
+    guard !doneTitles.isEmpty else { return openSegments }
+    let combined = ProgressSegment(
+        title: doneTitles.joined(separator: ", "),
+        weight: doneWeight,
+        fraction: 1.0,
+        isComplete: true
+    )
+    return [combined] + openSegments
 }

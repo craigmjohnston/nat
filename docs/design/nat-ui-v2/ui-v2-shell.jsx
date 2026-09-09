@@ -6,14 +6,17 @@ function VBar({ pct, tint = "var(--accent)", width = "auto" }) {
 
 const V = {
   active: [
-    ["s-comments", "Diff comments reach the agent", "Working", "var(--system-orange)", false],
-    ["s-mouse", "Board mouse support", "Waiting for input", "var(--system-yellow)", false]
+    ["s-comments", "Diff comments reach the agent", "Working", "var(--system-orange)", false, "Diff review", "14m", "Running cargo test"],
+    ["s-mouse", "Board mouse support", "Waiting for input", "var(--system-yellow)", false, "Board polish", "31m", "1 question"]
   ],
   review: [
-    ["s-syntax", "Syntax highlighting in the diff", "+368 −17", "var(--system-green)"]
+    ["s-syntax", "Syntax highlighting in the diff", "+368 −17", "var(--system-green)", "Diff review", "12 files", "Finished 8m ago"]
   ],
   ms: [
-    { num: "4", title: "Diff review", done: 3, total: 5, current: true, slices: [], hidden: 3, elsewhere: 2 },
+    { num: "4", title: "Diff review", done: 3, total: 7, current: true, slices: [
+      ["todo", "s-hunks", "Collapse unchanged hunks", null],
+      ["todo", "s-word", "Word-level diff highlights", null]
+    ], hidden: 3, elsewhere: 2 },
     { num: "5", title: "Board polish", done: 1, total: 4, slices: [
       ["todo", "s-kanban", "Kanban column view", null],
       ["blocked", "s-wheel", "Wheel scrolling in the Active panel", null]
@@ -21,7 +24,7 @@ const V = {
     { num: "6", title: "Wishlist", done: 0, total: 3, slices: [], collapsed: true }
   ]
 };
-const VG = { todo: ["circle", "var(--label-tertiary)"], claimed: ["circle_lefthalf_fill", "var(--system-orange)"], done: ["checkmark_circle", "var(--system-green)"], blocked: ["nosign", "var(--label-tertiary)"] };
+const VG = { todo: ["circle", "var(--label-tertiary)"], claimed: ["circle_lefthalf_fill", "var(--system-orange)"], done: ["checkmark_circle", "var(--system-green)"], blocked: ["nosign", "var(--label-tertiary)"], review: ["checkmark_seal", "var(--system-green)"] };
 
 function V2Header() {
   return (
@@ -64,7 +67,7 @@ function VProjectTabs() {
 }
 
 function VProgressBorder() {
-  const segs = [["Foundations — done 7/7", 7, 100], ["Sessions — done 7/7", 7, 100], ["Review flow — done 7/7", 7, 100], ["Diff review — 3 of 5 done", 5, 60], ["Board polish — 1 of 4 done", 4, 25], ["Wishlist — not started", 3, 0]];
+  const segs = [["Foundations — done 7/7", 7, 100], ["Sessions — done 7/7", 7, 100], ["Review flow — done 7/7", 7, 100], ["Diff review — 3 of 7 done", 7, 43], ["Board polish — 1 of 4 done", 4, 25], ["Wishlist — not started", 3, 0]];
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 20px", flexShrink: 0, background: "var(--window-bg)", borderTop: "0.5px solid var(--separator)" }}>
       {segs.map(([label, w, pct], i) => (
@@ -93,11 +96,12 @@ function VRing({ pct, label, done, current }) {
   );
 }
 
-function VSliceRow({ s, selectedId }) {
+function VSliceRow({ s, selectedId, indent, bleed, depth }) {
   const [g, c] = VG[s[0]];
   const sel = s[1] === selectedId;
+  const d = depth != null ? depth : indent ? 1 : 0;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, height: 28, padding: "0 8px 0 5px", borderRadius: "var(--radius-highlight)", background: sel ? "var(--accent)" : "transparent", color: sel ? "var(--accent-text)" : s[0] === "blocked" ? "var(--label-tertiary)" : "var(--label)" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, height: 28, margin: bleed ? "0 -12px" : 0, padding: bleed ? `0 20px 0 ${17 + d * 20}px` : `0 8px 0 ${5 + d * 20}px`, borderRadius: bleed ? 0 : "var(--radius-highlight)", background: sel ? "var(--accent)" : "transparent", color: sel ? "var(--accent-text)" : s[0] === "blocked" ? "var(--label-tertiary)" : "var(--label)" }}>
       <span style={{ width: 13, textAlign: "center", flexShrink: 0, display: "inline-flex", justifyContent: "center" }}><VIcon name={g} size={12} color={sel ? "var(--accent-text)" : c} style={{ verticalAlign: 0 }} /></span>
       <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s[2]}</span>
       {s[3] && <span className={s[3][2] || sel ? "" : "ws-pulse"} style={{ font: "var(--font-subheadline)", color: sel ? "var(--accent-text)" : s[3][1] }}>{s[3][0]}</span>}
@@ -105,37 +109,66 @@ function VSliceRow({ s, selectedId }) {
   );
 }
 
-function VRail({ selectedId, doneOpen, data = V }) {
+function VRailSessions({ data, selectedId }) {
   return (
-    <div style={{ width: 372, flexShrink: 0, overflowY: "auto", borderRight: "0.5px solid var(--separator)", background: "var(--sidebar-tint, transparent)", padding: "12px 12px 16px" }}>
+    <>
       {data.review.length > 0 && <>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px 5px" }}><VIcon name="checkmark_seal" size={11} color="var(--label-tertiary)" style={{ verticalAlign: 0 }} /><span style={{ font: "600 11px/14px var(--font-system)", color: "var(--label-tertiary)" }}>NEEDS REVIEW</span></div>
-      {data.review.map(([id, n, meta, tint]) => {
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px 5px 5px" }}><span style={{ width: 13, flexShrink: 0, display: "inline-flex", justifyContent: "center" }}><VIcon name="checkmark_seal" size={11} color="var(--label-tertiary)" style={{ verticalAlign: 0 }} /></span><span style={{ font: "600 11px/14px var(--font-system)", color: "var(--label-tertiary)" }}>NEEDS REVIEW</span></div>
+      {data.review.map(([id, n, meta, tint, msT, files, ago]) => {
         const sel = id === selectedId;
         return (
-          <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, height: 30, padding: "0 8px", borderRadius: "var(--radius-highlight)", background: sel ? "var(--accent)" : "transparent", color: sel ? "var(--accent-text)" : "var(--label)" }}>
-            <span style={{ color: sel ? "var(--accent-text)" : tint, fontSize: 9 }}>●</span>
-            <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n}</span>
-            <span style={{ font: "var(--font-subheadline)", fontVariantNumeric: "tabular-nums", color: sel ? "var(--accent-text)" : "var(--label-tertiary)" }}>{meta}</span>
+          <div key={id} style={{ display: "flex", gap: 8, margin: "0 -12px", padding: "5px 20px 5px 17px", background: sel ? "var(--accent)" : "transparent", color: sel ? "var(--accent-text)" : "var(--label)" }}>
+            <span style={{ width: 13, flexShrink: 0, display: "inline-flex", justifyContent: "center" }}><span style={{ color: sel ? "var(--accent-text)" : tint, fontSize: 9, lineHeight: "19px" }}>●</span></span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n}</span>
+                <span style={{ font: "var(--font-subheadline)", fontVariantNumeric: "tabular-nums", color: sel ? "var(--accent-text)" : tint }}>{meta}</span>
+              </span>
+              <span style={{ display: "flex", gap: 5, marginTop: 1, font: "var(--font-subheadline)", color: sel ? "var(--accent-text)" : "var(--label-tertiary)", whiteSpace: "nowrap", overflow: "hidden" }}>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{msT}</span>
+                <span>·</span>
+                <span>{files}</span>
+                <span>·</span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{ago}</span>
+              </span>
+            </span>
           </div>
         );
       })}
       </>}
       {data.active.length > 0 && <>
-      <div style={{ font: "600 11px/14px var(--font-system)", color: "var(--label-tertiary)", padding: data.review.length ? "10px 8px 5px" : "0 8px 5px" }}>ACTIVE</div>
-      {data.active.map(([id, n, st, tint, still]) => {
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: data.review.length ? "10px 8px 5px 5px" : "0 8px 5px 5px" }}><span style={{ width: 13, flexShrink: 0, display: "inline-flex", justifyContent: "center" }}><VIcon name="bolt" size={11} color="var(--label-tertiary)" style={{ verticalAlign: 0 }} /></span><span style={{ font: "600 11px/14px var(--font-system)", color: "var(--label-tertiary)" }}>ACTIVE</span></div>
+      {data.active.map(([id, n, st, tint, still, msT, elapsed, detail]) => {
         const sel = id === selectedId;
         return (
-          <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, height: 30, padding: "0 8px", borderRadius: "var(--radius-highlight)", background: sel ? "var(--accent)" : "transparent", color: sel ? "var(--accent-text)" : "var(--label)" }}>
-            <span className={still || sel ? "" : "ws-pulse"} style={{ color: sel ? "var(--accent-text)" : tint, fontSize: 9 }}>●</span>
-            <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n}</span>
-            <span style={{ font: "var(--font-subheadline)", color: sel ? "var(--accent-text)" : tint }}>{st}</span>
+          <div key={id} style={{ display: "flex", gap: 8, margin: "0 -12px", padding: "5px 20px 5px 17px", background: sel ? "var(--accent)" : "transparent", color: sel ? "var(--accent-text)" : "var(--label)" }}>
+            <span style={{ width: 13, flexShrink: 0, display: "inline-flex", justifyContent: "center" }}><span className={still || sel ? "" : "ws-pulse"} style={{ color: sel ? "var(--accent-text)" : tint, fontSize: 9, lineHeight: "19px" }}>●</span></span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{n}</span>
+                <span style={{ font: "var(--font-subheadline)", fontVariantNumeric: "tabular-nums", color: sel ? "var(--accent-text)" : "var(--label-tertiary)" }}>{elapsed}</span>
+              </span>
+              <span style={{ display: "flex", gap: 5, marginTop: 1, font: "var(--font-subheadline)", color: sel ? "var(--accent-text)" : "var(--label-tertiary)", whiteSpace: "nowrap", overflow: "hidden" }}>
+                <span style={{ color: sel ? "var(--accent-text)" : tint, flexShrink: 0 }}>{st}</span>
+                <span>·</span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{msT}</span>
+                {detail && <><span>·</span><span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{detail}</span></>}
+              </span>
+            </span>
           </div>
         );
       })}
       </>}
       {(data.review.length > 0 || data.active.length > 0) && <div style={{ borderBottom: "0.5px solid var(--separator)", margin: "10px 0" }}></div>}
-      <div style={{ font: "600 11px/14px var(--font-system)", color: "var(--label-tertiary)", padding: "0 8px 12px" }}>TODO</div>
+    </>
+  );
+}
+
+function VRail({ selectedId, doneOpen, data = V }) {
+  return (
+    <div style={{ width: 372, flexShrink: 0, overflowY: "auto", borderRight: "0.5px solid var(--separator)", background: "var(--sidebar-tint, transparent)", padding: "12px 12px 16px" }}>
+      <VRailSessions data={data} selectedId={selectedId} />
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px 12px 5px" }}><span style={{ width: 13, flexShrink: 0, display: "inline-flex", justifyContent: "center" }}><VIcon name="list_bullet" size={11} color="var(--label-tertiary)" style={{ verticalAlign: 0 }} /></span><span style={{ font: "600 11px/14px var(--font-system)", color: "var(--label-tertiary)" }}>TODO</span></div>
       {data.ms.map((m) => (
         <div key={m.num} style={{ border: "0.5px solid var(--separator)", borderRadius: 8, background: "var(--control-bg)", marginBottom: 8, padding: "2px 4px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, height: 30, padding: "0 6px" }}>
@@ -160,8 +193,8 @@ function VRail({ selectedId, doneOpen, data = V }) {
         </div>
       ))}
       <div style={{ borderBottom: "0.5px solid var(--separator)", margin: "9px 0 10px" }}></div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px 12px" }}>
-        <VIcon name={doneOpen ? "chevron_down" : "chevron_right"} size={11} weight={700} color="var(--label-tertiary)" style={{ verticalAlign: 0 }} />
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px 12px 5px" }}>
+        <span style={{ width: 13, flexShrink: 0, display: "inline-flex", justifyContent: "center" }}><VIcon name={doneOpen ? "chevron_down" : "chevron_right"} size={11} weight={700} color="var(--label-tertiary)" style={{ verticalAlign: 0 }} /></span>
         <span style={{ font: "600 11px/14px var(--font-system)", color: "var(--label-tertiary)", flex: 1 }}>DONE — 3 MILESTONES</span>
         <span style={{ font: "var(--font-subheadline)", color: "var(--label-tertiary)", fontVariantNumeric: "tabular-nums" }}>21/21</span>
       </div>
@@ -174,6 +207,49 @@ function VRail({ selectedId, doneOpen, data = V }) {
             <span style={{ font: "var(--font-subheadline)", color: "var(--label-secondary)", fontVariantNumeric: "tabular-nums" }}>{n}/{n}</span>
           </div>
         </div>
+      ))}
+    </div>
+  );
+}
+
+function VTreeMs({ m, selectedId, done }) {
+  const open = !m.collapsed;
+  return (
+    <React.Fragment>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, height: 28, margin: "0 -12px", padding: done ? "0 20px 0 37px" : "0 20px 0 17px" }}>
+        <span style={{ width: 13, flexShrink: 0, display: "inline-flex", justifyContent: "center" }}><VIcon name={open ? "chevron_down" : "chevron_right"} size={10} weight={700} color="var(--label-tertiary)" style={{ verticalAlign: 0 }} /></span>
+        <VIcon name={open ? "folder_fill" : "folder"} size={13} color={done ? "var(--label-tertiary)" : m.current ? "var(--accent)" : "var(--label-secondary)"} style={{ verticalAlign: 0 }} />
+        <span style={{ font: m.current ? "var(--font-body-emphasized)" : "var(--font-body)", flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: done ? "var(--label-secondary)" : "var(--label)" }}>{m.title}</span>
+        {done && m.done === m.total && <VIcon name="checkmark" size={9} weight={700} color="var(--system-green)" style={{ verticalAlign: 0 }} />}
+        <span style={{ font: "var(--font-subheadline)", color: done ? "var(--label-tertiary)" : "var(--label-secondary)", fontVariantNumeric: "tabular-nums" }}>{m.done}/{m.total}</span>
+      </div>
+      {open && <>
+        {(m.slices || []).map((s) => <VSliceRow key={s[1]} s={s} selectedId={selectedId} depth={done ? 2 : 1} bleed />)}
+      </>}
+    </React.Fragment>
+  );
+}
+
+function VRailTree({ selectedId, doneOpen, data = V }) {
+  return (
+    <div style={{ width: 372, flexShrink: 0, overflowY: "auto", borderRight: "0.5px solid var(--separator)", background: "var(--sidebar-tint, transparent)", padding: "12px 12px 16px" }}>
+      <VRailSessions data={data} selectedId={selectedId} />
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px 5px 5px" }}><span style={{ width: 13, flexShrink: 0, display: "inline-flex", justifyContent: "center" }}><VIcon name="list_bullet" size={11} color="var(--label-tertiary)" style={{ verticalAlign: 0 }} /></span><span style={{ font: "600 11px/14px var(--font-system)", color: "var(--label-tertiary)" }}>TODO</span></div>
+      {data.ms.map((m) => <VTreeMs key={m.num} m={m} selectedId={selectedId} />)}
+      <div style={{ borderBottom: "0.5px solid var(--separator)", margin: "9px 0 10px" }}></div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px 5px 5px" }}>
+        <span style={{ width: 13, flexShrink: 0, display: "inline-flex", justifyContent: "center" }}><VIcon name={doneOpen ? "chevron_down" : "chevron_right"} size={11} weight={700} color="var(--label-tertiary)" style={{ verticalAlign: 0 }} /></span>
+        <span style={{ font: "600 11px/14px var(--font-system)", color: "var(--label-tertiary)", flex: 1 }}>DONE</span>
+        <span style={{ font: "var(--font-subheadline)", color: "var(--label-tertiary)", fontVariantNumeric: "tabular-nums" }}>25/34</span>
+      </div>
+      {doneOpen && [
+        { num: "4", title: "Diff review", done: 3, total: 7, slices: [["done", "d-parser", "Unified diff parser", null], ["done", "d-side", "Side-by-side layout", null], ["done", "d-anchor", "Inline comment anchors", null]] },
+        { num: "5", title: "Board polish", done: 1, total: 4, collapsed: true },
+        { num: "3", title: "Review flow", done: 7, total: 7, collapsed: true },
+        { num: "2", title: "Sessions", done: 7, total: 7, collapsed: true },
+        { num: "1", title: "Foundations", done: 7, total: 7, collapsed: true }
+      ].map((mm) => (
+        <VTreeMs key={mm.num} m={mm} selectedId={selectedId} done />
       ))}
     </div>
   );
@@ -232,4 +308,4 @@ const V_TABS_PR = [["doc_text", "Brief", true], ["chevron_left_slash_chevron_rig
 const V_TABS_LIVE = [["doc_text", "Brief", true], ["chevron_left_slash_chevron_right", "Agent", true], ["plusminus", "Diff", true], ["arrow_branch", "PR", false]];
 const V_TABS_TODO = [["doc_text", "Brief", true], ["chevron_left_slash_chevron_right", "Agent", false], ["plusminus", "Diff", false], ["arrow_branch", "PR", false]];
 
-Object.assign(window, { V, VShell, VRail, VPaneHeader, VTabs, V_TABS_LIVE, V_TABS_TODO, V_TABS_PR, VChip });
+Object.assign(window, { V, VShell, VRail, VRailTree, VPaneHeader, VTabs, V_TABS_LIVE, V_TABS_TODO, V_TABS_PR, VChip });

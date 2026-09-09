@@ -38,7 +38,7 @@ func sliceEdit(ctx context.Context, args []string, env Env) error {
 	}
 	// The new brief is settled before anything is read from Notion, so an edit
 	// whose stdin cannot be read fails having changed nothing.
-	brief, err := briefText("slice-edit", *description, env.In)
+	brief, err := briefText("slice-edit", "--description", *description, env.In)
 	if err != nil {
 		return err
 	}

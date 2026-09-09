@@ -234,6 +234,60 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(result.brief, "New brief text")
     }
 
+    func testSliceMoveNamesTheMilestone() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceMoveSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.sliceMove(projectID: "proj-123", sliceRef: "slice-1", milestone: "Phase 2")
+
+        XCTAssertEqual(fakeRunner.lastArguments, [
+            "slice-move", "--project", "proj-123", "--milestone", "Phase 2", "--json", "slice-1"
+        ])
+    }
+
+    func testSliceMoveFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceMoveFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            try await client.sliceMove(projectID: "proj-123", sliceRef: "slice-1", milestone: "Phase 2")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "\"Write the UI\" is in progress: work in flight is not refiled under its agent")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
+
+    func testSliceDelete() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceDeleteSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.sliceDelete(projectID: "proj-123", sliceRef: "slice-1")
+
+        XCTAssertEqual(fakeRunner.lastArguments, [
+            "slice-delete", "--project", "proj-123", "--json", "slice-1"
+        ])
+    }
+
+    func testSliceDeleteFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceDeleteFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            try await client.sliceDelete(projectID: "proj-123", sliceRef: "slice-1")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "\"Write the UI\" is in progress: work in flight is not deleted under its agent")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
+
     func testSliceEditFailure() async throws {
         let fakeRunner = FakeRunner(fixture: .sliceEditFailure)
         let client = NatClient(commandRunner: fakeRunner)
@@ -484,7 +538,7 @@ final class NatClientTests: XCTestCase {
         let fakeRunner = FakeRunner(fixture: .workshopLaunchSuccess)
         let client = NatClient(commandRunner: fakeRunner)
 
-        let result = try await client.workshopLaunch(projectID: "proj-123", model: "opus", effort: "high")
+        let result = try await client.workshopLaunch(projectID: "proj-123", model: "opus", effort: "high", request: nil)
 
         XCTAssertEqual(result.session, "nat-plan")
         XCTAssertEqual(result.workdir, "/path/to/repo")
@@ -493,15 +547,41 @@ final class NatClientTests: XCTestCase {
             fakeRunner.lastArguments,
             ["workshop-launch", "--project", "proj-123", "--json", "--model", "opus", "--effort", "high"]
         )
+        XCTAssertNil(fakeRunner.lastStandardInput)
     }
 
     func testWorkshopLaunchWithNoOverrideOmitsFlags() async throws {
         let fakeRunner = FakeRunner(fixture: .workshopLaunchSuccess)
         let client = NatClient(commandRunner: fakeRunner)
 
-        _ = try await client.workshopLaunch(projectID: "proj-123", model: nil, effort: nil)
+        _ = try await client.workshopLaunch(projectID: "proj-123", model: nil, effort: nil, request: nil)
 
         XCTAssertEqual(fakeRunner.lastArguments, ["workshop-launch", "--project", "proj-123", "--json"])
+    }
+
+    func testWorkshopLaunchSendsTheRequestOverStdin() async throws {
+        let fakeRunner = FakeRunner(fixture: .workshopLaunchSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        _ = try await client.workshopLaunch(
+            projectID: "proj-123", model: nil, effort: nil, request: "Add dark mode\nto the board."
+        )
+
+        XCTAssertEqual(
+            fakeRunner.lastArguments,
+            ["workshop-launch", "--project", "proj-123", "--json", "--request", "-"]
+        )
+        XCTAssertEqual(fakeRunner.lastStandardInput, "Add dark mode\nto the board.".data(using: .utf8))
+    }
+
+    func testWorkshopLaunchWithAnEmptyRequestOmitsTheFlag() async throws {
+        let fakeRunner = FakeRunner(fixture: .workshopLaunchSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        _ = try await client.workshopLaunch(projectID: "proj-123", model: nil, effort: nil, request: "")
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["workshop-launch", "--project", "proj-123", "--json"])
+        XCTAssertNil(fakeRunner.lastStandardInput)
     }
 
     func testWorkshopLaunchAlreadyLiveFailure() async throws {
@@ -509,7 +589,7 @@ final class NatClientTests: XCTestCase {
         let client = NatClient(commandRunner: fakeRunner)
 
         do {
-            _ = try await client.workshopLaunch(projectID: "proj-123", model: nil, effort: nil)
+            _ = try await client.workshopLaunch(projectID: "proj-123", model: nil, effort: nil, request: nil)
             XCTFail("Should have thrown")
         } catch let error as NatError {
             if case .commandFailed(let message) = error {

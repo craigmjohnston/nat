@@ -48,6 +48,7 @@ private final class MockPRClient: NatClientProtocol, @unchecked Sendable {
         throw PRTestError()
     }
 
+    func prStatus(projectID: String) async throws -> PRStatusDoc { throw PRTestError() }
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail {
         viewCallCount += 1
         lastSliceRef = sliceRef
@@ -70,7 +71,7 @@ private final class MockPRClient: NatClientProtocol, @unchecked Sendable {
         if let commentError { throw commentError }
     }
 
-    func workshopLaunch(projectID: String, model: String?, effort: String?) async throws -> WorkshopLaunchResult {
+    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult {
         throw PRTestError()
     }
 

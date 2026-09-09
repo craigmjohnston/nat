@@ -3,17 +3,6 @@ import NatKit
 
 struct PaneView: View {
     @Bindable var appModel: AppModel
-    /// Whether something is drawn over the whole board right now (the
-    /// workshop overlay) — passed down to the Agent tab so it tears down its
-    /// embedded terminal rather than leaving it mounted underneath, alive but
-    /// unseen. SwiftTerm's terminal view sets an I-beam cursor over its own
-    /// bounds (`resetCursorRects`), and AppKit picks that cursor rect up
-    /// whenever nothing drawn in front of it registers one of its own — which
-    /// plain SwiftUI content (the overlay) never does, since `.arrow` needs
-    /// no rect at all. Left mounted, the terminal would go on winning the
-    /// cursor for whatever the board still shows underneath, however fully
-    /// something else appears to cover it.
-    var isCovered: Bool = false
     @State private var currentTab: WorkflowTab = .brief
 
     var selectedSlice: Slice? {
@@ -29,43 +18,69 @@ struct PaneView: View {
         return buildWorkflowTabState(for: slice, hasLiveAgent: hasLiveAgent)
     }
 
+    /// The slice's milestone name, for the breadcrumb above the title — nil
+    /// where the milestone can't be found, which drops the line entirely
+    /// rather than showing a blank one.
+    func milestoneName(for slice: Slice) -> String? {
+        appModel.projectStore?.state.projectInfo?.milestones.first { $0.id == slice.milestoneID }?.name
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            if let slice = selectedSlice, let tabState = workflowState {
-                // Header with slice name and tab strip
+            // The workshop row's pane: no workflow strip, just the planning
+            // agent — see WorkshopPaneView.
+            if appModel.workshopSelected {
+                WorkshopPaneView(appModel: appModel)
+            } else if let slice = selectedSlice, let tabState = workflowState {
+                // Header: a startup-grade identity block (breadcrumb + title,
+                // which wraps rather than truncating) beside a real stepper
+                // reading the slice's progress through the pipeline.
                 VStack(spacing: 0) {
-                    HStack(spacing: 14) {
-                        Text(slice.name)
-                            .font(.system(size: Typo.body, weight: .semibold))
-                            .foregroundStyle(DesignTokens.label)
-                            .lineLimit(1)
+                    HStack(alignment: .center, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            if let milestoneName = milestoneName(for: slice) {
+                                Text(milestoneName)
+                                    .font(.system(size: Typo.caption))
+                                    .foregroundStyle(DesignTokens.labelTertiary)
+                                    .lineLimit(1)
+                            }
+
+                            Text(slice.name)
+                                .font(.system(size: Typo.headline, weight: .semibold))
+                                .foregroundStyle(DesignTokens.label)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                        }
 
                         Spacer()
 
-                        // Tab strip
+                        // The stepper: stages rather than tabs, each drawn by
+                        // where the slice actually stands (complete/current/
+                        // reachable/locked) instead of an equal row of labels.
                         HStack(spacing: 10) {
                             ForEach(Array(tabState.tabs.enumerated()), id: \.offset) { index, tab in
                                 if index > 0 {
-                                    Image(systemName: "arrow.right")
-                                        .font(.system(size: 12, weight: .regular))
-                                        .foregroundStyle(DesignTokens.labelQuaternary)
+                                    Rectangle()
+                                        .fill(DesignTokens.hairline)
+                                        .frame(width: 12, height: 1)
                                 }
 
-                                tabButton(
+                                stepperStage(
                                     tab,
                                     isCurrentTab: currentTab == tab,
                                     isReachable: tabState.isReachable(tab),
-                                    isPastTab: tabState.tabs.firstIndex(of: tab)! < tabState.tabs.firstIndex(of: currentTab)!
+                                    isComplete: tabState.isComplete(tab)
                                 )
                             }
                         }
                     }
-                    .frame(height: 46)
+                    .padding(.vertical, 10)
                     .padding(.horizontal, 14)
-
-                    Divider()
-                        .frame(height: 0.5)
-                        .foregroundStyle(DesignTokens.separator)
+                    .background(DesignTokens.controlBg.opacity(0.5))
+                    .overlay(alignment: .bottom) {
+                        DesignTokens.hairline
+                            .frame(height: 1)
+                    }
                 }
 
                 // Content area
@@ -75,7 +90,7 @@ struct PaneView: View {
                         currentTab = tab
                     })
                 case .agent:
-                    AgentTabView(appModel: appModel, slice: slice, isCovered: isCovered)
+                    AgentTabView(appModel: appModel, slice: slice)
                 case .diff:
                     DiffTabView(appModel: appModel, slice: slice, onApproved: {
                         currentTab = .pr
@@ -106,56 +121,83 @@ struct PaneView: View {
         }
     }
 
-    // MARK: - Tab Button
+    // MARK: - Stepper Stage
 
-    /// Each of Brief/Agent/Diff/PR takes the same fixed 76pt width whether or
-    /// not it is the current one — the underline (and the whole tab) used to
-    /// stretch to fit "Agent"'s longer label, which is what spanned the
-    /// underline across half the pane. Selection is instant: no width to
-    /// animate into and no content-swap animation either.
-    private static let tabWidth: CGFloat = 76
-
-    private func tabButton(
+    /// One stage of the pipeline stepper. State is read off the same
+    /// `WorkflowTabState` the tabs always used — a stage can be both complete
+    /// and current (its check stays green, the current wash still applies) —
+    /// so there's nothing new to keep in sync with the content switch below.
+    /// Unlike the old tabs, a stage isn't sized to a fixed width: the
+    /// glyph+label take only the room they need.
+    private func stepperStage(
         _ tab: WorkflowTab,
         isCurrentTab: Bool,
         isReachable: Bool,
-        isPastTab: Bool
+        isComplete: Bool
     ) -> some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 5) {
-                Image(systemName: tab.symbolName)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(isCurrentTab ? DesignTokens.accent : DesignTokens.labelSecondary)
+        // Priority is complete, then current, then plain-reachable, then
+        // locked — except the overlap the design calls out by name: a stage
+        // that is both complete and current keeps the green check (complete's
+        // glyph) under the current wash (current's background), rather than
+        // one of the two states winning outright.
+        let labelColor: Color
+        let labelWeight: Font.Weight
+        let showsCurrentWash: Bool
 
-                Text(tab.rawValue)
-                    .font(.system(size: Typo.subhead, weight: isCurrentTab ? .semibold : .regular))
-                    .foregroundStyle(isCurrentTab ? DesignTokens.label : DesignTokens.labelSecondary)
+        if isCurrentTab {
+            labelColor = DesignTokens.label
+            labelWeight = .semibold
+            showsCurrentWash = true
+        } else if isComplete {
+            labelColor = DesignTokens.labelSecondary
+            labelWeight = .regular
+            showsCurrentWash = false
+        } else if isReachable {
+            labelColor = DesignTokens.labelSecondary
+            labelWeight = .regular
+            showsCurrentWash = false
+        } else {
+            labelColor = DesignTokens.labelQuaternary
+            labelWeight = .regular
+            showsCurrentWash = false
+        }
 
-                if isPastTab {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(DesignTokens.systemGreen)
+        let glyphColor: Color = isComplete
+            ? DesignTokens.systemGreen
+            : isCurrentTab ? DesignTokens.accent
+            : isReachable ? DesignTokens.labelSecondary
+            : DesignTokens.labelQuaternary
+
+        return HStack(spacing: 5) {
+            Group {
+                if isComplete {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 13))
+                } else {
+                    Image(systemName: isCurrentTab ? "circle.fill" : "circle")
+                        .font(.system(size: 8))
                 }
             }
-            .frame(width: Self.tabWidth)
-            .padding(.vertical, 4)
-            .opacity(isReachable ? 1 : 0.4)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if isReachable {
-                    currentTab = tab
-                }
-            }
+            .foregroundStyle(glyphColor)
 
-            ZStack {
-                if isCurrentTab {
-                    DesignTokens.accent
-                        .frame(height: 2)
-                        .clipShape(RoundedRectangle(cornerRadius: 1))
-                        .padding(.horizontal, 6)
-                }
+            Text(tab.rawValue)
+                .font(.system(size: Typo.subhead, weight: labelWeight))
+                .foregroundStyle(labelColor)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(
+            showsCurrentWash
+                ? RoundedRectangle(cornerRadius: 6).fill(DesignTokens.selectionWash)
+                : nil
+        )
+        .hoverWash(cornerRadius: 6, enabled: isReachable)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isReachable {
+                currentTab = tab
             }
-            .frame(width: Self.tabWidth, height: 2)
         }
     }
 }

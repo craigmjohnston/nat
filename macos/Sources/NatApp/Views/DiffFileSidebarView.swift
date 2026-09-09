@@ -27,6 +27,7 @@ struct DiffFileSidebarView: View {
 
                 ForEach(files) { file in
                     DiffFileSidebarRow(file: file, isViewed: isViewed(file.path), commentCount: commentCount(file.path))
+                        .hoverWash(cornerRadius: 5)
                         .contentShape(Rectangle())
                         .onTapGesture {
                             onSelect(file.path)

@@ -48,12 +48,11 @@ func PRTitleBody(description string) (title, body string) {
 	return strings.TrimSpace(title), strings.TrimSpace(body)
 }
 
-// RecordPR writes the pull request onto the slice and marks it Done, which is
-// what approving the work means to the plan.
-//
-// The page is read first for the type of its Status column, which a project
-// converted in the Notion UI may have changed under the app — the same read
-// complete-slice makes for the same reason.
+// RecordPR writes the pull request onto the slice — and nothing else. The
+// slice stays in progress: Done means the work is on main, and a pull request
+// just opened is a review still running, so what moves the status is the
+// merge — [MarkDone], written by nat's own merge or by the reading that finds
+// GitHub already made one.
 //
 // Only this write can leave anything half done: a pull request opened and
 // not recorded. Running the action again says so rather than opening a
@@ -64,13 +63,8 @@ func PRTitleBody(description string) (title, body string) {
 // review that asks for one more commit needs the checkout that commit is
 // written in. What takes the worktree away is the merge.
 func RecordPR(ctx context.Context, client Client, s domain.Slice, url string) error {
-	page, err := client.GetPage(ctx, s.ID)
-	if err != nil {
-		return fmt.Errorf("record the pull request for %q: %w", s.Name, err)
-	}
 	properties := map[string]notion.PropertyValue{
-		notion.PropPR:     notion.NewURL(url),
-		notion.PropStatus: notion.NewChoice(page.Properties[notion.PropStatus].Type, notion.SliceDone),
+		notion.PropPR: notion.NewURL(url),
 	}
 	if _, err := client.UpdatePageProperties(ctx, s.ID, properties); err != nil {
 		return fmt.Errorf("record the pull request for %q: %w", s.Name, err)

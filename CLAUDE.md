@@ -89,6 +89,16 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   Every session nat makes is an agent's, and has tmux's own status bar off: the
   bar says nothing its session does not. The sessions the user was already in
   are never nat's to set options on, nat's own terminal included.
+  Each launch also carries the launching process's PATH into its session
+  (new-session's `-e`): a session's environment otherwise comes from the tmux
+  server, which inherited whoever started it first — for a server the macOS
+  app started from the Finder, launchd's bare PATH, with no nat on it — and
+  the PATH nat and claude were resolved on is the one the agent's own `nat`
+  commands must resolve on too, the app's bundled nat included. An empty PATH
+  says nothing rather than writing an empty variable over the server's, and
+  a tmux positively read as older than 3.2 (`supportsSessionEnv`, off
+  `tmux -V`) is not handed the flag at all — it would refuse the whole
+  launch over it — where a version nobody can read says nothing about age.
   `activity.go` is how those agents are told apart from each other's states:
   `Tmux.Activity` scans the panes once and reads the screen of each tagged one
   (`capture-pane -p -J`), answering working / waiting / gone / unknown per slice
@@ -299,8 +309,11 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   configured user holds — three
   endings, and no two of them at once: `--branch` records the branch the work
   was pushed to and leaves the slice in progress, handed back for review, which
-  is how an agent ends now; `--pr` records a pull request and marks the slice
-  Done; `--blocked` leaves it in progress with a note saying what stopped it.
+  is how an agent ends now; `--pr` records a pull request and leaves the slice
+  in progress too, since Done means the work is on main and the merge is what
+  writes it; `--blocked` leaves it in progress with a note saying what stopped
+  it. A slice closed out with none of the three goes straight to Done — work
+  with no pull request has no merge coming.
   `--pr-description` belongs to the first of those alone — the only ending with
   a pull request still to open — and is filed on the page under a `PR
   description` heading beside the `Handed back` note, where it outlives the
@@ -715,8 +728,11 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   key's refusal is: the pull request is still there and still open, and nothing
   is read again over it. A merge that succeeded reads the pull request again, so
   the screen says merged rather than going on offering the key that merged it,
-  and touches nothing on Notion — the slice was marked Done as its pull request
-  was opened, and merging is the work landing rather than the slice changing.
+  and marks the slice Done on Notion — Done means the work is on main, and the
+  merge is the one event that makes it true; a merge made on GitHub itself is
+  caught by the background reading, which asks what became of an in-progress
+  slice's absent pull request and writes Done where the answer is merged
+  (`actions.SettleMerged`).
   What the merge does move is the slice's worktree, which the board takes away
   at the next reading that finds the pull request no longer open — see the
   domain rule on `landed.go`. An inline prompt is now two screens' rather than
@@ -1073,7 +1089,8 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   Notion, not on GitHub.
   `a` on that review screen is what ends the wait: it runs `gh pr create` in the
   slice's repo from that branch, and writes the URL it gets back onto the `PR`
-  property as it sets the status to `Done` — the one TUI key that reaches
+  property — the status stays `In progress`, since Done means the work is on
+  main and the merge is what writes it — the one TUI key that reaches
   outside Notion, and the only place a slice's PR is recorded from the TUI. It
   asks nothing before doing it: the screen is the confirmation, since nothing
   reaches this key without the change having been put in front of the user,
@@ -1165,11 +1182,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   (`domain.StateOf`, `internal/domain/state.go`): working, waiting, blocked,
   ready to push, awaiting review, ready to merge — or none at all for a slice
   that is not in flight, which is a Todo one and a Done one whose work has
-  landed. A Done slice is tested first and against its pull request alone,
-  because Done is Notion's word for the slice rather than for the work: approving
-  marks it Done as it opens the pull request, and until that merges the work is
-  not on main and the review is not over, so such a slice is still in whatever
-  state its pull request is in. It takes a positive reading to say so — with
+  landed. A Done slice is tested first and against its pull request alone.
+  Done now follows the merge — approving only records the pull request, and
+  the merge (nat's own, or one the background reading finds GitHub already
+  made) is what writes the status — but a slice marked Done under the old
+  rule, at approve, may still have its pull request open, and until that
+  merges the work is not on main and the review is not over, so such a slice
+  is still in whatever state its pull request is in. It takes a positive reading to say so — with
   nothing read, a Done slice is in no state at all, which is what every Done
   slice a project ever finished must go on being. After that, the
   order the facts are tested in is the order they are true in: a live agent

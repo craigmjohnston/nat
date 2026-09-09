@@ -136,18 +136,12 @@ func approve(t *testing.T, a *App) {
 	drive(t, a, press(a, "a"))
 }
 
-// TestApproveOpensThePullRequestAndClosesTheSlice is the whole action: gh is
-// run in the slice's repository from the branch it was handed back on, and the
-// URL it gives back goes onto the slice as it is marked Done.
-func TestApproveOpensThePullRequestAndClosesTheSlice(t *testing.T) {
+// TestApproveOpensThePullRequestAndRecordsIt is the whole action: gh is run
+// in the slice's repository from the branch it was handed back on, and the
+// URL it gives back goes onto the slice — which stays in progress, since Done
+// means the work is on main and the merge is what writes it.
+func TestApproveOpensThePullRequestAndRecordsIt(t *testing.T) {
 	app, prs, client, workdir := approveApp(t)
-	// A project whose Status column was converted in the Notion UI, so the
-	// write has to take the shape the page was read in.
-	client.getPage = func(id string) (*notion.Page, error) {
-		return &notion.Page{ID: id, Properties: map[string]notion.PropertyValue{
-			notion.PropStatus: {Type: notion.TypeStatus, Status: &notion.SelectOption{Name: notion.SliceInProgress}},
-		}}, nil
-	}
 	cursorOn(t, app, handedBack)
 
 	approve(t, app)
@@ -166,9 +160,8 @@ func TestApproveOpensThePullRequestAndClosesTheSlice(t *testing.T) {
 	if got := wrote.properties[notion.PropPR].URL; got != prs.url {
 		t.Errorf("PR = %q, want %q", got, prs.url)
 	}
-	status := wrote.properties[notion.PropStatus]
-	if status.Status == nil || status.Status.Name != notion.SliceDone {
-		t.Errorf("Status = %+v, want the status shape saying Done", status)
+	if _, wroteStatus := wrote.properties[notion.PropStatus]; wroteStatus {
+		t.Errorf("props = %+v, want the status left alone at approve", wrote.properties)
 	}
 	if !strings.Contains(app.board.confirmText, "Approve action") {
 		t.Errorf("confirmation = %q, want it to name the slice", app.board.confirmText)
@@ -248,24 +241,6 @@ func TestApproveWithAnUnreadableDescription(t *testing.T) {
 	}
 	if app.busy {
 		t.Error("the board is still busy after the read failed")
-	}
-}
-
-// TestApproveWritesASelectStatus covers the shape every project this app made
-// is in: a plain select, which is what a page read back with no type on its
-// Status column is written as.
-func TestApproveWritesASelectStatus(t *testing.T) {
-	app, _, client, _ := approveApp(t)
-	cursorOn(t, app, handedBack)
-
-	approve(t, app)
-
-	if len(client.updated) != 1 {
-		t.Fatalf("wrote %d pages, want exactly the slice", len(client.updated))
-	}
-	status := client.updated[0].properties[notion.PropStatus]
-	if status.Select == nil || status.Select.Name != notion.SliceDone {
-		t.Errorf("Status = %+v, want the select shape saying Done", status)
 	}
 }
 
@@ -415,36 +390,22 @@ func TestApproveReportsAGhFailure(t *testing.T) {
 // Notion refusing to record it. That is the one half-done state the action has,
 // so it is raised rather than passed over.
 func TestApproveReportsAFailedWrite(t *testing.T) {
-	for _, tt := range []struct {
-		name string
-		brk  func(c *fakeNotion)
-	}{
-		{"the page cannot be read", func(c *fakeNotion) {
-			c.getPage = func(string) (*notion.Page, error) { return nil, errors.New("notion is down") }
-		}},
-		{"the write is refused", func(c *fakeNotion) {
-			c.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
-				return nil, errors.New("notion is down")
-			}
-		}},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			app, prs, client, _ := approveApp(t)
-			tt.brk(client)
-			cursorOn(t, app, handedBack)
+	app, prs, client, _ := approveApp(t)
+	client.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
+		return nil, errors.New("notion is down")
+	}
+	cursorOn(t, app, handedBack)
 
-			approve(t, app)
+	approve(t, app)
 
-			if len(prs.made) != 1 {
-				t.Fatalf("gh was asked for %v, want the one pull request", prs.made)
-			}
-			if app.err == nil || !strings.Contains(app.err.Error(), "record the pull request") {
-				t.Errorf("err = %v, want the failed write reported", app.err)
-			}
-			if app.busy {
-				t.Error("the board is still busy after the write failed")
-			}
-		})
+	if len(prs.made) != 1 {
+		t.Fatalf("gh was asked for %v, want the one pull request", prs.made)
+	}
+	if app.err == nil || !strings.Contains(app.err.Error(), "record the pull request") {
+		t.Errorf("err = %v, want the failed write reported", app.err)
+	}
+	if app.busy {
+		t.Error("the board is still busy after the write failed")
 	}
 }
 

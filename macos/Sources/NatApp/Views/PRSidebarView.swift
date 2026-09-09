@@ -8,6 +8,11 @@ import NatKit
 struct PRSidebarView: View {
     let pr: PRDetail
 
+    /// The sidebar's width, draggable at its divider and remembered across
+    /// launches — the default is the width it was fixed at before it was
+    /// resizable.
+    @AppStorage("prSidebarWidth") private var sidebarWidth = 216.0
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -15,16 +20,21 @@ struct PRSidebarView: View {
                 reviewSection
                 changesSection
             }
-            .padding(14)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 18)
         }
-        .frame(width: 216)
+        .frame(width: sidebarWidth)
         .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator)
+        .overlay(alignment: .leading) {
+            PaneResizeHandle(width: $sidebarWidth, minWidth: 170, maxWidth: 400, edge: .leading)
+                .offset(x: -4.5)
+        }
     }
 
     // MARK: - Checks
 
     private var checksSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(checksHeading)
                 .font(.system(size: Typo.subhead, weight: .semibold))
                 .monospacedDigit()
@@ -48,6 +58,11 @@ struct PRSidebarView: View {
         return "CHECKS · \(done) OF \(pr.checks.count)"
     }
 
+    // The mock's check row: 26pt tall, the name in a code face one step
+    // under `Typo.code`, and the right-hand column in caption type — where
+    // the mock shows each check's duration, gh's reading carries only its
+    // state, so the state's word takes that column rather than a number
+    // invented to fill it.
     private func checkRow(_ check: PRCheck) -> some View {
         let outcome = checkOutcome(state: check.state)
         return HStack(spacing: 8) {
@@ -57,7 +72,7 @@ struct PRSidebarView: View {
                 .symbolEffect(.pulse, isActive: outcome == .pending)
 
             Text(check.name)
-                .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
+                .font(.system(size: Typo.code - 1, weight: .regular, design: .monospaced))
                 .foregroundStyle(DesignTokens.label)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -65,17 +80,17 @@ struct PRSidebarView: View {
             Spacer(minLength: 6)
 
             Text(checkStateWord(check.state))
-                .font(.system(size: Typo.subhead, weight: .regular))
+                .font(.system(size: Typo.caption, weight: .regular))
                 .foregroundStyle(DesignTokens.labelTertiary)
         }
-        .frame(height: 22)
+        .frame(height: 26)
     }
 
     // MARK: - Review
 
     private var reviewSection: some View {
         let verdict = reviewVerdict(reviewDecision: pr.reviewDecision)
-        return VStack(alignment: .leading, spacing: 6) {
+        return VStack(alignment: .leading, spacing: 8) {
             Text("REVIEW")
                 .font(.system(size: Typo.subhead, weight: .semibold))
                 .foregroundStyle(DesignTokens.labelTertiary)
@@ -85,10 +100,11 @@ struct PRSidebarView: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(verdict.outcome.tint)
 
-                Text(sentenceCase(verdict.word))
+                Text(reviewLine(verdict))
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.label)
             }
+            .frame(height: 26)
 
             // nat has no reviewer-request flow of its own — GitHub's is the
             // only one, so this opens the pull request there rather than
@@ -102,9 +118,20 @@ struct PRSidebarView: View {
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.labelSecondary)
             }
+            .frame(height: 26)
             .contentShape(Rectangle())
             .onTapGesture { openPROnGitHub() }
         }
+    }
+
+    /// The mock's "Approved by craig" — the verdict word, crediting the
+    /// approver where a submitted review names one; every other verdict is
+    /// the word alone, since only an approval has a single author to name.
+    private func reviewLine(_ verdict: MergeVerdict) -> String {
+        if verdict.outcome == .passing, let author = approvedBy(reviews: pr.reviews) {
+            return "\(sentenceCase(verdict.word)) by \(author)"
+        }
+        return sentenceCase(verdict.word)
     }
 
     private func openPROnGitHub() {
@@ -115,7 +142,7 @@ struct PRSidebarView: View {
     // MARK: - Changes
 
     private var changesSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("CHANGES")
                 .font(.system(size: Typo.subhead, weight: .semibold))
                 .foregroundStyle(DesignTokens.labelTertiary)
@@ -138,10 +165,15 @@ struct PRSidebarView: View {
                 .font(.system(size: Typo.subhead, weight: .regular))
                 .monospacedDigit()
 
+                // The mock sets this line in the sidebar's own subheadline
+                // with just the branch name in the code face — a sentence
+                // about the branch, not a line of code.
                 if let commits = pr.commits {
-                    Text("\(commits) \(plural(commits, "commit", "commits")) on \(pr.headRefName)")
-                        .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
-                        .foregroundStyle(DesignTokens.labelTertiary)
+                    (Text("\(commits) \(plural(commits, "commit", "commits")) on ")
+                        + Text(pr.headRefName)
+                        .font(.system(size: Typo.code - 1, weight: .regular, design: .monospaced)))
+                        .font(.system(size: Typo.subhead, weight: .regular))
+                        .foregroundStyle(DesignTokens.labelSecondary)
                 }
             } else {
                 Text("\(pr.headRefName) → \(pr.baseRefName)")

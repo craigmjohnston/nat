@@ -139,13 +139,17 @@ struct PRTabView: View {
     private func header(for pr: PRDetail) -> some View {
         let chip = prStateChip(state: pr.state, isDraft: pr.isDraft)
         return HStack(spacing: 10) {
-            Text(chip.label)
-                .font(.system(size: Typo.subhead, weight: .semibold))
-                .foregroundStyle(chip.tint)
-                .padding(.horizontal, 10)
-                .frame(height: 22)
-                .background(chip.tint.opacity(0.18))
-                .clipShape(Capsule())
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.branch")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(sentenceCase(chip.label))
+                    .font(.system(size: Typo.subhead, weight: .semibold))
+            }
+            .foregroundStyle(chip.tint)
+            .padding(.horizontal, 10)
+            .frame(height: 22)
+            .background(chip.tint.opacity(0.18))
+            .clipShape(Capsule())
 
             Text(pr.title)
                 .font(.system(size: Typo.headline, weight: .semibold))
@@ -154,7 +158,7 @@ struct PRTabView: View {
                 .truncationMode(.tail)
 
             Text("#\(pr.number)")
-                .font(.system(size: Typo.body, weight: .regular))
+                .font(.system(size: Typo.subhead, weight: .regular))
                 .monospacedDigit()
                 .foregroundStyle(DesignTokens.labelTertiary)
 
@@ -180,10 +184,10 @@ struct PRTabView: View {
                     .font(.system(size: Typo.body, weight: .regular))
                     .foregroundStyle(DesignTokens.labelSecondary)
             } else {
-                Text(markdownAttributed(described))
+                Text(markdownAttributed(described, size: Typo.body))
                     .font(.system(size: Typo.body, weight: .regular))
                     .lineSpacing(2)
-                    .foregroundStyle(DesignTokens.label)
+                    .foregroundStyle(DesignTokens.labelSecondary)
             }
         }
     }
@@ -278,9 +282,7 @@ struct PRTabView: View {
                 .buttonStyle(.borderless)
 
                 Button(action: { showMergeConfirm = true }) {
-                    if isMerging {
-                        ProgressView().scaleEffect(0.6)
-                    } else {
+                    AsyncActionLabel(isBusy: isMerging) {
                         Text("Merge")
                     }
                 }
@@ -299,6 +301,9 @@ struct PRTabView: View {
             Button("Merge") { Task { await performMerge() } }
             Button("Cancel", role: .cancel) {}
         }
+        // Without an icon of its own the dialog wears the app's, which for
+        // an unbundled dev build is the generic document icon.
+        .dialogIcon(Image(systemName: "arrow.triangle.merge"))
     }
 
     private func mergeIsEnabled(for pr: PRDetail) -> Bool {
@@ -357,6 +362,11 @@ struct PRTabView: View {
         mergeError = nil
         do {
             try await store.merge()
+            // The rail still lists this slice under NEEDS REVIEW off the
+            // PR-readiness reading, and a merge writes nothing to Notion, so
+            // no nudge will refresh it — take the reading now rather than
+            // leaving "awaiting review" standing until the next poll.
+            await appModel.refresh()
         } catch let error as NatError {
             if case .commandFailed(let message) = error {
                 mergeError = message
@@ -425,44 +435,48 @@ struct PRTabView: View {
     }
 }
 
-/// Renders markdown the same way the Brief tab does: full syntax, with a
-/// plain-text fallback should parsing fail rather than an empty view.
-func markdownAttributed(_ text: String) -> AttributedString {
-    (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .full))) ?? AttributedString(text)
-}
-
-/// One entry of the conversation timeline: a mark and colour for its tone, who
-/// said it and when, and — for everything but a bare verdict — the markdown
-/// they wrote, nested slightly under the entry's own line.
+/// One entry of the conversation timeline, the mock's `PRComment` shape: an
+/// avatar circle with the author's initials, their name, what they did in
+/// saying it — coloured by its tone, since a review's verdict is the entry's
+/// whole point and an avatar cannot carry it — when, and the markdown they
+/// wrote, aligned under the name rather than the avatar.
 struct PRConversationEntryView: View {
     let entry: ConvoEntry
 
+    private static let avatarSize: CGFloat = 22
+    private static let avatarGap: CGFloat = 10
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Image(systemName: entry.tone.markSymbolName)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(entry.tone.tint)
+        HStack(alignment: .top, spacing: Self.avatarGap) {
+            Text(authorInitials(entry.author))
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(DesignTokens.accent)
+                .frame(width: Self.avatarSize, height: Self.avatarSize)
+                .background(DesignTokens.accent.opacity(0.3))
+                .clipShape(Circle())
+                .padding(.top, 2)
 
-                Text(entry.author)
-                    .font(.system(size: Typo.subhead, weight: .semibold))
-                    .foregroundStyle(DesignTokens.label)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    Text(entry.author)
+                        .font(.system(size: Typo.subhead, weight: .semibold))
+                        .foregroundStyle(DesignTokens.label)
 
-                Text(entry.verb)
-                    .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(entry.tone.tint)
+                    Text(entry.verb)
+                        .font(.system(size: Typo.subhead, weight: .regular))
+                        .foregroundStyle(entry.tone.tint)
 
-                Text(ago(Date().timeIntervalSince(entry.at)))
-                    .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.labelTertiary)
-            }
+                    Text(ago(Date().timeIntervalSince(entry.at)))
+                        .font(.system(size: Typo.caption, weight: .regular))
+                        .foregroundStyle(DesignTokens.labelTertiary)
+                }
 
-            if !entry.body.isEmpty {
-                Text(markdownAttributed(entry.body))
-                    .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.labelSecondary)
-                    .lineSpacing(1)
-                    .padding(.leading, 19)
+                if !entry.body.isEmpty {
+                    Text(markdownAttributed(entry.body, size: Typo.subhead))
+                        .font(.system(size: Typo.subhead, weight: .regular))
+                        .foregroundStyle(DesignTokens.labelSecondary)
+                        .lineSpacing(2)
+                }
             }
         }
     }
@@ -491,11 +505,14 @@ struct PRComposerView: View {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack(alignment: .topLeading) {
                     if text.isEmpty {
+                        // Laid where the editor's own first line starts —
+                        // its 2pt padding plus the text view's 5pt line
+                        // fragment padding, and no top offset — so the caret
+                        // blinks exactly at the placeholder's first letter.
                         Text(placeholder)
                             .font(.system(size: Typo.subhead, weight: .regular))
                             .foregroundStyle(DesignTokens.labelTertiary)
-                            .padding(.top, 8)
-                            .padding(.leading, 5)
+                            .padding(.leading, 7)
                             .allowsHitTesting(false)
                     }
                     TextEditor(text: $text)
@@ -507,14 +524,12 @@ struct PRComposerView: View {
                 .padding(.horizontal, 9)
                 .padding(.top, compact ? 5 : 7)
 
+                // The mock's toolbar row also draws textformat and paperclip
+                // icons here; neither has anything real to do — gh has no API
+                // for comment attachments — and a control that does nothing is
+                // worse than the mock losing two glyphs, so only the send
+                // button is drawn.
                 HStack(spacing: 8) {
-                    Image(systemName: "textformat")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(DesignTokens.labelTertiary)
-                    Image(systemName: "paperclip")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(DesignTokens.labelTertiary)
-
                     Spacer()
 
                     Button(action: onSend) {

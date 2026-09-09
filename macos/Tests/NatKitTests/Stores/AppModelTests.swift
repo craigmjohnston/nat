@@ -35,6 +35,21 @@ final class MockConfigReader: ConfigReaderProtocol, @unchecked Sendable {
     }
 }
 
+// MARK: - Workshop launch recorder
+
+/// Records the calls an injected workshop launcher receives — a class behind
+/// a lock, since the launcher closure is `@Sendable`.
+final class WorkshopLaunchRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var calls: [(projectID: String, model: String?, effort: String?, request: String?)] = []
+
+    func record(projectID: String, model: String?, effort: String?, request: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+        calls.append((projectID, model, effort, request))
+    }
+}
+
 // MARK: - Tests
 
 final class AppModelTests: XCTestCase {
@@ -172,6 +187,86 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(appModel.activeProjectID, "proj-a")
         XCTAssertNotNil(appModel.projectStore)
         XCTAssertEqual(appModel.projectStore?.projectID, "proj-a")
+    }
+
+    // MARK: - Close Tab Tests
+
+    @MainActor
+    private func threeProjectModel() async -> AppModel {
+        let testConfig = NatProjectConfig(
+            projects: [
+                "proj-a": ProjectConfig(name: "A Project", slicesDSID: "ds-a", workingDir: "/path/a"),
+                "proj-b": ProjectConfig(name: "B Project", slicesDSID: "ds-b", workingDir: "/path/b"),
+                "proj-c": ProjectConfig(name: "C Project", slicesDSID: "ds-c", workingDir: "/path/c")
+            ]
+        )
+        let appModel = AppModel(configReader: MockConfigReader(response: .success(testConfig)))
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+        return appModel
+    }
+
+    @MainActor
+    func testCloseProject_removesTheTab() async {
+        let appModel = await threeProjectModel()
+
+        await appModel.closeProject("proj-b")
+
+        XCTAssertEqual(appModel.projectTabs.map(\.id), ["proj-a", "proj-c"])
+    }
+
+    @MainActor
+    func testCloseProject_inactiveTabLeavesTheActiveOneAlone() async {
+        let appModel = await threeProjectModel()
+
+        await appModel.closeProject("proj-c")
+
+        XCTAssertEqual(appModel.activeProjectID, "proj-a")
+    }
+
+    @MainActor
+    func testCloseProject_activeTabActivatesTheTabAfterIt() async {
+        let appModel = await threeProjectModel()
+
+        await appModel.closeProject("proj-a")
+
+        XCTAssertEqual(appModel.projectTabs.map(\.id), ["proj-b", "proj-c"])
+        XCTAssertEqual(appModel.activeProjectID, "proj-b")
+    }
+
+    @MainActor
+    func testCloseProject_lastPositionFallsBackToTheTabBefore() async {
+        let appModel = await threeProjectModel()
+        await appModel.activateProject("proj-c")
+
+        await appModel.closeProject("proj-c")
+
+        XCTAssertEqual(appModel.activeProjectID, "proj-b")
+    }
+
+    @MainActor
+    func testCloseProject_refusesTheLastTab() async {
+        let testConfig = NatProjectConfig(
+            projects: [
+                "proj-a": ProjectConfig(name: "A Project", slicesDSID: "ds-a", workingDir: "/path/a")
+            ]
+        )
+        let appModel = AppModel(configReader: MockConfigReader(response: .success(testConfig)))
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+
+        await appModel.closeProject("proj-a")
+
+        XCTAssertEqual(appModel.projectTabs.map(\.id), ["proj-a"])
+        XCTAssertEqual(appModel.activeProjectID, "proj-a")
+    }
+
+    @MainActor
+    func testCloseProject_unknownIDChangesNothing() async {
+        let appModel = await threeProjectModel()
+
+        await appModel.closeProject("proj-nope")
+
+        XCTAssertEqual(appModel.projectTabs.count, 3)
+        XCTAssertEqual(appModel.activeProjectID, "proj-a")
     }
 
     @MainActor
@@ -370,6 +465,177 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertNil(appModel.config)
         XCTAssertNil(mockReader.lastPath)
+    }
+
+    // MARK: - Workshop
+
+    @MainActor
+    private func workshopModel(
+        launcher: @escaping @Sendable (String, String?, String?, String?) async throws -> WorkshopLaunchResult
+    ) async -> AppModel {
+        let testConfig = NatProjectConfig(
+            projects: [
+                "proj-a": ProjectConfig(name: "A Project", slicesDSID: "ds-a", workingDir: "/path/a"),
+                "proj-b": ProjectConfig(name: "B Project", slicesDSID: "ds-b", workingDir: "/path/b")
+            ],
+            workshopAgent: AgentModel(model: "opus", effort: "high")
+        )
+        let appModel = AppModel(
+            configReader: MockConfigReader(response: .success(testConfig)),
+            workshopLauncher: launcher
+        )
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+        return appModel
+    }
+
+    @MainActor
+    func testOpenWorkshop_selectsWithoutLaunching() async {
+        let recorder = WorkshopLaunchRecorder()
+        let appModel = await workshopModel { projectID, model, effort, request in
+            recorder.record(projectID: projectID, model: model, effort: effort, request: request)
+            return WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
+        }
+        appModel.selectedSliceID = "slice-1"
+
+        appModel.openWorkshop()
+
+        XCTAssertTrue(recorder.calls.isEmpty)
+        XCTAssertTrue(appModel.workshopSelected)
+        // One selected row: the workshop takes the slice's place.
+        XCTAssertNil(appModel.selectedSliceID)
+    }
+
+    @MainActor
+    func testLaunchWorkshop_launchesWithTheConfigPairAndTheTrimmedRequest() async {
+        let recorder = WorkshopLaunchRecorder()
+        let appModel = await workshopModel { projectID, model, effort, request in
+            recorder.record(projectID: projectID, model: model, effort: effort, request: request)
+            return WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
+        }
+
+        await appModel.launchWorkshop(request: "  Add dark mode.  \n")
+
+        XCTAssertEqual(recorder.calls.count, 1)
+        XCTAssertEqual(recorder.calls[0].projectID, "proj-a")
+        XCTAssertEqual(recorder.calls[0].model, "opus")
+        XCTAssertEqual(recorder.calls[0].effort, "high")
+        XCTAssertEqual(recorder.calls[0].request, "Add dark mode.")
+        XCTAssertTrue(appModel.workshopSelected)
+        XCTAssertFalse(appModel.workshopLaunching)
+        XCTAssertNil(appModel.workshopLaunchError)
+    }
+
+    @MainActor
+    func testLaunchWorkshop_commandFailureKeepsItsOwnMessage() async {
+        let appModel = await workshopModel { _, _, _, _ in
+            throw NatError.commandFailed("a planning agent is already live: nat-plan")
+        }
+
+        await appModel.launchWorkshop(request: "")
+
+        XCTAssertEqual(appModel.workshopLaunchError, "a planning agent is already live: nat-plan")
+        XCTAssertFalse(appModel.workshopLaunching)
+        XCTAssertTrue(appModel.workshopSelected)
+    }
+
+    @MainActor
+    func testLaunchWorkshop_otherNatErrorFallsBackToItsDescription() async {
+        let appModel = await workshopModel { _, _, _, _ in
+            throw NatError.missingOutput
+        }
+
+        await appModel.launchWorkshop(request: "")
+
+        XCTAssertEqual(appModel.workshopLaunchError, NatError.missingOutput.localizedDescription)
+    }
+
+    @MainActor
+    func testLaunchWorkshop_arbitraryErrorFallsBackToItsDescription() async {
+        let appModel = await workshopModel { _, _, _, _ in
+            throw NSError(domain: "test", code: 7, userInfo: [NSLocalizedDescriptionKey: "boom"])
+        }
+
+        await appModel.launchWorkshop(request: "")
+
+        XCTAssertEqual(appModel.workshopLaunchError, "boom")
+    }
+
+    @MainActor
+    func testWorkshop_withoutAnActiveProjectDoesNothing() async {
+        let recorder = WorkshopLaunchRecorder()
+        let appModel = AppModel(
+            configReader: MockConfigReader(response: .failure),
+            workshopLauncher: { projectID, model, effort, request in
+                recorder.record(projectID: projectID, model: model, effort: effort, request: request)
+                return WorkshopLaunchResult(session: "nat-plan", workdir: "/", wishlist: false)
+            }
+        )
+
+        appModel.openWorkshop()
+        await appModel.launchWorkshop(request: "anything")
+
+        XCTAssertTrue(recorder.calls.isEmpty)
+        XCTAssertFalse(appModel.workshopSelected)
+    }
+
+    @MainActor
+    func testSelectingASliceDeselectsTheWorkshopAndDismissesItsError() async {
+        let appModel = await workshopModel { _, _, _, _ in
+            throw NatError.commandFailed("boom")
+        }
+        await appModel.launchWorkshop(request: "")
+        XCTAssertTrue(appModel.workshopSelected)
+        XCTAssertNotNil(appModel.workshopLaunchError)
+
+        appModel.selectedSliceID = "slice-1"
+
+        XCTAssertFalse(appModel.workshopSelected)
+        XCTAssertNil(appModel.workshopLaunchError)
+        XCTAssertEqual(appModel.selectedSliceID, "slice-1")
+    }
+
+    @MainActor
+    func testWorkshopSelected_isPerProject() async {
+        let appModel = await workshopModel { _, _, _, _ in
+            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
+        }
+
+        appModel.workshopSelected = true
+        XCTAssertTrue(appModel.workshopSelected)
+
+        await appModel.activateProject("proj-b")
+        XCTAssertFalse(appModel.workshopSelected)
+
+        await appModel.activateProject("proj-a")
+        XCTAssertTrue(appModel.workshopSelected)
+    }
+
+    @MainActor
+    func testWorkshopSelected_setterCanDeselect() async {
+        let appModel = await workshopModel { _, _, _, _ in
+            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
+        }
+
+        appModel.workshopSelected = true
+        appModel.workshopSelected = false
+
+        XCTAssertFalse(appModel.workshopSelected)
+    }
+
+    @MainActor
+    func testWorkshopSelected_withoutAnActiveProjectIsFalseAndUnsettable() {
+        let appModel = AppModel()
+
+        XCTAssertFalse(appModel.workshopSelected)
+        appModel.workshopSelected = true
+        XCTAssertFalse(appModel.workshopSelected)
+    }
+
+    @MainActor
+    func testPlanningAgent_isNilWithoutAnActivityReading() {
+        let appModel = AppModel()
+
+        XCTAssertNil(appModel.planningAgent)
     }
 
     @MainActor

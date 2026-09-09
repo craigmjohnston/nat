@@ -64,6 +64,7 @@ final class MockNatClient: NatClientProtocol, @unchecked Sendable {
         throw TestError()
     }
 
+    func prStatus(projectID: String) async throws -> PRStatusDoc { throw TestError() }
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail {
         throw TestError()
     }
@@ -76,7 +77,7 @@ final class MockNatClient: NatClientProtocol, @unchecked Sendable {
         throw TestError()
     }
 
-    func workshopLaunch(projectID: String, model: String?, effort: String?) async throws -> WorkshopLaunchResult {
+    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult {
         throw TestError()
     }
 

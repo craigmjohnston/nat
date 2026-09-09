@@ -42,7 +42,21 @@ public enum DesignTokens {
     /// Text color for content on accent background (#17171c).
     public static let accentText = Color(hex: "17171c")
 
+    /// The app icon's mark gradient, used sparingly: primary actions and active
+    /// accents only.
+    public static let brandGradient = LinearGradient(
+        colors: [Color(hex: "6f4bf2"), Color(hex: "b558d8"), Color(hex: "ff70c2")],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
     // MARK: - Semantic UI Colors
+
+    /// The quiet border that separates surfaces without drawing attention.
+    public static let hairline = Color(hex: "ebebf5").opacity(0.08)
+
+    /// The soft fill behind a selected row, in place of a solid accent slab.
+    public static let selectionWash = Color(hex: "b1a8f2").opacity(0.16)
 
     /// Separator color (rgba(235,235,245,.13)).
     public static let separator = Color(hex: "ebebf5").opacity(0.13)

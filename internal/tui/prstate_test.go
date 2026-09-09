@@ -218,6 +218,95 @@ func TestADoneSliceDropsOutOnceItsPRHasLanded(t *testing.T) {
 	}
 }
 
+// mergedElsewherePlan is one in-progress slice whose recorded pull request
+// the listing no longer names: the state a merge made on GitHub itself leaves
+// behind, with nat not running to witness it.
+func mergedElsewherePlan() domain.Project {
+	return domain.NewProject(testProjectID, "tracker",
+		domain.MilestonesFromOptions([]string{"M1: Review"}, notion.TypeSelect),
+		[]domain.Slice{{ID: "gone", Name: "Merged on GitHub", Status: domain.SliceClaimed,
+			StatusName: "In progress", MilestoneID: "M1: Review", PRURL: "https://github.test/pr/9"}})
+}
+
+// An in-progress slice whose pull request turns out to have merged is marked
+// Done by the reading itself: nothing else witnessed the merge, and Done
+// means exactly what the merge made true.
+func TestTheReadingMarksAMergedInProgressSliceDone(t *testing.T) {
+	app, _ := prStateApp()
+	viewer := &fakePRViewer{pr: gh.PR{State: gh.PRStateMerged}}
+	app.prViewer = viewer
+	client := app.client.(*fakeNotion)
+
+	_, cmd := app.Update(projectLoadedMsg{project: mergedElsewherePlan()})
+	runPRRead(t, app, cmd)
+
+	if len(viewer.made) != 1 || viewer.made[0] != (viewCall{natRepo, "https://github.test/pr/9"}) {
+		t.Fatalf("viewed %v, want the absent pull request asked about in its repo", viewer.made)
+	}
+	var wroteDone bool
+	for _, w := range client.updated {
+		if w.pageID != "gone" {
+			continue
+		}
+		if s := w.properties[notion.PropStatus]; s.Select != nil && s.Select.Name == notion.SliceDone {
+			wroteDone = true
+		}
+	}
+	if !wroteDone {
+		t.Errorf("wrote %+v, want the slice marked Done", client.updated)
+	}
+	if !app.prSettled["gone"] {
+		t.Error("the merged pull request was not remembered as settled")
+	}
+}
+
+// A pull request closed unmerged is work going round again: nothing is
+// written, and the slice still settles — its answer cannot change.
+func TestTheReadingLeavesAClosedInProgressSliceAlone(t *testing.T) {
+	app, _ := prStateApp()
+	app.prViewer = &fakePRViewer{pr: gh.PR{State: gh.PRStateClosed}}
+	client := app.client.(*fakeNotion)
+
+	_, cmd := app.Update(projectLoadedMsg{project: mergedElsewherePlan()})
+	runPRRead(t, app, cmd)
+
+	for _, w := range client.updated {
+		if _, wrote := w.properties[notion.PropStatus]; wrote {
+			t.Errorf("wrote %+v, want the slice left as it was", client.updated)
+		}
+	}
+	if !app.prSettled["gone"] {
+		t.Error("the closed pull request was not remembered as settled")
+	}
+}
+
+// A reading that fails settles nothing: nothing may be concluded from it, so
+// the next pass asks again rather than watching an answer nobody has.
+func TestAFailedSettleReadingIsAskedAgain(t *testing.T) {
+	app, _ := prStateApp()
+	viewer := &fakePRViewer{err: errors.New("gh is not signed in")}
+	app.prViewer = viewer
+	client := app.client.(*fakeNotion)
+	p := mergedElsewherePlan()
+
+	_, cmd := app.Update(projectLoadedMsg{project: p})
+	runPRRead(t, app, cmd)
+
+	if len(client.updated) != 0 {
+		t.Errorf("wrote %+v, want nothing concluded from a reading that never happened", client.updated)
+	}
+	if app.prSettled["gone"] {
+		t.Error("a failed reading was remembered as settled")
+	}
+
+	// The next plan to land asks about the pull request again.
+	_, cmd = app.Update(projectLoadedMsg{project: p})
+	runPRRead(t, app, cmd)
+	if len(viewer.made) != 2 {
+		t.Errorf("gh was asked for %d readings, want the failed one retried", len(viewer.made))
+	}
+}
+
 // With every pull request settled there is nothing left to ask, and the whole
 // reading is skipped — which is what a mature plan costs once its work is in.
 func TestNothingLeftToAskTakesNoReading(t *testing.T) {

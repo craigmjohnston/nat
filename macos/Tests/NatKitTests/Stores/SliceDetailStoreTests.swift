@@ -57,10 +57,11 @@ private final class MockSliceDetailClient: NatClientProtocol, @unchecked Sendabl
     func agentInterrupt(projectID: String, sliceRef: String) async throws { throw SliceDetailTestError() }
     func agentSend(projectID: String, sliceRef: String, text: String) async throws { throw SliceDetailTestError() }
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String { throw SliceDetailTestError() }
+    func prStatus(projectID: String) async throws -> PRStatusDoc { throw SliceDetailTestError() }
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail { throw SliceDetailTestError() }
     func prMerge(projectID: String, sliceRef: String) async throws { throw SliceDetailTestError() }
     func prComment(projectID: String, sliceRef: String, body: String) async throws { throw SliceDetailTestError() }
-    func workshopLaunch(projectID: String, model: String?, effort: String?) async throws -> WorkshopLaunchResult {
+    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult {
         throw SliceDetailTestError()
     }
     func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult {

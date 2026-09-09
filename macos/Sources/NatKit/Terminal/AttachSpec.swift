@@ -119,7 +119,7 @@ public struct AttachSpec: Equatable {
     /// installed on a Mac. A name found nowhere is returned bare, so the
     /// failure reads as tmux missing rather than as this code's guess.
     public static func resolvedExecutable(
-        environment: [String: String] = ProcessInfo.processInfo.environment,
+        environment: [String: String] = ["PATH": PathBootstrap.environmentValue("PATH") ?? ""],
         fileExists: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
     ) -> String {
         let fromPath = (environment["PATH"] ?? "")

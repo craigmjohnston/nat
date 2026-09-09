@@ -21,8 +21,26 @@ public struct FileConfigReader: ConfigReaderProtocol {
 @MainActor
 @Observable
 public final class AppModel {
+    /// The slice-ID sentinel `nat status` reports the planning agent under —
+    /// `agent.PlanSentinel` on the Go side. The workshop has no slice, so
+    /// this is the key its live presence sits at in `activityStore.agents`.
+    public static let planSentinel = "plan"
+
     /// The current configuration.
     public private(set) var config: NatProjectConfig?
+
+    /// True while `openWorkshop()` has a launch in flight.
+    public private(set) var workshopLaunching = false
+
+    /// What the last workshop launch refused with — cleared by the next
+    /// launch, and by selecting a slice, which is how the failure is
+    /// dismissed.
+    public private(set) var workshopLaunchError: String?
+
+    /// The projects whose rail has the workshop row selected — per-project,
+    /// like `selectedSliceIDs`, and mutually exclusive with a slice
+    /// selection: the rail draws one selected row.
+    private var workshopSelectedProjects: Set<String> = []
 
     /// Ordered list of project tabs: (id, name).
     public private(set) var projectTabs: [(id: String, name: String)] = []
@@ -81,14 +99,25 @@ public final class AppModel {
     /// NAT_BIN override reaches it too. Injectable so tests never spawn one.
     private let pathsProvider: @Sendable () async throws -> NatPaths
 
+    /// How `launchWorkshop(request:)` launches the planning agent — `nat
+    /// workshop-launch` through the client. Injectable for the same reason
+    /// `pathsProvider` is.
+    private let workshopLauncher: @Sendable (
+        _ projectID: String, _ model: String?, _ effort: String?, _ request: String?
+    ) async throws -> WorkshopLaunchResult
+
     public init(
         configReader: ConfigReaderProtocol = FileConfigReader(),
         pollIntervalSeconds: UInt64 = 30,
-        pathsProvider: @escaping @Sendable () async throws -> NatPaths = { try await NatClient().paths() }
+        pathsProvider: @escaping @Sendable () async throws -> NatPaths = { try await NatClient().paths() },
+        workshopLauncher: @escaping @Sendable (String, String?, String?, String?) async throws -> WorkshopLaunchResult = {
+            try await NatClient().workshopLaunch(projectID: $0, model: $1, effort: $2, request: $3)
+        }
     ) {
         self.configReader = configReader
         self.pollInterval = pollIntervalSeconds
         self.pathsProvider = pathsProvider
+        self.workshopLauncher = workshopLauncher
     }
 
     /// Start the app resolving the config and nudge paths from `nat paths`,
@@ -194,6 +223,22 @@ public final class AppModel {
         await activateProject(projectID, nudgePath: nudgePath, config: config)
     }
 
+    /// Close a project's tab for this session: the strip forgets it, the
+    /// config does not — every configured project is a tab again at the next
+    /// launch. Closing the active tab activates its neighbour (the tab that
+    /// followed it, else the one before), and the last tab refuses to close:
+    /// a board with no project is the onboarding screen's shape, and this is
+    /// not onboarding.
+    public func closeProject(_ projectID: String) async {
+        guard projectTabs.count > 1,
+              let index = projectTabs.firstIndex(where: { $0.id == projectID }) else { return }
+        projectTabs.remove(at: index)
+        if activeProjectID == projectID {
+            let neighbour = projectTabs[min(index, projectTabs.count - 1)]
+            await activateProject(neighbour.id)
+        }
+    }
+
     /// The active project's store (computed property for backward compatibility).
     public var projectStore: ProjectStore? {
         guard let activeID = activeProjectID else { return nil }
@@ -228,7 +273,10 @@ public final class AppModel {
         return store
     }
 
-    /// The currently selected slice ID (per-project).
+    /// The currently selected slice ID (per-project). Selecting a slice
+    /// deselects the workshop row — the rail draws one selected row — and
+    /// dismisses any workshop launch failure, since looking away is how an
+    /// error is put down.
     public var selectedSliceID: String? {
         get {
             guard let activeID = activeProjectID else { return nil }
@@ -237,7 +285,87 @@ public final class AppModel {
         set {
             guard let activeID = activeProjectID else { return }
             selectedSliceIDs[activeID] = newValue
+            if newValue != nil {
+                workshopSelectedProjects.remove(activeID)
+                workshopLaunchError = nil
+            }
         }
+    }
+
+    // MARK: - Workshop
+
+    /// The planning agent as the activity poll last saw it — nil while none
+    /// runs. The live reading is the whole source of workshop presence, so an
+    /// agent launched before this app started is found the same way one it
+    /// launched itself is.
+    public var planningAgent: AgentStatus? {
+        activityStore?.agents[Self.planSentinel]
+    }
+
+    /// Whether the active project's rail has the workshop row selected.
+    /// Setting it true clears the slice selection — see `selectedSliceID`.
+    public var workshopSelected: Bool {
+        get {
+            guard let activeID = activeProjectID else { return false }
+            return workshopSelectedProjects.contains(activeID)
+        }
+        set {
+            guard let activeID = activeProjectID else { return }
+            if newValue {
+                workshopSelectedProjects.insert(activeID)
+                selectedSliceIDs[activeID] = nil
+            } else {
+                workshopSelectedProjects.remove(activeID)
+            }
+        }
+    }
+
+    /// The wand button: select the workshop row and nothing else. With a
+    /// planning agent live the pane attaches to it; with none the pane opens
+    /// on the composer asking what to workshop — the launch is the composer's
+    /// own `launchWorkshop(request:)`, the board's `w` asking its question
+    /// before any session starts.
+    public func openWorkshop() {
+        guard activeProjectID != nil else { return }
+        workshopSelected = true
+    }
+
+    /// The composer's launch: start a planning agent on the active project
+    /// with the config's workshop pair, the request folded into its prompt —
+    /// trimmed, and empty meaning a plain session (or the wishlist, which is
+    /// the CLI's own rule). Skipped when one is already live (there is only
+    /// ever one — the CLI refuses a second). The activity poll is what turns
+    /// a successful launch into a live row and an attached terminal, so it is
+    /// kicked rather than the result being held here as a second source of
+    /// truth.
+    public func launchWorkshop(request: String) async {
+        guard let projectID = activeProjectID else { return }
+        workshopSelected = true
+        guard planningAgent == nil, !workshopLaunching else { return }
+
+        workshopLaunching = true
+        workshopLaunchError = nil
+        do {
+            _ = try await workshopLauncher(
+                projectID,
+                config?.workshopAgent?.model,
+                config?.workshopAgent?.effort,
+                request.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                workshopLaunchError = message
+            } else {
+                workshopLaunchError = error.localizedDescription
+            }
+        } catch {
+            workshopLaunchError = error.localizedDescription
+        }
+        workshopLaunching = false
+        // Kicked on failure too: "a planning agent is already live" means
+        // there is a session the poll has not seen yet, and seeing it is
+        // exactly what turns the refusal into the terminal.
+        activityStore?.kick()
     }
 
     /// Return the count of live agents in a given project.
@@ -285,6 +413,12 @@ public final class AppModel {
             .filter { $0.handedBack }
             .map { ReviewStatsStore.HandedBackSlice(sliceID: $0.id, branch: $0.branch ?? "") }
         await reviewStatsStore?.update(projectID: projectID, handedBack: handedBack)
+        // The PR-readiness reading rides the same cadence the Go board's
+        // does — every plan that lands — and is skipped the same way when no
+        // slice has a pull request worth asking about.
+        if info.slices.contains(where: { !$0.pr.isEmpty }) {
+            await reviewStatsStore?.updatePRStatus(projectID: projectID)
+        }
     }
 
     private func startNudgeWatcher(for projectStore: ProjectStore, nudgePath: String) {
@@ -316,8 +450,13 @@ public final class AppModel {
                     try await Task.sleep(nanoseconds: pollInterval * 1_000_000_000)
 
                     if !Task.isCancelled {
-                        await projectStore.refresh()
-                        self.sliceDetailStores[projectStore.projectID]?.invalidateCache(keeping: self.selectedSliceID)
+                        // The same load the refresh action makes — review
+                        // stats and the PR-readiness reading included, so a
+                        // pull request merged on GitHub (which writes nothing
+                        // to Notion and so fires no nudge) leaves the NEEDS
+                        // REVIEW rail within a poll interval rather than
+                        // sitting there as "awaiting review" forever.
+                        await self.refresh()
                     }
                 } catch {
                     // Task was cancelled; exit the loop

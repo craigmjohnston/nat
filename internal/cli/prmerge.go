@@ -20,9 +20,9 @@ type PRMerger interface {
 }
 
 // prMerge merges a slice's recorded pull request: the board's merge key
-// without the board. Nothing is written to Notion by any of this — a merged
-// pull request is the work landing, and the slice was marked Done as the pull
-// request was opened.
+// without the board. A merge that lands marks the slice Done — Done means the
+// work is on main, and the merge is the one event that makes it true, so the
+// status write rides it rather than the approve.
 //
 // The refusal is the merge box's own: the pull request is read again first,
 // and a review not yet approved, a check still failing or a branch conflicting
@@ -78,10 +78,20 @@ func prMerge(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("merge #%d: %w", pr.Number, err)
 	}
 
+	// The merge happened whatever this write does, so its failure says so
+	// rather than reading as a merge that never was — and running the command
+	// again is not the recovery, since a merged pull request has nothing left
+	// to merge. The board's own reading settles such a slice on its next pass.
+	if err := actions.MarkDone(ctx, client, s); err != nil {
+		return fmt.Errorf("merged #%d, but could not mark %q Done: %w", pr.Number, s.Name, err)
+	}
+	env.nudged()
+
 	if *asJSON {
 		return writeMergedJSON(env.Out)
 	}
-	_, err = io.WriteString(env.Out, fmt.Sprintf("# Merged\n\nMerged #%d.\n\n- PR: %s\n", pr.Number, s.PRURL))
+	_, err = io.WriteString(env.Out,
+		fmt.Sprintf("# Merged\n\nMerged #%d and marked %q Done.\n\n- PR: %s\n", pr.Number, s.Name, s.PRURL))
 	return err
 }
 

@@ -20,7 +20,7 @@ A native macOS application for the notion-agent-tracker project, built as a pure
 
 ### Run the app in development:
 ```bash
-swift run --package-path macos NatApp
+swift run --package-path macos gnat
 ```
 
 Or open the project directly in Xcode:
@@ -38,10 +38,20 @@ swift test --package-path macos
 bash macos/Scripts/make-app.sh
 ```
 
-This creates `macos/.build/NatApp.app`, which can be run with:
+This creates `macos/.build/gnat.app`, which can be run with:
 ```bash
-open macos/.build/NatApp.app
+open macos/.build/gnat.app
 ```
+
+The bundle carries its own `nat`, built universal (arm64 + x86_64) from the
+same checkout, so the app and the nat it runs are never out of step and
+nobody go-installs the same tool twice — building the bundle therefore needs
+the Go toolchain as well as Swift's. At startup the app composes its PATH
+from the bundled nat's directory, the login shell's PATH, and whatever
+launchd handed over (`PathBootstrap`), then carries it into the agent tmux
+sessions, so a Finder launch resolves `nat`, `tmux`, `gh` and `ntn` exactly
+as a terminal one would. `tmux`, `gh` and `ntn` remain the machine's own —
+credentialed tools on their own update schedules are not ours to bundle.
 
 ## Package Structure
 

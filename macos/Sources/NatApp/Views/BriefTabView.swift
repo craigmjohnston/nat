@@ -30,153 +30,157 @@ struct BriefTabView: View {
     @State private var launchError: String?
     @State private var launchWarning: String?
 
-    private func briefAttributedString(_ brief: String) -> AttributedString {
-        do {
-            return try AttributedString(markdown: brief, options: .init(interpretedSyntax: .full))
-        } catch {
-            // Fallback to plain text if markdown parsing fails
-            return AttributedString(brief)
-        }
-    }
+    /// The sidebar's width, draggable at its divider and remembered across
+    /// launches — the same `PaneResizeHandle` bargain the PR tab's sidebar
+    /// makes, kept under its own key since the two rails size independently.
+    @AppStorage("briefSidebarWidth") private var sidebarWidth = 216.0
 
     var body: some View {
         VStack(spacing: 0) {
             // Scrollable content area
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    // Brief section label
-                    HStack {
-                        Text("BRIEF — BECOMES THE AGENT'S PROMPT")
-                            .font(.system(size: Typo.subhead, weight: .semibold))
-                            .foregroundStyle(DesignTokens.labelTertiary)
+            HStack(spacing: 0) {
+                ScrollView {
+                    // The reading column: the brief itself, as prose.
+                    VStack(alignment: .leading, spacing: 16) {
+                        // The brief as a document card: real content gets a
+                        // surface of its own, so the empty pane below reads
+                        // as canvas rather than void. The Spacer that pushes
+                        // this up stays outside — the card wraps only what
+                        // it actually holds.
+                        VStack(alignment: .leading, spacing: 16) {
+                            // Brief section label
+                            HStack {
+                                Text("Brief")
+                                    .font(.system(size: Typo.subhead, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.labelSecondary)
+
+                                Spacer()
+
+                                Button(action: startEditingBrief) {
+                                    Text("Edit…")
+                                        .font(.system(size: Typo.subhead, weight: .regular))
+                                }
+                                .buttonStyle(GhostButtonStyle())
+                                .disabled(!canEditBrief)
+                                .help(editBriefHelp)
+                            }
+
+                            // Brief content — a cached detail (even a stale one
+                            // still showing while a background read replaces it, or
+                            // the last good one a failed read kept) always wins over
+                            // "loading"/"failed", so re-selecting a slice already
+                            // read this session never blanks behind a spinner.
+                            if isEditingBrief {
+                                briefEditor
+                            } else if let detail = detailState.detail {
+                                // Render brief as markdown
+                                VStack(alignment: .leading, spacing: 8) {
+                                    if !detail.brief.isEmpty {
+                                        Text(markdownAttributed(detail.brief, size: Typo.body))
+                                            .font(.system(size: Typo.body, weight: .regular))
+                                            .lineSpacing(2)
+                                            .foregroundStyle(DesignTokens.label)
+                                    } else {
+                                        Text("No brief yet — what you write here becomes the agent's prompt.")
+                                            .font(.system(size: Typo.body, weight: .regular))
+                                            .foregroundStyle(DesignTokens.labelTertiary)
+                                    }
+                                }
+                            } else if detailState.isLoading {
+                                QuietLoadingView(label: "Loading the brief…")
+                                    .frame(minHeight: 100)
+                            } else if let errorMsg = detailState.errorMessage {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "exclamationmark.triangle")
+                                        .font(.system(size: 24, weight: .regular))
+                                        .foregroundStyle(DesignTokens.systemRed)
+
+                                    Text("Failed to load")
+                                        .font(.system(size: Typo.body, weight: .regular))
+                                        .foregroundStyle(DesignTokens.label)
+
+                                    Text(errorMsg)
+                                        .font(.system(size: Typo.subhead, weight: .regular))
+                                        .foregroundStyle(DesignTokens.labelSecondary)
+                                        .lineLimit(2)
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                            } else {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "doc.text")
+                                        .font(.system(size: 32, weight: .regular))
+                                        .foregroundStyle(DesignTokens.labelSecondary)
+
+                                    Text("No brief loaded")
+                                        .font(.system(size: Typo.body, weight: .regular))
+                                        .foregroundStyle(DesignTokens.labelSecondary)
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                            }
+                        }
+                        .padding(20)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(DesignTokens.controlBg)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(DesignTokens.hairline, lineWidth: 1)
+                        )
 
                         Spacer()
-
-                        Button(action: startEditingBrief) {
-                            Text("Edit…")
-                                .font(.system(size: Typo.subhead, weight: .regular))
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(!canEditBrief)
-                        .help(editBriefHelp)
                     }
-
-                    // Brief content — a cached detail (even a stale one
-                    // still showing while a background read replaces it, or
-                    // the last good one a failed read kept) always wins over
-                    // "loading"/"failed", so re-selecting a slice already
-                    // read this session never blanks behind a spinner.
-                    if isEditingBrief {
-                        briefEditor
-                    } else if let detail = detailState.detail {
-                        // Render brief as markdown
-                        VStack(alignment: .leading, spacing: 8) {
-                            if !detail.brief.isEmpty {
-                                Text(briefAttributedString(detail.brief))
-                                    .font(.system(size: Typo.body, weight: .regular))
-                                    .lineSpacing(2)
-                                    .foregroundStyle(DesignTokens.label)
-                            } else {
-                                Text("No brief yet")
-                                    .font(.system(size: Typo.body, weight: .regular))
-                                    .foregroundStyle(DesignTokens.labelSecondary)
-                            }
-                        }
-
-                        // Info line: dependencies
-                        VStack(alignment: .leading, spacing: 4) {
-                            Divider()
-                                .padding(.vertical, 6)
-
-                            Text(dependencyText(detail))
-                                .font(.system(size: Typo.subhead, weight: .regular))
-                                .foregroundStyle(DesignTokens.labelTertiary)
-                        }
-
-                        // Info line: branch
-                        if let branch = detail.branch, !branch.isEmpty {
-                            HStack(spacing: 4) {
-                                Text("branch")
-                                    .font(.system(size: Typo.subhead, weight: .regular))
-                                Text(branch)
-                                    .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
-                                    .foregroundStyle(DesignTokens.label)
-                            }
-                            .foregroundStyle(DesignTokens.labelTertiary)
-                        } else {
-                            Text("branch assigned on launch")
-                                .font(.system(size: Typo.subhead, weight: .regular))
-                                .foregroundStyle(DesignTokens.labelTertiary)
-                        }
-                    } else if detailState.isLoading {
-                        QuietLoadingView(label: "Loading the brief…")
-                            .frame(minHeight: 100)
-                    } else if let errorMsg = detailState.errorMessage {
-                        VStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle")
-                                .font(.system(size: 24, weight: .regular))
-                                .foregroundStyle(DesignTokens.systemRed)
-
-                            Text("Failed to load")
-                                .font(.system(size: Typo.body, weight: .regular))
-                                .foregroundStyle(DesignTokens.label)
-
-                            Text(errorMsg)
-                                .font(.system(size: Typo.subhead, weight: .regular))
-                                .foregroundStyle(DesignTokens.labelSecondary)
-                                .lineLimit(2)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    } else {
-                        VStack(spacing: 8) {
-                            Image(systemName: "doc.text")
-                                .font(.system(size: 32, weight: .regular))
-                                .foregroundStyle(DesignTokens.labelSecondary)
-
-                            Text("No brief loaded")
-                                .font(.system(size: Typo.body, weight: .regular))
-                                .foregroundStyle(DesignTokens.labelSecondary)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                    }
-
-                    Spacer()
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 18)
+                    .frame(maxWidth: 640)
                 }
-                .padding(.horizontal, 22)
-                .padding(.vertical, 18)
-                .frame(maxWidth: 640)
+
+                // The properties rail: status, milestone, branch and
+                // dependencies read at a glance rather than threaded through
+                // the prose — the same resizable, hairline-bordered sidebar
+                // the PR tab draws beside its own main column. Only drawn
+                // once there is a detail to read them off, the same gate the
+                // reading column's own body uses.
+                if let detail = detailState.detail {
+                    briefSidebar(detail)
+                }
             }
 
-            // Footer bar with buttons
-            Divider()
-                .frame(height: 0.5)
-
+            // Footer bar: the Launch Agent split control alone now — the
+            // card's own "Edit…" is the one edit affordance, so the footer
+            // isn't offering a second. A top hairline (rather than a
+            // Divider) plus a faint fill mark it as its own action-bar
+            // surface, distinct from the content above it.
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
-                    Button(action: startEditingBrief) {
-                        Text("Edit Brief…")
-                            .font(.system(size: Typo.subhead, weight: .regular))
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(!canEditBrief)
-                    .help(editBriefHelp)
-
                     Spacer()
 
-                    // Split Launch Agent button
+                    // Split Launch Agent button — the one gradient action on
+                    // this screen, per the button grammar. Dimmed as a whole
+                    // rather than through each button's own disabled state,
+                    // since a split control half-dimmed would read as only
+                    // one half of it being unavailable.
                     ZStack {
                         HStack(spacing: 0) {
                             Button(action: performLaunch) {
-                                if isLaunching {
-                                    ProgressView()
-                                        .scaleEffect(0.7, anchor: .center)
-                                        .frame(width: 22, height: 22)
-                                } else {
-                                    Text("Launch Agent")
-                                        .font(.system(size: Typo.subhead, weight: .semibold))
-                                        .foregroundStyle(DesignTokens.accentText)
-                                        .padding(.horizontal, 10)
-                                }
+                                // The label keeps its footprint while a
+                                // launch is in flight — drawn invisible with
+                                // the spinner overlaid — so the button never
+                                // collapses to spinner width and the split
+                                // control doesn't jump (the same reserve-and-
+                                // overlay trick the project tabs use for
+                                // their bolding labels).
+                                Text("Launch Agent")
+                                    .font(.system(size: Typo.subhead, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.accentText)
+                                    .padding(.horizontal, 10)
+                                    .opacity(isLaunching ? 0 : 1)
+                                    .overlay {
+                                        if isLaunching {
+                                            ProgressView()
+                                                .scaleEffect(0.5, anchor: .center)
+                                        }
+                                    }
                             }
                             .frame(height: 22)
                             .buttonStyle(.plain)
@@ -195,9 +199,14 @@ struct BriefTabView: View {
                             .buttonStyle(.plain)
                             .disabled(!launchIsEnabled())
                         }
+                        // Flat accent rather than the brand gradient: the
+                        // icon and the progress bar already carry the
+                        // gradient, and a button shouting it too was one
+                        // gradient too many.
                         .background(DesignTokens.accent)
-                        .cornerRadius(4)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
+                    .opacity(launchIsEnabled() ? 1 : 0.55)
                     .popover(isPresented: $showLaunchPopover, arrowEdge: .bottom) {
                         launchPopoverContent()
                             .padding(10)
@@ -205,7 +214,11 @@ struct BriefTabView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(DesignTokens.controlBg)
+                .overlay(alignment: .top) {
+                    DesignTokens.hairline
+                        .frame(height: 1)
+                }
+                .background(DesignTokens.controlBg.opacity(0.5))
 
                 // Error or warning message
                 if let error = launchError {
@@ -484,18 +497,153 @@ struct BriefTabView: View {
         await appModel.sliceDetailStore(projectID: projectID).fetch(sliceRef: slice.id)
     }
 
-    private func dependencyText(_ detail: SliceDetail) -> String {
-        if detail.blocked {
-            if let deps = detail.dependsOn, !deps.isEmpty {
-                return "Waits on \(deps.count) slice\(deps.count == 1 ? "" : "s")"
-            } else {
-                return "Blocked"
+    // MARK: - Properties sidebar
+
+    /// The right-hand rail: everything structured about the slice, read at a
+    /// glance rather than threaded through the brief's prose — the same
+    /// resizable, hairline-bordered shape `PRSidebarView` draws beside the PR
+    /// tab's main column, right down to its own `@AppStorage` width.
+    private func briefSidebar(_ detail: SliceDetail) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                statusSection(detail)
+                if let milestoneName {
+                    milestoneSection(milestoneName)
+                }
+                branchSection(detail)
+                dependsOnSection(detail)
             }
-        } else if let deps = detail.dependsOn, !deps.isEmpty {
-            return "Waits on \(deps.count) slice\(deps.count == 1 ? "" : "s")"
-        } else {
-            return "Nothing depends on this slice"
+            .padding(.horizontal, 14)
+            .padding(.vertical, 18)
         }
+        .frame(width: sidebarWidth)
+        .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator)
+        .overlay(alignment: .leading) {
+            PaneResizeHandle(width: $sidebarWidth, minWidth: 170, maxWidth: 400, edge: .leading)
+                .offset(x: -4.5)
+        }
+    }
+
+    private func statusSection(_ detail: SliceDetail) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("STATUS")
+                .font(.system(size: Typo.subhead, weight: .semibold))
+                .foregroundStyle(DesignTokens.labelTertiary)
+
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(statusDotColor(detail.status))
+                    .frame(width: 8, height: 8)
+                Text(detail.status)
+                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .foregroundStyle(DesignTokens.label)
+            }
+        }
+    }
+
+    // Omitted entirely when the milestone can't be named — a plan not yet
+    // loaded says nothing false rather than a blank section.
+    private func milestoneSection(_ name: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("MILESTONE")
+                .font(.system(size: Typo.subhead, weight: .semibold))
+                .foregroundStyle(DesignTokens.labelTertiary)
+
+            Text(name)
+                .font(.system(size: Typo.subhead, weight: .regular))
+                .foregroundStyle(DesignTokens.label)
+        }
+    }
+
+    private func branchSection(_ detail: SliceDetail) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("BRANCH")
+                .font(.system(size: Typo.subhead, weight: .semibold))
+                .foregroundStyle(DesignTokens.labelTertiary)
+
+            if let branch = detail.branch, !branch.isEmpty {
+                Text(branch)
+                    .font(.system(size: Typo.caption, weight: .regular, design: .monospaced))
+                    .foregroundStyle(DesignTokens.label)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(DesignTokens.fieldBg)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(DesignTokens.hairline, lineWidth: 1)
+                    )
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            } else {
+                Text("Assigned on launch")
+                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .foregroundStyle(DesignTokens.labelTertiary)
+            }
+        }
+    }
+
+    private func dependsOnSection(_ detail: SliceDetail) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("DEPENDS ON")
+                .font(.system(size: Typo.subhead, weight: .semibold))
+                .foregroundStyle(DesignTokens.labelTertiary)
+
+            let entries = dependencyEntries(
+                detail.dependsOn,
+                plan: appModel.projectStore?.state.projectInfo?.slices ?? []
+            )
+            if entries.isEmpty {
+                Text("None")
+                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .foregroundStyle(DesignTokens.labelTertiary)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
+                        HStack(spacing: 4) {
+                            if entry.done {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(DesignTokens.systemGreen)
+                            }
+                            Text(entry.name)
+                                .font(.system(size: Typo.caption, weight: .regular))
+                                .foregroundStyle(entry.done ? DesignTokens.labelTertiary : DesignTokens.label)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(DesignTokens.controlFace)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+
+                    if detail.blocked {
+                        Text("Blocked until these finish")
+                            .font(.system(size: Typo.caption, weight: .regular))
+                            .foregroundStyle(DesignTokens.systemYellow)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The Status row's dot: green once done, orange while being worked, and
+    /// otherwise the same quiet tertiary a Todo slice draws everywhere else.
+    private func statusDotColor(_ status: String) -> Color {
+        switch status {
+        case "Done": return DesignTokens.systemGreen
+        case "In progress": return DesignTokens.systemOrange
+        default: return DesignTokens.labelTertiary
+        }
+    }
+
+    /// The slice's milestone name, read off the loaded plan rather than
+    /// carried on the slice itself — `Slice.milestoneID` is a select option's
+    /// name, and `Milestone.id` is that same name (see `domain.Milestone`),
+    /// so this is a lookup rather than an ID resolution.
+    private var milestoneName: String? {
+        appModel.projectStore?.state.projectInfo?.milestones
+            .first { $0.id == slice.milestoneID }?.name
     }
 }
 

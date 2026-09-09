@@ -156,7 +156,8 @@ nat complete-slice <slice> --project <project> --branch <branch> \
 That records the branch you pushed and hands the slice back for review, writing
 the summary onto the slice page: what you did, key decisions, follow-ups worth
 queueing. It leaves the slice in progress deliberately — approving it on the
-board is what opens the pull request and marks it Done.
+board is what opens the pull request, and the merge of that pull request is
+what marks the slice Done.
 
 `--pr-description` is what that pull request is opened with — its first line
 becomes the title and the rest the body — so write it ready to publish: what

@@ -19,6 +19,17 @@ public final class ReviewStatsStore {
     /// never fetched, still in flight, or whose last fetch failed.
     public private(set) var stats: [String: String] = [:]
 
+    /// How many files each branch touched, from the same fetch as `stats`
+    /// and kept in step with it — the review row's "N files" meta.
+    public private(set) var fileCounts: [String: Int] = [:]
+
+    /// The readiness words of every pull request positively read as open,
+    /// by slice id — `nat pr-status`'s reading, the same one the Go board's
+    /// Active panel rides. A slice absent here has no open pull request as
+    /// far as anything has read, which for a Done slice is what keeps a
+    /// project's whole finished history out of the NEEDS REVIEW section.
+    public private(set) var prReadiness: [String: String] = [:]
+
     private let client: NatClientProtocol
     private var branchBySlice: [String: String] = [:]
 
@@ -48,6 +59,7 @@ public final class ReviewStatsStore {
     public func update(projectID: String, handedBack: [HandedBackSlice]) async {
         let currentIDs = Set(handedBack.map(\.sliceID))
         stats = stats.filter { currentIDs.contains($0.key) }
+        fileCounts = fileCounts.filter { currentIDs.contains($0.key) }
         branchBySlice = branchBySlice.filter { currentIDs.contains($0.key) }
 
         for entry in handedBack {
@@ -60,6 +72,7 @@ public final class ReviewStatsStore {
                 let adds = diff.files.reduce(0) { $0 + $1.adds }
                 let dels = diff.files.reduce(0) { $0 + $1.dels }
                 stats[entry.sliceID] = "+\(adds) \u{2212}\(dels)"
+                fileCounts[entry.sliceID] = diff.files.count
             } catch {
                 // Quiet: the row is simply left with no stat. Unlike a
                 // successful fetch, a failure does not stick — `stats` has no
@@ -67,6 +80,23 @@ public final class ReviewStatsStore {
                 // (the next plan reload) tries again on its own rather than
                 // giving up on a branch for good over one bad read.
                 stats.removeValue(forKey: entry.sliceID)
+                fileCounts.removeValue(forKey: entry.sliceID)
+            }
+        }
+    }
+
+    /// Takes a fresh PR-readiness reading and replaces the last one with it.
+    /// A reading that fails outright leaves the last one standing — stale
+    /// news about an open pull request beats no news, and the next plan
+    /// reload retries on its own. Within a reading that succeeded, a slice
+    /// reported "unread" simply has no entry, exactly as the Go board holds
+    /// it: nothing distinguishes a landed pull request from one gh could not
+    /// be asked about, and neither keeps a slice in the section.
+    public func updatePRStatus(projectID: String) async {
+        guard let doc = try? await client.prStatus(projectID: projectID) else { return }
+        prReadiness = doc.slices.reduce(into: [:]) { map, slice in
+            if slice.isOpen {
+                map[slice.sliceID] = slice.readiness
             }
         }
     }
@@ -74,6 +104,8 @@ public final class ReviewStatsStore {
     /// Clear everything, as if nothing had ever been fetched.
     public func clear() {
         stats = [:]
+        fileCounts = [:]
         branchBySlice = [:]
+        prReadiness = [:]
     }
 }

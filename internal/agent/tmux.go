@@ -354,7 +354,8 @@ func (t *Tmux) breakOutAll(panes []pane, want func(pane) bool) (int, error) {
 // could not be tagged is left running — its agent is already working — but the
 // failure is reported, because until it is tagged nothing will find it again.
 func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.AgentModel) error {
-	out, err := t.runner.Run(TmuxBinary, LaunchArgs(session, workdir, promptFile, m)...)
+	carryEnv := os.Getenv("PATH") != "" && t.supportsSessionEnv()
+	out, err := t.runner.Run(TmuxBinary, LaunchArgs(session, workdir, promptFile, m, carryEnv)...)
 	if err != nil {
 		return fmt.Errorf("launch tmux session %s: %w", session, err)
 	}
@@ -377,17 +378,72 @@ func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.Age
 // session prints its pane's ID, which is the handle the slice tag goes on:
 // pane IDs are unique for the life of the server, where a name is whatever it
 // has last been set to.
-func LaunchArgs(session, workdir, promptFile string, m config.AgentModel) []string {
-	args := append([]string{
+func LaunchArgs(session, workdir, promptFile string, m config.AgentModel, carryEnv bool) []string {
+	args := []string{
 		"new-session", "-d",
 		"-s", session,
 		"-c", workdir,
+	}
+	if carryEnv {
+		args = append(args, "-e", "PATH="+os.Getenv("PATH"))
+	}
+	args = append(args,
 		"-P", "-F", "#{pane_id}",
 		"sh", "-c", agentCommand(promptFile, m),
-	}, statusOffArgs(session)...)
+	)
+	args = append(args, statusOffArgs(session)...)
 	args = append(args, mouseOnArgs(session)...)
 	args = append(args, inputFeatureArgs()...)
 	return append(args, hyperlinkClickArgs()...)
+}
+
+// supportsSessionEnv reports whether this tmux takes new-session's -e flag,
+// which arrived in 3.2: an older one rejects the whole command with a usage
+// error, breaking every launch — exactly the users the flag is dropped for,
+// whose launches then behave as they always did. Only a version positively
+// read as older refuses; a `tmux -V` that fails, or an answer with no number
+// in it (a dev build's "next-3.6" parses; "master" does not), says nothing
+// about age, and a tmux genuinely absent fails the launch itself with the
+// better error.
+func (t *Tmux) supportsSessionEnv() bool {
+	out, err := t.runner.Run(TmuxBinary, "-V")
+	if err != nil {
+		return true
+	}
+	return versionAtLeast(out, 3, 2)
+}
+
+// versionAtLeast reads the first `major.minor` in a `tmux -V` answer and
+// compares it. An answer holding no number at all passes: it cannot be read
+// as old.
+func versionAtLeast(v string, major, minor int) bool {
+	gotMajor, rest, ok := leadingInt(v)
+	if !ok {
+		return true
+	}
+	if gotMajor != major {
+		return gotMajor > major
+	}
+	gotMinor := 0
+	if strings.HasPrefix(rest, ".") {
+		gotMinor, _, _ = leadingInt(rest[1:])
+	}
+	return gotMinor >= minor
+}
+
+// leadingInt is the first run of digits in s, with what follows it — how a
+// number is read out of "tmux 3.2a" without an opinion on the rest.
+func leadingInt(s string) (n int, rest string, ok bool) {
+	start := strings.IndexFunc(s, func(r rune) bool { return r >= '0' && r <= '9' })
+	if start < 0 {
+		return 0, "", false
+	}
+	end := start
+	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
+		n = n*10 + int(s[end]-'0')
+		end++
+	}
+	return n, s[end:], true
 }
 
 // statusOffArgs is the command that hides the tmux status bar in an agent's own

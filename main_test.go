@@ -484,6 +484,8 @@ func (s stubAPI) AppendBlockChildrenAfter(context.Context, string, string, []map
 
 func (s stubAPI) DeleteBlock(context.Context, string) error { return s.err }
 
+func (s stubAPI) TrashPage(context.Context, string) error { return s.err }
+
 func (s stubAPI) UpdatePageProperties(context.Context, string, map[string]notion.PropertyValue) (*notion.Page, error) {
 	return &notion.Page{}, s.err
 }

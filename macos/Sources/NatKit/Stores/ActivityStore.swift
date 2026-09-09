@@ -12,12 +12,33 @@ public final class ActivityStore {
     /// Map of slice ID to agent status for all running agents.
     public private(set) var agents: [String: AgentStatus] = [:]
 
+    /// When each running agent was first seen by the poll, keyed like
+    /// `agents` — the rail's elapsed time is measured from this. An agent
+    /// keeps its stamp across polls and loses it when it goes, so a relaunch
+    /// starts the clock again.
+    public private(set) var firstSeen: [String: Date] = [:]
+
     private let client: NatClientProtocol
+    private let now: () -> Date
     private var pollTask: Task<Void, Never>?
     private var isPolling = false
 
-    public init(client: NatClientProtocol = NatClient()) {
+    public init(client: NatClientProtocol = NatClient(), now: @escaping () -> Date = { Date() }) {
         self.client = client
+        self.now = now
+    }
+
+    /// `firstSeen` brought in line with one poll's reading: an agent already
+    /// stamped keeps its stamp, a new one is stamped `now`, and one no longer
+    /// running is dropped. Pure, so the rule is testable without the loop.
+    nonisolated static func mergeFirstSeen(
+        existing: [String: Date],
+        sliceIDs: some Sequence<String>,
+        now: Date
+    ) -> [String: Date] {
+        sliceIDs.reduce(into: [:]) { merged, sliceID in
+            merged[sliceID] = existing[sliceID] ?? now
+        }
     }
 
     /// Re-arm the poll loop if it has stopped.
@@ -48,6 +69,9 @@ public final class ActivityStore {
                         newAgents[status.sliceID] = status
                     }
                     self.agents = newAgents
+                    self.firstSeen = Self.mergeFirstSeen(
+                        existing: self.firstSeen, sliceIDs: newAgents.keys, now: self.now()
+                    )
 
                     // If no agents, stop polling
                     if statuses.isEmpty {

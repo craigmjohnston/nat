@@ -1,10 +1,19 @@
+import AppKit
 import SwiftUI
 import NatKit
 
 struct WindowShellView: View {
     @Bindable var appModel: AppModel
-    @State private var showWorkshopOverlay = false
     @State private var showNewSliceSheet = false
+
+    /// The header row's height — and, through TrafficLightAlignerView, the
+    /// band the traffic lights are centred in.
+    private static let headerHeight: CGFloat = 40
+
+    /// The rail's width, draggable at its divider and remembered across
+    /// launches. The default is the `maxWidth` the rail was fixed at before
+    /// it was resizable.
+    @AppStorage("railWidth") private var railWidth = 372.0
 
     var body: some View {
         ZStack {
@@ -16,16 +25,6 @@ struct WindowShellView: View {
             } else {
                 board
             }
-
-            if showWorkshopOverlay, let projectID = appModel.activeProjectID {
-                WorkshopOverlayView(
-                    projectID: projectID,
-                    projectName: activeProjectName,
-                    model: appModel.config?.workshopAgent?.model,
-                    effort: appModel.config?.workshopAgent?.effort,
-                    onClose: { showWorkshopOverlay = false }
-                )
-            }
         }
         // With the system title bar hidden, SwiftUI still reserves its height
         // as a top safe-area inset by default — without this, `board`'s own
@@ -33,6 +32,13 @@ struct WindowShellView: View {
         // leaving a bare strip of window above it instead of the header
         // being what sits there.
         .ignoresSafeArea(.container, edges: .top)
+        // The cursor floor: without it, nothing in the window claims cursor
+        // updates and the cursor stays whatever the window behind last set.
+        .background(DefaultCursorView().ignoresSafeArea())
+        // The traffic lights, recentred in the header band: macOS lays them
+        // out for the standard title bar's height, which in a 40pt header
+        // sits them high and tight to the left edge.
+        .background(TrafficLightAlignerView(headerHeight: Self.headerHeight))
         .sheet(isPresented: $showNewSliceSheet) {
             NewSliceSheetView(
                 projectID: appModel.activeProjectID ?? "",
@@ -75,20 +81,24 @@ struct WindowShellView: View {
                             Image(systemName: "plus.rectangle.on.rectangle")
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(DesignTokens.labelTertiary)
+                                .frame(width: 28, height: 28)
                         }
                         .buttonStyle(.plain)
                         .disabled(appModel.projectStore == nil)
                         .opacity(appModel.projectStore == nil ? 0.5 : 1)
+                        .hoverWash(enabled: appModel.projectStore != nil)
                         .help("New Slice…")
 
-                        Button(action: { showWorkshopOverlay = true }) {
+                        Button(action: { appModel.openWorkshop() }) {
                             Image(systemName: "wand.and.stars")
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(DesignTokens.labelTertiary)
+                                .frame(width: 28, height: 28)
                         }
                         .buttonStyle(.plain)
                         .disabled(appModel.projectStore == nil)
                         .opacity(appModel.projectStore == nil ? 0.5 : 1)
+                        .hoverWash(enabled: appModel.projectStore != nil)
                         .help("Workshop the Plan")
                     }
                     .padding(.horizontal, 16)
@@ -110,32 +120,43 @@ struct WindowShellView: View {
                     // toolbar buttons), and only the bare parts of the row
                     // fall through to this gesture — which is what makes the
                     // header behave like a title bar without swallowing its
-                    // own controls' clicks.
+                    // own controls' clicks. The double-click rides the same
+                    // bare parts: a real title bar zooms on it, and hiding
+                    // the system bar is not a reason to lose that.
+                    .gesture(TapGesture(count: 2).onEnded {
+                        TitlebarDoubleClick.perform(on: NSApp.keyWindow)
+                    })
                     .gesture(WindowDragGesture())
                 )
             }
-            .frame(height: 40)
+            .frame(height: Self.headerHeight)
 
             // Main content: Rail | Pane
             HStack(spacing: 0) {
                 RailView(appModel: appModel)
-                    .frame(maxWidth: 372)
+                    .frame(width: railWidth)
 
-                PaneView(appModel: appModel, isCovered: showWorkshopOverlay)
+                PaneView(appModel: appModel)
                     .frame(maxWidth: .infinity)
+                    // The rail's resize handle, straddling the divider the
+                    // rail draws as its trailing border. It hangs off the
+                    // pane rather than the rail so the sliver it covers is
+                    // the pane's quiet left margin, not the tail of the
+                    // rail's clickable rows.
+                    .overlay(alignment: .leading) {
+                        PaneResizeHandle(width: $railWidth, minWidth: 240, maxWidth: 560, edge: .trailing)
+                            .offset(x: -4.5)
+                    }
             }
             .frame(maxHeight: .infinity)
 
-            // Progress border
+            // Progress border — it sizes itself (the 7pt bar plus its own
+            // vertical padding); clamping it to the bar's height alone let
+            // the padding spill out and be clipped at the window's bottom.
             ProgressBorderView(appModel: appModel)
-                .frame(height: 7)
         }
     }
 
-    private var activeProjectName: String {
-        guard let activeID = appModel.activeProjectID else { return "" }
-        return appModel.projectTabs.first(where: { $0.id == activeID })?.name ?? activeID
-    }
 }
 
 #Preview {

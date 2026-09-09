@@ -36,6 +36,7 @@ type API interface {
 	AppendBlockChildrenAfter(ctx context.Context, id, after string, children []map[string]any) ([]notion.Block, error)
 	DeleteBlock(ctx context.Context, id string) error
 	UpdatePageProperties(ctx context.Context, pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
+	TrashPage(ctx context.Context, pageID string) error
 	CreateProject(ctx context.Context, projectsDSID, name string, assignee bool) (*notion.ProjectStructure, error)
 }
 
@@ -82,8 +83,8 @@ func DefaultNewGH() GH { return gh.New() }
 // serves slice-launch and slice-diff alike.
 type GitCLI interface {
 	actions.Repo
-	Diff(dir, branch string) (base, diff string, err error)
-	Commits(dir, branch string) ([]git.Commit, error)
+	DiffFrom(dir, baseName, branch string) (base, diff string, err error)
+	CommitsFrom(dir, baseName, branch string) (string, []git.Commit, error)
 	CommitDiff(dir, sha string) (string, error)
 }
 
@@ -172,8 +173,9 @@ usage:
                       launch a detached agent for a slice with optional model
                       and effort overrides
   nat slice-approve <slice> [--json] --project ID
-                      open a pull request for a handed-back branch and mark
-                      the slice Done
+                      open a pull request for a handed-back branch and record
+                      it on the slice, which stays in progress until the merge
+                      marks it Done
   nat slice-diff <slice> [--json] --project ID
                       print the diff of a handed-back branch
   nat slice-diff <slice> --commits [--json] --project ID
@@ -188,6 +190,12 @@ usage:
                       replace a Todo slice's description, its page body;
                       refused on a slice in progress or Done. --description -
                       reads it from stdin
+  nat slice-move <slice> --milestone <name> [--json] --project ID
+                      refile a slice under another milestone, by name; the
+                      work itself is untouched. Refused on a slice in progress
+  nat slice-delete <slice> [--json] --project ID
+                      move a slice's page to Notion's trash, where it is still
+                      recoverable. Refused on a slice in progress
   nat agent-send <slice> [--text TEXT|-] --project ID
                       send a prompt to a live agent session; - or absent reads
                       from stdin
@@ -223,9 +231,12 @@ usage:
                       close out a slice you claimed: with --branch, handed back
                       for review — the branch recorded, the slice left in
                       progress, and the board's approve key what opens the pull
-                      request; with --pr, Done with its pull request recorded;
+                      request; with --pr, its pull request recorded and the
+                      slice left in progress until the merge marks it Done;
                       with --blocked, left in progress with a note saying what
-                      stopped it. A summary is appended to the page either way,
+                      stopped it; with none of the three, straight to Done,
+                      since work with no pull request has no merge coming.
+                      A summary is appended to the page either way,
                       and --pr-description records beside it the text the board
                       opens the pull request with: its first line the title,
                       the rest the body
@@ -241,16 +252,20 @@ usage:
                       post a comment on the slice's recorded pull request;
                       --body - or absent reads it from stdin
   nat pr-merge <slice> [--json] --project ID
-                      merge a slice's pull request through gh, refused in the
-                      merge box's own words when a review, a check or the
-                      branch itself says it should not go in yet
+                      merge a slice's pull request through gh and mark the
+                      slice Done, refused in the merge box's own words when a
+                      review, a check or the branch itself says it should not
+                      go in yet
   nat pr-status [--json] --project ID
                       read every slice with a pull request still worth
-                      watching and print how close each is to landing
-  nat workshop-launch [--model M] [--effort E] [--json] --project ID
+                      watching and print how close each is to landing; an
+                      in-progress slice whose pull request turns out to have
+                      merged is marked Done on the way
+  nat workshop-launch [--model M] [--effort E] [--request TEXT|-] [--json] --project ID
                       launch a planning agent detached in tmux on the
-                      project's working dir, on its pending wishlist when it
-                      has one and a plain session otherwise
+                      project's working dir, on the request when one is
+                      given, else its pending wishlist when it has one and
+                      a plain session otherwise
   nat config-show [--json]
                       print local config: the agent split, the poll interval,
                       the two model pairs and each project's working directory
@@ -314,6 +329,10 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return sliceDiff(ctx, args[1:], env)
 	case "slice-edit":
 		return sliceEdit(ctx, args[1:], env)
+	case "slice-move":
+		return sliceMove(ctx, args[1:], env)
+	case "slice-delete":
+		return sliceDelete(ctx, args[1:], env)
 	case "agent-send":
 		return agentSend(ctx, args[1:], env)
 	case "agent-interrupt":

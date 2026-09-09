@@ -171,17 +171,26 @@ func TestLiveSlicesError(t *testing.T) {
 }
 
 func TestLaunch(t *testing.T) {
-	r := &fakeRunner{outs: map[string]string{"new-session": "%7\n"}}
+	t.Setenv("PATH", "/Applications/gnat.app/Contents/MacOS:/opt/homebrew/bin:/usr/bin")
+	r := &fakeRunner{outs: map[string]string{
+		"-V":          "tmux 3.5a\n",
+		"new-session": "%7\n",
+	}}
 	id := "3b738308-f654-8170-8c99-eccab4463d8f"
 	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/Users/craig/Projects/x", "/tmp/prompt.md", id, config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
 
 	want := []call{
+		// Whether -e may be said at all is asked of the tmux itself.
+		{name: "tmux", args: []string{"-V"}},
 		{name: "tmux", args: append([]string{
 			"new-session", "-d",
 			"-s", "nat-b4463d8f",
 			"-c", "/Users/craig/Projects/x",
+			// The launcher's PATH, carried into the session so the agent's
+			// own nat commands resolve against it whoever started the server.
+			"-e", "PATH=/Applications/gnat.app/Contents/MacOS:/opt/homebrew/bin:/usr/bin",
 			"-P", "-F", "#{pane_id}",
 			"sh", "-c", `claude "$(cat '/tmp/prompt.md')"`,
 			// Chained onto the creation, so the session never shows a status
@@ -200,6 +209,73 @@ func TestLaunch(t *testing.T) {
 	}
 	if !reflect.DeepEqual(r.calls, want) {
 		t.Errorf("calls = %+v, want %+v", r.calls, want)
+	}
+}
+
+// A launcher with no PATH at all says nothing about the session's, rather
+// than writing an empty variable over whatever the tmux server has — and
+// asks tmux nothing either, there being nothing to carry.
+func TestLaunchNoPATH(t *testing.T) {
+	t.Setenv("PATH", "")
+	r := &fakeRunner{outs: map[string]string{"new-session": "%7\n"}}
+	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "3b73", config.AgentModel{}); err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	if r.calls[0].args[0] != "new-session" {
+		t.Errorf("first call = %v, want new-session with no version asked for", r.calls[0].args)
+	}
+	for _, arg := range r.calls[0].args {
+		if arg == "-e" || strings.HasPrefix(arg, "PATH=") {
+			t.Errorf("args = %v, want no -e PATH with PATH unset", r.calls[0].args)
+		}
+	}
+}
+
+// A tmux from before 3.2 rejects new-session's -e outright, taking the whole
+// launch with it — so on one positively read as older, the PATH is not
+// carried and the launch is exactly what it was before there was a carry.
+func TestLaunchOldTmuxDropsTheEnv(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin")
+	r := &fakeRunner{outs: map[string]string{
+		"-V":          "tmux 3.0a\n",
+		"new-session": "%7\n",
+	}}
+	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "3b73", config.AgentModel{}); err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	launch := r.calls[1].args
+	for _, arg := range launch {
+		if arg == "-e" || strings.HasPrefix(arg, "PATH=") {
+			t.Errorf("args = %v, want no -e PATH on tmux 3.0", launch)
+		}
+	}
+}
+
+// The version gate reads tmux's own answer, and refuses the flag only on one
+// positively read as older than 3.2: an answer nobody can parse, or a -V that
+// failed, says nothing about age — a tmux genuinely absent fails the launch
+// itself with the better error.
+func TestVersionAtLeast(t *testing.T) {
+	tests := []struct {
+		v    string
+		want bool
+	}{
+		{"tmux 3.2", true},
+		{"tmux 3.2a", true},
+		{"tmux 3.5a", true},
+		{"tmux 10.0", true},
+		{"tmux next-3.6", true},
+		{"tmux master", true},
+		{"", true},
+		{"tmux 3.1c", false},
+		{"tmux 3.0a", false},
+		{"tmux 3", false},
+		{"tmux 2.9a", false},
+	}
+	for _, tt := range tests {
+		if got := versionAtLeast(tt.v, 3, 2); got != tt.want {
+			t.Errorf("versionAtLeast(%q, 3, 2) = %v, want %v", tt.v, got, tt.want)
+		}
 	}
 }
 
@@ -494,7 +570,7 @@ func TestHostPane(t *testing.T) {
 }
 
 func TestLaunchArgsQuotesThePromptPath(t *testing.T) {
-	args := LaunchArgs("nat-1", "/tmp", "/tmp/craig's prompt.md", config.AgentModel{})
+	args := LaunchArgs("nat-1", "/tmp", "/tmp/craig's prompt.md", config.AgentModel{}, false)
 	// The command is the argument after "sh -c", wherever the argv puts it.
 	sh := slices.Index(args, "sh")
 	if sh < 0 || sh+2 >= len(args) {
@@ -531,7 +607,7 @@ func TestLaunchArgsCarryTheModelFlags(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			args := LaunchArgs("nat-1", "/tmp", "/tmp/p.md", tt.model)
+			args := LaunchArgs("nat-1", "/tmp", "/tmp/p.md", tt.model, false)
 			sh := slices.Index(args, "sh")
 			if sh < 0 || sh+2 >= len(args) {
 				t.Fatalf("args = %v, want an sh -c command in there", args)
@@ -548,7 +624,7 @@ func TestLaunchArgsCarryTheModelFlags(t *testing.T) {
 // no test of its own: nat itself makes no session — it runs in the terminal it
 // was started in — so a launch is the only place one is made.
 func TestAgentSessionsChainStatusOff(t *testing.T) {
-	launch := LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md", config.AgentModel{})
+	launch := LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md", config.AgentModel{}, false)
 	chained := append(statusOffArgs("nat-1"), mouseOnArgs("nat-1")...)
 	chained = append(chained, inputFeatureArgs()...)
 	chained = append(chained, hyperlinkClickArgs()...)
@@ -583,7 +659,7 @@ func TestSessionsNatCreatesEnableExtendedKeysAndHyperlinks(t *testing.T) {
 		}
 	}
 	suffix = append(suffix, hyperlinkClickArgs()...)
-	args := LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md", config.AgentModel{})
+	args := LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md", config.AgentModel{}, false)
 	if !reflect.DeepEqual(args[len(args)-len(suffix):], suffix) {
 		t.Errorf("args = %v, want them to end with %v", args, suffix)
 	}
@@ -837,9 +913,10 @@ func TestLaunchTagsWhatLiveSlicesReads(t *testing.T) {
 	if err := NewTmuxWithRunner(launch).Launch(session, "/tmp", "/tmp/prompt.md", id, config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
-	// The tagging call sets the slice tag, which is the option-and-value the
-	// call opens with.
-	tag := launch.calls[1].args
+	// The tagging call sets the slice tag, and is the launch's last word —
+	// counting from the end, since what precedes it (the version asked about
+	// before a PATH is carried) depends on the environment of the test run.
+	tag := launch.calls[len(launch.calls)-1].args
 	option, value := tag[4], tag[5]
 
 	// tmux reports the option back where the format asked for it, which is the

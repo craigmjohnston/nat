@@ -301,3 +301,91 @@ func TestExecRunnerReportsAMissingBinary(t *testing.T) {
 		t.Errorf("Run() = %v, want it to say the binary is not there", err)
 	}
 }
+
+// noSuchRef is rev-parse refusing to verify a ref, which is how a named base
+// fails to resolve at each step of the chain.
+var noSuchRef = &ExitError{Code: 1, Stderr: ""}
+
+// TestDiffFromPrefersOriginsCopyOfTheNamedBase pins the resolution's first
+// choice: origin's copy of the named base, current the moment a fetch
+// returns, where the local branch is however stale the checkout is.
+func TestDiffFromPrefersOriginsCopyOfTheNamedBase(t *testing.T) {
+	runner := &fakeRunner{outs: []string{"", "diff --git a/x b/x\n"}}
+	base, diff, err := NewWithRunner(runner).DiffFrom("/repos/nat", "release", "slice/viewer")
+	if err != nil {
+		t.Fatalf("DiffFrom() = %v, want a diff", err)
+	}
+	if base != "origin/release" {
+		t.Errorf("base = %q, want origin's copy of the named base", base)
+	}
+	if diff != "diff --git a/x b/x\n" {
+		t.Errorf("diff = %q, want what git wrote", diff)
+	}
+	wantVerify := []string{"rev-parse", "--verify", "--quiet", "refs/remotes/origin/release"}
+	if !reflect.DeepEqual(runner.calls[0].args, wantVerify) {
+		t.Errorf("verify args = %v, want %v", runner.calls[0].args, wantVerify)
+	}
+	wantDiff := []string{"diff", "--no-color", "--no-ext-diff", "--src-prefix=a/",
+		"--dst-prefix=b/", "--merge-base", "origin/release", "slice/viewer"}
+	if !reflect.DeepEqual(runner.calls[1].args, wantDiff) {
+		t.Errorf("diff args = %v, want %v", runner.calls[1].args, wantDiff)
+	}
+}
+
+// TestDiffFromFallsBackToTheLocalNamedBase covers the repository with no
+// origin copy of the named base: the local branch is next, being the only
+// other ref that answers to the name.
+func TestDiffFromFallsBackToTheLocalNamedBase(t *testing.T) {
+	runner := &fakeRunner{errs: []error{noSuchRef, nil, nil}}
+	base, _, err := NewWithRunner(runner).DiffFrom("/repos/nat", "release", "slice/viewer")
+	if err != nil {
+		t.Fatalf("DiffFrom() = %v, want a diff", err)
+	}
+	if base != "release" {
+		t.Errorf("base = %q, want the local branch answering to the name", base)
+	}
+	wantVerify := []string{"rev-parse", "--verify", "--quiet", "refs/heads/release"}
+	if !reflect.DeepEqual(runner.calls[1].args, wantVerify) {
+		t.Errorf("second verify args = %v, want %v", runner.calls[1].args, wantVerify)
+	}
+}
+
+// TestDiffFromFallsAllTheWayBackForAnUnknownName covers a named base no ref
+// answers to: the default resolution's whole chain stands in, a diff against
+// the default being worse than one against the named base but far better
+// than none.
+func TestDiffFromFallsAllTheWayBackForAnUnknownName(t *testing.T) {
+	runner := &fakeRunner{
+		outs: []string{"", "", "origin/trunk\n", "diff --git a/x b/x\n"},
+		errs: []error{noSuchRef, noSuchRef, nil, nil},
+	}
+	base, _, err := NewWithRunner(runner).DiffFrom("/repos/nat", "gone", "slice/viewer")
+	if err != nil {
+		t.Fatalf("DiffFrom() = %v, want a diff", err)
+	}
+	if base != "origin/trunk" {
+		t.Errorf("base = %q, want the default resolution's own answer", base)
+	}
+}
+
+// TestCommitsFromUsesTheNamedBase pins the finer read to the same resolution:
+// the commits listed are the stretch between the named base's merge base and
+// the branch, and the base label answers what was actually read.
+func TestCommitsFromUsesTheNamedBase(t *testing.T) {
+	runner := &fakeRunner{outs: []string{"",
+		"abc123\x00tui: syntax\x00Craig\x002026-01-02T15:04:05Z\n"}}
+	base, commits, err := NewWithRunner(runner).CommitsFrom("/repos/nat", "release", "slice/viewer")
+	if err != nil {
+		t.Fatalf("CommitsFrom() = %v, want the history", err)
+	}
+	if base != "origin/release" {
+		t.Errorf("base = %q, want origin's copy of the named base", base)
+	}
+	if len(commits) != 1 || commits[0].Subject != "tui: syntax" {
+		t.Errorf("commits = %v, want the one git log wrote", commits)
+	}
+	wantLog := []string{"log", "--format=" + commitLogFormat, "origin/release..slice/viewer"}
+	if !reflect.DeepEqual(runner.calls[1].args, wantLog) {
+		t.Errorf("log args = %v, want %v", runner.calls[1].args, wantLog)
+	}
+}

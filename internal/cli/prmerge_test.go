@@ -88,6 +88,9 @@ func TestPRMergeMerges(t *testing.T) {
 	runner := &multiRunner{viewOut: readyToMergePRJSON}
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
+	var nudges int
+	env.Nudge = func() { nudges++ }
+
 	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
 	if err != nil {
 		t.Fatalf("pr-merge: %v", err)
@@ -97,6 +100,43 @@ func TestPRMergeMerges(t *testing.T) {
 	}
 	if len(runner.mergeDirs) != 1 || runner.mergeDirs[0] != "/tmp/nat" {
 		t.Errorf("merge dirs = %v, want the project's working dir once", runner.mergeDirs)
+	}
+	// The merge is what marks the slice Done: the work is on main now, and
+	// this is the write that says so.
+	if len(api.updates) != 1 || api.updates[0].id != testSliceID {
+		t.Fatalf("updates = %+v, want the slice marked Done", api.updates)
+	}
+	if name := api.updates[0].props[notion.PropStatus].SelectName(); name != notion.SliceDone {
+		t.Errorf("status = %q, want %q", name, notion.SliceDone)
+	}
+	if nudges != 1 {
+		t.Errorf("nudges = %d, want one for the write", nudges)
+	}
+}
+
+// A merge that landed but whose status write was refused is still a merge:
+// the failure says which half needs anything more, and running the command
+// again is not the recovery — the board's reading settles the slice instead.
+func TestPRMergeReportsAFailedDoneWrite(t *testing.T) {
+	api := &fakeAPI{
+		updateErr: errors.New("notion is down"),
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithPR(testSliceID, "Write the UI", notion.SliceInProgress,
+				"https://github.test/craig/nat/pull/7")},
+		},
+	}
+	env, _ := testEnv(testConfig(), api)
+	var nudges int
+	env.Nudge = func() { nudges++ }
+	env.NewGH = func() GH { return gh.NewWithRunner(&multiRunner{viewOut: readyToMergePRJSON}) }
+
+	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), `merged #7, but could not mark "Write the UI" Done`) {
+		t.Errorf("err = %v, want the merge reported landed and the write failed", err)
+	}
+	if nudges != 0 {
+		t.Errorf("nudges = %d, want none for a write that never landed", nudges)
 	}
 }
 

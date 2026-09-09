@@ -12,10 +12,13 @@ public enum BinaryLocator {
 
     /// The absolute path to `binary`, or nil if it was found nowhere: PATH's
     /// own entries first, then the fallback locations, so an override on
-    /// PATH always wins.
+    /// PATH always wins. The default environment reads PATH live through
+    /// getenv rather than ProcessInfo's snapshot, so PathBootstrap's setenv
+    /// is seen — the onboarding check must answer for the same PATH the
+    /// spawns will use.
     public static func resolvedPath(
         for binary: String,
-        environment: [String: String] = ProcessInfo.processInfo.environment,
+        environment: [String: String] = ["PATH": PathBootstrap.environmentValue("PATH") ?? ""],
         fileExists: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
     ) -> String? {
         let fromPath = (environment["PATH"] ?? "")
@@ -29,7 +32,7 @@ public enum BinaryLocator {
     /// question, which does not need to know where.
     public static func isFound(
         _ binary: String,
-        environment: [String: String] = ProcessInfo.processInfo.environment,
+        environment: [String: String] = ["PATH": PathBootstrap.environmentValue("PATH") ?? ""],
         fileExists: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
     ) -> Bool {
         resolvedPath(for: binary, environment: environment, fileExists: fileExists) != nil

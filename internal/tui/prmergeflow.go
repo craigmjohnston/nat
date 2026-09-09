@@ -1,11 +1,14 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/craigmjohnston/nat/internal/actions"
+	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 )
 
@@ -40,10 +43,15 @@ const mergeNote = "Merging the pull request…"
 
 // prMergedMsg reports the merge that happened, or the refusal that came
 // instead. It carries the number the merge was of, since the screen is read
-// again on the way out and the pull request it holds is replaced by that read.
+// again on the way out and the pull request it holds is replaced by that
+// read, and the slice's ID for the refetch that shows it Done. markErr is a
+// merge that landed whose status write did not: the pull request is in, and
+// only Notion is behind.
 type prMergedMsg struct {
-	number int
-	err    error
+	number  int
+	sliceID string
+	err     error
+	markErr error
 }
 
 // mergePRFlow is the merge key on the pull request screen, which is the one
@@ -56,11 +64,11 @@ type prMergedMsg struct {
 // A pull request already merged or closed has nothing to merge, and neither has
 // a screen with no reading on it at all.
 //
-// Nothing is written to Notion by any of this: the slice was marked Done as its
-// pull request was opened, and the merge is the work landing rather than the
-// slice changing. What the merge does move is the slice's worktree, which the
-// board takes away when it next reads that the pull request is no longer open —
-// see [App.removeLanded].
+// A merge that lands marks the slice Done: Done means the work is on main,
+// and the merge is the one event that makes it true — the approve only
+// records the pull request. The merge also moves the slice's worktree, which
+// the board takes away when it next reads that the pull request is no longer
+// open — see [App.removeLanded].
 func (a *App) mergePRFlow() tea.Cmd {
 	if a.prMerger == nil || a.busy {
 		return nil
@@ -83,20 +91,27 @@ func (a *App) mergeChosen(pr gh.PR, choice int) tea.Cmd {
 	if choice != choiceMerge {
 		return nil
 	}
-	_, ref, dir := a.prview.Target()
+	name, ref, dir := a.prview.Target()
+	s := domain.Slice{ID: a.prview.SliceID(), Name: name}
 	a.busy, a.note = true, mergeNote
-	return mergePR(a.prMerger, pr.Number, ref, dir)
+	return mergePR(a.prMerger, a.client, s, pr.Number, ref, dir)
 }
 
 // mergePR runs gh in the slice's repository and reports what came of it. The
 // ref is the one the screen was opened with — the URL recorded on the slice —
-// so the pull request merged is the one that was read.
-func mergePR(merger PRMerger, number int, ref, dir string) tea.Cmd {
+// so the pull request merged is the one that was read. A merge that lands is
+// followed by the status write that says so — [actions.MarkDone] — and a
+// write that fails is reported as itself rather than as a merge that never
+// was, since the pull request is in whatever Notion heard about it.
+func mergePR(merger PRMerger, client NotionAPI, s domain.Slice, number int, ref, dir string) tea.Cmd {
 	return func() tea.Msg {
 		if err := merger.MergePR(dir, ref); err != nil {
-			return prMergedMsg{number: number, err: err}
+			return prMergedMsg{number: number, sliceID: s.ID, err: err}
 		}
-		return prMergedMsg{number: number}
+		if err := actions.MarkDone(context.Background(), client, s); err != nil {
+			return prMergedMsg{number: number, sliceID: s.ID, markErr: err}
+		}
+		return prMergedMsg{number: number, sliceID: s.ID}
 	}
 }
 
@@ -115,7 +130,21 @@ func (a *App) prMerged(msg prMergedMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		return a, a.showToast(fmt.Sprintf("Could not merge #%d: %v", msg.number, msg.err), sevError)
 	}
-	return a, tea.Batch(a.showToast(fmt.Sprintf("Merged #%d.", msg.number), sevSuccess), a.startPRLoad())
+	// A merged pull request whose status write failed is still merged: the
+	// screen is read again either way, and the toast says which half needs
+	// anything more. The board's own reading settles the status on a later
+	// pass — see [actions.SettleMerged].
+	if msg.markErr != nil {
+		return a, tea.Batch(
+			a.showToast(fmt.Sprintf("Merged #%d, but could not mark the slice Done: %v", msg.number, msg.markErr), sevWarning),
+			a.startPRLoad())
+	}
+	return a, tea.Batch(
+		a.showToast(fmt.Sprintf("Merged #%d.", msg.number), sevSuccess),
+		a.startPRLoad(),
+		// The slice just went Done under the plan's copy of it, and the row
+		// should say so without waiting for a poll.
+		a.refreshSlice(msg.sliceID))
 }
 
 // prKey handles the pull request screen's own keys, reporting whether the key

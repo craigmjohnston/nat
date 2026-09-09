@@ -38,7 +38,7 @@ color-scheme:dark;
 </head>
 <body>
 <div class="frame-label" style="left:60px;top:50px">Default — active slice selected</div>
-<div class="frame-note" style="left:60px;top:68px">Needs review + Active on top · TODO milestones (current expanded, Wishlist collapsed) · Done closed</div>
+<div class="frame-note" style="left:60px;top:68px">Needs review + Active on top · TODO milestones · Done closed</div>
 <div class="frame" style="left:60px;top:98px" data-screen-label="Sidebar default"><div id="r-default"></div></div>
 <div class="frame-label" style="left:620px;top:50px">Review slice selected — Done expanded</div>
 <div class="frame-note" style="left:620px;top:68px">Done milestones present as milestone cards under the DONE heading</div>
@@ -49,6 +49,15 @@ color-scheme:dark;
 <div class="frame-label" style="left:1740px;top:50px">Quiet — no sessions</div>
 <div class="frame-note" style="left:1740px;top:68px">Needs review / Active hidden when empty · TODO starts at the top</div>
 <div class="frame" style="left:1740px;top:98px" data-screen-label="Sidebar quiet"><div id="r-quiet"></div></div>
+<div class="frame-label" style="left:60px;top:880px">File tree — active slice selected</div>
+<div class="frame-note" style="left:60px;top:898px">Milestones as folders, slices as files · no card boxes</div>
+<div class="frame" style="left:60px;top:928px" data-screen-label="Tree default"><div id="t-default"></div></div>
+<div class="frame-label" style="left:620px;top:880px">File tree — Done expanded</div>
+<div class="frame-note" style="left:620px;top:898px">Done milestones as closed folders</div>
+<div class="frame" style="left:620px;top:928px" data-screen-label="Tree done open"><div id="t-done"></div></div>
+<div class="frame-label" style="left:1180px;top:880px">File tree — todo slice selected</div>
+<div class="frame-note" style="left:1180px;top:898px">Selection on a file row inside a folder</div>
+<div class="frame" style="left:1180px;top:928px" data-screen-label="Tree todo selected"><div id="t-todo"></div></div>
 <script type="text/babel" src="ui-shared.jsx"></script>
 <script type="text/babel" src="ui-v2-shell.jsx"></script>
 <script type="text/babel">
@@ -75,6 +84,9 @@ m("r-default", <RailBox><VRail selectedId="s-comments" /></RailBox>);
 m("r-done", <RailBox><VRail selectedId="s-syntax" doneOpen /></RailBox>);
 m("r-todo", <RailBox><VRail selectedId="s-kanban" /></RailBox>);
 m("r-quiet", <RailBox><VRail data={quietData} /></RailBox>);
+m("t-default", <RailBox><VRailTree selectedId="s-comments" /></RailBox>);
+m("t-done", <RailBox><VRailTree selectedId="s-syntax" doneOpen /></RailBox>);
+m("t-todo", <RailBox><VRailTree selectedId="s-kanban" /></RailBox>);
 </script>
 </body>
 </html>

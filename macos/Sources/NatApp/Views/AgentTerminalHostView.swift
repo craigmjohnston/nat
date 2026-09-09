@@ -120,8 +120,14 @@ public struct AgentTerminalHostView: NSViewRepresentable {
             self.view = view
             lifecycle.handle(.startRequested)
 
-            let environment = AttachSpec.environment(from: ProcessInfo.processInfo.environment)
-                .map { name, value in "\(name)=\(value)" }
+            // ProcessInfo is a snapshot that may predate PathBootstrap's
+            // setenv; PATH is re-read live so the attach client carries the
+            // composed one, like every other child this app spawns.
+            var base = AttachSpec.environment(from: ProcessInfo.processInfo.environment)
+            if let path = PathBootstrap.environmentValue("PATH") {
+                base["PATH"] = path
+            }
+            let environment = base.map { name, value in "\(name)=\(value)" }
 
             view.startProcess(
                 executable: AttachSpec.resolvedExecutable(),

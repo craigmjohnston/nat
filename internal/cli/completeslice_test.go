@@ -109,8 +109,10 @@ func TestCompleteSliceFinishesTheSlice(t *testing.T) {
 	if api.updates[0].id != sliceID {
 		t.Errorf("updated %q, want %s", api.updates[0].id, sliceID)
 	}
-	if name := props[notion.PropStatus].SelectName(); name != notion.SliceDone {
-		t.Errorf("status = %q, want %q", name, notion.SliceDone)
+	// The slice stays in progress: Done means the work is on main, and the
+	// merge of the recorded pull request is what writes it.
+	if _, wrote := props[notion.PropStatus]; wrote {
+		t.Errorf("props = %+v, want the status left alone with a pull request recorded", props)
 	}
 	if props[notion.PropPR].URL != "https://github.com/x/y/pull/1" {
 		t.Errorf("PR = %q, want the pull request", props[notion.PropPR].URL)
@@ -121,7 +123,7 @@ func TestCompleteSliceFinishesTheSlice(t *testing.T) {
 
 	wantOut := fmt.Sprintf(`# Render the board
 
-Done. The summary is on the slice page.
+Pull request recorded, still held by Craig Johnston. The slice goes Done when it merges — the merge is what marks the work landed.
 
 - Notion page: %[1]s
 - Notion URL: https://notion.so/%[1]s
@@ -129,6 +131,30 @@ Done. The summary is on the slice page.
 `, sliceID)
 	if out.String() != wantOut {
 		t.Errorf("output =\n%s\nwant:\n%s", out.String(), wantOut)
+	}
+}
+
+// A slice closed out with no pull request, no branch and no --blocked goes
+// straight to Done: work with no pull request has no merge coming to mark it.
+func TestCompleteSliceWithNoEndingFlagsGoesStraightToDone(t *testing.T) {
+	api := completableAPI()
+	env, out := completeEnv(api)
+
+	err := Run(context.Background(), []string{
+		"complete-slice", sliceID, "--summary", "Wrote the docs.", "--project", "project-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("complete-slice: %v", err)
+	}
+
+	if len(api.updates) != 1 {
+		t.Fatalf("updates = %+v, want exactly one", api.updates)
+	}
+	if name := api.updates[0].props[notion.PropStatus].SelectName(); name != notion.SliceDone {
+		t.Errorf("status = %q, want %q", name, notion.SliceDone)
+	}
+	if !strings.Contains(out.String(), "Done. The summary is on the slice page.") {
+		t.Errorf("output = %q, want the Done wording", out.String())
 	}
 }
 

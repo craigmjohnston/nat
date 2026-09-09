@@ -54,14 +54,12 @@ func sliceDiff(ctx context.Context, args []string, env Env) error {
 	}
 
 	s := domain.SliceFromPage(*page)
-	// Only a handed-back slice — in progress with a branch recorded on it —
-	// has a diff to read; the same rule the board's v key and approve apply,
-	// whichever of the three reads was asked for.
+	// Only a slice with a branch recorded has a diff to read at all. A Done
+	// one is no longer refused: the board marks a slice Done as it opens the
+	// pull request, and the review goes on reading the branch until that
+	// lands — the same reason such a slice stays in the NEEDS REVIEW section.
 	if s.Branch == "" {
 		return fmt.Errorf("%q is not handed back: only a slice with a branch has a diff to read", s.Name)
-	}
-	if s.Status == domain.SliceDone {
-		return fmt.Errorf("%q is already Done: diff is for handed-back work under review", s.Name)
 	}
 
 	workdir := s.Repo
@@ -70,21 +68,38 @@ func sliceDiff(ctx context.Context, args []string, env Env) error {
 	}
 	gitCLI := env.NewGit()
 
+	// The base is whatever base the branch actually has: the branch its pull
+	// request records, where there is one — a pull request against anything
+	// but the default branch is measured against what it would merge into —
+	// and the repository's own default where there is not, which is every
+	// hand-back still waiting to be approved. A gh that cannot answer is
+	// logged and the default resolution stands: a diff against main beats no
+	// diff over a network error.
+	baseName := ""
+	if s.PRURL != "" {
+		if pr, err := env.NewGH().ViewPR(workdir, s.PRURL); err != nil {
+			logging.Action("could not read the pull request's base; diffing against the default",
+				"pr", s.PRURL, "error", err)
+		} else {
+			baseName = pr.BaseRefName
+		}
+	}
+
 	switch {
 	case *commitsFlag:
-		return sliceCommits(gitCLI, workdir, s.Branch, *asJSON, env.Out)
+		return sliceCommits(gitCLI, workdir, baseName, s.Branch, *asJSON, env.Out)
 	case *commitFlag != "":
 		return sliceCommitDiff(gitCLI, workdir, *commitFlag, *asJSON, env.Out)
 	default:
-		return sliceBranchDiff(gitCLI, workdir, s.Branch, *asJSON, env.Out)
+		return sliceBranchDiff(gitCLI, workdir, baseName, s.Branch, *asJSON, env.Out)
 	}
 }
 
 // sliceBranchDiff is the plain, whole-branch read: the same call slice-diff
 // always made, factored out so the two finer reads sit beside it rather than
 // inside one growing function.
-func sliceBranchDiff(gitCLI GitCLI, workdir, branch string, asJSON bool, out io.Writer) error {
-	base, diff, err := gitCLI.Diff(workdir, branch)
+func sliceBranchDiff(gitCLI GitCLI, workdir, baseName, branch string, asJSON bool, out io.Writer) error {
+	base, diff, err := gitCLI.DiffFrom(workdir, baseName, branch)
 	if err != nil {
 		logging.Error("could not read diff", "error", err)
 		return fmt.Errorf("read the diff: %w", err)
@@ -97,14 +112,14 @@ func sliceBranchDiff(gitCLI GitCLI, workdir, branch string, asJSON bool, out io.
 }
 
 // sliceCommits is --commits: the branch's own history since the merge base,
-// without diffing any of it.
-func sliceCommits(gitCLI GitCLI, workdir, branch string, asJSON bool, out io.Writer) error {
-	commits, err := gitCLI.Commits(workdir, branch)
+// without diffing any of it — measured against the same base the whole-branch
+// diff uses, so the two reads describe one stretch of history.
+func sliceCommits(gitCLI GitCLI, workdir, baseName, branch string, asJSON bool, out io.Writer) error {
+	base, commits, err := gitCLI.CommitsFrom(workdir, baseName, branch)
 	if err != nil {
 		logging.Error("could not read the branch's commits", "error", err)
 		return fmt.Errorf("read the branch's commits: %w", err)
 	}
-	base := gitCLI.Base(workdir)
 	if asJSON {
 		return writeCommitsJSON(out, base, branch, commits)
 	}

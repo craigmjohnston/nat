@@ -128,7 +128,15 @@ func NewWithRunner(r Runner) CLI { return CLI{runner: r} }
 // a repository configured with diff.noprefix or a diff driver of its own would
 // otherwise hand back something else entirely.
 func (c CLI) Diff(dir, branch string) (base, diff string, err error) {
-	base = c.Base(dir)
+	return c.DiffFrom(dir, "", branch)
+}
+
+// DiffFrom is [CLI.Diff] against a base the caller already knows by name —
+// the branch a slice's pull request records — rather than the repository's
+// default. An empty name is exactly [CLI.Diff]: the caller knows nothing the
+// default resolution does not.
+func (c CLI) DiffFrom(dir, baseName, branch string) (base, diff string, err error) {
+	base = c.baseNamed(dir, baseName)
 	out, err := c.runner.Run(dir, Binary, "diff", "--no-color", "--no-ext-diff",
 		"--src-prefix=a/", "--dst-prefix=b/", "--merge-base", base, branch)
 	if err != nil {
@@ -137,6 +145,34 @@ func (c CLI) Diff(dir, branch string) (base, diff string, err error) {
 		return base, "", err
 	}
 	return base, out, nil
+}
+
+// baseNamed resolves a base the caller knows by name to the freshest ref that
+// answers to it: origin's copy where the remote has one — current the moment
+// a fetch returns, where the local branch is however stale the checkout is —
+// then the local branch, for a repository with no origin. A name that
+// resolves to nothing at all falls back to [CLI.Base]'s whole chain, logged,
+// since a diff against the default is worse than one against the named base
+// but far better than no diff at all. An empty name is no knowledge, and is
+// the default resolution outright.
+func (c CLI) baseNamed(dir, name string) string {
+	if name == "" {
+		return c.Base(dir)
+	}
+	// The full refs rather than short names, for the reason fallbackBase
+	// uses one: a local branch called origin/main would answer for the
+	// remote's.
+	if _, err := c.runner.Run(dir, Binary, "rev-parse", "--verify", "--quiet",
+		"refs/remotes/origin/"+name); err == nil {
+		return "origin/" + name
+	}
+	if _, err := c.runner.Run(dir, Binary, "rev-parse", "--verify", "--quiet",
+		"refs/heads/"+name); err == nil {
+		return name
+	}
+	logging.Action("a named base resolves to nothing; using the default",
+		"dir", dir, "base", name)
+	return c.Base(dir)
 }
 
 // Show is a file's own lines as the branch leaves it, which is what fills the

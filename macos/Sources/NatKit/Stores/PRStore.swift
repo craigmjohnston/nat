@@ -59,9 +59,12 @@ public final class PRStore {
     private var prCache: [String: PRDetail] = [:]
 
     /// - Parameter pollIntervalNanoseconds: how long the poll loop sleeps
-    ///   between readings — 15 seconds in the app, overridable so a test does
-    ///   not have to wait 15 real seconds to see it fire twice.
-    public init(client: NatClientProtocol = NatClient(), pollIntervalNanoseconds: UInt64 = 15 * 1_000_000_000) {
+    ///   between readings — 5 seconds in the app, short enough that a check
+    ///   going green shows while the user is actually watching for it (the
+    ///   poll only runs at all while a check is pending, so the cost is a
+    ///   few `gh` reads across a CI run); overridable so a test does not
+    ///   have to wait 5 real seconds to see it fire twice.
+    public init(client: NatClientProtocol = NatClient(), pollIntervalNanoseconds: UInt64 = 5 * 1_000_000_000) {
         self.client = client
         self.pollIntervalNanoseconds = pollIntervalNanoseconds
     }

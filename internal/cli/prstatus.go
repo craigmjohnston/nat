@@ -26,6 +26,12 @@ type PRReader interface {
 // listing per repository the plan spans, rather than one view per slice — so
 // the reading costs the number of repositories rather than the number of
 // pull requests the plan has ever produced.
+//
+// It is also where a merge made on GitHub itself reaches Notion for anything
+// that polls through this command: an in-progress slice whose pull request
+// the listing no longer names is asked about directly, and one that merged is
+// marked Done — see [actions.SettleMerged]. The one write this read can make,
+// and only ever the write the merge already earned.
 func prStatus(ctx context.Context, args []string, env Env) error {
 	asJSON, projectRef, err := parseJSONFlag("pr-status", args)
 	if err != nil {
@@ -44,7 +50,10 @@ func prStatus(ctx context.Context, args []string, env Env) error {
 	}
 	slices := domain.SlicesFromPages(pages)
 
-	readings := prReadings(env.NewGH(), slices, project)
+	readings, marked := prReadings(ctx, client, env.NewGH(), slices, project)
+	if marked {
+		env.nudged()
+	}
 
 	if asJSON {
 		return writeJSON(env.Out, prStatusJSON(readings))
@@ -85,7 +94,8 @@ func readinessOf(status gh.PRStatus) domain.PRReadiness {
 
 // prReadings reads what GitHub says about the pull request of every slice
 // worth asking about, one listing per repository, and reports a reading per
-// slice in the plan's own order.
+// slice in the plan's own order — plus whether any slice was marked Done on
+// the way, so the caller knows a nudge is owed.
 //
 // A slice whose pull request is no longer open, or whose repository's
 // listing could not be read at all, comes back with the zero
@@ -93,10 +103,15 @@ func readinessOf(status gh.PRStatus) domain.PRReadiness {
 // case: nothing distinguishes them, because a pull request the reading never
 // reached is worth exactly as much attention as one that has already landed.
 // A repository whose listing fails is logged and left out, never guessed at.
-func prReadings(reader PRReader, slices []domain.Slice, project config.ProjectConfig) []prReading {
-	type read struct{ id, url string }
+//
+// The exception absence earns is an in-progress slice: its pull request being
+// gone is either the merge nat was not running to witness or a close that
+// sends the work round again, and the pull request's own reading tells them
+// apart — a merged one marks the slice Done, a failed reading is logged and
+// changes nothing, and the next run asks again.
+func prReadings(ctx context.Context, client API, ghClient GH, slices []domain.Slice, project config.ProjectConfig) ([]prReading, bool) {
 	var dirs []string
-	reads := map[string][]read{}
+	reads := map[string][]domain.Slice{}
 	for _, s := range slices {
 		if !worthReadingPR(s) {
 			continue
@@ -105,20 +120,31 @@ func prReadings(reader PRReader, slices []domain.Slice, project config.ProjectCo
 		if _, seen := reads[dir]; !seen {
 			dirs = append(dirs, dir)
 		}
-		reads[dir] = append(reads[dir], read{id: s.ID, url: s.PRURL})
+		reads[dir] = append(reads[dir], s)
 	}
 
+	marked := false
 	state := map[string]domain.PRReadiness{}
 	for _, dir := range dirs {
-		open, err := reader.OpenPRs(dir)
+		open, err := ghClient.OpenPRs(dir)
 		if err != nil {
 			logging.Action("left a repository's pull requests unread", "dir", dir, "error", err)
 			continue
 		}
-		for _, r := range reads[dir] {
-			if status, still := open[gh.NormaliseURL(r.url)]; still {
-				state[r.id] = readinessOf(status)
+		for _, s := range reads[dir] {
+			if status, still := open[gh.NormaliseURL(s.PRURL)]; still {
+				state[s.ID] = readinessOf(status)
+				continue
 			}
+			if s.Status != domain.SliceClaimed {
+				continue
+			}
+			done, err := actions.SettleMerged(ctx, client, ghClient, s, dir)
+			if err != nil {
+				logging.Action("left an absent pull request unsettled", "slice", s.ID, "error", err)
+				continue
+			}
+			marked = marked || done
 		}
 	}
 
@@ -129,7 +155,7 @@ func prReadings(reader PRReader, slices []domain.Slice, project config.ProjectCo
 		}
 		out = append(out, prReading{SliceID: s.ID, SliceName: s.Name, PR: s.PRURL, Readiness: state[s.ID]})
 	}
-	return out
+	return out, marked
 }
 
 // prStatusDoc is the structured form of the reading: one entry per slice worth

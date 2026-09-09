@@ -151,14 +151,10 @@ func TestPRTitleBody(t *testing.T) {
 	}
 }
 
-// TestRecordPR covers the whole write: the pull request URL and Done go on
-// together, in the shape the page's own Status column was read as.
+// TestRecordPR covers the whole write: the pull request URL alone, since the
+// slice stays in progress until the merge marks it Done.
 func TestRecordPR(t *testing.T) {
-	client := &fakeClient{getPage: func(id string) (*notion.Page, error) {
-		return &notion.Page{ID: id, Properties: map[string]notion.PropertyValue{
-			notion.PropStatus: {Type: notion.TypeStatus, Status: &notion.SelectOption{Name: notion.SliceInProgress}},
-		}}, nil
-	}}
+	client := &fakeClient{}
 	s := domain.Slice{ID: "hb", Name: "Approve action"}
 
 	if err := RecordPR(context.Background(), client, s, "https://github.test/pr/9"); err != nil {
@@ -172,38 +168,13 @@ func TestRecordPR(t *testing.T) {
 	if got := props[notion.PropPR].URL; got != "https://github.test/pr/9" {
 		t.Errorf("PR = %q, want the recorded url", got)
 	}
-	status := props[notion.PropStatus]
-	if status.Status == nil || status.Status.Name != notion.SliceDone {
-		t.Errorf("Status = %+v, want the status shape saying Done", status)
+	if _, wrote := props[notion.PropStatus]; wrote {
+		t.Errorf("Status was written at approve; Done belongs to the merge alone")
 	}
 }
 
-// TestRecordPRWritesASelectStatus covers the shape every project without a
-// converted Status column is in: a plain select.
-func TestRecordPRWritesASelectStatus(t *testing.T) {
-	client := &fakeClient{}
-	if err := RecordPR(context.Background(), client, domain.Slice{ID: "hb", Name: "Approve action"}, "https://github.test/pr/9"); err != nil {
-		t.Fatalf("RecordPR() = %v, want it to go through", err)
-	}
-	status := client.updated[0].properties[notion.PropStatus]
-	if status.Select == nil || status.Select.Name != notion.SliceDone {
-		t.Errorf("Status = %+v, want the select shape saying Done", status)
-	}
-}
-
-// TestRecordPRReportsAFailedRead and TestRecordPRReportsAFailedWrite cover
-// the one half-done state the action has: a pull request opened and not
-// recorded.
-func TestRecordPRReportsAFailedRead(t *testing.T) {
-	client := &fakeClient{getPage: func(string) (*notion.Page, error) { return nil, errors.New("notion is down") }}
-
-	err := RecordPR(context.Background(), client, domain.Slice{ID: "hb", Name: "Approve action"}, "https://github.test/pr/9")
-
-	if err == nil || !strings.Contains(err.Error(), `record the pull request for "Approve action"`) {
-		t.Errorf("err = %v, want the read's failure named", err)
-	}
-}
-
+// TestRecordPRReportsAFailedWrite covers the one half-done state the action
+// has: a pull request opened and not recorded.
 func TestRecordPRReportsAFailedWrite(t *testing.T) {
 	client := &fakeClient{updatePage: func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
 		return nil, errors.New("notion is down")

@@ -191,6 +191,21 @@ public final class NatClient: Sendable {
         return try decodeJSON(PRDetail.self, from: output)
     }
 
+    /// The board's PR-readiness reading, taken headlessly
+    /// (`internal/cli/prstatus.go`): every slice whose pull request anything
+    /// might still be waiting on, and how close each is to landing — one gh
+    /// listing per repository the plan spans, so the cost is the number of
+    /// repositories rather than of pull requests.
+    ///
+    /// - Parameter projectID: The project's Notion page ID
+    /// - Returns: One reading per slice worth watching, in plan order
+    /// - Throws: NatError if nat itself fails (a repository gh could not
+    ///   answer for is not an error — its slices simply read "unread")
+    public func prStatus(projectID: String) async throws -> PRStatusDoc {
+        let output = try await runNat(arguments: ["pr-status", "--project", projectID, "--json"])
+        return try decodeJSON(PRStatusDoc.self, from: output)
+    }
+
     /// Merge a slice's recorded pull request, mirroring the PR screen's own
     /// merge key (`internal/cli/prmerge.go`). The refusal is the merge box's
     /// own: gh is asked to attempt the merge only once the pull request's own
@@ -235,14 +250,24 @@ public final class NatClient: Sendable {
     /// planning launch that asks nothing takes the config's `workshop_agent`
     /// pair exactly as it stands.
     ///
+    /// The request goes over stdin (`--request -`) when given, exactly as
+    /// `prComment`'s body does: what the user wants to workshop may run to
+    /// several lines. A nil or empty request omits the flag entirely, which
+    /// is `workshop-launch`'s own spelling of "launch on the wishlist when
+    /// there is one, and a plain session otherwise".
+    ///
     /// - Parameters:
     ///   - projectID: The project's Notion page ID
     ///   - model: Optional model name, overriding the config's workshop_agent
     ///   - effort: Optional effort level, overriding the config's workshop_agent
+    ///   - request: What the user wants to workshop, folded into the agent's
+    ///     prompt so the session starts on it
     /// - Returns: The launched session, its working directory, and whether it
     ///   was launched on the project's pending wishlist
     /// - Throws: NatError if a planning agent is already live, or the command fails
-    public func workshopLaunch(projectID: String, model: String?, effort: String?) async throws -> WorkshopLaunchResult {
+    public func workshopLaunch(
+        projectID: String, model: String?, effort: String?, request: String?
+    ) async throws -> WorkshopLaunchResult {
         var arguments = ["workshop-launch", "--project", projectID, "--json"]
         if let model = model, !model.isEmpty {
             arguments.append(contentsOf: ["--model", model])
@@ -250,7 +275,12 @@ public final class NatClient: Sendable {
         if let effort = effort, !effort.isEmpty {
             arguments.append(contentsOf: ["--effort", effort])
         }
-        let output = try await runNat(arguments: arguments)
+        var standardInput: Data?
+        if let request = request, !request.isEmpty {
+            arguments.append(contentsOf: ["--request", "-"])
+            standardInput = request.data(using: .utf8)
+        }
+        let output = try await runNat(arguments: arguments, standardInput: standardInput)
         return try decodeJSON(WorkshopLaunchResult.self, from: output)
     }
 
@@ -301,6 +331,36 @@ public final class NatClient: Sendable {
             standardInput: description.data(using: .utf8)
         )
         return try decodeJSON(SliceEditResult.self, from: output)
+    }
+
+    /// Refile a slice under another milestone, by name — the rail's move
+    /// menu, mirroring `internal/cli/slicemove.go`'s `sliceMove`. The CLI
+    /// refuses a slice in progress and a milestone the plan does not hold;
+    /// both refusals pass straight through as `NatError.commandFailed`.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sliceRef: The slice's URL or Notion page ID
+    ///   - milestone: The milestone to refile the slice under, by name
+    /// - Throws: NatError if the slice is in progress, or the command fails
+    public func sliceMove(projectID: String, sliceRef: String, milestone: String) async throws {
+        _ = try await runNat(arguments: [
+            "slice-move", "--project", projectID, "--milestone", milestone, "--json", sliceRef,
+        ])
+    }
+
+    /// Move a slice's page to Notion's trash — the rail's delete action,
+    /// mirroring `internal/cli/slicedelete.go`'s `sliceDelete`. Notion has no
+    /// hard delete, so the page stays recoverable in the Notion UI; the CLI
+    /// refuses a slice in progress, and warning about a Done one is the
+    /// caller's confirm dialog, not this client's.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sliceRef: The slice's URL or Notion page ID
+    /// - Throws: NatError if the slice is in progress, or the command fails
+    public func sliceDelete(projectID: String, sliceRef: String) async throws {
+        _ = try await runNat(arguments: ["slice-delete", "--project", projectID, "--json", sliceRef])
     }
 
     /// Read local configuration: the fields the settings scene edits and

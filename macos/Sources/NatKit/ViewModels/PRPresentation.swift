@@ -459,3 +459,32 @@ public func ago(_ interval: TimeInterval) -> String {
         return "\(Int(interval / 86400))d ago"
     }
 }
+
+// MARK: - Avatars
+
+/// The avatar's letters: the author's first two initials off word breaks —
+/// GitHub logins break on hyphens — or its first two letters for a
+/// single-word login, and the mock's ✦ for the agent's own comments.
+public func authorInitials(_ author: String) -> String {
+    let name = author.trimmingCharacters(in: .whitespaces)
+    if name.isEmpty { return "?" }
+    if name == "agent" || name.hasSuffix("[bot]") { return "✦" }
+    let words = name.split(whereSeparator: { $0 == " " || $0 == "-" || $0 == "_" || $0 == "." })
+    let initials = words.prefix(2).compactMap(\.first)
+    if initials.count >= 2 { return String(initials).uppercased() }
+    return String(name.prefix(2)).uppercased()
+}
+
+/// Who the sidebar's "Approved" line credits: the author of the most recently
+/// submitted approving review, since GitHub's own review decision names
+/// nobody. Nil when no submitted review approves — the word then stands
+/// alone, which is every other verdict's case too.
+public func approvedBy(reviews: [PRReview]) -> String? {
+    reviews
+        .compactMap { review -> (author: String, at: Date)? in
+            guard review.state.uppercased() == "APPROVED", let at = review.submittedAt else { return nil }
+            return (review.author, at)
+        }
+        .max { $0.at < $1.at }?
+        .author
+}

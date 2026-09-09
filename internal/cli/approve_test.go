@@ -89,10 +89,15 @@ func TestSliceApproveOpensAndRecordsPR(t *testing.T) {
 		t.Errorf("slice-approve output: %q, want URL", out.String())
 	}
 	if len(api.updates) != 1 || api.updates[0].id != testSliceID {
-		t.Fatalf("updates = %+v, want the slice marked Done", api.updates)
+		t.Fatalf("updates = %+v, want the pull request recorded on the slice", api.updates)
 	}
-	if got := api.updates[0].props[notion.PropStatus]; got.Select == nil || got.Select.Name != notion.SliceDone {
-		t.Errorf("status = %+v, want Done", got)
+	if got := api.updates[0].props[notion.PropPR].URL; got != "https://github.test/craig/nat/pull/42" {
+		t.Errorf("PR = %q, want the opened pull request", got)
+	}
+	// The slice stays in progress: Done means the work is on main, and the
+	// merge is what writes it.
+	if _, wrote := api.updates[0].props[notion.PropStatus]; wrote {
+		t.Errorf("props = %+v, want the status left alone at approve", api.updates[0].props)
 	}
 }
 

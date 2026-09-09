@@ -14,9 +14,10 @@ public protocol NatClientProtocol: Sendable {
     func agentSend(projectID: String, sliceRef: String, text: String) async throws -> Void
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail
+    func prStatus(projectID: String) async throws -> PRStatusDoc
     func prMerge(projectID: String, sliceRef: String) async throws -> Void
     func prComment(projectID: String, sliceRef: String, body: String) async throws -> Void
-    func workshopLaunch(projectID: String, model: String?, effort: String?) async throws -> WorkshopLaunchResult
+    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult
     func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult
     func configShow() async throws -> ConfigDoc
     func configSet(key: String, value: String) async throws -> Void

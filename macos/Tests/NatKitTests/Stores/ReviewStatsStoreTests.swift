@@ -34,9 +34,17 @@ private final class MockReviewStatsClient: NatClientProtocol, @unchecked Sendabl
         throw ReviewStatsTestError()
     }
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail { throw ReviewStatsTestError() }
+
+    /// What `prStatus` answers with — nil throws, standing in for a nat that
+    /// failed outright.
+    var prStatusDoc: PRStatusDoc?
+    func prStatus(projectID: String) async throws -> PRStatusDoc {
+        guard let doc = prStatusDoc else { throw ReviewStatsTestError() }
+        return doc
+    }
     func prMerge(projectID: String, sliceRef: String) async throws { throw ReviewStatsTestError() }
     func prComment(projectID: String, sliceRef: String, body: String) async throws { throw ReviewStatsTestError() }
-    func workshopLaunch(projectID: String, model: String?, effort: String?) async throws -> WorkshopLaunchResult {
+    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult {
         throw ReviewStatsTestError()
     }
     func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult {
@@ -175,10 +183,116 @@ final class ReviewStatsStoreTests: XCTestCase {
 
         store.clear()
         XCTAssertTrue(store.stats.isEmpty)
+        XCTAssertTrue(store.fileCounts.isEmpty)
 
         // Clearing forgets the branch it already fetched too, so the same
         // branch is read again rather than skipped.
         await store.update(projectID: "proj-1", handedBack: [.init(sliceID: "slice-1", branch: "b")])
         XCTAssertEqual(client.callCount, 2)
+    }
+
+    // MARK: - File counts
+
+    @MainActor
+    func testUpdateRecordsTheFileCountBesideTheStat() async {
+        let client = MockReviewStatsClient()
+        client.diffs["slice-1"] = diff(adds: 5, dels: 2, files: 3)
+        let store = ReviewStatsStore(client: client)
+
+        await store.update(projectID: "proj-1", handedBack: [.init(sliceID: "slice-1", branch: "b")])
+
+        XCTAssertEqual(store.fileCounts["slice-1"], 3)
+    }
+
+    @MainActor
+    func testUpdateDropsAFileCountForASliceNoLongerHandedBack() async {
+        let client = MockReviewStatsClient()
+        client.diffs["slice-1"] = diff(adds: 1, dels: 1)
+        let store = ReviewStatsStore(client: client)
+        await store.update(projectID: "proj-1", handedBack: [.init(sliceID: "slice-1", branch: "b")])
+        XCTAssertNotNil(store.fileCounts["slice-1"])
+
+        await store.update(projectID: "proj-1", handedBack: [])
+
+        XCTAssertNil(store.fileCounts["slice-1"])
+    }
+
+    @MainActor
+    func testAFailedFetchLeavesTheSliceWithoutAFileCount() async {
+        let client = MockReviewStatsClient() // no diff registered -> throws
+        let store = ReviewStatsStore(client: client)
+
+        await store.update(projectID: "proj-1", handedBack: [.init(sliceID: "slice-1", branch: "b")])
+
+        XCTAssertNil(store.fileCounts["slice-1"])
+    }
+
+    // MARK: - PR readiness
+
+    @MainActor
+    func testUpdatePRStatusKeepsOnlyTheOpenReadings() async {
+        let client = MockReviewStatsClient()
+        client.prStatusDoc = PRStatusDoc(slices: [
+            .init(sliceID: "s-waiting", name: "A", pr: "url", readiness: "awaiting review"),
+            .init(sliceID: "s-ready", name: "B", pr: "url", readiness: "ready to merge"),
+            .init(sliceID: "s-landed", name: "C", pr: "url", readiness: "unread"),
+        ])
+        let store = ReviewStatsStore(client: client)
+
+        await store.updatePRStatus(projectID: "proj-1")
+
+        XCTAssertEqual(store.prReadiness, [
+            "s-waiting": "awaiting review",
+            "s-ready": "ready to merge",
+        ])
+    }
+
+    @MainActor
+    func testAFreshReadingReplacesTheLastOne() async {
+        let client = MockReviewStatsClient()
+        client.prStatusDoc = PRStatusDoc(slices: [
+            .init(sliceID: "s-1", name: "A", pr: "url", readiness: "awaiting review"),
+        ])
+        let store = ReviewStatsStore(client: client)
+        await store.updatePRStatus(projectID: "proj-1")
+
+        // The pull request landed: the next reading reports it unread, and
+        // the slice drops out of the map rather than lingering as open.
+        client.prStatusDoc = PRStatusDoc(slices: [
+            .init(sliceID: "s-1", name: "A", pr: "url", readiness: "unread"),
+        ])
+        await store.updatePRStatus(projectID: "proj-1")
+
+        XCTAssertTrue(store.prReadiness.isEmpty)
+    }
+
+    @MainActor
+    func testAFailedReadingLeavesTheLastOneStanding() async {
+        let client = MockReviewStatsClient()
+        client.prStatusDoc = PRStatusDoc(slices: [
+            .init(sliceID: "s-1", name: "A", pr: "url", readiness: "awaiting review"),
+        ])
+        let store = ReviewStatsStore(client: client)
+        await store.updatePRStatus(projectID: "proj-1")
+
+        client.prStatusDoc = nil // nat fails outright
+        await store.updatePRStatus(projectID: "proj-1")
+
+        XCTAssertEqual(store.prReadiness["s-1"], "awaiting review")
+    }
+
+    @MainActor
+    func testClearDropsTheReadinessReading() async {
+        let client = MockReviewStatsClient()
+        client.prStatusDoc = PRStatusDoc(slices: [
+            .init(sliceID: "s-1", name: "A", pr: "url", readiness: "ready to merge"),
+        ])
+        let store = ReviewStatsStore(client: client)
+        await store.updatePRStatus(projectID: "proj-1")
+        XCTAssertFalse(store.prReadiness.isEmpty)
+
+        store.clear()
+
+        XCTAssertTrue(store.prReadiness.isEmpty)
     }
 }
