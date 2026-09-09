@@ -24,6 +24,10 @@ type statusFakeRunner struct {
 }
 
 func (f *statusFakeRunner) Run(name string, args ...string) (string, error) {
+	// Every call leads with the -u client flag; the subcommand is what follows.
+	if len(args) > 0 && args[0] == "-u" {
+		args = args[1:]
+	}
 	if len(args) > 0 && args[0] == "list-panes" {
 		f.callCount++
 		if f.failAfterCall > 0 && f.callCount > f.failAfterCall {
@@ -250,6 +254,10 @@ type testActivityFailRunner struct {
 }
 
 func (r *testActivityFailRunner) Run(name string, args ...string) (string, error) {
+	// Every call leads with the -u client flag; the subcommand is what follows.
+	if len(args) > 0 && args[0] == "-u" {
+		args = args[1:]
+	}
 	if len(args) > 0 && args[0] == "list-panes" {
 		r.callCount++
 		if r.callCount > 1 {

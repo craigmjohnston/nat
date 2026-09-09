@@ -88,12 +88,15 @@ public struct AttachSpec: Equatable {
 
     /// The argv tmux is invoked with, mirroring `attachArgs`: `-T` is a
     /// top-level client flag, so it precedes the `attach-session` command
-    /// rather than following it.
+    /// rather than following it — as is `-u`, which makes the client a UTF-8
+    /// one whatever locale its environment names. A Finder-launched app
+    /// inherits launchd's environment, which names none, and a tmux client
+    /// without one sanitises the control characters out of its output.
     public let arguments: [String]
 
     public init(session: String) {
         sessionName = session
-        arguments = ["-T", Self.viewerFeatures, "attach-session", "-t", session]
+        arguments = ["-u", "-T", Self.viewerFeatures, "attach-session", "-t", session]
     }
 
     /// The environment an attach process should run with, given the host

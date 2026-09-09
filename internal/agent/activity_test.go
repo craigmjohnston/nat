@@ -104,10 +104,10 @@ func TestActivityCaptureArguments(t *testing.T) {
 		t.Errorf("activity = %v, want %v", got, ActivityWorking)
 	}
 
-	want := []string{"capture-pane", "-p", "-J", "-t", "%1"}
+	want := []string{"-u", "capture-pane", "-p", "-J", "-t", "%1"}
 	found := false
 	for _, c := range r.calls {
-		if c.args[0] == "capture-pane" {
+		if c.args[0] == "-u" && c.args[1] == "capture-pane" {
 			found = true
 			if !reflect.DeepEqual(c.args, want) {
 				t.Errorf("capture args = %v, want %v", c.args, want)
@@ -221,7 +221,7 @@ func TestActivityString(t *testing.T) {
 func captured(r *fakeRunner) []string {
 	var panes []string
 	for _, c := range r.calls {
-		if c.args[0] == "capture-pane" {
+		if c.args[0] == "-u" && c.args[1] == "capture-pane" {
 			panes = append(panes, c.args[len(c.args)-1])
 		}
 	}

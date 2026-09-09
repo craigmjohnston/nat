@@ -43,6 +43,10 @@ type agentTestRunner struct {
 }
 
 func (r *agentTestRunner) Run(name string, args ...string) (string, error) {
+	// Every call leads with the -u client flag; the subcommand is what follows.
+	if len(args) > 0 && args[0] == "-u" {
+		args = args[1:]
+	}
 	sub := ""
 	if len(args) > 0 {
 		sub = args[0]
