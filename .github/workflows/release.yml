@@ -1,0 +1,136 @@
+name: Release
+
+# Every merge to main is a release: a signed, notarized gnat.dmg published as
+# a GitHub Release, with an appcast Sparkle checks for in-app updates.
+# workflow_dispatch is the pre-merge test path — it runs the same build, sign
+# and notarize steps from any branch without publishing anything (the publish
+# step below is gated to main), so the whole pipeline can be exercised before
+# this file lands there.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Queue, don't cancel: every merge gets its own release, and versions are
+# per-run so queued runs never collide with each other.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  BASE_VERSION: "1.0"
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.x"
+
+      # Same pin as macos.yml: the app is written against Swift 6.2's
+      # concurrency semantics, which the runner's default Xcode is too old
+      # to accept.
+      - name: Select the newest Xcode
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+          swift --version
+
+      # Monotonic and file-free: nothing to bump, and a re-run collides
+      # loudly at `gh release create` rather than silently clobbering a tag.
+      - name: Derive version
+        run: echo "VERSION=${BASE_VERSION}.${{ github.run_number }}" >> "$GITHUB_ENV"
+
+      - name: Import signing certificate
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/release-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+          echo "$MACOS_CERT_P12" | base64 --decode -o "$CERT_PATH"
+          security import "$CERT_PATH" -P "$MACOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH" -T /usr/bin/codesign
+          rm -f "$CERT_PATH"
+
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          # Unquoted deliberately: security's own listing is one path per
+          # line and each has to reach -s as its own argument, adding the
+          # new keychain to the search list without dropping the existing
+          # ones (the login keychain included).
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
+
+      - name: Build app
+        run: APP_VERSION="$VERSION" APP_BUILD="${{ github.run_number }}" ./macos/Scripts/make-app.sh
+
+      - name: Sign, package and notarize
+        env:
+          SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        run: |
+          ASC_API_KEY_PATH="$RUNNER_TEMP/asc.p8"
+          echo "$ASC_API_KEY_P8" | base64 --decode -o "$ASC_API_KEY_PATH"
+          export ASC_API_KEY_PATH
+          ./macos/Scripts/release-app.sh
+          rm -f "$ASC_API_KEY_PATH"
+
+      # A single-item appcast per release is all Sparkle needs — the newest
+      # version, a full-dmg update, no deltas. generate_appcast reads the
+      # version out of the app inside the dmg, so the same notarized release
+      # dmg doubles as the update archive.
+      - name: Generate appcast
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          GENERATE_APPCAST="macos/.build/artifacts/sparkle/Sparkle/bin/generate_appcast"
+          APPCAST_DIR="$RUNNER_TEMP/appcast"
+          mkdir -p "$APPCAST_DIR"
+          cp "macos/.build/gnat-$VERSION.dmg" "$APPCAST_DIR/"
+          echo "$SPARKLE_ED_PRIVATE_KEY" | "$GENERATE_APPCAST" \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/craigmjohnston/nat/releases/download/v$VERSION/" \
+            --link https://github.com/craigmjohnston/nat \
+            -o "$APPCAST_DIR/appcast.xml" \
+            "$APPCAST_DIR"
+
+      # No path filter on this workflow: the bundle embeds nat built from
+      # the repo root, so a Go-only merge legitimately changes the app too.
+      - name: Publish release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION" \
+            "macos/.build/gnat-$VERSION.dmg" \
+            "$RUNNER_TEMP/appcast/appcast.xml" \
+            --title "gnat $VERSION" \
+            --generate-notes \
+            --target "$GITHUB_SHA"
+
+      # Temporary: lets a workflow_dispatch run off a branch (which the
+      # publish step above always skips) be inspected without a release.
+      # Drop this step once the pipeline has been exercised end-to-end.
+      - name: Upload dmg (pre-merge testing only)
+        if: github.ref != 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnat-dmg
+          path: macos/.build/gnat-*.dmg
+
+      - name: Delete signing keychain
+        if: always()
+        run: security delete-keychain "$KEYCHAIN_PATH" || true
