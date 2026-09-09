@@ -13,6 +13,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # The app is written against Swift 6.2's concurrency semantics (isolated
+      # conformances carry the SwiftTerm delegate; region isolation proves the
+      # client's sends) — the image's default Xcode is older and refuses code
+      # 6.2 accepts, so the newest Xcode 26 on the runner is selected rather
+      # than whatever the image defaults to.
+      - name: Select the newest Xcode
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+          swift --version
+
       - name: Test
         run: swift test --package-path macos
 
