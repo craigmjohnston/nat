@@ -16,6 +16,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/worktree"
 )
@@ -1135,7 +1136,8 @@ func TestLaunchAgentReportsAFailedPromptFile(t *testing.T) {
 
 	client := &fakeNotion{}
 
-	msg := runMsg(t, launchAgent(launcher, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client, "u1",
+	msg := runMsg(t, launchAgent(launcher, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client,
+		&fakePRViewer{}, "u1",
 		agent.PromptContext{
 			Slice: domain.Slice{ID: "s5", Name: "Info view"},
 		}, config.AgentModel{}, true)).(agentLaunchedMsg)
@@ -1153,22 +1155,32 @@ func TestLaunchAgentReportsAFailedPromptFile(t *testing.T) {
 	}
 }
 
-// Done is out — the work has landed and there is nothing for a second agent to
-// add — and so is a status the project has invented, which is not a state this
-// flow knows what to do with. The two that are in have tests of their own.
+// A status the project has invented is out: it is not a state this flow knows
+// what to do with. So is a Done slice with no pull request recorded, which is
+// refused in its own words — there is no review to send an agent at, and
+// nothing about the slice left to do. The states that are in have tests of
+// their own.
 func TestAppLaunchRefusesASliceItCannotStart(t *testing.T) {
-	const refusal = " — only Todo slices and slices in progress can be launched."
+	const refusal = " — only Todo slices, slices in progress and done slices with a pull request still open can be launched."
 	tests := []struct {
 		name string
 		id   string
-		want string
+		// strip is the pull request taken off the Done slice, which is what
+		// leaves it with nothing an agent could be sent at.
+		strip bool
+		want  string
 	}{
-		{"done", "s3", `"Domain model" is Done` + refusal},
-		{"unknown", "s6", `"Stray" is Unknown` + refusal},
+		{name: "unknown", id: "s6", want: `"Stray" is Unknown` + refusal},
+		{name: "done with no pull request", id: "s3", strip: true,
+			want: `"Domain model" is done with no pull request recorded — there is nothing left to launch an agent on.`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			app, launcher, _ := launchApp(t)
+			if tt.strip {
+				app.project.Slices[2].PRURL = ""
+				app.board.SetProject(app.project)
+			}
 			cursorOn(t, app, tt.id)
 
 			press(app, "l")
@@ -1260,6 +1272,159 @@ func TestAppLaunchResumesAHandedBackSlice(t *testing.T) {
 		if !strings.Contains(string(prompt), want) {
 			t.Errorf("prompt does not say %q:\n%s", want, prompt)
 		}
+	}
+}
+
+// fixApp is a board whose Done slice has a branch recorded and a worktree still
+// checked out on it, with a fake gh answering for its pull request: the state a
+// slice is in between the approve key and the merge.
+func fixApp(t *testing.T, state string) (*App, *fakeLauncher, *fakePRViewer, *fakeWorktrees, string) {
+	t.Helper()
+	app, launcher, workdir := launchApp(t)
+	if err := os.Mkdir(filepath.Join(workdir, ".git"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	app.project.Slices[2].Branch = fixBranch
+	app.board.SetProject(app.project)
+
+	viewer := &fakePRViewer{pr: samplePR()}
+	viewer.pr.State = state
+	app.prViewer = viewer
+
+	trees := &fakeWorktrees{existing: map[string]string{fixBranch: filepath.Join(workdir+"-worktrees", "domain-model")}}
+	newWorktrees = func() Worktrees { return trees }
+	t.Cleanup(func() { newWorktrees = func() Worktrees { return &fakeWorktrees{} } })
+
+	cursorOn(t, app, "s3")
+	return app, launcher, viewer, trees, workdir
+}
+
+// fixBranch is the branch the Done slice's work was pushed to, and so the one
+// its pull request is built from.
+const fixBranch = "slice/domain-model"
+
+// A Done slice whose pull request is still open is launchable: the work is out
+// but not in, and the review on it is exactly what an agent is for. The session
+// is placed back in the worktree its own branch is checked out in, briefed on
+// the pull request rather than on the slice, and the slice itself is left
+// exactly as the approve key left it — Done, with nothing claimed.
+func TestAppLaunchStartsAFixAgentOnAnOpenPullRequest(t *testing.T) {
+	app, launcher, viewer, trees, workdir := fixApp(t, "OPEN")
+
+	launch(t, app)
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want the one fix session", launcher.launches)
+	}
+	if got := launcher.launches[0].sliceID; got != "s3" {
+		t.Errorf("launched slice %q, want the Done one", got)
+	}
+	// The state is read in the slice's own checkout, off the URL its page
+	// records — the ref gh is given everywhere else the board reads one.
+	want := []viewCall{{dir: workdir, ref: "https://example.test/pr/1"}}
+	if !reflect.DeepEqual(viewer.made, want) {
+		t.Errorf("read %+v, want %+v", viewer.made, want)
+	}
+	if got := trees.looks; len(got) != 1 || got[0].branch != fixBranch {
+		t.Errorf("looked up %+v, want the branch the pull request is built from", got)
+	}
+	if got := app.client.(*fakeNotion).updated; len(got) != 0 {
+		t.Errorf("writes = %+v, want the Done slice untouched", got)
+	}
+	prompt, err := os.ReadFile(launcher.launches[0].promptFile)
+	if err != nil {
+		t.Fatalf("read the prompt: %v", err)
+	}
+	for _, want := range []string{
+		"- Pull request: https://example.test/pr/1",
+		"- Branch: " + fixBranch,
+		"gh pr view https://example.test/pr/1 --comments",
+		"Never change the slice on the tracker",
+	} {
+		if !strings.Contains(string(prompt), want) {
+			t.Errorf("prompt does not say %q:\n%s", want, prompt)
+		}
+	}
+}
+
+// A pull request that is no longer open has nothing for an agent to do, and
+// what to do next differs between the two ways that happens, so each is refused
+// in its own words. A reading that never happened refuses too: everywhere else
+// the board reads gh an unread pull request costs an undrawn chip, and here it
+// would cost a session started on a review that may have ended an hour ago.
+//
+// Every one of them is a toast, and every one of them leaves the board as it
+// was: nothing cut, nothing written, nothing launched.
+func TestAppLaunchRefusesAFixAgentOnAPullRequestThatIsNotOpen(t *testing.T) {
+	tests := []struct {
+		name  string
+		state string
+		err   error
+		want  string
+	}{
+		{name: "merged", state: gh.PRStateMerged,
+			want: `The pull request for "Domain model" has already merged — no agent was launched.`},
+		{name: "closed", state: gh.PRStateClosed,
+			want: `The pull request for "Domain model" is closed — no agent was launched.`},
+		{name: "unreadable", state: "OPEN", err: errors.New("no pull requests found"),
+			want: `Could not read the pull request for "Domain model": no pull requests found — no agent was launched.`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app, launcher, viewer, trees, _ := fixApp(t, tt.state)
+			viewer.err = tt.err
+
+			launch(t, app)
+
+			if len(launcher.launches) != 0 {
+				t.Errorf("launched %+v, want nothing", launcher.launches)
+			}
+			if len(trees.looks) != 0 || len(trees.creates) != 0 {
+				t.Errorf("touched the worktrees %+v/%+v, want none of it", trees.looks, trees.creates)
+			}
+			if got := app.client.(*fakeNotion).updated; len(got) != 0 {
+				t.Errorf("writes = %+v, want the slice untouched", got)
+			}
+			if app.toast != tt.want {
+				t.Errorf("toast = %q, want %q", app.toast, tt.want)
+			}
+			if app.busy {
+				t.Error("a refused launch should leave nothing in flight")
+			}
+		})
+	}
+}
+
+// The dependencies are a question about work not yet done. A Done slice's pull
+// request waits on its review and on nothing else, whatever order the plan has
+// been put in since — so the blocked refusal does not reach it.
+func TestAppLaunchStartsAFixAgentOnASliceWithUnfinishedDependencies(t *testing.T) {
+	app, launcher, _, _, _ := fixApp(t, "OPEN")
+	app.project.Slices[2].DependsOn = []string{"s4"}
+	app.board.SetProject(app.project)
+	cursorOn(t, app, "s3")
+
+	launch(t, app)
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want the fix session, not a blocked refusal: %s", launcher.launches, app.toast)
+	}
+}
+
+// Without gh there is no way to tell an open pull request from a merged one,
+// and the whole gate is that question: the key does nothing at all rather than
+// launching a session on an answer nobody has.
+func TestAppLaunchOffersNoFixAgentWithoutGh(t *testing.T) {
+	app, launcher, _, _, _ := fixApp(t, "OPEN")
+	app.prViewer = nil
+
+	press(app, "l")
+
+	if app.board.Prompting() {
+		t.Error("a fix launch with no gh to gate it should offer no prompt")
+	}
+	if len(launcher.launches) != 0 {
+		t.Errorf("launched %+v, want nothing", launcher.launches)
 	}
 }
 

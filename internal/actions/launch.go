@@ -70,8 +70,15 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, client Client,
 	if err != nil {
 		return LaunchResult{}, fmt.Errorf("launch agent: %w", err)
 	}
-	if err := ClaimSlice(ctx, client, c.Slice, assigneeID); err != nil {
-		return LaunchResult{Toast: fmt.Sprintf("Could not %v — no agent was launched.", err), Sev: SevError}, nil
+	// A fix session claims nothing: the slice is Done, its record of what
+	// happened is written, and the work in flight is the pull request rather
+	// than the slice. Moving it back into progress would take it out of the
+	// state the approve flow left it in for a session that changes none of
+	// what that flow recorded.
+	if !c.Fix {
+		if err := ClaimSlice(ctx, client, c.Slice, assigneeID); err != nil {
+			return LaunchResult{Toast: fmt.Sprintf("Could not %v — no agent was launched.", err), Sev: SevError}, nil
+		}
 	}
 	if err := l.Launch(session, c.WorkingDir, file, c.Slice.ID, m); err != nil {
 		return LaunchResult{}, err

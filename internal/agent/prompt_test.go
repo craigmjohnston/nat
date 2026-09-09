@@ -455,6 +455,7 @@ func TestEveryCommandInAPromptNamesTheProject(t *testing.T) {
 	for prompt, text := range map[string]string{
 		"slice":          Prompt(testContext()),
 		"slice worktree": Prompt(worktreeContext()),
+		"fix":            Prompt(fixContext()),
 		"plan":           PlanPrompt(testProjectID, name, dir, ""),
 		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone."),
 		"wishlist":       WishlistPrompt(testProjectID, name, dir, testWishlist()),
@@ -478,6 +479,7 @@ func TestPromptsSayWhyTheProjectIsPinned(t *testing.T) {
 	const name, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
 	for prompt, text := range map[string]string{
 		"slice": Prompt(testContext()),
+		"fix":   Prompt(fixContext()),
 		"plan":  PlanPrompt(testProjectID, name, dir, ""),
 	} {
 		for _, want := range []string{

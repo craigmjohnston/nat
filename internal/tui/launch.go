@@ -15,6 +15,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/gh"
 )
 
 // AgentLauncher is what the launch flow needs of tmux: which slices have an
@@ -261,12 +262,13 @@ func (f *LaunchForm) save(a *App) tea.Cmd {
 // configured one, so this is that project.
 func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, attach bool) tea.Cmd {
 	project, _ := a.activeProject()
-	return launchAgent(a.launcher, newWorktrees(), newRepo(), a.client, a.cfg.AssigneeUserID, agent.PromptContext{
+	return launchAgent(a.launcher, newWorktrees(), newRepo(), a.client, a.prViewer, a.cfg.AssigneeUserID, agent.PromptContext{
 		Slice:        s,
 		Project:      project,
 		ProjectID:    a.cfg.ActiveProjectID,
 		WorkingDir:   expandHome(strings.TrimSpace(workdir)),
 		AssigneeName: a.cfg.AssigneeUserName,
+		Fix:          fixLaunch(s),
 	}, trimModel(m), attach)
 }
 
@@ -277,13 +279,24 @@ func trimModel(m config.AgentModel) config.AgentModel { return actions.TrimModel
 
 // launchAgent gives the agent a worktree, writes its prompt out, claims the
 // slice and starts the detached session that reads it — [actions.Launch],
-// which is what a headless launch reuses. Only the message this key reports
-// is left here: the toast about where the session was put, or the error
-// banner an outright failure gets — see [actions.Launch] for which is which
-// and why.
-func launchAgent(l AgentLauncher, w Worktrees, r Repo, client NotionAPI, assigneeID string,
+// which is what a headless launch reuses. Only two things are left here: the
+// message this key reports — the toast about where the session was put, or
+// the error banner an outright failure gets, see [actions.Launch] for which
+// is which and why — and the fix launch's gate. A fix launch — a Done slice
+// whose pull request is still out, see [fixLaunch] — asks gh whether that
+// pull request is still open, first of everything and before any worktree is
+// cut, because it is the one fact the board holds no fresh reading of — see
+// [prStillOpen]. It stays here rather than moving into [actions.Launch]
+// because the PRViewer is the board's own seam, and no headless launch sets
+// Fix at all.
+func launchAgent(l AgentLauncher, w Worktrees, r Repo, client NotionAPI, viewer PRViewer, assigneeID string,
 	c agent.PromptContext, m config.AgentModel, attach bool) tea.Cmd {
 	return func() tea.Msg {
+		if c.Fix {
+			if toast, sev, ok := prStillOpen(viewer, c); !ok {
+				return agentLaunchedMsg{toast: toast, sev: sev}
+			}
+		}
 		res, err := actions.Launch(context.Background(), l, w, r, client, assigneeID, c, m)
 		if err != nil {
 			return agentLaunchedMsg{err: err}
@@ -293,6 +306,41 @@ func launchAgent(l AgentLauncher, w Worktrees, r Repo, client NotionAPI, assigne
 		}
 		return agentLaunchedMsg{slice: res.Context.Slice, session: res.Session, attach: attach, toast: res.Toast, sev: res.Sev}
 	}
+}
+
+// prStillOpen is a fix launch's one question: does GitHub still call the slice's
+// pull request open? It is read in the slice's checkout, at the moment of the
+// launch, rather than taken from the board's background listing, which is a poll
+// and may not have run since the pull request merged.
+//
+// Only an open one is worth an agent. A merged pull request is the work landed
+// and a closed one is the work given up on, and a session started at either
+// would be a worktree cut and a Claude Code launched at a review nobody is
+// waiting on. The two are refused separately because what to do next differs:
+// one slice is finished and the other holds a decision to revisit.
+//
+// A read that failed refuses too, which is the opposite of what the board does
+// everywhere else it reads gh — there an unread pull request is no news, because
+// what it costs is a chip left undrawn. What it costs here is an agent sent at a
+// pull request that may have merged an hour ago, so the reading that never
+// happened stops the launch and says so.
+//
+// It answers in toasts rather than errors for the reason the worktree failures
+// do: nothing has gone wrong with the board, and the slice is exactly as it was.
+func prStillOpen(viewer PRViewer, c agent.PromptContext) (string, severity, bool) {
+	pr, err := viewer.ViewPR(c.WorkingDir, c.Slice.PRURL)
+	switch {
+	case err != nil:
+		return fmt.Sprintf("Could not read the pull request for %q: %v — no agent was launched.",
+			c.Slice.Name, err), sevError, false
+	case pr.State == gh.PRStateMerged:
+		return fmt.Sprintf("The pull request for %q has already merged — no agent was launched.",
+			c.Slice.Name), sevWarning, false
+	case pr.State == gh.PRStateClosed:
+		return fmt.Sprintf("The pull request for %q is closed — no agent was launched.",
+			c.Slice.Name), sevWarning, false
+	}
+	return "", sevSuccess, true
 }
 
 // attach hands the terminal to a session until the user detaches from it.
@@ -338,9 +386,21 @@ const (
 // slice its holder already claimed, so the agent's own claim is what it always
 // was.
 //
-// Done is out: the work has landed, and there is nothing for an agent to add to
-// a slice whose pull request is already open. So is any other status a project
-// has invented, which is not a state this flow knows what to do with.
+// A Done slice is launchable too, but only for as long as its pull request is:
+// Done is Notion's word for the slice and not for the work, and until that pull
+// request merges the review on it is exactly the sort of thing an agent is for.
+// Such a launch is a fix session — see [fixLaunch] — and only the pull request
+// recorded on the page can be checked here, since whether it is still open is a
+// question for gh and gh is not asked on a keystroke. A Done slice with none
+// recorded is refused on the spot, and in its own words: there is nothing to
+// read a review off, and nothing an agent could do with the slice instead.
+//
+// A status a project has invented is out: it is not a state this flow knows
+// what to do with.
+//
+// The dependencies are asked about only of work not yet finished. A Done slice
+// whose pull request is out waits on the review and on nothing else — whatever
+// order the plan has since been put in.
 //
 // A blocked slice is refused too, and refused with a toast rather than the
 // error banner a failure gets: nothing has gone wrong, and the slice is still
@@ -358,11 +418,19 @@ func (a *App) launchAgentFlow() tea.Cmd {
 	if a.live[s.ID] != "" {
 		return a.showConfirm(fmt.Sprintf("An agent is already running for %q — press t to attach.", s.Name), sevWarning)
 	}
-	if !launchable(s) {
-		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices and slices in progress can be launched.", s.Name, statusWord(s)), sevWarning)
+	if s.Status == domain.SliceDone && s.PRURL == "" {
+		return a.showConfirm(fmt.Sprintf("%q is done with no pull request recorded — there is nothing left to launch an agent on.", s.Name), sevWarning)
 	}
-	if blockers := a.board.Blockers(s); len(blockers) > 0 {
-		return a.showToast(fmt.Sprintf("%q waits on %s.", s.Name, blockerList(blockers)), sevWarning)
+	if !launchable(s) {
+		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices, slices in progress and done slices with a pull request still open can be launched.", s.Name, statusWord(s)), sevWarning)
+	}
+	if fixLaunch(s) && a.prViewer == nil {
+		return nil
+	}
+	if !fixLaunch(s) {
+		if blockers := a.board.Blockers(s); len(blockers) > 0 {
+			return a.showToast(fmt.Sprintf("%q waits on %s.", s.Name, blockerList(blockers)), sevWarning)
+		}
 	}
 	workdir := workdirFor(s, project)
 	return a.openPrompt(launchChoices, func(choice int) tea.Cmd {
@@ -390,11 +458,26 @@ func (a *App) launchChosen(s domain.Slice, workdir string, choice int) tea.Cmd {
 }
 
 // launchable reports whether a slice is one an agent can be started on: not
-// yet begun, or begun and no longer being worked. The live session is the
-// caller's check rather than this one's, since an agent already running is a
-// different refusal with a different thing to say.
+// yet begun, begun and no longer being worked, or finished and out as a pull
+// request that has not landed. The live session is the caller's check rather
+// than this one's, since an agent already running is a different refusal with a
+// different thing to say.
 func launchable(s domain.Slice) bool {
-	return s.Status == domain.SliceTodo || s.Status == domain.SliceClaimed
+	return s.Status == domain.SliceTodo || s.Status == domain.SliceClaimed || fixLaunch(s)
+}
+
+// fixLaunch reports whether launching on a slice is a fix session rather than
+// work on the slice itself: the slice is Done and a pull request is recorded on
+// it, so what is left of it is the review of work already published — comments
+// to answer and checks to get green — and nothing on the page is the session's
+// to change.
+//
+// Whether that pull request is still open is deliberately not part of it. Only
+// gh can say, and gh is a subprocess and a round trip to GitHub: the question is
+// asked once the launch is under way, in the goroutine that is already the slow
+// one — see [prStillOpen].
+func fixLaunch(s domain.Slice) bool {
+	return s.Status == domain.SliceDone && s.PRURL != ""
 }
 
 // blockerList names the slices a blocked one is waiting on, in the order it
