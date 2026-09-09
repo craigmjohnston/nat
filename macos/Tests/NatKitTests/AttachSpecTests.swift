@@ -42,7 +42,7 @@ final class TmuxSessionNameTests: XCTestCase {
 final class AttachSpecTests: XCTestCase {
     // wantAttachArgs in internal/agent/tmux_test.go, minus the leading "tmux"
     // argv[0] the Go *exec.Cmd carries and this type does not.
-    private let wantArguments = ["-T", "256,RGB,extkeys,focus", "attach-session", "-t", "nat-3b738308"]
+    private let wantArguments = ["-u", "-T", "256,RGB,extkeys,focus", "attach-session", "-t", "nat-3b738308"]
 
     func testArguments() {
         let spec = AttachSpec(session: "nat-3b738308")

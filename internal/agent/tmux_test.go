@@ -38,6 +38,10 @@ type fakeRunner struct {
 
 func (f *fakeRunner) Run(name string, args ...string) (string, error) {
 	f.calls = append(f.calls, call{name: name, args: args})
+	// Every call leads with the -u client flag; the subcommand is what follows.
+	if len(args) > 0 && args[0] == "-u" {
+		args = args[1:]
+	}
 	sub := ""
 	if len(args) > 0 {
 		sub = args[0]
@@ -114,11 +118,69 @@ func TestLiveSlices(t *testing.T) {
 	}
 
 	wantCall := call{name: "tmux", args: []string{
-		"list-panes", "-a", "-F",
+		"-u", "list-panes", "-a", "-F",
 		"#{@nat_slice}\t#{pane_id}\t#{session_name}\t#{window_id}\t#{pane_dead}",
 	}}
 	if len(r.calls) != 1 || !reflect.DeepEqual(r.calls[0], wantCall) {
 		t.Errorf("calls = %+v, want exactly %+v", r.calls, wantCall)
+	}
+}
+
+// The bug this pins down: a tmux client with no UTF-8 locale — launchd's
+// environment names none, which is what a Finder-launched app inherits, and
+// what its child nat then runs every tmux command with — sanitises the
+// control characters in its output, turning the tabs [listPanesFormat]
+// separates fields with into underscores. Every line then reads as one
+// field, the parser drops the lot, and every live agent reports as gone.
+// -u forces the client into UTF-8 mode whatever the locale says, so every
+// tmux call must carry it.
+func TestEveryTmuxCallRunsAsAUTF8Client(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin")
+	r := &fakeRunner{outs: map[string]string{
+		"-V":          "tmux 3.5a\n",
+		"new-session": "%7\n",
+		"list-panes":  panesOutput(agentApart),
+	}}
+	tm := NewTmuxWithRunner(r)
+
+	if _, err := tm.LiveSlices(); err != nil {
+		t.Fatalf("LiveSlices: %v", err)
+	}
+	if err := tm.Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "3b73", config.AgentModel{}); err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	if err := tm.SendPrompt("nat-b4463d8f", "hello"); err != nil {
+		t.Fatalf("SendPrompt: %v", err)
+	}
+	if err := tm.Interrupt("nat-b4463d8f"); err != nil {
+		t.Fatalf("Interrupt: %v", err)
+	}
+	if _, err := tm.Activity(); err != nil {
+		t.Fatalf("Activity: %v", err)
+	}
+	if _, err := tm.ReclaimStrays(""); err != nil {
+		t.Fatalf("ReclaimStrays: %v", err)
+	}
+
+	for i, c := range r.calls {
+		if c.name != TmuxBinary || len(c.args) == 0 || c.args[0] != "-u" {
+			t.Errorf("call %d = %s %v, want every tmux call to lead with -u", i, c.name, c.args)
+		}
+	}
+}
+
+// What a non-UTF-8 client made of the pane listing: one underscore-separated
+// field per line, which is no line tmux wrote for us — dropped whole rather
+// than half-read into a pane with everything in its slice field.
+func TestLiveSlicesDropsSanitisedLines(t *testing.T) {
+	r := &fakeRunner{out: "3b738308…8f_%1_nat-b4463d8f_@1_0\n"}
+
+	live, err := NewTmuxWithRunner(r).LiveSlices()
+	if err != nil {
+		t.Fatalf("LiveSlices: %v", err)
+	}
+	if len(live) != 0 {
+		t.Errorf("live = %v, want a sanitised listing read as no panes", live)
 	}
 }
 
@@ -183,8 +245,9 @@ func TestLaunch(t *testing.T) {
 
 	want := []call{
 		// Whether -e may be said at all is asked of the tmux itself.
-		{name: "tmux", args: []string{"-V"}},
+		{name: "tmux", args: []string{"-u", "-V"}},
 		{name: "tmux", args: append([]string{
+			"-u",
 			"new-session", "-d",
 			"-s", "nat-b4463d8f",
 			"-c", "/Users/craig/Projects/x",
@@ -205,7 +268,7 @@ func TestLaunch(t *testing.T) {
 			";", "set-option", "-s", "-a", "terminal-features", "*:extkeys:hyperlinks",
 		}, clickBindingArgs()...)},
 		// The tag the agent is found by.
-		{name: "tmux", args: []string{"set-option", "-p", "-t", "%7", "@nat_slice", id}},
+		{name: "tmux", args: []string{"-u", "set-option", "-p", "-t", "%7", "@nat_slice", id}},
 	}
 	if !reflect.DeepEqual(r.calls, want) {
 		t.Errorf("calls = %+v, want %+v", r.calls, want)
@@ -221,7 +284,7 @@ func TestLaunchNoPATH(t *testing.T) {
 	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "3b73", config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
-	if r.calls[0].args[0] != "new-session" {
+	if r.calls[0].args[1] != "new-session" {
 		t.Errorf("first call = %v, want new-session with no version asked for", r.calls[0].args)
 	}
 	for _, arg := range r.calls[0].args {
@@ -387,12 +450,12 @@ var (
 // session of its own, with placeholder as the pane the new session came up on.
 func breakOutCalls(paneID, session, placeholder string) []call {
 	return []call{
-		{name: "tmux", args: []string{"new-session", "-d", "-s", session,
+		{name: "tmux", args: []string{"-u", "new-session", "-d", "-s", session,
 			"-P", "-F", "#{pane_id}", placeholderCommand,
 			";", "set-option", "-t", session, "status", "off",
 			";", "set-option", "-t", session, "mouse", "on"}},
-		{name: "tmux", args: []string{"join-pane", "-s", paneID, "-t", session + ":"}},
-		{name: "tmux", args: []string{"kill-pane", "-t", placeholder}},
+		{name: "tmux", args: []string{"-u", "join-pane", "-s", paneID, "-t", session + ":"}},
+		{name: "tmux", args: []string{"-u", "kill-pane", "-t", placeholder}},
 	}
 }
 
@@ -420,7 +483,7 @@ func TestReclaimStraysReHomesThePanesAnEarlierRunLeft(t *testing.T) {
 		t.Errorf("moved = %d, want both strays re-homed", moved)
 	}
 
-	want := []call{{name: "tmux", args: []string{"list-panes", "-a", "-F", listPanesFormat()}}}
+	want := []call{{name: "tmux", args: []string{"-u", "list-panes", "-a", "-F", listPanesFormat()}}}
 	want = append(want, breakOutCalls(stray.id, SessionName(stray.slice), "%9")...)
 	want = append(want, breakOutCalls(inWindow.id, SessionName(inWindow.slice), "%9")...)
 	if !reflect.DeepEqual(r.calls, want) {
@@ -511,7 +574,7 @@ func TestReclaimStraysClearsUpAfterAFailedBreakOut(t *testing.T) {
 	}
 
 	last := r.calls[len(r.calls)-1]
-	want := call{name: "tmux", args: []string{"kill-session", "-t", SessionName(stray.slice)}}
+	want := call{name: "tmux", args: []string{"-u", "kill-session", "-t", SessionName(stray.slice)}}
 	if !reflect.DeepEqual(last, want) {
 		t.Errorf("last call = %+v, want %+v", last, want)
 	}
@@ -668,7 +731,7 @@ func TestSessionsNatCreatesEnableExtendedKeysAndHyperlinks(t *testing.T) {
 // wantAttachArgs is the argv both attaches build: the client features are a
 // top-level flag, so they precede the command.
 var wantAttachArgs = []string{
-	"tmux", "-T", "256,RGB,extkeys,focus", "attach-session", "-t", "nat-3b738308",
+	"tmux", "-u", "-T", "256,RGB,extkeys,focus", "attach-session", "-t", "nat-3b738308",
 }
 
 // envValues is every value the environment of cmd gives name, so a test can
@@ -917,7 +980,7 @@ func TestLaunchTagsWhatLiveSlicesReads(t *testing.T) {
 	// counting from the end, since what precedes it (the version asked about
 	// before a PATH is carried) depends on the environment of the test run.
 	tag := launch.calls[len(launch.calls)-1].args
-	option, value := tag[4], tag[5]
+	option, value := tag[5], tag[6]
 
 	// tmux reports the option back where the format asked for it, which is the
 	// first field of the line.
@@ -952,9 +1015,9 @@ func TestSendPrompt(t *testing.T) {
 	}
 	buffer := promptBuffer(session)
 	want := [][]string{
-		{"set-buffer", "-b", buffer, "--", text},
-		{"paste-buffer", "-d", "-p", "-b", buffer, "-t", session},
-		{"send-keys", "-t", session, "Enter"},
+		{"-u", "set-buffer", "-b", buffer, "--", text},
+		{"-u", "paste-buffer", "-d", "-p", "-b", buffer, "-t", session},
+		{"-u", "send-keys", "-t", session, "Enter"},
 	}
 	for i, args := range want {
 		if runner.calls[i].name != TmuxBinary || !slices.Equal(runner.calls[i].args, args) {
@@ -987,7 +1050,7 @@ func TestSendPromptFailures(t *testing.T) {
 				return
 			}
 			last := runner.calls[len(runner.calls)-1]
-			if last.args[0] != "delete-buffer" {
+			if last.args[1] != "delete-buffer" {
 				t.Errorf("last call = %v, want the staged buffer deleted", last.args)
 			}
 		})
@@ -1008,7 +1071,7 @@ func TestInterrupt(t *testing.T) {
 	if call.name != TmuxBinary {
 		t.Errorf("command = %s, want %s", call.name, TmuxBinary)
 	}
-	want := []string{"send-keys", "-t", "nat-test-session", "Escape"}
+	want := []string{"-u", "send-keys", "-t", "nat-test-session", "Escape"}
 	if !slices.Equal(call.args, want) {
 		t.Errorf("args = %v, want %v", call.args, want)
 	}

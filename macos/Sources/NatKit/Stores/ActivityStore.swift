@@ -73,8 +73,13 @@ public final class ActivityStore {
                         existing: self.firstSeen, sliceIDs: newAgents.keys, now: self.now()
                     )
 
-                    // If no agents, stop polling
+                    // If no agents, stop polling. Said out loud, because an
+                    // empty reading ends the loop until the next kick(): a
+                    // reading that is wrongly empty — a tmux whose output the
+                    // client mangled once hid every live agent this way — is
+                    // otherwise indistinguishable from a quiet board.
                     if statuses.isEmpty {
+                        NSLog("ActivityStore: no agents reported; polling stops until the next kick")
                         self.isPolling = false
                         break
                     }

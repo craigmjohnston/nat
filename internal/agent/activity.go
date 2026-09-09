@@ -101,7 +101,7 @@ func (t *Tmux) classify(p pane) Activity {
 	if p.dead {
 		return ActivityGone
 	}
-	out, err := t.runner.Run(TmuxBinary, "capture-pane", "-p", "-J", "-t", p.id)
+	out, err := t.run("capture-pane", "-p", "-J", "-t", p.id)
 	if err != nil {
 		// tmux exits non-zero for a pane it cannot find, which is the pane
 		// having gone between the scan and the capture — a race we lose often

@@ -128,6 +128,17 @@ func NewTmux() *Tmux { return &Tmux{runner: ExecRunner{}} }
 // NewTmuxWithRunner returns a Tmux that executes through r.
 func NewTmuxWithRunner(r Runner) *Tmux { return &Tmux{runner: r} }
 
+// run executes one tmux command, always as a UTF-8 client (-u). The flag is
+// what makes these calls independent of the caller's locale: a client whose
+// environment names no UTF-8 locale — launchd's names none, which is what a
+// Finder-launched app inherits and what its child nat then runs tmux with —
+// sanitises the control characters in its output, turning the tabs
+// [listPanesFormat] separates fields with into underscores and every live
+// agent unreadable.
+func (t *Tmux) run(args ...string) (string, error) {
+	return t.runner.Run(TmuxBinary, append([]string{"-u"}, args...)...)
+}
+
 // SessionName is the tmux session name for a slice's page ID: the prefix plus
 // the last eight hex digits of the ID, with the UUID dashes dropped. IDs are
 // already hex, but non-hex characters are skipped rather than trusted, so a
@@ -208,7 +219,7 @@ type pane struct {
 // tmux exits 1 when no server is running at all, which is the ordinary state
 // before the first agent launches — that reads as no panes, not an error.
 func (t *Tmux) panes() ([]pane, error) {
-	out, err := t.runner.Run(TmuxBinary, "list-panes", "-a", "-F", listPanesFormat())
+	out, err := t.run("list-panes", "-a", "-F", listPanesFormat())
 	if err != nil {
 		var exitErr *ExitError
 		if errors.As(err, &exitErr) && exitErr.Code == 1 {
@@ -286,18 +297,18 @@ func (t *Tmux) breakOut(paneID, session string) error {
 	args := append([]string{"new-session", "-d",
 		"-s", session, "-P", "-F", "#{pane_id}", placeholderCommand}, statusOffArgs(session)...)
 	args = append(args, mouseOnArgs(session)...)
-	out, err := t.runner.Run(TmuxBinary, args...)
+	out, err := t.run(args...)
 	if err != nil {
 		return fmt.Errorf("make session %s for pane %s: %w", session, paneID, err)
 	}
 	placeholder := strings.TrimSpace(out)
 
-	if _, err := t.runner.Run(TmuxBinary, "join-pane", "-s", paneID, "-t", session+":"); err != nil {
+	if _, err := t.run("join-pane", "-s", paneID, "-t", session+":"); err != nil {
 		logging.Error("killing the session made for a pane that would not move", "session", session, "pane", paneID)
-		_, _ = t.runner.Run(TmuxBinary, "kill-session", "-t", session)
+		_, _ = t.run("kill-session", "-t", session)
 		return fmt.Errorf("move pane %s into %s: %w", paneID, session, err)
 	}
-	if _, err := t.runner.Run(TmuxBinary, "kill-pane", "-t", placeholder); err != nil {
+	if _, err := t.run("kill-pane", "-t", placeholder); err != nil {
 		return fmt.Errorf("clear the placeholder pane %s in %s: %w", placeholder, session, err)
 	}
 	logging.Action("agent pane moved to a session of its own", "session", session, "pane", paneID)
@@ -355,12 +366,12 @@ func (t *Tmux) breakOutAll(panes []pane, want func(pane) bool) (int, error) {
 // failure is reported, because until it is tagged nothing will find it again.
 func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.AgentModel) error {
 	carryEnv := os.Getenv("PATH") != "" && t.supportsSessionEnv()
-	out, err := t.runner.Run(TmuxBinary, LaunchArgs(session, workdir, promptFile, m, carryEnv)...)
+	out, err := t.run(LaunchArgs(session, workdir, promptFile, m, carryEnv)...)
 	if err != nil {
 		return fmt.Errorf("launch tmux session %s: %w", session, err)
 	}
 	pane := strings.TrimSpace(out)
-	if _, err := t.runner.Run(TmuxBinary,
+	if _, err := t.run(
 		"set-option", "-p", "-t", pane, SlicePaneOption, sliceID); err != nil {
 		return fmt.Errorf("tag tmux pane %s for slice %s: %w", pane, sliceID, err)
 	}
@@ -406,7 +417,7 @@ func LaunchArgs(session, workdir, promptFile string, m config.AgentModel, carryE
 // about age, and a tmux genuinely absent fails the launch itself with the
 // better error.
 func (t *Tmux) supportsSessionEnv() bool {
-	out, err := t.runner.Run(TmuxBinary, "-V")
+	out, err := t.run("-V")
 	if err != nil {
 		return true
 	}
@@ -587,17 +598,17 @@ func promptBuffer(session string) string { return SessionPrefix + "prompt-" + se
 // about their own code, and the log is not where they belong.
 func (t *Tmux) SendPrompt(session, text string) error {
 	buffer := promptBuffer(session)
-	if _, err := t.runner.Run(TmuxBinary, "set-buffer", "-b", buffer, "--", text); err != nil {
+	if _, err := t.run("set-buffer", "-b", buffer, "--", text); err != nil {
 		return fmt.Errorf("stage the prompt for %s: %w", session, err)
 	}
-	if _, err := t.runner.Run(TmuxBinary, "paste-buffer", "-d", "-p", "-b", buffer, "-t", session); err != nil {
+	if _, err := t.run("paste-buffer", "-d", "-p", "-b", buffer, "-t", session); err != nil {
 		// -d deletes the buffer as it pastes; a paste that never happened leaves
 		// it behind, holding the user's words in the tmux server until something
 		// else overwrites it.
-		_, _ = t.runner.Run(TmuxBinary, "delete-buffer", "-b", buffer)
+		_, _ = t.run("delete-buffer", "-b", buffer)
 		return fmt.Errorf("paste the prompt into %s: %w", session, err)
 	}
-	if _, err := t.runner.Run(TmuxBinary, "send-keys", "-t", session, "Enter"); err != nil {
+	if _, err := t.run("send-keys", "-t", session, "Enter"); err != nil {
 		return fmt.Errorf("submit the prompt in %s: %w", session, err)
 	}
 	logging.Action("prompt sent to an agent", "session", session, "bytes", len(text))
@@ -608,7 +619,7 @@ func (t *Tmux) SendPrompt(session, text string) error {
 // agent, which is Claude Code's own interrupt key. This allows a caller to
 // interrupt a running agent's turn without terminating the session.
 func (t *Tmux) Interrupt(session string) error {
-	if _, err := t.runner.Run(TmuxBinary, "send-keys", "-t", session, "Escape"); err != nil {
+	if _, err := t.run("send-keys", "-t", session, "Escape"); err != nil {
 		return fmt.Errorf("send interrupt to %s: %w", session, err)
 	}
 	logging.Action("interrupt sent to an agent", "session", session)
@@ -631,9 +642,11 @@ const SessionEnv = "TMUX"
 const ViewerFeatures = "256,RGB,extkeys,focus"
 
 // attachArgs is the tmux argv shared by both attaches. -T is a top-level client
-// flag, so it goes before the command, not after it.
+// flag, so it goes before the command, not after it — as does -u, which makes
+// an attaching client a UTF-8 one whatever locale its environment names, the
+// same guarantee [Tmux.run] gives every other call.
 func attachArgs(session string) []string {
-	return []string{"-T", ViewerFeatures, "attach-session", "-t", session}
+	return []string{"-u", "-T", ViewerFeatures, "attach-session", "-t", session}
 }
 
 // scrubEnv is env with every entry naming one of names removed. Both attaches
