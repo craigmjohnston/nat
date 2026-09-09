@@ -1,6 +1,10 @@
-# nat — notion-agent-tracker
+<p align="center">
+  <img src="docs/assets/gnat-icon.png" width="128" alt="the nat icon: the gnat's looping flight, written as a script g">
+</p>
 
-A TUI for tracking project work in Notion, executed by Claude Code agents.
+<h1 align="center">nat — notion-agent-tracker</h1>
+
+<p align="center">A TUI for tracking project work in Notion, executed by Claude Code agents.</p>
 
 - **You** manage milestones and slices (small units of work) from the TUI and
   launch agents on them.

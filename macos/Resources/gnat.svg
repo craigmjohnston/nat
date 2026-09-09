@@ -12,7 +12,9 @@
      The plate is near-black with a whisper of the mesh-gradient field behind
      the mark (a warped, interpolated 3x3 colour grid baked to a bitmap by
      Scripts/make-mesh.py - rerun it and paste the data URI to reflow or
-     recolour), and a glass edge along the squircle's top. -->
+     recolour), and a glass edge along the squircle's top: a rim light wide enough to
+     survive dock size, brightest along the top with a soft bloom inside it,
+     and a faint lift again at the bottom edge. -->
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <clipPath id="plate">
@@ -24,10 +26,14 @@
       <stop offset="1" stop-color="#ff70c2"/>
     </linearGradient>
     <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.6"/>
-      <stop offset="0.3" stop-color="#ffffff" stop-opacity="0.1"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="0.25" stop-color="#ffffff" stop-opacity="0.14"/>
+      <stop offset="0.85" stop-color="#ffffff" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.32"/>
     </linearGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="55"/>
+    </filter>
   </defs>
 
   <g clip-path="url(#plate)">
@@ -36,7 +42,8 @@
     <path fill="none" stroke="url(#mark)" stroke-width="78" stroke-linecap="round" stroke-linejoin="round"
           d="M 258.9 778.3 L 278.1 775.6 L 297.3 771.7 L 316.4 766.6 L 335.3 760.2 L 353.8 752.6 L 371.9 743.9 L 389.3 734.0 L 406.0 723.0 L 421.9 711.1 L 436.8 698.2 L 450.8 684.4 L 463.6 669.8 L 475.2 654.6 L 485.6 638.7 L 494.6 622.3 L 502.3 605.6 L 508.6 588.5 L 513.5 571.3 L 516.9 554.0 L 518.9 536.8 L 519.5 519.7 L 518.7 502.9 L 516.5 486.5 L 512.9 470.5 L 508.1 455.1 L 502.1 440.4 L 495.0 426.5 L 486.8 413.4 L 477.7 401.3 L 467.7 390.2 L 457.0 380.1 L 445.7 371.2 L 433.9 363.4 L 421.7 356.8 L 409.2 351.4 L 396.6 347.3 L 384.0 344.4 L 371.6 342.7 L 359.4 342.2 L 347.6 343.0 L 336.4 344.9 L 325.7 347.9 L 315.8 352.0 L 306.8 357.1 L 298.7 363.1 L 291.7 369.9 L 285.8 377.5 L 281.1 385.8 L 277.7 394.6 L 275.6 404.0 L 274.9 413.7 L 275.6 423.6 L 277.7 433.7 L 281.3 443.8 L 286.3 453.9 L 292.7 463.8 L 300.5 473.3 L 309.7 482.5 L 320.2 491.2 L 331.9 499.2 L 344.8 506.6 L 358.8 513.1 L 373.9 518.8 L 389.9 523.5 L 406.6 527.2 L 424.1 529.8 L 442.2 531.3 L 460.8 531.7 L 479.7 530.8 L 498.8 528.7 L 518.0 525.3 L 537.2 520.8 L 556.2 514.9 L 574.9 507.9 L 593.1 499.7 L 610.9 490.4 L 627.9 479.9 L 644.2 468.4 L 659.6 455.9 L 674.0 442.5 L 687.4 428.3 L 699.6 413.4 L 710.5 397.8 L 720.2 381.7 L 728.5 365.1 L 735.5 348.1 L 741.0 331.0 L 745.1 313.7 L 747.8 296.4"/>
     <circle cx="750" cy="284" r="56" fill="#ffdff0"/>
-    <rect x="78.5" y="78.5" width="867" height="867" rx="195" fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-width="5"/>
-    <rect x="80" y="80" width="864" height="864" rx="194" fill="none" stroke="url(#edge)" stroke-width="4"/>
+    <ellipse cx="512" cy="66" rx="560" ry="150" fill="#ffffff" opacity="0.06" filter="url(#soft)"/>
+    <rect x="78.5" y="78.5" width="867" height="867" rx="195" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="5"/>
+    <rect x="81" y="81" width="862" height="862" rx="193.5" fill="none" stroke="url(#edge)" stroke-width="10"/>
   </g>
 </svg>
