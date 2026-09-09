@@ -1,7 +1,7 @@
 import Foundation
 
 /// The state of a slice in flight: where it has got to in its workflow.
-public enum SliceState: Codable, Equatable {
+public enum SliceState: Codable, Equatable, Sendable {
     case working
     case waiting
     case blocked

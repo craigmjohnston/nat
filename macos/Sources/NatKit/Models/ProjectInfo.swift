@@ -1,7 +1,7 @@
 import Foundation
 
 /// Information about a nat project: its metadata, milestones, and slices.
-public struct ProjectInfo: Codable, Equatable {
+public struct ProjectInfo: Codable, Equatable, Sendable {
     public let project: Project
     public let milestones: [Milestone]
     public let slices: [Slice]
@@ -20,7 +20,7 @@ public struct ProjectInfo: Codable, Equatable {
 }
 
 /// A project's metadata: ID, name, and conventions.
-public struct Project: Codable, Equatable {
+public struct Project: Codable, Equatable, Sendable {
     public let id: String
     public let name: String
     public let conventions: String
@@ -39,7 +39,7 @@ public struct Project: Codable, Equatable {
 }
 
 /// A milestone in the project plan.
-public struct Milestone: Codable, Equatable, Identifiable {
+public struct Milestone: Codable, Equatable, Identifiable, Sendable {
     public let id: String
     public let name: String
     public let order: Double
@@ -61,7 +61,7 @@ public struct Milestone: Codable, Equatable, Identifiable {
 }
 
 /// A slice of work in the project.
-public struct Slice: Codable, Equatable, Identifiable {
+public struct Slice: Codable, Equatable, Identifiable, Sendable {
     public let id: String
     public let name: String
     public let status: String
@@ -124,7 +124,7 @@ public struct Slice: Codable, Equatable, Identifiable {
 }
 
 /// Paths to nat's configuration and runtime files.
-public struct NatPaths: Codable, Equatable {
+public struct NatPaths: Codable, Equatable, Sendable {
     public let config: String
     public let logDir: String
     public let nudge: String
