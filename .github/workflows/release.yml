@@ -133,6 +133,8 @@ jobs:
         with:
           name: gnat-dmg
           path: macos/.build/gnat-*.dmg
+          # .build is a dot-directory, which v4 skips by default
+          include-hidden-files: true
 
       - name: Delete signing keychain
         if: always()
