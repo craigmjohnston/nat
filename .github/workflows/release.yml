@@ -8,10 +8,7 @@ name: Release
 # this file lands there.
 on:
   push:
-    # macos-app is temporary, dropped before merge: workflow_dispatch cannot
-    # reach a workflow that is not on the default branch yet, and the
-    # pre-merge test run has to fire from somewhere.
-    branches: [main, macos-app]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -123,18 +120,6 @@ jobs:
             --title "gnat $VERSION" \
             --generate-notes \
             --target "$GITHUB_SHA"
-
-      # Temporary: lets a workflow_dispatch run off a branch (which the
-      # publish step above always skips) be inspected without a release.
-      # Drop this step once the pipeline has been exercised end-to-end.
-      - name: Upload dmg (pre-merge testing only)
-        if: github.ref != 'refs/heads/main'
-        uses: actions/upload-artifact@v4
-        with:
-          name: gnat-dmg
-          path: macos/.build/gnat-*.dmg
-          # .build is a dot-directory, which v4 skips by default
-          include-hidden-files: true
 
       - name: Delete signing keychain
         if: always()
