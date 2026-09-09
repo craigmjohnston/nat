@@ -5,6 +5,7 @@ import NatKit
 @main
 struct NatApp: App {
     @State private var appModel: AppModel
+    @StateObject private var updaterViewModel = UpdaterViewModel()
 
     init() {
         // The very first thing the process does: compose the real PATH —
@@ -88,6 +89,11 @@ struct NatApp: App {
         // own.
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1360, height: 840)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesView(model: updaterViewModel)
+            }
+        }
 
         Settings {
             SettingsView(appModel: appModel)

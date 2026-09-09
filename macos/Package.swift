@@ -14,7 +14,10 @@ let package = Package(
         .executable(name: "gnat", targets: ["NatApp"])
     ],
     dependencies: [
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm", from: "1.20.0")
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm", from: "1.20.0"),
+        // In-app update checks (Updater.swift) — a dependency of NatApp
+        // alone, so NatKit stays Sparkle-free.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.8.0")
     ],
     targets: [
         .target(
@@ -31,7 +34,8 @@ let package = Package(
             name: "NatApp",
             dependencies: [
                 "NatKit",
-                .product(name: "SwiftTerm", package: "SwiftTerm")
+                .product(name: "SwiftTerm", package: "SwiftTerm"),
+                .product(name: "Sparkle", package: "Sparkle")
             ],
             path: "Sources/NatApp",
             resources: [
@@ -40,6 +44,11 @@ let package = Package(
                 // put it on the dock, where a bundled app reads it from
                 // Info.plist instead.
                 .copy("Resources/AppIcon.icns")
+            ],
+            // So the bundled app finds Sparkle.framework, copied into
+            // Contents/Frameworks by make-app.sh, at runtime.
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])
             ]
         )
     ]

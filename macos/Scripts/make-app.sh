@@ -8,7 +8,6 @@ cd "$SCRIPT_DIR"
 
 PACKAGE_PATH="$SCRIPT_DIR"
 BUILD_DIR="$SCRIPT_DIR/.build"
-RELEASE_DIR="$BUILD_DIR/release"
 # gnat — graphical nat — is the app's name everywhere a user sees one: the
 # product (and so the binary), the bundle, and the Info.plist names below.
 PRODUCT_NAME="gnat"
@@ -16,16 +15,39 @@ APP_NAME="gnat"
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 EXECUTABLE_PATH="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
-echo "Building release binary..."
-swift build -c release --package-path "$SCRIPT_DIR"
+# The app's own version, carried into the Info.plist below. A release build
+# sets both from the workflow's run; a local build with neither set gets the
+# version this bundle has always reported.
+APP_VERSION="${APP_VERSION:-1.0}"
+APP_BUILD="${APP_BUILD:-1}"
+
+echo "Building release binary (universal)..."
+# `swift build --arch arm64 --arch x86_64` in one invocation would be the
+# obvious way to ask SwiftPM for a universal binary, but it routes through
+# XCBuild's cross-arch build path and that path cannot resolve a dependency's
+# build-tool plugin — SwiftTerm's SwiftTermBuildInfoPlugin — failing every
+# time with "Unable to resolve build file ... missing target with GUID
+# 'PACKAGE-TARGET:SwiftTermBuildInfoPlugin'" (a known SwiftPM bug:
+# swiftlang/swift-package-manager#7442, #8013). Building each arch on its own
+# uses the ordinary native build system, where plugins work fine, so gnat is
+# lipo'd together from two single-arch builds exactly as the bundled nat
+# already is below. `--show-bin-path` is still what locates each arch's
+# products, since that path is a SwiftPM implementation detail this must not
+# hardcode.
+swift build -c release --package-path "$SCRIPT_DIR" --arch arm64
+swift build -c release --package-path "$SCRIPT_DIR" --arch x86_64
+ARM64_RELEASE_DIR="$(swift build -c release --package-path "$SCRIPT_DIR" --arch arm64 --show-bin-path)"
+X86_64_RELEASE_DIR="$(swift build -c release --package-path "$SCRIPT_DIR" --arch x86_64 --show-bin-path)"
+RELEASE_DIR="$ARM64_RELEASE_DIR"
 
 echo "Creating macOS app bundle..."
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 
-# Copy the executable
-cp "$RELEASE_DIR/$PRODUCT_NAME" "$EXECUTABLE_PATH"
+# The universal executable, lipo'd from the two single-arch builds above.
+lipo -create -output "$EXECUTABLE_PATH" \
+    "$ARM64_RELEASE_DIR/$PRODUCT_NAME" "$X86_64_RELEASE_DIR/$PRODUCT_NAME"
 chmod +x "$EXECUTABLE_PATH"
 
 # The app's own nat, built from this same checkout so the two are never out
@@ -50,8 +72,18 @@ if [ -d "$RELEASE_DIR/nat_NatApp.bundle" ]; then
     cp -R "$RELEASE_DIR/nat_NatApp.bundle" "$APP_BUNDLE/Contents/Resources/"
 fi
 
-# Create minimal Info.plist
-cat > "$APP_BUNDLE/Contents/Info.plist" <<'EOF'
+# Sparkle.framework, from SwiftPM's own binary-target artifact — the same one
+# NatApp links against at build time (Package.swift's rpath is what finds it
+# here at runtime). The slice path is per-SwiftPM-version; verify it after
+# updating Sparkle.
+mkdir -p "$APP_BUNDLE/Contents/Frameworks"
+cp -R "$BUILD_DIR/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" \
+    "$APP_BUNDLE/Contents/Frameworks/"
+
+# Create minimal Info.plist. The delimiter is unquoted so APP_VERSION/
+# APP_BUILD substitute into it below — the body has no $, backtick or
+# backslash otherwise, so nothing else in it expands.
+cat > "$APP_BUNDLE/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -73,9 +105,9 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<'EOF'
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>$APP_VERSION</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$APP_BUILD</string>
 	<key>LSHighResolutionCapable</key>
 	<true/>
 	<key>LSMinimumSystemVersion</key>
@@ -86,6 +118,14 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<'EOF'
 	<string>Copyright 2025 Craig Johnston</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>SUFeedURL</key>
+	<string>https://github.com/craigmjohnston/nat/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<!-- The public half of the EdDSA key generate_keys made; the private
+	     half signs each release's appcast in CI. -->
+	<string>Nql+xmZdlzTO+jvBm3lJzQIVy8Rkwr8pSJ6MTBGOLBc=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 </dict>
 </plist>
 EOF
