@@ -4,17 +4,20 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/craigmjohnston/nat/internal/actions"
 )
 
 // severity is how loudly a confirmation or toast speaks: an action that
 // worked, one that was refused, and one that failed. Each maps to the theme
-// token of the same name.
-type severity int
+// token of the same name. It is [actions.Severity] under this package's own
+// name, since the launch and approve flows report their toasts in it too.
+type severity = actions.Severity
 
 const (
-	sevSuccess severity = iota
-	sevWarning
-	sevError
+	sevSuccess = actions.SevSuccess
+	sevWarning = actions.SevWarning
+	sevError   = actions.SevError
 )
 
 // The dismissal timers' messages. Each carries the id its toast or confirm was

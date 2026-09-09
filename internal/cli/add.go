@@ -97,7 +97,7 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	}
 	// The brief is settled before anything is read from Notion, so a slice-add
 	// whose stdin cannot be read fails having written nothing.
-	brief, err := briefText("slice-add", *description, env.In)
+	brief, err := briefText("slice-add", "--description", *description, env.In)
 	if err != nil {
 		return err
 	}
@@ -279,21 +279,21 @@ func knownMilestones(ms []domain.Milestone) string {
 // — and a brief is optional, so that is an ordinary way to run the command.
 const stdinRef = "-"
 
-// briefText settles a page's body: the flag, or stdin when the flag asks for
-// it. An empty brief is allowed — a one-line slice whose title says everything
-// is a real thing to file — so this fails only when stdin cannot be read. The
-// command is named because more than one takes a description this way, and a
-// misuse should say which one it was.
-func briefText(command, description string, in io.Reader) (string, error) {
-	if description != stdinRef {
-		return strings.TrimSpace(description), nil
+// briefText settles a flag's text: the value as given, or stdin when it asks
+// for it. Empty is allowed — a one-line slice whose title says everything is a
+// real thing to file — so this fails only when stdin cannot be read. The
+// command and the flag are named because more than one command takes text this
+// way and not all under the same flag, and a misuse should say which it was.
+func briefText(command, flagName, value string, in io.Reader) (string, error) {
+	if value != stdinRef {
+		return strings.TrimSpace(value), nil
 	}
 	if in == nil {
-		return "", usageErrorf("%s: --description - was given but there is nothing to read", command)
+		return "", usageErrorf("%s: %s - was given but there is nothing to read", command, flagName)
 	}
 	b, err := io.ReadAll(in)
 	if err != nil {
-		return "", fmt.Errorf("read the description: %w", err)
+		return "", fmt.Errorf("read the %s: %w", strings.TrimPrefix(flagName, "--"), err)
 	}
 	return strings.TrimSpace(string(b)), nil
 }

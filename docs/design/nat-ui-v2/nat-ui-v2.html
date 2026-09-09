@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="design_doc_mode" content="canvas">
+<title>nat — UI v2</title>
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/colors.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/typography.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/materials.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/shadows.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/motion.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/interaction.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/styles.css">
+<style>
+body{margin:0}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.frame{position:absolute}
+.frame-label{position:absolute;white-space:nowrap;font:600 12px/16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.4px;text-transform:uppercase;color:#71717a}
+.frame-note{position:absolute;white-space:nowrap;font:400 12px/16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#a1a1aa}
+@keyframes ws-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.ws-pulse{animation:ws-pulse 1.6s ease-in-out infinite;display:inline-block}
+.nat{
+--window-bg:#1e1e23;--control-bg:#242429;--row-alt-bg:#2b2b31;--field-bg:#18181d;
+--material-header-bg:rgba(30,30,35,.85);--under-window-bg:#18181d;
+--separator:rgba(235,235,245,.13);--control-border:rgba(235,235,245,.16);--control-face:#34343b;
+--label:#e9e9ef;--label-secondary:rgba(233,233,239,.66);--label-tertiary:rgba(233,233,239,.43);--label-quaternary:rgba(233,233,239,.14);
+--accent:#b1a8f2;--accent-text:#17171c;--selected-content-bg:#b1a8f2;--selected-content-bg-unemphasized:rgba(235,235,245,.14);
+--system-orange:#f2a87e;--system-yellow:#ecd495;--system-green:#a8dea1;--system-red:#ec8c9e;--system-blue:#91b7f2;--system-pink:#efb5e0;--system-teal:#95d8cc;--system-gray:#9a9aa5;
+color-scheme:dark;
+}
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/_ds_bundle.js"></script>
+</head>
+<body>
+<div class="frame-label" style="left:60px;top:50px">Working slice — Agent view</div>
+<div class="frame-note" style="left:60px;top:68px">Rail with chips (done collapsed) · progress border under titlebar · nat theme</div>
+<div class="frame" style="left:60px;top:98px" data-screen-label="v2 Agent"><div id="root-agent"></div></div>
+<div class="frame-label" style="left:1500px;top:50px">Todo slice — Brief view</div>
+<div class="frame-note" style="left:1500px;top:68px">Same pane, Brief tab: description + split Launch button — options in its popout</div>
+<div class="frame" style="left:1500px;top:98px" data-screen-label="v2 Brief"><div id="root-brief"></div></div>
+<div class="frame-label" style="left:2940px;top:50px">Review slice — Diff view</div>
+<div class="frame-note" style="left:2940px;top:68px">File list in the pane · GitHub-style pending comment thread</div>
+<div class="frame" style="left:2940px;top:98px" data-screen-label="v2 Diff"><div id="root-diff"></div></div>
+<div class="frame-label" style="left:4380px;top:50px">Approved slice — PR view</div>
+<div class="frame-note" style="left:4380px;top:68px">After Approve & Open PR… — checks, commits, merge-when-green</div>
+<div class="frame" style="left:4380px;top:98px" data-screen-label="v2 PR"><div id="root-pr"></div></div>
+<div class="frame-label" style="left:60px;top:1010px">Comparison — Agent tab as embedded terminal</div>
+<div class="frame-note" style="left:60px;top:1028px">Claude Code running raw in a terminal emulator instead of the native transcript</div>
+<div class="frame" style="left:60px;top:1058px" data-screen-label="v2 Agent Terminal"><div id="root-agent-term"></div></div>
+<script type="text/babel" src="ui-shared.jsx"></script>
+<script type="text/babel" src="ui-v2-shell.jsx"></script>
+<script type="text/babel" src="ui-v2-views.jsx"></script>
+<script type="text/babel">
+const v2Mount = (id, el) => ReactDOM.createRoot(document.getElementById(id)).render(el);
+v2Mount("root-agent", <AgentView />);
+v2Mount("root-agent-term", <AgentTerminalView />);
+v2Mount("root-brief", <BriefView />);
+v2Mount("root-diff", <DiffView />);
+v2Mount("root-pr", <PRView />);
+</script>
+</body>
+</html>

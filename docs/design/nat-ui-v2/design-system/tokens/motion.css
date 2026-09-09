@@ -1,0 +1,9 @@
+/* Motion: system-feel. Animate state changes, never decoration. Honor Reduce Motion. */
+:root{
+--duration-fast:.15s; /* @kind other */
+--duration-medium:.25s; /* @kind other */
+--duration-slow:.35s; /* @kind other */
+--ease-default:cubic-bezier(.25,.1,.25,1); /* @kind other */
+--ease-out:cubic-bezier(.17,.7,.35,1); /* @kind other */
+--ease-spring:cubic-bezier(.3,1.25,.4,1); /* @kind other */
+}

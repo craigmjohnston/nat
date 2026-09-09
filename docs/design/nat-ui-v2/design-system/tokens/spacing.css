@@ -1,0 +1,14 @@
+/* Spacing, layout metrics, control sizes, radii. Mac-density: compact, pointer-driven. */
+:root{
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;
+--content-margin:20px;
+--sidebar-width:220px;--sidebar-min-width:180px;--sidebar-max-width:320px;
+--inspector-width:260px;
+--toolbar-height:52px;
+--control-height-small:19px;--control-height-regular:22px;--control-height-large:28px;
+--row-height-data:24px;--row-height-default:28px;--row-height-rich:44px;
+--radius-control:6px;   /* buttons, fields, pop-ups */
+--radius-highlight:5px; /* list/sidebar selection, menu item highlight */
+--radius-panel:10px;    /* popovers, sheets, HUD panels, cards */
+--radius-window:10px;
+}

@@ -12,9 +12,14 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/craigmjohnston/nat/internal/actions"
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/gh"
+	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
 // API is the part of *notion.Client the commands use. It is an interface so a
@@ -31,6 +36,7 @@ type API interface {
 	AppendBlockChildrenAfter(ctx context.Context, id, after string, children []map[string]any) ([]notion.Block, error)
 	DeleteBlock(ctx context.Context, id string) error
 	UpdatePageProperties(ctx context.Context, pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
+	TrashPage(ctx context.Context, pageID string) error
 	CreateProject(ctx context.Context, projectsDSID, name string, assignee bool) (*notion.ProjectStructure, error)
 }
 
@@ -40,6 +46,61 @@ type NewClientFunc func(token notion.TokenFunc) API
 // DefaultNewClient builds a real Notion client that re-reads the token for
 // every request, the same way the TUI does.
 func DefaultNewClient(token notion.TokenFunc) API { return notion.NewWithToken(token) }
+
+// NewTmuxFunc builds a tmux driver for reading live agent status. It is an
+// interface so tests can inject a fake.
+type NewTmuxFunc func() *agent.Tmux
+
+// DefaultNewTmux returns a Tmux that drives the real tmux binary on PATH.
+func DefaultNewTmux() *agent.Tmux { return agent.NewTmux() }
+
+// GH is everything the pull request commands need of the GitHub CLI:
+// [actions.PRCreator] for slice-approve, [PRViewer] for pr-view, [PRMerger]
+// for pr-merge, [PRReader] for pr-status and [PRCommenter] for pr-comment. One
+// gh.CLI answers all five, and a headless command names whichever of them it
+// actually calls, the way [GitCLI] combines git's two seams for the same
+// reason.
+type GH interface {
+	actions.PRCreator
+	PRViewer
+	PRMerger
+	PRReader
+	PRCommenter
+}
+
+// NewGHFunc builds the GitHub CLI driver the pull request commands run
+// through. It answers [GH] rather than gh.CLI itself, so a test can stand in
+// for it without a real gh on PATH.
+type NewGHFunc func() GH
+
+// DefaultNewGH returns a gh.CLI that drives the real gh binary on PATH.
+func DefaultNewGH() GH { return gh.New() }
+
+// GitCLI is what a headless command needs of git: the remote's news and
+// default branch, for placing a launch's worktree, and the diff of a branch
+// already pushed — the whole of it, its commits alone, or one commit at a
+// time — for slice-diff. A single git.CLI answers all of it, so one driver
+// serves slice-launch and slice-diff alike.
+type GitCLI interface {
+	actions.Repo
+	DiffFrom(dir, baseName, branch string) (base, diff string, err error)
+	CommitsFrom(dir, baseName, branch string) (string, []git.Commit, error)
+	CommitDiff(dir, sha string) (string, error)
+}
+
+// NewGitFunc builds the git driver.
+type NewGitFunc func() GitCLI
+
+// DefaultNewGit returns a git.CLI that drives the real git binary on PATH.
+func DefaultNewGit() GitCLI { return git.New() }
+
+// NewWorktreesFunc builds the git worktrees driver slice-launch places an
+// agent's checkout through.
+type NewWorktreesFunc func() actions.Worktrees
+
+// DefaultNewWorktrees returns a worktree.CLI that drives worktrunk's wt
+// binary on PATH.
+func DefaultNewWorktrees() actions.Worktrees { return worktree.New() }
 
 // Env is everything a command needs from the process around it, held as fields
 // so a test can stand in for each edge.
@@ -54,6 +115,15 @@ type Env struct {
 	Save func(config.Config) error
 	// NewClient builds the Notion client a command talks through.
 	NewClient NewClientFunc
+	// NewTmux builds the tmux driver for reading live agent status. It is
+	// agent.NewTmux in production.
+	NewTmux NewTmuxFunc
+	// NewGH builds the gh CLI driver. It is gh.New in production.
+	NewGH NewGHFunc
+	// NewGit builds the git CLI driver. It is git.New in production.
+	NewGit NewGitFunc
+	// NewWorktrees builds the git worktrees driver. It is worktree.New in production.
+	NewWorktrees NewWorktreesFunc
 	// Out is where a command writes its output.
 	Out io.Writer
 	// In is where a command reads input a flag was not given for; it is stdin
@@ -81,13 +151,15 @@ const Usage = `nat — track project work in Notion
 Every command below that acts on a project requires --project, naming one of
 the config file's projects by its page ID; run one without it to be told the
 projects this machine tracks. There is no fallback to the project the board is
-on: that is the board's own, and the user moves it while an agent works. setup
-and project-create take no such flag: neither acts on a project already
+on: that is the board's own, and the user moves it while an agent works. setup,
+paths and project-create take no such flag: neither acts on a project already
 tracked.
 
 usage:
   nat                 open the board
   nat setup [--json]  install the agent skills into ~/.claude/skills
+  nat paths [--json]  print the paths to config, log dir and nudge marker file
+  nat status [--json] read live tmux sessions and agent activity
   nat info [--json] --project ID
                       print the project's conventions, milestones and slices
   nat next-slice [--json] --project ID
@@ -95,6 +167,40 @@ usage:
   nat start-slice <slice> [--json] --project ID
                       claim one named Todo slice, by URL or ID, and print its
                       brief
+  nat slice-show <slice> [--json] --project ID
+                      print one slice's full status and brief, no claim
+  nat slice-launch <slice> [--model M] [--effort E] [--json] --project ID
+                      launch a detached agent for a slice with optional model
+                      and effort overrides
+  nat slice-approve <slice> [--json] --project ID
+                      open a pull request for a handed-back branch and record
+                      it on the slice, which stays in progress until the merge
+                      marks it Done
+  nat slice-diff <slice> [--json] --project ID
+                      print the diff of a handed-back branch
+  nat slice-diff <slice> --commits [--json] --project ID
+                      list the branch's commits against its merge base,
+                      instead of diffing it
+  nat slice-diff <slice> --commit SHA [--json] --project ID
+                      diff one commit of the branch's history against its own
+                      parent, instead of the whole branch; --commits and
+                      --commit are mutually exclusive with each other and with
+                      the whole-branch diff
+  nat slice-edit <slice> --description TEXT|- --project ID
+                      replace a Todo slice's description, its page body;
+                      refused on a slice in progress or Done. --description -
+                      reads it from stdin
+  nat slice-move <slice> --milestone <name> [--json] --project ID
+                      refile a slice under another milestone, by name; the
+                      work itself is untouched. Refused on a slice in progress
+  nat slice-delete <slice> [--json] --project ID
+                      move a slice's page to Notion's trash, where it is still
+                      recoverable. Refused on a slice in progress
+  nat agent-send <slice> [--text TEXT|-] --project ID
+                      send a prompt to a live agent session; - or absent reads
+                      from stdin
+  nat agent-interrupt <slice> --project ID
+                      send an interrupt signal to a live agent session
   nat project-create <name> [--repo DIR] [--description TEXT|-] [--json]
                       create a project and its Slices database, register it in
                       local config and write the description as its page body;
@@ -125,9 +231,12 @@ usage:
                       close out a slice you claimed: with --branch, handed back
                       for review — the branch recorded, the slice left in
                       progress, and the board's approve key what opens the pull
-                      request; with --pr, Done with its pull request recorded;
+                      request; with --pr, its pull request recorded and the
+                      slice left in progress until the merge marks it Done;
                       with --blocked, left in progress with a note saying what
-                      stopped it. A summary is appended to the page either way,
+                      stopped it; with none of the three, straight to Done,
+                      since work with no pull request has no merge coming.
+                      A summary is appended to the page either way,
                       and --pr-description records beside it the text the board
                       opens the pull request with: its first line the title,
                       the rest the body
@@ -135,6 +244,36 @@ usage:
                       hand a slice you claimed back to the plan: Todo and
                       unassigned, its brief and any branch left as they are, for
                       when the session working it ended without finishing it
+  nat pr-view <slice> [--json] --project ID
+                      print one pull request in full: its description, checks,
+                      reviews, comments and change stats, read through gh in
+                      the slice's repo
+  nat pr-comment <slice> [--body TEXT|-] [--json] --project ID
+                      post a comment on the slice's recorded pull request;
+                      --body - or absent reads it from stdin
+  nat pr-merge <slice> [--json] --project ID
+                      merge a slice's pull request through gh and mark the
+                      slice Done, refused in the merge box's own words when a
+                      review, a check or the branch itself says it should not
+                      go in yet
+  nat pr-status [--json] --project ID
+                      read every slice with a pull request still worth
+                      watching and print how close each is to landing; an
+                      in-progress slice whose pull request turns out to have
+                      merged is marked Done on the way
+  nat workshop-launch [--model M] [--effort E] [--request TEXT|-] [--json] --project ID
+                      launch a planning agent detached in tmux on the
+                      project's working dir, on the request when one is
+                      given, else its pending wishlist when it has one and
+                      a plain session otherwise
+  nat config-show [--json]
+                      print local config: the agent split, the poll interval,
+                      the two model pairs and each project's working directory
+  nat config-set <key> <value>
+                      set one local config key: agent_split_percent,
+                      poll_seconds, workshop_agent.model, workshop_agent.effort,
+                      slice_agent.model, slice_agent.effort, or
+                      project.<id>.working_dir; an empty value unsets it
   nat help            show this message
 `
 
@@ -169,12 +308,35 @@ func Run(ctx context.Context, args []string, env Env) error {
 		// The one command that talks to no one: it lays down files, and a
 		// machine that has not been configured yet is exactly where it is run.
 		return setup(args[1:], env)
+	case "paths":
+		// Like setup, paths needs no Notion client or config file.
+		return paths(args[1:], env)
+	case "status":
+		return status(args[1:], env)
 	case "info":
 		return info(ctx, args[1:], env)
 	case "next-slice":
 		return nextSlice(ctx, args[1:], env)
 	case "start-slice":
 		return startSlice(ctx, args[1:], env)
+	case "slice-show":
+		return sliceShow(ctx, args[1:], env)
+	case "slice-launch":
+		return sliceLaunch(ctx, args[1:], env)
+	case "slice-approve":
+		return sliceApprove(ctx, args[1:], env)
+	case "slice-diff":
+		return sliceDiff(ctx, args[1:], env)
+	case "slice-edit":
+		return sliceEdit(ctx, args[1:], env)
+	case "slice-move":
+		return sliceMove(ctx, args[1:], env)
+	case "slice-delete":
+		return sliceDelete(ctx, args[1:], env)
+	case "agent-send":
+		return agentSend(ctx, args[1:], env)
+	case "agent-interrupt":
+		return agentInterrupt(ctx, args[1:], env)
 	case "project-create":
 		return projectCreate(ctx, args[1:], env)
 	case "milestone-add":
@@ -193,6 +355,20 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return completeSlice(ctx, args[1:], env)
 	case "release-slice":
 		return releaseSlice(ctx, args[1:], env)
+	case "pr-view":
+		return prView(ctx, args[1:], env)
+	case "pr-comment":
+		return prComment(ctx, args[1:], env)
+	case "pr-merge":
+		return prMerge(ctx, args[1:], env)
+	case "pr-status":
+		return prStatus(ctx, args[1:], env)
+	case "workshop-launch":
+		return workshopLaunch(ctx, args[1:], env)
+	case "config-show":
+		return configShow(args[1:], env)
+	case "config-set":
+		return configSet(args[1:], env)
 	case "help", "-h", "--help":
 		_, err := io.WriteString(env.Out, Usage)
 		return err

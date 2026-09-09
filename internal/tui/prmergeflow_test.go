@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/gh"
+	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // mergeCall is one pull request the screen asked gh to merge.
@@ -88,9 +89,9 @@ func TestMergeKeyAsksBeforeMerging(t *testing.T) {
 	}
 }
 
-// A merge that succeeded reads the pull request again, so the screen says
-// merged rather than going on offering the key that merged it. Nothing is
-// written to Notion: the slice was Done as its pull request was opened.
+// A merge that succeeded marks the slice Done — the merge is what says the
+// work is on main — and reads the pull request again, so the screen says
+// merged rather than going on offering the key that merged it.
 func TestMergeRereadsThePullRequest(t *testing.T) {
 	app, _, viewer, _ := mergeApp(t, mergeablePR())
 	client := app.client.(*fakeNotion)
@@ -118,8 +119,45 @@ func TestMergeRereadsThePullRequest(t *testing.T) {
 	if body := app.body(); !strings.Contains(body, "merged into main") {
 		t.Errorf("body = %q, want the merge box replaced by the ending", body)
 	}
-	if len(client.updated) != 0 {
-		t.Errorf("wrote %v to Notion, want nothing — the slice was Done already", client.updated)
+	if len(client.updated) != 1 || client.updated[0].pageID != withPR {
+		t.Fatalf("wrote %v to Notion, want exactly the slice marked Done", client.updated)
+	}
+	status := client.updated[0].properties[notion.PropStatus]
+	if status.Select == nil || status.Select.Name != notion.SliceDone {
+		t.Errorf("Status = %+v, want Done written at the merge", status)
+	}
+}
+
+// A merge that landed but whose status write was refused is still a merge:
+// the toast says which half needs anything more, the screen is read again,
+// and nothing pretends the pull request is still open. The board's own
+// reading settles the status on a later pass.
+func TestMergeReportsAFailedDoneWrite(t *testing.T) {
+	app, _, viewer, _ := mergeApp(t, mergeablePR())
+	client := app.client.(*fakeNotion)
+	client.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
+		return nil, errors.New("notion is down")
+	}
+
+	press(app, "m")
+	msgs := run(press(app, "enter"))
+	merged := mergeablePR()
+	merged.State = gh.PRStateMerged
+	viewer.pr = merged
+
+	_, cmd := app.Update(first[prMergedMsg](t, msgs))
+	if app.busy {
+		t.Error("the app is still busy after the merge landed")
+	}
+	if !strings.Contains(app.toast, "could not mark the slice Done") {
+		t.Errorf("toast = %q, want the failed status write named", app.toast)
+	}
+	if app.toastSev != sevWarning {
+		t.Errorf("toast severity = %v, want a warning — the merge itself landed", app.toastSev)
+	}
+	app.Update(first[prViewLoadedMsg](t, run(cmd)))
+	if len(viewer.made) != 2 {
+		t.Fatalf("gh was asked for %d readings, want the pull request read again", len(viewer.made))
 	}
 }
 

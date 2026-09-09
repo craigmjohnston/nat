@@ -13,17 +13,21 @@ import (
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
-// completeSlice closes out the slice an agent was working: Status to Done, the
-// PR recorded, and a summary appended to the page body. --blocked is one of the
-// other ways a session ends — the slice stays in progress and the note says what
-// stopped it, so the work is not lost and nobody else picks the slice up
-// either.
+// completeSlice closes out the slice an agent was working: a summary appended
+// to the page body, and the properties of whichever ending was asked for.
+// --blocked is one of the ways a session ends — the slice stays in progress
+// and the note says what stopped it, so the work is not lost and nobody else
+// picks the slice up either.
 //
-// --branch is the third, and the one an agent ends on now: the branch the work
+// --branch is another, and the one an agent ends on now: the branch the work
 // was pushed to is recorded and the slice is left in progress, which on the
 // board is a slice handed back and waiting to be reviewed. Approving it there
-// is what opens the pull request and marks it Done. The --pr ending stays for
-// whoever already has a pull request to record.
+// is what opens the pull request. The --pr ending stays for whoever already
+// has a pull request to record, and it too leaves the slice in progress:
+// Done means the work is on main, so the merge is what writes it — nat's own,
+// or the reading that finds GitHub already made one. Only a slice closed out
+// with none of the three goes straight to Done, since work with no pull
+// request has no merge coming.
 //
 // Only a slice this user already holds can be finished. An agent that never
 // claimed the slice has no business saying it is done, and a slice held by
@@ -125,10 +129,12 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	if *branch != "" {
 		props[notion.PropBranch] = notion.NewRichText(*branch)
 	}
-	// A handed-back slice stays in progress: the work is done but nobody has
-	// reviewed it, and the board is where that ends — its approve key opens the
-	// pull request and marks the slice Done.
-	if !*blocked && *branch == "" {
+	// A handed-back slice stays in progress — the work is done but nobody has
+	// reviewed it — and so does one with a pull request recorded: Done means
+	// the work is on main, and the merge is what writes it. Only the ending
+	// with no pull request at all goes straight to Done, since it has no merge
+	// coming.
+	if !*blocked && *branch == "" && *pr == "" {
 		props[notion.PropStatus] = notion.NewChoice(page.Properties[notion.PropStatus].Type, notion.SliceDone)
 	}
 	if len(props) > 0 {
@@ -150,8 +156,9 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 // endings settles how the session is being ended before anything is read or
 // written, since the three are three different endings and no two of them are
 // the same slice. Handing a branch back leaves work to review; recording a pull
-// request closes the slice; blocked leaves it unfinished. Asking for two at once
-// is a mistake in the command line, not a state to pick between.
+// request leaves the slice for the merge to close; blocked leaves it
+// unfinished. Asking for two at once is a mistake in the command line, not a
+// state to pick between.
 // A pull request description belongs to the one ending that still has a pull
 // request to open: the branch handed back for the user to review and approve.
 // --pr is a pull request already open, --blocked is work that stopped, and a
@@ -355,6 +362,7 @@ func outcomeMarkdown(s domain.Slice, blocked bool, branch, assignee string) stri
 		branch = s.Branch
 	}
 	handedBack := branch != "" && !blocked && s.PRURL == ""
+	prRecorded := branch == "" && !blocked && s.PRURL != ""
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", s.Name)
 	switch {
@@ -364,6 +372,9 @@ func outcomeMarkdown(s domain.Slice, blocked bool, branch, assignee string) stri
 		fmt.Fprintf(&b, "Handed back for review, still held by %s. "+
 			"The summary is on the slice page, and approving it on the board is what opens the pull request.\n\n",
 			assignee)
+	case prRecorded:
+		fmt.Fprintf(&b, "Pull request recorded, still held by %s. "+
+			"The slice goes Done when it merges — the merge is what marks the work landed.\n\n", assignee)
 	default:
 		b.WriteString("Done. The summary is on the slice page.\n\n")
 	}

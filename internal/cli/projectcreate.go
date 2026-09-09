@@ -51,7 +51,7 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 	// Both are settled before Notion is touched, so a project-create whose stdin
 	// cannot be read, or which has no directory to name, fails having created
 	// nothing.
-	info, err := briefText("project-create", *description, env.In)
+	info, err := briefText("project-create", "--description", *description, env.In)
 	if err != nil {
 		return err
 	}

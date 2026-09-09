@@ -1,0 +1,22 @@
+/* macOS text ramp. System font only — never bundle or name "SF Pro". */
+:root{
+--font-system:-apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",sans-serif;
+--font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+/* Composite shorthands: font: var(--font-body); */
+--font-large-title:400 26px/32px var(--font-system);
+--font-title1:400 22px/26px var(--font-system);
+--font-title2:400 17px/22px var(--font-system);
+--font-title3:400 15px/20px var(--font-system);
+--font-headline:700 13px/16px var(--font-system);
+--font-body:400 13px/16px var(--font-system);
+--font-body-emphasized:600 13px/16px var(--font-system);
+--font-callout:400 12px/15px var(--font-system);
+--font-subheadline:400 11px/14px var(--font-system);
+--font-footnote:400 10px/13px var(--font-system);
+--font-caption:400 10px/13px var(--font-system);
+--font-caption2:500 10px/13px var(--font-system);
+--font-code:400 12px/17px var(--font-mono);
+/* Sizes for one-off use */
+--text-large-title:26px;--text-title1:22px;--text-title2:17px;--text-title3:15px;
+--text-body:13px;--text-callout:12px;--text-subheadline:11px;--text-footnote:10px;
+}
