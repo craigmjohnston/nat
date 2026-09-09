@@ -8,7 +8,10 @@ name: Release
 # this file lands there.
 on:
   push:
-    branches: [main]
+    # macos-app is temporary, dropped before merge: workflow_dispatch cannot
+    # reach a workflow that is not on the default branch yet, and the
+    # pre-merge test run has to fire from somewhere.
+    branches: [main, macos-app]
   workflow_dispatch:
 
 permissions:
