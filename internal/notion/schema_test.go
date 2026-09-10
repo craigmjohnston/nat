@@ -140,15 +140,45 @@ func TestPropertySchemaAppendedOptionsAddsToAnEmptySelect(t *testing.T) {
 }
 
 // The dependency column points at the data source it lives on, and is
-// single-property so there is no reciprocal column on the other side to keep in
-// step with it.
+// dual-property so that the far end of a link Notion writes back lands in a
+// reciprocal column of its own rather than in Depends on, where it would read
+// as the two slices waiting on each other.
 func TestSchemaRelation(t *testing.T) {
 	b, err := json.Marshal(SchemaRelation("ds-slices"))
 	if err != nil {
 		t.Fatalf("marshalling: %v", err)
 	}
-	want := `{"relation":{"data_source_id":"ds-slices","type":"single_property","single_property":{}}}`
+	want := `{"relation":{"data_source_id":"ds-slices","type":"dual_property",` +
+		`"dual_property":{"synced_property_name":"Blocks"}}}`
 	if string(b) != want {
 		t.Errorf("marshalled to %s\nwant %s", b, want)
+	}
+}
+
+// A relation Notion keeps on one side alone, pointing at the slices themselves,
+// is the shape the dependency column had before it had a reciprocal — and the
+// only shape the migration converts. Anything else keeps whatever it holds.
+func TestSingleSelfRelation(t *testing.T) {
+	single := func(dsID string) PropertySchema {
+		return PropertySchema{Type: "relation", Relation: &RelationConfig{
+			DataSourceID: dsID, Kind: RelationSingle, SingleProperty: &EmptyConfig{}}}
+	}
+	tests := []struct {
+		name string
+		prop PropertySchema
+		want bool
+	}{
+		{"the old dependency column", single("ds-slices"), true},
+		{"written without dashes", single("dsslices"), true},
+		{"a relation to somewhere else", single("ds-other"), false},
+		{"already dual", SchemaRelation("ds-slices"), false},
+		{"not a relation at all", SchemaRichText(), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := SingleSelfRelation(tt.prop, "ds-slices"); got != tt.want {
+				t.Errorf("SingleSelfRelation() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

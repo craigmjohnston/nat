@@ -19,8 +19,18 @@ type OptionsConfig struct {
 type RelationConfig struct {
 	DataSourceID string `json:"data_source_id"`
 	// Kind is "single_property" or "dual_property".
-	Kind           string       `json:"type,omitempty"`
-	SingleProperty *EmptyConfig `json:"single_property,omitempty"`
+	Kind           string              `json:"type,omitempty"`
+	SingleProperty *EmptyConfig        `json:"single_property,omitempty"`
+	DualProperty   *DualPropertyConfig `json:"dual_property,omitempty"`
+}
+
+// DualPropertyConfig configures the reciprocal half of a dual-property
+// relation: the column Notion puts on the far side and keeps in step with this
+// one. Writes name it and nothing else; reads get the ID Notion gave it back
+// alongside.
+type DualPropertyConfig struct {
+	SyncedPropertyName string `json:"synced_property_name,omitempty"`
+	SyncedPropertyID   string `json:"synced_property_id,omitempty"`
 }
 
 // PropertySchema is one property definition in a data source schema. Reads
@@ -62,21 +72,47 @@ func SchemaSelect(options ...string) PropertySchema {
 	return PropertySchema{Select: &OptionsConfig{Options: selectOptions(options)}}
 }
 
-// SchemaRelation builds a relation property definition pointing at the given
-// data source. It is single-property on purpose: the Slices data source's
-// dependency column points at itself, and a dual-property relation would put a
-// second, reciprocal column on the same table for the app to keep in step with
-// this one.
+// SchemaRelation builds the dependency relation pointing at the given data
+// source, with [PropBlocks] as its reciprocal half.
+//
+// It is dual-property on purpose, and the reciprocal column is the whole point
+// of it. The Slices data source's dependency column points at itself, and a
+// self-relation Notion keeps on one side only has nowhere to put the far end of
+// a link: what a single-property write can do is land back in the very column
+// it was written to, so recording that A waits on B reads afterwards as the two
+// waiting on each other — a mutual block neither next-slice nor the launch key
+// will step past. Given a side of its own, Notion's far end lands in Blocks and
+// Depends on stays directional, which is the one thing this app reads.
+//
+// Nothing reads Blocks. It exists so that Notion has somewhere to write that is
+// not Depends on.
 func SchemaRelation(dataSourceID string) PropertySchema {
 	return PropertySchema{Relation: &RelationConfig{
-		DataSourceID:   dataSourceID,
-		Kind:           RelationSingle,
-		SingleProperty: &EmptyConfig{},
+		DataSourceID: dataSourceID,
+		Kind:         RelationDual,
+		DualProperty: &DualPropertyConfig{SyncedPropertyName: PropBlocks},
 	}}
 }
 
-// RelationSingle is the relation kind that puts a column on one side only.
-const RelationSingle = "single_property"
+// The two relation kinds: RelationSingle puts a column on one side only, which
+// is what every dependency column written before [SchemaRelation] asked for a
+// reciprocal is, and RelationDual puts one on each. Only the first is read for
+// — a migration converts it — and only the second is ever written.
+const (
+	RelationSingle = "single_property"
+	RelationDual   = "dual_property"
+)
+
+// SingleSelfRelation reports a property that is this app's dependency column in
+// the shape it had before it had a reciprocal: a relation from the Slices data
+// source to itself, kept by Notion on one side alone. It is what the migration
+// converts, and it is deliberately narrow — a relation pointing anywhere else
+// is somebody's own column that happens to share a name, and re-targeting it at
+// the slices would throw away what it holds.
+func SingleSelfRelation(p PropertySchema, dataSourceID string) bool {
+	return p.Relation != nil && p.Relation.Kind == RelationSingle &&
+		normalisedID(p.Relation.DataSourceID) == normalisedID(dataSourceID)
+}
 
 // SchemaPeople builds a people property definition.
 func SchemaPeople() PropertySchema {

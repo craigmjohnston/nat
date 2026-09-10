@@ -113,6 +113,14 @@ func dependsOnColumn() PropertySchema {
 	return s
 }
 
+// singleDependsOnColumn is the Depends on column in the shape it had before it
+// had a reciprocal: a relation Notion keeps on one side alone, as a data source
+// read returns it. It is what the conversion starts from.
+func singleDependsOnColumn(dsID string) PropertySchema {
+	return PropertySchema{Type: "relation", Relation: &RelationConfig{
+		DataSourceID: dsID, Kind: RelationSingle, SingleProperty: &EmptyConfig{}}}
+}
+
 // branchColumn is the Branch column as a data source read returns it, there for
 // the same reason dependsOnColumn is: a project already given one, so a test
 // about anything else is not also a test of the back-fill.
@@ -412,6 +420,94 @@ func TestMigrateProjectAddsTheDependencyColumnLast(t *testing.T) {
 	}
 }
 
+// A project made before the dependency column had a reciprocal records what a
+// slice waits on in a relation Notion keeps on one side alone, where the far
+// end of a link lands back in Depends on and a dependency reads as a mutual
+// block. It is converted in place, in the same write and the same place the
+// missing columns are back-filled in.
+func TestMigrateProjectDualisesTheDependencyColumn(t *testing.T) {
+	stub := &migrateStub{dataSource: &DataSource{ID: "ds-slices", Properties: map[string]PropertySchema{
+		PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceTodo, SliceInProgress, SliceDone})}},
+		PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
+		PropDependsOn: singleDependsOnColumn("ds-slices"),
+		PropBranch:    branchColumn(),
+	}}}
+
+	_, migration, err := MigrateProject(context.Background(), stub, "ds-slices")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []map[string]PropertySchema{{PropDependsOn: SchemaRelation("ds-slices")}}
+	if !reflect.DeepEqual(stub.writes, want) {
+		t.Errorf("schema writes = %+v, want %+v", stub.writes, want)
+	}
+	if !reflect.DeepEqual(migration, Migration{DependsOnDualised: true}) {
+		t.Errorf("migration = %+v, want the column dualised and nothing else", migration)
+	}
+	if stub.queried != nil {
+		t.Errorf("queried %v, want nothing: no slice is read to convert a column", stub.queried)
+	}
+}
+
+// A column of that name pointing at somebody else's data source is somebody
+// else's column, and re-targeting it at the slices would throw away what it
+// holds. So is one that is not a relation at all — the schema verification is
+// where that is reported.
+func TestMigrateProjectLeavesOtherRelationsAlone(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		prop PropertySchema
+	}{
+		{"a relation to somewhere else", singleDependsOnColumn("ds-elsewhere")},
+		{"not a relation at all", branchColumn()},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			stub := &migrateStub{dataSource: &DataSource{ID: "ds-slices", Properties: map[string]PropertySchema{
+				PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceTodo, SliceInProgress, SliceDone})}},
+				PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
+				PropDependsOn: tt.prop,
+				PropBranch:    branchColumn(),
+			}}}
+
+			_, migration, err := MigrateProject(context.Background(), stub, "ds-slices")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !migration.Empty() {
+				t.Errorf("migration = %+v, want nothing to do", migration)
+			}
+			if stub.writes != nil {
+				t.Errorf("schema writes = %+v, want none", stub.writes)
+			}
+		})
+	}
+}
+
+// A project older than the reciprocal and older than the Branch column has both
+// settled in one write, the conversion alongside the back-fill.
+func TestMigrateProjectDualisesAndBackFillsAtOnce(t *testing.T) {
+	stub := &migrateStub{dataSource: &DataSource{ID: "ds-slices", Properties: map[string]PropertySchema{
+		PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceTodo, SliceInProgress, SliceDone})}},
+		PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
+		PropDependsOn: singleDependsOnColumn("ds-slices"),
+	}}}
+
+	_, migration, err := MigrateProject(context.Background(), stub, "ds-slices")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []map[string]PropertySchema{{
+		PropDependsOn: SchemaRelation("ds-slices"),
+		PropBranch:    SchemaRichText(),
+	}}
+	if !reflect.DeepEqual(stub.writes, want) {
+		t.Errorf("schema writes = %+v, want %+v", stub.writes, want)
+	}
+	if !reflect.DeepEqual(migration, Migration{DependsOnDualised: true, BranchAdded: true}) {
+		t.Errorf("migration = %+v, want the column dualised and the branch added", migration)
+	}
+}
+
 // A project already on one page whose status still says Claimed has only that
 // to migrate: the option is appended, the slices holding the old name are moved,
 // and the old option is dropped — with nothing else touched.
@@ -677,6 +773,33 @@ func TestMigrateProjectErrors(t *testing.T) {
 			`add the "Depends on" column`,
 		},
 		{
+			"the dependency column cannot be given its reciprocal",
+			func() *migrateStub {
+				stub := &migrateStub{dataSource: &DataSource{ID: "ds-slices", Properties: map[string]PropertySchema{
+					PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceTodo})}},
+					PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
+					PropDependsOn: singleDependsOnColumn("ds-slices"),
+					PropBranch:    branchColumn(),
+				}}}
+				stub.schemaErrOn, stub.schemaErr = 1, boom
+				return stub
+			},
+			`give the "Depends on" column a "Blocks" side of its own`,
+		},
+		{
+			"the branch column cannot be added alongside the reciprocal",
+			func() *migrateStub {
+				stub := &migrateStub{dataSource: &DataSource{ID: "ds-slices", Properties: map[string]PropertySchema{
+					PropStatus:    {Type: TypeSelect, Select: &OptionsConfig{Options: selectOptions([]string{SliceTodo})}},
+					PropMilestone: {Type: TypeSelect, Select: &OptionsConfig{}},
+					PropDependsOn: singleDependsOnColumn("ds-slices"),
+				}}}
+				stub.schemaErrOn, stub.schemaErr = 1, boom
+				return stub
+			},
+			`add the "Branch" column and give the "Depends on" column a "Blocks" side of its own`,
+		},
+		{
 			"the Milestones database cannot be trashed",
 			func() *migrateStub {
 				stub := planned()
@@ -728,6 +851,11 @@ func TestMigrationSummary(t *testing.T) {
 			"the branch column alone",
 			Migration{BranchAdded: true},
 			`Migrated this project: a "Branch" column added.`,
+		},
+		{
+			"the reciprocal alone",
+			Migration{DependsOnDualised: true},
+			`Migrated this project: the "Depends on" column given a "Blocks" side of its own.`,
 		},
 	}
 	for _, tt := range tests {

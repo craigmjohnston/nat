@@ -31,6 +31,12 @@ const (
 	// them is unfinished. It is optional in the same way Branch is — a project
 	// whose table has no such column names no dependencies and so has none.
 	PropDependsOn = "Depends on"
+	// PropBlocks is the far end of that relation, and the one column here
+	// nothing ever reads or writes. A self-relation Notion keeps on one side
+	// only has nowhere but Depends on to record the other end of a link, which
+	// is how a dependency comes back as a mutual block; giving it a side of its
+	// own is what keeps Depends on directional. See [SchemaRelation].
+	PropBlocks = "Blocks"
 )
 
 // Milestone status options, in workflow order.

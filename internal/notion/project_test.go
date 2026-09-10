@@ -30,7 +30,7 @@ const slicesDSJSON = `{
 			"Repo":{"id":"r","name":"Repo","type":"rich_text","rich_text":{}},
 			"PR":{"id":"p","name":"PR","type":"url","url":{}},
 			"Branch":{"id":"b","name":"Branch","type":"rich_text","rich_text":{}},
-			"Depends on":{"id":"d","name":"Depends on","type":"relation","relation":{"data_source_id":"ds-slices","type":"single_property","single_property":{}}}
+			"Depends on":{"id":"d","name":"Depends on","type":"relation","relation":{"data_source_id":"ds-slices","type":"dual_property","dual_property":{"synced_property_name":"Blocks","synced_property_id":"bl"}}}
 		}
 	}`
 
@@ -51,7 +51,7 @@ const assigneeSlicesDSJSON = `{
 			"Repo":{"id":"r","name":"Repo","type":"rich_text","rich_text":{}},
 			"PR":{"id":"p","name":"PR","type":"url","url":{}},
 			"Branch":{"id":"b","name":"Branch","type":"rich_text","rich_text":{}},
-			"Depends on":{"id":"d","name":"Depends on","type":"relation","relation":{"data_source_id":"ds-slices","type":"single_property","single_property":{}}}
+			"Depends on":{"id":"d","name":"Depends on","type":"relation","relation":{"data_source_id":"ds-slices","type":"dual_property","dual_property":{"synced_property_name":"Blocks","synced_property_id":"bl"}}}
 		}
 	}`
 
@@ -125,9 +125,12 @@ func TestCreateProject(t *testing.T) {
 				`"parent":{"page_id":"page-1","type":"page_id"},` +
 				`"title":[{"type":"text","text":{"content":"Slices"}}]}`,
 			// The dependency column is added straight after the database, since
-			// it points at the data source the create has only just returned.
+			// it points at the data source the create has only just returned. It
+			// is dual-property, so Notion has a Blocks column to write the far
+			// end of a link into rather than Depends on itself.
 			`PATCH /data_sources/ds-slices {"properties":{"Depends on":{"relation":` +
-				`{"data_source_id":"ds-slices","type":"single_property","single_property":{}}}}}`,
+				`{"data_source_id":"ds-slices","type":"dual_property",` +
+				`"dual_property":{"synced_property_name":"Blocks"}}}}}`,
 			`GET /data_sources/ds-slices `,
 		}
 		if len(*bodies) != len(wantBodies) {

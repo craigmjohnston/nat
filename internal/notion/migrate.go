@@ -46,12 +46,18 @@ type Migration struct {
 	// without the column there is nothing for complete-slice to record a branch
 	// on.
 	BranchAdded bool
+	// DependsOnDualised reports the Depends on column given a reciprocal side of
+	// its own — see [SchemaRelation]. A project made before it had one records a
+	// dependency in a relation Notion keeps on one side alone, where the far end
+	// of every link lands back in Depends on itself and a slice waiting on
+	// another reads as the two waiting on each other.
+	DependsOnDualised bool
 }
 
 // Empty reports whether nothing was migrated.
 func (m Migration) Empty() bool {
 	return len(m.Milestones) == 0 && m.Slices == 0 && !m.StatusRenamed &&
-		!m.MilestonesTrashed && !m.DependsOnAdded && !m.BranchAdded
+		!m.MilestonesTrashed && !m.DependsOnAdded && !m.BranchAdded && !m.DependsOnDualised
 }
 
 // Summary says what changed, in one line, for a status bar or a log.
@@ -75,6 +81,9 @@ func (m Migration) Summary() string {
 	}
 	if m.BranchAdded {
 		parts = append(parts, fmt.Sprintf("a %q column added", PropBranch))
+	}
+	if m.DependsOnDualised {
+		parts = append(parts, fmt.Sprintf("the %q column given a %q side of its own", PropDependsOn, PropBlocks))
 	}
 	if len(parts) == 0 {
 		return "nothing to migrate"
@@ -108,13 +117,17 @@ func pluralise(word string, n int) string {
 //     renaming an option in place, so it is done the long way: In progress is
 //     appended, every slice sitting on Claimed is moved onto it, and Claimed is
 //     dropped once nothing holds it.
-//   - A missing Depends on or Branch column is added. CreateProject writes both,
+//   - A missing Depends on or Branch column is added, and a Depends on kept by
+//     Notion on one side alone is given the reciprocal Blocks column that keeps
+//     it directional — see [SchemaRelation]. CreateProject writes both columns,
 //     but only for the projects it creates, so a project older than slice
 //     dependencies, or than handing work back on a branch, has nothing for one
-//     to be recorded on and every write against it is refused by the API. They
-//     go on last, in one write, after the shape changes above and whether or not
-//     there were any, since this is the one step every project is due rather
-//     than only an old-shape one.
+//     to be recorded on and every write against it is refused by the API; a
+//     project older than the reciprocal has the column and records into it in
+//     the shape that reads a dependency back as a mutual block. They go on last,
+//     in one write, after the shape changes above and whether or not there were
+//     any, since this is the one step every project is due rather than only an
+//     old-shape one.
 //
 // The Slices database itself — a full-page child of the project page, its first
 // view the table the plan's order is read from — is left exactly as it is.
@@ -229,28 +242,41 @@ func MigrateProject(ctx context.Context, api MigrationAPI, slicesDSID string) (*
 		"milestones", len(report.Milestones), "slices", report.Slices,
 		"status_renamed", report.StatusRenamed,
 		"milestones_trashed", report.MilestonesTrashed,
-		"depends_on_added", report.DependsOnAdded, "branch_added", report.BranchAdded)
+		"depends_on_added", report.DependsOnAdded, "branch_added", report.BranchAdded,
+		"depends_on_dualised", report.DependsOnDualised)
 	return updated, report, nil
 }
 
 // addColumns gives a project's Slices data source the columns every project is
 // due but only the projects CreateProject made were born with — Depends on, and
-// Branch — and returns the data source as it now stands with the report that
-// brought them in. A project created before slices could declare what they wait
-// on, or before an agent handed its work back on a branch, has no such column,
-// and every write against it is refused by the API until this runs.
+// Branch — and gives a Depends on that has no reciprocal side one, returning the
+// data source as it now stands with the report that brought them in. A project
+// created before slices could declare what they wait on, or before an agent
+// handed its work back on a branch, has no such column, and every write against
+// it is refused by the API until this runs; a project older than the reciprocal
+// has the column but records a dependency in a relation Notion keeps on one side
+// alone, where the far end of a link lands back in Depends on and a slice
+// waiting on another reads as a mutual block. See [SchemaRelation].
 //
-// Both go on in one write, and it is the last thing a migration does, so a
-// project refused or failed part way through the shape changes is left exactly
+// All of it goes on in one write, and it is the last thing a migration does, so
+// a project refused or failed part way through the shape changes is left exactly
 // as those steps found it, and this is the one thing an already-migrated project
-// may still be due. A column of the right name and the wrong type is left alone:
-// the schema verification is where that is reported, and converting somebody's
-// column is not this function's decision to make.
+// may still be due. Converting is safe for what is already recorded: Notion
+// keeps the values Depends on holds and starts the new column empty, which is
+// exactly right, since nothing reads it. A column of the right name and the
+// wrong type is left alone — the schema verification is where that is reported,
+// and converting somebody's column is not this function's decision to make — and
+// so is a relation pointing at anything but the slices themselves, which is
+// somebody's own column sharing a name rather than this one.
 func addColumns(ctx context.Context, api MigrationAPI, slicesDSID string, ds *DataSource,
 	report Migration) (*DataSource, Migration, error) {
 	properties := map[string]PropertySchema{}
-	if _, ok := ds.Properties[PropDependsOn]; !ok {
+	var dualised bool
+	if existing, ok := ds.Properties[PropDependsOn]; !ok {
 		properties[PropDependsOn] = SchemaRelation(slicesDSID)
+	} else if SingleSelfRelation(existing, slicesDSID) {
+		properties[PropDependsOn] = SchemaRelation(slicesDSID)
+		dualised = true
 	}
 	if _, ok := ds.Properties[PropBranch]; !ok {
 		properties[PropBranch] = SchemaRichText()
@@ -260,25 +286,38 @@ func addColumns(ctx context.Context, api MigrationAPI, slicesDSID string, ds *Da
 	}
 	updated, err := api.UpdateDataSourceProperties(ctx, slicesDSID, properties)
 	if err != nil {
-		return nil, Migration{}, fmt.Errorf("add the %s: %w", columnList(properties), err)
+		return nil, Migration{}, fmt.Errorf("%s: %w", columnWork(properties, dualised), err)
 	}
-	_, report.DependsOnAdded = properties[PropDependsOn]
+	_, wroteDependsOn := properties[PropDependsOn]
+	report.DependsOnAdded = wroteDependsOn && !dualised
+	report.DependsOnDualised = dualised
 	_, report.BranchAdded = properties[PropBranch]
 	logging.Action("columns added", "data_source", slicesDSID,
-		"depends_on", report.DependsOnAdded, "branch", report.BranchAdded)
+		"depends_on", report.DependsOnAdded, "branch", report.BranchAdded,
+		"depends_on_dualised", report.DependsOnDualised)
 	return updated, report, nil
 }
 
-// columnList names the columns a failed back-fill was adding, so the error says
-// which write was refused rather than only that one was.
-func columnList(properties map[string]PropertySchema) string {
+// columnWork says what a failed back-fill was doing, so the error names the
+// write that was refused rather than only reporting that one was.
+func columnWork(properties map[string]PropertySchema, dualised bool) string {
 	var names []string
 	for _, name := range []string{PropDependsOn, PropBranch} {
-		if _, ok := properties[name]; ok {
+		converted := dualised && name == PropDependsOn
+		if _, ok := properties[name]; ok && !converted {
 			names = append(names, fmt.Sprintf("%q", name))
 		}
 	}
-	return strings.Join(names, " and ") + " " + pluralise("column", len(names))
+	var parts []string
+	if len(names) > 0 {
+		parts = append(parts, fmt.Sprintf("add the %s %s",
+			strings.Join(names, " and "), pluralise("column", len(names))))
+	}
+	if dualised {
+		parts = append(parts, fmt.Sprintf("give the %q column a %q side of its own",
+			PropDependsOn, PropBlocks))
+	}
+	return strings.Join(parts, " and ")
 }
 
 // renamesClaimed reports whether a Status column still offers the old name for

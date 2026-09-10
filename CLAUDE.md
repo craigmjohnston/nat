@@ -1178,12 +1178,24 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   before there was any reading.
 - Slices may carry a `Repo` override; otherwise the project default working
   dir from local config applies.
-- A slice may declare the slices it waits on: `Depends on`, a single-property
-  relation from the Slices data source to itself — single so there is no
-  reciprocal `Blocks` column to keep in step — created alongside the other
-  columns, though as a second write, since a self-relation cannot name a data
-  source the create has not returned yet, and back-filled at load onto a project
-  created before there was one. The rule is one line
+- A slice may declare the slices it waits on: `Depends on`, a **dual-property**
+  relation from the Slices data source to itself, whose reciprocal half is
+  `Blocks` — created alongside the other columns, though as a second write,
+  since a self-relation cannot name a data source the create has not returned
+  yet, and back-filled at load onto a project created before there was one.
+  `Blocks` is there so that Notion has somewhere to write that is not `Depends
+  on`, and nothing reads it: a self-relation kept on one side alone has nowhere
+  but `Depends on` to put the far end of a link, so recording that A waits on B
+  can read back as the two waiting on each other — a mutual block neither
+  `next-slice` nor `l` will step past. Given a side of its own, Notion's far end
+  lands in `Blocks` and `Depends on` stays directional. A project older than the
+  reciprocal is converted in place at load, in the very write `addColumns`
+  back-fills a missing column with: Notion keeps everything `Depends on` already
+  holds and starts `Blocks` empty, which is exactly right, since nothing reads
+  it. Only a relation pointing at the slices themselves is converted
+  (`notion.SingleSelfRelation`) — one pointing anywhere else is somebody's own
+  column sharing a name, and re-targeting it would throw away what it holds.
+  The rule is one line
   (`domain.Blockers`): a slice is blocked while any slice it names is not Done,
   and a slice names none where the column is absent or empty, so a project whose
   table has no such column behaves exactly as it did before there was one. A
@@ -1278,7 +1290,8 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   already in the one shape is read and left alone, which is what every load
   after the first does. What changed is logged, and the board says so in a
   toast. One step there is every project's rather than an old-shape project's:
-  a missing `Depends on` or `Branch` column is added (`addColumns`).
+  a missing `Depends on` or `Branch` column is added, and a `Depends on` Notion
+  keeps on one side alone is given its `Blocks` half (`addColumns`).
   `CreateProject` writes both, but only for the projects it creates, so a
   project older than slice dependencies, or than handing work back on a branch,
   has nothing for one to be recorded on and Notion refuses every write against
