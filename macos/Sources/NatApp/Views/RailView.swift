@@ -8,12 +8,18 @@ import NatKit
 /// by `indent`. Rows still span the rail's full width for their tap targets,
 /// but hover and selection paint as rounded chips inset from the edges — see
 /// `InsetHoverWash` — with content kept inside `leading`/`trailing`.
-private enum RailSlot {
+/// Internal rather than private, so `RailSkeletonView` builds its
+/// placeholder rows on exactly these numbers instead of a copy of them —
+/// the whole point of the skeleton being that the plan lands on a layout
+/// that is already right.
+enum RailSlot {
     static let slot: CGFloat = 13
     static let spacing: CGFloat = 8
     static let leading: CGFloat = 17
     static let trailing: CGFloat = 20
     static let indent: CGFloat = 20
+    /// Every tree row's height — folders, slices and the DONE heading.
+    static let rowHeight: CGFloat = 28
 }
 
 /// The shared `.hoverWash()` paints edge-to-edge (see ViewHelpers.swift), but
@@ -111,15 +117,17 @@ struct RailView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // The load's own states come first: a board that swallowed
                 // its failure would read as an empty tracker, which is worse
-                // than any error. A first load spins, a failed first load
-                // says what nat said and offers the retry, and a failed
-                // refresh keeps the stale plan under one quiet warning line
-                // (the TUI convention: a failure leaves the board as it was).
+                // than any error. A first load draws the plan's own skeleton,
+                // a failed first load says what nat said and offers the retry,
+                // and a failed refresh keeps the stale plan under one quiet
+                // warning line (the TUI convention: a failure leaves the
+                // board as it was).
                 if let state = appModel.projectStore?.state {
                     if state.isLoading && state.projectInfo == nil {
-                        QuietLoadingView(label: "Loading the plan…")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 60)
+                        // A cold load draws the plan's own shape rather than
+                        // a spinner in an empty column, so what arrives
+                        // replaces it without moving anything.
+                        RailSkeletonView()
                     } else if let message = state.errorMessage, state.projectInfo == nil {
                         VStack(alignment: .leading, spacing: 10) {
                             Label("The plan could not be loaded", systemImage: "exclamationmark.triangle")
@@ -367,7 +375,7 @@ struct RailView: View {
         // A row's height rather than the bare text line, so the hover wash
         // has the same inset every other row's has instead of hugging the
         // heading's own letters.
-        .frame(height: 28)
+        .frame(height: RailSlot.rowHeight)
         .insetHoverWash()
         .contentShape(Rectangle())
         .onTapGesture {
@@ -614,7 +622,7 @@ struct RailView: View {
                 .monospacedDigit()
                 .foregroundStyle(DesignTokens.labelTertiary)
         }
-        .frame(height: 28)
+        .frame(height: RailSlot.rowHeight)
         .padding(.leading, RailSlot.leading + (inDone ? RailSlot.indent : 0))
         .padding(.trailing, RailSlot.trailing)
         .insetHoverWash()
@@ -644,7 +652,7 @@ struct RailView: View {
 
             Spacer()
         }
-        .frame(height: 28)
+        .frame(height: RailSlot.rowHeight)
         .padding(.leading, RailSlot.leading + CGFloat(depth) * RailSlot.indent)
         .padding(.trailing, RailSlot.trailing)
         // Same soft inset chip as sessionRow, and for the same reason: the
