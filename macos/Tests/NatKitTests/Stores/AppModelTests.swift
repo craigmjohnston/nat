@@ -50,6 +50,46 @@ final class WorkshopLaunchRecorder: @unchecked Sendable {
     }
 }
 
+// MARK: - Workshop activity
+
+/// A status client that reports nothing until the launch has run and the
+/// planning agent from then on — which is what a workshop launch does to the
+/// tmux server the real poll reads. `launched()` is called by the launcher
+/// `workshopModel` wraps around the test's own, so the reading turns over at
+/// exactly the moment the session starts existing.
+final class PlanningAgentAppearsClient: MockActivityClient, @unchecked Sendable {
+    private let lock = NSLock()
+    private var isLaunched = false
+
+    init() {
+        super.init(response: .agents([]))
+    }
+
+    func launched() {
+        lock.withLock { isLaunched = true }
+    }
+
+    override func status() async throws -> [AgentStatus] {
+        guard lock.withLock({ isLaunched }) else { return [] }
+        // `AppModel.planSentinel`, which is main-actor isolated and this is
+        // not — the poll reads tmux off the main thread.
+        return [AgentStatus(sliceID: "plan", session: "nat-plan", activity: .working)]
+    }
+}
+
+/// Somewhere for a settle-wait closure to reach the model it is waiting
+/// inside — the closure is made before the model it is given to.
+@MainActor
+final class WorkshopLaunchProbe {
+    var model: AppModel?
+    /// What `workshopLaunching` read on each turn of the settle wait.
+    var launching: [Bool] = []
+
+    func observe() {
+        launching.append(model?.workshopLaunching ?? false)
+    }
+}
+
 // MARK: - Tests
 
 final class AppModelTests: XCTestCase {
@@ -469,8 +509,15 @@ final class AppModelTests: XCTestCase {
 
     // MARK: - Workshop
 
+    /// A model whose launches are the given closure's. `planningAgentAppears`
+    /// is whether the activity poll behind it ever reports the session a
+    /// launch starts — false is a launch nothing comes of, which is what the
+    /// settle wait gives up on. That wait is a no-op here, so a test never
+    /// spends thirty seconds finding out.
     @MainActor
     private func workshopModel(
+        planningAgentAppears: Bool = false,
+        settleWait: @escaping @MainActor @Sendable () async -> Void = { await Task.yield() },
         launcher: @escaping @Sendable (String, String?, String?, String?) async throws -> WorkshopLaunchResult
     ) async -> AppModel {
         let testConfig = NatProjectConfig(
@@ -480,9 +527,17 @@ final class AppModelTests: XCTestCase {
             ],
             workshopAgent: AgentModel(model: "opus", effort: "high")
         )
+        let appearing = planningAgentAppears ? PlanningAgentAppearsClient() : nil
+        let client: NatClientProtocol = appearing ?? MockActivityClient(response: .agents([]))
         let appModel = AppModel(
             configReader: MockConfigReader(response: .success(testConfig)),
-            workshopLauncher: launcher
+            workshopLauncher: { projectID, model, effort, request in
+                let result = try await launcher(projectID, model, effort, request)
+                appearing?.launched()
+                return result
+            },
+            activityStoreFactory: { ActivityStore(client: client) },
+            launchSettleWait: settleWait
         )
         await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
         return appModel
@@ -508,7 +563,7 @@ final class AppModelTests: XCTestCase {
     @MainActor
     func testLaunchWorkshop_launchesWithTheConfigPairAndTheTrimmedRequest() async {
         let recorder = WorkshopLaunchRecorder()
-        let appModel = await workshopModel { projectID, model, effort, request in
+        let appModel = await workshopModel(planningAgentAppears: true) { projectID, model, effort, request in
             recorder.record(projectID: projectID, model: model, effort: effort, request: request)
             return WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
         }
@@ -521,8 +576,71 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(recorder.calls[0].effort, "high")
         XCTAssertEqual(recorder.calls[0].request, "Add dark mode.")
         XCTAssertTrue(appModel.workshopSelected)
+        // Settled: the poll has reported the session, so the pane has the
+        // terminal to draw and the launching state is over.
         XCTAssertFalse(appModel.workshopLaunching)
         XCTAssertNil(appModel.workshopLaunchError)
+        XCTAssertEqual(appModel.planningAgent?.session, "nat-plan")
+    }
+
+    @MainActor
+    func testLaunchWorkshop_staysLaunchingUntilThePollReportsTheSession() async {
+        let probe = WorkshopLaunchProbe()
+        let appModel = await workshopModel(
+            planningAgentAppears: true,
+            settleWait: {
+                probe.observe()
+                await Task.yield()
+            }
+        ) { _, _, _, _ in
+            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
+        }
+        probe.model = appModel
+
+        await appModel.launchWorkshop(request: "")
+
+        // The command returning is not the pane's cue: the launching state is
+        // held over every turn of the wait, so the composer never comes back
+        // between `workshop-launch` and the terminal.
+        XCTAssertFalse(probe.launching.isEmpty)
+        XCTAssertTrue(probe.launching.allSatisfy { $0 })
+        XCTAssertNotNil(appModel.planningAgent)
+        XCTAssertFalse(appModel.workshopLaunching)
+        XCTAssertNil(appModel.workshopLaunchError)
+    }
+
+    @MainActor
+    func testLaunchWorkshop_givesUpOnASessionThatNeverAppears() async {
+        // The activity poll reports nothing, ever — a session that exited on
+        // the spot, or a tmux the poll cannot read.
+        let appModel = await workshopModel { _, _, _, _ in
+            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
+        }
+
+        await appModel.launchWorkshop(request: "")
+
+        XCTAssertFalse(appModel.workshopLaunching)
+        XCTAssertEqual(
+            appModel.workshopLaunchError,
+            "the workshop session was launched but has not appeared — check `nat status`"
+        )
+    }
+
+    @MainActor
+    func testLaunchWorkshop_aFailedLaunchDoesNotWaitOnAnAgent() async {
+        let probe = WorkshopLaunchProbe()
+        let appModel = await workshopModel(settleWait: { probe.observe() }) { _, _, _, _ in
+            throw NatError.commandFailed("boom")
+        }
+        probe.model = appModel
+
+        await appModel.launchWorkshop(request: "")
+
+        // Straight back to the composer with the failure on it: there is no
+        // session for the poll to find.
+        XCTAssertTrue(probe.launching.isEmpty)
+        XCTAssertFalse(appModel.workshopLaunching)
+        XCTAssertEqual(appModel.workshopLaunchError, "boom")
     }
 
     @MainActor

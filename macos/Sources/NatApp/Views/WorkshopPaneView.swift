@@ -8,10 +8,11 @@ import NatKit
 ///
 /// Presence is the activity poll's answer (`appModel.planningAgent`), so the
 /// terminal attaches to a planning agent whichever session launched it. With
-/// none running the pane is the composer — the board's own "What do you want
-/// to workshop?", asked before any session starts — which is also where a
-/// launch failure is shown, over the request still typed and ready to send
-/// again.
+/// none running the pane is one of two things: the composer — the board's own
+/// "What do you want to workshop?", asked before any session starts, and also
+/// where a launch failure is shown, over the request still typed and ready to
+/// send again — or, from the moment Launch is pressed until there is an agent
+/// to attach to, the launching indicator that says so.
 struct WorkshopPaneView: View {
     @Bindable var appModel: AppModel
     @State private var request = ""
@@ -58,15 +59,34 @@ struct WorkshopPaneView: View {
                 .padding(.vertical, 14)
                 .padding(.horizontal, 18)
             }
+        } else if appModel.workshopLaunching {
+            // Launch is pressed and the pane says so on the spot, rather than
+            // sitting on the composer until the two-second activity poll
+            // notices the session: `workshopLaunching` goes up on the first
+            // line of the launch and stays up until the agent is there to
+            // attach to — or the launch has failed, which is what puts the
+            // composer back, request and all, with the error over it.
+            launching
         } else {
-            // A launch keeps the composer exactly where it is rather than
-            // swapping it for a spinner: what the user typed is still what
-            // the session is starting on, and a pane that blanked and then
-            // came back as a terminal would have thrown the request off
-            // screen for the second it takes. The Launch button's own busy
-            // mark is what says it is under way — see `AsyncActionLabel`.
             composer
         }
+    }
+
+    /// What the pane is between Launch and the terminal: no delay on this
+    /// one, unlike `QuietLoadingView`'s deliberate 250ms — the wait is the
+    /// answer to a key the user has just pressed, and the whole point of it
+    /// is being seen immediately.
+    private var launching: some View {
+        VStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+
+            Text("Starting the workshop session…")
+                .font(.system(size: Typo.subhead, weight: .regular))
+                .foregroundStyle(DesignTokens.labelSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(DesignTokens.controlBg)
     }
 
     /// The question the board's `w` form asks, as the pane's own content: the
@@ -89,7 +109,7 @@ struct WorkshopPaneView: View {
                 .foregroundStyle(DesignTokens.label)
                 .scrollContentBackground(.hidden)
                 .padding(6)
-                .frame(height: 140)
+                .frame(minHeight: 180, maxHeight: .infinity)
                 .background(DesignTokens.windowBg)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(
@@ -115,8 +135,14 @@ struct WorkshopPaneView: View {
                 .disabled(appModel.workshopLaunching)
             }
         }
-        .frame(maxWidth: 560)
+        // The editor takes whatever the pane has left: workshopping a plan is
+        // paragraphs, and a box the size of a comment field is where the last
+        // one made the user type into a keyhole. The column is wider for the
+        // same reason, and capped rather than full-bleed so a maximised
+        // window does not make lines nobody can read across.
+        .frame(maxWidth: 820, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 40)
+        .padding(.vertical, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DesignTokens.controlBg)
     }

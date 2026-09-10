@@ -3,7 +3,9 @@ import XCTest
 
 // MARK: - Mock Client for ActivityStore
 
-final class MockActivityClient: NatClientProtocol, @unchecked Sendable {
+/// Not final: `PlanningAgentAppearsClient` in `AppModelTests` overrides
+/// `status()` to answer differently on the reading a launch kicks off.
+class MockActivityClient: NatClientProtocol, @unchecked Sendable {
     enum Response {
         case agents([AgentStatus])
         case failure(Error)
