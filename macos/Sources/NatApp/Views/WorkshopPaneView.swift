@@ -48,7 +48,7 @@ struct WorkshopPaneView: View {
         if let agent = appModel.planningAgent {
             // Terminal area — the same full-bleed panel the Agent tab draws.
             ZStack {
-                AgentTerminalHostView.backgroundColor
+                DesignTokens.terminalBg
 
                 AgentTerminalHostView(
                     attachSpec: AttachSpec(session: agent.session),

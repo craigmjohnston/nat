@@ -13,18 +13,6 @@ import NatKit
 /// terminal is in comes from `TerminalLifecycle`. This view only wires
 /// SwiftTerm's callbacks to those two.
 public struct AgentTerminalHostView: NSViewRepresentable {
-    /// The background the terminal area renders on — the dark terminal
-    /// panel from the design mock's `AgentTerminalView` (`#121216`), kept as
-    /// a constant here until the surrounding chrome (tabs, footer, the
-    /// composer row) is its own later task.
-    public static let backgroundHex = "121216"
-
-    /// `backgroundHex` as a SwiftUI `Color`, for the surface the caller lays
-    /// full-bleed behind this view once the terminal itself is inset from
-    /// the pane's edges — the padding belongs to the terminal, not to a
-    /// margin around a smaller dark rectangle.
-    public static let backgroundColor = Color(hex: backgroundHex)
-
     private let attachSpec: AttachSpec
 
     /// Answers whether the tmux session `attachSpec` names still exists,
@@ -53,7 +41,7 @@ public struct AgentTerminalHostView: NSViewRepresentable {
 
     public func makeNSView(context: Context) -> LocalProcessTerminalView {
         let view = FirstLayoutTerminalView(frame: .zero)
-        view.nativeBackgroundColor = NSColor(hex: Self.backgroundHex)
+        view.nativeBackgroundColor = NSColor(hex: DesignTokens.terminalBgHex)
         view.processDelegate = context.coordinator
         // `makeNSView` runs before AppKit has laid this view out at all, so
         // starting the process here would open the pty at SwiftTerm's

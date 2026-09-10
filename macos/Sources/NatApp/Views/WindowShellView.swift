@@ -119,7 +119,7 @@ struct WindowShellView: View {
                 .padding(.leading, 78)
                 .background(
                     ZStack {
-                        Color(hex: "1e1e23").opacity(0.85)
+                        DesignTokens.headerBg
                         // color-mix(in srgb, var(--accent) 9%, var(--material-header-bg))
                         // approximated: the accent laid over the header's own
                         // material at 9% opacity. Flat fill — the mock's blur
