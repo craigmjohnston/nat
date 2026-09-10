@@ -496,11 +496,13 @@ func TestPlanApplyRecordsDependenciesBetweenNewSlices(t *testing.T) {
 			t.Errorf("creation %d wrote a relation: %+v", i, c.props)
 		}
 	}
-	if len(api.updates) != 1 || api.updates[0].id != "new-1" {
+	// The plan is written back to front, so the waiting slice — the first of the
+	// document — is the last page created.
+	if len(api.updates) != 1 || api.updates[0].id != "new-2" {
 		t.Fatalf("updates = %+v, want the waiting slice written once", api.updates)
 	}
-	if got := dependencyIDsOf(t, api.updates[0]); !reflect.DeepEqual(got, []string{"new-2"}) {
-		t.Errorf("dependencies = %v, want the slice created after it", got)
+	if got := dependencyIDsOf(t, api.updates[0]); !reflect.DeepEqual(got, []string{"new-1"}) {
+		t.Errorf("dependencies = %v, want the slice written below it in the document", got)
 	}
 }
 
@@ -745,10 +747,10 @@ func TestPlanApplyFoldsADependenciesEntryIntoASliceItCreates(t *testing.T) {
 		t.Fatalf("plan-apply: %v", err)
 	}
 
-	if len(api.updates) != 1 || api.updates[0].id != "new-1" {
+	if len(api.updates) != 1 || api.updates[0].id != "new-2" {
 		t.Fatalf("updates = %+v, want the created slice written once", api.updates)
 	}
-	want := []string{depSpare, "new-2"}
+	want := []string{depSpare, "new-1"}
 	if got := dependencyIDsOf(t, api.updates[0]); !reflect.DeepEqual(got, want) {
 		t.Errorf("dependencies = %v, want %v", got, want)
 	}

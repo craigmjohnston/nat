@@ -386,7 +386,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   lands is the command line's rather than the document's, which is what the
   shared `--project` below is for — a document says what work there is and not
   whose it is, and everything past that resolution — the migration, the
-  validation, the write order, the nudge — is the same either way), and `nat setup`, which installs the embedded skills into
+  validation, the write order, the nudge — is the same either way; the slices
+  themselves are written back to front, which is the only thing a run can do
+  about where they land on the board — `notion.PlanOrder` reads the order off
+  the Slices view's manual row order, nothing in the API adds a created row to
+  that order, and such a row reads back newest created first, so the document
+  reversed reads back as the document, and the command says so in its output
+  and as `"ordering"` in its JSON), and `nat setup`, which installs the embedded skills into
   `~/.claude/skills` — the only command that talks to neither Notion nor the
   config file, since it is what a machine with only the binary runs first), what
   the binary does when given a subcommand. Run before even the tmux check and
