@@ -73,21 +73,38 @@ every slice: anything true of one slice alone belongs in that slice's brief.
 - Milestones are phases of the work, in the order they should happen: the
   plan's order is the order they are written in, and `nat next-slice` hands
   work out from the lowest-ordered milestone that is not Done.
-- Status, order and assignee are not yours to choose. New slices are filed
-  `Todo` and unassigned; a milestone's status follows its slices, so there is
-  none to set anywhere.
-- Dependencies must go one way: a plan that would leave a slice waiting on
-  itself, however far round, is refused whole with the cycle named and nothing
-  created.
-- `depends_on` names the slices a slice genuinely cannot start before — a
-  blocked slice is one `nat next-slice` steps over and `nat start-slice`
-  refuses — not the ones that merely read better in order.
+- **List the slices in the order they should be worked** too. `nat plan-apply`
+  lands them on the board in the order the document lists them, and
+  `next-slice` hands out the topmost unblocked slice of the milestone it is
+  working — so the order you write is the order the work comes out in.
+- **Make a dependency pass over every slice, and state what each one waits
+  on.** For each slice you draft, ask what has to exist before one agent could
+  finish it in a single session — a schema it reads, a command it calls, a
+  package it imports — and wire the genuine prerequisites as `depends_on`. Say
+  "nothing" for the rest in the proposal, so the user can see the pass was made
+  rather than skipped.
+- **Do not chain the plan.** `depends_on` names the slices a slice genuinely
+  cannot start before — a blocked slice is one `nat next-slice` steps over and
+  `nat start-slice` refuses — not the ones that merely read better in order.
+  Slices that only share a subject are independent, and leaving them unblocked
+  is what lets the user run agents on them in parallel. Order carries the
+  reading; `depends_on` carries the blocking.
+- **The dependency graph must be acyclic.** A plan that would leave a slice
+  waiting on itself, however far round, is refused whole with the cycle named
+  and nothing created. If two slices each appear to need the other, they are
+  one slice, or the split between them is in the wrong place.
+- Status and assignee are not yours to choose. New slices are filed `Todo` and
+  unassigned; a milestone's status follows its slices, so there is none to set
+  anywhere.
 
 ## Procedure
 
 1. Present the proposal in chat: the project name, the repo, the brief in full,
-   and the plan as a compact tree of milestones with their slices (titles plus
-   one-line summaries). Note anything you left out or split.
+   and the plan as a compact tree of milestones with their slices in the order
+   they should be worked (titles plus one-line summaries). Give every slice a
+   line saying what it waits on — the slices it depends on, or "nothing" — so
+   the dependency pass is on show and the user can correct it. Note anything
+   you left out or split.
 2. **Write nothing until the user explicitly approves.** Iterate on their
    feedback by revising the proposal, not by creating the project and fixing it
    afterwards. There is no `nat` command that deletes a project.
@@ -135,6 +152,12 @@ every slice: anything true of one slice alone belongs in that slice's brief.
    `milestone` names one of the plan's own new milestones by name. `description`,
    `repo` and `depends_on` are optional; nothing else is, and any other key is
    rejected. The whole document is validated before the first page is created.
+
+   The order of the `slices` list is the order the slices land on the board, so
+   write them in the order they should be worked; `milestones` is likewise the
+   order the plan's phases are written in. `depends_on` names slices by title —
+   one the same document creates, wherever in it — and the graph it leaves has
+   to be acyclic or the run is refused whole.
 
    `repo` on a slice is only for work that happens somewhere other than the
    project's own working directory — a plan for one repo needs none.

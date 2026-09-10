@@ -38,16 +38,43 @@ conventions, its milestones in plan order, and its slices grouped under them.
   directory — a `repo` override.
 - Slot new slices into existing milestones when they fit; create new
   milestones only for genuinely new phases of work.
-- Status, order and assignee are not yours to choose: `nat plan-apply` files
-  new milestones at the end of the plan and new slices as `Todo` and
-  unassigned. A milestone's status follows its slices — there is none to set,
-  on the board or anywhere else; agents claim their own slices at work time.
+- **List the slices in the order they should be worked**, and the milestones
+  likewise. `nat plan-apply` lands them on the board in the order the document
+  lists them, and `nat next-slice` hands out the topmost unblocked slice of the
+  lowest-ordered milestone that is not Done — so the order you write is the
+  order the work comes out in, and an order you did not think about is one the
+  user has to reorder by hand.
+- **Make a dependency pass over every slice, and state what each one waits
+  on.** For each slice you draft, ask what has to exist before one agent could
+  finish it in a single session — a column it reads, a command it calls, a
+  package it imports — looking at the slices already on the board as well as
+  the plan's own. Wire the genuine prerequisites as `depends_on`, and say
+  "nothing" for the rest in the proposal, so the user can see the pass was
+  made rather than skipped.
+- **Do not chain the plan.** A dependency is work that genuinely cannot start
+  yet, not work that merely reads better second: a blocked slice is one `nat
+  next-slice` steps over and `nat start-slice` refuses. Slices that only share
+  a subject are independent, and leaving them unblocked is what lets the user
+  run agents on them in parallel. Order carries the reading; `depends_on`
+  carries the blocking.
+- **The dependency graph must be acyclic.** A plan that would leave a slice
+  waiting on itself — directly, or round through however many others, counting
+  the edges the project already records — is refused whole and nothing is
+  created. If two slices each appear to need the other, they are one slice, or
+  the split between them is in the wrong place.
+- Status and assignee are not yours to choose: `nat plan-apply` files new
+  milestones at the end of the plan and new slices as `Todo` and unassigned. A
+  milestone's status follows its slices — there is none to set, on the board or
+  anywhere else; agents claim their own slices at work time.
 
 ## Procedure
 
 1. Present the proposal in chat as a compact tree: each milestone (marked
-   NEW where applicable) with its slices, titles + one-line summaries, plus
-   any repo overrides. Note anything you chose to leave out or split.
+   NEW where applicable) with its slices in the order they should be worked,
+   titles + one-line summaries, plus any repo overrides. Give every slice a
+   line saying what it waits on — the slices it depends on, or "nothing" —
+   so the dependency pass is on show and the user can correct it. Note
+   anything you chose to leave out or split.
 2. **Write nothing until the user explicitly approves.** Iterate on their
    feedback by revising the proposal, not by writing part of it.
 3. On approval, write the whole plan in one go by piping this document to
@@ -77,6 +104,10 @@ conventions, its milestones in plan order, and its slices grouped under them.
    `description`, `repo` and `depends_on` are optional, as is the whole
    top-level `dependencies` list; nothing else is, and any other key is
    rejected. The whole document is validated before the first page is created.
+
+   The order of the `slices` list is the order the slices land on the board, so
+   write them in the order they should be worked; `milestones` is likewise the
+   order new milestones are appended to the plan in.
 
    `depends_on` names slices by title — one the same document creates, wherever
    in it, or one the project already has. A slice is blocked while anything it
