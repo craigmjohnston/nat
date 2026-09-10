@@ -179,6 +179,36 @@ public enum Typo {
     public static let code: CGFloat = 13
 }
 
+/// The geometry every button in the app is drawn to. One place, because the
+/// point of a button grammar is that a primary submit is the same shape
+/// wherever it is pressed — the footer of the brief pane, the foot of a
+/// sheet, the split control that launches an agent — and three files each
+/// picking their own padding is how five different submit buttons happened.
+///
+/// The height is stated rather than left to the label's padding: a button
+/// whose height falls out of its font and its insets is one that changes
+/// size when the label does, and a spinner appearing beside the label is
+/// exactly such a change. `AsyncActionLabel` holds the width; this holds the
+/// height.
+public enum ButtonMetrics {
+    /// The height of every primary and secondary button.
+    public static let height: CGFloat = 22
+    /// The corner radius of their fills and strokes.
+    public static let cornerRadius: CGFloat = 6
+    /// The inset either side of the label.
+    public static let horizontalPadding: CGFloat = 12
+    /// The inset either side of a ghost button's label, which carries no
+    /// fill and so needs less room around it to read as one thing.
+    public static let ghostHorizontalPadding: CGFloat = 8
+    /// What a button is dimmed to while it is disabled. The split control
+    /// dims as a whole to this too, rather than through each half's own
+    /// disabled state, since half a dimmed control reads as half of it being
+    /// unavailable.
+    public static let disabledOpacity: Double = 0.55
+    /// What a filled button is dimmed to while it is held down.
+    public static let pressedOpacity: Double = 0.85
+}
+
 /// Motion, per the design system's own rules (state changes at 0.15–0.35s
 /// ease-out, nothing else) and Craig's read that anything slower drags: the
 /// fast end, in one place, so turning animation off entirely is making

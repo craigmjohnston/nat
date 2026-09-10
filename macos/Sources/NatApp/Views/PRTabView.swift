@@ -93,7 +93,7 @@ struct PRTabView: View {
             Button("Retry") {
                 Task { await refreshAndPoll() }
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(SecondaryButtonStyle())
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -306,15 +306,14 @@ struct PRTabView: View {
                     }
                     .font(.system(size: Typo.subhead, weight: .regular))
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(SecondaryButtonStyle())
 
                 Button(action: { showMergeConfirm = true }) {
                     AsyncActionLabel(isBusy: isMerging) {
                         Text("Merge")
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(DesignTokens.accent)
+                .buttonStyle(PrimaryButtonStyle())
                 .disabled(!mergeIsEnabled(for: pr) || isMerging)
             }
             .padding(.horizontal, 14)

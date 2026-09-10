@@ -198,58 +198,52 @@ struct BriefTabView: View {
 
                     Spacer()
 
-                    // Split Launch Agent button — the one gradient action on
-                    // this screen, per the button grammar. Dimmed as a whole
-                    // rather than through each button's own disabled state,
-                    // since a split control half-dimmed would read as only
-                    // one half of it being unavailable.
+                    // Split Launch Agent button — the one primary action on
+                    // this screen, per the button grammar, and the one place
+                    // that grammar is drawn by hand rather than through
+                    // `PrimaryButtonStyle`: a split control is two buttons
+                    // sharing one fill, which a ButtonStyle (drawing a fill
+                    // per button) cannot be. Everything else about it is the
+                    // primary style's own — `ButtonMetrics`' height, radius
+                    // and dimming, the flat accent fill, `accentText`, the
+                    // semibold subhead, and the spinner beside the label
+                    // rather than over it — so it differs from every other
+                    // submit in its two halves and in nothing else.
+                    //
+                    // Dimmed as a whole rather than through each button's own
+                    // disabled state, since a split control half-dimmed would
+                    // read as only one half of it being unavailable.
                     ZStack {
                         HStack(spacing: 0) {
                             Button(action: performLaunch) {
-                                // The label keeps its footprint while a
-                                // launch is in flight — drawn invisible with
-                                // the spinner overlaid — so the button never
-                                // collapses to spinner width and the split
-                                // control doesn't jump (the same reserve-and-
-                                // overlay trick the project tabs use for
-                                // their bolding labels).
-                                Text("Launch Agent")
-                                    .font(.system(size: Typo.subhead, weight: .semibold))
-                                    .foregroundStyle(DesignTokens.accentText)
-                                    .padding(.horizontal, 10)
-                                    .opacity(isLaunching ? 0 : 1)
-                                    .overlay {
-                                        if isLaunching {
-                                            ProgressView()
-                                                .scaleEffect(0.5, anchor: .center)
-                                        }
-                                    }
+                                AsyncActionLabel(isBusy: isLaunching) {
+                                    Text("Launch Agent")
+                                }
+                                .font(.system(size: Typo.subhead, weight: .semibold))
+                                .foregroundStyle(DesignTokens.accentText)
+                                .padding(.horizontal, ButtonMetrics.horizontalPadding)
+                                .frame(height: ButtonMetrics.height)
                             }
-                            .frame(height: 22)
                             .buttonStyle(.plain)
                             .disabled(!launchIsEnabled() || isLaunching)
 
                             Divider()
-                                .frame(maxHeight: 22)
+                                .frame(maxHeight: ButtonMetrics.height)
                                 .opacity(0.25)
 
                             Button(action: { showLaunchPopover.toggle() }) {
                                 Image(systemName: "chevron.down")
                                     .font(.system(size: 12, weight: .medium))
                                     .foregroundStyle(DesignTokens.accentText)
-                                    .frame(width: 20, height: 22)
+                                    .frame(width: 20, height: ButtonMetrics.height)
                             }
                             .buttonStyle(.plain)
                             .disabled(!launchIsEnabled())
                         }
-                        // Flat accent rather than the brand gradient: the
-                        // icon and the progress bar already carry the
-                        // gradient, and a button shouting it too was one
-                        // gradient too many.
                         .background(DesignTokens.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .clipShape(RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius))
                     }
-                    .opacity(launchIsEnabled() ? 1 : 0.55)
+                    .opacity(launchIsEnabled() ? 1 : ButtonMetrics.disabledOpacity)
                     .popover(isPresented: $showLaunchPopover, arrowEdge: .bottom) {
                         launchPopoverContent()
                             .padding(10)
@@ -347,7 +341,7 @@ struct BriefTabView: View {
                 Spacer()
 
                 Button("Cancel", action: cancelEditingBrief)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(SecondaryButtonStyle())
                     .disabled(isSavingBrief)
 
                 Button(action: { Task { await saveBrief() } }) {
@@ -355,8 +349,7 @@ struct BriefTabView: View {
                         Text("Save")
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(DesignTokens.accent)
+                .buttonStyle(PrimaryButtonStyle())
                 .disabled(isSavingBrief)
             }
         }

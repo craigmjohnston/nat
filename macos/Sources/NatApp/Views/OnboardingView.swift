@@ -62,11 +62,11 @@ struct OnboardingView: View {
                             Text("Add a Project…")
                                 .frame(width: 120)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(PrimaryButtonStyle())
 
-                        checkAgainButton.buttonStyle(.bordered)
+                        checkAgainButton.buttonStyle(SecondaryButtonStyle())
                     } else {
-                        checkAgainButton.buttonStyle(.borderedProminent)
+                        checkAgainButton.buttonStyle(PrimaryButtonStyle())
                     }
                 }
             }
