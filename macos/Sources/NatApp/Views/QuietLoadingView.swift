@@ -1,9 +1,12 @@
 import SwiftUI
 import NatKit
 
-/// The one loading indicator every content-loading state in the app uses,
-/// in place of an ad-hoc `ProgressView()`: small, quiet, and — the point of
-/// it — late. It shows nothing at all until `LoadingDelay` says the wait has
+/// The loading indicator a wait with no shape to it gets — a sheet reading
+/// the workspace, a settings form reading the config — in place of an ad-hoc
+/// `ProgressView()`: small, quiet, and — the point of it — late. A wait whose
+/// shape is known gets a skeleton instead (`RailSkeletonView` for the rail,
+/// `PaneSkeletonViews` for the three content panes), since a placeholder at
+/// the content's own geometry settles the layout before the content lands. It shows nothing at all until `LoadingDelay` says the wait has
 /// gone on long enough to be worth admitting to, which is what keeps a cache
 /// hit or a fast read from ever flashing a spinner: by the time 250ms have
 /// passed, the view that would have shown this is usually gone already,

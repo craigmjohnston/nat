@@ -24,6 +24,10 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
     var commitDiffs: [String: SliceDiff] = [:]
     var commitDiffError: Error?
 
+    /// How long a whole-branch read takes, so a test can look at the store
+    /// while one is actually in flight.
+    var diffDelayNanoseconds: UInt64 = 0
+
     /// What `sliceCommits` answers with.
     var commitsResult: Result<SliceCommitsDoc, Error> = .success(
         SliceCommitsDoc(base: "main", branch: "nat/example", commits: [])
@@ -68,6 +72,9 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
             }
             guard let diff = commitDiffs[commit] else { throw DiffTestError() }
             return diff
+        }
+        if diffDelayNanoseconds > 0 {
+            try? await Task.sleep(nanoseconds: diffDelayNanoseconds)
         }
         switch response {
         case .success(let diff):
@@ -347,6 +354,44 @@ final class DiffStoreTests: XCTestCase {
         XCTAssertEqual(client.callCount, 2)
     }
 
+    /// A re-read over a diff already on screen never blanks it and says so
+    /// through `isRefreshing` — which is what the pane draws its busy mark
+    /// from, in a slot it reserves either way, so nothing moves for it.
+    @MainActor
+    func testARefreshKeepsTheDiffUpAndSaysItIsRunning() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        XCTAssertFalse(store.isRefreshing)
+
+        client.diffDelayNanoseconds = 50_000_000
+        let task = Task { await store.refresh() }
+        try? await Task.sleep(nanoseconds: 10_000_000)
+
+        XCTAssertTrue(store.isRefreshing)
+        XCTAssertNotNil(store.loadState.diff, "a refresh never blanks the diff it is replacing")
+        XCTAssertFalse(store.loadState.isLoading)
+        await task.value
+
+        XCTAssertFalse(store.isRefreshing)
+    }
+
+    /// A first read has nothing to keep, so it blocks behind the pane's
+    /// skeleton rather than wearing the busy mark.
+    @MainActor
+    func testAFirstReadIsLoadingRatherThanRefreshing() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        client.diffDelayNanoseconds = 50_000_000
+        let store = DiffStore(client: client)
+
+        let task = Task { await store.fetch(projectID: "proj-1", sliceRef: "slice-1") }
+        try? await Task.sleep(nanoseconds: 10_000_000)
+
+        XCTAssertTrue(store.loadState.isLoading)
+        XCTAssertFalse(store.isRefreshing)
+        await task.value
+    }
+
     @MainActor
     func testDiffLoadStateAccessors() {
         let diff = DiffModel(base: "main", branch: "b", files: [])
@@ -354,8 +399,11 @@ final class DiffStoreTests: XCTestCase {
         XCTAssertNil(DiffLoadState.loaded(diff).errorMessage)
         XCTAssertTrue(DiffLoadState.loading.isLoading)
         XCTAssertFalse(DiffLoadState.idle.isLoading)
-        XCTAssertEqual(DiffLoadState.failed("oops").errorMessage, "oops")
-        XCTAssertNil(DiffLoadState.failed("oops").diff)
+        XCTAssertEqual(DiffLoadState.failed("oops", previous: nil).errorMessage, "oops")
+        XCTAssertNil(DiffLoadState.failed("oops", previous: nil).diff)
+        // A read that failed over a diff already on screen keeps it: what is
+        // shown is the last good reading, and the message is what says so.
+        XCTAssertEqual(DiffLoadState.failed("oops", previous: diff).diff, diff)
     }
 
     // MARK: - Comments: add / edit / delete
@@ -552,9 +600,47 @@ final class DiffStoreTests: XCTestCase {
         client.setResponse(.failure)
         await store.refresh()
 
-        XCTAssertNil(store.loadState.diff)
+        XCTAssertNotNil(store.loadState.diff, "a failed refresh keeps the diff it could not replace")
+        XCTAssertNotNil(store.loadState.errorMessage, "and says why what is up is the last reading")
         XCTAssertEqual(store.pendingCommentCount, 1, "a failed read should not swallow the pending comments")
         XCTAssertEqual(store.comments.first?.text, "still here")
+    }
+
+    /// A refresh that could not reach git leaves the screen exactly as the
+    /// user left it — the fold and viewed marks included, since nothing has
+    /// replaced the diff they were made against.
+    @MainActor
+    func testAFailedRefreshKeepsTheMarksMadeOnTheDiffItKept() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        store.toggleViewed("a.go")
+
+        client.setResponse(.failure)
+        await store.refresh()
+
+        XCTAssertTrue(store.isViewed("a.go"))
+        XCTAssertTrue(store.isCollapsed("a.go"))
+    }
+
+    /// A read that failed is not one to serve again from the cache: switching
+    /// away and back reads afresh rather than showing a diff already known to
+    /// be stale.
+    @MainActor
+    func testAFailedReadIsNotServedAgainFromTheCache() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        client.setResponse(.failure)
+        await store.refresh()
+        let callsSoFar = client.callCount
+
+        client.setResponse(.success(makeDiff()))
+        await store.fetch(projectID: "proj-2", sliceRef: "slice-2")
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        XCTAssertGreaterThan(client.callCount, callsSoFar + 1)
+        XCTAssertNil(store.loadState.errorMessage)
     }
 
     @MainActor
@@ -824,8 +910,9 @@ final class DiffStoreTests: XCTestCase {
 
         await store.selectCommit("sha1")
 
-        XCTAssertNil(store.loadState.diff)
         XCTAssertNotNil(store.loadState.errorMessage)
+        XCTAssertEqual(store.loadState.diff?.files.first?.path, "a.go",
+                       "a commit that could not be read leaves the branch's own diff up")
     }
 
     @MainActor

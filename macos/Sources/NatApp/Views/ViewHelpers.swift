@@ -33,26 +33,51 @@ extension View {
 
 // MARK: - Async actions
 
-/// The label of a button whose action runs async: while the work is in
-/// flight a small spinner appears beside the label at the text's own height,
-/// so the button keeps its size. (Swapping the label for a bare
-/// `ProgressView` lays out at the spinner's full control size whatever
-/// `scaleEffect` draws it at — which is how the merge button used to grow
-/// into a square.)
+/// The label of a button whose action runs async: a small spinner beside the
+/// label at the text's own height, shown while the work is in flight — and
+/// its slot held whether it is spinning or not, so the button is exactly the
+/// same size busy and idle and nothing beside it moves when the work starts.
+///
+/// (Swapping the label for a bare `ProgressView` lays out at the spinner's
+/// full control size whatever `scaleEffect` draws it at — which is how the
+/// merge button used to grow into a square. Showing the spinner only while
+/// busy fixed the height and left the width jumping by the spinner's own,
+/// which in a trailing-aligned row of buttons shoves every button before it
+/// sideways for as long as the work runs.)
 struct AsyncActionLabel<Label: View>: View {
     let isBusy: Bool
     @ViewBuilder let label: () -> Label
 
     var body: some View {
         HStack(spacing: 5) {
+            BusySlot(isBusy: isBusy)
+            label()
+        }
+    }
+}
+
+/// The spinner's slot: 10 by 10 whether anything is spinning in it or not,
+/// so what it sits beside is laid out the same either way. Idle it is empty
+/// rather than a hidden `ProgressView`, since a spinner nobody can see still
+/// animates, and an app with a dozen async buttons on screen would be
+/// running a dozen of them for nothing.
+struct BusySlot: View {
+    let isBusy: Bool
+    var label: String = "Working…"
+
+    var body: some View {
+        Group {
             if isBusy {
                 ProgressView()
                     .controlSize(.small)
                     .scaleEffect(0.55)
-                    .frame(width: 10, height: 10)
+                    .accessibilityLabel(label)
+            } else {
+                Color.clear
+                    .accessibilityHidden(true)
             }
-            label()
         }
+        .frame(width: 10, height: 10)
     }
 }
 

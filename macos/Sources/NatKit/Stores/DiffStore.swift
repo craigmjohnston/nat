@@ -3,24 +3,32 @@ import SwiftUI
 
 /// The state of loading a slice's diff.
 ///
-/// Unlike `LoadState` (which keeps the previous project on a failed refresh so
-/// the board never blanks under a poll hiccup), a failed read here drops
-/// whatever diff it replaced: a diff is of one branch at one moment, and
-/// leaving the last one on screen under a failure would be showing the wrong
-/// change (the same rule the Go TUI's `Diff` screen follows).
+/// A failed read keeps whatever diff it replaced, the same rule `LoadState`
+/// follows for the plan: a refresh that could not reach git is a reading
+/// that did not happen rather than a change that went away, and blanking a
+/// diff the user is half way through reading over one is the reflow this
+/// state exists to avoid. What it carries is stale and is said to be — the
+/// view draws the error over the diff it kept — and only a read with
+/// nothing ever behind it (`previous == nil`) has an empty pane to show.
 public enum DiffLoadState: Equatable, Sendable {
     case idle
     case loading
     case loaded(DiffModel)
-    case failed(String)
+    case failed(String, previous: DiffModel?)
 
     public var diff: DiffModel? {
-        if case .loaded(let diff) = self { return diff }
-        return nil
+        switch self {
+        case .loaded(let diff):
+            return diff
+        case .failed(_, let previous):
+            return previous
+        case .idle, .loading:
+            return nil
+        }
     }
 
     public var errorMessage: String? {
-        if case .failed(let message) = self { return message }
+        if case .failed(let message, _) = self { return message }
         return nil
     }
 
@@ -51,6 +59,13 @@ public enum CommitsLoadState: Equatable, Sendable {
 @Observable
 public final class DiffStore {
     public private(set) var loadState: DiffLoadState = .idle
+
+    /// Whether a read is in flight over content already on screen — the
+    /// state a skeleton has no business replacing anything for. The view
+    /// draws it as a busy mark in a slot it reserves either way, so the
+    /// refresh is admitted to without a single row moving; `loadState`'s
+    /// own `.loading` is the other case, the one with nothing to keep.
+    public private(set) var isRefreshing = false
     public private(set) var viewedFiles: Set<String> = []
     public private(set) var collapsedFiles: Set<String> = []
 
@@ -122,7 +137,7 @@ public final class DiffStore {
     /// is what a user who wants a fresh read still has.
     public func fetch(projectID: String, sliceRef: String) async {
         guard !isFetching else { return }
-        if self.projectID == projectID, self.sliceRef == sliceRef, loadState.diff != nil {
+        if self.projectID == projectID, self.sliceRef == sliceRef, case .loaded = loadState {
             return
         }
         // Another slice's branch starts with no comments on it — the pending
@@ -343,14 +358,13 @@ public final class DiffStore {
         let showingBranch = selectedCommit == nil
         // A background re-read (`refresh()` on the slice already showing)
         // never blanks the screen first — only a read with nothing already
-        // on it to show blocks behind a spinner.
+        // on it to show blocks behind a skeleton.
         if showingBranch && branchDiff == nil {
             loadState = .loading
+        } else {
+            isRefreshing = true
         }
-        // A re-read's marks are the previous diff's, not the one about to
-        // replace it — cleared here regardless of how the read turns out.
-        viewedFiles = []
-        collapsedFiles = []
+        defer { isRefreshing = false }
         lastDroppedCommentCount = 0
 
         do {
@@ -358,22 +372,26 @@ public final class DiffStore {
             let model = buildDiffModel(from: diff)
             branchDiff = model
             branchDiffCache[sliceRef] = model
+            // A re-read's marks are the previous diff's, not the one that
+            // has just replaced it — dropped only once a read has actually
+            // landed, so a refresh that failed leaves the files the user
+            // folded exactly as they folded them.
+            viewedFiles = []
+            collapsedFiles = []
             reanchorComments(to: model)
             if showingBranch {
                 loadState = .loaded(model)
             }
         } catch {
-            // A read that fails takes the diff it replaced with it, but not
-            // the comments left on it: they are still there to send once a
-            // read succeeds again, ordered by path alone with no diff left
-            // to order them by (mirrors the Go TUI's own rule). The cached
-            // reading for this slice goes with it too, so a later switch back
-            // to it does not serve a diff already known to be stale.
-            branchDiff = nil
+            // A read that fails keeps the diff it could not replace, and the
+            // comments left on it: nothing about the branch has changed, and
+            // a pane blanked over a git that was briefly unreachable is the
+            // reflow this state exists to avoid. The cached reading goes even
+            // so, so a later switch back to this slice reads again rather
+            // than serving one already known to be stale.
             branchDiffCache.removeValue(forKey: sliceRef)
-            comments.sort { $0.path < $1.path }
             if showingBranch {
-                loadState = .failed(error.localizedDescription)
+                loadState = .failed(error.localizedDescription, previous: branchDiff)
             }
         }
     }
@@ -382,6 +400,11 @@ public final class DiffStore {
     /// `selectCommit` for a sha not already cached, and by `refresh()` to
     /// re-read the selected commit fresh after the cache has been dropped.
     private func loadCommitDiff(_ sha: String, projectID: String, sliceRef: String) async {
+        // One commit's diff is a different reading from whatever is on
+        // screen, so there is nothing here to keep in place while it is
+        // read — the skeleton is what stands in for it — and a failure
+        // falls back to whatever was showing rather than to nothing.
+        let previous = loadState.diff
         loadState = .loading
         do {
             let diff = try await client.sliceDiff(projectID: projectID, sliceRef: sliceRef, commit: sha)
@@ -389,7 +412,7 @@ public final class DiffStore {
             commitDiffCache[sha] = model
             loadState = .loaded(model)
         } catch {
-            loadState = .failed(error.localizedDescription)
+            loadState = .failed(error.localizedDescription, previous: previous)
         }
     }
 

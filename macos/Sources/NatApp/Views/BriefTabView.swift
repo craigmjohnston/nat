@@ -37,6 +37,40 @@ struct BriefTabView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // The slice's first read, drawn as the brief it is about to be —
+            // card, prose and properties rail — rather than as a spinner in
+            // a card with no rail beside it, which would narrow the reading
+            // column the moment the brief landed. A re-read never reaches
+            // this: `SliceDetailLoadState` keeps what it has, and the footer's
+            // busy mark is what says a read is running over it.
+            if detailState.detail == nil, detailState.isLoading {
+                BriefSkeletonView()
+            } else {
+                loadedBody
+            }
+
+            footerBar
+        }
+        .background(DesignTokens.windowBg)
+        .task {
+            await loadDetail()
+        }
+        .onChange(of: slice.id) { _, _ in
+            Task {
+                await loadDetail()
+            }
+            resetLaunchState()
+            isEditingBrief = false
+            briefSaveError = nil
+            isSavingBrief = false
+        }
+        .task {
+            resetLaunchState()
+        }
+    }
+
+    private var loadedBody: some View {
+        VStack(spacing: 0) {
             // Scrollable content area
             HStack(spacing: 0) {
                 ScrollView {
@@ -68,8 +102,10 @@ struct BriefTabView: View {
                             // Brief content — a cached detail (even a stale one
                             // still showing while a background read replaces it, or
                             // the last good one a failed read kept) always wins over
-                            // "loading"/"failed", so re-selecting a slice already
-                            // read this session never blanks behind a spinner.
+                            // "failed", so re-selecting a slice already read this
+                            // session never blanks behind a skeleton. A first read
+                            // never gets here at all: the pane draws
+                            // `BriefSkeletonView` for that.
                             if isEditingBrief {
                                 briefEditor
                             } else if let detail = detailState.detail {
@@ -86,9 +122,6 @@ struct BriefTabView: View {
                                             .foregroundStyle(DesignTokens.labelTertiary)
                                     }
                                 }
-                            } else if detailState.isLoading {
-                                QuietLoadingView(label: "Loading the brief…")
-                                    .frame(minHeight: 100)
                             } else if let errorMsg = detailState.errorMessage {
                                 VStack(spacing: 8) {
                                     Image(systemName: "exclamationmark.triangle")
@@ -145,14 +178,24 @@ struct BriefTabView: View {
                     briefSidebar(detail)
                 }
             }
+        }
+    }
 
-            // Footer bar: the Launch Agent split control alone now — the
-            // card's own "Edit…" is the one edit affordance, so the footer
-            // isn't offering a second. A top hairline (rather than a
-            // Divider) plus a faint fill mark it as its own action-bar
-            // surface, distinct from the content above it.
-            VStack(spacing: 0) {
+    /// Footer bar: the Launch Agent split control alone now — the card's own
+    /// "Edit…" is the one edit affordance, so the footer isn't offering a
+    /// second. A top hairline (rather than a Divider) plus a faint fill mark
+    /// it as its own action-bar surface, distinct from the content above it.
+    ///
+    /// Drawn under the skeleton as well as under the brief, since it is a
+    /// band of the pane either way and one that appeared with the content
+    /// would take rows off the reading column as it arrived.
+    private var footerBar: some View {
+        VStack(spacing: 0) {
                 HStack(spacing: 8) {
+                    // A background re-read of the brief, admitted to in a
+                    // slot that is there whether one is running or not.
+                    RefreshingMark(isRefreshing: detailState.isLoading && detailState.detail != nil)
+
                     Spacer()
 
                     // Split Launch Agent button — the one gradient action on
@@ -250,23 +293,6 @@ struct BriefTabView: View {
                     .padding(.vertical, 6)
                     .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
                 }
-            }
-        }
-        .background(DesignTokens.windowBg)
-        .task {
-            await loadDetail()
-        }
-        .onChange(of: slice.id) { _, _ in
-            Task {
-                await loadDetail()
-            }
-            resetLaunchState()
-            isEditingBrief = false
-            briefSaveError = nil
-            isSavingBrief = false
-        }
-        .task {
-            resetLaunchState()
         }
     }
 
@@ -325,10 +351,7 @@ struct BriefTabView: View {
                     .disabled(isSavingBrief)
 
                 Button(action: { Task { await saveBrief() } }) {
-                    if isSavingBrief {
-                        ProgressView()
-                            .scaleEffect(0.7, anchor: .center)
-                    } else {
+                    AsyncActionLabel(isBusy: isSavingBrief) {
                         Text("Save")
                     }
                 }

@@ -3,25 +3,34 @@ import SwiftUI
 
 /// The state of loading a slice's pull request.
 ///
-/// Unlike `LoadState` (which keeps the previous project on a failed refresh),
-/// a failed read here drops whatever pull request it replaced — the same
-/// rule `DiffLoadState` follows and for the same reason: a pull request is
-/// one reading of GitHub at one moment, and leaving the last one on screen
-/// under a failure would be showing the wrong state (mirrors the Go TUI's
-/// `PRView.Fail`).
+/// A failed read keeps whatever pull request it replaced — the same rule
+/// `DiffLoadState` follows and for the same reason: this store polls every
+/// five seconds while a check is still running, and a `gh` that failed one
+/// of those readings is a reading that did not happen rather than a pull
+/// request that went away. Blanking the pane over it would throw the user
+/// out of a conversation they were reading. What it carries is stale and is
+/// said to be — the view draws the error over the reading it kept — and only
+/// a read with nothing ever behind it (`previous == nil`) has an empty pane
+/// to show.
 public enum PRLoadState: Equatable, Sendable {
     case idle
     case loading
     case loaded(PRDetail)
-    case failed(String)
+    case failed(String, previous: PRDetail?)
 
     public var pr: PRDetail? {
-        if case .loaded(let pr) = self { return pr }
-        return nil
+        switch self {
+        case .loaded(let pr):
+            return pr
+        case .failed(_, let previous):
+            return previous
+        case .idle, .loading:
+            return nil
+        }
     }
 
     public var errorMessage: String? {
-        if case .failed(let message) = self { return message }
+        if case .failed(let message, _) = self { return message }
         return nil
     }
 
@@ -42,6 +51,13 @@ public enum PRLoadState: Equatable, Sendable {
 @Observable
 public final class PRStore {
     public private(set) var loadState: PRLoadState = .idle
+
+    /// Whether a read is in flight over a pull request already on screen —
+    /// a poll, a refresh, or the re-read after a merge or a posted comment.
+    /// The view draws it as a busy mark in a slot it reserves either way, so
+    /// a poll every five seconds never moves a row; `loadState`'s own
+    /// `.loading` is the other case, the one with nothing to keep.
+    public private(set) var isRefreshing = false
 
     private let client: NatClientProtocol
     private let pollIntervalNanoseconds: UInt64
@@ -80,7 +96,7 @@ public final class PRStore {
     /// here, so this does not also re-read it.
     public func fetch(projectID: String, sliceRef: String) async {
         guard !isFetching else { return }
-        if self.projectID == projectID, self.sliceRef == sliceRef, loadState.pr != nil {
+        if self.projectID == projectID, self.sliceRef == sliceRef, case .loaded = loadState {
             return
         }
         if let previous = self.sliceRef, previous != sliceRef {
@@ -188,19 +204,27 @@ public final class PRStore {
         guard let projectID, let sliceRef else { return }
         isFetching = true
         defer { isFetching = false }
-        // A background re-read (merge, a posted comment, or an explicit
-        // refresh) never blanks the screen first — only a read with nothing
-        // already on it to show blocks behind a spinner.
-        if loadState.pr == nil {
+        // A background re-read (a poll, a merge, a posted comment, or an
+        // explicit refresh) never blanks the screen first — only a read with
+        // nothing already on it to show blocks behind a skeleton.
+        let previous = loadState.pr
+        if previous == nil {
             loadState = .loading
+        } else {
+            isRefreshing = true
         }
+        defer { isRefreshing = false }
         do {
             let pr = try await client.prView(projectID: projectID, sliceRef: sliceRef)
             prCache[sliceRef] = pr
             loadState = .loaded(pr)
         } catch {
+            // The reading is kept and said to be stale rather than dropped:
+            // see `PRLoadState`. The cache goes even so, so a later switch
+            // back to this slice reads again rather than serving one already
+            // known to be stale.
             prCache.removeValue(forKey: sliceRef)
-            loadState = .failed(error.localizedDescription)
+            loadState = .failed(error.localizedDescription, previous: previous)
         }
     }
 }

@@ -76,11 +76,7 @@ struct OnboardingView: View {
 
     private var checkAgainButton: some View {
         Button(action: checkAgain) {
-            if isChecking {
-                ProgressView()
-                    .scaleEffect(0.7, anchor: .center)
-                    .frame(width: 100)
-            } else {
+            AsyncActionLabel(isBusy: isChecking) {
                 Text("Check Again")
                     .frame(width: 100)
             }

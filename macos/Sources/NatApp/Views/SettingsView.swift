@@ -125,11 +125,7 @@ struct SettingsView: View {
             Spacer()
 
             Button(action: { Task { await save() } }) {
-                if isSaving {
-                    ProgressView()
-                        .scaleEffect(0.6, anchor: .center)
-                        .frame(width: 40)
-                } else {
+                AsyncActionLabel(isBusy: isSaving) {
                     Text("Save")
                         .frame(minWidth: 40)
                 }
