@@ -297,3 +297,48 @@ func TestSkillsPinTheProjectTheyWereGiven(t *testing.T) {
 		}
 	}
 }
+
+// A workshopped plan arrives with an order and with the waits between its
+// slices, or it arrives with neither: the planning skills are the only place
+// either is decided, since `plan-apply` records what the document says and the
+// board has no way to reorder a plan or to guess a dependency afterwards. The
+// order matters because `plan-apply` lands slices in document order and
+// `next-slice` hands out the topmost unblocked one; the pass matters because a
+// dependency nobody thought about is one the user finds by having an agent
+// refuse a slice. Both skills ship inside the binary, so a drafting rule left
+// out cannot be added where it is read.
+func TestPlanningSkillsDraftOrderAndDependencies(t *testing.T) {
+	for _, skill := range []string{"queue-work", "queue-project"} {
+		body, err := fs.ReadFile(FS(), skill+"/SKILL.md")
+		if err != nil {
+			t.Errorf("read the %s skill: %v", skill, err)
+			continue
+		}
+		// The rules are prose wrapped to the file's own width, so what is asserted
+		// is the sentence rather than the lines it happens to be broken over.
+		text := unwrapped(string(body))
+		for _, want := range []string{
+			// The order is deliberate, and is what the board reads back.
+			"List the slices in the order they should be worked",
+			"lands them on the board in the order the document lists them",
+			// Every slice is considered, and the answer is shown to the user.
+			"Make a dependency pass over every slice, and state what each one waits on.",
+			`saying what it waits on — the slices it depends on, or "nothing"`,
+			// And the genuine edges only, so independent work stays parallel.
+			"Do not chain the plan.",
+			"run agents on them in parallel",
+			"Order carries the reading; `depends_on` carries the blocking.",
+			// Which is what `plan-apply` itself enforces before it writes.
+			"The dependency graph must be acyclic.",
+		} {
+			if !strings.Contains(text, want) {
+				t.Errorf("the %s skill does not say %q", skill, want)
+			}
+		}
+	}
+}
+
+// unwrapped is a skill's prose with every run of whitespace flattened to one
+// space, so a rule can be asserted as the sentence it is rather than as the
+// lines the file's own wrapping happens to break it over.
+func unwrapped(text string) string { return strings.Join(strings.Fields(text), " ") }
