@@ -203,7 +203,8 @@ final class PRStoreTests: XCTestCase {
 
         client.setResponse(.failure)
         try? await store.merge() // re-reads slice-2 (the current slice), which now fails
-        XCTAssertNil(store.loadState.pr)
+        XCTAssertNotNil(store.loadState.pr, "a failed re-read keeps the reading it could not replace")
+        XCTAssertNotNil(store.loadState.errorMessage, "and says why what is up is the last one")
         XCTAssertEqual(client.viewCallCount, 3)
 
         await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
@@ -268,6 +269,59 @@ final class PRStoreTests: XCTestCase {
         XCTAssertEqual(client.viewCallCount, 2)
     }
 
+    /// The five-second poll runs over a pull request already on screen and
+    /// never blanks it; `isRefreshing` is what the pane draws its busy mark
+    /// from, in a slot it reserves either way, so a poll moves nothing.
+    @MainActor
+    func testARefreshKeepsThePullRequestUpAndSaysItIsRunning() async {
+        let client = MockPRClient(response: .success(openPR()))
+        let store = PRStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        XCTAssertFalse(store.isRefreshing)
+
+        client.viewDelayNanoseconds = 50_000_000
+        let task = Task { await store.refresh() }
+        try? await Task.sleep(nanoseconds: 10_000_000)
+
+        XCTAssertTrue(store.isRefreshing)
+        XCTAssertNotNil(store.loadState.pr, "a refresh never blanks the reading it is replacing")
+        XCTAssertFalse(store.loadState.isLoading)
+        await task.value
+
+        XCTAssertFalse(store.isRefreshing)
+    }
+
+    /// A first read has nothing to keep, so it blocks behind the pane's
+    /// skeleton rather than wearing the busy mark.
+    @MainActor
+    func testAFirstReadIsLoadingRatherThanRefreshing() async {
+        let client = MockPRClient(response: .success(openPR()))
+        client.viewDelayNanoseconds = 50_000_000
+        let store = PRStore(client: client)
+
+        let task = Task { await store.fetch(projectID: "proj-1", sliceRef: "slice-1") }
+        try? await Task.sleep(nanoseconds: 10_000_000)
+
+        XCTAssertTrue(store.loadState.isLoading)
+        XCTAssertFalse(store.isRefreshing)
+        await task.value
+    }
+
+    /// A `gh` that failed one poll is a reading that did not happen: the poll
+    /// carries on over the reading it kept, and recovers by itself.
+    @MainActor
+    func testAFailedPollLeavesSomethingWorthPollingOver() async {
+        let client = MockPRClient(response: .success(openPR(checks: [PRCheck(name: "lint", state: "IN_PROGRESS", link: "")])))
+        let store = PRStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        XCTAssertTrue(store.shouldPoll)
+
+        client.setResponse(.failure)
+        await store.refresh()
+
+        XCTAssertTrue(store.shouldPoll, "a failed reading is not news that there is nothing left to watch")
+    }
+
     @MainActor
     func testPRLoadStateAccessors() {
         let pr = openPR()
@@ -275,8 +329,11 @@ final class PRStoreTests: XCTestCase {
         XCTAssertNil(PRLoadState.loaded(pr).errorMessage)
         XCTAssertTrue(PRLoadState.loading.isLoading)
         XCTAssertFalse(PRLoadState.idle.isLoading)
-        XCTAssertEqual(PRLoadState.failed("oops").errorMessage, "oops")
-        XCTAssertNil(PRLoadState.failed("oops").pr)
+        XCTAssertEqual(PRLoadState.failed("oops", previous: nil).errorMessage, "oops")
+        XCTAssertNil(PRLoadState.failed("oops", previous: nil).pr)
+        // A read that failed over a pull request already on screen keeps it:
+        // see `PRLoadState`.
+        XCTAssertEqual(PRLoadState.failed("oops", previous: pr).pr, pr)
     }
 
     // MARK: - shouldPoll

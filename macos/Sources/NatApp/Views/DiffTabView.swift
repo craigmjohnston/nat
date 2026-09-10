@@ -68,15 +68,17 @@ struct DiffTabView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            switch store.loadState {
-            case .idle, .loading:
-                loadingState
-
-            case .loaded(let diff):
+            // A reading already on screen wins over the state that replaced
+            // it: a refresh keeps its diff (and says so with the footer's
+            // busy mark), and a read that failed over one keeps it too, with
+            // git's own words in a notice above the footer. Only a read with
+            // nothing ever behind it draws the skeleton or the failure.
+            if let diff = store.loadState.diff {
                 content(for: diff)
-
-            case .failed:
+            } else if case .failed = store.loadState {
                 failedState
+            } else {
+                loadingState
             }
         }
         .background(DesignTokens.windowBg)
@@ -92,8 +94,11 @@ struct DiffTabView: View {
 
     // MARK: - States
 
+    /// The branch's first read, drawn as the diff it is about to be — see
+    /// `DiffSkeletonView`. A re-read never reaches this: it keeps the diff
+    /// it has.
     private var loadingState: some View {
-        QuietLoadingView(label: "Reading the diff of \(slice.branch ?? "the branch")…")
+        DiffSkeletonView()
     }
 
     private var failedState: some View {
@@ -202,6 +207,12 @@ struct DiffTabView: View {
         let commentsEditable = store.commentsEditable
 
         return VStack(spacing: 0) {
+            // A read that failed over a diff already on screen: what is up is
+            // the last good reading, and saying so is what stops it being
+            // read as the branch's current state.
+            if let staleMessage = store.loadState.errorMessage {
+                inlineNotice("Showing the last reading — \(staleMessage)", color: DesignTokens.systemOrange)
+            }
             if let dropNotice {
                 inlineNotice(dropNotice, color: DesignTokens.systemOrange)
             }
@@ -216,6 +227,11 @@ struct DiffTabView: View {
                 .frame(height: 0.5)
 
             HStack(spacing: 8) {
+                // The busy mark holds its slot whether a read is running or
+                // not, so a refresh admits to itself without moving the line
+                // beside it.
+                RefreshingMark(isRefreshing: store.isRefreshing)
+
                 Text(footerLeftText(
                     pendingCount: pendingCount, viewedCount: viewedCount, total: diff.files.count,
                     commentsEditable: commentsEditable

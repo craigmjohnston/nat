@@ -36,13 +36,18 @@ struct PRTabView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            switch store.loadState {
-            case .idle, .loading:
-                loadingState
-            case .loaded(let pr):
+            // A reading already on screen wins over the state that replaced
+            // it: the five-second poll keeps its pull request (and says so
+            // with the footer's busy mark), and a `gh` that failed one of
+            // those readings keeps it too, with its words in a notice above
+            // the footer. Only a read with nothing ever behind it draws the
+            // skeleton or the failure.
+            if let pr = store.loadState.pr {
                 content(for: pr)
-            case .failed:
+            } else if case .failed = store.loadState {
                 failedState
+            } else {
+                loadingState
             }
         }
         .background(DesignTokens.windowBg)
@@ -59,8 +64,11 @@ struct PRTabView: View {
 
     // MARK: - States
 
+    /// The pull request's first read, drawn as the screen it is about to be
+    /// — see `PRSkeletonView`. A poll or a refresh never reaches this: it
+    /// keeps the reading it has.
     private var loadingState: some View {
-        QuietLoadingView(label: "Reading the pull request of \(slice.name)…")
+        PRSkeletonView()
     }
 
     private var failedState: some View {
@@ -247,6 +255,21 @@ struct PRTabView: View {
     private func footer(for pr: PRDetail) -> some View {
         let rollup = mergeRollup(mergeVerdicts(pr))
         return VStack(spacing: 0) {
+            // A read that failed over a pull request already on screen: what
+            // is up is the last good reading, and saying so is what stops it
+            // being read as GitHub's current answer.
+            if let staleMessage = store.loadState.errorMessage {
+                HStack {
+                    Text("Showing the last reading — \(staleMessage)")
+                        .font(.system(size: Typo.subhead, weight: .regular))
+                        .foregroundStyle(DesignTokens.systemOrange)
+                        .lineLimit(2)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 6)
+            }
+
             if let mergeError {
                 HStack {
                     Text(mergeError)
@@ -262,6 +285,10 @@ struct PRTabView: View {
             Divider().frame(height: 0.5)
 
             HStack(spacing: 8) {
+                // Holds its slot whether a read is running or not, so the
+                // poll never moves the heading beside it.
+                RefreshingMark(isRefreshing: store.isRefreshing)
+
                 Image(systemName: footerMarkSymbolName(for: pr, rollup: rollup))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(footerTint(for: pr, rollup: rollup))
@@ -535,7 +562,16 @@ struct PRComposerView: View {
                     Button(action: onSend) {
                         Group {
                             if isSending {
-                                ProgressView().scaleEffect(0.5)
+                                // Sized down to the slot rather than laid out
+                                // at the control's own size, which
+                                // `scaleEffect` draws smaller without ever
+                                // shrinking: an unframed spinner here made the
+                                // send button — and the composer under it —
+                                // grow while a comment was posting.
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .scaleEffect(0.55)
+                                    .frame(width: 10, height: 10)
                             } else {
                                 Image(systemName: "paperplane.fill")
                                     .font(.system(size: 12, weight: .medium))

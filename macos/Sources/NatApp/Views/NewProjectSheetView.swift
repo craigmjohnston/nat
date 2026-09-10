@@ -89,11 +89,7 @@ struct NewProjectSheetView: View {
                 .keyboardShortcut(.cancelAction)
 
                 Button(action: submit) {
-                    if isSubmitting {
-                        ProgressView()
-                            .scaleEffect(0.6, anchor: .center)
-                            .frame(width: 60)
-                    } else {
+                    AsyncActionLabel(isBusy: isSubmitting) {
                         Text(mode == .open ? "Open" : "Create")
                             .frame(minWidth: 60)
                     }

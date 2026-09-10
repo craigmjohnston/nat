@@ -58,11 +58,13 @@ struct WorkshopPaneView: View {
                 .padding(.vertical, 14)
                 .padding(.horizontal, 18)
             }
-        } else if appModel.workshopLaunching {
-            QuietLoadingView(label: "Launching the workshop agent…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(DesignTokens.controlBg)
         } else {
+            // A launch keeps the composer exactly where it is rather than
+            // swapping it for a spinner: what the user typed is still what
+            // the session is starting on, and a pane that blanked and then
+            // came back as a terminal would have thrown the request off
+            // screen for the second it takes. The Launch button's own busy
+            // mark is what says it is under way — see `AsyncActionLabel`.
             composer
         }
     }
@@ -82,6 +84,7 @@ struct WorkshopPaneView: View {
                 .foregroundStyle(DesignTokens.labelSecondary)
 
             TextEditor(text: $request)
+                .disabled(appModel.workshopLaunching)
                 .font(.system(size: Typo.body, weight: .regular))
                 .foregroundStyle(DesignTokens.label)
                 .scrollContentBackground(.hidden)
@@ -103,10 +106,13 @@ struct WorkshopPaneView: View {
             HStack {
                 Spacer()
 
-                Button("Launch") {
-                    Task { await appModel.launchWorkshop(request: request) }
+                Button(action: { Task { await appModel.launchWorkshop(request: request) } }) {
+                    AsyncActionLabel(isBusy: appModel.workshopLaunching) {
+                        Text("Launch")
+                    }
                 }
                 .keyboardShortcut(.return, modifiers: .command)
+                .disabled(appModel.workshopLaunching)
             }
         }
         .frame(maxWidth: 560)

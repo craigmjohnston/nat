@@ -82,11 +82,7 @@ struct NewSliceSheetView: View {
                 .keyboardShortcut(.cancelAction)
 
                 Button(action: submit) {
-                    if isSubmitting {
-                        ProgressView()
-                            .scaleEffect(0.6, anchor: .center)
-                            .frame(width: 60)
-                    } else {
+                    AsyncActionLabel(isBusy: isSubmitting) {
                         Text("Add Slice")
                             .frame(minWidth: 60)
                     }
