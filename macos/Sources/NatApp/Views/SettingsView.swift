@@ -1,23 +1,34 @@
 import SwiftUI
 import NatKit
 
-/// The Settings scene (⌘,): the config file as one form, mirroring the Go
-/// TUI's `S` — every field reachable from the one page rather than a section
-/// apiece, since a settings window is somewhere the user arrives already
-/// knowing which field they came for.
+/// The Settings scene (⌘,), built as a macOS settings window is built: a
+/// `TabView` of toolbar tabs over grouped forms of stock controls, sized by
+/// what it holds rather than to a frame of its own — so it is the shape the
+/// user already knows from every other settings window on the Mac, and the
+/// app's own chrome (`DesignTokens`, `Typo`, hand-drawn dividers) stops at
+/// its door.
 ///
-/// Save writes only the keys that changed, one `config-set` per key, and
-/// surfaces each key's own refusal beside its field rather than as one banner
-/// — `nat` refuses an out-of-bounds number with its own message, and that
-/// message is the whole of what there is to say about it.
+/// Underneath it is the same config file the hand-built form edited: fields
+/// read from `nat config-show`, and a write of exactly the keys that changed,
+/// one `config-set` per key, with each key's own refusal shown beside the
+/// field that caused it — `nat` refuses an out-of-bounds number with its own
+/// message, and that message is the whole of what there is to say about it.
+///
+/// What went is the Save button. A settings window applies what it is told
+/// when it is told it, so a field commits on Return or when it loses focus
+/// and a picker commits on the choice; the diff is what makes that cheap,
+/// since a commit that changed nothing writes nothing. Commits are chained
+/// (`commit()`) rather than run as they arrive, so two fields committed in
+/// quick succession — tabbing from one to the next — cannot both diff against
+/// a baseline the first has yet to move.
 struct SettingsView: View {
     @Bindable var appModel: AppModel
 
     /// The theme, which is this app's own preference rather than one of
     /// nat's: it is written to `UserDefaults` the moment it is picked and
-    /// takes effect at once, so it is deliberately not part of the Save
-    /// button's diff and sits above the config form rather than inside it —
-    /// including while that form is still loading, or has failed to.
+    /// takes effect at once, so it is no part of the config form's diff and
+    /// is shown whatever became of the config read — including while that
+    /// read is still in flight, or has failed.
     @AppStorage(Theme.storageKey) private var storedTheme = Theme.system.rawValue
 
     @State private var projectNames: [String: String] = [:]
@@ -30,258 +41,247 @@ struct SettingsView: View {
     )
     @State private var isLoading = true
     @State private var loadError: String?
-    @State private var isSaving = false
     @State private var fieldErrors: [String: String] = [:]
-    @State private var savedNote: String?
-
-    private var hasChanges: Bool {
-        guard let original else { return false }
-        return !SettingsModel.changes(from: original, to: edited).isEmpty
-    }
+    @State private var saveChain: Task<Void, Never>?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Settings")
-                .font(.system(size: Typo.headline, weight: .semibold))
-                .foregroundStyle(DesignTokens.label)
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .padding(.bottom, 12)
+        TabView {
+            generalTab
+                .tabItem { Label("General", systemImage: "gearshape") }
+            agentsTab
+                .tabItem { Label("Agents", systemImage: "sparkles") }
+            projectsTab
+                .tabItem { Label("Projects", systemImage: "folder") }
+        }
+        // Width alone: the height is the tab's own, which is what makes the
+        // window resize to each tab the way a settings window does.
+        .frame(width: 520)
+        .task { await load() }
+        // A window closed on a field still focused would otherwise take that
+        // edit with it: the focus change never arrives, because the view is
+        // gone. The commit chain outlives the view, so this one lands.
+        .onDisappear { commit() }
+    }
 
-            Divider()
+    // MARK: - Tabs
 
-            themeField
-
-            Divider()
-
-            Group {
-                if isLoading {
-                    QuietLoadingView(label: "Loading configuration…")
-                } else if let loadError {
-                    VStack(spacing: 8) {
-                        Text("Could not load configuration")
-                            .font(.system(size: Typo.body, weight: .semibold))
-                            .foregroundStyle(DesignTokens.label)
-                        Text(loadError)
-                            .font(.system(size: Typo.subhead, weight: .regular))
-                            .foregroundStyle(DesignTokens.systemRed)
+    private var generalTab: some View {
+        Form {
+            Section {
+                settingRow(
+                    title: "Theme",
+                    description: "Which palette the app draws with, the agent terminal included. System follows the Mac's own appearance. Applies at once."
+                ) {
+                    Picker("Theme", selection: themeBinding) {
+                        ForEach(Theme.allCases) { theme in
+                            Text(theme.title).tag(theme)
+                        }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    form
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 240)
                 }
             }
-            .frame(maxHeight: .infinity)
 
-            Divider()
-
-            footer
-        }
-        .frame(width: 480, height: 620)
-        .background(DesignTokens.windowBg)
-        .task {
-            await load()
-        }
-    }
-
-    /// The theme switcher: the three states as one segmented control,
-    /// since three options that are read at a glance are worth the row they
-    /// take rather than hiding two of them behind a menu.
-    private var themeField: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Theme")
-                .font(.system(size: Typo.subhead, weight: .semibold))
-                .foregroundStyle(DesignTokens.labelSecondary)
-            Text("Which palette the app draws with, the agent terminal included. System follows the Mac's own appearance. Applies at once.")
-                .font(.system(size: Typo.subhead, weight: .regular))
-                .foregroundStyle(DesignTokens.labelTertiary)
-            Picker("Theme", selection: themeBinding) {
-                ForEach(Theme.allCases) { theme in
-                    Text(theme.title).tag(theme)
-                }
-            }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-            .frame(width: 280)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-    }
-
-    /// The stored string as the enum the picker selects over, so an
-    /// unwritten or unrecognised value arrives as `system` rather than as a
-    /// selection matching no option.
-    private var themeBinding: Binding<Theme> {
-        Binding(
-            get: { Theme(stored: storedTheme) },
-            set: { storedTheme = $0.rawValue }
-        )
-    }
-
-    private var form: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                ForEach(sortedProjectIDs, id: \.self) { projectID in
-                    workingDirField(projectID: projectID)
-                }
-
-                numberField(
+            configSection("Board") {
+                settingRow(
                     title: "Agent split",
                     description: "Percent of the window an agent's terminal takes beside the board; empty is 65. Applies at once.",
-                    key: "agent_split_percent",
-                    value: $edited.agentSplitPercent
-                )
+                    key: SettingsKey.agentSplitPercent
+                ) {
+                    commitField($edited.agentSplitPercent, width: 80)
+                }
 
-                numberField(
+                settingRow(
                     title: "Poll interval",
                     description: "Seconds between background refetches of the plan; empty is 30. Applies from the next poll.",
-                    key: "poll_seconds",
-                    value: $edited.pollSeconds
-                )
+                    key: SettingsKey.pollSeconds
+                ) {
+                    commitField($edited.pollSeconds, width: 80)
+                }
+            }
+        }
+        .settingsForm()
+    }
 
-                agentFields(
-                    title: "Slice agent",
-                    modelKey: "slice_agent.model",
-                    effortKey: "slice_agent.effort",
+    private var agentsTab: some View {
+        Form {
+            configSection("Slice agent") {
+                agentRows(
+                    modelKey: SettingsKey.sliceModel,
+                    effortKey: SettingsKey.sliceEffort,
                     model: $edited.sliceModel,
                     effort: $edited.sliceEffort
                 )
+            }
 
-                agentFields(
-                    title: "Planning agent",
-                    modelKey: "workshop_agent.model",
-                    effortKey: "workshop_agent.effort",
+            configSection("Planning agent") {
+                agentRows(
+                    modelKey: SettingsKey.workshopModel,
+                    effortKey: SettingsKey.workshopEffort,
                     model: $edited.workshopModel,
                     effort: $edited.workshopEffort
                 )
             }
-            .padding(20)
         }
+        .settingsForm()
     }
 
-    private var footer: some View {
-        HStack(spacing: 8) {
-            if let savedNote {
-                Text(savedNote)
-                    .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.systemGreen)
-            }
-
-            Spacer()
-
-            Button(action: { Task { await save() } }) {
-                AsyncActionLabel(isBusy: isSaving) {
-                    Text("Save")
-                        .frame(minWidth: 40)
+    private var projectsTab: some View {
+        Form {
+            configSection("Working directories") {
+                if sortedProjectIDs.isEmpty {
+                    Text("No projects are tracked on this Mac yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(sortedProjectIDs, id: \.self) { projectID in
+                        workingDirRow(projectID: projectID)
+                    }
                 }
             }
-            .disabled(isSaving || isLoading || !hasChanges)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .settingsForm()
     }
 
-    // MARK: - Field builders
+    // MARK: - Rows
 
-    private var sortedProjectIDs: [String] {
-        projectNames.keys.sorted { (projectNames[$0] ?? $0) < (projectNames[$1] ?? $1) }
-    }
-
-    private func workingDirField(projectID: String) -> some View {
-        let key = SettingsModel.workingDirKey(projectID: projectID)
-        return VStack(alignment: .leading, spacing: 4) {
-            Text("\(projectNames[projectID] ?? projectID) working directory")
-                .font(.system(size: Typo.subhead, weight: .semibold))
-                .foregroundStyle(DesignTokens.labelSecondary)
-            Text("Where its agents start, unless a slice names its own repo. Applies at the next launch.")
-                .font(.system(size: Typo.subhead, weight: .regular))
-                .foregroundStyle(DesignTokens.labelTertiary)
-            TextField("", text: workingDirBinding(projectID: projectID))
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
-            if let error = fieldErrors[key] {
-                Text(error)
-                    .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.systemRed)
+    /// The rows of a section that edits the config file, or — while that read
+    /// is in flight or after it failed — what became of it instead, since a
+    /// section of empty fields would read as a config with nothing in it.
+    @ViewBuilder
+    private func configSection(
+        _ title: String,
+        @ViewBuilder content: () -> some View
+    ) -> some View {
+        Section(title) {
+            if isLoading {
+                QuietLoadingView(label: "Loading configuration…")
+                    .frame(height: 32)
+            } else if let loadError {
+                Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                content()
             }
         }
     }
 
-    private func numberField(title: String, description: String, key: String, value: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: Typo.subhead, weight: .semibold))
-                .foregroundStyle(DesignTokens.labelSecondary)
-            Text(description)
-                .font(.system(size: Typo.subhead, weight: .regular))
-                .foregroundStyle(DesignTokens.labelTertiary)
-            TextField("", text: value)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 100)
-            if let error = fieldErrors[key] {
-                Text(error)
-                    .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.systemRed)
-            }
-        }
-    }
-
-    private func agentFields(
+    /// One row of a grouped form: the field's name on the left, and on the
+    /// right the control, what it does under it, and — where the last write
+    /// of this key was refused — what `nat` said about it.
+    private func settingRow(
         title: String,
+        description: String,
+        key: String? = nil,
+        @ViewBuilder control: () -> some View
+    ) -> some View {
+        LabeledContent {
+            VStack(alignment: .leading, spacing: 4) {
+                control()
+                Text(description)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let key, let error = fieldErrors[key] {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        } label: {
+            Text(title)
+        }
+    }
+
+    @ViewBuilder
+    private func agentRows(
         modelKey: String,
         effortKey: String,
         model: Binding<String>,
         effort: Binding<String>
     ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: Typo.subhead, weight: .semibold))
-                .foregroundStyle(DesignTokens.labelSecondary)
-            Text("Model and effort a launch runs Claude Code as, unless the launch itself overrides them. Applies at the next launch.")
-                .font(.system(size: Typo.subhead, weight: .regular))
-                .foregroundStyle(DesignTokens.labelTertiary)
+        settingRow(
+            title: "Model",
+            description: "Which Claude Code a launch runs as, unless the launch itself overrides it. Applies at the next launch.",
+            key: modelKey
+        ) {
+            defaultablePicker(model, options: ["sonnet", "opus", "haiku"])
+        }
 
-            HStack(spacing: 12) {
-                Picker("Model", selection: defaultableBinding(model)) {
-                    Text("Default").tag("Default")
-                    Text("sonnet").tag("sonnet")
-                    Text("opus").tag("opus")
-                    Text("haiku").tag("haiku")
-                }
-                .labelsHidden()
-                .frame(width: 140)
-
-                Picker("Effort", selection: defaultableBinding(effort)) {
-                    Text("Default").tag("Default")
-                    Text("low").tag("low")
-                    Text("med").tag("med")
-                    Text("high").tag("high")
-                }
-                .labelsHidden()
-                .frame(width: 140)
-            }
-
-            if let error = fieldErrors[modelKey] {
-                Text(error)
-                    .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.systemRed)
-            }
-            if let error = fieldErrors[effortKey] {
-                Text(error)
-                    .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.systemRed)
-            }
+        settingRow(
+            title: "Effort",
+            description: "How hard it thinks, in Claude Code's own words. Applies at the next launch.",
+            key: effortKey
+        ) {
+            defaultablePicker(effort, options: ["low", "med", "high"])
         }
     }
 
-    /// A field cleared back to empty is "unset", the config file's own
-    /// spelling of it — but a picker needs a real option selected, so
-    /// "Default" stands in for "" on the way in and out.
+    private func workingDirRow(projectID: String) -> some View {
+        settingRow(
+            title: projectNames[projectID] ?? projectID,
+            description: "Where its agents start, unless a slice names its own repo. Applies at the next launch.",
+            key: SettingsModel.workingDirKey(projectID: projectID)
+        ) {
+            commitField(workingDirBinding(projectID: projectID))
+                .font(.system(.body, design: .monospaced))
+        }
+    }
+
+    // MARK: - Controls
+
+    /// A text field that writes what it holds when the user is done with it:
+    /// on Return, and on the focus moving off it, which is the two ways a
+    /// person finishes with a field in a settings window.
+    private func commitField(_ text: Binding<String>, width: CGFloat? = nil) -> some View {
+        CommitTextField(text: text, width: width, commit: commit)
+    }
+
+    /// A picker over the values `nat` takes for a key, plus the one it takes
+    /// for "say nothing": a field cleared back to empty is unset, the config
+    /// file's own spelling of it, and a picker needs a real option selected,
+    /// so "Default" stands in for "" on the way in and out.
+    ///
+    /// Whatever the config already holds is an option too, wherever that is
+    /// not one of the known ones: `config-set` takes any string for these
+    /// keys — the TUI's own form is free text — and a picker that did not
+    /// carry the stored value would show a blank selection for it and lose it
+    /// to the first other choice made.
+    private func defaultablePicker(_ value: Binding<String>, options: [String]) -> some View {
+        Picker("", selection: defaultableBinding(value)) {
+            Text("Default").tag(defaultTag)
+            ForEach(withStored(value.wrappedValue, in: options), id: \.self) { option in
+                Text(option).tag(option)
+            }
+        }
+        .labelsHidden()
+        .frame(width: 140)
+        .onChange(of: value.wrappedValue) { commit() }
+    }
+
+    private func withStored(_ stored: String, in options: [String]) -> [String] {
+        guard !stored.isEmpty, !options.contains(stored) else { return options }
+        return options + [stored]
+    }
+
+    private var defaultTag: String { "Default" }
+
     private func defaultableBinding(_ base: Binding<String>) -> Binding<String> {
         Binding(
-            get: { base.wrappedValue.isEmpty ? "Default" : base.wrappedValue },
-            set: { base.wrappedValue = $0 == "Default" ? "" : $0 }
+            get: { base.wrappedValue.isEmpty ? defaultTag : base.wrappedValue },
+            set: { base.wrappedValue = $0 == defaultTag ? "" : $0 }
+        )
+    }
+
+    /// The stored string as the enum the picker selects over, so an unwritten
+    /// or unrecognised value arrives as `system` rather than as a selection
+    /// matching no option.
+    private var themeBinding: Binding<Theme> {
+        Binding(
+            get: { Theme(stored: storedTheme) },
+            set: { storedTheme = $0.rawValue }
         )
     }
 
@@ -290,6 +290,10 @@ struct SettingsView: View {
             get: { edited.projectWorkingDirs[projectID] ?? "" },
             set: { edited.projectWorkingDirs[projectID] = $0 }
         )
+    }
+
+    private var sortedProjectIDs: [String] {
+        projectNames.keys.sorted { (projectNames[$0] ?? $0) < (projectNames[$1] ?? $1) }
     }
 
     // MARK: - Loading and saving
@@ -311,12 +315,22 @@ struct SettingsView: View {
         isLoading = false
     }
 
+    /// Queues a save behind whatever save is already running. Two fields
+    /// committed in the same breath would otherwise both diff against the
+    /// baseline the first has not moved yet, and write the first key twice.
+    private func commit() {
+        let previous = saveChain
+        saveChain = Task {
+            await previous?.value
+            await save()
+        }
+    }
+
     private func save() async {
         guard let original else { return }
-        isSaving = true
-        savedNote = nil
-
         let changes = SettingsModel.changes(from: original, to: edited)
+        guard !changes.isEmpty else { return }
+
         var succeeded: [ConfigChange] = []
         var errors: [String: String] = [:]
 
@@ -337,12 +351,52 @@ struct SettingsView: View {
 
         self.original = SettingsModel.applying(succeeded, to: original)
         self.fieldErrors = errors
-        if errors.isEmpty {
-            savedNote = "Settings saved."
-        }
 
         await appModel.reloadConfig()
-        isSaving = false
+    }
+}
+
+/// The keys the form writes, as `internal/cli/configset.go` names them —
+/// here rather than in the rows so a row and the error shown under it cannot
+/// name the key differently.
+private enum SettingsKey {
+    static let agentSplitPercent = "agent_split_percent"
+    static let pollSeconds = "poll_seconds"
+    static let workshopModel = "workshop_agent.model"
+    static let workshopEffort = "workshop_agent.effort"
+    static let sliceModel = "slice_agent.model"
+    static let sliceEffort = "slice_agent.effort"
+}
+
+/// A `TextField` that tells its owner when the user has finished with it:
+/// Return, or the focus moving elsewhere. Kept as a view of its own because
+/// the focus state has to belong to the field rather than to the form.
+private struct CommitTextField: View {
+    @Binding var text: String
+    let width: CGFloat?
+    let commit: () -> Void
+
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        TextField("", text: $text)
+            .textFieldStyle(.roundedBorder)
+            .frame(width: width)
+            .focused($isFocused)
+            .onSubmit { commit() }
+            .onChange(of: isFocused) { _, focused in
+                if !focused { commit() }
+            }
+    }
+}
+
+private extension View {
+    /// What every one of the tabs' forms is: the platform's grouped form,
+    /// scrolling only where the pane it is in is too small to hold it — the
+    /// window sizes to the form, so usually it is not.
+    func settingsForm() -> some View {
+        formStyle(.grouped)
+            .scrollBounceBehavior(.basedOnSize)
     }
 }
 
