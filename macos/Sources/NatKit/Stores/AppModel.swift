@@ -87,6 +87,13 @@ public final class AppModel {
     private var prStores: [String: PRStore] = [:]
 
     private let configReader: ConfigReaderProtocol
+
+    /// Where each project's last-good plan is kept between launches, handed
+    /// to every `ProjectStore` this makes so the board draws from disk while
+    /// the fresh read is in flight. Injectable so tests never touch the real
+    /// Application Support directory.
+    private let planCache: PlanCaching
+
     private let pollInterval: UInt64 // in seconds
     private var pollTask: Task<Void, Never>?
     private var nudgeWatcher: NudgeWatcher?
@@ -109,6 +116,7 @@ public final class AppModel {
 
     public init(
         configReader: ConfigReaderProtocol = FileConfigReader(),
+        planCache: PlanCaching = DiskPlanCache(),
         pollIntervalSeconds: UInt64 = 30,
         pathsProvider: @escaping @Sendable () async throws -> NatPaths = { try await NatClient().paths() },
         workshopLauncher: @escaping @Sendable (String, String?, String?, String?) async throws -> WorkshopLaunchResult = {
@@ -116,6 +124,7 @@ public final class AppModel {
         }
     ) {
         self.configReader = configReader
+        self.planCache = planCache
         self.pollInterval = pollIntervalSeconds
         self.pathsProvider = pathsProvider
         self.workshopLauncher = workshopLauncher
@@ -195,7 +204,7 @@ public final class AppModel {
 
         // Create or retrieve the project store
         if stores[projectID] == nil {
-            stores[projectID] = ProjectStore(projectID: projectID)
+            stores[projectID] = ProjectStore(projectID: projectID, cache: planCache)
         }
 
         guard let projectStore = stores[projectID] else { return }

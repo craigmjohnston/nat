@@ -774,4 +774,33 @@ final class AppModelTests: XCTestCase {
         await appModel.addProject(id: "proj-3", name: "Whitespace")
         XCTAssertTrue(appModel.activeProjectNeedsWorkingDir)
     }
+
+    // MARK: - The disk cache
+
+    @MainActor
+    func testAppModel_startDrawsTheBoardFromTheCachedPlan() async {
+        let config = NatProjectConfig(projects: [
+            "proj-1": ProjectConfig(name: "Project 1", slicesDSID: "ds-1", workingDir: "/path/1")
+        ])
+        let cached = ProjectInfo(
+            project: Project(id: "proj-1", name: "Cached", conventions: ""),
+            milestones: [],
+            slices: []
+        )
+        let cache = FakePlanCache(stored: ["proj-1": cached])
+        let appModel = AppModel(
+            configReader: MockConfigReader(response: .success(config)),
+            planCache: cache,
+            pathsProvider: Self.noPaths
+        )
+
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+
+        // The store the activation made reads through the injected cache,
+        // so the plan is on the board whatever the fresh read did — here it
+        // fails, since no `nat` in a test knows "proj-1".
+        XCTAssertEqual(cache.reads, ["proj-1"])
+        XCTAssertEqual(appModel.projectStore?.state.projectInfo, cached)
+        appModel.cleanup()
+    }
 }
