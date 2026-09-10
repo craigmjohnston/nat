@@ -653,4 +653,125 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(appModel.config, original)
     }
+
+    // MARK: - Adding a project
+
+    /// A paths provider that never spawns `nat` — `start()` falls back to
+    /// nat's own default locations, which the mock config reader ignores.
+    private static let noPaths: @Sendable () async throws -> NatPaths = {
+        throw NatError.missingOutput
+    }
+
+    @MainActor
+    func testAppModel_addProjectGivesTheNewEntryATabAndActivatesIt() async {
+        let config = NatProjectConfig(projects: [
+            "proj-1": ProjectConfig(name: "Project 1", slicesDSID: "ds-1", workingDir: "/path/1"),
+        ])
+        let mockReader = MockConfigReader(response: .success(config))
+        let appModel = AppModel(configReader: mockReader, pathsProvider: Self.noPaths)
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+
+        // The config the reload will see: the opened project is in it now.
+        mockReader.setResponse(.success(NatProjectConfig(projects: [
+            "proj-1": ProjectConfig(name: "Project 1", slicesDSID: "ds-1", workingDir: "/path/1"),
+            "proj-2": ProjectConfig(name: "Opened Project", slicesDSID: "ds-2", workingDir: ""),
+        ])))
+
+        await appModel.addProject(id: "proj-2", name: "whatever the command said")
+
+        XCTAssertEqual(appModel.projectTabs.map(\.id), ["proj-1", "proj-2"])
+        // The config's own name, which is what every other tab is labelled with.
+        XCTAssertEqual(appModel.projectTabs.last?.name, "Opened Project")
+        XCTAssertEqual(appModel.activeProjectID, "proj-2")
+        XCTAssertFalse(appModel.needsOnboarding)
+    }
+
+    @MainActor
+    func testAppModel_addProjectDoesNotDuplicateATabItAlreadyHas() async {
+        let config = NatProjectConfig(projects: [
+            "proj-1": ProjectConfig(name: "Project 1", slicesDSID: "ds-1", workingDir: "/path/1"),
+            "proj-2": ProjectConfig(name: "Project 2", slicesDSID: "ds-2", workingDir: ""),
+        ])
+        let appModel = AppModel(
+            configReader: MockConfigReader(response: .success(config)),
+            pathsProvider: Self.noPaths
+        )
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+
+        await appModel.addProject(id: "proj-2", name: "Project 2")
+
+        XCTAssertEqual(appModel.projectTabs.map(\.id), ["proj-1", "proj-2"])
+        XCTAssertEqual(appModel.activeProjectID, "proj-2")
+    }
+
+    @MainActor
+    func testAppModel_addProjectIsTheStartThatWasMissedOnAnOnboardingMachine() async {
+        // No config to read at start(): the welcome pane's own state.
+        let mockReader = MockConfigReader(response: .failure)
+        let appModel = AppModel(configReader: mockReader, pathsProvider: Self.noPaths)
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+        XCTAssertTrue(appModel.needsOnboarding)
+
+        // project-create wrote one, so there is a config file now.
+        mockReader.setResponse(.success(NatProjectConfig(projects: [
+            "proj-9": ProjectConfig(name: "Fresh Project", slicesDSID: "ds-9", workingDir: "/src/fresh"),
+        ])))
+
+        await appModel.addProject(id: "proj-9", name: "Fresh Project")
+
+        XCTAssertFalse(appModel.needsOnboarding)
+        XCTAssertEqual(appModel.projectTabs.map(\.id), ["proj-9"])
+        XCTAssertEqual(appModel.activeProjectID, "proj-9")
+        XCTAssertNotNil(appModel.activityStore)
+        XCTAssertNotNil(appModel.reviewStatsStore)
+    }
+
+    @MainActor
+    func testAppModel_addProjectLeavesTheWelcomePaneUpWhenConfigStillCannotBeRead() async {
+        let appModel = AppModel(
+            configReader: MockConfigReader(response: .failure),
+            pathsProvider: Self.noPaths
+        )
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+
+        await appModel.addProject(id: "proj-9", name: "Fresh Project")
+
+        XCTAssertTrue(appModel.needsOnboarding)
+        XCTAssertTrue(appModel.projectTabs.isEmpty)
+        XCTAssertNil(appModel.activeProjectID)
+    }
+
+    @MainActor
+    func testAppModel_activePlanIsEmptyIsFalseUntilAPlanHasLanded() {
+        // No store, and so no reading: an unloaded plan is not an empty one,
+        // which is what keeps the empty-state note off a board that is still
+        // loading or has just failed to load.
+        XCTAssertFalse(AppModel().activePlanIsEmpty)
+    }
+
+    @MainActor
+    func testAppModel_activeProjectNeedsWorkingDir() async {
+        let config = NatProjectConfig(projects: [
+            "proj-1": ProjectConfig(name: "Configured", slicesDSID: "ds-1", workingDir: "/path/1"),
+            "proj-2": ProjectConfig(name: "Just Opened", slicesDSID: "ds-2", workingDir: ""),
+            "proj-3": ProjectConfig(name: "Whitespace", slicesDSID: "ds-3", workingDir: "  "),
+        ])
+        let appModel = AppModel(
+            configReader: MockConfigReader(response: .success(config)),
+            pathsProvider: Self.noPaths
+        )
+
+        // No active project at all: no entry to be missing a directory.
+        XCTAssertFalse(appModel.activeProjectNeedsWorkingDir)
+
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+        XCTAssertEqual(appModel.activeProjectID, "proj-1")
+        XCTAssertFalse(appModel.activeProjectNeedsWorkingDir)
+
+        await appModel.addProject(id: "proj-2", name: "Just Opened")
+        XCTAssertTrue(appModel.activeProjectNeedsWorkingDir)
+
+        await appModel.addProject(id: "proj-3", name: "Whitespace")
+        XCTAssertTrue(appModel.activeProjectNeedsWorkingDir)
+    }
 }

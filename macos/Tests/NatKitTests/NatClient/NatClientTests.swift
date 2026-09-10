@@ -693,4 +693,134 @@ final class NatClientTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - Projects
+
+    func testProjectListBothHalves() async throws {
+        let fakeRunner = FakeRunner(fixture: .projectListBothHalves)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let listing = try await client.projectList()
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["project-list", "--json"])
+        XCTAssertEqual(listing.projects.count, 3)
+        XCTAssertNil(listing.note)
+        XCTAssertTrue(listing.projects[0].configured)
+        XCTAssertEqual(listing.projects[0].workingDir, "/path/to/repo")
+        XCTAssertFalse(listing.projects[1].configured)
+        // Absent on the workspace half, which has no config entry to read one from.
+        XCTAssertEqual(listing.projects[1].workingDir, "")
+    }
+
+    func testProjectListWithoutAReadableWorkspace() async throws {
+        let fakeRunner = FakeRunner(fixture: .projectListNoWorkspace)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let listing = try await client.projectList()
+
+        XCTAssertEqual(listing.projects.count, 1)
+        XCTAssertTrue(listing.projects[0].configured)
+        XCTAssertEqual(
+            listing.note,
+            "the workspace's projects database could not be read: 404 object_not_found"
+        )
+        // Nothing to open, which is what leaves the sheet on its create path.
+        XCTAssertTrue(NewProjectModel.openable(listing).isEmpty)
+    }
+
+    func testProjectListFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .projectListFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            _ = try await client.projectList()
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            guard case .commandFailed(let message) = error else {
+                return XCTFail("Expected commandFailed error")
+            }
+            XCTAssertEqual(message, "no configuration yet: run `nat` once to set it up")
+        }
+    }
+
+    func testProjectOpenSuccess() async throws {
+        let fakeRunner = FakeRunner(fixture: .projectOpenSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let entry = try await client.projectOpen(pageRef: "proj-2")
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["project-open", "--json", "proj-2"])
+        XCTAssertEqual(entry.id, "proj-2")
+        XCTAssertEqual(entry.name, "Untracked Project")
+        XCTAssertEqual(entry.slicesDSID, "ds-2")
+        XCTAssertEqual(entry.workingDir, "")
+    }
+
+    func testProjectOpenFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .projectOpenFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            _ = try await client.projectOpen(pageRef: "https://notion.so/nope")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            guard case .commandFailed(let message) = error else {
+                return XCTFail("Expected commandFailed error")
+            }
+            XCTAssertEqual(message, "resolve project: no Slices database on that page")
+        }
+    }
+
+    func testProjectCreateWithRepoAndDescription() async throws {
+        let fakeRunner = FakeRunner(fixture: .projectCreateSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let project = try await client.projectCreate(
+            name: "Fresh Project",
+            repo: "/src/fresh",
+            description: "Small slices.\nOne PR each."
+        )
+
+        XCTAssertEqual(fakeRunner.lastArguments, [
+            "project-create", "Fresh Project", "--json",
+            "--repo", "/src/fresh",
+            "--description", "-",
+        ])
+        XCTAssertEqual(
+            String(data: fakeRunner.lastStandardInput ?? Data(), encoding: .utf8),
+            "Small slices.\nOne PR each."
+        )
+        XCTAssertEqual(project.id, "proj-9")
+        XCTAssertEqual(project.name, "Fresh Project")
+        XCTAssertEqual(project.url, "https://notion.so/proj-9")
+        XCTAssertEqual(project.slicesDBID, "db-9")
+        XCTAssertEqual(project.slicesDSID, "ds-9")
+        XCTAssertEqual(project.workingDir, "/src/fresh")
+        XCTAssertTrue(project.assignee)
+    }
+
+    func testProjectCreateWithoutRepoOrDescription() async throws {
+        let fakeRunner = FakeRunner(fixture: .projectCreateSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        _ = try await client.projectCreate(name: "Fresh Project", repo: "", description: nil)
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["project-create", "Fresh Project", "--json"])
+        XCTAssertNil(fakeRunner.lastStandardInput)
+    }
+
+    func testProjectCreateFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .projectCreateFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            _ = try await client.projectCreate(name: "Fresh Project", repo: "/src/fresh", description: nil)
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            guard case .commandFailed(let message) = error else {
+                return XCTFail("Expected commandFailed error")
+            }
+            XCTAssertEqual(message, "no projects database is configured: run `nat` once to set it up")
+        }
+    }
 }

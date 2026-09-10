@@ -24,6 +24,13 @@ private struct SliceAddedEnvelope: Codable {
     let slice: SliceAddResult
 }
 
+/// Envelope for `project-open --json`'s and `project-create --json`'s
+/// output: the config entry each wrote, wrapped in a named field the way
+/// every other creation in the CLI wraps what it made.
+private struct ProjectEnvelope<Project: Codable>: Codable {
+    let project: Project
+}
+
 /// A typed client for running nat commands and decoding their JSON output.
 public final class NatClient: Sendable {
     private nonisolated let commandRunner: CommandRunning
@@ -384,6 +391,79 @@ public final class NatClient: Sendable {
     /// - Throws: NatError if the key is unknown or the value is out of bounds
     public func configSet(key: String, value: String) async throws {
         _ = try await runNat(arguments: ["config-set", key, value])
+    }
+
+    // MARK: - Projects
+
+    /// The two halves of "which project": the ones this machine's config
+    /// already tracks, and the rows of the workspace's projects database it
+    /// does not — the "+" tab's own reading, mirroring the TUI's switch
+    /// picker (`internal/tui/newproject.go`).
+    ///
+    /// Takes no `--project`: it is about projects not yet tracked as much as
+    /// tracked ones.
+    ///
+    /// - Returns: One entry per project, each saying which half it came from,
+    ///   plus a note where the workspace half could not be read
+    /// - Throws: NatError if nat itself fails (a projects database it could
+    ///   not read is a note on the listing, not a failure)
+    public func projectList() async throws -> ProjectListing {
+        let output = try await runNat(arguments: ["project-list", "--json"])
+        return try decodeJSON(ProjectListing.self, from: output)
+    }
+
+    /// Record a project the workspace already has in local config, so this
+    /// machine can open it — the "+" tab's open path, mirroring the TUI
+    /// picker's pick of an unconfigured page. The working directory is left
+    /// unset: where a project's code lives is this machine's own answer and
+    /// no part of what was read out of Notion.
+    ///
+    /// A page that will not resolve is refused with the resolver's own reason
+    /// and nothing written; running it on a page already in config answers
+    /// with the entry that is there rather than duplicating it.
+    ///
+    /// - Parameter pageRef: The project page's URL or Notion page ID
+    /// - Returns: The config entry, including the page ID that `--project` takes
+    /// - Throws: NatError if the page will not resolve, or the command fails
+    public func projectOpen(pageRef: String) async throws -> ProjectEntry {
+        let output = try await runNat(arguments: ["project-open", "--json", pageRef])
+        return try decodeJSON(ProjectEnvelope<ProjectEntry>.self, from: output).project
+    }
+
+    /// Create a whole tracked project — the project row, its Slices database,
+    /// the conventions on its page and the entry in local config — mirroring
+    /// `internal/cli/projectcreate.go`. It leaves the board on whatever
+    /// project it was on; adding the tab is the caller's own step.
+    ///
+    /// The repo directory is named outright rather than left to default: a
+    /// command typed in a checkout has a meaningful working directory to fall
+    /// back on and a windowed app has none, so the sheet's directory chooser
+    /// is where it comes from.
+    ///
+    /// The description goes over stdin (`--description -`) when given,
+    /// exactly as `sliceAdd`'s brief does: a project's conventions run to
+    /// several lines.
+    ///
+    /// - Parameters:
+    ///   - name: The new project's name
+    ///   - repo: Where its agents work; nil leaves it to the CLI's own default
+    ///   - description: Optional conventions to write as the project page's body
+    /// - Returns: CreatedProject with the page, the data source and the
+    ///   working directory config now points at
+    /// - Throws: NatError if the command fails (no projects database configured,
+    ///   an empty name, Notion refusing the write)
+    public func projectCreate(name: String, repo: String?, description: String?) async throws -> CreatedProject {
+        var arguments = ["project-create", name, "--json"]
+        if let repo = repo, !repo.isEmpty {
+            arguments.append(contentsOf: ["--repo", repo])
+        }
+        var standardInput: Data?
+        if let description = description, !description.isEmpty {
+            arguments.append(contentsOf: ["--description", "-"])
+            standardInput = description.data(using: .utf8)
+        }
+        let output = try await runNat(arguments: arguments, standardInput: standardInput)
+        return try decodeJSON(ProjectEnvelope<CreatedProject>.self, from: output).project
     }
 
     // MARK: - Private Helpers

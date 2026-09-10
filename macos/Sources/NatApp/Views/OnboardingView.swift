@@ -3,11 +3,19 @@ import NatKit
 
 /// The first-run welcome pane: what the window shows in place of the board
 /// when `AppModel.start()` finds no config file, or one naming no projects.
-/// There is no wizard of this app's own — project creation stays with the
-/// TUI/CLI — so this pane only says what to do next and lets a person check
-/// again once they have.
+///
+/// With `nat` on the machine it is a way in rather than a dead end: the same
+/// sheet the "+" tab opens, which creates a project or opens one the
+/// workspace already has, and either lands the board's first tab. Without it
+/// there is nothing for the sheet to run, so the pane says what to install
+/// and offers the check again — the state it was in before there was a sheet
+/// at all.
 struct OnboardingView: View {
     @Bindable var appModel: AppModel
+
+    /// Opens the "+" tab's own sheet, which the window presents.
+    let onNewProject: () -> Void
+
     @State private var isChecking = false
 
     private let binaries = ["nat", "tmux", "gh", "ntn"]
@@ -37,28 +45,52 @@ struct OnboardingView: View {
                 .background(DesignTokens.controlBg)
                 .cornerRadius(10)
 
-                Text("Run nat in a terminal to set up your workspace, then relaunch.")
+                Text(natFound
+                    ? "Add a project to get started — one the workspace already has, or a new one."
+                    : "Install nat and run it once in a terminal to set up your workspace, then check again.")
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .foregroundStyle(DesignTokens.labelTertiary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
 
-                Button(action: checkAgain) {
-                    if isChecking {
-                        ProgressView()
-                            .scaleEffect(0.7, anchor: .center)
-                            .frame(width: 100)
+                // The prominent button is whichever one is the thing to do:
+                // adding a project where that is possible, and checking again
+                // where the only way forward is a terminal.
+                HStack(spacing: 10) {
+                    if natFound {
+                        Button(action: onNewProject) {
+                            Text("Add a Project…")
+                                .frame(width: 120)
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        checkAgainButton.buttonStyle(.bordered)
                     } else {
-                        Text("Check Again")
-                            .frame(width: 100)
+                        checkAgainButton.buttonStyle(.borderedProminent)
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(isChecking)
             }
             .padding(40)
         }
     }
+
+    private var checkAgainButton: some View {
+        Button(action: checkAgain) {
+            if isChecking {
+                ProgressView()
+                    .scaleEffect(0.7, anchor: .center)
+                    .frame(width: 100)
+            } else {
+                Text("Check Again")
+                    .frame(width: 100)
+            }
+        }
+        .disabled(isChecking)
+    }
+
+    /// Whether the sheet has anything to run: `nat` is what both of its
+    /// paths are, so a machine without it is offered neither.
+    private var natFound: Bool { BinaryLocator.isFound("nat") }
 
     private func binaryRow(_ binary: String) -> some View {
         let found = BinaryLocator.isFound(binary)
@@ -90,6 +122,6 @@ struct OnboardingView: View {
 }
 
 #Preview {
-    OnboardingView(appModel: AppModel())
+    OnboardingView(appModel: AppModel(), onNewProject: {})
         .frame(width: 720, height: 520)
 }

@@ -3,6 +3,12 @@ import NatKit
 
 struct ProjectTabsView: View {
     @Bindable var appModel: AppModel
+
+    /// What the "+" beside the strip does: open the sheet offering the two
+    /// ways a project comes to be on the board. The sheet is the shell's, not
+    /// this row's — a sheet presented from inside the header band would be
+    /// anchored to a 40pt strip.
+    let onNewProject: () -> Void
     /// The tab the mouse is over, for the hover wash — parent state rather
     /// than per-tab, because the tabs are built by a function and a function
     /// has no `@State` of its own to keep.
@@ -35,17 +41,17 @@ struct ProjectTabsView: View {
                 }
             }
 
-            // "+" button (disabled)
-            Button(action: {}) {
+            // "+" — the two ways a project comes to be on the board, both
+            // behind one sheet.
+            Button(action: onNewProject) {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(DesignTokens.labelSecondary)
                     .frame(width: 32, height: 32)
             }
             .buttonStyle(.plain)
-            .disabled(true)
             .hoverWash(cornerRadius: 7)
-            .help("Projects are created from the TUI or nat project-create")
+            .help("Open or Create a Project…")
             // 4pt rather than the tabs' 6: the box is 32 in a 40pt band, so
             // 4 is what puts its icon on the same content line the tab
             // labels and the toolbar cluster sit on.
@@ -251,6 +257,6 @@ struct PulseModifier: ViewModifier {
 
 #Preview {
     let appModel = AppModel()
-    ProjectTabsView(appModel: appModel)
+    ProjectTabsView(appModel: appModel, onNewProject: {})
         .frame(height: 40)
 }

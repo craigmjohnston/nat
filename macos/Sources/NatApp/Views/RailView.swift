@@ -151,6 +151,27 @@ struct RailView: View {
                     }
                 }
 
+                // A plan that landed holding nothing: a project opened or
+                // created from the "+" tab, whose rail would otherwise be a
+                // blank column saying neither that it loaded nor what to do.
+                if appModel.activePlanIsEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(EmptyProjectNote.title)
+                            .font(.system(size: Typo.body, weight: .semibold))
+                            .foregroundStyle(DesignTokens.labelSecondary)
+                        Text(EmptyProjectNote.subtitle(needsWorkingDir: appModel.activeProjectNeedsWorkingDir))
+                            .font(.system(size: Typo.subhead))
+                            .foregroundStyle(DesignTokens.labelTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(DesignTokens.controlBg)
+                    .cornerRadius(8)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+                }
+
                 // WORKSHOP section — the planning agent, live or launching,
                 // above the slice sessions: it is about the plan the whole
                 // rail draws rather than any one slice of it.

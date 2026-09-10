@@ -57,10 +57,11 @@ public final class AppModel {
     public private(set) var reviewStatsStore: ReviewStatsStore?
 
     /// Whether the app has anywhere to show the board at all: no config file
-    /// was found, or one was found naming no projects. Project creation stays
-    /// with the TUI/CLI, so this is a dead end rather than a wizard — the
-    /// window shows a welcome pane in its place until a "Check Again" re-runs
-    /// `start()`.
+    /// was found, or one was found naming no projects. The window shows a
+    /// welcome pane in its place, which offers the same two ways onto the
+    /// board the "+" tab does — `addProject(id:name:)` is where both of them
+    /// end — and a "Check Again" that re-runs `start()` for a workspace set
+    /// up elsewhere in the meantime.
     public private(set) var needsOnboarding: Bool = true
 
     /// Per-project selected slice IDs.
@@ -138,8 +139,8 @@ public final class AppModel {
     ///
     /// No config file at all, or one naming no projects, leaves
     /// `needsOnboarding` true and does nothing else here: there is no board
-    /// to show and no project to activate, and project creation is the
-    /// TUI/CLI's job rather than a wizard of this app's own.
+    /// to show and no project to activate until one is opened or created,
+    /// which comes back through `addProject(id:name:)`.
     public func start(configPath: String, nudgePath: String) async {
         do {
             let loadedConfig = try await configReader.readConfig(from: configPath)
@@ -237,6 +238,69 @@ public final class AppModel {
             let neighbour = projectTabs[min(index, projectTabs.count - 1)]
             await activateProject(neighbour.id)
         }
+    }
+
+    /// Take a project just opened or created into the board: re-read config
+    /// so the entry `project-open`/`project-create` wrote is in hand, give it
+    /// a tab if it has none, and activate it. The two paths of the "+" tab
+    /// end here, since what each produced is the same thing — one more entry
+    /// in local config.
+    ///
+    /// The tab lands at the end of the strip rather than in the config's own
+    /// order: it is where the user just made it, and the next launch is what
+    /// files it away in order with the rest.
+    ///
+    /// A machine whose `start()` found no config at all — the onboarding
+    /// pane's own state — has no config to re-read, so this is the start that
+    /// was missed rather than a reload: there is a config file now. A start
+    /// that still cannot read one leaves the board exactly as it was, since a
+    /// board with no config behind it is the onboarding pane and not an empty
+    /// plan.
+    public func addProject(id: String, name: String) async {
+        if config == nil || loadedConfigPath == nil {
+            await start()
+        } else {
+            await reloadConfig()
+        }
+        guard let config = config else { return }
+        needsOnboarding = false
+
+        // start() builds these for a config that named projects; a first
+        // project on a machine that had none arrives here with neither.
+        if activityStore == nil {
+            activityStore = ActivityStore()
+            reviewStatsStore = ReviewStatsStore()
+        }
+
+        if !projectTabs.contains(where: { $0.id == id }) {
+            // The config's own name where it has one — it is what every other
+            // tab is labelled with — and what the command reported otherwise.
+            projectTabs.append((id: id, name: config.projects[id]?.name ?? name))
+        }
+        await activateProject(id)
+    }
+
+    /// Whether the active project's plan has landed and holds nothing — the
+    /// state every project opened or created from the "+" tab starts in, and
+    /// what the rail and the pane draw `EmptyProjectNote` for. A load still
+    /// in flight, or one that failed, is not an empty plan: the rail reports
+    /// either of those itself.
+    public var activePlanIsEmpty: Bool {
+        guard let info = projectStore?.state.projectInfo else { return false }
+        return info.slices.isEmpty
+    }
+
+    /// Whether the active project has no working directory recorded — the
+    /// state a project opened from the "+" tab starts in, since opening
+    /// records where a plan lives and nothing about where its code does. The
+    /// tab's empty state is what says so, and Settings is where it is given.
+    ///
+    /// False for a project config says nothing about at all: there is then no
+    /// entry to be missing a directory, and the board has bigger problems to
+    /// report than this one.
+    public var activeProjectNeedsWorkingDir: Bool {
+        guard let id = activeProjectID, let project = config?.projects[id] else { return false }
+        return project.workingDir.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// The active project's store (computed property for backward compatibility).

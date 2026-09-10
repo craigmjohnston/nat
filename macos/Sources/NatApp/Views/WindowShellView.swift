@@ -5,6 +5,7 @@ import NatKit
 struct WindowShellView: View {
     @Bindable var appModel: AppModel
     @State private var showNewSliceSheet = false
+    @State private var showNewProjectSheet = false
 
     /// The header row's height — and, through TrafficLightAlignerView, the
     /// band the traffic lights are centred in.
@@ -21,7 +22,7 @@ struct WindowShellView: View {
                 .ignoresSafeArea()
 
             if appModel.needsOnboarding {
-                OnboardingView(appModel: appModel)
+                OnboardingView(appModel: appModel, onNewProject: { showNewProjectSheet = true })
             } else {
                 board
             }
@@ -50,6 +51,18 @@ struct WindowShellView: View {
                 }
             )
         }
+        // The "+" tab's sheet, and the welcome pane's own buttons: both ways
+        // a project comes to be on the board, presented from the window
+        // rather than from the 40pt band the "+" sits in.
+        .sheet(isPresented: $showNewProjectSheet) {
+            NewProjectSheetView(
+                onClose: { showNewProjectSheet = false },
+                onAdded: { id, name in
+                    showNewProjectSheet = false
+                    Task { await appModel.addProject(id: id, name: name) }
+                }
+            )
+        }
         .task {
             await appModel.start()
         }
@@ -64,7 +77,7 @@ struct WindowShellView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
                     // Project tabs
-                    ProjectTabsView(appModel: appModel)
+                    ProjectTabsView(appModel: appModel, onNewProject: { showNewProjectSheet = true })
 
                     // Right-side toolbar
                     HStack(spacing: 12) {
