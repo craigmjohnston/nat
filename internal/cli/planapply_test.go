@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -101,16 +102,18 @@ func TestPlanApplyCreatesTheMilestonesThenTheSlices(t *testing.T) {
 
 Added 1 milestone and 3 slices to nat.
 
+` + orderNote + `
+
 ## M4: Polish
 
 New milestone 4, Queued — ` + optionNote + `
 
-- Frame the board — https://notion.so/new-1
+- Frame the board — https://notion.so/new-3
 - Colour the chips — https://notion.so/new-2
 
 ## M2: Board
 
-- Poll in the background — https://notion.so/new-3
+- Poll in the background — https://notion.so/new-1
 `
 	if out != want {
 		t.Errorf("output =\n%s\nwant:\n%s", out, want)
@@ -119,12 +122,17 @@ New milestone 4, Queued — ` + optionNote + `
 	if len(api.creates) != 3 {
 		t.Fatalf("creates = %+v, want one page per slice", api.creates)
 	}
+	// The document is written back to front, so the last slice of it is the
+	// first page created — see orderNote.
+	if got := writtenText(api.creates[0].props[notion.PropName]); got != "Poll in the background" {
+		t.Errorf("first creation = %q, want the last slice of the document", got)
+	}
 	if got := writtenMilestoneOptions(t, api); !reflect.DeepEqual(got,
 		[]string{"M1: Client", "M2: Board", "M3: Agents", "M4: Polish"}) {
 		t.Errorf("options = %v, want the new milestone appended", got)
 	}
 
-	first := api.creates[0]
+	first := api.creates[2]
 	if first.parent != notion.DataSourceParent("slices-ds") {
 		t.Errorf("slice parent = %+v, want the slices data source", first.parent)
 	}
@@ -146,7 +154,7 @@ New milestone 4, Queued — ` + optionNote + `
 		t.Errorf("children = %+v, want one paragraph per chunk of the description", first.children)
 	}
 
-	last := api.creates[2]
+	last := api.creates[0]
 	if got := last.props[notion.PropMilestone]; !reflect.DeepEqual(got, notion.NewSelect("M2: Board")) {
 		t.Errorf("milestone = %+v, want the milestone the project already had", got)
 	}
@@ -187,6 +195,8 @@ func TestPlanApplyReportsAMilestoneWithNoSlices(t *testing.T) {
 
 Added 1 milestone and 0 slices to nat.
 
+` + orderNote + `
+
 ## M4: Polish
 
 New milestone 4, Queued — ` + optionNote + `
@@ -216,9 +226,9 @@ func TestPlanApplyPrintsJSON(t *testing.T) {
 		}},
 		Slices: []addedSliceJSON{
 			{
-				ID: "new-1", Name: "Frame the board", Status: notion.SliceTodo,
+				ID: "new-3", Name: "Frame the board", Status: notion.SliceTodo,
 				MilestoneID: "M4: Polish", MilestoneName: "M4: Polish",
-				Repo: "/tmp/nat", URL: "https://notion.so/new-1",
+				Repo: "/tmp/nat", URL: "https://notion.so/new-3",
 			},
 			{
 				ID: "new-2", Name: "Colour the chips", Status: notion.SliceTodo,
@@ -226,12 +236,13 @@ func TestPlanApplyPrintsJSON(t *testing.T) {
 				Repo: "/tmp/nat", URL: "https://notion.so/new-2",
 			},
 			{
-				ID: "new-3", Name: "Poll in the background", Status: notion.SliceTodo,
+				ID: "new-1", Name: "Poll in the background", Status: notion.SliceTodo,
 				MilestoneID: "M2: Board", MilestoneName: "M2: Board",
-				Repo: "/tmp/other", URL: "https://notion.so/new-3",
+				Repo: "/tmp/other", URL: "https://notion.so/new-1",
 			},
 		},
 		Dependencies: []addedDependencyJSON{},
+		Ordering:     orderingWord,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("json =\n%+v\nwant:\n%+v", got, want)
@@ -429,9 +440,14 @@ func TestPlanApplyReportsAFailedCreate(t *testing.T) {
 		name  string
 		after int
 		want  string
+		// landed is the slices of the document that exist afterwards, in the
+		// order the document put them: the run writes backwards, so a failure
+		// leaves the tail of the plan rather than its head.
+		landed []string
 	}{
 		{name: "the first slice, after the milestone landed", after: 0, want: "1 milestone and 0 slices were created"},
-		{name: "the last slice", after: 2, want: "1 milestone and 2 slices were created"},
+		{name: "the last slice", after: 2, want: "1 milestone and 2 slices were created",
+			landed: []string{"Colour the chips", "Poll in the background"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -450,6 +466,14 @@ func TestPlanApplyReportsAFailedCreate(t *testing.T) {
 			}
 			if out != "" {
 				t.Errorf("output = %q, want nothing", out)
+			}
+			var landed []string
+			for _, c := range api.creates[:tt.after] {
+				landed = append(landed, writtenText(c.props[notion.PropName]))
+			}
+			sort.Strings(landed)
+			if !reflect.DeepEqual(landed, tt.landed) {
+				t.Errorf("created = %v, want the tail of the document: %v", landed, tt.landed)
 			}
 		})
 	}
@@ -498,11 +522,13 @@ func TestPlanApplyAppendsEveryNewMilestoneInOneSchemaWrite(t *testing.T) {
 
 Added 2 milestones and 3 slices to nat.
 
+` + orderNote + `
+
 ## M4: Polish
 
 New milestone 4, ` + notion.MilestoneQueued + ` — ` + optionNote + `
 
-- Frame the board — https://notion.so/new-1
+- Frame the board — https://notion.so/new-3
 
 ## M5: Ship
 
@@ -512,7 +538,7 @@ New milestone 5, ` + notion.MilestoneQueued + ` — ` + optionNote + `
 
 ## M2: Board
 
-- Poll in the background — https://notion.so/new-3
+- Poll in the background — https://notion.so/new-1
 `
 	if out != want {
 		t.Errorf("output =\n%s\nwant:\n%s", out, want)
@@ -528,7 +554,8 @@ New milestone 5, ` + notion.MilestoneQueued + ` — ` + optionNote + `
 	if len(api.creates) != 3 {
 		t.Fatalf("creates = %+v, want one page per slice", api.creates)
 	}
-	for i, want := range []string{"M4: Polish", "M5: Ship", "M2: Board"} {
+	// Back to front, so the creations run up the document rather than down it.
+	for i, want := range []string{"M2: Board", "M5: Ship", "M4: Polish"} {
 		c := api.creates[i]
 		if c.parent != notion.DataSourceParent("slices-ds") {
 			t.Errorf("slice %d parent = %+v, want the slices data source", i, c.parent)
@@ -786,7 +813,7 @@ func TestPlanApplyFilesThePlanInTheNamedProject(t *testing.T) {
 	}
 	// The dependency resolved against that project's own slices, and landed on
 	// the page this run created there.
-	if len(api.updates) != 1 || api.updates[0].id != "new-1" {
+	if len(api.updates) != 1 || api.updates[0].id != "new-2" {
 		t.Fatalf("updates = %+v, want the created slice made to wait", api.updates)
 	}
 	if got := api.updates[0].props[notion.PropDependsOn]; !reflect.DeepEqual(got, notion.NewRelation("filed-1")) {
@@ -874,5 +901,75 @@ func TestPlanApplyReportsAConfigItCannotRead(t *testing.T) {
 				t.Errorf("error = %v, want %q", err, tt.want)
 			}
 		})
+	}
+}
+
+// notionAfterPlan is the workspace as it stands the moment a plan has been
+// applied: the pages the run created, as the two reads `nat info` makes hand
+// them back.
+//
+// The second of those is the whole point. A row a view's manual order does not
+// name — which is every row the API creates, since nothing in the API adds one
+// to that order — comes back newest first. That is Notion's own behaviour,
+// recorded from the live API against a scratch database whose four rows were
+// written A, B, C, D and whose view query answered D, C, B, A; editing a row
+// afterwards did not move it, so it is the order they were created in and
+// nothing else. Hence the reversal here.
+func notionAfterPlan(api *fakeAPI, dsID string) {
+	pages := make([]notion.Page, len(api.creates))
+	order := make([]string, len(api.creates))
+	for i, c := range api.creates {
+		page := api.createdPages[i]
+		page.Properties = map[string]notion.PropertyValue{}
+		for name, v := range c.props {
+			page.Properties[name] = readable(v)
+		}
+		pages[i] = page
+		order[len(api.creates)-1-i] = page.ID
+	}
+	api.pages = map[string][]notion.Page{dsID: pages}
+	api.order = map[string][]string{dsID: order}
+}
+
+// The plan's own order is what the board and next-slice hand work out in, and
+// until this it was lost the moment a plan was applied: every slice of a run
+// landed in one minute, and the view read them back newest first, which is the
+// document backwards. So the run writes them backwards, and this is that read
+// back — plan-apply and then `nat info`, against what Notion actually answers.
+func TestPlanApplyLandsSlicesInDocumentOrder(t *testing.T) {
+	api := planAPI(5)
+	doc := `{
+	  "slices": [
+	    {"title": "First", "milestone": "M2: Board"},
+	    {"title": "Second", "milestone": "M2: Board"},
+	    {"title": "Third", "milestone": "M2: Board"},
+	    {"title": "Fourth", "milestone": "M3: Agents"},
+	    {"title": "Fifth", "milestone": "M3: Agents"}
+	  ]
+	}`
+
+	if _, err := runPlan(t, api, doc); err != nil {
+		t.Fatalf("plan-apply: %v", err)
+	}
+	notionAfterPlan(api, "slices-ds")
+
+	env, out := testEnv(testConfig(), api)
+	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("info: %v", err)
+	}
+
+	want := `### M2: Board
+
+- First — Todo
+- Second — Todo
+- Third — Todo
+
+### M3: Agents
+
+- Fourth — Todo
+- Fifth — Todo
+`
+	if got := out.String(); !strings.Contains(got, want) {
+		t.Errorf("info =\n%s\nwant it to list the slices in document order:\n%s", got, want)
 	}
 }
