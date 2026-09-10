@@ -46,11 +46,23 @@ public final class ProjectStore {
     public private(set) var projectID: String
     public private(set) var state: LoadState = .idle
     private let client: NatClientProtocol
+    private let cache: PlanCaching
     private var isLoadInFlight = false
 
-    public init(projectID: String, client: NatClientProtocol = NatClient()) {
+    /// Whether the cache has already been asked about this project. It is
+    /// asked once, before the first read lands: after that the plan in hand
+    /// is fresher than anything on disk, so a later load has nothing to seed
+    /// from and every refresh that fails keeps what it has anyway.
+    private var cacheConsulted = false
+
+    public init(
+        projectID: String,
+        client: NatClientProtocol = NatClient(),
+        cache: PlanCaching = DiskPlanCache()
+    ) {
         self.projectID = projectID
         self.client = client
+        self.cache = cache
     }
 
     /// Load project information.
@@ -65,9 +77,18 @@ public final class ProjectStore {
         isLoadInFlight = true
         defer { isLoadInFlight = false }
 
-        // Only a first load shows as loading: a refresh keeps the plan it
-        // already has on screen and swaps in the new one when it lands, so
-        // the board never blanks under a poll or a nudge.
+        // Only a first load shows as loading, and only where there is
+        // nothing to show in the meantime: the last plan this project was
+        // read as is on disk, and seeding it here is what puts the board on
+        // screen at once. From there it is the ordinary refresh — a plan
+        // already in hand stays up until the fresh one lands, so the board
+        // never blanks under a poll, a nudge, or a launch.
+        if state.projectInfo == nil, !cacheConsulted {
+            cacheConsulted = true
+            if let cached = await cache.read(projectID: projectID) {
+                state = .loaded(cached)
+            }
+        }
         if state.projectInfo == nil {
             state = .loading
         }
@@ -75,6 +96,8 @@ public final class ProjectStore {
         do {
             let info = try await client.info(projectID: projectID)
             state = .loaded(info)
+            // Every read that lands is what the next launch starts from.
+            await cache.write(info, projectID: projectID)
         } catch {
             let previousInfo = state.projectInfo
             state = .failed(error.localizedDescription, previous: previousInfo)
