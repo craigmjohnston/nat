@@ -22,7 +22,7 @@ struct AgentTabView: View {
                 // around a smaller rectangle would leave a lighter band at
                 // the edges instead of the mock's own full-bleed panel.
                 ZStack {
-                    AgentTerminalHostView.backgroundColor
+                    DesignTokens.terminalBg
 
                     AgentTerminalHostView(
                         attachSpec: AttachSpec(session: agent.session),
