@@ -44,6 +44,13 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case configShowSuccess
         case configSetSuccess
         case configSetFailure
+        case projectListBothHalves
+        case projectListNoWorkspace
+        case projectListFailure
+        case projectOpenSuccess
+        case projectOpenFailure
+        case projectCreateSuccess
+        case projectCreateFailure
     }
 
     private var fixture: Fixture
@@ -154,6 +161,20 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return ("# Config updated\n\n- agent_split_percent: 70\n".data(using: .utf8)!, Data(), 0)
         case .configSetFailure:
             return (Data(), "config-set: agent_split_percent must be between 10 and 90, given 5".data(using: .utf8)!, 1)
+        case .projectListBothHalves:
+            return (fixtureProjectList.data(using: .utf8)!, Data(), 0)
+        case .projectListNoWorkspace:
+            return (fixtureProjectListNoWorkspace.data(using: .utf8)!, Data(), 0)
+        case .projectListFailure:
+            return (Data(), "no configuration yet: run `nat` once to set it up".data(using: .utf8)!, 1)
+        case .projectOpenSuccess:
+            return (fixtureProjectOpen.data(using: .utf8)!, Data(), 0)
+        case .projectOpenFailure:
+            return (Data(), "resolve project: no Slices database on that page".data(using: .utf8)!, 1)
+        case .projectCreateSuccess:
+            return (fixtureProjectCreate.data(using: .utf8)!, Data(), 0)
+        case .projectCreateFailure:
+            return (Data(), "no projects database is configured: run `nat` once to set it up".data(using: .utf8)!, 1)
         }
     }
 
@@ -590,6 +611,61 @@ let fixtureConfigShow = """
   "slice_agent": {"model": "opus", "effort": "high"},
   "projects": {
     "proj-1": {"name": "Example Project", "working_dir": "/path/to/repo"}
+  }
+}
+"""
+
+// fixtureProjectList is `project-list --json`'s reading of a workspace whose
+// projects database answered: the configured half and the workspace half,
+// each row saying which it is.
+let fixtureProjectList = """
+{
+  "projects": [
+    {"id": "proj-1", "name": "Example Project", "configured": true, "working_dir": "/path/to/repo"},
+    {"id": "proj-2", "name": "Untracked Project", "configured": false},
+    {"id": "proj-3", "name": "Another Untracked", "configured": false}
+  ]
+}
+"""
+
+// fixtureProjectListNoWorkspace is the same reading where the projects
+// database could not be read: the configured half alone, with the note that
+// says why — the listing that leaves the sheet's create path standing.
+let fixtureProjectListNoWorkspace = """
+{
+  "projects": [
+    {"id": "proj-1", "name": "Example Project", "configured": true, "working_dir": "/path/to/repo"}
+  ],
+  "note": "the workspace's projects database could not be read: 404 object_not_found"
+}
+"""
+
+// fixtureProjectOpen is `project-open --json`'s success reading: the config
+// entry it wrote, with no working directory — opening records where a plan
+// lives and nothing about where its code does.
+let fixtureProjectOpen = """
+{
+  "project": {
+    "id": "proj-2",
+    "name": "Untracked Project",
+    "slices_ds_id": "ds-2",
+    "working_dir": ""
+  }
+}
+"""
+
+// fixtureProjectCreate is `project-create --json`'s success reading,
+// mirroring internal/cli/projectcreate.go's createdProjectJSON.
+let fixtureProjectCreate = """
+{
+  "project": {
+    "id": "proj-9",
+    "name": "Fresh Project",
+    "url": "https://notion.so/proj-9",
+    "slices_db_id": "db-9",
+    "slices_ds_id": "ds-9",
+    "working_dir": "/src/fresh",
+    "assignee": true
   }
 }
 """

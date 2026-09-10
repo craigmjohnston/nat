@@ -99,16 +99,30 @@ struct PaneView: View {
                     PRTabView(appModel: appModel, slice: slice)
                 }
             } else {
-                // Empty state
+                // Empty state — "select a slice" only where there are slices
+                // to select. A project just opened or created from the "+"
+                // tab has none, and what it needs said is what to do next.
                 VStack {
                     VStack(spacing: 8) {
                         Image(systemName: "doc.text")
                             .font(.system(size: 32, weight: .regular))
                             .foregroundStyle(DesignTokens.labelSecondary)
 
-                        Text("Select a slice to begin")
-                            .font(.system(size: Typo.body, weight: .regular))
-                            .foregroundStyle(DesignTokens.labelSecondary)
+                        if appModel.activePlanIsEmpty {
+                            Text(EmptyProjectNote.title)
+                                .font(.system(size: Typo.body, weight: .regular))
+                                .foregroundStyle(DesignTokens.labelSecondary)
+
+                            Text(EmptyProjectNote.subtitle(needsWorkingDir: appModel.activeProjectNeedsWorkingDir))
+                                .font(.system(size: Typo.subhead, weight: .regular))
+                                .foregroundStyle(DesignTokens.labelTertiary)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: 380)
+                        } else {
+                            Text("Select a slice to begin")
+                                .font(.system(size: Typo.body, weight: .regular))
+                                .foregroundStyle(DesignTokens.labelSecondary)
+                        }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
