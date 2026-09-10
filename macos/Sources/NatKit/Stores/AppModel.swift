@@ -29,7 +29,15 @@ public final class AppModel {
     /// The current configuration.
     public private(set) var config: NatProjectConfig?
 
-    /// True while `openWorkshop()` has a launch in flight.
+    /// True while a workshop launch is under way — the `nat workshop-launch`
+    /// itself, and then the wait for the activity poll to report the session
+    /// it started. It is held across both because the pane has nothing to
+    /// draw in between: the command returning says a session exists, and the
+    /// poll seeing it is what turns that into the attached terminal, so
+    /// dropping the flag at the command would put the composer back on screen
+    /// for the second or two the poll takes. Cleared by the agent appearing,
+    /// and by a failure, which is what returns the user to the composer with
+    /// the error over the request still typed there.
     public private(set) var workshopLaunching = false
 
     /// What the last workshop launch refused with — cleared by the next
@@ -114,6 +122,22 @@ public final class AppModel {
         _ projectID: String, _ model: String?, _ effort: String?, _ request: String?
     ) async throws -> WorkshopLaunchResult
 
+    /// How the app-wide activity store is made. Injectable for the same
+    /// reason `workshopLauncher` is: the default one polls tmux through the
+    /// real client, and a test that wants to say what is running says it
+    /// here.
+    private let activityStoreFactory: @MainActor @Sendable () -> ActivityStore
+
+    /// How `launchWorkshop(request:)` waits between askings, while a launched
+    /// session has yet to show up in the activity poll's reading. Injectable
+    /// so a test never waits a quarter of a second for anything.
+    private let launchSettleWait: @MainActor @Sendable () async -> Void
+
+    /// How many of those waits a launched session gets to appear in before
+    /// the pane gives up on it and says so — thirty seconds at the default
+    /// wait, which is long past the two the poll's own cadence costs.
+    static let launchSettleAttempts = 120
+
     public init(
         configReader: ConfigReaderProtocol = FileConfigReader(),
         planCache: PlanCaching = DiskPlanCache(),
@@ -121,6 +145,10 @@ public final class AppModel {
         pathsProvider: @escaping @Sendable () async throws -> NatPaths = { try await NatClient().paths() },
         workshopLauncher: @escaping @Sendable (String, String?, String?, String?) async throws -> WorkshopLaunchResult = {
             try await NatClient().workshopLaunch(projectID: $0, model: $1, effort: $2, request: $3)
+        },
+        activityStoreFactory: @escaping @MainActor @Sendable () -> ActivityStore = { ActivityStore() },
+        launchSettleWait: @escaping @MainActor @Sendable () async -> Void = {
+            try? await Task.sleep(nanoseconds: 250_000_000)
         }
     ) {
         self.configReader = configReader
@@ -128,6 +156,8 @@ public final class AppModel {
         self.pollInterval = pollIntervalSeconds
         self.pathsProvider = pathsProvider
         self.workshopLauncher = workshopLauncher
+        self.activityStoreFactory = activityStoreFactory
+        self.launchSettleWait = launchSettleWait
     }
 
     /// Start the app resolving the config and nudge paths from `nat paths`,
@@ -167,7 +197,7 @@ public final class AppModel {
             self.projectTabs = sortedProjects.map { (id: $0.key, name: $0.value.name) }
 
             // Create activity store (app-wide)
-            let activityStore = ActivityStore()
+            let activityStore = activityStoreFactory()
             self.activityStore = activityStore
             self.reviewStatsStore = ReviewStatsStore()
 
@@ -277,7 +307,7 @@ public final class AppModel {
         // start() builds these for a config that named projects; a first
         // project on a machine that had none arrives here with neither.
         if activityStore == nil {
-            activityStore = ActivityStore()
+            activityStore = activityStoreFactory()
             reviewStatsStore = ReviewStatsStore()
         }
 
@@ -411,6 +441,11 @@ public final class AppModel {
     /// a successful launch into a live row and an attached terminal, so it is
     /// kicked rather than the result being held here as a second source of
     /// truth.
+    ///
+    /// `workshopLaunching` goes up on the first line of the launch and stays
+    /// up until there is something else for the pane to draw — the agent, or
+    /// the failure — so the composer is gone the moment Launch is pressed and
+    /// comes back only where the launch came to nothing.
     public func launchWorkshop(request: String) async {
         guard let projectID = activeProjectID else { return }
         workshopSelected = true
@@ -434,11 +469,33 @@ public final class AppModel {
         } catch {
             workshopLaunchError = error.localizedDescription
         }
-        workshopLaunching = false
         // Kicked on failure too: "a planning agent is already live" means
         // there is a session the poll has not seen yet, and seeing it is
         // exactly what turns the refusal into the terminal.
         activityStore?.kick()
+
+        // A launch that took leaves the pane with nothing to draw until the
+        // poll reports the session, so the launching state is held across
+        // that wait rather than flickering the composer back over it.
+        if workshopLaunchError == nil {
+            await settleOnPlanningAgent()
+        }
+        workshopLaunching = false
+    }
+
+    /// Wait for the activity poll to report the planning agent a launch just
+    /// started, giving up after `launchSettleAttempts` and saying so. Giving
+    /// up rather than waiting forever is the point: a session that started
+    /// and exited on the spot, or a tmux the poll cannot read at all, would
+    /// otherwise leave the pane launching for the rest of the session with
+    /// nothing to launch.
+    private func settleOnPlanningAgent() async {
+        for _ in 0..<Self.launchSettleAttempts {
+            if planningAgent != nil { return }
+            await launchSettleWait()
+        }
+        guard planningAgent == nil else { return }
+        workshopLaunchError = "the workshop session was launched but has not appeared — check `nat status`"
     }
 
     /// Return the count of live agents in a given project.
