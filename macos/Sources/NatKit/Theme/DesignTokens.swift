@@ -1,104 +1,119 @@
+import AppKit
 import SwiftUI
 
-/// Design tokens for the nat UI theme.
+/// Design tokens for the nat UI theme — every colour the app draws with,
+/// named by the role it plays rather than by the colour it happens to be.
 ///
-/// The values are Catppuccin Mocha, the same documented palette the Go TUI
-/// draws with (`internal/tui/styles.go`), so both faces of the product read
-/// as one product and every colour here can be checked against a published
-/// spec rather than against a screenshot. The mock at
-/// docs/design/nat-ui-v2/nat-ui-v2.html is what the *layout* comes from; its
-/// own colours sat within a few points of each other — the surfaces inside
-/// nine levels of grey, the labels behind opacity — and read as flat and
-/// dim on a real display, which is what these values replace.
+/// Each one is a *dynamic* colour: it holds both palettes and resolves the
+/// one the appearance it is drawn under calls for, so a call site says
+/// `DesignTokens.windowBg` and gets Mocha on a dark window and Latte on a
+/// light one without knowing there are two. That is what makes the theme
+/// switch live and what makes `Theme.system` follow macOS — an unpinned
+/// window's appearance changes when the Mac's does, and every one of these
+/// colours re-resolves with it.
 ///
-/// Two rules the palette is chosen against and that any later edit has to
-/// keep:
-///
-/// - The surface ladder is `fieldBg` < `windowBg` < `controlBg` < `rowAltBg`
-///   < `controlFace`, and each step is a visible one. It stays in the
-///   dark-grey range at both ends: the deepest surface is Mocha's `mantle`
-///   and not black, because a well that reads as a hole is the thing being
-///   fixed.
-/// - Text is measured against the surface it lands on. `label` on `windowBg`
-///   is 11.3:1, `labelSecondary` 7.4:1 and `labelTertiary` 5.8:1; on the
-///   raised surfaces every one of them stays at or above where the old
-///   values sat. Only `labelQuaternary` is below the WCAG body-text bar, and
-///   it is decoration — a placeholder rule, an empty slot — never words to
-///   read.
+/// The values themselves are `Palette`'s, which is where they are documented
+/// and where the rules they are chosen against are asserted. Nothing here
+/// holds a number: this file is the mapping from a role to a palette field
+/// and nothing else.
 public enum DesignTokens {
+    // MARK: - Resolution
+
+    /// The palette a colour scheme draws with — the seam every token below
+    /// is built over, and the one place the two themes are chosen between.
+    public static func palette(for scheme: ColorScheme) -> Palette {
+        scheme == .dark ? .mocha : .latte
+    }
+
+    /// The same choice made from an AppKit appearance, which is what a
+    /// dynamic `NSColor` is handed when it is asked to resolve. Anything
+    /// that is not positively dark — including an appearance that matches
+    /// neither, such as one of the high-contrast variants this app does not
+    /// carry values for — resolves light, because light is the platform's
+    /// own default and a wrong guess there is a readable window either way.
+    static func palette(for appearance: NSAppearance) -> Palette {
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .mocha : .latte
+    }
+
+    /// A dynamic `NSColor` over one palette field: the value AppKit resolves
+    /// per appearance, and what SwiftUI draws when the `Color` wrapping it
+    /// is used.
+    static func dynamicNSColor(
+        _ key: KeyPath<Palette, String>,
+        opacity: KeyPath<Palette, Double>? = nil
+    ) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let palette = DesignTokens.palette(for: appearance)
+            let color = NSColor(hex: palette[keyPath: key])
+            guard let opacity else { return color }
+            return color.withAlphaComponent(palette[keyPath: opacity])
+        }
+    }
+
+    private static func token(
+        _ key: KeyPath<Palette, String>,
+        opacity: KeyPath<Palette, Double>? = nil
+    ) -> Color {
+        Color(nsColor: dynamicNSColor(key, opacity: opacity))
+    }
+
     // MARK: - Background & Surface Colors
 
-    /// The app's ground, and the fill of every pane that is not a card
-    /// (Mocha `base`, #1e1e2e).
-    public static let windowBg = Color(hex: "1e1e2e")
+    /// The app's ground, and the fill of every pane that is not a card.
+    public static let windowBg = token(\.windowBg)
 
     /// The face of a card raised off the ground: rail cards, the diff file
-    /// box, a tab's own band (Mocha `surface0`, #313244).
-    public static let controlBg = Color(hex: "313244")
+    /// box, a tab's own band.
+    public static let controlBg = token(\.controlBg)
 
     /// The band that has to read apart from a card it sits inside: a file
-    /// box's header row, a comment row, the diff gutter. One deliberate
-    /// step between Mocha's `surface0` and `surface1`, which is the one
-    /// level this ladder needs and the palette does not name (#3b3d4f).
-    public static let rowAltBg = Color(hex: "3b3d4f")
+    /// box's header row, a comment row, the diff gutter.
+    public static let rowAltBg = token(\.rowAltBg)
 
-    /// The face of a control the pointer acts on — a button, a picker
-    /// (Mocha `surface1`, #45475a).
-    public static let controlFace = Color(hex: "45475a")
+    /// The face of a control the pointer acts on — a button, a picker.
+    public static let controlFace = token(\.controlFace)
 
-    /// The well text is typed into, sunk below the ground rather than
-    /// raised off it (Mocha `mantle`, #181825).
-    public static let fieldBg = Color(hex: "181825")
+    /// The well text is typed into.
+    public static let fieldBg = token(\.fieldBg)
 
-    /// The agent terminal's own surface, as a hex string because SwiftTerm
-    /// takes an `NSColor` rather than a SwiftUI `Color`. It sits at
-    /// `fieldBg`'s level on purpose: a terminal is the same kind of thing as
-    /// a text field — a well the app writes into — and the near-black it
-    /// used to be (#121216) read as a hole cut in the window rather than as
-    /// a panel of it.
-    public static let terminalBgHex = "181825"
+    /// The agent terminal's own surface, for the SwiftUI colour laid
+    /// full-bleed behind the terminal view. What the terminal view itself is
+    /// styled with is the whole of `Palette`'s terminal half — background,
+    /// foreground, caret and the sixteen ANSI colours — since SwiftTerm
+    /// takes `NSColor`s of its own rather than reading this.
+    public static let terminalBg = token(\.terminalBg)
 
-    /// `terminalBgHex` as a SwiftUI `Color`, for the surface laid full-bleed
-    /// behind the terminal view.
-    public static let terminalBg = Color(hex: terminalBgHex)
-
-    /// The header band's own material: the ground at 85%, the flat stand-in
-    /// for the mock's backdrop blur, which is a blur of what sits behind the
-    /// window and not of the band's own paint.
-    public static let headerBg = windowBg.opacity(0.85)
+    /// The header band's own material: the ground behind the palette's
+    /// header opacity, the flat stand-in for the mock's backdrop blur.
+    public static let headerBg = token(\.windowBg, opacity: \.headerOpacity)
 
     // MARK: - Text Colors
 
-    /// Primary label color (Mocha `text`, #cdd6f4) — 11.3:1 on `windowBg`.
-    public static let label = Color(hex: "cdd6f4")
+    /// Primary label color.
+    public static let label = token(\.label)
 
-    /// Secondary label color (Mocha `subtext0`, #a6adc8) — 7.4:1 on
-    /// `windowBg`. A real colour rather than the primary behind opacity, so
-    /// it holds its contrast over whatever surface it lands on.
-    public static let labelSecondary = Color(hex: "a6adc8")
+    /// Secondary label color.
+    public static let labelSecondary = token(\.labelSecondary)
 
-    /// Tertiary label color (Mocha `overlay2`, #9399b2) — 5.8:1 on
-    /// `windowBg`, which is what makes meta lines and timestamps readable
-    /// rather than merely present.
-    public static let labelTertiary = Color(hex: "9399b2")
+    /// Tertiary label color: meta lines and timestamps.
+    public static let labelTertiary = token(\.labelTertiary)
 
-    /// Quaternary label color (Mocha `overlay0`, #6c7086) — 3.4:1, below
-    /// the body-text bar and deliberately so: this is the disabled glyph and
-    /// the empty-slot rule, never words to read.
-    public static let labelQuaternary = Color(hex: "6c7086")
+    /// Quaternary label color, deliberately below the body-text bar: the
+    /// disabled glyph and the empty-slot rule, never words to read.
+    public static let labelQuaternary = token(\.labelQuaternary)
 
     // MARK: - Accent Colors
 
-    /// Primary accent color (Mocha `mauve`, #cba6f7) — 8.1:1 on `windowBg`.
-    public static let accent = Color(hex: "cba6f7")
+    /// Primary accent color.
+    public static let accent = token(\.accent)
 
-    /// Text color for content on accent background (Mocha `crust`,
-    /// #11111b) — 9.2:1 on `accent`.
-    public static let accentText = Color(hex: "11111b")
+    /// Text color for content on accent background.
+    public static let accentText = token(\.accentText)
 
-    /// The app icon's mark gradient, used sparingly: primary actions and active
-    /// accents only. It is the brand's own and not the palette's, so it is
-    /// the one thing here Mocha does not set.
+    /// The app icon's mark gradient, used sparingly: primary actions and
+    /// active accents only. It is the brand's own and not the palette's, so
+    /// it is the one thing here that is the same under both themes — a brand
+    /// that changed colour with the appearance would not be one.
     public static let brandGradient = LinearGradient(
         colors: [Color(hex: "6f4bf2"), Color(hex: "b558d8"), Color(hex: "ff70c2")],
         startPoint: .topLeading,
@@ -108,43 +123,43 @@ public enum DesignTokens {
     // MARK: - Semantic UI Colors
 
     /// The quiet border that separates surfaces without drawing attention.
-    public static let hairline = Color(hex: "cdd6f4").opacity(0.10)
+    public static let hairline = token(\.label, opacity: \.hairlineOpacity)
 
     /// The soft fill behind a selected row, in place of a solid accent slab.
-    public static let selectionWash = Color(hex: "cba6f7").opacity(0.20)
+    public static let selectionWash = token(\.accent, opacity: \.selectionWashOpacity)
 
     /// Separator color: the line between two rows of one list.
-    public static let separator = Color(hex: "cdd6f4").opacity(0.16)
+    public static let separator = token(\.label, opacity: \.separatorOpacity)
 
     /// Control border color: the edge of something the pointer acts on,
     /// which has to read as an edge and not as a suggestion of one.
-    public static let controlBorder = Color(hex: "cdd6f4").opacity(0.22)
+    public static let controlBorder = token(\.label, opacity: \.controlBorderOpacity)
 
     // MARK: - System Color Overrides
 
-    /// Orange system color (Mocha `peach`, #fab387).
-    public static let systemOrange = Color(hex: "fab387")
+    /// Orange system color.
+    public static let systemOrange = token(\.systemOrange)
 
-    /// Yellow system color (Mocha `yellow`, #f9e2af).
-    public static let systemYellow = Color(hex: "f9e2af")
+    /// Yellow system color.
+    public static let systemYellow = token(\.systemYellow)
 
-    /// Green system color (Mocha `green`, #a6e3a1).
-    public static let systemGreen = Color(hex: "a6e3a1")
+    /// Green system color.
+    public static let systemGreen = token(\.systemGreen)
 
-    /// Red system color (Mocha `red`, #f38ba8).
-    public static let systemRed = Color(hex: "f38ba8")
+    /// Red system color.
+    public static let systemRed = token(\.systemRed)
 
-    /// Blue system color (Mocha `blue`, #89b4fa).
-    public static let systemBlue = Color(hex: "89b4fa")
+    /// Blue system color.
+    public static let systemBlue = token(\.systemBlue)
 
-    /// Pink system color (Mocha `pink`, #f5c2e7).
-    public static let systemPink = Color(hex: "f5c2e7")
+    /// Pink system color.
+    public static let systemPink = token(\.systemPink)
 
-    /// Teal system color (Mocha `teal`, #94e2d5).
-    public static let systemTeal = Color(hex: "94e2d5")
+    /// Teal system color.
+    public static let systemTeal = token(\.systemTeal)
 
-    /// Gray system color (Mocha `overlay2`, #9399b2).
-    public static let systemGray = Color(hex: "9399b2")
+    /// Gray system color.
+    public static let systemGray = token(\.systemGray)
 }
 
 /// The type ramp, the mock's own sizes grown one point after real use read
@@ -174,29 +189,46 @@ public enum Motion {
     public static let stateChange: Animation? = .easeOut(duration: 0.15)
 }
 
-// MARK: - Hex Color Initializer
+// MARK: - Hex Color Initializers
+
+/// The six hex digits of a colour, or nil for anything that is not exactly
+/// that — the one parse both colour initializers below are built on, so a
+/// `Color` and an `NSColor` made from the same string can never disagree
+/// about what it means.
+func rgbComponents(hex: String) -> (red: Double, green: Double, blue: Double)? {
+    let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+    guard hex.count == 6 else { return nil }
+
+    let scanner = Scanner(string: hex)
+    var rgb: UInt64 = 0
+    guard scanner.scanHexInt64(&rgb) else { return nil }
+
+    return (
+        Double((rgb >> 16) & 0xFF) / 255.0,
+        Double((rgb >> 8) & 0xFF) / 255.0,
+        Double(rgb & 0xFF) / 255.0
+    )
+}
 
 extension Color {
     /// Initialize a Color from a hex string (6 characters, e.g., "1e1e23").
     /// Invalid input (non-hex characters, wrong length) defaults to white.
     public init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        guard hex.count == 6 else {
+        guard let rgb = rgbComponents(hex: hex) else {
             self = .white
             return
         }
+        self.init(red: rgb.red, green: rgb.green, blue: rgb.blue)
+    }
+}
 
-        let scanner = Scanner(string: hex)
-        var rgb: UInt64 = 0
-        guard scanner.scanHexInt64(&rgb) else {
-            self = .white
-            return
-        }
-
-        let red = Double((rgb >> 16) & 0xFF) / 255.0
-        let green = Double((rgb >> 8) & 0xFF) / 255.0
-        let blue = Double(rgb & 0xFF) / 255.0
-
-        self.init(red: red, green: green, blue: blue)
+extension NSColor {
+    /// The AppKit half of `Color(hex:)`, for the places a native colour is
+    /// what is wanted: the dynamic tokens above, and the terminal view,
+    /// which takes `NSColor`s rather than SwiftUI ones. Same parse, same
+    /// fallback to white.
+    public convenience init(hex: String) {
+        let rgb = rgbComponents(hex: hex) ?? (1, 1, 1)
+        self.init(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
     }
 }

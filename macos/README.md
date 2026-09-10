@@ -14,7 +14,20 @@ A native macOS application for the notion-agent-tracker project, built as a pure
 - Views in `NatApp` are thin bindings to logic in `NatKit` — they format and display state but never process it.
 - Tests target logic, not pixels. The teatest/golden-snapshot approach from the Go codebase does not apply here; instead, focus on unit tests for models and business logic.
 - The design reference lives in `docs/design/nat-ui-v2/nat-ui-v2.html` — all colors and token values come from the `.nat` CSS block in that file.
-- Theme tokens are centralized in `NatKit/Theme/DesignTokens.swift`.
+- Theme tokens are centralized in `NatKit/Theme/DesignTokens.swift`, and are
+  *dynamic*: each one holds both palettes and resolves the one the window's
+  appearance calls for, so a view says `DesignTokens.windowBg` and never asks
+  which theme is on. The values themselves — Catppuccin Mocha and Latte — live
+  in `NatKit/Theme/Palette.swift`, taken as published — the tests there assert
+  every role is Catppuccin's own swatch, unedited. Do not bend a value to meet
+  a contrast number: it would be a colour no other Catppuccin has.
+- Which palette a window asks for is `NatKit/Theme/Theme.swift`: system, dark
+  or light, persisted in `UserDefaults` under `Theme.storageKey` and switched
+  from the Settings window. `system` pins nothing, which is what makes it
+  follow the Mac's own appearance as that changes.
+- The agent terminal is the one surface a dynamic colour cannot reach —
+  SwiftTerm resolves plain `NSColor`s once — so `NatApp/Views/TerminalTheme.swift`
+  pushes the palette onto it whenever the appearance changes.
 
 ## Building and Running
 

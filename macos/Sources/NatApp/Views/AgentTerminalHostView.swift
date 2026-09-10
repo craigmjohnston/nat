@@ -13,6 +13,13 @@ import NatKit
 /// terminal is in comes from `TerminalLifecycle`. This view only wires
 /// SwiftTerm's callbacks to those two.
 public struct AgentTerminalHostView: NSViewRepresentable {
+    /// The window's appearance, read so this view is re-evaluated when the
+    /// theme changes: SwiftTerm's view is an AppKit one that resolves no
+    /// dynamic colour of its own, so the palette has to be pushed onto it,
+    /// and `updateNSView` only runs for a view that depends on something
+    /// that changed.
+    @Environment(\.colorScheme) private var colorScheme
+
     private let attachSpec: AttachSpec
 
     /// Answers whether the tmux session `attachSpec` names still exists,
@@ -41,7 +48,7 @@ public struct AgentTerminalHostView: NSViewRepresentable {
 
     public func makeNSView(context: Context) -> LocalProcessTerminalView {
         let view = FirstLayoutTerminalView(frame: .zero)
-        view.nativeBackgroundColor = NSColor(hex: DesignTokens.terminalBgHex)
+        TerminalTheme.apply(DesignTokens.palette(for: colorScheme), to: view)
         view.processDelegate = context.coordinator
         // `makeNSView` runs before AppKit has laid this view out at all, so
         // starting the process here would open the pty at SwiftTerm's
@@ -62,6 +69,14 @@ public struct AgentTerminalHostView: NSViewRepresentable {
         // SwiftTerm's sizeChanged callback telling the pty its new
         // dimensions; there is nothing this binding needs to push down on
         // every SwiftUI update.
+        //
+        // The theme is the one thing that does: the surface, the default
+        // foreground, the caret and the sixteen ANSI colours are plain
+        // AppKit colours SwiftTerm resolved once, so a light board would go
+        // on framing a dark terminal without this. Re-applying the palette
+        // the view already has is a no-op that costs a redraw, which is
+        // what every other update this method sees is.
+        TerminalTheme.apply(DesignTokens.palette(for: colorScheme), to: nsView)
     }
 
     public static func dismantleNSView(_ nsView: LocalProcessTerminalView, coordinator: Coordinator) {
@@ -173,21 +188,5 @@ final class FirstLayoutTerminalView: LocalProcessTerminalView {
         guard !hasFiredFirstLayout, newSize.width > 0, newSize.height > 0 else { return }
         hasFiredFirstLayout = true
         onFirstRealLayout?()
-    }
-}
-
-extension NSColor {
-    /// A convenience mirroring `NatKit.Color(hex:)`, for the one native
-    /// AppKit color this view sets directly on SwiftTerm's view rather than
-    /// through SwiftUI.
-    convenience init(hex: String) {
-        var rgb: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&rgb)
-        self.init(
-            srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255,
-            green: CGFloat((rgb >> 8) & 0xFF) / 255,
-            blue: CGFloat(rgb & 0xFF) / 255,
-            alpha: 1
-        )
     }
 }
