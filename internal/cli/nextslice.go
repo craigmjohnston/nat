@@ -98,6 +98,10 @@ func selectNextSlice(ctx context.Context, client API, projectID string, project 
 	// The whole plan is the index: every slice a dependency could name is in it,
 	// and one it does not hold is a page this project cannot see.
 	byID := domain.SlicesByID(plan.Slices)
+	// A cycle is read here rather than left to show as a slice that is somehow
+	// never ready: the plan is in hand, and this is the one place that can say
+	// which dependency to break.
+	cycles := logCycles(plan.Slices)
 
 	var open []domain.Milestone
 	var waiting []string
@@ -116,6 +120,13 @@ func selectNextSlice(ctx context.Context, client API, projectID string, project 
 			}
 			if len(blockers) == 0 {
 				return *g.Milestone, s, nil
+			}
+			// Only a blocked slice is reported as being in a cycle: one whose
+			// dependencies are all Done is workable, whatever the graph does
+			// further round.
+			if cycle := cycles[domain.NormaliseID(s.ID)]; len(cycle) > 0 {
+				waiting = append(waiting, cycleNote(s, cycle))
+				continue
 			}
 			waiting = append(waiting, fmt.Sprintf("%q waits on %s", s.Name, blockerList(blockers)))
 		}

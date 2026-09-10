@@ -91,6 +91,12 @@ conventions, its milestones in plan order, and its slices grouped under them.
    is additive, exactly as `nat slice-depends --on` is: what it names is added
    to whatever that slice already waits on, and nothing is ever dropped. A
    document may hold it and nothing else.
+
+   Dependencies must go one way. A document that would leave a slice waiting on
+   itself — directly, or round through however many others, counting the edges
+   the project already records — is refused whole, with the cycle named in
+   order and nothing created. Nothing in a cycle can ever be handed out, so
+   check the order of the work rather than adding an edge back.
 4. Report the created page URLs, grouped by milestone — `plan-apply` prints
    them.
 

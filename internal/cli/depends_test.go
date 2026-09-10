@@ -38,6 +38,7 @@ const (
 	depWaiting = "3b838308f654816da085f46dd135ade2"
 	depBlocker = "3b838308f654816da085f46dd135ade3"
 	depSpare   = "3b838308f654816da085f46dd135ade4"
+	depStuck   = "3b838308f654816da085f46dd135ade5"
 	depGone    = "3b838308f654816da085f46dd135ade9"
 )
 
@@ -116,8 +117,13 @@ func TestNextSliceHandsOutASliceWhoseDependenciesAreDone(t *testing.T) {
 // whole of what somebody has to look at to unblock the plan.
 func TestNextSliceRefusesWhenEveryCandidateIsBlocked(t *testing.T) {
 	api := dependsAPI(t)
+	// The chain ends on a slice somebody is already working, so every Todo
+	// candidate is blocked without any of them waiting on itself — a cycle is
+	// refused in its own words, and that is a different test.
+	api.pages["slices-ds"] = append(api.pages["slices-ds"],
+		slicePage(depStuck, "Half-done work", notion.SliceInProgress, "M3: Later", "Craig Johnston", ""))
 	dependsOn(api, depBlocker, depSpare)
-	dependsOn(api, depSpare, depWaiting)
+	dependsOn(api, depSpare, depStuck)
 	env, _ := testEnv(testClaimConfig(), api)
 
 	err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
@@ -128,7 +134,7 @@ func TestNextSliceRefusesWhenEveryCandidateIsBlocked(t *testing.T) {
 	for _, want := range []string{
 		`"Render the board" waits on "Style the board" (Todo)`,
 		`"Style the board" waits on "Queued work" (Todo)`,
-		`"Queued work" waits on "Render the board" (Todo)`,
+		`"Queued work" waits on "Half-done work" (In progress)`,
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("err = %v, want it to say %s", err, want)
@@ -915,15 +921,20 @@ func (f *failAfter) UpdatePageProperties(ctx context.Context, id string, props m
 // A run that failed partway through the additions says what it already recorded,
 // so nobody re-runs the document wondering which half landed.
 func TestPlanApplySaysWhatItAddedBeforeAFailure(t *testing.T) {
-	api := planAPI(0)
+	api := planAPI(1)
 	boardSlices(api)
 	failing := &failAfter{fakeAPI: api, writes: 1, err: errors.New("notion is down")}
 	env, _ := testEnv(testConfig(), api)
 	env.NewClient = func(notion.TokenFunc) API { return failing }
-	env.In = strings.NewReader(`{"dependencies": [
-	  {"slice": "Style the board", "on": ["Queued work"]},
-	  {"slice": "Queued work", "on": ["Style the board"]}
-	]}`)
+	// Two slices already on the board made to wait on the one the plan creates:
+	// two additive writes, and the second is the one that fails.
+	env.In = strings.NewReader(`{
+	  "slices": [{"title": "Frame the board", "milestone": "M2: Board"}],
+	  "dependencies": [
+	    {"slice": "Style the board", "on": ["Frame the board"]},
+	    {"slice": "Queued work", "on": ["Frame the board"]}
+	  ]
+	}`)
 
 	err := Run(context.Background(), []string{"plan-apply", "--project", "project-1"}, env)
 

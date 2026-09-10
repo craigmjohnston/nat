@@ -13,6 +13,7 @@ import (
 	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/logging"
 )
 
 // boardKeyMap is the board's own bindings: navigation, the writes, and the
@@ -237,6 +238,13 @@ type Board struct {
 	// dependencies are other rows of the same board, and it is what both the
 	// blocked chip and the launch key's refusal are read from.
 	blocked map[string][]domain.Slice
+	// cycles maps the ID of each slice caught in a dependency cycle to the way
+	// round it, read out from that slice — computed from the whole plan
+	// alongside blocked, since a cycle is nothing but dependencies that come
+	// back. It is what tells a row that is waiting on work still to come from
+	// one that is waiting on itself, which is a wait no landing slice will ever
+	// end.
+	cycles map[string][]domain.Slice
 	// activity is how those agents are getting on, and pulse the frame the
 	// star animation is on. Both are only ever read through the star chip —
 	// see presence.go.
@@ -318,6 +326,15 @@ func NewBoard(styles Styles) Board {
 func (b *Board) SetProject(p *domain.Project) {
 	b.project = p
 	b.rebuild()
+	// Said once per plan rather than in rebuild, which every toggle of a group
+	// runs: a cycle is a fact about the plan and not about what is drawn.
+	if p == nil {
+		return
+	}
+	for _, cycle := range domain.Cycles(p.Slices) {
+		logging.Error("dependency cycle in the plan",
+			"cycle", domain.CyclePath(domain.SliceNames(cycle)), "slices", len(cycle))
+	}
 }
 
 // SetWidth records the space the board has to draw in; a row longer than it
@@ -414,10 +431,11 @@ func defaultExpanded(g domain.Group) bool {
 // though they are drawn in a panel of their own, so the cursor runs from the
 // section straight on into the plan; see active.go.
 func (b *Board) rebuild() {
-	b.groups, b.blocked, b.byID = nil, nil, nil
+	b.groups, b.blocked, b.cycles, b.byID = nil, nil, nil, nil
 	if b.project != nil {
 		b.groups = b.project.Groups()
 		b.blocked = blockedSlices(b.project.Slices)
+		b.cycles = domain.CycleIndex(b.project.Slices)
 		b.byID = domain.SlicesByID(b.project.Slices)
 	}
 	b.rows, b.active = nil, b.activeSlices()
@@ -621,6 +639,15 @@ func (b Board) SelectedSlice() (domain.Slice, bool) {
 // say the same thing about the same slice.
 func (b Board) Blockers(s domain.Slice) []domain.Slice {
 	return b.blocked[domain.NormaliseID(s.ID)]
+}
+
+// CycleOf is the way round the dependency cycle s is caught in, read out from s
+// itself, and nothing at all for a slice in none — which is every slice of a
+// plan whose dependencies go one way. It answers off the index built with the
+// plan, exactly as [Board.Blockers] does, so the status line and the launch
+// key's refusal say the same thing about the same slice.
+func (b Board) CycleOf(s domain.Slice) []domain.Slice {
+	return b.cycles[domain.NormaliseID(s.ID)]
 }
 
 // BlockedBy names each slice s is waiting on the way the board files it — the
