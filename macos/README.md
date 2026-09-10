@@ -18,8 +18,9 @@ A native macOS application for the notion-agent-tracker project, built as a pure
   *dynamic*: each one holds both palettes and resolves the one the window's
   appearance calls for, so a view says `DesignTokens.windowBg` and never asks
   which theme is on. The values themselves — Catppuccin Mocha and Latte — live
-  in `NatKit/Theme/Palette.swift`, where the contrast and ladder rules they are
-  chosen against are asserted.
+  in `NatKit/Theme/Palette.swift`, taken as published — the tests there assert
+  every role is Catppuccin's own swatch, unedited. Do not bend a value to meet
+  a contrast number: it would be a colour no other Catppuccin has.
 - Which palette a window asks for is `NatKit/Theme/Theme.swift`: system, dark
   or light, persisted in `UserDefaults` under `Theme.storageKey` and switched
   from the Settings window. `system` pins nothing, which is what makes it

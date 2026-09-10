@@ -5,19 +5,19 @@ import Foundation
 /// rather than a colour's.
 ///
 /// It is deliberately a plain value type of strings and numbers and not a
-/// bag of `Color`s: a `Color` cannot be compared, measured for contrast or
-/// asserted about, and the two palettes here are exactly the thing that has
-/// to be checked against a published spec. `DesignTokens` is what turns one
-/// into the dynamic colours SwiftUI draws — see `DesignTokens.palette(for:)`.
+/// bag of `Color`s: a `Color` cannot be compared or asserted about, and the
+/// two palettes here are exactly the thing that has to be checked against a
+/// published spec. `DesignTokens` is what turns one into the dynamic colours
+/// SwiftUI draws — see `DesignTokens.palette(for:)`.
 ///
 /// The two palettes are Catppuccin Mocha and Catppuccin Latte, the same
 /// family the Go TUI draws with, so both faces of the product read as one
-/// product. Where Latte's own published accent misses WCAG AA on Latte's own
-/// base — which most of them do, Catppuccin having chosen them for hue rather
-/// than for contrast — the value here is that accent scaled down until it
-/// clears 4.5:1, which lands them within a few points of GitHub's own light
-/// theme. The rule is written down rather than eyeballed so a later edit can
-/// reproduce it.
+/// product. Both are taken as published: every value below is Catppuccin's
+/// own, named by the swatch it comes from, and the job here is choosing
+/// which swatch plays which role rather than choosing colours. A palette
+/// this widely used has been read in anger by more people than any rule
+/// applied here would stand in for, and a value tweaked to satisfy one would
+/// no longer be the theme the user recognises.
 public struct Palette: Equatable, Sendable {
     // MARK: - Surfaces
 
@@ -39,7 +39,8 @@ public struct Palette: Equatable, Sendable {
     /// text field — a well the app writes into.
     public let terminalBg: String
     /// The terminal's default foreground, which is `label` in both themes:
-    /// what an agent writes is words to read.
+    /// the pane is part of the window rather than a second product embedded
+    /// in it.
     public let terminalFg: String
     /// The terminal's caret.
     public let terminalCursor: String
@@ -55,12 +56,12 @@ public struct Palette: Equatable, Sendable {
     /// Primary label colour.
     public let label: String
     /// Secondary label colour — a real colour rather than the primary behind
-    /// opacity, so it holds its contrast over whatever surface it lands on.
+    /// opacity, so it is the same colour over whatever surface it lands on.
     public let labelSecondary: String
     /// Tertiary label colour: meta lines and timestamps.
     public let labelTertiary: String
-    /// Quaternary label colour, deliberately below the body-text bar: the
-    /// disabled glyph and the empty-slot rule, never words to read.
+    /// Quaternary label colour: the disabled glyph and the empty-slot rule,
+    /// never words to read.
     public let labelQuaternary: String
 
     // MARK: - Accent
@@ -95,10 +96,8 @@ public struct Palette: Equatable, Sendable {
     public let systemTeal: String
     public let systemGray: String
 
-    /// Whether this palette paints light text on dark surfaces. It is what
-    /// the surface-ladder rule reads its direction from: the ladder climbs
-    /// away from the ground in luminance under Mocha and descends under
-    /// Latte, which is the same step in both.
+    /// Whether this palette paints light text on dark surfaces — which is
+    /// the one thing about a theme that anything outside it needs to know.
     public let isDark: Bool
 
     public init(
@@ -168,11 +167,11 @@ public struct Palette: Equatable, Sendable {
     /// The dark theme: Catppuccin Mocha, exactly the values the app drew
     /// with when it was dark-only.
     ///
-    /// The surface ladder is `fieldBg` < `windowBg` < `controlBg` <
-    /// `rowAltBg` < `controlFace`, each step a visible one, and it stays in
-    /// the dark-grey range at both ends: the deepest surface is Mocha's
-    /// `mantle` and not black, because a well that reads as a hole is the
-    /// thing this palette was chosen to fix.
+    /// The surfaces run `fieldBg` < `windowBg` < `controlBg` < `rowAltBg` <
+    /// `controlFace`: the well is Mocha's `mantle` and not black, and every
+    /// level above it is one of Mocha's own surfaces bar `rowAltBg`, which
+    /// is the step between `surface0` and `surface1` that the palette does
+    /// not name.
     public static let mocha = Palette(
         windowBg: "1e1e2e",          // base
         controlBg: "313244",         // surface0
@@ -218,66 +217,69 @@ public struct Palette: Equatable, Sendable {
         isDark: true
     )
 
-    /// The light theme: Catppuccin Latte, with the same roles as Mocha and
-    /// the same rules applied in the other direction.
+    /// The light theme: Catppuccin Latte, mapped role for role onto the
+    /// same names Mocha fills, and taken as published.
     ///
-    /// The ladder descends rather than climbs — `fieldBg` > `windowBg` >
-    /// `controlBg` > `rowAltBg` > `controlFace` — because a well in a light
-    /// UI is lighter than its ground and a raised surface is darker, which
-    /// is the opposite of what raising and sinking mean on a dark ground.
-    /// The well is white rather than one of Latte's own greys for that
-    /// reason: Latte's `mantle` and `crust` sit *below* its base and so
-    /// belong on the raised side of this ladder, not the sunk one.
+    /// Nothing here is adjusted to meet a contrast number. Latte is a theme
+    /// thousands of people read code in every day and its authors chose
+    /// these values deliberately; a hex "corrected" here would be a colour
+    /// nobody else's Latte has, and would read as wrong beside every other
+    /// Latte the user has open. The one value that is not published is
+    /// `rowAltBg`, which is the level between `surface0` and `surface1` that
+    /// this ladder needs and the palette does not name — the same
+    /// interpolated step Mocha takes, for the same reason.
+    ///
+    /// Latte sinks and raises in the same direction: `mantle` and `crust`
+    /// sit below `base` and so do the surfaces, which is simply what a light
+    /// Catppuccin is. The five levels are therefore distinct rather than
+    /// monotone, and that is the theme's own arrangement rather than
+    /// something to iron out.
     public static let latte = Palette(
         windowBg: "eff1f5",          // base
-        controlBg: "e6e9ef",         // mantle
-        rowAltBg: "dce0e8",          // crust
-        controlFace: "ccd0da",       // surface0
-        fieldBg: "ffffff",
-        terminalBg: "ffffff",
+        controlBg: "ccd0da",         // surface0
+        rowAltBg: "c4c8d4",          // between surface0 and surface1
+        controlFace: "bcc0cc",       // surface1
+        fieldBg: "e6e9ef",           // mantle
+        terminalBg: "e6e9ef",
         terminalFg: "4c4f69",
         terminalCursor: "8839ef",
-        terminalSelection: "ccd0da",
-        // Latte's own terminal mapping for the greys (surface1/surface2 for
-        // black, subtext1/subtext0 for white) and the darkened accents below
-        // for the hues, since a terminal is words to read on a white well
-        // and Latte's published accents do not clear AA there. The bright
-        // half repeats the normal one hue for hue, exactly as Mocha's does:
-        // a brighter version of a colour chosen for contrast against a light
-        // ground is a less readable one, and an agent's output is the last
-        // place to spend contrast on a distinction nobody reads.
+        terminalSelection: "bcc0cc",
+        // Catppuccin's own published Latte terminal mapping, exactly as its
+        // ports write it: surface1 and surface2 for the two blacks, subtext1
+        // and subtext0 for the two whites, and the accent hues unchanged
+        // between the normal and bright halves.
         ansi: [
-            "bcc0cc", "d20f39", "317c21", "976013",
-            "1d62ed", "9f508a", "12777d", "5c5f77",
-            "acb0be", "d20f39", "317c21", "976013",
-            "1d62ed", "9f508a", "12777d", "6c6f85",
+            "bcc0cc", "d20f39", "40a02b", "df8e1d",
+            "1e66f5", "ea76cb", "179299", "5c5f77",
+            "acb0be", "d20f39", "40a02b", "df8e1d",
+            "1e66f5", "ea76cb", "179299", "6c6f85",
         ],
         label: "4c4f69",             // text
-        labelSecondary: "5c5f77",    // subtext1
-        // A step below Latte's `subtext0`, which lands at 4.4:1 on the
-        // ground and so misses the bar meta lines are held to by a hair.
-        labelTertiary: "63667d",
-        labelQuaternary: "8c8fa1",   // overlay1
+        labelSecondary: "6c6f85",    // subtext0
+        labelTertiary: "7c7f93",     // overlay2
+        labelQuaternary: "9ca0b0",   // overlay0
         accent: "8839ef",            // mauve
-        accentText: "ffffff",
+        accentText: "dce0e8",        // crust
         headerOpacity: 0.85,
-        // Dark ink on a light ground reads fainter than light ink on a dark
-        // one at the same alpha, so every border here is a couple of points
-        // heavier than Mocha's.
+        // The one place the two themes differ by more than their palettes:
+        // dark ink on a light ground reads fainter than light ink on a dark
+        // one at the same alpha, so the borders here are a couple of points
+        // heavier and the selection wash a couple lighter — Latte's mauve is
+        // a dark colour, and the same alpha would draw a far heavier slab.
+        // These are the theme's own material rather than Catppuccin's, which
+        // says nothing about how hard to press a hairline.
         hairlineOpacity: 0.12,
         separatorOpacity: 0.18,
         controlBorderOpacity: 0.26,
-        // And the selection wash a couple lighter: Latte's mauve is a dark
-        // colour, so the same alpha would draw a far heavier slab.
         selectionWashOpacity: 0.16,
-        systemOrange: "b94908",      // peach, darkened to AA
-        systemYellow: "976013",      // yellow, darkened to AA
-        systemGreen: "317c21",       // green, darkened to AA
+        systemOrange: "fe640b",      // peach
+        systemYellow: "df8e1d",      // yellow
+        systemGreen: "40a02b",       // green
         systemRed: "d20f39",         // red
-        systemBlue: "1d62ed",        // blue, darkened to AA
-        systemPink: "9f508a",        // pink, darkened to AA
-        systemTeal: "12777d",        // teal, darkened to AA
-        systemGray: "696b7c",        // overlay2, darkened to AA
+        systemBlue: "1e66f5",        // blue
+        systemPink: "ea76cb",        // pink
+        systemTeal: "179299",        // teal
+        systemGray: "7c7f93",        // overlay2
         isDark: false
     )
 }
