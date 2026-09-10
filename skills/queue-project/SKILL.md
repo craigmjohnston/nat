@@ -76,6 +76,9 @@ every slice: anything true of one slice alone belongs in that slice's brief.
 - Status, order and assignee are not yours to choose. New slices are filed
   `Todo` and unassigned; a milestone's status follows its slices, so there is
   none to set anywhere.
+- Dependencies must go one way: a plan that would leave a slice waiting on
+  itself, however far round, is refused whole with the cycle named and nothing
+  created.
 - `depends_on` names the slices a slice genuinely cannot start before — a
   blocked slice is one `nat next-slice` steps over and `nat start-slice`
   refuses — not the ones that merely read better in order.

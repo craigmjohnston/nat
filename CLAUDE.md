@@ -353,7 +353,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   <slice>]... [--clear]`, which records what a slice waits on — `--on` adds and
   every named slice is read first, since a dependency nobody can fetch is a wait
   with no end, and `--clear` drops what is there, so on its own it frees the
-  slice and with `--on` replaces the list outright — the wishlist pair `nat wishlist [--json]`, which prints
+  slice and with `--on` replaces the list outright; an `--on` that would leave
+  the slice waiting on itself is refused before the write, which takes reading
+  the whole plan, since a cycle closes through however many other slices, and
+  the check is made against the graph the write would leave rather than the one
+  there is, so a `--clear` that drops the closing edge is how a slice already
+  caught in a cycle gets out — a `--clear` alone reads no plan at all, because
+  taking edges away cannot close anything — the wishlist pair `nat wishlist [--json]`, which prints
   the pending items written under the project page's Wishlist heading (with
   their block IDs under `--json`), and `nat wishlist-clear <block-id>...`,
   which trashes exactly the named items — never the section wholesale, so an
@@ -369,7 +375,14 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   [<titles>]}` — is how it reaches a slice already on the board, added to what
   that slice already waits on the way `slice-depends --on` is and written in
   that same last phase, and it is the one thing a plan changes rather than
-  creates, which is why a document may hold it and nothing else; where the plan
+  creates, which is why a document may hold it and nothing else; the graph all
+  of that would leave — the plan's own slices, the project's, and every edge
+  either side records — is checked for cycles as the last step of validation and
+  so before the first page is written, and a document that would leave one is
+  refused whole with each cycle read out in order, a plan's own slice first
+  where one is in it; a cycle the board already has is refused too, since it is
+  a cycle the document would leave, and filing more work into a plan nobody can
+  finish only buries it deeper; where the plan
   lands is the command line's rather than the document's, which is what the
   shared `--project` below is for — a document says what work there is and not
   whose it is, and everything past that resolution — the migration, the
@@ -1195,6 +1208,19 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   it. Only a relation pointing at the slices themselves is converted
   (`notion.SingleSelfRelation`) — one pointing anywhere else is somebody's own
   column sharing a name, and re-targeting it would throw away what it holds.
+  A cycle in that relation is the one wait no landing slice can ever end, and
+  `domain.Cycles`/`domain.CycleIndex` — over `domain.GraphCycles`, which walks a
+  graph keyed however the caller keys its nodes, so a document being validated
+  can mix the slices it has yet to create with the slices already filed — are
+  what find one, each cycle read out as the way round it (`domain.CyclePath`,
+  `A → B → A`) from whichever slice is asking. Nothing is written to keep it
+  from happening: `plan-apply` and `slice-depends --on` refuse before their
+  first write, and a cycle already on the board is a plan that has to be read
+  as one — logged at error level wherever a plan is read (`tui.Board.SetProject`,
+  `cli.logCycles`), and reported as itself rather than as an ordinary wait by
+  the board's status line, the launch key's refusal and `next-slice`'s. Only a
+  blocked slice is ever reported as being in one: a cycle whose members are all
+  Done stops nothing, and such a slice is handed out exactly as it was.
   The rule is one line
   (`domain.Blockers`): a slice is blocked while any slice it names is not Done,
   and a slice names none where the column is absent or empty, so a project whose

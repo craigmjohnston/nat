@@ -429,6 +429,13 @@ func (a *App) launchAgentFlow() tea.Cmd {
 	}
 	if !fixLaunch(s) {
 		if blockers := a.board.Blockers(s); len(blockers) > 0 {
+			// A cycle is named as one: what it waits on is itself, and the
+			// refusal has to say which dependency to drop or there is nothing
+			// the user can do about it.
+			if cycle := a.board.CycleOf(s); len(cycle) > 0 {
+				return a.showToast(fmt.Sprintf("%q is in a dependency cycle: %s — drop one of those dependencies to unblock it.",
+					s.Name, domain.CyclePath(domain.SliceNames(cycle))), sevWarning)
+			}
 			return a.showToast(fmt.Sprintf("%q waits on %s.", s.Name, blockerList(blockers)), sevWarning)
 		}
 	}

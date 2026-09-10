@@ -1864,6 +1864,14 @@ func (a *App) blockedIndicator() string {
 	if len(refs) == 0 {
 		return ""
 	}
+	// A slice caught in a cycle reads as the cycle rather than as what it waits
+	// on: naming one unfinished slice would be true and no help, since nothing
+	// in a cycle can finish. Only a blocked slice gets here at all, so a cycle
+	// whose members are all Done says nothing.
+	if cycle := a.board.CycleOf(s); len(cycle) > 0 {
+		return a.styles.Blocked.Render("in a dependency cycle: " +
+			domain.CyclePath(domain.SliceNames(cycle)))
+	}
 	return a.styles.Blocked.Render("blocked by " + strings.Join(refs, ", "))
 }
 

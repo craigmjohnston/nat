@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
@@ -51,7 +52,8 @@ func sliceDepends(ctx context.Context, args []string, env Env) error {
 		}
 	}
 
-	if _, _, _, err := env.projectFor(*projectRef); err != nil {
+	_, _, project, err := env.projectFor(*projectRef)
+	if err != nil {
 		return err
 	}
 	client := env.NewClient(env.Tokens.Token)
@@ -69,6 +71,13 @@ func sliceDepends(ctx context.Context, args []string, env Env) error {
 	wanted, err := dependencyIDs(ctx, client, s, kept, onIDs)
 	if err != nil {
 		return err
+	}
+	// Only an addition can close a cycle: --clear on its own takes edges away,
+	// and reading the whole plan to prove that is a query nobody need pay for.
+	if len(onIDs) > 0 {
+		if err := checkDependsCycle(ctx, client, project, s, wanted); err != nil {
+			return err
+		}
 	}
 
 	updated, err := client.UpdatePageProperties(ctx, page.ID,
@@ -121,6 +130,50 @@ func dependencyIDs(ctx context.Context, client API, s domain.Slice, kept, added 
 	return ids, nil
 }
 
+// checkDependsCycle refuses an addition that would leave the slice waiting on
+// itself, however far round. The whole plan is read to do it: a cycle closes
+// through however many other slices, and the only place the edges between them
+// are recorded is Notion.
+//
+// It runs before the write, so a refused addition leaves the slice exactly as
+// it was — and it is checked against the graph the write would leave rather
+// than the one there is, since --clear may be dropping the very edge that would
+// have closed it.
+//
+// A query that failed is handed back rather than passed over: a check that
+// could not be made is no assurance at all, and a Notion that will not answer a
+// read is not one to write a cycle into.
+func checkDependsCycle(ctx context.Context, client API, project config.ProjectConfig, s domain.Slice, wanted []string) error {
+	pages, err := client.QueryDataSource(ctx, project.SlicesDSID, nil,
+		[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
+	if err != nil {
+		return fmt.Errorf("load slices: %w", err)
+	}
+	slices := domain.SlicesFromPages(pages)
+	self := domain.NormaliseID(s.ID)
+	found := false
+	for i := range slices {
+		if domain.NormaliseID(slices[i].ID) == self {
+			slices[i].DependsOn = wanted
+			found = true
+		}
+	}
+	// A slice the query did not return — one filed outside the project the flag
+	// named — still has the dependencies it is being given, and they still lead
+	// wherever they lead.
+	if !found {
+		next := s
+		next.DependsOn = wanted
+		slices = append(slices, next)
+	}
+	cycle := domain.CycleIndex(slices)[self]
+	if len(cycle) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%q would then wait on itself: %s — no slice in a dependency cycle can ever be unblocked",
+		s.Name, domain.CyclePath(quoteAll(domain.SliceNames(cycle))))
+}
+
 // dependencyIndex reads the slices s waits on, one page each, so they can be
 // named and their statuses read. A page that cannot be read is logged and left
 // out — the same rule the blocking itself follows, since a dependency nobody
@@ -153,6 +206,31 @@ func dependencyList(s domain.Slice, byID map[string]domain.Slice) []dependencyJS
 		out = append(out, dependencyJSON{ID: dep.ID, Name: dep.Name, Status: dep.StatusName, URL: dep.URL})
 	}
 	return out
+}
+
+// logCycles says loudly that the plan holds a dependency cycle, once per cycle,
+// and hands back the index of which slice is in which — the two go together,
+// since every read that wants to report a cycle is a read that should have said
+// so in the log.
+//
+// It is logged at error level rather than as an action: a cycle is not
+// something a run did, it is a plan nobody can finish, and the whole difficulty
+// with one is that it reads on the board as work that is merely not ready yet.
+func logCycles(slices []domain.Slice) map[string][]domain.Slice {
+	for _, cycle := range domain.Cycles(slices) {
+		logging.Error("dependency cycle in the plan",
+			"cycle", domain.CyclePath(domain.SliceNames(cycle)), "slices", len(cycle))
+	}
+	return domain.CycleIndex(slices)
+}
+
+// cycleNote says a slice waits on itself and reads out the way round, which is
+// what tells somebody which dependency to drop. It is the reason a blocked
+// slice gives instead of the list of what it waits on: naming one unfinished
+// slice would be true and no help at all, since nothing in a cycle can finish.
+func cycleNote(s domain.Slice, cycle []domain.Slice) string {
+	return fmt.Sprintf("%q is in a dependency cycle: %s",
+		s.Name, domain.CyclePath(quoteAll(domain.SliceNames(cycle))))
 }
 
 // blockedError says why a slice will not be started: what it waits on, and what

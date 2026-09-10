@@ -311,6 +311,9 @@ func validatePlan(p plan, existing []domain.Milestone, existingSlices []domain.S
 	if err != nil {
 		return planTargets{}, err
 	}
+	if err := checkPlanCycles(p, existingSlices, targets, filed); err != nil {
+		return planTargets{}, err
+	}
 	return planTargets{slices: targets, filed: filed}, nil
 }
 
@@ -737,4 +740,107 @@ func pageRef(id, url string) string {
 		return url
 	}
 	return id
+}
+
+// planNodeKey names one slice of the graph a plan is checked over. A slice the
+// plan has yet to create has no page ID to key it by, so it is keyed by its
+// place in the document; a normalised ID is hex, so the two can never collide.
+func planNodeKey(d planDep) string {
+	if d.newIndex >= 0 {
+		return fmt.Sprintf("plan:%d", d.newIndex)
+	}
+	return domain.NormaliseID(d.id)
+}
+
+// checkPlanCycles refuses a document that would leave a slice waiting on
+// itself. The graph is the whole of what the plan would leave behind — the
+// slices it creates and what each waits on, every slice the project already
+// has and what it already waits on, and the dependencies the plan adds to
+// those — because a plan closes a cycle just as easily through work already on
+// the board as through its own.
+//
+// It runs as part of validation, so a cyclic document is refused before the
+// first page is written: half a plan is bad enough without half of it being
+// unworkable.
+func checkPlanCycles(p plan, existingSlices []domain.Slice, targets []sliceTarget, filed []filedDeps) error {
+	edges := map[string][]string{}
+	names := map[string]string{}
+	for i, s := range p.Slices {
+		key := planNodeKey(planDep{newIndex: i})
+		edges[key] = nil
+		names[key] = strings.TrimSpace(s.Title)
+	}
+	for _, s := range existingSlices {
+		key := domain.NormaliseID(s.ID)
+		edges[key] = nil
+		names[key] = s.Name
+	}
+	// A dependency naming a page the project cannot see leads nowhere: it has no
+	// dependencies here, so it can be in no cycle, and Blockers passes over it
+	// for the same reason.
+	edge := func(from, to string) {
+		if _, ok := edges[to]; ok {
+			edges[from] = append(edges[from], to)
+		}
+	}
+	for i, t := range targets {
+		from := planNodeKey(planDep{newIndex: i})
+		for _, d := range t.dependsOn {
+			edge(from, planNodeKey(d))
+		}
+	}
+	for _, s := range existingSlices {
+		for _, id := range s.DependsOn {
+			edge(domain.NormaliseID(s.ID), domain.NormaliseID(id))
+		}
+	}
+	for _, f := range filed {
+		from := domain.NormaliseID(f.slice.ID)
+		for _, d := range f.add {
+			edge(from, planNodeKey(d))
+		}
+	}
+
+	cycles := domain.GraphCycles(edges)
+	if len(cycles) == 0 {
+		return nil
+	}
+	read := make([]string, len(cycles))
+	for i, cycle := range cycles {
+		read[i] = domain.CyclePath(quoteAll(cycleNames(newestFirst(cycle), names)))
+	}
+	return fmt.Errorf("the plan would leave %d %s of dependencies, and no slice in a cycle can ever be unblocked: %s",
+		len(cycles), plural("cycle", len(cycles)), strings.Join(read, "; "))
+}
+
+// newestFirst reads a cycle out from a slice the plan itself creates where one
+// is in it: what the document asked for is the first step round, so the
+// refusal starts where the mistake was made rather than wherever the walk
+// happened to enter.
+func newestFirst(cycle []string) []string {
+	for _, key := range cycle {
+		if strings.HasPrefix(key, "plan:") {
+			return domain.RotateCycle(cycle, key)
+		}
+	}
+	return cycle
+}
+
+// cycleNames turns the graph's keys back into the titles they stand for.
+func cycleNames(cycle []string, names map[string]string) []string {
+	out := make([]string, len(cycle))
+	for i, key := range cycle {
+		out[i] = names[key]
+	}
+	return out
+}
+
+// quoteAll quotes each name, since a cycle read out as a path of bare titles is
+// unreadable the moment a title holds a space.
+func quoteAll(names []string) []string {
+	out := make([]string, len(names))
+	for i, name := range names {
+		out[i] = fmt.Sprintf("%q", name)
+	}
+	return out
 }
