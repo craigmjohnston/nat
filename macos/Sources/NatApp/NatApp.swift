@@ -7,6 +7,14 @@ struct NatApp: App {
     @State private var appModel: AppModel
     @StateObject private var updaterViewModel = UpdaterViewModel()
 
+    /// The chosen theme, as the settings window writes it. Reading it here
+    /// is what makes the switch live: the scene re-renders when the stored
+    /// value changes, `preferredColorScheme` moves with it, and every token
+    /// in `DesignTokens` re-resolves under the new appearance.
+    @AppStorage(Theme.storageKey) private var storedTheme = Theme.system.rawValue
+
+    private var theme: Theme { Theme(stored: storedTheme) }
+
     init() {
         // The very first thing the process does: compose the real PATH —
         // the bundled nat's directory, the login shell's entries, whatever
@@ -75,12 +83,11 @@ struct NatApp: App {
             // to the front the way launching a bundled app would, now that
             // there is a window to bring.
             .onAppear { NSApplication.shared.activate() }
-            // The palette is the mock's and the mock is dark — every color in
-            // DesignTokens assumes a dark surface. Without pinning the scheme,
-            // a Mac in light mode hands every system-derived default (spinner
-            // tint, `Color.primary`, dividers, sheet controls) a near-black
-            // color over the dark background.
-            .preferredColorScheme(.dark)
+            // Both palettes are carried by the tokens themselves, so all
+            // this does is say which one the window asks for — and, for
+            // `system`, nil, which is the window following the Mac's own
+            // appearance and going on following it as that changes.
+            .preferredColorScheme(theme.colorScheme)
         }
         // The header row IS the title bar (WindowShellView reserves room for
         // the traffic lights and makes itself draggable) — hiding the system
@@ -97,7 +104,7 @@ struct NatApp: App {
 
         Settings {
             SettingsView(appModel: appModel)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(theme.colorScheme)
         }
     }
 

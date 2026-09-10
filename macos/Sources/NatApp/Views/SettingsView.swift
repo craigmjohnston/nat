@@ -13,6 +13,13 @@ import NatKit
 struct SettingsView: View {
     @Bindable var appModel: AppModel
 
+    /// The theme, which is this app's own preference rather than one of
+    /// nat's: it is written to `UserDefaults` the moment it is picked and
+    /// takes effect at once, so it is deliberately not part of the Save
+    /// button's diff and sits above the config form rather than inside it —
+    /// including while that form is still loading, or has failed to.
+    @AppStorage(Theme.storageKey) private var storedTheme = Theme.system.rawValue
+
     @State private var projectNames: [String: String] = [:]
     @State private var original: SettingsFields?
     @State private var edited = SettingsFields(
@@ -43,6 +50,10 @@ struct SettingsView: View {
 
             Divider()
 
+            themeField
+
+            Divider()
+
             Group {
                 if isLoading {
                     QuietLoadingView(label: "Loading configuration…")
@@ -66,11 +77,46 @@ struct SettingsView: View {
 
             footer
         }
-        .frame(width: 480, height: 560)
+        .frame(width: 480, height: 620)
         .background(DesignTokens.windowBg)
         .task {
             await load()
         }
+    }
+
+    /// The theme switcher: the three states as one segmented control,
+    /// since three options that are read at a glance are worth the row they
+    /// take rather than hiding two of them behind a menu.
+    private var themeField: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Theme")
+                .font(.system(size: Typo.subhead, weight: .semibold))
+                .foregroundStyle(DesignTokens.labelSecondary)
+            Text("Which palette the app draws with, the agent terminal included. System follows the Mac's own appearance. Applies at once.")
+                .font(.system(size: Typo.subhead, weight: .regular))
+                .foregroundStyle(DesignTokens.labelTertiary)
+            Picker("Theme", selection: themeBinding) {
+                ForEach(Theme.allCases) { theme in
+                    Text(theme.title).tag(theme)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(width: 280)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+    }
+
+    /// The stored string as the enum the picker selects over, so an
+    /// unwritten or unrecognised value arrives as `system` rather than as a
+    /// selection matching no option.
+    private var themeBinding: Binding<Theme> {
+        Binding(
+            get: { Theme(stored: storedTheme) },
+            set: { storedTheme = $0.rawValue }
+        )
     }
 
     private var form: some View {
