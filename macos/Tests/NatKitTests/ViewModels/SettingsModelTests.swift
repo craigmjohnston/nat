@@ -3,13 +3,13 @@ import XCTest
 
 final class SettingsModelTests: XCTestCase {
     private func fields(
-        split: String = "", poll: String = "",
+        poll: String = "",
         workshopModel: String = "", workshopEffort: String = "",
         sliceModel: String = "", sliceEffort: String = "",
         projects: [String: String] = [:]
     ) -> SettingsFields {
         SettingsFields(
-            agentSplitPercent: split, pollSeconds: poll,
+            pollSeconds: poll,
             workshopModel: workshopModel, workshopEffort: workshopEffort,
             sliceModel: sliceModel, sliceEffort: sliceEffort,
             projectWorkingDirs: projects
@@ -25,7 +25,6 @@ final class SettingsModelTests: XCTestCase {
 
         let fields = SettingsFields(from: doc)
 
-        XCTAssertEqual(fields.agentSplitPercent, "")
         XCTAssertEqual(fields.pollSeconds, "")
         XCTAssertEqual(fields.workshopModel, "")
         XCTAssertEqual(fields.sliceEffort, "")
@@ -41,7 +40,6 @@ final class SettingsModelTests: XCTestCase {
 
         let fields = SettingsFields(from: doc)
 
-        XCTAssertEqual(fields.agentSplitPercent, "70")
         XCTAssertEqual(fields.pollSeconds, "45")
         XCTAssertEqual(fields.workshopModel, "sonnet")
         XCTAssertEqual(fields.workshopEffort, "low")
@@ -51,33 +49,33 @@ final class SettingsModelTests: XCTestCase {
     }
 
     func testNoChangesProducesNoWrites() {
-        let original = fields(split: "65", poll: "30", projects: ["p1": "/repo"])
+        let original = fields(poll: "30", projects: ["p1": "/repo"])
         let changes = SettingsModel.changes(from: original, to: original)
         XCTAssertTrue(changes.isEmpty)
     }
 
-    func testChangedSplitPercentProducesOneWrite() {
-        let original = fields(split: "65")
-        let edited = fields(split: "70")
+    func testChangedPollSecondsProducesOneWrite() {
+        let original = fields(poll: "30")
+        let edited = fields(poll: "45")
 
         let changes = SettingsModel.changes(from: original, to: edited)
 
-        XCTAssertEqual(changes, [ConfigChange(key: "agent_split_percent", value: "70")])
+        XCTAssertEqual(changes, [ConfigChange(key: "poll_seconds", value: "45")])
     }
 
     func testClearingAFieldWritesEmptyString() {
-        let original = fields(split: "65")
-        let edited = fields(split: "")
+        let original = fields(poll: "30")
+        let edited = fields(poll: "")
 
         let changes = SettingsModel.changes(from: original, to: edited)
 
-        XCTAssertEqual(changes, [ConfigChange(key: "agent_split_percent", value: "")])
+        XCTAssertEqual(changes, [ConfigChange(key: "poll_seconds", value: "")])
     }
 
     func testEveryScalarFieldChangeProducesItsOwnKey() {
         let original = fields()
         let edited = fields(
-            split: "70", poll: "45",
+            poll: "45",
             workshopModel: "sonnet", workshopEffort: "low",
             sliceModel: "opus", sliceEffort: "high"
         )
@@ -85,7 +83,7 @@ final class SettingsModelTests: XCTestCase {
         let changes = SettingsModel.changes(from: original, to: edited)
 
         XCTAssertEqual(Set(changes.map(\.key)), Set([
-            "agent_split_percent", "poll_seconds",
+            "poll_seconds",
             "workshop_agent.model", "workshop_agent.effort",
             "slice_agent.model", "slice_agent.effort"
         ]))
@@ -126,23 +124,21 @@ final class SettingsModelTests: XCTestCase {
     }
 
     func testApplyingMovesTheBaselineForwardOnlyForSucceededKeys() {
-        let original = fields(split: "65", poll: "30", projects: ["p1": "/old"])
+        let original = fields(poll: "30", projects: ["p1": "/old", "p2": "/kept"])
         let succeeded = [
-            ConfigChange(key: "agent_split_percent", value: "70"),
             ConfigChange(key: "project.p1.working_dir", value: "/new")
         ]
 
         let result = SettingsModel.applying(succeeded, to: original)
 
-        XCTAssertEqual(result.agentSplitPercent, "70")
         XCTAssertEqual(result.pollSeconds, "30")
+        XCTAssertEqual(result.projectWorkingDirs["p2"], "/kept")
         XCTAssertEqual(result.projectWorkingDirs["p1"], "/new")
     }
 
     func testApplyingHandlesEveryScalarKey() {
         let original = fields()
         let all = [
-            ConfigChange(key: "agent_split_percent", value: "70"),
             ConfigChange(key: "poll_seconds", value: "45"),
             ConfigChange(key: "workshop_agent.model", value: "sonnet"),
             ConfigChange(key: "workshop_agent.effort", value: "low"),
@@ -152,7 +148,6 @@ final class SettingsModelTests: XCTestCase {
 
         let result = SettingsModel.applying(all, to: original)
 
-        XCTAssertEqual(result.agentSplitPercent, "70")
         XCTAssertEqual(result.pollSeconds, "45")
         XCTAssertEqual(result.workshopModel, "sonnet")
         XCTAssertEqual(result.workshopEffort, "low")
@@ -160,8 +155,21 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertEqual(result.sliceEffort, "high")
     }
 
+    /// A key the form no longer writes — `agent_split_percent`, which stays
+    /// in nat's config for the TUI — is neither a scalar field nor a
+    /// project's working directory, and moves nothing.
+    func testApplyingIgnoresAKeyTheFormDoesNotHold() {
+        let original = fields(poll: "30", projects: ["p1": "/repo"])
+
+        let result = SettingsModel.applying(
+            [ConfigChange(key: "agent_split_percent", value: "70")], to: original
+        )
+
+        XCTAssertEqual(result, original)
+    }
+
     func testApplyingWithNoChangesReturnsFieldsUnchanged() {
-        let original = fields(split: "65", projects: ["p1": "/repo"])
+        let original = fields(poll: "30", projects: ["p1": "/repo"])
         let result = SettingsModel.applying([], to: original)
         XCTAssertEqual(result, original)
     }
