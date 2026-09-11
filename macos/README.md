@@ -37,7 +37,14 @@ A native macOS application for the notion-agent-tracker project, built as a pure
   drawn before anyone reads them should still read as this app.
 - The agent terminal is the one surface a dynamic colour cannot reach —
   SwiftTerm resolves plain `NSColor`s once — so `NatApp/Views/TerminalTheme.swift`
-  pushes the palette onto it whenever the appearance changes.
+  pushes the palette onto it whenever the appearance changes. It pushes the
+  type too, from `TerminalType` in `DesignTokens.swift`: the monospaced system
+  font at `Typo.code`, the face the diff pane draws a line of code in, and
+  macOS font smoothing off. Both are defaults SwiftTerm would otherwise pick
+  for itself, and the smoothing is why the pane read as blurred — it dilates
+  every stroke by about a fifth of its ink at any scale, which on a dark
+  ground is a halo rather than weight, and nothing else in the window is
+  drawn with it.
 
 ## Building and Running
 
