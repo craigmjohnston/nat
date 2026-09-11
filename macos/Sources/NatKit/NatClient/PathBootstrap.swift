@@ -92,12 +92,14 @@ public enum PathBootstrap {
     }
 
     /// The login shell's environment listing, or nil for a shell that could
-    /// not run, said nothing, or was still going after two seconds — a
-    /// profile that hangs must not hold the whole app's launch. The read is
+    /// not run, said nothing, or was still going when the timeout ran out —
+    /// two seconds at launch, since a profile that hangs must not hold the
+    /// whole app's launch; the background retry waits longer, having
+    /// nothing to hold. The read is
     /// waited on rather than the exit: end of output is the child closing
     /// its pipe, which its exit does, and a listing bigger than the pipe
     /// (64KB) never deadlocks against a wait for a child blocked writing it.
-    public static func loginShellEnvListing(shell: String) -> String? {
+    public static func loginShellEnvListing(shell: String, timeout: TimeInterval = 2) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: shell)
         process.arguments = ["-l", "-c", "/usr/bin/env"]
@@ -114,11 +116,24 @@ public enum PathBootstrap {
             box.data = stdout.fileHandleForReading.readDataToEndOfFile()
             eof.signal()
         }
-        if eof.wait(timeout: .now() + 2) == .timedOut {
+        if eof.wait(timeout: .now() + timeout) == .timedOut {
             process.terminate()
             return nil
         }
         return String(data: box.data, encoding: .utf8)
+    }
+
+    /// The retry's default home: a global queue, the work boxed the way
+    /// `loginShellEnvListing` boxes its read, since it is made of injected
+    /// closures the compiler cannot see are safe to send. Public only
+    /// because a public default argument may name nothing less so.
+    public static func runInBackground(_ work: @escaping () -> Void) {
+        final class Box: @unchecked Sendable {
+            let work: () -> Void
+            init(_ work: @escaping () -> Void) { self.work = work }
+        }
+        let box = Box(work)
+        DispatchQueue.global(qos: .utility).async { box.work() }
     }
 
     /// The once-at-startup entry point: compose the real PATH and set it,
@@ -127,18 +142,50 @@ public enum PathBootstrap {
     /// injectable and the pieces are tested; this is only their order. A
     /// composition with nothing to say sets nothing, which leaves the
     /// environment exactly as launchd handed it over.
+    ///
+    /// A shell that missed its two-second window gets one patient second
+    /// attempt, off the launch path: children inherit the live environ at
+    /// spawn time, so a retry that lands re-composes and re-applies for
+    /// everything spawned after it — the floor covers the seconds between.
+    /// One attempt and not a loop, because the miss this recovers is
+    /// launch-time load, and a shell that cannot answer an unhurried
+    /// fifteen seconds is not one a third try would hear from. Only the
+    /// shell's silence retries: with the listing in hand the first
+    /// composition already said everything there is to say.
     public static func bootstrap(
         bundledDir: String? = bundledNatDir(),
         shell: String? = environmentValue("SHELL"),
         current: String? = environmentValue("PATH"),
         fallbacks: [String] = wellKnownDirs(),
-        loginListing: (String) -> String? = loginShellEnvListing,
-        apply: (String) -> Void = { setenv("PATH", $0, 1) }
+        loginListing: (String) -> String? = { loginShellEnvListing(shell: $0) },
+        retryListing: @escaping (String) -> String? = { loginShellEnvListing(shell: $0, timeout: 15) },
+        inBackground: (@escaping () -> Void) -> Void = runInBackground,
+        apply: @escaping (String) -> Void = { setenv("PATH", $0, 1) }
     ) {
-        let login = shell.flatMap(loginListing).flatMap(loginPath(fromEnvListing:))
-        guard let path = composed(
+        let listing = shell.flatMap(loginListing)
+        let login = listing.flatMap(loginPath(fromEnvListing:))
+        if let path = composed(
             bundledDir: bundledDir, loginPath: login, current: current, fallbacks: fallbacks
-        ) else { return }
-        apply(path)
+        ) {
+            apply(path)
+        }
+        // A listing that arrived without a PATH line is the shell's answer,
+        // and asking again would only hear it again — only no listing at
+        // all is worth the second ask.
+        guard listing == nil, let shell else { return }
+        inBackground {
+            guard
+                let late = retryListing(shell).flatMap(loginPath(fromEnvListing:)),
+                // The original `current`, not a re-read: the first apply
+                // wrote the composition into the environment, and composing
+                // over one's own output would only re-say it — the sources
+                // are the same either way, and this stays one deduplication
+                // over them in the documented order.
+                let path = composed(
+                    bundledDir: bundledDir, loginPath: late, current: current, fallbacks: fallbacks
+                )
+            else { return }
+            apply(path)
+        }
     }
 }

@@ -151,6 +151,7 @@ final class PathBootstrapTests: XCTestCase {
             current: "/usr/bin",
             fallbacks: [],
             loginListing: { _ in XCTFail("no shell to ask"); return nil },
+            inBackground: { _ in XCTFail("no shell to retry either") },
             apply: { applied = $0 })
         XCTAssertEqual(applied, "/bundle:/usr/bin")
     }
@@ -158,16 +159,90 @@ final class PathBootstrapTests: XCTestCase {
     func testBootstrapWithASilentShellStillHasTheFloor() {
         // The regression this floor exists for: a login shell that timed out
         // at launch used to leave launchd's bare PATH standing for the whole
-        // process lifetime, and every nat it spawned unable to find ntn.
-        var applied: String?
+        // process lifetime, and every nat it spawned unable to find ntn. The
+        // retry is scheduled but deliberately left unrun here — the floor
+        // must stand before it, not wait for it.
+        var applied: [String] = []
+        var scheduled = 0
         PathBootstrap.bootstrap(
             bundledDir: nil,
             shell: "/bin/zsh",
             current: "/usr/bin:/bin",
             fallbacks: ["/opt/homebrew/bin", "/Users/x/.local/bin"],
             loginListing: { _ in nil },
-            apply: { applied = $0 })
-        XCTAssertEqual(applied, "/usr/bin:/bin:/opt/homebrew/bin:/Users/x/.local/bin")
+            retryListing: { _ in nil },
+            inBackground: { _ in scheduled += 1 },
+            apply: { applied.append($0) })
+        XCTAssertEqual(applied, ["/usr/bin:/bin:/opt/homebrew/bin:/Users/x/.local/bin"])
+        XCTAssertEqual(scheduled, 1)
+    }
+
+    func testBootstrapRetriesASilentShellAndAppliesTheLateAnswer() {
+        var applied: [String] = []
+        var work: (() -> Void)?
+        PathBootstrap.bootstrap(
+            bundledDir: "/bundle",
+            shell: "/bin/zsh",
+            current: "/usr/bin",
+            fallbacks: ["/opt/homebrew/bin"],
+            loginListing: { _ in nil },
+            retryListing: { shell in
+                XCTAssertEqual(shell, "/bin/zsh")
+                return "PATH=/opt/homebrew/bin:/Users/x/.rvm/bin\n"
+            },
+            inBackground: { work = $0 },
+            apply: { applied.append($0) })
+        // The floor stands the moment bootstrap returns; the late answer
+        // re-composes in the documented order — bundle, login, current,
+        // fallbacks — with the fallback the shell also named said once.
+        XCTAssertEqual(applied, ["/bundle:/usr/bin:/opt/homebrew/bin"])
+        work?()
+        XCTAssertEqual(applied, [
+            "/bundle:/usr/bin:/opt/homebrew/bin",
+            "/bundle:/opt/homebrew/bin:/Users/x/.rvm/bin:/usr/bin",
+        ])
+    }
+
+    func testBootstrapRetryThatHearsNothingAppliesNothingMore() {
+        var applyCount = 0
+        var work: (() -> Void)?
+        PathBootstrap.bootstrap(
+            bundledDir: nil,
+            shell: "/bin/zsh",
+            current: "/usr/bin",
+            fallbacks: [],
+            loginListing: { _ in nil },
+            retryListing: { _ in nil },
+            inBackground: { work = $0 },
+            apply: { _ in applyCount += 1 })
+        XCTAssertEqual(applyCount, 1)
+        work?()
+        XCTAssertEqual(applyCount, 1)
+    }
+
+    func testBootstrapWithAnAnsweredShellSchedulesNoRetry() {
+        PathBootstrap.bootstrap(
+            bundledDir: nil,
+            shell: "/bin/zsh",
+            current: "/usr/bin",
+            fallbacks: [],
+            loginListing: { _ in "PATH=/opt/homebrew/bin\n" },
+            retryListing: { _ in XCTFail("the shell answered"); return nil },
+            inBackground: { _ in XCTFail("nothing to schedule") },
+            apply: { _ in })
+    }
+
+    func testBootstrapDoesNotRetryAListingWithNoPATHLine() {
+        // A listing without a PATH line is still the shell's answer, and
+        // asking again would only hear it again.
+        PathBootstrap.bootstrap(
+            bundledDir: nil,
+            shell: "/bin/zsh",
+            current: "/usr/bin",
+            fallbacks: [],
+            loginListing: { _ in "HOME=/Users/x\n" },
+            inBackground: { _ in XCTFail("the shell answered, PATH line or not") },
+            apply: { _ in })
     }
 
     func testBootstrapWithNothingToSaySetsNothing() {
@@ -189,6 +264,18 @@ final class PathBootstrapTests: XCTestCase {
 
     func testLoginShellEnvListingIsNilForAShellThatCannotRun() {
         XCTAssertNil(PathBootstrap.loginShellEnvListing(shell: "/nonexistent/shell"))
+    }
+
+    func testLoginShellEnvListingIsNilForAShellStillGoingAtTheTimeout() throws {
+        // A stand-in shell that sleeps past the cap: the wait gives up and
+        // the listing is nil rather than late.
+        let script = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nat-slow-shell-\(UUID().uuidString).sh")
+        try "#!/bin/sh\nsleep 5\n".write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755], ofItemAtPath: script.path)
+        defer { try? FileManager.default.removeItem(at: script) }
+        XCTAssertNil(PathBootstrap.loginShellEnvListing(shell: script.path, timeout: 0.2))
     }
 
     // MARK: - environmentValue
