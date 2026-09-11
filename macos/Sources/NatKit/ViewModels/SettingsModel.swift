@@ -18,7 +18,6 @@ public struct ConfigChange: Equatable, Sendable {
 /// back to empty is "unset" and not a zero to render, mirroring the TUI
 /// form's own `Settings` (`internal/tui/settings.go`).
 public struct SettingsFields: Equatable, Sendable {
-    public var agentSplitPercent: String
     public var pollSeconds: String
     public var workshopModel: String
     public var workshopEffort: String
@@ -32,7 +31,6 @@ public struct SettingsFields: Equatable, Sendable {
     public var projectWorkingDirs: [String: String]
 
     public init(
-        agentSplitPercent: String,
         pollSeconds: String,
         workshopModel: String,
         workshopEffort: String,
@@ -40,7 +38,6 @@ public struct SettingsFields: Equatable, Sendable {
         sliceEffort: String,
         projectWorkingDirs: [String: String]
     ) {
-        self.agentSplitPercent = agentSplitPercent
         self.pollSeconds = pollSeconds
         self.workshopModel = workshopModel
         self.workshopEffort = workshopEffort
@@ -53,7 +50,6 @@ public struct SettingsFields: Equatable, Sendable {
     /// comes back empty rather than as "0", the same rule `optionalNumber`
     /// applies on the Go side.
     public init(from config: ConfigDoc) {
-        agentSplitPercent = config.agentSplitPercent == 0 ? "" : String(config.agentSplitPercent)
         pollSeconds = config.pollSeconds == 0 ? "" : String(config.pollSeconds)
         workshopModel = config.workshopAgent.model ?? ""
         workshopEffort = config.workshopAgent.effort ?? ""
@@ -68,7 +64,6 @@ public struct SettingsFields: Equatable, Sendable {
 /// `config-set` writes a Save button should make. The form view stays thin —
 /// it holds a `SettingsFields` for editing and calls this once, on Save.
 public enum SettingsModel {
-    private static let keySplitPercent = "agent_split_percent"
     private static let keyPollSeconds = "poll_seconds"
     private static let keyWorkshopModel = "workshop_agent.model"
     private static let keyWorkshopEffort = "workshop_agent.effort"
@@ -93,7 +88,6 @@ public enum SettingsModel {
             changes.append(ConfigChange(key: key, value: newValue))
         }
 
-        addIfChanged(keySplitPercent, original.agentSplitPercent, edited.agentSplitPercent)
         addIfChanged(keyPollSeconds, original.pollSeconds, edited.pollSeconds)
         addIfChanged(keyWorkshopModel, original.workshopModel, edited.workshopModel)
         addIfChanged(keyWorkshopEffort, original.workshopEffort, edited.workshopEffort)
@@ -117,7 +111,6 @@ public enum SettingsModel {
         var result = fields
         for change in changes {
             switch change.key {
-            case keySplitPercent: result.agentSplitPercent = change.value
             case keyPollSeconds: result.pollSeconds = change.value
             case keyWorkshopModel: result.workshopModel = change.value
             case keyWorkshopEffort: result.workshopEffort = change.value

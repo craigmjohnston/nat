@@ -34,7 +34,7 @@ struct SettingsView: View {
     @State private var projectNames: [String: String] = [:]
     @State private var original: SettingsFields?
     @State private var edited = SettingsFields(
-        agentSplitPercent: "", pollSeconds: "",
+        pollSeconds: "",
         workshopModel: "", workshopEffort: "",
         sliceModel: "", sliceEffort: "",
         projectWorkingDirs: [:]
@@ -84,14 +84,6 @@ struct SettingsView: View {
             }
 
             configSection("Board") {
-                settingRow(
-                    title: "Agent split",
-                    description: "Percent of the window an agent's terminal takes beside the board; empty is 65. Applies at once.",
-                    key: SettingsKey.agentSplitPercent
-                ) {
-                    commitField($edited.agentSplitPercent, width: 80)
-                }
-
                 settingRow(
                     title: "Poll interval",
                     description: "Seconds between background refetches of the plan; empty is 30. Applies from the next poll.",
@@ -360,7 +352,6 @@ struct SettingsView: View {
 /// here rather than in the rows so a row and the error shown under it cannot
 /// name the key differently.
 private enum SettingsKey {
-    static let agentSplitPercent = "agent_split_percent"
     static let pollSeconds = "poll_seconds"
     static let workshopModel = "workshop_agent.model"
     static let workshopEffort = "workshop_agent.effort"
