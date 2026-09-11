@@ -75,7 +75,7 @@ struct PRTabView: View {
         VStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 24, weight: .regular))
-                .foregroundStyle(DesignTokens.systemRed)
+                .foregroundStyle(DesignTokens.systemRedInk(on: .window))
 
             Text("Failed to read the pull request")
                 .font(.system(size: Typo.body, weight: .regular))
@@ -262,7 +262,7 @@ struct PRTabView: View {
                 HStack {
                     Text("Showing the last reading — \(staleMessage)")
                         .font(.system(size: Typo.subhead, weight: .regular))
-                        .foregroundStyle(DesignTokens.systemOrange)
+                        .foregroundStyle(DesignTokens.systemOrangeInk(on: .card))
                         .lineLimit(2)
                     Spacer()
                 }
@@ -274,7 +274,7 @@ struct PRTabView: View {
                 HStack {
                     Text(mergeError)
                         .font(.system(size: Typo.subhead, weight: .regular))
-                        .foregroundStyle(DesignTokens.systemRed)
+                        .foregroundStyle(DesignTokens.systemRedInk(on: .card))
                         .lineLimit(2)
                     Spacer()
                 }
@@ -476,7 +476,7 @@ struct PRConversationEntryView: View {
         HStack(alignment: .top, spacing: Self.avatarGap) {
             Text(authorInitials(entry.author))
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(DesignTokens.accent)
+                .foregroundStyle(DesignTokens.accentInk(on: .window))
                 .frame(width: Self.avatarSize, height: Self.avatarSize)
                 .background(DesignTokens.avatarWash(on: .window))
                 .clipShape(Circle())
@@ -599,7 +599,7 @@ struct PRComposerView: View {
             if let error {
                 Text(error)
                     .font(.system(size: Typo.caption, weight: .regular))
-                    .foregroundStyle(DesignTokens.systemRed)
+                    .foregroundStyle(DesignTokens.systemRedInk(on: .field))
                     .lineLimit(2)
             }
         }

@@ -126,7 +126,7 @@ struct BriefTabView: View {
                                 VStack(spacing: 8) {
                                     Image(systemName: "exclamationmark.triangle")
                                         .font(.system(size: 24, weight: .regular))
-                                        .foregroundStyle(DesignTokens.systemRed)
+                                        .foregroundStyle(DesignTokens.systemRedInk(on: .card))
 
                                     Text("Failed to load")
                                         .font(.system(size: Typo.body, weight: .regular))
@@ -265,11 +265,11 @@ struct BriefTabView: View {
                 if let error = launchError {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.circle.fill")
-                            .foregroundStyle(DesignTokens.systemRed)
+                            .foregroundStyle(DesignTokens.systemRedInk(on: .band))
                             .font(.system(size: 12, weight: .medium))
                         Text(error)
                             .font(.system(size: Typo.subhead, weight: .regular))
-                            .foregroundStyle(DesignTokens.systemRed)
+                            .foregroundStyle(DesignTokens.systemRedInk(on: .band))
                             .lineLimit(2)
                         Spacer()
                     }
@@ -279,11 +279,11 @@ struct BriefTabView: View {
                 } else if let warning = launchWarning {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(DesignTokens.systemYellow)
+                            .foregroundStyle(DesignTokens.systemYellowInk(on: .band))
                             .font(.system(size: 12, weight: .medium))
                         Text(warning)
                             .font(.system(size: Typo.subhead, weight: .regular))
-                            .foregroundStyle(DesignTokens.systemYellow)
+                            .foregroundStyle(DesignTokens.systemYellowInk(on: .band))
                             .lineLimit(2)
                         Spacer()
                     }
@@ -338,7 +338,7 @@ struct BriefTabView: View {
             if let briefSaveError {
                 Text(briefSaveError)
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.systemRed)
+                    .foregroundStyle(DesignTokens.systemRedInk(on: .field))
             }
 
             HStack(spacing: 8) {
@@ -624,7 +624,7 @@ struct BriefTabView: View {
                             if entry.done {
                                 Image(systemName: "checkmark")
                                     .font(.system(size: 8, weight: .bold))
-                                    .foregroundStyle(DesignTokens.systemGreen)
+                                    .foregroundStyle(DesignTokens.systemGreenInk(on: .control))
                             }
                             Text(entry.name)
                                 .font(.system(size: Typo.caption, weight: .regular))
@@ -640,7 +640,7 @@ struct BriefTabView: View {
                     if detail.blocked {
                         Text("Blocked until these finish")
                             .font(.system(size: Typo.caption, weight: .regular))
-                            .foregroundStyle(DesignTokens.systemYellow)
+                            .foregroundStyle(DesignTokens.systemYellowInk(on: .window))
                     }
                 }
             }

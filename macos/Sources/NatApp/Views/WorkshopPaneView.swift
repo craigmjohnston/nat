@@ -120,7 +120,7 @@ struct WorkshopPaneView: View {
             if let error = appModel.workshopLaunchError {
                 Text(error)
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.systemRed)
+                    .foregroundStyle(DesignTokens.systemRedInk(on: .window))
             }
 
             HStack {

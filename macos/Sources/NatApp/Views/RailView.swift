@@ -132,7 +132,7 @@ struct RailView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Label("The plan could not be loaded", systemImage: "exclamationmark.triangle")
                                 .font(.system(size: Typo.body, weight: .semibold))
-                                .foregroundStyle(DesignTokens.systemYellow)
+                                .foregroundStyle(DesignTokens.systemYellowInk(on: .card))
                             Text(message)
                                 .font(.system(size: Typo.caption))
                                 .foregroundStyle(DesignTokens.labelSecondary)
@@ -152,7 +152,7 @@ struct RailView: View {
                             Text("Refresh failed — showing the last plan")
                                 .font(.system(size: Typo.caption))
                         }
-                        .foregroundStyle(DesignTokens.systemYellow)
+                        .foregroundStyle(DesignTokens.systemYellowInk(on: .window))
                         .padding(.horizontal, RailSlot.leading)
                         .padding(.bottom, 6)
                         .help(message)
@@ -614,7 +614,7 @@ struct RailView: View {
             if inDone && folder.isComplete {
                 Image(systemName: "checkmark")
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(DesignTokens.systemGreen)
+                    .foregroundStyle(DesignTokens.systemGreenInk(on: .window))
             }
 
             Text("\(folder.done)/\(folder.total)")

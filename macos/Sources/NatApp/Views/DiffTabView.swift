@@ -105,7 +105,7 @@ struct DiffTabView: View {
         VStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 24, weight: .regular))
-                .foregroundStyle(DesignTokens.systemRed)
+                .foregroundStyle(DesignTokens.systemRedInk(on: .window))
 
             Text("Failed to read the diff")
                 .font(.system(size: Typo.body, weight: .regular))

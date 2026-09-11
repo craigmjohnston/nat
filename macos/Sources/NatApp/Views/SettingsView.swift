@@ -166,7 +166,7 @@ struct SettingsView: View {
                 SettingsLoadingRow()
             } else if let loadError {
                 Label(loadError, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(DesignTokens.systemRed)
+                    .foregroundStyle(DesignTokens.systemRedInk(on: .window))
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 content()
@@ -208,7 +208,7 @@ struct SettingsView: View {
                 if let key, let error = fieldErrors[key] {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(.footnote)
-                        .foregroundStyle(DesignTokens.systemRed)
+                        .foregroundStyle(DesignTokens.systemRedInk(on: .window))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }

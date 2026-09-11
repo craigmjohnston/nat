@@ -36,15 +36,15 @@ public struct PRStateChip: Equatable, Sendable {
 /// without knowing what that is.
 public func prStateChip(state: String, isDraft: Bool, on ground: Ground) -> PRStateChip {
     if state == PRLifecycleState.merged {
-        return PRStateChip(label: "merged", tint: DesignTokens.accent, wash: DesignTokens.accentWash(on: ground))
+        return PRStateChip(label: "merged", tint: DesignTokens.chipInk(.accent, on: ground), wash: DesignTokens.accentWash(on: ground))
     }
     if state == PRLifecycleState.closed {
-        return PRStateChip(label: "closed", tint: DesignTokens.systemRed, wash: DesignTokens.systemRedWash(on: ground))
+        return PRStateChip(label: "closed", tint: DesignTokens.chipInk(.red, on: ground), wash: DesignTokens.systemRedWash(on: ground))
     }
     if isDraft {
-        return PRStateChip(label: "draft", tint: DesignTokens.labelSecondary, wash: DesignTokens.labelSecondaryWash(on: ground))
+        return PRStateChip(label: "draft", tint: DesignTokens.chipInk(.labelSecondary, on: ground), wash: DesignTokens.labelSecondaryWash(on: ground))
     }
-    return PRStateChip(label: "open", tint: DesignTokens.systemGreen, wash: DesignTokens.systemGreenWash(on: ground))
+    return PRStateChip(label: "open", tint: DesignTokens.chipInk(.green, on: ground), wash: DesignTokens.systemGreenWash(on: ground))
 }
 
 // MARK: - Check / verdict outcome

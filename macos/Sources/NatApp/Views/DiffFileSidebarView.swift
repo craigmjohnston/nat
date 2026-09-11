@@ -121,8 +121,8 @@ private enum ChangeBadge {
 
     var color: Color {
         switch self {
-        case .added: return DesignTokens.systemGreen
-        case .modified, .renamed: return DesignTokens.systemOrange
+        case .added: return DesignTokens.chipInk(.green, on: .window)
+        case .modified, .renamed: return DesignTokens.chipInk(.orange, on: .window)
         }
     }
 
@@ -150,7 +150,7 @@ struct DiffFileSidebarRow: View {
             if isViewed {
                 Image(systemName: "checkmark")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(DesignTokens.systemGreen)
+                    .foregroundStyle(DesignTokens.systemGreenInk(on: .window))
                     .frame(width: 13)
             } else {
                 Color.clear.frame(width: 13)
@@ -174,7 +174,7 @@ struct DiffFileSidebarRow: View {
                         .font(.system(size: Typo.caption, weight: .regular))
                         .monospacedDigit()
                 }
-                .foregroundStyle(DesignTokens.accent)
+                .foregroundStyle(DesignTokens.accentInk(on: .window))
             }
 
             Text(badge.letter)
@@ -188,13 +188,13 @@ struct DiffFileSidebarRow: View {
                 Text("+\(file.adds)")
                     .font(.system(size: Typo.caption, weight: .regular))
                     .monospacedDigit()
-                    .foregroundStyle(DesignTokens.systemGreen)
+                    .foregroundStyle(DesignTokens.systemGreenInk(on: .window))
             }
             if file.dels > 0 {
                 Text("\u{2212}\(file.dels)")
                     .font(.system(size: Typo.caption, weight: .regular))
                     .monospacedDigit()
-                    .foregroundStyle(DesignTokens.systemRed)
+                    .foregroundStyle(DesignTokens.systemRedInk(on: .window))
             }
         }
         .padding(.horizontal, 8)

@@ -154,9 +154,9 @@ struct PRSidebarView: View {
             if let additions = pr.additions, let deletions = pr.deletions {
                 HStack(spacing: 4) {
                     Text("+\(additions)")
-                        .foregroundStyle(DesignTokens.systemGreen)
+                        .foregroundStyle(DesignTokens.systemGreenInk(on: .window))
                     Text("\u{2212}\(deletions)")
-                        .foregroundStyle(DesignTokens.systemRed)
+                        .foregroundStyle(DesignTokens.systemRedInk(on: .window))
                     if let changedFiles = pr.changedFiles {
                         Text("· \(changedFiles) \(plural(changedFiles, "file", "files"))")
                             .foregroundStyle(DesignTokens.labelSecondary)

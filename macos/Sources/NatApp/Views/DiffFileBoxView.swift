@@ -111,7 +111,7 @@ struct DiffFileBoxView: View {
             if isViewed {
                 Image(systemName: "checkmark")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(DesignTokens.systemGreen)
+                    .foregroundStyle(DesignTokens.systemGreenInk(on: .rowAlt))
             }
 
             Text(file.path)
@@ -135,7 +135,7 @@ struct DiffFileBoxView: View {
                         .font(.system(size: Typo.subhead, weight: .regular))
                         .monospacedDigit()
                 }
-                .foregroundStyle(DesignTokens.accent)
+                .foregroundStyle(DesignTokens.accentInk(on: .rowAlt))
             }
 
             Spacer()
@@ -144,13 +144,13 @@ struct DiffFileBoxView: View {
                 Text("+\(file.adds)")
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .monospacedDigit()
-                    .foregroundStyle(DesignTokens.systemGreen)
+                    .foregroundStyle(DesignTokens.systemGreenInk(on: .rowAlt))
             }
             if file.dels > 0 {
                 Text("\u{2212}\(file.dels)")
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .monospacedDigit()
-                    .foregroundStyle(DesignTokens.systemRed)
+                    .foregroundStyle(DesignTokens.systemRedInk(on: .rowAlt))
             }
 
             Button(action: onToggleViewed) {
@@ -235,7 +235,7 @@ struct DiffRowView: View {
         HStack(spacing: 0) {
             Text("···")
                 .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
-                .foregroundStyle(DesignTokens.accent)
+                .foregroundStyle(DesignTokens.accentInk(on: .card))
                 .frame(width: gutterWidth)
 
             Text(row.text)
@@ -284,7 +284,7 @@ struct DiffRowView: View {
                 Button(action: onComment) {
                     Image(systemName: "plus.bubble")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(DesignTokens.accent)
+                        .foregroundStyle(DesignTokens.accentInk(on: .card))
                 }
                 .buttonStyle(.plain)
                 .padding(.trailing, 8)
@@ -370,7 +370,7 @@ struct PendingCommentCardView: View {
             HStack(spacing: 8) {
                 Text(authorInitials)
                     .font(.system(size: Typo.caption, weight: .semibold))
-                    .foregroundStyle(DesignTokens.accent)
+                    .foregroundStyle(DesignTokens.accentInk(on: .card))
                     .frame(width: 20, height: 20)
                     .background(DesignTokens.avatarWash(on: .card))
                     .clipShape(Circle())
@@ -381,7 +381,7 @@ struct PendingCommentCardView: View {
 
                 Text("Pending")
                     .font(.system(size: Typo.caption, weight: .semibold))
-                    .foregroundStyle(DesignTokens.systemYellow)
+                    .foregroundStyle(DesignTokens.systemYellowInk(on: .card))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(DesignTokens.systemYellowWash(on: .card))

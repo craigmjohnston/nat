@@ -251,6 +251,62 @@ public enum DesignTokens {
         derived { $0.wash(.comment, of: $0.accent, on: ground) }
     }
 
+    // MARK: - A hue written on a ground
+
+    // A hue used as a *fill* is the tint itself — the tokens below — since a
+    // filled dot or a filled button is the colour and has nothing written on
+    // it. A hue used as *ink* has to survive the ground it is written on, and
+    // that is what these are: the theme's own colour, shaded only as far as
+    // it must be. See `Palette.ink(of:on:clearing:)` for why this exists and
+    // why mixing toward the theme's text was the wrong answer.
+
+    public static func accentInk(on ground: Ground) -> Color {
+        derived { $0.ink(of: $0.accent, on: ground.surface(in: $0)) }
+    }
+    public static func systemRedInk(on ground: Ground) -> Color {
+        derived { $0.ink(of: $0.systemRed, on: ground.surface(in: $0)) }
+    }
+    public static func systemGreenInk(on ground: Ground) -> Color {
+        derived { $0.ink(of: $0.systemGreen, on: ground.surface(in: $0)) }
+    }
+    public static func systemYellowInk(on ground: Ground) -> Color {
+        derived { $0.ink(of: $0.systemYellow, on: ground.surface(in: $0)) }
+    }
+    public static func systemOrangeInk(on ground: Ground) -> Color {
+        derived { $0.ink(of: $0.systemOrange, on: ground.surface(in: $0)) }
+    }
+    public static func systemBlueInk(on ground: Ground) -> Color {
+        derived { $0.ink(of: $0.systemBlue, on: ground.surface(in: $0)) }
+    }
+    public static func systemTealInk(on ground: Ground) -> Color {
+        derived { $0.ink(of: $0.systemTeal, on: ground.surface(in: $0)) }
+    }
+    public static func systemPinkInk(on ground: Ground) -> Color {
+        derived { $0.ink(of: $0.systemPink, on: ground.surface(in: $0)) }
+    }
+
+    /// The word inside a chip, over the chip's own capsule. Which hue is
+    /// named rather than passed as a key path, since a `KeyPath` is not
+    /// `Sendable` and this closure outlives the call.
+    public enum ChipTint: Sendable {
+        case accent, red, green, yellow, orange, labelSecondary
+
+        func tint(in palette: Palette) -> Tint {
+            switch self {
+            case .accent: palette.accent
+            case .red: palette.systemRed
+            case .green: palette.systemGreen
+            case .yellow: palette.systemYellow
+            case .orange: palette.systemOrange
+            case .labelSecondary: Tint(palette.labelSecondary.hex)
+            }
+        }
+    }
+
+    public static func chipInk(_ tint: ChipTint, on ground: Ground) -> Color {
+        derived { $0.chipInk(of: tint.tint(in: $0), on: ground) }
+    }
+
     // MARK: - System Color Overrides
 
     /// Orange system color.

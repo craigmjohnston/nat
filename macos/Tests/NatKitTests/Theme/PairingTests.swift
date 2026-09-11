@@ -99,43 +99,14 @@ final class PairingTests: XCTestCase {
         }
     }
 
-    /// The chips Latte cannot currently draw legibly, and the clearest
-    /// finding this whole file produced.
-    ///
-    /// A chip is one hue drawn twice: the word at full strength and the
-    /// capsule behind it at `chipShare`. That works in Mocha, whose accents
-    /// are pastels on a dark ground — every chip there clears the bar. In
-    /// Latte the accents are dark saturated colours and the capsule is
-    /// overwhelmingly the light ground they are mixed into, so the word and
-    /// the capsule land at almost the same luminance: the yellow chip's word
-    /// on its own capsule is 1.57:1 on a card. Green, yellow and orange fail
-    /// on every ground; accent and red fail on the raised ones.
-    ///
-    /// It is structural rather than a number to nudge — a light theme cannot
-    /// draw a mid-luminance hue on a wash of itself — so the cure is a design
-    /// decision this list is deliberately holding open: the word could take
-    /// `text` rather than the hue, the capsule could be filled at full
-    /// strength with `accentText` on it, or the word could be a `shade()` of
-    /// the hue, which is what Catppuccin's own VS Code port derives with.
-    private let knownChipShortfalls: Set<String> = [
-        "latte accent card", "latte accent rowAlt", "latte accent control", "latte accent hover",
-        "latte red card", "latte red rowAlt", "latte red control", "latte red hover",
-        "latte green window", "latte green card", "latte green rowAlt", "latte green control",
-        "latte green field", "latte green band", "latte green header", "latte green terminal",
-        "latte green hover",
-        "latte yellow window", "latte yellow card", "latte yellow rowAlt", "latte yellow control",
-        "latte yellow field", "latte yellow band", "latte yellow header", "latte yellow terminal",
-        "latte yellow hover",
-        "latte orange window", "latte orange card", "latte orange rowAlt", "latte orange control",
-        "latte orange field", "latte orange band", "latte orange header", "latte orange terminal",
-        "latte orange hover",
-    ]
-
     /// A wash is a ground, so what is written on it has to survive it: a chip
-    /// draws its own tint as the word inside its capsule, and the capsule is
-    /// that tint mixed into the ground behind it. The bar is 3:1 rather than
-    /// AA's 4.5 for text this size, which is already generous — every Mocha
-    /// chip clears it and no Latte one outside the list above does.
+    /// draws its hue as the word inside its capsule, and the capsule is that
+    /// hue mixed into the ground behind it.
+    ///
+    /// Drawn as the published hue this failed on 35 pairs, every one of them
+    /// Latte, worst at 1.57:1 — its yellow chip's word was invisible on its
+    /// own capsule. `Palette.chipInk(of:on:)` is the cure and the bar here is
+    /// full AA rather than the 3:1 this settled for while the debt stood.
     func testAChipsWordIsReadableOnItsOwnCapsule() {
         for (theme, palette) in palettes {
             let tints: [(String, Tint)] = [
@@ -146,16 +117,71 @@ final class PairingTests: XCTestCase {
             for ground in Ground.allCases {
                 for (name, tint) in tints {
                     let capsule = palette.wash(.chip, of: tint, on: ground)
-                    let ratio = contrast(tint.hex, capsule.hex)
-                    let pair = "\(theme) \(name) \(ground.rawValue)"
-                    if knownChipShortfalls.contains(pair) {
-                        XCTAssertLessThan(ratio, 3.0, "\(pair): fixed — take it out of knownChipShortfalls")
-                    } else {
-                        XCTAssertGreaterThanOrEqual(
-                            ratio, 3.0,
-                            "\(pair): a chip's word should be readable on its own capsule"
-                        )
+                    let word = palette.chipInk(of: tint, on: ground)
+                    XCTAssertGreaterThanOrEqual(
+                        contrast(word.hex, capsule.hex), 4.5,
+                        "\(theme): the \(name) chip's word on its own capsule over \(ground.rawValue)"
+                    )
+                }
+            }
+        }
+    }
+
+    /// A hue written as text on a ground is readable there. This is the same
+    /// rule the chips use, and it covers the 37 places the app writes an
+    /// outcome colour as words rather than drawing it as a fill.
+    ///
+    /// Latte is why it exists: its yellow as text on a card was 1.70:1 and
+    /// its pink 1.71 — not dim, invisible — and no published swatch fixes
+    /// that, because a mid-luminance hue contrasts with neither end.
+    func testAHueWrittenOnAGroundIsReadable() {
+        for (theme, palette) in palettes {
+            let tints: [(String, Tint)] = [
+                ("accent", palette.accent), ("red", palette.systemRed),
+                ("green", palette.systemGreen), ("yellow", palette.systemYellow),
+                ("orange", palette.systemOrange), ("blue", palette.systemBlue),
+                ("teal", palette.systemTeal), ("pink", palette.systemPink),
+            ]
+            for ground in Ground.allCases {
+                for (name, tint) in tints {
+                    let surface = ground.surface(in: palette)
+                    XCTAssertGreaterThanOrEqual(
+                        contrast(palette.ink(of: tint, on: surface).hex, surface.hex), 4.5,
+                        "\(theme): \(name) written on \(ground.rawValue)"
+                    )
+                }
+            }
+        }
+    }
+
+    /// Shading makes a hue readable without making it a different colour.
+    ///
+    /// This is the assertion that rules out the obvious fix that does not
+    /// work: mixing the hue toward the theme's own text converges all the way
+    /// in Latte, so a green chip and a red chip both come out `#4c4f69` and
+    /// the colour coding is gone. `shade` moves lightness alone, so the hue
+    /// angle and the saturation survive and a shaded green still reads green.
+    func testShadingKeepsTheHue() {
+        for (theme, palette) in palettes {
+            let tints: [(String, Tint)] = [
+                ("accent", palette.accent), ("red", palette.systemRed),
+                ("green", palette.systemGreen), ("yellow", palette.systemYellow),
+                ("orange", palette.systemOrange), ("pink", palette.systemPink),
+            ]
+            for ground in Ground.allCases {
+                for (name, tint) in tints {
+                    let written = palette.ink(of: tint, on: ground.surface(in: palette))
+                    guard let before = rgbComponents(hex: tint.hex),
+                          let after = rgbComponents(hex: written.hex) else {
+                        return XCTFail("\(theme): unreadable hue")
                     }
+                    let (hueBefore, _, satBefore) = hslComponents(before)
+                    let (hueAfter, _, satAfter) = hslComponents(after)
+                    // Hue is an angle, so the two ends of the circle are near.
+                    let drift = min(abs(hueAfter - hueBefore), 1 - abs(hueAfter - hueBefore))
+                    XCTAssertLessThan(drift, 0.02, "\(theme): \(name) on \(ground.rawValue) changed hue")
+                    XCTAssertEqual(satAfter, satBefore, accuracy: 0.02,
+                                   "\(theme): \(name) on \(ground.rawValue) lost saturation")
                 }
             }
         }

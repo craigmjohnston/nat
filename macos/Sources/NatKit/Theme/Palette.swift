@@ -64,6 +64,73 @@ public struct Tint: PaletteColor {
 /// published swatch either). What a theme must never contain is a *typed*
 /// hex: an expression over two of the theme's own colours ports to a new
 /// theme by itself, and a literal has to be invented again for every one.
+/// The same colour, lighter or darker: its lightness moved by `magnitude`
+/// with its hue and saturation untouched, so a shaded green is still that
+/// green. Catppuccin's own VS Code port derives with exactly this — its
+/// `tab.hoverBackground` is `shade(base, 0.05)` — and it is what lets a
+/// theme's hue be made readable without being made a different colour.
+public func shade(_ color: String, _ magnitude: Double) -> String {
+    guard let rgb = rgbComponents(hex: color) else { return color }
+    var (hue, lightness, saturation) = hslComponents(rgb)
+    lightness = min(max(lightness + magnitude, 0), 1)
+    let shaded = rgbFromHSL(hue: hue, lightness: lightness, saturation: saturation)
+    return [shaded.red, shaded.green, shaded.blue]
+        .map { String(format: "%02x", Int((($0 * 255).rounded()))) }
+        .joined()
+}
+
+/// WCAG's contrast ratio between two opaque colours — the one number that
+/// says whether something can be read on something else, and the reason
+/// `ink(of:on:)` below can answer per theme instead of per hand-tuned value.
+public func contrastRatio(_ one: String, _ other: String) -> Double {
+    let first = relativeLuminance(one)
+    let second = relativeLuminance(other)
+    return (max(first, second) + 0.05) / (min(first, second) + 0.05)
+}
+
+func relativeLuminance(_ hex: String) -> Double {
+    guard let rgb = rgbComponents(hex: hex) else { return 1 }
+    let channels = [rgb.red, rgb.green, rgb.blue].map { value -> Double in
+        value <= 0.03928 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+    }
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+}
+
+func hslComponents(_ rgb: (red: Double, green: Double, blue: Double)) -> (Double, Double, Double) {
+    let high = max(rgb.red, rgb.green, rgb.blue)
+    let low = min(rgb.red, rgb.green, rgb.blue)
+    let lightness = (high + low) / 2
+    guard high != low else { return (0, lightness, 0) }
+    let delta = high - low
+    let saturation = lightness > 0.5 ? delta / (2 - high - low) : delta / (high + low)
+    var hue: Double
+    switch high {
+    case rgb.red: hue = (rgb.green - rgb.blue) / delta + (rgb.green < rgb.blue ? 6 : 0)
+    case rgb.green: hue = (rgb.blue - rgb.red) / delta + 2
+    default: hue = (rgb.red - rgb.green) / delta + 4
+    }
+    return (hue / 6, lightness, saturation)
+}
+
+func rgbFromHSL(hue: Double, lightness: Double, saturation: Double)
+    -> (red: Double, green: Double, blue: Double) {
+    guard saturation != 0 else { return (lightness, lightness, lightness) }
+    let second = lightness < 0.5
+        ? lightness * (1 + saturation)
+        : lightness + saturation - lightness * saturation
+    let first = 2 * lightness - second
+    func channel(_ offset: Double) -> Double {
+        var t = hue + offset
+        if t < 0 { t += 1 }
+        if t > 1 { t -= 1 }
+        if t < 1.0 / 6 { return first + (second - first) * 6 * t }
+        if t < 1.0 / 2 { return second }
+        if t < 2.0 / 3 { return first + (second - first) * (2.0 / 3 - t) * 6 }
+        return first
+    }
+    return (channel(1.0 / 3), channel(0), channel(-1.0 / 3))
+}
+
 public func mix(_ color: String, _ into: String, _ amount: Double) -> String {
     guard let first = rgbComponents(hex: color), let second = rgbComponents(hex: into) else {
         return into
@@ -595,6 +662,51 @@ extension Palette {
     /// ground is not a surface of the app but the block itself.
     public func skeletonHighlight(on block: Surface) -> Surface {
         Surface(mix(label.hex, block.hex, skeletonShare))
+    }
+
+    /// What a hue reads as when it is *written* on a ground: the theme's own
+    /// colour, shaded only as far as it must be to be readable there.
+    ///
+    /// This is the one rule that makes an outcome colour survive a light
+    /// theme. Mocha's accents are pastels on a dark ground and already clear
+    /// the bar, so the shade is nil or imperceptible and nothing about that
+    /// theme changes. Latte's are dark saturated colours whose *lightness*
+    /// sits in the middle, which is the worst place to be: its yellow as text
+    /// on a card is 1.70:1 and its pink 1.71 — not dim, invisible. Nothing in
+    /// Catppuccin fixes that, because the palette publishes no darker
+    /// variants and both of the inks one might reach for are worse: light on
+    /// a mid hue is 1.98–2.96, and the theme's own `text` is 2.39–3.05.
+    ///
+    /// Mixing toward `text` was the obvious answer and is the wrong one: in
+    /// Latte it converges all the way, so a green chip and a red chip both
+    /// come out `#4c4f69` and the colour coding — the entire point of an
+    /// outcome colour — is gone. `shade` moves lightness alone, so a shaded
+    /// green is still that green: `#40a02b` becomes `#2d701e` and reads as
+    /// green at 4.69:1.
+    ///
+    /// It answers per theme rather than per hand-tuned constant, which is the
+    /// whole reason a third palette can be added by filling in its swatches:
+    /// a theme whose hues already read is left alone, and one whose hues do
+    /// not is corrected by its own colours without anyone choosing a number.
+    public func ink(of tint: Tint, on ground: Surface, clearing bar: Double = 4.5) -> Ink {
+        // Away from the ground: darken a hue on a light one, lighten it on a
+        // dark one. Which of those a theme needs is the theme's business and
+        // not something written down per palette.
+        let step = relativeLuminance(ground.hex) > relativeLuminance(tint.hex) ? -0.02 : 0.02
+        var magnitude = 0.0
+        var candidate = tint.hex
+        while contrastRatio(candidate, ground.hex) < bar && abs(magnitude) < 0.6 {
+            magnitude += step
+            candidate = shade(tint.hex, magnitude)
+        }
+        return Ink(candidate)
+    }
+
+    /// The word inside a chip, whose ground is the chip's own capsule rather
+    /// than the surface behind it — a chip is one hue drawn twice, and the
+    /// word has to survive the wash it sits on.
+    public func chipInk(of tint: Tint, on ground: Ground) -> Ink {
+        ink(of: tint, on: wash(.chip, of: tint, on: ground))
     }
 
     /// The rule splitting a filled accent control in two. Its ground is the

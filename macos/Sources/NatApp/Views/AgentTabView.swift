@@ -46,7 +46,7 @@ struct AgentTabView: View {
                     if let error = interruptError {
                         Text(error)
                             .font(.system(size: Typo.subhead, weight: .regular))
-                            .foregroundStyle(DesignTokens.systemRed)
+                            .foregroundStyle(DesignTokens.systemRedInk(on: .card))
                     }
 
                     // Both secondary: neither is the pane's confirming

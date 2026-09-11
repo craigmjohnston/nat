@@ -70,7 +70,7 @@ struct NewSliceSheetView: View {
             if let error {
                 Text(error)
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.systemRed)
+                    .foregroundStyle(DesignTokens.systemRedInk(on: .window))
             }
 
             HStack {
