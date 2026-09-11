@@ -35,11 +35,25 @@ A native macOS application for the notion-agent-tracker project, built as a pure
 - A colour that will not parse falls back to Mocha's mauve, the app's accent,
   rather than to white: a parse failure is a bug the tests catch, and the frame
   drawn before anyone reads them should still read as this app.
+- The monospaced face is the app's own, not the Mac's: JetBrains Mono, four
+  static faces under `NatKit/Resources/Fonts` (with the OFL beside them),
+  registered with CoreText for this process alone at launch — nothing is
+  installed on the Mac. `MonoFont` holds the names and the registration and
+  `Typo.mono(size:weight:)` is the one thing a view calls, falling back to the
+  monospaced system font wherever the face cannot be had. Everything
+  monospaced goes through it — the terminal, the diff, markdown code spans —
+  and so does every `TextField` and `TextEditor` in the app, each at the point
+  size it already had. `.monospacedDigit()` is not monospaced text: those are
+  proportional labels asking for lining digits, and they stay as they are.
+  The fonts live in NatKit rather than NatApp because `Typo` and the markdown
+  renderer do, and SwiftPM resources have to sit inside the target that
+  declares them; `make-app.sh` copies `nat_NatKit.bundle` into the app beside
+  `nat_NatApp.bundle` for exactly that reason.
 - The agent terminal is the one surface a dynamic colour cannot reach —
   SwiftTerm resolves plain `NSColor`s once — so `NatApp/Views/TerminalTheme.swift`
   pushes the palette onto it whenever the appearance changes. It pushes the
-  type too, from `TerminalType` in `DesignTokens.swift`: the monospaced system
-  font at `Typo.code`, the face the diff pane draws a line of code in, and
+  type too, from `TerminalType` in `DesignTokens.swift`: the app's monospaced
+  face at `Typo.code`, the face the diff pane draws a line of code in, and
   macOS font smoothing off. Both are defaults SwiftTerm would otherwise pick
   for itself, and the smoothing is why the pane read as blurred — it dilates
   every stroke by about a fifth of its ink at any scale, which on a dark
@@ -90,6 +104,7 @@ macos/
 ├── Package.swift                 — SwiftPM manifest
 ├── Sources/
 │   ├── NatKit/
+│   │   ├── Resources/Fonts/      — JetBrains Mono (bundled, OFL)
 │   │   ├── Theme/                — Design tokens and styling
 │   │   ├── Models/               — Domain models
 │   │   ├── NatClient/            — Notion API client (future)

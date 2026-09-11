@@ -318,7 +318,7 @@ struct BriefTabView: View {
     private var briefEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
             TextEditor(text: $editedBriefText)
-                .font(.system(size: Typo.body, weight: .regular))
+                .font(Typo.mono(size: Typo.body))
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 160, maxHeight: 320)
                 .padding(6)
@@ -573,7 +573,7 @@ struct BriefTabView: View {
 
             if let branch = detail.branch, !branch.isEmpty {
                 Text(branch)
-                    .font(.system(size: Typo.caption, weight: .regular, design: .monospaced))
+                    .font(Typo.mono(size: Typo.caption, weight: .regular))
                     .ink(.primary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)

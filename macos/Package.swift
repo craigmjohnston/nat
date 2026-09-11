@@ -23,7 +23,15 @@ let package = Package(
         .target(
             name: "NatKit",
             dependencies: [],
-            path: "Sources/NatKit"
+            path: "Sources/NatKit",
+            resources: [
+                // JetBrains Mono — the face every monospaced surface and
+                // every text input is set in, shipped rather than asked of
+                // the Mac (MonoFont registers it with CoreText at launch).
+                // `.copy` rather than `.process`, so the directory survives
+                // and the OFL licence beside the four faces ships with them.
+                .copy("Resources/Fonts")
+            ]
         ),
         .testTarget(
             name: "NatKitTests",

@@ -239,7 +239,6 @@ struct SettingsView: View {
             key: SettingsModel.workingDirKey(projectID: projectID)
         ) {
             commitField(workingDirBinding(projectID: projectID), width: FieldWidth.path)
-                .font(.system(.body, design: .monospaced))
         }
     }
 
@@ -422,6 +421,10 @@ private struct CommitTextField: View {
     var body: some View {
         TextField("", text: $text)
             .textFieldStyle(.roundedBorder)
+            // Every input in the app is set in the app's monospaced face;
+            // the size is the control's own 13pt, which is the ramp's code
+            // size, so the fields are the height they always were.
+            .font(Typo.mono(size: Typo.code))
             // The value column is trailing-aligned, and a field left to
             // inherit that alignment right-aligns the text inside itself.
             .multilineTextAlignment(.leading)

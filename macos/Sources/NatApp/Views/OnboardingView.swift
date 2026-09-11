@@ -96,7 +96,7 @@ struct OnboardingView: View {
                 .font(.system(size: 13, weight: .medium))
 
             Text(binary)
-                .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
+                .font(Typo.mono(size: Typo.code, weight: .regular))
                 .ink(.primary)
 
             Spacer()

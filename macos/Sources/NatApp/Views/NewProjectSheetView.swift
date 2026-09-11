@@ -151,6 +151,7 @@ struct NewProjectSheetView: View {
                 .ink(.secondary)
             TextField("Project name", text: $name)
                 .textFieldStyle(.roundedBorder)
+                .font(Typo.mono(size: Typo.code))
         }
 
         VStack(alignment: .leading, spacing: 6) {
@@ -160,6 +161,7 @@ struct NewProjectSheetView: View {
             HStack(spacing: 8) {
                 TextField("Where this project's agents work", text: $directory)
                     .textFieldStyle(.roundedBorder)
+                    .font(Typo.mono(size: Typo.code))
                 Button("Choose…", action: chooseDirectory)
             }
         }
@@ -172,7 +174,7 @@ struct NewProjectSheetView: View {
                 .font(.system(size: Typo.subhead, weight: .regular))
                 .ink(.tertiary)
             TextEditor(text: $descriptionText)
-                .font(.system(size: Typo.subhead, weight: .regular))
+                .font(Typo.mono(size: Typo.subhead))
                 .scrollContentBackground(.hidden)
                 .padding(6)
                 .surface(.field)
