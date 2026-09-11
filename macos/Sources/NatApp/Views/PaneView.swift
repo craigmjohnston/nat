@@ -61,7 +61,7 @@ struct PaneView: View {
                             ForEach(Array(tabState.tabs.enumerated()), id: \.offset) { index, tab in
                                 if index > 0 {
                                     Rectangle()
-                                        .fill(DesignTokens.hairline)
+                                        .fill(DesignTokens.hairline(on: .band))
                                         .frame(width: 12, height: 1)
                                 }
 
@@ -78,7 +78,7 @@ struct PaneView: View {
                     .padding(.horizontal, 14)
                     .background(DesignTokens.bandBg)
                     .overlay(alignment: .bottom) {
-                        DesignTokens.hairline
+                        DesignTokens.hairline(on: .band)
                             .frame(height: 1)
                     }
                 }
@@ -203,7 +203,7 @@ struct PaneView: View {
         .padding(.vertical, 4)
         .background(
             showsCurrentWash
-                ? RoundedRectangle(cornerRadius: 6).fill(DesignTokens.selectionWash)
+                ? RoundedRectangle(cornerRadius: 6).fill(DesignTokens.selectionWash(on: .band))
                 : nil
         )
         .hoverWash(cornerRadius: 6, enabled: isReachable)

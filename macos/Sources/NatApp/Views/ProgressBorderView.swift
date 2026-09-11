@@ -39,7 +39,7 @@ struct ProgressBorderView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 6)
         .background(DesignTokens.windowBg)
-        .rectBorder(width: 0.5, edges: [.top], color: DesignTokens.separator)
+        .rectBorder(width: 0.5, edges: [.top], color: DesignTokens.separator(on: .window))
     }
 
     private func segmentView(for segment: ProgressSegment) -> some View {
@@ -57,7 +57,7 @@ struct ProgressBorderView: View {
                 RoundedRectangle(cornerRadius: 3.5)
                     .fill(
                         segment.isComplete
-                            ? DesignTokens.accentMuted
+                            ? DesignTokens.accentMuted(on: .window)
                             : DesignTokens.accent
                     )
                     .frame(width: geometry.size.width * segment.fraction)

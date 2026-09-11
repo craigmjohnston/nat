@@ -162,42 +162,64 @@ final class DesignTokensTests: XCTestCase {
         }
     }
 
-    /// The tokens that are a colour behind an opacity resolve both halves
-    /// per appearance: light ink at Mocha's alpha, dark ink at Latte's
-    /// heavier one.
-    func testOpacityTokensResolvePerAppearance() {
-        let keys: [(String, NSColor, (Palette) -> String, KeyPath<Palette, Double>)] = [
-            ("headerBg", DesignTokens.dynamicNSColor(\.windowBg, opacity: \.headerOpacity), { $0.windowBg.hex }, \.headerOpacity),
-            ("hairline", DesignTokens.dynamicNSColor(\.label, opacity: \.hairlineOpacity), { $0.label.hex }, \.hairlineOpacity),
-            ("separator", DesignTokens.dynamicNSColor(\.label, opacity: \.separatorOpacity), { $0.label.hex }, \.separatorOpacity),
-            ("controlBorder", DesignTokens.dynamicNSColor(\.label, opacity: \.controlBorderOpacity), { $0.label.hex }, \.controlBorderOpacity),
-            ("selectionWash", DesignTokens.dynamicNSColor(\.accent, opacity: \.selectionWashOpacity), { $0.accent.hex }, \.selectionWashOpacity),
-            ("headerAccentVeil", DesignTokens.dynamicNSColor(\.accent, opacity: \.headerAccentOpacity), { $0.accent.hex }, \.headerAccentOpacity),
-            ("bandBg", DesignTokens.dynamicNSColor(\.controlBg, opacity: \.bandOpacity), { $0.controlBg.hex }, \.bandOpacity),
-            ("skeletonHighlight", DesignTokens.dynamicNSColor(\.label, opacity: \.skeletonHighlightOpacity), { $0.label.hex }, \.skeletonHighlightOpacity),
-            ("onAccentSeparator", DesignTokens.dynamicNSColor(\.accentText, opacity: \.onAccentSeparatorOpacity), { $0.accentText.hex }, \.onAccentSeparatorOpacity),
-            ("accentMuted", DesignTokens.dynamicNSColor(\.accent, opacity: \.mutedAccentOpacity), { $0.accent.hex }, \.mutedAccentOpacity),
-            ("avatarWash", DesignTokens.dynamicNSColor(\.accent, opacity: \.avatarWashOpacity), { $0.accent.hex }, \.avatarWashOpacity),
-            ("accentWash", DesignTokens.dynamicNSColor(\.accent, opacity: \.tintWashOpacity), { $0.accent.hex }, \.tintWashOpacity),
-            ("systemRedWash", DesignTokens.dynamicNSColor(\.systemRed, opacity: \.tintWashOpacity), { $0.systemRed.hex }, \.tintWashOpacity),
-            ("systemGreenWash", DesignTokens.dynamicNSColor(\.systemGreen, opacity: \.tintWashOpacity), { $0.systemGreen.hex }, \.tintWashOpacity),
-            ("systemYellowWash", DesignTokens.dynamicNSColor(\.systemYellow, opacity: \.tintWashOpacity), { $0.systemYellow.hex }, \.tintWashOpacity),
-            ("systemOrangeWash", DesignTokens.dynamicNSColor(\.systemOrange, opacity: \.tintWashOpacity), { $0.systemOrange.hex }, \.tintWashOpacity),
-            ("labelSecondaryWash", DesignTokens.dynamicNSColor(\.labelSecondary, opacity: \.tintWashOpacity), { $0.labelSecondary.hex }, \.tintWashOpacity),
-            ("diffAddedRowBg", DesignTokens.dynamicNSColor(\.systemGreen, opacity: \.diffRowWashOpacity), { $0.systemGreen.hex }, \.diffRowWashOpacity),
-            ("diffRemovedRowBg", DesignTokens.dynamicNSColor(\.systemRed, opacity: \.diffRowWashOpacity), { $0.systemRed.hex }, \.diffRowWashOpacity),
-            ("diffAddedGutterBg", DesignTokens.dynamicNSColor(\.systemGreen, opacity: \.diffGutterWashOpacity), { $0.systemGreen.hex }, \.diffGutterWashOpacity),
-            ("diffRemovedGutterBg", DesignTokens.dynamicNSColor(\.systemRed, opacity: \.diffGutterWashOpacity), { $0.systemRed.hex }, \.diffGutterWashOpacity),
-            ("diffCommentGutterBg", DesignTokens.dynamicNSColor(\.accent, opacity: \.commentWashOpacity), { $0.accent.hex }, \.commentWashOpacity),
+    /// Every derived colour — a rule, a wash, a band — resolves per
+    /// appearance to exactly what the palette derives, and resolves *opaque*.
+    ///
+    /// The opacity these replaced was the bug: a wash laid down behind an
+    /// alpha shows whatever happens to be behind it, so one `separator`
+    /// rendered as a different colour in every pane it landed in, none of
+    /// them a colour the theme chose. Mixed into a named ground instead, it
+    /// is one value the theme decided and this asserts it is that value.
+    func testDerivedColorsResolveOpaquePerAppearance() {
+        var checks: [(String, NSColor, (Palette) -> String)] = [
+            ("bandBg", NSColor(DesignTokens.bandBg), { $0.bandBg.hex }),
+            ("headerBg", NSColor(DesignTokens.headerBg), { $0.headerBg.hex }),
+            ("onAccentSeparator", NSColor(DesignTokens.onAccentSeparator), { $0.onAccentRule.hex }),
         ]
-        for (name, token, value, opacity) in keys {
+        for ground in Ground.allCases {
+            for (name, weight) in [("hairline", RuleWeight.hairline), ("separator", .separator), ("controlBorder", .border)] {
+                let token = [
+                    "hairline": DesignTokens.hairline(on: ground),
+                    "separator": DesignTokens.separator(on: ground),
+                    "controlBorder": DesignTokens.controlBorder(on: ground),
+                ][name]!
+                checks.append(("\(name) on \(ground.rawValue)", NSColor(token), { $0.rule(weight, on: ground).hex }))
+            }
+            checks.append(("selectionWash on \(ground.rawValue)", NSColor(DesignTokens.selectionWash(on: ground)),
+                           { $0.wash(.selection, of: $0.accent, on: ground).hex }))
+            checks.append(("avatarWash on \(ground.rawValue)", NSColor(DesignTokens.avatarWash(on: ground)),
+                           { $0.wash(.avatar, of: $0.accent, on: ground).hex }))
+            checks.append(("accentMuted on \(ground.rawValue)", NSColor(DesignTokens.accentMuted(on: ground)),
+                           { $0.wash(.muted, of: $0.accent, on: ground).hex }))
+            checks.append(("accentWash on \(ground.rawValue)", NSColor(DesignTokens.accentWash(on: ground)),
+                           { $0.wash(.chip, of: $0.accent, on: ground).hex }))
+            checks.append(("systemRedWash on \(ground.rawValue)", NSColor(DesignTokens.systemRedWash(on: ground)),
+                           { $0.wash(.chip, of: $0.systemRed, on: ground).hex }))
+            checks.append(("systemGreenWash on \(ground.rawValue)", NSColor(DesignTokens.systemGreenWash(on: ground)),
+                           { $0.wash(.chip, of: $0.systemGreen, on: ground).hex }))
+            checks.append(("systemYellowWash on \(ground.rawValue)", NSColor(DesignTokens.systemYellowWash(on: ground)),
+                           { $0.wash(.chip, of: $0.systemYellow, on: ground).hex }))
+            checks.append(("systemOrangeWash on \(ground.rawValue)", NSColor(DesignTokens.systemOrangeWash(on: ground)),
+                           { $0.wash(.chip, of: $0.systemOrange, on: ground).hex }))
+            checks.append(("diffAddedRowBg on \(ground.rawValue)", NSColor(DesignTokens.diffAddedRowBg(on: ground)),
+                           { $0.wash(.diffRow, of: $0.systemGreen, on: ground).hex }))
+            checks.append(("diffRemovedRowBg on \(ground.rawValue)", NSColor(DesignTokens.diffRemovedRowBg(on: ground)),
+                           { $0.wash(.diffRow, of: $0.systemRed, on: ground).hex }))
+            checks.append(("diffAddedGutterBg on \(ground.rawValue)", NSColor(DesignTokens.diffAddedGutterBg(on: ground)),
+                           { $0.wash(.diffGutter, of: $0.systemGreen, on: ground).hex }))
+            checks.append(("diffRemovedGutterBg on \(ground.rawValue)", NSColor(DesignTokens.diffRemovedGutterBg(on: ground)),
+                           { $0.wash(.diffGutter, of: $0.systemRed, on: ground).hex }))
+            checks.append(("diffCommentGutterBg on \(ground.rawValue)", NSColor(DesignTokens.diffCommentGutterBg(on: ground)),
+                           { $0.wash(.comment, of: $0.accent, on: ground).hex }))
+            checks.append(("skeletonHighlight on \(ground.rawValue)", NSColor(DesignTokens.skeletonHighlight(on: ground)),
+                           { $0.skeletonHighlight(on: ground.surface(in: $0)).hex }))
+        }
+        for (name, token, value) in checks {
             for (appearance, palette) in [(NSAppearance.Name.darkAqua, Palette.mocha), (.aqua, .latte)] {
                 assertResolves(token, appearance, to: value(palette), name: "\(name) \(appearance.rawValue)")
-                let resolved = resolve(token, appearance)
                 XCTAssertEqual(
-                    Double(resolved?.alphaComponent ?? 0), palette[keyPath: opacity],
-                    accuracy: 0.01,
-                    "\(name) on \(appearance.rawValue) should carry that palette's own opacity"
+                    resolve(token, appearance)?.alphaComponent, 1,
+                    "\(name) \(appearance.rawValue): a derived colour should be opaque"
                 )
             }
         }
@@ -247,10 +269,10 @@ final class DesignTokensTests: XCTestCase {
         _ = DesignTokens.labelQuaternary
         _ = DesignTokens.accent
         _ = DesignTokens.accentText
-        _ = DesignTokens.hairline
-        _ = DesignTokens.selectionWash
-        _ = DesignTokens.separator
-        _ = DesignTokens.controlBorder
+        _ = DesignTokens.hairline(on: .window)
+        _ = DesignTokens.selectionWash(on: .window)
+        _ = DesignTokens.separator(on: .window)
+        _ = DesignTokens.controlBorder(on: .window)
         _ = DesignTokens.brandGradient
         _ = DesignTokens.systemOrange
         _ = DesignTokens.systemYellow
@@ -260,7 +282,6 @@ final class DesignTokensTests: XCTestCase {
         _ = DesignTokens.systemPink
         _ = DesignTokens.systemTeal
         _ = DesignTokens.systemGray
-        _ = DesignTokens.headerAccentVeil
         _ = DesignTokens.bandBg
         _ = DesignTokens.skeletonHighlight
         _ = DesignTokens.onAccentSeparator

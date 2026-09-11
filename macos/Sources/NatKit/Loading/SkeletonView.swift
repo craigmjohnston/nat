@@ -10,13 +10,17 @@ import SwiftUI
 /// where the content will be, so the layout is settled before the content
 /// lands and nothing jumps when it does.
 public enum Skeleton {
-    /// The block itself: the same barely-there wash a hover paints, which is
-    /// what keeps a screenful of them from reading as content.
-    public static let base = DesignTokens.labelQuaternary
+    /// The block itself: the same wash a hover paints, which is what keeps a
+    /// screenful of them from reading as content. It used to be
+    /// `labelQuaternary` — a label colour, and so the third place in the app
+    /// where ink was used as ground; it followed the hover fill by intent
+    /// then and follows it by reference now.
+    public static let base = DesignTokens.hoverWash
 
     /// The sweep passing over it — brighter than the block and still far
-    /// under anything the app draws as text.
-    public static let highlight = DesignTokens.skeletonHighlight
+    /// under anything the app draws as text. Its ground is the block, which
+    /// is why it is the one wash whose ground is not a surface of the app.
+    public static let highlight = DesignTokens.skeletonHighlight(on: .hover)
 
     /// How long one pass takes. Slow enough to read as breathing rather than
     /// as something loading fast.

@@ -145,7 +145,7 @@ struct PRTabView: View {
     }
 
     private func header(for pr: PRDetail) -> some View {
-        let chip = prStateChip(state: pr.state, isDraft: pr.isDraft)
+        let chip = prStateChip(state: pr.state, isDraft: pr.isDraft, on: .window)
         return HStack(spacing: 10) {
             HStack(spacing: 5) {
                 Image(systemName: "arrow.branch")
@@ -244,7 +244,7 @@ struct PRTabView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .stroke(DesignTokens.controlBorder, lineWidth: 0.5)
+                        .stroke(DesignTokens.controlBorder(on: .card), lineWidth: 0.5)
                 )
             }
         }
@@ -478,7 +478,7 @@ struct PRConversationEntryView: View {
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(DesignTokens.accent)
                 .frame(width: Self.avatarSize, height: Self.avatarSize)
-                .background(DesignTokens.avatarWash)
+                .background(DesignTokens.avatarWash(on: .window))
                 .clipShape(Circle())
                 .padding(.top, 2)
 
@@ -578,7 +578,7 @@ struct PRComposerView: View {
                             }
                         }
                         .frame(width: 24, height: 22)
-                        .background(canSend ? DesignTokens.accent : DesignTokens.accentMuted)
+                        .background(canSend ? DesignTokens.accent : DesignTokens.accentMuted(on: .field))
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
                     .buttonStyle(.plain)
@@ -593,7 +593,7 @@ struct PRComposerView: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(DesignTokens.controlBorder, lineWidth: 0.5)
+                    .stroke(DesignTokens.controlBorder(on: .field), lineWidth: 0.5)
             )
 
             if let error {

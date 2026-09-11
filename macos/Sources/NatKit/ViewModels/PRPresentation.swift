@@ -31,17 +31,20 @@ public struct PRStateChip: Equatable, Sendable {
 /// or been closed is no longer a draft whatever the flag still says, and a
 /// state this build does not recognise reads as open — the word for a pull
 /// request that is neither merged nor closed.
-public func prStateChip(state: String, isDraft: Bool) -> PRStateChip {
+/// The ground the chip will be drawn on is the caller's to say: a chip is a
+/// tint washed into whatever it sits over, and the wash cannot be computed
+/// without knowing what that is.
+public func prStateChip(state: String, isDraft: Bool, on ground: Ground) -> PRStateChip {
     if state == PRLifecycleState.merged {
-        return PRStateChip(label: "merged", tint: DesignTokens.accent, wash: DesignTokens.accentWash)
+        return PRStateChip(label: "merged", tint: DesignTokens.accent, wash: DesignTokens.accentWash(on: ground))
     }
     if state == PRLifecycleState.closed {
-        return PRStateChip(label: "closed", tint: DesignTokens.systemRed, wash: DesignTokens.systemRedWash)
+        return PRStateChip(label: "closed", tint: DesignTokens.systemRed, wash: DesignTokens.systemRedWash(on: ground))
     }
     if isDraft {
-        return PRStateChip(label: "draft", tint: DesignTokens.labelSecondary, wash: DesignTokens.labelSecondaryWash)
+        return PRStateChip(label: "draft", tint: DesignTokens.labelSecondary, wash: DesignTokens.labelSecondaryWash(on: ground))
     }
-    return PRStateChip(label: "open", tint: DesignTokens.systemGreen, wash: DesignTokens.systemGreenWash)
+    return PRStateChip(label: "open", tint: DesignTokens.systemGreen, wash: DesignTokens.systemGreenWash(on: ground))
 }
 
 // MARK: - Check / verdict outcome

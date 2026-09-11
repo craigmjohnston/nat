@@ -35,26 +35,30 @@ public enum DesignTokens {
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .mocha : .latte
     }
 
-    /// A dynamic `NSColor` over one palette field: the value AppKit resolves
-    /// per appearance, and what SwiftUI draws when the `Color` wrapping it
-    /// is used.
-    static func dynamicNSColor<C: PaletteColor>(
-        _ key: KeyPath<Palette, C>,
-        opacity: KeyPath<Palette, Double>? = nil
-    ) -> NSColor {
+    /// A dynamic `NSColor` over one palette field. There is deliberately no
+    /// opacity here any more: every colour the app draws is opaque, because
+    /// a colour behind an alpha is not a colour the theme chose — it is
+    /// whatever the theme's colour and the accident of what sits behind it
+    /// happen to make. What used to be an alpha is a mix into a named
+    /// ground; see `Palette.rule(_:on:)` and `Palette.wash(_:of:on:)`.
+    static func dynamicNSColor<C: PaletteColor>(_ key: KeyPath<Palette, C>) -> NSColor {
         NSColor(name: nil) { appearance in
-            let palette = DesignTokens.palette(for: appearance)
-            let color = NSColor(hex: palette[keyPath: key].hex)
-            guard let opacity else { return color }
-            return color.withAlphaComponent(palette[keyPath: opacity])
+            NSColor(hex: DesignTokens.palette(for: appearance)[keyPath: key].hex)
         }
     }
 
-    private static func token<C: PaletteColor>(
-        _ key: KeyPath<Palette, C>,
-        opacity: KeyPath<Palette, Double>? = nil
-    ) -> Color {
-        Color(nsColor: dynamicNSColor(key, opacity: opacity))
+    /// A dynamic colour computed from the whole palette rather than read off
+    /// one field — every derived colour below goes through this, so a wash
+    /// or a rule re-derives when the appearance changes exactly as a plain
+    /// token re-reads.
+    private static func derived(_ value: @escaping @Sendable (Palette) -> any PaletteColor) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            NSColor(hex: value(DesignTokens.palette(for: appearance)).hex)
+        })
+    }
+
+    private static func token<C: PaletteColor>(_ key: KeyPath<Palette, C>) -> Color {
+        Color(nsColor: dynamicNSColor(key))
     }
 
     // MARK: - Background & Surface Colors
@@ -93,15 +97,11 @@ public enum DesignTokens {
     /// takes `NSColor`s of its own rather than reading this.
     public static let terminalBg = token(\.terminalBg)
 
-    /// The header band's own material: the ground behind the palette's
-    /// header opacity, the flat stand-in for the mock's backdrop blur.
-    public static let headerBg = token(\.windowBg, opacity: \.headerOpacity)
-
-    /// The accent veil laid over that material — the mock's
-    /// `color-mix(in srgb, accent 9%, header)` as a flat fill, since the
-    /// mock's blur is a backdrop material over what sits behind the window
-    /// rather than a blur of the band's own paint.
-    public static let headerAccentVeil = token(\.accent, opacity: \.headerAccentOpacity)
+    /// The header band: the accent veiled over the window ground, as one
+    /// opaque colour. It was two layers — the ground behind an opacity with
+    /// the veil on top — which let whatever sits behind the window show
+    /// through a band that paints no material of its own.
+    public static let headerBg = derived { $0.headerBg }
 
     /// A band laid over the window ground at half a card's weight: the
     /// pane's header band, the brief's footer band, and the notice row that
@@ -109,7 +109,7 @@ public enum DesignTokens {
     /// a bare `0.5` in two files and AppKit's own `controlBackgroundColor`
     /// behind the same number in a third, which drifted with the OS
     /// appearance while everything around it stayed pinned.
-    public static let bandBg = token(\.controlBg, opacity: \.bandOpacity)
+    public static let bandBg = derived { $0.bandBg }
 
     // MARK: - Text Colors
 
@@ -147,73 +147,109 @@ public enum DesignTokens {
     // MARK: - Semantic UI Colors
 
     /// The quiet border that separates surfaces without drawing attention.
-    public static let hairline = token(\.label, opacity: \.hairlineOpacity)
+    public static func hairline(on ground: Ground) -> Color {
+        derived { $0.rule(.hairline, on: ground) }
+    }
 
     /// The soft fill behind a selected row, in place of a solid accent slab.
-    public static let selectionWash = token(\.accent, opacity: \.selectionWashOpacity)
+    public static func selectionWash(on ground: Ground) -> Color {
+        derived { $0.wash(.selection, of: $0.accent, on: ground) }
+    }
 
     /// Separator color: the line between two rows of one list.
-    public static let separator = token(\.label, opacity: \.separatorOpacity)
+    public static func separator(on ground: Ground) -> Color {
+        derived { $0.rule(.separator, on: ground) }
+    }
 
     /// Control border color: the edge of something the pointer acts on,
     /// which has to read as an edge and not as a suggestion of one.
-    public static let controlBorder = token(\.label, opacity: \.controlBorderOpacity)
+    public static func controlBorder(on ground: Ground) -> Color {
+        derived { $0.rule(.border, on: ground) }
+    }
 
     /// The sweep passing over a loading skeleton block. `Skeleton` names the
     /// block itself and the arithmetic; the colour is the theme's, like
     /// every other.
-    public static let skeletonHighlight = token(\.label, opacity: \.skeletonHighlightOpacity)
+    public static func skeletonHighlight(on block: Ground) -> Color {
+        derived { $0.skeletonHighlight(on: block.surface(in: $0)) }
+    }
 
     /// The rule splitting a filled accent control in two: the launch
     /// button and the chevron that opens its options. The one line in the
     /// app drawn on the accent rather than on a surface, so it is the
     /// accent's own ink behind an alpha rather than `separator`, which is
     /// `label` and would be the wrong ink entirely on a light accent.
-    public static let onAccentSeparator = token(\.accentText, opacity: \.onAccentSeparatorOpacity)
+    public static let onAccentSeparator = derived { $0.onAccentRule }
 
     /// The accent as a fill that is present but spent: a finished run of the
     /// progress bar, a send button with nothing to send.
-    public static let accentMuted = token(\.accent, opacity: \.mutedAccentOpacity)
+    public static func accentMuted(on ground: Ground) -> Color {
+        derived { $0.wash(.muted, of: $0.accent, on: ground) }
+    }
 
     /// The disc an avatar's initials sit on.
-    public static let avatarWash = token(\.accent, opacity: \.avatarWashOpacity)
+    public static func avatarWash(on ground: Ground) -> Color {
+        derived { $0.wash(.avatar, of: $0.accent, on: ground) }
+    }
 
     // MARK: - Chip & Badge Washes
 
     // A chip is its own tint drawn twice: the word at full strength and the
-    // capsule behind it at `tintWashOpacity`. Each of these is that pair's
+    // capsule behind it at `chipShare`. Each of these is that pair's
     // second half, named for the colour it washes so a call site that has
     // the tint can ask for its wash and cannot pick a different number.
 
     /// The accent behind its own word.
-    public static let accentWash = token(\.accent, opacity: \.tintWashOpacity)
+    public static func accentWash(on ground: Ground) -> Color {
+        derived { $0.wash(.chip, of: $0.accent, on: ground) }
+    }
     /// Red behind its own word: a closed pull request.
-    public static let systemRedWash = token(\.systemRed, opacity: \.tintWashOpacity)
+    public static func systemRedWash(on ground: Ground) -> Color {
+        derived { $0.wash(.chip, of: $0.systemRed, on: ground) }
+    }
     /// Green behind its own word: an open pull request, an added file.
-    public static let systemGreenWash = token(\.systemGreen, opacity: \.tintWashOpacity)
+    public static func systemGreenWash(on ground: Ground) -> Color {
+        derived { $0.wash(.chip, of: $0.systemGreen, on: ground) }
+    }
     /// Yellow behind its own word: a comment not yet sent.
-    public static let systemYellowWash = token(\.systemYellow, opacity: \.tintWashOpacity)
+    public static func systemYellowWash(on ground: Ground) -> Color {
+        derived { $0.wash(.chip, of: $0.systemYellow, on: ground) }
+    }
     /// Orange behind its own word: a modified or renamed file.
-    public static let systemOrangeWash = token(\.systemOrange, opacity: \.tintWashOpacity)
+    public static func systemOrangeWash(on ground: Ground) -> Color {
+        derived { $0.wash(.chip, of: $0.systemOrange, on: ground) }
+    }
     /// The secondary label behind its own word: a draft, which is the one
     /// chip state that is deliberately not an outcome colour.
-    public static let labelSecondaryWash = token(\.labelSecondary, opacity: \.tintWashOpacity)
+    public static func labelSecondaryWash(on ground: Ground) -> Color {
+        derived { Tint($0.labelSecondary.hex).wash(on: ground.surface(in: $0), $0.chipShare) }
+    }
 
     // MARK: - Diff Washes
 
     /// An added row's own fill, under the line's syntax colours rather than
     /// instead of them.
-    public static let diffAddedRowBg = token(\.systemGreen, opacity: \.diffRowWashOpacity)
+    public static func diffAddedRowBg(on ground: Ground) -> Color {
+        derived { $0.wash(.diffRow, of: $0.systemGreen, on: ground) }
+    }
     /// A removed row's own fill.
-    public static let diffRemovedRowBg = token(\.systemRed, opacity: \.diffRowWashOpacity)
+    public static func diffRemovedRowBg(on ground: Ground) -> Color {
+        derived { $0.wash(.diffRow, of: $0.systemRed, on: ground) }
+    }
     /// The gutter cell beside an added row — the same green pressed harder,
     /// since a stripe a few characters wide has to carry the sign alone.
-    public static let diffAddedGutterBg = token(\.systemGreen, opacity: \.diffGutterWashOpacity)
+    public static func diffAddedGutterBg(on ground: Ground) -> Color {
+        derived { $0.wash(.diffGutter, of: $0.systemGreen, on: ground) }
+    }
     /// The gutter cell beside a removed row.
-    public static let diffRemovedGutterBg = token(\.systemRed, opacity: \.diffGutterWashOpacity)
+    public static func diffRemovedGutterBg(on ground: Ground) -> Color {
+        derived { $0.wash(.diffGutter, of: $0.systemRed, on: ground) }
+    }
     /// The gutter cell beside a comment row: the faintest mark in the diff,
     /// since a comment is an annotation and not a change.
-    public static let diffCommentGutterBg = token(\.accent, opacity: \.commentWashOpacity)
+    public static func diffCommentGutterBg(on ground: Ground) -> Color {
+        derived { $0.wash(.comment, of: $0.accent, on: ground) }
+    }
 
     // MARK: - System Color Overrides
 

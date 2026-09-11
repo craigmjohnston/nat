@@ -227,7 +227,7 @@ struct RailView: View {
                 if workshopEntry != nil || !railModel.needsReview.isEmpty || !railModel.active.isEmpty {
                     Divider()
                         .frame(height: 0.5)
-                        .foregroundStyle(DesignTokens.separator)
+                        .foregroundStyle(DesignTokens.separator(on: .window))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
                 }
@@ -258,7 +258,7 @@ struct RailView: View {
                 if let summary = railModel.doneSummary {
                     Divider()
                         .frame(height: 0.5)
-                        .foregroundStyle(DesignTokens.separator)
+                        .foregroundStyle(DesignTokens.separator(on: .window))
                         .padding(.horizontal, 12)
                         .padding(.top, 9)
                         .padding(.bottom, 10)
@@ -281,7 +281,7 @@ struct RailView: View {
             .padding(.bottom, 16)
         }
         .background(DesignTokens.windowBg)
-        .rectBorderTrailing(width: 0.5, color: DesignTokens.separator)
+        .rectBorderTrailing(width: 0.5, color: DesignTokens.separator(on: .window))
         .alert(
             "Delete \u{201C}\(sliceForDeletion?.name ?? "")\u{201D}?",
             isPresented: Binding(
@@ -445,7 +445,7 @@ struct RailView: View {
         // own state at a glance.
         .background {
             RoundedRectangle(cornerRadius: 6)
-                .fill(selected ? DesignTokens.selectionWash : Color.clear)
+                .fill(selected ? DesignTokens.selectionWash(on: .window) : Color.clear)
                 .padding(.horizontal, 6)
         }
         .insetHoverWash()
@@ -660,7 +660,7 @@ struct RailView: View {
         // being flattened to accentText by a solid fill.
         .background {
             RoundedRectangle(cornerRadius: 6)
-                .fill(selected ? DesignTokens.selectionWash : Color.clear)
+                .fill(selected ? DesignTokens.selectionWash(on: .window) : Color.clear)
                 .padding(.horizontal, 6)
         }
         .insetHoverWash()

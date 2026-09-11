@@ -45,22 +45,22 @@ final class PRPresentationTests: XCTestCase {
     // MARK: - prStateChip (mirrors TestPRStateChip-equivalent logic in prview.go)
 
     func testPRStateChipMergedTestedBeforeDraft() {
-        let chip = prStateChip(state: PRLifecycleState.merged, isDraft: true)
+        let chip = prStateChip(state: PRLifecycleState.merged, isDraft: true, on: .window)
         XCTAssertEqual(chip.label, "merged")
     }
 
     func testPRStateChipClosedTestedBeforeDraft() {
-        let chip = prStateChip(state: PRLifecycleState.closed, isDraft: true)
+        let chip = prStateChip(state: PRLifecycleState.closed, isDraft: true, on: .window)
         XCTAssertEqual(chip.label, "closed")
     }
 
     func testPRStateChipDraft() {
-        XCTAssertEqual(prStateChip(state: "OPEN", isDraft: true).label, "draft")
+        XCTAssertEqual(prStateChip(state: "OPEN", isDraft: true, on: .window).label, "draft")
     }
 
     func testPRStateChipUnknownReadsAsOpen() {
-        XCTAssertEqual(prStateChip(state: "SOMETHING_ELSE", isDraft: false).label, "open")
-        XCTAssertEqual(prStateChip(state: "OPEN", isDraft: false).label, "open")
+        XCTAssertEqual(prStateChip(state: "SOMETHING_ELSE", isDraft: false, on: .window).label, "open")
+        XCTAssertEqual(prStateChip(state: "OPEN", isDraft: false, on: .window).label, "open")
     }
 
     // MARK: - checkOutcome (mirrors TestCheckOutcomeOf)

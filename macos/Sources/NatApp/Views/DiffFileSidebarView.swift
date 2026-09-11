@@ -87,7 +87,7 @@ struct DiffFileSidebarView: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(
                 RoundedRectangle(cornerRadius: 6)
-                    .stroke(DesignTokens.controlBorder, lineWidth: 0.5)
+                    .stroke(DesignTokens.controlBorder(on: .control), lineWidth: 0.5)
             )
         }
         .menuStyle(.borderlessButton)
@@ -132,8 +132,8 @@ private enum ChangeBadge {
     /// theme never chose.
     var wash: Color {
         switch self {
-        case .added: return DesignTokens.systemGreenWash
-        case .modified, .renamed: return DesignTokens.systemOrangeWash
+        case .added: return DesignTokens.systemGreenWash(on: .window)
+        case .modified, .renamed: return DesignTokens.systemOrangeWash(on: .window)
         }
     }
 }

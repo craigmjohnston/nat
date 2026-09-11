@@ -158,7 +158,7 @@ struct BriefTabView: View {
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
-                                .stroke(DesignTokens.hairline, lineWidth: 1)
+                                .stroke(DesignTokens.hairline(on: .card), lineWidth: 1)
                         )
 
                         Spacer()
@@ -256,7 +256,7 @@ struct BriefTabView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .overlay(alignment: .top) {
-                    DesignTokens.hairline
+                    DesignTokens.hairline(on: .band)
                         .frame(height: 1)
                 }
                 .background(DesignTokens.bandBg)
@@ -331,7 +331,7 @@ struct BriefTabView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(DesignTokens.controlBorder, lineWidth: 0.5)
+                        .stroke(DesignTokens.controlBorder(on: .field), lineWidth: 0.5)
                 )
                 .disabled(isSavingBrief)
 
@@ -537,7 +537,7 @@ struct BriefTabView: View {
             .padding(.vertical, 18)
         }
         .frame(width: sidebarWidth)
-        .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator)
+        .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator(on: .window))
         .overlay(alignment: .leading) {
             PaneResizeHandle(width: $sidebarWidth, minWidth: 170, maxWidth: 400, edge: .leading)
                 .offset(x: -4.5)
@@ -591,7 +591,7 @@ struct BriefTabView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 4))
                     .overlay(
                         RoundedRectangle(cornerRadius: 4)
-                            .stroke(DesignTokens.hairline, lineWidth: 1)
+                            .stroke(DesignTokens.hairline(on: .field), lineWidth: 1)
                     )
                     .lineLimit(1)
                     .truncationMode(.middle)

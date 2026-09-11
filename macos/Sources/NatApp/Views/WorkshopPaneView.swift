@@ -35,7 +35,7 @@ struct WorkshopPaneView: View {
 
                 Divider()
                     .frame(height: 0.5)
-                    .foregroundStyle(DesignTokens.separator)
+                    .foregroundStyle(DesignTokens.separator(on: .window))
             }
 
             content
@@ -114,7 +114,7 @@ struct WorkshopPaneView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(DesignTokens.separator, lineWidth: 1)
+                        .stroke(DesignTokens.separator(on: .window), lineWidth: 1)
                 )
 
             if let error = appModel.workshopLaunchError {

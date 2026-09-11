@@ -66,7 +66,7 @@ struct AgentTabView: View {
                 .padding(.vertical, 8)
                 .frame(height: 34)
                 .background(DesignTokens.controlBg)
-                .rectBorder(width: 0.5, edges: [.top], color: DesignTokens.separator)
+                .rectBorder(width: 0.5, edges: [.top], color: DesignTokens.separator(on: .card))
             } else {
                 // Empty state
                 VStack(spacing: 12) {

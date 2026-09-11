@@ -118,15 +118,15 @@ struct WindowShellView: View {
                 }
                 .padding(.leading, 78)
                 .background(
-                    ZStack {
-                        DesignTokens.headerBg
-                        // color-mix(in srgb, var(--accent) 9%, var(--material-header-bg))
-                        // approximated: the accent laid over the header's own
-                        // material at 9% opacity. Flat fill — the mock's blur
-                        // is a backdrop material over what sits behind the
-                        // window, not a blur of the band's own paint.
-                        DesignTokens.headerAccentVeil
-                    }
+                    // The mock's `color-mix(in srgb, accent 9%, header)` as
+                    // one opaque colour rather than two stacked layers: the
+                    // veil is mixed into the ground in `Palette.headerBg`,
+                    // where it can be seen beside every other derived
+                    // colour. Flat fill — the mock's blur is a backdrop
+                    // material over what sits behind the window, not a blur
+                    // of the band's own paint, and this window paints no
+                    // material for anything to show through.
+                    DesignTokens.headerBg
                     // The drag lives on the background rather than the row
                     // itself: SwiftUI still routes a tap to a Button or
                     // onTapGesture target on top of it (the project tabs, the

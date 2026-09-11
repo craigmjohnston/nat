@@ -98,7 +98,7 @@ struct DiffFileBoxView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(DesignTokens.controlBorder, lineWidth: 0.5)
+                .stroke(DesignTokens.controlBorder(on: .card), lineWidth: 0.5)
         )
     }
 
@@ -217,7 +217,7 @@ struct DiffRowView: View {
     private func gutterCell(_ fill: Color) -> some View {
         HStack(spacing: 0) {
             fill
-            DesignTokens.separator.frame(width: 0.5)
+            DesignTokens.separator(on: .rowAlt).frame(width: 0.5)
         }
         .frame(width: gutterWidth + 0.5)
     }
@@ -248,7 +248,7 @@ struct DiffRowView: View {
         }
         .frame(minHeight: 24)
         .background(alignment: .leading) {
-            gutterCell(DesignTokens.diffCommentGutterBg)
+            gutterCell(DesignTokens.diffCommentGutterBg(on: .card))
         }
     }
 
@@ -299,7 +299,7 @@ struct DiffRowView: View {
             gutterCell(gutterFill)
         }
         .background(rowFill)
-        .background(isSelected ? DesignTokens.selectionWash : Color.clear)
+        .background(isSelected ? DesignTokens.selectionWash(on: .card) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture {
             onSelect(NSEvent.modifierFlags.contains(.shift))
@@ -339,16 +339,16 @@ struct DiffRowView: View {
 
     private var rowFill: Color {
         switch row.kind {
-        case .added: return DesignTokens.diffAddedRowBg
-        case .removed: return DesignTokens.diffRemovedRowBg
+        case .added: return DesignTokens.diffAddedRowBg(on: .card)
+        case .removed: return DesignTokens.diffRemovedRowBg(on: .card)
         default: return .clear
         }
     }
 
     private var gutterFill: Color {
         switch row.kind {
-        case .added: return DesignTokens.diffAddedGutterBg
-        case .removed: return DesignTokens.diffRemovedGutterBg
+        case .added: return DesignTokens.diffAddedGutterBg(on: .card)
+        case .removed: return DesignTokens.diffRemovedGutterBg(on: .card)
         default: return DesignTokens.rowAltBg
         }
     }
@@ -372,7 +372,7 @@ struct PendingCommentCardView: View {
                     .font(.system(size: Typo.caption, weight: .semibold))
                     .foregroundStyle(DesignTokens.accent)
                     .frame(width: 20, height: 20)
-                    .background(DesignTokens.avatarWash)
+                    .background(DesignTokens.avatarWash(on: .card))
                     .clipShape(Circle())
 
                 Text(authorName)
@@ -384,7 +384,7 @@ struct PendingCommentCardView: View {
                     .foregroundStyle(DesignTokens.systemYellow)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(DesignTokens.systemYellowWash)
+                    .background(DesignTokens.systemYellowWash(on: .card))
                     .clipShape(Capsule())
 
                 Spacer()
@@ -422,7 +422,7 @@ struct PendingCommentCardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(DesignTokens.controlBorder, lineWidth: 0.5)
+                .stroke(DesignTokens.controlBorder(on: .card), lineWidth: 0.5)
         )
     }
 }
@@ -454,7 +454,7 @@ struct CommentEditorView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(DesignTokens.controlBorder, lineWidth: 0.5)
+                        .stroke(DesignTokens.controlBorder(on: .field), lineWidth: 0.5)
                 )
 
             HStack(spacing: 8) {

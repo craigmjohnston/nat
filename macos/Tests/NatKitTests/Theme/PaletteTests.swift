@@ -237,12 +237,11 @@ final class PaletteTests: XCTestCase {
     /// stay in order and stay translucent.
     func testBorderOpacitiesAreOrderedAndSubtle() {
         for (name, palette) in palettes {
-            XCTAssertLessThan(palette.hairlineOpacity, palette.separatorOpacity, "\(name): hairline vs separator")
-            XCTAssertLessThan(palette.separatorOpacity, palette.controlBorderOpacity, "\(name): separator vs border")
+            XCTAssertLessThan(palette.hairlineShare, palette.separatorShare, "\(name): hairline vs separator")
+            XCTAssertLessThan(palette.separatorShare, palette.borderShare, "\(name): separator vs border")
             for opacity in [
-                palette.hairlineOpacity, palette.separatorOpacity,
-                palette.controlBorderOpacity, palette.selectionWashOpacity,
-                palette.headerOpacity,
+                palette.hairlineShare, palette.separatorShare,
+                palette.borderShare, palette.selectionShare,
             ] {
                 XCTAssertGreaterThan(opacity, 0, "\(name): no token should be invisible")
                 XCTAssertLessThanOrEqual(opacity, 1, "\(name): no opacity should exceed one")
@@ -256,16 +255,16 @@ final class PaletteTests: XCTestCase {
     /// asserted of them is only that they are washes.
     func testEveryWashIsTranslucent() {
         let washes: [(String, KeyPath<Palette, Double>)] = [
-            ("bandOpacity", \.bandOpacity),
-            ("tintWashOpacity", \.tintWashOpacity),
-            ("avatarWashOpacity", \.avatarWashOpacity),
-            ("diffRowWashOpacity", \.diffRowWashOpacity),
-            ("diffGutterWashOpacity", \.diffGutterWashOpacity),
-            ("commentWashOpacity", \.commentWashOpacity),
-            ("headerAccentOpacity", \.headerAccentOpacity),
-            ("mutedAccentOpacity", \.mutedAccentOpacity),
-            ("skeletonHighlightOpacity", \.skeletonHighlightOpacity),
-            ("onAccentSeparatorOpacity", \.onAccentSeparatorOpacity),
+            ("bandShare", \.bandShare),
+            ("chipShare", \.chipShare),
+            ("avatarShare", \.avatarShare),
+            ("diffRowShare", \.diffRowShare),
+            ("diffGutterShare", \.diffGutterShare),
+            ("commentShare", \.commentShare),
+            ("headerVeilShare", \.headerVeilShare),
+            ("mutedShare", \.mutedShare),
+            ("skeletonShare", \.skeletonShare),
+            ("onAccentRuleShare", \.onAccentRuleShare),
         ]
         for (name, palette) in palettes {
             for (wash, key) in washes {
@@ -283,25 +282,25 @@ final class PaletteTests: XCTestCase {
     /// box.
     func testDiffWashesAreOrdered() {
         for (name, palette) in palettes {
-            XCTAssertLessThan(palette.commentWashOpacity, palette.diffRowWashOpacity, "\(name): comment vs row")
-            XCTAssertLessThan(palette.diffRowWashOpacity, palette.diffGutterWashOpacity, "\(name): row vs gutter")
+            XCTAssertLessThan(palette.commentShare, palette.diffRowShare, "\(name): comment vs row")
+            XCTAssertLessThan(palette.diffRowShare, palette.diffGutterShare, "\(name): row vs gutter")
         }
     }
 
     /// Each wash is pressed for the ground it lands on, which is the rule
-    /// `selectionWashOpacity` and the border ramp already follow: a wash of
+    /// `selectionShare` and the border ramp already follow: a wash of
     /// a hue is lighter in Latte, whose accents are dark saturated colours
     /// over a light ground, and a wash of `label` is heavier, since dark ink
     /// reads fainter than light ink at the same alpha.
     func testWashesArePressedForTheirGround() {
         let hues: [(String, KeyPath<Palette, Double>)] = [
-            ("selectionWashOpacity", \.selectionWashOpacity),
-            ("tintWashOpacity", \.tintWashOpacity),
-            ("avatarWashOpacity", \.avatarWashOpacity),
-            ("diffRowWashOpacity", \.diffRowWashOpacity),
-            ("diffGutterWashOpacity", \.diffGutterWashOpacity),
-            ("commentWashOpacity", \.commentWashOpacity),
-            ("headerAccentOpacity", \.headerAccentOpacity),
+            ("selectionShare", \.selectionShare),
+            ("chipShare", \.chipShare),
+            ("avatarShare", \.avatarShare),
+            ("diffRowShare", \.diffRowShare),
+            ("diffGutterShare", \.diffGutterShare),
+            ("commentShare", \.commentShare),
+            ("headerVeilShare", \.headerVeilShare),
         ]
         for (name, key) in hues {
             XCTAssertLessThan(
@@ -310,10 +309,10 @@ final class PaletteTests: XCTestCase {
             )
         }
         for (name, key) in [
-            ("hairlineOpacity", \Palette.hairlineOpacity),
-            ("separatorOpacity", \Palette.separatorOpacity),
-            ("controlBorderOpacity", \Palette.controlBorderOpacity),
-            ("skeletonHighlightOpacity", \Palette.skeletonHighlightOpacity),
+            ("hairlineShare", \Palette.hairlineShare),
+            ("separatorShare", \Palette.separatorShare),
+            ("borderShare", \Palette.borderShare),
+            ("skeletonShare", \Palette.skeletonShare),
         ] {
             XCTAssertGreaterThan(
                 Palette.latte[keyPath: key], Palette.mocha[keyPath: key],
@@ -323,16 +322,16 @@ final class PaletteTests: XCTestCase {
     }
 
     /// The two washes that are deliberately the same in both themes, and
-    /// the comments beside them are the reason: `bandOpacity` mixes two of
+    /// the comments beside them are the reason: `bandShare` mixes two of
     /// the palette's own surfaces, so it re-balances by itself, and
-    /// `onAccentSeparatorOpacity` is the accent's own maximum-contrast ink
+    /// `onAccentRuleShare` is the accent's own maximum-contrast ink
     /// over the accent, which is what `accentText` is in either theme.
     func testTheTwoGroundlessWashesMatchAcrossThemes() {
-        XCTAssertEqual(Palette.latte.bandOpacity, Palette.mocha.bandOpacity)
-        XCTAssertEqual(Palette.latte.onAccentSeparatorOpacity, Palette.mocha.onAccentSeparatorOpacity)
+        XCTAssertEqual(Palette.latte.bandShare, Palette.mocha.bandShare)
+        XCTAssertEqual(Palette.latte.onAccentRuleShare, Palette.mocha.onAccentRuleShare)
         // A dim is read against the full colour beside it rather than
         // against the ground under it, so it is the same fraction too.
-        XCTAssertEqual(Palette.latte.mutedAccentOpacity, Palette.mocha.mutedAccentOpacity)
+        XCTAssertEqual(Palette.latte.mutedShare, Palette.mocha.mutedShare)
     }
 
     /// The two palettes are two: nothing here is one value shared by

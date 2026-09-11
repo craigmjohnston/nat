@@ -113,7 +113,7 @@ private struct SkeletonRail: View {
         .padding(.vertical, 18)
         .frame(width: width)
         .frame(maxHeight: .infinity, alignment: .top)
-        .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator)
+        .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator(on: .window))
     }
 }
 
@@ -173,7 +173,7 @@ struct BriefSkeletonView: View {
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
-                            .stroke(DesignTokens.hairline, lineWidth: 1)
+                            .stroke(DesignTokens.hairline(on: .card), lineWidth: 1)
                     )
 
                     Spacer()
@@ -226,7 +226,7 @@ struct DiffSkeletonView: View {
                 .padding(8)
                 .frame(width: sidebarWidth)
                 .frame(maxHeight: .infinity, alignment: .top)
-                .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator)
+                .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator(on: .window))
             }
 
             SkeletonFooter()
@@ -269,7 +269,7 @@ struct DiffSkeletonView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(DesignTokens.hairline, lineWidth: 1)
+                .stroke(DesignTokens.hairline(on: .card), lineWidth: 1)
         )
     }
 }

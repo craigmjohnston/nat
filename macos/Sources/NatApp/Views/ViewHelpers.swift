@@ -224,7 +224,7 @@ struct SecondaryButtonStyle: ButtonStyle {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius)
-                    .stroke(DesignTokens.hairline, lineWidth: 1)
+                    .stroke(DesignTokens.hairline(on: .control), lineWidth: 1)
             )
             .opacity(buttonOpacity(isPressed: configuration.isPressed, isEnabled: isEnabled))
             .contentShape(RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius))
