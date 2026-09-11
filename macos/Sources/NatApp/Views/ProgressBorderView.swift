@@ -46,7 +46,7 @@ struct ProgressBorderView: View {
         ZStack(alignment: .leading) {
             // Background
             RoundedRectangle(cornerRadius: 3.5)
-                .fill(DesignTokens.labelQuaternary)
+                .fill(DesignTokens.rule(.border, on: .window))
 
             // Progress fill — one hue for the whole bar, with brightness
             // saying what's finished: the folded Done run sits back at a

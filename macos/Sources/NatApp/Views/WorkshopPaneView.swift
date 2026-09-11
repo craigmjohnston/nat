@@ -33,9 +33,7 @@ struct WorkshopPaneView: View {
                 .frame(height: 46)
                 .padding(.horizontal, 14)
 
-                Divider()
-                    .frame(height: 0.5)
-                    .foregroundStyle(DesignTokens.separator(on: .window))
+                Rule()
             }
 
             content

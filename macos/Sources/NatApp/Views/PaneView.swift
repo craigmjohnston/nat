@@ -61,8 +61,7 @@ struct PaneView: View {
                         HStack(spacing: 10) {
                             ForEach(Array(tabState.tabs.enumerated()), id: \.offset) { index, tab in
                                 if index > 0 {
-                                    Rectangle()
-                                        .fill(DesignTokens.hairline(on: .band))
+                                    Rule(.hairline, axis: .vertical)
                                         .frame(width: 12, height: 1)
                                 }
 
@@ -79,8 +78,7 @@ struct PaneView: View {
                     .padding(.horizontal, 14)
                     .surface(.band)
                     .overlay(alignment: .bottom) {
-                        DesignTokens.hairline(on: .band)
-                            .frame(height: 1)
+                        Rule(.hairline)
                     }
                 }
 
@@ -155,33 +153,33 @@ struct PaneView: View {
         // that is both complete and current keeps the green check (complete's
         // glyph) under the current wash (current's background), rather than
         // one of the two states winning outright.
-        let labelColor: Color
+        let labelColor: InkRole
         let labelWeight: Font.Weight
         let showsCurrentWash: Bool
 
         if isCurrentTab {
-            labelColor = DesignTokens.label
+            labelColor = .primary
             labelWeight = .semibold
             showsCurrentWash = true
         } else if isComplete {
-            labelColor = DesignTokens.labelSecondary
+            labelColor = .secondary
             labelWeight = .regular
             showsCurrentWash = false
         } else if isReachable {
-            labelColor = DesignTokens.labelSecondary
+            labelColor = .secondary
             labelWeight = .regular
             showsCurrentWash = false
         } else {
-            labelColor = DesignTokens.labelQuaternary
+            labelColor = .quaternary
             labelWeight = .regular
             showsCurrentWash = false
         }
 
-        let glyphColor: Color = isComplete
-            ? DesignTokens.systemGreen
-            : isCurrentTab ? DesignTokens.accent
-            : isReachable ? DesignTokens.labelSecondary
-            : DesignTokens.labelQuaternary
+        let glyphColor: InkRole = isComplete
+            ? .success
+            : isCurrentTab ? .accent
+            : isReachable ? .secondary
+            : .quaternary
 
         return HStack(spacing: 5) {
             Group {
@@ -193,11 +191,11 @@ struct PaneView: View {
                         .font(.system(size: 8))
                 }
             }
-            .foregroundStyle(glyphColor)
+            .ink(glyphColor)
 
             Text(tab.rawValue)
                 .font(.system(size: Typo.subhead, weight: labelWeight))
-                .foregroundStyle(labelColor)
+                .ink(labelColor)
                 .lineLimit(1)
         }
         .padding(.horizontal, 9)

@@ -213,7 +213,7 @@ struct DiffRowView: View {
     private func gutterCell(_ fill: Color) -> some View {
         HStack(spacing: 0) {
             fill
-            DesignTokens.separator(on: .rowAlt).frame(width: 0.5)
+            DesignTokens.rule(.separator, on: .rowAlt).frame(width: 0.5)
         }
         .frame(width: gutterWidth + 0.5)
     }
@@ -244,7 +244,7 @@ struct DiffRowView: View {
         }
         .frame(minHeight: 24)
         .background(alignment: .leading) {
-            gutterCell(DesignTokens.diffCommentGutterBg(on: .card))
+            gutterCell(DesignTokens.diffCommentGutterBg(on: ground))
         }
     }
 
@@ -335,16 +335,16 @@ struct DiffRowView: View {
 
     private var rowFill: Color {
         switch row.kind {
-        case .added: return DesignTokens.diffAddedRowBg(on: .card)
-        case .removed: return DesignTokens.diffRemovedRowBg(on: .card)
+        case .added: return DesignTokens.diffAddedRowBg(on: ground)
+        case .removed: return DesignTokens.diffRemovedRowBg(on: ground)
         default: return .clear
         }
     }
 
     private var gutterFill: Color {
         switch row.kind {
-        case .added: return DesignTokens.diffAddedGutterBg(on: .card)
-        case .removed: return DesignTokens.diffRemovedGutterBg(on: .card)
+        case .added: return DesignTokens.diffAddedGutterBg(on: ground)
+        case .removed: return DesignTokens.diffRemovedGutterBg(on: ground)
         default: return DesignTokens.fill(.rowAlt)
         }
     }
@@ -355,6 +355,7 @@ struct DiffRowView: View {
 /// "Pending" badge — every comment here is, since none of them are written
 /// anywhere until they are sent — and the edit/delete icons the mock shows.
 struct PendingCommentCardView: View {
+    @Environment(\.ground) private var ground
     let comment: PendingComment
     let authorName: String
     let authorInitials: String
@@ -380,7 +381,7 @@ struct PendingCommentCardView: View {
                     .ink(.warning)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(DesignTokens.systemYellowWash(on: .card))
+                    .background(DesignTokens.systemYellowWash(on: ground))
                     .clipShape(Capsule())
 
                 Spacer()

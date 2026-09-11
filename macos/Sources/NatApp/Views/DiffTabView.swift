@@ -211,16 +211,16 @@ struct DiffTabView: View {
             // the last good reading, and saying so is what stops it being
             // read as the branch's current state.
             if let staleMessage = store.loadState.errorMessage {
-                inlineNotice("Showing the last reading — \(staleMessage)", color: DesignTokens.systemOrange)
+                inlineNotice("Showing the last reading — \(staleMessage)", role: .warning)
             }
             if let dropNotice {
-                inlineNotice(dropNotice, color: DesignTokens.systemOrange)
+                inlineNotice(dropNotice, role: .warning)
             }
             if let sendError {
-                inlineNotice(sendError, color: DesignTokens.systemRed)
+                inlineNotice(sendError, role: .danger)
             }
             if let approveError {
-                inlineNotice(approveError, color: DesignTokens.systemRed)
+                inlineNotice(approveError, role: .danger)
             }
 
             Divider()
@@ -291,12 +291,12 @@ struct DiffTabView: View {
         .dialogIcon(Image(systemName: "checkmark.seal"))
     }
 
-    private func inlineNotice(_ text: String, color: Color) -> some View {
+    private func inlineNotice(_ text: String, role: InkRole) -> some View {
         HStack {
             Text(text)
                 .font(.system(size: Typo.subhead, weight: .regular))
                 .monospacedDigit()
-                .foregroundStyle(color)
+                .ink(role)
                 .lineLimit(2)
             Spacer()
         }

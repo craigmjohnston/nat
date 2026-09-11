@@ -229,9 +229,7 @@ struct RailView: View {
                 // do — an empty board opening with a bare line would read as
                 // chrome missing its content.
                 if workshopEntry != nil || !railModel.needsReview.isEmpty || !railModel.active.isEmpty {
-                    Divider()
-                        .frame(height: 0.5)
-                        .foregroundStyle(DesignTokens.separator(on: .window))
+                    Rule()
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
                 }
@@ -260,9 +258,7 @@ struct RailView: View {
                 // the plan: every milestone with work done expands under it
                 // as a folder of its own, one level deeper than the tree.
                 if let summary = railModel.doneSummary {
-                    Divider()
-                        .frame(height: 0.5)
-                        .foregroundStyle(DesignTokens.separator(on: .window))
+                    Rule()
                         .padding(.horizontal, 12)
                         .padding(.top, 9)
                         .padding(.bottom, 10)
@@ -575,7 +571,7 @@ struct RailView: View {
             // drawn by the row itself — paints over its stretch of it.
             .background(alignment: .leading) {
                 Rectangle()
-                    .fill(DesignTokens.labelQuaternary)
+                    .fill(DesignTokens.rule(.border, on: .window))
                     .frame(width: 1)
                     .padding(.leading, guideInset(inDone: inDone))
             }

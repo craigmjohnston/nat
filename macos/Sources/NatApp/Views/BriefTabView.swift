@@ -2,6 +2,9 @@ import SwiftUI
 import NatKit
 
 struct BriefTabView: View {
+    /// What the brief is drawn on, for the one colour it computes as a
+    /// value — a status dot's fill, chosen by a switch before it is applied.
+    @Environment(\.ground) private var ground
     @Bindable var appModel: AppModel
     let slice: Slice
     var onTabChange: (WorkflowTab) -> Void = { _ in }
@@ -249,8 +252,7 @@ struct BriefTabView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .overlay(alignment: .top) {
-                    DesignTokens.hairline(on: .band)
-                        .frame(height: 1)
+                    Rule(.hairline)
                 }
                 .surface(.band)
 
@@ -540,7 +542,7 @@ struct BriefTabView: View {
 
             HStack(spacing: 6) {
                 Circle()
-                    .fill(statusDotColor(detail.status))
+                    .fill(DesignTokens.ink(statusDotColor(detail.status), on: ground))
                     .frame(width: 8, height: 8)
                 Text(detail.status)
                     .font(.system(size: Typo.subhead, weight: .regular))
@@ -631,11 +633,11 @@ struct BriefTabView: View {
 
     /// The Status row's dot: green once done, orange while being worked, and
     /// otherwise the same quiet tertiary a Todo slice draws everywhere else.
-    private func statusDotColor(_ status: String) -> Color {
+    private func statusDotColor(_ status: String) -> InkRole {
         switch status {
-        case "Done": return DesignTokens.systemGreen
-        case "In progress": return DesignTokens.systemOrange
-        default: return DesignTokens.labelTertiary
+        case "Done": return .success
+        case "In progress": return .warning
+        default: return .tertiary
         }
     }
 

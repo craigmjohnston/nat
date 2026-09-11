@@ -32,7 +32,7 @@ struct ProjectTabsView: View {
                     && appModel.activeProjectID == appModel.projectTabs[index + 1].id
                 if !isActive && !nextIsActive {
                     Rectangle()
-                        .fill(DesignTokens.labelQuaternary)
+                        .fill(DesignTokens.rule(.border, on: .header))
                         .frame(width: 1, height: 16)
                         // Centered on the band's content line, like the
                         // tab labels beside it — bottom-aligned it hung
@@ -112,12 +112,17 @@ struct ProjectTabsView: View {
             // Count badge — tight, caption-scale, tabular digits rather than
             // a switch to monospaced design (there's no code here to align).
             if liveCount > 0 {
+                // A badge is a chip: its own tint washed into the band behind
+                // it, with a word readable on that. It used to fill with
+                // `labelQuaternary` and write `labelTertiary` on it — ink as
+                // ground, the same mistake as the hover fill, and the last one
+                // left in the app.
                 Text("\(liveCount)")
                     .font(.system(size: Typo.caption, weight: .regular))
                     .monospacedDigit()
-                    .ink(isActive ? .secondary : .tertiary)
+                    .foregroundStyle(DesignTokens.chipInk(.labelSecondary, on: .header))
                     .padding(.horizontal, 6)
-                    .background(DesignTokens.labelQuaternary)
+                    .background(DesignTokens.wash(.chip, tone: .labelSecondary, on: .header))
                     .cornerRadius(8)
             }
 
