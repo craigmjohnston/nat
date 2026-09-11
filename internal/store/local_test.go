@@ -451,9 +451,9 @@ func TestLocalNamesItsFileWhenARowWillNotScan(t *testing.T) {
 	ctx := context.Background()
 
 	reads := map[string]func() error{
-		"the slices":       func() error { _, err := l.slices(ctx); return err },
+		"the slices":       func() error { _, err := l.slices(ctx, l.db); return err },
 		"one slice":        func() error { _, _, err := l.Slice(ctx, "one"); return err },
-		"the dependencies": func() error { _, err := l.dependencies(ctx); return err },
+		"the dependencies": func() error { _, err := l.dependencies(ctx, l.db); return err },
 	}
 	for name, read := range reads {
 		err := read()
@@ -485,9 +485,9 @@ func TestLocalNamesItsFileWhenAReadFailsPartWayThrough(t *testing.T) {
 	ctx := context.Background()
 
 	reads := map[string]func() error{
-		"the milestones":   func() error { _, err := l.milestones(ctx); return err },
-		"the slices":       func() error { _, err := l.slices(ctx); return err },
-		"the dependencies": func() error { _, err := l.dependencies(ctx); return err },
+		"the milestones":   func() error { _, err := l.milestones(ctx, l.db); return err },
+		"the slices":       func() error { _, err := l.slices(ctx, l.db); return err },
+		"the dependencies": func() error { _, err := l.dependencies(ctx, l.db); return err },
 	}
 	for name, read := range reads {
 		err := read()
@@ -649,40 +649,6 @@ func (failingConnector) Driver() driver.Driver                        { return n
 func (failingConnector) Close() error                                 { return errClosed }
 
 var errClosed = errors.New("this connector will not close")
-
-// The writes are the next slice's, and until then they refuse rather than
-// pretend: a Local is a Store from the read half onwards, so every write has to
-// be there to be refused.
-func TestLocalWritesRefuseUntilTheyAreImplemented(t *testing.T) {
-	l, _ := openPlan(t)
-	ctx := context.Background()
-
-	writes := map[string]func() error{
-		"ClaimSlice":   func() error { _, err := l.ClaimSlice(ctx, "x", Shape{}, "u"); return err },
-		"ReleaseSlice": func() error { _, err := l.ReleaseSlice(ctx, "x", Shape{}, "u"); return err },
-		"CompleteSlice": func() error {
-			_, err := l.CompleteSlice(ctx, "x", Shape{}, Outcome{})
-			return err
-		},
-		"RecordPR": func() error { return l.RecordPR(ctx, "x", "url") },
-		"MarkDone": func() error { return l.MarkDone(ctx, "x", Shape{}) },
-		"AddMilestones": func() error {
-			_, err := l.AddMilestones(ctx, Project{}, Shape{}, []string{"M1"})
-			return err
-		},
-		"AddSlice":        func() error { _, err := l.AddSlice(ctx, Project{}, NewSlice{}); return err },
-		"EditSlice":       func() error { return l.EditSlice(ctx, "x", "t", "r", "b") },
-		"SetSliceBrief":   func() error { return l.SetSliceBrief(ctx, "x", "b") },
-		"SetDependencies": func() error { _, err := l.SetDependencies(ctx, "x", nil); return err },
-		"MoveSlice":       func() error { return l.MoveSlice(ctx, "x", domain.Milestone{}) },
-		"DeleteSlice":     func() error { return l.DeleteSlice(ctx, "x") },
-	}
-	for name, w := range writes {
-		if err := w(); !errors.Is(err, errLocalReadOnly) {
-			t.Errorf("%s = %v, want it refused as not implemented", name, err)
-		}
-	}
-}
 
 func TestLocalDirIsTheUsersDataDirectory(t *testing.T) {
 	home := t.TempDir()

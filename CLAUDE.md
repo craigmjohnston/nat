@@ -113,10 +113,33 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   each reported with the path and what SQLite made of it, since the path is the
   whole of what there is to go and look at. The schema is stamped in SQLite's
   own `user_version`, so a reopen is one read and no writes and a plan written
-  by a later build is refused rather than half understood. The writes — and the
-  full-text index the design settles on — are the next slices'; until then they
-  refuse rather than pretend, so a `Local` can be handed anywhere a `Store` is
-  taken and what is not there yet says so.
+  by a later build is refused rather than half understood. `local_write.go` is
+  the other half, and two rules run through all of it. A mutation is one
+  transaction, which is what the design's own temp file and rename were for —
+  nothing ever reads half a write — only better, since a rename publishes one
+  writer's whole idea of the plan over another's where a transaction touches
+  only the rows it is about: nothing there writes the plan, everything writes a
+  row of it. And a mutation reads inside that transaction before it writes,
+  writing what the reading says rather than what the caller was last told,
+  since a board's copy of a slice is as old as its last poll and an agent has
+  been writing since — `updateSlice` is that shape said once, the slice read
+  afresh, the mutation handed that reading, and the slice as the write left it
+  read back before the commit, so a slice somebody deleted is refused rather
+  than quietly updated in no rows. Every transaction is `BEGIN IMMEDIATE`
+  (`_txlock` in the DSN), because a deferred one takes its read lock at the
+  first `SELECT` and asks for the write lock after, which is the one upgrade
+  SQLite refuses outright instead of waiting out the busy timeout for — so two
+  agents writing at once would fail rather than queue. What a write leaves on a
+  slice's body is markdown under the very headings the Notion store writes as
+  blocks, so `PRDescriptionOf`'s rule finds a hand-back's description either
+  way; a milestone is appended at the end of the plan and refused for a name
+  the plan already holds, as the options of a `Milestone` column are; a new
+  slice is given an ID of nat's own, since there is no page create to hand one
+  back, and is refused a milestone the plan does not hold, which is what
+  Notion's select column refuses for the other store; and a delete is a delete,
+  there being no trash in a file — what a local plan offers instead is the file
+  itself, one project to a database. The full-text index the design settles on
+  is still the next slice's.
 - `internal/domain/` — Project/Milestone/Slice models, progress math
 - `internal/logging/` — the log file: `~/Library/Logs/notion-agent-tracker/` on
   macOS, the XDG state dir elsewhere, size-capped with one previous file kept.
