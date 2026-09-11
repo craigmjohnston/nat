@@ -623,7 +623,7 @@ struct BriefTabView: View {
                             }
                             Text(entry.name)
                                 .font(.system(size: Typo.caption, weight: .regular))
-                                .foregroundStyle(entry.done ? DesignTokens.labelTertiary : DesignTokens.label)
+                                .ink(entry.done ? .tertiary : .primary)
                                 .lineLimit(1)
                         }
                         .padding(.horizontal, 8)

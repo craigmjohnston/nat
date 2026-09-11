@@ -105,7 +105,7 @@ struct ProjectTabsView: View {
                 .overlay(alignment: .leading) {
                     Text(tab.name)
                         .font(.system(size: Typo.subhead, weight: isActive ? .semibold : .regular))
-                        .foregroundStyle(isActive ? DesignTokens.label : DesignTokens.labelSecondary)
+                        .ink(isActive ? .primary : .secondary)
                         .lineLimit(1)
                 }
 
@@ -115,7 +115,7 @@ struct ProjectTabsView: View {
                 Text("\(liveCount)")
                     .font(.system(size: Typo.caption, weight: .regular))
                     .monospacedDigit()
-                    .foregroundStyle(isActive ? DesignTokens.labelSecondary : DesignTokens.labelTertiary)
+                    .ink(isActive ? .secondary : .tertiary)
                     .padding(.horizontal, 6)
                     .background(DesignTokens.labelQuaternary)
                     .cornerRadius(8)

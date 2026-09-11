@@ -6,8 +6,10 @@ import SwiftUI
 ///
 /// What these hold is that saying what a thing is *for* — a card, a chip, a
 /// secondary line — is enough to get it drawn correctly on whatever it has
-/// landed on. The view layer names no colour at all now, so the guarantee has
-/// to live here.
+/// landed on. That is where the view layer is heading rather than where it has
+/// arrived: the colour a call site names is now the exception, but there are
+/// still places naming one, mostly `Color`-typed locals and rules handed to
+/// `rectBorder`, which want a small restructure each rather than a rename.
 @MainActor
 final class ComponentsTests: XCTestCase {
     private let roles: [InkRole] = [

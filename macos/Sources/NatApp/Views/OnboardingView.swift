@@ -92,7 +92,7 @@ struct OnboardingView: View {
         let found = BinaryLocator.isFound(binary)
         return HStack(spacing: 8) {
             Image(systemName: found ? "checkmark.circle.fill" : "xmark.circle")
-                .foregroundStyle(found ? DesignTokens.systemGreen : DesignTokens.systemRed)
+                .ink(found ? .success : .danger)
                 .font(.system(size: 13, weight: .medium))
 
             Text(binary)
@@ -103,7 +103,7 @@ struct OnboardingView: View {
 
             Text(found ? "Found" : "Missing")
                 .font(.system(size: Typo.subhead, weight: .regular))
-                .foregroundStyle(found ? DesignTokens.labelSecondary : DesignTokens.systemRed)
+                .ink(found ? .secondary : .danger)
         }
         .frame(width: 220)
     }

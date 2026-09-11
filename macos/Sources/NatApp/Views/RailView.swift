@@ -606,7 +606,7 @@ struct RailView: View {
 
             Text(folder.title)
                 .font(.system(size: Typo.body, weight: folder.isCurrent ? .semibold : .regular))
-                .foregroundStyle(inDone ? DesignTokens.labelSecondary : DesignTokens.label)
+                .ink(inDone ? .secondary : .primary)
                 .lineLimit(1)
 
             Spacer()

@@ -122,7 +122,7 @@ struct NewProjectSheetView: View {
                     ?? listing.note
                     ?? "Every project in the workspace is already on this Mac. Create a new one instead.")
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(listingError == nil ? DesignTokens.labelTertiary : DesignTokens.systemYellow)
+                    .ink(listingError == nil ? .tertiary : .warning)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Picker("Project", selection: $selectedProjectID) {
