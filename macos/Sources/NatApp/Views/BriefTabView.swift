@@ -227,9 +227,13 @@ struct BriefTabView: View {
                             .buttonStyle(.plain)
                             .disabled(!launchIsEnabled() || isLaunching)
 
-                            Divider()
-                                .frame(maxHeight: ButtonMetrics.height)
-                                .opacity(0.25)
+                            // A rule rather than a `Divider`, which draws
+                            // the system separator: this line sits on the
+                            // accent slab, which is pinned to the theme, so
+                            // the line on it has to be too.
+                            Rectangle()
+                                .fill(DesignTokens.onAccentSeparator)
+                                .frame(width: 1, height: ButtonMetrics.height)
 
                             Button(action: { showLaunchPopover.toggle() }) {
                                 Image(systemName: "chevron.down")
@@ -255,7 +259,7 @@ struct BriefTabView: View {
                     DesignTokens.hairline
                         .frame(height: 1)
                 }
-                .background(DesignTokens.controlBg.opacity(0.5))
+                .background(DesignTokens.bandBg)
 
                 // Error or warning message
                 if let error = launchError {
@@ -271,7 +275,7 @@ struct BriefTabView: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 6)
-                    .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                    .background(DesignTokens.bandBg)
                 } else if let warning = launchWarning {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -285,7 +289,7 @@ struct BriefTabView: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 6)
-                    .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                    .background(DesignTokens.bandBg)
                 }
         }
     }

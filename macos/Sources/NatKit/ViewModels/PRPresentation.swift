@@ -14,10 +14,16 @@ import SwiftUI
 // MARK: - PR state chip
 
 /// Where a pull request stands, in GitHub's own four words — merged, closed,
-/// draft, open — and the tint that word is drawn in.
+/// draft, open — and the tint that word is drawn in, paired with the wash the
+/// capsule behind it is filled with.
+///
+/// The wash travels with the tint rather than being derived where the chip is
+/// drawn: a chip is one colour used twice, and a view left to press the tint
+/// itself is a view free to pick a number the theme never chose.
 public struct PRStateChip: Equatable, Sendable {
     public let label: String
     public let tint: Color
+    public let wash: Color
 }
 
 /// `prStateChip` mirrors `internal/tui/prview.go`'s `prStateChip`: merged and
@@ -27,15 +33,15 @@ public struct PRStateChip: Equatable, Sendable {
 /// request that is neither merged nor closed.
 public func prStateChip(state: String, isDraft: Bool) -> PRStateChip {
     if state == PRLifecycleState.merged {
-        return PRStateChip(label: "merged", tint: DesignTokens.accent)
+        return PRStateChip(label: "merged", tint: DesignTokens.accent, wash: DesignTokens.accentWash)
     }
     if state == PRLifecycleState.closed {
-        return PRStateChip(label: "closed", tint: DesignTokens.systemRed)
+        return PRStateChip(label: "closed", tint: DesignTokens.systemRed, wash: DesignTokens.systemRedWash)
     }
     if isDraft {
-        return PRStateChip(label: "draft", tint: DesignTokens.labelSecondary)
+        return PRStateChip(label: "draft", tint: DesignTokens.labelSecondary, wash: DesignTokens.labelSecondaryWash)
     }
-    return PRStateChip(label: "open", tint: DesignTokens.systemGreen)
+    return PRStateChip(label: "open", tint: DesignTokens.systemGreen, wash: DesignTokens.systemGreenWash)
 }
 
 // MARK: - Check / verdict outcome

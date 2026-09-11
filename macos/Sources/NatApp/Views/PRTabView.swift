@@ -156,7 +156,7 @@ struct PRTabView: View {
             .foregroundStyle(chip.tint)
             .padding(.horizontal, 10)
             .frame(height: 22)
-            .background(chip.tint.opacity(0.18))
+            .background(chip.wash)
             .clipShape(Capsule())
 
             Text(pr.title)
@@ -478,7 +478,7 @@ struct PRConversationEntryView: View {
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(DesignTokens.accent)
                 .frame(width: Self.avatarSize, height: Self.avatarSize)
-                .background(DesignTokens.accent.opacity(0.3))
+                .background(DesignTokens.avatarWash)
                 .clipShape(Circle())
                 .padding(.top, 2)
 
@@ -578,7 +578,7 @@ struct PRComposerView: View {
                             }
                         }
                         .frame(width: 24, height: 22)
-                        .background(canSend ? DesignTokens.accent : DesignTokens.accent.opacity(0.4))
+                        .background(canSend ? DesignTokens.accent : DesignTokens.accentMuted)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
                     .buttonStyle(.plain)

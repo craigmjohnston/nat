@@ -248,7 +248,7 @@ struct DiffRowView: View {
         }
         .frame(minHeight: 24)
         .background(alignment: .leading) {
-            gutterCell(DesignTokens.accent.opacity(0.1))
+            gutterCell(DesignTokens.diffCommentGutterBg)
         }
     }
 
@@ -299,7 +299,7 @@ struct DiffRowView: View {
             gutterCell(gutterFill)
         }
         .background(rowFill)
-        .background(isSelected ? DesignTokens.accent.opacity(0.16) : Color.clear)
+        .background(isSelected ? DesignTokens.selectionWash : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture {
             onSelect(NSEvent.modifierFlags.contains(.shift))
@@ -339,16 +339,16 @@ struct DiffRowView: View {
 
     private var rowFill: Color {
         switch row.kind {
-        case .added: return DesignTokens.systemGreen.opacity(0.2)
-        case .removed: return DesignTokens.systemRed.opacity(0.2)
+        case .added: return DesignTokens.diffAddedRowBg
+        case .removed: return DesignTokens.diffRemovedRowBg
         default: return .clear
         }
     }
 
     private var gutterFill: Color {
         switch row.kind {
-        case .added: return DesignTokens.systemGreen.opacity(0.32)
-        case .removed: return DesignTokens.systemRed.opacity(0.32)
+        case .added: return DesignTokens.diffAddedGutterBg
+        case .removed: return DesignTokens.diffRemovedGutterBg
         default: return DesignTokens.rowAltBg
         }
     }
@@ -372,7 +372,7 @@ struct PendingCommentCardView: View {
                     .font(.system(size: Typo.caption, weight: .semibold))
                     .foregroundStyle(DesignTokens.accent)
                     .frame(width: 20, height: 20)
-                    .background(DesignTokens.accent.opacity(0.3))
+                    .background(DesignTokens.avatarWash)
                     .clipShape(Circle())
 
                 Text(authorName)
@@ -384,7 +384,7 @@ struct PendingCommentCardView: View {
                     .foregroundStyle(DesignTokens.systemYellow)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(DesignTokens.systemYellow.opacity(0.18))
+                    .background(DesignTokens.systemYellowWash)
                     .clipShape(Capsule())
 
                 Spacer()

@@ -87,6 +87,20 @@ public enum DesignTokens {
     /// header opacity, the flat stand-in for the mock's backdrop blur.
     public static let headerBg = token(\.windowBg, opacity: \.headerOpacity)
 
+    /// The accent veil laid over that material — the mock's
+    /// `color-mix(in srgb, accent 9%, header)` as a flat fill, since the
+    /// mock's blur is a backdrop material over what sits behind the window
+    /// rather than a blur of the band's own paint.
+    public static let headerAccentVeil = token(\.accent, opacity: \.headerAccentOpacity)
+
+    /// A band laid over the window ground at half a card's weight: the
+    /// pane's header band, the brief's footer band, and the notice row that
+    /// follows it. It used to be three different things — `controlBg` behind
+    /// a bare `0.5` in two files and AppKit's own `controlBackgroundColor`
+    /// behind the same number in a third, which drifted with the OS
+    /// appearance while everything around it stayed pinned.
+    public static let bandBg = token(\.controlBg, opacity: \.bandOpacity)
+
     // MARK: - Text Colors
 
     /// Primary label color.
@@ -134,6 +148,62 @@ public enum DesignTokens {
     /// Control border color: the edge of something the pointer acts on,
     /// which has to read as an edge and not as a suggestion of one.
     public static let controlBorder = token(\.label, opacity: \.controlBorderOpacity)
+
+    /// The sweep passing over a loading skeleton block. `Skeleton` names the
+    /// block itself and the arithmetic; the colour is the theme's, like
+    /// every other.
+    public static let skeletonHighlight = token(\.label, opacity: \.skeletonHighlightOpacity)
+
+    /// The rule splitting a filled accent control in two: the launch
+    /// button and the chevron that opens its options. The one line in the
+    /// app drawn on the accent rather than on a surface, so it is the
+    /// accent's own ink behind an alpha rather than `separator`, which is
+    /// `label` and would be the wrong ink entirely on a light accent.
+    public static let onAccentSeparator = token(\.accentText, opacity: \.onAccentSeparatorOpacity)
+
+    /// The accent as a fill that is present but spent: a finished run of the
+    /// progress bar, a send button with nothing to send.
+    public static let accentMuted = token(\.accent, opacity: \.mutedAccentOpacity)
+
+    /// The disc an avatar's initials sit on.
+    public static let avatarWash = token(\.accent, opacity: \.avatarWashOpacity)
+
+    // MARK: - Chip & Badge Washes
+
+    // A chip is its own tint drawn twice: the word at full strength and the
+    // capsule behind it at `tintWashOpacity`. Each of these is that pair's
+    // second half, named for the colour it washes so a call site that has
+    // the tint can ask for its wash and cannot pick a different number.
+
+    /// The accent behind its own word.
+    public static let accentWash = token(\.accent, opacity: \.tintWashOpacity)
+    /// Red behind its own word: a closed pull request.
+    public static let systemRedWash = token(\.systemRed, opacity: \.tintWashOpacity)
+    /// Green behind its own word: an open pull request, an added file.
+    public static let systemGreenWash = token(\.systemGreen, opacity: \.tintWashOpacity)
+    /// Yellow behind its own word: a comment not yet sent.
+    public static let systemYellowWash = token(\.systemYellow, opacity: \.tintWashOpacity)
+    /// Orange behind its own word: a modified or renamed file.
+    public static let systemOrangeWash = token(\.systemOrange, opacity: \.tintWashOpacity)
+    /// The secondary label behind its own word: a draft, which is the one
+    /// chip state that is deliberately not an outcome colour.
+    public static let labelSecondaryWash = token(\.labelSecondary, opacity: \.tintWashOpacity)
+
+    // MARK: - Diff Washes
+
+    /// An added row's own fill, under the line's syntax colours rather than
+    /// instead of them.
+    public static let diffAddedRowBg = token(\.systemGreen, opacity: \.diffRowWashOpacity)
+    /// A removed row's own fill.
+    public static let diffRemovedRowBg = token(\.systemRed, opacity: \.diffRowWashOpacity)
+    /// The gutter cell beside an added row — the same green pressed harder,
+    /// since a stripe a few characters wide has to carry the sign alone.
+    public static let diffAddedGutterBg = token(\.systemGreen, opacity: \.diffGutterWashOpacity)
+    /// The gutter cell beside a removed row.
+    public static let diffRemovedGutterBg = token(\.systemRed, opacity: \.diffGutterWashOpacity)
+    /// The gutter cell beside a comment row: the faintest mark in the diff,
+    /// since a comment is an annotation and not a change.
+    public static let diffCommentGutterBg = token(\.accent, opacity: \.commentWashOpacity)
 
     // MARK: - System Color Overrides
 
@@ -240,14 +310,29 @@ func rgbComponents(hex: String) -> (red: Double, green: Double, blue: Double)? {
     )
 }
 
+/// What a hex that will not parse resolves to: Catppuccin Mocha's mauve,
+/// which is the app's own accent.
+///
+/// It used to be white — the one colour in the app guaranteed to belong to
+/// neither palette, and so the one whose appearance says "this is a bug"
+/// only to somebody who already knows it is the fallback. A colour that
+/// cannot be read *is* a bug, and it is caught by `PaletteTests` rather than
+/// by a glance at the window; what the fallback is for is the frame drawn
+/// before anybody looks at the test, and a frame drawn in the accent is one
+/// that still reads as this app. Written out channel by channel rather than
+/// parsed from `Palette.mocha.accent`, because the fallback for a parse
+/// cannot itself depend on a parse succeeding — `hexFallbackIsTheAccent`
+/// asserts the two agree.
+let hexFallback: (red: Double, green: Double, blue: Double) = (
+    Double(0xcb) / 255.0, Double(0xa6) / 255.0, Double(0xf7) / 255.0
+)
+
 extension Color {
     /// Initialize a Color from a hex string (6 characters, e.g., "1e1e23").
-    /// Invalid input (non-hex characters, wrong length) defaults to white.
+    /// Invalid input (non-hex characters, wrong length) falls back to
+    /// `hexFallback`, the accent — never to a colour off the palette.
     public init(hex: String) {
-        guard let rgb = rgbComponents(hex: hex) else {
-            self = .white
-            return
-        }
+        let rgb = rgbComponents(hex: hex) ?? hexFallback
         self.init(red: rgb.red, green: rgb.green, blue: rgb.blue)
     }
 }
@@ -256,9 +341,9 @@ extension NSColor {
     /// The AppKit half of `Color(hex:)`, for the places a native colour is
     /// what is wanted: the dynamic tokens above, and the terminal view,
     /// which takes `NSColor`s rather than SwiftUI ones. Same parse, same
-    /// fallback to white.
+    /// fallback.
     public convenience init(hex: String) {
-        let rgb = rgbComponents(hex: hex) ?? (1, 1, 1)
+        let rgb = rgbComponents(hex: hex) ?? hexFallback
         self.init(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
     }
 }

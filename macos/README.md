@@ -25,6 +25,16 @@ A native macOS application for the notion-agent-tracker project, built as a pure
   or light, persisted in `UserDefaults` under `Theme.storageKey` and switched
   from the Settings window. `system` pins nothing, which is what makes it
   follow the Mac's own appearance as that changes.
+- No view file constructs a colour. Every one it draws — including the washes
+  and bands that used to be a token behind a bare `.opacity(0.18)` — is a named
+  token, so a weight is chosen once in the theme rather than typed again in
+  each file that wants it. `Tests/NatKitTests/Theme/ColorSourcesTests.swift`
+  scans `Sources` and holds the rule: no `Color(nsColor:)`, no `Color(hex:)`
+  outside the theme, no SwiftUI system colour, and no `DesignTokens.x.opacity(…)`
+  at a call site. `Color.clear` is allowed — it is the absence of paint.
+- A colour that will not parse falls back to Mocha's mauve, the app's accent,
+  rather than to white: a parse failure is a bug the tests catch, and the frame
+  drawn before anyone reads them should still read as this app.
 - The agent terminal is the one surface a dynamic colour cannot reach —
   SwiftTerm resolves plain `NSColor`s once — so `NatApp/Views/TerminalTheme.swift`
   pushes the palette onto it whenever the appearance changes.

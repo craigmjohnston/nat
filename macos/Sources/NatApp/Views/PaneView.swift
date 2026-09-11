@@ -76,7 +76,7 @@ struct PaneView: View {
                     }
                     .padding(.vertical, 10)
                     .padding(.horizontal, 14)
-                    .background(DesignTokens.controlBg.opacity(0.5))
+                    .background(DesignTokens.bandBg)
                     .overlay(alignment: .bottom) {
                         DesignTokens.hairline
                             .frame(height: 1)
