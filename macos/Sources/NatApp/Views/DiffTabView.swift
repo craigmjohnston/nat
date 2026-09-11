@@ -81,7 +81,7 @@ struct DiffTabView: View {
                 loadingState
             }
         }
-        .background(DesignTokens.windowBg)
+        .surface(.window)
         .task {
             await fetch()
         }
@@ -105,16 +105,16 @@ struct DiffTabView: View {
         VStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 24, weight: .regular))
-                .foregroundStyle(DesignTokens.systemRed)
+                .ink(.danger)
 
             Text("Failed to read the diff")
                 .font(.system(size: Typo.body, weight: .regular))
-                .foregroundStyle(DesignTokens.label)
+                .ink(.primary)
 
             if let message = store.loadState.errorMessage {
                 Text(message)
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.labelSecondary)
+                    .ink(.secondary)
                     .lineLimit(3)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 420)
@@ -136,11 +136,11 @@ struct DiffTabView: View {
                 VStack(spacing: 8) {
                     Image(systemName: "plus.forwardslash.minus")
                         .font(.system(size: 32, weight: .regular))
-                        .foregroundStyle(DesignTokens.labelSecondary)
+                        .ink(.secondary)
 
                     Text("Nothing to show — the branch matches its base")
                         .font(.system(size: Typo.body, weight: .regular))
-                        .foregroundStyle(DesignTokens.labelSecondary)
+                        .ink(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -189,7 +189,7 @@ struct DiffTabView: View {
                         }
                     )
                     .frame(width: sidebarWidth)
-                    .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator)
+                    .rule(.separator, edges: [.leading], width: 0.5)
                     .overlay(alignment: .leading) {
                         PaneResizeHandle(width: $sidebarWidth, minWidth: 180, maxWidth: 420, edge: .leading)
                             .offset(x: -4.5)
@@ -211,16 +211,16 @@ struct DiffTabView: View {
             // the last good reading, and saying so is what stops it being
             // read as the branch's current state.
             if let staleMessage = store.loadState.errorMessage {
-                inlineNotice("Showing the last reading — \(staleMessage)", color: DesignTokens.systemOrange)
+                inlineNotice("Showing the last reading — \(staleMessage)", role: .warning)
             }
             if let dropNotice {
-                inlineNotice(dropNotice, color: DesignTokens.systemOrange)
+                inlineNotice(dropNotice, role: .warning)
             }
             if let sendError {
-                inlineNotice(sendError, color: DesignTokens.systemRed)
+                inlineNotice(sendError, role: .danger)
             }
             if let approveError {
-                inlineNotice(approveError, color: DesignTokens.systemRed)
+                inlineNotice(approveError, role: .danger)
             }
 
             Divider()
@@ -238,7 +238,7 @@ struct DiffTabView: View {
                 ))
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .monospacedDigit()
-                    .foregroundStyle(DesignTokens.labelTertiary)
+                    .ink(.tertiary)
 
                 Spacer()
 
@@ -291,12 +291,12 @@ struct DiffTabView: View {
         .dialogIcon(Image(systemName: "checkmark.seal"))
     }
 
-    private func inlineNotice(_ text: String, color: Color) -> some View {
+    private func inlineNotice(_ text: String, role: InkRole) -> some View {
         HStack {
             Text(text)
                 .font(.system(size: Typo.subhead, weight: .regular))
                 .monospacedDigit()
-                .foregroundStyle(color)
+                .ink(role)
                 .lineLimit(2)
             Spacer()
         }

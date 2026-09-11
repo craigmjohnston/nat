@@ -17,10 +17,10 @@ enum TerminalTheme {
     /// this stops.
     @MainActor
     static func apply(_ palette: Palette, to view: TerminalView) {
-        view.nativeBackgroundColor = NSColor(hex: palette.terminalBg)
-        view.nativeForegroundColor = NSColor(hex: palette.terminalFg)
-        view.caretColor = NSColor(hex: palette.terminalCursor)
-        view.selectedTextBackgroundColor = NSColor(hex: palette.terminalSelection)
+        view.nativeBackgroundColor = NSColor(hex: palette.terminalBg.hex)
+        view.nativeForegroundColor = NSColor(hex: palette.terminalFg.hex)
+        view.caretColor = NSColor(hex: palette.terminalCursor.hex)
+        view.selectedTextBackgroundColor = NSColor(hex: palette.terminalSelection.hex)
         view.installColors(palette.ansi.map(ansiColor))
     }
 

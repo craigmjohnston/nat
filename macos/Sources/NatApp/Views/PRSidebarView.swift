@@ -24,7 +24,7 @@ struct PRSidebarView: View {
             .padding(.vertical, 18)
         }
         .frame(width: sidebarWidth)
-        .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator)
+        .rule(.separator, edges: [.leading], width: 0.5)
         .overlay(alignment: .leading) {
             PaneResizeHandle(width: $sidebarWidth, minWidth: 170, maxWidth: 400, edge: .leading)
                 .offset(x: -4.5)
@@ -38,12 +38,12 @@ struct PRSidebarView: View {
             Text(checksHeading)
                 .font(.system(size: Typo.subhead, weight: .semibold))
                 .monospacedDigit()
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
 
             if pr.checks.isEmpty {
                 Text("No checks have run on this pull request.")
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.labelSecondary)
+                    .ink(.secondary)
             } else {
                 ForEach(Array(pr.checks.enumerated()), id: \.offset) { _, check in
                     checkRow(check)
@@ -73,7 +73,7 @@ struct PRSidebarView: View {
 
             Text(check.name)
                 .font(.system(size: Typo.code - 1, weight: .regular, design: .monospaced))
-                .foregroundStyle(DesignTokens.label)
+                .ink(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
 
@@ -81,7 +81,7 @@ struct PRSidebarView: View {
 
             Text(checkStateWord(check.state))
                 .font(.system(size: Typo.caption, weight: .regular))
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
         }
         .frame(height: 26)
     }
@@ -93,7 +93,7 @@ struct PRSidebarView: View {
         return VStack(alignment: .leading, spacing: 8) {
             Text("REVIEW")
                 .font(.system(size: Typo.subhead, weight: .semibold))
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
 
             HStack(spacing: 8) {
                 Image(systemName: verdict.outcome.markSymbolName)
@@ -102,7 +102,7 @@ struct PRSidebarView: View {
 
                 Text(reviewLine(verdict))
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.label)
+                    .ink(.primary)
             }
             .frame(height: 26)
 
@@ -112,11 +112,11 @@ struct PRSidebarView: View {
             HStack(spacing: 8) {
                 Image(systemName: "plus.circle")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(DesignTokens.labelTertiary)
+                    .ink(.tertiary)
 
                 Text("Add Reviewer…")
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.labelSecondary)
+                    .ink(.secondary)
             }
             .frame(height: 26)
             .contentShape(Rectangle())
@@ -145,7 +145,7 @@ struct PRSidebarView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("CHANGES")
                 .font(.system(size: Typo.subhead, weight: .semibold))
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
 
             // Additions/deletions/changed files/commits are only sent by a
             // `nat` new enough to carry them; an older one simply omits the
@@ -154,12 +154,12 @@ struct PRSidebarView: View {
             if let additions = pr.additions, let deletions = pr.deletions {
                 HStack(spacing: 4) {
                     Text("+\(additions)")
-                        .foregroundStyle(DesignTokens.systemGreen)
+                        .ink(.success)
                     Text("\u{2212}\(deletions)")
-                        .foregroundStyle(DesignTokens.systemRed)
+                        .ink(.danger)
                     if let changedFiles = pr.changedFiles {
                         Text("· \(changedFiles) \(plural(changedFiles, "file", "files"))")
-                            .foregroundStyle(DesignTokens.labelSecondary)
+                            .ink(.secondary)
                     }
                 }
                 .font(.system(size: Typo.subhead, weight: .regular))
@@ -173,12 +173,12 @@ struct PRSidebarView: View {
                         + Text(pr.headRefName)
                         .font(.system(size: Typo.code - 1, weight: .regular, design: .monospaced)))
                         .font(.system(size: Typo.subhead, weight: .regular))
-                        .foregroundStyle(DesignTokens.labelSecondary)
+                        .ink(.secondary)
                 }
             } else {
                 Text("\(pr.headRefName) → \(pr.baseRefName)")
                     .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
-                    .foregroundStyle(DesignTokens.labelSecondary)
+                    .ink(.secondary)
             }
         }
     }

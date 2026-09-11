@@ -4,8 +4,8 @@ import NatKit
 
 // MARK: - Hover
 
-/// The design system's hover treatment: a quiet quaternary-label wash on
-/// borderless, toolbar and sidebar items — nothing moves, nothing scales.
+/// The design system's hover treatment: the theme's own hover surface laid
+/// on borderless, toolbar and sidebar items — nothing moves, nothing scales.
 /// Drawn as a `background`, so a row that paints its own selection fill after
 /// this modifier covers the wash while selected and shows it again when not.
 struct HoverWash: ViewModifier {
@@ -17,7 +17,7 @@ struct HoverWash: ViewModifier {
         content
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(enabled && hovering ? DesignTokens.labelQuaternary : Color.clear)
+                    .fill(enabled && hovering ? DesignTokens.fill(.hover) : Color.clear)
             )
             .onHover { hovering = $0 }
     }
@@ -188,13 +188,34 @@ extension View {
 /// shouting it too was one gradient too many — the agent-launch control had
 /// already gone flat on its own, and this is the rest of the app following
 /// it rather than the two disagreeing.
+extension View {
+    /// A rule along some edges, at the weight the separation calls for and in
+    /// the colour of whatever ground it has landed on — `rectBorder` with the
+    /// colour decided rather than passed, which is the last place a view had
+    /// to name one to draw a line.
+    func rule(_ weight: RuleWeight = .separator, edges: RectEdgeSet, width: CGFloat = 0.5) -> some View {
+        modifier(RuleBorderModifier(weight: weight, edges: edges, width: width))
+    }
+}
+
+private struct RuleBorderModifier: ViewModifier {
+    let weight: RuleWeight
+    let edges: RectEdgeSet
+    let width: CGFloat
+    @Environment(\.ground) private var ground
+
+    func body(content: Content) -> some View {
+        content.rectBorder(width: width, edges: edges, color: DesignTokens.rule(weight, on: ground))
+    }
+}
+
 struct PrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: Typo.subhead, weight: .semibold))
-            .foregroundStyle(DesignTokens.accentText)
+            .ink(.onAccent)
             .padding(.horizontal, ButtonMetrics.horizontalPadding)
             .frame(height: ButtonMetrics.height)
             .background(
@@ -215,17 +236,10 @@ struct SecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: Typo.subhead, weight: .regular))
-            .foregroundStyle(DesignTokens.label)
+            .ink(.primary)
             .padding(.horizontal, ButtonMetrics.horizontalPadding)
             .frame(height: ButtonMetrics.height)
-            .background(
-                DesignTokens.controlFace,
-                in: RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius)
-                    .stroke(DesignTokens.hairline, lineWidth: 1)
-            )
+            .control(radius: ButtonMetrics.cornerRadius, border: .hairline)
             .opacity(buttonOpacity(isPressed: configuration.isPressed, isEnabled: isEnabled))
             .contentShape(RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius))
     }
@@ -237,7 +251,7 @@ struct GhostButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: Typo.subhead, weight: .regular))
-            .foregroundStyle(DesignTokens.labelSecondary)
+            .ink(.secondary)
             .padding(.horizontal, ButtonMetrics.ghostHorizontalPadding)
             .frame(height: ButtonMetrics.height)
             .opacity(buttonOpacity(isPressed: configuration.isPressed, isEnabled: isEnabled))

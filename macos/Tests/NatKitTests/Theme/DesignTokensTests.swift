@@ -56,13 +56,14 @@ final class DesignTokensTests: XCTestCase {
         let palette = Set(
             [Palette.mocha, Palette.latte].flatMap { palette in
                 palette.ansi + [
-                    palette.windowBg, palette.controlBg, palette.rowAltBg,
-                    palette.controlFace, palette.fieldBg, palette.label,
-                    palette.labelSecondary, palette.labelTertiary,
-                    palette.labelQuaternary, palette.accent, palette.accentText,
-                    palette.systemOrange, palette.systemYellow, palette.systemGreen,
-                    palette.systemRed, palette.systemBlue, palette.systemPink,
-                    palette.systemTeal, palette.systemGray,
+                    palette.windowBg.hex, palette.controlBg.hex, palette.rowAltBg.hex,
+                    palette.controlFace.hex, palette.fieldBg.hex, palette.label.hex,
+                    palette.labelSecondary.hex, palette.labelTertiary.hex,
+                    palette.hoverWash.hex, palette.labelQuaternary.hex,
+                    palette.accent.hex, palette.accentText.hex,
+                    palette.systemOrange.hex, palette.systemYellow.hex, palette.systemGreen.hex,
+                    palette.systemRed.hex, palette.systemBlue.hex, palette.systemPink.hex,
+                    palette.systemTeal.hex, palette.systemGray.hex,
                 ]
             }
         )
@@ -78,7 +79,7 @@ final class DesignTokensTests: XCTestCase {
     /// written out channel by channel because the fallback for a parse
     /// cannot depend on a parse; this is what holds the two in step.
     func testHexFallbackIsTheAccent() {
-        let accent = try? XCTUnwrap(rgbComponents(hex: Palette.mocha.accent))
+        let accent = try? XCTUnwrap(rgbComponents(hex: Palette.mocha.accent.hex))
         XCTAssertEqual(accent?.red, hexFallback.red)
         XCTAssertEqual(accent?.green, hexFallback.green)
         XCTAssertEqual(accent?.blue, hexFallback.blue)
@@ -132,72 +133,93 @@ final class DesignTokensTests: XCTestCase {
     /// is drawn under calls for — which is the whole of how the theme
     /// switch restyles the app, and how `system` follows macOS.
     func testTokensResolvePerAppearance() {
-        let keys: [(String, KeyPath<Palette, String>)] = [
-            ("windowBg", \.windowBg),
-            ("controlBg", \.controlBg),
-            ("rowAltBg", \.rowAltBg),
-            ("controlFace", \.controlFace),
-            ("fieldBg", \.fieldBg),
-            ("terminalBg", \.terminalBg),
-            ("label", \.label),
-            ("labelSecondary", \.labelSecondary),
-            ("labelTertiary", \.labelTertiary),
-            ("labelQuaternary", \.labelQuaternary),
-            ("accent", \.accent),
-            ("accentText", \.accentText),
-            ("systemOrange", \.systemOrange),
-            ("systemYellow", \.systemYellow),
-            ("systemGreen", \.systemGreen),
-            ("systemRed", \.systemRed),
-            ("systemBlue", \.systemBlue),
-            ("systemPink", \.systemPink),
-            ("systemTeal", \.systemTeal),
-            ("systemGray", \.systemGray),
+        let keys: [(String, NSColor, (Palette) -> String)] = [
+            ("windowBg", DesignTokens.dynamicNSColor(\.windowBg), { $0.windowBg.hex }),
+            ("controlBg", DesignTokens.dynamicNSColor(\.controlBg), { $0.controlBg.hex }),
+            ("rowAltBg", DesignTokens.dynamicNSColor(\.rowAltBg), { $0.rowAltBg.hex }),
+            ("controlFace", DesignTokens.dynamicNSColor(\.controlFace), { $0.controlFace.hex }),
+            ("fieldBg", DesignTokens.dynamicNSColor(\.fieldBg), { $0.fieldBg.hex }),
+            ("hoverWash", DesignTokens.dynamicNSColor(\.hoverWash), { $0.hoverWash.hex }),
+            ("terminalBg", DesignTokens.dynamicNSColor(\.terminalBg), { $0.terminalBg.hex }),
+            ("label", DesignTokens.dynamicNSColor(\.label), { $0.label.hex }),
+            ("labelSecondary", DesignTokens.dynamicNSColor(\.labelSecondary), { $0.labelSecondary.hex }),
+            ("labelTertiary", DesignTokens.dynamicNSColor(\.labelTertiary), { $0.labelTertiary.hex }),
+            ("labelQuaternary", DesignTokens.dynamicNSColor(\.labelQuaternary), { $0.labelQuaternary.hex }),
+            ("accent", DesignTokens.dynamicNSColor(\.accent), { $0.accent.hex }),
+            ("accentText", DesignTokens.dynamicNSColor(\.accentText), { $0.accentText.hex }),
+            ("systemOrange", DesignTokens.dynamicNSColor(\.systemOrange), { $0.systemOrange.hex }),
+            ("systemYellow", DesignTokens.dynamicNSColor(\.systemYellow), { $0.systemYellow.hex }),
+            ("systemGreen", DesignTokens.dynamicNSColor(\.systemGreen), { $0.systemGreen.hex }),
+            ("systemRed", DesignTokens.dynamicNSColor(\.systemRed), { $0.systemRed.hex }),
+            ("systemBlue", DesignTokens.dynamicNSColor(\.systemBlue), { $0.systemBlue.hex }),
+            ("systemPink", DesignTokens.dynamicNSColor(\.systemPink), { $0.systemPink.hex }),
+            ("systemTeal", DesignTokens.dynamicNSColor(\.systemTeal), { $0.systemTeal.hex }),
+            ("systemGray", DesignTokens.dynamicNSColor(\.systemGray), { $0.systemGray.hex }),
         ]
-        for (name, key) in keys {
-            let token = DesignTokens.dynamicNSColor(key)
-            assertResolves(token, .darkAqua, to: Palette.mocha[keyPath: key], name: "\(name) (dark)")
-            assertResolves(token, .aqua, to: Palette.latte[keyPath: key], name: "\(name) (light)")
+        for (name, token, value) in keys {
+            assertResolves(token, .darkAqua, to: value(.mocha), name: "\(name) (dark)")
+            assertResolves(token, .aqua, to: value(.latte), name: "\(name) (light)")
         }
     }
 
-    /// The tokens that are a colour behind an opacity resolve both halves
-    /// per appearance: light ink at Mocha's alpha, dark ink at Latte's
-    /// heavier one.
-    func testOpacityTokensResolvePerAppearance() {
-        let keys: [(String, KeyPath<Palette, String>, KeyPath<Palette, Double>)] = [
-            ("headerBg", \.windowBg, \.headerOpacity),
-            ("hairline", \.label, \.hairlineOpacity),
-            ("separator", \.label, \.separatorOpacity),
-            ("controlBorder", \.label, \.controlBorderOpacity),
-            ("selectionWash", \.accent, \.selectionWashOpacity),
-            ("headerAccentVeil", \.accent, \.headerAccentOpacity),
-            ("bandBg", \.controlBg, \.bandOpacity),
-            ("skeletonHighlight", \.label, \.skeletonHighlightOpacity),
-            ("onAccentSeparator", \.accentText, \.onAccentSeparatorOpacity),
-            ("accentMuted", \.accent, \.mutedAccentOpacity),
-            ("avatarWash", \.accent, \.avatarWashOpacity),
-            ("accentWash", \.accent, \.tintWashOpacity),
-            ("systemRedWash", \.systemRed, \.tintWashOpacity),
-            ("systemGreenWash", \.systemGreen, \.tintWashOpacity),
-            ("systemYellowWash", \.systemYellow, \.tintWashOpacity),
-            ("systemOrangeWash", \.systemOrange, \.tintWashOpacity),
-            ("labelSecondaryWash", \.labelSecondary, \.tintWashOpacity),
-            ("diffAddedRowBg", \.systemGreen, \.diffRowWashOpacity),
-            ("diffRemovedRowBg", \.systemRed, \.diffRowWashOpacity),
-            ("diffAddedGutterBg", \.systemGreen, \.diffGutterWashOpacity),
-            ("diffRemovedGutterBg", \.systemRed, \.diffGutterWashOpacity),
-            ("diffCommentGutterBg", \.accent, \.commentWashOpacity),
+    /// Every derived colour — a rule, a wash, a band — resolves per
+    /// appearance to exactly what the palette derives, and resolves *opaque*.
+    ///
+    /// The opacity these replaced was the bug: a wash laid down behind an
+    /// alpha shows whatever happens to be behind it, so one `separator`
+    /// rendered as a different colour in every pane it landed in, none of
+    /// them a colour the theme chose. Mixed into a named ground instead, it
+    /// is one value the theme decided and this asserts it is that value.
+    func testDerivedColorsResolveOpaquePerAppearance() {
+        var checks: [(String, NSColor, (Palette) -> String)] = [
+            ("bandBg", NSColor(DesignTokens.fill(.band)), { $0.bandBg.hex }),
+            ("headerBg", NSColor(DesignTokens.fill(.header)), { $0.headerBg.hex }),
+            ("onAccentSeparator", NSColor(DesignTokens.onAccentSeparator), { $0.onAccentRule.hex }),
         ]
-        for (name, key, opacity) in keys {
-            let token = DesignTokens.dynamicNSColor(key, opacity: opacity)
+        for ground in Ground.allCases {
+            for (name, weight) in [("hairline", RuleWeight.hairline), ("separator", .separator), ("controlBorder", .border)] {
+                let token = [
+                    "hairline": DesignTokens.hairline(on: ground),
+                    "separator": DesignTokens.separator(on: ground),
+                    "controlBorder": DesignTokens.controlBorder(on: ground),
+                ][name]!
+                checks.append(("\(name) on \(ground.rawValue)", NSColor(token), { $0.rule(weight, on: ground).hex }))
+            }
+            checks.append(("selectionWash on \(ground.rawValue)", NSColor(DesignTokens.selectionWash(on: ground)),
+                           { $0.wash(.selection, of: $0.accent, on: ground).hex }))
+            checks.append(("avatarWash on \(ground.rawValue)", NSColor(DesignTokens.avatarWash(on: ground)),
+                           { $0.wash(.avatar, of: $0.accent, on: ground).hex }))
+            checks.append(("accentMuted on \(ground.rawValue)", NSColor(DesignTokens.accentMuted(on: ground)),
+                           { $0.wash(.muted, of: $0.accent, on: ground).hex }))
+            checks.append(("accentWash on \(ground.rawValue)", NSColor(DesignTokens.accentWash(on: ground)),
+                           { $0.wash(.chip, of: $0.accent, on: ground).hex }))
+            checks.append(("systemRedWash on \(ground.rawValue)", NSColor(DesignTokens.systemRedWash(on: ground)),
+                           { $0.wash(.chip, of: $0.systemRed, on: ground).hex }))
+            checks.append(("systemGreenWash on \(ground.rawValue)", NSColor(DesignTokens.systemGreenWash(on: ground)),
+                           { $0.wash(.chip, of: $0.systemGreen, on: ground).hex }))
+            checks.append(("systemYellowWash on \(ground.rawValue)", NSColor(DesignTokens.systemYellowWash(on: ground)),
+                           { $0.wash(.chip, of: $0.systemYellow, on: ground).hex }))
+            checks.append(("systemOrangeWash on \(ground.rawValue)", NSColor(DesignTokens.systemOrangeWash(on: ground)),
+                           { $0.wash(.chip, of: $0.systemOrange, on: ground).hex }))
+            checks.append(("diffAddedRowBg on \(ground.rawValue)", NSColor(DesignTokens.diffAddedRowBg(on: ground)),
+                           { $0.wash(.diffRow, of: $0.systemGreen, on: ground).hex }))
+            checks.append(("diffRemovedRowBg on \(ground.rawValue)", NSColor(DesignTokens.diffRemovedRowBg(on: ground)),
+                           { $0.wash(.diffRow, of: $0.systemRed, on: ground).hex }))
+            checks.append(("diffAddedGutterBg on \(ground.rawValue)", NSColor(DesignTokens.diffAddedGutterBg(on: ground)),
+                           { $0.wash(.diffGutter, of: $0.systemGreen, on: ground).hex }))
+            checks.append(("diffRemovedGutterBg on \(ground.rawValue)", NSColor(DesignTokens.diffRemovedGutterBg(on: ground)),
+                           { $0.wash(.diffGutter, of: $0.systemRed, on: ground).hex }))
+            checks.append(("diffCommentGutterBg on \(ground.rawValue)", NSColor(DesignTokens.diffCommentGutterBg(on: ground)),
+                           { $0.wash(.comment, of: $0.accent, on: ground).hex }))
+            checks.append(("skeletonHighlight on \(ground.rawValue)", NSColor(DesignTokens.skeletonHighlight(on: ground)),
+                           { $0.skeletonHighlight(on: ground.surface(in: $0)).hex }))
+        }
+        for (name, token, value) in checks {
             for (appearance, palette) in [(NSAppearance.Name.darkAqua, Palette.mocha), (.aqua, .latte)] {
-                assertResolves(token, appearance, to: palette[keyPath: key], name: "\(name) \(appearance.rawValue)")
-                let resolved = resolve(token, appearance)
+                assertResolves(token, appearance, to: value(palette), name: "\(name) \(appearance.rawValue)")
                 XCTAssertEqual(
-                    Double(resolved?.alphaComponent ?? 0), palette[keyPath: opacity],
-                    accuracy: 0.01,
-                    "\(name) on \(appearance.rawValue) should carry that palette's own opacity"
+                    resolve(token, appearance)?.alphaComponent, 1,
+                    "\(name) \(appearance.rawValue): a derived colour should be opaque"
                 )
             }
         }
@@ -233,23 +255,17 @@ final class DesignTokensTests: XCTestCase {
 
     func testDesignTokensColorAvailability() {
         // Verify that all design tokens are accessible
-        _ = DesignTokens.windowBg
-        _ = DesignTokens.controlBg
-        _ = DesignTokens.rowAltBg
-        _ = DesignTokens.fieldBg
-        _ = DesignTokens.controlFace
-        _ = DesignTokens.terminalBg
-        _ = DesignTokens.headerBg
+        for ground in Ground.allCases { _ = DesignTokens.fill(ground) }
         _ = DesignTokens.label
         _ = DesignTokens.labelSecondary
         _ = DesignTokens.labelTertiary
         _ = DesignTokens.labelQuaternary
         _ = DesignTokens.accent
         _ = DesignTokens.accentText
-        _ = DesignTokens.hairline
-        _ = DesignTokens.selectionWash
-        _ = DesignTokens.separator
-        _ = DesignTokens.controlBorder
+        _ = DesignTokens.hairline(on: .window)
+        _ = DesignTokens.selectionWash(on: .window)
+        _ = DesignTokens.separator(on: .window)
+        _ = DesignTokens.controlBorder(on: .window)
         _ = DesignTokens.brandGradient
         _ = DesignTokens.systemOrange
         _ = DesignTokens.systemYellow
@@ -259,8 +275,6 @@ final class DesignTokensTests: XCTestCase {
         _ = DesignTokens.systemPink
         _ = DesignTokens.systemTeal
         _ = DesignTokens.systemGray
-        _ = DesignTokens.headerAccentVeil
-        _ = DesignTokens.bandBg
         _ = DesignTokens.skeletonHighlight
         _ = DesignTokens.onAccentSeparator
         _ = DesignTokens.accentMuted
@@ -321,5 +335,43 @@ final class DesignTokensTests: XCTestCase {
 
     func testMotionStateChangeIsDefined() {
         XCTAssertNotNil(Motion.stateChange)
+    }
+
+    // MARK: - Hover
+
+    /// The one thing the hover fill exists to guarantee: a row's label is
+    /// still a label while the pointer is on it. This is a threshold rather
+    /// than a comparison — unlike `PaletteTests`, which refuses to hold
+    /// Catppuccin's own values to one — because what it tests is this app's
+    /// choice of which swatch plays hover, not the swatch itself. The bar is
+    /// WCAG AA for body text, and `labelQuaternary`, the ink this used to be
+    /// filled with, is asserted to fail it: that is the bug the token was
+    /// added for.
+    func testLabelClearsAAOnTheHoverFill() {
+        for (name, palette) in [("mocha", Palette.mocha), ("latte", Palette.latte)] {
+            XCTAssertGreaterThanOrEqual(
+                contrast(palette.label.hex, palette.hoverWash.hex), 4.5,
+                "\(name): a label on the hover fill should clear AA"
+            )
+            XCTAssertLessThan(
+                contrast(palette.label.hex, palette.labelQuaternary.hex), 4.5,
+                "\(name): the ink the hover fill replaced should be why it was replaced"
+            )
+        }
+    }
+
+    /// WCAG's contrast ratio between two opaque colours.
+    private func contrast(_ one: String, _ other: String) -> Double {
+        let first = relativeLuminance(one)
+        let second = relativeLuminance(other)
+        return (max(first, second) + 0.05) / (min(first, second) + 0.05)
+    }
+
+    private func relativeLuminance(_ hex: String) -> Double {
+        let rgb = rgbComponents(hex: hex) ?? (1, 1, 1)
+        let channels = [rgb.red, rgb.green, rgb.blue].map { value -> Double in
+            value <= 0.03928 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
     }
 }

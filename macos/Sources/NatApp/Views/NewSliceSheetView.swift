@@ -28,12 +28,12 @@ struct NewSliceSheetView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("New Slice")
                 .font(.system(size: Typo.headline, weight: .semibold))
-                .foregroundStyle(DesignTokens.label)
+                .ink(.primary)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Title")
                     .font(.system(size: Typo.subhead, weight: .semibold))
-                    .foregroundStyle(DesignTokens.labelSecondary)
+                    .ink(.secondary)
                 TextField("Slice title", text: $title)
                     .textFieldStyle(.roundedBorder)
             }
@@ -41,7 +41,7 @@ struct NewSliceSheetView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Milestone")
                     .font(.system(size: Typo.subhead, weight: .semibold))
-                    .foregroundStyle(DesignTokens.labelSecondary)
+                    .ink(.secondary)
                 Picker("Milestone", selection: $selectedMilestone) {
                     Text("Select a milestone").tag("")
                     ForEach(milestones) { milestone in
@@ -54,15 +54,15 @@ struct NewSliceSheetView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Description")
                     .font(.system(size: Typo.subhead, weight: .semibold))
-                    .foregroundStyle(DesignTokens.labelSecondary)
+                    .ink(.secondary)
                 Text("Optional. Becomes the slice page's brief.")
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.labelTertiary)
+                    .ink(.tertiary)
                 TextEditor(text: $description)
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .scrollContentBackground(.hidden)
                     .padding(6)
-                    .background(DesignTokens.fieldBg)
+                    .surface(.field)
                     .cornerRadius(6)
                     .frame(height: 100)
             }
@@ -70,7 +70,7 @@ struct NewSliceSheetView: View {
             if let error {
                 Text(error)
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.systemRed)
+                    .ink(.danger)
             }
 
             HStack {

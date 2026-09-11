@@ -190,17 +190,17 @@ struct AgentTerminalDebugView: View {
 struct ContentView: View {
     var body: some View {
         ZStack {
-            DesignTokens.windowBg
+            DesignTokens.fill(.window)
                 .ignoresSafeArea()
 
             VStack(spacing: 16) {
                 Text("nat")
                     .font(.system(size: 32, weight: .semibold))
-                    .foregroundStyle(DesignTokens.label)
+                    .ink(.primary)
 
                 Text("board loading will land here")
                     .font(.system(size: 14, weight: .regular))
-                    .foregroundStyle(DesignTokens.labelSecondary)
+                    .ink(.secondary)
             }
         }
     }

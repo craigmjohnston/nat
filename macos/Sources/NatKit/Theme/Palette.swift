@@ -1,5 +1,149 @@
 import Foundation
 
+// MARK: - What a colour may be used for
+
+/// The one thing `Surface`, `Ink` and `Tint` have in common: they are each
+/// six hex digits. It exists so `DesignTokens` can resolve any of them
+/// without being able to tell them apart — the telling apart is the point of
+/// the three types, and it belongs at the call site, not in the resolver.
+public protocol PaletteColor: Equatable, Sendable {
+    var hex: String { get }
+}
+
+/// A colour that may be drawn *behind* something: a pane, a card, a row, a
+/// chip's capsule, the fill under the pointer.
+///
+/// It is a type rather than a naming convention because the app has shipped
+/// the same bug three times — `labelQuaternary` as the hover fill, as the
+/// project tab's live-count badge and as the loading skeleton's block — and
+/// every one of them was a published Catppuccin swatch used in a role it was
+/// never meant for. Provenance was never the problem; a flat bag of `String`
+/// was. Ground and ink cannot be swapped if they are not the same type.
+public struct Surface: PaletteColor {
+    public let hex: String
+    public init(_ hex: String) { self.hex = hex }
+}
+
+/// A colour that may be drawn *on* a ground: text, a glyph, a rule, a border.
+/// Never a fill — see `Surface`.
+public struct Ink: PaletteColor {
+    public let hex: String
+    public init(_ hex: String) { self.hex = hex }
+}
+
+/// One of the theme's hues — the accent and the outcome colours. It is `Ink`
+/// at full strength and the *basis* of a `Surface` when mixed into a ground,
+/// but is neither as it stands: a hue laid straight down as a fill is how a
+/// chip ends up with its own word unreadable on it.
+public struct Tint: PaletteColor {
+    public let hex: String
+    public init(_ hex: String) { self.hex = hex }
+
+    /// The hue as something to draw with.
+    public var ink: Ink { Ink(hex) }
+
+    /// The hue mixed into a ground, as a ground: a chip's capsule, a diff
+    /// row's fill, the wash behind a selected row. Opaque, and computed from
+    /// the two colours it is made of rather than laid over whatever happens
+    /// to be behind — which is the whole difference between a wash that is
+    /// part of the theme and an alpha that shows the desktop through.
+    public func wash(on ground: Surface, _ share: Double) -> Surface {
+        Surface(mix(hex, ground.hex, share))
+    }
+}
+
+// MARK: - Derivation
+
+/// `amount` of the first colour mixed into the second, channel by channel.
+///
+/// This is the only way a colour that is not a published swatch comes to
+/// exist in this app, and it is deliberately the same operation Catppuccin's
+/// own VS Code port derives with (`mix`, `opacity`, `shade` over named
+/// swatches — `list.hoverBackground` there is `opacity(surface0, 0.5)` and
+/// `tab.hoverBackground` is `shade(base, 0.05)`, neither of which is a
+/// published swatch either). What a theme must never contain is a *typed*
+/// hex: an expression over two of the theme's own colours ports to a new
+/// theme by itself, and a literal has to be invented again for every one.
+/// The same colour, lighter or darker: its lightness moved by `magnitude`
+/// with its hue and saturation untouched, so a shaded green is still that
+/// green. Catppuccin's own VS Code port derives with exactly this — its
+/// `tab.hoverBackground` is `shade(base, 0.05)` — and it is what lets a
+/// theme's hue be made readable without being made a different colour.
+public func shade(_ color: String, _ magnitude: Double) -> String {
+    guard let rgb = rgbComponents(hex: color) else { return color }
+    var (hue, lightness, saturation) = hslComponents(rgb)
+    lightness = min(max(lightness + magnitude, 0), 1)
+    let shaded = rgbFromHSL(hue: hue, lightness: lightness, saturation: saturation)
+    return [shaded.red, shaded.green, shaded.blue]
+        .map { String(format: "%02x", Int((($0 * 255).rounded()))) }
+        .joined()
+}
+
+/// WCAG's contrast ratio between two opaque colours — the one number that
+/// says whether something can be read on something else, and the reason
+/// `ink(of:on:)` below can answer per theme instead of per hand-tuned value.
+public func contrastRatio(_ one: String, _ other: String) -> Double {
+    let first = relativeLuminance(one)
+    let second = relativeLuminance(other)
+    return (max(first, second) + 0.05) / (min(first, second) + 0.05)
+}
+
+func relativeLuminance(_ hex: String) -> Double {
+    guard let rgb = rgbComponents(hex: hex) else { return 1 }
+    let channels = [rgb.red, rgb.green, rgb.blue].map { value -> Double in
+        value <= 0.03928 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+    }
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+}
+
+func hslComponents(_ rgb: (red: Double, green: Double, blue: Double)) -> (Double, Double, Double) {
+    let high = max(rgb.red, rgb.green, rgb.blue)
+    let low = min(rgb.red, rgb.green, rgb.blue)
+    let lightness = (high + low) / 2
+    guard high != low else { return (0, lightness, 0) }
+    let delta = high - low
+    let saturation = lightness > 0.5 ? delta / (2 - high - low) : delta / (high + low)
+    var hue: Double
+    switch high {
+    case rgb.red: hue = (rgb.green - rgb.blue) / delta + (rgb.green < rgb.blue ? 6 : 0)
+    case rgb.green: hue = (rgb.blue - rgb.red) / delta + 2
+    default: hue = (rgb.red - rgb.green) / delta + 4
+    }
+    return (hue / 6, lightness, saturation)
+}
+
+func rgbFromHSL(hue: Double, lightness: Double, saturation: Double)
+    -> (red: Double, green: Double, blue: Double) {
+    guard saturation != 0 else { return (lightness, lightness, lightness) }
+    let second = lightness < 0.5
+        ? lightness * (1 + saturation)
+        : lightness + saturation - lightness * saturation
+    let first = 2 * lightness - second
+    func channel(_ offset: Double) -> Double {
+        var t = hue + offset
+        if t < 0 { t += 1 }
+        if t > 1 { t -= 1 }
+        if t < 1.0 / 6 { return first + (second - first) * 6 * t }
+        if t < 1.0 / 2 { return second }
+        if t < 2.0 / 3 { return first + (second - first) * (2.0 / 3 - t) * 6 }
+        return first
+    }
+    return (channel(1.0 / 3), channel(0), channel(-1.0 / 3))
+}
+
+public func mix(_ color: String, _ into: String, _ amount: Double) -> String {
+    guard let first = rgbComponents(hex: color), let second = rgbComponents(hex: into) else {
+        return into
+    }
+    let share = min(max(amount, 0), 1)
+    let channels = [
+        first.red * share + second.red * (1 - share),
+        first.green * share + second.green * (1 - share),
+        first.blue * share + second.blue * (1 - share),
+    ]
+    return channels.map { String(format: "%02x", Int((($0 * 255).rounded()))) }.joined()
+}
+
 /// One theme's raw values: every colour the app draws with, as the hex
 /// string it is defined by, plus the few opacities that are the theme's own
 /// rather than a colour's.
@@ -22,30 +166,41 @@ public struct Palette: Equatable, Sendable {
     // MARK: - Surfaces
 
     /// The app's ground, and the fill of every pane that is not a card.
-    public let windowBg: String
+    public let windowBg: Surface
     /// The face of a card raised off the ground.
-    public let controlBg: String
+    public let controlBg: Surface
     /// The band that has to read apart from a card it sits inside.
-    public let rowAltBg: String
+    public let rowAltBg: Surface
     /// The face of a control the pointer acts on.
-    public let controlFace: String
+    public let controlFace: Surface
     /// The well text is typed into.
-    public let fieldBg: String
+    public let fieldBg: Surface
+    /// The fill under the pointer: a rail row, a project tab, a stepper
+    /// stage, a ghost button in the header. `surface0` in both themes —
+    /// the swatch Catppuccin's own ports hover with — and a role of its own
+    /// rather than `controlBg` borrowed, because what a hover has to do is
+    /// read as one step off whatever it is drawn over while the label on it
+    /// stays a label, which is a rule about text on a surface and not about
+    /// card faces. It used to be `labelQuaternary`, a colour documented as
+    /// ink and never as ground: under Mocha that put `text` on `overlay0`,
+    /// light on light, and the words went to mush exactly where the pointer
+    /// was.
+    public let hoverWash: Surface
 
     // MARK: - Terminal
 
     /// The agent terminal's own surface. It sits at `fieldBg`'s level in
     /// both themes on purpose: a terminal is the same kind of thing as a
     /// text field — a well the app writes into.
-    public let terminalBg: String
+    public let terminalBg: Surface
     /// The terminal's default foreground, which is `label` in both themes:
     /// the pane is part of the window rather than a second product embedded
     /// in it.
-    public let terminalFg: String
+    public let terminalFg: Ink
     /// The terminal's caret.
-    public let terminalCursor: String
+    public let terminalCursor: Tint
     /// The wash behind selected terminal text.
-    public let terminalSelection: String
+    public let terminalSelection: Surface
     /// The sixteen ANSI colours, in the order a terminal numbers them:
     /// black, red, green, yellow, blue, magenta, cyan, white, then the same
     /// eight bright.
@@ -54,41 +209,38 @@ public struct Palette: Equatable, Sendable {
     // MARK: - Text
 
     /// Primary label colour.
-    public let label: String
+    public let label: Ink
     /// Secondary label colour — a real colour rather than the primary behind
     /// opacity, so it is the same colour over whatever surface it lands on.
-    public let labelSecondary: String
+    public let labelSecondary: Ink
     /// Tertiary label colour: meta lines and timestamps.
-    public let labelTertiary: String
+    public let labelTertiary: Ink
     /// Quaternary label colour: the disabled glyph and the empty-slot rule,
     /// never words to read.
-    public let labelQuaternary: String
+    public let labelQuaternary: Ink
 
     // MARK: - Accent
 
     /// Primary accent colour.
-    public let accent: String
+    public let accent: Tint
     /// What is written on top of the accent.
-    public let accentText: String
+    public let accentText: Ink
 
     // MARK: - Opacities
 
-    /// The ground's own opacity in the header band, the flat stand-in for
-    /// the mock's backdrop blur.
-    public let headerOpacity: Double
     /// `label` at this opacity is the quiet border between two surfaces.
-    public let hairlineOpacity: Double
+    public let hairlineShare: Double
     /// `label` at this opacity is the line between two rows of one list.
-    public let separatorOpacity: Double
+    public let separatorShare: Double
     /// `label` at this opacity is the edge of something the pointer acts on.
-    public let controlBorderOpacity: Double
+    public let borderShare: Double
     /// `accent` at this opacity is the fill behind a selected row.
-    public let selectionWashOpacity: Double
+    public let selectionShare: Double
 
     // The washes below are the second kind of opacity here: not a border's
     // weight but the share of a colour that shows when it is laid on a
     // surface as a band, a chip or a stripe. Each is pressed per theme for
-    // the same reason `selectionWashOpacity` and the border ramp already
+    // the same reason `selectionShare` and the border ramp already
     // are — a colour laid at one alpha does not read the same over a dark
     // ground as over a light one — and in the same two directions:
     //
@@ -112,101 +264,101 @@ public struct Palette: Equatable, Sendable {
     /// rather than a colour over a ground, so it needs no per-theme
     /// pressing: half way between `base` and `surface0` is half way between
     /// them in either theme.
-    public let bandOpacity: Double
+    public let bandShare: Double
     /// A chip or badge drawn behind its own tint — the PR state capsule, the
     /// change-kind letter, the pending marker. Enough to shape the chip,
     /// never enough to compete with the word inside it.
-    public let tintWashOpacity: Double
+    public let chipShare: Double
     /// `accent` at this opacity is the disc an avatar's initials sit on.
     /// Heavier than a chip: a disc is small and has to read as a disc.
-    public let avatarWashOpacity: Double
+    public let avatarShare: Double
     /// An outcome colour at this opacity is a diff row's own fill, under the
     /// line's syntax colours rather than instead of them.
-    public let diffRowWashOpacity: Double
+    public let diffRowShare: Double
     /// The same outcome colour, pressed harder, in the diff's gutter cell:
     /// the gutter is a stripe a few characters wide and needs to carry the
     /// row's sign on its own.
-    public let diffGutterWashOpacity: Double
+    public let diffGutterShare: Double
     /// `accent` at this opacity is the gutter beside a comment row — the
     /// faintest mark in the diff, since a comment is an annotation and not a
     /// change.
-    public let commentWashOpacity: Double
+    public let commentShare: Double
     /// `accent` at this opacity is the veil over the header band, the flat
     /// stand-in for the mock's `color-mix(in srgb, accent 9%, header)`.
-    public let headerAccentOpacity: Double
+    public let headerVeilShare: Double
     /// `accent` at this opacity is a fill that is present but spent: a
     /// finished run of the progress bar, a send button with nothing to send.
     /// A dim of the accent rather than a wash of it — what it is read
     /// against is the full accent beside it, not the ground under it — which
     /// is why it is far heavier than the washes above and why it is the same
     /// fraction in both themes.
-    public let mutedAccentOpacity: Double
+    public let mutedShare: Double
     /// `label` at this opacity is the sweep passing over a skeleton block —
     /// brighter than the block and still far under anything drawn as text.
-    public let skeletonHighlightOpacity: Double
+    public let skeletonShare: Double
     /// `accentText` at this opacity is the rule splitting a filled accent
     /// control in two — the launch button and its options chevron. The one
     /// line in the app drawn *on* the accent rather than on a surface, which
     /// is why it is the accent's own ink behind an alpha rather than
     /// `separator`, and why it is the same in both themes: `accentText` is
     /// the maximum-contrast ink over the accent in either.
-    public let onAccentSeparatorOpacity: Double
+    public let onAccentRuleShare: Double
 
     // MARK: - Outcome colours
 
-    public let systemOrange: String
-    public let systemYellow: String
-    public let systemGreen: String
-    public let systemRed: String
-    public let systemBlue: String
-    public let systemPink: String
-    public let systemTeal: String
-    public let systemGray: String
+    public let systemOrange: Tint
+    public let systemYellow: Tint
+    public let systemGreen: Tint
+    public let systemRed: Tint
+    public let systemBlue: Tint
+    public let systemPink: Tint
+    public let systemTeal: Tint
+    public let systemGray: Tint
 
     /// Whether this palette paints light text on dark surfaces — which is
     /// the one thing about a theme that anything outside it needs to know.
     public let isDark: Bool
 
     public init(
-        windowBg: String,
-        controlBg: String,
-        rowAltBg: String,
-        controlFace: String,
-        fieldBg: String,
-        terminalBg: String,
-        terminalFg: String,
-        terminalCursor: String,
-        terminalSelection: String,
+        windowBg: Surface,
+        controlBg: Surface,
+        rowAltBg: Surface,
+        controlFace: Surface,
+        fieldBg: Surface,
+        hoverWash: Surface,
+        terminalBg: Surface,
+        terminalFg: Ink,
+        terminalCursor: Tint,
+        terminalSelection: Surface,
         ansi: [String],
-        label: String,
-        labelSecondary: String,
-        labelTertiary: String,
-        labelQuaternary: String,
-        accent: String,
-        accentText: String,
-        headerOpacity: Double,
-        hairlineOpacity: Double,
-        separatorOpacity: Double,
-        controlBorderOpacity: Double,
-        selectionWashOpacity: Double,
-        bandOpacity: Double,
-        tintWashOpacity: Double,
-        avatarWashOpacity: Double,
-        diffRowWashOpacity: Double,
-        diffGutterWashOpacity: Double,
-        commentWashOpacity: Double,
-        headerAccentOpacity: Double,
-        mutedAccentOpacity: Double,
-        skeletonHighlightOpacity: Double,
-        onAccentSeparatorOpacity: Double,
-        systemOrange: String,
-        systemYellow: String,
-        systemGreen: String,
-        systemRed: String,
-        systemBlue: String,
-        systemPink: String,
-        systemTeal: String,
-        systemGray: String,
+        label: Ink,
+        labelSecondary: Ink,
+        labelTertiary: Ink,
+        labelQuaternary: Ink,
+        accent: Tint,
+        accentText: Ink,
+        hairlineShare: Double,
+        separatorShare: Double,
+        borderShare: Double,
+        selectionShare: Double,
+        bandShare: Double,
+        chipShare: Double,
+        avatarShare: Double,
+        diffRowShare: Double,
+        diffGutterShare: Double,
+        commentShare: Double,
+        headerVeilShare: Double,
+        mutedShare: Double,
+        skeletonShare: Double,
+        onAccentRuleShare: Double,
+        systemOrange: Tint,
+        systemYellow: Tint,
+        systemGreen: Tint,
+        systemRed: Tint,
+        systemBlue: Tint,
+        systemPink: Tint,
+        systemTeal: Tint,
+        systemGray: Tint,
         isDark: Bool
     ) {
         self.windowBg = windowBg
@@ -214,6 +366,7 @@ public struct Palette: Equatable, Sendable {
         self.rowAltBg = rowAltBg
         self.controlFace = controlFace
         self.fieldBg = fieldBg
+        self.hoverWash = hoverWash
         self.terminalBg = terminalBg
         self.terminalFg = terminalFg
         self.terminalCursor = terminalCursor
@@ -225,21 +378,20 @@ public struct Palette: Equatable, Sendable {
         self.labelQuaternary = labelQuaternary
         self.accent = accent
         self.accentText = accentText
-        self.headerOpacity = headerOpacity
-        self.hairlineOpacity = hairlineOpacity
-        self.separatorOpacity = separatorOpacity
-        self.controlBorderOpacity = controlBorderOpacity
-        self.selectionWashOpacity = selectionWashOpacity
-        self.bandOpacity = bandOpacity
-        self.tintWashOpacity = tintWashOpacity
-        self.avatarWashOpacity = avatarWashOpacity
-        self.diffRowWashOpacity = diffRowWashOpacity
-        self.diffGutterWashOpacity = diffGutterWashOpacity
-        self.commentWashOpacity = commentWashOpacity
-        self.headerAccentOpacity = headerAccentOpacity
-        self.mutedAccentOpacity = mutedAccentOpacity
-        self.skeletonHighlightOpacity = skeletonHighlightOpacity
-        self.onAccentSeparatorOpacity = onAccentSeparatorOpacity
+        self.hairlineShare = hairlineShare
+        self.separatorShare = separatorShare
+        self.borderShare = borderShare
+        self.selectionShare = selectionShare
+        self.bandShare = bandShare
+        self.chipShare = chipShare
+        self.avatarShare = avatarShare
+        self.diffRowShare = diffRowShare
+        self.diffGutterShare = diffGutterShare
+        self.commentShare = commentShare
+        self.headerVeilShare = headerVeilShare
+        self.mutedShare = mutedShare
+        self.skeletonShare = skeletonShare
+        self.onAccentRuleShare = onAccentRuleShare
         self.systemOrange = systemOrange
         self.systemYellow = systemYellow
         self.systemGreen = systemGreen
@@ -260,18 +412,28 @@ public struct Palette: Equatable, Sendable {
     /// is the step between `surface0` and `surface1` that the palette does
     /// not name.
     public static let mocha = Palette(
-        windowBg: "1e1e2e",          // base
-        controlBg: "313244",         // surface0
-        // One deliberate step between Mocha's `surface0` and `surface1`,
-        // which is the one level this ladder needs and the palette does not
-        // name.
-        rowAltBg: "3b3d4f",
-        controlFace: "45475a",       // surface1
-        fieldBg: "181825",           // mantle
-        terminalBg: "181825",
-        terminalFg: "cdd6f4",
-        terminalCursor: "cba6f7",
-        terminalSelection: "45475a",
+        windowBg: Surface("1e1e2e"),          // base
+        controlBg: Surface("313244"),         // surface0
+        // The one level this ladder needs and Catppuccin does not name,
+        // derived from the two swatches either side of it rather than typed
+        // as a hex — see `mix`. A literal here is the one thing in a theme
+        // that cannot port: a new palette computes this from its own
+        // surfaces, where a hex would have to be invented again.
+        rowAltBg: Surface(mix("313244", "45475a", 0.5)),  // half surface0 into surface1
+        controlFace: Surface("45475a"),       // surface1
+        fieldBg: Surface("181825"),           // mantle
+        // Mocha's `surface0`, the step Catppuccin's own ports hover with:
+        // published, one clear level off `base`, and `text` (#cdd6f4)
+        // clears 8.7:1 on it. `surface1` is a wider step and still
+        // published, but its Latte twin takes that theme's label to
+        // 4.39:1 — under the bar this token exists to hold. Two levels
+        // below the `overlay0` a hover used to fill with, which is why
+        // every hover in the app now darkens rather than lightening.
+        hoverWash: Surface("313244"),         // surface0
+        terminalBg: Surface("181825"),
+        terminalFg: Ink("cdd6f4"),
+        terminalCursor: Tint("cba6f7"),
+        terminalSelection: Surface("45475a"),
         // Catppuccin's own published Mocha terminal mapping: surface1 for
         // black, subtext1 for white, surface2 and subtext0 for their bright
         // halves, and the accent hues unchanged between the two — Mocha's
@@ -282,35 +444,34 @@ public struct Palette: Equatable, Sendable {
             "585b70", "f38ba8", "a6e3a1", "f9e2af",
             "89b4fa", "f5c2e7", "94e2d5", "a6adc8",
         ],
-        label: "cdd6f4",             // text
-        labelSecondary: "a6adc8",    // subtext0
-        labelTertiary: "9399b2",     // overlay2
-        labelQuaternary: "6c7086",   // overlay0
-        accent: "cba6f7",            // mauve
-        accentText: "11111b",        // crust
-        headerOpacity: 0.85,
-        hairlineOpacity: 0.10,
-        separatorOpacity: 0.16,
-        controlBorderOpacity: 0.22,
-        selectionWashOpacity: 0.20,
-        bandOpacity: 0.50,
-        tintWashOpacity: 0.18,
-        avatarWashOpacity: 0.30,
-        diffRowWashOpacity: 0.20,
-        diffGutterWashOpacity: 0.32,
-        commentWashOpacity: 0.10,
-        headerAccentOpacity: 0.09,
-        mutedAccentOpacity: 0.45,
-        skeletonHighlightOpacity: 0.10,
-        onAccentSeparatorOpacity: 0.25,
-        systemOrange: "fab387",      // peach
-        systemYellow: "f9e2af",      // yellow
-        systemGreen: "a6e3a1",       // green
-        systemRed: "f38ba8",         // red
-        systemBlue: "89b4fa",        // blue
-        systemPink: "f5c2e7",        // pink
-        systemTeal: "94e2d5",        // teal
-        systemGray: "9399b2",        // overlay2
+        label: Ink("cdd6f4"),             // text
+        labelSecondary: Ink("a6adc8"),    // subtext0
+        labelTertiary: Ink("9399b2"),     // overlay2
+        labelQuaternary: Ink("6c7086"),   // overlay0
+        accent: Tint("cba6f7"),            // mauve
+        accentText: Ink("11111b"),        // crust
+        hairlineShare: 0.10,
+        separatorShare: 0.16,
+        borderShare: 0.22,
+        selectionShare: 0.20,
+        bandShare: 0.50,
+        chipShare: 0.18,
+        avatarShare: 0.30,
+        diffRowShare: 0.20,
+        diffGutterShare: 0.32,
+        commentShare: 0.10,
+        headerVeilShare: 0.09,
+        mutedShare: 0.45,
+        skeletonShare: 0.10,
+        onAccentRuleShare: 0.25,
+        systemOrange: Tint("fab387"),      // peach
+        systemYellow: Tint("f9e2af"),      // yellow
+        systemGreen: Tint("a6e3a1"),       // green
+        systemRed: Tint("f38ba8"),         // red
+        systemBlue: Tint("89b4fa"),        // blue
+        systemPink: Tint("f5c2e7"),        // pink
+        systemTeal: Tint("94e2d5"),        // teal
+        systemGray: Tint("9399b2"),        // overlay2
         isDark: true
     )
 
@@ -332,15 +493,21 @@ public struct Palette: Equatable, Sendable {
     /// monotone, and that is the theme's own arrangement rather than
     /// something to iron out.
     public static let latte = Palette(
-        windowBg: "eff1f5",          // base
-        controlBg: "ccd0da",         // surface0
-        rowAltBg: "c4c8d4",          // between surface0 and surface1
-        controlFace: "bcc0cc",       // surface1
-        fieldBg: "e6e9ef",           // mantle
-        terminalBg: "e6e9ef",
-        terminalFg: "4c4f69",
-        terminalCursor: "8839ef",
-        terminalSelection: "bcc0cc",
+        windowBg: Surface("eff1f5"),          // base
+        controlBg: Surface("ccd0da"),         // surface0
+        rowAltBg: Surface(mix("ccd0da", "bcc0cc", 0.5)),  // half surface0 into surface1
+        controlFace: Surface("bcc0cc"),       // surface1
+        fieldBg: Surface("e6e9ef"),           // mantle
+        // Latte's `surface0`, the same swatch Mocha hovers with, which in a
+        // light Catppuccin sinks rather than rises — Latte's surfaces all
+        // sit below its `base` — and so is a hover that deepens, as a light
+        // theme's should. `text` (#4c4f69) clears 5.2:1 on it, where
+        // `surface1` manages only 4.39:1.
+        hoverWash: Surface("ccd0da"),         // surface0
+        terminalBg: Surface("e6e9ef"),
+        terminalFg: Ink("4c4f69"),
+        terminalCursor: Tint("8839ef"),
+        terminalSelection: Surface("bcc0cc"),
         // Catppuccin's own published Latte terminal mapping, exactly as its
         // ports write it: surface1 and surface2 for the two blacks, subtext1
         // and subtext0 for the two whites, and the accent hues unchanged
@@ -351,13 +518,12 @@ public struct Palette: Equatable, Sendable {
             "acb0be", "d20f39", "40a02b", "df8e1d",
             "1e66f5", "ea76cb", "179299", "6c6f85",
         ],
-        label: "4c4f69",             // text
-        labelSecondary: "6c6f85",    // subtext0
-        labelTertiary: "7c7f93",     // overlay2
-        labelQuaternary: "9ca0b0",   // overlay0
-        accent: "8839ef",            // mauve
-        accentText: "dce0e8",        // crust
-        headerOpacity: 0.85,
+        label: Ink("4c4f69"),             // text
+        labelSecondary: Ink("6c6f85"),    // subtext0
+        labelTertiary: Ink("7c7f93"),     // overlay2
+        labelQuaternary: Ink("9ca0b0"),   // overlay0
+        accent: Tint("8839ef"),            // mauve
+        accentText: Ink("dce0e8"),        // crust
         // The one place the two themes differ by more than their palettes:
         // dark ink on a light ground reads fainter than light ink on a dark
         // one at the same alpha, so the borders here are a couple of points
@@ -365,36 +531,206 @@ public struct Palette: Equatable, Sendable {
         // a dark colour, and the same alpha would draw a far heavier slab.
         // These are the theme's own material rather than Catppuccin's, which
         // says nothing about how hard to press a hairline.
-        hairlineOpacity: 0.12,
-        separatorOpacity: 0.18,
-        controlBorderOpacity: 0.26,
-        selectionWashOpacity: 0.16,
-        bandOpacity: 0.50,
+        hairlineShare: 0.12,
+        separatorShare: 0.18,
+        borderShare: 0.26,
+        selectionShare: 0.16,
+        bandShare: 0.50,
         // Latte's mauve, green and red are dark saturated colours, so the
         // same share of one over a light ground is a much heavier slab than
         // Mocha's pastels make over a dark one: every hue wash here is a few
         // points lighter than its Mocha twin, exactly as the selection wash
         // above already is.
-        tintWashOpacity: 0.14,
-        avatarWashOpacity: 0.24,
-        diffRowWashOpacity: 0.16,
-        diffGutterWashOpacity: 0.26,
-        commentWashOpacity: 0.08,
-        headerAccentOpacity: 0.07,
-        mutedAccentOpacity: 0.45,
+        chipShare: 0.14,
+        avatarShare: 0.24,
+        diffRowShare: 0.16,
+        diffGutterShare: 0.26,
+        commentShare: 0.08,
+        headerVeilShare: 0.07,
+        mutedShare: 0.45,
         // And back the other way for the one wash of `label`, which is the
         // border ramp's rule: dark ink reads fainter than light ink at the
         // same alpha.
-        skeletonHighlightOpacity: 0.12,
-        onAccentSeparatorOpacity: 0.25,
-        systemOrange: "fe640b",      // peach
-        systemYellow: "df8e1d",      // yellow
-        systemGreen: "40a02b",       // green
-        systemRed: "d20f39",         // red
-        systemBlue: "1e66f5",        // blue
-        systemPink: "ea76cb",        // pink
-        systemTeal: "179299",        // teal
-        systemGray: "7c7f93",        // overlay2
+        skeletonShare: 0.12,
+        onAccentRuleShare: 0.25,
+        systemOrange: Tint("fe640b"),      // peach
+        systemYellow: Tint("df8e1d"),      // yellow
+        systemGreen: Tint("40a02b"),       // green
+        systemRed: Tint("d20f39"),         // red
+        systemBlue: Tint("1e66f5"),        // blue
+        systemPink: Tint("ea76cb"),        // pink
+        systemTeal: Tint("179299"),        // teal
+        systemGray: Tint("7c7f93"),        // overlay2
         isDark: false
     )
+}
+
+// MARK: - Grounds
+
+/// A surface something is drawn *on*, named so a call site can say what it
+/// is drawing over.
+///
+/// This is the fact an alpha was standing in for. A wash laid down at 16%
+/// does not know what is behind it — it lets through whatever happens to be
+/// there, which is why one `separator` token rendered as five different
+/// colours depending on which pane it landed in, none of them chosen. Named
+/// here, the ground is an input to the colour instead of an accident of the
+/// view hierarchy, so what comes out is one opaque value the theme decided.
+public enum Ground: String, CaseIterable, Sendable {
+    case window, card, rowAlt, control, field, band, header, terminal, hover
+
+    public func surface(in palette: Palette) -> Surface {
+        switch self {
+        case .window: palette.windowBg
+        case .card: palette.controlBg
+        case .rowAlt: palette.rowAltBg
+        case .control: palette.controlFace
+        case .field: palette.fieldBg
+        case .band: palette.bandBg
+        case .header: palette.headerBg
+        case .terminal: palette.terminalBg
+        case .hover: palette.hoverWash
+        }
+    }
+}
+
+/// How heavily a rule is drawn: the three weights of line the app separates
+/// things with, in order.
+public enum RuleWeight: CaseIterable, Sendable {
+    /// The quiet edge between two surfaces.
+    case hairline
+    /// The line between two rows of one list.
+    case separator
+    /// The edge of something the pointer acts on, which has to read as an
+    /// edge and not as a suggestion of one.
+    case border
+}
+
+/// What a hue is being washed into a ground *for*. Each is a share of the
+/// hue, and they are named by role because a chip and a diff gutter want
+/// different weights of the same colour for reasons that have nothing to do
+/// with each other.
+public enum WashRole: CaseIterable, Sendable {
+    case selection, chip, avatar, diffRow, diffGutter, comment, headerVeil, muted
+}
+
+extension Palette {
+    /// A band laid over the window ground at half a card's weight: a pane's
+    /// header, the brief's footer, a notice row. Derived rather than typed,
+    /// like every other colour here that Catppuccin does not publish.
+    public var bandBg: Surface {
+        Surface(mix(controlBg.hex, windowBg.hex, bandShare))
+    }
+
+    /// The header band: the accent veiled over the window ground. It used to
+    /// be two layers — the ground at 85% with the veil on top — which let
+    /// the desktop through a window that paints no material behind it. One
+    /// opaque colour says the same thing and means it.
+    public var headerBg: Surface {
+        Surface(mix(accent.hex, windowBg.hex, headerVeilShare))
+    }
+
+    /// A rule drawn on a named ground: the primary label mixed into it, at
+    /// the weight the rule is for. Opaque, so the line is the same line
+    /// wherever the view it belongs to is placed.
+    public func rule(_ weight: RuleWeight, on ground: Ground) -> Ink {
+        let share = switch weight {
+        case .hairline: hairlineShare
+        case .separator: separatorShare
+        case .border: borderShare
+        }
+        return Ink(mix(label.hex, ground.surface(in: self).hex, share))
+    }
+
+    /// A hue washed into a named ground, as a ground: a chip's capsule, a
+    /// diff row's fill, the wash behind a selected row.
+    public func wash(_ role: WashRole, of tint: Tint, on ground: Ground) -> Surface {
+        let share = switch role {
+        case .selection: selectionShare
+        case .chip: chipShare
+        case .avatar: avatarShare
+        case .diffRow: diffRowShare
+        case .diffGutter: diffGutterShare
+        case .comment: commentShare
+        case .headerVeil: headerVeilShare
+        case .muted: mutedShare
+        }
+        return tint.wash(on: ground.surface(in: self), share)
+    }
+
+    /// The sweep passing over a loading skeleton block — the one wash whose
+    /// ground is not a surface of the app but the block itself.
+    public func skeletonHighlight(on block: Surface) -> Surface {
+        Surface(mix(label.hex, block.hex, skeletonShare))
+    }
+
+    /// What a hue reads as when it is *written* on a ground: the theme's own
+    /// colour, shaded only as far as it must be to be readable there.
+    ///
+    /// This is the one rule that makes an outcome colour survive a light
+    /// theme. Mocha's accents are pastels on a dark ground and already clear
+    /// the bar, so the shade is nil or imperceptible and nothing about that
+    /// theme changes. Latte's are dark saturated colours whose *lightness*
+    /// sits in the middle, which is the worst place to be: its yellow as text
+    /// on a card is 1.70:1 and its pink 1.71 — not dim, invisible. Nothing in
+    /// Catppuccin fixes that, because the palette publishes no darker
+    /// variants and both of the inks one might reach for are worse: light on
+    /// a mid hue is 1.98–2.96, and the theme's own `text` is 2.39–3.05.
+    ///
+    /// Mixing toward `text` was the obvious answer and is the wrong one: in
+    /// Latte it converges all the way, so a green chip and a red chip both
+    /// come out `#4c4f69` and the colour coding — the entire point of an
+    /// outcome colour — is gone. `shade` moves lightness alone, so a shaded
+    /// green is still that green: `#40a02b` becomes `#2d701e` and reads as
+    /// green at 4.69:1.
+    ///
+    /// It answers per theme rather than per hand-tuned constant, which is the
+    /// whole reason a third palette can be added by filling in its swatches:
+    /// a theme whose hues already read is left alone, and one whose hues do
+    /// not is corrected by its own colours without anyone choosing a number.
+    public func ink(of tint: Tint, on ground: Surface, clearing bar: Double = 4.5) -> Ink {
+        // Away from the ground: darken a hue on a light one, lighten it on a
+        // dark one. Which of those a theme needs is the theme's business and
+        // not something written down per palette.
+        let step = relativeLuminance(ground.hex) > relativeLuminance(tint.hex) ? -0.02 : 0.02
+        var magnitude = 0.0
+        var candidate = tint.hex
+        while contrastRatio(candidate, ground.hex) < bar && abs(magnitude) < 0.6 {
+            magnitude += step
+            candidate = shade(tint.hex, magnitude)
+        }
+        return Ink(candidate)
+    }
+
+    /// An ink shaded only as far as it must be to be read on a ground —
+    /// `ink(of:on:)` for something that is already ink rather than a hue.
+    ///
+    /// It is the same operation and exists for the same reason: Latte's
+    /// `subtext0` clears AA on none of its own surfaces, 4.37 at best on
+    /// `base` and 3.20 on a card, so a theme cannot be taken as published and
+    /// also be readable everywhere this app draws.
+    public func readable(_ ink: Ink, on ground: Surface, clearing bar: Double = 4.5) -> Ink {
+        let step = relativeLuminance(ground.hex) > relativeLuminance(ink.hex) ? -0.02 : 0.02
+        var magnitude = 0.0
+        var candidate = ink.hex
+        while contrastRatio(candidate, ground.hex) < bar && abs(magnitude) < 0.6 {
+            magnitude += step
+            candidate = shade(ink.hex, magnitude)
+        }
+        return Ink(candidate)
+    }
+
+    /// The word inside a chip, whose ground is the chip's own capsule rather
+    /// than the surface behind it — a chip is one hue drawn twice, and the
+    /// word has to survive the wash it sits on.
+    public func chipInk(of tint: Tint, on ground: Ground) -> Ink {
+        ink(of: tint, on: wash(.chip, of: tint, on: ground))
+    }
+
+    /// The rule splitting a filled accent control in two. Its ground is the
+    /// accent rather than any surface, which is why it is the accent's own
+    /// ink rather than `label`.
+    public var onAccentRule: Ink {
+        Ink(mix(accentText.hex, accent.hex, onAccentRuleShare))
+    }
 }

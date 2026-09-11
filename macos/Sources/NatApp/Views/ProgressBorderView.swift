@@ -38,15 +38,15 @@ struct ProgressBorderView: View {
         .frame(height: 7)
         .padding(.horizontal, 20)
         .padding(.vertical, 6)
-        .background(DesignTokens.windowBg)
-        .rectBorder(width: 0.5, edges: [.top], color: DesignTokens.separator)
+        .surface(.window)
+        .rule(.separator, edges: [.top], width: 0.5)
     }
 
     private func segmentView(for segment: ProgressSegment) -> some View {
         ZStack(alignment: .leading) {
             // Background
             RoundedRectangle(cornerRadius: 3.5)
-                .fill(DesignTokens.labelQuaternary)
+                .fill(DesignTokens.rule(.border, on: .window))
 
             // Progress fill — one hue for the whole bar, with brightness
             // saying what's finished: the folded Done run sits back at a
@@ -57,7 +57,7 @@ struct ProgressBorderView: View {
                 RoundedRectangle(cornerRadius: 3.5)
                     .fill(
                         segment.isComplete
-                            ? DesignTokens.accentMuted
+                            ? DesignTokens.accentMuted(on: .window)
                             : DesignTokens.accent
                     )
                     .frame(width: geometry.size.width * segment.fraction)

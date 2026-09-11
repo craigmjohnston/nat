@@ -67,7 +67,7 @@ struct DiffFileSidebarView: View {
             HStack(spacing: 6) {
                 Text(selectedCommitTitle)
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.labelSecondary)
+                    .ink(.secondary)
                     .lineLimit(1)
 
                 Spacer()
@@ -75,20 +75,15 @@ struct DiffFileSidebarView: View {
                 Text("\(commits.count)")
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .monospacedDigit()
-                    .foregroundStyle(DesignTokens.labelTertiary)
+                    .ink(.tertiary)
 
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(DesignTokens.labelTertiary)
+                    .ink(.tertiary)
             }
             .padding(.horizontal, 8)
             .frame(height: 22)
-            .background(DesignTokens.controlFace)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(DesignTokens.controlBorder, lineWidth: 0.5)
-            )
+            .control(radius: 6)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -121,8 +116,8 @@ private enum ChangeBadge {
 
     var color: Color {
         switch self {
-        case .added: return DesignTokens.systemGreen
-        case .modified, .renamed: return DesignTokens.systemOrange
+        case .added: return DesignTokens.chipInk(.green, on: .window)
+        case .modified, .renamed: return DesignTokens.chipInk(.orange, on: .window)
         }
     }
 
@@ -132,8 +127,8 @@ private enum ChangeBadge {
     /// theme never chose.
     var wash: Color {
         switch self {
-        case .added: return DesignTokens.systemGreenWash
-        case .modified, .renamed: return DesignTokens.systemOrangeWash
+        case .added: return DesignTokens.systemGreenWash(on: .window)
+        case .modified, .renamed: return DesignTokens.systemOrangeWash(on: .window)
         }
     }
 }
@@ -150,7 +145,7 @@ struct DiffFileSidebarRow: View {
             if isViewed {
                 Image(systemName: "checkmark")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(DesignTokens.systemGreen)
+                    .ink(.success)
                     .frame(width: 13)
             } else {
                 Color.clear.frame(width: 13)
@@ -161,7 +156,7 @@ struct DiffFileSidebarRow: View {
             // first when the path does not fit.
             Text(file.path)
                 .font(.system(size: Typo.subhead, weight: .regular))
-                .foregroundStyle(DesignTokens.label)
+                .ink(.primary)
                 .lineLimit(1)
                 .truncationMode(.head)
                 .opacity(isViewed ? 0.55 : 1)
@@ -174,7 +169,7 @@ struct DiffFileSidebarRow: View {
                         .font(.system(size: Typo.caption, weight: .regular))
                         .monospacedDigit()
                 }
-                .foregroundStyle(DesignTokens.accent)
+                .ink(.accent)
             }
 
             Text(badge.letter)
@@ -188,13 +183,13 @@ struct DiffFileSidebarRow: View {
                 Text("+\(file.adds)")
                     .font(.system(size: Typo.caption, weight: .regular))
                     .monospacedDigit()
-                    .foregroundStyle(DesignTokens.systemGreen)
+                    .ink(.success)
             }
             if file.dels > 0 {
                 Text("\u{2212}\(file.dels)")
                     .font(.system(size: Typo.caption, weight: .regular))
                     .monospacedDigit()
-                    .foregroundStyle(DesignTokens.systemRed)
+                    .ink(.danger)
             }
         }
         .padding(.horizontal, 8)

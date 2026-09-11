@@ -22,7 +22,7 @@ struct AgentTabView: View {
                 // around a smaller rectangle would leave a lighter band at
                 // the edges instead of the mock's own full-bleed panel.
                 ZStack {
-                    DesignTokens.terminalBg
+                    DesignTokens.fill(.terminal)
 
                     AgentTerminalHostView(
                         attachSpec: AttachSpec(session: agent.session),
@@ -46,7 +46,7 @@ struct AgentTabView: View {
                     if let error = interruptError {
                         Text(error)
                             .font(.system(size: Typo.subhead, weight: .regular))
-                            .foregroundStyle(DesignTokens.systemRed)
+                            .ink(.danger)
                     }
 
                     // Both secondary: neither is the pane's confirming
@@ -65,28 +65,28 @@ struct AgentTabView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .frame(height: 34)
-                .background(DesignTokens.controlBg)
-                .rectBorder(width: 0.5, edges: [.top], color: DesignTokens.separator)
+                .surface(.card)
+                .rule(.separator, edges: [.top], width: 0.5)
             } else {
                 // Empty state
                 VStack(spacing: 12) {
                     Image(systemName: "play.circle")
                         .font(.system(size: 40, weight: .regular))
-                        .foregroundStyle(DesignTokens.labelSecondary)
+                        .ink(.secondary)
 
                     Text("No agent is running on this slice")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(DesignTokens.label)
+                        .ink(.primary)
 
                     Text("Launch one from the Brief tab")
                         .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(DesignTokens.labelSecondary)
+                        .ink(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(DesignTokens.controlBg)
+                .surface(.card)
             }
         }
-        .background(DesignTokens.windowBg)
+        .surface(.window)
     }
 
     // MARK: - Actions

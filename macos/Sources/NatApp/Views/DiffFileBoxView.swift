@@ -74,7 +74,7 @@ struct DiffFileBoxView: View {
                             .padding(.leading, commentLeadingInset)
                             .padding(.trailing, 12)
                             .padding(.vertical, 10)
-                            .background(DesignTokens.rowAltBg)
+                            .surface(.rowAlt)
                         }
 
                         ForEach(comments.filter { $0.anchorRowIDs.last == row.id }) { comment in
@@ -88,42 +88,37 @@ struct DiffFileBoxView: View {
                             .padding(.leading, commentLeadingInset)
                             .padding(.trailing, 12)
                             .padding(.vertical, 10)
-                            .background(DesignTokens.rowAltBg)
+                            .surface(.rowAlt)
                         }
                     }
                 }
             }
         }
-        .background(DesignTokens.controlBg)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(DesignTokens.controlBorder, lineWidth: 0.5)
-        )
+        .card(radius: 10)
     }
 
     private var header: some View {
         HStack(spacing: 10) {
             Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
 
             if isViewed {
                 Image(systemName: "checkmark")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(DesignTokens.systemGreen)
+                    .ink(.success)
             }
 
             Text(file.path)
                 .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
-                .foregroundStyle(DesignTokens.label)
+                .ink(.primary)
                 .lineLimit(1)
                 .truncationMode(.head)
 
             if file.isRenamed {
                 Text("was \(file.oldPath)")
                     .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
-                    .foregroundStyle(DesignTokens.labelTertiary)
+                    .ink(.tertiary)
                     .lineLimit(1)
             }
 
@@ -135,7 +130,7 @@ struct DiffFileBoxView: View {
                         .font(.system(size: Typo.subhead, weight: .regular))
                         .monospacedDigit()
                 }
-                .foregroundStyle(DesignTokens.accent)
+                .ink(.accent)
             }
 
             Spacer()
@@ -144,13 +139,13 @@ struct DiffFileBoxView: View {
                 Text("+\(file.adds)")
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .monospacedDigit()
-                    .foregroundStyle(DesignTokens.systemGreen)
+                    .ink(.success)
             }
             if file.dels > 0 {
                 Text("\u{2212}\(file.dels)")
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .monospacedDigit()
-                    .foregroundStyle(DesignTokens.systemRed)
+                    .ink(.danger)
             }
 
             Button(action: onToggleViewed) {
@@ -160,7 +155,7 @@ struct DiffFileBoxView: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 32)
-        .background(DesignTokens.rowAltBg)
+        .surface(.rowAlt)
         .contentShape(Rectangle())
         .onTapGesture {
             onToggleCollapsed()
@@ -177,6 +172,7 @@ struct DiffFileBoxView: View {
 /// last row of that range, and only while nothing is already being written
 /// about it.
 struct DiffRowView: View {
+    @Environment(\.ground) private var ground
     let row: DiffRow
     let numberWidth: Int
     let isSelected: Bool
@@ -217,7 +213,7 @@ struct DiffRowView: View {
     private func gutterCell(_ fill: Color) -> some View {
         HStack(spacing: 0) {
             fill
-            DesignTokens.separator.frame(width: 0.5)
+            DesignTokens.rule(.separator, on: .rowAlt).frame(width: 0.5)
         }
         .frame(width: gutterWidth + 0.5)
     }
@@ -235,12 +231,12 @@ struct DiffRowView: View {
         HStack(spacing: 0) {
             Text("···")
                 .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
-                .foregroundStyle(DesignTokens.accent)
+                .ink(.accent)
                 .frame(width: gutterWidth)
 
             Text(row.text)
                 .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
                 .lineLimit(1)
                 .padding(.leading, 12)
 
@@ -248,7 +244,7 @@ struct DiffRowView: View {
         }
         .frame(minHeight: 24)
         .background(alignment: .leading) {
-            gutterCell(DesignTokens.diffCommentGutterBg)
+            gutterCell(DesignTokens.diffCommentGutterBg(on: ground))
         }
     }
 
@@ -266,7 +262,7 @@ struct DiffRowView: View {
                     .frame(width: numberColumnWidth, alignment: .trailing)
             }
             .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
-            .foregroundStyle(DesignTokens.labelTertiary)
+            .ink(.tertiary)
             .padding(.horizontal, 8)
 
             Text(glyph)
@@ -284,7 +280,7 @@ struct DiffRowView: View {
                 Button(action: onComment) {
                     Image(systemName: "plus.bubble")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(DesignTokens.accent)
+                        .ink(.accent)
                 }
                 .buttonStyle(.plain)
                 .padding(.trailing, 8)
@@ -299,7 +295,7 @@ struct DiffRowView: View {
             gutterCell(gutterFill)
         }
         .background(rowFill)
-        .background(isSelected ? DesignTokens.selectionWash : Color.clear)
+        .background(isSelected ? DesignTokens.wash(.selection, tone: .accent, on: ground) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture {
             onSelect(NSEvent.modifierFlags.contains(.shift))
@@ -312,7 +308,7 @@ struct DiffRowView: View {
     /// blank placeholder for an empty line) renders exactly as it always did:
     /// one plain colour, the dimmer label for a described file's message.
     private var rowText: AttributedString {
-        let defaultColor: Color = row.kind == .described ? DesignTokens.labelSecondary : DesignTokens.label
+        let defaultColor = DesignTokens.ink(row.kind == .described ? .secondary : .primary, on: ground)
         guard !row.text.isEmpty else {
             var s = AttributedString(" ")
             s.foregroundColor = defaultColor
@@ -331,25 +327,25 @@ struct DiffRowView: View {
 
     private var glyphColor: Color {
         switch row.kind {
-        case .added: return DesignTokens.systemGreen
-        case .removed: return DesignTokens.systemRed
+        case .added: return DesignTokens.ink(.success, on: ground)
+        case .removed: return DesignTokens.ink(.danger, on: ground)
         default: return .clear
         }
     }
 
     private var rowFill: Color {
         switch row.kind {
-        case .added: return DesignTokens.diffAddedRowBg
-        case .removed: return DesignTokens.diffRemovedRowBg
+        case .added: return DesignTokens.diffAddedRowBg(on: ground)
+        case .removed: return DesignTokens.diffRemovedRowBg(on: ground)
         default: return .clear
         }
     }
 
     private var gutterFill: Color {
         switch row.kind {
-        case .added: return DesignTokens.diffAddedGutterBg
-        case .removed: return DesignTokens.diffRemovedGutterBg
-        default: return DesignTokens.rowAltBg
+        case .added: return DesignTokens.diffAddedGutterBg(on: ground)
+        case .removed: return DesignTokens.diffRemovedGutterBg(on: ground)
+        default: return DesignTokens.fill(.rowAlt)
         }
     }
 }
@@ -359,6 +355,7 @@ struct DiffRowView: View {
 /// "Pending" badge — every comment here is, since none of them are written
 /// anywhere until they are sent — and the edit/delete icons the mock shows.
 struct PendingCommentCardView: View {
+    @Environment(\.ground) private var ground
     let comment: PendingComment
     let authorName: String
     let authorInitials: String
@@ -370,21 +367,21 @@ struct PendingCommentCardView: View {
             HStack(spacing: 8) {
                 Text(authorInitials)
                     .font(.system(size: Typo.caption, weight: .semibold))
-                    .foregroundStyle(DesignTokens.accent)
+                    .ink(.accent)
                     .frame(width: 20, height: 20)
-                    .background(DesignTokens.avatarWash)
+                    .wash(.avatar)
                     .clipShape(Circle())
 
                 Text(authorName)
                     .font(.system(size: Typo.subhead, weight: .semibold))
-                    .foregroundStyle(DesignTokens.label)
+                    .ink(.primary)
 
                 Text("Pending")
                     .font(.system(size: Typo.caption, weight: .semibold))
-                    .foregroundStyle(DesignTokens.systemYellow)
+                    .ink(.warning)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(DesignTokens.systemYellowWash)
+                    .background(DesignTokens.systemYellowWash(on: ground))
                     .clipShape(Capsule())
 
                 Spacer()
@@ -392,7 +389,7 @@ struct PendingCommentCardView: View {
                 Button(action: onEdit) {
                     Image(systemName: "pencil")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(DesignTokens.labelTertiary)
+                        .ink(.tertiary)
                 }
                 .buttonStyle(.plain)
                 .help("Edit this comment")
@@ -400,30 +397,25 @@ struct PendingCommentCardView: View {
                 Button(action: onDelete) {
                     Image(systemName: "trash")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(DesignTokens.labelTertiary)
+                        .ink(.tertiary)
                 }
                 .buttonStyle(.plain)
                 .help("Delete this comment")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .background(DesignTokens.controlFace)
+            .surface(.control)
 
             Divider().frame(height: 0.5)
 
             Text(comment.text)
                 .font(.system(size: Typo.subhead, weight: .regular))
-                .foregroundStyle(DesignTokens.label)
+                .ink(.primary)
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(DesignTokens.controlBg)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(DesignTokens.controlBorder, lineWidth: 0.5)
-        )
+        .card(radius: 8)
     }
 }
 
@@ -450,12 +442,7 @@ struct CommentEditorView: View {
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 60, idealHeight: 60, maxHeight: 140)
                 .padding(6)
-                .background(DesignTokens.fieldBg)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(DesignTokens.controlBorder, lineWidth: 0.5)
-                )
+                .field(radius: 8)
 
             HStack(spacing: 8) {
                 Button("Cancel", action: onCancel)

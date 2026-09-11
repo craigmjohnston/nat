@@ -22,17 +22,17 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            DesignTokens.windowBg
+            DesignTokens.fill(.window)
                 .ignoresSafeArea()
 
             VStack(spacing: 20) {
                 Text("nat")
                     .font(.system(size: 32, weight: .semibold))
-                    .foregroundStyle(DesignTokens.label)
+                    .ink(.primary)
 
                 Text("A native board over the notion-agent-tracker project, for launching and reviewing agent work.")
                     .font(.system(size: Typo.body, weight: .regular))
-                    .foregroundStyle(DesignTokens.labelSecondary)
+                    .ink(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
 
@@ -42,14 +42,14 @@ struct OnboardingView: View {
                     }
                 }
                 .padding(16)
-                .background(DesignTokens.controlBg)
+                .surface(.card)
                 .cornerRadius(10)
 
                 Text(natFound
                     ? "Add a project to get started — one the workspace already has, or a new one."
                     : "Install nat and run it once in a terminal to set up your workspace, then check again.")
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.labelTertiary)
+                    .ink(.tertiary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
 
@@ -92,18 +92,18 @@ struct OnboardingView: View {
         let found = BinaryLocator.isFound(binary)
         return HStack(spacing: 8) {
             Image(systemName: found ? "checkmark.circle.fill" : "xmark.circle")
-                .foregroundStyle(found ? DesignTokens.systemGreen : DesignTokens.systemRed)
+                .ink(found ? .success : .danger)
                 .font(.system(size: 13, weight: .medium))
 
             Text(binary)
                 .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
-                .foregroundStyle(DesignTokens.label)
+                .ink(.primary)
 
             Spacer()
 
             Text(found ? "Found" : "Missing")
                 .font(.system(size: Typo.subhead, weight: .regular))
-                .foregroundStyle(found ? DesignTokens.labelSecondary : DesignTokens.systemRed)
+                .ink(found ? .secondary : .danger)
         }
         .frame(width: 220)
     }

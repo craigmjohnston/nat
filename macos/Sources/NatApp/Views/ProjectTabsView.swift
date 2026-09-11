@@ -32,7 +32,7 @@ struct ProjectTabsView: View {
                     && appModel.activeProjectID == appModel.projectTabs[index + 1].id
                 if !isActive && !nextIsActive {
                     Rectangle()
-                        .fill(DesignTokens.labelQuaternary)
+                        .fill(DesignTokens.rule(.border, on: .header))
                         .frame(width: 1, height: 16)
                         // Centered on the band's content line, like the
                         // tab labels beside it — bottom-aligned it hung
@@ -46,7 +46,7 @@ struct ProjectTabsView: View {
             Button(action: onNewProject) {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(DesignTokens.labelSecondary)
+                    .ink(.secondary)
                     .frame(width: 32, height: 32)
             }
             .buttonStyle(.plain)
@@ -105,19 +105,24 @@ struct ProjectTabsView: View {
                 .overlay(alignment: .leading) {
                     Text(tab.name)
                         .font(.system(size: Typo.subhead, weight: isActive ? .semibold : .regular))
-                        .foregroundStyle(isActive ? DesignTokens.label : DesignTokens.labelSecondary)
+                        .ink(isActive ? .primary : .secondary)
                         .lineLimit(1)
                 }
 
             // Count badge — tight, caption-scale, tabular digits rather than
             // a switch to monospaced design (there's no code here to align).
             if liveCount > 0 {
+                // A badge is a chip: its own tint washed into the band behind
+                // it, with a word readable on that. It used to fill with
+                // `labelQuaternary` and write `labelTertiary` on it — ink as
+                // ground, the same mistake as the hover fill, and the last one
+                // left in the app.
                 Text("\(liveCount)")
                     .font(.system(size: Typo.caption, weight: .regular))
                     .monospacedDigit()
-                    .foregroundStyle(isActive ? DesignTokens.labelSecondary : DesignTokens.labelTertiary)
+                    .foregroundStyle(DesignTokens.chipInk(.labelSecondary, on: .header))
                     .padding(.horizontal, 6)
-                    .background(DesignTokens.labelQuaternary)
+                    .background(DesignTokens.wash(.chip, tone: .labelSecondary, on: .header))
                     .cornerRadius(8)
             }
 
@@ -132,7 +137,7 @@ struct ProjectTabsView: View {
                 }) {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(DesignTokens.labelTertiary)
+                        .ink(.tertiary)
                         .frame(width: 16, height: 16)
                 }
                 .buttonStyle(.plain)
@@ -161,8 +166,8 @@ struct ProjectTabsView: View {
             BrowserTabShape(cornerRadius: 10, flare: 10)
                 .fill(
                     isActive
-                        ? DesignTokens.windowBg
-                        : (hoveredTabID == tab.id ? DesignTokens.labelQuaternary : Color.clear)
+                        ? DesignTokens.fill(.window)
+                        : (hoveredTabID == tab.id ? DesignTokens.fill(.hover) : Color.clear)
                 )
         )
         .contentShape(Rectangle())

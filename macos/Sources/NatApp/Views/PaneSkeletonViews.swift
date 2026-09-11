@@ -113,7 +113,7 @@ private struct SkeletonRail: View {
         .padding(.vertical, 18)
         .frame(width: width)
         .frame(maxHeight: .infinity, alignment: .top)
-        .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator)
+        .rule(.separator, edges: [.leading], width: 0.5)
     }
 }
 
@@ -167,14 +167,7 @@ struct BriefSkeletonView: View {
                         }
                     }
                     .padding(20)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(DesignTokens.controlBg)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(DesignTokens.hairline, lineWidth: 1)
-                    )
+                    .card(radius: 10, border: .hairline)
 
                     Spacer()
                 }
@@ -226,7 +219,7 @@ struct DiffSkeletonView: View {
                 .padding(8)
                 .frame(width: sidebarWidth)
                 .frame(maxHeight: .infinity, alignment: .top)
-                .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator)
+                .rule(.separator, edges: [.leading], width: 0.5)
             }
 
             SkeletonFooter()
@@ -265,12 +258,7 @@ struct DiffSkeletonView: View {
             }
             .padding(.vertical, 4)
         }
-        .background(DesignTokens.controlBg)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(DesignTokens.hairline, lineWidth: 1)
-        )
+        .card(radius: 10, border: .hairline)
     }
 }
 
@@ -337,17 +325,17 @@ struct PRSkeletonView: View {
 #Preview("Brief") {
     BriefSkeletonView()
         .frame(width: 900, height: 560)
-        .background(DesignTokens.windowBg)
+        .surface(.window)
 }
 
 #Preview("Diff") {
     DiffSkeletonView()
         .frame(width: 900, height: 560)
-        .background(DesignTokens.windowBg)
+        .surface(.window)
 }
 
 #Preview("PR") {
     PRSkeletonView()
         .frame(width: 900, height: 560)
-        .background(DesignTokens.windowBg)
+        .surface(.window)
 }

@@ -2,6 +2,7 @@ import SwiftUI
 import NatKit
 
 struct PaneView: View {
+    @Environment(\.ground) private var ground
     @Bindable var appModel: AppModel
     @State private var currentTab: WorkflowTab = .brief
 
@@ -41,13 +42,13 @@ struct PaneView: View {
                             if let milestoneName = milestoneName(for: slice) {
                                 Text(milestoneName)
                                     .font(.system(size: Typo.caption))
-                                    .foregroundStyle(DesignTokens.labelTertiary)
+                                    .ink(.tertiary)
                                     .lineLimit(1)
                             }
 
                             Text(slice.name)
                                 .font(.system(size: Typo.headline, weight: .semibold))
-                                .foregroundStyle(DesignTokens.label)
+                                .ink(.primary)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
                         }
@@ -60,8 +61,7 @@ struct PaneView: View {
                         HStack(spacing: 10) {
                             ForEach(Array(tabState.tabs.enumerated()), id: \.offset) { index, tab in
                                 if index > 0 {
-                                    Rectangle()
-                                        .fill(DesignTokens.hairline)
+                                    Rule(.hairline, axis: .vertical)
                                         .frame(width: 12, height: 1)
                                 }
 
@@ -76,10 +76,9 @@ struct PaneView: View {
                     }
                     .padding(.vertical, 10)
                     .padding(.horizontal, 14)
-                    .background(DesignTokens.bandBg)
+                    .surface(.band)
                     .overlay(alignment: .bottom) {
-                        DesignTokens.hairline
-                            .frame(height: 1)
+                        Rule(.hairline)
                     }
                 }
 
@@ -106,27 +105,27 @@ struct PaneView: View {
                     VStack(spacing: 8) {
                         Image(systemName: "doc.text")
                             .font(.system(size: 32, weight: .regular))
-                            .foregroundStyle(DesignTokens.labelSecondary)
+                            .ink(.secondary)
 
                         if appModel.activePlanIsEmpty {
                             Text(EmptyProjectNote.title)
                                 .font(.system(size: Typo.body, weight: .regular))
-                                .foregroundStyle(DesignTokens.labelSecondary)
+                                .ink(.secondary)
 
                             Text(EmptyProjectNote.subtitle(needsWorkingDir: appModel.activeProjectNeedsWorkingDir))
                                 .font(.system(size: Typo.subhead, weight: .regular))
-                                .foregroundStyle(DesignTokens.labelTertiary)
+                                .ink(.tertiary)
                                 .multilineTextAlignment(.center)
                                 .frame(maxWidth: 380)
                         } else {
                             Text("Select a slice to begin")
                                 .font(.system(size: Typo.body, weight: .regular))
-                                .foregroundStyle(DesignTokens.labelSecondary)
+                                .ink(.secondary)
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .background(DesignTokens.controlBg)
+                .surface(.card)
             }
         }
         .onChange(of: appModel.selectedSliceID) { _, _ in
@@ -154,33 +153,33 @@ struct PaneView: View {
         // that is both complete and current keeps the green check (complete's
         // glyph) under the current wash (current's background), rather than
         // one of the two states winning outright.
-        let labelColor: Color
+        let labelColor: InkRole
         let labelWeight: Font.Weight
         let showsCurrentWash: Bool
 
         if isCurrentTab {
-            labelColor = DesignTokens.label
+            labelColor = .primary
             labelWeight = .semibold
             showsCurrentWash = true
         } else if isComplete {
-            labelColor = DesignTokens.labelSecondary
+            labelColor = .secondary
             labelWeight = .regular
             showsCurrentWash = false
         } else if isReachable {
-            labelColor = DesignTokens.labelSecondary
+            labelColor = .secondary
             labelWeight = .regular
             showsCurrentWash = false
         } else {
-            labelColor = DesignTokens.labelQuaternary
+            labelColor = .quaternary
             labelWeight = .regular
             showsCurrentWash = false
         }
 
-        let glyphColor: Color = isComplete
-            ? DesignTokens.systemGreen
-            : isCurrentTab ? DesignTokens.accent
-            : isReachable ? DesignTokens.labelSecondary
-            : DesignTokens.labelQuaternary
+        let glyphColor: InkRole = isComplete
+            ? .success
+            : isCurrentTab ? .accent
+            : isReachable ? .secondary
+            : .quaternary
 
         return HStack(spacing: 5) {
             Group {
@@ -192,18 +191,18 @@ struct PaneView: View {
                         .font(.system(size: 8))
                 }
             }
-            .foregroundStyle(glyphColor)
+            .ink(glyphColor)
 
             Text(tab.rawValue)
                 .font(.system(size: Typo.subhead, weight: labelWeight))
-                .foregroundStyle(labelColor)
+                .ink(labelColor)
                 .lineLimit(1)
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 4)
         .background(
             showsCurrentWash
-                ? RoundedRectangle(cornerRadius: 6).fill(DesignTokens.selectionWash)
+                ? RoundedRectangle(cornerRadius: 6).fill(DesignTokens.wash(.selection, tone: .accent, on: ground))
                 : nil
         )
         .hoverWash(cornerRadius: 6, enabled: isReachable)

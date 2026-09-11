@@ -18,7 +18,7 @@ struct WindowShellView: View {
 
     var body: some View {
         ZStack {
-            DesignTokens.windowBg
+            DesignTokens.fill(.window)
                 .ignoresSafeArea()
 
             if appModel.needsOnboarding {
@@ -87,13 +87,13 @@ struct WindowShellView: View {
                             Text("\(projectInfo.slices.filter { $0.status == "Done" }.count)/\(projectInfo.slices.count) slices")
                                 .font(.system(size: Typo.subhead, weight: .regular))
                                 .monospacedDigit()
-                                .foregroundStyle(DesignTokens.labelTertiary)
+                                .ink(.tertiary)
                         }
 
                         Button(action: { showNewSliceSheet = true }) {
                             Image(systemName: "plus.rectangle.on.rectangle")
                                 .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(DesignTokens.labelTertiary)
+                                .ink(.tertiary)
                                 .frame(width: 28, height: 28)
                         }
                         .buttonStyle(.plain)
@@ -105,7 +105,7 @@ struct WindowShellView: View {
                         Button(action: { appModel.openWorkshop() }) {
                             Image(systemName: "wand.and.stars")
                                 .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(DesignTokens.labelTertiary)
+                                .ink(.tertiary)
                                 .frame(width: 28, height: 28)
                         }
                         .buttonStyle(.plain)
@@ -118,15 +118,15 @@ struct WindowShellView: View {
                 }
                 .padding(.leading, 78)
                 .background(
-                    ZStack {
-                        DesignTokens.headerBg
-                        // color-mix(in srgb, var(--accent) 9%, var(--material-header-bg))
-                        // approximated: the accent laid over the header's own
-                        // material at 9% opacity. Flat fill — the mock's blur
-                        // is a backdrop material over what sits behind the
-                        // window, not a blur of the band's own paint.
-                        DesignTokens.headerAccentVeil
-                    }
+                    // The mock's `color-mix(in srgb, accent 9%, header)` as
+                    // one opaque colour rather than two stacked layers: the
+                    // veil is mixed into the ground in `Palette.headerBg`,
+                    // where it can be seen beside every other derived
+                    // colour. Flat fill — the mock's blur is a backdrop
+                    // material over what sits behind the window, not a blur
+                    // of the band's own paint, and this window paints no
+                    // material for anything to show through.
+                    DesignTokens.fill(.header)
                     // The drag lives on the background rather than the row
                     // itself: SwiftUI still routes a tap to a Button or
                     // onTapGesture target on top of it (the project tabs, the
