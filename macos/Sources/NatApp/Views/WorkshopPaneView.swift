@@ -131,6 +131,7 @@ struct WorkshopPaneView: View {
                         Text("Launch")
                     }
                 }
+                .buttonStyle(PrimaryButtonStyle())
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(appModel.workshopLaunching)
             }

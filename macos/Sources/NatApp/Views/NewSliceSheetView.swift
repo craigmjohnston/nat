@@ -79,6 +79,7 @@ struct NewSliceSheetView: View {
                 Button("Cancel") {
                     onClose()
                 }
+                .buttonStyle(SecondaryButtonStyle())
                 .keyboardShortcut(.cancelAction)
 
                 Button(action: submit) {
@@ -87,6 +88,7 @@ struct NewSliceSheetView: View {
                             .frame(minWidth: 60)
                     }
                 }
+                .buttonStyle(PrimaryButtonStyle())
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canSubmit)
             }

@@ -123,7 +123,7 @@ struct DiffTabView: View {
             Button("Retry") {
                 Task { await refreshDiff() }
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(SecondaryButtonStyle())
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -249,7 +249,10 @@ struct DiffTabView: View {
                             .monospacedDigit()
                     }
                 }
-                .buttonStyle(.bordered)
+                // Secondary rather than primary: what this footer confirms
+                // is the approval beside it, and sending a review back is the
+                // step before that rather than the pane's own submit.
+                .buttonStyle(SecondaryButtonStyle())
                 .disabled(pendingCount == 0 || isSending || !commentsEditable)
                 .help(commentsEditable ? "" : "Comments are only sent while viewing All commits")
 
@@ -264,8 +267,7 @@ struct DiffTabView: View {
                                 .font(.system(size: Typo.subhead, weight: .semibold))
                         }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(DesignTokens.accent)
+                    .buttonStyle(PrimaryButtonStyle())
                     .disabled(pendingCount > 0 || isApproving || !commentsEditable)
                     .help(commentsEditable
                         ? approveHelp(pendingCount: pendingCount)

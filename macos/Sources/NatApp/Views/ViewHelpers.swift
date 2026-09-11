@@ -172,38 +172,62 @@ extension View {
 
 // MARK: - Button grammar
 
-/// The button type system: primary is the one gradient action on a screen,
-/// secondary is real but quiet, and ghost is present but receding. Hover
-/// washes stay the caller's job via .hoverWash().
+/// The button type system: primary is the one confirming action on a screen,
+/// secondary is real but quiet, and ghost is present but receding. All three
+/// are drawn to `ButtonMetrics`, so a submit is the same shape wherever it is
+/// pressed and a secondary sits beside it on the same baseline. Hover washes
+/// stay the caller's job via .hoverWash().
+///
+/// A button whose action runs async wraps its label in `AsyncActionLabel`
+/// rather than swapping the label out: with the height fixed here and the
+/// spinner's slot held there, a button is exactly the same size busy and
+/// idle.
+
+/// The one submit style: a flat accent fill, not the brand gradient. The
+/// app's icon and its progress bars already carry the gradient, and a button
+/// shouting it too was one gradient too many — the agent-launch control had
+/// already gone flat on its own, and this is the rest of the app following
+/// it rather than the two disagreeing.
 struct PrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: Typo.subhead, weight: .semibold))
-            .foregroundColor(.white)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .background(DesignTokens.brandGradient, in: RoundedRectangle(cornerRadius: 6))
-            .opacity(configuration.isPressed ? 0.85 : (isEnabled ? 1.0 : 0.5))
+            .foregroundStyle(DesignTokens.accentText)
+            .padding(.horizontal, ButtonMetrics.horizontalPadding)
+            .frame(height: ButtonMetrics.height)
+            .background(
+                DesignTokens.accent,
+                in: RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius)
+            )
+            .opacity(buttonOpacity(isPressed: configuration.isPressed, isEnabled: isEnabled))
+            .contentShape(RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius))
     }
 }
 
+/// The quiet half of the pair: cancels, retries and the actions that sit
+/// beside a submit without being one. Same height and radius as primary, so
+/// a row of the two lines up and differs in weight alone.
 struct SecondaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: Typo.subhead, weight: .regular))
-            .foregroundColor(DesignTokens.label)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .background(DesignTokens.controlFace, in: RoundedRectangle(cornerRadius: 6))
+            .foregroundStyle(DesignTokens.label)
+            .padding(.horizontal, ButtonMetrics.horizontalPadding)
+            .frame(height: ButtonMetrics.height)
+            .background(
+                DesignTokens.controlFace,
+                in: RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius)
+            )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius)
                     .stroke(DesignTokens.hairline, lineWidth: 1)
             )
-            .opacity(configuration.isPressed ? 0.8 : (isEnabled ? 1.0 : 0.5))
+            .opacity(buttonOpacity(isPressed: configuration.isPressed, isEnabled: isEnabled))
+            .contentShape(RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius))
     }
 }
 
@@ -213,9 +237,18 @@ struct GhostButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: Typo.subhead, weight: .regular))
-            .foregroundColor(DesignTokens.labelSecondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .opacity(configuration.isPressed ? 0.7 : (isEnabled ? 1.0 : 0.5))
+            .foregroundStyle(DesignTokens.labelSecondary)
+            .padding(.horizontal, ButtonMetrics.ghostHorizontalPadding)
+            .frame(height: ButtonMetrics.height)
+            .opacity(buttonOpacity(isPressed: configuration.isPressed, isEnabled: isEnabled))
+            .contentShape(Rectangle())
     }
+}
+
+/// What all three styles dim to, so pressed and disabled read the same
+/// whichever one was pressed. Pressed wins over disabled because a disabled
+/// button cannot be pressed at all.
+func buttonOpacity(isPressed: Bool, isEnabled: Bool) -> Double {
+    if isPressed { return ButtonMetrics.pressedOpacity }
+    return isEnabled ? 1.0 : ButtonMetrics.disabledOpacity
 }

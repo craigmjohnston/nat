@@ -155,9 +155,8 @@ struct DiffFileBoxView: View {
 
             Button(action: onToggleViewed) {
                 Text("Viewed")
-                    .font(.system(size: Typo.subhead, weight: .regular))
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(GhostButtonStyle())
         }
         .padding(.horizontal, 12)
         .frame(height: 32)
@@ -460,15 +459,14 @@ struct CommentEditorView: View {
 
             HStack(spacing: 8) {
                 Button("Cancel", action: onCancel)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(SecondaryButtonStyle())
 
                 // Emptied and submitted is how a comment is taken back — the
                 // Go TUI's own rule, and the reason this is never disabled on
                 // blank text: clearing an existing comment and pressing this
                 // is a second way to remove it, beside the card's trash icon.
                 Button("Comment") { onSave(text) }
-                    .buttonStyle(.borderedProminent)
-                    .tint(DesignTokens.accent)
+                    .buttonStyle(PrimaryButtonStyle())
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

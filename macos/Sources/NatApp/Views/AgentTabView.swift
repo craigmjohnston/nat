@@ -49,17 +49,18 @@ struct AgentTabView: View {
                             .foregroundStyle(DesignTokens.systemRed)
                     }
 
+                    // Both secondary: neither is the pane's confirming
+                    // action — there is none — and the pair reads as the
+                    // diff footer's own does.
                     Button(action: openInTerminal) {
                         Text("Open in Terminal…")
-                            .font(.system(size: Typo.subhead, weight: .regular))
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(SecondaryButtonStyle())
 
                     Button(action: sendInterrupt) {
                         Text("Interrupt")
-                            .font(.system(size: Typo.subhead, weight: .regular))
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(SecondaryButtonStyle())
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)

@@ -208,4 +208,49 @@ final class DesignTokensTests: XCTestCase {
         _ = DesignTokens.systemTeal
         _ = DesignTokens.systemGray
     }
+
+    // MARK: - Button metrics
+
+    // The point of the button grammar is that one submit is the shape of
+    // every other, so what these assert is the invariants a call site would
+    // otherwise be free to break: primary and secondary share a height and a
+    // radius, a ghost button is on the same baseline, and the dimming reads
+    // as dimming.
+
+    func testButtonMetricsHeightAndRadiusArePositive() {
+        XCTAssertGreaterThan(ButtonMetrics.height, 0)
+        XCTAssertGreaterThan(ButtonMetrics.cornerRadius, 0)
+        // A radius past half the height would round the ends into a capsule,
+        // which is a different control.
+        XCTAssertLessThanOrEqual(ButtonMetrics.cornerRadius, ButtonMetrics.height / 2)
+    }
+
+    func testButtonMetricsGhostIsInsetLessThanAFilledButton() {
+        XCTAssertGreaterThan(ButtonMetrics.horizontalPadding, 0)
+        XCTAssertGreaterThan(ButtonMetrics.ghostHorizontalPadding, 0)
+        XCTAssertLessThan(ButtonMetrics.ghostHorizontalPadding, ButtonMetrics.horizontalPadding)
+    }
+
+    func testButtonMetricsOpacitiesDim() {
+        XCTAssertGreaterThan(ButtonMetrics.disabledOpacity, 0)
+        XCTAssertLessThan(ButtonMetrics.disabledOpacity, 1)
+        XCTAssertGreaterThan(ButtonMetrics.pressedOpacity, 0)
+        XCTAssertLessThan(ButtonMetrics.pressedOpacity, 1)
+        // Disabled is the deeper of the two: pressed is a moment, unavailable
+        // is a state.
+        XCTAssertLessThan(ButtonMetrics.disabledOpacity, ButtonMetrics.pressedOpacity)
+    }
+
+    // MARK: - Type ramp
+
+    func testTypoRampDescends() {
+        XCTAssertGreaterThan(Typo.headline, Typo.body)
+        XCTAssertGreaterThan(Typo.body, Typo.code)
+        XCTAssertGreaterThan(Typo.code, Typo.subhead)
+        XCTAssertGreaterThan(Typo.subhead, Typo.caption)
+    }
+
+    func testMotionStateChangeIsDefined() {
+        XCTAssertNotNil(Motion.stateChange)
+    }
 }
