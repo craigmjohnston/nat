@@ -57,7 +57,7 @@ struct ProgressBorderView: View {
                 RoundedRectangle(cornerRadius: 3.5)
                     .fill(
                         segment.isComplete
-                            ? DesignTokens.accent.opacity(0.45)
+                            ? DesignTokens.accentMuted
                             : DesignTokens.accent
                     )
                     .frame(width: geometry.size.width * segment.fraction)

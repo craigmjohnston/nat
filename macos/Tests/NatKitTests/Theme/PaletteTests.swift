@@ -205,6 +205,91 @@ final class PaletteTests: XCTestCase {
         }
     }
 
+    /// Every opacity in the palette is an opacity: visible, and not a
+    /// number typed past one. The washes are not in the ramp above, since
+    /// they answer to their own roles rather than to each other — what is
+    /// asserted of them is only that they are washes.
+    func testEveryWashIsTranslucent() {
+        let washes: [(String, KeyPath<Palette, Double>)] = [
+            ("bandOpacity", \.bandOpacity),
+            ("tintWashOpacity", \.tintWashOpacity),
+            ("avatarWashOpacity", \.avatarWashOpacity),
+            ("diffRowWashOpacity", \.diffRowWashOpacity),
+            ("diffGutterWashOpacity", \.diffGutterWashOpacity),
+            ("commentWashOpacity", \.commentWashOpacity),
+            ("headerAccentOpacity", \.headerAccentOpacity),
+            ("mutedAccentOpacity", \.mutedAccentOpacity),
+            ("skeletonHighlightOpacity", \.skeletonHighlightOpacity),
+            ("onAccentSeparatorOpacity", \.onAccentSeparatorOpacity),
+        ]
+        for (name, palette) in palettes {
+            for (wash, key) in washes {
+                let opacity = palette[keyPath: key]
+                XCTAssertGreaterThan(opacity, 0, "\(name): \(wash) should be visible")
+                XCTAssertLessThan(opacity, 1, "\(name): a wash at full strength is not a wash")
+            }
+        }
+    }
+
+    /// The diff's two weights of the same outcome colour stay in order: a
+    /// gutter cell is a stripe a few characters wide and has to carry the
+    /// row's sign on its own, so it is the heavier of the two, and a comment
+    /// is an annotation rather than a change and is the lightest mark in the
+    /// box.
+    func testDiffWashesAreOrdered() {
+        for (name, palette) in palettes {
+            XCTAssertLessThan(palette.commentWashOpacity, palette.diffRowWashOpacity, "\(name): comment vs row")
+            XCTAssertLessThan(palette.diffRowWashOpacity, palette.diffGutterWashOpacity, "\(name): row vs gutter")
+        }
+    }
+
+    /// Each wash is pressed for the ground it lands on, which is the rule
+    /// `selectionWashOpacity` and the border ramp already follow: a wash of
+    /// a hue is lighter in Latte, whose accents are dark saturated colours
+    /// over a light ground, and a wash of `label` is heavier, since dark ink
+    /// reads fainter than light ink at the same alpha.
+    func testWashesArePressedForTheirGround() {
+        let hues: [(String, KeyPath<Palette, Double>)] = [
+            ("selectionWashOpacity", \.selectionWashOpacity),
+            ("tintWashOpacity", \.tintWashOpacity),
+            ("avatarWashOpacity", \.avatarWashOpacity),
+            ("diffRowWashOpacity", \.diffRowWashOpacity),
+            ("diffGutterWashOpacity", \.diffGutterWashOpacity),
+            ("commentWashOpacity", \.commentWashOpacity),
+            ("headerAccentOpacity", \.headerAccentOpacity),
+        ]
+        for (name, key) in hues {
+            XCTAssertLessThan(
+                Palette.latte[keyPath: key], Palette.mocha[keyPath: key],
+                "\(name): a hue wash should be lighter in Latte"
+            )
+        }
+        for (name, key) in [
+            ("hairlineOpacity", \Palette.hairlineOpacity),
+            ("separatorOpacity", \Palette.separatorOpacity),
+            ("controlBorderOpacity", \Palette.controlBorderOpacity),
+            ("skeletonHighlightOpacity", \Palette.skeletonHighlightOpacity),
+        ] {
+            XCTAssertGreaterThan(
+                Palette.latte[keyPath: key], Palette.mocha[keyPath: key],
+                "\(name): a wash of `label` should be heavier in Latte"
+            )
+        }
+    }
+
+    /// The two washes that are deliberately the same in both themes, and
+    /// the comments beside them are the reason: `bandOpacity` mixes two of
+    /// the palette's own surfaces, so it re-balances by itself, and
+    /// `onAccentSeparatorOpacity` is the accent's own maximum-contrast ink
+    /// over the accent, which is what `accentText` is in either theme.
+    func testTheTwoGroundlessWashesMatchAcrossThemes() {
+        XCTAssertEqual(Palette.latte.bandOpacity, Palette.mocha.bandOpacity)
+        XCTAssertEqual(Palette.latte.onAccentSeparatorOpacity, Palette.mocha.onAccentSeparatorOpacity)
+        // A dim is read against the full colour beside it rather than
+        // against the ground under it, so it is the same fraction too.
+        XCTAssertEqual(Palette.latte.mutedAccentOpacity, Palette.mocha.mutedAccentOpacity)
+    }
+
     /// The two palettes are two: nothing here is one value shared by
     /// accident, which is what a half-written light theme would look like.
     func testThePalettesDiffer() {

@@ -125,6 +125,17 @@ private enum ChangeBadge {
         case .modified, .renamed: return DesignTokens.systemOrange
         }
     }
+
+    /// The letter's own colour behind it. Paired with `color` here rather
+    /// than derived at the call site, so the badge cannot be drawn in one
+    /// colour over a wash of another — or over a wash at some number the
+    /// theme never chose.
+    var wash: Color {
+        switch self {
+        case .added: return DesignTokens.systemGreenWash
+        case .modified, .renamed: return DesignTokens.systemOrangeWash
+        }
+    }
 }
 
 struct DiffFileSidebarRow: View {
@@ -170,7 +181,7 @@ struct DiffFileSidebarRow: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(badge.color)
                 .frame(width: 16, height: 16)
-                .background(badge.color.opacity(0.18))
+                .background(badge.wash)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
 
             if file.adds > 0 {

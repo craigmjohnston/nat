@@ -16,7 +16,7 @@ public enum Skeleton {
 
     /// The sweep passing over it — brighter than the block and still far
     /// under anything the app draws as text.
-    public static let highlight = DesignTokens.label.opacity(0.10)
+    public static let highlight = DesignTokens.skeletonHighlight
 
     /// How long one pass takes. Slow enough to read as breathing rather than
     /// as something loading fast.

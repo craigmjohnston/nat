@@ -85,6 +85,73 @@ public struct Palette: Equatable, Sendable {
     /// `accent` at this opacity is the fill behind a selected row.
     public let selectionWashOpacity: Double
 
+    // The washes below are the second kind of opacity here: not a border's
+    // weight but the share of a colour that shows when it is laid on a
+    // surface as a band, a chip or a stripe. Each is pressed per theme for
+    // the same reason `selectionWashOpacity` and the border ramp already
+    // are — a colour laid at one alpha does not read the same over a dark
+    // ground as over a light one — and in the same two directions:
+    //
+    //   * a wash of a *hue* — an accent, an outcome colour — is lighter in
+    //     Latte, whose mauves, greens and reds are dark, saturated colours
+    //     that draw a far heavier slab over a light ground than Mocha's
+    //     pastels do over a dark one;
+    //   * a wash of `label` is heavier in Latte, since dark ink on a light
+    //     ground reads fainter than light ink on a dark one at the same
+    //     alpha. That is the border ramp's own rule.
+    //
+    // Two are the same in both, and say so where they are declared: a mix
+    // of two of the palette's own surfaces re-balances by itself, and a
+    // colour dimmed to say it is spent is a fraction of the thing beside it
+    // rather than a wash over anything.
+
+    /// `controlBg` at this opacity is a band laid over the window ground:
+    /// the pane's header, the brief's footer, a notice row. Half a card, so
+    /// it reads as a band of the pane rather than as a card of its own.
+    /// The one wash that is a mix of two of the palette's own surfaces
+    /// rather than a colour over a ground, so it needs no per-theme
+    /// pressing: half way between `base` and `surface0` is half way between
+    /// them in either theme.
+    public let bandOpacity: Double
+    /// A chip or badge drawn behind its own tint — the PR state capsule, the
+    /// change-kind letter, the pending marker. Enough to shape the chip,
+    /// never enough to compete with the word inside it.
+    public let tintWashOpacity: Double
+    /// `accent` at this opacity is the disc an avatar's initials sit on.
+    /// Heavier than a chip: a disc is small and has to read as a disc.
+    public let avatarWashOpacity: Double
+    /// An outcome colour at this opacity is a diff row's own fill, under the
+    /// line's syntax colours rather than instead of them.
+    public let diffRowWashOpacity: Double
+    /// The same outcome colour, pressed harder, in the diff's gutter cell:
+    /// the gutter is a stripe a few characters wide and needs to carry the
+    /// row's sign on its own.
+    public let diffGutterWashOpacity: Double
+    /// `accent` at this opacity is the gutter beside a comment row — the
+    /// faintest mark in the diff, since a comment is an annotation and not a
+    /// change.
+    public let commentWashOpacity: Double
+    /// `accent` at this opacity is the veil over the header band, the flat
+    /// stand-in for the mock's `color-mix(in srgb, accent 9%, header)`.
+    public let headerAccentOpacity: Double
+    /// `accent` at this opacity is a fill that is present but spent: a
+    /// finished run of the progress bar, a send button with nothing to send.
+    /// A dim of the accent rather than a wash of it — what it is read
+    /// against is the full accent beside it, not the ground under it — which
+    /// is why it is far heavier than the washes above and why it is the same
+    /// fraction in both themes.
+    public let mutedAccentOpacity: Double
+    /// `label` at this opacity is the sweep passing over a skeleton block —
+    /// brighter than the block and still far under anything drawn as text.
+    public let skeletonHighlightOpacity: Double
+    /// `accentText` at this opacity is the rule splitting a filled accent
+    /// control in two — the launch button and its options chevron. The one
+    /// line in the app drawn *on* the accent rather than on a surface, which
+    /// is why it is the accent's own ink behind an alpha rather than
+    /// `separator`, and why it is the same in both themes: `accentText` is
+    /// the maximum-contrast ink over the accent in either.
+    public let onAccentSeparatorOpacity: Double
+
     // MARK: - Outcome colours
 
     public let systemOrange: String
@@ -122,6 +189,16 @@ public struct Palette: Equatable, Sendable {
         separatorOpacity: Double,
         controlBorderOpacity: Double,
         selectionWashOpacity: Double,
+        bandOpacity: Double,
+        tintWashOpacity: Double,
+        avatarWashOpacity: Double,
+        diffRowWashOpacity: Double,
+        diffGutterWashOpacity: Double,
+        commentWashOpacity: Double,
+        headerAccentOpacity: Double,
+        mutedAccentOpacity: Double,
+        skeletonHighlightOpacity: Double,
+        onAccentSeparatorOpacity: Double,
         systemOrange: String,
         systemYellow: String,
         systemGreen: String,
@@ -153,6 +230,16 @@ public struct Palette: Equatable, Sendable {
         self.separatorOpacity = separatorOpacity
         self.controlBorderOpacity = controlBorderOpacity
         self.selectionWashOpacity = selectionWashOpacity
+        self.bandOpacity = bandOpacity
+        self.tintWashOpacity = tintWashOpacity
+        self.avatarWashOpacity = avatarWashOpacity
+        self.diffRowWashOpacity = diffRowWashOpacity
+        self.diffGutterWashOpacity = diffGutterWashOpacity
+        self.commentWashOpacity = commentWashOpacity
+        self.headerAccentOpacity = headerAccentOpacity
+        self.mutedAccentOpacity = mutedAccentOpacity
+        self.skeletonHighlightOpacity = skeletonHighlightOpacity
+        self.onAccentSeparatorOpacity = onAccentSeparatorOpacity
         self.systemOrange = systemOrange
         self.systemYellow = systemYellow
         self.systemGreen = systemGreen
@@ -206,6 +293,16 @@ public struct Palette: Equatable, Sendable {
         separatorOpacity: 0.16,
         controlBorderOpacity: 0.22,
         selectionWashOpacity: 0.20,
+        bandOpacity: 0.50,
+        tintWashOpacity: 0.18,
+        avatarWashOpacity: 0.30,
+        diffRowWashOpacity: 0.20,
+        diffGutterWashOpacity: 0.32,
+        commentWashOpacity: 0.10,
+        headerAccentOpacity: 0.09,
+        mutedAccentOpacity: 0.45,
+        skeletonHighlightOpacity: 0.10,
+        onAccentSeparatorOpacity: 0.25,
         systemOrange: "fab387",      // peach
         systemYellow: "f9e2af",      // yellow
         systemGreen: "a6e3a1",       // green
@@ -272,6 +369,24 @@ public struct Palette: Equatable, Sendable {
         separatorOpacity: 0.18,
         controlBorderOpacity: 0.26,
         selectionWashOpacity: 0.16,
+        bandOpacity: 0.50,
+        // Latte's mauve, green and red are dark saturated colours, so the
+        // same share of one over a light ground is a much heavier slab than
+        // Mocha's pastels make over a dark one: every hue wash here is a few
+        // points lighter than its Mocha twin, exactly as the selection wash
+        // above already is.
+        tintWashOpacity: 0.14,
+        avatarWashOpacity: 0.24,
+        diffRowWashOpacity: 0.16,
+        diffGutterWashOpacity: 0.26,
+        commentWashOpacity: 0.08,
+        headerAccentOpacity: 0.07,
+        mutedAccentOpacity: 0.45,
+        // And back the other way for the one wash of `label`, which is the
+        // border ramp's rule: dark ink reads fainter than light ink at the
+        // same alpha.
+        skeletonHighlightOpacity: 0.12,
+        onAccentSeparatorOpacity: 0.25,
         systemOrange: "fe640b",      // peach
         systemYellow: "df8e1d",      // yellow
         systemGreen: "40a02b",       // green

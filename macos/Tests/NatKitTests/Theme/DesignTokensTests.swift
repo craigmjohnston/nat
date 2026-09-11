@@ -35,38 +35,73 @@ final class DesignTokensTests: XCTestCase {
     }
 
     func testHexColorInitializerTooShort() {
-        // 4-character hex should be treated as invalid and return white
-        assertColor("fff", isRGB: (1, 1, 1))
+        // 4-character hex is invalid and falls back to the accent.
+        assertColor("fff", isRGB: hexFallback)
     }
 
     func testHexColorInitializerTooLong() {
-        // 8-character hex should be treated as invalid and return white
-        assertColor("ffffffff", isRGB: (1, 1, 1))
+        // 8-character hex is invalid and falls back to the accent.
+        assertColor("ffffffff", isRGB: hexFallback)
     }
 
     func testHexColorInitializerInvalidCharacters() {
-        // Non-hex characters should be treated as invalid
-        assertColor("gggggg", isRGB: (1, 1, 1))
+        // Non-hex characters are invalid and fall back to the accent.
+        assertColor("gggggg", isRGB: hexFallback)
+    }
+
+    /// The fallback is on the palette. It used to be white, the one colour
+    /// in the app that belongs to neither theme — so the one frame a parse
+    /// failure drew was guaranteed to be the most off-theme thing on screen.
+    func testHexColorFallbackIsOnThePalette() {
+        let palette = Set(
+            [Palette.mocha, Palette.latte].flatMap { palette in
+                palette.ansi + [
+                    palette.windowBg, palette.controlBg, palette.rowAltBg,
+                    palette.controlFace, palette.fieldBg, palette.label,
+                    palette.labelSecondary, palette.labelTertiary,
+                    palette.labelQuaternary, palette.accent, palette.accentText,
+                    palette.systemOrange, palette.systemYellow, palette.systemGreen,
+                    palette.systemRed, palette.systemBlue, palette.systemPink,
+                    palette.systemTeal, palette.systemGray,
+                ]
+            }
+        )
+        let onPalette = palette.contains { hex in
+            guard let rgb = rgbComponents(hex: hex) else { return false }
+            return rgb == hexFallback
+        }
+        XCTAssertTrue(onPalette, "an unreadable colour should fall back to one the theme actually holds")
+        XCTAssertNotEqual(hexFallback.red + hexFallback.green + hexFallback.blue, 3, "…and never to white")
+    }
+
+    /// Which one it is: Mocha's mauve, the app's own accent. The constant is
+    /// written out channel by channel because the fallback for a parse
+    /// cannot depend on a parse; this is what holds the two in step.
+    func testHexFallbackIsTheAccent() {
+        let accent = try? XCTUnwrap(rgbComponents(hex: Palette.mocha.accent))
+        XCTAssertEqual(accent?.red, hexFallback.red)
+        XCTAssertEqual(accent?.green, hexFallback.green)
+        XCTAssertEqual(accent?.blue, hexFallback.blue)
     }
 
     /// The SwiftUI and AppKit initializers are one parse: a colour written
     /// once in a palette and read by both cannot mean two things.
     private func assertColor(
         _ hex: String,
-        isRGB expected: (Double, Double, Double),
+        isRGB expected: (red: Double, green: Double, blue: Double),
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
         let components = Color(hex: hex).cgColor?.components ?? []
         XCTAssertEqual(components.count, 4, "RGBA color should have 4 components", file: file, line: line)
-        XCTAssertEqual(Double(components[0]), expected.0, accuracy: 0.01, "Red", file: file, line: line)
-        XCTAssertEqual(Double(components[1]), expected.1, accuracy: 0.01, "Green", file: file, line: line)
-        XCTAssertEqual(Double(components[2]), expected.2, accuracy: 0.01, "Blue", file: file, line: line)
+        XCTAssertEqual(Double(components[0]), expected.red, accuracy: 0.01, "Red", file: file, line: line)
+        XCTAssertEqual(Double(components[1]), expected.green, accuracy: 0.01, "Green", file: file, line: line)
+        XCTAssertEqual(Double(components[2]), expected.blue, accuracy: 0.01, "Blue", file: file, line: line)
 
         let native = NSColor(hex: hex)
-        XCTAssertEqual(Double(native.redComponent), expected.0, accuracy: 0.01, "NSColor red", file: file, line: line)
-        XCTAssertEqual(Double(native.greenComponent), expected.1, accuracy: 0.01, "NSColor green", file: file, line: line)
-        XCTAssertEqual(Double(native.blueComponent), expected.2, accuracy: 0.01, "NSColor blue", file: file, line: line)
+        XCTAssertEqual(Double(native.redComponent), expected.red, accuracy: 0.01, "NSColor red", file: file, line: line)
+        XCTAssertEqual(Double(native.greenComponent), expected.green, accuracy: 0.01, "NSColor green", file: file, line: line)
+        XCTAssertEqual(Double(native.blueComponent), expected.blue, accuracy: 0.01, "NSColor blue", file: file, line: line)
         XCTAssertEqual(Double(native.alphaComponent), 1, accuracy: 0.01, "NSColor alpha", file: file, line: line)
     }
 
@@ -136,6 +171,23 @@ final class DesignTokensTests: XCTestCase {
             ("separator", \.label, \.separatorOpacity),
             ("controlBorder", \.label, \.controlBorderOpacity),
             ("selectionWash", \.accent, \.selectionWashOpacity),
+            ("headerAccentVeil", \.accent, \.headerAccentOpacity),
+            ("bandBg", \.controlBg, \.bandOpacity),
+            ("skeletonHighlight", \.label, \.skeletonHighlightOpacity),
+            ("onAccentSeparator", \.accentText, \.onAccentSeparatorOpacity),
+            ("accentMuted", \.accent, \.mutedAccentOpacity),
+            ("avatarWash", \.accent, \.avatarWashOpacity),
+            ("accentWash", \.accent, \.tintWashOpacity),
+            ("systemRedWash", \.systemRed, \.tintWashOpacity),
+            ("systemGreenWash", \.systemGreen, \.tintWashOpacity),
+            ("systemYellowWash", \.systemYellow, \.tintWashOpacity),
+            ("systemOrangeWash", \.systemOrange, \.tintWashOpacity),
+            ("labelSecondaryWash", \.labelSecondary, \.tintWashOpacity),
+            ("diffAddedRowBg", \.systemGreen, \.diffRowWashOpacity),
+            ("diffRemovedRowBg", \.systemRed, \.diffRowWashOpacity),
+            ("diffAddedGutterBg", \.systemGreen, \.diffGutterWashOpacity),
+            ("diffRemovedGutterBg", \.systemRed, \.diffGutterWashOpacity),
+            ("diffCommentGutterBg", \.accent, \.commentWashOpacity),
         ]
         for (name, key, opacity) in keys {
             let token = DesignTokens.dynamicNSColor(key, opacity: opacity)
@@ -207,6 +259,23 @@ final class DesignTokensTests: XCTestCase {
         _ = DesignTokens.systemPink
         _ = DesignTokens.systemTeal
         _ = DesignTokens.systemGray
+        _ = DesignTokens.headerAccentVeil
+        _ = DesignTokens.bandBg
+        _ = DesignTokens.skeletonHighlight
+        _ = DesignTokens.onAccentSeparator
+        _ = DesignTokens.accentMuted
+        _ = DesignTokens.avatarWash
+        _ = DesignTokens.accentWash
+        _ = DesignTokens.systemRedWash
+        _ = DesignTokens.systemGreenWash
+        _ = DesignTokens.systemYellowWash
+        _ = DesignTokens.systemOrangeWash
+        _ = DesignTokens.labelSecondaryWash
+        _ = DesignTokens.diffAddedRowBg
+        _ = DesignTokens.diffRemovedRowBg
+        _ = DesignTokens.diffAddedGutterBg
+        _ = DesignTokens.diffRemovedGutterBg
+        _ = DesignTokens.diffCommentGutterBg
     }
 
     // MARK: - Button metrics
