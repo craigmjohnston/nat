@@ -139,6 +139,54 @@ final class PaletteTests: XCTestCase {
         }
     }
 
+    /// The hover fill sits on the ladder — at `rowAltBg`'s level, the step
+    /// between the two surfaces that neither Catppuccin names and every
+    /// hovered thing in the app is drawn over the ground of, so a hover is
+    /// a move along the theme's own surfaces rather than a colour invented
+    /// for it.
+    func testHoverIsOnTheSurfaceLadder() {
+        for (name, palette) in palettes {
+            XCTAssertEqual(palette.hoverWash, palette.rowAltBg, "\(name): hover is the ladder's between-step")
+        }
+    }
+
+    /// The hover fill is a surface and not a label. It used to be
+    /// `labelQuaternary`, which is `overlay0` — ink, drawn as ground — and
+    /// under Mocha that left `text` sitting on a mid-grey. What is asserted
+    /// is the two things that choice has to satisfy in either theme: the
+    /// primary label reads further off the hover fill than it did off the
+    /// colour it replaced, and the fill still parts from the ground it is
+    /// laid on, or a hover would be invisible.
+    func testHoverIsASurfaceTheLabelStaysReadableOn() {
+        for (name, palette) in palettes {
+            let label = luminance(palette.label)
+            XCTAssertGreaterThan(
+                abs(label - luminance(palette.hoverWash)),
+                abs(label - luminance(palette.labelQuaternary)),
+                "\(name): a label should read further off the hover fill than off the ink it replaced"
+            )
+            XCTAssertNotEqual(
+                palette.hoverWash, palette.windowBg,
+                "\(name): a hover fill that matched the ground would not be a hover"
+            )
+        }
+    }
+
+    /// And it moves the way its own theme moves: Mocha's surfaces rise off
+    /// `base` and Latte's sink below it, so a hover raises in the dark theme
+    /// and deepens in the light one. Either way it is a step off the ground
+    /// rather than a step towards the label, which is what the old fill was.
+    func testHoverFollowsItsThemesOwnDirection() {
+        XCTAssertGreaterThan(
+            luminance(Palette.mocha.hoverWash), luminance(Palette.mocha.windowBg),
+            "mocha: a hover should rise off the ground"
+        )
+        XCTAssertLessThan(
+            luminance(Palette.latte.hoverWash), luminance(Palette.latte.windowBg),
+            "latte: a hover should deepen from the ground"
+        )
+    }
+
     // MARK: - Terminal
 
     /// Sixteen colours, in the order a terminal numbers them, every one of

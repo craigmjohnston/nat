@@ -37,7 +37,7 @@ private struct InsetHoverWash: ViewModifier {
         content
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(hovering ? DesignTokens.labelQuaternary : Color.clear)
+                    .fill(hovering ? DesignTokens.hoverWash : Color.clear)
                     .padding(.horizontal, 6)
             )
             .onHover { hovering = $0 }

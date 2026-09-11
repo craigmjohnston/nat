@@ -162,7 +162,7 @@ struct ProjectTabsView: View {
                 .fill(
                     isActive
                         ? DesignTokens.windowBg
-                        : (hoveredTabID == tab.id ? DesignTokens.labelQuaternary : Color.clear)
+                        : (hoveredTabID == tab.id ? DesignTokens.hoverWash : Color.clear)
                 )
         )
         .contentShape(Rectangle())

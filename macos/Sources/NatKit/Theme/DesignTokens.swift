@@ -76,6 +76,16 @@ public enum DesignTokens {
     /// The well text is typed into.
     public static let fieldBg = token(\.fieldBg)
 
+    /// The fill under the pointer, and the one surface in the app that is
+    /// drawn only while something is being pointed at: a rail row, a project
+    /// tab, a stepper stage, a file in the diff sidebar, a ghost button in
+    /// the header band. Opaque rather than a wash, because it is laid
+    /// straight over the ground behind whatever is hovered rather than
+    /// tinting it, and it is the surface ladder's between-step in both
+    /// themes — up from `base` in Mocha and down from it in Latte, which is
+    /// each theme's own direction for "raised". See `Palette.hoverWash`.
+    public static let hoverWash = token(\.hoverWash)
+
     /// The agent terminal's own surface, for the SwiftUI colour laid
     /// full-bleed behind the terminal view. What the terminal view itself is
     /// styled with is the whole of `Palette`'s terminal half — background,

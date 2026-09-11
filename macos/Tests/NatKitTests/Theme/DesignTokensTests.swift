@@ -59,7 +59,8 @@ final class DesignTokensTests: XCTestCase {
                     palette.windowBg, palette.controlBg, palette.rowAltBg,
                     palette.controlFace, palette.fieldBg, palette.label,
                     palette.labelSecondary, palette.labelTertiary,
-                    palette.labelQuaternary, palette.accent, palette.accentText,
+                    palette.hoverWash, palette.labelQuaternary,
+                    palette.accent, palette.accentText,
                     palette.systemOrange, palette.systemYellow, palette.systemGreen,
                     palette.systemRed, palette.systemBlue, palette.systemPink,
                     palette.systemTeal, palette.systemGray,
@@ -138,6 +139,7 @@ final class DesignTokensTests: XCTestCase {
             ("rowAltBg", \.rowAltBg),
             ("controlFace", \.controlFace),
             ("fieldBg", \.fieldBg),
+            ("hoverWash", \.hoverWash),
             ("terminalBg", \.terminalBg),
             ("label", \.label),
             ("labelSecondary", \.labelSecondary),
@@ -237,6 +239,7 @@ final class DesignTokensTests: XCTestCase {
         _ = DesignTokens.controlBg
         _ = DesignTokens.rowAltBg
         _ = DesignTokens.fieldBg
+        _ = DesignTokens.hoverWash
         _ = DesignTokens.controlFace
         _ = DesignTokens.terminalBg
         _ = DesignTokens.headerBg
@@ -321,5 +324,43 @@ final class DesignTokensTests: XCTestCase {
 
     func testMotionStateChangeIsDefined() {
         XCTAssertNotNil(Motion.stateChange)
+    }
+
+    // MARK: - Hover
+
+    /// The one thing the hover fill exists to guarantee: a row's label is
+    /// still a label while the pointer is on it. This is a threshold rather
+    /// than a comparison — unlike `PaletteTests`, which refuses to hold
+    /// Catppuccin's own values to one — because what it tests is this app's
+    /// choice of which swatch plays hover, not the swatch itself. The bar is
+    /// WCAG AA for body text, and `labelQuaternary`, the ink this used to be
+    /// filled with, is asserted to fail it: that is the bug the token was
+    /// added for.
+    func testLabelClearsAAOnTheHoverFill() {
+        for (name, palette) in [("mocha", Palette.mocha), ("latte", Palette.latte)] {
+            XCTAssertGreaterThanOrEqual(
+                contrast(palette.label, palette.hoverWash), 4.5,
+                "\(name): a label on the hover fill should clear AA"
+            )
+            XCTAssertLessThan(
+                contrast(palette.label, palette.labelQuaternary), 4.5,
+                "\(name): the ink the hover fill replaced should be why it was replaced"
+            )
+        }
+    }
+
+    /// WCAG's contrast ratio between two opaque colours.
+    private func contrast(_ one: String, _ other: String) -> Double {
+        let first = relativeLuminance(one)
+        let second = relativeLuminance(other)
+        return (max(first, second) + 0.05) / (min(first, second) + 0.05)
+    }
+
+    private func relativeLuminance(_ hex: String) -> Double {
+        let rgb = rgbComponents(hex: hex) ?? (1, 1, 1)
+        let channels = [rgb.red, rgb.green, rgb.blue].map { value -> Double in
+            value <= 0.03928 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
     }
 }

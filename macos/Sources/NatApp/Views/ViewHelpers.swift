@@ -4,8 +4,8 @@ import NatKit
 
 // MARK: - Hover
 
-/// The design system's hover treatment: a quiet quaternary-label wash on
-/// borderless, toolbar and sidebar items — nothing moves, nothing scales.
+/// The design system's hover treatment: the theme's own hover surface laid
+/// on borderless, toolbar and sidebar items — nothing moves, nothing scales.
 /// Drawn as a `background`, so a row that paints its own selection fill after
 /// this modifier covers the wash while selected and shows it again when not.
 struct HoverWash: ViewModifier {
@@ -17,7 +17,7 @@ struct HoverWash: ViewModifier {
         content
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(enabled && hovering ? DesignTokens.labelQuaternary : Color.clear)
+                    .fill(enabled && hovering ? DesignTokens.hoverWash : Color.clear)
             )
             .onHover { hovering = $0 }
     }
