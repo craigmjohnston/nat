@@ -9,6 +9,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // sliceApprove opens a pull request for a handed-back branch and records it
@@ -57,11 +58,12 @@ func sliceApprove(ctx context.Context, args []string, env Env) error {
 		workdir = project.WorkingDir
 	}
 
-	url, err := actions.OpenPR(ctx, client, env.NewGH(), s, workdir)
+	st := store.Over(client)
+	url, err := actions.OpenPR(ctx, st, env.NewGH(), s, workdir)
 	if err != nil {
 		return err
 	}
-	if err := actions.RecordPR(ctx, client, s, url); err != nil {
+	if err := actions.RecordPR(ctx, st, s, url); err != nil {
 		return err
 	}
 

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // PRCreator is what an approve needs of the GitHub CLI: one pull request,
@@ -29,12 +28,12 @@ type PRCreator interface {
 // pull request from the commits, as it always did. A read that fails stops
 // the approve rather than falling back, since a pull request opened with the
 // wrong title is not one this can open again.
-func OpenPR(ctx context.Context, client Client, prs PRCreator, s domain.Slice, dir string) (string, error) {
-	blocks, err := client.GetBlockChildren(ctx, s.ID)
+func OpenPR(ctx context.Context, st Store, prs PRCreator, s domain.Slice, dir string) (string, error) {
+	description, err := st.PRDescription(ctx, s.ID)
 	if err != nil {
 		return "", fmt.Errorf("read the pull request description: %w", err)
 	}
-	title, body := PRTitleBody(notion.PRDescriptionOf(blocks))
+	title, body := PRTitleBody(description)
 	return prs.CreatePR(dir, s.Branch, title, body)
 }
 
@@ -62,11 +61,8 @@ func PRTitleBody(description string) (title, body string) {
 // starting rather than the work ending: the pull request is open, and a
 // review that asks for one more commit needs the checkout that commit is
 // written in. What takes the worktree away is the merge.
-func RecordPR(ctx context.Context, client Client, s domain.Slice, url string) error {
-	properties := map[string]notion.PropertyValue{
-		notion.PropPR: notion.NewURL(url),
-	}
-	if _, err := client.UpdatePageProperties(ctx, s.ID, properties); err != nil {
+func RecordPR(ctx context.Context, st Store, s domain.Slice, url string) error {
+	if err := st.RecordPR(ctx, s.ID, url); err != nil {
 		return fmt.Errorf("record the pull request for %q: %w", s.Name, err)
 	}
 	return nil

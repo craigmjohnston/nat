@@ -7,7 +7,7 @@ import (
 	"io"
 
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/logging"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // sliceDelete moves a slice's page to Notion's trash — the headless half of
@@ -39,23 +39,21 @@ func sliceDelete(ctx context.Context, args []string, env Env) error {
 	if _, _, _, err := env.projectFor(*projectRef); err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
+	st := store.Over(env.NewClient(env.Tokens.Token))
 
-	page, err := client.GetPage(ctx, id)
+	s, _, err := loadSlice(ctx, st, id)
 	if err != nil {
-		return fmt.Errorf("load the slice: %w", err)
+		return err
 	}
-	s := domain.SliceFromPage(*page)
 	if s.Status == domain.SliceClaimed {
 		return fmt.Errorf("%q is in progress: work in flight is not deleted under its agent", s.Name)
 	}
 
-	if err := client.TrashPage(ctx, s.ID); err != nil {
+	if err := st.DeleteSlice(ctx, s.ID); err != nil {
 		return fmt.Errorf("delete the slice: %w", err)
 	}
 
 	env.nudged()
-	logging.Action("slice deleted", "slice", s.ID, "name", s.Name)
 	if *asJSON {
 		return writeJSON(env.Out, sliceDeletedJSON{ID: s.ID, Name: s.Name, Deleted: true})
 	}

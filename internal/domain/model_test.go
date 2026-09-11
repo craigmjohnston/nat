@@ -45,7 +45,7 @@ func TestSliceFromPage(t *testing.T) {
 			Slice{
 				ID: "s1", Name: "Domain model", Status: SliceClaimed, StatusName: "In progress",
 				MilestoneID:  "M1: Groundwork",
-				AssigneeName: "Craig Johnston", Repo: "/repos/other",
+				AssigneeName: "Craig Johnston", AssigneeIDs: []string{"u1"}, Repo: "/repos/other",
 				Branch: "slice/domain-model",
 				PRURL:  "https://github.test/pr/1", URL: "https://notion.test/s1",
 				DependsOn: []string{"s0", "s00"},
@@ -104,7 +104,7 @@ func TestSliceFromPage(t *testing.T) {
 					"Assignee": {"type": "people", "people": [{"id": "u1", "name": "First"}, {"id": "u2", "name": "Second"}]}
 				}
 			}`,
-			Slice{ID: "s4", AssigneeName: "First"},
+			Slice{ID: "s4", AssigneeName: "First", AssigneeIDs: []string{"u1", "u2"}},
 		},
 		{
 			"missing properties map to zero values",

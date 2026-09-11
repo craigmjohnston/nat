@@ -14,7 +14,7 @@ import (
 const (
 	abandoned  = "ab"
 	notStarted = "td"
-	allDone   = "dn"
+	allDone    = "dn"
 )
 
 // releasePlan is that plan. The abandoned slice carries a branch, so the tests
@@ -245,20 +245,23 @@ func TestReleaseWhileBusy(t *testing.T) {
 }
 
 // Each of the three calls the release makes can fail, and the failure names the
-// slice rather than the step, since the board's error banner is what shows it.
+// slice — the board's error banner is what shows it — and, for the two writes,
+// which of them it was, since a note written with no status behind it is a
+// different state to recover from than neither.
 func TestReleaseFailures(t *testing.T) {
 	boom := errors.New("boom")
 	tests := []struct {
 		name string
+		want string
 		set  func(*fakeNotion)
 	}{
-		{"the page", func(f *fakeNotion) {
+		{"the page", `release "Release action": boom`, func(f *fakeNotion) {
 			f.getPage = func(string) (*notion.Page, error) { return nil, boom }
 		}},
-		{"the note", func(f *fakeNotion) {
+		{"the note", `release "Release action": note the release on the slice: boom`, func(f *fakeNotion) {
 			f.appendBlock = func(string, []map[string]any) ([]notion.Block, error) { return nil, boom }
 		}},
-		{"the write", func(f *fakeNotion) {
+		{"the write", `release "Release action": release the slice: boom`, func(f *fakeNotion) {
 			f.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) { return nil, boom }
 		}},
 	}
@@ -270,7 +273,7 @@ func TestReleaseFailures(t *testing.T) {
 
 			release(t, app)
 
-			if app.err == nil || !strings.Contains(app.err.Error(), `release "Release action": boom`) {
+			if app.err == nil || !strings.Contains(app.err.Error(), tt.want) {
 				t.Fatalf("error = %v, want it to name the slice and the failure", app.err)
 			}
 			if app.busy {

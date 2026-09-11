@@ -45,7 +45,7 @@ func TestLaunchStartsTheAgentInAWorktree(t *testing.T) {
 	l := &fakeLauncher{}
 	client := &fakeClient{getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil }}
 
-	res, err := Launch(context.Background(), l, w, r, client, "u1",
+	res, err := Launch(context.Background(), l, w, r, client.store(), "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: dir},
 		config.AgentModel{Model: "opus", Effort: "high"})
 
@@ -88,7 +88,7 @@ func TestLaunchFallsBackToTheSharedCheckout(t *testing.T) {
 	l := &fakeLauncher{}
 	client := &fakeClient{}
 
-	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client, "u1",
+	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: dir},
 		config.AgentModel{})
 
@@ -115,7 +115,7 @@ func TestLaunchRefusesAWorktreeThatCannotBeMade(t *testing.T) {
 	l := &fakeLauncher{}
 	client := &fakeClient{}
 
-	res, err := Launch(context.Background(), l, w, &fakeRepo{base: "origin/main"}, client, "u1",
+	res, err := Launch(context.Background(), l, w, &fakeRepo{base: "origin/main"}, client.store(), "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: dir},
 		config.AgentModel{})
 
@@ -144,7 +144,7 @@ func TestLaunchReportsAFailedPromptFile(t *testing.T) {
 	l := &fakeLauncher{}
 	client := &fakeClient{}
 
-	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client, "u1",
+	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}},
 		config.AgentModel{})
 
@@ -183,7 +183,7 @@ func TestLaunchRefusesWithoutTheClaim(t *testing.T) {
 			tt.fail(client)
 			l := &fakeLauncher{}
 
-			res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client, "u1",
+			res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), "u1",
 				agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}},
 				config.AgentModel{})
 
@@ -214,7 +214,7 @@ func TestLaunchReportsAFailedStart(t *testing.T) {
 	l := &fakeLauncher{launchErr: errors.New("duplicate session")}
 	client := &fakeClient{}
 
-	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client, "u1",
+	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: t.TempDir()},
 		config.AgentModel{})
 

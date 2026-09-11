@@ -72,6 +72,11 @@ func (m Milestone) Ref() notion.PropertyValue {
 // relation lists them, and empty both for a slice that waits on nothing and on
 // a project whose table has no such column — so a project without one behaves
 // exactly as it did before there was one.
+//
+// AssigneeIDs is who the page records as holding the slice, by user ID, which
+// is what ownership is checked against — a name is what someone reads, and an
+// ID is what a claim compares equal to. AssigneeName is the first of them by
+// name, since claiming sets exactly one.
 type Slice struct {
 	ID           string
 	Name         string
@@ -79,6 +84,7 @@ type Slice struct {
 	StatusName   string
 	MilestoneID  string
 	AssigneeName string
+	AssigneeIDs  []string
 	Repo         string
 	Branch       string
 	PRURL        string
@@ -140,6 +146,7 @@ func SliceFromPage(p notion.Page) Slice {
 	if people := p.Properties[notion.PropAssignee].Users(); len(people) > 0 {
 		s.AssigneeName = people[0].Name
 	}
+	s.AssigneeIDs = p.Properties[notion.PropAssignee].PeopleIDs()
 	return s
 }
 

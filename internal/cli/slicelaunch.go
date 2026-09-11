@@ -13,6 +13,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // sliceLaunch runs the board's own l key headlessly: it claims a slice and
@@ -87,7 +88,7 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 		AssigneeName: cfg.AssigneeUserName,
 	}
 
-	result, err := actions.Launch(ctx, env.NewTmux(), env.NewWorktrees(), env.NewGit(), client,
+	result, err := actions.Launch(ctx, env.NewTmux(), env.NewWorktrees(), env.NewGit(), store.Over(client),
 		cfg.AssigneeUserID, promptContext, agentModel)
 	if err != nil {
 		return err

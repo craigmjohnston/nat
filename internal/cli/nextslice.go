@@ -10,7 +10,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
-	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // nextSlice claims the next slice an agent should pick up and prints a brief it
@@ -31,16 +31,17 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("no assignee in the config: open the board with `nat` and finish setting it up")
 	}
 	client := env.NewClient(env.Tokens.Token)
+	st := store.Over(client)
 
-	shape, err := sliceShape(ctx, client, project)
+	plan, err := st.Plan(ctx, storeProject(projectID, project))
 	if err != nil {
 		return err
 	}
-	milestone, next, err := selectNextSlice(ctx, client, projectID, project, shape)
+	milestone, next, err := selectNextSlice(plan.Project)
 	if err != nil {
 		return err
 	}
-	claimed, err := claim(ctx, client, next.ID, shape, cfg.AssigneeUserID)
+	claimed, err := claim(ctx, st, next.ID, plan.Shape, cfg.AssigneeUserID)
 	if err != nil {
 		return err
 	}
@@ -48,11 +49,11 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 	// fails to read the brief afterwards has already moved the slice.
 	env.nudged()
 
-	brief, err := body(ctx, client, claimed.ID)
+	brief, err := st.Body(ctx, claimed.ID)
 	if err != nil {
 		return fmt.Errorf("claimed %q but could not read its brief: %w", claimed.Name, err)
 	}
-	conventions, err := body(ctx, client, projectID)
+	conventions, err := st.Body(ctx, projectID)
 	if err != nil {
 		return fmt.Errorf("claimed %q but could not read the project conventions: %w", claimed.Name, err)
 	}
@@ -82,19 +83,11 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 // finished is open, and the plan's own order decides which comes first — gating
 // on Active would leave a plan on which nothing has begun with no way to begin.
 //
-// The filtering is done here rather than in the query because a Status column
-// may be a select or a Notion status depending on how the project was set up,
-// and the two need differently-shaped filters; the plans are small enough that
-// reading them whole costs nothing.
-func selectNextSlice(ctx context.Context, client API, projectID string, project config.ProjectConfig, shape notion.SliceShape) (domain.Milestone, domain.Slice, error) {
-	pages, err := client.QueryDataSource(ctx, project.SlicesDSID, nil,
-		[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
-	if err != nil {
-		return domain.Milestone{}, domain.Slice{}, fmt.Errorf("load slices: %w", err)
-	}
-	plan := domain.NewProject(projectID, project.Name, milestonesOf(shape), domain.InViewOrder(
-		domain.SlicesFromPages(pages), notion.PlanOrder(ctx, client, project.SlicesDSID)))
-
+// The choosing is done here rather than asked of the store because a plan is
+// small enough to read whole, and every rule below — the milestone's own
+// status, the dependency graph, the cycles — is about the plan rather than
+// about where it is kept.
+func selectNextSlice(plan domain.Project) (domain.Milestone, domain.Slice, error) {
 	// The whole plan is the index: every slice a dependency could name is in it,
 	// and one it does not hold is a page this project cannot see.
 	byID := domain.SlicesByID(plan.Slices)
@@ -144,87 +137,44 @@ func selectNextSlice(ctx context.Context, client API, projectID string, project 
 		plural("milestone", len(open)), strings.Join(milestoneNames(open), ", "))
 }
 
-// sliceShape reads how the project's Slices table is put together: the types of
-// its columns, whether it has an Assignee column at all, and the milestones its
-// Milestone column offers. None of it can be guessed from a page alone.
-func sliceShape(ctx context.Context, client API, project config.ProjectConfig) (notion.SliceShape, error) {
-	ds, err := slicesDataSource(ctx, client, project)
-	if err != nil {
-		return notion.SliceShape{}, err
-	}
-	return notion.ShapeOf(ds), nil
+// storeProject names a project to the store: the page the conventions live
+// on, what it is called, and where its slices are kept. It is the one place
+// this machine's idea of a project — a config entry, working directory and
+// all — is narrowed to what a store has any business reading.
+func storeProject(projectID string, project config.ProjectConfig) store.Project {
+	return store.Project{ID: projectID, Name: project.Name, SlicesID: project.SlicesDSID}
 }
 
-// slicesDataSource reads the project's Slices data source, migrating a project
-// still in the shape this app started with on the way — which is how a command
-// run against one reads a plan of the one shape, exactly as the board does.
-//
-// The schema is both where the shape is read from and what a new milestone is
-// appended to, since the plan is its Milestone column's options, so a command
-// that files one needs the schema itself rather than the shape read off it.
-func slicesDataSource(ctx context.Context, client API, project config.ProjectConfig) (*notion.DataSource, error) {
-	ds, migration, err := notion.MigrateProject(ctx, client, project.SlicesDSID)
-	if err != nil {
-		return nil, err
-	}
-	if !migration.Empty() {
-		logging.Action("project migrated on the way to a command", "summary", migration.Summary())
-	}
-	return ds, nil
+// sliceShape reads how the project's Slices table is put together: whether it
+// records ownership or a branch at all, and the milestones there are to file a
+// slice under. None of it can be guessed from a page alone.
+func sliceShape(ctx context.Context, st store.Store, projectID string, project config.ProjectConfig) (store.Shape, error) {
+	return st.Shape(ctx, storeProject(projectID, project))
 }
 
-// claim takes the slice: status to the project's in-progress option, and the
-// assignee set to the configured user where the project tracks one. The page
-// Notion answers with is checked rather than assumed — a people value naming
-// someone the workspace does not know comes back empty instead of failing, and
-// an agent must not be handed a brief for a slice it does not actually hold.
-func claim(ctx context.Context, client API, sliceID string, shape notion.SliceShape, userID string) (domain.Slice, error) {
-	properties := map[string]notion.PropertyValue{
-		notion.PropStatus: notion.NewChoice(shape.StatusType, notion.SliceInProgress),
+// loadSlice reads one slice, saying what it was doing when the read failed —
+// the store reports what went wrong and the command says what it was after.
+func loadSlice(ctx context.Context, st store.Store, id string) (domain.Slice, store.Shape, error) {
+	s, sh, err := st.Slice(ctx, id)
+	if err != nil {
+		return s, sh, fmt.Errorf("load the slice: %w", err)
 	}
-	if shape.HasAssignee {
-		properties[notion.PropAssignee] = notion.NewPeople(userID)
-	}
-	updated, err := client.UpdatePageProperties(ctx, sliceID, properties)
+	return s, sh, nil
+}
+
+// claim takes the slice for the configured user. The slice the store answers
+// with is checked rather than assumed — a people value naming someone the
+// workspace does not know comes back empty instead of failing, and an agent
+// must not be handed a brief for a slice it does not actually hold.
+func claim(ctx context.Context, st store.Store, sliceID string, shape store.Shape, userID string) (domain.Slice, error) {
+	claimed, err := st.ClaimSlice(ctx, sliceID, shape, userID)
 	if err != nil {
 		return domain.Slice{}, fmt.Errorf("claim the slice: %w", err)
 	}
-	if !holds(*updated, shape, userID) {
-		return domain.Slice{}, fmt.Errorf("the claim on %q did not stick: someone else holds it",
-			domain.SliceFromPage(*updated).Name)
+	if !store.Holds(claimed, shape, userID) {
+		return domain.Slice{}, fmt.Errorf("the claim on %q did not stick: someone else holds it", claimed.Name)
 	}
-	s := domain.SliceFromPage(*updated)
-	logging.Action("slice claimed", "slice", s.ID, "name", s.Name, "user", userID)
-	return s, nil
-}
-
-// holds reports whether the page came back held by the given user, which is what
-// a successful claim looks like from the outside. Without an Assignee column the
-// status is the whole answer: there is nobody else the slice could belong to, so
-// a project that tracks no assignee decides ownership on status alone.
-func holds(page notion.Page, shape notion.SliceShape, userID string) bool {
-	if page.Properties[notion.PropStatus].SelectName() != notion.SliceInProgress {
-		return false
-	}
-	if !shape.HasAssignee {
-		return true
-	}
-	for _, id := range page.Properties[notion.PropAssignee].PeopleIDs() {
-		if id == userID {
-			return true
-		}
-	}
-	return false
-}
-
-// body renders a page's content as markdown, which is how both the slice brief
-// and the project conventions reach the agent reading them.
-func body(ctx context.Context, client API, pageID string) (string, error) {
-	blocks, err := client.GetBlockChildren(ctx, pageID)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(notion.Markdown(blocks)), nil
+	return claimed, nil
 }
 
 // milestoneNames lists milestones by name, for saying which ones were looked in.

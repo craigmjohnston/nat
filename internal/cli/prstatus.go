@@ -10,6 +10,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/logging"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // PRReader is what pr-status needs of the GitHub CLI: every pull request a
@@ -139,7 +140,7 @@ func prReadings(ctx context.Context, client API, ghClient GH, slices []domain.Sl
 			if s.Status != domain.SliceClaimed {
 				continue
 			}
-			done, err := actions.SettleMerged(ctx, client, ghClient, s, dir)
+			done, err := actions.SettleMerged(ctx, store.Over(client), ghClient, s, dir)
 			if err != nil {
 				logging.Action("left an absent pull request unsettled", "slice", s.ID, "error", err)
 				continue

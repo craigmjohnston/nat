@@ -295,7 +295,7 @@ func TestEditSliceReportsFailures(t *testing.T) {
 	}{
 		{"properties", &fakeNotion{
 			updatePage: func(string, map[string]notion.PropertyValue) (*notion.Page, error) { return nil, boom },
-		}, "update slice: boom"},
+		}, "update the slice: boom"},
 		{"read", &fakeNotion{
 			blocks: func(string) ([]notion.Block, error) { return nil, boom },
 		}, "read slice body: boom"},

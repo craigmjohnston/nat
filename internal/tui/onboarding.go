@@ -11,6 +11,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // ProjectsDBTitle is the title given to the database created to hold one row
@@ -21,29 +22,23 @@ const ProjectsDBTitle = "Agent Projects"
 // in the project database picker. It cannot collide with a Notion ID.
 const createNewChoice = "<new>"
 
-// NotionAPI is the part of *notion.Client the interface uses. It is an
-// interface so the screens can be driven by a fake in tests.
+// NotionAPI is the part of the Notion client the board still uses directly:
+// setting a project up, searching the workspace, reading page bodies and the
+// wishlist — what is not plan work. Everything the board does to a plan goes
+// through [store.Store] instead, built over this same client with
+// [store.Over]. It is an interface so the screens can be driven by a fake in
+// tests.
 type NotionAPI interface {
+	store.API
 	Me(ctx context.Context) (*notion.User, error)
 	SearchPaged(ctx context.Context, query, filterType, startCursor string) ([]notion.SearchResult, string, error)
 	PageEntries(ctx context.Context, id string) ([]notion.PageEntry, error)
 	GetDatabase(ctx context.Context, id string) (*notion.Database, error)
-	GetDataSource(ctx context.Context, id string) (*notion.DataSource, error)
-	UpdateDataSourceProperties(ctx context.Context, id string, properties map[string]notion.PropertySchema) (*notion.DataSource, error)
 	Breadcrumb(ctx context.Context, parent notion.Parent) []string
 	CreateProjectsDatabase(ctx context.Context, parentPageID, title string) (*notion.Database, error)
 	CreateProject(ctx context.Context, projectsDSID, name string, assignee bool) (*notion.ProjectStructure, error)
 	ResolveProject(ctx context.Context, pageID string) (*notion.ResolvedProject, error)
-	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
-	DataSourceOrder(ctx context.Context, dataSourceID string) ([]string, error)
-	GetBlockChildren(ctx context.Context, id string) ([]notion.Block, error)
 	Wishlist(ctx context.Context, pageID string) ([]notion.WishlistItem, error)
-	CreatePage(ctx context.Context, parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)
-	GetPage(ctx context.Context, id string) (*notion.Page, error)
-	UpdatePageProperties(ctx context.Context, pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
-	AppendBlockChildren(ctx context.Context, id string, children []map[string]any) ([]notion.Block, error)
-	DeleteBlock(ctx context.Context, id string) error
-	TrashPage(ctx context.Context, pageID string) error
 }
 
 // NewClientFunc builds a NotionAPI from a source of bearer tokens.
@@ -51,8 +46,9 @@ type NewClientFunc func(token notion.TokenFunc) NotionAPI
 
 // DefaultNewClient builds a real Notion client that re-reads the token for
 // every request, so a credential rotated outside the process is picked up
-// without a restart.
-func DefaultNewClient(token notion.TokenFunc) NotionAPI { return notion.NewWithToken(token) }
+// without a restart. The client itself is made in internal/store, which is the
+// one place in the tree one is.
+func DefaultNewClient(token notion.TokenFunc) NotionAPI { return store.NewClient(token) }
 
 // OnboardingDoneMsg reports that onboarding finished and Config has been
 // written. NeedsProject is set when the project database holds no projects yet,

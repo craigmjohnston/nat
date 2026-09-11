@@ -10,6 +10,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // PRCreator is what the approve flow needs of the GitHub CLI: one pull request,
@@ -94,7 +95,7 @@ func (a *App) startApprove(s domain.Slice, dir string) tea.Cmd {
 // the rest as the body.
 func openPR(prs PRCreator, client NotionAPI, s domain.Slice, dir string) tea.Cmd {
 	return func() tea.Msg {
-		url, err := actions.OpenPR(context.Background(), client, prs, s, dir)
+		url, err := actions.OpenPR(context.Background(), store.Over(client), prs, s, dir)
 		if err != nil {
 			return prOpenedMsg{slice: s, err: err}
 		}
@@ -131,7 +132,7 @@ func (a *App) prOpened(msg prOpenedMsg) (tea.Model, tea.Cmd) {
 // What takes the worktree away is the merge — see [App.removeLanded].
 func recordPR(client NotionAPI, s domain.Slice, url string) tea.Cmd {
 	return func() tea.Msg {
-		if err := actions.RecordPR(context.Background(), client, s, url); err != nil {
+		if err := actions.RecordPR(context.Background(), store.Over(client), s, url); err != nil {
 			return sliceSavedMsg{err: err}
 		}
 		return sliceSavedMsg{note: fmt.Sprintf("Opened the pull request for %q.", s.Name), sliceID: s.ID}

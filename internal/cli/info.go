@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // info prints everything an agent needs to know about a project: the
@@ -27,38 +27,24 @@ func info(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
+	st := store.Over(env.NewClient(env.Tokens.Token))
 
-	blocks, err := client.GetBlockChildren(ctx, projectID)
+	conventions, err := st.Body(ctx, projectID)
 	if err != nil {
 		return fmt.Errorf("load project page: %w", err)
 	}
-	shape, err := sliceShape(ctx, client, project)
+	plan, err := st.Plan(ctx, storeProject(projectID, project))
 	if err != nil {
 		return err
 	}
-	slices, err := client.QueryDataSource(ctx, project.SlicesDSID, nil,
-		[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
-	if err != nil {
-		return fmt.Errorf("load slices: %w", err)
-	}
 
-	p := domain.NewProject(projectID, project.Name, milestonesOf(shape), domain.InViewOrder(
-		domain.SlicesFromPages(slices), notion.PlanOrder(ctx, client, project.SlicesDSID)))
-	conventions := strings.TrimSpace(notion.Markdown(blocks))
+	p := plan.Project
 
 	if asJSON {
 		return writeInfoJSON(env.Out, p, conventions)
 	}
 	_, err = io.WriteString(env.Out, infoMarkdown(p, conventions))
 	return err
-}
-
-// milestonesOf is a project's plan: the options of its slices' Milestone
-// column, in the order the schema lists them. The schema already carries them,
-// so a plan needs no query of its own.
-func milestonesOf(shape notion.SliceShape) []domain.Milestone {
-	return domain.MilestonesFromOptions(shape.MilestoneOptions, shape.MilestoneType)
 }
 
 // parseJSONFlag reads the command line of a command whose only flags are --json

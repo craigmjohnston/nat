@@ -19,24 +19,19 @@ import (
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
-// API is the part of *notion.Client the commands use. It is an interface so a
-// command can be driven by a fake in tests.
+// API is the part of the Notion client the commands still use directly: what
+// a project is set up with, what its pages say, and its wishlist — the reads
+// and writes that are not plan work. Everything a command does to a plan goes
+// through [store.Store] instead, built over this same client with
+// [store.Over]. It is an interface so a command can be driven by a fake in
+// tests.
 type API interface {
-	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
-	DataSourceOrder(ctx context.Context, dataSourceID string) ([]string, error)
-	GetDataSource(ctx context.Context, id string) (*notion.DataSource, error)
-	UpdateDataSourceProperties(ctx context.Context, id string, properties map[string]notion.PropertySchema) (*notion.DataSource, error)
-	CreatePage(ctx context.Context, parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)
-	GetPage(ctx context.Context, id string) (*notion.Page, error)
-	GetBlockChildren(ctx context.Context, id string) ([]notion.Block, error)
-	AppendBlockChildren(ctx context.Context, id string, children []map[string]any) ([]notion.Block, error)
+	store.API
 	AppendBlockChildrenAfter(ctx context.Context, id, after string, children []map[string]any) ([]notion.Block, error)
-	DeleteBlock(ctx context.Context, id string) error
-	UpdatePageProperties(ctx context.Context, pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
-	TrashPage(ctx context.Context, pageID string) error
 	CreateProject(ctx context.Context, projectsDSID, name string, assignee bool) (*notion.ProjectStructure, error)
 }
 
@@ -44,8 +39,9 @@ type API interface {
 type NewClientFunc func(token notion.TokenFunc) API
 
 // DefaultNewClient builds a real Notion client that re-reads the token for
-// every request, the same way the TUI does.
-func DefaultNewClient(token notion.TokenFunc) API { return notion.NewWithToken(token) }
+// every request, the same way the TUI does. The client itself is made in
+// internal/store, which is the one place in the tree one is.
+func DefaultNewClient(token notion.TokenFunc) API { return store.NewClient(token) }
 
 // NewTmuxFunc builds a tmux driver for reading live agent status. It is an
 // interface so tests can inject a fake.

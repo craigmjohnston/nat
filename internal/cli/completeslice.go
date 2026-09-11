@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // completeSlice closes out the slice an agent was working: a summary appended
@@ -78,16 +78,16 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	cfg, _, project, err := env.projectFor(*projectRef)
+	cfg, projectID, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}
 	if cfg.AssigneeUserID == "" {
 		return fmt.Errorf("no assignee in the config: open the board with `nat` and finish setting it up")
 	}
-	client := env.NewClient(env.Tokens.Token)
+	st := store.Over(env.NewClient(env.Tokens.Token))
 
-	shape, err := sliceShape(ctx, client, project)
+	shape, err := sliceShape(ctx, st, projectID, project)
 	if err != nil {
 		return err
 	}
@@ -99,57 +99,34 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("this project's %s table has no %s text column to hand a branch back on: add one in Notion",
 			notion.SlicesDBTitle, notion.PropBranch)
 	}
-	page, err := client.GetPage(ctx, pageID)
+	s, pageShape, err := loadSlice(ctx, st, pageID)
 	if err != nil {
-		return fmt.Errorf("load the slice: %w", err)
+		return err
 	}
-	if !holds(*page, shape, cfg.AssigneeUserID) {
-		return notOursError(*page, shape, cfg.AssigneeUserName, "closed out")
+	write := shape.On(pageShape)
+	if !store.Holds(s, write, cfg.AssigneeUserID) {
+		return notOursError(s, cfg.AssigneeUserName, "closed out")
 	}
 
-	// The note goes on before the status does. Either write can fail, and of the
-	// two half-finished states this is the recoverable one: an in-progress slice
-	// carrying its summary can be completed by running this again, whereas a
-	// Done slice with no summary refuses every attempt to add one.
-	blocks := noteBlocks(noteHeading(*blocked, *branch), note)
-	// The description goes on in the same write, under a heading of its own: it
-	// is not the summary of what was done but the text the pull request will be
-	// opened with, and the board reads it back off the page by that heading
-	// whenever the user gets to reviewing the branch.
-	if prDescription != "" {
-		blocks = append(blocks, noteBlocks(notion.PRDescriptionHeading, prDescription)...)
-	}
-	if _, err := client.AppendBlockChildren(ctx, page.ID, blocks); err != nil {
-		return fmt.Errorf("append the note to the slice: %w", err)
-	}
-	props := map[string]notion.PropertyValue{}
-	if *pr != "" {
-		props[notion.PropPR] = notion.NewURL(*pr)
-	}
-	if *branch != "" {
-		props[notion.PropBranch] = notion.NewRichText(*branch)
-	}
-	// A handed-back slice stays in progress — the work is done but nobody has
-	// reviewed it — and so does one with a pull request recorded: Done means
-	// the work is on main, and the merge is what writes it. Only the ending
-	// with no pull request at all goes straight to Done, since it has no merge
-	// coming.
-	if !*blocked && *branch == "" && *pr == "" {
-		props[notion.PropStatus] = notion.NewChoice(page.Properties[notion.PropStatus].Type, notion.SliceDone)
-	}
-	if len(props) > 0 {
-		updated, err := client.UpdatePageProperties(ctx, page.ID, props)
-		if err != nil {
-			return fmt.Errorf("close out the slice: %w", err)
-		}
-		page = updated
+	// The status is written in the shape the page was read in rather than the
+	// shape the schema reads as, since a Status column converted in the Notion
+	// UI takes a different value from the select every project this app made
+	// has; the branch column is the schema's answer, because a column that is
+	// not there cannot be read off a page that does not carry it.
+	closed, err := st.CompleteSlice(ctx, s.ID, write, store.Outcome{
+		Summary:       note,
+		Branch:        *branch,
+		PR:            *pr,
+		PRDescription: prDescription,
+		Blocked:       *blocked,
+	})
+	if err != nil {
+		return err
 	}
 
 	env.nudged()
-	logging.Action("slice closed out", "slice", page.ID, "blocked", *blocked,
-		"pr", *pr, "branch", *branch)
 	_, err = io.WriteString(env.Out,
-		outcomeMarkdown(domain.SliceFromPage(*page), *blocked, *branch, cfg.AssigneeUserName))
+		outcomeMarkdown(closed, *blocked, *branch, cfg.AssigneeUserName))
 	return err
 }
 
@@ -291,8 +268,7 @@ func descriptionText(description string, in io.Reader) (string, error) {
 // A project with no Assignee column never reaches the second case: holds
 // decides ownership on status alone there, so there is nobody a slice could be
 // held by but the person running this.
-func notOursError(page notion.Page, shape notion.SliceShape, assignee, action string) error {
-	s := domain.SliceFromPage(page)
+func notOursError(s domain.Slice, assignee, action string) error {
 	if s.Status != domain.SliceClaimed {
 		return fmt.Errorf("%q is %s, not %s: only a slice you claimed can be %s",
 			s.Name, blank(s.StatusName), notion.SliceInProgress, action)
@@ -302,54 +278,6 @@ func notOursError(page notion.Page, shape notion.SliceShape, assignee, action st
 			s.Name, assignee, action)
 	}
 	return fmt.Errorf("%q is held by %s, not by %s: leave it to them", s.Name, s.AssigneeName, assignee)
-}
-
-// The headings the appended note is filed under, so a page read later says
-// which kind of ending it was.
-const (
-	summaryHeading    = "Summary"
-	blockedHeading    = "Blocked"
-	handedBackHeading = "Handed back"
-)
-
-// noteHeading names the note by how the session ended.
-func noteHeading(blocked bool, branch string) string {
-	switch {
-	case blocked:
-		return blockedHeading
-	case branch != "":
-		return handedBackHeading
-	}
-	return summaryHeading
-}
-
-// noteBlocks turns the note into the blocks appended to the slice page: a
-// heading, then one paragraph per blank-line-separated chunk. Paragraphs and
-// nothing else — the note arrives as plain text, and pretending to parse
-// markdown out of it would only sometimes be right.
-func noteBlocks(heading, note string) []map[string]any {
-	blocks := []map[string]any{textBlock("heading_3", heading)}
-	for _, chunk := range strings.Split(strings.ReplaceAll(note, "\r\n", "\n"), "\n\n") {
-		if text := strings.TrimSpace(chunk); text != "" {
-			blocks = append(blocks, textBlock("paragraph", text))
-		}
-	}
-	return blocks
-}
-
-// textBlock builds a block of the given type holding one span of plain text,
-// which is the shape every block this command writes takes.
-func textBlock(blockType, text string) map[string]any {
-	return map[string]any{
-		"object": "block",
-		"type":   blockType,
-		blockType: map[string]any{
-			"rich_text": []map[string]any{{
-				"type": "text",
-				"text": map[string]any{"content": text},
-			}},
-		},
-	}
 }
 
 // outcomeMarkdown reports what was written, so the agent that ran the command —

@@ -8,6 +8,7 @@ import (
 	"charm.land/huh/v2"
 
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // DeleteSliceForm is the confirm behind d: one question, because trashing a
@@ -85,7 +86,7 @@ func (f *DeleteSliceForm) save(a *App) tea.Cmd {
 // a slice deleted by mistake is still recoverable in the Notion UI.
 func deleteSlice(client NotionAPI, sliceID, sliceName string) tea.Cmd {
 	return func() tea.Msg {
-		if err := client.TrashPage(context.Background(), sliceID); err != nil {
+		if err := store.Over(client).DeleteSlice(context.Background(), sliceID); err != nil {
 			return sliceSavedMsg{err: fmt.Errorf("delete slice: %w", err)}
 		}
 		return sliceSavedMsg{note: fmt.Sprintf("Deleted %q.", sliceName), sliceID: sliceID, deleted: true}

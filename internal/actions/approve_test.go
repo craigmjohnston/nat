@@ -69,7 +69,7 @@ func TestOpenPR(t *testing.T) {
 	prs := &fakePRs{url: "https://github.test/craig/nat/pull/9"}
 	s := domain.Slice{ID: "hb", Name: "Approve action", Branch: "slice/approve"}
 
-	url, err := OpenPR(context.Background(), client, prs, s, "/repo")
+	url, err := OpenPR(context.Background(), client.store(), prs, s, "/repo")
 
 	if err != nil {
 		t.Fatalf("OpenPR() = %v, want it to go through", err)
@@ -93,7 +93,7 @@ func TestOpenPRWithoutARecordedDescription(t *testing.T) {
 	prs := &fakePRs{}
 	s := domain.Slice{ID: "hb", Branch: "slice/approve"}
 
-	if _, err := OpenPR(context.Background(), client, prs, s, "/repo"); err != nil {
+	if _, err := OpenPR(context.Background(), client.store(), prs, s, "/repo"); err != nil {
 		t.Fatalf("OpenPR() = %v, want it to go through", err)
 	}
 	want := prCall{"/repo", "slice/approve", "", ""}
@@ -109,7 +109,7 @@ func TestOpenPRWithAnUnreadableDescription(t *testing.T) {
 	client := &fakeClient{blocks: func(string) ([]notion.Block, error) { return nil, errors.New("notion is down") }}
 	prs := &fakePRs{}
 
-	_, err := OpenPR(context.Background(), client, prs, domain.Slice{ID: "hb"}, "/repo")
+	_, err := OpenPR(context.Background(), client.store(), prs, domain.Slice{ID: "hb"}, "/repo")
 
 	if err == nil || !strings.Contains(err.Error(), "read the pull request description") {
 		t.Errorf("err = %v, want the read's failure named", err)
@@ -126,7 +126,7 @@ func TestOpenPRReportsAGhFailure(t *testing.T) {
 	client := &fakeClient{}
 	prs := &fakePRs{err: errors.New(`a pull request for branch "slice/approve" already exists`)}
 
-	_, err := OpenPR(context.Background(), client, prs, domain.Slice{ID: "hb", Branch: "slice/approve"}, "/repo")
+	_, err := OpenPR(context.Background(), client.store(), prs, domain.Slice{ID: "hb", Branch: "slice/approve"}, "/repo")
 
 	if err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("err = %v, want gh's own reason", err)
@@ -157,7 +157,7 @@ func TestRecordPR(t *testing.T) {
 	client := &fakeClient{}
 	s := domain.Slice{ID: "hb", Name: "Approve action"}
 
-	if err := RecordPR(context.Background(), client, s, "https://github.test/pr/9"); err != nil {
+	if err := RecordPR(context.Background(), client.store(), s, "https://github.test/pr/9"); err != nil {
 		t.Fatalf("RecordPR() = %v, want it to go through", err)
 	}
 
@@ -180,7 +180,7 @@ func TestRecordPRReportsAFailedWrite(t *testing.T) {
 		return nil, errors.New("notion is down")
 	}}
 
-	err := RecordPR(context.Background(), client, domain.Slice{ID: "hb", Name: "Approve action"}, "https://github.test/pr/9")
+	err := RecordPR(context.Background(), client.store(), domain.Slice{ID: "hb", Name: "Approve action"}, "https://github.test/pr/9")
 
 	if err == nil || !strings.Contains(err.Error(), `record the pull request for "Approve action"`) {
 		t.Errorf("err = %v, want the write's failure named", err)
