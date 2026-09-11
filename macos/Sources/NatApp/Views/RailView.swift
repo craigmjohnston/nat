@@ -52,6 +52,10 @@ extension View {
 
 struct RailView: View {
     @Bindable var appModel: AppModel
+    /// What the rail is drawn on, for the few colours it has to compute as a
+    /// value rather than apply as a modifier — a selection fill inside a
+    /// ternary has nowhere to read the environment from on its own.
+    @Environment(\.ground) private var ground
     @State private var expandedMilestones: Set<String> = []
     @State private var expandedSeeded = false
     /// Milestone IDs whose DONE-section folder is expanded. Its own set
@@ -281,7 +285,7 @@ struct RailView: View {
             .padding(.bottom, 16)
         }
         .surface(.window)
-        .rectBorderTrailing(width: 0.5, color: DesignTokens.separator(on: .window))
+        .rule(.separator, edges: [.trailing], width: 0.5)
         .alert(
             "Delete \u{201C}\(sliceForDeletion?.name ?? "")\u{201D}?",
             isPresented: Binding(
@@ -391,12 +395,12 @@ struct RailView: View {
     /// right-aligned meta, and a tertiary detail line underneath.
     private func sessionRow(
         selected: Bool,
-        dotColor: Color,
+        dotColor: InkRole,
         pulsing: Bool,
         name: String,
         meta: String?,
-        metaColor: Color,
-        detail: [(String, Color)]
+        metaColor: InkRole,
+        detail: [(String, InkRole)]
     ) -> some View {
         HStack(alignment: .top, spacing: RailSlot.spacing) {
             dotView(color: dotColor, pulsing: pulsing && !selected)
@@ -415,7 +419,7 @@ struct RailView: View {
                         Text(meta)
                             .font(.system(size: Typo.subhead, weight: .regular))
                             .monospacedDigit()
-                            .foregroundStyle(metaColor)
+                            .ink(metaColor)
                     }
                 }
 
@@ -426,7 +430,7 @@ struct RailView: View {
                                 .ink(.tertiary)
                         }
                         Text(piece.0)
-                            .foregroundStyle(piece.1)
+                            .ink(piece.1)
                             .lineLimit(1)
                     }
                 }
@@ -445,27 +449,27 @@ struct RailView: View {
         // own state at a glance.
         .background {
             RoundedRectangle(cornerRadius: 6)
-                .fill(selected ? DesignTokens.selectionWash(on: .window) : Color.clear)
+                .fill(selected ? DesignTokens.wash(.selection, tone: .accent, on: ground) : Color.clear)
                 .padding(.horizontal, 6)
         }
         .insetHoverWash()
     }
 
     private func reviewRow(for entry: ReviewEntry) -> some View {
-        var detail: [(String, Color)] = []
+        var detail: [(String, InkRole)] = []
         if !entry.milestone.isEmpty {
-            detail.append((entry.milestone, DesignTokens.labelTertiary))
+            detail.append((entry.milestone, .tertiary))
         }
         if let fileCount = entry.fileCount {
-            detail.append(("\(fileCount) file\(fileCount == 1 ? "" : "s")", DesignTokens.labelTertiary))
+            detail.append(("\(fileCount) file\(fileCount == 1 ? "" : "s")", .tertiary))
         }
         return sessionRow(
             selected: appModel.selectedSliceID == entry.sliceID,
-            dotColor: DesignTokens.systemGreen,
+            dotColor: .success,
             pulsing: false,
             name: entry.name,
             meta: entry.stat,
-            metaColor: DesignTokens.systemGreen,
+            metaColor: .success,
             detail: detail
         )
     }
@@ -482,16 +486,16 @@ struct RailView: View {
             pulsing: isLive,
             name: "Planning agent",
             meta: entry.elapsed,
-            metaColor: DesignTokens.labelTertiary,
+            metaColor: .tertiary,
             detail: [(entry.displayState, tint)]
         )
     }
 
-    private func workshopTint(for role: WorkshopTintRole) -> Color {
+    private func workshopTint(for role: WorkshopTintRole) -> InkRole {
         switch role {
-        case .working: return DesignTokens.systemOrange
-        case .waiting: return DesignTokens.systemYellow
-        case .launching, .new: return DesignTokens.labelTertiary
+        case .working: return .warning
+        case .waiting: return .warning
+        case .launching, .new: return .tertiary
         }
     }
 
@@ -501,9 +505,9 @@ struct RailView: View {
         // running on it (blocked, or simply ready to push) sits still.
         let isLive = entry.tintRole == .working || entry.tintRole == .waiting
 
-        var detail: [(String, Color)] = [(entry.displayState, tint)]
+        var detail: [(String, InkRole)] = [(entry.displayState, tint)]
         if !entry.milestone.isEmpty {
-            detail.append((entry.milestone, DesignTokens.labelTertiary))
+            detail.append((entry.milestone, .tertiary))
         }
         return sessionRow(
             selected: appModel.selectedSliceID == entry.sliceID,
@@ -511,31 +515,31 @@ struct RailView: View {
             pulsing: isLive,
             name: entry.name,
             meta: entry.elapsed,
-            metaColor: DesignTokens.labelTertiary,
+            metaColor: .tertiary,
             detail: detail
         )
     }
 
     @ViewBuilder
-    private func dotView(color: Color, pulsing: Bool) -> some View {
+    private func dotView(color: InkRole, pulsing: Bool) -> some View {
         if pulsing {
             Circle()
-                .fill(color)
+                .fill(DesignTokens.ink(color, on: ground))
                 .frame(width: 9, height: 9)
                 .modifier(PulseModifier())
         } else {
             Circle()
-                .fill(color)
+                .fill(DesignTokens.ink(color, on: ground))
                 .frame(width: 9, height: 9)
         }
     }
 
-    private func tintColor(for role: ActiveTintRole) -> Color {
+    private func tintColor(for role: ActiveTintRole) -> InkRole {
         switch role {
-        case .working: return DesignTokens.systemOrange
-        case .waiting: return DesignTokens.systemYellow
-        case .blocked: return DesignTokens.labelTertiary
-        case .readyToPush: return DesignTokens.systemGreen
+        case .working: return .warning
+        case .waiting: return .warning
+        case .blocked: return .tertiary
+        case .readyToPush: return .success
         }
     }
 
@@ -597,11 +601,10 @@ struct RailView: View {
             // Drawn rather than an SF Symbol, since the system set has no
             // open-folder glyph.
             FolderGlyphShape(open: expanded)
-                .fill(
-                    inDone
-                        ? DesignTokens.labelTertiary
-                        : folder.isCurrent ? DesignTokens.accent : DesignTokens.labelSecondary
-                )
+                .fill(DesignTokens.ink(
+                    inDone ? .tertiary : folder.isCurrent ? .accent : .secondary,
+                    on: ground
+                ))
                 .frame(width: RailSlot.slot, height: 10.5)
 
             Text(folder.title)
@@ -635,20 +638,20 @@ struct RailView: View {
         // Selection no longer overrides the title to accentText — a selected
         // row keeps full-strength label the way an unblocked one always did,
         // rather than the solid fill's own recolor.
-        let contentColor = selected
-            ? DesignTokens.label
-            : (slice.isBlocked ? DesignTokens.labelTertiary : DesignTokens.label)
+        let contentColor: InkRole = selected
+            ? .primary
+            : (slice.isBlocked ? .tertiary : .primary)
 
         return HStack(spacing: RailSlot.spacing) {
             Image(systemName: slice.glyph.rawValue)
                 .font(.system(size: 12, weight: .medium))
                 .frame(width: RailSlot.slot)
-                .foregroundStyle(glyphColor(for: slice.glyph))
+                .ink(glyphColor(for: slice.glyph))
 
             Text(slice.name)
                 .font(.system(size: Typo.body, weight: .regular))
                 .lineLimit(1)
-                .foregroundStyle(contentColor)
+                .ink(contentColor)
 
             Spacer()
         }
@@ -660,7 +663,7 @@ struct RailView: View {
         // being flattened to accentText by a solid fill.
         .background {
             RoundedRectangle(cornerRadius: 6)
-                .fill(selected ? DesignTokens.selectionWash(on: .window) : Color.clear)
+                .fill(selected ? DesignTokens.wash(.selection, tone: .accent, on: ground) : Color.clear)
                 .padding(.horizontal, 6)
         }
         .insetHoverWash()
@@ -669,11 +672,11 @@ struct RailView: View {
     /// The mock's status tints for a slice glyph — in progress orange, done
     /// green, and the rest (todo, blocked) muted; these now show through a
     /// selected row rather than being recolored by it.
-    private func glyphColor(for glyph: SliceGlyph) -> Color {
+    private func glyphColor(for glyph: SliceGlyph) -> InkRole {
         switch glyph {
-        case .todo, .blocked: return DesignTokens.labelTertiary
-        case .inProgress: return DesignTokens.systemOrange
-        case .done: return DesignTokens.systemGreen
+        case .todo, .blocked: return .tertiary
+        case .inProgress: return .warning
+        case .done: return .success
         }
     }
 

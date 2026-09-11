@@ -111,10 +111,10 @@ struct WorkshopPaneView: View {
                 .padding(6)
                 .frame(minHeight: 180, maxHeight: .infinity)
                 .surface(.window, radius: 6)
-                .overlay(
+                .overlay {
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(DesignTokens.separator(on: .window), lineWidth: 1)
-                )
+                        .stroke(DesignTokens.rule(.separator, on: .window), lineWidth: 1)
+                }
 
             if let error = appModel.workshopLaunchError {
                 Text(error)

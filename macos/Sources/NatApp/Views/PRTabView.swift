@@ -240,11 +240,7 @@ struct PRTabView: View {
                     )
                 }
                 .padding(12)
-                .surface(.card, radius: 10)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(DesignTokens.controlBorder(on: .card), lineWidth: 0.5)
-                )
+                .card(radius: 10)
             }
         }
     }
@@ -477,7 +473,7 @@ struct PRConversationEntryView: View {
                 .font(.system(size: 9, weight: .semibold))
                 .ink(.accent)
                 .frame(width: Self.avatarSize, height: Self.avatarSize)
-                .background(DesignTokens.avatarWash(on: .window))
+                .wash(.avatar)
                 .clipShape(Circle())
                 .padding(.top, 2)
 
@@ -588,11 +584,7 @@ struct PRComposerView: View {
                 .padding(.top, 5)
                 .padding(.bottom, 7)
             }
-            .surface(.field, radius: 8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(DesignTokens.controlBorder(on: .field), lineWidth: 0.5)
-            )
+            .field(radius: 8)
 
             if let error {
                 Text(error)

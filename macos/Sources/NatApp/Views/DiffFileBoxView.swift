@@ -94,11 +94,7 @@ struct DiffFileBoxView: View {
                 }
             }
         }
-        .surface(.card, radius: 10)
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(DesignTokens.controlBorder(on: .card), lineWidth: 0.5)
-        )
+        .card(radius: 10)
     }
 
     private var header: some View {
@@ -176,6 +172,7 @@ struct DiffFileBoxView: View {
 /// last row of that range, and only while nothing is already being written
 /// about it.
 struct DiffRowView: View {
+    @Environment(\.ground) private var ground
     let row: DiffRow
     let numberWidth: Int
     let isSelected: Bool
@@ -298,7 +295,7 @@ struct DiffRowView: View {
             gutterCell(gutterFill)
         }
         .background(rowFill)
-        .background(isSelected ? DesignTokens.selectionWash(on: .card) : Color.clear)
+        .background(isSelected ? DesignTokens.wash(.selection, tone: .accent, on: ground) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture {
             onSelect(NSEvent.modifierFlags.contains(.shift))
@@ -311,7 +308,7 @@ struct DiffRowView: View {
     /// blank placeholder for an empty line) renders exactly as it always did:
     /// one plain colour, the dimmer label for a described file's message.
     private var rowText: AttributedString {
-        let defaultColor: Color = row.kind == .described ? DesignTokens.labelSecondary : DesignTokens.label
+        let defaultColor = DesignTokens.ink(row.kind == .described ? .secondary : .primary, on: ground)
         guard !row.text.isEmpty else {
             var s = AttributedString(" ")
             s.foregroundColor = defaultColor
@@ -330,8 +327,8 @@ struct DiffRowView: View {
 
     private var glyphColor: Color {
         switch row.kind {
-        case .added: return DesignTokens.systemGreen
-        case .removed: return DesignTokens.systemRed
+        case .added: return DesignTokens.ink(.success, on: ground)
+        case .removed: return DesignTokens.ink(.danger, on: ground)
         default: return .clear
         }
     }
@@ -371,7 +368,7 @@ struct PendingCommentCardView: View {
                     .font(.system(size: Typo.caption, weight: .semibold))
                     .ink(.accent)
                     .frame(width: 20, height: 20)
-                    .background(DesignTokens.avatarWash(on: .card))
+                    .wash(.avatar)
                     .clipShape(Circle())
 
                 Text(authorName)
@@ -416,13 +413,8 @@ struct PendingCommentCardView: View {
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .surface(.card)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(DesignTokens.controlBorder(on: .card), lineWidth: 0.5)
-        )
+        .card(radius: 8)
     }
 }
 
@@ -449,11 +441,7 @@ struct CommentEditorView: View {
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 60, idealHeight: 60, maxHeight: 140)
                 .padding(6)
-                .surface(.field, radius: 8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(DesignTokens.controlBorder(on: .field), lineWidth: 0.5)
-                )
+                .field(radius: 8)
 
             HStack(spacing: 8) {
                 Button("Cancel", action: onCancel)

@@ -24,7 +24,7 @@ struct PRSidebarView: View {
             .padding(.vertical, 18)
         }
         .frame(width: sidebarWidth)
-        .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator(on: .window))
+        .rule(.separator, edges: [.leading], width: 0.5)
         .overlay(alignment: .leading) {
             PaneResizeHandle(width: $sidebarWidth, minWidth: 170, maxWidth: 400, edge: .leading)
                 .offset(x: -4.5)

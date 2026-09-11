@@ -10,6 +10,37 @@ import SwiftUI
 /// different submit buttons happened before `PrimaryButtonStyle`, and the
 /// same cure: the shape is stated once and the ground it declares travels
 /// with it.
+extension View {
+    /// A raised surface with a border: ground, radius and edge in one call.
+    /// `Card` is this modifier with a container around it, for the call sites
+    /// where a wrapper reads better than a suffix.
+    public func card(radius: CGFloat = 10, border: RuleWeight = .border) -> some View {
+        surface(.card, radius: radius)
+            .overlay {
+                RoundedRectangle(cornerRadius: radius)
+                    .stroke(DesignTokens.rule(border, on: .card), lineWidth: border == .border ? 0.5 : 1)
+            }
+    }
+
+    /// The well text is typed into.
+    public func field(radius: CGFloat = 8, border: RuleWeight = .border) -> some View {
+        surface(.field, radius: radius)
+            .overlay {
+                RoundedRectangle(cornerRadius: radius)
+                    .stroke(DesignTokens.rule(border, on: .field), lineWidth: border == .border ? 0.5 : 1)
+            }
+    }
+
+    /// A control's own face: a pill, a menu button.
+    public func control(radius: CGFloat = 6, border: RuleWeight = .border) -> some View {
+        surface(.control, radius: radius)
+            .overlay {
+                RoundedRectangle(cornerRadius: radius)
+                    .stroke(DesignTokens.rule(border, on: .control), lineWidth: border == .border ? 0.5 : 1)
+            }
+    }
+}
+
 public struct Card<Content: View>: View {
     var radius: CGFloat
     var border: Bool
@@ -22,14 +53,13 @@ public struct Card<Content: View>: View {
     }
 
     public var body: some View {
-        content()
-            .surface(.card, radius: radius)
-            .overlay {
-                if border {
-                    RoundedRectangle(cornerRadius: radius)
-                        .stroke(DesignTokens.controlBorder(on: .card), lineWidth: 0.5)
-                }
+        Group {
+            if border {
+                content().card(radius: radius)
+            } else {
+                content().surface(.card, radius: radius)
             }
+        }
     }
 }
 
@@ -59,11 +89,6 @@ public struct Field<Content: View>: View {
     }
 
     public var body: some View {
-        content()
-            .surface(.field, radius: radius)
-            .overlay {
-                RoundedRectangle(cornerRadius: radius)
-                    .stroke(DesignTokens.controlBorder(on: .field), lineWidth: 0.5)
-            }
+        content().field(radius: radius)
     }
 }

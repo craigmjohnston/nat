@@ -188,6 +188,27 @@ extension View {
 /// shouting it too was one gradient too many — the agent-launch control had
 /// already gone flat on its own, and this is the rest of the app following
 /// it rather than the two disagreeing.
+extension View {
+    /// A rule along some edges, at the weight the separation calls for and in
+    /// the colour of whatever ground it has landed on — `rectBorder` with the
+    /// colour decided rather than passed, which is the last place a view had
+    /// to name one to draw a line.
+    func rule(_ weight: RuleWeight = .separator, edges: RectEdgeSet, width: CGFloat = 0.5) -> some View {
+        modifier(RuleBorderModifier(weight: weight, edges: edges, width: width))
+    }
+}
+
+private struct RuleBorderModifier: ViewModifier {
+    let weight: RuleWeight
+    let edges: RectEdgeSet
+    let width: CGFloat
+    @Environment(\.ground) private var ground
+
+    func body(content: Content) -> some View {
+        content.rectBorder(width: width, edges: edges, color: DesignTokens.rule(weight, on: ground))
+    }
+}
+
 struct PrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) var isEnabled
 
@@ -218,11 +239,7 @@ struct SecondaryButtonStyle: ButtonStyle {
             .ink(.primary)
             .padding(.horizontal, ButtonMetrics.horizontalPadding)
             .frame(height: ButtonMetrics.height)
-            .surface(.control, radius: ButtonMetrics.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius)
-                    .stroke(DesignTokens.hairline(on: .control), lineWidth: 1)
-            )
+            .control(radius: ButtonMetrics.cornerRadius, border: .hairline)
             .opacity(buttonOpacity(isPressed: configuration.isPressed, isEnabled: isEnabled))
             .contentShape(RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius))
     }

@@ -189,7 +189,7 @@ struct DiffTabView: View {
                         }
                     )
                     .frame(width: sidebarWidth)
-                    .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator(on: .window))
+                    .rule(.separator, edges: [.leading], width: 0.5)
                     .overlay(alignment: .leading) {
                         PaneResizeHandle(width: $sidebarWidth, minWidth: 180, maxWidth: 420, edge: .leading)
                             .offset(x: -4.5)

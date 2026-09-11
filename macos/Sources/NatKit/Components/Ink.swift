@@ -45,3 +45,22 @@ struct InkModifier: ViewModifier {
         content.foregroundStyle(DesignTokens.ink(role, on: ground))
     }
 }
+
+extension View {
+    /// Lay a wash under something: a selected row, an avatar's disc, a diff
+    /// row's fill. The tone says which hue and the role says how hard it is
+    /// pressed; the ground comes from whatever declared it.
+    public func wash(_ role: WashRole, tone: Tone = .accent) -> some View {
+        modifier(WashModifier(role: role, tone: tone))
+    }
+}
+
+struct WashModifier: ViewModifier {
+    let role: WashRole
+    let tone: Tone
+    @Environment(\.ground) private var ground
+
+    func body(content: Content) -> some View {
+        content.background(DesignTokens.wash(role, tone: tone.chipTint, on: ground))
+    }
+}

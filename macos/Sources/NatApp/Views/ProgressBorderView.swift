@@ -39,7 +39,7 @@ struct ProgressBorderView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 6)
         .surface(.window)
-        .rectBorder(width: 0.5, edges: [.top], color: DesignTokens.separator(on: .window))
+        .rule(.separator, edges: [.top], width: 0.5)
     }
 
     private func segmentView(for segment: ProgressSegment) -> some View {

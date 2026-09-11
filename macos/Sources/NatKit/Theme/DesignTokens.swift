@@ -286,6 +286,11 @@ public enum DesignTokens {
         derived { $0.ink(of: $0.systemPink, on: ground.surface(in: $0)) }
     }
 
+    /// A hue washed into a ground at the weight its role calls for.
+    public static func wash(_ role: WashRole, tone: ChipTint, on ground: Ground) -> Color {
+        derived { $0.wash(role, of: tone.tint(in: $0), on: ground) }
+    }
+
     /// The capsule behind a chip's word.
     public static func chipWash(_ tint: ChipTint, on ground: Ground) -> Color {
         derived { $0.wash(.chip, of: tint.tint(in: $0), on: ground) }

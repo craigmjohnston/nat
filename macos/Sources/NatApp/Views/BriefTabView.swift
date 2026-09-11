@@ -152,11 +152,7 @@ struct BriefTabView: View {
                             }
                         }
                         .padding(20)
-                        .surface(.card, radius: 10)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(DesignTokens.hairline(on: .card), lineWidth: 1)
-                        )
+                        .card(radius: 10, border: .hairline)
 
                         Spacer()
                     }
@@ -324,11 +320,7 @@ struct BriefTabView: View {
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 160, maxHeight: 320)
                 .padding(6)
-                .surface(.field, radius: 8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(DesignTokens.controlBorder(on: .field), lineWidth: 0.5)
-                )
+                .field(radius: 8)
                 .disabled(isSavingBrief)
 
             if let briefSaveError {
@@ -533,7 +525,7 @@ struct BriefTabView: View {
             .padding(.vertical, 18)
         }
         .frame(width: sidebarWidth)
-        .rectBorder(width: 0.5, edges: [.leading], color: DesignTokens.separator(on: .window))
+        .rule(.separator, edges: [.leading], width: 0.5)
         .overlay(alignment: .leading) {
             PaneResizeHandle(width: $sidebarWidth, minWidth: 170, maxWidth: 400, edge: .leading)
                 .offset(x: -4.5)
@@ -583,11 +575,7 @@ struct BriefTabView: View {
                     .ink(.primary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
-                    .surface(.field, radius: 4)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(DesignTokens.hairline(on: .field), lineWidth: 1)
-                    )
+                    .field(radius: 4, border: .hairline)
                     .lineLimit(1)
                     .truncationMode(.middle)
             } else {

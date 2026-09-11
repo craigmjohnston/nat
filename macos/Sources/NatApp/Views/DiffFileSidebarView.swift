@@ -83,11 +83,7 @@ struct DiffFileSidebarView: View {
             }
             .padding(.horizontal, 8)
             .frame(height: 22)
-            .surface(.control, radius: 6)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(DesignTokens.controlBorder(on: .control), lineWidth: 0.5)
-            )
+            .control(radius: 6)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)

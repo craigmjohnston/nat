@@ -2,6 +2,7 @@ import SwiftUI
 import NatKit
 
 struct PaneView: View {
+    @Environment(\.ground) private var ground
     @Bindable var appModel: AppModel
     @State private var currentTab: WorkflowTab = .brief
 
@@ -203,7 +204,7 @@ struct PaneView: View {
         .padding(.vertical, 4)
         .background(
             showsCurrentWash
-                ? RoundedRectangle(cornerRadius: 6).fill(DesignTokens.selectionWash(on: .band))
+                ? RoundedRectangle(cornerRadius: 6).fill(DesignTokens.wash(.selection, tone: .accent, on: ground))
                 : nil
         )
         .hoverWash(cornerRadius: 6, enabled: isReachable)
