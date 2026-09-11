@@ -85,6 +85,38 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   off a project page outside this package — `nat wishlist`, `wishlist-clear`
   and the workshop launch — because it is a section with editing rules of its
   own rather than prose, and pulling it in wants a type of its own here.
+  `Local` is the second implementation and the first that is not Notion: a
+  plan kept in a SQLite database of nat's own, one file per project under nat's
+  data directory (`LocalDir`/`LocalPath` — `~/Library/Application Support` on
+  macOS, `$XDG_DATA_HOME` or `~/.local/share` elsewhere, the project's ID
+  slugged), opened through `github.com/ncruces/go-sqlite3` — SQLite's own C as
+  WebAssembly, so `go install ...@latest` keeps working on a bare machine and
+  the release pipeline goes on cross-building per arch — in WAL with a busy
+  timeout, which is what lets a board and several agents' `nat` commands read
+  and write the one file at once. A file per project keeps each project's blast
+  radius its own. This is the read half: the plan, one slice, the prose on a
+  page, and the pull request description a hand-back filed, which is the last
+  `## PR description` section of the body — `notion.PRDescriptionOf`'s rule
+  exactly, applied to markdown rather than to blocks, since here the markdown
+  is what is stored. Every column maps one-to-one onto `domain.Slice` or
+  `domain.Milestone`, so the structs that come out are the structs the Notion
+  mapper produces and every rule above the store is untouched; the order is a
+  `position` column, sparsely allocated and tied on ID, rather than a view's
+  row order, so there is no second round trip to read it. A shape is every
+  column there is, since the file is nat's own and no project in it is old
+  enough to be missing one, and ownership is the assignee's name, which is both
+  what a reader sees and what `Holds` compares against — there is no directory
+  of users behind a plan kept in a file. `OpenLocal` creates the directory, the
+  file and the schema where there is none, which is what makes a project
+  nothing has been written to an empty plan rather than a failure; a file that
+  is not a plan, a row that will not scan and a read that fails part way are
+  each reported with the path and what SQLite made of it, since the path is the
+  whole of what there is to go and look at. The schema is stamped in SQLite's
+  own `user_version`, so a reopen is one read and no writes and a plan written
+  by a later build is refused rather than half understood. The writes — and the
+  full-text index the design settles on — are the next slices'; until then they
+  refuse rather than pretend, so a `Local` can be handed anywhere a `Store` is
+  taken and what is not there yet says so.
 - `internal/domain/` — Project/Milestone/Slice models, progress math
 - `internal/logging/` — the log file: `~/Library/Logs/notion-agent-tracker/` on
   macOS, the XDG state dir elsewhere, size-capped with one previous file kept.

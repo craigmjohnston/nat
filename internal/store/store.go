@@ -6,10 +6,11 @@
 // and come back, and no property type, page ID shape or request body crosses
 // the line.
 //
-// [Notion] is the first implementation, and for now the only one. It is also
-// the one place in the tree a Notion client is made ([NewClient]), which is
-// what makes the seam real rather than declared: a second backend plugs in
-// here and nothing above it has to learn about it.
+// [Notion] is the first implementation and [Local] the second — a plan kept in
+// a SQLite database of nat's own rather than in a workspace. This is also the
+// one place in the tree a Notion client is made ([NewClient]), which is what
+// makes the seam real rather than declared: a backend plugs in here and
+// nothing above it has to learn about it.
 package store
 
 import (
