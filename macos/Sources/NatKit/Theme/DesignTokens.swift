@@ -38,20 +38,20 @@ public enum DesignTokens {
     /// A dynamic `NSColor` over one palette field: the value AppKit resolves
     /// per appearance, and what SwiftUI draws when the `Color` wrapping it
     /// is used.
-    static func dynamicNSColor(
-        _ key: KeyPath<Palette, String>,
+    static func dynamicNSColor<C: PaletteColor>(
+        _ key: KeyPath<Palette, C>,
         opacity: KeyPath<Palette, Double>? = nil
     ) -> NSColor {
         NSColor(name: nil) { appearance in
             let palette = DesignTokens.palette(for: appearance)
-            let color = NSColor(hex: palette[keyPath: key])
+            let color = NSColor(hex: palette[keyPath: key].hex)
             guard let opacity else { return color }
             return color.withAlphaComponent(palette[keyPath: opacity])
         }
     }
 
-    private static func token(
-        _ key: KeyPath<Palette, String>,
+    private static func token<C: PaletteColor>(
+        _ key: KeyPath<Palette, C>,
         opacity: KeyPath<Palette, Double>? = nil
     ) -> Color {
         Color(nsColor: dynamicNSColor(key, opacity: opacity))

@@ -41,30 +41,30 @@ final class PaletteTests: XCTestCase {
     /// Which swatch plays which role — the whole of what this app decided,
     /// and the same decision in both themes, so the two are one design in
     /// two palettes rather than two designs.
-    private let roles: [(String, KeyPath<Palette, String>, String)] = [
-        ("windowBg", \.windowBg, "base"),
-        ("controlBg", \.controlBg, "surface0"),
-        ("controlFace", \.controlFace, "surface1"),
-        ("hoverWash", \.hoverWash, "surface0"),
-        ("fieldBg", \.fieldBg, "mantle"),
-        ("terminalBg", \.terminalBg, "mantle"),
-        ("terminalFg", \.terminalFg, "text"),
-        ("terminalCursor", \.terminalCursor, "mauve"),
-        ("terminalSelection", \.terminalSelection, "surface1"),
-        ("label", \.label, "text"),
-        ("labelSecondary", \.labelSecondary, "subtext0"),
-        ("labelTertiary", \.labelTertiary, "overlay2"),
-        ("labelQuaternary", \.labelQuaternary, "overlay0"),
-        ("accent", \.accent, "mauve"),
-        ("accentText", \.accentText, "crust"),
-        ("systemOrange", \.systemOrange, "peach"),
-        ("systemYellow", \.systemYellow, "yellow"),
-        ("systemGreen", \.systemGreen, "green"),
-        ("systemRed", \.systemRed, "red"),
-        ("systemBlue", \.systemBlue, "blue"),
-        ("systemPink", \.systemPink, "pink"),
-        ("systemTeal", \.systemTeal, "teal"),
-        ("systemGray", \.systemGray, "overlay2"),
+    private let roles: [(String, (Palette) -> String, String)] = [
+        ("windowBg", { $0.windowBg.hex }, "base"),
+        ("controlBg", { $0.controlBg.hex }, "surface0"),
+        ("controlFace", { $0.controlFace.hex }, "surface1"),
+        ("hoverWash", { $0.hoverWash.hex }, "surface0"),
+        ("fieldBg", { $0.fieldBg.hex }, "mantle"),
+        ("terminalBg", { $0.terminalBg.hex }, "mantle"),
+        ("terminalFg", { $0.terminalFg.hex }, "text"),
+        ("terminalCursor", { $0.terminalCursor.hex }, "mauve"),
+        ("terminalSelection", { $0.terminalSelection.hex }, "surface1"),
+        ("label", { $0.label.hex }, "text"),
+        ("labelSecondary", { $0.labelSecondary.hex }, "subtext0"),
+        ("labelTertiary", { $0.labelTertiary.hex }, "overlay2"),
+        ("labelQuaternary", { $0.labelQuaternary.hex }, "overlay0"),
+        ("accent", { $0.accent.hex }, "mauve"),
+        ("accentText", { $0.accentText.hex }, "crust"),
+        ("systemOrange", { $0.systemOrange.hex }, "peach"),
+        ("systemYellow", { $0.systemYellow.hex }, "yellow"),
+        ("systemGreen", { $0.systemGreen.hex }, "green"),
+        ("systemRed", { $0.systemRed.hex }, "red"),
+        ("systemBlue", { $0.systemBlue.hex }, "blue"),
+        ("systemPink", { $0.systemPink.hex }, "pink"),
+        ("systemTeal", { $0.systemTeal.hex }, "teal"),
+        ("systemGray", { $0.systemGray.hex }, "overlay2"),
     ]
 
     // MARK: - Fidelity
@@ -76,9 +76,9 @@ final class PaletteTests: XCTestCase {
     func testEveryRoleIsThePublishedSwatch() {
         for (name, palette) in palettes {
             let swatches = name == "mocha" ? mochaSwatches : latteSwatches
-            for (role, key, swatch) in roles {
+            for (role, value, swatch) in roles {
                 XCTAssertEqual(
-                    palette[keyPath: key], swatches[swatch],
+                    value(palette), swatches[swatch],
                     "\(name): \(role) should be Catppuccin's \(swatch), unedited"
                 )
             }
@@ -87,15 +87,22 @@ final class PaletteTests: XCTestCase {
 
     /// The one value neither palette publishes: the level between
     /// `surface0` and `surface1` that a band inside a card needs. It is
-    /// interpolated rather than invented, which is what "between" means
-    /// channel by channel.
+    /// *derived* rather than typed — an expression over two published
+    /// swatches, which is what lets a third theme compute its own without
+    /// anyone inventing a hex for it — and this holds it to exactly that
+    /// expression as well as to lying between its two parents.
     func testRowAltIsInterpolatedBetweenTheTwoSurfaces() {
         for (name, palette) in palettes {
             let swatches = name == "mocha" ? mochaSwatches : latteSwatches
-            let row = try? XCTUnwrap(rgbComponents(hex: palette.rowAltBg))
+            let row = try? XCTUnwrap(rgbComponents(hex: palette.rowAltBg.hex))
             let low = try? XCTUnwrap(rgbComponents(hex: swatches["surface0"] ?? ""))
             let high = try? XCTUnwrap(rgbComponents(hex: swatches["surface1"] ?? ""))
             guard let row, let low, let high else { return XCTFail("\(name): unreadable swatch") }
+            XCTAssertEqual(
+                palette.rowAltBg.hex,
+                mix(swatches["surface0"] ?? "", swatches["surface1"] ?? "", 0.5),
+                "\(name): rowAltBg should be derived, not typed"
+            )
             for (channel, values) in [
                 ("red", (row.red, low.red, high.red)),
                 ("green", (row.green, low.green, high.green)),
@@ -113,8 +120,8 @@ final class PaletteTests: XCTestCase {
     func testSurfacesAreDistinct() {
         for (name, palette) in palettes {
             let surfaces = [
-                palette.fieldBg, palette.windowBg, palette.controlBg,
-                palette.rowAltBg, palette.controlFace,
+                palette.fieldBg.hex, palette.windowBg.hex, palette.controlBg.hex,
+                palette.rowAltBg.hex, palette.controlFace.hex,
             ]
             XCTAssertEqual(Set(surfaces).count, surfaces.count, "\(name): every surface should be its own level")
         }
@@ -127,10 +134,10 @@ final class PaletteTests: XCTestCase {
     func testLabelTiersRecede() {
         for (name, palette) in palettes {
             let tiers = [
-                palette.label, palette.labelSecondary,
-                palette.labelTertiary, palette.labelQuaternary,
+                palette.label.hex, palette.labelSecondary.hex,
+                palette.labelTertiary.hex, palette.labelQuaternary.hex,
             ].map(luminance)
-            let ground = luminance(palette.windowBg)
+            let ground = luminance(palette.windowBg.hex)
             for (above, below) in zip(tiers, tiers.dropFirst()) {
                 XCTAssertGreaterThan(
                     abs(above - ground), abs(below - ground),
@@ -149,14 +156,14 @@ final class PaletteTests: XCTestCase {
     /// laid on, or a hover would be invisible.
     func testHoverIsASurfaceTheLabelStaysReadableOn() {
         for (name, palette) in palettes {
-            let label = luminance(palette.label)
+            let label = luminance(palette.label.hex)
             XCTAssertGreaterThan(
-                abs(label - luminance(palette.hoverWash)),
-                abs(label - luminance(palette.labelQuaternary)),
+                abs(label - luminance(palette.hoverWash.hex)),
+                abs(label - luminance(palette.labelQuaternary.hex)),
                 "\(name): a label should read further off the hover fill than off the ink it replaced"
             )
             XCTAssertNotEqual(
-                palette.hoverWash, palette.windowBg,
+                palette.hoverWash.hex, palette.windowBg.hex,
                 "\(name): a hover fill that matched the ground would not be a hover"
             )
         }
@@ -168,11 +175,11 @@ final class PaletteTests: XCTestCase {
     /// rather than a step towards the label, which is what the old fill was.
     func testHoverFollowsItsThemesOwnDirection() {
         XCTAssertGreaterThan(
-            luminance(Palette.mocha.hoverWash), luminance(Palette.mocha.windowBg),
+            luminance(Palette.mocha.hoverWash.hex), luminance(Palette.mocha.windowBg.hex),
             "mocha: a hover should rise off the ground"
         )
         XCTAssertLessThan(
-            luminance(Palette.latte.hoverWash), luminance(Palette.latte.windowBg),
+            luminance(Palette.latte.hoverWash.hex), luminance(Palette.latte.windowBg.hex),
             "latte: a hover should deepen from the ground"
         )
     }
@@ -215,10 +222,10 @@ final class PaletteTests: XCTestCase {
     /// second product embedded in it.
     func testTerminalTakesTheAppsOwnColors() {
         for (name, palette) in palettes {
-            XCTAssertEqual(palette.terminalBg, palette.fieldBg, "\(name): terminal surface")
-            XCTAssertEqual(palette.terminalFg, palette.label, "\(name): terminal foreground")
-            XCTAssertEqual(palette.terminalCursor, palette.accent, "\(name): terminal caret")
-            XCTAssertEqual(palette.terminalSelection, palette.controlFace, "\(name): terminal selection")
+            XCTAssertEqual(palette.terminalBg.hex, palette.fieldBg.hex, "\(name): terminal surface")
+            XCTAssertEqual(palette.terminalFg.hex, palette.label.hex, "\(name): terminal foreground")
+            XCTAssertEqual(palette.terminalCursor.hex, palette.accent.hex, "\(name): terminal caret")
+            XCTAssertEqual(palette.terminalSelection.hex, palette.controlFace.hex, "\(name): terminal selection")
         }
     }
 

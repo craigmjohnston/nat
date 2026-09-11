@@ -56,14 +56,14 @@ final class DesignTokensTests: XCTestCase {
         let palette = Set(
             [Palette.mocha, Palette.latte].flatMap { palette in
                 palette.ansi + [
-                    palette.windowBg, palette.controlBg, palette.rowAltBg,
-                    palette.controlFace, palette.fieldBg, palette.label,
-                    palette.labelSecondary, palette.labelTertiary,
-                    palette.hoverWash, palette.labelQuaternary,
-                    palette.accent, palette.accentText,
-                    palette.systemOrange, palette.systemYellow, palette.systemGreen,
-                    palette.systemRed, palette.systemBlue, palette.systemPink,
-                    palette.systemTeal, palette.systemGray,
+                    palette.windowBg.hex, palette.controlBg.hex, palette.rowAltBg.hex,
+                    palette.controlFace.hex, palette.fieldBg.hex, palette.label.hex,
+                    palette.labelSecondary.hex, palette.labelTertiary.hex,
+                    palette.hoverWash.hex, palette.labelQuaternary.hex,
+                    palette.accent.hex, palette.accentText.hex,
+                    palette.systemOrange.hex, palette.systemYellow.hex, palette.systemGreen.hex,
+                    palette.systemRed.hex, palette.systemBlue.hex, palette.systemPink.hex,
+                    palette.systemTeal.hex, palette.systemGray.hex,
                 ]
             }
         )
@@ -79,7 +79,7 @@ final class DesignTokensTests: XCTestCase {
     /// written out channel by channel because the fallback for a parse
     /// cannot depend on a parse; this is what holds the two in step.
     func testHexFallbackIsTheAccent() {
-        let accent = try? XCTUnwrap(rgbComponents(hex: Palette.mocha.accent))
+        let accent = try? XCTUnwrap(rgbComponents(hex: Palette.mocha.accent.hex))
         XCTAssertEqual(accent?.red, hexFallback.red)
         XCTAssertEqual(accent?.green, hexFallback.green)
         XCTAssertEqual(accent?.blue, hexFallback.blue)
@@ -133,33 +133,32 @@ final class DesignTokensTests: XCTestCase {
     /// is drawn under calls for — which is the whole of how the theme
     /// switch restyles the app, and how `system` follows macOS.
     func testTokensResolvePerAppearance() {
-        let keys: [(String, KeyPath<Palette, String>)] = [
-            ("windowBg", \.windowBg),
-            ("controlBg", \.controlBg),
-            ("rowAltBg", \.rowAltBg),
-            ("controlFace", \.controlFace),
-            ("fieldBg", \.fieldBg),
-            ("hoverWash", \.hoverWash),
-            ("terminalBg", \.terminalBg),
-            ("label", \.label),
-            ("labelSecondary", \.labelSecondary),
-            ("labelTertiary", \.labelTertiary),
-            ("labelQuaternary", \.labelQuaternary),
-            ("accent", \.accent),
-            ("accentText", \.accentText),
-            ("systemOrange", \.systemOrange),
-            ("systemYellow", \.systemYellow),
-            ("systemGreen", \.systemGreen),
-            ("systemRed", \.systemRed),
-            ("systemBlue", \.systemBlue),
-            ("systemPink", \.systemPink),
-            ("systemTeal", \.systemTeal),
-            ("systemGray", \.systemGray),
+        let keys: [(String, NSColor, (Palette) -> String)] = [
+            ("windowBg", DesignTokens.dynamicNSColor(\.windowBg), { $0.windowBg.hex }),
+            ("controlBg", DesignTokens.dynamicNSColor(\.controlBg), { $0.controlBg.hex }),
+            ("rowAltBg", DesignTokens.dynamicNSColor(\.rowAltBg), { $0.rowAltBg.hex }),
+            ("controlFace", DesignTokens.dynamicNSColor(\.controlFace), { $0.controlFace.hex }),
+            ("fieldBg", DesignTokens.dynamicNSColor(\.fieldBg), { $0.fieldBg.hex }),
+            ("hoverWash", DesignTokens.dynamicNSColor(\.hoverWash), { $0.hoverWash.hex }),
+            ("terminalBg", DesignTokens.dynamicNSColor(\.terminalBg), { $0.terminalBg.hex }),
+            ("label", DesignTokens.dynamicNSColor(\.label), { $0.label.hex }),
+            ("labelSecondary", DesignTokens.dynamicNSColor(\.labelSecondary), { $0.labelSecondary.hex }),
+            ("labelTertiary", DesignTokens.dynamicNSColor(\.labelTertiary), { $0.labelTertiary.hex }),
+            ("labelQuaternary", DesignTokens.dynamicNSColor(\.labelQuaternary), { $0.labelQuaternary.hex }),
+            ("accent", DesignTokens.dynamicNSColor(\.accent), { $0.accent.hex }),
+            ("accentText", DesignTokens.dynamicNSColor(\.accentText), { $0.accentText.hex }),
+            ("systemOrange", DesignTokens.dynamicNSColor(\.systemOrange), { $0.systemOrange.hex }),
+            ("systemYellow", DesignTokens.dynamicNSColor(\.systemYellow), { $0.systemYellow.hex }),
+            ("systemGreen", DesignTokens.dynamicNSColor(\.systemGreen), { $0.systemGreen.hex }),
+            ("systemRed", DesignTokens.dynamicNSColor(\.systemRed), { $0.systemRed.hex }),
+            ("systemBlue", DesignTokens.dynamicNSColor(\.systemBlue), { $0.systemBlue.hex }),
+            ("systemPink", DesignTokens.dynamicNSColor(\.systemPink), { $0.systemPink.hex }),
+            ("systemTeal", DesignTokens.dynamicNSColor(\.systemTeal), { $0.systemTeal.hex }),
+            ("systemGray", DesignTokens.dynamicNSColor(\.systemGray), { $0.systemGray.hex }),
         ]
-        for (name, key) in keys {
-            let token = DesignTokens.dynamicNSColor(key)
-            assertResolves(token, .darkAqua, to: Palette.mocha[keyPath: key], name: "\(name) (dark)")
-            assertResolves(token, .aqua, to: Palette.latte[keyPath: key], name: "\(name) (light)")
+        for (name, token, value) in keys {
+            assertResolves(token, .darkAqua, to: value(.mocha), name: "\(name) (dark)")
+            assertResolves(token, .aqua, to: value(.latte), name: "\(name) (light)")
         }
     }
 
@@ -167,34 +166,33 @@ final class DesignTokensTests: XCTestCase {
     /// per appearance: light ink at Mocha's alpha, dark ink at Latte's
     /// heavier one.
     func testOpacityTokensResolvePerAppearance() {
-        let keys: [(String, KeyPath<Palette, String>, KeyPath<Palette, Double>)] = [
-            ("headerBg", \.windowBg, \.headerOpacity),
-            ("hairline", \.label, \.hairlineOpacity),
-            ("separator", \.label, \.separatorOpacity),
-            ("controlBorder", \.label, \.controlBorderOpacity),
-            ("selectionWash", \.accent, \.selectionWashOpacity),
-            ("headerAccentVeil", \.accent, \.headerAccentOpacity),
-            ("bandBg", \.controlBg, \.bandOpacity),
-            ("skeletonHighlight", \.label, \.skeletonHighlightOpacity),
-            ("onAccentSeparator", \.accentText, \.onAccentSeparatorOpacity),
-            ("accentMuted", \.accent, \.mutedAccentOpacity),
-            ("avatarWash", \.accent, \.avatarWashOpacity),
-            ("accentWash", \.accent, \.tintWashOpacity),
-            ("systemRedWash", \.systemRed, \.tintWashOpacity),
-            ("systemGreenWash", \.systemGreen, \.tintWashOpacity),
-            ("systemYellowWash", \.systemYellow, \.tintWashOpacity),
-            ("systemOrangeWash", \.systemOrange, \.tintWashOpacity),
-            ("labelSecondaryWash", \.labelSecondary, \.tintWashOpacity),
-            ("diffAddedRowBg", \.systemGreen, \.diffRowWashOpacity),
-            ("diffRemovedRowBg", \.systemRed, \.diffRowWashOpacity),
-            ("diffAddedGutterBg", \.systemGreen, \.diffGutterWashOpacity),
-            ("diffRemovedGutterBg", \.systemRed, \.diffGutterWashOpacity),
-            ("diffCommentGutterBg", \.accent, \.commentWashOpacity),
+        let keys: [(String, NSColor, (Palette) -> String, KeyPath<Palette, Double>)] = [
+            ("headerBg", DesignTokens.dynamicNSColor(\.windowBg, opacity: \.headerOpacity), { $0.windowBg.hex }, \.headerOpacity),
+            ("hairline", DesignTokens.dynamicNSColor(\.label, opacity: \.hairlineOpacity), { $0.label.hex }, \.hairlineOpacity),
+            ("separator", DesignTokens.dynamicNSColor(\.label, opacity: \.separatorOpacity), { $0.label.hex }, \.separatorOpacity),
+            ("controlBorder", DesignTokens.dynamicNSColor(\.label, opacity: \.controlBorderOpacity), { $0.label.hex }, \.controlBorderOpacity),
+            ("selectionWash", DesignTokens.dynamicNSColor(\.accent, opacity: \.selectionWashOpacity), { $0.accent.hex }, \.selectionWashOpacity),
+            ("headerAccentVeil", DesignTokens.dynamicNSColor(\.accent, opacity: \.headerAccentOpacity), { $0.accent.hex }, \.headerAccentOpacity),
+            ("bandBg", DesignTokens.dynamicNSColor(\.controlBg, opacity: \.bandOpacity), { $0.controlBg.hex }, \.bandOpacity),
+            ("skeletonHighlight", DesignTokens.dynamicNSColor(\.label, opacity: \.skeletonHighlightOpacity), { $0.label.hex }, \.skeletonHighlightOpacity),
+            ("onAccentSeparator", DesignTokens.dynamicNSColor(\.accentText, opacity: \.onAccentSeparatorOpacity), { $0.accentText.hex }, \.onAccentSeparatorOpacity),
+            ("accentMuted", DesignTokens.dynamicNSColor(\.accent, opacity: \.mutedAccentOpacity), { $0.accent.hex }, \.mutedAccentOpacity),
+            ("avatarWash", DesignTokens.dynamicNSColor(\.accent, opacity: \.avatarWashOpacity), { $0.accent.hex }, \.avatarWashOpacity),
+            ("accentWash", DesignTokens.dynamicNSColor(\.accent, opacity: \.tintWashOpacity), { $0.accent.hex }, \.tintWashOpacity),
+            ("systemRedWash", DesignTokens.dynamicNSColor(\.systemRed, opacity: \.tintWashOpacity), { $0.systemRed.hex }, \.tintWashOpacity),
+            ("systemGreenWash", DesignTokens.dynamicNSColor(\.systemGreen, opacity: \.tintWashOpacity), { $0.systemGreen.hex }, \.tintWashOpacity),
+            ("systemYellowWash", DesignTokens.dynamicNSColor(\.systemYellow, opacity: \.tintWashOpacity), { $0.systemYellow.hex }, \.tintWashOpacity),
+            ("systemOrangeWash", DesignTokens.dynamicNSColor(\.systemOrange, opacity: \.tintWashOpacity), { $0.systemOrange.hex }, \.tintWashOpacity),
+            ("labelSecondaryWash", DesignTokens.dynamicNSColor(\.labelSecondary, opacity: \.tintWashOpacity), { $0.labelSecondary.hex }, \.tintWashOpacity),
+            ("diffAddedRowBg", DesignTokens.dynamicNSColor(\.systemGreen, opacity: \.diffRowWashOpacity), { $0.systemGreen.hex }, \.diffRowWashOpacity),
+            ("diffRemovedRowBg", DesignTokens.dynamicNSColor(\.systemRed, opacity: \.diffRowWashOpacity), { $0.systemRed.hex }, \.diffRowWashOpacity),
+            ("diffAddedGutterBg", DesignTokens.dynamicNSColor(\.systemGreen, opacity: \.diffGutterWashOpacity), { $0.systemGreen.hex }, \.diffGutterWashOpacity),
+            ("diffRemovedGutterBg", DesignTokens.dynamicNSColor(\.systemRed, opacity: \.diffGutterWashOpacity), { $0.systemRed.hex }, \.diffGutterWashOpacity),
+            ("diffCommentGutterBg", DesignTokens.dynamicNSColor(\.accent, opacity: \.commentWashOpacity), { $0.accent.hex }, \.commentWashOpacity),
         ]
-        for (name, key, opacity) in keys {
-            let token = DesignTokens.dynamicNSColor(key, opacity: opacity)
+        for (name, token, value, opacity) in keys {
             for (appearance, palette) in [(NSAppearance.Name.darkAqua, Palette.mocha), (.aqua, .latte)] {
-                assertResolves(token, appearance, to: palette[keyPath: key], name: "\(name) \(appearance.rawValue)")
+                assertResolves(token, appearance, to: value(palette), name: "\(name) \(appearance.rawValue)")
                 let resolved = resolve(token, appearance)
                 XCTAssertEqual(
                     Double(resolved?.alphaComponent ?? 0), palette[keyPath: opacity],
@@ -339,11 +337,11 @@ final class DesignTokensTests: XCTestCase {
     func testLabelClearsAAOnTheHoverFill() {
         for (name, palette) in [("mocha", Palette.mocha), ("latte", Palette.latte)] {
             XCTAssertGreaterThanOrEqual(
-                contrast(palette.label, palette.hoverWash), 4.5,
+                contrast(palette.label.hex, palette.hoverWash.hex), 4.5,
                 "\(name): a label on the hover fill should clear AA"
             )
             XCTAssertLessThan(
-                contrast(palette.label, palette.labelQuaternary), 4.5,
+                contrast(palette.label.hex, palette.labelQuaternary.hex), 4.5,
                 "\(name): the ink the hover fill replaced should be why it was replaced"
             )
         }
