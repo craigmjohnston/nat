@@ -367,6 +367,49 @@ public enum Typo {
     public static let code: CGFloat = 13
 }
 
+/// How the agent terminal sets its type.
+///
+/// It lives here beside the ramp rather than in the view that applies it
+/// because a terminal is the app writing code on screen, exactly as the
+/// diff pane is, and the two have to read as the same thing: the pane is
+/// part of the window rather than a second product embedded in it, which
+/// is the same argument `Palette`'s `terminalFg` is chosen on.
+///
+/// SwiftTerm is the one place these have to be said out loud. Left alone it
+/// picks its own defaults — the monospaced system font at
+/// `NSFont.systemFontSize`, and macOS font smoothing on — and a default is
+/// a value nobody chose, which is how the pane came to be drawn in type the
+/// rest of the app does not use.
+public enum TerminalType {
+    /// The terminal's font: the monospaced system font at the ramp's code
+    /// size, which is the font and the size the diff pane draws a line of
+    /// code in.
+    public static var font: NSFont {
+        NSFont.monospacedSystemFont(ofSize: Typo.code, weight: .regular)
+    }
+
+    /// Whether the terminal rasterises its glyphs with macOS font
+    /// smoothing. It does not, and that is the fix for the pane reading as
+    /// blurred.
+    ///
+    /// Smoothing is not antialiasing — antialiasing stays on, and is what
+    /// makes a curve a curve. What `CGContext.setShouldSmoothFonts` adds on
+    /// top is stem dilation: every stroke is fattened so that dark text on
+    /// a light page holds up. Measured against the same sentence in the
+    /// same font, it covers about a fifth more pixels with ink, and on a
+    /// dark ground that extra ink is a halo around each stroke rather than
+    /// a heavier letter — which is what reads as blur, at 1x and at 2x
+    /// alike, since the dilation is in points and scales with the display.
+    ///
+    /// Nothing else in the app draws with it: SwiftUI's own text and every
+    /// AppKit label in the window rasterise unsmoothed, so a smoothed
+    /// terminal was the one surface whose letters were a different weight
+    /// from the rest of the window's. It is what iTerm2 calls "thin strokes
+    /// on Retina displays" and what SwiftTerm's own `fontSmoothing`
+    /// documents itself against.
+    public static let smoothsFonts = false
+}
+
 /// The geometry every button in the app is drawn to. One place, because the
 /// point of a button grammar is that a primary submit is the same shape
 /// wherever it is pressed — the footer of the brief pane, the foot of a

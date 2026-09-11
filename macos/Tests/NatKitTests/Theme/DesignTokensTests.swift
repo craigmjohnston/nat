@@ -333,6 +333,30 @@ final class DesignTokensTests: XCTestCase {
         XCTAssertGreaterThan(Typo.subhead, Typo.caption)
     }
 
+    // MARK: - Terminal type
+
+    /// The pane is the app writing code on screen, so it writes it in the
+    /// font the diff pane writes code in — same family, same size. A
+    /// terminal a point off the ramp is the thing this exists to stop.
+    func testTerminalFontIsTheRampsCodeFace() {
+        let font = TerminalType.font
+        XCTAssertEqual(font.pointSize, Typo.code)
+        XCTAssertEqual(font, NSFont.monospacedSystemFont(ofSize: Typo.code, weight: .regular))
+    }
+
+    /// A monospaced face, because every column of a terminal is one cell
+    /// wide and a proportional one would not line up at all.
+    func testTerminalFontIsMonospaced() {
+        XCTAssertTrue(TerminalType.font.isFixedPitch)
+    }
+
+    /// The crispness fix, stated as the assertion it is: smoothing fattens
+    /// every stroke, which on the pane's dark ground reads as a halo rather
+    /// than as weight. Nothing else in the window draws with it.
+    func testTerminalDoesNotSmoothFonts() {
+        XCTAssertFalse(TerminalType.smoothsFonts)
+    }
+
     func testMotionStateChangeIsDefined() {
         XCTAssertNotNil(Motion.stateChange)
     }

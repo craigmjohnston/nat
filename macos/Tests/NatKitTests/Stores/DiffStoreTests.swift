@@ -24,9 +24,18 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
     var commitDiffs: [String: SliceDiff] = [:]
     var commitDiffError: Error?
 
-    /// How long a whole-branch read takes, so a test can look at the store
-    /// while one is actually in flight.
-    var diffDelayNanoseconds: UInt64 = 0
+    /// Run part-way through a whole-branch read, while that read is still
+    /// in flight.
+    ///
+    /// It is how a test looks at the store mid-read. The obvious way — make
+    /// the read take 50ms and look at the store 10ms in — is two sleeps
+    /// racing each other, and the whole margin is the 40ms between them: it
+    /// passes on an idle machine and fails on a CI runner that was busy for
+    /// a moment. A hook is the same observation with no clock in it at all:
+    /// by the time this runs, the store has set whatever a read in flight
+    /// sets and has not yet been handed its answer, and there is no
+    /// interval for anything to overrun.
+    var duringDiffRead: (@MainActor () -> Void)?
 
     /// What `sliceCommits` answers with.
     var commitsResult: Result<SliceCommitsDoc, Error> = .success(
@@ -73,8 +82,8 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
             guard let diff = commitDiffs[commit] else { throw DiffTestError() }
             return diff
         }
-        if diffDelayNanoseconds > 0 {
-            try? await Task.sleep(nanoseconds: diffDelayNanoseconds)
+        if let duringDiffRead {
+            await duringDiffRead()
         }
         switch response {
         case .success(let diff):
@@ -364,14 +373,15 @@ final class DiffStoreTests: XCTestCase {
         await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
         XCTAssertFalse(store.isRefreshing)
 
-        client.diffDelayNanoseconds = 50_000_000
-        let task = Task { await store.refresh() }
-        try? await Task.sleep(nanoseconds: 10_000_000)
-
-        XCTAssertTrue(store.isRefreshing)
-        XCTAssertNotNil(store.loadState.diff, "a refresh never blanks the diff it is replacing")
-        XCTAssertFalse(store.loadState.isLoading)
-        await task.value
+        let midRead = expectation(description: "the store is looked at while the read is in flight")
+        client.duringDiffRead = { @MainActor in
+            XCTAssertTrue(store.isRefreshing)
+            XCTAssertNotNil(store.loadState.diff, "a refresh never blanks the diff it is replacing")
+            XCTAssertFalse(store.loadState.isLoading)
+            midRead.fulfill()
+        }
+        await store.refresh()
+        await fulfillment(of: [midRead], timeout: 1)
 
         XCTAssertFalse(store.isRefreshing)
     }
@@ -381,15 +391,16 @@ final class DiffStoreTests: XCTestCase {
     @MainActor
     func testAFirstReadIsLoadingRatherThanRefreshing() async {
         let client = MockDiffClient(response: .success(makeDiff()))
-        client.diffDelayNanoseconds = 50_000_000
         let store = DiffStore(client: client)
 
-        let task = Task { await store.fetch(projectID: "proj-1", sliceRef: "slice-1") }
-        try? await Task.sleep(nanoseconds: 10_000_000)
-
-        XCTAssertTrue(store.loadState.isLoading)
-        XCTAssertFalse(store.isRefreshing)
-        await task.value
+        let midRead = expectation(description: "the store is looked at while the read is in flight")
+        client.duringDiffRead = { @MainActor in
+            XCTAssertTrue(store.loadState.isLoading)
+            XCTAssertFalse(store.isRefreshing)
+            midRead.fulfill()
+        }
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        await fulfillment(of: [midRead], timeout: 1)
     }
 
     @MainActor
