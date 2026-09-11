@@ -32,14 +32,15 @@ public struct Palette: Equatable, Sendable {
     /// The well text is typed into.
     public let fieldBg: String
     /// The fill under the pointer: a rail row, a project tab, a stepper
-    /// stage, a ghost button in the header. Its own role rather than a
-    /// surface borrowed from the ladder, because what a hover has to do is
+    /// stage, a ghost button in the header. `surface0` in both themes —
+    /// the swatch Catppuccin's own ports hover with — and a role of its own
+    /// rather than `controlBg` borrowed, because what a hover has to do is
     /// read as one step off whatever it is drawn over while the label on it
-    /// stays a label — which is a rule about text on a surface, and so a
-    /// surface it has to be. It used to be `labelQuaternary`, a colour
-    /// documented as ink and never as ground: under Mocha that put `text`
-    /// on `overlay0`, light on light, and the words went to mush exactly
-    /// where the pointer was.
+    /// stays a label, which is a rule about text on a surface and not about
+    /// card faces. It used to be `labelQuaternary`, a colour documented as
+    /// ink and never as ground: under Mocha that put `text` on `overlay0`,
+    /// light on light, and the words went to mush exactly where the pointer
+    /// was.
     public let hoverWash: String
 
     // MARK: - Terminal
@@ -280,13 +281,14 @@ public struct Palette: Equatable, Sendable {
         rowAltBg: "3b3d4f",
         controlFace: "45475a",       // surface1
         fieldBg: "181825",           // mantle
-        // The ladder's own between-step, `rowAltBg`'s level: the furthest
-        // off `base` a hover can go while `text` (#cdd6f4) still clears
-        // 7:1 on it — `surface1` is a wider step and takes the label under
-        // it. Two levels below the `overlay0` a hover used to fill with,
-        // which is why every hover in the app now darkens rather than
-        // lightening.
-        hoverWash: "3b3d4f",         // between surface0 and surface1
+        // Mocha's `surface0`, the step Catppuccin's own ports hover with:
+        // published, one clear level off `base`, and `text` (#cdd6f4)
+        // clears 8.7:1 on it. `surface1` is a wider step and still
+        // published, but its Latte twin takes that theme's label to
+        // 4.39:1 — under the bar this token exists to hold. Two levels
+        // below the `overlay0` a hover used to fill with, which is why
+        // every hover in the app now darkens rather than lightening.
+        hoverWash: "313244",         // surface0
         terminalBg: "181825",
         terminalFg: "cdd6f4",
         terminalCursor: "cba6f7",
@@ -356,11 +358,12 @@ public struct Palette: Equatable, Sendable {
         rowAltBg: "c4c8d4",          // between surface0 and surface1
         controlFace: "bcc0cc",       // surface1
         fieldBg: "e6e9ef",           // mantle
-        // The same level Mocha takes, which in a light Catppuccin sinks
-        // rather than rises — Latte's surfaces all sit below its `base` —
-        // and so is a hover that deepens, as a light theme's should.
-        // `text` (#4c4f69) clears 4.5:1 on it, which `surface1` does not.
-        hoverWash: "c4c8d4",         // between surface0 and surface1
+        // Latte's `surface0`, the same swatch Mocha hovers with, which in a
+        // light Catppuccin sinks rather than rises — Latte's surfaces all
+        // sit below its `base` — and so is a hover that deepens, as a light
+        // theme's should. `text` (#4c4f69) clears 5.2:1 on it, where
+        // `surface1` manages only 4.39:1.
+        hoverWash: "ccd0da",         // surface0
         terminalBg: "e6e9ef",
         terminalFg: "4c4f69",
         terminalCursor: "8839ef",

@@ -45,6 +45,7 @@ final class PaletteTests: XCTestCase {
         ("windowBg", \.windowBg, "base"),
         ("controlBg", \.controlBg, "surface0"),
         ("controlFace", \.controlFace, "surface1"),
+        ("hoverWash", \.hoverWash, "surface0"),
         ("fieldBg", \.fieldBg, "mantle"),
         ("terminalBg", \.terminalBg, "mantle"),
         ("terminalFg", \.terminalFg, "text"),
@@ -136,17 +137,6 @@ final class PaletteTests: XCTestCase {
                     "\(name): each label tier should recede further than the one above it"
                 )
             }
-        }
-    }
-
-    /// The hover fill sits on the ladder — at `rowAltBg`'s level, the step
-    /// between the two surfaces that neither Catppuccin names and every
-    /// hovered thing in the app is drawn over the ground of, so a hover is
-    /// a move along the theme's own surfaces rather than a colour invented
-    /// for it.
-    func testHoverIsOnTheSurfaceLadder() {
-        for (name, palette) in palettes {
-            XCTAssertEqual(palette.hoverWash, palette.rowAltBg, "\(name): hover is the ladder's between-step")
         }
     }
 
