@@ -25,10 +25,8 @@ import (
 // from — and, once Notion is demoted to a replica written through to, the store
 // every project reads from.
 //
-// This is the read half: the plan, one slice, the prose on a page. The writes
-// are the next slice's, and until then they refuse rather than pretend, so a
-// Local can be handed anywhere a [Store] is taken and what is not there yet
-// says so.
+// The reads are here and the writes in local_write.go, where every mutation is
+// one transaction that re-reads the slice it is about before it writes it.
 type Local struct {
 	db *sql.DB
 	// path is the database's own file, carried so that every failure can name
@@ -141,11 +139,19 @@ func OpenLocal(path string) (*Local, error) {
 // two processes writing at once wait for each other rather than one of them
 // failing. Foreign keys are on, which is what makes a dependency on a slice
 // that is not there impossible rather than merely wrong.
+//
+// Every transaction is BEGIN IMMEDIATE (_txlock), because every transaction
+// this store opens is a write that reads first: a deferred one takes its read
+// lock at the first SELECT and asks for the write lock afterwards, which is the
+// one upgrade SQLite refuses outright rather than waiting out the busy timeout
+// for — so two agents writing at once would fail rather than queue, which is
+// exactly what the timeout is there to prevent.
 func localDSN(path string) string {
 	return "file:" + path +
 		"?_pragma=journal_mode(wal)" +
 		"&_pragma=busy_timeout(5000)" +
-		"&_pragma=foreign_keys(on)"
+		"&_pragma=foreign_keys(on)" +
+		"&_txlock=immediate"
 }
 
 // Close gives the database back. A Local is held open for as long as its caller
@@ -245,6 +251,15 @@ func (l *Local) migrate(ctx context.Context) error {
 	return nil
 }
 
+// localQuerier is the little every read of a plan needs, which both a database
+// and a transaction on one answer: that is what lets one set of read helpers
+// serve a read taken on its own and the re-read a write takes inside its own
+// transaction, so the two can never drift into reading a slice differently.
+type localQuerier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 // errorf says what went wrong in the store's own words, naming the file it went
 // wrong in: a plan that will not read is a path on this machine, and the path
 // is what tells the difference between a plan nat wrote and a file something
@@ -264,7 +279,7 @@ func (l *Local) localShape(ms []domain.Milestone) Shape {
 // Shape reads what can be recorded about a project's slices and the milestones
 // there are to file one under, without reading the slices themselves.
 func (l *Local) Shape(ctx context.Context, _ Project) (Shape, error) {
-	ms, err := l.milestones(ctx)
+	ms, err := l.milestones(ctx, l.db)
 	if err != nil {
 		return Shape{}, err
 	}
@@ -274,8 +289,8 @@ func (l *Local) Shape(ctx context.Context, _ Project) (Shape, error) {
 // milestones reads the plan's milestones in plan order. A milestone is nothing
 // but a name and a place, exactly as domain already says: its status is
 // computed from the slices under it, so there is nothing else to store.
-func (l *Local) milestones(ctx context.Context) ([]domain.Milestone, error) {
-	rows, err := l.db.QueryContext(ctx, `SELECT name, position FROM milestones ORDER BY position, name`)
+func (l *Local) milestones(ctx context.Context, q localQuerier) ([]domain.Milestone, error) {
+	rows, err := q.QueryContext(ctx, `SELECT name, position FROM milestones ORDER BY position, name`)
 	if err != nil {
 		return nil, l.errorf(err, "read the milestones")
 	}
@@ -301,11 +316,11 @@ func (l *Local) milestones(ctx context.Context) ([]domain.Milestone, error) {
 // order, so there is no second round trip to read it and nothing to fall back
 // to when that read fails.
 func (l *Local) Plan(ctx context.Context, p Project) (Plan, error) {
-	ms, err := l.milestones(ctx)
+	ms, err := l.milestones(ctx, l.db)
 	if err != nil {
 		return Plan{}, err
 	}
-	slices, err := l.slices(ctx)
+	slices, err := l.slices(ctx, l.db)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -364,8 +379,8 @@ func scanLocalSlice(scan func(...any) error) (domain.Slice, error) {
 // where two share one, so the order is total and two writers who both picked
 // the same position get a stable answer rather than a board that flaps between
 // readings.
-func (l *Local) slices(ctx context.Context) ([]domain.Slice, error) {
-	rows, err := l.db.QueryContext(ctx,
+func (l *Local) slices(ctx context.Context, q localQuerier) ([]domain.Slice, error) {
+	rows, err := q.QueryContext(ctx,
 		`SELECT `+localSliceColumns+` FROM slices ORDER BY position, id`)
 	if err != nil {
 		return nil, l.errorf(err, "read the slices")
@@ -383,7 +398,7 @@ func (l *Local) slices(ctx context.Context) ([]domain.Slice, error) {
 	if err := rows.Err(); err != nil {
 		return nil, l.errorf(err, "read the slices")
 	}
-	deps, err := l.dependencies(ctx)
+	deps, err := l.dependencies(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -397,8 +412,8 @@ func (l *Local) slices(ctx context.Context) ([]domain.Slice, error) {
 // in, as one query rather than one per slice: a plan's whole dependency graph
 // is a few hundred rows at the very most and a read per slice would grow with
 // the plan forever.
-func (l *Local) dependencies(ctx context.Context) (map[string][]string, error) {
-	rows, err := l.db.QueryContext(ctx,
+func (l *Local) dependencies(ctx context.Context, q localQuerier) (map[string][]string, error) {
+	rows, err := q.QueryContext(ctx,
 		`SELECT slice_id, depends_on FROM slice_deps ORDER BY slice_id, position, depends_on`)
 	if err != nil {
 		return nil, l.errorf(err, "read the dependencies")
@@ -423,20 +438,30 @@ func (l *Local) dependencies(ctx context.Context) (map[string][]string, error) {
 // a local plan is the project's shape, since the columns are the same columns
 // for every slice in the file.
 func (l *Local) Slice(ctx context.Context, id string) (domain.Slice, Shape, error) {
-	row := l.db.QueryRowContext(ctx, `SELECT `+localSliceColumns+` FROM slices WHERE id = ?`, id)
-	s, err := scanLocalSlice(row.Scan)
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		return domain.Slice{}, Shape{}, fmt.Errorf("no slice %s in the plan at %s", id, l.path)
-	case err != nil:
-		return domain.Slice{}, Shape{}, l.errorf(err, "read the slice")
-	}
-	deps, err := l.dependencies(ctx)
+	s, err := l.slice(ctx, l.db, id)
 	if err != nil {
 		return domain.Slice{}, Shape{}, err
 	}
-	s.DependsOn = deps[s.ID]
 	return s, Shape{HasAssignee: true, HasBranch: true}, nil
+}
+
+// slice reads one slice through whichever querier it is given, which is how a
+// write re-reads the slice it is about inside its own transaction.
+func (l *Local) slice(ctx context.Context, q localQuerier, id string) (domain.Slice, error) {
+	row := q.QueryRowContext(ctx, `SELECT `+localSliceColumns+` FROM slices WHERE id = ?`, id)
+	s, err := scanLocalSlice(row.Scan)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return domain.Slice{}, fmt.Errorf("no slice %s in the plan at %s", id, l.path)
+	case err != nil:
+		return domain.Slice{}, l.errorf(err, "read the slice")
+	}
+	deps, err := l.dependencies(ctx, q)
+	if err != nil {
+		return domain.Slice{}, err
+	}
+	s.DependsOn = deps[s.ID]
+	return s, nil
 }
 
 // Body reads the prose kept against an ID as markdown — a slice's brief, or the
@@ -540,60 +565,3 @@ func fenceOf(line string) string {
 	}
 	return ""
 }
-
-// errLocalReadOnly is every write this store does not do yet. The read half and
-// the write half are two slices of one milestone, and a Local is a [Store] from
-// the first of them so that the board and the commands can be pointed at one —
-// which means the writes have to be there to be refused, and refusing is the
-// only honest thing they can do until the next slice arrives.
-var errLocalReadOnly = errors.New("writing a local plan is not implemented yet")
-
-// ClaimSlice is a write, and not implemented yet.
-func (l *Local) ClaimSlice(context.Context, string, Shape, string) (domain.Slice, error) {
-	return domain.Slice{}, errLocalReadOnly
-}
-
-// ReleaseSlice is a write, and not implemented yet.
-func (l *Local) ReleaseSlice(context.Context, string, Shape, string) (domain.Slice, error) {
-	return domain.Slice{}, errLocalReadOnly
-}
-
-// CompleteSlice is a write, and not implemented yet.
-func (l *Local) CompleteSlice(context.Context, string, Shape, Outcome) (domain.Slice, error) {
-	return domain.Slice{}, errLocalReadOnly
-}
-
-// RecordPR is a write, and not implemented yet.
-func (l *Local) RecordPR(context.Context, string, string) error { return errLocalReadOnly }
-
-// MarkDone is a write, and not implemented yet.
-func (l *Local) MarkDone(context.Context, string, Shape) error { return errLocalReadOnly }
-
-// AddMilestones is a write, and not implemented yet.
-func (l *Local) AddMilestones(context.Context, Project, Shape, []string) ([]domain.Milestone, error) {
-	return nil, errLocalReadOnly
-}
-
-// AddSlice is a write, and not implemented yet.
-func (l *Local) AddSlice(context.Context, Project, NewSlice) (domain.Slice, error) {
-	return domain.Slice{}, errLocalReadOnly
-}
-
-// EditSlice is a write, and not implemented yet.
-func (l *Local) EditSlice(context.Context, string, string, string, string) error {
-	return errLocalReadOnly
-}
-
-// SetSliceBrief is a write, and not implemented yet.
-func (l *Local) SetSliceBrief(context.Context, string, string) error { return errLocalReadOnly }
-
-// SetDependencies is a write, and not implemented yet.
-func (l *Local) SetDependencies(context.Context, string, []string) (domain.Slice, error) {
-	return domain.Slice{}, errLocalReadOnly
-}
-
-// MoveSlice is a write, and not implemented yet.
-func (l *Local) MoveSlice(context.Context, string, domain.Milestone) error { return errLocalReadOnly }
-
-// DeleteSlice is a write, and not implemented yet.
-func (l *Local) DeleteSlice(context.Context, string) error { return errLocalReadOnly }
