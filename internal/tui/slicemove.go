@@ -8,7 +8,7 @@ import (
 	"charm.land/huh/v2"
 
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // statusWord names a slice's status the way the project's own table does, so a
@@ -114,10 +114,7 @@ func (f *MoveSliceForm) save(a *App) tea.Cmd {
 // to a milestone page, or the option naming a derived one.
 func moveSlice(client NotionAPI, sliceID, sliceName string, m domain.Milestone) tea.Cmd {
 	return func() tea.Msg {
-		properties := map[string]notion.PropertyValue{
-			notion.PropMilestone: m.Ref(),
-		}
-		if _, err := client.UpdatePageProperties(context.Background(), sliceID, properties); err != nil {
+		if err := store.Over(client).MoveSlice(context.Background(), sliceID, m); err != nil {
 			return sliceSavedMsg{err: fmt.Errorf("move slice: %w", err)}
 		}
 		return sliceSavedMsg{note: fmt.Sprintf("Moved %q to %s.", sliceName, m.Name), sliceID: sliceID}

@@ -6,7 +6,6 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
-	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // ClaimSlice takes a slice for the configured user: Status to In progress,
@@ -16,7 +15,7 @@ import (
 // the key is pressed rather than once a fresh Claude Code has got round to
 // running start-slice.
 //
-// The page is read first for the type of its Status column, which a project
+// The slice is read first for the shape it can be written in, which a project
 // converted in the Notion UI may have changed under the app — the same read
 // the release and the approve make, for the same reason. It is also what says
 // whether the slice carries an Assignee at all: a project without that column
@@ -26,18 +25,12 @@ import (
 // agent's own start-slice reads the page a moment later and re-opens the
 // slice only where this same user still holds it, so a race is settled
 // before any agent is handed a brief.
-func ClaimSlice(ctx context.Context, client Client, s domain.Slice, userID string) error {
-	page, err := client.GetPage(ctx, s.ID)
+func ClaimSlice(ctx context.Context, st Store, s domain.Slice, userID string) error {
+	_, shape, err := st.Slice(ctx, s.ID)
 	if err != nil {
 		return fmt.Errorf("claim %q: %w", s.Name, err)
 	}
-	properties := map[string]notion.PropertyValue{
-		notion.PropStatus: notion.NewChoice(page.Properties[notion.PropStatus].Type, notion.SliceInProgress),
-	}
-	if _, tracked := page.Properties[notion.PropAssignee]; tracked && userID != "" {
-		properties[notion.PropAssignee] = notion.NewPeople(userID)
-	}
-	if _, err := client.UpdatePageProperties(ctx, s.ID, properties); err != nil {
+	if _, err := st.ClaimSlice(ctx, s.ID, shape, userID); err != nil {
 		return fmt.Errorf("claim %q: %w", s.Name, err)
 	}
 	logging.Action("slice claimed at launch", "slice", s.ID, "name", s.Name, "user", userID)

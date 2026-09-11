@@ -10,7 +10,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // sliceShow reads and prints one slice in full, without claiming it. It is
@@ -33,33 +33,33 @@ func sliceShow(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	_, _, project, err := env.projectFor(*projectRef)
+	_, projectID, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}
 	client := env.NewClient(env.Tokens.Token)
+	st := store.Over(client)
 
-	shape, err := sliceShape(ctx, client, project)
+	shape, err := sliceShape(ctx, st, projectID, project)
 	if err != nil {
 		return err
 	}
-	page, err := client.GetPage(ctx, id)
+	s, _, err := loadSlice(ctx, st, id)
 	if err != nil {
-		return fmt.Errorf("load the slice: %w", err)
+		return err
 	}
 
-	// Read the slice and its dependencies.
-	s := domain.SliceFromPage(*page)
+	// Read the slice's dependencies.
 	depByID := dependencyIndex(ctx, client, s)
 
-	milestone := milestoneOf(s, shape)
+	milestone := milestoneOf(s, shape.Milestones)
 	brief, err := body(ctx, client, s.ID)
 	if err != nil {
 		return fmt.Errorf("could not read the slice's brief: %w", err)
 	}
 
 	if *asJSON {
-		return writeSliceShowJSON(env.Out, s, milestone, project, shape, depByID, brief)
+		return writeSliceShowJSON(env.Out, s, milestone, project, depByID, brief)
 	}
 	return writeSliceShowMarkdown(env.Out, s, milestone, project, brief)
 }
@@ -83,7 +83,7 @@ type sliceShowJSON struct {
 }
 
 // writeSliceShowJSON encodes the slice as JSON.
-func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, project config.ProjectConfig, shape notion.SliceShape, depByID map[string]domain.Slice, brief string) error {
+func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, project config.ProjectConfig, depByID map[string]domain.Slice, brief string) error {
 	// Compute state the same way info.go does.
 	slicesByID := domain.SlicesByID([]domain.Slice{s})
 	// Add dependencies to the index so blocking can be computed.

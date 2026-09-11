@@ -58,7 +58,7 @@ type LaunchResult struct {
 // the goroutine it is slow in. Its answer is the working directory the
 // prompt is written with and the session is started in, so the two never
 // disagree about where the agent is.
-func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, client Client, assigneeID string,
+func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, assigneeID string,
 	c agent.PromptContext, m config.AgentModel) (LaunchResult, error) {
 	p := PlaceAgent(w, r, c.WorkingDir, c.Slice)
 	if !p.OK {
@@ -76,7 +76,7 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, client Client,
 	// state the approve flow left it in for a session that changes none of
 	// what that flow recorded.
 	if !c.Fix {
-		if err := ClaimSlice(ctx, client, c.Slice, assigneeID); err != nil {
+		if err := ClaimSlice(ctx, st, c.Slice, assigneeID); err != nil {
 			return LaunchResult{Toast: fmt.Sprintf("Could not %v — no agent was launched.", err), Sev: SevError}, nil
 		}
 	}

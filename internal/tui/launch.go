@@ -16,6 +16,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // AgentLauncher is what the launch flow needs of tmux: which slices have an
@@ -297,7 +298,7 @@ func launchAgent(l AgentLauncher, w Worktrees, r Repo, client NotionAPI, viewer 
 				return agentLaunchedMsg{toast: toast, sev: sev}
 			}
 		}
-		res, err := actions.Launch(context.Background(), l, w, r, client, assigneeID, c, m)
+		res, err := actions.Launch(context.Background(), l, w, r, store.Over(client), assigneeID, c, m)
 		if err != nil {
 			return agentLaunchedMsg{err: err}
 		}

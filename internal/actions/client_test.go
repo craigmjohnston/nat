@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // updateCall is one write a fakeClient recorded, the way the board's own
@@ -51,3 +52,37 @@ func (f *fakeClient) GetBlockChildren(_ context.Context, id string) ([]notion.Bl
 	}
 	return f.blocks(id)
 }
+
+// The rest of [store.API] is here so a fakeClient can back a real
+// [store.Notion], which is how these tests drive the plan writes: what a
+// launch or an approve does to a slice is asserted on the calls above, and
+// nothing in either flow reaches any of the calls below.
+func (f *fakeClient) GetDataSource(context.Context, string) (*notion.DataSource, error) {
+	panic("not used")
+}
+
+func (f *fakeClient) QueryDataSource(context.Context, string, map[string]any, []notion.Sort) ([]notion.Page, error) {
+	panic("not used")
+}
+
+func (f *fakeClient) UpdateDataSourceProperties(context.Context, string, map[string]notion.PropertySchema) (*notion.DataSource, error) {
+	panic("not used")
+}
+
+func (f *fakeClient) DataSourceOrder(context.Context, string) ([]string, error) { panic("not used") }
+
+func (f *fakeClient) DeleteBlock(context.Context, string) error { panic("not used") }
+
+func (f *fakeClient) CreatePage(context.Context, notion.Parent, map[string]notion.PropertyValue, []map[string]any) (*notion.Page, error) {
+	panic("not used")
+}
+
+func (f *fakeClient) AppendBlockChildren(context.Context, string, []map[string]any) ([]notion.Block, error) {
+	panic("not used")
+}
+
+func (f *fakeClient) TrashPage(context.Context, string) error { panic("not used") }
+
+// store is the fake driving a real Notion-backed store, which is what the
+// launch and approve flows now take.
+func (f *fakeClient) store() Store { return store.Over(f) }

@@ -39,7 +39,7 @@ func TestClaimSlice(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			client := &fakeClient{getPage: func(id string) (*notion.Page, error) { return todoPage(id, tt.assignee), nil }}
 
-			if err := ClaimSlice(context.Background(), client, domain.Slice{ID: "s5", Name: "Info view"}, tt.userID); err != nil {
+			if err := ClaimSlice(context.Background(), client.store(), domain.Slice{ID: "s5", Name: "Info view"}, tt.userID); err != nil {
 				t.Fatalf("ClaimSlice() = %v, want it to go through", err)
 			}
 
@@ -62,7 +62,7 @@ func TestClaimSlice(t *testing.T) {
 func TestClaimSliceReadFails(t *testing.T) {
 	client := &fakeClient{getPage: func(string) (*notion.Page, error) { return nil, errors.New("notion: 500") }}
 
-	err := ClaimSlice(context.Background(), client, domain.Slice{ID: "s5", Name: "Info view"}, "u1")
+	err := ClaimSlice(context.Background(), client.store(), domain.Slice{ID: "s5", Name: "Info view"}, "u1")
 
 	if err == nil || !strings.Contains(err.Error(), `claim "Info view": notion: 500`) {
 		t.Errorf("err = %v, want the read's failure wrapped and the slice named", err)
@@ -81,7 +81,7 @@ func TestClaimSliceWriteFails(t *testing.T) {
 		},
 	}
 
-	err := ClaimSlice(context.Background(), client, domain.Slice{ID: "s5", Name: "Info view"}, "u1")
+	err := ClaimSlice(context.Background(), client.store(), domain.Slice{ID: "s5", Name: "Info view"}, "u1")
 
 	if err == nil || !strings.Contains(err.Error(), `claim "Info view": notion: 500`) {
 		t.Errorf("err = %v, want the write's failure wrapped and the slice named", err)

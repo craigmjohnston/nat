@@ -169,7 +169,7 @@ func TestSliceEditReportsAFailedBlockRead(t *testing.T) {
 	err := Run(context.Background(), []string{
 		"slice-edit", testSliceID, "--description", "New text.", "--project", "project-1",
 	}, env)
-	if err == nil || !strings.Contains(err.Error(), "read the slice's current brief") {
+	if err == nil || !strings.Contains(err.Error(), "read slice body") {
 		t.Errorf("err = %v, want the failed read named", err)
 	}
 }
@@ -182,7 +182,7 @@ func TestSliceEditReportsAFailedDelete(t *testing.T) {
 	err := Run(context.Background(), []string{
 		"slice-edit", testSliceID, "--description", "New text.", "--project", "project-1",
 	}, env)
-	if err == nil || !strings.Contains(err.Error(), "clear the slice's current brief") {
+	if err == nil || !strings.Contains(err.Error(), "clear slice body") {
 		t.Errorf("err = %v, want the failed trash named", err)
 	}
 }
@@ -195,7 +195,7 @@ func TestSliceEditReportsAFailedAppend(t *testing.T) {
 	err := Run(context.Background(), []string{
 		"slice-edit", testSliceID, "--description", "New text.", "--project", "project-1",
 	}, env)
-	if err == nil || !strings.Contains(err.Error(), "write the new brief") {
+	if err == nil || !strings.Contains(err.Error(), "write slice body") {
 		t.Errorf("err = %v, want the failed write named", err)
 	}
 }

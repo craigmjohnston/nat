@@ -15,6 +15,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // planApply files a whole plan at once: the milestones and slices a planning
@@ -59,17 +60,19 @@ func planApply(ctx context.Context, args []string, env Env) error {
 
 	// Which project the plan lands in is the one thing --project decides, and
 	// everything past this line is the same whichever project it named.
-	_, _, project, err := env.projectFor(*projectRef)
+	_, projectID, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}
 	client := env.NewClient(env.Tokens.Token)
+	st := store.Over(client)
+	sp := storeProject(projectID, project)
 
-	ds, err := slicesDataSource(ctx, client, project)
+	shape, err := st.Shape(ctx, sp)
 	if err != nil {
 		return err
 	}
-	existing := milestonesOf(notion.ShapeOf(ds))
+	existing := shape.Milestones
 	// The project's own slices are only read when the plan names one: they are
 	// what a depends_on title may be resolved against, and a plan that declares
 	// no dependency has nothing to resolve.
@@ -87,7 +90,7 @@ func planApply(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	applied, err := applyPlan(ctx, client, project, ds, p, targets, existing)
+	applied, err := applyPlan(ctx, st, sp, shape, p, targets, existing)
 	// A run that failed partway has still written what it wrote — the error
 	// itself says so — and the board deserves to hear about that half as much
 	// as about a whole plan.
@@ -516,14 +519,14 @@ const orderingWord = "reverse-creation"
 // run got as far as is the tail of the document rather than its head, and that
 // is what it reports: the slices that exist, in the order the document put
 // them.
-func applyPlan(ctx context.Context, client API, project config.ProjectConfig, ds *notion.DataSource, p plan, resolved planTargets, existing []domain.Milestone) (appliedPlan, error) {
+func applyPlan(ctx context.Context, st store.Store, sp store.Project, shape store.Shape, p plan, resolved planTargets, existing []domain.Milestone) (appliedPlan, error) {
 	targets := resolved.slices
 	var applied appliedPlan
 	names := make([]string, len(p.Milestones))
 	for i, pm := range p.Milestones {
 		names[i] = strings.TrimSpace(pm.Name)
 	}
-	added, err := addMilestones(ctx, client, project.SlicesDSID, ds, existing, names)
+	added, err := st.AddMilestones(ctx, sp, shape, names)
 	applied.Milestones = added
 	if err != nil {
 		return applied, appliedErr(applied, err)
@@ -535,9 +538,14 @@ func applyPlan(ctx context.Context, client API, project config.ProjectConfig, ds
 		if targets[i].newIndex >= 0 {
 			m = applied.Milestones[targets[i].newIndex]
 		}
-		s, err := createSlice(ctx, client, project.SlicesDSID, m,
-			strings.TrimSpace(ps.Title), strings.TrimSpace(ps.Description), strings.TrimSpace(ps.Repo), nil)
+		s, err := st.AddSlice(ctx, sp, store.NewSlice{
+			Title:     strings.TrimSpace(ps.Title),
+			Brief:     strings.TrimSpace(ps.Description),
+			Repo:      strings.TrimSpace(ps.Repo),
+			Milestone: m,
+		})
 		if err != nil {
+			err = fmt.Errorf("create the slice: %w", err)
 			// Everything below this line of the document is written; nothing
 			// above it is. The tail is what exists, and it is already in the
 			// order the document put it.
@@ -547,10 +555,10 @@ func applyPlan(ctx context.Context, client API, project config.ProjectConfig, ds
 		made[i] = appliedSlice{Slice: s, Milestone: m}
 	}
 	applied.Slices = made
-	if err := applyDependencies(ctx, client, targets, applied.Slices); err != nil {
+	if err := applyDependencies(ctx, st, targets, applied.Slices); err != nil {
 		return applied, appliedErr(applied, err)
 	}
-	deps, err := applyAdditions(ctx, client, resolved.filed, applied.Slices)
+	deps, err := applyAdditions(ctx, st, resolved.filed, applied.Slices)
 	applied.Dependencies = deps
 	if err != nil {
 		return applied, appliedErr(applied, err)
@@ -562,7 +570,7 @@ func applyPlan(ctx context.Context, client API, project config.ProjectConfig, ds
 // plan exists to be pointed at. A slice naming none is not written to at all:
 // there is nothing to say, and a project whose table has no dependency column
 // applies such a plan exactly as it always did.
-func applyDependencies(ctx context.Context, client API, targets []sliceTarget, created []appliedSlice) error {
+func applyDependencies(ctx context.Context, st store.Store, targets []sliceTarget, created []appliedSlice) error {
 	for i, t := range targets {
 		if len(t.dependsOn) == 0 {
 			continue
@@ -574,8 +582,7 @@ func applyDependencies(ctx context.Context, client API, targets []sliceTarget, c
 				ids[j] = created[d.newIndex].Slice.ID
 			}
 		}
-		if _, err := client.UpdatePageProperties(ctx, created[i].Slice.ID,
-			map[string]notion.PropertyValue{notion.PropDependsOn: notion.NewRelation(ids...)}); err != nil {
+		if _, err := st.SetDependencies(ctx, created[i].Slice.ID, ids); err != nil {
 			return fmt.Errorf("record what %q waits on: %w", created[i].Slice.Name, err)
 		}
 		logging.Action("plan dependencies recorded", "slice", created[i].Slice.ID, "depends_on", len(ids))
@@ -588,7 +595,7 @@ func applyDependencies(ctx context.Context, client API, targets []sliceTarget, c
 // such a slice already waits on is nobody's to drop. A write is skipped where
 // it would change nothing — a plan re-run over dependencies already recorded
 // touches no page at all.
-func applyAdditions(ctx context.Context, client API, filed []filedDeps, created []appliedSlice) ([]appliedDependency, error) {
+func applyAdditions(ctx context.Context, st store.Store, filed []filedDeps, created []appliedSlice) ([]appliedDependency, error) {
 	var out []appliedDependency
 	for _, f := range filed {
 		seen := map[string]bool{}
@@ -614,8 +621,7 @@ func applyAdditions(ctx context.Context, client API, filed []filedDeps, created 
 		if len(added) == 0 {
 			continue
 		}
-		if _, err := client.UpdatePageProperties(ctx, f.slice.ID,
-			map[string]notion.PropertyValue{notion.PropDependsOn: notion.NewRelation(ids...)}); err != nil {
+		if _, err := st.SetDependencies(ctx, f.slice.ID, ids); err != nil {
 			return out, fmt.Errorf("record what %q waits on: %w", f.slice.Name, err)
 		}
 		logging.Action("plan dependencies added", "slice", f.slice.ID, "depends_on", len(ids), "added", len(added))

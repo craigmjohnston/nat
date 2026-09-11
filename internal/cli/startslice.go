@@ -8,7 +8,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
-	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // startSlice claims one named slice and prints the same brief next-slice does.
@@ -55,34 +55,35 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("no assignee in the config: open the board with `nat` and finish setting it up")
 	}
 	client := env.NewClient(env.Tokens.Token)
+	st := store.Over(client)
 
-	shape, err := sliceShape(ctx, client, project)
+	shape, err := sliceShape(ctx, st, projectID, project)
 	if err != nil {
 		return err
 	}
-	page, err := client.GetPage(ctx, id)
+	waiting, pageShape, err := loadSlice(ctx, st, id)
 	if err != nil {
-		return fmt.Errorf("load the slice: %w", err)
+		return err
 	}
-	reopen, err := takeable(*page, shape, cfg.AssigneeUserID)
+	write := shape.On(pageShape)
+	reopen, err := takeable(waiting, write, cfg.AssigneeUserID)
 	if err != nil {
 		return err
 	}
 	// The dependencies are read one page at a time rather than off the plan:
 	// this command was pointed at a slice, so there is no plan loaded, and a
 	// slice waits on few enough slices for that to be the cheaper read.
-	waiting := domain.SliceFromPage(*page)
 	if blockers, _ := domain.Blockers(waiting, dependencyIndex(ctx, client, waiting)); len(blockers) > 0 {
 		return blockedError(waiting, blockers)
 	}
 	// A re-opened slice is already exactly what a claim would make it, so there
 	// is nothing to write and nothing to nudge the board about: this run changed
 	// nothing about the plan.
-	claimed := domain.SliceFromPage(*page)
+	claimed := waiting
 	if reopen {
 		logging.Action("slice re-opened", "slice", claimed.ID, "name", claimed.Name, "user", cfg.AssigneeUserID)
 	} else {
-		if claimed, err = claim(ctx, client, page.ID, shape, cfg.AssigneeUserID); err != nil {
+		if claimed, err = claim(ctx, st, waiting.ID, write, cfg.AssigneeUserID); err != nil {
 			return err
 		}
 		// The claim is the write, so the board is nudged here — even a run that
@@ -90,7 +91,7 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 		env.nudged()
 	}
 
-	milestone := milestoneOf(claimed, shape)
+	milestone := milestoneOf(claimed, shape.Milestones)
 	brief, err := body(ctx, client, claimed.ID)
 	if err != nil {
 		return fmt.Errorf("claimed %q but could not read its brief: %w", claimed.Name, err)
@@ -116,11 +117,10 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 // Being Todo is not enough on its own: a Todo slice already assigned to
 // somebody is one next-slice would pass over too, and taking it would step on
 // their work.
-func takeable(page notion.Page, shape notion.SliceShape, userID string) (bool, error) {
-	if holds(page, shape, userID) {
+func takeable(s domain.Slice, shape store.Shape, userID string) (bool, error) {
+	if store.Holds(s, shape, userID) {
 		return true, nil
 	}
-	s := domain.SliceFromPage(page)
 	if s.Status != domain.SliceTodo {
 		return false, fmt.Errorf("%q is %s, not Todo: only a slice nobody has started can be claimed",
 			s.Name, blank(s.StatusName))
@@ -136,11 +136,11 @@ func takeable(page notion.Page, shape notion.SliceShape, userID string) (bool, e
 // simply has no milestone to print.
 //
 // The slice's Milestone value names one of that column's options, which the
-// schema already carries, so there is nothing to fetch. A name the plan no
+// plan already carries, so there is nothing to fetch. A name the plan no
 // longer offers — an option deleted out from under a slice — leaves the brief
 // without a milestone rather than failing over one line of it.
-func milestoneOf(s domain.Slice, shape notion.SliceShape) domain.Milestone {
-	for _, m := range milestonesOf(shape) {
+func milestoneOf(s domain.Slice, milestones []domain.Milestone) domain.Milestone {
+	for _, m := range milestones {
 		if m.ID == s.MilestoneID && s.MilestoneID != "" {
 			return m
 		}

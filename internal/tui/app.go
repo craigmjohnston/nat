@@ -20,6 +20,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // screen is one of the app's full-window views. The board is what the app is
@@ -61,8 +62,11 @@ type (
 	// project on the way to it changed — nothing at all, for every project
 	// already in the one shape.
 	projectLoadedMsg struct {
-		project   domain.Project
-		migration notion.Migration
+		project domain.Project
+		// migrated is what loading the plan changed about how it is stored, in
+		// one line, and is empty when nothing changed — which is every load
+		// after the first.
+		migrated string
 	}
 	// notionErrMsg carries a failed Notion call, already described.
 	notionErrMsg struct{ err error }
@@ -443,8 +447,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := tea.Batch(a.refreshPRStates(), a.removeLanded(a.settledSlices()))
 		// A project that had to be migrated to be shown says so: the plan on
 		// screen is not quite the one Notion held a moment ago.
-		if !msg.migration.Empty() {
-			return a, tea.Batch(cmd, a.showToast(msg.migration.Summary(), sevSuccess))
+		if msg.migrated != "" {
+			return a, tea.Batch(cmd, a.showToast(msg.migrated, sevSuccess))
 		}
 		return a, cmd
 	case notionErrMsg:
@@ -1064,28 +1068,14 @@ func (a *App) activeProject() (config.ProjectConfig, bool) {
 // of their own — is migrated on the way past, before its schema is read for the
 // plan, so what comes back is a plan of the one shape however it was stored.
 func (a *App) fetchProject(id string, cfg config.ProjectConfig) tea.Cmd {
-	client := a.client
+	st := store.Over(a.client)
 	return func() tea.Msg {
-		ctx := context.Background()
-		ds, migration, err := notion.MigrateProject(ctx, client, cfg.SlicesDSID)
+		plan, err := st.Plan(context.Background(),
+			store.Project{ID: id, Name: cfg.Name, SlicesID: cfg.SlicesDSID})
 		if err != nil {
 			return notionErrMsg{err: err}
 		}
-		shape := notion.ShapeOf(ds)
-		slices, err := client.QueryDataSource(ctx, cfg.SlicesDSID, nil,
-			[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
-		if err != nil {
-			return notionErrMsg{err: fmt.Errorf("load slices: %w", err)}
-		}
-		return projectLoadedMsg{
-			project: domain.NewProject(
-				id, cfg.Name,
-				domain.MilestonesFromOptions(shape.MilestoneOptions, shape.MilestoneType),
-				domain.InViewOrder(
-					domain.SlicesFromPages(slices),
-					notion.PlanOrder(ctx, client, cfg.SlicesDSID))),
-			migration: migration,
-		}
+		return projectLoadedMsg{project: plan.Project, migrated: plan.Migrated}
 	}
 }
 

@@ -473,7 +473,7 @@ func TestPRStateReadingRunsOneAtATime(t *testing.T) {
 func TestPRStatesReadAlongsideAMigrationToast(t *testing.T) {
 	app, reader := prStateApp()
 	_, cmd := app.Update(projectLoadedMsg{project: prStatePlan(),
-		migration: notion.Migration{StatusRenamed: true}})
+		migrated: "the in-progress status was renamed"})
 	if cmd == nil {
 		t.Fatal("a migrated project took no reading")
 	}

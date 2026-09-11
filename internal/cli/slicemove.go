@@ -8,8 +8,7 @@ import (
 	"strings"
 
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/logging"
-	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // sliceMove refiles a slice under another milestone — the headless half of the
@@ -40,26 +39,25 @@ func sliceMove(ctx context.Context, args []string, env Env) error {
 		return usageErrorf("slice-move: no milestone given: pass --milestone")
 	}
 
-	_, _, project, err := env.projectFor(*projectRef)
+	_, projectID, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
+	st := store.Over(env.NewClient(env.Tokens.Token))
 
-	shape, err := sliceShape(ctx, client, project)
+	shape, err := sliceShape(ctx, st, projectID, project)
 	if err != nil {
 		return err
 	}
-	milestone, err := resolveMilestone(*milestoneRef, milestonesOf(shape))
+	milestone, err := resolveMilestone(*milestoneRef, shape.Milestones)
 	if err != nil {
 		return err
 	}
 
-	page, err := client.GetPage(ctx, id)
+	s, _, err := loadSlice(ctx, st, id)
 	if err != nil {
-		return fmt.Errorf("load the slice: %w", err)
+		return err
 	}
-	s := domain.SliceFromPage(*page)
 	if s.Status == domain.SliceClaimed {
 		return fmt.Errorf("%q is in progress: work in flight is not refiled under its agent", s.Name)
 	}
@@ -70,14 +68,11 @@ func sliceMove(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("%q is already filed under %s", s.Name, milestone.Name)
 	}
 
-	if _, err := client.UpdatePageProperties(ctx, s.ID, map[string]notion.PropertyValue{
-		notion.PropMilestone: milestone.Ref(),
-	}); err != nil {
+	if err := st.MoveSlice(ctx, s.ID, milestone); err != nil {
 		return fmt.Errorf("move the slice: %w", err)
 	}
 
 	env.nudged()
-	logging.Action("slice moved", "slice", s.ID, "name", s.Name, "milestone", milestone.ID)
 	if *asJSON {
 		return writeJSON(env.Out, sliceMovedJSON{
 			ID: s.ID, Name: s.Name, URL: s.URL,

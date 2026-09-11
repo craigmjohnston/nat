@@ -62,11 +62,8 @@ func PRTitleBody(description string) (title, body string) {
 // starting rather than the work ending: the pull request is open, and a
 // review that asks for one more commit needs the checkout that commit is
 // written in. What takes the worktree away is the merge.
-func RecordPR(ctx context.Context, client Client, s domain.Slice, url string) error {
-	properties := map[string]notion.PropertyValue{
-		notion.PropPR: notion.NewURL(url),
-	}
-	if _, err := client.UpdatePageProperties(ctx, s.ID, properties); err != nil {
+func RecordPR(ctx context.Context, st Store, s domain.Slice, url string) error {
+	if err := st.RecordPR(ctx, s.ID, url); err != nil {
 		return fmt.Errorf("record the pull request for %q: %w", s.Name, err)
 	}
 	return nil

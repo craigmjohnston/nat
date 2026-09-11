@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // The choices the release prompt offers, in the order they read. Releasing
@@ -62,13 +62,6 @@ func (a *App) releaseChosen(s domain.Slice, choice int) tea.Cmd {
 // releaseNote is what the status bar says while the release is in flight.
 const releaseNote = "Releasing the slice…"
 
-// releasedLine is the one line a release leaves on the page, so a slice that
-// went round twice reads as having done so. It is worded exactly as the
-// headless command's, since the two are the same act by different routes.
-func releasedLine(assignee string) string {
-	return fmt.Sprintf("Released back to Todo by %s: the session working it ended without finishing it.", assignee)
-}
-
 // releaseSlice hands the slice back to the plan: Todo, held by nobody, and a
 // line on the page saying so. Nothing else is touched — the brief, the
 // dependencies, the repo and any branch already pushed are what the next
@@ -87,41 +80,17 @@ func releasedLine(assignee string) string {
 func releaseSlice(client NotionAPI, s domain.Slice, assignee string) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
+		st := store.Over(client)
 		fail := func(err error) tea.Msg {
 			return sliceSavedMsg{err: fmt.Errorf("release %q: %w", s.Name, err)}
 		}
-		page, err := client.GetPage(ctx, s.ID)
+		_, shape, err := st.Slice(ctx, s.ID)
 		if err != nil {
 			return fail(err)
 		}
-		if _, err := client.AppendBlockChildren(ctx, s.ID,
-			[]map[string]any{paragraphBlock(releasedLine(assignee))}); err != nil {
-			return fail(err)
-		}
-		properties := map[string]notion.PropertyValue{
-			notion.PropStatus: notion.NewChoice(page.Properties[notion.PropStatus].Type, notion.SliceTodo),
-		}
-		if _, held := page.Properties[notion.PropAssignee]; held {
-			properties[notion.PropAssignee] = notion.NewPeople()
-		}
-		if _, err := client.UpdatePageProperties(ctx, s.ID, properties); err != nil {
+		if _, err := st.ReleaseSlice(ctx, s.ID, shape, assignee); err != nil {
 			return fail(err)
 		}
 		return sliceSavedMsg{note: fmt.Sprintf("Released %q back to Todo.", s.Name), sliceID: s.ID}
-	}
-}
-
-// paragraphBlock is one paragraph of plain text, which is the whole of what a
-// release writes onto a page.
-func paragraphBlock(text string) map[string]any {
-	return map[string]any{
-		"object": "block",
-		"type":   "paragraph",
-		"paragraph": map[string]any{
-			"rich_text": []map[string]any{{
-				"type": "text",
-				"text": map[string]any{"content": text},
-			}},
-		},
 	}
 }

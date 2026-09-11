@@ -10,6 +10,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // PRMerger is what pr-merge needs of the GitHub CLI: the pull request merged,
@@ -82,7 +83,7 @@ func prMerge(ctx context.Context, args []string, env Env) error {
 	// rather than reading as a merge that never was — and running the command
 	// again is not the recovery, since a merged pull request has nothing left
 	// to merge. The board's own reading settles such a slice on its next pass.
-	if err := actions.MarkDone(ctx, client, s); err != nil {
+	if err := actions.MarkDone(ctx, store.Over(client), s); err != nil {
 		return fmt.Errorf("merged #%d, but could not mark %q Done: %w", pr.Number, s.Name, err)
 	}
 	env.nudged()

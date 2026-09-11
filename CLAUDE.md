@@ -45,7 +45,41 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   supports data sources); minimal structs, only fields we use. Built with
   `NewWithToken(TokenFunc)`: the token is fetched per attempt and a 401 is
   retried once with a fresh one, so a token rotated by the CLI is picked up
-  mid-session.
+  mid-session. Nothing constructs one: `store.NewClient` is the single call
+  to `NewWithToken` in the tree, and everything else asks the store.
+- `internal/store/` — the seam between nat and wherever a project's plan is
+  kept. `Store` is the port: read a project's shape, read its whole plan, read
+  one slice, claim one, release one, close one out, record a pull request on
+  one, mark one Done, add milestones, add a slice, edit one, record what one
+  waits on, refile one, drop one. It is said in the app's own words —
+  `domain.Slice` and `domain.Milestone` go in and come back, and no property
+  type, request body or page shape crosses the line — so a second backend
+  plugs in here and nothing above has to learn about it. `Notion` is the first
+  implementation and for now the only one, built over a narrow `API` (the ten
+  calls the plan operations are made of) with `Over`, so the board and a
+  headless command hand over the client they already hold rather than making a
+  second, and a test drives the real store over its own fake.
+  `Shape` is the one value that travels both ways: what a project can record
+  about a slice — whether it has an Assignee or a Branch column, and the
+  milestones there are to file under — plus, unexported, whatever the store
+  that read it needs to write with, which here is the type its Status column
+  is kept in and the Milestone column as it stands, options and colours and
+  all, since rebuilding that from its option names alone would quietly rewrite
+  every option already there. A caller takes a Shape from a read and hands the
+  same one back to the write and never sees inside it. `Shape.On` is how a
+  caller holding both the project's schema and one slice's own page writes:
+  which columns exist stays the schema's answer, since a column holding
+  nothing may simply not appear on a page, while the type a status is written
+  in becomes the page's, because that is the value the write has to match.
+  `Holds` is the ownership rule every operation that may only touch the
+  caller's own slice asks first, and it is here rather than in `domain`
+  because it is a question about the shape as much as about the slice.
+  Errors are the backend's own wherever an operation is a single write —
+  the caller says what it was doing, since "delete the slice" is the command's
+  sentence and not the store's — and the store's own only where one operation
+  is several writes and which of them failed is a different state to recover
+  from: a release's line and its status, a completion's note and its
+  properties, an edit's three steps.
 - `internal/domain/` — Project/Milestone/Slice models, progress math
 - `internal/logging/` — the log file: `~/Library/Logs/notion-agent-tracker/` on
   macOS, the XDG state dir elsewhere, size-capped with one previous file kept.

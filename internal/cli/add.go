@@ -10,8 +10,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/logging"
-	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // milestoneAdd files one new milestone at the end of the plan. It is the
@@ -38,19 +37,18 @@ func milestoneAdd(ctx context.Context, args []string, env Env) error {
 		return usageErrorf("milestone-add: the milestone name is empty")
 	}
 
-	_, _, project, err := env.projectFor(*projectRef)
+	_, projectID, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
+	st := store.Over(env.NewClient(env.Tokens.Token))
+	sp := storeProject(projectID, project)
 
-	ds, err := slicesDataSource(ctx, client, project)
+	shape, err := st.Shape(ctx, sp)
 	if err != nil {
 		return err
 	}
-	existing := milestonesOf(notion.ShapeOf(ds))
-
-	added, err := addMilestones(ctx, client, project.SlicesDSID, ds, existing, []string{name})
+	added, err := st.AddMilestones(ctx, sp, shape, []string{name})
 	if err != nil {
 		return err
 	}
@@ -108,24 +106,31 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 		}
 	}
 
-	_, _, project, err := env.projectFor(*projectRef)
+	_, projectID, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
+	st := store.Over(env.NewClient(env.Tokens.Token))
+	sp := storeProject(projectID, project)
 
-	shape, err := sliceShape(ctx, client, project)
+	shape, err := st.Shape(ctx, sp)
 	if err != nil {
 		return err
 	}
-	milestone, err := resolveMilestone(*milestoneRef, milestonesOf(shape))
+	milestone, err := resolveMilestone(*milestoneRef, shape.Milestones)
 	if err != nil {
 		return err
 	}
 
-	s, err := createSlice(ctx, client, project.SlicesDSID, milestone, title, brief, strings.TrimSpace(*repo), deps)
+	s, err := st.AddSlice(ctx, sp, store.NewSlice{
+		Title:     title,
+		Brief:     brief,
+		Repo:      strings.TrimSpace(*repo),
+		Milestone: milestone,
+		DependsOn: deps,
+	})
 	if err != nil {
-		return err
+		return fmt.Errorf("create the slice: %w", err)
 	}
 	env.nudged()
 
@@ -142,99 +147,6 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	}
 	_, err = io.WriteString(env.Out, sliceAddedMarkdown(s, milestone, project))
 	return err
-}
-
-// addMilestones files milestones at the end of the plan and returns them in the
-// order they were given. The plan is the options of the slices' own Milestone
-// column, and every new milestone is appended to it in one schema write: either
-// they all arrive or none do.
-func addMilestones(ctx context.Context, client API, slicesDSID string, ds *notion.DataSource, existing []domain.Milestone, names []string) ([]domain.Milestone, error) {
-	// A plan that adds no milestone writes nothing: the write would replace the
-	// option list with a copy of itself, which is a real edit to make of a schema
-	// for the sake of nothing.
-	if len(names) == 0 {
-		return nil, nil
-	}
-	return appendMilestoneOptions(ctx, client, slicesDSID, ds, existing, names)
-}
-
-// appendMilestoneOptions adds milestones to a plan kept as the options of the
-// Slices data source's Milestone column, after the options already there:
-// their order in the column is the order of the plan, so a milestone added to
-// the end of one is an option added to the end of the other.
-//
-// A name the plan already holds is refused before anything is written. Such a
-// milestone is nothing but its name — it is what a slice's column names, and so
-// what groups the plan — and two options sharing one could not be told apart.
-func appendMilestoneOptions(ctx context.Context, client API, slicesDSID string, ds *notion.DataSource, existing []domain.Milestone, names []string) ([]domain.Milestone, error) {
-	taken := map[string]string{}
-	for _, m := range existing {
-		taken[strings.ToLower(strings.TrimSpace(m.Name))] = m.Name
-	}
-	for _, name := range names {
-		key := strings.ToLower(strings.TrimSpace(name))
-		if held, dup := taken[key]; dup {
-			return nil, fmt.Errorf("the plan already has a milestone named %q: "+
-				"its milestones are the options of the slices' %s column, which cannot hold two of a name",
-				held, notion.PropMilestone)
-		}
-		taken[key] = name
-	}
-
-	milestone := ds.Properties[notion.PropMilestone]
-	property, ok := milestone.AppendedOptions(names...)
-	if !ok {
-		return nil, fmt.Errorf("the %s column is a %s: a milestone can only be added to it in Notion",
-			notion.PropMilestone, milestone.Type)
-	}
-	if _, err := client.UpdateDataSourceProperties(ctx, slicesDSID,
-		map[string]notion.PropertySchema{notion.PropMilestone: property}); err != nil {
-		return nil, fmt.Errorf("create the %s: %w", plural("milestone", len(names)), err)
-	}
-
-	// The order of a derived milestone is its place among the options, counting
-	// from zero, which is what reading the plan back would make of it.
-	added := make([]domain.Milestone, len(names))
-	for i, name := range names {
-		added[i] = domain.Milestone{
-			ID:         name,
-			Name:       name,
-			Order:      float64(len(existing) + i),
-			Status:     domain.MilestoneStatusOf(nil),
-			SelectType: milestone.Type,
-		}
-		logging.Action("milestone added", "milestone", name, "order", added[i].Order)
-	}
-	return added, nil
-}
-
-// createSlice writes the slice, with its brief as the page body. Status and
-// assignee are not the caller's to choose: a newly filed slice is Todo and
-// unclaimed, or it is not something the workflow can pick up.
-// The milestone is written in whichever shape the plan is kept in — a relation
-// to its page, or the option naming it — which the milestone itself knows.
-//
-// dependsOn is the slices the new one waits on, and is left off the write
-// entirely when there are none: a project whose table has no dependency column
-// can still have slices added to it, and sending an empty relation to a column
-// that is not there would be the one thing stopping that.
-func createSlice(ctx context.Context, client API, slicesDSID string, milestone domain.Milestone, title, brief, repo string, dependsOn []string) (domain.Slice, error) {
-	properties := map[string]notion.PropertyValue{
-		notion.PropName:      notion.NewTitle(title),
-		notion.PropStatus:    notion.NewSelect(notion.SliceTodo),
-		notion.PropMilestone: milestone.Ref(),
-		notion.PropRepo:      notion.NewRichText(repo),
-	}
-	if len(dependsOn) > 0 {
-		properties[notion.PropDependsOn] = notion.NewRelation(dependsOn...)
-	}
-	page, err := client.CreatePage(ctx, notion.DataSourceParent(slicesDSID), properties, paragraphBlocks(brief))
-	if err != nil {
-		return domain.Slice{}, fmt.Errorf("create the slice: %w", err)
-	}
-	s := domain.SliceFromPage(*page)
-	logging.Action("slice added", "slice", s.ID, "name", title, "milestone", milestone.ID)
-	return s, nil
 }
 
 // resolveMilestone finds the milestone a new slice is filed under, by name: a
@@ -310,6 +222,21 @@ func paragraphBlocks(text string) []map[string]any {
 		}
 	}
 	return blocks
+}
+
+// textBlock builds a block of the given type holding one span of plain text,
+// which is the shape every block written from here takes.
+func textBlock(blockType, text string) map[string]any {
+	return map[string]any{
+		"object": "block",
+		"type":   blockType,
+		blockType: map[string]any{
+			"rich_text": []map[string]any{{
+				"type": "text",
+				"text": map[string]any{"content": text},
+			}},
+		},
+	}
 }
 
 // resolvedRepo is the directory work on the slice happens in: its own override

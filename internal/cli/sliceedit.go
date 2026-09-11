@@ -9,6 +9,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // sliceEdit replaces a slice's description — the page body slice-add writes
@@ -50,28 +51,18 @@ func sliceEdit(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
+	st := store.Over(env.NewClient(env.Tokens.Token))
 
-	page, err := client.GetPage(ctx, id)
+	s, _, err := loadSlice(ctx, st, id)
 	if err != nil {
-		return fmt.Errorf("load the slice: %w", err)
+		return err
 	}
-	s := domain.SliceFromPage(*page)
 	if err := editable(s); err != nil {
 		return err
 	}
 
-	blocks, err := client.GetBlockChildren(ctx, page.ID)
-	if err != nil {
-		return fmt.Errorf("read the slice's current brief: %w", err)
-	}
-	for _, b := range blocks {
-		if err := client.DeleteBlock(ctx, b.ID); err != nil {
-			return fmt.Errorf("clear the slice's current brief: %w", err)
-		}
-	}
-	if _, err := client.AppendBlockChildren(ctx, page.ID, paragraphBlocks(brief)); err != nil {
-		return fmt.Errorf("write the new brief: %w", err)
+	if err := st.SetSliceBrief(ctx, s.ID, brief); err != nil {
+		return err
 	}
 
 	env.nudged()

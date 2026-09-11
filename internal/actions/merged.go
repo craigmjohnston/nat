@@ -7,7 +7,6 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/logging"
-	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // PRViewer is what settling a pull request needs of the GitHub CLI: the pull
@@ -23,18 +22,15 @@ type PRViewer interface {
 // and leaves the slice in progress, so the status on the page means the same
 // thing everywhere the app reads it.
 //
-// The page is read first for the type of its Status column, which a project
+// The slice is read first for the shape it can be written in, which a project
 // converted in the Notion UI may have changed under the app — the same read
 // complete-slice makes for the same reason.
-func MarkDone(ctx context.Context, client Client, s domain.Slice) error {
-	page, err := client.GetPage(ctx, s.ID)
+func MarkDone(ctx context.Context, st Store, s domain.Slice) error {
+	_, shape, err := st.Slice(ctx, s.ID)
 	if err != nil {
 		return fmt.Errorf("mark %q Done: %w", s.Name, err)
 	}
-	properties := map[string]notion.PropertyValue{
-		notion.PropStatus: notion.NewChoice(page.Properties[notion.PropStatus].Type, notion.SliceDone),
-	}
-	if _, err := client.UpdatePageProperties(ctx, s.ID, properties); err != nil {
+	if err := st.MarkDone(ctx, s.ID, shape); err != nil {
 		return fmt.Errorf("mark %q Done: %w", s.Name, err)
 	}
 	logging.Action("slice marked Done", "slice", s.ID, "name", s.Name)
@@ -47,7 +43,7 @@ func MarkDone(ctx context.Context, client Client, s domain.Slice) error {
 // the slice. A pull request closed unmerged is the other thing absence means,
 // and it is work going round again rather than work landed: the slice is left
 // exactly as it is. Reports whether Done was written.
-func SettleMerged(ctx context.Context, client Client, viewer PRViewer, s domain.Slice, dir string) (bool, error) {
+func SettleMerged(ctx context.Context, st Store, viewer PRViewer, s domain.Slice, dir string) (bool, error) {
 	pr, err := viewer.ViewPR(dir, s.PRURL)
 	if err != nil {
 		return false, fmt.Errorf("read what became of %s: %w", s.PRURL, err)
@@ -55,7 +51,7 @@ func SettleMerged(ctx context.Context, client Client, viewer PRViewer, s domain.
 	if pr.State != gh.PRStateMerged {
 		return false, nil
 	}
-	if err := MarkDone(ctx, client, s); err != nil {
+	if err := MarkDone(ctx, st, s); err != nil {
 		return false, err
 	}
 	return true, nil

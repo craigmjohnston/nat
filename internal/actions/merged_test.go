@@ -36,7 +36,7 @@ func TestMarkDone(t *testing.T) {
 		}}, nil
 	}}
 
-	if err := MarkDone(context.Background(), client, domain.Slice{ID: "hb", Name: "Approve action"}); err != nil {
+	if err := MarkDone(context.Background(), client.store(), domain.Slice{ID: "hb", Name: "Approve action"}); err != nil {
 		t.Fatalf("MarkDone() = %v, want it to go through", err)
 	}
 
@@ -57,7 +57,7 @@ func TestMarkDone(t *testing.T) {
 // converted Status column is in: a plain select.
 func TestMarkDoneWritesASelectStatus(t *testing.T) {
 	client := &fakeClient{}
-	if err := MarkDone(context.Background(), client, domain.Slice{ID: "hb", Name: "Approve action"}); err != nil {
+	if err := MarkDone(context.Background(), client.store(), domain.Slice{ID: "hb", Name: "Approve action"}); err != nil {
 		t.Fatalf("MarkDone() = %v, want it to go through", err)
 	}
 	status := client.updated[0].properties[notion.PropStatus]
@@ -69,7 +69,7 @@ func TestMarkDoneWritesASelectStatus(t *testing.T) {
 func TestMarkDoneReportsAFailedRead(t *testing.T) {
 	client := &fakeClient{getPage: func(string) (*notion.Page, error) { return nil, errors.New("notion is down") }}
 
-	err := MarkDone(context.Background(), client, domain.Slice{ID: "hb", Name: "Approve action"})
+	err := MarkDone(context.Background(), client.store(), domain.Slice{ID: "hb", Name: "Approve action"})
 
 	if err == nil || !strings.Contains(err.Error(), `mark "Approve action" Done`) {
 		t.Errorf("err = %v, want the read's failure named", err)
@@ -84,7 +84,7 @@ func TestMarkDoneReportsAFailedWrite(t *testing.T) {
 		return nil, errors.New("notion is down")
 	}}
 
-	err := MarkDone(context.Background(), client, domain.Slice{ID: "hb", Name: "Approve action"})
+	err := MarkDone(context.Background(), client.store(), domain.Slice{ID: "hb", Name: "Approve action"})
 
 	if err == nil || !strings.Contains(err.Error(), `mark "Approve action" Done`) {
 		t.Errorf("err = %v, want the write's failure named", err)
@@ -99,7 +99,7 @@ func TestSettleMergedMarksAMergedPRDone(t *testing.T) {
 	viewer := &fakeViewer{pr: gh.PR{State: gh.PRStateMerged}}
 	s := domain.Slice{ID: "hb", Name: "Approve action", PRURL: "https://github.test/pr/9"}
 
-	done, err := SettleMerged(context.Background(), client, viewer, s, "/repo")
+	done, err := SettleMerged(context.Background(), client.store(), viewer, s, "/repo")
 
 	if err != nil || !done {
 		t.Fatalf("SettleMerged() = %v, %v, want Done written", done, err)
@@ -121,7 +121,7 @@ func TestSettleMergedLeavesAClosedPRAlone(t *testing.T) {
 	viewer := &fakeViewer{pr: gh.PR{State: gh.PRStateClosed}}
 	s := domain.Slice{ID: "hb", Name: "Approve action", PRURL: "https://github.test/pr/9"}
 
-	done, err := SettleMerged(context.Background(), client, viewer, s, "/repo")
+	done, err := SettleMerged(context.Background(), client.store(), viewer, s, "/repo")
 
 	if err != nil || done {
 		t.Fatalf("SettleMerged() = %v, %v, want nothing written and no error", done, err)
@@ -138,7 +138,7 @@ func TestSettleMergedReportsAFailedReading(t *testing.T) {
 	viewer := &fakeViewer{err: errors.New("gh is not signed in")}
 	s := domain.Slice{ID: "hb", Name: "Approve action", PRURL: "https://github.test/pr/9"}
 
-	done, err := SettleMerged(context.Background(), client, viewer, s, "/repo")
+	done, err := SettleMerged(context.Background(), client.store(), viewer, s, "/repo")
 
 	if done || err == nil || !strings.Contains(err.Error(), "read what became of") {
 		t.Errorf("SettleMerged() = %v, %v, want the reading's failure named", done, err)
@@ -158,7 +158,7 @@ func TestSettleMergedReportsAFailedWrite(t *testing.T) {
 	viewer := &fakeViewer{pr: gh.PR{State: gh.PRStateMerged}}
 	s := domain.Slice{ID: "hb", Name: "Approve action", PRURL: "https://github.test/pr/9"}
 
-	done, err := SettleMerged(context.Background(), client, viewer, s, "/repo")
+	done, err := SettleMerged(context.Background(), client.store(), viewer, s, "/repo")
 
 	if done || err == nil || !strings.Contains(err.Error(), `mark "Approve action" Done`) {
 		t.Errorf("SettleMerged() = %v, %v, want the write's failure named", done, err)

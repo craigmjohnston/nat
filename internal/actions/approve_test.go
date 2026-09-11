@@ -157,7 +157,7 @@ func TestRecordPR(t *testing.T) {
 	client := &fakeClient{}
 	s := domain.Slice{ID: "hb", Name: "Approve action"}
 
-	if err := RecordPR(context.Background(), client, s, "https://github.test/pr/9"); err != nil {
+	if err := RecordPR(context.Background(), client.store(), s, "https://github.test/pr/9"); err != nil {
 		t.Fatalf("RecordPR() = %v, want it to go through", err)
 	}
 
@@ -180,7 +180,7 @@ func TestRecordPRReportsAFailedWrite(t *testing.T) {
 		return nil, errors.New("notion is down")
 	}}
 
-	err := RecordPR(context.Background(), client, domain.Slice{ID: "hb", Name: "Approve action"}, "https://github.test/pr/9")
+	err := RecordPR(context.Background(), client.store(), domain.Slice{ID: "hb", Name: "Approve action"}, "https://github.test/pr/9")
 
 	if err == nil || !strings.Contains(err.Error(), `record the pull request for "Approve action"`) {
 		t.Errorf("err = %v, want the write's failure named", err)

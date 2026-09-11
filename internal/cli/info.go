@@ -11,6 +11,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // info prints everything an agent needs to know about a project: the
@@ -33,18 +34,12 @@ func info(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return fmt.Errorf("load project page: %w", err)
 	}
-	shape, err := sliceShape(ctx, client, project)
+	plan, err := store.Over(client).Plan(ctx, storeProject(projectID, project))
 	if err != nil {
 		return err
 	}
-	slices, err := client.QueryDataSource(ctx, project.SlicesDSID, nil,
-		[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
-	if err != nil {
-		return fmt.Errorf("load slices: %w", err)
-	}
 
-	p := domain.NewProject(projectID, project.Name, milestonesOf(shape), domain.InViewOrder(
-		domain.SlicesFromPages(slices), notion.PlanOrder(ctx, client, project.SlicesDSID)))
+	p := plan.Project
 	conventions := strings.TrimSpace(notion.Markdown(blocks))
 
 	if asJSON {
@@ -52,13 +47,6 @@ func info(ctx context.Context, args []string, env Env) error {
 	}
 	_, err = io.WriteString(env.Out, infoMarkdown(p, conventions))
 	return err
-}
-
-// milestonesOf is a project's plan: the options of its slices' Milestone
-// column, in the order the schema lists them. The schema already carries them,
-// so a plan needs no query of its own.
-func milestonesOf(shape notion.SliceShape) []domain.Milestone {
-	return domain.MilestonesFromOptions(shape.MilestoneOptions, shape.MilestoneType)
 }
 
 // parseJSONFlag reads the command line of a command whose only flags are --json

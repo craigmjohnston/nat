@@ -10,6 +10,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // PRMerger is what the merge key needs of the GitHub CLI: the pull request on
@@ -108,7 +109,7 @@ func mergePR(merger PRMerger, client NotionAPI, s domain.Slice, number int, ref,
 		if err := merger.MergePR(dir, ref); err != nil {
 			return prMergedMsg{number: number, sliceID: s.ID, err: err}
 		}
-		if err := actions.MarkDone(context.Background(), client, s); err != nil {
+		if err := actions.MarkDone(context.Background(), store.Over(client), s); err != nil {
 			return prMergedMsg{number: number, sliceID: s.ID, markErr: err}
 		}
 		return prMergedMsg{number: number, sliceID: s.ID}

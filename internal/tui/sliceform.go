@@ -10,6 +10,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // The messages the add/edit flow comes back as.
@@ -158,18 +159,13 @@ func loadSliceBody(client NotionAPI, s domain.Slice) tea.Cmd {
 func createSlice(client NotionAPI, slicesDSID string, m domain.Milestone, title, description, repo string) tea.Cmd {
 	title, repo = strings.TrimSpace(title), strings.TrimSpace(repo)
 	return func() tea.Msg {
-		properties := map[string]notion.PropertyValue{
-			notion.PropName:      notion.NewTitle(title),
-			notion.PropStatus:    notion.NewSelect(notion.SliceTodo),
-			notion.PropMilestone: m.Ref(),
-			notion.PropRepo:      notion.NewRichText(repo),
-		}
-		page, err := client.CreatePage(context.Background(), notion.DataSourceParent(slicesDSID),
-			properties, paragraphBlocks(description))
+		added, err := store.Over(client).AddSlice(context.Background(),
+			store.Project{SlicesID: slicesDSID},
+			store.NewSlice{Title: title, Brief: description, Repo: repo, Milestone: m})
 		if err != nil {
 			return sliceSavedMsg{err: fmt.Errorf("create slice: %w", err)}
 		}
-		return sliceSavedMsg{note: fmt.Sprintf("Added %q.", title), sliceID: page.ID}
+		return sliceSavedMsg{note: fmt.Sprintf("Added %q.", title), sliceID: added.ID}
 	}
 }
 
@@ -179,43 +175,11 @@ func createSlice(client NotionAPI, slicesDSID string, m domain.Milestone, title,
 func editSlice(client NotionAPI, sliceID, title, description, repo string) tea.Cmd {
 	title, repo = strings.TrimSpace(title), strings.TrimSpace(repo)
 	return func() tea.Msg {
-		ctx := context.Background()
-		properties := map[string]notion.PropertyValue{
-			notion.PropName: notion.NewTitle(title),
-			notion.PropRepo: notion.NewRichText(repo),
-		}
-		if _, err := client.UpdatePageProperties(ctx, sliceID, properties); err != nil {
-			return sliceSavedMsg{err: fmt.Errorf("update slice: %w", err)}
-		}
-		if err := replaceBody(ctx, client, sliceID, description); err != nil {
+		if err := store.Over(client).EditSlice(context.Background(), sliceID, title, repo, description); err != nil {
 			return sliceSavedMsg{err: err}
 		}
 		return sliceSavedMsg{note: fmt.Sprintf("Updated %q.", title), sliceID: sliceID}
 	}
-}
-
-// replaceBody rewrites a page's content with the brief. Notion has no
-// replace-content call, so the old blocks are trashed one by one and the new
-// ones appended; only the top level is walked, because a trashed block takes
-// its children with it.
-func replaceBody(ctx context.Context, client NotionAPI, pageID, description string) error {
-	blocks, err := client.GetBlockChildren(ctx, pageID)
-	if err != nil {
-		return fmt.Errorf("read slice body: %w", err)
-	}
-	for _, b := range blocks {
-		if err := client.DeleteBlock(ctx, b.ID); err != nil {
-			return fmt.Errorf("clear slice body: %w", err)
-		}
-	}
-	children := paragraphBlocks(description)
-	if len(children) == 0 {
-		return nil
-	}
-	if _, err := client.AppendBlockChildren(ctx, pageID, children); err != nil {
-		return fmt.Errorf("write slice body: %w", err)
-	}
-	return nil
 }
 
 // paragraphBlocks turns a brief into the blocks a slice page is written as: one

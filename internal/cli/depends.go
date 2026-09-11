@@ -11,6 +11,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // sliceDepends records what a slice waits on: the slices that must be Done
@@ -57,12 +58,12 @@ func sliceDepends(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	client := env.NewClient(env.Tokens.Token)
+	st := store.Over(client)
 
-	page, err := client.GetPage(ctx, id)
+	s, _, err := loadSlice(ctx, st, id)
 	if err != nil {
-		return fmt.Errorf("load the slice: %w", err)
+		return err
 	}
-	s := domain.SliceFromPage(*page)
 
 	kept := s.DependsOn
 	if *clear {
@@ -80,14 +81,10 @@ func sliceDepends(ctx context.Context, args []string, env Env) error {
 		}
 	}
 
-	updated, err := client.UpdatePageProperties(ctx, page.ID,
-		map[string]notion.PropertyValue{notion.PropDependsOn: notion.NewRelation(wanted...)})
-	if err != nil {
+	if s, err = st.SetDependencies(ctx, s.ID, wanted); err != nil {
 		return fmt.Errorf("record the dependencies: %w", err)
 	}
 	env.nudged()
-	s = domain.SliceFromPage(*updated)
-	logging.Action("slice dependencies recorded", "slice", s.ID, "depends_on", len(s.DependsOn))
 
 	deps := dependencyIndex(ctx, client, s)
 	if *asJSON {
