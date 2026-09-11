@@ -57,7 +57,7 @@ struct NewProjectSheetView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Add a Project")
                 .font(.system(size: Typo.headline, weight: .semibold))
-                .foregroundStyle(DesignTokens.label)
+                .ink(.primary)
 
             Picker("", selection: $mode) {
                 ForEach(Mode.allCases, id: \.self) { mode in
@@ -77,7 +77,7 @@ struct NewProjectSheetView: View {
             if let error {
                 Text(error)
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.systemRedInk(on: .window))
+                    .ink(.danger)
             }
 
             HStack {
@@ -112,7 +112,7 @@ struct NewProjectSheetView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Workspace Project")
                 .font(.system(size: Typo.subhead, weight: .semibold))
-                .foregroundStyle(DesignTokens.labelSecondary)
+                .ink(.secondary)
 
             if isListing {
                 QuietLoadingView(label: "Reading the workspace…")
@@ -135,7 +135,7 @@ struct NewProjectSheetView: View {
 
                 Text("Its plan is read straight away. Where its code lives is this Mac's own answer — set a working directory in Settings before launching an agent on it.")
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.labelTertiary)
+                    .ink(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -148,7 +148,7 @@ struct NewProjectSheetView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Name")
                 .font(.system(size: Typo.subhead, weight: .semibold))
-                .foregroundStyle(DesignTokens.labelSecondary)
+                .ink(.secondary)
             TextField("Project name", text: $name)
                 .textFieldStyle(.roundedBorder)
         }
@@ -156,7 +156,7 @@ struct NewProjectSheetView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Repository")
                 .font(.system(size: Typo.subhead, weight: .semibold))
-                .foregroundStyle(DesignTokens.labelSecondary)
+                .ink(.secondary)
             HStack(spacing: 8) {
                 TextField("Where this project's agents work", text: $directory)
                     .textFieldStyle(.roundedBorder)
@@ -167,15 +167,15 @@ struct NewProjectSheetView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Conventions")
                 .font(.system(size: Typo.subhead, weight: .semibold))
-                .foregroundStyle(DesignTokens.labelSecondary)
+                .ink(.secondary)
             Text("Optional. Becomes the project page's body — what every agent reads first.")
                 .font(.system(size: Typo.subhead, weight: .regular))
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
             TextEditor(text: $descriptionText)
                 .font(.system(size: Typo.subhead, weight: .regular))
                 .scrollContentBackground(.hidden)
                 .padding(6)
-                .background(DesignTokens.fieldBg)
+                .surface(.field)
                 .cornerRadius(6)
                 .frame(height: 100)
         }

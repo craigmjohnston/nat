@@ -139,7 +139,7 @@ struct SettingsView: View {
             ) {
                 if sortedProjectIDs.isEmpty {
                     Text("No projects are tracked on this Mac yet.")
-                        .foregroundStyle(DesignTokens.labelSecondary)
+                        .ink(.secondary)
                 } else {
                     ForEach(sortedProjectIDs, id: \.self) { projectID in
                         workingDirRow(projectID: projectID)
@@ -166,7 +166,7 @@ struct SettingsView: View {
                 SettingsLoadingRow()
             } else if let loadError {
                 Label(loadError, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(DesignTokens.systemRedInk(on: .window))
+                    .ink(.danger)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 content()
@@ -188,7 +188,7 @@ struct SettingsView: View {
     private func sectionFootnote(_ text: String) -> some View {
         Text(text)
             .font(.footnote)
-            .foregroundStyle(DesignTokens.labelSecondary)
+            .ink(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -208,7 +208,7 @@ struct SettingsView: View {
                 if let key, let error = fieldErrors[key] {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(.footnote)
-                        .foregroundStyle(DesignTokens.systemRedInk(on: .window))
+                        .ink(.danger)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -391,7 +391,7 @@ private struct SettingsLoadingRow: View {
             ProgressView()
                 .controlSize(.small)
             Text("Loading configuration…")
-                .foregroundStyle(DesignTokens.labelSecondary)
+                .ink(.secondary)
         }
         .opacity(isRevealed ? 1 : 0)
         .task { isRevealed = await LoadingDelay().shouldReveal() }

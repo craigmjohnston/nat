@@ -15,7 +15,7 @@ public enum Skeleton {
     /// `labelQuaternary` — a label colour, and so the third place in the app
     /// where ink was used as ground; it followed the hover fill by intent
     /// then and follows it by reference now.
-    public static let base = DesignTokens.hoverWash
+    public static let base = DesignTokens.fill(.hover)
 
     /// The sweep passing over it — brighter than the block and still far
     /// under anything the app draws as text. Its ground is the block, which
@@ -105,5 +105,5 @@ public struct SkeletonBlock: View {
     }
     .padding(20)
     .frame(width: 300)
-    .background(DesignTokens.windowBg)
+    .surface(.window)
 }

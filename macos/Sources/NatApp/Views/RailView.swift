@@ -37,7 +37,7 @@ private struct InsetHoverWash: ViewModifier {
         content
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(hovering ? DesignTokens.hoverWash : Color.clear)
+                    .fill(hovering ? DesignTokens.fill(.hover) : Color.clear)
                     .padding(.horizontal, 6)
             )
             .onHover { hovering = $0 }
@@ -132,17 +132,17 @@ struct RailView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Label("The plan could not be loaded", systemImage: "exclamationmark.triangle")
                                 .font(.system(size: Typo.body, weight: .semibold))
-                                .foregroundStyle(DesignTokens.systemYellowInk(on: .card))
+                                .ink(.warning)
                             Text(message)
                                 .font(.system(size: Typo.caption))
-                                .foregroundStyle(DesignTokens.labelSecondary)
+                                .ink(.secondary)
                             Button("Try Again") {
                                 Task { await appModel.refresh() }
                             }
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(DesignTokens.controlBg)
+                        .surface(.card)
                         .cornerRadius(8)
                         .padding(.horizontal, 12)
                     } else if let message = state.errorMessage {
@@ -152,7 +152,7 @@ struct RailView: View {
                             Text("Refresh failed — showing the last plan")
                                 .font(.system(size: Typo.caption))
                         }
-                        .foregroundStyle(DesignTokens.systemYellowInk(on: .window))
+                        .ink(.warning)
                         .padding(.horizontal, RailSlot.leading)
                         .padding(.bottom, 6)
                         .help(message)
@@ -166,15 +166,15 @@ struct RailView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(EmptyProjectNote.title)
                             .font(.system(size: Typo.body, weight: .semibold))
-                            .foregroundStyle(DesignTokens.labelSecondary)
+                            .ink(.secondary)
                         Text(EmptyProjectNote.subtitle(needsWorkingDir: appModel.activeProjectNeedsWorkingDir))
                             .font(.system(size: Typo.subhead))
-                            .foregroundStyle(DesignTokens.labelTertiary)
+                            .ink(.tertiary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(DesignTokens.controlBg)
+                    .surface(.card)
                     .cornerRadius(8)
                     .padding(.horizontal, 12)
                     .padding(.bottom, 10)
@@ -280,7 +280,7 @@ struct RailView: View {
             .padding(.top, 12)
             .padding(.bottom, 16)
         }
-        .background(DesignTokens.windowBg)
+        .surface(.window)
         .rectBorderTrailing(width: 0.5, color: DesignTokens.separator(on: .window))
         .alert(
             "Delete \u{201C}\(sliceForDeletion?.name ?? "")\u{201D}?",
@@ -339,11 +339,11 @@ struct RailView: View {
             Image(systemName: icon)
                 .font(.system(size: Typo.caption, weight: .semibold))
                 .frame(width: RailSlot.slot)
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
 
             Text(title)
                 .font(.system(size: Typo.caption, weight: .semibold))
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
 
             Spacer()
         }
@@ -357,18 +357,18 @@ struct RailView: View {
             Image(systemName: expandedDoneSummary ? "chevron.down" : "chevron.right")
                 .font(.system(size: 11, weight: .bold))
                 .frame(width: RailSlot.slot)
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
 
             Text("DONE")
                 .font(.system(size: Typo.caption, weight: .semibold))
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
 
             Spacer()
 
             Text("\(summary.doneCount)/\(summary.totalCount)")
                 .font(.system(size: Typo.subhead, weight: .regular))
                 .monospacedDigit()
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
         }
         .padding(.leading, RailSlot.leading)
         .padding(.trailing, RailSlot.trailing)
@@ -406,7 +406,7 @@ struct RailView: View {
                 HStack(alignment: .firstTextBaseline, spacing: RailSlot.spacing) {
                     Text(name)
                         .font(.system(size: Typo.body, weight: .regular))
-                        .foregroundStyle(DesignTokens.label)
+                        .ink(.primary)
                         .lineLimit(1)
 
                     Spacer(minLength: 0)
@@ -423,7 +423,7 @@ struct RailView: View {
                     ForEach(Array(detail.enumerated()), id: \.offset) { index, piece in
                         if index > 0 {
                             Text("·")
-                                .foregroundStyle(DesignTokens.labelTertiary)
+                                .ink(.tertiary)
                         }
                         Text(piece.0)
                             .foregroundStyle(piece.1)
@@ -614,13 +614,13 @@ struct RailView: View {
             if inDone && folder.isComplete {
                 Image(systemName: "checkmark")
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(DesignTokens.systemGreenInk(on: .window))
+                    .ink(.success)
             }
 
             Text("\(folder.done)/\(folder.total)")
                 .font(.system(size: Typo.subhead, weight: .regular))
                 .monospacedDigit()
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
         }
         .frame(height: RailSlot.rowHeight)
         .padding(.leading, RailSlot.leading + (inDone ? RailSlot.indent : 0))

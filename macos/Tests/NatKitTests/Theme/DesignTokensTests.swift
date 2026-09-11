@@ -172,8 +172,8 @@ final class DesignTokensTests: XCTestCase {
     /// is one value the theme decided and this asserts it is that value.
     func testDerivedColorsResolveOpaquePerAppearance() {
         var checks: [(String, NSColor, (Palette) -> String)] = [
-            ("bandBg", NSColor(DesignTokens.bandBg), { $0.bandBg.hex }),
-            ("headerBg", NSColor(DesignTokens.headerBg), { $0.headerBg.hex }),
+            ("bandBg", NSColor(DesignTokens.fill(.band)), { $0.bandBg.hex }),
+            ("headerBg", NSColor(DesignTokens.fill(.header)), { $0.headerBg.hex }),
             ("onAccentSeparator", NSColor(DesignTokens.onAccentSeparator), { $0.onAccentRule.hex }),
         ]
         for ground in Ground.allCases {
@@ -255,14 +255,7 @@ final class DesignTokensTests: XCTestCase {
 
     func testDesignTokensColorAvailability() {
         // Verify that all design tokens are accessible
-        _ = DesignTokens.windowBg
-        _ = DesignTokens.controlBg
-        _ = DesignTokens.rowAltBg
-        _ = DesignTokens.fieldBg
-        _ = DesignTokens.hoverWash
-        _ = DesignTokens.controlFace
-        _ = DesignTokens.terminalBg
-        _ = DesignTokens.headerBg
+        for ground in Ground.allCases { _ = DesignTokens.fill(ground) }
         _ = DesignTokens.label
         _ = DesignTokens.labelSecondary
         _ = DesignTokens.labelTertiary
@@ -282,7 +275,6 @@ final class DesignTokensTests: XCTestCase {
         _ = DesignTokens.systemPink
         _ = DesignTokens.systemTeal
         _ = DesignTokens.systemGray
-        _ = DesignTokens.bandBg
         _ = DesignTokens.skeletonHighlight
         _ = DesignTokens.onAccentSeparator
         _ = DesignTokens.accentMuted

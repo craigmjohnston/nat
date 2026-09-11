@@ -108,5 +108,5 @@ struct RailSkeletonView: View {
 #Preview {
     RailSkeletonView()
         .frame(width: 260, height: 400)
-        .background(DesignTokens.windowBg)
+        .surface(.window)
 }

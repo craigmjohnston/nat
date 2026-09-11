@@ -17,7 +17,7 @@ struct HoverWash: ViewModifier {
         content
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(enabled && hovering ? DesignTokens.hoverWash : Color.clear)
+                    .fill(enabled && hovering ? DesignTokens.fill(.hover) : Color.clear)
             )
             .onHover { hovering = $0 }
     }
@@ -194,7 +194,7 @@ struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: Typo.subhead, weight: .semibold))
-            .foregroundStyle(DesignTokens.accentText)
+            .ink(.onAccent)
             .padding(.horizontal, ButtonMetrics.horizontalPadding)
             .frame(height: ButtonMetrics.height)
             .background(
@@ -215,13 +215,10 @@ struct SecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: Typo.subhead, weight: .regular))
-            .foregroundStyle(DesignTokens.label)
+            .ink(.primary)
             .padding(.horizontal, ButtonMetrics.horizontalPadding)
             .frame(height: ButtonMetrics.height)
-            .background(
-                DesignTokens.controlFace,
-                in: RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius)
-            )
+            .surface(.control, radius: ButtonMetrics.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius)
                     .stroke(DesignTokens.hairline(on: .control), lineWidth: 1)
@@ -237,7 +234,7 @@ struct GhostButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: Typo.subhead, weight: .regular))
-            .foregroundStyle(DesignTokens.labelSecondary)
+            .ink(.secondary)
             .padding(.horizontal, ButtonMetrics.ghostHorizontalPadding)
             .frame(height: ButtonMetrics.height)
             .opacity(buttonOpacity(isPressed: configuration.isPressed, isEnabled: isEnabled))

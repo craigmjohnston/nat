@@ -34,7 +34,7 @@ public struct QuietLoadingView: View {
                         .controlSize(.small)
                     Text(label)
                         .font(.system(size: Typo.subhead))
-                        .foregroundStyle(DesignTokens.labelTertiary)
+                        .ink(.tertiary)
                 }
             } else {
                 Color.clear

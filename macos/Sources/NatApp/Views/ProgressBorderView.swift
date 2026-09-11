@@ -38,7 +38,7 @@ struct ProgressBorderView: View {
         .frame(height: 7)
         .padding(.horizontal, 20)
         .padding(.vertical, 6)
-        .background(DesignTokens.windowBg)
+        .surface(.window)
         .rectBorder(width: 0.5, edges: [.top], color: DesignTokens.separator(on: .window))
     }
 

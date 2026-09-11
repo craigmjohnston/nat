@@ -63,53 +63,14 @@ public enum DesignTokens {
 
     // MARK: - Background & Surface Colors
 
-    /// The app's ground, and the fill of every pane that is not a card.
-    public static let windowBg = token(\.windowBg)
 
-    /// The face of a card raised off the ground: rail cards, the diff file
-    /// box, a tab's own band.
-    public static let controlBg = token(\.controlBg)
 
-    /// The band that has to read apart from a card it sits inside: a file
-    /// box's header row, a comment row, the diff gutter.
-    public static let rowAltBg = token(\.rowAltBg)
 
-    /// The face of a control the pointer acts on — a button, a picker.
-    public static let controlFace = token(\.controlFace)
 
-    /// The well text is typed into.
-    public static let fieldBg = token(\.fieldBg)
 
-    /// The fill under the pointer, and the one surface in the app that is
-    /// drawn only while something is being pointed at: a rail row, a project
-    /// tab, a stepper stage, a file in the diff sidebar, a ghost button in
-    /// the header band. Opaque rather than a wash, because it is laid
-    /// straight over the ground behind whatever is hovered rather than
-    /// tinting it, and it is Catppuccin's `surface0` in both themes — up
-    /// from `base` in Mocha and down from it in Latte, which is each
-    /// theme's own direction for "raised". See `Palette.hoverWash`.
-    public static let hoverWash = token(\.hoverWash)
 
-    /// The agent terminal's own surface, for the SwiftUI colour laid
-    /// full-bleed behind the terminal view. What the terminal view itself is
-    /// styled with is the whole of `Palette`'s terminal half — background,
-    /// foreground, caret and the sixteen ANSI colours — since SwiftTerm
-    /// takes `NSColor`s of its own rather than reading this.
-    public static let terminalBg = token(\.terminalBg)
 
-    /// The header band: the accent veiled over the window ground, as one
-    /// opaque colour. It was two layers — the ground behind an opacity with
-    /// the veil on top — which let whatever sits behind the window show
-    /// through a band that paints no material of its own.
-    public static let headerBg = derived { $0.headerBg }
 
-    /// A band laid over the window ground at half a card's weight: the
-    /// pane's header band, the brief's footer band, and the notice row that
-    /// follows it. It used to be three different things — `controlBg` behind
-    /// a bare `0.5` in two files and AppKit's own `controlBackgroundColor`
-    /// behind the same number in a third, which drifted with the OS
-    /// appearance while everything around it stayed pinned.
-    public static let bandBg = derived { $0.bandBg }
 
     // MARK: - Text Colors
 
@@ -251,6 +212,46 @@ public enum DesignTokens {
         derived { $0.wash(.comment, of: $0.accent, on: ground) }
     }
 
+    // MARK: - The two resolvers the component layer draws with
+
+    /// The fill of a named ground. This and `ink(_:on:)` below are what the
+    /// whole view layer paints with; everything else in this file is the
+    /// vocabulary they are built from.
+    public static func fill(_ ground: Ground) -> Color {
+        derived { ground.surface(in: $0) }
+    }
+
+    /// The colour of text in a role, on a ground.
+    ///
+    /// A label tier is the palette's own ink, shaded only if it cannot be read
+    /// where it has landed — which in Mocha is never and in Latte is on the
+    /// raised surfaces, whose ramp Catppuccin never meant content to sit on. A
+    /// tone is the matching hue under the same rule. See
+    /// `Palette.ink(of:on:clearing:)`.
+    public static func ink(_ role: InkRole, on ground: Ground) -> Color {
+        derived { palette in
+            let surface = ground.surface(in: palette)
+            switch role {
+            case .primary: return palette.readable(palette.label, on: surface)
+            case .secondary: return palette.readable(palette.labelSecondary, on: surface)
+            // Meta text is held to WCAG's incidental bar rather than AA, which
+            // is what keeps the ramp a ramp: shading every tier to 4.5 would
+            // pull secondary and tertiary onto the same colour and the
+            // hierarchy they exist to draw would be gone.
+            case .tertiary: return palette.readable(palette.labelTertiary, on: surface, clearing: 3)
+            // Deliberately unshaded: the disabled glyph and the empty-slot
+            // rule are meant to recede, and WCAG exempts them.
+            case .quaternary: return palette.labelQuaternary
+            case .onAccent: return palette.accentText
+            case .accent: return palette.ink(of: palette.accent, on: surface)
+            case .success: return palette.ink(of: palette.systemGreen, on: surface)
+            case .danger: return palette.ink(of: palette.systemRed, on: surface)
+            case .warning: return palette.ink(of: palette.systemYellow, on: surface)
+            case .info: return palette.ink(of: palette.systemBlue, on: surface)
+            }
+        }
+    }
+
     // MARK: - A hue written on a ground
 
     // A hue used as a *fill* is the tint itself — the tokens below — since a
@@ -283,6 +284,16 @@ public enum DesignTokens {
     }
     public static func systemPinkInk(on ground: Ground) -> Color {
         derived { $0.ink(of: $0.systemPink, on: ground.surface(in: $0)) }
+    }
+
+    /// The capsule behind a chip's word.
+    public static func chipWash(_ tint: ChipTint, on ground: Ground) -> Color {
+        derived { $0.wash(.chip, of: tint.tint(in: $0), on: ground) }
+    }
+
+    /// A rule at one of the three weights, on a ground.
+    public static func rule(_ weight: RuleWeight, on ground: Ground) -> Color {
+        derived { $0.rule(weight, on: ground) }
     }
 
     /// The word inside a chip, over the chip's own capsule. Which hue is

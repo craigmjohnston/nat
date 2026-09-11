@@ -46,7 +46,7 @@ struct ProjectTabsView: View {
             Button(action: onNewProject) {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(DesignTokens.labelSecondary)
+                    .ink(.secondary)
                     .frame(width: 32, height: 32)
             }
             .buttonStyle(.plain)
@@ -132,7 +132,7 @@ struct ProjectTabsView: View {
                 }) {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(DesignTokens.labelTertiary)
+                        .ink(.tertiary)
                         .frame(width: 16, height: 16)
                 }
                 .buttonStyle(.plain)
@@ -161,8 +161,8 @@ struct ProjectTabsView: View {
             BrowserTabShape(cornerRadius: 10, flare: 10)
                 .fill(
                     isActive
-                        ? DesignTokens.windowBg
-                        : (hoveredTabID == tab.id ? DesignTokens.hoverWash : Color.clear)
+                        ? DesignTokens.fill(.window)
+                        : (hoveredTabID == tab.id ? DesignTokens.fill(.hover) : Color.clear)
                 )
         )
         .contentShape(Rectangle())

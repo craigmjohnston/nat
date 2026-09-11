@@ -702,6 +702,24 @@ extension Palette {
         return Ink(candidate)
     }
 
+    /// An ink shaded only as far as it must be to be read on a ground —
+    /// `ink(of:on:)` for something that is already ink rather than a hue.
+    ///
+    /// It is the same operation and exists for the same reason: Latte's
+    /// `subtext0` clears AA on none of its own surfaces, 4.37 at best on
+    /// `base` and 3.20 on a card, so a theme cannot be taken as published and
+    /// also be readable everywhere this app draws.
+    public func readable(_ ink: Ink, on ground: Surface, clearing bar: Double = 4.5) -> Ink {
+        let step = relativeLuminance(ground.hex) > relativeLuminance(ink.hex) ? -0.02 : 0.02
+        var magnitude = 0.0
+        var candidate = ink.hex
+        while contrastRatio(candidate, ground.hex) < bar && abs(magnitude) < 0.6 {
+            magnitude += step
+            candidate = shade(ink.hex, magnitude)
+        }
+        return Ink(candidate)
+    }
+
     /// The word inside a chip, whose ground is the chip's own capsule rather
     /// than the surface behind it — a chip is one hue drawn twice, and the
     /// word has to survive the wash it sits on.

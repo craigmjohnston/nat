@@ -34,51 +34,24 @@ final class PairingTests: XCTestCase {
         ("labelTertiary", { $0.labelTertiary }, 3.0),
     ]
 
-    /// The pairings that fall short today.
+    /// No ink is drawn on a ground it cannot be read on.
     ///
-    /// Every one of them is debt rather than a decision, and they divide in
-    /// two. Latte's `labelSecondary` misses AA even on its own `base` (4.37)
-    /// — that is Catppuccin's own ramp and not something this app can fix
-    /// without leaving the theme. The rest is this app's mapping: drawing a
-    /// card in `surface0` and then writing secondary and meta text on it
-    /// takes the same ink down to 3.2 and 2.56. Catppuccin's ladder means
-    /// `base`, `mantle` and `crust` to be the grounds content sits on, with
-    /// `surface0`–`surface2` for UI furniture; the cure is to re-ladder the
-    /// content surfaces, not to re-tint the ink.
-    ///
-    /// Listing them is the point: a shortfall in this set is visible, and one
-    /// outside it fails the build.
-    private let knownShortfalls: Set<String> = [
-        "mocha labelSecondary control",
-        "latte label control",
-        "latte labelSecondary window",
-        "latte labelSecondary card",
-        "latte labelSecondary rowAlt",
-        "latte labelSecondary control",
-        "latte labelSecondary field",
-        "latte labelSecondary band",
-        "latte labelSecondary header",
-        "latte labelSecondary terminal",
-        "latte labelSecondary hover",
-        "latte labelTertiary card",
-        "latte labelTertiary rowAlt",
-        "latte labelTertiary control",
-        "latte labelTertiary hover",
-    ]
-
-    /// No ink is drawn on a ground it cannot be read on — bar the shortfalls
-    /// named above, which are held to being no worse than they already are.
+    /// What is asserted is the colour the app *draws* rather than the one the
+    /// palette holds, which is the whole difference `readable(_:on:)` makes:
+    /// Latte's `subtext0` clears AA on none of its own surfaces — 4.37 at best
+    /// on `base`, 3.20 on a card — so taking a theme as published and drawing
+    /// it unchanged were never both possible. This used to carry a list of
+    /// sixteen pairings that fell short. There are none.
     func testEveryInkClearsItsBarOnEveryGround() {
         for (theme, palette) in palettes {
             for (inkName, ink, bar) in bars {
                 for ground in Ground.allCases {
-                    let pair = "\(theme) \(inkName) \(ground.rawValue)"
-                    let ratio = contrast(ink(palette).hex, ground.surface(in: palette).hex)
-                    if knownShortfalls.contains(pair) {
-                        XCTAssertLessThan(ratio, bar, "\(pair): fixed — take it out of knownShortfalls")
-                    } else {
-                        XCTAssertGreaterThanOrEqual(ratio, bar, "\(pair): \(ratio) is under \(bar)")
-                    }
+                    let surface = ground.surface(in: palette)
+                    let drawn = palette.readable(ink(palette), on: surface, clearing: bar)
+                    XCTAssertGreaterThanOrEqual(
+                        contrast(drawn.hex, surface.hex), bar,
+                        "\(theme) \(inkName) on \(ground.rawValue) is under \(bar)"
+                    )
                 }
             }
         }
@@ -182,6 +155,30 @@ final class PairingTests: XCTestCase {
                     XCTAssertLessThan(drift, 0.02, "\(theme): \(name) on \(ground.rawValue) changed hue")
                     XCTAssertEqual(satAfter, satBefore, accuracy: 0.02,
                                    "\(theme): \(name) on \(ground.rawValue) lost saturation")
+                }
+            }
+        }
+    }
+
+    /// Shading a tier to make it readable must not flatten the ramp it
+    /// belongs to. The tiers exist to draw hierarchy — a title, its supporting
+    /// line, its timestamp — and a correction that pulled them onto one colour
+    /// would buy contrast by spending the thing contrast is for. It is why
+    /// meta text is held to WCAG's incidental bar rather than AA.
+    func testTheLabelRampStillRecedesAfterShading() {
+        for (theme, palette) in palettes {
+            for ground in Ground.allCases {
+                let surface = ground.surface(in: palette)
+                let tiers = [
+                    palette.readable(palette.label, on: surface),
+                    palette.readable(palette.labelSecondary, on: surface),
+                    palette.readable(palette.labelTertiary, on: surface, clearing: 3),
+                ].map { contrast($0.hex, surface.hex) }
+                for (above, below) in zip(tiers, tiers.dropFirst()) {
+                    XCTAssertGreaterThan(
+                        above, below,
+                        "\(theme) on \(ground.rawValue): each tier should recede further than the one above"
+                    )
                 }
             }
         }

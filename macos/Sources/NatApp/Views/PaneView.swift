@@ -41,13 +41,13 @@ struct PaneView: View {
                             if let milestoneName = milestoneName(for: slice) {
                                 Text(milestoneName)
                                     .font(.system(size: Typo.caption))
-                                    .foregroundStyle(DesignTokens.labelTertiary)
+                                    .ink(.tertiary)
                                     .lineLimit(1)
                             }
 
                             Text(slice.name)
                                 .font(.system(size: Typo.headline, weight: .semibold))
-                                .foregroundStyle(DesignTokens.label)
+                                .ink(.primary)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
                         }
@@ -76,7 +76,7 @@ struct PaneView: View {
                     }
                     .padding(.vertical, 10)
                     .padding(.horizontal, 14)
-                    .background(DesignTokens.bandBg)
+                    .surface(.band)
                     .overlay(alignment: .bottom) {
                         DesignTokens.hairline(on: .band)
                             .frame(height: 1)
@@ -106,27 +106,27 @@ struct PaneView: View {
                     VStack(spacing: 8) {
                         Image(systemName: "doc.text")
                             .font(.system(size: 32, weight: .regular))
-                            .foregroundStyle(DesignTokens.labelSecondary)
+                            .ink(.secondary)
 
                         if appModel.activePlanIsEmpty {
                             Text(EmptyProjectNote.title)
                                 .font(.system(size: Typo.body, weight: .regular))
-                                .foregroundStyle(DesignTokens.labelSecondary)
+                                .ink(.secondary)
 
                             Text(EmptyProjectNote.subtitle(needsWorkingDir: appModel.activeProjectNeedsWorkingDir))
                                 .font(.system(size: Typo.subhead, weight: .regular))
-                                .foregroundStyle(DesignTokens.labelTertiary)
+                                .ink(.tertiary)
                                 .multilineTextAlignment(.center)
                                 .frame(maxWidth: 380)
                         } else {
                             Text("Select a slice to begin")
                                 .font(.system(size: Typo.body, weight: .regular))
-                                .foregroundStyle(DesignTokens.labelSecondary)
+                                .ink(.secondary)
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .background(DesignTokens.controlBg)
+                .surface(.card)
             }
         }
         .onChange(of: appModel.selectedSliceID) { _, _ in

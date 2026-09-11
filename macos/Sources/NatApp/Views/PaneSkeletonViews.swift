@@ -167,10 +167,7 @@ struct BriefSkeletonView: View {
                         }
                     }
                     .padding(20)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(DesignTokens.controlBg)
-                    )
+                    .surface(.card, radius: 10)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
                             .stroke(DesignTokens.hairline(on: .card), lineWidth: 1)
@@ -265,8 +262,7 @@ struct DiffSkeletonView: View {
             }
             .padding(.vertical, 4)
         }
-        .background(DesignTokens.controlBg)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .surface(.card, radius: 10)
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .stroke(DesignTokens.hairline(on: .card), lineWidth: 1)
@@ -337,17 +333,17 @@ struct PRSkeletonView: View {
 #Preview("Brief") {
     BriefSkeletonView()
         .frame(width: 900, height: 560)
-        .background(DesignTokens.windowBg)
+        .surface(.window)
 }
 
 #Preview("Diff") {
     DiffSkeletonView()
         .frame(width: 900, height: 560)
-        .background(DesignTokens.windowBg)
+        .surface(.window)
 }
 
 #Preview("PR") {
     PRSkeletonView()
         .frame(width: 900, height: 560)
-        .background(DesignTokens.windowBg)
+        .surface(.window)
 }

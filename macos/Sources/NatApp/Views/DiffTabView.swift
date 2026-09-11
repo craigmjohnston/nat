@@ -81,7 +81,7 @@ struct DiffTabView: View {
                 loadingState
             }
         }
-        .background(DesignTokens.windowBg)
+        .surface(.window)
         .task {
             await fetch()
         }
@@ -105,16 +105,16 @@ struct DiffTabView: View {
         VStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 24, weight: .regular))
-                .foregroundStyle(DesignTokens.systemRedInk(on: .window))
+                .ink(.danger)
 
             Text("Failed to read the diff")
                 .font(.system(size: Typo.body, weight: .regular))
-                .foregroundStyle(DesignTokens.label)
+                .ink(.primary)
 
             if let message = store.loadState.errorMessage {
                 Text(message)
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.labelSecondary)
+                    .ink(.secondary)
                     .lineLimit(3)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 420)
@@ -136,11 +136,11 @@ struct DiffTabView: View {
                 VStack(spacing: 8) {
                     Image(systemName: "plus.forwardslash.minus")
                         .font(.system(size: 32, weight: .regular))
-                        .foregroundStyle(DesignTokens.labelSecondary)
+                        .ink(.secondary)
 
                     Text("Nothing to show — the branch matches its base")
                         .font(.system(size: Typo.body, weight: .regular))
-                        .foregroundStyle(DesignTokens.labelSecondary)
+                        .ink(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -238,7 +238,7 @@ struct DiffTabView: View {
                 ))
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .monospacedDigit()
-                    .foregroundStyle(DesignTokens.labelTertiary)
+                    .ink(.tertiary)
 
                 Spacer()
 

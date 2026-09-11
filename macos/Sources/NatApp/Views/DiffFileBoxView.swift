@@ -74,7 +74,7 @@ struct DiffFileBoxView: View {
                             .padding(.leading, commentLeadingInset)
                             .padding(.trailing, 12)
                             .padding(.vertical, 10)
-                            .background(DesignTokens.rowAltBg)
+                            .surface(.rowAlt)
                         }
 
                         ForEach(comments.filter { $0.anchorRowIDs.last == row.id }) { comment in
@@ -88,14 +88,13 @@ struct DiffFileBoxView: View {
                             .padding(.leading, commentLeadingInset)
                             .padding(.trailing, 12)
                             .padding(.vertical, 10)
-                            .background(DesignTokens.rowAltBg)
+                            .surface(.rowAlt)
                         }
                     }
                 }
             }
         }
-        .background(DesignTokens.controlBg)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .surface(.card, radius: 10)
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .stroke(DesignTokens.controlBorder(on: .card), lineWidth: 0.5)
@@ -106,24 +105,24 @@ struct DiffFileBoxView: View {
         HStack(spacing: 10) {
             Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
 
             if isViewed {
                 Image(systemName: "checkmark")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(DesignTokens.systemGreenInk(on: .rowAlt))
+                    .ink(.success)
             }
 
             Text(file.path)
                 .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
-                .foregroundStyle(DesignTokens.label)
+                .ink(.primary)
                 .lineLimit(1)
                 .truncationMode(.head)
 
             if file.isRenamed {
                 Text("was \(file.oldPath)")
                     .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
-                    .foregroundStyle(DesignTokens.labelTertiary)
+                    .ink(.tertiary)
                     .lineLimit(1)
             }
 
@@ -135,7 +134,7 @@ struct DiffFileBoxView: View {
                         .font(.system(size: Typo.subhead, weight: .regular))
                         .monospacedDigit()
                 }
-                .foregroundStyle(DesignTokens.accentInk(on: .rowAlt))
+                .ink(.accent)
             }
 
             Spacer()
@@ -144,13 +143,13 @@ struct DiffFileBoxView: View {
                 Text("+\(file.adds)")
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .monospacedDigit()
-                    .foregroundStyle(DesignTokens.systemGreenInk(on: .rowAlt))
+                    .ink(.success)
             }
             if file.dels > 0 {
                 Text("\u{2212}\(file.dels)")
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .monospacedDigit()
-                    .foregroundStyle(DesignTokens.systemRedInk(on: .rowAlt))
+                    .ink(.danger)
             }
 
             Button(action: onToggleViewed) {
@@ -160,7 +159,7 @@ struct DiffFileBoxView: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 32)
-        .background(DesignTokens.rowAltBg)
+        .surface(.rowAlt)
         .contentShape(Rectangle())
         .onTapGesture {
             onToggleCollapsed()
@@ -235,12 +234,12 @@ struct DiffRowView: View {
         HStack(spacing: 0) {
             Text("···")
                 .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
-                .foregroundStyle(DesignTokens.accentInk(on: .card))
+                .ink(.accent)
                 .frame(width: gutterWidth)
 
             Text(row.text)
                 .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
                 .lineLimit(1)
                 .padding(.leading, 12)
 
@@ -266,7 +265,7 @@ struct DiffRowView: View {
                     .frame(width: numberColumnWidth, alignment: .trailing)
             }
             .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
-            .foregroundStyle(DesignTokens.labelTertiary)
+            .ink(.tertiary)
             .padding(.horizontal, 8)
 
             Text(glyph)
@@ -284,7 +283,7 @@ struct DiffRowView: View {
                 Button(action: onComment) {
                     Image(systemName: "plus.bubble")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(DesignTokens.accentInk(on: .card))
+                        .ink(.accent)
                 }
                 .buttonStyle(.plain)
                 .padding(.trailing, 8)
@@ -349,7 +348,7 @@ struct DiffRowView: View {
         switch row.kind {
         case .added: return DesignTokens.diffAddedGutterBg(on: .card)
         case .removed: return DesignTokens.diffRemovedGutterBg(on: .card)
-        default: return DesignTokens.rowAltBg
+        default: return DesignTokens.fill(.rowAlt)
         }
     }
 }
@@ -370,18 +369,18 @@ struct PendingCommentCardView: View {
             HStack(spacing: 8) {
                 Text(authorInitials)
                     .font(.system(size: Typo.caption, weight: .semibold))
-                    .foregroundStyle(DesignTokens.accentInk(on: .card))
+                    .ink(.accent)
                     .frame(width: 20, height: 20)
                     .background(DesignTokens.avatarWash(on: .card))
                     .clipShape(Circle())
 
                 Text(authorName)
                     .font(.system(size: Typo.subhead, weight: .semibold))
-                    .foregroundStyle(DesignTokens.label)
+                    .ink(.primary)
 
                 Text("Pending")
                     .font(.system(size: Typo.caption, weight: .semibold))
-                    .foregroundStyle(DesignTokens.systemYellowInk(on: .card))
+                    .ink(.warning)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(DesignTokens.systemYellowWash(on: .card))
@@ -392,7 +391,7 @@ struct PendingCommentCardView: View {
                 Button(action: onEdit) {
                     Image(systemName: "pencil")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(DesignTokens.labelTertiary)
+                        .ink(.tertiary)
                 }
                 .buttonStyle(.plain)
                 .help("Edit this comment")
@@ -400,24 +399,24 @@ struct PendingCommentCardView: View {
                 Button(action: onDelete) {
                     Image(systemName: "trash")
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(DesignTokens.labelTertiary)
+                        .ink(.tertiary)
                 }
                 .buttonStyle(.plain)
                 .help("Delete this comment")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .background(DesignTokens.controlFace)
+            .surface(.control)
 
             Divider().frame(height: 0.5)
 
             Text(comment.text)
                 .font(.system(size: Typo.subhead, weight: .regular))
-                .foregroundStyle(DesignTokens.label)
+                .ink(.primary)
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(DesignTokens.controlBg)
+        .surface(.card)
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
@@ -450,8 +449,7 @@ struct CommentEditorView: View {
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 60, idealHeight: 60, maxHeight: 140)
                 .padding(6)
-                .background(DesignTokens.fieldBg)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .surface(.field, radius: 8)
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(DesignTokens.controlBorder(on: .field), lineWidth: 0.5)

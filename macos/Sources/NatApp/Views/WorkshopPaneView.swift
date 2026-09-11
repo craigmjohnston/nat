@@ -25,7 +25,7 @@ struct WorkshopPaneView: View {
                 HStack(spacing: 14) {
                     Text("Workshop")
                         .font(.system(size: Typo.body, weight: .semibold))
-                        .foregroundStyle(DesignTokens.label)
+                        .ink(.primary)
                         .lineLimit(1)
 
                     Spacer()
@@ -40,7 +40,7 @@ struct WorkshopPaneView: View {
 
             content
         }
-        .background(DesignTokens.windowBg)
+        .surface(.window)
     }
 
     @ViewBuilder
@@ -48,7 +48,7 @@ struct WorkshopPaneView: View {
         if let agent = appModel.planningAgent {
             // Terminal area — the same full-bleed panel the Agent tab draws.
             ZStack {
-                DesignTokens.terminalBg
+                DesignTokens.fill(.terminal)
 
                 AgentTerminalHostView(
                     attachSpec: AttachSpec(session: agent.session),
@@ -83,10 +83,10 @@ struct WorkshopPaneView: View {
 
             Text("Starting the workshop session…")
                 .font(.system(size: Typo.subhead, weight: .regular))
-                .foregroundStyle(DesignTokens.labelSecondary)
+                .ink(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(DesignTokens.controlBg)
+        .surface(.card)
     }
 
     /// The question the board's `w` form asks, as the pane's own content: the
@@ -97,21 +97,20 @@ struct WorkshopPaneView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("What do you want to workshop?")
                 .font(.system(size: Typo.body, weight: .semibold))
-                .foregroundStyle(DesignTokens.label)
+                .ink(.primary)
 
             Text("Goes into the agent's prompt; empty starts on the pending wishlist, or a plain session.")
                 .font(.system(size: Typo.subhead, weight: .regular))
-                .foregroundStyle(DesignTokens.labelSecondary)
+                .ink(.secondary)
 
             TextEditor(text: $request)
                 .disabled(appModel.workshopLaunching)
                 .font(.system(size: Typo.body, weight: .regular))
-                .foregroundStyle(DesignTokens.label)
+                .ink(.primary)
                 .scrollContentBackground(.hidden)
                 .padding(6)
                 .frame(minHeight: 180, maxHeight: .infinity)
-                .background(DesignTokens.windowBg)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .surface(.window, radius: 6)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(DesignTokens.separator(on: .window), lineWidth: 1)
@@ -120,7 +119,7 @@ struct WorkshopPaneView: View {
             if let error = appModel.workshopLaunchError {
                 Text(error)
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.systemRedInk(on: .window))
+                    .ink(.danger)
             }
 
             HStack {
@@ -145,7 +144,7 @@ struct WorkshopPaneView: View {
         .padding(.horizontal, 40)
         .padding(.vertical, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(DesignTokens.controlBg)
+        .surface(.card)
     }
 }
 

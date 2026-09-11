@@ -51,7 +51,7 @@ struct BriefTabView: View {
 
             footerBar
         }
-        .background(DesignTokens.windowBg)
+        .surface(.window)
         .task {
             await loadDetail()
         }
@@ -86,7 +86,7 @@ struct BriefTabView: View {
                             HStack {
                                 Text("Brief")
                                     .font(.system(size: Typo.subhead, weight: .semibold))
-                                    .foregroundStyle(DesignTokens.labelSecondary)
+                                    .ink(.secondary)
 
                                 Spacer()
 
@@ -115,26 +115,26 @@ struct BriefTabView: View {
                                         Text(markdownAttributed(detail.brief, size: Typo.body))
                                             .font(.system(size: Typo.body, weight: .regular))
                                             .lineSpacing(2)
-                                            .foregroundStyle(DesignTokens.label)
+                                            .ink(.primary)
                                     } else {
                                         Text("No brief yet — what you write here becomes the agent's prompt.")
                                             .font(.system(size: Typo.body, weight: .regular))
-                                            .foregroundStyle(DesignTokens.labelTertiary)
+                                            .ink(.tertiary)
                                     }
                                 }
                             } else if let errorMsg = detailState.errorMessage {
                                 VStack(spacing: 8) {
                                     Image(systemName: "exclamationmark.triangle")
                                         .font(.system(size: 24, weight: .regular))
-                                        .foregroundStyle(DesignTokens.systemRedInk(on: .card))
+                                        .ink(.danger)
 
                                     Text("Failed to load")
                                         .font(.system(size: Typo.body, weight: .regular))
-                                        .foregroundStyle(DesignTokens.label)
+                                        .ink(.primary)
 
                                     Text(errorMsg)
                                         .font(.system(size: Typo.subhead, weight: .regular))
-                                        .foregroundStyle(DesignTokens.labelSecondary)
+                                        .ink(.secondary)
                                         .lineLimit(2)
                                 }
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -142,20 +142,17 @@ struct BriefTabView: View {
                                 VStack(spacing: 8) {
                                     Image(systemName: "doc.text")
                                         .font(.system(size: 32, weight: .regular))
-                                        .foregroundStyle(DesignTokens.labelSecondary)
+                                        .ink(.secondary)
 
                                     Text("No brief loaded")
                                         .font(.system(size: Typo.body, weight: .regular))
-                                        .foregroundStyle(DesignTokens.labelSecondary)
+                                        .ink(.secondary)
                                 }
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                             }
                         }
                         .padding(20)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(DesignTokens.controlBg)
-                        )
+                        .surface(.card, radius: 10)
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
                                 .stroke(DesignTokens.hairline(on: .card), lineWidth: 1)
@@ -220,7 +217,7 @@ struct BriefTabView: View {
                                     Text("Launch Agent")
                                 }
                                 .font(.system(size: Typo.subhead, weight: .semibold))
-                                .foregroundStyle(DesignTokens.accentText)
+                                .ink(.onAccent)
                                 .padding(.horizontal, ButtonMetrics.horizontalPadding)
                                 .frame(height: ButtonMetrics.height)
                             }
@@ -238,7 +235,7 @@ struct BriefTabView: View {
                             Button(action: { showLaunchPopover.toggle() }) {
                                 Image(systemName: "chevron.down")
                                     .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(DesignTokens.accentText)
+                                    .ink(.onAccent)
                                     .frame(width: 20, height: ButtonMetrics.height)
                             }
                             .buttonStyle(.plain)
@@ -259,37 +256,37 @@ struct BriefTabView: View {
                     DesignTokens.hairline(on: .band)
                         .frame(height: 1)
                 }
-                .background(DesignTokens.bandBg)
+                .surface(.band)
 
                 // Error or warning message
                 if let error = launchError {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.circle.fill")
-                            .foregroundStyle(DesignTokens.systemRedInk(on: .band))
+                            .ink(.danger)
                             .font(.system(size: 12, weight: .medium))
                         Text(error)
                             .font(.system(size: Typo.subhead, weight: .regular))
-                            .foregroundStyle(DesignTokens.systemRedInk(on: .band))
+                            .ink(.danger)
                             .lineLimit(2)
                         Spacer()
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 6)
-                    .background(DesignTokens.bandBg)
+                    .surface(.band)
                 } else if let warning = launchWarning {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(DesignTokens.systemYellowInk(on: .band))
+                            .ink(.warning)
                             .font(.system(size: 12, weight: .medium))
                         Text(warning)
                             .font(.system(size: Typo.subhead, weight: .regular))
-                            .foregroundStyle(DesignTokens.systemYellowInk(on: .band))
+                            .ink(.warning)
                             .lineLimit(2)
                         Spacer()
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 6)
-                    .background(DesignTokens.bandBg)
+                    .surface(.band)
                 }
         }
     }
@@ -327,8 +324,7 @@ struct BriefTabView: View {
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 160, maxHeight: 320)
                 .padding(6)
-                .background(DesignTokens.fieldBg)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .surface(.field, radius: 8)
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(DesignTokens.controlBorder(on: .field), lineWidth: 0.5)
@@ -338,7 +334,7 @@ struct BriefTabView: View {
             if let briefSaveError {
                 Text(briefSaveError)
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.systemRedInk(on: .field))
+                    .ink(.danger)
             }
 
             HStack(spacing: 8) {
@@ -507,7 +503,7 @@ struct BriefTabView: View {
             // Footnote
             Text("Runs detached in tmux — closing nat won't stop it.")
                 .font(.system(size: Typo.caption, weight: .regular))
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
         }
         .frame(width: 280)
     }
@@ -548,7 +544,7 @@ struct BriefTabView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("STATUS")
                 .font(.system(size: Typo.subhead, weight: .semibold))
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
 
             HStack(spacing: 6) {
                 Circle()
@@ -556,7 +552,7 @@ struct BriefTabView: View {
                     .frame(width: 8, height: 8)
                 Text(detail.status)
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.label)
+                    .ink(.primary)
             }
         }
     }
@@ -567,11 +563,11 @@ struct BriefTabView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("MILESTONE")
                 .font(.system(size: Typo.subhead, weight: .semibold))
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
 
             Text(name)
                 .font(.system(size: Typo.subhead, weight: .regular))
-                .foregroundStyle(DesignTokens.label)
+                .ink(.primary)
         }
     }
 
@@ -579,16 +575,15 @@ struct BriefTabView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("BRANCH")
                 .font(.system(size: Typo.subhead, weight: .semibold))
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
 
             if let branch = detail.branch, !branch.isEmpty {
                 Text(branch)
                     .font(.system(size: Typo.caption, weight: .regular, design: .monospaced))
-                    .foregroundStyle(DesignTokens.label)
+                    .ink(.primary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
-                    .background(DesignTokens.fieldBg)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .surface(.field, radius: 4)
                     .overlay(
                         RoundedRectangle(cornerRadius: 4)
                             .stroke(DesignTokens.hairline(on: .field), lineWidth: 1)
@@ -598,7 +593,7 @@ struct BriefTabView: View {
             } else {
                 Text("Assigned on launch")
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.labelTertiary)
+                    .ink(.tertiary)
             }
         }
     }
@@ -607,7 +602,7 @@ struct BriefTabView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("DEPENDS ON")
                 .font(.system(size: Typo.subhead, weight: .semibold))
-                .foregroundStyle(DesignTokens.labelTertiary)
+                .ink(.tertiary)
 
             let entries = dependencyEntries(
                 detail.dependsOn,
@@ -616,7 +611,7 @@ struct BriefTabView: View {
             if entries.isEmpty {
                 Text("None")
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .foregroundStyle(DesignTokens.labelTertiary)
+                    .ink(.tertiary)
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
@@ -624,7 +619,7 @@ struct BriefTabView: View {
                             if entry.done {
                                 Image(systemName: "checkmark")
                                     .font(.system(size: 8, weight: .bold))
-                                    .foregroundStyle(DesignTokens.systemGreenInk(on: .control))
+                                    .ink(.success)
                             }
                             Text(entry.name)
                                 .font(.system(size: Typo.caption, weight: .regular))
@@ -633,14 +628,13 @@ struct BriefTabView: View {
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(DesignTokens.controlFace)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .surface(.control, radius: 10)
                     }
 
                     if detail.blocked {
                         Text("Blocked until these finish")
                             .font(.system(size: Typo.caption, weight: .regular))
-                            .foregroundStyle(DesignTokens.systemYellowInk(on: .window))
+                            .ink(.warning)
                     }
                 }
             }
