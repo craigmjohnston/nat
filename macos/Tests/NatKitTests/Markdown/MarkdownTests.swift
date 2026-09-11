@@ -62,7 +62,29 @@ final class MarkdownTests: XCTestCase {
         let attr = markdownAttributed("```go\nfunc main() {}\n\t**not bold**\n```", size: 14)
         XCTAssertEqual(String(attr.characters), "func main() {}\n\t**not bold**")
         let run = try XCTUnwrap(attr.runs.first)
-        XCTAssertEqual(run.font, .system(size: 13, weight: .regular, design: .monospaced))
+        XCTAssertEqual(run.font, Typo.mono(size: 13))
+    }
+
+    /// An inline code span takes the app's own face too — `Text` would
+    /// otherwise draw the parser's code intent in the system's monospaced
+    /// font, which is the one face this app ships its own to replace.
+    func testInlineCodeSpansTakeTheAppsMonospacedFace() throws {
+        let attr = markdownAttributed("run `nat info` first", size: 14)
+        XCTAssertEqual(String(attr.characters), "run nat info first")
+        let code = try XCTUnwrap(attr.runs.first {
+            $0.inlinePresentationIntent?.contains(.code) == true
+        })
+        XCTAssertEqual(code.font, Typo.mono(size: 13))
+    }
+
+    /// And the prose around it does not: only the span is said over.
+    func testProseAroundACodeSpanKeepsItsOwnFont() {
+        let attr = markdownAttributed("run `nat info` first", size: 14)
+        let prose = attr.runs.filter { $0.inlinePresentationIntent?.contains(.code) != true }
+        XCTAssertFalse(prose.isEmpty)
+        for run in prose {
+            XCTAssertNil(run.font)
+        }
     }
 
     func testTildeFencesCloseTildeFences() {

@@ -365,6 +365,56 @@ public enum Typo {
     public static let caption: CGFloat = 11
     /// Monospaced code and diff text (mock's 12px code → 13).
     public static let code: CGFloat = 13
+
+    // MARK: - The monospaced face
+
+    /// The font every monospaced thing in the app is set in: JetBrains Mono
+    /// at the size asked for, or the system's own monospaced face where the
+    /// bundled one is not available.
+    ///
+    /// This is the one place the face is named — `MonoFont` holds the names
+    /// and the registration, this is what a view calls — so that changing it
+    /// is one edit rather than a sweep of `design: .monospaced` call sites,
+    /// which is exactly how the app came to be set in whatever SF Mono the
+    /// machine happened to carry.
+    ///
+    /// The size is fixed rather than scaled against a text style: these are
+    /// the ramp's own numbers, chosen at the mock's canvas size, and a call
+    /// site asking for `Typo.code` means 13 points.
+    public static func mono(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        mono(size: size, weight: weight, face: MonoFont.face(bold: isBold(weight)))
+    }
+
+    /// The same font for AppKit, which is what the terminal sets its type
+    /// with and what an `NSTextView` behind a SwiftUI input is handed.
+    public static func monoNSFont(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+        let bold = weight.rawValue >= NSFont.Weight.semibold.rawValue
+        return monoNSFont(size: size, weight: weight, face: MonoFont.face(bold: bold))
+    }
+
+    /// The two above with the face named rather than looked up — the seam a
+    /// test drives the fallback through, since the machine running the tests
+    /// has the bundled face and cannot be asked what it does without one.
+    static func mono(size: CGFloat, weight: Font.Weight, face: String?) -> Font {
+        guard let face else {
+            return .system(size: size, weight: weight, design: .monospaced)
+        }
+        return .custom(face, fixedSize: size)
+    }
+
+    static func monoNSFont(size: CGFloat, weight: NSFont.Weight, face: String?) -> NSFont {
+        guard let face, let font = NSFont(name: face, size: size) else {
+            return NSFont.monospacedSystemFont(ofSize: size, weight: weight)
+        }
+        return font
+    }
+
+    /// Which of the two weights the bundle carries a SwiftUI weight asks
+    /// for. `Font.Weight` is opaque and not comparable, so the heavy half is
+    /// named rather than measured.
+    static func isBold(_ weight: Font.Weight) -> Bool {
+        [Font.Weight.semibold, .bold, .heavy, .black].contains(weight)
+    }
 }
 
 /// How the agent terminal sets its type.
@@ -381,11 +431,11 @@ public enum Typo {
 /// a value nobody chose, which is how the pane came to be drawn in type the
 /// rest of the app does not use.
 public enum TerminalType {
-    /// The terminal's font: the monospaced system font at the ramp's code
-    /// size, which is the font and the size the diff pane draws a line of
-    /// code in.
+    /// The terminal's font: the app's own monospaced face at the ramp's
+    /// code size, which is the font and the size the diff pane draws a line
+    /// of code in.
     public static var font: NSFont {
-        NSFont.monospacedSystemFont(ofSize: Typo.code, weight: .regular)
+        Typo.monoNSFont(size: Typo.code, weight: .regular)
     }
 
     /// Whether the terminal rasterises its glyphs with macOS font

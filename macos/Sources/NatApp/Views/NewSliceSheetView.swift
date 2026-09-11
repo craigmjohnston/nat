@@ -36,6 +36,7 @@ struct NewSliceSheetView: View {
                     .ink(.secondary)
                 TextField("Slice title", text: $title)
                     .textFieldStyle(.roundedBorder)
+                    .font(Typo.mono(size: Typo.code))
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -59,7 +60,7 @@ struct NewSliceSheetView: View {
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .ink(.tertiary)
                 TextEditor(text: $description)
-                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .font(Typo.mono(size: Typo.subhead))
                     .scrollContentBackground(.hidden)
                     .padding(6)
                     .surface(.field)

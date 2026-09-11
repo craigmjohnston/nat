@@ -55,7 +55,7 @@ private func append(_ line: AttributedString, to out: inout AttributedString, fi
 
 private func codeLine(_ line: String, size: CGFloat) -> AttributedString {
     var content = AttributedString(line)
-    content.font = .system(size: size - 1, weight: .regular, design: .monospaced)
+    content.font = Typo.mono(size: size - 1, weight: .regular)
     return content
 }
 
@@ -65,14 +65,14 @@ private func codeLine(_ line: String, size: CGFloat) -> AttributedString {
 /// written, with only the inline syntax parsed.
 private func blockLine(_ line: String, size: CGFloat) -> AttributedString {
     if let heading = headingLine(line) {
-        var content = inline(heading.text)
+        var content = inline(heading.text, size: size)
         content.font = .system(size: size + headingBump(level: heading.level), weight: .semibold)
         return content
     }
     if let item = bulletLine(line) {
-        return AttributedString(item.indent + "• ") + inline(item.text)
+        return AttributedString(item.indent + "• ") + inline(item.text, size: size)
     }
-    return inline(line)
+    return inline(line, size: size)
 }
 
 private func headingLine(_ line: String) -> (level: Int, text: String)? {
@@ -101,9 +101,24 @@ private func bulletLine(_ line: String) -> (indent: String, text: String)? {
 
 /// The parser is trusted with inline syntax alone, where it has no newlines
 /// to lose; a line it refuses is shown as written rather than dropped.
-private func inline(_ text: String) -> AttributedString {
-    (try? AttributedString(
+///
+/// The one thing said over what it produces is the face a code span is drawn
+/// in: the parser marks the span and `Text` picks the *system's* monospaced
+/// font for it, which is the face this app ships its own to replace. A fenced
+/// block already takes `Typo.mono` in `codeLine`, and a span is the same
+/// thing inside a sentence, so it takes the same face at the same size.
+private func inline(_ text: String, size: CGFloat) -> AttributedString {
+    guard var parsed = try? AttributedString(
         markdown: text,
         options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-    )) ?? AttributedString(text)
+    ) else {
+        return AttributedString(text)
+    }
+    let spans = parsed.runs
+        .filter { $0.inlinePresentationIntent?.contains(.code) == true }
+        .map(\.range)
+    for span in spans {
+        parsed[span].font = Typo.mono(size: size - 1)
+    }
+    return parsed
 }

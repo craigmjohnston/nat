@@ -341,7 +341,7 @@ final class DesignTokensTests: XCTestCase {
     func testTerminalFontIsTheRampsCodeFace() {
         let font = TerminalType.font
         XCTAssertEqual(font.pointSize, Typo.code)
-        XCTAssertEqual(font, NSFont.monospacedSystemFont(ofSize: Typo.code, weight: .regular))
+        XCTAssertEqual(font, Typo.monoNSFont(size: Typo.code, weight: .regular))
     }
 
     /// A monospaced face, because every column of a terminal is one cell

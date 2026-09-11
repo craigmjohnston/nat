@@ -72,7 +72,7 @@ struct PRSidebarView: View {
                 .symbolEffect(.pulse, isActive: outcome == .pending)
 
             Text(check.name)
-                .font(.system(size: Typo.code - 1, weight: .regular, design: .monospaced))
+                .font(Typo.mono(size: Typo.code - 1, weight: .regular))
                 .ink(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -171,13 +171,13 @@ struct PRSidebarView: View {
                 if let commits = pr.commits {
                     (Text("\(commits) \(plural(commits, "commit", "commits")) on ")
                         + Text(pr.headRefName)
-                        .font(.system(size: Typo.code - 1, weight: .regular, design: .monospaced)))
+                        .font(Typo.mono(size: Typo.code - 1, weight: .regular)))
                         .font(.system(size: Typo.subhead, weight: .regular))
                         .ink(.secondary)
                 }
             } else {
                 Text("\(pr.headRefName) → \(pr.baseRefName)")
-                    .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
+                    .font(Typo.mono(size: Typo.code, weight: .regular))
                     .ink(.secondary)
             }
         }

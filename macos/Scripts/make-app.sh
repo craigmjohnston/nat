@@ -72,6 +72,14 @@ if [ -d "$RELEASE_DIR/nat_NatApp.bundle" ]; then
     cp -R "$RELEASE_DIR/nat_NatApp.bundle" "$APP_BUNDLE/Contents/Resources/"
 fi
 
+# NatKit's resource bundle — the four JetBrains Mono faces MonoFont registers
+# at launch. Without it the app still runs, in the monospaced system font, so
+# this is copied rather than asserted; see MonoFont.resourceBundle, which
+# looks here first.
+if [ -d "$RELEASE_DIR/nat_NatKit.bundle" ]; then
+    cp -R "$RELEASE_DIR/nat_NatKit.bundle" "$APP_BUNDLE/Contents/Resources/"
+fi
+
 # Sparkle.framework, from SwiftPM's own binary-target artifact — the same one
 # NatApp links against at build time (Package.swift's rpath is what finds it
 # here at runtime). The slice path is per-SwiftPM-version; verify it after

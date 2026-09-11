@@ -103,7 +103,7 @@ struct WorkshopPaneView: View {
 
             TextEditor(text: $request)
                 .disabled(appModel.workshopLaunching)
-                .font(.system(size: Typo.body, weight: .regular))
+                .font(Typo.mono(size: Typo.body))
                 .ink(.primary)
                 .scrollContentBackground(.hidden)
                 .padding(6)

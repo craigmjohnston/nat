@@ -176,7 +176,7 @@ struct PRTabView: View {
 
     private func branchLine(for pr: PRDetail) -> some View {
         Text("\(pr.headRefName) → \(pr.baseRefName)")
-            .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
+            .font(Typo.mono(size: Typo.code, weight: .regular))
             .ink(.tertiary)
     }
 
@@ -531,13 +531,17 @@ struct PRComposerView: View {
                         // fragment padding, and no top offset — so the caret
                         // blinks exactly at the placeholder's first letter.
                         Text(placeholder)
-                            .font(.system(size: Typo.subhead, weight: .regular))
+                            // The editor's own font, since the placeholder
+                            // stands exactly where the first typed letter
+                            // will: a proportional one would sit a hair off
+                            // the caret it is drawn behind.
+                            .font(Typo.mono(size: Typo.subhead))
                             .ink(.tertiary)
                             .padding(.leading, 7)
                             .allowsHitTesting(false)
                     }
                     TextEditor(text: $text)
-                        .font(.system(size: Typo.subhead, weight: .regular))
+                        .font(Typo.mono(size: Typo.subhead))
                         .scrollContentBackground(.hidden)
                         .frame(minHeight: compact ? 22 : 36, maxHeight: compact ? 70 : 120)
                         .padding(.horizontal, 2)

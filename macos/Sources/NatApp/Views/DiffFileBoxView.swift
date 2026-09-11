@@ -110,14 +110,14 @@ struct DiffFileBoxView: View {
             }
 
             Text(file.path)
-                .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
+                .font(Typo.mono(size: Typo.code, weight: .regular))
                 .ink(.primary)
                 .lineLimit(1)
                 .truncationMode(.head)
 
             if file.isRenamed {
                 Text("was \(file.oldPath)")
-                    .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
+                    .font(Typo.mono(size: Typo.code, weight: .regular))
                     .ink(.tertiary)
                     .lineLimit(1)
             }
@@ -230,12 +230,12 @@ struct DiffRowView: View {
     private var hunkBreakRow: some View {
         HStack(spacing: 0) {
             Text("···")
-                .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
+                .font(Typo.mono(size: Typo.code, weight: .regular))
                 .ink(.accent)
                 .frame(width: gutterWidth)
 
             Text(row.text)
-                .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
+                .font(Typo.mono(size: Typo.code, weight: .regular))
                 .ink(.tertiary)
                 .lineLimit(1)
                 .padding(.leading, 12)
@@ -261,18 +261,18 @@ struct DiffRowView: View {
                 Text(row.newNumber.map(String.init) ?? "")
                     .frame(width: numberColumnWidth, alignment: .trailing)
             }
-            .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
+            .font(Typo.mono(size: Typo.code, weight: .regular))
             .ink(.tertiary)
             .padding(.horizontal, 8)
 
             Text(glyph)
-                .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
+                .font(Typo.mono(size: Typo.code, weight: .regular))
                 .foregroundStyle(glyphColor)
                 .frame(width: 13)
                 .padding(.leading, 12)
 
             Text(rowText)
-                .font(.system(size: Typo.code, weight: .regular, design: .monospaced))
+                .font(Typo.mono(size: Typo.code, weight: .regular))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -438,7 +438,7 @@ struct CommentEditorView: View {
     var body: some View {
         VStack(alignment: .trailing, spacing: 8) {
             TextEditor(text: $text)
-                .font(.system(size: Typo.subhead, weight: .regular))
+                .font(Typo.mono(size: Typo.subhead))
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 60, idealHeight: 60, maxHeight: 140)
                 .padding(6)
