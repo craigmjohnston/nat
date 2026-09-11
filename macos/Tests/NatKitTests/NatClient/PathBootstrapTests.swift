@@ -76,6 +76,34 @@ final class PathBootstrapTests: XCTestCase {
         XCTAssertNil(PathBootstrap.composed(bundledDir: nil, loginPath: "", current: ""))
     }
 
+    func testComposedPutsFallbacksLastAndDeduplicates() {
+        // A fallback the shell already named is not repeated, and one it did
+        // not goes after everything real — a real PATH entry always wins.
+        XCTAssertEqual(
+            PathBootstrap.composed(
+                bundledDir: nil,
+                loginPath: "/opt/homebrew/bin:/Users/x/go/bin",
+                current: "/usr/bin",
+                fallbacks: ["/opt/homebrew/bin", "/Users/x/.local/bin"]),
+            "/opt/homebrew/bin:/Users/x/go/bin:/usr/bin:/Users/x/.local/bin")
+    }
+
+    func testComposedWithOnlyFallbacksStillComposes() {
+        // Even a process with no PATH at all gets the floor.
+        XCTAssertEqual(
+            PathBootstrap.composed(
+                bundledDir: nil, loginPath: nil, current: nil, fallbacks: ["/opt/homebrew/bin"]),
+            "/opt/homebrew/bin")
+    }
+
+    // MARK: - wellKnownDirs
+
+    func testWellKnownDirsAreTheInstallLocationsUnderTheGivenHome() {
+        XCTAssertEqual(
+            PathBootstrap.wellKnownDirs(home: "/Users/x"),
+            ["/opt/homebrew/bin", "/usr/local/bin", "/Users/x/.local/bin", "/Users/x/go/bin"])
+    }
+
     // MARK: - bundledNatDir
 
     func testBundledNatDirIsTheExecutablesDirectoryWhenNatSitsBesideIt() {
@@ -105,6 +133,7 @@ final class PathBootstrapTests: XCTestCase {
             bundledDir: "/bundle",
             shell: "/bin/zsh",
             current: "/usr/bin",
+            fallbacks: [],
             loginListing: { shell in
                 askedShell = shell
                 return "PATH=/opt/homebrew/bin\n"
@@ -120,20 +149,25 @@ final class PathBootstrapTests: XCTestCase {
             bundledDir: "/bundle",
             shell: nil,
             current: "/usr/bin",
+            fallbacks: [],
             loginListing: { _ in XCTFail("no shell to ask"); return nil },
             apply: { applied = $0 })
         XCTAssertEqual(applied, "/bundle:/usr/bin")
     }
 
-    func testBootstrapWithASilentShellFallsBackToWhatItHad() {
+    func testBootstrapWithASilentShellStillHasTheFloor() {
+        // The regression this floor exists for: a login shell that timed out
+        // at launch used to leave launchd's bare PATH standing for the whole
+        // process lifetime, and every nat it spawned unable to find ntn.
         var applied: String?
         PathBootstrap.bootstrap(
             bundledDir: nil,
             shell: "/bin/zsh",
             current: "/usr/bin:/bin",
+            fallbacks: ["/opt/homebrew/bin", "/Users/x/.local/bin"],
             loginListing: { _ in nil },
             apply: { applied = $0 })
-        XCTAssertEqual(applied, "/usr/bin:/bin")
+        XCTAssertEqual(applied, "/usr/bin:/bin:/opt/homebrew/bin:/Users/x/.local/bin")
     }
 
     func testBootstrapWithNothingToSaySetsNothing() {
@@ -141,6 +175,7 @@ final class PathBootstrapTests: XCTestCase {
             bundledDir: nil,
             shell: nil,
             current: nil,
+            fallbacks: [],
             loginListing: { _ in nil },
             apply: { _ in XCTFail("nothing to apply") })
     }

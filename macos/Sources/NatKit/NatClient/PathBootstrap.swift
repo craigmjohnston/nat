@@ -42,17 +42,36 @@ public enum PathBootstrap {
         return value.isEmpty ? nil : value
     }
 
-    /// One PATH out of the three there are: the bundled nat's directory
+    /// The directories the tools nat spawns are actually installed to —
+    /// Homebrew's two prefixes for tmux and gh, `~/.local/bin` for ntn,
+    /// `~/go/bin` for a go-installed nat — taken as a floor under the
+    /// composed PATH. They go last, after everything the shell and launchd
+    /// said, so a real PATH entry always outranks them: they only decide
+    /// for a binary found nowhere else, the same bargain BinaryLocator
+    /// strikes for the onboarding checks. They are what a login shell that
+    /// failed to answer (see `loginShellEnvListing`'s two-second cap) no
+    /// longer costs the whole session: without them, one slow profile at
+    /// launch left every nat this process ever spawned unable to find ntn.
+    public static func wellKnownDirs(home: String = NSHomeDirectory()) -> [String] {
+        ["/opt/homebrew/bin", "/usr/local/bin", home + "/.local/bin", home + "/go/bin"]
+    }
+
+    /// One PATH out of the four there are: the bundled nat's directory
     /// first, so the nat the app shipped with outranks any other install;
     /// then the login shell's entries; then whatever the process already
-    /// had, so nothing launchd gave us is lost. Deduplicated in that order,
-    /// and nil when every source was empty — there is nothing to set.
-    public static func composed(bundledDir: String?, loginPath: String?, current: String?) -> String? {
+    /// had, so nothing launchd gave us is lost; then the well-known
+    /// fallbacks, so a shell that said nothing still leaves the tools
+    /// findable. Deduplicated in that order, and nil when every source was
+    /// empty — there is nothing to set.
+    public static func composed(
+        bundledDir: String?, loginPath: String?, current: String?, fallbacks: [String] = []
+    ) -> String? {
         var seen = Set<String>()
         var entries: [String] = []
         var parts: [String] = [bundledDir ?? ""]
         parts.append(contentsOf: (loginPath ?? "").split(separator: ":").map(String.init))
         parts.append(contentsOf: (current ?? "").split(separator: ":").map(String.init))
+        parts.append(contentsOf: fallbacks)
         for part in parts where !part.isEmpty && seen.insert(part).inserted {
             entries.append(part)
         }
@@ -112,11 +131,14 @@ public enum PathBootstrap {
         bundledDir: String? = bundledNatDir(),
         shell: String? = environmentValue("SHELL"),
         current: String? = environmentValue("PATH"),
+        fallbacks: [String] = wellKnownDirs(),
         loginListing: (String) -> String? = loginShellEnvListing,
         apply: (String) -> Void = { setenv("PATH", $0, 1) }
     ) {
         let login = shell.flatMap(loginListing).flatMap(loginPath(fromEnvListing:))
-        guard let path = composed(bundledDir: bundledDir, loginPath: login, current: current) else { return }
+        guard let path = composed(
+            bundledDir: bundledDir, loginPath: login, current: current, fallbacks: fallbacks
+        ) else { return }
         apply(path)
     }
 }
