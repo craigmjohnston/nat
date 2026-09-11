@@ -21,6 +21,14 @@ import NatKit
 /// (`commit()`) rather than run as they arrive, so two fields committed in
 /// quick succession — tabbing from one to the next — cannot both diff against
 /// a baseline the first has yet to move.
+///
+/// A row is a row: the field's name in the left column and its control alone
+/// in the right, on one line, at a fixed width so every row of a tab lines
+/// up — which is the shape System Settings, Safari and Xcode all draw. What
+/// a field means that its own name does not say is a section's footnote
+/// rather than a paragraph per row, since three rows of one section rarely
+/// have three different things to say and a caption in the value column
+/// drags the control out of its column and wraps it right-aligned.
 struct SettingsView: View {
     @Bindable var appModel: AppModel
 
@@ -68,10 +76,7 @@ struct SettingsView: View {
     private var generalTab: some View {
         Form {
             Section {
-                settingRow(
-                    title: "Theme",
-                    description: "Which palette the app draws with, the agent terminal included. System follows the Mac's own appearance. Applies at once."
-                ) {
+                settingRow(title: "Theme") {
                     Picker("Theme", selection: themeBinding) {
                         ForEach(Theme.allCases) { theme in
                             Text(theme.title).tag(theme)
@@ -79,17 +84,18 @@ struct SettingsView: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.segmented)
-                    .frame(width: 240)
+                    .frame(width: FieldWidth.segments)
                 }
+            } footer: {
+                sectionFootnote("The palette the app draws with, the agent terminal included. Applies at once.")
             }
 
-            configSection("Board") {
-                settingRow(
-                    title: "Poll interval",
-                    description: "Seconds between background refetches of the plan; empty is 30. Applies from the next poll.",
-                    key: SettingsKey.pollSeconds
-                ) {
-                    commitField($edited.pollSeconds, width: 80)
+            configSection(
+                "Board",
+                footer: "Seconds between background refetches of the plan; empty is 30. Applies from the next poll."
+            ) {
+                settingRow(title: "Poll interval", key: SettingsKey.pollSeconds) {
+                    commitField($edited.pollSeconds, width: FieldWidth.number)
                 }
             }
         }
@@ -98,7 +104,10 @@ struct SettingsView: View {
 
     private var agentsTab: some View {
         Form {
-            configSection("Slice agent") {
+            configSection(
+                "Slice agent",
+                footer: "Which Claude Code a slice's agent runs as, and how hard it thinks, unless the launch itself overrides them. Applies at the next launch."
+            ) {
                 agentRows(
                     modelKey: SettingsKey.sliceModel,
                     effortKey: SettingsKey.sliceEffort,
@@ -107,7 +116,10 @@ struct SettingsView: View {
                 )
             }
 
-            configSection("Planning agent") {
+            configSection(
+                "Planning agent",
+                footer: "The same, for the agent a workshop launch runs."
+            ) {
                 agentRows(
                     modelKey: SettingsKey.workshopModel,
                     effortKey: SettingsKey.workshopEffort,
@@ -121,7 +133,10 @@ struct SettingsView: View {
 
     private var projectsTab: some View {
         Form {
-            configSection("Working directories") {
+            configSection(
+                "Working directories",
+                footer: "Where a project's agents start, unless a slice names its own repo. Applies at the next launch."
+            ) {
                 if sortedProjectIDs.isEmpty {
                     Text("No projects are tracked on this Mac yet.")
                         .foregroundStyle(.secondary)
@@ -143,12 +158,12 @@ struct SettingsView: View {
     @ViewBuilder
     private func configSection(
         _ title: String,
+        footer: String? = nil,
         @ViewBuilder content: () -> some View
     ) -> some View {
-        Section(title) {
+        Section {
             if isLoading {
-                QuietLoadingView(label: "Loading configuration…")
-                    .frame(height: 32)
+                SettingsLoadingRow()
             } else if let loadError {
                 Label(loadError, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
@@ -156,28 +171,43 @@ struct SettingsView: View {
             } else {
                 content()
             }
+        } header: {
+            Text(title)
+        } footer: {
+            // Nothing to footnote while the section is holding a wait or a
+            // refusal instead of the fields the footnote is about.
+            if let footer, !isLoading, loadError == nil {
+                sectionFootnote(footer)
+            }
         }
     }
 
-    /// One row of a grouped form: the field's name on the left, and on the
-    /// right the control, what it does under it, and — where the last write
-    /// of this key was refused — what `nat` said about it.
+    /// What a section's fields mean beyond their own names: footnote-sized,
+    /// left-aligned, secondary — the caption a settings window puts under a
+    /// group rather than beside a control.
+    private func sectionFootnote(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// One row of a grouped form: the field's name in the left column and
+    /// its control alone in the right, on one line — and, only where the
+    /// last write of this key was refused, what `nat` said about it under
+    /// the control it was refused from.
     private func settingRow(
         title: String,
-        description: String,
         key: String? = nil,
         @ViewBuilder control: () -> some View
     ) -> some View {
         LabeledContent {
             VStack(alignment: .leading, spacing: 4) {
                 control()
-                Text(description)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
                 if let key, let error = fieldErrors[key] {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .font(.callout)
+                        .font(.footnote)
                         .foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -194,19 +224,11 @@ struct SettingsView: View {
         model: Binding<String>,
         effort: Binding<String>
     ) -> some View {
-        settingRow(
-            title: "Model",
-            description: "Which Claude Code a launch runs as, unless the launch itself overrides it. Applies at the next launch.",
-            key: modelKey
-        ) {
+        settingRow(title: "Model", key: modelKey) {
             defaultablePicker(model, options: ["sonnet", "opus", "haiku"])
         }
 
-        settingRow(
-            title: "Effort",
-            description: "How hard it thinks, in Claude Code's own words. Applies at the next launch.",
-            key: effortKey
-        ) {
+        settingRow(title: "Effort", key: effortKey) {
             defaultablePicker(effort, options: ["low", "med", "high"])
         }
     }
@@ -214,10 +236,9 @@ struct SettingsView: View {
     private func workingDirRow(projectID: String) -> some View {
         settingRow(
             title: projectNames[projectID] ?? projectID,
-            description: "Where its agents start, unless a slice names its own repo. Applies at the next launch.",
             key: SettingsModel.workingDirKey(projectID: projectID)
         ) {
-            commitField(workingDirBinding(projectID: projectID))
+            commitField(workingDirBinding(projectID: projectID), width: FieldWidth.path)
                 .font(.system(.body, design: .monospaced))
         }
     }
@@ -249,7 +270,7 @@ struct SettingsView: View {
             }
         }
         .labelsHidden()
-        .frame(width: 140)
+        .frame(width: FieldWidth.picker)
         .onChange(of: value.wrappedValue) { commit() }
     }
 
@@ -348,6 +369,35 @@ struct SettingsView: View {
     }
 }
 
+/// The widths the controls are pinned to, so the rows of a tab line up
+/// down the value column instead of each one sizing to its own content.
+private enum FieldWidth {
+    static let segments: CGFloat = 240
+    static let number: CGFloat = 80
+    static let picker: CGFloat = 140
+    static let path: CGFloat = 260
+}
+
+/// The wait on the config read, as one row of the form rather than a hole
+/// the height of a section. It reveals late the way `QuietLoadingView` does
+/// — a read that lands inside `LoadingDelay` never shows anything — but by
+/// fading in rather than by appearing, since a row that arrives resizes the
+/// section it is in and the window around it.
+private struct SettingsLoadingRow: View {
+    @State private var isRevealed = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text("Loading configuration…")
+                .foregroundStyle(.secondary)
+        }
+        .opacity(isRevealed ? 1 : 0)
+        .task { isRevealed = await LoadingDelay().shouldReveal() }
+    }
+}
+
 /// The keys the form writes, as `internal/cli/configset.go` names them —
 /// here rather than in the rows so a row and the error shown under it cannot
 /// name the key differently.
@@ -372,6 +422,9 @@ private struct CommitTextField: View {
     var body: some View {
         TextField("", text: $text)
             .textFieldStyle(.roundedBorder)
+            // The value column is trailing-aligned, and a field left to
+            // inherit that alignment right-aligns the text inside itself.
+            .multilineTextAlignment(.leading)
             .frame(width: width)
             .focused($isFocused)
             .onSubmit { commit() }
