@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -580,5 +581,75 @@ func TestDeleteSliceCarriesTheWritesFailureUp(t *testing.T) {
 	api := &fakeAPI{trash: func(string) error { return errBoom }}
 	if err := Over(api).DeleteSlice(context.Background(), "s5"); !errors.Is(err, errBoom) {
 		t.Errorf("err = %v, want the write's failure", err)
+	}
+}
+
+// pageBlocks decodes blocks as Notion answers them: a block keeps the payload
+// named by its own type, and that payload is unexported, so a test builds one
+// through the decoder rather than by hand.
+func pageBlocks(t *testing.T, raw string) []notion.Block {
+	t.Helper()
+	var blocks []notion.Block
+	if err := json.Unmarshal([]byte(raw), &blocks); err != nil {
+		t.Fatal(err)
+	}
+	return blocks
+}
+
+func TestBodyReadsAPagesProseAsMarkdown(t *testing.T) {
+	api := &fakeAPI{blocks: func(string) ([]notion.Block, error) {
+		return pageBlocks(t, `[
+			{"id":"b1","type":"heading_3","heading_3":{"rich_text":[{"plain_text":"Brief"}]}},
+			{"id":"b2","type":"paragraph","paragraph":{"rich_text":[{"plain_text":"Do it."}]}}
+		]`), nil
+	}}
+	got, err := Over(api).Body(context.Background(), "s5")
+	if err != nil {
+		t.Fatalf("Body() error = %v", err)
+	}
+	if want := "### Brief\n\nDo it."; got != want {
+		t.Errorf("Body() = %q, want %q", got, want)
+	}
+}
+
+func TestBodyCarriesTheReadsFailureUp(t *testing.T) {
+	api := &fakeAPI{blocks: func(string) ([]notion.Block, error) { return nil, errBoom }}
+	if _, err := Over(api).Body(context.Background(), "s5"); !errors.Is(err, errBoom) {
+		t.Errorf("err = %v, want the read's failure", err)
+	}
+}
+
+// The description a hand-back filed is read back off the page it was filed on,
+// which is what lets an approve days later open the pull request with it.
+func TestPRDescriptionReadsWhatTheHandBackFiled(t *testing.T) {
+	api := &fakeAPI{blocks: func(string) ([]notion.Block, error) {
+		return pageBlocks(t, `[
+			{"id":"b1","type":"heading_3","heading_3":{"rich_text":[{"plain_text":"PR description"}]}},
+			{"id":"b2","type":"paragraph","paragraph":{"rich_text":[{"plain_text":"Add the store"}]}}
+		]`), nil
+	}}
+	got, err := Over(api).PRDescription(context.Background(), "s5")
+	if err != nil {
+		t.Fatalf("PRDescription() error = %v", err)
+	}
+	if got != "Add the store" {
+		t.Errorf("PRDescription() = %q, want the filed description", got)
+	}
+}
+
+// A page with no such section — every hand-back written before there was a
+// flag for one — has no description rather than a failure.
+func TestPRDescriptionIsEmptyWhereNoneWasFiled(t *testing.T) {
+	api := &fakeAPI{}
+	got, err := Over(api).PRDescription(context.Background(), "s5")
+	if err != nil || got != "" {
+		t.Errorf("PRDescription() = %q, %v, want nothing at all", got, err)
+	}
+}
+
+func TestPRDescriptionCarriesTheReadsFailureUp(t *testing.T) {
+	api := &fakeAPI{blocks: func(string) ([]notion.Block, error) { return nil, errBoom }}
+	if _, err := Over(api).PRDescription(context.Background(), "s5"); !errors.Is(err, errBoom) {
+		t.Errorf("err = %v, want the read's failure", err)
 	}
 }

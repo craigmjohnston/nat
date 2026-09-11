@@ -49,9 +49,11 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   to `NewWithToken` in the tree, and everything else asks the store.
 - `internal/store/` — the seam between nat and wherever a project's plan is
   kept. `Store` is the port: read a project's shape, read its whole plan, read
-  one slice, claim one, release one, close one out, record a pull request on
-  one, mark one Done, add milestones, add a slice, edit one, record what one
-  waits on, refile one, drop one. It is said in the app's own words —
+  one slice, read the prose on a page — a slice's brief or a project's
+  conventions, which are the same read — read the pull request description a
+  hand-back filed, claim a slice, release one, close one out, record a pull
+  request on one, mark one Done, add milestones, add a slice, edit one, record
+  what one waits on, refile one, drop one. It is said in the app's own words —
   `domain.Slice` and `domain.Milestone` go in and come back, and no property
   type, request body or page shape crosses the line — so a second backend
   plugs in here and nothing above has to learn about it. `Notion` is the first
@@ -79,7 +81,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   sentence and not the store's — and the store's own only where one operation
   is several writes and which of them failed is a different state to recover
   from: a release's line and its status, a completion's note and its
-  properties, an edit's three steps.
+  properties, an edit's three steps. The wishlist is the one thing still read
+  off a project page outside this package — `nat wishlist`, `wishlist-clear`
+  and the workshop launch — because it is a section with editing rules of its
+  own rather than prose, and pulling it in wants a type of its own here.
 - `internal/domain/` — Project/Milestone/Slice models, progress math
 - `internal/logging/` — the log file: `~/Library/Logs/notion-agent-tracker/` on
   macOS, the XDG state dir elsewhere, size-capped with one previous file kept.

@@ -92,11 +92,11 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	}
 
 	milestone := milestoneOf(claimed, shape.Milestones)
-	brief, err := body(ctx, client, claimed.ID)
+	brief, err := st.Body(ctx, claimed.ID)
 	if err != nil {
 		return fmt.Errorf("claimed %q but could not read its brief: %w", claimed.Name, err)
 	}
-	conventions, err := body(ctx, client, projectID)
+	conventions, err := st.Body(ctx, projectID)
 	if err != nil {
 		return fmt.Errorf("claimed %q but could not read the project conventions: %w", claimed.Name, err)
 	}

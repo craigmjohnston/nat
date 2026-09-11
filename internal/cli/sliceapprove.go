@@ -58,11 +58,12 @@ func sliceApprove(ctx context.Context, args []string, env Env) error {
 		workdir = project.WorkingDir
 	}
 
-	url, err := actions.OpenPR(ctx, client, env.NewGH(), s, workdir)
+	st := store.Over(client)
+	url, err := actions.OpenPR(ctx, st, env.NewGH(), s, workdir)
 	if err != nil {
 		return err
 	}
-	if err := actions.RecordPR(ctx, store.Over(client), s, url); err != nil {
+	if err := actions.RecordPR(ctx, st, s, url); err != nil {
 		return err
 	}
 

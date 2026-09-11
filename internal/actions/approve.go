@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // PRCreator is what an approve needs of the GitHub CLI: one pull request,
@@ -29,12 +28,12 @@ type PRCreator interface {
 // pull request from the commits, as it always did. A read that fails stops
 // the approve rather than falling back, since a pull request opened with the
 // wrong title is not one this can open again.
-func OpenPR(ctx context.Context, client Client, prs PRCreator, s domain.Slice, dir string) (string, error) {
-	blocks, err := client.GetBlockChildren(ctx, s.ID)
+func OpenPR(ctx context.Context, st Store, prs PRCreator, s domain.Slice, dir string) (string, error) {
+	description, err := st.PRDescription(ctx, s.ID)
 	if err != nil {
 		return "", fmt.Errorf("read the pull request description: %w", err)
 	}
-	title, body := PRTitleBody(notion.PRDescriptionOf(blocks))
+	title, body := PRTitleBody(description)
 	return prs.CreatePR(dir, s.Branch, title, body)
 }
 

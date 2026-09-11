@@ -150,6 +150,15 @@ type Store interface {
 	// is read off the slice itself, so a write follows what the page actually
 	// holds rather than what the project's schema last said.
 	Slice(ctx context.Context, id string) (domain.Slice, Shape, error)
+	// Body reads the prose kept on a page — a slice's brief, a project's
+	// conventions — as markdown. It takes an ID rather than a slice because
+	// the two things written this way are a slice and a project, and reading
+	// either is the same read.
+	Body(ctx context.Context, id string) (string, error)
+	// PRDescription reads the text a hand-back filed for the pull request its
+	// branch has yet to open, and "" where it filed none — which is every
+	// hand-back written before there was a flag for one.
+	PRDescription(ctx context.Context, id string) (string, error)
 	// ClaimSlice takes a slice for a user: in progress, and held by them where
 	// the project records ownership at all. The slice as the store holds it
 	// afterwards comes back, so a caller can check the claim stuck.

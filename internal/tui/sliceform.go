@@ -9,7 +9,6 @@ import (
 	"charm.land/huh/v2"
 
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
@@ -144,11 +143,11 @@ func (f *SliceForm) save(a *App) tea.Cmd {
 // markdown the form pre-fills its brief with.
 func loadSliceBody(client NotionAPI, s domain.Slice) tea.Cmd {
 	return func() tea.Msg {
-		blocks, err := client.GetBlockChildren(context.Background(), s.ID)
+		markdown, err := store.Over(client).Body(context.Background(), s.ID)
 		if err != nil {
 			return sliceBodyMsg{slice: s, err: fmt.Errorf("load slice body: %w", err)}
 		}
-		return sliceBodyMsg{slice: s, markdown: strings.TrimSpace(notion.Markdown(blocks))}
+		return sliceBodyMsg{slice: s, markdown: markdown}
 	}
 }
 

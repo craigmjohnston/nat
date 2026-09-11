@@ -10,7 +10,6 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
-	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
@@ -50,11 +49,11 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 	// fails to read the brief afterwards has already moved the slice.
 	env.nudged()
 
-	brief, err := body(ctx, client, claimed.ID)
+	brief, err := st.Body(ctx, claimed.ID)
 	if err != nil {
 		return fmt.Errorf("claimed %q but could not read its brief: %w", claimed.Name, err)
 	}
-	conventions, err := body(ctx, client, projectID)
+	conventions, err := st.Body(ctx, projectID)
 	if err != nil {
 		return fmt.Errorf("claimed %q but could not read the project conventions: %w", claimed.Name, err)
 	}
@@ -176,16 +175,6 @@ func claim(ctx context.Context, st store.Store, sliceID string, shape store.Shap
 		return domain.Slice{}, fmt.Errorf("the claim on %q did not stick: someone else holds it", claimed.Name)
 	}
 	return claimed, nil
-}
-
-// body renders a page's content as markdown, which is how both the slice brief
-// and the project conventions reach the agent reading them.
-func body(ctx context.Context, client API, pageID string) (string, error) {
-	blocks, err := client.GetBlockChildren(ctx, pageID)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(notion.Markdown(blocks)), nil
 }
 
 // milestoneNames lists milestones by name, for saying which ones were looked in.

@@ -118,6 +118,30 @@ func (n *Notion) Slice(ctx context.Context, id string) (domain.Slice, Shape, err
 	return domain.SliceFromPage(*page), sh, nil
 }
 
+// Body reads a page's own prose as markdown: a slice's brief, or the
+// conventions written on a project page. Both are the same read, and neither
+// is a property — which is why this is a read of its own rather than something
+// [Notion.Slice] carries.
+func (n *Notion) Body(ctx context.Context, id string) (string, error) {
+	blocks, err := n.api.GetBlockChildren(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(notion.Markdown(blocks)), nil
+}
+
+// PRDescription reads the pull request description a hand-back filed on a
+// slice. It lives on the page rather than in the command that carried it, so
+// an approve days later opens the pull request with it; a slice handed back
+// twice has one section per hand-back, and the last is the one that counts.
+func (n *Notion) PRDescription(ctx context.Context, id string) (string, error) {
+	blocks, err := n.api.GetBlockChildren(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return notion.PRDescriptionOf(blocks), nil
+}
+
 // ClaimSlice takes the slice: status to the in-progress option, and the
 // assignee set to the given user where the project tracks one and there is a
 // user to name. The slice Notion answers with comes back rather than the one

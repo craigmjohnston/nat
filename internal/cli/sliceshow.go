@@ -53,7 +53,7 @@ func sliceShow(ctx context.Context, args []string, env Env) error {
 	depByID := dependencyIndex(ctx, client, s)
 
 	milestone := milestoneOf(s, shape.Milestones)
-	brief, err := body(ctx, client, s.ID)
+	brief, err := st.Body(ctx, s.ID)
 	if err != nil {
 		return fmt.Errorf("could not read the slice's brief: %w", err)
 	}

@@ -95,7 +95,7 @@ func (a *App) startApprove(s domain.Slice, dir string) tea.Cmd {
 // the rest as the body.
 func openPR(prs PRCreator, client NotionAPI, s domain.Slice, dir string) tea.Cmd {
 	return func() tea.Msg {
-		url, err := actions.OpenPR(context.Background(), client, prs, s, dir)
+		url, err := actions.OpenPR(context.Background(), store.Over(client), prs, s, dir)
 		if err != nil {
 			return prOpenedMsg{slice: s, err: err}
 		}

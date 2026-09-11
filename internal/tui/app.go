@@ -1035,13 +1035,13 @@ func (a *App) startInfoLoad() tea.Cmd {
 // fetchInfo loads a page's body and converts it to markdown for the info
 // screen to render.
 func (a *App) fetchInfo(pageID string) tea.Cmd {
-	client := a.client
+	st := store.Over(a.client)
 	return func() tea.Msg {
-		blocks, err := client.GetBlockChildren(context.Background(), pageID)
+		markdown, err := st.Body(context.Background(), pageID)
 		if err != nil {
 			return infoErrMsg{err: fmt.Errorf("load project page: %w", err)}
 		}
-		return infoLoadedMsg{markdown: notion.Markdown(blocks)}
+		return infoLoadedMsg{markdown: markdown}
 	}
 }
 

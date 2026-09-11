@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
@@ -28,19 +27,18 @@ func info(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
+	st := store.Over(env.NewClient(env.Tokens.Token))
 
-	blocks, err := client.GetBlockChildren(ctx, projectID)
+	conventions, err := st.Body(ctx, projectID)
 	if err != nil {
 		return fmt.Errorf("load project page: %w", err)
 	}
-	plan, err := store.Over(client).Plan(ctx, storeProject(projectID, project))
+	plan, err := st.Plan(ctx, storeProject(projectID, project))
 	if err != nil {
 		return err
 	}
 
 	p := plan.Project
-	conventions := strings.TrimSpace(notion.Markdown(blocks))
 
 	if asJSON {
 		return writeInfoJSON(env.Out, p, conventions)

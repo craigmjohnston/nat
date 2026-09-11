@@ -27,7 +27,7 @@ type fakeClient struct {
 	blockParents []string
 }
 
-var _ Client = (*fakeClient)(nil)
+var _ store.API = (*fakeClient)(nil)
 
 func (f *fakeClient) GetPage(_ context.Context, id string) (*notion.Page, error) {
 	f.fetchedPages = append(f.fetchedPages, id)
@@ -54,9 +54,9 @@ func (f *fakeClient) GetBlockChildren(_ context.Context, id string) ([]notion.Bl
 }
 
 // The rest of [store.API] is here so a fakeClient can back a real
-// [store.Notion], which is how these tests drive the plan writes: what a
-// launch or an approve does to a slice is asserted on the calls above, and
-// nothing in either flow reaches any of the calls below.
+// [store.Notion], which is how these tests drive the plan reads and writes:
+// what a launch or an approve does to a slice is asserted on the calls above,
+// and nothing in either flow reaches any of the calls below.
 func (f *fakeClient) GetDataSource(context.Context, string) (*notion.DataSource, error) {
 	panic("not used")
 }
