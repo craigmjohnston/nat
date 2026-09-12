@@ -3,8 +3,8 @@ import NatKit
 
 /// The pane the rail's WORKSHOP row opens — the macOS app's answer to the
 /// board's `w`. No workflow strip: a workshop session has no brief, no diff
-/// and no pull request, so under the title row the pane is the agent view
-/// alone, the same embedded-terminal machinery a slice's Agent tab uses.
+/// and no pull request, so under the shared pane header the pane is the agent
+/// view alone, the same embedded-terminal machinery a slice's Agent tab uses.
 ///
 /// Presence is the activity poll's answer (`appModel.planningAgent`), so the
 /// terminal attaches to a planning agent whichever session launched it. With
@@ -19,22 +19,10 @@ struct WorkshopPaneView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Title row, the same chrome a slice's pane opens with — minus
-            // the tab strip there is nothing to fill it with.
-            VStack(spacing: 0) {
-                HStack(spacing: 14) {
-                    Text("Workshop")
-                        .font(.system(size: Typo.body, weight: .semibold))
-                        .ink(.primary)
-                        .lineLimit(1)
-
-                    Spacer()
-                }
-                .frame(height: 46)
-                .padding(.horizontal, 14)
-
-                Rule()
-            }
+            // The same header every pane opens with — see `PaneHeader`.
+            // No breadcrumb and nothing on the right: a workshop session is
+            // filed under no milestone and runs through no pipeline.
+            PaneHeader(title: "Workshop")
 
             content
         }
