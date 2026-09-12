@@ -60,7 +60,7 @@ enum AppStories {
 
         Story(
             name: "window-workshop",
-            summary: "The window with the WORKSHOP row selected and a planning agent live.",
+            summary: "The window with the workshop entry selected and a planning agent live.",
             size: window
         ) {
             let appModel = await Fixtures.startedAppModel(
@@ -106,10 +106,22 @@ enum AppStories {
 
         Story(
             name: "rail-loaded",
-            summary: "The rail on the fixture plan: needs review, active sessions, milestones, done.",
+            summary: "The rail on the fixture plan: the ACTIVE section, milestones, done.",
             size: rail
         ) {
             RailView(appModel: await Fixtures.startedAppModel())
+        },
+
+        Story(
+            name: "rail-workshop",
+            summary: "The one ACTIVE section with a planning agent live: the workshop entry, "
+                + "the branches awaiting review, then the slices being worked.",
+            size: rail
+        ) {
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner))
+            appModel.workshopSelected = true
+            return RailView(appModel: appModel)
         },
 
         Story(

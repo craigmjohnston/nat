@@ -62,7 +62,7 @@ public final class AppModel {
     /// Live agent activity (app-wide, spans all projects).
     public private(set) var activityStore: ActivityStore?
 
-    /// Each handed-back slice's branch diff totals, for the NEEDS REVIEW
+    /// Each handed-back slice's branch diff totals, for the review
     /// rail's "+N −N" (app-wide, spans all projects, keyed by slice id —
     /// mirrors how `activityStore` is one store rather than one per project).
     public private(set) var reviewStatsStore: ReviewStatsStore?

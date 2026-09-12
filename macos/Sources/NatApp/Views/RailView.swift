@@ -96,16 +96,19 @@ struct RailView: View {
                 reviewStats: appModel.reviewStatsStore?.stats ?? [:],
                 reviewFileCounts: appModel.reviewStatsStore?.fileCounts ?? [:],
                 prReadiness: appModel.reviewStatsStore?.prReadiness ?? [:],
-                agentStarts: appModel.activityStore?.firstSeen ?? [:]
+                agentStarts: appModel.activityStore?.firstSeen ?? [:],
+                workshop: workshopEntry
             )
         }
-        return RailModel(needsReview: [], active: [], todoFolders: [])
+        // With no plan read, the workshop is still the one thing that can be
+        // running: a project opened on an empty board and workshopped.
+        return RailModel(active: workshopEntry.map { [$0] } ?? [], todoFolders: [])
     }
 
-    /// The WORKSHOP section's one row — nil while no planning agent is live,
-    /// none is launching and the composer is not open, which is when the
-    /// section is not drawn at all.
-    var workshopEntry: WorkshopEntry? {
+    /// The workshop's own ACTIVE entry — nil while no planning agent is
+    /// live, none is launching and the composer is not open, which is when
+    /// the section simply lists everything else.
+    var workshopEntry: ActiveEntry? {
         let activity: AgentActivity? = appModel.planningAgent.map {
             $0.activity == .waiting ? .waiting : .working
         }
@@ -185,49 +188,22 @@ struct RailView: View {
                     .padding(.bottom, 10)
                 }
 
-                // WORKSHOP section — the planning agent, live or launching,
-                // above the slice sessions: it is about the plan the whole
-                // rail draws rather than any one slice of it.
-                if let workshop = workshopEntry {
-                    sectionHeading("WORKSHOP", icon: "wand.and.stars")
-
-                    workshopRow(workshop)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            appModel.workshopSelected = true
-                        }
-                }
-
-                // NEEDS REVIEW section
-                if !railModel.needsReview.isEmpty {
-                    sectionHeading("NEEDS REVIEW", icon: "checkmark.seal")
-                        .padding(.top, workshopEntry == nil ? 0 : 16)
-
-                    ForEach(railModel.needsReview, id: \.sliceID) { entry in
-                        reviewRow(for: entry)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                appModel.selectedSliceID = entry.sliceID
-                            }
-                    }
-                }
-
                 // ACTIVE section — always drawn, holding entries or holding
                 // its own note: what is running is the rail's standing
                 // question, and a heading that only appeared once something
-                // was read as chrome arriving from nowhere.
+                // was read as chrome arriving from nowhere. It is the one
+                // flight section there is: the planning agent and the
+                // branches waiting on a review are entries of it rather than
+                // headings of their own, in that order.
                 sectionHeading("ACTIVE", icon: "bolt")
-                    .padding(.top, railModel.needsReview.isEmpty && workshopEntry == nil ? 0 : 16)
 
                 if railModel.active.isEmpty {
                     activeEmptyNote
                 } else {
-                    ForEach(railModel.active, id: \.sliceID) { entry in
+                    ForEach(railModel.active) { entry in
                         activeRow(for: entry)
                             .contentShape(Rectangle())
-                            .onTapGesture {
-                                appModel.selectedSliceID = entry.sliceID
-                            }
+                            .onTapGesture { select(entry) }
                     }
                 }
 
@@ -489,69 +465,54 @@ struct RailView: View {
         .insetHoverWash()
     }
 
-    private func reviewRow(for entry: ReviewEntry) -> some View {
-        var detail: [(String, InkRole)] = []
-        if !entry.milestone.isEmpty {
-            detail.append((entry.milestone, .tertiary))
-        }
-        if let fileCount = entry.fileCount {
-            detail.append(("\(fileCount) file\(fileCount == 1 ? "" : "s")", .tertiary))
-        }
-        return sessionRow(
-            selected: appModel.selectedSliceID == entry.sliceID,
-            dotColor: .success,
-            pulsing: false,
-            name: entry.name,
-            meta: entry.stat,
-            metaColor: .success,
-            detail: detail
-        )
-    }
-
-    private func workshopRow(_ entry: WorkshopEntry) -> some View {
-        let tint = workshopTint(for: entry.tintRole)
-        // A launching row sits still the way a blocked ACTIVE row does; only
-        // a live agent pulses.
-        let isLive = entry.tintRole == .working || entry.tintRole == .waiting
-
-        return sessionRow(
-            selected: appModel.workshopSelected,
-            dotColor: tint,
-            pulsing: isLive,
-            name: "Planning agent",
-            meta: entry.elapsed,
-            metaColor: .tertiary,
-            detail: [(entry.displayState, tint)]
-        )
-    }
-
-    private func workshopTint(for role: WorkshopTintRole) -> InkRole {
-        switch role {
-        case .working: return .warning
-        case .waiting: return .warning
-        case .launching, .new: return .tertiary
-        }
-    }
-
+    /// Every entry of the one flight section, whatever it stands for: the
+    /// model has already resolved the status word, the tint and the rest of
+    /// the second line, so a workshop entry, a branch awaiting review and a
+    /// slice with an agent on it are all drawn by this.
     private func activeRow(for entry: ActiveEntry) -> some View {
         let tint = tintColor(for: entry.tintRole)
         // Only a live agent is worth pulling the eye to; a row with nothing
-        // running on it (blocked, or simply ready to push) sits still.
+        // running on it (blocked, awaiting a review, launching, or simply
+        // ready to push) sits still.
         let isLive = entry.tintRole == .working || entry.tintRole == .waiting
 
-        var detail: [(String, InkRole)] = [(entry.displayState, tint)]
-        if !entry.milestone.isEmpty {
-            detail.append((entry.milestone, .tertiary))
-        }
+        let detail: [(String, InkRole)] = [(entry.displayState, tint)]
+            + entry.detail.map { ($0, InkRole.tertiary) }
+
         return sessionRow(
-            selected: appModel.selectedSliceID == entry.sliceID,
+            selected: isSelected(entry),
             dotColor: tint,
             pulsing: isLive,
             name: entry.name,
-            meta: entry.elapsed,
-            metaColor: .tertiary,
+            meta: entry.meta,
+            metaColor: metaColor(for: entry.metaRole),
             detail: detail
         )
+    }
+
+    /// What an entry selects when it is tapped: the workshop pane for the
+    /// planning agent's entry, and the slice for every other.
+    private func select(_ entry: ActiveEntry) {
+        switch entry.kind {
+        case .workshop: appModel.workshopSelected = true
+        case .slice: appModel.selectedSliceID = entry.sliceID
+        }
+    }
+
+    private func isSelected(_ entry: ActiveEntry) -> Bool {
+        switch entry.kind {
+        case .workshop: return appModel.workshopSelected
+        case .slice: return appModel.selectedSliceID == entry.sliceID
+        }
+    }
+
+    /// An elapsed time recedes; a diff tally is drawn in the review's own
+    /// green, the colour the rail has always drawn a tally in.
+    private func metaColor(for role: ActiveMetaRole) -> InkRole {
+        switch role {
+        case .elapsed: return .tertiary
+        case .stat: return .success
+        }
     }
 
     @ViewBuilder
@@ -573,7 +534,11 @@ struct RailView: View {
         case .working: return .warning
         case .waiting: return .warning
         case .blocked: return .tertiary
+        // The same green the review affordance already uses, for the two
+        // states that are about work that is out.
         case .readyToPush: return .success
+        case .needsReview: return .success
+        case .launching, .new: return .tertiary
         }
     }
 

@@ -12,7 +12,7 @@ extension Fixtures {
     ///
     /// A separate reading rather than an addition to `agentStatuses`, because
     /// most states of the board have no workshop session running and the rail
-    /// draws no WORKSHOP section at all for them.
+    /// draws no workshop entry at all for them.
     public static var agentStatusesWithPlanner: [AgentStatus] {
         agentStatuses + [planningAgentStatus]
     }

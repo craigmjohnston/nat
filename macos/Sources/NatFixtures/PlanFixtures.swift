@@ -56,7 +56,7 @@ extension Fixtures {
     /// The plan's slices: every status the board draws, and every shape the
     /// rail sorts them into — two finished milestones' worth of Done, a slice
     /// in each of the four ACTIVE readings, one handed back and one waiting on
-    /// its merge in NEEDS REVIEW, and two blocked rows.
+    /// its merge among the review entries, and two blocked rows.
     public static let slices: [Slice] = [
         Slice(
             id: shellSliceID,
@@ -271,7 +271,7 @@ extension Fixtures {
 
     /// `ReviewStatsStore.prReadiness`: the slices whose pull request gh
     /// positively reads as open. The approved slice is Done and still waiting
-    /// on its merge, which is what keeps it in NEEDS REVIEW.
+    /// on its merge, which is what keeps it awaiting review.
     public static let prReadiness: [String: String] = [
         approveSliceID: "ready to merge",
     ]
@@ -319,13 +319,29 @@ extension Fixtures {
     /// The rail with no live reading behind it at all — the board a second
     /// after it opened, or one on a machine with no tmux and no gh: every
     /// ACTIVE row reads by its page alone, and the Done slice awaiting its
-    /// merge is out of NEEDS REVIEW rather than in it.
+    /// merge is out of the section rather than in it.
     public static var unreadRailModel: RailModel {
         buildRailModel(from: projectInfo, liveAgents: [:], now: now)
     }
 
-    /// The WORKSHOP row with a planning agent working on it.
-    public static var workshopEntry: WorkshopEntry? {
+    /// The rail as the acceptance state draws it: the same plan with a
+    /// planning agent working, so the one ACTIVE section holds the workshop
+    /// entry, the branches awaiting review and the live slices at once.
+    public static var workshopRailModel: RailModel {
+        buildRailModel(
+            from: projectInfo,
+            liveAgents: liveAgents,
+            reviewStats: reviewStats,
+            reviewFileCounts: reviewFileCounts,
+            prReadiness: prReadiness,
+            agentStarts: agentStarts,
+            workshop: workshopEntry,
+            now: now
+        )
+    }
+
+    /// The workshop's ACTIVE entry with a planning agent working on it.
+    public static var workshopEntry: ActiveEntry? {
         buildWorkshopEntry(activity: .working, isLaunching: false, firstSeen: minutesAgo(12), now: now)
     }
 }
