@@ -1515,6 +1515,24 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `brew install golangci-lint` if the binary is missing. `.golangci.yml` runs
   the default linter set with one exclusion — see the file — so an unchecked
   error is either handled or assigned to `_` where the reason can be read.
+- A UI change to the macOS app (`macos/`, the `gnat` binary) is verified by
+  rendering the gallery stories it touches and looking at the PNGs, not by
+  launching the app: `swift build --package-path macos`, then
+  `macos/.build/debug/gnat --list` for the index of stories and what each
+  shows, `macos/.build/debug/gnat --story <name> --out <file>.png` for one of
+  them, and `macos/.build/debug/gnat --all --out <dir>` for the whole catalog
+  — one `<story-name>.png` per story, into a directory it creates — which is
+  the run to make when what changed is the theme or the window chrome rather
+  than one pane. A story is canned data drawn headlessly, so it touches no
+  Notion, no `nat` and no tmux and comes out the same on any machine, where
+  launching the app needs a Notion in a particular state and somebody to drive
+  it to the pane in question. Where no story shows what changed, add one — an
+  entry in `macos/Sources/NatApp/Gallery/AppStories.swift` and nothing else —
+  and render that, since a pane that can only be reviewed by launching the app
+  is a gap in the catalog. `NAT_SNAPSHOT` and a live screenshot are for what a
+  story cannot show and only that: a real tmux session in the agent terminal, a
+  real load against Notion, the onboarding checklist as it reads on this
+  machine. `macos/README.md` is the longer version.
 - Never log or commit the Notion token; it belongs to the `ntn` CLI and is only
   ever held in memory for the lifetime of a request.
 - Before starting work, pull the latest `main` and branch off it. Only ever

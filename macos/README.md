@@ -80,13 +80,45 @@ open macos/Package.swift
 swift test --package-path macos
 ```
 
-### Render the view gallery:
+### Verify a UI change: render the gallery
+
+A change to how the app looks is verified by rendering the stories it touches
+and looking at the PNGs — not by launching the app. Launching it needs a
+Notion the run may not have, a plan in whatever state that Notion happens to
+be in, and a person to drive it to the pane in question; a story is the same
+pane, canned, in about a second and a half. So: build, find the story, render
+it, open it. Four commands, and they work as written from the repository root:
+
 ```bash
 swift build --package-path macos
 macos/.build/debug/gnat --list                                  # the index: every story and what it shows
-macos/.build/debug/gnat --story window-shell --out shell.png    # one of them
+macos/.build/debug/gnat --story diff-handed-back --out /tmp/diff.png   # one of them
 macos/.build/debug/gnat --all --out /tmp/gallery                # the whole catalog
+open /tmp/diff.png
 ```
+
+`--list` writes nothing and takes no other flag. `--story` names one story by
+the slug `--list` printed and `--out` the PNG file to write; a name the
+catalog does not hold is refused with the whole catalog listed, so a typo
+costs one run. `--all` renders every story into the directory `--out` names,
+creating it if it is not there, one `<story-name>.png` apiece, and prints each
+path as it lands — that is the run to make when a change is to the theme, the
+window chrome or anything else that is not one pane's own. Both writes
+overwrite, so rendering before and after a change into two directories is how
+the difference is read.
+
+If no story shows what changed, add one — an entry in
+`Sources/NatApp/Gallery/AppStories.swift` and nothing else — and render that.
+A pane that cannot be reviewed without launching the app is a gap in the
+catalog rather than a reason to launch it, and `StoryNamesTests` is what
+holds the catalog to covering every surface.
+
+`NAT_SNAPSHOT` and a live screenshot are for what a story cannot show, and
+only that: a real tmux session attached in the agent terminal, a real load
+against Notion, the onboarding checklist as it reads on this machine. Those
+are the two regions the gallery draws rather than runs (below) plus anything
+whose point is that the data came from outside — everything else has a story
+or should have one.
 
 A *story* pairs a name with a view built from `NatFixtures` and the size to
 draw it at, and the gallery is how a window gets reviewed the way the Go TUI's
@@ -109,10 +141,11 @@ Two regions are drawn rather than run, because what they show is not data that
 can be canned: the agent terminal is a tmux session on a pseudo-terminal, and
 the onboarding checklist is the machine the app is running on. Both are
 environment values with the real thing as their default (`Views/StorySeams.swift`),
-so a story pins them and the app is untouched. `NAT_SNAPSHOT` is still the
-headless eye on the *live* window; the selector that used to drive it to a
-slice or to the workshop is gone, since every state it could reach is a story
-now.
+so a story pins them and the app is untouched. `NAT_SNAPSHOT` — set to a path,
+with the app launched normally — is still the headless eye on the *live*
+window, and is what those two regions and a real Notion load are reviewed
+through; the selector that used to drive it to a slice or to the workshop is
+gone, since every state it could reach is a story now.
 
 `Story`/`StoryCatalog` and the argument parsing are in `NatKit/Gallery`, where
 they are tested; the AppKit capture is in `NatApp/Gallery`, where a window
