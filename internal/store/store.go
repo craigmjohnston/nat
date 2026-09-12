@@ -184,6 +184,15 @@ type Store interface {
 	// already holds, and an old name it does not, are each refused before
 	// anything is written.
 	RenameMilestone(ctx context.Context, p Project, sh Shape, old, name string) (domain.Milestone, error)
+	// RemoveMilestone drops a milestone from the plan and changes nothing else
+	// about it. A name the plan does not hold, and a milestone with any slice
+	// still filed under it, are each refused before anything is written: a
+	// milestone is nothing but the name its slices carry, so dropping one out
+	// from under them would leave them filed under a milestone the plan no
+	// longer has. The milestone as it was — its place in the plan included —
+	// comes back, since that place is what a caller's own record of the plan is
+	// keyed by.
+	RemoveMilestone(ctx context.Context, p Project, sh Shape, name string) (domain.Milestone, error)
 	// AddSlice files one slice under a milestone, Todo and unclaimed.
 	AddSlice(ctx context.Context, p Project, n NewSlice) (domain.Slice, error)
 	// EditSlice rewrites a slice's title, working directory and brief, leaving

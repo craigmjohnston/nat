@@ -412,6 +412,89 @@ func (n *Notion) RenameMilestone(ctx context.Context, p Project, sh Shape, old, 
 	return renamed, nil
 }
 
+// RemoveMilestone drops a milestone from the plan, which is one option off the
+// slices' own Milestone column and nothing else: the surviving options are sent
+// back exactly as they were read, IDs and colours included, since Notion
+// replaces an option list wholesale rather than merging into it.
+//
+// Two things are refused before that write, and both are read first: a name the
+// plan does not hold, and a milestone with any slice still filed under it. The
+// second is the point of the command being this narrow — a milestone is nothing
+// but the name its slices carry, so dropping one out from under them would file
+// them under a milestone the plan no longer has, and there is no undoing that
+// from what is left on the page. Moving them or deleting them first is the
+// caller's, with the commands that already do it.
+func (n *Notion) RemoveMilestone(ctx context.Context, p Project, sh Shape, name string) (domain.Milestone, error) {
+	from, found := milestoneNamed(sh.Milestones, name)
+	if !found {
+		return domain.Milestone{}, fmt.Errorf("the plan has no milestone named %q: its milestones are %s",
+			strings.TrimSpace(name), milestoneList(sh.Milestones))
+	}
+
+	// The plan is read before the write, so a removal refused over the slices
+	// under the milestone — or one whose read failed — has written nothing.
+	pages, err := n.api.QueryDataSource(ctx, p.SlicesID, nil,
+		[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
+	if err != nil {
+		return domain.Milestone{}, fmt.Errorf("load slices: %w", err)
+	}
+	var under []string
+	for _, page := range pages {
+		if page.Properties[notion.PropMilestone].SelectName() == from.Name {
+			under = append(under, domain.SliceFromPage(page).Name)
+		}
+	}
+	if len(under) > 0 {
+		return domain.Milestone{}, fmt.Errorf("the milestone %q %s", from.Name, stillFiledNote(under))
+	}
+
+	without, ok := sh.milestone.WithoutOption(from.Name)
+	if !ok {
+		return domain.Milestone{}, fmt.Errorf("the %s column is a %s: a milestone can only be removed from it in Notion",
+			notion.PropMilestone, sh.milestone.Type)
+	}
+	if _, err := n.api.UpdateDataSourceProperties(ctx, p.SlicesID,
+		map[string]notion.PropertySchema{notion.PropMilestone: without}); err != nil {
+		return domain.Milestone{}, fmt.Errorf("retire the %q option: %w", from.Name, err)
+	}
+	// Queued rather than computed: a milestone this command will remove is one
+	// with no slices under it, and that is what Queued says.
+	removed := domain.Milestone{
+		ID: from.Name, Name: from.Name, Order: from.Order,
+		Status: domain.MilestoneStatusOf(nil), SelectType: sh.milestone.Type,
+	}
+	logging.Action("milestone removed", "milestone", removed.Name, "order", removed.Order)
+	return removed, nil
+}
+
+// milestoneNamed finds the milestone a name refers to, matched the way every
+// other lookup of one is — trimmed and folded, since a milestone is nothing but
+// its name and two differing only in case could not be told apart on the board.
+// The first match wins, which is the option nearest the top of the plan.
+func milestoneNamed(milestones []domain.Milestone, name string) (domain.Milestone, bool) {
+	key := milestoneKey(name)
+	for _, m := range milestones {
+		if milestoneKey(m.Name) == key {
+			return m, true
+		}
+	}
+	return domain.Milestone{}, false
+}
+
+// stillFiledNote is what a removal refused over the slices under a milestone
+// has to say, in whichever store's own sentence: how many there are and which,
+// since moving or deleting them is what has to happen next and a slice has to
+// be named to be moved.
+func stillFiledNote(titles []string) string {
+	quoted := make([]string, len(titles))
+	for i, t := range titles {
+		quoted[i] = fmt.Sprintf("%q", t)
+	}
+	return fmt.Sprintf("still holds %d %s (%s): move or delete them first, "+
+		"since removing it would leave them filed under a milestone the plan no longer has",
+		len(titles), pluralise("slice", len(titles)), strings.Join(quoted, ", "))
+}
+
 // renameTargets settles a rename before any store writes anything: the
 // milestone the old name refers to, or a refusal in the store's own words for a
 // new name the plan already holds and for an old name it does not.

@@ -1000,3 +1000,122 @@ func TestLocalRenameMilestoneRefusals(t *testing.T) {
 		}
 	})
 }
+
+// A removal takes the milestone off the plan and closes the gap behind it, so
+// the next milestone added still lands at the end rather than on top of one
+// already there.
+func TestLocalRemoveMilestone(t *testing.T) {
+	l, _ := openPlan(t)
+	fillPlan(t, l)
+	ctx := context.Background()
+	// The plan's second milestone holds slices; the first is emptied so there is
+	// something to remove.
+	write(t, l, `UPDATE slices SET milestone = ? WHERE milestone = ?`, "M2: Reads", "M1: The format")
+
+	m, err := l.RemoveMilestone(ctx, Project{}, wholeShape, "  m1: the format  ")
+	if err != nil {
+		t.Fatalf("RemoveMilestone: %v", err)
+	}
+	want := domain.Milestone{ID: "M1: The format", Name: "M1: The format", Order: 0, Status: domain.MilestoneQueued}
+	if m != want {
+		t.Errorf("milestone = %+v, want %+v", m, want)
+	}
+
+	sh, err := l.Shape(ctx, Project{})
+	if err != nil {
+		t.Fatalf("Shape: %v", err)
+	}
+	if len(sh.Milestones) != 1 || sh.Milestones[0].Name != "M2: Reads" || sh.Milestones[0].Order != 0 {
+		t.Fatalf("milestones = %+v, want the survivor alone, closed up to the front", sh.Milestones)
+	}
+	// Closing the gap is what keeps the next one added landing at the end.
+	added, err := l.AddMilestones(ctx, Project{}, wholeShape, []string{"M3: Sync"})
+	if err != nil {
+		t.Fatalf("AddMilestones: %v", err)
+	}
+	if added[0].Order != 1 {
+		t.Errorf("added milestone = %+v, want it at the end of the plan", added[0])
+	}
+}
+
+func TestLocalRemoveMilestoneRefusals(t *testing.T) {
+	unchanged := func(t *testing.T, l *Local) {
+		t.Helper()
+		sh, err := l.Shape(context.Background(), Project{})
+		if err != nil {
+			t.Fatalf("Shape: %v", err)
+		}
+		if len(sh.Milestones) != 2 {
+			t.Errorf("milestones = %+v, want the refused run to have written nothing", sh.Milestones)
+		}
+	}
+	t.Run("a name the plan does not hold", func(t *testing.T) {
+		l, path := openPlan(t)
+		fillPlan(t, l)
+		_, err := l.RemoveMilestone(context.Background(), Project{}, wholeShape, " M9: Nothing ")
+		if err == nil || !strings.Contains(err.Error(), `no milestone named "M9: Nothing"`) {
+			t.Fatalf("err = %v, want the missing name refused", err)
+		}
+		if !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), `"M2: Reads"`) {
+			t.Errorf("err = %q, want the file and the plan named", err)
+		}
+		unchanged(t, l)
+	})
+	t.Run("a milestone with slices still filed under it", func(t *testing.T) {
+		l, path := openPlan(t)
+		fillPlan(t, l)
+		_, err := l.RemoveMilestone(context.Background(), Project{}, wholeShape, "M2: Reads")
+		if err == nil || !strings.Contains(err.Error(),
+			`still holds 2 slices ("Implement the local store: reads", "Implement the local store: writes")`) {
+			t.Fatalf("err = %v, want the slices under it named", err)
+		}
+		if !strings.Contains(err.Error(), path) {
+			t.Errorf("err = %q, want the file named", err)
+		}
+		unchanged(t, l)
+	})
+	t.Run("a plan that cannot be read", func(t *testing.T) {
+		l, _ := openPlan(t)
+		fillPlan(t, l)
+		write(t, l, `DROP TABLE milestones`)
+		_, err := l.RemoveMilestone(context.Background(), Project{}, wholeShape, "M1: The format")
+		if err == nil || !strings.Contains(err.Error(), "read the milestones") {
+			t.Errorf("err = %v, want the read reported", err)
+		}
+	})
+	t.Run("slices that cannot be read", func(t *testing.T) {
+		l, _ := openPlan(t)
+		fillPlan(t, l)
+		write(t, l, `DELETE FROM slice_deps`)
+		write(t, l, `DROP TABLE slices`)
+		_, err := l.RemoveMilestone(context.Background(), Project{}, wholeShape, "M1: The format")
+		if err == nil || !strings.Contains(err.Error(), "read the slices") {
+			t.Errorf("err = %v, want the read reported", err)
+		}
+	})
+	t.Run("a milestone that cannot be removed", func(t *testing.T) {
+		l, _ := openPlan(t)
+		fillPlan(t, l)
+		write(t, l, `UPDATE slices SET milestone = ? WHERE milestone = ?`, "M2: Reads", "M1: The format")
+		write(t, l, `CREATE TRIGGER refuse BEFORE DELETE ON milestones
+			BEGIN SELECT RAISE(ABORT, 'no removals here'); END`)
+		_, err := l.RemoveMilestone(context.Background(), Project{}, wholeShape, "M1: The format")
+		if err == nil || !strings.Contains(err.Error(), "remove the milestone") {
+			t.Errorf("err = %v, want the write reported", err)
+		}
+		unchanged(t, l)
+	})
+	t.Run("a plan whose order cannot be closed up", func(t *testing.T) {
+		l, _ := openPlan(t)
+		fillPlan(t, l)
+		write(t, l, `UPDATE slices SET milestone = ? WHERE milestone = ?`, "M2: Reads", "M1: The format")
+		write(t, l, `CREATE TRIGGER refuse BEFORE UPDATE ON milestones
+			BEGIN SELECT RAISE(ABORT, 'no reordering here'); END`)
+		_, err := l.RemoveMilestone(context.Background(), Project{}, wholeShape, "M1: The format")
+		if err == nil || !strings.Contains(err.Error(), "close the milestone's place in the plan") {
+			t.Errorf("err = %v, want the write reported", err)
+		}
+		// One transaction: the milestone the delete took is back.
+		unchanged(t, l)
+	})
+}
