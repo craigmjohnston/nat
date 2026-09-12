@@ -52,7 +52,7 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   one slice, read the prose on a page — a slice's brief or a project's
   conventions, which are the same read — read the pull request description a
   hand-back filed, claim a slice, release one, close one out, record a pull
-  request on one, mark one Done, add milestones, rename one, add a slice, edit
+  request on one, mark one Done, add milestones, rename one, remove one, add a slice, edit
   one, record what one waits on, refile one, drop one. It is said in the app's
   own words — `domain.Slice` and `domain.Milestone` go in and come back, and no
   property type, request body or page shape crosses the line — so a second
@@ -454,7 +454,11 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `nat milestone-add <name>` (Queued, at the end of the plan),
   `nat milestone-rename <old> <new>`, which gives a milestone another name and
   changes nothing else about the plan — see the domain rule below for what that
-  costs — and
+  costs — `nat milestone-remove <name>`, which takes one off the plan and is
+  refused while any slice is still filed under it, naming them, since a
+  milestone is nothing but the name its slices carry and emptying it first is
+  the caller's own call about the work rather than the command's about the
+  plan — and
   `nat slice-add <title> --milestone <name> [--description TEXT|-]
   [--repo DIR] [--depends-on <slice>]...` (Todo and unassigned, description as
   the page body; `--description -` reads it from stdin, so a slice-add typed
@@ -1461,7 +1465,20 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   write for the same reason. Two names are refused before any of it: a new name
   the plan already holds, which is the rule `milestone-add` applies and includes
   the name it already has, and an old name the plan does not, each said with
-  what the plan does hold. `next-slice` reads the plan the way the board does
+  what the plan does hold. `milestone-remove` is the one thing that takes a
+  milestone off the plan, and it is one schema write: the option dropped
+  (`WithoutOption` again) with every surviving option sent back exactly as it
+  was read, IDs and colours included, so nothing else about the column changes
+  and the options after it close up, which is the order the plan is read in.
+  Two things are refused before that write and both are read first — a name the
+  plan does not hold, said with what it does, and a milestone with any slice
+  still filed under it, said with those slices' own names. The second is why
+  the command is this narrow: a slice records its milestone as that option's
+  name, so dropping the option out from under it would file it under a
+  milestone the plan no longer has, and there would be nothing left on the page
+  to put it right from. Moving those slices with `slice-move` or dropping them
+  with `slice-delete` is the caller's, being a decision about the work rather
+  than about the plan's shape. `next-slice` reads the plan the way the board does
   and takes work from the lowest-ordered milestone that is not Done: a
   milestone is Queued until a slice under it starts, so gating on Active would
   leave a plan on which nothing has begun with no way to begin.

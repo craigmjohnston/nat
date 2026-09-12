@@ -347,6 +347,63 @@ func (l *Local) RenameMilestone(ctx context.Context, _ Project, _ Shape, old, na
 	return renamed, nil
 }
 
+// RemoveMilestone drops a milestone from the plan and nothing else, which here
+// is one row gone and the rows after it closed up behind it: a position is
+// allocated from how many milestones there are, so leaving a gap would have the
+// next milestone added land on the position of one already there.
+//
+// It is one transaction and it reads inside it, so both refusals — a name the
+// plan does not hold, and a milestone with slices still filed under it — are
+// about the plan as of the write rather than whatever the caller was last
+// handed, which for the second matters: a slice filed under the milestone by an
+// agent since that read is exactly the one this must not orphan.
+func (l *Local) RemoveMilestone(ctx context.Context, _ Project, _ Shape, name string) (domain.Milestone, error) {
+	var removed domain.Milestone
+	err := l.withTx(ctx, "remove the milestone", func(tx *sql.Tx) error {
+		existing, err := l.milestones(ctx, tx)
+		if err != nil {
+			return err
+		}
+		from, found := milestoneNamed(existing, name)
+		if !found {
+			return fmt.Errorf("the plan at %s has no milestone named %q: its milestones are %s",
+				l.path, strings.TrimSpace(name), milestoneList(existing))
+		}
+		all, err := l.slices(ctx, tx)
+		if err != nil {
+			return err
+		}
+		var under []string
+		for _, s := range all {
+			if s.MilestoneID == from.Name {
+				under = append(under, s.Name)
+			}
+		}
+		if len(under) > 0 {
+			return fmt.Errorf("the milestone %q in the plan at %s %s", from.Name, l.path, stillFiledNote(under))
+		}
+		if err := l.exec(ctx, tx, "remove the milestone",
+			`DELETE FROM milestones WHERE name = ?`, from.Name); err != nil {
+			return err
+		}
+		if err := l.exec(ctx, tx, "close the milestone's place in the plan",
+			`UPDATE milestones SET position = position - 1 WHERE position > ?`, from.Order); err != nil {
+			return err
+		}
+		// Queued rather than computed: nothing is filed under it, which is the
+		// whole of what this command will remove.
+		removed = domain.Milestone{
+			ID: from.Name, Name: from.Name, Order: from.Order, Status: domain.MilestoneStatusOf(nil),
+		}
+		return nil
+	})
+	if err != nil {
+		return domain.Milestone{}, err
+	}
+	logging.Action("milestone removed", "milestone", removed.Name, "order", removed.Order)
+	return removed, nil
+}
+
 // newLocalID is the ID a newly filed slice takes. Notion hands back a page ID
 // and a local plan has nobody to ask, so one is made here, in the shape of the
 // IDs everything above this package already passes about — a caller only ever

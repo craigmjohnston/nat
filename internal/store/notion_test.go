@@ -761,6 +761,125 @@ func TestRenameMilestoneWithNoSlicesUnderIt(t *testing.T) {
 	}
 }
 
+// removableAPI is a plan whose middle milestone is the one with work under it,
+// so the same fixture says something about both endings: the empty milestone
+// goes in one write, and the one holding slices is refused.
+func removableAPI(plan []string, pages []notion.Page) *fakeAPI {
+	ds := settledSchema(true, plan...)
+	return &fakeAPI{
+		dataSource: func(string) (*notion.DataSource, error) { return ds, nil },
+		query:      func(string) ([]notion.Page, error) { return pages, nil },
+	}
+}
+
+// shapeFor reads the shape a write is handed, which is where the option list a
+// removal has to send back intact comes from.
+func shapeFor(t *testing.T, api *fakeAPI) Shape {
+	t.Helper()
+	sh, err := Over(api).Shape(context.Background(), project())
+	if err != nil {
+		t.Fatalf("Shape() error = %v", err)
+	}
+	return sh
+}
+
+// An empty milestone is one schema write: the options that survive it are sent
+// back exactly as they were read — IDs included, since Notion replaces an
+// option list wholesale — so nothing else about the column changes and the rest
+// of the plan keeps its order.
+func TestRemoveMilestoneDropsTheOption(t *testing.T) {
+	api := removableAPI([]string{"M1", "M2", "M3"}, []notion.Page{
+		milestonePage("s1", "M1", notion.SliceTodo),
+		milestonePage("s2", "M3", notion.SliceDone),
+	})
+	sh := shapeFor(t, api)
+
+	m, err := Over(api).RemoveMilestone(context.Background(), project(), sh, "  m2  ")
+	if err != nil {
+		t.Fatalf("RemoveMilestone() error = %v", err)
+	}
+
+	want := domain.Milestone{
+		ID: "M2", Name: "M2", Order: 1,
+		Status: domain.MilestoneQueued, SelectType: notion.TypeSelect,
+	}
+	if m != want {
+		t.Errorf("milestone = %+v, want %+v", m, want)
+	}
+	wantCalls := []string{"GetDataSource", "QueryDataSource", "UpdateDataSourceProperties"}
+	if !reflect.DeepEqual(api.calls, wantCalls) {
+		t.Errorf("calls = %v, want %v", api.calls, wantCalls)
+	}
+	if got := api.schemas[0][notion.PropMilestone].OptionNames(); !reflect.DeepEqual(got, []string{"M1", "M3"}) {
+		t.Errorf("options written = %v, want the plan minus the one removed, in order", got)
+	}
+	if len(api.updates) != 0 {
+		t.Errorf("page writes = %v, want none: no slice was filed under it", api.updates)
+	}
+}
+
+func TestRemoveMilestoneRefusals(t *testing.T) {
+	t.Run("a name the plan does not hold", func(t *testing.T) {
+		api := removableAPI([]string{"M1", "M2"}, nil)
+		sh := shapeFor(t, api)
+		_, err := Over(api).RemoveMilestone(context.Background(), project(), sh, " M9 ")
+		if err == nil || !strings.Contains(err.Error(), `no milestone named "M9"`) {
+			t.Fatalf("err = %v, want the missing name refused", err)
+		}
+		if !strings.Contains(err.Error(), `"M1", "M2"`) {
+			t.Errorf("err = %q, want the plan's own milestones named", err)
+		}
+		// Refused before the plan is even read: there is nothing to check.
+		if !reflect.DeepEqual(api.calls, []string{"GetDataSource"}) {
+			t.Errorf("calls = %v, want the removal to have written nothing", api.calls)
+		}
+	})
+	t.Run("a milestone with slices still filed under it", func(t *testing.T) {
+		api := removableAPI([]string{"M1", "M2"}, []notion.Page{
+			milestonePage("s1", "M1", notion.SliceTodo),
+			milestonePage("s2", "M2", notion.SliceDone),
+			milestonePage("s3", "M2", notion.SliceInProgress),
+		})
+		sh := shapeFor(t, api)
+		_, err := Over(api).RemoveMilestone(context.Background(), project(), sh, "M2")
+		if err == nil || !strings.Contains(err.Error(), `the milestone "M2" still holds 2 slices ("s2", "s3")`) {
+			t.Fatalf("err = %v, want the slices under it named", err)
+		}
+		if len(api.schemas) != 0 {
+			t.Errorf("schema writes = %v, want none: the refusal comes before the write", api.schemas)
+		}
+	})
+	t.Run("a plan that cannot be read", func(t *testing.T) {
+		api := removableAPI([]string{"M1"}, nil)
+		sh := shapeFor(t, api)
+		api.query = func(string) ([]notion.Page, error) { return nil, errBoom }
+		_, err := Over(api).RemoveMilestone(context.Background(), project(), sh, "M1")
+		if !errors.Is(err, errBoom) || !strings.Contains(err.Error(), "load slices") {
+			t.Errorf("err = %v, want the read reported", err)
+		}
+	})
+	t.Run("a Milestone column that is not a select", func(t *testing.T) {
+		api := removableAPI([]string{"M1"}, nil)
+		sh := shapeFor(t, api)
+		sh.milestone = notion.PropertySchema{Type: notion.TypeStatus}
+		_, err := Over(api).RemoveMilestone(context.Background(), project(), sh, "M1")
+		if err == nil || !strings.Contains(err.Error(), "can only be removed from it in Notion") {
+			t.Errorf("err = %v, want the converted column reported", err)
+		}
+	})
+	t.Run("a schema write that failed", func(t *testing.T) {
+		api := removableAPI([]string{"M1"}, nil)
+		sh := shapeFor(t, api)
+		api.updateSchema = func(string, map[string]notion.PropertySchema) (*notion.DataSource, error) {
+			return nil, errBoom
+		}
+		_, err := Over(api).RemoveMilestone(context.Background(), project(), sh, "M1")
+		if !errors.Is(err, errBoom) || !strings.Contains(err.Error(), `retire the "M1" option`) {
+			t.Errorf("err = %v, want the write reported", err)
+		}
+	})
+}
+
 func TestRenameMilestoneRefusals(t *testing.T) {
 	shapeOver := func(t *testing.T, api *fakeAPI) Shape {
 		t.Helper()
