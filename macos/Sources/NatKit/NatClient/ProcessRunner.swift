@@ -2,7 +2,16 @@ import Foundation
 
 /// The real implementation of CommandRunning using Foundation.Process.
 public final class ProcessRunner: CommandRunning {
-    public init() {}
+    /// Which `nat` to run, asked afresh per spawn: `NAT_BIN` can be set after
+    /// launch, and a seam here is what lets the resolution be driven from a
+    /// test without a bundle to run inside.
+    private let natResolution: @Sendable () -> NatBinary.Resolution
+
+    public init(
+        natResolution: @escaping @Sendable () -> NatBinary.Resolution = { NatBinary.resolve() }
+    ) {
+        self.natResolution = natResolution
+    }
 
     public func run(
         executable: String,
@@ -81,11 +90,21 @@ public final class ProcessRunner: CommandRunning {
             return executable
         }
 
-        // NAT_BIN overrides where `nat` itself is found — and only nat, since
-        // the override exists so a dev build outruns the installed binary,
-        // and it must not hijack every other tool this runner spawns.
-        if executable == "nat", let natBin = ProcessInfo.processInfo.environment["NAT_BIN"] {
-            return natBin
+        // `nat` is resolved rather than searched for — NAT_BIN, then the
+        // binary the bundle carries, by absolute path — so a packaged app
+        // runs the nat it was built with whatever PATH holds, and says its
+        // install is damaged rather than running another. See `NatBinary`.
+        // Only nat: the override and the bundle are about nat alone, and must
+        // not hijack every other tool this runner spawns.
+        if executable == "nat" {
+            switch natResolution() {
+            case .override(let path), .bundled(let path):
+                return path
+            case .damagedInstall(let expected):
+                throw NatError.bundledBinaryMissing(expected)
+            case .searchPath:
+                break
+            }
         }
 
         // Search PATH for the executable — read live through getenv rather
