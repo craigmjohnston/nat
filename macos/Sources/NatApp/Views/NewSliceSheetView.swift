@@ -9,6 +9,11 @@ import NatKit
 struct NewSliceSheetView: View {
     let projectID: String
     let milestones: [Milestone]
+    /// The milestone the sheet opens on, for the rail's "New Slice…" — a
+    /// menu opened on a folder has already said which milestone it means, so
+    /// asking again would be the sheet forgetting where it was opened. Empty
+    /// is the toolbar button's own answer: nothing said, so nothing picked.
+    var initialMilestone: String = ""
     let onClose: () -> Void
     let onCreated: () -> Void
 
@@ -95,6 +100,15 @@ struct NewSliceSheetView: View {
         }
         .padding(20)
         .frame(width: 420)
+        // Seeded here rather than in the field's own initial value: the
+        // picker's selection is `@State`, which takes its value once, and
+        // the sheet is built before the milestone it was opened on is known
+        // to it.
+        .onAppear {
+            if selectedMilestone.isEmpty, milestones.contains(where: { $0.name == initialMilestone }) {
+                selectedMilestone = initialMilestone
+            }
+        }
     }
 
     private func submit() {

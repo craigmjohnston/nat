@@ -39,6 +39,12 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case sliceMoveFailure
         case sliceDeleteSuccess
         case sliceDeleteFailure
+        case milestoneRenameSuccess
+        case milestoneRenameFailure
+        case milestoneMoveSuccess
+        case milestoneMoveFailure
+        case milestoneRemoveSuccess
+        case milestoneRemoveFailure
         case configShowSuccess
         case configSetSuccess
         case configSetFailure
@@ -149,6 +155,18 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return (fixtureSliceDelete.data(using: .utf8)!, Data(), 0)
         case .sliceDeleteFailure:
             return (Data(), "\"Write the UI\" is in progress: work in flight is not deleted under its agent".data(using: .utf8)!, 1)
+        case .milestoneRenameSuccess:
+            return (fixtureMilestoneRename.data(using: .utf8)!, Data(), 0)
+        case .milestoneRenameFailure:
+            return (Data(), "no milestone named \"Phase 9\": the project's milestones are Phase 1, Phase 2".data(using: .utf8)!, 1)
+        case .milestoneMoveSuccess:
+            return (fixtureMilestoneMove.data(using: .utf8)!, Data(), 0)
+        case .milestoneMoveFailure:
+            return (Data(), "milestone-move: --before and --after name two places at once: pass one".data(using: .utf8)!, 1)
+        case .milestoneRemoveSuccess:
+            return (fixtureMilestoneRemove.data(using: .utf8)!, Data(), 0)
+        case .milestoneRemoveFailure:
+            return (Data(), "\"Phase 1\" still holds 2 slices: Write the UI, Ship it".data(using: .utf8)!, 1)
         case .configShowSuccess:
             return (fixtureConfigShow.data(using: .utf8)!, Data(), 0)
         case .configSetSuccess:
@@ -569,6 +587,51 @@ let fixtureSliceDelete = """
   "id": "slice-1",
   "name": "Write the UI",
   "deleted": true
+}
+"""
+
+// fixtureMilestoneRename is `milestone-rename --json`'s success reading,
+// mirroring internal/cli/rename.go's milestoneRenamedJSON.
+let fixtureMilestoneRename = """
+{
+  "from": "Phase 1",
+  "milestone": {
+    "id": "Phase One",
+    "name": "Phase One",
+    "order": 0,
+    "status": "Active"
+  }
+}
+"""
+
+// fixtureMilestoneMove is `milestone-move --json`'s success reading,
+// mirroring internal/cli/milestonemove.go's milestoneMovedJSON.
+let fixtureMilestoneMove = """
+{
+  "milestone": {
+    "id": "Phase 2",
+    "name": "Phase 2",
+    "order": 0
+  },
+  "placement": "before",
+  "relative_to": {
+    "id": "Phase 1",
+    "name": "Phase 1",
+    "order": 1
+  }
+}
+"""
+
+// fixtureMilestoneRemove is `milestone-remove --json`'s success reading,
+// mirroring internal/cli/milestoneremove.go's milestoneRemovedJSON.
+let fixtureMilestoneRemove = """
+{
+  "milestone": {
+    "id": "Phase 2",
+    "name": "Phase 2",
+    "order": 1,
+    "status": "Queued"
+  }
 }
 """
 

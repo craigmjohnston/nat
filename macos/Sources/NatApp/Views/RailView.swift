@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import NatKit
 import NatFixtures
@@ -69,6 +70,23 @@ struct RailView: View {
     /// down, whatever nat said — shown in an alert and cleared by dismissing
     /// it. The rail has no status bar to toast on.
     @State private var actionError: String?
+    /// The milestone a folder's "New Slice…" was picked on, held while its
+    /// sheet is up so the picker opens on the folder the menu was opened on.
+    @State private var milestoneForNewSlice: String?
+    /// The milestone a folder's "Rename…" was picked on, and the name being
+    /// typed for it. The text is seeded with the name it has, since a rename
+    /// is nearly always an edit of what is there rather than a fresh string.
+    @State private var milestoneForRename: String?
+    @State private var renameText: String = ""
+    /// The folder "Delete" was picked on, held while its confirm dialog is
+    /// up. Only an empty milestone reaches it — `milestone-remove` refuses
+    /// one still holding slices and the menu offers it only when it is empty
+    /// — so what the dialog warns about is the plan losing a heading rather
+    /// than any work.
+    @State private var milestoneForDeletion: MilestoneFolder?
+    /// The slice "Edit Description…" was picked on, held while the brief
+    /// sheet is up.
+    @State private var sliceForEdit: MilestoneSliceRow?
 
     var railModel: RailModel {
         if let projectInfo = appModel.projectStore?.state.projectInfo {
@@ -147,6 +165,60 @@ struct RailView: View {
             Text(slice.glyph == .done
                 ? "This slice is Done — deleting it drops the record of finished work. The page goes to Notion's trash."
                 : "The page goes to Notion's trash.")
+        }
+        .alert(
+            "Rename \u{201C}\(milestoneForRename ?? "")\u{201D}",
+            isPresented: presenting($milestoneForRename),
+            presenting: milestoneForRename
+        ) { name in
+            TextField("Milestone name", text: $renameText)
+                .font(Typo.mono(size: Typo.code))
+            Button("Rename") {
+                Task { await renameMilestone(name, to: renameText) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            // The one thing a rename costs, said before it is made: a
+            // milestone is nothing but the name its slices carry, so
+            // everything filed under it is refiled as part of the rename and
+            // its place in the plan is kept.
+            Text("The slices filed under it are refiled onto the new name, and it keeps its place in the plan.")
+        }
+        .alert(
+            "Delete \u{201C}\(milestoneForDeletion?.title ?? "")\u{201D}?",
+            isPresented: presenting($milestoneForDeletion),
+            presenting: milestoneForDeletion
+        ) { folder in
+            Button("Delete", role: .destructive) {
+                Task { await removeMilestone(folder) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("The milestone is dropped from the plan. It holds no slices, so no work goes with it.")
+        }
+        .sheet(isPresented: presenting($milestoneForNewSlice)) {
+            NewSliceSheetView(
+                projectID: appModel.activeProjectID ?? "",
+                milestones: planMilestones,
+                initialMilestone: milestoneForNewSlice ?? "",
+                onClose: { milestoneForNewSlice = nil },
+                onCreated: {
+                    milestoneForNewSlice = nil
+                    Task { await appModel.refresh() }
+                }
+            )
+        }
+        .sheet(isPresented: presenting($sliceForEdit)) {
+            EditBriefSheetView(
+                projectID: appModel.activeProjectID ?? "",
+                sliceID: sliceForEdit?.sliceID ?? "",
+                sliceName: sliceForEdit?.name ?? "",
+                onClose: { sliceForEdit = nil },
+                onSaved: {
+                    sliceForEdit = nil
+                    Task { await appModel.refresh() }
+                }
+            )
         }
         .alert(
             "That didn't work",
@@ -595,6 +667,9 @@ struct RailView: View {
         onToggle: @escaping () -> Void
     ) -> some View {
         folderRow(folder, inDone: inDone, expanded: expanded, onToggle: onToggle)
+            .contextMenu {
+                folderMenu(for: folder)
+            }
 
         if expanded {
             VStack(spacing: 0) {
@@ -722,15 +797,41 @@ struct RailView: View {
 
     // MARK: - Slice actions
 
-    /// The right-click menu on a tree slice row: refile it under another
+    /// The right-click menu on a tree slice row: launch an agent on it, edit
+    /// its brief, open its page in Notion, refile it under another
     /// milestone, or delete it behind a confirm. Only tree rows carry it —
     /// a slice drawn in a session section is work in flight, which `nat`
     /// refuses to move or delete anyway.
+    ///
+    /// Every item is enabled under exactly the condition the control it
+    /// mirrors is: the launch under `LaunchPlan`, which is the Brief tab's
+    /// own answer, and the edit under `slice-edit`'s own rule that a slice
+    /// being worked is not edited under its agent. The menu is a second door
+    /// to behaviour that is already there, never a rule of its own.
     @ViewBuilder
     private func sliceMenu(for slice: MilestoneSliceRow, under milestoneID: String) -> some View {
         let targets = (appModel.projectStore?.state.projectInfo?.milestones ?? [])
             .sorted { $0.order < $1.order }
             .filter { $0.id != milestoneID }
+        let page = planSlice(slice.sliceID)
+
+        Button("Launch Agent") {
+            Task { await launchAgent(on: slice) }
+        }
+        .disabled(!canLaunch(slice))
+
+        Button("Edit Description\u{2026}") {
+            sliceForEdit = slice
+        }
+        .disabled(page?.status != "Todo")
+
+        if let url = page.flatMap({ URL(string: $0.url) }) ?? NotionPageURL.forPage(slice.sliceID) {
+            Button("Open in Notion") {
+                NSWorkspace.shared.open(url)
+            }
+        }
+
+        Divider()
 
         if !targets.isEmpty {
             Menu("Move to") {
@@ -743,6 +844,165 @@ struct RailView: View {
         }
         Button("Delete\u{2026}", role: .destructive) {
             sliceForDeletion = slice
+        }
+    }
+
+    /// The right-click menu on a milestone folder header: file a slice under
+    /// it, rename it, move it in the plan, or drop it.
+    ///
+    /// The move and the delete are `MilestoneMenuRules`' answers — the CLI's
+    /// own rules, asked here so a greyed item is a refusal the user never has
+    /// to read: the first milestone has nothing to move up past, the last
+    /// nothing to move down past, and only an empty one can be deleted, since
+    /// `milestone-remove` refuses one still holding slices.
+    @ViewBuilder
+    private func folderMenu(for folder: MilestoneFolder) -> some View {
+        let actions = MilestoneMenuRules.actions(
+            for: folder.milestoneID, in: planMilestones, sliceCount: filedSliceCount(folder.milestoneID))
+
+        Button("New Slice\u{2026}") {
+            milestoneForNewSlice = folder.milestoneID
+        }
+        .disabled(appModel.activeProjectID == nil)
+
+        Button("Rename\u{2026}") {
+            renameText = folder.milestoneID
+            milestoneForRename = folder.milestoneID
+        }
+
+        Divider()
+
+        Button("Move Up") {
+            Task { await moveMilestone(folder, before: actions.moveBefore, after: nil) }
+        }
+        .disabled(actions.moveBefore == nil)
+
+        Button("Move Down") {
+            Task { await moveMilestone(folder, before: nil, after: actions.moveAfter) }
+        }
+        .disabled(actions.moveAfter == nil)
+
+        Divider()
+
+        Button("Delete", role: .destructive) {
+            milestoneForDeletion = folder
+        }
+        .disabled(!actions.canDelete)
+    }
+
+    /// The plan's milestones in the order it holds them — what both menus
+    /// read, since a folder row carries its own name and nothing about its
+    /// neighbours.
+    private var planMilestones: [Milestone] {
+        appModel.projectStore?.state.projectInfo?.milestones ?? []
+    }
+
+    /// How many slices the plan files under a milestone — counted here
+    /// rather than read off the folder's own `total`, which is drawn as
+    /// `max(1, …)` so an empty milestone reads "0/1" rather than "0/0" and
+    /// would have an empty milestone reporting a slice it does not hold.
+    private func filedSliceCount(_ milestoneID: String) -> Int {
+        (appModel.projectStore?.state.projectInfo?.slices ?? [])
+            .filter { $0.milestoneID == milestoneID }
+            .count
+    }
+
+    /// The slice as the plan holds it, for the facts a rail row does not
+    /// carry: its status and the URL of its page. Nil while no plan is read,
+    /// which is when every item that depends on one is drawn disabled.
+    private func planSlice(_ sliceID: String) -> Slice? {
+        appModel.projectStore?.state.projectInfo?.slices.first { $0.id == sliceID }
+    }
+
+    /// Whether "Launch Agent" is offered — the Brief tab's own answer, taken
+    /// from the same `LaunchPlan` over the same two readings, so the menu and
+    /// the pane's launch control can never disagree about one slice.
+    private func canLaunch(_ slice: MilestoneSliceRow) -> Bool {
+        guard let page = planSlice(slice.sliceID) else { return false }
+        let hasLiveAgent = appModel.activityStore?.agents[slice.sliceID] != nil
+        return LaunchPlan(for: page, hasLiveAgent: hasLiveAgent).canLaunch
+    }
+
+    /// A binding that is true while an optional holds something and nils it
+    /// on dismissal — how every sheet and alert here is presented, since the
+    /// thing being presented about is what says whether to present at all.
+    private func presenting<Value>(_ value: Binding<Value?>) -> Binding<Bool> {
+        Binding(
+            get: { value.wrappedValue != nil },
+            set: { if !$0 { value.wrappedValue = nil } }
+        )
+    }
+
+    private func launchAgent(on slice: MilestoneSliceRow) async {
+        guard let projectID = appModel.activeProjectID else { return }
+        // The config's `slice_agent` pair as it stands, which is what the
+        // pane's launch popover prefills itself with: a launch that asks
+        // nothing takes the default rather than inventing one.
+        let agent = appModel.config?.sliceAgent
+        do {
+            _ = try await NatClient().sliceLaunch(
+                projectID: projectID,
+                sliceRef: slice.sliceID,
+                model: agent?.model,
+                effort: agent?.effort
+            )
+            appModel.selectedSliceID = slice.sliceID
+            await appModel.refresh()
+        } catch {
+            actionError = commandMessage(of: error)
+        }
+    }
+
+    private func renameMilestone(_ name: String, to newName: String) async {
+        guard let projectID = appModel.activeProjectID else { return }
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A name unchanged, or emptied, is the dialog being dismissed rather
+        // than an edit to make — `milestone-rename` refuses both, and there
+        // is nothing to report about a refusal the user did not ask for.
+        guard !trimmed.isEmpty, trimmed != name else { return }
+        do {
+            try await NatClient().milestoneRename(projectID: projectID, from: name, to: trimmed)
+            // Folds are keyed by the milestone's name, which is the one thing
+            // a rename changes: carried over, so a folder open before the
+            // rename is open after it.
+            carryFold(from: name, to: trimmed)
+            await appModel.refresh()
+        } catch {
+            actionError = commandMessage(of: error)
+        }
+    }
+
+    private func moveMilestone(_ folder: MilestoneFolder, before: String?, after: String?) async {
+        guard let projectID = appModel.activeProjectID else { return }
+        do {
+            try await NatClient().milestoneMove(
+                projectID: projectID, name: folder.milestoneID, before: before, after: after)
+            await appModel.refresh()
+        } catch {
+            actionError = commandMessage(of: error)
+        }
+    }
+
+    private func removeMilestone(_ folder: MilestoneFolder) async {
+        guard let projectID = appModel.activeProjectID else { return }
+        do {
+            try await NatClient().milestoneRemove(projectID: projectID, name: folder.milestoneID)
+            expandedMilestones.remove(folder.milestoneID)
+            expandedDoneFolders.remove(folder.milestoneID)
+            await appModel.refresh()
+        } catch {
+            actionError = commandMessage(of: error)
+        }
+    }
+
+    /// Move a milestone's folds onto its new name, for both sections — a
+    /// part-done milestone is a folder in each and they fold independently.
+    private func carryFold(from old: String, to new: String) {
+        if expandedMilestones.remove(old) != nil {
+            expandedMilestones.insert(new)
+        }
+        if expandedDoneFolders.remove(old) != nil {
+            expandedDoneFolders.insert(new)
         }
     }
 
