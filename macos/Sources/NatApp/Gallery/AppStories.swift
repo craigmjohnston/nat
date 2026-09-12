@@ -125,6 +125,36 @@ enum AppStories {
         },
 
         Story(
+            name: "rail-active-crowded",
+            summary: "A dozen slices in flight: the pinned band stops at half the rail "
+                + "and scrolls within itself, so TODO is still there under it.",
+            size: rail
+        ) {
+            // The one story about the cap: the fixture plan holds six
+            // in-flight slices, which fit above the fold, and what the cap is
+            // for is the rail that has twice that.
+            let crowded = ProjectInfo(
+                project: Fixtures.project,
+                milestones: Fixtures.milestones,
+                slices: Fixtures.slices + (1...12).map { n in
+                    Slice(
+                        id: "f1x75222-0000-4000-8000-0000000000\(String(format: "%02d", n))",
+                        name: "Working slice \(n)",
+                        status: "In progress",
+                        milestoneID: "M2: Review flow",
+                        assignee: "Craig Johnston",
+                        pr: "",
+                        url: "",
+                        blocked: false,
+                        handedBack: false
+                    )
+                }
+            )
+            return RailView(appModel: await Fixtures.startedAppModel(
+                client: FixtureNatClient(plan: crowded, agents: Fixtures.agentStatuses)))
+        },
+
+        Story(
             name: "rail-empty",
             summary: "The rail of a project with nothing queued into it yet.",
             size: rail
