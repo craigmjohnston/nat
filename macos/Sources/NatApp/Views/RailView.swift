@@ -6,9 +6,12 @@ import NatFixtures
 /// one vertical axis: heading icons, session dots and every chevron sit in
 /// the same fixed-width `slot` at the same `leading` offset, which puts every
 /// title and heading label on one shared left edge; each tree level indents
-/// by `indent`. Rows still span the rail's full width for their tap targets,
-/// but hover and selection paint as rounded chips inset from the edges — see
-/// `InsetHoverWash` — with content kept inside `leading`/`trailing`.
+/// by `indent`. Rows span the rail's full width for their tap
+/// targets, and hover paints across that whole width — square and edge to
+/// edge, so the highlight fills its container rather than floating inside it
+/// — with content kept inside `leading`/`trailing`. Selection still paints as
+/// a rounded chip inset from the edges, which is what tells the row the user
+/// picked from the row the pointer happens to be over.
 /// Internal rather than private, so `RailSkeletonView` builds its
 /// placeholder rows on exactly these numbers instead of a copy of them —
 /// the whole point of the skeleton being that the plan lands on a layout
@@ -23,31 +26,14 @@ enum RailSlot {
     static let rowHeight: CGFloat = 28
 }
 
-/// The shared `.hoverWash()` paints edge-to-edge (see ViewHelpers.swift), but
-/// a modern sidebar wants its hover and its selection reading as the same
-/// soft rounded chip, inset from the rail's edges rather than a full-bleed
-/// bar. Rebuilt here rather than widened in the shared helper, since the
-/// inset has to be baked into the very shape hover fills — wrapping a
-/// full-bleed `.hoverWash()` in padding afterwards only pads its reported
-/// size, not what it actually paints.
-private struct InsetHoverWash: ViewModifier {
-    var cornerRadius: CGFloat = 6
-    @State private var hovering = false
-
-    func body(content: Content) -> some View {
-        content
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(hovering ? DesignTokens.fill(.hover) : Color.clear)
-                    .padding(.horizontal, 6)
-            )
-            .onHover { hovering = $0 }
-    }
-}
-
+/// Every rail row's hover: the shared `.hoverWash()` (see ViewHelpers.swift)
+/// with no radius at all, so the wash meets the rail's own edges instead of
+/// floating as a chip inside them. The rail's own inset version is gone
+/// rather than zeroed — with the radius and the inset both at nothing there
+/// was nothing left in it the shared helper does not already do.
 extension View {
-    fileprivate func insetHoverWash(cornerRadius: CGFloat = 6) -> some View {
-        modifier(InsetHoverWash(cornerRadius: cornerRadius))
+    fileprivate func railHoverWash() -> some View {
+        hoverWash(cornerRadius: 0)
     }
 }
 
@@ -445,7 +431,7 @@ struct RailView: View {
         // has the same inset every other row's has instead of hugging the
         // heading's own letters.
         .frame(height: RailSlot.rowHeight)
-        .insetHoverWash()
+        .railHoverWash()
         .contentShape(Rectangle())
         .onTapGesture {
             withAnimation(Motion.stateChange) {
@@ -517,7 +503,7 @@ struct RailView: View {
                 .fill(selected ? DesignTokens.wash(.selection, tone: .accent, on: ground) : Color.clear)
                 .padding(.horizontal, 6)
         }
-        .insetHoverWash()
+        .railHoverWash()
     }
 
     /// Every entry of the one flight section, whatever it stands for: the
@@ -682,7 +668,7 @@ struct RailView: View {
         .frame(height: RailSlot.rowHeight)
         .padding(.leading, RailSlot.leading + (inDone ? RailSlot.indent : 0))
         .padding(.trailing, RailSlot.trailing)
-        .insetHoverWash()
+        .railHoverWash()
         .contentShape(Rectangle())
         .onTapGesture(perform: onToggle)
     }
@@ -720,7 +706,7 @@ struct RailView: View {
                 .fill(selected ? DesignTokens.wash(.selection, tone: .accent, on: ground) : Color.clear)
                 .padding(.horizontal, 6)
         }
-        .insetHoverWash()
+        .railHoverWash()
     }
 
     /// The mock's status tints for a slice glyph — in progress orange, done
