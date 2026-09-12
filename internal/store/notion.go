@@ -334,6 +334,132 @@ func (n *Notion) AddMilestones(ctx context.Context, p Project, sh Shape, names [
 	return added, nil
 }
 
+// RenameMilestone gives one milestone another name, leaving it where it is in
+// the plan and leaving its slices filed under it.
+//
+// Notion quietly ignores renaming a select option in place — a 200 whose body
+// still says the old name — so this goes the long way the Claimed migration
+// does, and in that order: the new option is written beside the old one, every
+// slice holding the old one is refiled onto the new one, and only then is the
+// old one dropped. A run refused part way therefore leaves every slice on a
+// milestone that exists, which is the whole reason for the order.
+//
+// Beside rather than at the end, because a milestone's order is its place among
+// the options and the plan is read in that order: appending would rename the
+// milestone and move it to the end of the plan in the one write.
+func (n *Notion) RenameMilestone(ctx context.Context, p Project, sh Shape, old, name string) (domain.Milestone, error) {
+	from, err := renameTargets(sh.Milestones, old, name, func(held string) error {
+		return fmt.Errorf("the plan already has a milestone named %q: "+
+			"its milestones are the options of the slices' %s column, which cannot hold two of a name",
+			held, notion.PropMilestone)
+	}, func() error {
+		return fmt.Errorf("the plan has no milestone named %q: its milestones are %s",
+			old, milestoneList(sh.Milestones))
+	})
+	if err != nil {
+		return domain.Milestone{}, err
+	}
+
+	// Everything the refiling needs is read before the first write, so a plan
+	// that cannot be read is a rename that has written nothing.
+	pages, err := n.api.QueryDataSource(ctx, p.SlicesID, nil,
+		[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
+	if err != nil {
+		return domain.Milestone{}, fmt.Errorf("load slices: %w", err)
+	}
+
+	milestone := sh.milestone
+	added, ok := milestone.OptionInsertedAfter(from.Name, name)
+	if !ok {
+		return domain.Milestone{}, fmt.Errorf("the %s column is a %s: a milestone can only be renamed in Notion",
+			notion.PropMilestone, milestone.Type)
+	}
+	updated, err := n.api.UpdateDataSourceProperties(ctx, p.SlicesID,
+		map[string]notion.PropertySchema{notion.PropMilestone: added})
+	if err != nil {
+		return domain.Milestone{}, fmt.Errorf("add the %q option: %w", name, err)
+	}
+
+	renamed := domain.Milestone{ID: name, Name: name, Order: from.Order, SelectType: milestone.Type}
+	var under []domain.Slice
+	for _, page := range pages {
+		if page.Properties[notion.PropMilestone].SelectName() != from.Name {
+			continue
+		}
+		under = append(under, domain.SliceFromPage(page))
+		if _, err := n.api.UpdatePageProperties(ctx, page.ID,
+			map[string]notion.PropertyValue{notion.PropMilestone: renamed.Ref()}); err != nil {
+			return domain.Milestone{}, fmt.Errorf("refile slice %s under %q: %w", page.ID, name, err)
+		}
+	}
+	// The status is the slices' answer, as it is everywhere else: a milestone
+	// has none of its own, and the ones just refiled are the ones under it.
+	renamed.Status = domain.MilestoneStatusOf(under)
+
+	// Nothing sits on the old option any more; drop it. The options are sent
+	// back exactly as the schema write echoed them — the new one now has an ID —
+	// minus the one being retired.
+	without, ok := updated.Properties[notion.PropMilestone].WithoutOption(from.Name)
+	if !ok {
+		return domain.Milestone{}, fmt.Errorf("the %s column came back as a %s: drop its %q option in Notion",
+			notion.PropMilestone, updated.Properties[notion.PropMilestone].Type, from.Name)
+	}
+	if _, err := n.api.UpdateDataSourceProperties(ctx, p.SlicesID,
+		map[string]notion.PropertySchema{notion.PropMilestone: without}); err != nil {
+		return domain.Milestone{}, fmt.Errorf("retire the %q option: %w", from.Name, err)
+	}
+	logging.Action("milestone renamed", "from", from.Name, "to", name, "order", renamed.Order)
+	return renamed, nil
+}
+
+// renameTargets settles a rename before any store writes anything: the
+// milestone the old name refers to, or a refusal in the store's own words for a
+// new name the plan already holds and for an old name it does not.
+//
+// Names are matched case-insensitively and trimmed, the way every other lookup
+// of a milestone by name is — a milestone is nothing but its name, so two that
+// differ only in case could not be told apart on the board.
+func renameTargets(milestones []domain.Milestone, old, name string,
+	duplicate func(held string) error, missing func() error) (domain.Milestone, error) {
+	oldKey, newKey := milestoneKey(old), milestoneKey(name)
+	var from domain.Milestone
+	found := false
+	for _, m := range milestones {
+		key := milestoneKey(m.Name)
+		// A rename to the name it already has is a duplicate of itself, which is
+		// a write for nothing rather than a plan with two of a name — but it is
+		// still refused, since there is nothing there for it to do.
+		if key == newKey {
+			return domain.Milestone{}, duplicate(m.Name)
+		}
+		if key == oldKey {
+			from, found = m, true
+		}
+	}
+	if !found {
+		return domain.Milestone{}, missing()
+	}
+	return from, nil
+}
+
+// milestoneKey is a milestone name as names are compared: trimmed and folded.
+func milestoneKey(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+// milestoneList is the plan's milestones as an error reads them out, so a
+// refusal over a name that is not there says which names are.
+func milestoneList(milestones []domain.Milestone) string {
+	if len(milestones) == 0 {
+		return "none"
+	}
+	names := make([]string, len(milestones))
+	for i, m := range milestones {
+		names[i] = fmt.Sprintf("%q", m.Name)
+	}
+	return strings.Join(names, ", ")
+}
+
 // pluralise is the plural of a word for a count, for an error that names how
 // many milestones it was asked for.
 func pluralise(word string, n int) string {

@@ -288,6 +288,65 @@ func (l *Local) AddMilestones(ctx context.Context, _ Project, _ Shape, names []s
 	return added, nil
 }
 
+// RenameMilestone gives one milestone another name, in place: its position is
+// the column the plan is ordered by and is left alone, and the slices filed
+// under it are carried over with it.
+//
+// It is one transaction and it reads inside it, so the names it refuses over —
+// a new name the plan already holds, an old name it does not — are the plan's
+// own as of the write rather than whatever the caller was last handed. There is
+// no long way round here: a milestone's name is a column of its own row and a
+// foreign key nothing enforces, so renaming it is an update of two tables.
+func (l *Local) RenameMilestone(ctx context.Context, _ Project, _ Shape, old, name string) (domain.Milestone, error) {
+	var renamed domain.Milestone
+	err := l.withTx(ctx, "rename the milestone", func(tx *sql.Tx) error {
+		existing, err := l.milestones(ctx, tx)
+		if err != nil {
+			return err
+		}
+		from, err := renameTargets(existing, old, name, func(held string) error {
+			return fmt.Errorf("the plan at %s already has a milestone named %q: "+
+				"a milestone is nothing but its name, and a plan cannot hold two of one", l.path, held)
+		}, func() error {
+			return fmt.Errorf("the plan at %s has no milestone named %q: its milestones are %s",
+				l.path, old, milestoneList(existing))
+		})
+		if err != nil {
+			return err
+		}
+		// The slices are read before either write, so a plan that cannot be read
+		// is a rename that has changed nothing — and they are what the renamed
+		// milestone's status is computed from, a milestone having none of its own.
+		all, err := l.slices(ctx, tx)
+		if err != nil {
+			return err
+		}
+		var under []domain.Slice
+		for _, s := range all {
+			if s.MilestoneID == from.Name {
+				under = append(under, s)
+			}
+		}
+		if err := l.exec(ctx, tx, "rename the milestone",
+			`UPDATE milestones SET name = ? WHERE name = ?`, name, from.Name); err != nil {
+			return err
+		}
+		if err := l.exec(ctx, tx, "refile the milestone's slices",
+			`UPDATE slices SET milestone = ? WHERE milestone = ?`, name, from.Name); err != nil {
+			return err
+		}
+		renamed = domain.Milestone{
+			ID: name, Name: name, Order: from.Order, Status: domain.MilestoneStatusOf(under),
+		}
+		return nil
+	})
+	if err != nil {
+		return domain.Milestone{}, err
+	}
+	logging.Action("milestone renamed", "from", old, "to", renamed.Name, "order", renamed.Order)
+	return renamed, nil
+}
+
 // newLocalID is the ID a newly filed slice takes. Notion hands back a page ID
 // and a local plan has nobody to ask, so one is made here, in the shape of the
 // IDs everything above this package already passes about — a caller only ever

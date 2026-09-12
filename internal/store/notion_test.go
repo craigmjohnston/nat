@@ -653,3 +653,247 @@ func TestPRDescriptionCarriesTheReadsFailureUp(t *testing.T) {
 		t.Errorf("err = %v, want the read's failure", err)
 	}
 }
+
+// milestonePage is a slice page filed under a milestone, which is the whole of
+// what a rename has to carry over.
+func milestonePage(id, milestone, status string) notion.Page {
+	p := slicePage(id, id, status)
+	p.Properties[notion.PropMilestone] = notion.PropertyValue{
+		Type: notion.TypeSelect, Select: &notion.SelectOption{Name: milestone},
+	}
+	return *p
+}
+
+// echoingAPI is the fake with the one behaviour a rename depends on: a schema
+// write answers with the schema it left behind, which is what the option being
+// dropped is read off.
+func echoingAPI(plan []string, pages []notion.Page) *fakeAPI {
+	ds := settledSchema(true, plan...)
+	api := &fakeAPI{
+		dataSource: func(string) (*notion.DataSource, error) { return ds, nil },
+		query:      func(string) ([]notion.Page, error) { return pages, nil },
+	}
+	api.updateSchema = func(_ string, properties map[string]notion.PropertySchema) (*notion.DataSource, error) {
+		next := &notion.DataSource{ID: slicesDS, Properties: map[string]notion.PropertySchema{}}
+		for name, p := range ds.Properties {
+			next.Properties[name] = p
+		}
+		for name, p := range properties {
+			p.Name, p.Type = name, schemaType(p)
+			next.Properties[name] = p
+		}
+		ds = next
+		return next, nil
+	}
+	return api
+}
+
+// Renaming goes the long way — the new option written beside the old one, the
+// slices refiled onto it, and only then the old one dropped — so that a run
+// refused part way leaves every slice on a milestone that exists. Beside rather
+// than at the end, so the milestone keeps its place in the plan.
+func TestRenameMilestoneGoesTheLongWayRound(t *testing.T) {
+	api := echoingAPI([]string{"M1", "M2", "M3"}, []notion.Page{
+		milestonePage("s1", "M1", notion.SliceTodo),
+		milestonePage("s2", "M2", notion.SliceDone),
+		milestonePage("s3", "M2", notion.SliceInProgress),
+	})
+	st := Over(api)
+	sh, err := st.Shape(context.Background(), project())
+	if err != nil {
+		t.Fatalf("Shape() error = %v", err)
+	}
+
+	m, err := st.RenameMilestone(context.Background(), project(), sh, "m2", "M2: Board")
+	if err != nil {
+		t.Fatalf("RenameMilestone() error = %v", err)
+	}
+
+	want := domain.Milestone{
+		ID: "M2: Board", Name: "M2: Board", Order: 1,
+		Status: domain.MilestoneActive, SelectType: notion.TypeSelect,
+	}
+	if m != want {
+		t.Errorf("milestone = %+v, want %+v", m, want)
+	}
+	wantCalls := []string{
+		"GetDataSource", "QueryDataSource",
+		"UpdateDataSourceProperties", "UpdatePageProperties", "UpdatePageProperties",
+		"UpdateDataSourceProperties",
+	}
+	if !reflect.DeepEqual(api.calls, wantCalls) {
+		t.Errorf("calls = %v, want %v", api.calls, wantCalls)
+	}
+	if got := api.schemas[0][notion.PropMilestone].OptionNames(); !reflect.DeepEqual(got,
+		[]string{"M1", "M2", "M2: Board", "M3"}) {
+		t.Errorf("options written first = %v, want the new one beside the old", got)
+	}
+	if got := api.schemas[1][notion.PropMilestone].OptionNames(); !reflect.DeepEqual(got,
+		[]string{"M1", "M2: Board", "M3"}) {
+		t.Errorf("options written last = %v, want the plan renamed in place", got)
+	}
+	for _, u := range api.updates {
+		if got := u[notion.PropMilestone].SelectName(); got != "M2: Board" {
+			t.Errorf("slice refiled under %q, want the new name", got)
+		}
+	}
+}
+
+// A milestone nothing is filed under is renamed by its two schema writes alone,
+// and is Queued afterwards, as it was before.
+func TestRenameMilestoneWithNoSlicesUnderIt(t *testing.T) {
+	api := echoingAPI([]string{"M1"}, nil)
+	st := Over(api)
+	sh, err := st.Shape(context.Background(), project())
+	if err != nil {
+		t.Fatalf("Shape() error = %v", err)
+	}
+
+	m, err := st.RenameMilestone(context.Background(), project(), sh, "M1", "M1: Client")
+	if err != nil {
+		t.Fatalf("RenameMilestone() error = %v", err)
+	}
+	if m.Status != domain.MilestoneQueued || m.Order != 0 {
+		t.Errorf("milestone = %+v, want it queued and first", m)
+	}
+	if len(api.updates) != 0 {
+		t.Errorf("page writes = %v, want none", api.updates)
+	}
+}
+
+func TestRenameMilestoneRefusals(t *testing.T) {
+	shapeOver := func(t *testing.T, api *fakeAPI) Shape {
+		t.Helper()
+		sh, err := Over(api).Shape(context.Background(), project())
+		if err != nil {
+			t.Fatalf("Shape() error = %v", err)
+		}
+		return sh
+	}
+	t.Run("a new name the plan already holds", func(t *testing.T) {
+		api := echoingAPI([]string{"M1", "M2"}, nil)
+		sh := shapeOver(t, api)
+		_, err := Over(api).RenameMilestone(context.Background(), project(), sh, "M1", " m2 ")
+		if err == nil || !strings.Contains(err.Error(), `already has a milestone named "M2"`) {
+			t.Fatalf("err = %v, want the duplicate refused by name", err)
+		}
+		if len(api.schemas) != 0 || len(api.updates) != 0 {
+			t.Errorf("writes = %v %v, want none", api.schemas, api.updates)
+		}
+	})
+	t.Run("a rename to the name it already has", func(t *testing.T) {
+		api := echoingAPI([]string{"M1"}, nil)
+		sh := shapeOver(t, api)
+		_, err := Over(api).RenameMilestone(context.Background(), project(), sh, "M1", "M1")
+		if err == nil || !strings.Contains(err.Error(), "already has a milestone") {
+			t.Errorf("err = %v, want it refused", err)
+		}
+	})
+	t.Run("an old name the plan does not hold", func(t *testing.T) {
+		api := echoingAPI([]string{"M1", "M2"}, nil)
+		sh := shapeOver(t, api)
+		_, err := Over(api).RenameMilestone(context.Background(), project(), sh, "M9", "M3")
+		if err == nil || !strings.Contains(err.Error(), `no milestone named "M9"`) {
+			t.Fatalf("err = %v, want the missing name refused", err)
+		}
+		if !strings.Contains(err.Error(), `"M1", "M2"`) {
+			t.Errorf("err = %q, want it to list the plan", err)
+		}
+		if len(api.schemas) != 0 || len(api.updates) != 0 {
+			t.Errorf("writes = %v %v, want none", api.schemas, api.updates)
+		}
+	})
+	t.Run("a plan with no milestones at all", func(t *testing.T) {
+		api := echoingAPI(nil, nil)
+		sh := shapeOver(t, api)
+		_, err := Over(api).RenameMilestone(context.Background(), project(), sh, "M1", "M2")
+		if err == nil || !strings.Contains(err.Error(), "its milestones are none") {
+			t.Errorf("err = %v, want the empty plan said out loud", err)
+		}
+	})
+	t.Run("a plan that cannot be read", func(t *testing.T) {
+		api := echoingAPI([]string{"M1"}, nil)
+		sh := shapeOver(t, api)
+		api.query = func(string) ([]notion.Page, error) { return nil, errBoom }
+		_, err := Over(api).RenameMilestone(context.Background(), project(), sh, "M1", "M2")
+		if !errors.Is(err, errBoom) || !strings.Contains(err.Error(), "load slices") {
+			t.Fatalf("err = %v, want the read reported", err)
+		}
+		if len(api.schemas) != 0 {
+			t.Errorf("schema writes = %v, want none: the plan is read before the first write", api.schemas)
+		}
+	})
+	t.Run("a column that is not a select", func(t *testing.T) {
+		api := echoingAPI(nil, nil)
+		api.dataSource = func(string) (*notion.DataSource, error) {
+			ds := settledSchema(true)
+			ds.Properties[notion.PropMilestone] = notion.PropertySchema{
+				Name: notion.PropMilestone, Type: notion.TypeStatus,
+				Status: &notion.OptionsConfig{Options: []notion.SelectOption{{Name: "M1"}}},
+			}
+			return ds, nil
+		}
+		sh := shapeOver(t, api)
+		_, err := Over(api).RenameMilestone(context.Background(), project(), sh, "M1", "M2")
+		if err == nil || !strings.Contains(err.Error(), "can only be renamed in Notion") {
+			t.Fatalf("err = %v, want the column refused", err)
+		}
+		if len(api.schemas) != 0 {
+			t.Errorf("schema writes = %v, want none", api.schemas)
+		}
+	})
+	t.Run("the option could not be written", func(t *testing.T) {
+		api := echoingAPI([]string{"M1"}, nil)
+		sh := shapeOver(t, api)
+		api.updateSchema = func(string, map[string]notion.PropertySchema) (*notion.DataSource, error) {
+			return nil, errBoom
+		}
+		_, err := Over(api).RenameMilestone(context.Background(), project(), sh, "M1", "M2")
+		if !errors.Is(err, errBoom) || !strings.Contains(err.Error(), `add the "M2" option`) {
+			t.Errorf("err = %v, want the first schema write reported", err)
+		}
+	})
+	t.Run("a slice that could not be refiled", func(t *testing.T) {
+		api := echoingAPI([]string{"M1"}, []notion.Page{milestonePage("s1", "M1", notion.SliceTodo)})
+		sh := shapeOver(t, api)
+		api.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
+			return nil, errBoom
+		}
+		_, err := Over(api).RenameMilestone(context.Background(), project(), sh, "M1", "M2")
+		if !errors.Is(err, errBoom) || !strings.Contains(err.Error(), `refile slice s1 under "M2"`) {
+			t.Errorf("err = %v, want the refiling reported", err)
+		}
+		if len(api.schemas) != 1 {
+			t.Errorf("schema writes = %v, want only the option added: the old one stays until the slices move",
+				api.schemas)
+		}
+	})
+	t.Run("the column came back as something else", func(t *testing.T) {
+		api := echoingAPI([]string{"M1"}, nil)
+		sh := shapeOver(t, api)
+		api.updateSchema = func(string, map[string]notion.PropertySchema) (*notion.DataSource, error) {
+			return &notion.DataSource{ID: slicesDS, Properties: map[string]notion.PropertySchema{
+				notion.PropMilestone: {Name: notion.PropMilestone, Type: notion.TypeStatus},
+			}}, nil
+		}
+		_, err := Over(api).RenameMilestone(context.Background(), project(), sh, "M1", "M2")
+		if err == nil || !strings.Contains(err.Error(), `drop its "M1" option in Notion`) {
+			t.Errorf("err = %v, want the echo refused", err)
+		}
+	})
+	t.Run("the old option could not be dropped", func(t *testing.T) {
+		api := echoingAPI([]string{"M1"}, nil)
+		sh := shapeOver(t, api)
+		echo := api.updateSchema
+		api.updateSchema = func(id string, properties map[string]notion.PropertySchema) (*notion.DataSource, error) {
+			if len(api.schemas) > 1 {
+				return nil, errBoom
+			}
+			return echo(id, properties)
+		}
+		_, err := Over(api).RenameMilestone(context.Background(), project(), sh, "M1", "M2")
+		if !errors.Is(err, errBoom) || !strings.Contains(err.Error(), `retire the "M1" option`) {
+			t.Errorf("err = %v, want the last write reported", err)
+		}
+	})
+}

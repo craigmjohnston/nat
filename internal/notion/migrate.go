@@ -217,7 +217,9 @@ func MigrateProject(ctx context.Context, api MigrationAPI, slicesDSID string) (*
 		// Nothing sits on Claimed any more; drop it. The options are sent back
 		// exactly as the schema write echoed them — In progress now has an ID —
 		// minus the one being retired.
-		without := withoutOption(updated.Properties[PropStatus], SliceClaimed)
+		// The column is a select — anything else was refused above, and the
+		// append that just succeeded wrote one — so the drop cannot refuse.
+		without, _ := updated.Properties[PropStatus].WithoutOption(SliceClaimed)
 		if updated, err = api.UpdateDataSourceProperties(ctx, slicesDSID,
 			map[string]PropertySchema{PropStatus: without}); err != nil {
 			return nil, Migration{}, fmt.Errorf("retire the %q option: %w", SliceClaimed, err)
@@ -335,19 +337,6 @@ func renamesClaimed(status PropertySchema) bool {
 		}
 	}
 	return claimed && !inProgress
-}
-
-// withoutOption is the select definition minus the named option. Every option
-// kept is sent back exactly as it was read — ID, name and colour — because
-// Notion replaces an option list wholesale: what the list omits is removed.
-func withoutOption(status PropertySchema, name string) PropertySchema {
-	options := make([]SelectOption, 0, len(status.Select.Options))
-	for _, o := range status.Select.Options {
-		if o.Name != name {
-			options = append(options, o)
-		}
-	}
-	return PropertySchema{Select: &OptionsConfig{Options: options}}
 }
 
 // milestonePlan reads a project's Milestones data source: the milestone names in
