@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import NatKit
+import NatFixtures
 
 /// The PR tab: what GitHub says about a slice's pull request, read through
 /// `PRStore` and drawn beside a checks/review/changes sidebar — the desktop
@@ -600,23 +601,44 @@ struct PRComposerView: View {
     }
 }
 
-#Preview {
-    let appModel = AppModel()
-    let slice = Slice(
-        id: "test-id",
-        name: "Test Slice",
-        status: "In progress",
-        milestoneID: "m1",
-        assignee: "Craig",
-        pr: "https://github.com/example/repo/pull/1",
-        url: "https://example.com",
-        branch: "feature/test",
-        repo: "/path/to/repo",
-        dependsOn: nil,
-        blocked: false,
-        handedBack: false
-    )
+#Preview("Ready to merge") {
+    @Previewable @State var appModel = Fixtures.appModel()
+    let slice = Fixtures.slices.first { $0.id == Fixtures.approveSliceID }!
 
     PRTabView(appModel: appModel, slice: slice)
         .frame(width: 900, height: 560)
+        .task { await Fixtures.start(appModel) }
+}
+
+#Preview("Failing checks") {
+    @Previewable @State var appModel = Fixtures.appModel(
+        client: FixtureNatClient(pr: Fixtures.prFailingChecks)
+    )
+    let slice = Fixtures.slices.first { $0.id == Fixtures.approveSliceID }!
+
+    PRTabView(appModel: appModel, slice: slice)
+        .frame(width: 900, height: 560)
+        .task { await Fixtures.start(appModel) }
+}
+
+#Preview("Conflicting") {
+    @Previewable @State var appModel = Fixtures.appModel(
+        client: FixtureNatClient(pr: Fixtures.prConflicting)
+    )
+    let slice = Fixtures.slices.first { $0.id == Fixtures.approveSliceID }!
+
+    PRTabView(appModel: appModel, slice: slice)
+        .frame(width: 900, height: 560)
+        .task { await Fixtures.start(appModel) }
+}
+
+#Preview("Merged") {
+    @Previewable @State var appModel = Fixtures.appModel(
+        client: FixtureNatClient(pr: Fixtures.prMerged)
+    )
+    let slice = Fixtures.slices.first { $0.id == Fixtures.approveSliceID }!
+
+    PRTabView(appModel: appModel, slice: slice)
+        .frame(width: 900, height: 560)
+        .task { await Fixtures.start(appModel) }
 }

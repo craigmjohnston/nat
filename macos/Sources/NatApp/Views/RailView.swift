@@ -1,5 +1,6 @@
 import SwiftUI
 import NatKit
+import NatFixtures
 
 /// The rail's file-tree geometry, shared by every row so the marks line up on
 /// one vertical axis: heading icons, session dots and every chevron sit in
@@ -811,8 +812,27 @@ struct FolderGlyphShape: Shape {
     }
 }
 
-#Preview {
-    let appModel = AppModel()
+#Preview("Loaded plan") {
+    @Previewable @State var appModel = Fixtures.appModel()
     WindowShellView(appModel: appModel)
         .frame(width: 1360, height: 840)
+        .task { await Fixtures.start(appModel) }
+}
+
+#Preview("Empty plan") {
+    @Previewable @State var appModel = Fixtures.appModel(
+        client: FixtureNatClient(plan: Fixtures.emptyProjectInfo, agents: [])
+    )
+    WindowShellView(appModel: appModel)
+        .frame(width: 1360, height: 840)
+        .task { await Fixtures.start(appModel) }
+}
+
+#Preview("Failed read") {
+    @Previewable @State var appModel = Fixtures.appModel(
+        client: FixtureNatClient(behaviour: .refusing(Fixtures.loadErrorMessage))
+    )
+    WindowShellView(appModel: appModel)
+        .frame(width: 1360, height: 840)
+        .task { await Fixtures.start(appModel) }
 }

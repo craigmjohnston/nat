@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import NatKit
+import NatFixtures
 
 struct WindowShellView: View {
     @Bindable var appModel: AppModel
@@ -173,6 +174,8 @@ struct WindowShellView: View {
 }
 
 #Preview {
-    WindowShellView(appModel: AppModel())
+    @Previewable @State var appModel = Fixtures.appModel()
+    WindowShellView(appModel: appModel)
         .frame(width: 1360, height: 840)
+        .task { await Fixtures.start(appModel) }
 }

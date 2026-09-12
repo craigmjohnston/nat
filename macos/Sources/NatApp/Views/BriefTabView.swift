@@ -1,5 +1,6 @@
 import SwiftUI
 import NatKit
+import NatFixtures
 
 struct BriefTabView: View {
     /// What the brief is drawn on, for the one colour it computes as a
@@ -661,23 +662,20 @@ struct BriefTabView: View {
     }
 }
 
-#Preview {
-    let appModel = AppModel()
-    let slice = Slice(
-        id: "test-id",
-        name: "Test Slice",
-        status: "In progress",
-        milestoneID: "m1",
-        assignee: "Craig",
-        pr: "",
-        url: "https://example.com",
-        branch: "feature/test",
-        repo: "/path/to/repo",
-        dependsOn: nil,
-        blocked: false,
-        handedBack: false
-    )
+#Preview("Handed back") {
+    @Previewable @State var appModel = Fixtures.appModel()
+    let slice = Fixtures.slices.first { $0.id == Fixtures.mergeBoxSliceID }!
 
     BriefTabView(appModel: appModel, slice: slice)
         .frame(height: 400)
+        .task { await Fixtures.start(appModel) }
+}
+
+#Preview("Blocked") {
+    @Previewable @State var appModel = Fixtures.appModel()
+    let slice = Fixtures.slices.first { $0.id == Fixtures.cacheSliceID }!
+
+    BriefTabView(appModel: appModel, slice: slice)
+        .frame(height: 400)
+        .task { await Fixtures.start(appModel) }
 }

@@ -125,6 +125,12 @@ public final class AppModel {
         _ projectID: String, _ model: String?, _ effort: String?, _ request: String?
     ) async throws -> WorkshopLaunchResult
 
+    /// How every store this makes reaches nat. Injectable so a preview — or
+    /// the coming gallery — can hand the whole app a canned client and get a
+    /// board without a `nat` process anywhere near it; the default is the
+    /// real one, which is what the app itself runs on.
+    private let clientFactory: @Sendable () -> NatClientProtocol
+
     /// How the app-wide activity store is made. Injectable for the same
     /// reason `workshopLauncher` is: the default one polls tmux through the
     /// real client, and a test that wants to say what is running says it
@@ -149,6 +155,7 @@ public final class AppModel {
         workshopLauncher: @escaping @Sendable (String, String?, String?, String?) async throws -> WorkshopLaunchResult = {
             try await NatClient().workshopLaunch(projectID: $0, model: $1, effort: $2, request: $3)
         },
+        clientFactory: @escaping @Sendable () -> NatClientProtocol = { NatClient() },
         activityStoreFactory: @escaping @MainActor @Sendable () -> ActivityStore = { ActivityStore() },
         launchSettleWait: @escaping @MainActor @Sendable () async -> Void = {
             try? await Task.sleep(nanoseconds: 250_000_000)
@@ -158,6 +165,7 @@ public final class AppModel {
         self.planCache = planCache
         self.pollInterval = pollIntervalSeconds
         self.pathsProvider = pathsProvider
+        self.clientFactory = clientFactory
         self.workshopLauncher = workshopLauncher
         self.activityStoreFactory = activityStoreFactory
         self.launchSettleWait = launchSettleWait
@@ -202,7 +210,7 @@ public final class AppModel {
             // Create activity store (app-wide)
             let activityStore = activityStoreFactory()
             self.activityStore = activityStore
-            self.reviewStatsStore = ReviewStatsStore()
+            self.reviewStatsStore = ReviewStatsStore(client: clientFactory())
 
             // Activate the first project (if any)
             if let firstProjectID = sortedProjects.first?.key {
@@ -237,7 +245,7 @@ public final class AppModel {
 
         // Create or retrieve the project store
         if stores[projectID] == nil {
-            stores[projectID] = ProjectStore(projectID: projectID, cache: planCache)
+            stores[projectID] = ProjectStore(projectID: projectID, client: clientFactory(), cache: planCache)
         }
 
         guard let projectStore = stores[projectID] else { return }
@@ -311,7 +319,7 @@ public final class AppModel {
         // project on a machine that had none arrives here with neither.
         if activityStore == nil {
             activityStore = activityStoreFactory()
-            reviewStatsStore = ReviewStatsStore()
+            reviewStatsStore = ReviewStatsStore(client: clientFactory())
         }
 
         if !projectTabs.contains(where: { $0.id == id }) {
@@ -356,7 +364,7 @@ public final class AppModel {
     /// this session stays cached across tab switches and slice reselection.
     public func sliceDetailStore(projectID: String) -> SliceDetailStore {
         if let existing = sliceDetailStores[projectID] { return existing }
-        let store = SliceDetailStore(projectID: projectID)
+        let store = SliceDetailStore(projectID: projectID, client: clientFactory())
         sliceDetailStores[projectID] = store
         return store
     }
@@ -365,7 +373,7 @@ public final class AppModel {
     /// `sliceDetailStore(projectID:)`.
     public func diffStore(projectID: String) -> DiffStore {
         if let existing = diffStores[projectID] { return existing }
-        let store = DiffStore()
+        let store = DiffStore(client: clientFactory())
         diffStores[projectID] = store
         return store
     }
@@ -374,7 +382,7 @@ public final class AppModel {
     /// `sliceDetailStore(projectID:)`.
     public func prStore(projectID: String) -> PRStore {
         if let existing = prStores[projectID] { return existing }
-        let store = PRStore()
+        let store = PRStore(client: clientFactory())
         prStores[projectID] = store
         return store
     }

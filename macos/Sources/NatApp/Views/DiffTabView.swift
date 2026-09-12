@@ -1,5 +1,6 @@
 import SwiftUI
 import NatKit
+import NatFixtures
 
 /// A run of one file's rows currently marked as a comment's anchor — purely
 /// transient view state (never persisted; `PendingComment` is what persists
@@ -418,23 +419,22 @@ struct DiffTabView: View {
     }
 }
 
-#Preview {
-    let appModel = AppModel()
-    let slice = Slice(
-        id: "test-id",
-        name: "Test Slice",
-        status: "In progress",
-        milestoneID: "m1",
-        assignee: "Craig",
-        pr: "",
-        url: "https://example.com",
-        branch: "feature/test",
-        repo: "/path/to/repo",
-        dependsOn: nil,
-        blocked: false,
-        handedBack: true
-    )
+#Preview("Handed back") {
+    @Previewable @State var appModel = Fixtures.appModel()
+    let slice = Fixtures.slices.first { $0.id == Fixtures.mergeBoxSliceID }!
 
     DiffTabView(appModel: appModel, slice: slice)
         .frame(width: 900, height: 500)
+        .task { await Fixtures.start(appModel) }
+}
+
+#Preview("Unreadable branch") {
+    @Previewable @State var appModel = Fixtures.appModel(
+        client: FixtureNatClient(behaviour: .refusing(Fixtures.diffErrorMessage))
+    )
+    let slice = Fixtures.slices.first { $0.id == Fixtures.mergeBoxSliceID }!
+
+    DiffTabView(appModel: appModel, slice: slice)
+        .frame(width: 900, height: 500)
+        .task { await Fixtures.start(appModel) }
 }
