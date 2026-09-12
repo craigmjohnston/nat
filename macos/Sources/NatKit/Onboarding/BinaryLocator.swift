@@ -19,7 +19,7 @@ public enum BinaryLocator {
     /// What the onboarding checklist has to say about one binary: found,
     /// missing, or — for `nat` in a packaged app with none beside it — an
     /// install to repair, which is a different sentence from "install nat".
-    public enum Status: Equatable {
+    public enum Status: Equatable, Sendable {
         case found(String)
         case missing
         case damagedInstall(expected: String)

@@ -194,6 +194,17 @@ extension Fixtures {
         ),
     ]
 
+    /// One slice of the plan by ID, for a view that takes the slice rather
+    /// than reading it off a selection. It traps on an ID the plan does not
+    /// hold, which is a fixture naming a slice that was renamed out from
+    /// under it — a story that draws the wrong slice silently is worse.
+    public static func slice(_ id: String) -> Slice {
+        guard let slice = slices.first(where: { $0.id == id }) else {
+            preconditionFailure("no fixture slice with id \(id)")
+        }
+        return slice
+    }
+
     /// A realistic loaded project: the plan above, mid-flight.
     public static let projectInfo = ProjectInfo(
         project: project,

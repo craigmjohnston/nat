@@ -282,6 +282,49 @@ final class FixturesTests: XCTestCase {
         XCTAssertFalse(Fixtures.paths.logDir.isEmpty)
     }
 
+    // MARK: - The shell's own states
+
+    func testSliceLooksOneUpByID() {
+        XCTAssertEqual(Fixtures.slice(Fixtures.mergeBoxSliceID).id, Fixtures.mergeBoxSliceID)
+        XCTAssertTrue(Fixtures.slice(Fixtures.mergeBoxSliceID).handedBack)
+    }
+
+    /// The planning agent sits where `AppModel.planningAgentKey` looks for
+    /// one, and beside the slice agents rather than instead of them.
+    func testThePlanningAgentIsKeyedByItsProjectsPlanTag() {
+        let planner = Fixtures.planningAgentStatus
+        XCTAssertEqual(planner.sliceID, TmuxSession.planTag(projectID: Fixtures.projectID))
+        XCTAssertEqual(planner.session, TmuxSession.planSessionName(projectID: Fixtures.projectID))
+        XCTAssertEqual(planner.activity, .working)
+        XCTAssertEqual(Fixtures.agentStatusesWithPlanner, Fixtures.agentStatuses + [planner])
+    }
+
+    func testTheToolChecklistIsPinnedRatherThanRead() {
+        for binary in ["nat", "tmux", "gh", "ntn"] {
+            XCTAssertTrue(Fixtures.toolStatus(binary, in: Fixtures.toolsFound).isFound, binary)
+        }
+        XCTAssertFalse(Fixtures.toolStatus("nat", in: Fixtures.toolsWithoutNat).isFound)
+        XCTAssertFalse(Fixtures.toolStatus("gh", in: Fixtures.toolsWithoutNat).isFound)
+        XCTAssertTrue(Fixtures.toolStatus("tmux", in: Fixtures.toolsWithoutNat).isFound)
+        // A binary no map names is missing rather than a crash.
+        XCTAssertFalse(Fixtures.toolStatus("rg", in: Fixtures.toolsFound).isFound)
+    }
+
+    /// The review left on a diff is the store's own state, so what is canned
+    /// is the seeding of it — and it lands as the comment box would leave it.
+    @MainActor
+    func testSeedingPendingCommentsLeavesThemOnTheStore() async {
+        let store = DiffStore(client: FixtureNatClient())
+        await store.fetch(projectID: Fixtures.projectID, sliceRef: Fixtures.mergeBoxSliceID)
+        Fixtures.seedPendingComments(into: store)
+
+        XCTAssertEqual(store.pendingCommentCount, Fixtures.pendingComments.count)
+        for canned in Fixtures.pendingComments {
+            let left = store.comment(path: canned.path, anchorRowIDs: canned.anchorRowIDs)
+            XCTAssertEqual(left?.text, canned.text)
+        }
+    }
+
     func testMinutesAgoCountsBackFromThePinnedNow() {
         XCTAssertEqual(Fixtures.minutesAgo(90), Fixtures.now.addingTimeInterval(-5400))
     }

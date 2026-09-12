@@ -30,7 +30,7 @@ enum GalleryRunner {
     /// was started for.
     static func run(_ command: GalleryCommand, catalog: StoryCatalog = AppStories.catalog) -> Never {
         if case .list = command {
-            for name in catalog.names { print(name) }
+            for line in catalog.listing { print(line) }
             exit(0)
         }
 

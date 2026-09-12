@@ -21,6 +21,12 @@ public struct Story: Identifiable {
     /// rule.
     public let name: String
 
+    /// One line saying what state of what surface the story shows. It is
+    /// what makes `--list` an index of the app's UI rather than a list of
+    /// file names: a name has to be a slug, and "pr-conflicting" says which
+    /// PNG to open without saying what is in it.
+    public let summary: String
+
     /// The size the story is drawn at, in points. Declared per story because
     /// a whole window and a single pane are worth looking at at different
     /// sizes, and a pane stretched to a window's height says nothing true
@@ -45,11 +51,13 @@ public struct Story: Identifiable {
     /// the one place there is.
     public init<Content: View>(
         name: String,
+        summary: String,
         size: CGSize,
         colorScheme: ColorScheme = .dark,
         content: @escaping @MainActor () async -> Content
     ) {
         self.name = name
+        self.summary = summary
         self.size = size
         self.colorScheme = colorScheme
         self.content = { AnyView(await content()) }
@@ -70,6 +78,18 @@ public struct StoryCatalog {
 
     /// Every story's name, in catalog order.
     public var names: [String] { stories.map(\.name) }
+
+    /// What `--list` prints: a line per story, its name padded to one column
+    /// so the summaries line up and the catalog reads down. The names are
+    /// slugs and so need no quoting — a line is a `--story` argument with a
+    /// sentence after it.
+    public var listing: [String] {
+        let width = names.map(\.count).max() ?? 0
+        return stories.map { story in
+            let padding = String(repeating: " ", count: width - story.name.count)
+            return "\(story.name)\(padding)  \(story.summary)"
+        }
+    }
 
     /// The story `--story` named, or nil for a name the catalog does not
     /// hold — which the runner reports with the names it does.

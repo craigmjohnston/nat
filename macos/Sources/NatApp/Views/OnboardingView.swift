@@ -17,6 +17,10 @@ struct OnboardingView: View {
     let onNewProject: () -> Void
 
     @State private var isChecking = false
+    /// How a binary is looked up — the real locator everywhere but a story,
+    /// which pins the answers so the pane is not a picture of the machine
+    /// that rendered it. See `StorySeams`.
+    @Environment(\.toolStatus) private var toolStatus
 
     private let binaries = ["nat", "tmux", "gh", "ntn"]
 
@@ -87,7 +91,7 @@ struct OnboardingView: View {
 
     /// What this machine's `nat` is, asked once for both the guidance and the
     /// button — `NatBinary`'s own resolution, read through `BinaryLocator`.
-    private var natStatus: BinaryLocator.Status { BinaryLocator.status(of: "nat") }
+    private var natStatus: BinaryLocator.Status { toolStatus("nat") }
 
     /// What to do next, which is a different sentence for each of the three
     /// things `nat` can be. A packaged app carries its own nat, so a bundle
@@ -106,7 +110,7 @@ struct OnboardingView: View {
     }
 
     private func binaryRow(_ binary: String) -> some View {
-        let status = BinaryLocator.status(of: binary)
+        let status = toolStatus(binary)
         let found = status.isFound
         return HStack(spacing: 8) {
             Image(systemName: found ? "checkmark.circle.fill" : "xmark.circle")
