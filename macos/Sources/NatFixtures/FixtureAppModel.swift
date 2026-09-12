@@ -50,8 +50,27 @@ extension Fixtures {
                     projectID: projectID, model: model, effort: effort, request: request)
             },
             clientFactory: { client },
-            activityStoreFactory: { ActivityStore(client: client, now: { Fixtures.now }) }
+            // The live clock rather than the pinned one, alone among the
+            // fixtures: this clock stamps `firstSeen`, and the rail draws an
+            // agent's elapsed time by measuring that against the clock the
+            // Mac is actually on. Pinned, a rail drawn today would read
+            // "5764h 7m" — the distance to the fixtures' own January — where
+            // the live clock has every fixture agent read as just started,
+            // which is a state the board really has.
+            activityStoreFactory: { ActivityStore(client: client) }
         )
+    }
+
+    /// A fixture app whose first load is still in flight and stays that way:
+    /// the client never answers, and the start is kicked off rather than
+    /// awaited, so what comes back is a model with a project store loading.
+    /// It is how a view's own loading state — the rail's skeleton — is drawn,
+    /// since a client that answers has no moment to catch one in.
+    @MainActor
+    public static func loadingAppModel() -> AppModel {
+        let model = appModel(client: FixtureNatClient(behaviour: .hanging))
+        Task { await start(model) }
+        return model
     }
 
     /// Starts a fixture app on the fixture paths — the project activated, its

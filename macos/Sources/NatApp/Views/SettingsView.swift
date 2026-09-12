@@ -33,6 +33,12 @@ import NatKit
 struct SettingsView: View {
     @Bindable var appModel: AppModel
 
+    /// What the form reads the config through and writes it back with — nat
+    /// itself in the app, and a canned one in a story, which is the only way
+    /// a settings screen can be drawn without spawning a `nat config show`
+    /// against whatever machine is rendering it.
+    var client: NatClientProtocol = NatClient()
+
     /// The theme, which is this app's own preference rather than one of
     /// nat's: it is written to `UserDefaults` the moment it is picked and
     /// takes effect at once, so it is no part of the config form's diff and
@@ -372,7 +378,7 @@ struct SettingsView: View {
         isLoading = true
         loadError = nil
         do {
-            let doc = try await NatClient().configShow()
+            let doc = try await client.configShow()
             projectNames = doc.projects.mapValues { $0.name }
             let fields = SettingsFields(from: doc)
             original = fields
@@ -406,7 +412,7 @@ struct SettingsView: View {
 
         for change in changes {
             do {
-                try await NatClient().configSet(key: change.key, value: change.value)
+                try await client.configSet(key: change.key, value: change.value)
                 succeeded.append(change)
             } catch let error as NatError {
                 if case .commandFailed(let message) = error {

@@ -119,11 +119,20 @@ struct NatApp: App {
         }
     }
 
-    /// NAT_SNAPSHOT is the headless eye on the window: with it set to a file
-    /// path, the app waits for the first loads to land, renders the shell
-    /// offscreen at the mock's canvas size, writes the PNG there and exits.
-    /// It exists because screencapture needs a permission a build agent does
-    /// not have, and a screen nobody can look at is a screen nobody checks.
+    /// NAT_SNAPSHOT is the headless eye on the *live* window: with it set to
+    /// a file path, the app waits for the first loads to land, renders the
+    /// shell offscreen at the mock's canvas size, writes the PNG there and
+    /// exits. It exists because screencapture needs a permission a build
+    /// agent does not have, and a screen nobody can look at is a screen
+    /// nobody checks.
+    ///
+    /// It draws whatever the app is actually showing and nothing else: the
+    /// selector that used to drive it to a slice or to the workshop is gone,
+    /// because every state it could reach is a story in `AppStories` now, and
+    /// a story says which state it is in its own name rather than in an
+    /// environment variable read three seconds after launch. What is left
+    /// here is the one thing a story cannot be — the real app, over a real
+    /// project, as it stands.
     @MainActor
     private static func snapshotIfAsked(_ appModel: AppModel) async {
         guard let path = ProcessInfo.processInfo.environment["NAT_SNAPSHOT"] else { return }
@@ -134,17 +143,6 @@ struct NatApp: App {
         }
         NSLog("nat snapshot: store state = %@",
               String(describing: appModel.projectStore?.state).prefix(300) as CVarArg)
-        if let want = ProcessInfo.processInfo.environment["NAT_SNAPSHOT_SELECT"],
-           let info = appModel.projectStore?.state.projectInfo {
-            if want == "workshop" {
-                appModel.workshopSelected = true
-            } else {
-                appModel.selectedSliceID = want == "first"
-                    ? info.slices.first(where: { $0.status != "Done" })?.id
-                    : want
-            }
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-        }
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         // The window's own drawn pixels, not an offscreen ImageRenderer pass:
         // the renderer skips scrollable containers' content, and a snapshot

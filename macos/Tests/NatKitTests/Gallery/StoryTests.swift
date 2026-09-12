@@ -9,7 +9,9 @@ final class StoryTests: XCTestCase {
     @MainActor
     private func catalog(_ names: String...) -> StoryCatalog {
         StoryCatalog(names.map { name in
-            Story(name: name, size: CGSize(width: 10, height: 10)) { EmptyView() }
+            Story(name: name, summary: "what \(name) shows", size: CGSize(width: 10, height: 10)) {
+                EmptyView()
+            }
         })
     }
 
@@ -36,13 +38,30 @@ final class StoryTests: XCTestCase {
         XCTAssertEqual(catalog("one", "two").stories.map(\.fileName), ["one.png", "two.png"])
     }
 
+    /// What `--list` prints: every story, in catalog order, its name padded
+    /// to one column so the summaries read down as an index.
+    @MainActor
+    func testTheListingIsNamesAndSummariesInOneColumn() {
+        XCTAssertEqual(catalog("pr", "window-shell").listing, [
+            "pr            what pr shows",
+            "window-shell  what window-shell shows",
+        ])
+    }
+
+    @MainActor
+    func testTheListingOfAnEmptyCatalogIsEmpty() {
+        XCTAssertEqual(StoryCatalog([]).listing, [])
+    }
+
     @MainActor
     func testTheSizeAndSchemeAreTheStorysOwn() {
         let story = Story(
-            name: "light", size: CGSize(width: 320, height: 200), colorScheme: .light
+            name: "light", summary: "the light one", size: CGSize(width: 320, height: 200),
+            colorScheme: .light
         ) { EmptyView() }
         XCTAssertEqual(story.size, CGSize(width: 320, height: 200))
         XCTAssertEqual(story.colorScheme, .light)
+        XCTAssertEqual(story.summary, "the light one")
     }
 
     /// Dark unless a story says otherwise: the app is drawn dark in the mock,
@@ -59,7 +78,7 @@ final class StoryTests: XCTestCase {
     @MainActor
     func testContentIsBuiltWhenItIsAsked() async {
         let built = Counter()
-        let story = Story(name: "counted", size: CGSize(width: 10, height: 10)) {
+        let story = Story(name: "counted", summary: "counted", size: CGSize(width: 10, height: 10)) {
             built.value += 1
             return EmptyView()
         }

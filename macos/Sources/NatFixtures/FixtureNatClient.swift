@@ -16,6 +16,11 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     public enum Behaviour: Sendable {
         case answering
         case refusing(String)
+        /// Every call waits and never lands. A view over such a client draws
+        /// its loading state for as long as it is up, which is what a
+        /// skeleton story is: the state a real load passes through in a
+        /// tenth of a second, held still long enough to look at.
+        case hanging
     }
 
     public let behaviour: Behaviour
@@ -47,62 +52,77 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
 
     /// The one place a read decides whether to answer or refuse, so every
     /// method below reads the same way.
-    private func answer<T>(_ value: @autoclosure () -> T) throws -> T {
+    private func answer<T>(_ value: @autoclosure () -> T) async throws -> T {
         switch behaviour {
         case .answering:
             return value()
         case .refusing(let message):
             throw NatError.commandFailed(message)
+        case .hanging:
+            try await Self.never()
         }
     }
 
-    private func record(_ call: String) throws {
-        if case .refusing(let message) = behaviour {
+    private func record(_ call: String) async throws {
+        switch behaviour {
+        case .answering:
+            recorded.append(call)
+        case .refusing(let message):
             throw NatError.commandFailed(message)
+        case .hanging:
+            try await Self.never()
         }
-        recorded.append(call)
+    }
+
+    /// A call that does not come back. It sleeps rather than suspending
+    /// forever so a cancelled task — a view going away, a test ending — is
+    /// let go of rather than leaked; the sleep's own length is past any
+    /// render or any test, so nothing ever reaches the end of it.
+    private static func never() async throws -> Never {
+        try await Task.sleep(for: .seconds(86_400))
+        throw CancellationError()
     }
 
     // MARK: - Reads
 
     public func info(projectID: String) async throws -> ProjectInfo {
-        try answer(plan)
+        try await answer(plan)
     }
 
     public func status() async throws -> [AgentStatus] {
-        try answer(agents)
+        try await answer(agents)
     }
 
     public func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail {
-        try answer(Fixtures.sliceDetails[sliceRef] ?? Fixtures.sliceDetail)
+        try await answer(Fixtures.sliceDetails[sliceRef] ?? Fixtures.sliceDetail)
     }
 
     public func sliceDiff(projectID: String, sliceRef: String, commit: String?) async throws -> SliceDiff {
         // One commit of the branch is a smaller reading than the whole of it,
         // which is the difference the dropdown exists to show.
-        try answer(commit == nil ? diff : Fixtures.smallSliceDiff)
+        try await answer(commit == nil ? diff : Fixtures.smallSliceDiff)
     }
 
     public func sliceCommits(projectID: String, sliceRef: String) async throws -> SliceCommitsDoc {
-        try answer(Fixtures.commitsDoc)
+        try await answer(Fixtures.commitsDoc)
     }
 
     public func prView(projectID: String, sliceRef: String) async throws -> PRDetail {
-        try answer(pr)
+        try await answer(pr)
     }
 
     public func prStatus(projectID: String) async throws -> PRStatusDoc {
-        try answer(Fixtures.prStatusDoc)
+        try await answer(Fixtures.prStatusDoc)
     }
 
     public func configShow() async throws -> ConfigDoc {
-        try answer(Fixtures.configDoc)
+        try await answer(Fixtures.configDoc)
     }
 
     // MARK: - Writes
 
     public func sliceEdit(projectID: String, sliceRef: String, description: String) async throws -> SliceEditResult {
-        try record("slice-edit \(sliceRef)")
+        try await record("slice-edit \(sliceRef)")
         return SliceEditResult(
             id: sliceRef,
             name: Fixtures.sliceDetail.name,
@@ -112,7 +132,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult {
-        try record("slice-launch \(sliceRef)")
+        try await record("slice-launch \(sliceRef)")
         return LaunchResult(
             session: TmuxSession.name(forSlicePageID: sliceRef),
             workdir: "/Users/craig/Projects/notion-agent-tracker.worktrees/slice-fixture",
@@ -122,26 +142,26 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func agentSend(projectID: String, sliceRef: String, text: String) async throws {
-        try record("agent-send \(sliceRef)")
+        try await record("agent-send \(sliceRef)")
     }
 
     public func sliceApprove(projectID: String, sliceRef: String) async throws -> String {
-        try record("slice-approve \(sliceRef)")
+        try await record("slice-approve \(sliceRef)")
         return Fixtures.prURL
     }
 
     public func prMerge(projectID: String, sliceRef: String) async throws {
-        try record("pr-merge \(sliceRef)")
+        try await record("pr-merge \(sliceRef)")
     }
 
     public func prComment(projectID: String, sliceRef: String, body: String) async throws {
-        try record("pr-comment \(sliceRef)")
+        try await record("pr-comment \(sliceRef)")
     }
 
     public func workshopLaunch(
         projectID: String, model: String?, effort: String?, request: String?
     ) async throws -> WorkshopLaunchResult {
-        try record("workshop-launch \(projectID)")
+        try await record("workshop-launch \(projectID)")
         return WorkshopLaunchResult(
             session: TmuxSession.planSessionName(projectID: projectID),
             workdir: "/Users/craig/Projects/notion-agent-tracker",
@@ -150,7 +170,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult {
-        try record("slice-add \(title)")
+        try await record("slice-add \(title)")
         return SliceAddResult(
             id: "f1x75111-0000-4000-8000-000000000099",
             name: title,
@@ -163,7 +183,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func configSet(key: String, value: String) async throws {
-        try record("config-set \(key)")
+        try await record("config-set \(key)")
     }
 }
 

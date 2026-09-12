@@ -83,7 +83,7 @@ swift test --package-path macos
 ### Render the view gallery:
 ```bash
 swift build --package-path macos
-macos/.build/debug/gnat --list                                  # every story's name
+macos/.build/debug/gnat --list                                  # the index: every story and what it shows
 macos/.build/debug/gnat --story window-shell --out shell.png    # one of them
 macos/.build/debug/gnat --all --out /tmp/gallery                # the whole catalog
 ```
@@ -95,10 +95,24 @@ and no tmux, writes its PNGs and exits, so the same pixels come out on any
 machine and in a clean checkout. A named story is about a second and a half.
 
 The catalog is `Sources/NatApp/Gallery/AppStories.swift` — adding a story is an
-entry in that array and nothing else. Names are slugs, because a name is both
-a `--story` argument and a file name; `Tests/NatKitTests/Gallery/StoryNamesTests.swift`
-holds that rule over the source, since a catalog of views cannot be built in a
-test target.
+entry in that array and nothing else. It covers the window shell, the rail in
+each state a load leaves it in, every tab of the workflow, the workshop pane,
+settings and onboarding, and it reads down in that order, which is what makes
+`--list` an index of the app's UI rather than a heap of file names. Names are
+slugs, because a name is both a `--story` argument and a file name, and every
+story carries the one-line summary `--list` prints beside it;
+`Tests/NatKitTests/Gallery/StoryNamesTests.swift` holds both rules — and the
+coverage of the surfaces — over the source, since a catalog of views cannot be
+built in a test target.
+
+Two regions are drawn rather than run, because what they show is not data that
+can be canned: the agent terminal is a tmux session on a pseudo-terminal, and
+the onboarding checklist is the machine the app is running on. Both are
+environment values with the real thing as their default (`Views/StorySeams.swift`),
+so a story pins them and the app is untouched. `NAT_SNAPSHOT` is still the
+headless eye on the *live* window; the selector that used to drive it to a
+slice or to the workshop is gone, since every state it could reach is a story
+now.
 
 `Story`/`StoryCatalog` and the argument parsing are in `NatKit/Gallery`, where
 they are tested; the AppKit capture is in `NatApp/Gallery`, where a window

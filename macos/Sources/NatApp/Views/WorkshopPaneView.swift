@@ -18,6 +18,9 @@ import NatKit
 struct WorkshopPaneView: View {
     @Bindable var appModel: AppModel
     @State private var request = ""
+    /// A story draws the region rather than attaching to it — see
+    /// `StorySeams`.
+    @Environment(\.terminalStubbed) private var terminalStubbed
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,12 +41,18 @@ struct WorkshopPaneView: View {
             ZStack {
                 DesignTokens.fill(.terminal)
 
-                AgentTerminalHostView(
-                    attachSpec: AttachSpec(session: agent.session),
-                    sessionExists: { appModel.planningAgent != nil },
-                    onExit: { _ in }
-                )
-                .id(agent.session)
+                Group {
+                    if terminalStubbed {
+                        TerminalStubView(session: agent.session)
+                    } else {
+                        AgentTerminalHostView(
+                            attachSpec: AttachSpec(session: agent.session),
+                            sessionExists: { appModel.planningAgent != nil },
+                            onExit: { _ in }
+                        )
+                        .id(agent.session)
+                    }
+                }
                 .padding(.vertical, 14)
                 .padding(.horizontal, 18)
             }

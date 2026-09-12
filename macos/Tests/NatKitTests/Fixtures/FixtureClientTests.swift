@@ -93,6 +93,41 @@ final class FixtureClientTests: XCTestCase {
         XCTAssertTrue(client.writes.isEmpty)
     }
 
+    /// The client the skeleton stories are drawn over: every call waits, and
+    /// the only way out is cancelling it.
+    func testHangingClientNeverAnswers() async {
+        let client = FixtureNatClient(behaviour: .hanging)
+        let read = Task { try await client.info(projectID: Fixtures.projectID) }
+        let write = Task { try await client.configSet(key: "k", value: "v") }
+        // Long enough that an answering client would have answered many
+        // times over, and short enough to be no wait at all.
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertFalse(read.isCancelled)
+        read.cancel()
+        write.cancel()
+        let readResult = await read.result
+        let writeResult = await write.result
+        XCTAssertThrowsError(try readResult.get())
+        XCTAssertThrowsError(try writeResult.get())
+        // A call that never lands never records anything either.
+        XCTAssertTrue(client.writes.isEmpty)
+    }
+
+    /// The rail's skeleton state, as a story reaches it: started, and still
+    /// loading with nothing to show.
+    @MainActor
+    func testLoadingAppModelStaysLoading() async {
+        let model = Fixtures.loadingAppModel()
+        defer { model.cleanup() }
+        try? await Task.sleep(for: .milliseconds(50))
+
+        XCTAssertFalse(model.needsOnboarding)
+        XCTAssertEqual(model.activeProjectID, Fixtures.projectID)
+        XCTAssertTrue(model.projectStore?.state.isLoading ?? false)
+        XCTAssertNil(model.projectStore?.state.projectInfo)
+        XCTAssertNil(model.projectStore?.state.errorMessage)
+    }
+
     func testNullPlanCacheRemembersNothing() async {
         let cache = NullPlanCache()
         await cache.write(Fixtures.projectInfo, projectID: Fixtures.projectID)

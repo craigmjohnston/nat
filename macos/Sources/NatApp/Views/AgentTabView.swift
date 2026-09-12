@@ -7,6 +7,9 @@ struct AgentTabView: View {
     @Bindable var appModel: AppModel
     let slice: Slice
     @State private var lifecycle = TerminalLifecycle()
+    /// A story draws the region rather than attaching to it — see
+    /// `StorySeams`.
+    @Environment(\.terminalStubbed) private var terminalStubbed
 
     private var liveAgent: AgentStatus? {
         guard let sliceID = appModel.selectedSliceID else { return nil }
@@ -23,14 +26,20 @@ struct AgentTabView: View {
                 ZStack {
                     DesignTokens.fill(.terminal)
 
-                    AgentTerminalHostView(
-                        attachSpec: AttachSpec(session: agent.session),
-                        sessionExists: { sessionStillExists() },
-                        onExit: { reason in
-                            lifecycle.handle(.processTerminated(sessionStillExists: false))
+                    Group {
+                        if terminalStubbed {
+                            TerminalStubView(session: agent.session)
+                        } else {
+                            AgentTerminalHostView(
+                                attachSpec: AttachSpec(session: agent.session),
+                                sessionExists: { sessionStillExists() },
+                                onExit: { reason in
+                                    lifecycle.handle(.processTerminated(sessionStillExists: false))
+                                }
+                            )
+                            .id(agent.session) // Force recreation when session changes
                         }
-                    )
-                    .id(agent.session) // Force recreation when session changes
+                    }
                     .padding(.vertical, 14)
                     .padding(.horizontal, 18)
                 }
