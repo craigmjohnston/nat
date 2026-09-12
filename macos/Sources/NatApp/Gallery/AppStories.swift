@@ -73,6 +73,23 @@ enum AppStories {
         },
 
         Story(
+            name: "window-rail-crowded",
+            summary: "The whole window on a plan taller than it: the rail stays the "
+                + "window\u{2019}s height and scrolls within it rather than stretching "
+                + "the shell to fit the plan.",
+            size: window
+        ) {
+            // The rail stories draw the rail as the root of their own window,
+            // where it is laid out at exactly the size it is given whatever
+            // its column comes to — so the one thing they cannot show is a
+            // rail pushing the shell out of shape. This is that: the rail
+            // inside the shell\u{2019}s own HStack, on a plan with more in
+            // flight than the window has room for.
+            WindowShellView(appModel: await Fixtures.startedAppModel(
+                client: FixtureNatClient(plan: crowdedPlan, agents: Fixtures.agentStatuses)))
+        },
+
+        Story(
             name: "window-no-selection",
             summary: "The same window with nothing selected — the pane's own empty state.",
             size: window

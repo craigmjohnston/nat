@@ -53,6 +53,22 @@ public enum RailSectionLayout {
     /// flush against the bottom of the window.
     public static let footRoom: Double = 16
 
+    /// What the open sections have between them: the rail as its container
+    /// offers it, less every drawn section's own chrome — the rules and the
+    /// pinned headings, which never scroll and never yield — and less the air
+    /// under the last of them.
+    ///
+    /// The rail here is the height the shell offers, never the height the
+    /// column it produces comes to. Measuring the column was a circle: the
+    /// column is as tall as the sections it draws, the sections are as tall
+    /// as this number lets them be, so a first pass with nothing measured
+    /// gave every section its whole content and the column handed that back
+    /// as the rail — which is the number that produced it, confirming itself
+    /// forever. A container's height is nothing the share can inflate.
+    public static func available(rail: Double, chrome: Double) -> Double {
+        rail - chrome - footRoom
+    }
+
     /// The height to draw each open section's scroll at, in the order they
     /// are given. A rail nobody has measured yet — the first layout pass,
     /// before the geometry lands — gives every section its whole content

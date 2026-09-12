@@ -85,6 +85,69 @@ final class RailSectionLayoutTests: XCTestCase {
         XCTAssertFalse(RailSectionLayout.scrolls(content: 200.2, height: 200))
     }
 
+    /// What there is to share is the container's height less the chrome and
+    /// less the air under the last section.
+    func testWhatIsLeftToShareIsTheRailLessItsChromeAndItsFootRoom() {
+        XCTAssertEqual(RailSectionLayout.available(rail: 840, chrome: 124), 700)
+        XCTAssertEqual(RailSectionLayout.available(rail: 840, chrome: 0), 824)
+    }
+
+    /// A rail nobody has measured yet has nothing to share, which is exactly
+    /// what `heights` reads as "not measured": every section draws what it
+    /// holds rather than nothing at all.
+    func testAnUnmeasuredRailHasNothingToShare() {
+        let available = RailSectionLayout.available(rail: 0, chrome: 0)
+        XCTAssertLessThanOrEqual(available, 0)
+        XCTAssertEqual(
+            RailSectionLayout.heights(open: [900, 50], available: available),
+            [900, 50]
+        )
+    }
+
+    /// The regression the container measurement ends: the rail read off the
+    /// column it produces rather than off what the shell offers. Feeding the
+    /// first pass's own answer back in as the rail confirms it forever — the
+    /// sections keep their whole content, nothing scrolls, and the column
+    /// stays taller than the window. The container's height is a fixed point
+    /// of the same loop: share it out, and what comes back to share next
+    /// time is the same number.
+    func testTheShareIsStableOnlyWhenTheRailIsTheContainers() {
+        let contents = [900.0, 50.0]
+        let chrome = 100.0
+        let window = 600.0
+
+        // The column's own height, read off the first pass and fed back in.
+        var rail = 0.0
+        for _ in 0..<3 {
+            let shares = RailSectionLayout.heights(
+                open: contents, available: RailSectionLayout.available(rail: rail, chrome: chrome)
+            )
+            rail = shares.reduce(0, +) + chrome + RailSectionLayout.footRoom
+        }
+        XCTAssertGreaterThan(rail, window)
+        XCTAssertEqual(
+            RailSectionLayout.heights(
+                open: contents, available: RailSectionLayout.available(rail: rail, chrome: chrome)
+            ),
+            contents
+        )
+
+        // The container's height: settled on the first pass, and the same
+        // answer every pass after it.
+        let shares = RailSectionLayout.heights(
+            open: contents, available: RailSectionLayout.available(rail: window, chrome: chrome)
+        )
+        XCTAssertEqual(shares, [434, 50])
+        XCTAssertLessThanOrEqual(shares.reduce(0, +) + chrome + RailSectionLayout.footRoom, window)
+        XCTAssertTrue(RailSectionLayout.scrolls(content: contents[0], height: shares[0]))
+        XCTAssertEqual(
+            RailSectionLayout.heights(
+                open: contents, available: RailSectionLayout.available(rail: window, chrome: chrome)
+            ),
+            shares
+        )
+    }
+
     /// The foot room is said in one place rather than typed into the view.
     func testTheFootRoomIsShared() {
         XCTAssertEqual(RailSectionLayout.footRoom, 16)
