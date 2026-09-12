@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import NatKit
 
@@ -194,6 +195,49 @@ struct ProjectTabsView: View {
                 await appModel.activateProject(tab.id)
             }
         }
+        .contextMenu {
+            tabMenu(tab: tab)
+        }
+    }
+
+    /// The right-click menu on a project tab: close it, open its page in
+    /// Notion, or show the checkout its agents work in.
+    ///
+    /// Close is `closeProject` itself, which is what lets an inactive tab be
+    /// closed without being switched to first — the ✕ is the same call, and
+    /// the last tab standing carries neither, since a board with no project
+    /// is the onboarding screen's shape. Reveal is offered only where config
+    /// records a working directory: a project opened from the "+" tab has
+    /// none until Settings is given one.
+    @ViewBuilder
+    private func tabMenu(tab: (id: String, name: String)) -> some View {
+        if ProjectTabRules.showsClose(tabCount: appModel.projectTabs.count) {
+            Button("Close Tab") {
+                Task { await appModel.closeProject(tab.id) }
+            }
+
+            Divider()
+        }
+
+        if let url = NotionPageURL.forPage(tab.id) {
+            Button("Open in Notion") {
+                NSWorkspace.shared.open(url)
+            }
+        }
+
+        if let directory = workingDirectory(of: tab.id) {
+            Button("Reveal Working Directory in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: directory)])
+            }
+        }
+    }
+
+    /// The project's checkout as local config records it, or nil where it
+    /// records none — which is every project opened rather than created.
+    private func workingDirectory(of projectID: String) -> String? {
+        let directory = appModel.config?.projects[projectID]?.workingDir
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return directory.isEmpty ? nil : directory
     }
 
     /// Return a color for each project (cycling through a palette).

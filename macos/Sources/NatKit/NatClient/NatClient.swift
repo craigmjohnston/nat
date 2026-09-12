@@ -360,6 +360,66 @@ public final class NatClient: Sendable {
         _ = try await runNat(arguments: ["slice-delete", "--project", projectID, "--json", sliceRef])
     }
 
+    // MARK: - Milestones
+
+    /// Rename a milestone in place, keeping its place in the plan and the
+    /// slices filed under it — the rail's milestone menu, mirroring
+    /// `internal/cli/rename.go`'s `milestoneRename`. The CLI refuses a new
+    /// name the plan already holds and an old name it does not; both pass
+    /// straight through as `NatError.commandFailed`.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - from: The milestone's current name
+    ///   - to: The name to give it
+    /// - Throws: NatError if either name is refused, or the command fails
+    public func milestoneRename(projectID: String, from: String, to: String) async throws {
+        _ = try await runNat(arguments: [
+            "milestone-rename", from, to, "--project", projectID, "--json",
+        ])
+    }
+
+    /// Move a milestone in the plan, to sit directly before or after another
+    /// — the rail's Move Up and Move Down, mirroring
+    /// `internal/cli/milestonemove.go`'s `milestoneMove`. Only the order
+    /// changes: no milestone is renamed and no slice refiled.
+    ///
+    /// Exactly one of `before` and `after` is passed, which is the CLI's own
+    /// rule — a move with neither names nowhere to land and one with both
+    /// names two places at once — so the destination arrives as one value
+    /// saying which side of what.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - name: The milestone to move, by name
+    ///   - before: The milestone to sit directly before, by name
+    ///   - after: The milestone to sit directly after, by name
+    /// - Throws: NatError if either name is refused, or the command fails
+    public func milestoneMove(projectID: String, name: String, before: String?, after: String?) async throws {
+        var arguments = ["milestone-move", name, "--project", projectID, "--json"]
+        if let before = before, !before.isEmpty {
+            arguments.append(contentsOf: ["--before", before])
+        }
+        if let after = after, !after.isEmpty {
+            arguments.append(contentsOf: ["--after", after])
+        }
+        _ = try await runNat(arguments: arguments)
+    }
+
+    /// Drop a milestone from the plan — the rail's milestone delete,
+    /// mirroring `internal/cli/milestoneremove.go`'s `milestoneRemove`. The
+    /// CLI refuses one with any slice still filed under it, naming them;
+    /// the caller's menu offers the action only on an empty milestone, and
+    /// a refusal anyway passes through as `NatError.commandFailed`.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - name: The milestone to drop, by name
+    /// - Throws: NatError if the plan does not hold it, or it still holds slices
+    public func milestoneRemove(projectID: String, name: String) async throws {
+        _ = try await runNat(arguments: ["milestone-remove", name, "--project", projectID, "--json"])
+    }
+
     /// Read local configuration: the fields the settings scene edits and
     /// nothing else, mirroring `internal/cli/configshow.go`.
     ///

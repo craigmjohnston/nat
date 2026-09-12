@@ -288,6 +288,119 @@ final class NatClientTests: XCTestCase {
         }
     }
 
+    // MARK: - Milestones
+
+    func testMilestoneRename() async throws {
+        let fakeRunner = FakeRunner(fixture: .milestoneRenameSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.milestoneRename(projectID: "proj-123", from: "Phase 1", to: "Phase One")
+
+        XCTAssertEqual(fakeRunner.lastArguments, [
+            "milestone-rename", "Phase 1", "Phase One", "--project", "proj-123", "--json"
+        ])
+    }
+
+    func testMilestoneRenameFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .milestoneRenameFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            try await client.milestoneRename(projectID: "proj-123", from: "Phase 9", to: "Phase One")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            guard case .commandFailed(let message) = error else {
+                return XCTFail("Expected commandFailed error")
+            }
+            XCTAssertEqual(message, "no milestone named \"Phase 9\": the project's milestones are Phase 1, Phase 2")
+        }
+    }
+
+    /// "Move Up" — the milestone lands directly before the one above it, and
+    /// only `--before` is passed.
+    func testMilestoneMoveBefore() async throws {
+        let fakeRunner = FakeRunner(fixture: .milestoneMoveSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.milestoneMove(
+            projectID: "proj-123", name: "Phase 2", before: "Phase 1", after: nil)
+
+        XCTAssertEqual(fakeRunner.lastArguments, [
+            "milestone-move", "Phase 2", "--project", "proj-123", "--json", "--before", "Phase 1"
+        ])
+    }
+
+    /// "Move Down" — the other side of the same command, and only `--after`.
+    func testMilestoneMoveAfter() async throws {
+        let fakeRunner = FakeRunner(fixture: .milestoneMoveSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.milestoneMove(
+            projectID: "proj-123", name: "Phase 1", before: nil, after: "Phase 2")
+
+        XCTAssertEqual(fakeRunner.lastArguments, [
+            "milestone-move", "Phase 1", "--project", "proj-123", "--json", "--after", "Phase 2"
+        ])
+    }
+
+    /// An empty destination says nothing rather than passing an empty flag,
+    /// which is the CLI reading it as a name it does not hold.
+    func testMilestoneMoveEmptyDestinationsPassNoFlags() async throws {
+        let fakeRunner = FakeRunner(fixture: .milestoneMoveSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.milestoneMove(projectID: "proj-123", name: "Phase 1", before: "", after: nil)
+
+        XCTAssertEqual(fakeRunner.lastArguments, [
+            "milestone-move", "Phase 1", "--project", "proj-123", "--json"
+        ])
+    }
+
+    func testMilestoneMoveFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .milestoneMoveFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            try await client.milestoneMove(
+                projectID: "proj-123", name: "Phase 1", before: "Phase 2", after: "Phase 3")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            guard case .commandFailed(let message) = error else {
+                return XCTFail("Expected commandFailed error")
+            }
+            XCTAssertEqual(message, "milestone-move: --before and --after name two places at once: pass one")
+        }
+    }
+
+    func testMilestoneRemove() async throws {
+        let fakeRunner = FakeRunner(fixture: .milestoneRemoveSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.milestoneRemove(projectID: "proj-123", name: "Phase 2")
+
+        XCTAssertEqual(fakeRunner.lastArguments, [
+            "milestone-remove", "Phase 2", "--project", "proj-123", "--json"
+        ])
+    }
+
+    /// The CLI refuses a milestone still holding slices, naming them; the
+    /// menu offers the action only on an empty one, and a refusal anyway
+    /// comes through as its own first line.
+    func testMilestoneRemoveFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .milestoneRemoveFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            try await client.milestoneRemove(projectID: "proj-123", name: "Phase 1")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            guard case .commandFailed(let message) = error else {
+                return XCTFail("Expected commandFailed error")
+            }
+            XCTAssertEqual(message, "\"Phase 1\" still holds 2 slices: Write the UI, Ship it")
+        }
+    }
+
     func testSliceEditFailure() async throws {
         let fakeRunner = FakeRunner(fixture: .sliceEditFailure)
         let client = NatClient(commandRunner: fakeRunner)
