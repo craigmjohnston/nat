@@ -159,6 +159,18 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   running agent is identified by its pane's `@nat_slice` option (the full slice
   page ID); the session name `nat-<last-8-hex-of-slice-page-id>` is only a
   human label, and takes the tail because page IDs share a leading prefix.
+  A planning agent has no slice to be tagged with, so it is tagged with the
+  project it is workshopping instead — `plan:<project page ID>`
+  (`PlanTag`), in the session `nat-plan-<last-8-hex-of-project-page-id>`
+  (`PlanSessionName`) — which is what makes it one planning agent per project
+  rather than one per machine: two projects can be workshopped at once, and
+  `w`, `W`, `nat workshop-launch` and the macOS app's workshop pane each read
+  only the active project's (`LivePlan`). The bare `plan` tag (`PlanSentinel`,
+  the session `nat-plan`) is what every planning agent used to carry and
+  nothing launches under any more; a session a pre-upgrade nat left running
+  still does, and is read as a planning agent belonging to no project in
+  particular — legacy that any project may attach, and that refuses a second
+  launch on every project, rather than one orphaned by the upgrade.
   Viewing an agent joins no panes: the board runs an attach client on a PTY of
   its own and draws it, so an agent's pane stays in the session it launched in
   and nothing here makes a stray. `ReclaimStrays` — with its private

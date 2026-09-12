@@ -46,18 +46,70 @@ const sessionIDLen = 8
 // moved into another session.
 const SlicePaneOption = "@nat_slice"
 
-// PlanSentinel is the value [SlicePaneOption] carries on the planning agent's
-// pane, in place of a slice page ID: the planning agent works the plan itself
-// and has no slice to be tagged with. It cannot collide with a real slice —
-// page IDs are hex, and "plan" is not — so everything that reads the tag
-// (LiveSlices, the pane scan, the break-outs) handles the planning pane the
-// same way it handles a slice's.
+// PlanSentinel is the bare value [SlicePaneOption] used to carry on every
+// planning agent's pane, in place of a slice page ID: the planning agent works
+// the plan itself and has no slice to be tagged with. It cannot collide with a
+// real slice — page IDs are hex, and "plan" is not — so everything that reads
+// the tag (LiveSlices, the pane scan, the break-outs) handles the planning pane
+// the same way it handles a slice's.
+//
+// Nothing launches under it any more: a planning agent belongs to one project,
+// so its tag names that project ([PlanTag]). The bare sentinel is kept because
+// a session a pre-upgrade nat launched is still running under it, and is read
+// as a planning agent belonging to no project in particular — legacy that any
+// project may attach rather than one orphaned by the upgrade.
 const PlanSentinel = "plan"
 
-// PlanSession is the tmux session the planning agent launches in. There is
-// only ever one planning agent, so unlike the slice sessions it needs no ID in
-// its name.
+// PlanTagPrefix is what a project-qualified planning tag starts with. The
+// colon is what keeps such a tag apart from a slice's, whose page ID is hex
+// throughout.
+const PlanTagPrefix = PlanSentinel + ":"
+
+// PlanTag is the value [SlicePaneOption] carries on the planning agent of one
+// project: the sentinel and the project's own page ID. One planning agent per
+// project rather than per machine, so a workshop session launched on one
+// project is not read as the planning agent of every other.
+func PlanTag(projectID string) string { return PlanTagPrefix + projectID }
+
+// IsPlanTag reports whether a tag names a planning agent rather than a slice —
+// either a project's own ([PlanTag]) or the bare legacy [PlanSentinel].
+func IsPlanTag(tag string) bool {
+	return tag == PlanSentinel || strings.HasPrefix(tag, PlanTagPrefix)
+}
+
+// PlanSession is the tmux session a pre-upgrade planning agent launched in,
+// and the stem every project-scoped planning session's name is built from.
 const PlanSession = SessionPrefix + PlanSentinel
+
+// PlanSessionName is the tmux session a project's planning agent launches in:
+// [PlanSession] and the tail of the project's page ID, the same eight hex
+// digits a slice's session takes from its own. A project whose ID holds no hex
+// at all — which no Notion page ID does — names the bare session, which is
+// still a name tmux accepts.
+func PlanSessionName(projectID string) string {
+	hex := hexTail(projectID)
+	if hex == "" {
+		return PlanSession
+	}
+	return PlanSession + "-" + hex
+}
+
+// LivePlan finds the planning agent the named project may attach in a reading
+// of the live sessions, answering with the tag it is tagged with and the
+// session it is in — both empty where there is none.
+//
+// The project's own comes first; a bare [PlanSentinel] session is taken only
+// where it does not, since it belongs to no project and every project may
+// attach it.
+func LivePlan(live map[string]string, projectID string) (tag, session string) {
+	if s := live[PlanTag(projectID)]; s != "" {
+		return PlanTag(projectID), s
+	}
+	if s := live[PlanSentinel]; s != "" {
+		return PlanSentinel, s
+	}
+	return "", ""
+}
 
 // PaneEnv is set by tmux in every pane it runs, to the pane's own ID. It is how
 // the TUI finds the pane it is drawing in, which is the window the strays are
@@ -150,13 +202,23 @@ func (t *Tmux) run(args ...string) (string, error) {
 // is only a human label — what a session belongs to is read from
 // [SlicePaneOption] — but it still has to be one tmux will accept twice.
 func SessionName(slicePageID string) string {
-	// The planning agent's tag is not a page ID at all: hex-filtering it would
+	// A planning agent's tag is not a page ID at all: hex-filtering it would
 	// name a session tmux could confuse with a slice's.
 	if slicePageID == PlanSentinel {
 		return PlanSession
 	}
+	if project, ok := strings.CutPrefix(slicePageID, PlanTagPrefix); ok {
+		return PlanSessionName(project)
+	}
+	return SessionPrefix + hexTail(slicePageID)
+}
+
+// hexTail is the last [sessionIDLen] hex digits of an ID, with the UUID dashes
+// — and anything else that is not hex — skipped rather than trusted, so a
+// surprising ID cannot produce a name tmux would reject.
+func hexTail(id string) string {
 	var b strings.Builder
-	for _, r := range strings.ToLower(slicePageID) {
+	for _, r := range strings.ToLower(id) {
 		if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') {
 			b.WriteRune(r)
 		}
@@ -165,7 +227,7 @@ func SessionName(slicePageID string) string {
 	if len(hex) > sessionIDLen {
 		hex = hex[len(hex)-sessionIDLen:]
 	}
-	return SessionPrefix + hex
+	return hex
 }
 
 // LiveSlices maps the page ID of every slice with an agent running to the tmux

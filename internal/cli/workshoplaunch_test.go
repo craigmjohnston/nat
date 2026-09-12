@@ -14,6 +14,8 @@ import (
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
+// A bare pre-upgrade planning session belongs to no project, so it is the one
+// any project would attach — and the one that refuses every project.
 func TestWorkshopLaunchRefusesAlreadyLive(t *testing.T) {
 	env, _ := testEnv(testConfig(), &fakeAPI{})
 	runner := &agentTestRunner{liveSessions: map[string]string{agent.PlanSentinel: agent.PlanSession}}
@@ -23,6 +25,37 @@ func TestWorkshopLaunchRefusesAlreadyLive(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "already live") {
 		t.Errorf("err = %v, want 'already live'", err)
+	}
+}
+
+// A planning agent on another project is no reason to refuse this one: they
+// are scoped per project now, so two can be workshopped at once.
+func TestWorkshopLaunchIgnoresAnotherProjectsPlanningAgent(t *testing.T) {
+	env, out := testEnv(testConfig(), &fakeAPI{})
+	runner := &agentTestRunner{liveSessions: map[string]string{
+		agent.PlanTag("project-2"): agent.PlanSessionName("project-2"),
+	}}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+
+	if err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("workshop-launch: %v", err)
+	}
+	if !strings.Contains(out.String(), agent.PlanSessionName("project-1")) {
+		t.Errorf("output = %q, want this project's own session", out.String())
+	}
+}
+
+// This project's own planning agent is what refuses.
+func TestWorkshopLaunchRefusesThisProjectsPlanningAgent(t *testing.T) {
+	env, _ := testEnv(testConfig(), &fakeAPI{})
+	runner := &agentTestRunner{liveSessions: map[string]string{
+		agent.PlanTag("project-1"): agent.PlanSessionName("project-1"),
+	}}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+
+	err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env)
+	if err == nil || !strings.Contains(err.Error(), agent.PlanSessionName("project-1")) {
+		t.Errorf("err = %v, want the project's own session named", err)
 	}
 }
 
@@ -38,7 +71,7 @@ func TestWorkshopLaunchesAPlainSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("workshop-launch: %v", err)
 	}
-	want := "# Planning agent launched\n\n- Session: " + agent.PlanSession + "\n- Working directory: /tmp/nat\n"
+	want := "# Planning agent launched\n\n- Session: " + agent.PlanSessionName("project-1") + "\n- Working directory: /tmp/nat\n"
 	if out.String() != want {
 		t.Errorf("output = %q, want %q", out.String(), want)
 	}
@@ -46,8 +79,8 @@ func TestWorkshopLaunchesAPlainSession(t *testing.T) {
 	if !strings.Contains(argv, "--model 'sonnet'") || !strings.Contains(argv, "--effort 'low'") {
 		t.Errorf("launch argv = %q, want the config's workshop_agent", argv)
 	}
-	if len(runner.tagged) != 1 || runner.tagged[0] != agent.PlanSentinel {
-		t.Errorf("tagged panes = %v, want the plan sentinel", runner.tagged)
+	if want := agent.PlanTag("project-1"); len(runner.tagged) != 1 || runner.tagged[0] != want {
+		t.Errorf("tagged panes = %v, want %q", runner.tagged, want)
 	}
 }
 
@@ -69,7 +102,7 @@ func TestWorkshopLaunchesOnTheWishlist(t *testing.T) {
 // sets TMPDIR to dir, so the file is findable without threading the path out.
 func launchedPlanPrompt(t *testing.T, dir string) string {
 	t.Helper()
-	matches, err := filepath.Glob(filepath.Join(dir, "nat-prompt-*", agent.PlanSession+".md"))
+	matches, err := filepath.Glob(filepath.Join(dir, "nat-prompt-*", agent.PlanSessionName("project-1")+".md"))
 	if err != nil || len(matches) != 1 {
 		t.Fatalf("prompt files = %v (err %v), want exactly one", matches, err)
 	}
@@ -191,7 +224,7 @@ func TestWorkshopLaunchJSON(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
 		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
 	}
-	want := workshopLaunchJSON{Session: agent.PlanSession, Workdir: "/tmp/nat"}
+	want := workshopLaunchJSON{Session: agent.PlanSessionName("project-1"), Workdir: "/tmp/nat"}
 	if got != want {
 		t.Errorf("json = %+v, want %+v", got, want)
 	}

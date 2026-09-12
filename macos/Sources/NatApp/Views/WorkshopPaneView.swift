@@ -7,7 +7,9 @@ import NatKit
 /// view alone, the same embedded-terminal machinery a slice's Agent tab uses.
 ///
 /// Presence is the activity poll's answer (`appModel.planningAgent`), so the
-/// terminal attaches to a planning agent whichever session launched it. With
+/// terminal attaches to the active project's planning agent whichever session
+/// launched it — and to no other project's, since the workshop is scoped to a
+/// project the way the rest of the pane is. With
 /// none running the pane is one of two things: the composer — the board's own
 /// "What do you want to workshop?", asked before any session starts, and also
 /// where a launch failure is shown, over the request still typed and ready to

@@ -76,6 +76,8 @@ func TestSessionName(t *testing.T) {
 		// Hex-filtered the sentinel would come out as "nat-a", which a short
 		// or surprising slice ID could collide with.
 		{"the planning agent's sentinel", PlanSentinel, PlanSession},
+		{"a project's planning tag", PlanTag("3b738308-f654-811c-948d-e1fb36f71df3"), "nat-plan-36f71df3"},
+		{"a planning tag with no hex in its project", PlanTag("zz"), PlanSession},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -94,6 +96,75 @@ func TestSessionNameDistinguishesIDsSharingAPrefix(t *testing.T) {
 	second := SessionName("3b738308-f654-812d-ac8d-d4c80dfecb09")
 	if first == second {
 		t.Errorf("both slices name session %q, want a name each", first)
+	}
+}
+
+// A planning agent belongs to one project, so its tag names that project and
+// two projects name two sessions — which is what lets both be workshopped at
+// once.
+func TestPlanTagsAreScopedPerProject(t *testing.T) {
+	first, second := "3b738308-f654-811c-948d-e1fb36f71df3", "3b738308-f654-8170-8c99-eccab4463d8f"
+	if PlanTag(first) == PlanTag(second) {
+		t.Errorf("both projects tag %q, want a tag each", PlanTag(first))
+	}
+	if PlanSessionName(first) == PlanSessionName(second) {
+		t.Errorf("both projects name session %q, want a name each", PlanSessionName(first))
+	}
+	// And neither can be read as a slice's, whose ID is hex throughout.
+	if PlanTag(first) == first {
+		t.Error("a planning tag reads as a bare page ID")
+	}
+}
+
+func TestIsPlanTag(t *testing.T) {
+	tests := []struct {
+		tag  string
+		want bool
+	}{
+		{PlanSentinel, true},
+		{PlanTag("proj-1"), true},
+		{PlanTag(""), true},
+		{"3b738308f65481708c99eccab4463d8f", false},
+		{"", false},
+		{"planner", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.tag, func(t *testing.T) {
+			if got := IsPlanTag(tt.tag); got != tt.want {
+				t.Errorf("IsPlanTag(%q) = %v, want %v", tt.tag, got, tt.want)
+			}
+		})
+	}
+}
+
+// LivePlan answers with the planning agent a project may attach: its own
+// first, and the bare pre-upgrade session — which belongs to no project — only
+// where it has none of its own.
+func TestLivePlan(t *testing.T) {
+	tests := []struct {
+		name        string
+		live        map[string]string
+		wantTag     string
+		wantSession string
+	}{
+		{"none at all", map[string]string{"s5": "nat-5"}, "", ""},
+		{"nothing live", nil, "", ""},
+		{"its own", map[string]string{PlanTag("p1"): "nat-plan-1"}, PlanTag("p1"), "nat-plan-1"},
+		{"another project's", map[string]string{PlanTag("p2"): "nat-plan-2"}, "", ""},
+		{"a legacy session", map[string]string{PlanSentinel: PlanSession}, PlanSentinel, PlanSession},
+		{
+			"its own outranks the legacy one",
+			map[string]string{PlanTag("p1"): "nat-plan-1", PlanSentinel: PlanSession},
+			PlanTag("p1"), "nat-plan-1",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tag, session := LivePlan(tt.live, "p1")
+			if tag != tt.wantTag || session != tt.wantSession {
+				t.Errorf("LivePlan = (%q, %q), want (%q, %q)", tag, session, tt.wantTag, tt.wantSession)
+			}
+		})
 	}
 }
 

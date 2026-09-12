@@ -112,7 +112,7 @@ struct RailView: View {
             activity: activity,
             isLaunching: appModel.workshopLaunching,
             isSelected: appModel.workshopSelected,
-            firstSeen: appModel.activityStore?.firstSeen[AppModel.planSentinel]
+            firstSeen: appModel.planningAgentKey.flatMap { appModel.activityStore?.firstSeen[$0] }
         )
     }
 

@@ -163,15 +163,15 @@ func TestAppWorkshopKeyLaunchesAPlanningAgentOnTheWishlist(t *testing.T) {
 		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
 	}
 	got := launcher.launches[0]
-	if got.session != agent.PlanSession {
-		t.Errorf("session = %q, want %q", got.session, agent.PlanSession)
+	if want := agent.PlanSessionName(testProjectID); got.session != want {
+		t.Errorf("session = %q, want %q", got.session, want)
 	}
 	if got.workdir != workdir {
 		t.Errorf("workdir = %q, want the project default %q", got.workdir, workdir)
 	}
 	// The sentinel again: one planning agent, however it was launched.
-	if got.sliceID != agent.PlanSentinel {
-		t.Errorf("tag = %q, want %q", got.sliceID, agent.PlanSentinel)
+	if want := agent.PlanTag(testProjectID); got.sliceID != want {
+		t.Errorf("tag = %q, want %q", got.sliceID, want)
 	}
 	if app.form != nil {
 		t.Fatalf("form = %T, want no question asked", app.form)
@@ -189,7 +189,7 @@ func TestAppWorkshopKeyLaunchesAPlanningAgentOnTheWishlist(t *testing.T) {
 	}
 
 	// The agent is shown on launch, as a typed planning launch is.
-	if want := []string{agent.PlanSession}; !equal(launcher.clients, want) {
+	if want := []string{agent.PlanSessionName(testProjectID)}; !equal(launcher.clients, want) {
 		t.Errorf("clients = %v, want %v", launcher.clients, want)
 	}
 	if app.busy {
@@ -236,7 +236,7 @@ func TestAppWorkshopKeyDoesNothingWithAnEmptyWishlist(t *testing.T) {
 // already holding the plan in its head.
 func TestAppWorkshopKeyDoesNothingWithAPlanningAgentRunning(t *testing.T) {
 	app, launcher, _ := workshopApp(t, 2)
-	app.live = map[string]string{agent.PlanSentinel: agent.PlanSession}
+	app.live = map[string]string{agent.PlanTag(testProjectID): agent.PlanSessionName(testProjectID)}
 
 	if cmd := press(app, "W"); cmd != nil {
 		t.Error("the running planning agent should be left alone")
@@ -246,6 +246,22 @@ func TestAppWorkshopKeyDoesNothingWithAPlanningAgentRunning(t *testing.T) {
 	}
 	if len(launcher.attached) != 0 || len(launcher.clients) != 0 {
 		t.Errorf("attached = %v, clients = %v, want the agent untouched", launcher.attached, launcher.clients)
+	}
+}
+
+// One planning agent per project, so another project's is no reason for W to
+// hold off: its wishlist is not this one's.
+func TestAppWorkshopKeyIgnoresAnotherProjectsPlanningAgent(t *testing.T) {
+	app, launcher, _ := workshopApp(t, 2)
+	app.live = map[string]string{agent.PlanTag("proj-2"): agent.PlanSessionName("proj-2")}
+
+	run(press(app, "W"))
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
+	if want := agent.PlanTag(testProjectID); launcher.launches[0].sliceID != want {
+		t.Errorf("tag = %q, want %q", launcher.launches[0].sliceID, want)
 	}
 }
 

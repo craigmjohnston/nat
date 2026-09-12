@@ -11,14 +11,43 @@ public enum TmuxSession {
     /// same name: it namespaces our sessions inside the user's tmux server.
     public static let prefix = "nat-"
 
-    /// PlanSentinel, copied from `internal/agent/tmux.go`: the tag the
-    /// planning agent's pane carries in place of a slice page ID. It is not
-    /// hex, so it cannot collide with a real slice's session name.
+    /// PlanSentinel, copied from `internal/agent/tmux.go`: the bare tag a
+    /// pre-upgrade planning agent's pane carries in place of a slice page ID.
+    /// It is not hex, so it cannot collide with a real slice's session name.
+    /// Nothing launches under it any more — a planning agent belongs to one
+    /// project — but a session started before the upgrade still runs under it,
+    /// and is read as a planning agent belonging to no project in particular.
     public static let planSentinel = "plan"
 
-    /// PlanSession, copied from `internal/agent/tmux.go`: the one tmux
-    /// session the planning agent always launches in.
+    /// PlanTagPrefix, copied from `internal/agent/tmux.go`: what a
+    /// project-qualified planning tag starts with.
+    public static let planTagPrefix = planSentinel + ":"
+
+    /// PlanTag, copied from `internal/agent/tmux.go`: the tag on the pane of
+    /// one project's planning agent — the sentinel and the project's own page
+    /// ID, so a workshop session launched on one project is not read as the
+    /// planning agent of every other.
+    public static func planTag(projectID: String) -> String {
+        planTagPrefix + projectID
+    }
+
+    /// Whether a tag names a planning agent rather than a slice — a project's
+    /// own, or the bare legacy sentinel. `IsPlanTag` on the Go side.
+    public static func isPlanTag(_ tag: String) -> Bool {
+        tag == planSentinel || tag.hasPrefix(planTagPrefix)
+    }
+
+    /// PlanSession, copied from `internal/agent/tmux.go`: the tmux session a
+    /// pre-upgrade planning agent launched in, and the stem every
+    /// project-scoped planning session's name is built from.
     public static let planSession = prefix + planSentinel
+
+    /// PlanSessionName, copied from `internal/agent/tmux.go`: the tmux session
+    /// a project's planning agent launches in.
+    public static func planSessionName(projectID: String) -> String {
+        let tail = hexTail(projectID)
+        return tail.isEmpty ? planSession : planSession + "-" + tail
+    }
 
     /// sessionIDLen, copied from `internal/agent/tmux.go`: eight hex digits
     /// is what tmux can show without truncating the status line.
@@ -35,12 +64,20 @@ public enum TmuxSession {
         if slicePageID == planSentinel {
             return planSession
         }
+        if slicePageID.hasPrefix(planTagPrefix) {
+            return planSessionName(projectID: String(slicePageID.dropFirst(planTagPrefix.count)))
+        }
 
-        let hex = slicePageID.lowercased().filter { character in
+        return prefix + hexTail(slicePageID)
+    }
+
+    /// The last eight hex digits of an ID, with the UUID dashes — and anything
+    /// else that is not hex — skipped rather than trusted.
+    private static func hexTail(_ id: String) -> String {
+        let hex = id.lowercased().filter { character in
             ("0"..."9").contains(character) || ("a"..."f").contains(character)
         }
-        let tail = hex.count > idLength ? String(hex.suffix(idLength)) : hex
-        return prefix + tail
+        return hex.count > idLength ? String(hex.suffix(idLength)) : hex
     }
 }
 

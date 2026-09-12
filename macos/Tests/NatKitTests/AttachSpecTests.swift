@@ -29,6 +29,39 @@ final class TmuxSessionNameTests: XCTestCase {
         XCTAssertEqual(TmuxSession.planSession, "nat-plan")
     }
 
+    // Mirrors the project-scoped rows of internal/agent/tmux.go's
+    // TestSessionName table: a planning agent belongs to one project, so its
+    // tag names that project and its session takes the project ID's tail the
+    // way a slice's takes the slice ID's.
+    func testSessionNamePlanTag() {
+        XCTAssertEqual(TmuxSession.planTag(projectID: "proj-1"), "plan:proj-1")
+        XCTAssertEqual(
+            TmuxSession.name(forSlicePageID: TmuxSession.planTag(projectID: "3b738308-f654-811c-948d-e1fb36f71df3")),
+            "nat-plan-36f71df3"
+        )
+        XCTAssertEqual(TmuxSession.planSessionName(projectID: "3b738308-f654-811c-948d-e1fb36f71df3"), "nat-plan-36f71df3")
+        // No hex at all in the project ID — which no Notion page ID is — names
+        // the bare session, which tmux still accepts.
+        XCTAssertEqual(TmuxSession.name(forSlicePageID: TmuxSession.planTag(projectID: "zz")), TmuxSession.planSession)
+    }
+
+    // Two projects name two sessions, which is what lets both be workshopped
+    // at once.
+    func testPlanSessionsAreScopedPerProject() {
+        XCTAssertNotEqual(
+            TmuxSession.planSessionName(projectID: "3b738308-f654-811c-948d-e1fb36f71df3"),
+            TmuxSession.planSessionName(projectID: "3b738308-f654-8170-8c99-eccab4463d8f")
+        )
+    }
+
+    func testIsPlanTag() {
+        XCTAssertTrue(TmuxSession.isPlanTag(TmuxSession.planSentinel))
+        XCTAssertTrue(TmuxSession.isPlanTag(TmuxSession.planTag(projectID: "proj-1")))
+        XCTAssertFalse(TmuxSession.isPlanTag("3b738308f65481708c99eccab4463d8f"))
+        XCTAssertFalse(TmuxSession.isPlanTag(""))
+        XCTAssertFalse(TmuxSession.isPlanTag("planner"))
+    }
+
     // The bug this replaced on the Go side: page IDs from one Notion
     // workspace share a long leading prefix, so a name taken off the front
     // is the same name for every slice of a project.

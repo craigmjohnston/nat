@@ -118,8 +118,8 @@ type (
 )
 
 // agentViewer is the agent's terminal as the board draws it: the session
-// itself, what it is showing — a slice's page ID, or [agent.PlanSentinel] for
-// the planning agent — and the last frame read off it.
+// itself, what it is showing — a slice's page ID, or a planning tag
+// ([agent.IsPlanTag]) for a planning agent — and the last frame read off it.
 //
 // The frame is cached rather than rendered from the emulator on every draw: the
 // screen is read under the session's own lock, and View runs far more often
@@ -297,7 +297,7 @@ func (a *App) dropViewer() *agentViewer {
 // on show. A slice's agent has been working one page, so that page is refetched;
 // the planning agent works the whole plan, so the plan is reloaded.
 func (a *App) afterViewing(v *agentViewer) tea.Cmd {
-	if v.sliceID == agent.PlanSentinel {
+	if agent.IsPlanTag(v.sliceID) {
 		return a.startLoad()
 	}
 	if a.project == nil || a.client == nil {
@@ -588,7 +588,7 @@ func (a *App) viewerCursor() (x, y int, ok bool) {
 // the terminal takes the keyboard and a click on the board hands it back.
 func (a *App) viewerHints() []hint {
 	closeKey := a.board.keys.Attach
-	if a.viewer.sliceID == agent.PlanSentinel {
+	if agent.IsPlanTag(a.viewer.sliceID) {
 		closeKey = a.board.keys.Plan
 	}
 	if a.viewer.focused {

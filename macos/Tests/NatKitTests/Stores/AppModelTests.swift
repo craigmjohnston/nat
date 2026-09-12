@@ -71,9 +71,10 @@ final class PlanningAgentAppearsClient: MockActivityClient, @unchecked Sendable 
 
     override func status() async throws -> [AgentStatus] {
         guard lock.withLock({ isLaunched }) else { return [] }
-        // `AppModel.planSentinel`, which is main-actor isolated and this is
-        // not — the poll reads tmux off the main thread.
-        return [AgentStatus(sliceID: "plan", session: "nat-plan", activity: .working)]
+        // `TmuxSession.planTag(projectID: "proj-a")` and
+        // `TmuxSession.planSessionName(projectID: "proj-a")`, spelled out
+        // because this is not the main actor — the poll reads tmux off it.
+        return [AgentStatus(sliceID: "plan:proj-a", session: "nat-plan-a", activity: .working)]
     }
 }
 
@@ -543,6 +544,105 @@ final class AppModelTests: XCTestCase {
         return appModel
     }
 
+    /// A model whose activity poll always reports the given agents, for the
+    /// rules about which of them is *this* project's planning agent.
+    @MainActor
+    private func planningAgentModel(_ agents: [AgentStatus]) async -> AppModel {
+        let testConfig = NatProjectConfig(
+            projects: [
+                "proj-a": ProjectConfig(name: "A Project", slicesDSID: "ds-a", workingDir: "/path/a"),
+                "proj-b": ProjectConfig(name: "B Project", slicesDSID: "ds-b", workingDir: "/path/b")
+            ]
+        )
+        let appModel = AppModel(
+            configReader: MockConfigReader(response: .success(testConfig)),
+            activityStoreFactory: { ActivityStore(client: MockActivityClient(response: .agents(agents))) }
+        )
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+        // One turn of the poll, so `activityStore.agents` holds the reading.
+        while appModel.activityStore?.agents.isEmpty ?? true {
+            await Task.yield()
+        }
+        return appModel
+    }
+
+    // A planning agent belongs to one project, so the pane draws the active
+    // project's and never another's — switching tabs switches the workshop
+    // with everything else.
+    @MainActor
+    func testPlanningAgent_isTheActiveProjectsOwn() async {
+        let appModel = await planningAgentModel([
+            AgentStatus(
+                sliceID: TmuxSession.planTag(projectID: "proj-a"),
+                session: TmuxSession.planSessionName(projectID: "proj-a"),
+                activity: .working
+            ),
+            AgentStatus(
+                sliceID: TmuxSession.planTag(projectID: "proj-b"),
+                session: TmuxSession.planSessionName(projectID: "proj-b"),
+                activity: .waiting
+            )
+        ])
+
+        await appModel.activateProject("proj-a")
+        XCTAssertEqual(appModel.planningAgent?.session, TmuxSession.planSessionName(projectID: "proj-a"))
+        XCTAssertEqual(appModel.planningAgentKey, TmuxSession.planTag(projectID: "proj-a"))
+
+        await appModel.activateProject("proj-b")
+        XCTAssertEqual(appModel.planningAgent?.session, TmuxSession.planSessionName(projectID: "proj-b"))
+        XCTAssertEqual(appModel.planningAgentKey, TmuxSession.planTag(projectID: "proj-b"))
+    }
+
+    // Another project's planning agent is nobody else's.
+    @MainActor
+    func testPlanningAgent_isNilWithOnlyAnotherProjects() async {
+        let appModel = await planningAgentModel([
+            AgentStatus(
+                sliceID: TmuxSession.planTag(projectID: "proj-b"),
+                session: TmuxSession.planSessionName(projectID: "proj-b"),
+                activity: .working
+            )
+        ])
+
+        await appModel.activateProject("proj-a")
+
+        XCTAssertNil(appModel.planningAgent)
+        XCTAssertNil(appModel.planningAgentKey)
+    }
+
+    // A session a pre-upgrade nat left running carries the bare sentinel and
+    // belongs to no project, so it is read rather than orphaned — by whichever
+    // project is active. Its own outranks it where there is one.
+    @MainActor
+    func testPlanningAgent_readsALegacyBareSession() async {
+        let appModel = await planningAgentModel([
+            AgentStatus(sliceID: TmuxSession.planSentinel, session: TmuxSession.planSession, activity: .working)
+        ])
+
+        await appModel.activateProject("proj-a")
+        XCTAssertEqual(appModel.planningAgent?.session, TmuxSession.planSession)
+        XCTAssertEqual(appModel.planningAgentKey, TmuxSession.planSentinel)
+
+        await appModel.activateProject("proj-b")
+        XCTAssertEqual(appModel.planningAgent?.session, TmuxSession.planSession)
+    }
+
+    @MainActor
+    func testPlanningAgent_prefersItsOwnOverALegacySession() async {
+        let appModel = await planningAgentModel([
+            AgentStatus(sliceID: TmuxSession.planSentinel, session: TmuxSession.planSession, activity: .working),
+            AgentStatus(
+                sliceID: TmuxSession.planTag(projectID: "proj-a"),
+                session: TmuxSession.planSessionName(projectID: "proj-a"),
+                activity: .working
+            )
+        ])
+
+        await appModel.activateProject("proj-a")
+
+        XCTAssertEqual(appModel.planningAgent?.session, TmuxSession.planSessionName(projectID: "proj-a"))
+    }
+
     @MainActor
     func testOpenWorkshop_selectsWithoutLaunching() async {
         let recorder = WorkshopLaunchRecorder()
@@ -580,7 +680,7 @@ final class AppModelTests: XCTestCase {
         // terminal to draw and the launching state is over.
         XCTAssertFalse(appModel.workshopLaunching)
         XCTAssertNil(appModel.workshopLaunchError)
-        XCTAssertEqual(appModel.planningAgent?.session, "nat-plan")
+        XCTAssertEqual(appModel.planningAgent?.session, "nat-plan-a")
     }
 
     @MainActor
