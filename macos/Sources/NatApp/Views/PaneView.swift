@@ -33,52 +33,29 @@ struct PaneView: View {
             if appModel.workshopSelected {
                 WorkshopPaneView(appModel: appModel)
             } else if let slice = selectedSlice, let tabState = workflowState {
-                // Header: a startup-grade identity block (breadcrumb + title,
-                // which wraps rather than truncating) beside a real stepper
-                // reading the slice's progress through the pipeline.
-                VStack(spacing: 0) {
-                    HStack(alignment: .center, spacing: 14) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            if let milestoneName = milestoneName(for: slice) {
-                                Text(milestoneName)
-                                    .font(.system(size: Typo.caption))
-                                    .ink(.tertiary)
-                                    .lineLimit(1)
+                // Header: the shared pane chrome — the identity block
+                // (breadcrumb + title, which wraps rather than truncating)
+                // with the pipeline stepper as its trailing content, reading
+                // the slice's progress through the pipeline. The workshop
+                // pane opens with the same header and nothing on the right.
+                PaneHeader(breadcrumb: milestoneName(for: slice), title: slice.name) {
+                    // The stepper: stages rather than tabs, each drawn by
+                    // where the slice actually stands (complete/current/
+                    // reachable/locked) instead of an equal row of labels.
+                    HStack(spacing: 10) {
+                        ForEach(Array(tabState.tabs.enumerated()), id: \.offset) { index, tab in
+                            if index > 0 {
+                                Rule(.hairline, axis: .vertical)
+                                    .frame(width: 12, height: 1)
                             }
 
-                            Text(slice.name)
-                                .font(.system(size: Typo.headline, weight: .semibold))
-                                .ink(.primary)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
+                            stepperStage(
+                                tab,
+                                isCurrentTab: currentTab == tab,
+                                isReachable: tabState.isReachable(tab),
+                                isComplete: tabState.isComplete(tab)
+                            )
                         }
-
-                        Spacer()
-
-                        // The stepper: stages rather than tabs, each drawn by
-                        // where the slice actually stands (complete/current/
-                        // reachable/locked) instead of an equal row of labels.
-                        HStack(spacing: 10) {
-                            ForEach(Array(tabState.tabs.enumerated()), id: \.offset) { index, tab in
-                                if index > 0 {
-                                    Rule(.hairline, axis: .vertical)
-                                        .frame(width: 12, height: 1)
-                                }
-
-                                stepperStage(
-                                    tab,
-                                    isCurrentTab: currentTab == tab,
-                                    isReachable: tabState.isReachable(tab),
-                                    isComplete: tabState.isComplete(tab)
-                                )
-                            }
-                        }
-                    }
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 14)
-                    .surface(.band)
-                    .overlay(alignment: .bottom) {
-                        Rule(.hairline)
                     }
                 }
 

@@ -491,6 +491,30 @@ public enum ButtonMetrics {
     public static let pressedOpacity: Double = 0.85
 }
 
+/// The metrics of a pane's header — the one `PaneHeader` every pane opens
+/// with. Numbers rather than a shape each pane arrives at on its own, for the
+/// reason `ButtonMetrics` is: a header that differs between panes reads as a
+/// different application behind each row of the rail.
+public enum PaneHeaderMetrics {
+    /// The inset above and below the header's content.
+    public static let verticalPadding: CGFloat = 10
+    /// The inset either side of it.
+    public static let horizontalPadding: CGFloat = 14
+    /// The gap between the identity block and whatever the pane puts to its
+    /// right — the slice pane's pipeline stepper, and nothing at all in the
+    /// workshop's.
+    public static let spacing: CGFloat = 14
+    /// The gap between the breadcrumb and the title under it.
+    public static let identitySpacing: CGFloat = 2
+    /// The height the header is at least: a caption line, that gap and a
+    /// headline line, plus the insets — what the slice pane's own header
+    /// comes to with a breadcrumb on it. Stated as a floor rather than left
+    /// to the content, so a header with no breadcrumb line (the workshop's,
+    /// and a slice whose milestone cannot be named) opens at the same height
+    /// as one with, and a title that wraps to its second line still grows.
+    public static let minHeight: CGFloat = 53
+}
+
 /// Motion, per the design system's own rules (state changes at 0.15–0.35s
 /// ease-out, nothing else) and Craig's read that anything slower drags: the
 /// fast end, in one place, so turning animation off entirely is making
