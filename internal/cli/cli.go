@@ -210,6 +210,10 @@ usage:
   nat milestone-remove <name> [--json] --project ID
                       drop a milestone from the plan; refused while any slice is
                       still filed under it, so empty it first
+  nat milestone-move <name> (--before <other> | --after <other>) [--json]
+                        --project ID
+                      move a milestone in the plan, to sit directly before or
+                      after another; only the order changes
   nat slice-add <title> --milestone <name> [--description TEXT|-]
                         [--repo DIR] [--depends-on <slice>]... [--json]
                         --project ID
@@ -347,6 +351,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return milestoneRename(ctx, args[1:], env)
 	case "milestone-remove":
 		return milestoneRemove(ctx, args[1:], env)
+	case "milestone-move":
+		return milestoneMove(ctx, args[1:], env)
 	case "slice-add":
 		return sliceAdd(ctx, args[1:], env)
 	case "slice-depends":

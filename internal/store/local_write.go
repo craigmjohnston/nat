@@ -404,6 +404,55 @@ func (l *Local) RemoveMilestone(ctx context.Context, _ Project, _ Shape, name st
 	return removed, nil
 }
 
+// MoveMilestone moves a milestone to sit directly before or after another, which
+// here is the position column of every milestone rewritten in the plan's new
+// order. A position is allocated from how many milestones there are, so the
+// whole plan is restamped densely from zero rather than a gap being opened for
+// the one that moved.
+//
+// It is one transaction and it reads inside it, so all three refusals — a name
+// the plan does not hold, a target it does not hold, and a move relative to the
+// milestone itself — are about the plan as of the write rather than whatever the
+// caller was last handed: a milestone another agent renamed or removed since
+// that read is one this would otherwise move something relative to.
+//
+// Nothing about any milestone but its place changes, so no slice is touched and
+// none is read — which is why nothing here says what status the moved milestone
+// is in, that being the slices' answer and nobody having asked them.
+func (l *Local) MoveMilestone(ctx context.Context, _ Project, _ Shape, name, target string, before bool) (domain.Milestone, domain.Milestone, error) {
+	var moved, to domain.Milestone
+	err := l.withTx(ctx, "move the milestone", func(tx *sql.Tx) error {
+		existing, err := l.milestones(ctx, tx)
+		if err != nil {
+			return err
+		}
+		plan, m, t, err := moveTargets(existing, name, target, before, func(given string) error {
+			return fmt.Errorf("the plan at %s has no milestone named %q: its milestones are %s",
+				l.path, given, milestoneList(existing))
+		}, func(held string) error {
+			return fmt.Errorf("%q in the plan at %s cannot be moved relative to itself: "+
+				"name the milestone it is to sit beside", held, l.path)
+		})
+		if err != nil {
+			return err
+		}
+		for _, ms := range plan {
+			if err := l.exec(ctx, tx, "reorder the plan",
+				`UPDATE milestones SET position = ? WHERE name = ?`, ms.Order, ms.Name); err != nil {
+				return err
+			}
+		}
+		moved, to = m, t
+		return nil
+	})
+	if err != nil {
+		return domain.Milestone{}, domain.Milestone{}, err
+	}
+	logging.Action("milestone moved", "milestone", moved.Name, "order", moved.Order,
+		"placement", placementWord(before), "relative to", to.Name)
+	return moved, to, nil
+}
+
 // newLocalID is the ID a newly filed slice takes. Notion hands back a page ID
 // and a local plan has nobody to ask, so one is made here, in the shape of the
 // IDs everything above this package already passes about — a caller only ever

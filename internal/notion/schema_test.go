@@ -232,3 +232,57 @@ func TestWithoutOption(t *testing.T) {
 		t.Error("WithoutOption() accepted something that is not a select")
 	}
 }
+
+// A moved option keeps its own ID and colour and so does every option it moved
+// past: the order of the list is the only difference, which is what makes
+// reordering these options a move in the plan rather than a rename of anything.
+func TestOptionMoved(t *testing.T) {
+	plan := PropertySchema{Type: TypeSelect, Select: &OptionsConfig{Options: []SelectOption{
+		{ID: "a", Name: "M1", Color: "blue"},
+		{ID: "b", Name: "M2", Color: "red"},
+		{ID: "c", Name: "M3", Color: "green"},
+	}}}
+	m1 := SelectOption{ID: "a", Name: "M1", Color: "blue"}
+	m2 := SelectOption{ID: "b", Name: "M2", Color: "red"}
+	m3 := SelectOption{ID: "c", Name: "M3", Color: "green"}
+
+	tests := []struct {
+		name, option, target string
+		before               bool
+		want                 []SelectOption
+	}{
+		{name: "before an earlier option", option: "M3", target: "M1", before: true,
+			want: []SelectOption{m3, m1, m2}},
+		{name: "after an earlier option", option: "M3", target: "M1", before: false,
+			want: []SelectOption{m1, m3, m2}},
+		{name: "before a later option", option: "M1", target: "M3", before: true,
+			want: []SelectOption{m2, m1, m3}},
+		{name: "after a later option", option: "M1", target: "M3", before: false,
+			want: []SelectOption{m2, m3, m1}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := plan.OptionMoved(tt.option, tt.target, tt.before)
+			if !ok {
+				t.Fatal("OptionMoved() refused a select holding both options")
+			}
+			if !reflect.DeepEqual(got.Select.Options, tt.want) {
+				t.Errorf("options = %+v, want %+v", got.Select.Options, tt.want)
+			}
+		})
+	}
+
+	if _, ok := plan.OptionMoved("M9", "M1", true); ok {
+		t.Error("OptionMoved() accepted an option the list does not hold")
+	}
+	if _, ok := plan.OptionMoved("M1", "M9", true); ok {
+		t.Error("OptionMoved() accepted a target the list does not hold")
+	}
+	// One option named twice is both at once: there is nowhere left to put it.
+	if _, ok := plan.OptionMoved("M1", "M1", true); ok {
+		t.Error("OptionMoved() accepted an option moved relative to itself")
+	}
+	if _, ok := SchemaRichText().OptionMoved("M1", "M2", true); ok {
+		t.Error("OptionMoved() accepted something that is not a select")
+	}
+}

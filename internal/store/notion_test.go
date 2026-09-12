@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -1013,6 +1014,159 @@ func TestRenameMilestoneRefusals(t *testing.T) {
 		_, err := Over(api).RenameMilestone(context.Background(), project(), sh, "M1", "M2")
 		if !errors.Is(err, errBoom) || !strings.Contains(err.Error(), `retire the "M1" option`) {
 			t.Errorf("err = %v, want the last write reported", err)
+		}
+	})
+}
+
+// A move is one schema write and no page write at all: the options go back in a
+// new order and otherwise exactly as they were read, IDs included, which is what
+// leaves every milestone its own and every slice filed where it was.
+func TestMoveMilestoneReordersTheOptions(t *testing.T) {
+	tests := []struct {
+		name    string
+		target  string
+		before  bool
+		options []string
+		order   float64
+		to      float64
+	}{
+		{
+			name: "before an earlier milestone", target: "M1", before: true,
+			options: []string{"M3", "M1", "M2", "M4"}, order: 0, to: 1,
+		},
+		{
+			name: "after an earlier milestone", target: "M1", before: false,
+			options: []string{"M1", "M3", "M2", "M4"}, order: 1, to: 0,
+		},
+		{
+			name: "before a later milestone", target: "M4", before: true,
+			options: []string{"M1", "M2", "M3", "M4"}, order: 2, to: 3,
+		},
+		{
+			name: "after a later milestone", target: "M4", before: false,
+			options: []string{"M1", "M2", "M4", "M3"}, order: 3, to: 2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			api := removableAPI([]string{"M1", "M2", "M3", "M4"}, []notion.Page{
+				milestonePage("s1", "M3", notion.SliceTodo),
+			})
+			sh := shapeFor(t, api)
+
+			m, to, err := Over(api).MoveMilestone(context.Background(), project(), sh, "  m3  ", tt.target, tt.before)
+			if err != nil {
+				t.Fatalf("MoveMilestone() error = %v", err)
+			}
+
+			// No status: a milestone has none of its own and this read no slices.
+			want := domain.Milestone{ID: "M3", Name: "M3", Order: tt.order, SelectType: notion.TypeSelect}
+			if m != want {
+				t.Errorf("milestone = %+v, want %+v", m, want)
+			}
+			if to.Name != tt.target || to.Order != tt.to {
+				t.Errorf("relative to = %+v, want %s at %v", to, tt.target, tt.to)
+			}
+			// One schema write and no plan read: the order of the options is the
+			// whole of the move, so there is nothing about the slices to ask.
+			wantCalls := []string{"GetDataSource", "UpdateDataSourceProperties"}
+			if !reflect.DeepEqual(api.calls, wantCalls) {
+				t.Errorf("calls = %v, want %v", api.calls, wantCalls)
+			}
+			if got := api.schemas[0][notion.PropMilestone].OptionNames(); !reflect.DeepEqual(got, tt.options) {
+				t.Errorf("options written = %v, want %v", got, tt.options)
+			}
+			if len(api.updates) != 0 {
+				t.Errorf("page writes = %v, want none: nothing is refiled by a move", api.updates)
+			}
+		})
+	}
+}
+
+// Every option is sent back as it was read, since Notion replaces an option list
+// wholesale: one that came back without its ID would be a new option, and every
+// slice on the old one would be filed under a milestone the plan no longer has.
+func TestMoveMilestoneKeepsEveryOptionIntact(t *testing.T) {
+	api := removableAPI([]string{"M1", "M2", "M3"}, nil)
+	ds, _ := api.GetDataSource(context.Background(), slicesDS)
+	options := ds.Properties[notion.PropMilestone].Select.Options
+	for i := range options {
+		options[i].ID, options[i].Color = fmt.Sprintf("opt-%d", i), "blue"
+	}
+	api.calls = nil
+	sh := shapeFor(t, api)
+
+	if _, _, err := Over(api).MoveMilestone(context.Background(), project(), sh, "M3", "M1", true); err != nil {
+		t.Fatalf("MoveMilestone() error = %v", err)
+	}
+
+	want := []notion.SelectOption{
+		{ID: "opt-2", Name: "M3", Color: "blue"},
+		{ID: "opt-0", Name: "M1", Color: "blue"},
+		{ID: "opt-1", Name: "M2", Color: "blue"},
+	}
+	if got := api.schemas[0][notion.PropMilestone].Select.Options; !reflect.DeepEqual(got, want) {
+		t.Errorf("options written = %+v\nwant %+v", got, want)
+	}
+}
+
+func TestMoveMilestoneRefusals(t *testing.T) {
+	tests := []struct {
+		name, milestone, target string
+		want                    []string
+	}{
+		{
+			name: "a name the plan does not hold", milestone: " M9 ", target: "M1",
+			want: []string{`no milestone named "M9"`, `"M1", "M2", "M3"`},
+		},
+		{
+			name: "a target the plan does not hold", milestone: "M1", target: " M9 ",
+			want: []string{`no milestone named "M9"`, `"M1", "M2", "M3"`},
+		},
+		{
+			name: "a move relative to itself", milestone: "M2", target: " m2 ",
+			want: []string{`"M2" cannot be moved relative to itself`, "name the milestone it is to sit beside"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			api := removableAPI([]string{"M1", "M2", "M3"}, nil)
+			sh := shapeFor(t, api)
+
+			_, _, err := Over(api).MoveMilestone(context.Background(), project(), sh, tt.milestone, tt.target, true)
+
+			if err == nil {
+				t.Fatal("err = nil, want a refusal")
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("err = %q, want it to mention %q", err, want)
+				}
+			}
+			// Refused before anything is written, and before the plan is even read.
+			if !reflect.DeepEqual(api.calls, []string{"GetDataSource"}) {
+				t.Errorf("calls = %v, want the move to have written nothing", api.calls)
+			}
+		})
+	}
+	t.Run("a Milestone column that is not a select", func(t *testing.T) {
+		api := removableAPI([]string{"M1", "M2"}, nil)
+		sh := shapeFor(t, api)
+		sh.milestone = notion.PropertySchema{Type: notion.TypeStatus}
+		_, _, err := Over(api).MoveMilestone(context.Background(), project(), sh, "M2", "M1", true)
+		if err == nil || !strings.Contains(err.Error(), "can only be moved in the plan in Notion") {
+			t.Errorf("err = %v, want the converted column reported", err)
+		}
+	})
+	t.Run("a schema write that failed", func(t *testing.T) {
+		api := removableAPI([]string{"M1", "M2"}, nil)
+		sh := shapeFor(t, api)
+		api.updateSchema = func(string, map[string]notion.PropertySchema) (*notion.DataSource, error) {
+			return nil, errBoom
+		}
+		_, _, err := Over(api).MoveMilestone(context.Background(), project(), sh, "M2", "M1", true)
+		if !errors.Is(err, errBoom) || !strings.Contains(err.Error(), "reorder the plan") {
+			t.Errorf("err = %v, want the write reported", err)
 		}
 	})
 }

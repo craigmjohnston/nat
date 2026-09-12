@@ -1119,3 +1119,153 @@ func TestLocalRemoveMilestoneRefusals(t *testing.T) {
 		unchanged(t, l)
 	})
 }
+
+// A move rewrites the plan's order and nothing else: every milestone keeps its
+// name and its slices, and the positions are restamped densely from zero, so the
+// next milestone added still lands at the end rather than on top of one already
+// there.
+func TestLocalMoveMilestone(t *testing.T) {
+	tests := []struct {
+		name, target string
+		before       bool
+		plan         []string
+		order, to    float64
+	}{
+		{
+			name: "before an earlier milestone", target: "M1: The format", before: true,
+			plan: []string{"M3: Sync", "M1: The format", "M2: Reads"}, order: 0, to: 1,
+		},
+		{
+			name: "after an earlier milestone", target: "M1: The format", before: false,
+			plan: []string{"M1: The format", "M3: Sync", "M2: Reads"}, order: 1, to: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l, _ := openPlan(t)
+			fillPlan(t, l)
+			ctx := context.Background()
+			write(t, l, `INSERT INTO milestones (name, position) VALUES (?, ?)`, "M3: Sync", 2)
+
+			m, to, err := l.MoveMilestone(ctx, Project{}, wholeShape, "  m3: sync  ", tt.target, tt.before)
+			if err != nil {
+				t.Fatalf("MoveMilestone: %v", err)
+			}
+			// No status: a milestone has none of its own and a move reads no slices.
+			want := domain.Milestone{ID: "M3: Sync", Name: "M3: Sync", Order: tt.order}
+			if m != want {
+				t.Errorf("milestone = %+v, want %+v", m, want)
+			}
+			if to.Name != tt.target || to.Order != tt.to {
+				t.Errorf("relative to = %+v, want %s at %v", to, tt.target, tt.to)
+			}
+
+			sh, err := l.Shape(ctx, Project{})
+			if err != nil {
+				t.Fatalf("Shape: %v", err)
+			}
+			var plan []string
+			for i, held := range sh.Milestones {
+				plan = append(plan, held.Name)
+				if held.Order != float64(i) {
+					t.Errorf("milestone %+v, want it at position %d", held, i)
+				}
+			}
+			if !reflect.DeepEqual(plan, tt.plan) {
+				t.Errorf("plan = %v, want %v", plan, tt.plan)
+			}
+			// Nothing was refiled: the slices are where the plan left them.
+			s, _, err := l.Slice(ctx, "reads")
+			if err != nil {
+				t.Fatalf("Slice: %v", err)
+			}
+			if s.MilestoneID != "M2: Reads" {
+				t.Errorf("slice filed under %q, want it untouched", s.MilestoneID)
+			}
+			// Densely from zero, which is what the next one added counts on.
+			added, err := l.AddMilestones(ctx, Project{}, wholeShape, []string{"M4: The app"})
+			if err != nil {
+				t.Fatalf("AddMilestones: %v", err)
+			}
+			if added[0].Order != 3 {
+				t.Errorf("added milestone = %+v, want it at the end of the plan", added[0])
+			}
+		})
+	}
+}
+
+func TestLocalMoveMilestoneRefusals(t *testing.T) {
+	unchanged := func(t *testing.T, l *Local) {
+		t.Helper()
+		sh, err := l.Shape(context.Background(), Project{})
+		if err != nil {
+			t.Fatalf("Shape: %v", err)
+		}
+		if len(sh.Milestones) != 2 || sh.Milestones[0].Name != "M1: The format" {
+			t.Errorf("milestones = %+v, want the refused run to have written nothing", sh.Milestones)
+		}
+	}
+	t.Run("a name the plan does not hold", func(t *testing.T) {
+		l, path := openPlan(t)
+		fillPlan(t, l)
+		_, _, err := l.MoveMilestone(context.Background(), Project{}, wholeShape,
+			" M9: Nothing ", "M1: The format", true)
+		if err == nil || !strings.Contains(err.Error(), `no milestone named "M9: Nothing"`) {
+			t.Fatalf("err = %v, want the missing name refused", err)
+		}
+		if !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), `"M2: Reads"`) {
+			t.Errorf("err = %q, want the file and the plan named", err)
+		}
+		unchanged(t, l)
+	})
+	t.Run("a target the plan does not hold", func(t *testing.T) {
+		l, path := openPlan(t)
+		fillPlan(t, l)
+		_, _, err := l.MoveMilestone(context.Background(), Project{}, wholeShape,
+			"M1: The format", " M9: Nothing ", false)
+		if err == nil || !strings.Contains(err.Error(), `no milestone named "M9: Nothing"`) {
+			t.Fatalf("err = %v, want the missing target refused", err)
+		}
+		if !strings.Contains(err.Error(), path) {
+			t.Errorf("err = %q, want the file named", err)
+		}
+		unchanged(t, l)
+	})
+	t.Run("a move relative to itself", func(t *testing.T) {
+		l, path := openPlan(t)
+		fillPlan(t, l)
+		_, _, err := l.MoveMilestone(context.Background(), Project{}, wholeShape,
+			"M2: Reads", " m2: reads ", true)
+		if err == nil || !strings.Contains(err.Error(), `"M2: Reads" in the plan at `) {
+			t.Fatalf("err = %v, want the self-move refused", err)
+		}
+		if !strings.Contains(err.Error(), path) ||
+			!strings.Contains(err.Error(), "name the milestone it is to sit beside") {
+			t.Errorf("err = %q, want the file named and the way out said", err)
+		}
+		unchanged(t, l)
+	})
+	t.Run("a plan that cannot be read", func(t *testing.T) {
+		l, _ := openPlan(t)
+		fillPlan(t, l)
+		write(t, l, `DROP TABLE milestones`)
+		_, _, err := l.MoveMilestone(context.Background(), Project{}, wholeShape,
+			"M2: Reads", "M1: The format", true)
+		if err == nil || !strings.Contains(err.Error(), "read the milestones") {
+			t.Errorf("err = %v, want the read reported", err)
+		}
+	})
+	t.Run("a plan whose order cannot be rewritten", func(t *testing.T) {
+		l, _ := openPlan(t)
+		fillPlan(t, l)
+		write(t, l, `CREATE TRIGGER refuse BEFORE UPDATE ON milestones
+			BEGIN SELECT RAISE(ABORT, 'no reordering here'); END`)
+		_, _, err := l.MoveMilestone(context.Background(), Project{}, wholeShape,
+			"M2: Reads", "M1: The format", true)
+		if err == nil || !strings.Contains(err.Error(), "reorder the plan") {
+			t.Errorf("err = %v, want the write reported", err)
+		}
+		// One transaction: whatever it had already restamped is back.
+		unchanged(t, l)
+	})
+}

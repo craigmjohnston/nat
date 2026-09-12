@@ -467,6 +467,47 @@ func (n *Notion) RemoveMilestone(ctx context.Context, p Project, sh Shape, name 
 	return removed, nil
 }
 
+// MoveMilestone moves a milestone to sit directly before or after another,
+// which here is the options of the slices' own Milestone column sent back in a
+// different order and in one schema write. Nothing else about the column
+// changes: every option goes back exactly as it was read, IDs and colours
+// included, so no slice is refiled and no option is created or retired — the
+// order of that list is the order of the plan, and reordering it is the whole
+// of the move.
+//
+// It is therefore the one milestone edit that reads no slices, and says nothing
+// about the status of what it moved: a milestone has no status of its own, the
+// slices under it answer for it, and this asked them nothing.
+//
+// Three things are refused before the write: a name the plan does not hold, a
+// target it does not hold, and a move relative to the milestone itself, which
+// names no place to go.
+func (n *Notion) MoveMilestone(ctx context.Context, p Project, sh Shape, name, target string, before bool) (domain.Milestone, domain.Milestone, error) {
+	_, moved, to, err := moveTargets(sh.Milestones, name, target, before, func(given string) error {
+		return fmt.Errorf("the plan has no milestone named %q: its milestones are %s",
+			given, milestoneList(sh.Milestones))
+	}, func(held string) error {
+		return fmt.Errorf("%q cannot be moved relative to itself: name the milestone it is to sit beside", held)
+	})
+	if err != nil {
+		return domain.Milestone{}, domain.Milestone{}, err
+	}
+
+	reordered, ok := sh.milestone.OptionMoved(moved.Name, to.Name, before)
+	if !ok {
+		return domain.Milestone{}, domain.Milestone{}, fmt.Errorf(
+			"the %s column is a %s: a milestone can only be moved in the plan in Notion",
+			notion.PropMilestone, sh.milestone.Type)
+	}
+	if _, err := n.api.UpdateDataSourceProperties(ctx, p.SlicesID,
+		map[string]notion.PropertySchema{notion.PropMilestone: reordered}); err != nil {
+		return domain.Milestone{}, domain.Milestone{}, fmt.Errorf("reorder the plan: %w", err)
+	}
+	logging.Action("milestone moved", "milestone", moved.Name, "order", moved.Order,
+		"placement", placementWord(before), "relative to", to.Name)
+	return moved, to, nil
+}
+
 // milestoneNamed finds the milestone a name refers to, matched the way every
 // other lookup of one is — trimmed and folded, since a milestone is nothing but
 // its name and two differing only in case could not be told apart on the board.
@@ -523,6 +564,67 @@ func renameTargets(milestones []domain.Milestone, old, name string,
 		return domain.Milestone{}, missing()
 	}
 	return from, nil
+}
+
+// moveTargets settles a move before any store writes anything: the plan the move
+// would leave, the milestone being moved and the one it is placed relative to,
+// each with the place in that plan it has ended up at — or a refusal in the
+// store's own words for either name the plan does not hold, and for a move
+// relative to the milestone itself, which names nowhere to go.
+//
+// Names are matched the way every other lookup of a milestone is, trimmed and
+// folded, and the plan it hands back is the whole of it in its new order, since
+// a move gives every milestone after the two of them a new place too.
+func moveTargets(milestones []domain.Milestone, name, target string, before bool,
+	missing func(given string) error, itself func(held string) error,
+) ([]domain.Milestone, domain.Milestone, domain.Milestone, error) {
+	from, found := milestoneNamed(milestones, name)
+	if !found {
+		return nil, domain.Milestone{}, domain.Milestone{}, missing(strings.TrimSpace(name))
+	}
+	to, found := milestoneNamed(milestones, target)
+	if !found {
+		return nil, domain.Milestone{}, domain.Milestone{}, missing(strings.TrimSpace(target))
+	}
+	if from.Name == to.Name {
+		return nil, domain.Milestone{}, domain.Milestone{}, itself(from.Name)
+	}
+
+	plan := make([]domain.Milestone, 0, len(milestones))
+	for _, m := range milestones {
+		if m.Name == from.Name {
+			continue
+		}
+		if m.Name == to.Name && before {
+			plan = append(plan, from)
+		}
+		plan = append(plan, m)
+		if m.Name == to.Name && !before {
+			plan = append(plan, from)
+		}
+	}
+	// The order of a milestone is its place in the plan, counting from zero,
+	// which is what reading the plan back would make of it — so every milestone
+	// is restamped rather than only the two that were named.
+	for i := range plan {
+		plan[i].Order = float64(i)
+		switch plan[i].Name {
+		case from.Name:
+			from = plan[i]
+		case to.Name:
+			to = plan[i]
+		}
+	}
+	return plan, from, to, nil
+}
+
+// placementWord is a move as it is read out: which side of the milestone it
+// names the moved one landed on, said in the very words the flags are spelled.
+func placementWord(before bool) string {
+	if before {
+		return "before"
+	}
+	return "after"
 }
 
 // milestoneKey is a milestone name as names are compared: trimmed and folded.
