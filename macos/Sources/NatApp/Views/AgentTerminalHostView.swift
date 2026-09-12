@@ -51,14 +51,18 @@ public struct AgentTerminalHostView: NSViewRepresentable {
         TerminalTheme.apply(DesignTokens.palette(for: colorScheme), to: view)
         view.processDelegate = context.coordinator
         // Link tracking, said out loud rather than left to SwiftTerm's
-        // defaults. `.implicit` is what finds a URL an agent simply printed
-        // as well as one it wrapped in an OSC 8 hyperlink — and a printed URL
-        // is nearly always what Claude Code writes. `.hover` is the part that
-        // is not the default: SwiftTerm ships `.hoverWithModifier`, under
-        // which a link only activates with command held, so an ordinary click
-        // on a URL did nothing at all.
+        // defaults. `.implicit` is the part that matters: it finds a URL an
+        // agent simply printed as well as one it wrapped in an OSC 8
+        // hyperlink, and a printed URL is nearly always what Claude Code
+        // writes — without it a bare URL is not a link to click at all.
+        //
+        // `.hoverWithModifier` is SwiftTerm's own default and is kept
+        // deliberately: it makes command+click the gesture that opens a link,
+        // which is the one gesture tmux does not also open it on. See
+        // `TerminalMouse` for why that matters and `mouseDown` below for the
+        // other half of it.
         view.linkReporting = .implicit
-        view.linkHighlightMode = .hover
+        view.linkHighlightMode = .hoverWithModifier
         // Files dropped onto the pane. SwiftTerm registers no dragged type of
         // its own, so without this AppKit never offers the view a drop at
         // all; the view's own `performDragOperation` is what turns one into
@@ -273,15 +277,29 @@ final class FirstLayoutTerminalView: LocalProcessTerminalView {
 
     // MARK: - Links
 
-    /// Opens a clicked link with the Mac's own handler for it.
+    /// Opens a link activated by command+click with the Mac's own handler.
     ///
     /// `LocalProcessTerminalView` already opens whatever it is handed; this
     /// overrides that to go through `TerminalLink`, so what an agent's pane
-    /// can open on one click is a decision written down and tested rather
+    /// can open on one gesture is a decision written down and tested rather
     /// than "any scheme at all".
     override func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
         guard let url = TerminalLink.destination(link) else { return }
         NSWorkspace.shared.open(url)
+    }
+
+    /// Keeps a command-modified click out of mouse reporting, so tmux — and
+    /// the agent behind it — never sees the gesture this pane opens links on.
+    ///
+    /// Without this the press would reach tmux, whose `MouseDown1Pane`
+    /// binding opens the OSC 8 hyperlink under the mouse, and the release
+    /// would reach `requestOpenLink` above: one link, two opens, two browser
+    /// tabs. `TerminalMouse` carries the whole reasoning. A plain click is
+    /// untouched and goes where it always went, tmux's own hyperlink binding
+    /// included.
+    override func mouseDown(with event: NSEvent) {
+        guard !TerminalMouse.isTerminalOwnClick(Self.modifiers(of: event)) else { return }
+        super.mouseDown(with: event)
     }
 
     // MARK: - Files dropped and pasted

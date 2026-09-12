@@ -71,11 +71,20 @@ A native macOS application for the notion-agent-tracker project, built as a pure
   enters and Claude Code reads that as submit — which is the one thing
   shift+enter must not do; the hook is `performKeyEquivalent` rather than
   `keyDown`, because SwiftTerm declares the latter `public` rather than `open`
-  and AppKit offers the former to the view hierarchy first. A clicked link
-  opens through `TerminalLink`, which is an allowlist of schemes rather than
-  "anything with one" — the text in the pane is written by a model — and the
-  click itself needs `linkHighlightMode = .hover`, since SwiftTerm ships
-  `.hoverWithModifier` and an ordinary click did nothing. Files dropped or
+  and AppKit offers the former to the view hierarchy first. A link is opened
+  by **command+click** — the gesture Terminal.app and iTerm2 already use —
+  through `TerminalLink`, which is an allowlist of schemes rather than
+  "anything with one", since the text in the pane is written by a model. The
+  modifier is not a preference: nat binds tmux's `MouseDown1Pane` to open the
+  OSC 8 hyperlink under the mouse (`agent.hyperlinkClickArgs`, which the Go
+  TUI needs because its own terminal widget cannot open a link), so a gesture
+  both layers act on opens the link twice — and SwiftTerm reports an activated
+  link with no flag saying whether it came from a payload or from its own
+  detector, which is exactly the distinction tmux acts on. The only safe
+  gesture is therefore one tmux never sees, so `mouseDown` withholds a
+  command-modified click from mouse reporting and `TerminalMouse` is where
+  that reasoning is written down. A plain click is untouched, and still opens
+  an OSC 8 link through tmux exactly as it did before. Files dropped or
   pasted onto the pane type their paths, escaped as a native terminal escapes
   them (`TerminalDropText`); a clipboard image held as data rather than as a
   file is not this pane's business, since a pseudo-terminal carries only text
