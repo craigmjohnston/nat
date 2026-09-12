@@ -7,6 +7,13 @@ import Foundation
 public enum AgentActivity {
     case working
     case waiting
+
+    /// The live map's own word for it. An activity nobody could classify
+    /// reads as working, which is the TUI's own convention: a session that
+    /// is there and has not visibly stopped is one to leave alone.
+    public init(_ state: AgentActivityState) {
+        self = state == .waiting ? .waiting : .working
+    }
 }
 
 /// The semantic tint an ACTIVE row's dot and status text take. Named for
@@ -28,6 +35,15 @@ public enum ActiveTintRole: Equatable {
     /// composer open with nothing started yet.
     case launching
     case new
+
+    /// Whether the row's dot moves. Only work actually in progress does:
+    /// movement is what says "busy, nothing needs you", so a row that has
+    /// stopped for an answer sits still in its waiting yellow and is told
+    /// apart from a working one by more than a colour. The project tab's dot
+    /// reads by the same rule — see `ProjectAttention.pulses`.
+    public var pulses: Bool {
+        self == .working
+    }
 }
 
 /// What an ACTIVE entry stands for. A slice entry selects its slice; the

@@ -342,7 +342,7 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testAppModel_liveCountCalculation() async {
+    func testAppModel_attentionCalculation() async {
         let testConfig = NatProjectConfig(
             projects: [
                 "proj-a": ProjectConfig(name: "A Project", slicesDSID: "ds-a", workingDir: "/path/a")
@@ -354,8 +354,10 @@ final class AppModelTests: XCTestCase {
 
         await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
 
-        // LiveCount should be 0 when no agents are running
-        XCTAssertEqual(appModel.liveCount(projectID: "proj-a"), 0)
+        // A project whose plan has not landed reads as nothing at all: no
+        // pill, and the neutral dot.
+        XCTAssertEqual(appModel.attention(projectID: "proj-a"), .none)
+        XCTAssertNil(appModel.attention(projectID: "proj-a").badge)
     }
 
     @MainActor

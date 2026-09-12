@@ -90,6 +90,20 @@ enum AppStories {
                 .environment(\.toolStatus, { Fixtures.toolStatus($0, in: Fixtures.toolsWithoutNat) })
         },
 
+        // MARK: - The header
+
+        Story(
+            name: "project-tabs",
+            summary: "The project tab strip: the attention dot and the count of what wants the user.",
+            size: CGSize(width: 640, height: 40)
+        ) {
+            ProjectTabsView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner)),
+                onNewProject: {}
+            )
+        },
+
         // MARK: - The rail
 
         Story(

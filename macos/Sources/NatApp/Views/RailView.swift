@@ -91,18 +91,8 @@ struct RailView: View {
     var railModel: RailModel {
         if let projectInfo = appModel.projectStore?.state.projectInfo {
             // Map ActivityStore agents to the rail model's format
-            var liveAgents: [String: AgentActivity] = [:]
-            for (sliceID, status) in appModel.activityStore?.agents ?? [:] {
-                switch status.activity {
-                case .working:
-                    liveAgents[sliceID] = .working
-                case .waiting:
-                    liveAgents[sliceID] = .waiting
-                case .unknown:
-                    // Treat unknown as working (TUI convention)
-                    liveAgents[sliceID] = .working
-                }
-            }
+            let liveAgents = (appModel.activityStore?.agents ?? [:])
+                .mapValues { AgentActivity($0.activity) }
             return buildRailModel(
                 from: projectInfo, liveAgents: liveAgents,
                 reviewStats: appModel.reviewStatsStore?.stats ?? [:],
@@ -121,9 +111,7 @@ struct RailView: View {
     /// live, none is launching and the composer is not open, which is when
     /// the section simply lists everything else.
     var workshopEntry: ActiveEntry? {
-        let activity: AgentActivity? = appModel.planningAgent.map {
-            $0.activity == .waiting ? .waiting : .working
-        }
+        let activity: AgentActivity? = appModel.planningAgent.map { AgentActivity($0.activity) }
         return buildWorkshopEntry(
             activity: activity,
             isLaunching: appModel.workshopLaunching,
@@ -564,17 +552,17 @@ struct RailView: View {
         .padding(.leading, RailSlot.leading)
         .padding(.trailing, RailSlot.trailing)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // A soft inset chip rather than a solid accent slab: the old fill
-        // recolored every piece of the row to accentText, which flattened
-        // the dot and state tints right when they were most worth showing.
-        // The wash leaves them all their own colour and shows only the
-        // title in full-strength label, so a selected row still reads its
-        // own state at a glance.
-        .background {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(selected ? DesignTokens.wash(.selection, tone: .accent, on: ground) : Color.clear)
-                .padding(.horizontal, 6)
-        }
+        // A wash rather than a solid accent slab: the old fill recolored
+        // every piece of the row to accentText, which flattened the dot and
+        // state tints right when they were most worth showing. The wash
+        // leaves them all their own colour and shows only the title in
+        // full-strength label, so a selected row still reads its own state
+        // at a glance. Full-bleed and square, exactly the rectangle the
+        // hover wash lights: selection and hover are the same row being
+        // pointed at, and two shapes for it read as two different rows.
+        .background(
+            selected ? DesignTokens.wash(.selection, tone: .accent, on: ground) : Color.clear
+        )
         .railHoverWash()
     }
 
@@ -584,10 +572,9 @@ struct RailView: View {
     /// slice with an agent on it are all drawn by this.
     private func activeRow(for entry: ActiveEntry) -> some View {
         let tint = tintColor(for: entry.tintRole)
-        // Only a live agent is worth pulling the eye to; a row with nothing
-        // running on it (blocked, awaiting a review, launching, or simply
-        // ready to push) sits still.
-        let isLive = entry.tintRole == .working || entry.tintRole == .waiting
+        // Only a working row pulses — the rule itself is the model's, so the
+        // rail and the project tab cannot drift apart on it.
+        let isLive = entry.tintRole.pulses
 
         let detail: [(String, InkRole)] = [(entry.displayState, tint)]
             + entry.detail.map { ($0, InkRole.tertiary) }
@@ -644,7 +631,11 @@ struct RailView: View {
 
     private func tintColor(for role: ActiveTintRole) -> InkRole {
         switch role {
-        case .working: return .warning
+        // The accent rather than an outcome colour: working is not an
+        // outcome, and at dot scale the orange it used to take was too near
+        // the waiting yellow to tell from it. The project tab's dot reads
+        // the same way — one vocabulary.
+        case .working: return .accent
         case .waiting: return .warning
         case .blocked: return .tertiary
         // The same green the review affordance already uses, for the two
@@ -773,14 +764,13 @@ struct RailView: View {
         .frame(height: RailSlot.rowHeight)
         .padding(.leading, RailSlot.leading + CGFloat(depth) * RailSlot.indent)
         .padding(.trailing, RailSlot.trailing)
-        // Same soft inset chip as sessionRow, and for the same reason: the
-        // glyph keeps its own status tint under selection now instead of
-        // being flattened to accentText by a solid fill.
-        .background {
-            RoundedRectangle(cornerRadius: 6)
-                .fill(selected ? DesignTokens.wash(.selection, tone: .accent, on: ground) : Color.clear)
-                .padding(.horizontal, 6)
-        }
+        // The same full-bleed wash as sessionRow, and for the same reasons:
+        // the glyph keeps its own status tint under selection instead of
+        // being flattened to accentText by a solid fill, and the shape is
+        // the hover wash's own rectangle.
+        .background(
+            selected ? DesignTokens.wash(.selection, tone: .accent, on: ground) : Color.clear
+        )
         .railHoverWash()
     }
 
