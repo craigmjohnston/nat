@@ -54,7 +54,7 @@ final class RailSectionRulesTests: XCTestCase {
         let s = try source()
         guard let branch = s.range(of: "if railModel.active.isEmpty {"),
               let note = s.range(of: "activeEmptyNote\n"),
-              let rows = s.range(of: "ForEach(railModel.active, id: \\.sliceID)") else {
+              let rows = s.range(of: "ForEach(railModel.active) { entry in") else {
             return XCTFail("the ACTIVE section should branch on having entries")
         }
         XCTAssertTrue(branch.lowerBound < note.lowerBound)
@@ -92,6 +92,29 @@ final class RailSectionRulesTests: XCTestCase {
             "the reserved lines should be spaced as sessionRow spaces an entry's"
         )
         XCTAssertTrue(body.contains(".padding(.vertical, 8)"), "an entry's own vertical padding")
+    }
+
+    /// ACTIVE is the only flight section there is: the planning agent and
+    /// the branches awaiting review are entries of it, so neither of the two
+    /// headings they used to have may be left anywhere on the rail.
+    func testTheOtherFlightHeadingsAreGone() throws {
+        let s = try source()
+        XCTAssertFalse(s.contains("WORKSHOP"), "the workshop is an ACTIVE entry, not a section")
+        XCTAssertFalse(s.contains("NEEDS REVIEW"), "a branch awaiting review is an ACTIVE entry")
+    }
+
+    /// Which pane an entry selects is the model's `kind`, so the one row
+    /// builder can draw all three without the view sorting them out again.
+    func testTheEntrysKindIsWhatSelectsItsPane() throws {
+        let s = try source()
+        XCTAssertTrue(
+            s.contains("case .workshop: appModel.workshopSelected = true"),
+            "the workshop entry should still select the workshop pane"
+        )
+        XCTAssertTrue(
+            s.contains("case .slice: appModel.selectedSliceID = entry.sliceID"),
+            "a slice entry should still select its slice"
+        )
     }
 
     /// The divider under the flight sections is unconditional now that the

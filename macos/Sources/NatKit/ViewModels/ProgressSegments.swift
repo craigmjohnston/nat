@@ -29,7 +29,7 @@ public struct ProgressSegment: Equatable {
 /// request is positively read as open. A Done slice among them does not count
 /// as progress yet: the board marks a slice Done as it opens the pull request,
 /// and the work is not on main until that merges — the same rule that keeps
-/// such a slice in the rail's NEEDS REVIEW section. With no reading taken the
+/// such a slice among the rail's review entries. With no reading taken the
 /// set is empty and every Done slice counts, which is what every finished
 /// project must go on reading as.
 public func buildProgressSegments(

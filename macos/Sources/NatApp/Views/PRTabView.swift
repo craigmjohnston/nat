@@ -384,7 +384,7 @@ struct PRTabView: View {
         mergeError = nil
         do {
             try await store.merge()
-            // The rail still lists this slice under NEEDS REVIEW off the
+            // The rail still lists this slice as awaiting review off the
             // PR-readiness reading, and a merge writes nothing to Notion, so
             // no nudge will refresh it — take the reading now rather than
             // leaving "awaiting review" standing until the next poll.

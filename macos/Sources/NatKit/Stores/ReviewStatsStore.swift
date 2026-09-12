@@ -1,6 +1,6 @@
 import Foundation
 
-/// The NEEDS REVIEW rail rows' own "+N −N": each handed-back slice's branch
+/// The review rail entries' own "+N −N": each handed-back slice's branch
 /// diff totals, summed across its files. Fetched lazily through the existing
 /// `sliceDiff` read (there is no dedicated endpoint for a tally alone) and
 /// cached by slice id — a slice already carrying a stat for the branch it is
@@ -27,7 +27,7 @@ public final class ReviewStatsStore {
     /// by slice id — `nat pr-status`'s reading, the same one the Go board's
     /// Active panel rides. A slice absent here has no open pull request as
     /// far as anything has read, which for a Done slice is what keeps a
-    /// project's whole finished history out of the NEEDS REVIEW section.
+    /// project's whole finished history out of the ACTIVE section.
     public private(set) var prReadiness: [String: String] = [:]
 
     private let client: NatClientProtocol

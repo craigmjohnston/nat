@@ -9,134 +9,133 @@ public enum AgentActivity {
     case waiting
 }
 
-/// A slice entry in the NEEDS REVIEW section.
-public struct ReviewEntry: Equatable {
-    public let sliceID: String
-    public let name: String
-    /// The branch's own diff totals, "+N −N" tabular — nil until
-    /// `ReviewStatsStore` has fetched them (or their fetch failed), in which
-    /// case the row simply draws with no stat rather than a placeholder.
-    public let stat: String?
-    /// The milestone the slice is filed under — the row's second line names
-    /// it, since the slice no longer appears inside that milestone's folder.
-    public let milestone: String
-    /// How many files the branch touched, from the same fetch as `stat` and
-    /// nil for the same reasons.
-    public let fileCount: Int?
-
-    public init(sliceID: String, name: String, stat: String? = nil, milestone: String = "", fileCount: Int? = nil) {
-        self.sliceID = sliceID
-        self.name = name
-        self.stat = stat
-        self.milestone = milestone
-        self.fileCount = fileCount
-    }
-}
-
 /// The semantic tint an ACTIVE row's dot and status text take. Named for
 /// meaning rather than a color, so this view model stays free of picking a
 /// palette — `RailView` is what maps each case onto a `DesignTokens` color.
+///
+/// One enum for every kind of entry now that the rail has one flight
+/// section: a workshop row is launching or being composed where a slice's
+/// is blocked or ready to push, and both are drawn by the same row builder.
 public enum ActiveTintRole: Equatable {
     case working
     case waiting
     case blocked
     case readyToPush
+    /// A branch handed back and waiting to be read — the green the review
+    /// affordance already uses, the same family as the TUI's "↑ review" chip.
+    case needsReview
+    /// The planning agent's own two quiet states: a launch in flight, and a
+    /// composer open with nothing started yet.
+    case launching
+    case new
 }
 
-/// A slice entry in the ACTIVE section.
-public struct ActiveEntry: Equatable {
+/// What an ACTIVE entry stands for. A slice entry selects its slice; the
+/// workshop entry selects the planning pane, which is the only thing the
+/// view has to tell them apart for.
+public enum ActiveEntryKind: Equatable {
+    case slice
+    case workshop
+}
+
+/// What an entry's right-aligned meta is, so the view need not guess which
+/// of the two it was handed: how long a live session has been running, or
+/// the diff tally of a branch handed back. Never both.
+public enum ActiveMetaRole: Equatable {
+    case elapsed
+    case stat
+}
+
+/// The id the workshop entry is keyed by in the one ACTIVE list — it has no
+/// slice of its own, and there is only ever one of it.
+public let workshopEntryID = "workshop"
+
+/// An entry in the ACTIVE section — a slice with something happening on it,
+/// a branch waiting to be reviewed, or the planning agent.
+public struct ActiveEntry: Equatable, Identifiable {
+    public let kind: ActiveEntryKind
+    /// The slice the entry is about, and "" for the workshop entry, which is
+    /// about no slice at all.
     public let sliceID: String
     public let name: String
-    /// The row's own label — "Working", "Waiting for input", "Blocked" or
-    /// "Ready to push" — already resolved by `buildRailModel`, since the rule
-    /// it comes from is the view model's and not the view's to know.
+    /// The row's own status word — "Working", "Waiting for input",
+    /// "Blocked", "Ready to push", "Needs review", "Launching…", "New
+    /// session" — already resolved here, since the rule it comes from is the
+    /// view model's and not the view's to know.
     public let displayState: String
     public let tintRole: ActiveTintRole
-    /// The milestone the slice is filed under, for the row's second line.
-    public let milestone: String
-    /// How long the agent has been on the slice — "14m", "1h 4m" — measured
-    /// from when the activity poll first saw its session, and nil for a row
-    /// with no live agent (blocked, or simply ready to push).
-    public let elapsed: String?
+    /// The rest of the second line after the status word, each piece drawn
+    /// muted and separated by a dot: a slice's milestone, a review's file
+    /// count, the workshop's "Planning agent".
+    public let detail: [String]
+    /// The right-aligned meta, nil for a row with none — an entry with no
+    /// live session has no elapsed time, and a branch whose stats have not
+    /// been fetched draws no tally rather than a placeholder.
+    public let meta: String?
+    public let metaRole: ActiveMetaRole
+
+    public var id: String { kind == .workshop ? workshopEntryID : sliceID }
 
     public init(
-        sliceID: String,
+        kind: ActiveEntryKind = .slice,
+        sliceID: String = "",
         name: String,
         displayState: String,
         tintRole: ActiveTintRole,
-        milestone: String = "",
-        elapsed: String? = nil
+        detail: [String] = [],
+        meta: String? = nil,
+        metaRole: ActiveMetaRole = .elapsed
     ) {
+        self.kind = kind
         self.sliceID = sliceID
         self.name = name
         self.displayState = displayState
         self.tintRole = tintRole
-        self.milestone = milestone
-        self.elapsed = elapsed
+        self.detail = detail
+        self.meta = meta
+        self.metaRole = metaRole
     }
 }
 
-/// The semantic tint the WORKSHOP row's dot and status text take — its own
-/// enum rather than `ActiveTintRole`, since a workshop is never blocked or
-/// ready to push and an ACTIVE row is never launching or being composed.
-public enum WorkshopTintRole: Equatable {
-    case working
-    case waiting
-    case launching
-    /// The composer is open and nothing has started yet.
-    case new
-}
-
-/// The WORKSHOP section's one row: the planning agent, live or launching.
-public struct WorkshopEntry: Equatable {
-    /// The row's own label — "Working", "Waiting for input" or "Launching…"
-    /// — resolved by `buildWorkshopEntry` the way `ActiveEntry`'s is.
-    public let displayState: String
-    public let tintRole: WorkshopTintRole
-    /// How long the planning agent has been live, measured like an ACTIVE
-    /// row's — nil while launching, and for an agent the poll has no stamp
-    /// for.
-    public let elapsed: String?
-
-    public init(displayState: String, tintRole: WorkshopTintRole, elapsed: String? = nil) {
-        self.displayState = displayState
-        self.tintRole = tintRole
-        self.elapsed = elapsed
-    }
-}
-
-/// Builds the WORKSHOP row, or nil when the section has nothing to draw: no
-/// planning agent live, no launch in flight, and the row not selected — a
-/// selected row with nothing running is the composer being typed into, drawn
-/// so the rail's selection stays visible while it is. A live agent wins over
-/// both flags — it is the only reading taken fresh.
+/// Builds the workshop's ACTIVE entry, or nil when there is no planning
+/// agent to draw: none live, no launch in flight, and the entry not selected
+/// — a selected entry with nothing running is the composer being typed into,
+/// drawn so the rail's selection stays visible while it is. A live agent
+/// wins over both flags — it is the only reading taken fresh.
 public func buildWorkshopEntry(
     activity: AgentActivity?,
     isLaunching: Bool,
     isSelected: Bool = false,
     firstSeen: Date? = nil,
     now: Date = Date()
-) -> WorkshopEntry? {
+) -> ActiveEntry? {
+    let state: (String, ActiveTintRole)
+    var elapsed: String?
     switch activity {
     case .working:
-        return WorkshopEntry(
-            displayState: "Working",
-            tintRole: .working,
-            elapsed: firstSeen.map { elapsedLabel(from: $0, to: now) }
-        )
+        state = ("Working", .working)
+        elapsed = firstSeen.map { elapsedLabel(from: $0, to: now) }
     case .waiting:
-        return WorkshopEntry(
-            displayState: "Waiting for input",
-            tintRole: .waiting,
-            elapsed: firstSeen.map { elapsedLabel(from: $0, to: now) }
-        )
+        state = ("Waiting for input", .waiting)
+        elapsed = firstSeen.map { elapsedLabel(from: $0, to: now) }
     case nil:
         if isLaunching {
-            return WorkshopEntry(displayState: "Launching…", tintRole: .launching)
+            state = ("Launching…", .launching)
+        } else if isSelected {
+            state = ("New session", .new)
+        } else {
+            return nil
         }
-        guard isSelected else { return nil }
-        return WorkshopEntry(displayState: "New session", tintRole: .new)
     }
+    return ActiveEntry(
+        kind: .workshop,
+        name: "Workshop the plan",
+        displayState: state.0,
+        tintRole: state.1,
+        detail: ["Planning agent"],
+        meta: elapsed,
+        metaRole: .elapsed
+    )
 }
 
 /// A slice glyph type.
@@ -185,7 +184,7 @@ public struct MilestoneFolder: Equatable {
         total > 0 && done == total
     }
 
-    /// The milestone's slices drawn in NEEDS REVIEW or ACTIVE instead of
+    /// The milestone's slices drawn in the ACTIVE section instead of
     /// under this folder — never listed here, but what seeds a folder open,
     /// since work in flight is a milestone moving.
     public var inFlightCount: Int {
@@ -222,10 +221,10 @@ public struct DoneSummary: Equatable {
 
 /// The data model for the left rail.
 public struct RailModel: Equatable {
-    /// Slices waiting for review (handed_back).
-    public let needsReview: [ReviewEntry]
-
-    /// Slices with active agents.
+    /// The one flight section: the workshop entry first, then the branches
+    /// waiting to be reviewed, then the slices something is happening on.
+    /// One list rather than three sections, with the prominence the separate
+    /// headings gave the first two kept as their place in the order.
     public let active: [ActiveEntry]
 
     /// Folders for non-done milestones, in plan order, each listing its
@@ -243,13 +242,11 @@ public struct RailModel: Equatable {
     public let doneSummary: DoneSummary?
 
     public init(
-        needsReview: [ReviewEntry],
         active: [ActiveEntry],
         todoFolders: [MilestoneFolder],
         doneFolders: [MilestoneFolder] = [],
         doneSummary: DoneSummary? = nil
     ) {
-        self.needsReview = needsReview
         self.active = active
         self.todoFolders = todoFolders
         self.doneFolders = doneFolders
@@ -267,6 +264,11 @@ public struct RailModel: Equatable {
 /// a store of its own (mirrors how `liveAgents` is already handed in rather
 /// than read off `ActivityStore` directly). `now` is only consulted to
 /// format elapsed times, and is a parameter so a test can pin it.
+///
+/// `workshop` is `buildWorkshopEntry`'s answer, handed in for the same
+/// reason: the planning agent is read off live app state rather than off the
+/// plan, and this is where the one ACTIVE list is assembled so the view has
+/// nothing left to merge.
 public func buildRailModel(
     from projectInfo: ProjectInfo,
     liveAgents: [String: AgentActivity],
@@ -274,6 +276,7 @@ public func buildRailModel(
     reviewFileCounts: [String: Int] = [:],
     prReadiness: [String: String] = [:],
     agentStarts: [String: Date] = [:],
+    workshop: ActiveEntry? = nil,
     now: Date = Date()
 ) -> RailModel {
     let slices = projectInfo.slices
@@ -285,7 +288,7 @@ public func buildRailModel(
     // progress bar does: merged is done.
     let openPRs = Set(prReadiness.keys)
 
-    // NEEDS REVIEW holds the work a review still owes something: a branch
+    // The review entries hold the work a review still owes something: a branch
     // handed back and not yet approved, and — `prReadiness` being the slices
     // whose pull request is positively read as open — a slice approved and
     // waiting on the merge, since the board marks a slice Done as it opens
@@ -309,24 +312,34 @@ public func buildRailModel(
         $0.status == "In progress" && !$0.handedBack && $0.pr.isEmpty
     }
 
-    // NEEDS REVIEW section. A handed-back slice's meta is its diff tally;
-    // a slice in the section for its open pull request has no branch stats
-    // to show, and its meta is the reading's own words — "awaiting review",
-    // "ready to merge" — which is exactly what is being waited on.
+    // The review entries. A handed-back slice's meta is its diff tally; a
+    // slice here for its open pull request has no branch stats to show, and
+    // its meta is the reading's own words — "awaiting review", "ready to
+    // merge" — which is exactly what is being waited on. Their status word
+    // is the one the section they used to have their own heading for said.
     let needsReview = reviewSlices
         .sorted { $0.name < $1.name }
-        .map {
-            ReviewEntry(
-                sliceID: $0.id,
-                name: $0.name,
-                stat: reviewStats[$0.id] ?? prReadiness[$0.id],
-                milestone: milestoneNames[$0.milestoneID] ?? "",
-                fileCount: reviewFileCounts[$0.id]
+        .map { slice -> ActiveEntry in
+            var detail: [String] = []
+            if let milestone = milestoneNames[slice.milestoneID], !milestone.isEmpty {
+                detail.append(milestone)
+            }
+            if let files = reviewFileCounts[slice.id] {
+                detail.append("\(files) file\(files == 1 ? "" : "s")")
+            }
+            return ActiveEntry(
+                sliceID: slice.id,
+                name: slice.name,
+                displayState: "Needs review",
+                tintRole: .needsReview,
+                detail: detail,
+                meta: reviewStats[slice.id] ?? prReadiness[slice.id],
+                metaRole: .stat
             )
         }
 
-    // ACTIVE section
-    let active = activeSlices
+    // The slices something is happening on.
+    let working = activeSlices
         .sorted { $0.name < $1.name }
         .map { slice -> ActiveEntry in
             let liveAgent = liveAgents[slice.id]
@@ -336,15 +349,21 @@ public func buildRailModel(
             let elapsed = liveAgent == nil
                 ? nil
                 : agentStarts[slice.id].map { elapsedLabel(from: $0, to: now) }
+            let milestone = milestoneNames[slice.milestoneID] ?? ""
             return ActiveEntry(
                 sliceID: slice.id,
                 name: slice.name,
                 displayState: displayState,
                 tintRole: tintRole,
-                milestone: milestoneNames[slice.milestoneID] ?? "",
-                elapsed: elapsed
+                detail: milestone.isEmpty ? [] : [milestone],
+                meta: elapsed,
+                metaRole: .elapsed
             )
         }
+
+    // The one section, in the order the three that came before it were read
+    // in: the workshop, then what is waiting on a review, then the rest.
+    let active = (workshop.map { [$0] } ?? []) + needsReview + working
 
     // The slices already drawn in a session section — never repeated inside
     // a TODO folder, so a slice is one row of the rail and not two.
@@ -422,7 +441,6 @@ public func buildRailModel(
     )
 
     return RailModel(
-        needsReview: needsReview,
         active: active,
         todoFolders: todoFolders,
         doneFolders: doneFolders,

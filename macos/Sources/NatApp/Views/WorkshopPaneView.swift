@@ -1,7 +1,7 @@
 import SwiftUI
 import NatKit
 
-/// The pane the rail's WORKSHOP row opens — the macOS app's answer to the
+/// The pane the rail's workshop entry opens — the macOS app's answer to the
 /// board's `w`. No workflow strip: a workshop session has no brief, no diff
 /// and no pull request, so under the shared pane header the pane is the agent
 /// view alone, the same embedded-terminal machinery a slice's Agent tab uses.

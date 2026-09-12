@@ -2,6 +2,18 @@ import XCTest
 @testable import NatKit
 
 final class RailModelTests: XCTestCase {
+    /// The entries of the one ACTIVE list that are branches awaiting a
+    /// review — what used to be the NEEDS REVIEW section.
+    private func reviews(_ model: RailModel) -> [ActiveEntry] {
+        model.active.filter { $0.tintRole == .needsReview }
+    }
+
+    /// The entries that are slices something is happening on — what the
+    /// ACTIVE section held before the other two were folded into it.
+    private func worked(_ model: RailModel) -> [ActiveEntry] {
+        model.active.filter { $0.kind == .slice && $0.tintRole != .needsReview }
+    }
+
     private var testProject: Project!
     private var testMilestones: [Milestone]!
     private var testSlices: [Slice]!
@@ -47,24 +59,26 @@ final class RailModelTests: XCTestCase {
         let projectInfo = ProjectInfo(project: testProject, milestones: [], slices: [])
         let model = buildRailModel(from: projectInfo, liveAgents: [:])
 
-        XCTAssertTrue(model.needsReview.isEmpty)
         XCTAssertTrue(model.active.isEmpty)
         XCTAssertTrue(model.todoFolders.isEmpty)
         XCTAssertTrue(model.doneFolders.isEmpty)
         XCTAssertNil(model.doneSummary)
     }
 
-    // MARK: - NEEDS REVIEW
+    // MARK: - Entries awaiting review
 
     func testBuildRailModel_reviewSection() {
         let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: testSlices)
         let model = buildRailModel(from: projectInfo, liveAgents: [:])
 
-        XCTAssertEqual(model.needsReview.count, 1)
-        XCTAssertEqual(model.needsReview[0].sliceID, "s-2")
-        XCTAssertEqual(model.needsReview[0].name, "Feature A")
-        XCTAssertNil(model.needsReview[0].stat, "no reviewStats given at all should leave the row statless")
-        XCTAssertNil(model.needsReview[0].fileCount)
+        XCTAssertEqual(reviews(model).count, 1)
+        XCTAssertEqual(reviews(model)[0].kind, .slice)
+        XCTAssertEqual(reviews(model)[0].sliceID, "s-2")
+        XCTAssertEqual(reviews(model)[0].name, "Feature A")
+        XCTAssertEqual(reviews(model)[0].displayState, "Needs review")
+        XCTAssertEqual(reviews(model)[0].metaRole, .stat)
+        XCTAssertNil(reviews(model)[0].meta, "no reviewStats given at all should leave the row statless")
+        XCTAssertEqual(reviews(model)[0].detail, ["Core"], "the milestone alone with no file count fetched")
     }
 
     /// A Done slice whose pull request is positively read as open is still in
@@ -81,16 +95,16 @@ final class RailModelTests: XCTestCase {
         let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
 
         let unread = buildRailModel(from: projectInfo, liveAgents: [:])
-        XCTAssertFalse(unread.needsReview.contains { $0.sliceID == "s-pr" },
+        XCTAssertFalse(reviews(unread).contains { $0.sliceID == "s-pr" },
                        "with no reading taken the slice stays out")
 
         let model = buildRailModel(
             from: projectInfo, liveAgents: [:],
             prReadiness: ["s-pr": "awaiting review"]
         )
-        let entry = model.needsReview.first { $0.sliceID == "s-pr" }
+        let entry = reviews(model).first { $0.sliceID == "s-pr" }
         XCTAssertNotNil(entry)
-        XCTAssertEqual(entry?.stat, "awaiting review",
+        XCTAssertEqual(entry?.meta, "awaiting review",
                        "a PR-open slice has no branch tally; its meta is the reading's own words")
     }
 
@@ -104,7 +118,7 @@ final class RailModelTests: XCTestCase {
             prReadiness: ["s-2": "awaiting review"]
         )
 
-        XCTAssertEqual(model.needsReview.first { $0.sliceID == "s-2" }?.stat, "+10 \u{2212}2")
+        XCTAssertEqual(reviews(model).first { $0.sliceID == "s-2" }?.meta, "+10 \u{2212}2")
     }
 
     func testBuildRailModel_reviewSectionCarriesItsStatAndFileCount() {
@@ -115,8 +129,8 @@ final class RailModelTests: XCTestCase {
             reviewFileCounts: ["s-2": 4]
         )
 
-        XCTAssertEqual(model.needsReview[0].stat, "+10 \u{2212}3")
-        XCTAssertEqual(model.needsReview[0].fileCount, 4)
+        XCTAssertEqual(reviews(model)[0].meta, "+10 \u{2212}3")
+        XCTAssertEqual(reviews(model)[0].detail, ["Core", "4 files"])
     }
 
     func testBuildRailModel_reviewSectionLeavesAnUnfetchedStatNil() {
@@ -127,15 +141,15 @@ final class RailModelTests: XCTestCase {
             reviewFileCounts: ["some-other-slice": 1]
         )
 
-        XCTAssertNil(model.needsReview[0].stat)
-        XCTAssertNil(model.needsReview[0].fileCount)
+        XCTAssertNil(reviews(model)[0].meta)
+        XCTAssertEqual(reviews(model)[0].detail, ["Core"])
     }
 
     func testBuildRailModel_reviewSectionNamesItsMilestone() {
         let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: testSlices)
         let model = buildRailModel(from: projectInfo, liveAgents: [:])
 
-        XCTAssertEqual(model.needsReview[0].milestone, "Core")
+        XCTAssertEqual(reviews(model)[0].detail.first, "Core")
     }
 
     func testBuildRailModel_reviewSectionUnknownMilestoneReadsEmpty() {
@@ -147,7 +161,7 @@ final class RailModelTests: XCTestCase {
         let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
         let model = buildRailModel(from: projectInfo, liveAgents: [:])
 
-        XCTAssertEqual(model.needsReview[0].milestone, "")
+        XCTAssertEqual(reviews(model)[0].detail, [], "an unknown milestone names nothing rather than nothing at all")
     }
 
     // MARK: - ACTIVE membership
@@ -168,11 +182,11 @@ final class RailModelTests: XCTestCase {
         let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
         let model = buildRailModel(from: projectInfo, liveAgents: [:])
 
-        XCTAssertEqual(model.active.count, 1)
-        XCTAssertEqual(model.active[0].sliceID, "s-3")
-        XCTAssertEqual(model.active[0].displayState, "Ready to push")
-        XCTAssertEqual(model.active[0].tintRole, .readyToPush)
-        XCTAssertEqual(model.active[0].milestone, "Core")
+        XCTAssertEqual(worked(model).count, 1)
+        XCTAssertEqual(worked(model)[0].sliceID, "s-3")
+        XCTAssertEqual(worked(model)[0].displayState, "Ready to push")
+        XCTAssertEqual(worked(model)[0].tintRole, .readyToPush)
+        XCTAssertEqual(worked(model)[0].detail, ["Core"])
     }
 
     func testBuildRailModel_activeSection_inProgressBlockedNoSessionIsBlocked() {
@@ -187,7 +201,7 @@ final class RailModelTests: XCTestCase {
         let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
         let model = buildRailModel(from: projectInfo, liveAgents: [:])
 
-        let entry = model.active.first { $0.sliceID == "s-4" }
+        let entry = worked(model).first { $0.sliceID == "s-4" }
         XCTAssertNotNil(entry)
         XCTAssertEqual(entry?.displayState, "Blocked")
         XCTAssertEqual(entry?.tintRole, .blocked)
@@ -203,15 +217,15 @@ final class RailModelTests: XCTestCase {
     }
 
     func testBuildRailModel_activeSection_handedBackWithLiveSessionIsExcluded() {
-        // s-2 is In progress and handed back (it lives in NEEDS REVIEW). A
+        // s-2 is In progress and handed back (it reads "Needs review"). A
         // live agent still on its branch is the review going back to it, not
         // a reason to also draw it in ACTIVE.
         let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: testSlices)
         let model = buildRailModel(from: projectInfo, liveAgents: ["s-2": .working])
 
-        XCTAssertFalse(model.active.contains { $0.sliceID == "s-2" })
-        XCTAssertEqual(model.needsReview.count, 1)
-        XCTAssertEqual(model.needsReview[0].sliceID, "s-2")
+        XCTAssertFalse(worked(model).contains { $0.sliceID == "s-2" })
+        XCTAssertEqual(reviews(model).count, 1)
+        XCTAssertEqual(reviews(model)[0].sliceID, "s-2")
     }
 
     func testBuildRailModel_activeSection_prRecordedIsExcluded() {
@@ -237,10 +251,10 @@ final class RailModelTests: XCTestCase {
         let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
         let model = buildRailModel(from: projectInfo, liveAgents: ["s-3": .working])
 
-        XCTAssertEqual(model.active.count, 1)
-        XCTAssertEqual(model.active[0].sliceID, "s-3")
-        XCTAssertEqual(model.active[0].displayState, "Working")
-        XCTAssertEqual(model.active[0].tintRole, .working)
+        XCTAssertEqual(worked(model).count, 1)
+        XCTAssertEqual(worked(model)[0].sliceID, "s-3")
+        XCTAssertEqual(worked(model)[0].displayState, "Working")
+        XCTAssertEqual(worked(model)[0].tintRole, .working)
     }
 
     func testBuildRailModel_activeSection_liveAgentWaitingWins() {
@@ -252,8 +266,8 @@ final class RailModelTests: XCTestCase {
         let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
         let model = buildRailModel(from: projectInfo, liveAgents: ["s-3": .waiting])
 
-        XCTAssertEqual(model.active[0].displayState, "Waiting for input")
-        XCTAssertEqual(model.active[0].tintRole, .waiting)
+        XCTAssertEqual(worked(model)[0].displayState, "Waiting for input")
+        XCTAssertEqual(worked(model)[0].tintRole, .waiting)
     }
 
     // MARK: - ACTIVE elapsed
@@ -272,7 +286,8 @@ final class RailModelTests: XCTestCase {
             now: now
         )
 
-        XCTAssertEqual(model.active[0].elapsed, "14m")
+        XCTAssertEqual(worked(model)[0].meta, "14m")
+        XCTAssertEqual(worked(model)[0].metaRole, .elapsed)
     }
 
     func testBuildRailModel_activeSection_noLiveAgentHasNoElapsed() {
@@ -291,7 +306,7 @@ final class RailModelTests: XCTestCase {
             now: now
         )
 
-        XCTAssertNil(model.active[0].elapsed)
+        XCTAssertNil(worked(model)[0].meta)
     }
 
     func testBuildRailModel_activeSection_liveAgentWithNoStartHasNoElapsed() {
@@ -303,7 +318,7 @@ final class RailModelTests: XCTestCase {
         let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
         let model = buildRailModel(from: projectInfo, liveAgents: ["s-3": .working])
 
-        XCTAssertNil(model.active[0].elapsed)
+        XCTAssertNil(worked(model)[0].meta)
     }
 
     func testElapsedLabel() {
@@ -329,7 +344,7 @@ final class RailModelTests: XCTestCase {
         XCTAssertEqual(core.title, "Core")
         XCTAssertEqual(core.done, 0)
         XCTAssertEqual(core.total, 3) // Feature A, Feature B, Blocked Task
-        // Feature A is handed back — drawn in NEEDS REVIEW, so it does not
+        // Feature A is handed back — drawn as a review entry, so it does not
         // repeat inside the folder.
         XCTAssertEqual(core.slices.map(\.sliceID), ["s-3", "s-4"])
         XCTAssertEqual(core.inFlightCount, 1)
@@ -498,8 +513,8 @@ final class RailModelTests: XCTestCase {
     /// A Done slice whose pull request is still open reads as work in flight
     /// everywhere the rail counts done-ness: out of the DONE folder and its
     /// counts, out of the summary, and its milestone not folded complete —
-    /// the same rule the progress bar applies. It is the NEEDS REVIEW
-    /// section's row instead, awaiting its merge.
+    /// the same rule the progress bar applies. It is a review entry
+    /// instead, awaiting its merge.
     func testBuildRailModel_openPRHoldsADoneSliceOutOfDone() {
         let milestones = [
             Milestone(id: "m-1", name: "Foundation", order: 1, status: "Done"),
@@ -520,7 +535,7 @@ final class RailModelTests: XCTestCase {
         )
 
         // The slice awaiting its merge is review work, not a DONE row.
-        XCTAssertEqual(model.needsReview.map(\.sliceID), ["s-2"])
+        XCTAssertEqual(reviews(model).map(\.sliceID), ["s-2"])
         XCTAssertEqual(model.doneFolders.count, 1)
         let folder = model.doneFolders[0]
         XCTAssertEqual(folder.slices.map(\.sliceID), ["s-1"])
@@ -542,14 +557,28 @@ final class RailModelTests: XCTestCase {
 
     // MARK: - Workshop entry
 
-    func testBuildWorkshopEntry_nothingLiveAndNotLaunchingIsNoSection() {
+    /// The entry as the whole of it, so every field the row draws is pinned
+    /// once and the cases below say only what their own reading changes.
+    private func workshopEntry(_ state: String, _ tint: ActiveTintRole, elapsed: String? = nil) -> ActiveEntry {
+        ActiveEntry(
+            kind: .workshop,
+            name: "Workshop the plan",
+            displayState: state,
+            tintRole: tint,
+            detail: ["Planning agent"],
+            meta: elapsed,
+            metaRole: .elapsed
+        )
+    }
+
+    func testBuildWorkshopEntry_nothingLiveAndNotLaunchingIsNoEntry() {
         XCTAssertNil(buildWorkshopEntry(activity: nil, isLaunching: false))
     }
 
     func testBuildWorkshopEntry_launching() {
         let entry = buildWorkshopEntry(activity: nil, isLaunching: true)
 
-        XCTAssertEqual(entry, WorkshopEntry(displayState: "Launching…", tintRole: .launching, elapsed: nil))
+        XCTAssertEqual(entry, workshopEntry("Launching…", .launching))
     }
 
     func testBuildWorkshopEntry_workingWithElapsed() {
@@ -561,7 +590,7 @@ final class RailModelTests: XCTestCase {
             now: now
         )
 
-        XCTAssertEqual(entry, WorkshopEntry(displayState: "Working", tintRole: .working, elapsed: "14m"))
+        XCTAssertEqual(entry, workshopEntry("Working", .working, elapsed: "14m"))
     }
 
     func testBuildWorkshopEntry_waitingWithElapsed() {
@@ -573,13 +602,13 @@ final class RailModelTests: XCTestCase {
             now: now
         )
 
-        XCTAssertEqual(entry, WorkshopEntry(displayState: "Waiting for input", tintRole: .waiting, elapsed: "1h 4m"))
+        XCTAssertEqual(entry, workshopEntry("Waiting for input", .waiting, elapsed: "1h 4m"))
     }
 
     func testBuildWorkshopEntry_liveAgentWithNoStampHasNoElapsed() {
         let entry = buildWorkshopEntry(activity: .working, isLaunching: false, firstSeen: nil)
 
-        XCTAssertNil(entry?.elapsed)
+        XCTAssertNil(entry?.meta)
     }
 
     func testBuildWorkshopEntry_liveAgentWinsOverTheLaunchingFlag() {
@@ -591,12 +620,64 @@ final class RailModelTests: XCTestCase {
     func testBuildWorkshopEntry_selectedWithNothingRunningIsTheComposerRow() {
         let entry = buildWorkshopEntry(activity: nil, isLaunching: false, isSelected: true)
 
-        XCTAssertEqual(entry, WorkshopEntry(displayState: "New session", tintRole: .new, elapsed: nil))
+        XCTAssertEqual(entry, workshopEntry("New session", .new))
     }
 
     func testBuildWorkshopEntry_launchingWinsOverTheComposerRow() {
         let entry = buildWorkshopEntry(activity: nil, isLaunching: true, isSelected: true)
 
         XCTAssertEqual(entry?.tintRole, .launching)
+    }
+
+    /// The entry is keyed by a name of its own rather than a slice id, which
+    /// is what lets one list hold it beside the slices.
+    func testWorkshopEntryIsIdentifiedByItsOwnKey() {
+        XCTAssertEqual(buildWorkshopEntry(activity: .working, isLaunching: false)?.id, workshopEntryID)
+        XCTAssertEqual(buildWorkshopEntry(activity: .working, isLaunching: false)?.sliceID, "")
+    }
+
+    // MARK: - The one ACTIVE list
+
+    /// Workshop first, then the branches awaiting review, then the slices
+    /// being worked: the prominence the three separate sections gave them,
+    /// kept as an order inside one.
+    func testBuildRailModel_mergesTheThreeKindsInOrder() {
+        var slices = testSlices!
+        slices[2] = Slice(
+            id: "s-3", name: "Feature B", status: "In progress", milestoneID: "m-2",
+            assignee: "", pr: "", url: "", blocked: false, handedBack: false
+        )
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
+        let model = buildRailModel(
+            from: projectInfo,
+            liveAgents: ["s-3": .working],
+            workshop: buildWorkshopEntry(activity: .working, isLaunching: false)
+        )
+
+        XCTAssertEqual(model.active.map(\.id), [workshopEntryID, "s-2", "s-3"])
+        XCTAssertEqual(model.active.map(\.kind), [.workshop, .slice, .slice])
+        XCTAssertEqual(model.active.map(\.displayState), ["Working", "Needs review", "Working"])
+    }
+
+    /// No planning agent is simply no entry: the list is what it was.
+    func testBuildRailModel_noWorkshopLeavesTheListAlone() {
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: testSlices)
+        let model = buildRailModel(from: projectInfo, liveAgents: [:])
+
+        XCTAssertFalse(model.active.contains { $0.kind == .workshop })
+    }
+
+    /// A plan with nothing in flight and a planning agent live is the one
+    /// entry alone — what keeps the empty note off a rail that has something
+    /// to show.
+    func testBuildRailModel_workshopAloneIsNotAnEmptySection() {
+        let projectInfo = ProjectInfo(project: testProject, milestones: [], slices: [])
+        let model = buildRailModel(
+            from: projectInfo,
+            liveAgents: [:],
+            workshop: buildWorkshopEntry(activity: nil, isLaunching: true)
+        )
+
+        XCTAssertEqual(model.active.map(\.kind), [.workshop])
     }
 }

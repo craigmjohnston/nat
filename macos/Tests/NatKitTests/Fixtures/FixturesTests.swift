@@ -49,20 +49,22 @@ final class FixturesTests: XCTestCase {
     func testRailModelFillsEverySection() {
         let rail = Fixtures.railModel
 
-        // NEEDS REVIEW: the handed-back branch with its tally, and the Done
-        // slice still waiting on its merge with the reading's own words.
-        let review = Dictionary(uniqueKeysWithValues: rail.needsReview.map { ($0.sliceID, $0) })
+        // The review entries: the handed-back branch with its tally, and the
+        // Done slice still waiting on its merge with the reading's own words.
+        let review = Dictionary(
+            uniqueKeysWithValues: rail.active.filter { $0.tintRole == .needsReview }.map { ($0.sliceID, $0) })
         XCTAssertEqual(review.count, 2)
-        XCTAssertEqual(review[Fixtures.mergeBoxSliceID]?.stat, Fixtures.reviewStats[Fixtures.mergeBoxSliceID])
-        XCTAssertEqual(review[Fixtures.mergeBoxSliceID]?.fileCount, 4)
-        XCTAssertEqual(review[Fixtures.approveSliceID]?.stat, "ready to merge")
+        XCTAssertEqual(review[Fixtures.mergeBoxSliceID]?.meta, Fixtures.reviewStats[Fixtures.mergeBoxSliceID])
+        XCTAssertEqual(review[Fixtures.mergeBoxSliceID]?.detail.last, "4 files")
+        XCTAssertEqual(review[Fixtures.approveSliceID]?.meta, "ready to merge")
 
-        // ACTIVE: all four readings a row can be in.
-        XCTAssertEqual(Set(rail.active.map(\.tintRole)), [.working, .waiting, .blocked, .readyToPush])
+        // ACTIVE: every reading a row can be in, the review entries included.
+        XCTAssertEqual(
+            Set(rail.active.map(\.tintRole)), [.needsReview, .working, .waiting, .blocked, .readyToPush])
         let working = rail.active.first { $0.sliceID == Fixtures.diffPaneSliceID }
         XCTAssertEqual(working?.displayState, "Working")
-        XCTAssertEqual(working?.elapsed, "1h 14m")
-        XCTAssertEqual(rail.active.first { $0.sliceID == Fixtures.activitySliceID }?.elapsed, "6m")
+        XCTAssertEqual(working?.meta, "1h 14m")
+        XCTAssertEqual(rail.active.first { $0.sliceID == Fixtures.activitySliceID }?.meta, "6m")
 
         // The folders, and the blocked row inside one of them.
         XCTAssertFalse(rail.todoFolders.isEmpty)
@@ -75,7 +77,6 @@ final class FixturesTests: XCTestCase {
 
     func testEmptyRailDrawsNothing() {
         let rail = Fixtures.emptyRailModel
-        XCTAssertTrue(rail.needsReview.isEmpty)
         XCTAssertTrue(rail.active.isEmpty)
         XCTAssertTrue(rail.todoFolders.isEmpty)
         XCTAssertTrue(rail.doneFolders.isEmpty)
@@ -84,16 +85,33 @@ final class FixturesTests: XCTestCase {
 
     func testUnreadRailKeepsTheMergedSliceOutOfReview() {
         let rail = Fixtures.unreadRailModel
-        XCTAssertEqual(rail.needsReview.map(\.sliceID), [Fixtures.mergeBoxSliceID])
-        // With no live reading, no ACTIVE row is working or waiting.
-        XCTAssertTrue(rail.active.allSatisfy { $0.tintRole == .blocked || $0.tintRole == .readyToPush })
-        XCTAssertTrue(rail.active.allSatisfy { $0.elapsed == nil })
+        XCTAssertEqual(
+            rail.active.filter { $0.tintRole == .needsReview }.map(\.sliceID), [Fixtures.mergeBoxSliceID])
+        // With no live reading, no worked row is working or waiting.
+        XCTAssertTrue(rail.active.allSatisfy {
+            $0.tintRole == .blocked || $0.tintRole == .readyToPush || $0.tintRole == .needsReview
+        })
+        XCTAssertTrue(rail.active.allSatisfy { $0.metaRole == .elapsed ? $0.meta == nil : true })
     }
 
     func testWorkshopEntryIsALivePlanningAgent() {
+        XCTAssertEqual(Fixtures.workshopEntry?.kind, .workshop)
+        XCTAssertEqual(Fixtures.workshopEntry?.name, "Workshop the plan")
         XCTAssertEqual(Fixtures.workshopEntry?.displayState, "Working")
         XCTAssertEqual(Fixtures.workshopEntry?.tintRole, .working)
-        XCTAssertEqual(Fixtures.workshopEntry?.elapsed, "12m")
+        XCTAssertEqual(Fixtures.workshopEntry?.detail, ["Planning agent"])
+        XCTAssertEqual(Fixtures.workshopEntry?.meta, "12m")
+    }
+
+    /// The acceptance state: one section, the workshop at its head and the
+    /// branches awaiting review above the slices being worked.
+    func testWorkshopRailLeadsWithTheWorkshopThenTheReviews() {
+        let entries = Fixtures.workshopRailModel.active
+        XCTAssertEqual(entries.first?.kind, .workshop)
+        XCTAssertEqual(entries.first?.id, workshopEntryID)
+        let roles = entries.dropFirst().map(\.tintRole)
+        XCTAssertEqual(Array(roles.prefix(2)), [.needsReview, .needsReview])
+        XCTAssertFalse(roles.dropFirst(2).contains(.needsReview))
     }
 
     func testAgentReadingsAgreeWithEachOther() {
