@@ -205,8 +205,16 @@ func (k keyMap) helpBindings() []key.Binding {
 // The first-run wizard is held separately rather than as a screen: it runs
 // before there is a config to show a board for, and it hands over exactly once.
 type App struct {
-	cfg        config.Config
-	client     NotionAPI
+	cfg    config.Config
+	client NotionAPI
+	// localStores are the plans kept in files of nat's own, one per project,
+	// opened on first use and held until the app goes — see [App.planStore].
+	// The Notion half needs nothing here: wrapping the client is free and holds
+	// nothing open.
+	localStores map[string]store.Store
+	// localErr is why the active project's plan would not open, kept for the
+	// load that is about to find no store to load through.
+	localErr   error
 	styles     Styles
 	keys       keyMap
 	promptKeys promptKeyMap
@@ -587,7 +595,7 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return a, a.viewerKey(msg)
 	}
 	if key.Matches(msg, a.keys.ForceQuit) {
-		return a, tea.Quit
+		return a, a.quit()
 	}
 	if a.onboarding != nil {
 		o, cmd := a.onboarding.Update(msg)
@@ -626,7 +634,7 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case a.screen != screenBoard && key.Matches(msg, a.keys.Back):
 		a.setScreen(screenBoard)
 	case key.Matches(msg, a.keys.Quit):
-		return a, tea.Quit
+		return a, a.quit()
 	case key.Matches(msg, a.keys.Refresh):
 		// A refresh is a fresh look, so whatever was being reported goes.
 		a.note, a.toast = "", ""
@@ -822,7 +830,7 @@ func (a *App) promptKey(msg tea.KeyPressMsg) tea.Cmd {
 // canWrite reports whether a write can be started: a client to make it with, a
 // project to make it against, and nothing already in flight.
 func (a *App) canWrite() bool {
-	if a.client == nil || a.busy {
+	if a.planStore() == nil || a.busy {
 		return false
 	}
 	_, ok := a.activeProject()
@@ -856,7 +864,7 @@ func (a *App) editSlice() tea.Cmd {
 		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices can be edited.", s.Name, statusWord(s)), sevWarning)
 	}
 	a.busy, a.note = true, "Loading the slice…"
-	return loadSliceBody(a.client, s)
+	return loadSliceBody(a.planStore(), s)
 }
 
 // sliceBodyLoaded opens the edit form over the body that came back.
@@ -1010,8 +1018,19 @@ func (a *App) onboardingDone(msg OnboardingDoneMsg) (tea.Model, tea.Cmd) {
 // board reports, not an error.
 func (a *App) startLoad() tea.Cmd {
 	project, ok := a.activeProject()
-	if !ok || a.client == nil {
+	if !ok {
 		return nil
+	}
+	// A board with no store at all — no Notion client, which is a board nothing
+	// built one for — loads nothing and says nothing, exactly as it did before
+	// there was more than one backend. A store that would not open is different:
+	// something went wrong, and this is where it gets said.
+	if a.planStore() == nil {
+		if a.localErr == nil {
+			return nil
+		}
+		err := a.localErr
+		return func() tea.Msg { return notionErrMsg{err: err} }
 	}
 	// Whatever failed last time is left on the status line until this load says
 	// otherwise: a refresh in flight is not yet news, and clearing the warning
@@ -1025,7 +1044,7 @@ func (a *App) startLoad() tea.Cmd {
 // nothing to fetch or it has been fetched already: the page is the project's
 // conventions, which do not change between keystrokes.
 func (a *App) startInfoLoad() tea.Cmd {
-	if _, ok := a.activeProject(); !ok || !a.info.NeedsLoad() || a.client == nil {
+	if _, ok := a.activeProject(); !ok || !a.info.NeedsLoad() || a.planStore() == nil {
 		return nil
 	}
 	a.info.Start()
@@ -1035,7 +1054,7 @@ func (a *App) startInfoLoad() tea.Cmd {
 // fetchInfo loads a page's body and converts it to markdown for the info
 // screen to render.
 func (a *App) fetchInfo(pageID string) tea.Cmd {
-	st := store.Over(a.client)
+	st := a.planStore()
 	return func() tea.Msg {
 		markdown, err := st.Body(context.Background(), pageID)
 		if err != nil {
@@ -1068,7 +1087,7 @@ func (a *App) activeProject() (config.ProjectConfig, bool) {
 // of their own — is migrated on the way past, before its schema is read for the
 // plan, so what comes back is a plan of the one shape however it was stored.
 func (a *App) fetchProject(id string, cfg config.ProjectConfig) tea.Cmd {
-	st := store.Over(a.client)
+	st := a.planStore()
 	return func() tea.Msg {
 		plan, err := st.Plan(context.Background(),
 			store.Project{ID: id, Name: cfg.Name, SlicesID: cfg.SlicesDSID})
@@ -2098,4 +2117,13 @@ func oneLine(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+// quit ends the session, giving back the plans kept in files of nat's own on
+// the way: a board holds one open per project it has shown, and the process
+// going is the end of all of them. There is nothing to give back on the Notion
+// side — see [App.planStore].
+func (a *App) quit() tea.Cmd {
+	a.closeLocalStores()
+	return tea.Quit
 }

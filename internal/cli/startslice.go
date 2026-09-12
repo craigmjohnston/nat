@@ -51,11 +51,15 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	if cfg.AssigneeUserID == "" {
-		return fmt.Errorf("no assignee in the config: open the board with `nat` and finish setting it up")
+	me, err := ownerOf(cfg, project)
+	if err != nil {
+		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
-	st := store.Over(client)
+	st, err := env.storeFor(projectID, project)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
 
 	shape, err := sliceShape(ctx, st, projectID, project)
 	if err != nil {
@@ -66,14 +70,14 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	write := shape.On(pageShape)
-	reopen, err := takeable(waiting, write, cfg.AssigneeUserID)
+	reopen, err := takeable(waiting, write, me.ID)
 	if err != nil {
 		return err
 	}
 	// The dependencies are read one page at a time rather than off the plan:
 	// this command was pointed at a slice, so there is no plan loaded, and a
 	// slice waits on few enough slices for that to be the cheaper read.
-	if blockers, _ := domain.Blockers(waiting, dependencyIndex(ctx, client, waiting)); len(blockers) > 0 {
+	if blockers, _ := domain.Blockers(waiting, dependencyIndex(ctx, st, waiting)); len(blockers) > 0 {
 		return blockedError(waiting, blockers)
 	}
 	// A re-opened slice is already exactly what a claim would make it, so there
@@ -81,9 +85,9 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	// nothing about the plan.
 	claimed := waiting
 	if reopen {
-		logging.Action("slice re-opened", "slice", claimed.ID, "name", claimed.Name, "user", cfg.AssigneeUserID)
+		logging.Action("slice re-opened", "slice", claimed.ID, "name", claimed.Name, "user", me.ID)
 	} else {
-		if claimed, err = claim(ctx, st, waiting.ID, write, cfg.AssigneeUserID); err != nil {
+		if claimed, err = claim(ctx, st, waiting.ID, write, me.ID); err != nil {
 			return err
 		}
 		// The claim is the write, so the board is nudged here — even a run that
@@ -101,7 +105,7 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("claimed %q but could not read the project conventions: %w", claimed.Name, err)
 	}
 
-	b := briefOf(claimed, milestone, project, cfg.AssigneeUserName, brief, conventions)
+	b := briefOf(claimed, milestone, project, me.Name, brief, conventions)
 	if *asJSON {
 		return writeBriefJSON(env.Out, b, projectID, project.Name)
 	}

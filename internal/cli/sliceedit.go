@@ -9,7 +9,6 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
-	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // sliceEdit replaces a slice's description — the page body slice-add writes
@@ -47,11 +46,15 @@ func sliceEdit(ctx context.Context, args []string, env Env) error {
 		return usageErrorf("slice-edit: no description given: pass --description or pipe one in with -")
 	}
 
-	_, _, project, err := env.projectFor(*projectRef)
+	_, projectID, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}
-	st := store.Over(env.NewClient(env.Tokens.Token))
+	st, err := env.storeFor(projectID, project)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
 
 	s, _, err := loadSlice(ctx, st, id)
 	if err != nil {

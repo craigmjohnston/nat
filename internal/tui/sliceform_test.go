@@ -12,6 +12,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // The rows of the board testProject flattens to, named so the tests read.
@@ -199,7 +200,7 @@ func TestParagraphBlocksSplitsOnBlankLines(t *testing.T) {
 func TestCreateSliceFilesANewTodoSlice(t *testing.T) {
 	client := &fakeNotion{}
 
-	msg := runMsg(t, createSlice(client, "sl-ds", domain.Milestone{
+	msg := runMsg(t, createSlice(store.Over(client), "sl-ds", domain.Milestone{
 		ID: "M2: Board", Name: "M2: Board", SelectType: notion.TypeSelect},
 		"  New slice  ", "First.\n\nSecond.", " /tmp/repo "))
 
@@ -232,7 +233,7 @@ func TestCreateSliceReportsAFailure(t *testing.T) {
 		return nil, errors.New("boom")
 	}}
 
-	msg := runMsg(t, createSlice(client, "sl-ds", domain.Milestone{ID: "M2: Board", Name: "M2: Board"}, "New slice", "", ""))
+	msg := runMsg(t, createSlice(store.Over(client), "sl-ds", domain.Milestone{ID: "M2: Board", Name: "M2: Board"}, "New slice", "", ""))
 
 	if got := msg.(sliceSavedMsg); got.err == nil || got.err.Error() != "create slice: boom" {
 		t.Errorf("err = %v, want the wrapped failure", got.err)
@@ -244,7 +245,7 @@ func TestEditSliceRewritesThePropertiesAndTheBody(t *testing.T) {
 		return []notion.Block{{ID: "b1"}, {ID: "b2"}}, nil
 	}}
 
-	msg := runMsg(t, editSlice(client, "s5", " Renamed ", "Rewritten.", " /tmp/other "))
+	msg := runMsg(t, editSlice(store.Over(client), "s5", " Renamed ", "Rewritten.", " /tmp/other "))
 
 	if got := msg.(sliceSavedMsg); got.err != nil || got.note != `Updated "Renamed".` {
 		t.Errorf("msg = %+v, want the updated note", got)
@@ -276,7 +277,7 @@ func TestEditSliceWithABlankBriefLeavesTheBodyEmpty(t *testing.T) {
 		return []notion.Block{{ID: "b1"}}, nil
 	}}
 
-	runMsg(t, editSlice(client, "s5", "Renamed", "   ", ""))
+	runMsg(t, editSlice(store.Over(client), "s5", "Renamed", "   ", ""))
 
 	if len(client.deleted) != 1 {
 		t.Errorf("deleted = %v, want the old body cleared", client.deleted)
@@ -309,7 +310,7 @@ func TestEditSliceReportsFailures(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			msg := runMsg(t, editSlice(tt.client, "s5", "Renamed", "Brief.", ""))
+			msg := runMsg(t, editSlice(store.Over(tt.client), "s5", "Renamed", "Brief.", ""))
 
 			got := msg.(sliceSavedMsg)
 			if got.err == nil || got.err.Error() != tt.want {
@@ -327,7 +328,7 @@ func TestLoadSliceBodyConvertsThePageToMarkdown(t *testing.T) {
 		return []notion.Block{block(t, "paragraph", "The brief.")}, nil
 	}}
 
-	msg := runMsg(t, loadSliceBody(client, domain.Slice{ID: "s5"})).(sliceBodyMsg)
+	msg := runMsg(t, loadSliceBody(store.Over(client), domain.Slice{ID: "s5"})).(sliceBodyMsg)
 
 	if msg.err != nil || msg.markdown != "The brief." {
 		t.Errorf("msg = %+v, want the body as markdown", msg)
@@ -337,7 +338,7 @@ func TestLoadSliceBodyConvertsThePageToMarkdown(t *testing.T) {
 func TestLoadSliceBodyReportsAFailure(t *testing.T) {
 	client := &fakeNotion{blocks: func(string) ([]notion.Block, error) { return nil, errors.New("boom") }}
 
-	msg := runMsg(t, loadSliceBody(client, domain.Slice{ID: "s5"})).(sliceBodyMsg)
+	msg := runMsg(t, loadSliceBody(store.Over(client), domain.Slice{ID: "s5"})).(sliceBodyMsg)
 
 	if msg.err == nil || msg.err.Error() != "load slice body: boom" {
 		t.Errorf("err = %v, want the wrapped failure", msg.err)
@@ -664,7 +665,7 @@ func TestCreateSliceNamesTheMilestoneOption(t *testing.T) {
 				ID: "M3: Mutations", Name: "M3: Mutations", SelectType: tt.propertyType,
 			}
 
-			runMsg(t, createSlice(client, "sl-ds", m, "New slice", "", ""))
+			runMsg(t, createSlice(store.Over(client), "sl-ds", m, "New slice", "", ""))
 
 			if len(client.created) != 1 {
 				t.Fatalf("created %d pages, want 1", len(client.created))

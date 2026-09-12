@@ -13,6 +13,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // saveConfig persists local config. It is held as a variable so tests can keep
@@ -30,6 +31,12 @@ type (
 		name      string
 		workdir   string
 		err       error
+		// local is the other half: a project whose plan was laid down as a file
+		// of nat's own, which has no structure because there is no page and no
+		// database behind it. Its ID is nat's own and its plan is the path.
+		local bool
+		id    string
+		plan  string
 	}
 	// projectSwitchedMsg reports the project the board should show instead.
 	projectSwitchedMsg struct {
@@ -75,12 +82,34 @@ type NewProjectForm struct {
 	info     string
 	workdir  string
 	assignee bool
+	// backend is where the plan will be kept, and is asked about only where
+	// there is a choice: a machine with no projects database configured has
+	// nowhere in Notion to create a project, so the question has one answer and
+	// is not put.
+	backend string
 }
 
-// newNewProjectForm returns the empty form for a new project.
-func newNewProjectForm(theme huh.Theme) *NewProjectForm {
-	f := &NewProjectForm{heading: "New project"}
-	f.form = newForm(theme, huh.NewGroup(
+// newNewProjectForm returns the empty form for a new project. It is told
+// whether Notion is an option at all, which is what decides whether the first
+// question is asked: a board with no projects database has nowhere in a
+// workspace to put a project, and a picker of one is a question nobody is
+// answering.
+func newNewProjectForm(theme huh.Theme, notion bool) *NewProjectForm {
+	f := &NewProjectForm{heading: "New project", backend: config.BackendNotion}
+	fields := []huh.Field{}
+	if !notion {
+		f.backend = config.BackendLocal
+	} else {
+		fields = append(fields, huh.NewSelect[string]().
+			Title("Where the plan lives").
+			Description("Notion, or a plan file of nat's own on this machine — which needs no Notion at all.").
+			Options(
+				huh.NewOption("Notion", config.BackendNotion),
+				huh.NewOption("This machine", config.BackendLocal),
+			).
+			Value(&f.backend))
+	}
+	fields = append(fields,
 		huh.NewInput().
 			Title("Name").
 			Value(&f.name).
@@ -96,11 +125,12 @@ func newNewProjectForm(theme huh.Theme) *NewProjectForm {
 			Validate(existingDir),
 		huh.NewConfirm().
 			Title("Track an assignee?").
-			Description("Adds an Assignee column to the Slices table. A single-player project needs none — status says whose turn it is.").
+			Description("Adds an Assignee column to the Slices table. A single-player project needs none — status says whose turn it is. A plan kept on this machine always records who is working a slice, so the answer is ignored for one.").
 			Affirmative("Yes").
 			Negative("No").
 			Value(&f.assignee),
-	))
+	)
+	f.form = newForm(theme, huh.NewGroup(fields...))
 	return f
 }
 
@@ -134,8 +164,30 @@ func (f *NewProjectForm) busyNote() string { return "Creating the project…" }
 
 // save builds the project the completed form describes.
 func (f *NewProjectForm) save(a *App) tea.Cmd {
-	return createProject(a.client, a.cfg.ProjectDBDataSourceID,
-		strings.TrimSpace(f.name), f.info, expandHome(strings.TrimSpace(f.workdir)), f.assignee)
+	name, workdir := strings.TrimSpace(f.name), expandHome(strings.TrimSpace(f.workdir))
+	if f.backend == config.BackendLocal {
+		return createLocalProject(name, f.info, workdir)
+	}
+	return createProject(a.client, a.cfg.ProjectDBDataSourceID, name, f.info, workdir, f.assignee)
+}
+
+// createLocalProject lays a project's plan down as a file of nat's own and
+// reports it the way a created Notion project is reported. It talks to nothing:
+// no page to create, no database to file it under, no token — which is the
+// whole point, since this is the path a board with no Notion at all takes.
+//
+// The identity is nat's own, since there is no page create to hand one back,
+// and is shaped like a page ID so that everything carrying a project ID
+// around — --project first of all — cannot tell the two apart.
+func createLocalProject(name, info, workdir string) tea.Cmd {
+	return func() tea.Msg {
+		id := store.NewProjectID()
+		path, err := store.CreateLocalProject("", id, name, info)
+		if err != nil {
+			return projectCreatedMsg{err: err}
+		}
+		return projectCreatedMsg{local: true, id: id, plan: path, name: name, workdir: workdir}
+	}
 }
 
 // createProject creates the project page and its Slices database, then writes
@@ -363,14 +415,14 @@ func openProject(client NotionAPI, id, name string) tea.Cmd {
 // newProjectFlow opens the new-project form. It needs no active project — it is
 // how the first one comes to exist — only the projects database onboarding
 // picked, and a client to create under it.
+// A project kept on this machine needs neither, so the key no longer refuses
+// over a missing projects database: what a board without one loses is the
+// Notion half of the question, not the ability to make a project at all.
 func (a *App) newProjectFlow() tea.Cmd {
-	if a.client == nil || a.busy {
+	if a.busy {
 		return nil
 	}
-	if a.cfg.ProjectDBDataSourceID == "" {
-		return a.showToast("No projects database is configured, so there is nowhere to create a project.", sevWarning)
-	}
-	return a.openForm(newNewProjectForm(a.styles.FormTheme))
+	return a.openForm(newNewProjectForm(a.styles.FormTheme, a.client != nil && a.cfg.ProjectDBDataSourceID != ""))
 }
 
 // switchProjectFlow opens the project picker over the configured projects and
@@ -416,19 +468,23 @@ func (a *App) workspaceProjectsListed(msg workspaceProjectsMsg) tea.Cmd {
 // and reloads the board onto it.
 func (a *App) projectCreated(msg projectCreatedMsg) (tea.Model, tea.Cmd) {
 	a.busy = false
-	if msg.structure == nil {
+	if msg.structure == nil && !msg.local {
 		a.note, a.err = "", msg.err
 		return a, nil
 	}
 	if a.cfg.Projects == nil {
 		a.cfg.Projects = map[string]config.ProjectConfig{}
 	}
-	a.cfg.Projects[msg.structure.PageID] = config.ProjectConfig{
-		Name:       msg.name,
-		SlicesDSID: msg.structure.SlicesDSID,
-		WorkingDir: msg.workdir,
+	entry := config.ProjectConfig{Name: msg.name, WorkingDir: msg.workdir}
+	id := msg.id
+	if msg.local {
+		entry.Backend = config.BackendLocal
+		logging.Action("local project created", "project", id, "name", msg.name, "plan", msg.plan)
+	} else {
+		id, entry.SlicesDSID = msg.structure.PageID, msg.structure.SlicesDSID
 	}
-	a.cfg.ActiveProjectID = msg.structure.PageID
+	a.cfg.Projects[id] = entry
+	a.cfg.ActiveProjectID = id
 	err := errors.Join(msg.err, a.persist())
 	// The reload is started first: it clears the error banner, and anything that
 	// went wrong on the way here is worth more than an empty one.

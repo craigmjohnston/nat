@@ -10,6 +10,14 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
 
 - `main.go` — entrypoint; module path `github.com/craigmjohnston/nat`, so
   `go install github.com/craigmjohnston/nat@latest` yields a `nat` binary.
+  The Notion token is fetched before the terminal is taken over, so an
+  unusable credential is reported plainly on stderr with the command that fixes
+  it — but only where Notion is on the way at all (`config.Config.NeedsNotion`):
+  a config tracking nothing but projects whose plans are kept in files of nat's
+  own, and naming no projects database, needs no credential, and refusing to
+  start without one would be refusing over a service the session never calls. A
+  config tracking nothing at all is the other way round, since what a board sets
+  up from nothing is a Notion workspace.
   It runs in the terminal it was started in and hosts itself in nothing: the
   status band is drawn inside nat's own frame and the agent terminal beside the
   board is nat's own widget, so there is nothing a session of its own would
@@ -22,6 +30,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
 - `internal/config/` — XDG config (`~/.config/notion-agent-tracker/config.json`)
   + the Notion bearer token, read from Notion's official CLI via
   `ntn auth token` (the app stores no credential of its own).
+  A project entry says where its plan is kept: `backend`, `notion` or `local`,
+  and `plan_dir` for the directory a local one's file goes in. Both are omitted
+  until they mean something, so a config file written before there was a choice
+  round-trips unchanged and goes on meaning what it meant — `IsLocal` reads
+  anything that is not the local word as Notion, the empty string included,
+  since a backend a later nat invented is one this build cannot open a file for
+  and saying so is better than opening the wrong thing.
   `AgentModel` — a `model` and an `effort`, exactly as Claude Code's own flags
   take them — is which Claude Code a launched agent runs as, and the config
   holds two of them: `workshop_agent` for the planning agent and `slice_agent`
@@ -86,6 +101,21 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   off a project page outside this package — `nat wishlist`, `wishlist-clear`
   and the workshop launch — because it is a section with editing rules of its
   own rather than prose, and pulling it in wants a type of its own here.
+  `ForProject` is where that second backend is actually chosen, and the only
+  place it is: a caller names a project — a `config.ProjectConfig` and the ID it
+  is filed under — and is handed something that answers `Store`, never having to
+  learn which answered. The Notion half is `Over` on the client the caller
+  already holds; the local half opens the project's own database, creating it
+  where there is none, and the client may be nil for it, which is what makes a
+  machine with no credential able to work a local project at all. A Notion
+  project with no client is refused by name rather than at the first request.
+  `Close` is on the interface for the same reason: a caller holding a `Store`
+  cannot know whether anything is open behind it, and one that had to ask would
+  be one that knew which backend answered — Notion's gives back nothing.
+  `CreateLocalProject` and `NewProjectID` are what stand where Notion's page
+  create stands, since there is no create to hand an identity back: the ID is
+  nat's own and shaped like a page ID, so that everything carrying one around —
+  `--project` first of all — cannot tell the two apart.
   `Local` is the second implementation and the first that is not Notion: a
   plan kept in a SQLite database of nat's own, one file per project under nat's
   data directory (`LocalDir`/`LocalPath` — `~/Library/Application Support` on
@@ -139,8 +169,13 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   back, and is refused a milestone the plan does not hold, which is what
   Notion's select column refuses for the other store; and a delete is a delete,
   there being no trash in a file — what a local plan offers instead is the file
-  itself, one project to a database. The full-text index the design settles on
-  is still the next slice's.
+  itself, one project to a database. `SetProject` is the one write that is
+  about neither a slice nor a milestone: the project's ID, its name and the
+  conventions every slice of it is worked under, which is the prose a
+  Notion-kept project keeps as its page body. Writing it twice writes it once
+  and leaves every slice alone, and writing another project's drops the one
+  that was there — a plan is one project's. The full-text index the design
+  settles on is still the next slice's.
 - `internal/domain/` — Project/Milestone/Slice models, progress math
 - `internal/logging/` — the log file: `~/Library/Logs/notion-agent-tracker/` on
   macOS, the XDG state dir elsewhere, size-capped with one previous file kept.
@@ -436,8 +471,8 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   `nat release-slice <slice>`, which is the fourth ending and the only one that
   goes backwards: Status to `Todo`, the Assignee cleared and one line on the
   page saying so, for a session that ended without finishing at all,
-  `nat project-create <name> [--repo DIR] [--description TEXT|-]`, which is a
-  whole tracked project without the board — `notion.CreateProject` for the
+  `nat project-create <name> [--repo DIR] [--description TEXT|-] [--local
+  [--plan-dir DIR]]`, which is a whole tracked project without the board — `notion.CreateProject` for the
   project row and its Slices database, the description written as the page body
   because that is what `nat info` prints back as the project's conventions, and
   the entry in local config that makes it a project this machine can open
@@ -449,7 +484,17 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   and moving it from a headless command would move the board out from under the
   user. The board's switch picker — which reads the config this wrote — is how
   the new project gets opened, and `--project <the id it printed>` is how a
-  session reaches it in the meantime. It is also the one
+  session reaches it in the meantime.
+  `--local` is the other half of it, and the one path in the whole binary that
+  gets from nothing to a workable plan with no Notion at all: no page to create,
+  no projects database to file it under, no token — `store.CreateLocalProject`
+  lays the plan down as a file, `store.NewProjectID` gives it an identity, and
+  the config entry names the backend and wherever `--plan-dir` said the file
+  should go. The plan is written before the config entry, since a config naming
+  a project whose plan could not be laid down is one every later command fails
+  on, and no entry at all is a command that says the project is not tracked,
+  which is true. `--plan-dir` without `--local` is refused rather than ignored:
+  a plan kept in Notion is kept in Notion. It is also the one
   command that writes local config, which is why `Env` has a `Save` at all,
   and the one-off additions
   `nat milestone-add <name>` (Queued, at the end of the plan),
@@ -502,13 +547,18 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   lands is the command line's rather than the document's, which is what the
   shared `--project` below is for — a document says what work there is and not
   whose it is, and everything past that resolution — the migration, the
-  validation, the write order, the nudge — is the same either way; the slices
-  themselves are written back to front, which is the only thing a run can do
-  about where they land on the board — `notion.PlanOrder` reads the order off
-  the Slices view's manual row order, nothing in the API adds a created row to
-  that order, and such a row reads back newest created first, so the document
-  reversed reads back as the document, and the command says so in its output
-  and as `"ordering"` in its JSON), and `nat setup`, which installs the embedded skills into
+  validation, the write order, the nudge — is the same either way; which
+  end of the document the slices are written from is the store's answer rather
+  than the command's (`store.Store.Appends`): a plan kept in Notion is written
+  back to front, which is the only thing a run can do about where they land on
+  the board — `notion.PlanOrder` reads the order off the Slices view's manual
+  row order, nothing in the API adds a created row to that order, and such a row
+  reads back newest created first, so the document reversed reads back as the
+  document — while a plan kept in a file reads its slices back in the order they
+  were written and is written front to back, reversing there being the one thing
+  that would put it out of order; the command says which it did in its output
+  and as `"ordering"` in its JSON, and a run that failed part way reports
+  whichever end of the document it got through), and `nat setup`, which installs the embedded skills into
   `~/.claude/skills` — the only command that talks to neither Notion nor the
   config file, since it is what a machine with only the binary runs first), what
   the binary does when given a subcommand. Run before even the tmux check and
@@ -524,6 +574,27 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   write that took it would land in whichever project the board had got to rather
   than the one the session was launched on — which is exactly the failure a
   command run anonymously used to be one keystroke away from.
+  `Env.storeFor` is what every command then opens that project's plan with, and
+  the one place a headless command decides which backend it is talking to: the
+  Notion client is built only for a project kept in Notion, which is not a
+  saving — building one costs nothing and fetches no token — but a statement,
+  since a machine tracking nothing but local projects has no Notion on any path
+  it runs. The store is closed with a deferred close whose error is dropped: the
+  command has already said whatever it had to say. `Env.notionFor` is the other
+  half, for the two commands that read something only a workspace keeps —
+  `wishlist` and `wishlist-clear` — which refuse a local project by name rather
+  than going looking for a page that was never there; `workshop-launch` reads no
+  wishlist off one at all and launches the plain session a project with an empty
+  wishlist already gets, since nothing has gone wrong.
+  `ownerOf` is who this machine works a project's slices as, and it is not one
+  answer for every project: a plan kept in Notion records ownership as the
+  workspace user onboarding resolved, so the identity a claim writes is a Notion
+  user and the name is what the workspace calls them, while a plan kept in a
+  file has no directory of users behind it and the name is the identity — the
+  string a claim wrote is the string the ownership check reads back. Which is
+  why a local project needs nothing set up to be worked: where the config names
+  a user the name is theirs, and where it does not, because there has never been
+  a Notion to onboard against, it is whoever is logged in.
   `Env.projectFor` is the one place that is decided, `noProject` and
   `namedProject` its two halves: an ID is matched as written and then
   normalised, since one copied out of a page URL has no dashes, and a project
@@ -569,6 +640,24 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   bare, the status line included, and a window of one line is that line alone.
   The same text goes out as the terminal's title, stripped of its styling, since
   a title is text.
+  `planstore.go` is where every screen and every write gets the store it works
+  the active project's plan through, and the one place the board decides which
+  backend it is talking to: a Notion project is the client it already holds,
+  wrapped afresh each time because wrapping one costs nothing and holds nothing
+  open, and a local one is a database that does hold something open, so it is
+  opened once and kept — one per project, since switching back and forth is a
+  keystroke — and they are all given back when the app goes (`q` and `ctrl+c`
+  both run `App.quit`). A plan that will not open answers as no store at all,
+  with the reason kept for the load that is about to find none, which is what
+  puts it on the board rather than leaving a board that quietly never loads;
+  a board with no store and no reason is one nothing built a client for, and it
+  loads nothing and says nothing, exactly as it did before there was more than
+  one backend. `App.owner` is the board's half of `cli.ownerOf`, and reads the
+  same way. Two things a local project simply has not got are asked about
+  before the client rather than after: the wishlist, which is a section of a
+  page there is no page for, and the selective load, which has no "edited since"
+  to ask about and takes the full load instead — against a file on this machine
+  that is cheaper than the round trip the selective load was written to save.
   `claim.go` is the other thing the launch does before it starts a session:
   `claimSlice` reads the slice's page for the type of its `Status` column and
   for whether it carries an `Assignee` at all — the same read the release and
@@ -884,7 +973,15 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   prompt anchored to a row (`App.closeBoardPrompt`) and leaves one asked about a
   pull request alone, since the row may have moved and the pull request has not.
   `newproject.go` is `N` and `P`, the two ways a project comes to be on the
-  board. `P` is one picker for both halves of "which project": the ones local
+  board. `N` asks first where the plan will live — Notion, or a file of nat's
+  own on this machine — and asks it only where there is a choice: a board with
+  no projects database, or no client at all, has nowhere in a workspace to put a
+  project, so the question has one answer and is not put, which is why the key
+  no longer refuses over a missing projects database. What such a board has lost
+  is the Notion half of the question and not the ability to make a project. The
+  local ending talks to nothing at all — `store.CreateLocalProject` and an ID of
+  nat's own — and is recorded, activated and loaded exactly as the Notion one
+  is. `P` is one picker for both halves of "which project": the ones local
   config knows, and under them — marked, so picking one says what it does — the
   rows of the workspace's projects database it does not, since which of the two
   a project is is an accident of where it was created. The configured half is

@@ -82,10 +82,15 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	if cfg.AssigneeUserID == "" {
-		return fmt.Errorf("no assignee in the config: open the board with `nat` and finish setting it up")
+	me, err := ownerOf(cfg, project)
+	if err != nil {
+		return err
 	}
-	st := store.Over(env.NewClient(env.Tokens.Token))
+	st, err := env.storeFor(projectID, project)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
 
 	shape, err := sliceShape(ctx, st, projectID, project)
 	if err != nil {
@@ -104,8 +109,8 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	write := shape.On(pageShape)
-	if !store.Holds(s, write, cfg.AssigneeUserID) {
-		return notOursError(s, cfg.AssigneeUserName, "closed out")
+	if !store.Holds(s, write, me.ID) {
+		return notOursError(s, me.Name, "closed out")
 	}
 
 	// The status is written in the shape the page was read in rather than the
@@ -126,7 +131,7 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 
 	env.nudged()
 	_, err = io.WriteString(env.Out,
-		outcomeMarkdown(closed, *blocked, *branch, cfg.AssigneeUserName))
+		outcomeMarkdown(closed, *blocked, *branch, me.Name))
 	return err
 }
 

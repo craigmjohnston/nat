@@ -300,7 +300,7 @@ func (a *App) afterViewing(v *agentViewer) tea.Cmd {
 	if agent.IsPlanTag(v.sliceID) {
 		return a.startLoad()
 	}
-	if a.project == nil || a.client == nil {
+	if a.project == nil || a.planStore() == nil {
 		return nil
 	}
 	return a.refreshSlice(v.sliceID)

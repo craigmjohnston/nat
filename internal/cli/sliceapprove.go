@@ -9,7 +9,6 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // sliceApprove opens a pull request for a handed-back branch and records it
@@ -32,18 +31,20 @@ func sliceApprove(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	_, _, project, err := env.projectFor(*projectRef)
+	_, projectID, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
+	st, err := env.storeFor(projectID, project)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
 
-	page, err := client.GetPage(ctx, id)
+	s, _, err := st.Slice(ctx, id)
 	if err != nil {
 		return fmt.Errorf("load the slice: %w", err)
 	}
-
-	s := domain.SliceFromPage(*page)
 	// Only a handed-back slice — in progress with a branch recorded on it —
 	// is one there is a pull request to open for.
 	if s.Branch == "" {
@@ -58,7 +59,6 @@ func sliceApprove(ctx context.Context, args []string, env Env) error {
 		workdir = project.WorkingDir
 	}
 
-	st := store.Over(client)
 	url, err := actions.OpenPR(ctx, st, env.NewGH(), s, workdir)
 	if err != nil {
 		return err

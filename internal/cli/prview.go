@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/craigmjohnston/nat/internal/actions"
-	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 )
 
@@ -43,17 +42,20 @@ func prView(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	_, _, project, err := env.projectFor(*projectRef)
+	_, projectID, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
+	st, err := env.storeFor(projectID, project)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
 
-	page, err := client.GetPage(ctx, id)
+	s, _, err := st.Slice(ctx, id)
 	if err != nil {
 		return fmt.Errorf("load the slice: %w", err)
 	}
-	s := domain.SliceFromPage(*page)
 	if s.PRURL == "" {
 		return fmt.Errorf("%q has no pull request recorded: nothing to view", s.Name)
 	}

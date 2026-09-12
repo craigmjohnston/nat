@@ -638,7 +638,10 @@ func TestAppTakesOverWhenOnboardingFinishes(t *testing.T) {
 		wantLoads int
 	}{
 		{"with a project", OnboardingDoneMsg{Config: testConfig()}, "Setup complete.", 1},
-		{"without a project", OnboardingDoneMsg{Config: config.Config{}, NeedsProject: true}, "No projects yet", 0},
+		// Straight into the new-project form, whose own heading is what the
+		// window then says: the toast announcing it is superseded by the form
+		// it announced.
+		{"without a project", OnboardingDoneMsg{Config: config.Config{}, NeedsProject: true}, "New project", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

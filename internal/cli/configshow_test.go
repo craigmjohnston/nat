@@ -32,7 +32,7 @@ func TestConfigShowMarkdown(t *testing.T) {
 		"Agent split percent: 70", "Poll seconds: 45",
 		`Workshop agent: model="sonnet" effort="low"`,
 		`Slice agent: model="opus" effort="high"`,
-		`project-1 (nat): working_dir="/tmp/nat"`,
+		`project-1 (nat): backend=notion working_dir="/tmp/nat"`,
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output missing %q:\n%s", want, out.String())
@@ -67,7 +67,7 @@ func TestConfigShowJSON(t *testing.T) {
 		WorkshopAgent:     agentModelJSON{Model: "sonnet", Effort: "low"},
 		SliceAgent:        agentModelJSON{Model: "opus", Effort: "high"},
 		Projects: map[string]configProjectJSON{
-			"project-1": {Name: "nat", WorkingDir: "/tmp/nat"},
+			"project-1": {Name: "nat", WorkingDir: "/tmp/nat", Backend: "notion"},
 		},
 	}
 	if got.AgentSplitPercent != want.AgentSplitPercent || got.PollSeconds != want.PollSeconds ||

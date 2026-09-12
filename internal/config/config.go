@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -20,11 +21,67 @@ const (
 // marshalIndent is held as a var so tests can stub a marshal failure.
 var marshalIndent = json.MarshalIndent
 
+// Where a project's plan is kept. It is a word in the config file rather than
+// a flag, because it is a fact about the project and not about this run: every
+// read and every write of that project's plan goes to the same place.
+//
+// The empty string is [BackendNotion], which is what makes every config file
+// written before there was a choice go on meaning what it meant — a project
+// recorded then is a project in Notion, and there was nothing else it could
+// have been.
+const (
+	BackendNotion = "notion"
+	BackendLocal  = "local"
+)
+
 // ProjectConfig describes one tracked project.
 type ProjectConfig struct {
 	Name       string `json:"name"`
 	SlicesDSID string `json:"slices_ds_id"`
 	WorkingDir string `json:"working_dir"`
+	// Backend is where the project's plan is kept: [BackendNotion] or
+	// [BackendLocal], and unwritten for the former, since that is what a config
+	// file that has never heard of the choice already says.
+	Backend string `json:"backend,omitempty"`
+	// PlanDir is the directory a local project's plan file is kept in, and
+	// means nothing at all for a Notion one. It is unwritten until somebody
+	// gives one: nat has a data directory of its own and that is where a plan
+	// goes unless the user would rather it went somewhere they back up.
+	PlanDir string `json:"plan_dir,omitempty"`
+}
+
+// IsLocal reports whether the project's plan is kept in a file of nat's own
+// rather than in a Notion workspace. Anything that is not the local word is
+// Notion, the empty string included: a backend this build does not know is a
+// config written by a later nat, and reading it as local would open a file that
+// is not there rather than saying so.
+func (p ProjectConfig) IsLocal() bool {
+	return strings.EqualFold(strings.TrimSpace(p.Backend), BackendLocal)
+}
+
+// NeedsNotion reports whether anything this machine tracks is kept in Notion,
+// which is what decides whether a bearer token is needed to start at all. A
+// config whose every project is local — and which names no projects database to
+// read the workspace's own projects from — needs no credential, and refusing to
+// start without one would be refusing over a service it never calls.
+func (c Config) NeedsNotion() bool {
+	if c.ProjectDBID != "" || c.ProjectDBDataSourceID != "" {
+		return true
+	}
+	// A config tracking nothing at all is a machine about to set something up,
+	// and what it sets up from the board is a Notion workspace: the wizard, the
+	// switch picker's workspace half and the new-project flow are all Notion's.
+	// Only a config that already tracks projects, every one of them local, can
+	// say it needs no credential.
+	if len(c.Projects) == 0 {
+		return true
+	}
+	for _, p := range c.Projects {
+		if !p.IsLocal() {
+			return true
+		}
+	}
+	return false
 }
 
 // AgentModel is which Claude Code an agent is launched as: the model and the

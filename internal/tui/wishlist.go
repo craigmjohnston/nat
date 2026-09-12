@@ -26,7 +26,13 @@ type wishlistLoadedMsg struct {
 // load pipeline rather than being asked for separately, so the count refreshes
 // wherever the plan does — the refresh key today, the background poll once
 // there is one — and never on its own.
+// A project whose plan is kept in a file of nat's own has no page to read one
+// off, so there is nothing to fetch and no indicator to draw — the same board a
+// project with an empty wishlist gets.
 func (a *App) fetchWishlist(pageID string) tea.Cmd {
+	if p, ok := a.activeProject(); !ok || p.IsLocal() || a.client == nil {
+		return nil
+	}
 	client := a.client
 	return func() tea.Msg {
 		items, err := client.Wishlist(context.Background(), pageID)

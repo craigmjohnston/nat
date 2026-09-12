@@ -160,13 +160,22 @@ func run(tokens config.TokenSource, in io.Reader, out io.Writer) error {
 // on stderr, with the command that fixes it, rather than as a failed call once
 // the terminal has been taken over. The client is handed the source rather than
 // the token itself, so a rotation later in the session is picked up too.
+//
+// It is checked only where Notion is on the way: a config file tracking nothing
+// but projects whose plans are kept in files of nat's own, and naming no
+// projects database to read the workspace's own projects from, needs no
+// credential at all, and refusing to start without one would be refusing over a
+// service the session never calls. A machine with no config yet is the other
+// way round — the wizard it starts on is Notion's.
 func buildApp(tokens config.TokenSource) (*tui.App, error) {
 	cfg, found, err := config.Load()
 	if err != nil {
 		return nil, err
 	}
-	if _, err := tokens.Token(); err != nil {
-		return nil, authHint(err)
+	if !found || cfg.NeedsNotion() {
+		if _, err := tokens.Token(); err != nil {
+			return nil, authHint(err)
+		}
 	}
 	client := newClient(tokens.Token)
 	if !found {

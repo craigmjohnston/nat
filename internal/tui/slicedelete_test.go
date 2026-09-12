@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"github.com/craigmjohnston/nat/internal/store"
 	"strings"
 	"testing"
 )
@@ -17,7 +18,7 @@ func answerConfirm(t *testing.T, a *App, answer string) {
 func TestDeleteSliceTrashesThePage(t *testing.T) {
 	client := &fakeNotion{}
 
-	msg := runMsg(t, deleteSlice(client, "s5", "Info view"))
+	msg := runMsg(t, deleteSlice(store.Over(client), "s5", "Info view"))
 
 	if got := msg.(sliceSavedMsg); got.err != nil || got.note != `Deleted "Info view".` {
 		t.Errorf("msg = %+v, want the deleted note", got)
@@ -30,7 +31,7 @@ func TestDeleteSliceTrashesThePage(t *testing.T) {
 func TestDeleteSliceReportsAFailure(t *testing.T) {
 	client := &fakeNotion{trashPage: func(string) error { return errors.New("boom") }}
 
-	msg := runMsg(t, deleteSlice(client, "s5", "Info view"))
+	msg := runMsg(t, deleteSlice(store.Over(client), "s5", "Info view"))
 
 	if got := msg.(sliceSavedMsg); got.err == nil || got.err.Error() != "delete slice: boom" {
 		t.Errorf("err = %v, want the wrapped failure", got.err)

@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // milestoneRename gives one milestone another name, in place. It is the other
@@ -39,7 +38,11 @@ func milestoneRename(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	st := store.Over(env.NewClient(env.Tokens.Token))
+	st, err := env.storeFor(projectID, project)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
 	sp := storeProject(projectID, project)
 
 	shape, err := st.Shape(ctx, sp)

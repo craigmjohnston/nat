@@ -173,10 +173,13 @@ func TestCreateProjectReportsAFailedPageBody(t *testing.T) {
 	}
 }
 
-// fillProjectForm drives the new-project form to completion: the three text
-// fields, then the assignee question the slices schema hangs on.
+// fillProjectForm drives the new-project form to completion: where the plan is
+// kept, the three text fields, then the assignee question the slices schema
+// hangs on. The storage question opens on Notion, which is what these tests are
+// about, so it is passed over rather than answered.
 func fillProjectForm(t *testing.T, a *App, name, info, workdir string, assignee bool) {
 	t.Helper()
+	feed(t, a, press(a, "enter"))
 	typeText(a, name)
 	feed(t, a, press(a, "enter"))
 	typeText(a, info)
@@ -303,16 +306,40 @@ func TestAppNewProjectReportsAFailedConfigWrite(t *testing.T) {
 	}
 }
 
-func TestAppNewProjectNeedsAProjectsDatabase(t *testing.T) {
+// A board with no projects database has nowhere in a workspace to put a
+// project, and can still make one: the form opens on the only answer there is,
+// with the storage question left unasked rather than offering a Notion that is
+// not there.
+func TestAppNewProjectOffersOnlyLocalWithNoProjectsDatabase(t *testing.T) {
 	app := newWriteApp(&fakeNotion{})
 
-	press(app, "N")
+	feed(t, app, press(app, "N"))
 
-	if app.form != nil {
-		t.Error("a form was opened with nowhere to create under")
+	f, ok := app.form.(*NewProjectForm)
+	if !ok {
+		t.Fatalf("form = %v, want the new-project form", app.form)
 	}
-	if !strings.Contains(app.toast, "No projects database is configured") {
-		t.Errorf("toast = %q, want the missing-database toast", app.toast)
+	if f.backend != config.BackendLocal {
+		t.Errorf("backend = %q, want the local one", f.backend)
+	}
+	if view := stripANSI(app.View().Content); strings.Contains(view, "Where the plan lives") {
+		t.Errorf("view asks where the plan lives with only one answer:\n%s", view)
+	}
+}
+
+// A board with no Notion client at all is the same case, and for the same
+// reason: what such a board has lost is the Notion half of the question.
+func TestAppNewProjectOffersOnlyLocalWithNoClient(t *testing.T) {
+	app := newProjectApp(nil)
+
+	feed(t, app, press(app, "N"))
+
+	f, ok := app.form.(*NewProjectForm)
+	if !ok {
+		t.Fatalf("form = %v, want the new-project form", app.form)
+	}
+	if f.backend != config.BackendLocal {
+		t.Errorf("backend = %q, want the local one", f.backend)
 	}
 }
 
@@ -321,7 +348,6 @@ func TestAppNewProjectIsRefusedWithNothingToCreateWith(t *testing.T) {
 		name string
 		app  func() *App
 	}{
-		{"no client", func() *App { return newProjectApp(nil) }},
 		{"a write already in flight", func() *App {
 			a := newProjectApp(&fakeNotion{})
 			a.busy = true
@@ -484,7 +510,7 @@ func TestSwitchProjectFormOpensOnTheActiveProject(t *testing.T) {
 }
 
 func TestNewProjectFormAnnouncesItsWork(t *testing.T) {
-	if got := newNewProjectForm(DefaultStyles().FormTheme).busyNote(); got != "Creating the project…" {
+	if got := newNewProjectForm(DefaultStyles().FormTheme, true).busyNote(); got != "Creating the project…" {
 		t.Errorf("busy note = %q, want the creation note", got)
 	}
 	if got := newSwitchProjectForm(DefaultStyles().FormTheme, twoProjectConfig()).busyNote(); got != "" {

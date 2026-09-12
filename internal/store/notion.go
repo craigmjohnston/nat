@@ -44,6 +44,18 @@ func Over(api API) *Notion { return &Notion{api: api} }
 // Notion is a Store.
 var _ Store = (*Notion)(nil)
 
+// Appends is false. A plan's order is read off the Slices view's manual row
+// order, and nothing in the API adds a created row to that order — a row it
+// does not name falls back to newest created first — so a slice filed now
+// reads back above every slice already there. There is no writing that order
+// either: see internal/cli's orderNote for what was tried.
+func (n *Notion) Appends() bool { return false }
+
+// Close is nothing: a plan kept in a workspace holds nothing open, the client's
+// own connections being the transport's to keep. It is here so that a caller
+// can end any store's life the same way.
+func (n *Notion) Close() error { return nil }
+
 // Shape reads how a project's Slices data source is put together, migrating a
 // project still in the shape this app started with on the way — which is how
 // every read of a plan, by the board or by a command, arrives at a plan of the

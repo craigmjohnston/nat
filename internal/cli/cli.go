@@ -142,7 +142,7 @@ func (e Env) nudged() {
 }
 
 // Usage is the help text, listing every way the binary can be run.
-const Usage = `nat — track project work in Notion
+const Usage = `nat — track project work, in Notion or in a plan file of its own
 
 Every command below that acts on a project requires --project, naming one of
 the config file's projects by its page ID; run one without it to be told the
@@ -197,11 +197,15 @@ usage:
                       from stdin
   nat agent-interrupt <slice> --project ID
                       send an interrupt signal to a live agent session
-  nat project-create <name> [--repo DIR] [--description TEXT|-] [--json]
+  nat project-create <name> [--repo DIR] [--description TEXT|-]
+                        [--local [--plan-dir DIR]] [--json]
                       create a project and its Slices database, register it in
                       local config and write the description as its page body;
-                      --description - reads it from stdin. The board is left on
-                      whatever project it was on
+                      --description - reads it from stdin. With --local the
+                      plan is kept in a database of nat's own instead and
+                      Notion is not touched at all, --plan-dir saying where
+                      that file goes. The board is left on whatever project it
+                      was on
   nat milestone-add <name> [--json] --project ID
                       add a Queued milestone at the end of the plan
   nat milestone-rename <old> <new> [--json] --project ID
@@ -274,7 +278,8 @@ usage:
                       a plain session otherwise
   nat config-show [--json]
                       print local config: the agent split, the poll interval,
-                      the two model pairs and each project's working directory
+                      the two model pairs, and each project's backend and
+                      working directory
   nat config-set <key> <value>
                       set one local config key: agent_split_percent,
                       poll_seconds, workshop_agent.model, workshop_agent.effort,

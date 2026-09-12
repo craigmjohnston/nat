@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // sliceMove refiles a slice under another milestone — the headless half of the
@@ -43,7 +42,11 @@ func sliceMove(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	st := store.Over(env.NewClient(env.Tokens.Token))
+	st, err := env.storeFor(projectID, project)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
 
 	shape, err := sliceShape(ctx, st, projectID, project)
 	if err != nil {

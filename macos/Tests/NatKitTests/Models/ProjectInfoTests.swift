@@ -194,6 +194,54 @@ final class ProjectInfoTests: XCTestCase {
         XCTAssertEqual(config.workingDir, "/Users/alice/projects/my-project")
     }
 
+    // A config file this app has to open once a machine tracks both kinds: a
+    // project in Notion and one whose plan is kept in a file of nat's own,
+    // which names no data source at all. A single missing key must not take
+    // the whole config down, since a config that will not parse is an app
+    // showing onboarding to somebody who has already onboarded.
+    func testProjectConfigDecodingAMixedConfig() throws {
+        let json = """
+        {
+          "projects": {
+            "proj-1": {"name": "In Notion", "slices_ds_id": "ds-1", "working_dir": "/a"},
+            "proj-2": {"name": "On this machine", "working_dir": "/b",
+                       "backend": "local", "plan_dir": "/plans"}
+          }
+        }
+        """
+
+        let config = try JSONDecoder().decode(NatProjectConfig.self, from: json.data(using: .utf8)!)
+
+        XCTAssertEqual(config.projects.count, 2)
+        XCTAssertEqual(config.projects["proj-1"]?.isLocal, false)
+        XCTAssertEqual(config.projects["proj-1"]?.slicesDSID, "ds-1")
+        XCTAssertEqual(config.projects["proj-2"]?.isLocal, true)
+        XCTAssertEqual(config.projects["proj-2"]?.slicesDSID, "")
+        XCTAssertEqual(config.projects["proj-2"]?.planDir, "/plans")
+    }
+
+    // An entry with nothing but a name is the least a config can say about a
+    // project, and it still opens.
+    func testProjectConfigDecodingTheBarestEntry() throws {
+        let json = """
+        {"name": "Bare"}
+        """
+
+        let config = try JSONDecoder().decode(ProjectConfig.self, from: json.data(using: .utf8)!)
+
+        XCTAssertEqual(config.name, "Bare")
+        XCTAssertEqual(config.slicesDSID, "")
+        XCTAssertEqual(config.workingDir, "")
+        XCTAssertEqual(config.backend, "notion")
+        XCTAssertFalse(config.isLocal)
+    }
+
+    // A word a later nat invented is not the local one: reading it as local
+    // would claim a plan file that is not there.
+    func testProjectConfigReadsAnUnknownBackendAsNotion() {
+        XCTAssertFalse(ProjectConfig(name: "P", backend: "someday").isLocal)
+    }
+
     func testProjectInfoEquality() {
         let project1 = Project(id: "p1", name: "Test", conventions: "")
         let project2 = Project(id: "p1", name: "Test", conventions: "")

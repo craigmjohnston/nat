@@ -502,6 +502,11 @@ func (l *Local) AddSlice(ctx context.Context, _ Project, n NewSlice) (domain.Sli
 	return added, nil
 }
 
+// Appends is true: a slice is filed at the end of the plan and read back in
+// position order, so a plan written in the document's order reads as the
+// document. It is the plain answer, and the one the Notion store cannot give.
+func (l *Local) Appends() bool { return true }
+
 // nextSlicePosition is where a newly filed slice goes, which is the end of the
 // plan. The column is a real number so that a slice can one day be put between
 // two others without renumbering the plan; appending needs nothing of that but
@@ -638,4 +643,27 @@ func (l *Local) DeleteSlice(ctx context.Context, id string) error {
 	}
 	logging.Action("slice deleted", "slice", id)
 	return nil
+}
+
+// SetProject records what the plan is a plan of: the project's ID, its name and
+// the conventions every slice of it is worked under, which is the prose a
+// Notion-kept project keeps as its page body. It is the one write a local plan
+// takes that is not about a slice or a milestone, and it is how a project comes
+// to exist at all — there is no page create behind a file to hand an identity
+// back, so the caller names the project and this writes it down.
+//
+// Writing it twice is writing it once: a project's row is replaced rather than
+// added to, so re-creating a project that is already there rewrites its name and
+// its conventions and leaves every slice filed under it alone.
+func (l *Local) SetProject(ctx context.Context, id, name, conventions string) error {
+	return l.withTx(ctx, "record the project", func(tx *sql.Tx) error {
+		if err := l.exec(ctx, tx, "record the project",
+			`DELETE FROM project WHERE id <> ?`, id); err != nil {
+			return err
+		}
+		return l.exec(ctx, tx, "record the project",
+			`INSERT INTO project (id, name, conventions) VALUES (?, ?, ?)
+			 ON CONFLICT(id) DO UPDATE SET name = excluded.name, conventions = excluded.conventions`,
+			id, name, conventions)
+	})
 }

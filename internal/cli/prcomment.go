@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/craigmjohnston/nat/internal/actions"
-	"github.com/craigmjohnston/nat/internal/domain"
 )
 
 // PRCommenter is what pr-comment needs of the GitHub CLI: one comment posted
@@ -53,17 +52,20 @@ func prComment(ctx context.Context, args []string, env Env) error {
 		return usageErrorf("pr-comment: no comment given: pass --body or pipe one in")
 	}
 
-	_, _, project, err := env.projectFor(*projectRef)
+	_, projectID, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
+	st, err := env.storeFor(projectID, project)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
 
-	page, err := client.GetPage(ctx, id)
+	s, _, err := st.Slice(ctx, id)
 	if err != nil {
 		return fmt.Errorf("load the slice: %w", err)
 	}
-	s := domain.SliceFromPage(*page)
 	if s.PRURL == "" {
 		return fmt.Errorf("%q has no pull request recorded: nothing to comment on", s.Name)
 	}

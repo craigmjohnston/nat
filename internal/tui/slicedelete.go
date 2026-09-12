@@ -79,14 +79,14 @@ func (f *DeleteSliceForm) save(a *App) tea.Cmd {
 	if !f.confirmed {
 		return nil
 	}
-	return deleteSlice(a.client, f.sliceID, f.sliceName)
+	return deleteSlice(a.planStore(), f.sliceID, f.sliceName)
 }
 
 // deleteSlice moves a slice's page to the trash. Notion has no hard delete, so
 // a slice deleted by mistake is still recoverable in the Notion UI.
-func deleteSlice(client NotionAPI, sliceID, sliceName string) tea.Cmd {
+func deleteSlice(st store.Store, sliceID, sliceName string) tea.Cmd {
 	return func() tea.Msg {
-		if err := store.Over(client).DeleteSlice(context.Background(), sliceID); err != nil {
+		if err := st.DeleteSlice(context.Background(), sliceID); err != nil {
 			return sliceSavedMsg{err: fmt.Errorf("delete slice: %w", err)}
 		}
 		return sliceSavedMsg{note: fmt.Sprintf("Deleted %q.", sliceName), sliceID: sliceID, deleted: true}

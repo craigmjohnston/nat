@@ -287,7 +287,7 @@ func TestStatusLinePrefersTheErrorAndTheNoteToTheToast(t *testing.T) {
 func TestStatusLinePrefersTheFormHintToTheToast(t *testing.T) {
 	app := sizedApp(80, 24)
 	app.toast, app.toastSev = "Switched.", sevSuccess
-	app.openForm(newNewProjectForm(app.styles.FormTheme))
+	app.openForm(newNewProjectForm(app.styles.FormTheme, true))
 
 	if bar := app.windowTitle(); strings.Contains(bar, "Switched.") || !strings.Contains(bar, "esc cancel") {
 		t.Errorf("bar = %q, want the form's esc hint over the toast", bar)

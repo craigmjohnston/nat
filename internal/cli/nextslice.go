@@ -27,11 +27,15 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	if cfg.AssigneeUserID == "" {
-		return fmt.Errorf("no assignee in the config: open the board with `nat` and finish setting it up")
+	me, err := ownerOf(cfg, project)
+	if err != nil {
+		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
-	st := store.Over(client)
+	st, err := env.storeFor(projectID, project)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
 
 	plan, err := st.Plan(ctx, storeProject(projectID, project))
 	if err != nil {
@@ -41,7 +45,7 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	claimed, err := claim(ctx, st, next.ID, plan.Shape, cfg.AssigneeUserID)
+	claimed, err := claim(ctx, st, next.ID, plan.Shape, me.ID)
 	if err != nil {
 		return err
 	}
@@ -58,7 +62,7 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("claimed %q but could not read the project conventions: %w", claimed.Name, err)
 	}
 
-	b := briefOf(claimed, milestone, project, cfg.AssigneeUserName, brief, conventions)
+	b := briefOf(claimed, milestone, project, me.Name, brief, conventions)
 	if asJSON {
 		return writeBriefJSON(env.Out, b, projectID, project.Name)
 	}

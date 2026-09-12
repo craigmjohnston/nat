@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/logging"
 )
@@ -42,18 +41,20 @@ func sliceDiff(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	_, _, project, err := env.projectFor(*projectRef)
+	_, projectID, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
+	st, err := env.storeFor(projectID, project)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
 
-	page, err := client.GetPage(ctx, id)
+	s, _, err := st.Slice(ctx, id)
 	if err != nil {
 		return fmt.Errorf("load the slice: %w", err)
 	}
-
-	s := domain.SliceFromPage(*page)
 	// Only a slice with a branch recorded has a diff to read at all. A Done
 	// one is no longer refused: the board marks a slice Done as it opens the
 	// pull request, and the review goes on reading the branch until that

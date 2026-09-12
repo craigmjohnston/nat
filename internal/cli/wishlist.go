@@ -22,11 +22,14 @@ func wishlist(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	_, projectID, _, err := env.projectFor(projectRef)
+	_, projectID, project, err := env.projectFor(projectRef)
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
+	client, err := env.notionFor(project, "wishlist")
+	if err != nil {
+		return err
+	}
 
 	blocks, err := client.GetBlockChildren(ctx, projectID)
 	if err != nil {
@@ -93,11 +96,14 @@ func wishlistClear(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	_, projectID, _, err := env.projectFor(projectRef)
+	_, projectID, project, err := env.projectFor(projectRef)
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
+	client, err := env.notionFor(project, "wishlist-clear")
+	if err != nil {
+		return err
+	}
 
 	blocks, err := client.GetBlockChildren(ctx, projectID)
 	if err != nil {

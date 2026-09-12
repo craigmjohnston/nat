@@ -14,7 +14,6 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
-	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
@@ -64,8 +63,11 @@ func planApply(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
-	st := store.Over(client)
+	st, err := env.storeFor(projectID, project)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
 	sp := storeProject(projectID, project)
 
 	shape, err := st.Shape(ctx, sp)
@@ -78,12 +80,11 @@ func planApply(ctx context.Context, args []string, env Env) error {
 	// no dependency has nothing to resolve.
 	var filed []domain.Slice
 	if p.dependsOnAnything() {
-		pages, err := client.QueryDataSource(ctx, project.SlicesDSID, nil,
-			[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
+		plan, err := st.Plan(ctx, sp)
 		if err != nil {
 			return fmt.Errorf("load slices: %w", err)
 		}
-		filed = domain.SlicesFromPages(pages)
+		filed = plan.Project.Slices
 	}
 	targets, err := validatePlan(p, existing, filed)
 	if err != nil {
@@ -104,9 +105,9 @@ func planApply(ctx context.Context, args []string, env Env) error {
 	logging.Action("plan applied", "milestones", len(applied.Milestones), "slices", len(applied.Slices),
 		"dependencies", len(applied.Dependencies))
 	if *asJSON {
-		return writeJSON(env.Out, applied.jsonDoc(project))
+		return writeJSON(env.Out, applied.jsonDoc(project, st))
 	}
-	_, err = io.WriteString(env.Out, applied.markdown(project))
+	_, err = io.WriteString(env.Out, applied.markdown(project, st))
 	return err
 }
 
@@ -498,13 +499,42 @@ type appliedDependency struct {
 // position: a row created now sorts above every row already on the board, and
 // it is the view's own sorts — a project's plan is sorted by Milestone — that
 // put new work under the milestone it belongs to.
+// None of which is true of a store that appends — a plan kept in a file of
+// nat's own reads its slices back in the order they were written — so the
+// reversal is asked of the store rather than assumed, and a run against one
+// that appends writes the document front to back and says so. Reversing there
+// would be the one thing that put the plan out of order.
 const orderNote = "Notion's API cannot write a view's row order, so the slices were created " +
 	"back to front: an unordered row reads back newest first, which is what puts them " +
 	"on the board in the order the plan wrote them."
 
+// appendNote is orderNote for a store that appends, where the order is simply
+// the order things were written in and there is nothing to explain.
+const appendNote = "The slices were created in the order the plan wrote them, which is the order they read back in."
+
 // orderingWord is orderNote for something parsing the output rather than
 // reading it: one stable word for how the run arrived at the plan's order.
 const orderingWord = "reverse-creation"
+
+// appendingWord is appendNote's, for the same reader.
+const appendingWord = "creation"
+
+// orderNoteFor and orderingWordFor are which of those two a run gets, read off
+// the store rather than off the project: how a plan's order comes about is the
+// store's own answer and no part of what the caller knows.
+func orderNoteFor(st store.Store) string {
+	if st.Appends() {
+		return appendNote
+	}
+	return orderNote
+}
+
+func orderingWordFor(st store.Store) string {
+	if st.Appends() {
+		return appendingWord
+	}
+	return orderingWord
+}
 
 // applyPlan writes the plan: milestones first, because the slices are filed
 // under them, then the slices — last one first, for the reason orderNote
@@ -532,7 +562,7 @@ func applyPlan(ctx context.Context, st store.Store, sp store.Project, shape stor
 		return applied, appliedErr(applied, err)
 	}
 	made := make([]appliedSlice, len(p.Slices))
-	for i := len(p.Slices) - 1; i >= 0; i-- {
+	for _, i := range writeOrder(len(p.Slices), st.Appends()) {
 		ps := p.Slices[i]
 		m := targets[i].existing
 		if targets[i].newIndex >= 0 {
@@ -546,10 +576,15 @@ func applyPlan(ctx context.Context, st store.Store, sp store.Project, shape stor
 		})
 		if err != nil {
 			err = fmt.Errorf("create the slice: %w", err)
-			// Everything below this line of the document is written; nothing
-			// above it is. The tail is what exists, and it is already in the
-			// order the document put it.
-			applied.Slices = made[i+1:]
+			// One side of this line of the document is written and the other is
+			// not — which side depends on which way the run was writing — and
+			// what exists is reported in the order the document put it either
+			// way.
+			if st.Appends() {
+				applied.Slices = made[:i]
+			} else {
+				applied.Slices = made[i+1:]
+			}
 			return applied, appliedErr(applied, err)
 		}
 		made[i] = appliedSlice{Slice: s, Milestone: m}
@@ -675,12 +710,12 @@ type addedDependencyJSON struct {
 
 // jsonDoc renders the run as JSON, with empty lists rather than nulls so a
 // consumer can iterate them all without checking.
-func (a appliedPlan) jsonDoc(project config.ProjectConfig) planAppliedJSON {
+func (a appliedPlan) jsonDoc(project config.ProjectConfig, st store.Store) planAppliedJSON {
 	doc := planAppliedJSON{
 		Milestones:   make([]milestoneJSON, 0, len(a.Milestones)),
 		Slices:       make([]addedSliceJSON, 0, len(a.Slices)),
 		Dependencies: make([]addedDependencyJSON, 0, len(a.Dependencies)),
-		Ordering:     orderingWord,
+		Ordering:     orderingWordFor(st),
 	}
 	for _, d := range a.Dependencies {
 		doc.Dependencies = append(doc.Dependencies, addedDependencyJSON{
@@ -709,11 +744,11 @@ func (a appliedPlan) jsonDoc(project config.ProjectConfig) planAppliedJSON {
 // markdown reports the run grouped by milestone, in the order the plan wrote
 // them: the new milestones first, then any existing ones slices were added to.
 // Grouping is how the plan was read and how it is checked over afterwards.
-func (a appliedPlan) markdown(project config.ProjectConfig) string {
+func (a appliedPlan) markdown(project config.ProjectConfig, st store.Store) string {
 	var b strings.Builder
 	b.WriteString("# Plan applied\n\n")
 	fmt.Fprintf(&b, "Added %s to %s.\n", counts(len(a.Milestones), len(a.Slices)), project.Name)
-	fmt.Fprintf(&b, "\n%s\n", orderNote)
+	fmt.Fprintf(&b, "\n%s\n", orderNoteFor(st))
 
 	for _, m := range a.Milestones {
 		fmt.Fprintf(&b, "\n## %s\n\n", m.Name)
@@ -891,4 +926,21 @@ func quoteAll(names []string) []string {
 		out[i] = fmt.Sprintf("%q", name)
 	}
 	return out
+}
+
+// writeOrder is the order the slices of a document are written in: front to
+// back for a store that appends, since that is the order they read back in, and
+// back to front for one that does not — see orderNote. It is the indices rather
+// than the slices so that a run that failed part way can still say which line
+// of the document it got to.
+func writeOrder(n int, appends bool) []int {
+	order := make([]int, n)
+	for i := range order {
+		if appends {
+			order[i] = i
+		} else {
+			order[i] = n - 1 - i
+		}
+	}
+	return order
 }

@@ -105,16 +105,16 @@ func (f *MoveSliceForm) SetSize(width, height int) {
 // save writes the milestone that was picked. A select always holds one of its
 // options, so there is nothing here for a form to decline to write.
 func (f *MoveSliceForm) save(a *App) tea.Cmd {
-	return moveSlice(a.client, f.sliceID, f.sliceName, f.targets[f.chosen])
+	return moveSlice(a.planStore(), f.sliceID, f.sliceName, f.targets[f.chosen])
 }
 
 // moveSlice refiles a slice under another milestone. Only the Milestone column
 // is written — the slice's own brief, status and repo say nothing about where in
 // the plan it sits — and it is written in the shape the plan is kept: a relation
 // to a milestone page, or the option naming a derived one.
-func moveSlice(client NotionAPI, sliceID, sliceName string, m domain.Milestone) tea.Cmd {
+func moveSlice(st store.Store, sliceID, sliceName string, m domain.Milestone) tea.Cmd {
 	return func() tea.Msg {
-		if err := store.Over(client).MoveSlice(context.Background(), sliceID, m); err != nil {
+		if err := st.MoveSlice(context.Background(), sliceID, m); err != nil {
 			return sliceSavedMsg{err: fmt.Errorf("move slice: %w", err)}
 		}
 		return sliceSavedMsg{note: fmt.Sprintf("Moved %q to %s.", sliceName, m.Name), sliceID: sliceID}

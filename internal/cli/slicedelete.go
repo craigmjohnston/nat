@@ -7,7 +7,6 @@ import (
 	"io"
 
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // sliceDelete moves a slice's page to Notion's trash — the headless half of
@@ -36,10 +35,15 @@ func sliceDelete(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	if _, _, _, err := env.projectFor(*projectRef); err != nil {
+	_, projectID, project, err := env.projectFor(*projectRef)
+	if err != nil {
 		return err
 	}
-	st := store.Over(env.NewClient(env.Tokens.Token))
+	st, err := env.storeFor(projectID, project)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
 
 	s, _, err := loadSlice(ctx, st, id)
 	if err != nil {

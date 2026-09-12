@@ -93,6 +93,8 @@ func TestAppNewProjectInfoBreaksTheLineOnShiftEnter(t *testing.T) {
 	app := newProjectApp(client)
 
 	feed(t, app, press(app, "N"))
+	// Past the storage question, which opens on Notion.
+	feed(t, app, press(app, "enter"))
 	typeText(app, "tracker two")
 	feed(t, app, press(app, "enter"))
 	typeText(app, "The conventions.")

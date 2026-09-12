@@ -19,13 +19,13 @@ type sliceRefreshedMsg struct {
 // refreshSlice refetches the one page a finished write touched, so the board
 // can patch its row rather than reload the whole plan.
 func (a *App) refreshSlice(pageID string) tea.Cmd {
-	client := a.client
+	st := a.planStore()
 	return func() tea.Msg {
-		page, err := client.GetPage(context.Background(), pageID)
+		s, _, err := st.Slice(context.Background(), pageID)
 		if err != nil {
 			return sliceRefreshedMsg{err: fmt.Errorf("refresh slice: %w", err)}
 		}
-		return sliceRefreshedMsg{slice: domain.SliceFromPage(*page)}
+		return sliceRefreshedMsg{slice: s}
 	}
 }
 

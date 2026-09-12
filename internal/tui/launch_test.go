@@ -18,6 +18,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
@@ -1136,7 +1137,7 @@ func TestLaunchAgentReportsAFailedPromptFile(t *testing.T) {
 
 	client := &fakeNotion{}
 
-	msg := runMsg(t, launchAgent(launcher, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client,
+	msg := runMsg(t, launchAgent(launcher, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, store.Over(client),
 		&fakePRViewer{}, "u1",
 		agent.PromptContext{
 			Slice: domain.Slice{ID: "s5", Name: "Info view"},

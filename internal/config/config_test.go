@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -520,6 +521,159 @@ func TestValidPollSeconds(t *testing.T) {
 				if got := (Config{PollSeconds: tt.set}).PollInterval(); got != want {
 					t.Errorf("PollInterval() = %v, want the accepted %v kept", got, want)
 				}
+			}
+		})
+	}
+}
+
+// A config file written before there was a choice of backend says nothing
+// about one, and must go on meaning exactly what it meant: a project recorded
+// then is a project in Notion, because there was nothing else it could have
+// been. It must also come back out unchanged — a load and a save of an old
+// file writes no backend of its own.
+func TestLoadMigratesAConfigWrittenBeforeThereWasABackend(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	old := `{
+  "project_db_id": "db-1",
+  "project_db_data_source_id": "ds-1",
+  "assignee_user_id": "u1",
+  "assignee_user_name": "Craig Johnston",
+  "active_project_id": "p1",
+  "projects": {
+    "p1": {"name": "nat", "slices_ds_id": "sds-1", "working_dir": "/repo"}
+  }
+}`
+	path := filepath.Join(dir, appDirName, configFileName)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("make the config dir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(old), 0o644); err != nil {
+		t.Fatalf("write the old config: %v", err)
+	}
+
+	cfg, found, err := Load()
+	if err != nil || !found {
+		t.Fatalf("Load() = %v, %v, %v", cfg, found, err)
+	}
+	p := cfg.Projects["p1"]
+	if p.Backend != "" {
+		t.Errorf("backend = %q, want it unwritten", p.Backend)
+	}
+	if p.IsLocal() {
+		t.Error("a project written before there was a choice is a Notion project")
+	}
+	if !cfg.NeedsNotion() {
+		t.Error("a config of Notion projects needs Notion")
+	}
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save(): %v", err)
+	}
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read the config back: %v", err)
+	}
+	for _, unwanted := range []string{`"backend"`, `"plan_dir"`} {
+		if strings.Contains(string(written), unwanted) {
+			t.Errorf("saved config names %s for a project that has none:\n%s", unwanted, written)
+		}
+	}
+}
+
+// A mixed config — some projects in Notion, some kept in a file of nat's own —
+// loads with each project saying which it is, and round-trips: the local
+// project's two fields are written and the Notion one's are left off.
+func TestLoadAndSaveAMixedConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	path := filepath.Join(dir, appDirName, configFileName)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("make the config dir: %v", err)
+	}
+	mixed := `{
+  "project_db_data_source_id": "ds-1",
+  "projects": {
+    "p1": {"name": "in Notion", "slices_ds_id": "sds-1"},
+    "p2": {"name": "on this machine", "backend": "local", "plan_dir": "/plans"}
+  }
+}`
+	if err := os.WriteFile(path, []byte(mixed), 0o644); err != nil {
+		t.Fatalf("write the config: %v", err)
+	}
+
+	cfg, _, err := Load()
+	if err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+	if cfg.Projects["p1"].IsLocal() {
+		t.Error("p1 is kept in Notion")
+	}
+	if !cfg.Projects["p2"].IsLocal() {
+		t.Error("p2 is kept on this machine")
+	}
+	if cfg.Projects["p2"].PlanDir != "/plans" {
+		t.Errorf("plan dir = %q, want /plans", cfg.Projects["p2"].PlanDir)
+	}
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save(): %v", err)
+	}
+	again, _, err := Load()
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if !reflect.DeepEqual(cfg, again) {
+		t.Errorf("reloaded = %+v\nwant     %+v", again, cfg)
+	}
+}
+
+func TestIsLocalReadsTheWordLoosely(t *testing.T) {
+	tests := []struct {
+		backend string
+		want    bool
+	}{
+		{"", false},
+		{"notion", false},
+		{"local", true},
+		{" Local ", true},
+		// A word a later nat invented is not the local one: reading it as local
+		// would open a file that is not there rather than saying so.
+		{"someday", false},
+	}
+	for _, tt := range tests {
+		if got := (ProjectConfig{Backend: tt.backend}).IsLocal(); got != tt.want {
+			t.Errorf("IsLocal(%q) = %v, want %v", tt.backend, got, tt.want)
+		}
+	}
+}
+
+func TestNeedsNotion(t *testing.T) {
+	local := ProjectConfig{Backend: BackendLocal}
+	tests := []struct {
+		name string
+		cfg  Config
+		want bool
+	}{
+		{"nothing tracked yet", Config{}, true},
+		{"a projects database is configured", Config{
+			ProjectDBDataSourceID: "ds-1", Projects: map[string]ProjectConfig{"p": local},
+		}, true},
+		{"a projects database and nothing else", Config{ProjectDBID: "db-1"}, true},
+		{"one project in Notion", Config{
+			Projects: map[string]ProjectConfig{"p": {Name: "n"}},
+		}, true},
+		{"mixed", Config{
+			Projects: map[string]ProjectConfig{"p": {Name: "n"}, "q": local},
+		}, true},
+		{"every project local", Config{
+			Projects: map[string]ProjectConfig{"p": local, "q": local},
+		}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.cfg.NeedsNotion(); got != tt.want {
+				t.Errorf("NeedsNotion() = %v, want %v", got, tt.want)
 			}
 		})
 	}

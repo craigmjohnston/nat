@@ -86,16 +86,16 @@ func (a *App) startApprove(s domain.Slice, dir string) tea.Cmd {
 		return a.showConfirm(fmt.Sprintf("Cannot open a pull request for %q: %v.", s.Name, err), sevError)
 	}
 	a.busy, a.note = true, approveNote
-	return openPR(a.prs, a.client, s, dir)
+	return openPR(a.prs, a.planStore(), s, dir)
 }
 
 // openPR runs gh in the slice's repository and reports the pull request it
 // opened — [actions.OpenPR], which reads the description the agent wrote at
 // hand-back off the slice page and gives gh its first line as the title and
 // the rest as the body.
-func openPR(prs PRCreator, client NotionAPI, s domain.Slice, dir string) tea.Cmd {
+func openPR(prs PRCreator, st store.Store, s domain.Slice, dir string) tea.Cmd {
 	return func() tea.Msg {
-		url, err := actions.OpenPR(context.Background(), store.Over(client), prs, s, dir)
+		url, err := actions.OpenPR(context.Background(), st, prs, s, dir)
 		if err != nil {
 			return prOpenedMsg{slice: s, err: err}
 		}
@@ -117,7 +117,7 @@ func (a *App) prOpened(msg prOpenedMsg) (tea.Model, tea.Cmd) {
 	}
 	// Still busy: the pull request exists but nothing records it yet, and the
 	// write that does is the other half of the same action.
-	return a, recordPR(a.client, msg.slice, msg.url)
+	return a, recordPR(a.planStore(), msg.slice, msg.url)
 }
 
 // recordPR writes the pull request onto the slice and marks it Done, which is
@@ -130,9 +130,9 @@ func (a *App) prOpened(msg prOpenedMsg) (tea.Model, tea.Cmd) {
 // starting rather than the work ending: the pull request is open, and a review
 // that asks for one more commit needs the checkout that commit is written in.
 // What takes the worktree away is the merge — see [App.removeLanded].
-func recordPR(client NotionAPI, s domain.Slice, url string) tea.Cmd {
+func recordPR(st store.Store, s domain.Slice, url string) tea.Cmd {
 	return func() tea.Msg {
-		if err := actions.RecordPR(context.Background(), store.Over(client), s, url); err != nil {
+		if err := actions.RecordPR(context.Background(), st, s, url); err != nil {
 			return sliceSavedMsg{err: err}
 		}
 		return sliceSavedMsg{note: fmt.Sprintf("Opened the pull request for %q.", s.Name), sliceID: s.ID}

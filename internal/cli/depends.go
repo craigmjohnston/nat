@@ -7,10 +7,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
-	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
@@ -53,12 +51,15 @@ func sliceDepends(ctx context.Context, args []string, env Env) error {
 		}
 	}
 
-	_, _, project, err := env.projectFor(*projectRef)
+	_, projectID, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
-	st := store.Over(client)
+	st, err := env.storeFor(projectID, project)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
 
 	s, _, err := loadSlice(ctx, st, id)
 	if err != nil {
@@ -69,14 +70,14 @@ func sliceDepends(ctx context.Context, args []string, env Env) error {
 	if *clear {
 		kept = nil
 	}
-	wanted, err := dependencyIDs(ctx, client, s, kept, onIDs)
+	wanted, err := dependencyIDs(ctx, st, s, kept, onIDs)
 	if err != nil {
 		return err
 	}
 	// Only an addition can close a cycle: --clear on its own takes edges away,
 	// and reading the whole plan to prove that is a query nobody need pay for.
 	if len(onIDs) > 0 {
-		if err := checkDependsCycle(ctx, client, project, s, wanted); err != nil {
+		if err := checkDependsCycle(ctx, st, storeProject(projectID, project), s, wanted); err != nil {
 			return err
 		}
 	}
@@ -86,7 +87,7 @@ func sliceDepends(ctx context.Context, args []string, env Env) error {
 	}
 	env.nudged()
 
-	deps := dependencyIndex(ctx, client, s)
+	deps := dependencyIndex(ctx, st, s)
 	if *asJSON {
 		return writeJSON(env.Out, dependsJSON{Slice: dependsSliceJSON{
 			ID: s.ID, Name: s.Name, Status: s.StatusName, URL: s.URL,
@@ -104,7 +105,7 @@ func sliceDepends(ctx context.Context, args []string, env Env) error {
 // A slice cannot depend on itself. Notion accepts the relation happily, and
 // what it makes is a slice no run of next-slice or start-slice could ever hand
 // out again.
-func dependencyIDs(ctx context.Context, client API, s domain.Slice, kept, added []string) ([]string, error) {
+func dependencyIDs(ctx context.Context, st store.Store, s domain.Slice, kept, added []string) ([]string, error) {
 	var ids []string
 	seen := map[string]bool{}
 	for _, id := range append(append([]string{}, kept...), added...) {
@@ -120,7 +121,7 @@ func dependencyIDs(ctx context.Context, client API, s domain.Slice, kept, added 
 		if domain.NormaliseID(id) == self {
 			return nil, fmt.Errorf("%q cannot depend on itself: it would never be unblocked", s.Name)
 		}
-		if _, err := client.GetPage(ctx, id); err != nil {
+		if _, _, err := st.Slice(ctx, id); err != nil {
 			return nil, fmt.Errorf("load the slice %s depends on: %w", s.Name, err)
 		}
 	}
@@ -137,16 +138,15 @@ func dependencyIDs(ctx context.Context, client API, s domain.Slice, kept, added 
 // than the one there is, since --clear may be dropping the very edge that would
 // have closed it.
 //
-// A query that failed is handed back rather than passed over: a check that
-// could not be made is no assurance at all, and a Notion that will not answer a
-// read is not one to write a cycle into.
-func checkDependsCycle(ctx context.Context, client API, project config.ProjectConfig, s domain.Slice, wanted []string) error {
-	pages, err := client.QueryDataSource(ctx, project.SlicesDSID, nil,
-		[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
+// A read that failed is handed back rather than passed over: a check that could
+// not be made is no assurance at all, and a store that will not answer a read is
+// not one to write a cycle into.
+func checkDependsCycle(ctx context.Context, st store.Store, p store.Project, s domain.Slice, wanted []string) error {
+	plan, err := st.Plan(ctx, p)
 	if err != nil {
 		return fmt.Errorf("load slices: %w", err)
 	}
-	slices := domain.SlicesFromPages(pages)
+	slices := plan.Project.Slices
 	self := domain.NormaliseID(s.ID)
 	found := false
 	for i := range slices {
@@ -175,15 +175,15 @@ func checkDependsCycle(ctx context.Context, client API, project config.ProjectCo
 // named and their statuses read. A page that cannot be read is logged and left
 // out — the same rule the blocking itself follows, since a dependency nobody
 // can see must not wedge the plan.
-func dependencyIndex(ctx context.Context, client API, s domain.Slice) map[string]domain.Slice {
+func dependencyIndex(ctx context.Context, st store.Store, s domain.Slice) map[string]domain.Slice {
 	var loaded []domain.Slice
 	for _, id := range s.DependsOn {
-		page, err := client.GetPage(ctx, id)
+		dep, _, err := st.Slice(ctx, id)
 		if err != nil {
 			logging.Action("dependency could not be read", "slice", s.ID, "dependency", id, "error", err.Error())
 			continue
 		}
-		loaded = append(loaded, domain.SliceFromPage(*page))
+		loaded = append(loaded, dep)
 	}
 	return domain.SlicesByID(loaded)
 }

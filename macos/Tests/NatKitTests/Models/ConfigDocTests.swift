@@ -55,6 +55,58 @@ final class ConfigDocTests: XCTestCase {
         XCTAssertTrue(doc.projects.isEmpty)
     }
 
+    // A mixed config — some projects in Notion, some kept in a file of nat's
+    // own — is what the app has to load once a machine tracks both, and the
+    // half it has never heard of must not take the other half down with it.
+    func testDecodingAMixedConfig() throws {
+        let json = """
+        {
+          "agent_split_percent": 0,
+          "poll_seconds": 0,
+          "workshop_agent": {},
+          "slice_agent": {},
+          "projects": {
+            "proj-1": {"name": "In Notion", "working_dir": "/a", "backend": "notion"},
+            "proj-2": {"name": "On this machine", "working_dir": "/b", "backend": "local",
+                       "plan_dir": "/plans"}
+          }
+        }
+        """
+
+        let doc = try JSONDecoder().decode(ConfigDoc.self, from: json.data(using: .utf8)!)
+
+        XCTAssertEqual(doc.projects.count, 2)
+        XCTAssertEqual(doc.projects["proj-1"]?.backend, "notion")
+        XCTAssertEqual(doc.projects["proj-1"]?.isLocal, false)
+        XCTAssertEqual(doc.projects["proj-1"]?.planDir, "")
+        XCTAssertEqual(doc.projects["proj-2"]?.backend, "local")
+        XCTAssertEqual(doc.projects["proj-2"]?.isLocal, true)
+        XCTAssertEqual(doc.projects["proj-2"]?.planDir, "/plans")
+    }
+
+    // A listing printed by a nat that had never heard of the choice names no
+    // backend at all, which is a project kept in Notion because that is all
+    // there was to keep it in.
+    func testAProjectWithNoBackendReadsAsNotion() throws {
+        let json = """
+        {"agent_split_percent": 0, "poll_seconds": 0,
+         "workshop_agent": {}, "slice_agent": {},
+         "projects": {"proj-1": {"name": "Old", "working_dir": "/a"}}}
+        """
+
+        let doc = try JSONDecoder().decode(ConfigDoc.self, from: json.data(using: .utf8)!)
+
+        XCTAssertEqual(doc.projects["proj-1"]?.backend, "notion")
+        XCTAssertEqual(doc.projects["proj-1"]?.isLocal, false)
+    }
+
+    // A word a later nat invented is not the local one, and reading it as
+    // local would claim a plan file that is not there.
+    func testAnUnknownBackendReadsAsNotion() throws {
+        let p = ConfigDocProject(name: "P", workingDir: "/a", backend: "someday")
+        XCTAssertFalse(p.isLocal)
+    }
+
     func testEquality() {
         let a = ConfigDoc(
             agentSplitPercent: 65, pollSeconds: 30,

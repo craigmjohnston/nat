@@ -180,22 +180,68 @@ public struct NatProjectConfig: Codable, Equatable, Sendable {
     }
 }
 
-/// Configuration for a single tracked project.
+/// Configuration for a single tracked project, as the config file itself
+/// writes it — this is the file `nat` keeps, read directly rather than through
+/// a command, so what it tolerates is what the app can open.
 public struct ProjectConfig: Codable, Equatable, Sendable {
     public let name: String
+
+    /// The data source the project's plan lives in, and empty for a project
+    /// whose plan is kept in a file of nat's own — there is no data source
+    /// behind one, so the field may be absent from its entry entirely.
     public let slicesDSID: String
     public let workingDir: String
+
+    /// Where the plan is kept — `"notion"` or `"local"`. The config file
+    /// leaves it unwritten for a Notion project, since that is what every
+    /// config written before there was a choice already means, so an absent
+    /// one reads as Notion.
+    public let backend: String
+
+    /// The directory a local plan's file is kept in, and empty both for a
+    /// Notion project and for a local one kept in nat's own data directory.
+    public let planDir: String
+
+    /// Whether the plan is kept on this machine rather than in a workspace.
+    /// Anything that is not the local word is Notion, the empty string
+    /// included: a backend this build does not know came from a later `nat`,
+    /// and reading it as local would claim a plan file that is not there.
+    public var isLocal: Bool { backend.lowercased() == "local" }
 
     enum CodingKeys: String, CodingKey {
         case name
         case slicesDSID = "slices_ds_id"
         case workingDir = "working_dir"
+        case backend
+        case planDir = "plan_dir"
     }
 
-    public init(name: String, slicesDSID: String, workingDir: String) {
+    public init(
+        name: String,
+        slicesDSID: String = "",
+        workingDir: String = "",
+        backend: String = "notion",
+        planDir: String = ""
+    ) {
         self.name = name
         self.slicesDSID = slicesDSID
         self.workingDir = workingDir
+        self.backend = backend
+        self.planDir = planDir
+    }
+
+    /// Every field but the name tolerates absence. A project kept in a file
+    /// has no data source and may name no directory, and one hand-written into
+    /// the config may name neither — a single missing key must not take the
+    /// whole config down with it, since a config that will not parse is an app
+    /// that shows onboarding to somebody who has already onboarded.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        slicesDSID = try container.decodeIfPresent(String.self, forKey: .slicesDSID) ?? ""
+        workingDir = try container.decodeIfPresent(String.self, forKey: .workingDir) ?? ""
+        backend = try container.decodeIfPresent(String.self, forKey: .backend) ?? "notion"
+        planDir = try container.decodeIfPresent(String.self, forKey: .planDir) ?? ""
     }
 }
 

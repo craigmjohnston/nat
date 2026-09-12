@@ -39,19 +39,22 @@ func prStatus(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	_, _, project, err := env.projectFor(projectRef)
+	_, projectID, project, err := env.projectFor(projectRef)
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
+	st, err := env.storeFor(projectID, project)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
 
-	pages, err := client.QueryDataSource(ctx, project.SlicesDSID, nil, nil)
+	plan, err := st.Plan(ctx, storeProject(projectID, project))
 	if err != nil {
 		return fmt.Errorf("load slices: %w", err)
 	}
-	slices := domain.SlicesFromPages(pages)
 
-	readings, marked := prReadings(ctx, client, env.NewGH(), slices, project)
+	readings, marked := prReadings(ctx, st, env.NewGH(), plan.Project.Slices, project)
 	if marked {
 		env.nudged()
 	}
@@ -110,7 +113,7 @@ func readinessOf(status gh.PRStatus) domain.PRReadiness {
 // sends the work round again, and the pull request's own reading tells them
 // apart — a merged one marks the slice Done, a failed reading is logged and
 // changes nothing, and the next run asks again.
-func prReadings(ctx context.Context, client API, ghClient GH, slices []domain.Slice, project config.ProjectConfig) ([]prReading, bool) {
+func prReadings(ctx context.Context, st store.Store, ghClient GH, slices []domain.Slice, project config.ProjectConfig) ([]prReading, bool) {
 	var dirs []string
 	reads := map[string][]domain.Slice{}
 	for _, s := range slices {
@@ -140,7 +143,7 @@ func prReadings(ctx context.Context, client API, ghClient GH, slices []domain.Sl
 			if s.Status != domain.SliceClaimed {
 				continue
 			}
-			done, err := actions.SettleMerged(ctx, store.Over(client), ghClient, s, dir)
+			done, err := actions.SettleMerged(ctx, st, ghClient, s, dir)
 			if err != nil {
 				logging.Action("left an absent pull request unsettled", "slice", s.ID, "error", err)
 				continue

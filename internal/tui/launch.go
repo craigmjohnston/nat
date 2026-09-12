@@ -263,12 +263,12 @@ func (f *LaunchForm) save(a *App) tea.Cmd {
 // configured one, so this is that project.
 func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, attach bool) tea.Cmd {
 	project, _ := a.activeProject()
-	return launchAgent(a.launcher, newWorktrees(), newRepo(), a.client, a.prViewer, a.cfg.AssigneeUserID, agent.PromptContext{
+	return launchAgent(a.launcher, newWorktrees(), newRepo(), a.planStore(), a.prViewer, a.owner().ID, agent.PromptContext{
 		Slice:        s,
 		Project:      project,
 		ProjectID:    a.cfg.ActiveProjectID,
 		WorkingDir:   expandHome(strings.TrimSpace(workdir)),
-		AssigneeName: a.cfg.AssigneeUserName,
+		AssigneeName: a.owner().Name,
 		Fix:          fixLaunch(s),
 	}, trimModel(m), attach)
 }
@@ -290,7 +290,7 @@ func trimModel(m config.AgentModel) config.AgentModel { return actions.TrimModel
 // [prStillOpen]. It stays here rather than moving into [actions.Launch]
 // because the PRViewer is the board's own seam, and no headless launch sets
 // Fix at all.
-func launchAgent(l AgentLauncher, w Worktrees, r Repo, client NotionAPI, viewer PRViewer, assigneeID string,
+func launchAgent(l AgentLauncher, w Worktrees, r Repo, st store.Store, viewer PRViewer, assigneeID string,
 	c agent.PromptContext, m config.AgentModel, attach bool) tea.Cmd {
 	return func() tea.Msg {
 		if c.Fix {
@@ -298,7 +298,7 @@ func launchAgent(l AgentLauncher, w Worktrees, r Repo, client NotionAPI, viewer 
 				return agentLaunchedMsg{toast: toast, sev: sev}
 			}
 		}
-		res, err := actions.Launch(context.Background(), l, w, r, store.Over(client), assigneeID, c, m)
+		res, err := actions.Launch(context.Background(), l, w, r, st, assigneeID, c, m)
 		if err != nil {
 			return agentLaunchedMsg{err: err}
 		}

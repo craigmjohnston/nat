@@ -205,6 +205,14 @@ type Store interface {
 	MoveMilestone(ctx context.Context, p Project, sh Shape, name, target string, before bool) (domain.Milestone, domain.Milestone, error)
 	// AddSlice files one slice under a milestone, Todo and unclaimed.
 	AddSlice(ctx context.Context, p Project, n NewSlice) (domain.Slice, error)
+	// Appends reports whether a slice [AddSlice] files reads back after the
+	// ones already there, which is the order it was written in. It is on the
+	// interface because a caller filing a whole plan at once has to know: a
+	// store that does not append reads its newest slice first, so such a plan
+	// is written back to front to read as the plan, and one that does append
+	// would be reversed by exactly that. It is the one thing about how a store
+	// keeps its order that a caller cannot work out from the operations.
+	Appends() bool
 	// EditSlice rewrites a slice's title, working directory and brief, leaving
 	// its milestone and its status alone: moving a slice is its own operation
 	// and the status is the workflow's.
@@ -221,6 +229,13 @@ type Store interface {
 	// DeleteSlice drops a slice from the plan, as recoverably as the backing
 	// store allows.
 	DeleteSlice(ctx context.Context, id string) error
+	// Close gives back whatever the store holds open, and is the end of its
+	// life rather than of any one operation. It is on the interface because a
+	// caller holding a Store cannot know whether anything is open behind it —
+	// a plan kept in a file has a file open and a plan kept in Notion has
+	// nothing at all — and a caller that had to ask would be a caller that knew
+	// which backend answered.
+	Close() error
 }
 
 // Holds reports whether a slice is in progress and held by the given user,

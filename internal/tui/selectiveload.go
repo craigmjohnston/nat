@@ -38,7 +38,17 @@ func (a *App) startSelectiveLoad() tea.Cmd {
 		return a.startLoad()
 	}
 	project, ok := a.activeProject()
-	if !ok || a.client == nil {
+	if !ok {
+		return nil
+	}
+	// A plan kept in a file has no "edited since" to ask about — and no need
+	// of one: reading the whole of it is a query against a file on this
+	// machine, which is cheaper than the round trip this was written to save.
+	// It is asked before the client, since such a board may well have none.
+	if project.IsLocal() {
+		return a.startLoad()
+	}
+	if a.client == nil {
 		return nil
 	}
 	return a.fetchChangedSlices(project, a.syncedAt)

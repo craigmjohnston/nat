@@ -57,6 +57,14 @@ type agentModelJSON struct {
 type configProjectJSON struct {
 	Name       string `json:"name"`
 	WorkingDir string `json:"working_dir"`
+	// Backend is where the project's plan is kept, always said out loud even
+	// for the Notion projects the config file leaves it unwritten for: a
+	// listing is read by somebody asking which is which, and a blank would
+	// make them go and work it out.
+	Backend string `json:"backend"`
+	// PlanDir is where a local project's plan file is kept, and empty both for
+	// a Notion project and for a local one kept in nat's own data directory.
+	PlanDir string `json:"plan_dir,omitempty"`
 }
 
 // configDoc is the structured form of local config.
@@ -82,7 +90,9 @@ func configShowJSON(cfg config.Config) configDoc {
 		Projects:          make(map[string]configProjectJSON, len(cfg.Projects)),
 	}
 	for id, p := range cfg.Projects {
-		doc.Projects[id] = configProjectJSON{Name: p.Name, WorkingDir: p.WorkingDir}
+		doc.Projects[id] = configProjectJSON{
+			Name: p.Name, WorkingDir: p.WorkingDir, Backend: backendWord(p), PlanDir: p.PlanDir,
+		}
 	}
 	return doc
 }
@@ -107,7 +117,22 @@ func configShowMarkdown(cfg config.Config) string {
 	sort.Strings(ids)
 	for _, id := range ids {
 		p := cfg.Projects[id]
-		out += fmt.Sprintf("- %s (%s): working_dir=%q\n", id, p.Name, p.WorkingDir)
+		out += fmt.Sprintf("- %s (%s): backend=%s working_dir=%q", id, p.Name, backendWord(p), p.WorkingDir)
+		if p.PlanDir != "" {
+			out += fmt.Sprintf(" plan_dir=%q", p.PlanDir)
+		}
+		out += "\n"
 	}
 	return out
+}
+
+// backendWord is where a project's plan is kept, said in full. The config file
+// leaves it unwritten for a Notion project, since that is what every config
+// written before there was a choice already means, but a listing that left it
+// blank would only be read as a question.
+func backendWord(p config.ProjectConfig) string {
+	if p.IsLocal() {
+		return config.BackendLocal
+	}
+	return config.BackendNotion
 }

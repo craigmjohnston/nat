@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // info prints everything an agent needs to know about a project: the
@@ -27,7 +26,11 @@ func info(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	st := store.Over(env.NewClient(env.Tokens.Token))
+	st, err := env.storeFor(projectID, project)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
 
 	conventions, err := st.Body(ctx, projectID)
 	if err != nil {

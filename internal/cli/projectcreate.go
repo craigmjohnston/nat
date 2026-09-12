@@ -12,6 +12,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // getwd is where a project-create given no --repo puts the project's agents:
@@ -35,6 +36,8 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("project-create", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	repo := flags.String("repo", "", "where this project's agents work; defaults to the current directory")
+	local := flags.Bool("local", false, "keep the plan in a file of nat's own rather than in Notion")
+	planDir := flags.String("plan-dir", "", "the `directory` a --local plan is kept in; defaults to nat's own data directory")
 	description := flags.String("description", "", "the conventions to write on the project page; `-` reads them from stdin")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	rest, err := parseFlags(flags, args)
@@ -58,6 +61,12 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 	workdir, err := workingDir(*repo)
 	if err != nil {
 		return err
+	}
+	if !*local && strings.TrimSpace(*planDir) != "" {
+		return usageErrorf("project-create: --plan-dir is for a --local project: a plan kept in Notion is kept in Notion")
+	}
+	if *local {
+		return createLocalProject(env, *asJSON, name, info, workdir, strings.TrimSpace(*planDir))
 	}
 
 	cfg, err := env.workspace()
@@ -130,6 +139,69 @@ func registerProject(env Env, cfg config.Config, s *notion.ProjectStructure, nam
 	return nil
 }
 
+// createLocalProject is the other half of project-create: a project whose plan
+// is kept in a database of nat's own. It touches Notion nowhere — no workspace
+// to create the page in, no projects database to file it under, no token — and
+// that is the whole point of it, since a machine with no Notion at all has to
+// be able to get from nothing to a plan it can work.
+//
+// The identity is nat's own ([store.NewProjectID]), because there is no page
+// create to hand one back, and it is shaped like a Notion page ID so that
+// everything carrying a project ID around — `--project` first of all — cannot
+// tell the two apart. The plan file is written before the config entry: a
+// config naming a project whose plan could not be laid down is a project every
+// later command fails on, and no entry at all is a command that says the
+// project is not tracked, which is true.
+func createLocalProject(env Env, asJSON bool, name, conventions, workdir, planDir string) error {
+	cfg, _, err := env.Load()
+	if err != nil {
+		return err
+	}
+	id := store.NewProjectID()
+	path, err := store.CreateLocalProject(planDir, id, name, conventions)
+	if err != nil {
+		return err
+	}
+	logging.Action("local project created", "project", id, "name", name, "plan", path)
+
+	if cfg.Projects == nil {
+		cfg.Projects = map[string]config.ProjectConfig{}
+	}
+	cfg.Projects[id] = config.ProjectConfig{
+		Name:       name,
+		WorkingDir: workdir,
+		Backend:    config.BackendLocal,
+		PlanDir:    planDir,
+	}
+	if err := env.Save(cfg); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+	env.nudged()
+
+	if asJSON {
+		return writeJSON(env.Out, projectCreatedJSON{Project: createdProjectJSON{
+			ID: id, Name: name, WorkingDir: workdir, Backend: config.BackendLocal, PlanPath: path,
+		}})
+	}
+	_, err = io.WriteString(env.Out, localProjectCreatedMarkdown(id, name, workdir, path))
+	return err
+}
+
+// localProjectCreatedMarkdown reports a local project the way the Notion one is
+// reported, saying instead of a page and a data source the one thing there is
+// to go and look at: the file the plan is in.
+func localProjectCreatedMarkdown(id, name, workdir, path string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# %s\n\n", name)
+	b.WriteString("Created, with its plan kept in a file of nat's own and nothing in Notion.\n\n")
+	fmt.Fprintf(&b, "- Project ID: %s\n", id)
+	fmt.Fprintf(&b, "- Plan: %s\n", path)
+	fmt.Fprintf(&b, "- Working directory: %s\n", workdir)
+	b.WriteString("- Slices track an assignee, which for a plan kept in a file is whoever is working it.\n")
+	fmt.Fprintf(&b, "- %s\n", switchNote)
+	return b.String()
+}
+
 // workingDir is where the project's agents will start: what --repo named, or
 // the directory the command was run in, which is the answer for a project
 // created from inside its own checkout — the ordinary way to run this.
@@ -173,10 +245,15 @@ type createdProjectJSON struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
 	URL        string `json:"url"`
-	SlicesDBID string `json:"slices_db_id"`
-	SlicesDSID string `json:"slices_ds_id"`
+	SlicesDBID string `json:"slices_db_id,omitempty"`
+	SlicesDSID string `json:"slices_ds_id,omitempty"`
 	WorkingDir string `json:"working_dir"`
 	Assignee   bool   `json:"assignee"`
+	// Backend and PlanPath are a local project's own two facts, and are absent
+	// for a project kept in Notion, whose page and data source say where it is
+	// instead.
+	Backend  string `json:"backend,omitempty"`
+	PlanPath string `json:"plan_path,omitempty"`
 }
 
 // projectCreatedMarkdown reports the project as created, saying the two things

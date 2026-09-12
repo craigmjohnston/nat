@@ -8,9 +8,7 @@ import (
 	"io"
 
 	"github.com/craigmjohnston/nat/internal/actions"
-	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
-	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // PRMerger is what pr-merge needs of the GitHub CLI: the pull request merged,
@@ -47,17 +45,20 @@ func prMerge(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	_, _, project, err := env.projectFor(*projectRef)
+	_, projectID, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
+	st, err := env.storeFor(projectID, project)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
 
-	page, err := client.GetPage(ctx, id)
+	s, _, err := st.Slice(ctx, id)
 	if err != nil {
 		return fmt.Errorf("load the slice: %w", err)
 	}
-	s := domain.SliceFromPage(*page)
 	if s.PRURL == "" {
 		return fmt.Errorf("%q has no pull request recorded: nothing to merge", s.Name)
 	}
@@ -83,7 +84,7 @@ func prMerge(ctx context.Context, args []string, env Env) error {
 	// rather than reading as a merge that never was — and running the command
 	// again is not the recovery, since a merged pull request has nothing left
 	// to merge. The board's own reading settles such a slice on its next pass.
-	if err := actions.MarkDone(ctx, store.Over(client), s); err != nil {
+	if err := actions.MarkDone(ctx, st, s); err != nil {
 		return fmt.Errorf("merged #%d, but could not mark %q Done: %w", pr.Number, s.Name, err)
 	}
 	env.nudged()
