@@ -179,6 +179,11 @@ type Store interface {
 	// AddMilestones files milestones at the end of the plan, all of them or
 	// none, and returns them in the order they were given.
 	AddMilestones(ctx context.Context, p Project, sh Shape, names []string) ([]domain.Milestone, error)
+	// RenameMilestone gives one milestone another name, in place: the plan
+	// keeps its order and the milestone keeps its slices. A name the plan
+	// already holds, and an old name it does not, are each refused before
+	// anything is written.
+	RenameMilestone(ctx context.Context, p Project, sh Shape, old, name string) (domain.Milestone, error)
 	// AddSlice files one slice under a milestone, Todo and unclaimed.
 	AddSlice(ctx context.Context, p Project, n NewSlice) (domain.Slice, error)
 	// EditSlice rewrites a slice's title, working directory and brief, leaving

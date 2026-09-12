@@ -204,6 +204,9 @@ usage:
                       whatever project it was on
   nat milestone-add <name> [--json] --project ID
                       add a Queued milestone at the end of the plan
+  nat milestone-rename <old> <new> [--json] --project ID
+                      rename a milestone in place, keeping its place in the
+                      plan and the slices filed under it
   nat slice-add <title> --milestone <name> [--description TEXT|-]
                         [--repo DIR] [--depends-on <slice>]... [--json]
                         --project ID
@@ -337,6 +340,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return projectCreate(ctx, args[1:], env)
 	case "milestone-add":
 		return milestoneAdd(ctx, args[1:], env)
+	case "milestone-rename":
+		return milestoneRename(ctx, args[1:], env)
 	case "slice-add":
 		return sliceAdd(ctx, args[1:], env)
 	case "slice-depends":

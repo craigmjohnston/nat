@@ -175,3 +175,53 @@ func (s PropertySchema) OptionNames() []string {
 	}
 	return names
 }
+
+// OptionInsertedAfter builds the property definition that keeps a select's
+// options as they are and puts one new option directly after the named one.
+// Notion replaces an option list wholesale, so every option already there is
+// sent back exactly as it was read — ID, name and colour — and only the new one
+// is new: an option with no ID is one Notion creates.
+//
+// It is how a milestone is renamed without moving in the plan. Renaming an
+// option in place is quietly ignored by the API, so the new name has to arrive
+// as an option of its own; arriving beside the old one rather than at the end
+// is what leaves the plan in the order it was in once the old one is dropped.
+//
+// It reports false for anything but a select, for the reason
+// [PropertySchema.AppendedOptions] does, and for an option list that does not
+// hold the named option — there is nowhere in particular to put the new one.
+func (s PropertySchema) OptionInsertedAfter(existing, name string) (PropertySchema, bool) {
+	if s.Select == nil {
+		return PropertySchema{}, false
+	}
+	options := make([]SelectOption, 0, len(s.Select.Options)+1)
+	found := false
+	for _, o := range s.Select.Options {
+		options = append(options, o)
+		if o.Name == existing {
+			options = append(options, SelectOption{Name: name})
+			found = true
+		}
+	}
+	if !found {
+		return PropertySchema{}, false
+	}
+	return PropertySchema{Select: &OptionsConfig{Options: options}}, true
+}
+
+// WithoutOption builds the property definition that is this select minus the
+// named option, and false for anything but a select. Every option kept is sent
+// back exactly as it was read, because Notion replaces an option list wholesale:
+// what the list omits is removed.
+func (s PropertySchema) WithoutOption(name string) (PropertySchema, bool) {
+	if s.Select == nil {
+		return PropertySchema{}, false
+	}
+	options := make([]SelectOption, 0, len(s.Select.Options))
+	for _, o := range s.Select.Options {
+		if o.Name != name {
+			options = append(options, o)
+		}
+	}
+	return PropertySchema{Select: &OptionsConfig{Options: options}}, true
+}

@@ -879,3 +879,124 @@ func TestLocalWritesTheStatusesDomainNames(t *testing.T) {
 		}
 	}
 }
+
+// A rename keeps the milestone where it is in the plan and carries its slices
+// over with it, which here is one update of each of two tables.
+func TestLocalRenameMilestone(t *testing.T) {
+	l, _ := openPlan(t)
+	fillPlan(t, l)
+	ctx := context.Background()
+
+	m, err := l.RenameMilestone(ctx, Project{}, wholeShape, "  m2: reads  ", "M2: Reading")
+	if err != nil {
+		t.Fatalf("RenameMilestone: %v", err)
+	}
+	want := domain.Milestone{ID: "M2: Reading", Name: "M2: Reading", Order: 1, Status: domain.MilestoneActive}
+	if m != want {
+		t.Errorf("milestone = %+v, want %+v", m, want)
+	}
+
+	sh, err := l.Shape(ctx, Project{})
+	if err != nil {
+		t.Fatalf("Shape: %v", err)
+	}
+	names := make([]string, len(sh.Milestones))
+	for i, ms := range sh.Milestones {
+		names[i] = ms.Name
+	}
+	if got := strings.Join(names, ", "); got != "M1: The format, M2: Reading" {
+		t.Errorf("milestones = %q, want the one renamed where it was", got)
+	}
+	for _, id := range []string{"reads", "writes"} {
+		if got := readBack(t, l, id).MilestoneID; got != "M2: Reading" {
+			t.Errorf("slice %s is under %q, want the renamed milestone", id, got)
+		}
+	}
+	if got := readBack(t, l, "design").MilestoneID; got != "M1: The format" {
+		t.Errorf("slice design is under %q, want its own milestone untouched", got)
+	}
+}
+
+func TestLocalRenameMilestoneRefusals(t *testing.T) {
+	unchanged := func(t *testing.T, l *Local) {
+		t.Helper()
+		sh, err := l.Shape(context.Background(), Project{})
+		if err != nil {
+			t.Fatalf("Shape: %v", err)
+		}
+		if len(sh.Milestones) != 2 || sh.Milestones[1].Name != "M2: Reads" {
+			t.Errorf("milestones = %+v, want the refused run to have written nothing", sh.Milestones)
+		}
+	}
+	t.Run("a new name the plan already holds", func(t *testing.T) {
+		l, path := openPlan(t)
+		fillPlan(t, l)
+		_, err := l.RenameMilestone(context.Background(), Project{}, wholeShape, "M2: Reads", "  m1: the format  ")
+		if err == nil || !strings.Contains(err.Error(), `already has a milestone named "M1: The format"`) {
+			t.Fatalf("err = %v, want the duplicate refused by name", err)
+		}
+		if !strings.Contains(err.Error(), path) {
+			t.Errorf("err = %q, want the file named", err)
+		}
+		unchanged(t, l)
+	})
+	t.Run("an old name the plan does not hold", func(t *testing.T) {
+		l, path := openPlan(t)
+		fillPlan(t, l)
+		_, err := l.RenameMilestone(context.Background(), Project{}, wholeShape, "M9: Nothing", "M3: Sync")
+		if err == nil || !strings.Contains(err.Error(), `no milestone named "M9: Nothing"`) {
+			t.Fatalf("err = %v, want the missing name refused", err)
+		}
+		if !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), `"M2: Reads"`) {
+			t.Errorf("err = %q, want the file and the plan named", err)
+		}
+		unchanged(t, l)
+	})
+	t.Run("a plan that cannot be read", func(t *testing.T) {
+		l, _ := openPlan(t)
+		fillPlan(t, l)
+		write(t, l, `DROP TABLE milestones`)
+		_, err := l.RenameMilestone(context.Background(), Project{}, wholeShape, "M2: Reads", "M3: Sync")
+		if err == nil || !strings.Contains(err.Error(), "read the milestones") {
+			t.Errorf("err = %v, want the read reported", err)
+		}
+	})
+	t.Run("a milestone that cannot be renamed", func(t *testing.T) {
+		l, _ := openPlan(t)
+		fillPlan(t, l)
+		write(t, l, `CREATE TRIGGER refuse BEFORE UPDATE ON milestones
+			BEGIN SELECT RAISE(ABORT, 'no renames here'); END`)
+		_, err := l.RenameMilestone(context.Background(), Project{}, wholeShape, "M2: Reads", "M3: Sync")
+		if err == nil || !strings.Contains(err.Error(), "rename the milestone") {
+			t.Errorf("err = %v, want the write reported", err)
+		}
+	})
+	t.Run("slices that cannot be refiled", func(t *testing.T) {
+		l, _ := openPlan(t)
+		fillPlan(t, l)
+		write(t, l, `CREATE TRIGGER refuse BEFORE UPDATE ON slices
+			BEGIN SELECT RAISE(ABORT, 'no refiling here'); END`)
+		_, err := l.RenameMilestone(context.Background(), Project{}, wholeShape, "M2: Reads", "M3: Sync")
+		if err == nil || !strings.Contains(err.Error(), "refile the milestone's slices") {
+			t.Errorf("err = %v, want the write reported", err)
+		}
+		// The transaction is one write or none: the milestone is where it was.
+		sh, err := l.Shape(context.Background(), Project{})
+		if err != nil {
+			t.Fatalf("Shape: %v", err)
+		}
+		if sh.Milestones[1].Name != "M2: Reads" {
+			t.Errorf("milestones = %+v, want the rolled-back rename", sh.Milestones)
+		}
+	})
+	t.Run("slices that cannot be read", func(t *testing.T) {
+		l, _ := openPlan(t)
+		fillPlan(t, l)
+		write(t, l, `DELETE FROM slice_deps`)
+		write(t, l, `DROP TABLE slices`)
+		_, err := l.RenameMilestone(context.Background(), Project{}, wholeShape, "M2: Reads", "M3: Sync")
+		if err == nil || !strings.Contains(err.Error(), "read the slices") {
+			t.Errorf("err = %v, want the read reported", err)
+		}
+	})
+}

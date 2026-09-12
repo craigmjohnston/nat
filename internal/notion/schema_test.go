@@ -182,3 +182,53 @@ func TestSingleSelfRelation(t *testing.T) {
 		})
 	}
 }
+
+// An option inserted after a named one keeps every option already there exactly
+// as it was read, and lands where the old one is rather than at the end: that is
+// what lets a milestone be renamed without moving in the plan.
+func TestOptionInsertedAfter(t *testing.T) {
+	plan := PropertySchema{Type: TypeSelect, Select: &OptionsConfig{Options: []SelectOption{
+		{ID: "a", Name: "M1", Color: "blue"},
+		{ID: "b", Name: "M2", Color: "red"},
+	}}}
+
+	got, ok := plan.OptionInsertedAfter("M1", "M1: Client")
+	if !ok {
+		t.Fatal("OptionInsertedAfter() refused a select holding the option")
+	}
+	want := []SelectOption{
+		{ID: "a", Name: "M1", Color: "blue"},
+		{Name: "M1: Client"},
+		{ID: "b", Name: "M2", Color: "red"},
+	}
+	if !reflect.DeepEqual(got.Select.Options, want) {
+		t.Errorf("options = %+v, want %+v", got.Select.Options, want)
+	}
+
+	if _, ok := plan.OptionInsertedAfter("M9", "M3"); ok {
+		t.Error("OptionInsertedAfter() accepted an option the list does not hold")
+	}
+	if _, ok := SchemaRichText().OptionInsertedAfter("M1", "M3"); ok {
+		t.Error("OptionInsertedAfter() accepted something that is not a select")
+	}
+}
+
+// Dropping an option sends back every option kept exactly as it was read, since
+// Notion replaces an option list wholesale.
+func TestWithoutOption(t *testing.T) {
+	plan := PropertySchema{Type: TypeSelect, Select: &OptionsConfig{Options: []SelectOption{
+		{ID: "a", Name: "M1", Color: "blue"},
+		{ID: "b", Name: "M2", Color: "red"},
+	}}}
+
+	got, ok := plan.WithoutOption("M1")
+	if !ok {
+		t.Fatal("WithoutOption() refused a select")
+	}
+	if want := []SelectOption{{ID: "b", Name: "M2", Color: "red"}}; !reflect.DeepEqual(got.Select.Options, want) {
+		t.Errorf("options = %+v, want %+v", got.Select.Options, want)
+	}
+	if _, ok := SchemaRichText().WithoutOption("M1"); ok {
+		t.Error("WithoutOption() accepted something that is not a select")
+	}
+}

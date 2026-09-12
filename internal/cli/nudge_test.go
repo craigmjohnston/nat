@@ -56,6 +56,14 @@ func TestMutatingCommandsNudgeTheBoardOnce(t *testing.T) {
 			},
 		},
 		{
+			name: "milestone-rename",
+			args: []string{"milestone-rename", "M2: Board", "M2: The board", "--project", "project-1"},
+			env: func(t *testing.T) Env {
+				env, _ := testEnv(testConfig(), renamableAPI())
+				return env
+			},
+		},
+		{
 			name: "slice-add",
 			args: []string{"slice-add", "Frame the board", "--milestone", "M2: Board", "--project", "project-1"},
 			env: func(t *testing.T) Env {

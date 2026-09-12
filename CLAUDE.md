@@ -52,12 +52,12 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   one slice, read the prose on a page — a slice's brief or a project's
   conventions, which are the same read — read the pull request description a
   hand-back filed, claim a slice, release one, close one out, record a pull
-  request on one, mark one Done, add milestones, add a slice, edit one, record
-  what one waits on, refile one, drop one. It is said in the app's own words —
-  `domain.Slice` and `domain.Milestone` go in and come back, and no property
-  type, request body or page shape crosses the line — so a second backend
-  plugs in here and nothing above has to learn about it. `Notion` is the first
-  implementation and for now the only one, built over a narrow `API` (the ten
+  request on one, mark one Done, add milestones, rename one, add a slice, edit
+  one, record what one waits on, refile one, drop one. It is said in the app's
+  own words — `domain.Slice` and `domain.Milestone` go in and come back, and no
+  property type, request body or page shape crosses the line — so a second
+  backend plugs in here and nothing above has to learn about it. `Notion` is
+  the first implementation and for now the only one, built over a narrow `API` (the ten
   calls the plan operations are made of) with `Over`, so the board and a
   headless command hand over the client they already hold rather than making a
   second, and a test drives the real store over its own fake.
@@ -451,7 +451,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   session reaches it in the meantime. It is also the one
   command that writes local config, which is why `Env` has a `Save` at all,
   and the one-off additions
-  `nat milestone-add <name>` (Queued, at the end of the plan) and
+  `nat milestone-add <name>` (Queued, at the end of the plan),
+  `nat milestone-rename <old> <new>`, which gives a milestone another name and
+  changes nothing else about the plan — see the domain rule below for what that
+  costs — and
   `nat slice-add <title> --milestone <name> [--description TEXT|-]
   [--repo DIR] [--depends-on <slice>]...` (Todo and unassigned, description as
   the page body; `--description -` reads it from stdin, so a slice-add typed
@@ -1443,10 +1446,25 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   per run, after the options already there, since their order is the plan's
   order. A name the plan already holds is refused before that write, because
   such a milestone is nothing but its name — and for the same reason a milestone
-  is named by name alone, never by URL or ID. `next-slice` reads the plan the
-  way the board does and takes work from the lowest-ordered milestone that is
-  not Done: a milestone is Queued until a slice under it starts, so gating on
-  Active would leave a plan on which nothing has begun with no way to begin.
+  is named by name alone, never by URL or ID. `milestone-rename` is the one
+  thing that changes a milestone rather than adding one, and it goes the long
+  way the `Claimed` migration does, for the same reason: Notion silently ignores
+  renaming a select option in place, a 200 whose body still says the old name.
+  The new option is written beside the old one
+  (`notion.PropertySchema.OptionInsertedAfter`) rather than after every option
+  there is, since a milestone's order is its place among the options and
+  appending would rename it and move it to the end of the plan in the one write;
+  every slice holding the old option is refiled onto the new one; and only then
+  is the old option dropped (`WithoutOption`, which the migration's own last
+  step now shares). That order is the point — a run refused part way leaves
+  every slice on a milestone that exists — and the plan is read before the first
+  write for the same reason. Two names are refused before any of it: a new name
+  the plan already holds, which is the rule `milestone-add` applies and includes
+  the name it already has, and an old name the plan does not, each said with
+  what the plan does hold. `next-slice` reads the plan the way the board does
+  and takes work from the lowest-ordered milestone that is not Done: a
+  milestone is Queued until a slice under it starts, so gating on Active would
+  leave a plan on which nothing has begun with no way to begin.
   `start-slice` names a slice's milestone from the schema's options, and
   `complete-slice` touches no milestone at all.
 - Slice order is where the slices sit in the project's own board:
