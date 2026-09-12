@@ -92,7 +92,6 @@ struct NewProjectSheetView: View {
                 Button(action: submit) {
                     AsyncActionLabel(isBusy: isSubmitting) {
                         Text(mode == .open ? "Open" : "Create")
-                            .frame(minWidth: 60)
                     }
                 }
                 .buttonStyle(PrimaryButtonStyle())

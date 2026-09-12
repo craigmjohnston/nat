@@ -469,8 +469,9 @@ public enum TerminalType {
 /// The height is stated rather than left to the label's padding: a button
 /// whose height falls out of its font and its insets is one that changes
 /// size when the label does, and a spinner appearing beside the label is
-/// exactly such a change. `AsyncActionLabel` holds the width; this holds the
-/// height.
+/// exactly such a change. The width is the one dimension a spinner does
+/// move: `AsyncActionLabel` grows the button by it while the work runs and
+/// gives it back after.
 public enum ButtonMetrics {
     /// The height of every primary and secondary button.
     public static let height: CGFloat = 22

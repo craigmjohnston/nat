@@ -78,7 +78,6 @@ struct OnboardingView: View {
         Button(action: checkAgain) {
             AsyncActionLabel(isBusy: isChecking) {
                 Text("Check Again")
-                    .frame(width: 100)
             }
         }
         .disabled(isChecking)

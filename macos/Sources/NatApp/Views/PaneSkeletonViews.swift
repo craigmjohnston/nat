@@ -72,8 +72,10 @@ struct SkeletonParagraph: View {
 
 /// The busy mark a pane wears while a read runs over content already on
 /// screen: a small spinner in a slot that is there whether it is spinning or
-/// not, so admitting to the refresh moves nothing beside it. The same rule
-/// `AsyncActionLabel` follows for a button, and for the same reason.
+/// not, so admitting to the refresh moves nothing beside it. Not the rule
+/// `AsyncActionLabel` follows for a button — a button grows by its spinner,
+/// because a press is what started the work and the growth says so; nobody
+/// pressed anything for a background read.
 struct RefreshingMark: View {
     let isRefreshing: Bool
 
