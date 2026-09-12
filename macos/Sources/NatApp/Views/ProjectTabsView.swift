@@ -18,11 +18,10 @@ struct ProjectTabsView: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: 0) {
             ForEach(Array(appModel.projectTabs.enumerated()), id: \.element.id) { index, tab in
-                let liveCount = appModel.liveCount(projectID: tab.id)
+                let attention = appModel.attention(projectID: tab.id)
                 let isActive = appModel.activeProjectID == tab.id
-                let color = colorForProject(tab.id)
 
-                projectTabView(tab: tab, liveCount: liveCount, isActive: isActive, color: color, index: index)
+                projectTabView(tab: tab, attention: attention, isActive: isActive, index: index)
 
                 // Hairline separator after an inactive tab, unless the next
                 // one is active (a filled tab is its own edge). The last
@@ -71,24 +70,26 @@ struct ProjectTabsView: View {
     @ViewBuilder
     private func projectTabView(
         tab: (id: String, name: String),
-        liveCount: Int,
+        attention: ProjectAttention,
         isActive: Bool,
-        color: Color?,
         index: Int
     ) -> some View {
         HStack(spacing: 7) {
-            // Colored dot (pulsing when live sessions exist)
-            if let color = color {
-                if liveCount > 0 && !isActive {
-                    Circle()
-                        .fill(color)
-                        .frame(width: 8, height: 8)
-                        .modifier(PulseModifier())
-                } else {
-                    Circle()
-                        .fill(color)
-                        .frame(width: 8, height: 8)
-                }
+            // The state dot: what, of everything in flight on the project,
+            // is most worth the eye. It pulses only while agents are working
+            // and nothing wants the user — a moving purple dot reads as
+            // "busy", a still coloured one as "something waits on you" — and
+            // only on an inactive tab, the tab the user is already looking
+            // at having no news to break.
+            if attention.pulses && !isActive {
+                Circle()
+                    .fill(dotColor(attention.role))
+                    .frame(width: 8, height: 8)
+                    .modifier(PulseModifier())
+            } else {
+                Circle()
+                    .fill(dotColor(attention.role))
+                    .frame(width: 8, height: 8)
             }
 
             // Project name. The width is reserved at semibold whichever
@@ -108,13 +109,13 @@ struct ProjectTabsView: View {
 
             // Count badge — tight, caption-scale, tabular digits rather than
             // a switch to monospaced design (there's no code here to align).
-            if liveCount > 0 {
+            if let badge = attention.badge {
                 // A badge is a chip: its own tint washed into the band behind
                 // it, with a word readable on that. It used to fill with
                 // `labelQuaternary` and write `labelTertiary` on it — ink as
                 // ground, the same mistake as the hover fill, and the last one
                 // left in the app.
-                Text("\(liveCount)")
+                Text("\(badge)")
                     .font(.system(size: Typo.caption, weight: .regular))
                     .monospacedDigit()
                     .foregroundStyle(DesignTokens.chipInk(.labelSecondary, on: .header))
@@ -240,19 +241,23 @@ struct ProjectTabsView: View {
         return directory.isEmpty ? nil : directory
     }
 
-    /// Return a color for each project (cycling through a palette).
-    private func colorForProject(_ projectID: String) -> Color? {
-        let colors: [Color] = [
-            DesignTokens.systemOrange,
-            DesignTokens.systemGreen,
-            DesignTokens.systemYellow,
-            DesignTokens.systemRed
-        ]
-
-        // Use hash to consistently map projects to colors
-        let hash = projectID.hashValue
-        let index = abs(hash) % colors.count
-        return colors[index]
+    /// The dot's colour for a state. The rail's own vocabulary, read at 8px:
+    /// waiting yellow, review green, working accent, and a muted dot for a
+    /// project with nothing happening on it — kept rather than dropped, so a
+    /// tab does not change width as its project goes quiet.
+    ///
+    /// Working is the accent rather than the rail's old orange because at
+    /// this size orange and the waiting yellow are all but the same colour,
+    /// and the theme's purple is the furthest thing from both. The dot used
+    /// to be an identity colour hashed off the project ID, which meant
+    /// nothing at all — a project could land on red by hash alone.
+    private func dotColor(_ role: ProjectAttentionRole) -> Color {
+        switch role {
+        case .waiting: return DesignTokens.systemYellow
+        case .review: return DesignTokens.systemGreen
+        case .working: return DesignTokens.accent
+        case .idle: return DesignTokens.labelTertiary
+        }
     }
 }
 

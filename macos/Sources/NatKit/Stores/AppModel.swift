@@ -525,19 +525,31 @@ public final class AppModel {
         workshopLaunchError = "the workshop session was launched but has not appeared — check `nat status`"
     }
 
-    /// Return the count of live agents in a given project.
-    public func liveCount(projectID: String) -> Int {
-        guard let projectStore = stores[projectID] else { return 0 }
-        guard let projectInfo = projectStore.state.projectInfo else { return 0 }
+    /// What a project's tab says needs attention — the count its pill draws
+    /// and the state its dot takes, as one reading so the two cannot
+    /// disagree. Nothing at all for a project whose plan has not landed:
+    /// there are no slices to read anything off yet.
+    ///
+    /// The PR-readiness map is the active project's alone — one store, as
+    /// `reviewStatsStore`'s comment says — so an inactive tab's dot has that
+    /// refinement absent rather than wrong, exactly as the rail does with no
+    /// reading taken. The planning agent is the one the activity map
+    /// attributes to this project by its own scoped tag; the bare legacy
+    /// sentinel belongs to no project in particular and is nobody's tab.
+    public func attention(projectID: String) -> ProjectAttention {
+        guard let projectInfo = stores[projectID]?.state.projectInfo else { return .none }
 
-        let sliceIDs = Set(projectInfo.slices.map { $0.id })
-        var count = 0
-        for (sliceID, _) in activityStore?.agents ?? [:] {
-            if sliceIDs.contains(sliceID) {
-                count += 1
-            }
-        }
-        return count
+        let agents = activityStore?.agents ?? [:]
+        let liveAgents = agents.mapValues { AgentActivity($0.activity) }
+        let planning = agents[TmuxSession.planTag(projectID: projectID)]
+            .map { AgentActivity($0.activity) }
+
+        return projectAttention(
+            slices: projectInfo.slices,
+            liveAgents: liveAgents,
+            planningAgent: planning,
+            prReadiness: projectID == activeProjectID ? (reviewStatsStore?.prReadiness ?? [:]) : [:]
+        )
     }
 
     /// Manually refresh the current project — also the nudge watcher's own

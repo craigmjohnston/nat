@@ -48,6 +48,22 @@ from. The React code here is a *spec to read*, not code to run or port literally
 - The mock's pixel metrics (22px controls, 28px rows, 0.5px hairlines, radii
   6/5/10) are in `design-system/tokens/spacing.css`.
 
+## Deliberate departures from the mock
+
+- **The project tab's dot is a state, not an identity.** The mock gives each
+  tab a coloured dot as a per-project identity mark, and the app shipped that
+  as a hash of the project ID onto orange/green/yellow/red — a colour that
+  meant nothing, and one a project could land on red by. It now says what,
+  of everything in flight on that project, is most worth the eye: yellow an
+  agent waiting for input, green a branch handed back or a pull request ready
+  to merge, the accent purple agents working with nothing waiting, and a
+  muted dot for a quiet project. Only the working dot pulses. The number
+  beside it counts those same things needing attention rather than live tmux
+  sessions. It is one vocabulary with the rail, which reads the same roles in
+  the same colours — see `macos/Sources/NatKit/ViewModels/ProjectAttention.swift`.
+  The accent for "working" is a departure from the rail's own earlier orange
+  too: at 8px, orange and the waiting yellow are all but the same colour.
+
 ## Omitted from the export
 
 - `_ds_bundle.js` and `styles.css` — the React *implementations* of the design

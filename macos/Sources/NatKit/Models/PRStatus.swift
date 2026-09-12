@@ -34,9 +34,14 @@ public struct PRStatusSlice: Codable, Equatable, Sendable {
         self.readiness = readiness
     }
 
+    /// `domain.PRReadiness`'s two affirmative words, said once here rather
+    /// than spelled out wherever a reading is compared against one.
+    public static let awaitingReview = "awaiting review"
+    public static let readyToMerge = "ready to merge"
+
     /// Whether the reading positively saw this pull request open — the one
     /// fact rail membership rides on.
     public var isOpen: Bool {
-        readiness == "awaiting review" || readiness == "ready to merge"
+        readiness == Self.awaitingReview || readiness == Self.readyToMerge
     }
 }
