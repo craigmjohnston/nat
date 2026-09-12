@@ -62,6 +62,24 @@ A native macOS application for the notion-agent-tracker project, built as a pure
   every stroke by about a fifth of its ink at any scale, which on a dark
   ground is a halo rather than weight, and nothing else in the window is
   drawn with it.
+- Three gestures in that pane are the host's rather than SwiftTerm's, and all
+  three are overrides on `FirstLayoutTerminalView` in
+  `NatApp/Views/AgentTerminalHostView.swift` with the decision itself in
+  `NatKit/Terminal`. A modified enter is written as its CSI-u encoding by hand
+  (`TerminalKeyEncoding`, the Go TUI's `shiftEnterBytes`/`ctrlEnterBytes`
+  verbatim), since the emulator sends a plain carriage return for all three
+  enters and Claude Code reads that as submit — which is the one thing
+  shift+enter must not do; the hook is `performKeyEquivalent` rather than
+  `keyDown`, because SwiftTerm declares the latter `public` rather than `open`
+  and AppKit offers the former to the view hierarchy first. A clicked link
+  opens through `TerminalLink`, which is an allowlist of schemes rather than
+  "anything with one" — the text in the pane is written by a model — and the
+  click itself needs `linkHighlightMode = .hover`, since SwiftTerm ships
+  `.hoverWithModifier` and an ordinary click did nothing. Files dropped or
+  pasted onto the pane type their paths, escaped as a native terminal escapes
+  them (`TerminalDropText`); a clipboard image held as data rather than as a
+  file is not this pane's business, since a pseudo-terminal carries only text
+  and Claude Code's own ctrl+v reads the Mac's clipboard directly.
 
 ## Building and Running
 
