@@ -62,6 +62,33 @@ A native macOS application for the notion-agent-tracker project, built as a pure
   every stroke by about a fifth of its ink at any scale, which on a dark
   ground is a halo rather than weight, and nothing else in the window is
   drawn with it.
+- Three gestures in that pane are the host's rather than SwiftTerm's, and all
+  three are overrides on `FirstLayoutTerminalView` in
+  `NatApp/Views/AgentTerminalHostView.swift` with the decision itself in
+  `NatKit/Terminal`. A modified enter is written as its CSI-u encoding by hand
+  (`TerminalKeyEncoding`, the Go TUI's `shiftEnterBytes`/`ctrlEnterBytes`
+  verbatim), since the emulator sends a plain carriage return for all three
+  enters and Claude Code reads that as submit — which is the one thing
+  shift+enter must not do; the hook is `performKeyEquivalent` rather than
+  `keyDown`, because SwiftTerm declares the latter `public` rather than `open`
+  and AppKit offers the former to the view hierarchy first. A link is opened
+  by **command+click** — the gesture Terminal.app and iTerm2 already use —
+  through `TerminalLink`, which is an allowlist of schemes rather than
+  "anything with one", since the text in the pane is written by a model. The
+  modifier is not a preference: nat binds tmux's `MouseDown1Pane` to open the
+  OSC 8 hyperlink under the mouse (`agent.hyperlinkClickArgs`, which the Go
+  TUI needs because its own terminal widget cannot open a link), so a gesture
+  both layers act on opens the link twice — and SwiftTerm reports an activated
+  link with no flag saying whether it came from a payload or from its own
+  detector, which is exactly the distinction tmux acts on. The only safe
+  gesture is therefore one tmux never sees, so `mouseDown` withholds a
+  command-modified click from mouse reporting and `TerminalMouse` is where
+  that reasoning is written down. A plain click is untouched, and still opens
+  an OSC 8 link through tmux exactly as it did before. Files dropped or
+  pasted onto the pane type their paths, escaped as a native terminal escapes
+  them (`TerminalDropText`); a clipboard image held as data rather than as a
+  file is not this pane's business, since a pseudo-terminal carries only text
+  and Claude Code's own ctrl+v reads the Mac's clipboard directly.
 
 ## Building and Running
 

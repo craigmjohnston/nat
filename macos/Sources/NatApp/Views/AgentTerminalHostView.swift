@@ -50,6 +50,24 @@ public struct AgentTerminalHostView: NSViewRepresentable {
         let view = FirstLayoutTerminalView(frame: .zero)
         TerminalTheme.apply(DesignTokens.palette(for: colorScheme), to: view)
         view.processDelegate = context.coordinator
+        // Link tracking, said out loud rather than left to SwiftTerm's
+        // defaults. `.implicit` is the part that matters: it finds a URL an
+        // agent simply printed as well as one it wrapped in an OSC 8
+        // hyperlink, and a printed URL is nearly always what Claude Code
+        // writes — without it a bare URL is not a link to click at all.
+        //
+        // `.hoverWithModifier` is SwiftTerm's own default and is kept
+        // deliberately: it makes command+click the gesture that opens a link,
+        // which is the one gesture tmux does not also open it on. See
+        // `TerminalMouse` for why that matters and `mouseDown` below for the
+        // other half of it.
+        view.linkReporting = .implicit
+        view.linkHighlightMode = .hoverWithModifier
+        // Files dropped onto the pane. SwiftTerm registers no dragged type of
+        // its own, so without this AppKit never offers the view a drop at
+        // all; the view's own `performDragOperation` is what turns one into
+        // the paths it types.
+        view.registerForDraggedTypes([.fileURL])
         // `makeNSView` runs before AppKit has laid this view out at all, so
         // starting the process here would open the pty at SwiftTerm's
         // default ~80 columns and let tmux wrap its whole backlog to that
@@ -175,6 +193,13 @@ public struct AgentTerminalHostView: NSViewRepresentable {
 /// updates `terminal.cols`/`rows` from the new frame), so by the time
 /// `super.setFrameSize` returns here, the dimensions a `startProcess` reads
 /// via `getWindowSize()` already match this size.
+///
+/// It is also where the three gestures SwiftTerm leaves to its host are
+/// answered, since each of them is an override on the view rather than a
+/// delegate callback: a modified enter, a clicked link, and files dropped or
+/// pasted onto the pane. Every decision any of them makes is NatKit's —
+/// `TerminalKeyEncoding`, `TerminalLink`, `TerminalDropText` — so what is
+/// here is the AppKit event and nothing more.
 final class FirstLayoutTerminalView: LocalProcessTerminalView {
     /// Fired once, the first time AppKit sets this view to a real, nonzero
     /// size. Never fires again after that — a later resize is a plain
@@ -188,5 +213,141 @@ final class FirstLayoutTerminalView: LocalProcessTerminalView {
         guard !hasFiredFirstLayout, newSize.width > 0, newSize.height > 0 else { return }
         hasFiredFirstLayout = true
         onFirstRealLayout?()
+    }
+
+    // MARK: - The two enters
+
+    /// `kVK_Return` and `kVK_ANSI_KeypadEnter`, the two keys that mean enter
+    /// on a Mac keyboard. Named here rather than importing Carbon for two
+    /// integers, and read as key codes rather than as characters so the
+    /// answer does not depend on the keyboard layout.
+    private static let returnKeyCodes: Set<UInt16> = [36, 76]
+
+    /// Sends a modified enter as its CSI-u encoding, since the emulator would
+    /// send an ordinary carriage return for all three enters and Claude Code
+    /// reads that as "submit" — which is exactly what shift+enter must not do.
+    ///
+    /// Only the two combinations `TerminalKeyEncoding` names are taken; every
+    /// other key press, a plain enter included, falls through to SwiftTerm's
+    /// own `keyDown`.
+    ///
+    /// `performKeyEquivalent` rather than `keyDown`: SwiftTerm declares its
+    /// `keyDown` `public` rather than `open`, so it cannot be overridden from
+    /// outside that module at all. The key-equivalent hook is the one AppKit
+    /// offers the view hierarchy *before* the key reaches the first
+    /// responder's `keyDown` — it is how a default button answers a plain
+    /// return — which is exactly the interception this needs, and it is
+    /// `open`. Consuming the event is what `true` says.
+    ///
+    /// It is offered to the whole hierarchy regardless of who has the
+    /// keyboard, so this only answers while the pane itself does: a
+    /// shift+enter typed into a sheet's text field elsewhere in the window is
+    /// not the agent's.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard hasKeyboardFocus,
+              Self.returnKeyCodes.contains(event.keyCode),
+              let bytes = TerminalKeyEncoding.returnKey(Self.modifiers(of: event))
+        else {
+            return super.performKeyEquivalent(with: event)
+        }
+        send(txt: bytes)
+        return true
+    }
+
+    /// Whether this pane is where typing currently goes — itself, or any view
+    /// SwiftTerm keeps inside it for input.
+    private var hasKeyboardFocus: Bool {
+        guard let responder = window?.firstResponder as? NSView else { return false }
+        return responder === self || responder.isDescendant(of: self)
+    }
+
+    /// AppKit's modifier flags as NatKit's, reading the four keys the
+    /// encoding is about and ignoring the rest — caps lock and the numeric
+    /// pad's own flag are not modifiers a key encoding has an opinion on, and
+    /// keypad enter carries the latter.
+    private static func modifiers(of event: NSEvent) -> TerminalKeyModifiers {
+        let flags = event.modifierFlags
+        var out: TerminalKeyModifiers = []
+        if flags.contains(.shift) { out.insert(.shift) }
+        if flags.contains(.control) { out.insert(.control) }
+        if flags.contains(.option) { out.insert(.option) }
+        if flags.contains(.command) { out.insert(.command) }
+        return out
+    }
+
+    // MARK: - Links
+
+    /// Opens a link activated by command+click with the Mac's own handler.
+    ///
+    /// `LocalProcessTerminalView` already opens whatever it is handed; this
+    /// overrides that to go through `TerminalLink`, so what an agent's pane
+    /// can open on one gesture is a decision written down and tested rather
+    /// than "any scheme at all".
+    override func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
+        guard let url = TerminalLink.destination(link) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    /// Keeps a command-modified click out of mouse reporting, so tmux — and
+    /// the agent behind it — never sees the gesture this pane opens links on.
+    ///
+    /// Without this the press would reach tmux, whose `MouseDown1Pane`
+    /// binding opens the OSC 8 hyperlink under the mouse, and the release
+    /// would reach `requestOpenLink` above: one link, two opens, two browser
+    /// tabs. `TerminalMouse` carries the whole reasoning. A plain click is
+    /// untouched and goes where it always went, tmux's own hyperlink binding
+    /// included.
+    override func mouseDown(with event: NSEvent) {
+        guard !TerminalMouse.isTerminalOwnClick(Self.modifiers(of: event)) else { return }
+        super.mouseDown(with: event)
+    }
+
+    // MARK: - Files dropped and pasted
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        Self.filePaths(on: sender.draggingPasteboard).isEmpty ? [] : .copy
+    }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        type(into: Self.filePaths(on: sender.draggingPasteboard))
+    }
+
+    /// Pasting files — a Finder copy, or anything else that puts file URLs on
+    /// the pasteboard — types their paths, exactly as dropping them does. A
+    /// pasteboard holding no file falls through to SwiftTerm's own paste,
+    /// which is the text one.
+    ///
+    /// An image held as raw data rather than as a file is nobody's business
+    /// here: a pseudo-terminal carries no bytes but text, and Claude Code's
+    /// own ctrl+v reads the Mac's clipboard directly — a key that reaches it
+    /// through this pane unchanged, since it is not a command-key gesture.
+    override func paste(_ sender: Any) {
+        if type(into: Self.filePaths(on: .general)) {
+            return
+        }
+        super.paste(sender)
+    }
+
+    /// Types the paths, answering whether there was anything to type.
+    private func type(into paths: [String]) -> Bool {
+        let text = TerminalDropText.text(forPaths: paths)
+        guard !text.isEmpty else { return false }
+        send(txt: text)
+        return true
+    }
+
+    /// The files a pasteboard names, and nothing else it happens to hold.
+    ///
+    /// Gated on the pasteboard actually advertising file URLs, so a copied
+    /// string that reads like a path stays a string: pasting text is the
+    /// paste this pane already did correctly.
+    private static func filePaths(on pasteboard: NSPasteboard) -> [String] {
+        guard pasteboard.types?.contains(.fileURL) == true else { return [] }
+        let read = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        )
+        guard let urls = read as? [URL] else { return [] }
+        return urls.filter(\.isFileURL).map(\.path)
     }
 }
