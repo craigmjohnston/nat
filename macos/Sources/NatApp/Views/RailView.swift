@@ -72,12 +72,14 @@ struct RailView: View {
     /// the board's own d does.
     @State private var sliceForDeletion: MilestoneSliceRow?
     /// The three numbers `RailSectionLayout` shares the rail out on: how
-    /// tall the rail is, how much of it each section's own chrome — its rule
-    /// and its pinned heading — has already taken, and how tall each
-    /// section's list comes to. Measured with `onGeometryChange` rather than
+    /// tall the rail's container is, how much of it each section's own
+    /// chrome — its rule and its pinned heading — has already taken, and how
+    /// tall each section's list comes to. All three are measured rather than
     /// assumed, since all three move: the rail is a resizable column, a
     /// section's heading comes and goes with the section, and the lists grow
-    /// an entry at a time as agents start and slices land.
+    /// an entry at a time as agents start and slices land. The chrome and
+    /// the lists are read off the views themselves, which is what they come
+    /// to; `railHeight` is read off the container alone — see `body`.
     @State private var railHeight: CGFloat = 0
     @State private var chromeHeights: [RailSection: CGFloat] = [:]
     @State private var contentHeights: [RailSection: CGFloat] = [:]
@@ -144,14 +146,27 @@ struct RailView: View {
     }
 
     var body: some View {
-        railColumn
-        // What the open sections divide between them. Measured rather than
+        // What the open sections divide between them, measured rather than
         // assumed: the rail is a resizable column in a resizable window, so
         // how much there is to share changes under the user's hands.
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.height
-        } action: { height in
-            railHeight = height
+        //
+        // The reading is taken off the container — a `GeometryReader` takes
+        // the size it is proposed whatever its content comes to — and never
+        // off `railColumn`, whose height is the sum of the very shares this
+        // number produces. See `RailSectionLayout.available` for the circle
+        // that was, and `WindowShellView` for the offer: the shell gives the
+        // rail a width and the band's own height, so what is read here is
+        // the window's height and the column is drawn inside it.
+        GeometryReader { proxy in
+            railColumn
+                .frame(
+                    width: proxy.size.width,
+                    height: proxy.size.height,
+                    alignment: .topLeading
+                )
+                .onChange(of: proxy.size.height, initial: true) { _, height in
+                    railHeight = height
+                }
         }
         .surface(.window)
         .rule(.separator, edges: [.trailing], width: 0.5)
@@ -468,16 +483,17 @@ struct RailView: View {
         drawnSections.filter { !collapsed.contains($0) }
     }
 
-    /// Each open section's scroll height, off the shared rule. What is left
-    /// to share is the rail less every drawn section's own chrome — the rule
-    /// and the pinned heading, which never scroll and never yield — and less
-    /// the air under the last of them.
+    /// Each open section's scroll height, off the shared rule. What there
+    /// is to share is `RailSectionLayout.available` on the rail as its
+    /// container offers it, less every drawn section's own chrome.
     private var sectionHeights: [RailSection: CGFloat] {
         let open = openSections
         let chrome = drawnSections.reduce(CGFloat.zero) { $0 + (chromeHeights[$1] ?? 0) }
         let shares = RailSectionLayout.heights(
             open: open.map { Double(contentHeights[$0] ?? 0) },
-            available: Double(railHeight - chrome) - RailSectionLayout.footRoom
+            available: RailSectionLayout.available(
+                rail: Double(railHeight), chrome: Double(chrome)
+            )
         )
         return Dictionary(uniqueKeysWithValues: zip(open, shares.map { CGFloat($0) }))
     }
