@@ -131,4 +131,59 @@ final class RailSectionRulesTests: XCTestCase {
             "the comment about a bare line no longer applies and should not be left behind"
         )
     }
+
+    /// ACTIVE is pinned: it is built inside the band rather than inside the
+    /// scroll the plan is in, so scrolling the plan leaves it where it is.
+    func testTheActiveSectionIsInThePinnedBand() throws {
+        let s = try source()
+        guard let band = s.range(of: "private var pinnedBand: some View {"),
+              let plan = s.range(of: "private var planScroll: some View {"),
+              let heading = s.range(of: #"sectionHeading("ACTIVE", icon: "bolt")"#) else {
+            return XCTFail("the rail should build a pinned band and a scrolling plan")
+        }
+        XCTAssertTrue(band.lowerBound < heading.lowerBound && heading.lowerBound < plan.lowerBound,
+                      "the ACTIVE heading belongs to the pinned band")
+    }
+
+    /// TODO and DONE are the whole of what scrolls, and they scroll under the
+    /// band rather than beside it.
+    func testThePlanIsWhatScrolls() throws {
+        let s = try source()
+        guard let plan = s.range(of: "private var planScroll: some View {") else {
+            return XCTFail("the rail should build a scrolling plan")
+        }
+        let body = s[plan.upperBound...]
+        XCTAssertTrue(body.contains(#"sectionHeading("TODO", icon: "list.bullet")"#),
+                      "TODO scrolls with the plan")
+        XCTAssertTrue(body.contains("doneHeadingRow(summary)"), "so does DONE")
+        XCTAssertTrue(
+            s.contains("            pinnedBand\n            planScroll"),
+            "the band sits above the plan in one column")
+    }
+
+    /// How tall the band is drawn is `RailPinnedBand`'s answer rather than a
+    /// number typed into the view, so the rule and its tests are one thing.
+    func testTheBandsHeightIsTheSharedRule() throws {
+        let s = try source()
+        XCTAssertTrue(
+            s.contains(".frame(height: RailPinnedBand.height(content: pinnedHeight, rail: railHeight))"),
+            "the band should take its height from the shared rule")
+        XCTAssertTrue(
+            s.contains(".scrollDisabled(!RailPinnedBand.scrolls(content: pinnedHeight, rail: railHeight))"),
+            "and scroll within itself on the same rule's say-so")
+    }
+
+    /// The rule between the two regions is outside the band's own scroll: a
+    /// separator that scrolled with what it separates is not one.
+    func testTheSeparatorSitsBetweenTheRegions() throws {
+        let s = try source()
+        guard let frame = s.range(
+                of: ".frame(height: RailPinnedBand.height(content: pinnedHeight, rail: railHeight))"),
+              let rule = s.range(of: "Rule()", range: frame.upperBound..<s.endIndex),
+              let plan = s.range(of: "private var planScroll: some View {") else {
+            return XCTFail("the band should close with a rule")
+        }
+        XCTAssertTrue(rule.lowerBound < plan.lowerBound,
+                      "the separator belongs to the band, under its scroll")
+    }
 }

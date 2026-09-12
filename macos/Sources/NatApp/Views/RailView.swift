@@ -71,6 +71,14 @@ struct RailView: View {
     /// from here (the page goes to Notion's trash), so it asks first, the way
     /// the board's own d does.
     @State private var sliceForDeletion: MilestoneSliceRow?
+    /// How tall the rail itself is, and how tall the pinned band's content
+    /// comes to — the two numbers `RailPinnedBand` reads to decide where the
+    /// band stops growing and starts scrolling within itself. Measured with
+    /// `onGeometryChange` rather than assumed, since both move: the rail is
+    /// a resizable column and the band grows an entry at a time as agents
+    /// start.
+    @State private var railHeight: CGFloat = 0
+    @State private var pinnedHeight: CGFloat = 0
     /// What the last move or delete refused with — a slice in progress, gh
     /// down, whatever nat said — shown in an alert and cleared by dismissing
     /// it. The rail has no status bar to toast on.
@@ -121,11 +129,133 @@ struct RailView: View {
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            pinnedBand
+            planScroll
+        }
+        // What the band's cap is a share of. Measured rather than assumed:
+        // the rail is a resizable column in a resizable window, so how much
+        // of it half is changes under the user's hands.
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            railHeight = height
+        }
+        .surface(.window)
+        .rule(.separator, edges: [.trailing], width: 0.5)
+        .alert(
+            "Delete \u{201C}\(sliceForDeletion?.name ?? "")\u{201D}?",
+            isPresented: Binding(
+                get: { sliceForDeletion != nil },
+                set: { if !$0 { sliceForDeletion = nil } }
+            ),
+            presenting: sliceForDeletion
+        ) { slice in
+            Button("Delete", role: .destructive) {
+                Task { await deleteSlice(slice) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { slice in
+            // Mirrors the board's own confirm: a Done slice is finished work,
+            // so dropping the record of it is warned about rather than refused.
+            Text(slice.glyph == .done
+                ? "This slice is Done — deleting it drops the record of finished work. The page goes to Notion's trash."
+                : "The page goes to Notion's trash.")
+        }
+        .alert(
+            "That didn't work",
+            isPresented: Binding(
+                get: { actionError != nil },
+                set: { if !$0 { actionError = nil } }
+            ),
+            presenting: actionError
+        ) { _ in
+            Button("OK") {}
+        } message: { message in
+            Text(message)
+        }
+        // The first plan to land opens the milestones already moving — the
+        // current one and any with work done or in flight — and leaves the
+        // untouched ones closed, the way the mock draws Wishlist; everything
+        // after that is the user's folding.
+        .onChange(of: railModel.todoFolders.isEmpty, initial: true) { _, isEmpty in
+            guard !expandedSeeded, !isEmpty else { return }
+            expandedSeeded = true
+            for folder in railModel.todoFolders
+            where folder.isCurrent || folder.done > 0 || folder.inFlightCount > 0 {
+                expandedMilestones.insert(folder.milestoneID)
+            }
+            if expandedMilestones.isEmpty, let first = railModel.todoFolders.first {
+                expandedMilestones.insert(first.milestoneID)
+            }
+        }
+    }
+
+    /// The in-flight band, pinned above the plan: ACTIVE and the rule that
+    /// closes it, held still while TODO and DONE scroll under them. What is
+    /// running is the rail's standing question, and an answer that scrolls
+    /// away with the plan is one the user has to go and look for.
+    ///
+    /// The band is as tall as what it holds, so a rail with a quiet ACTIVE
+    /// section reads exactly as it did when the whole rail was one scroll —
+    /// and no taller than `RailPinnedBand.maxShare` of the rail, past which
+    /// it scrolls within itself rather than squeezing the plan out. The rule
+    /// is outside that inner scroll: it is the line between the two regions
+    /// and not a row of either.
+    private var pinnedBand: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    // ACTIVE section — always drawn, holding entries or holding
+                    // its own note: what is running is the rail's standing
+                    // question, and a heading that only appeared once something
+                    // was read as chrome arriving from nowhere. It is the one
+                    // flight section there is: the planning agent and the
+                    // branches waiting on a review are entries of it rather than
+                    // headings of their own, in that order.
+                    sectionHeading("ACTIVE", icon: "bolt")
+
+                    if railModel.active.isEmpty {
+                        activeEmptyNote
+                    } else {
+                        ForEach(railModel.active) { entry in
+                            activeRow(for: entry)
+                                .contentShape(Rectangle())
+                                .onTapGesture { select(entry) }
+                        }
+                    }
+                }
+                .padding(.top, 12)
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height
+                } action: { height in
+                    pinnedHeight = height
+                }
+            }
+            .scrollDisabled(!RailPinnedBand.scrolls(content: pinnedHeight, rail: railHeight))
+            .frame(height: RailPinnedBand.height(content: pinnedHeight, rail: railHeight))
+
+            // The rule under the flight sections, drawn whatever they
+            // hold: ACTIVE is above it on every rail there is, so there
+            // is always a section for it to close — and it is the line
+            // between the pinned band and the scrolling plan besides.
+            Rule()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+        }
+    }
+
+    /// The plan itself — the load's own states, then TODO and DONE — which
+    /// is the whole of what scrolls: the band above it does not move.
+    private var planScroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                // The load's own states come first: a board that swallowed
-                // its failure would read as an empty tracker, which is worse
-                // than any error. A first load draws the plan's own skeleton,
+                // The load's own states lead the plan: a board that
+                // swallowed its failure would read as an empty tracker,
+                // which is worse than any error. They sit here rather than
+                // in the band above because what they stand in for is the
+                // plan — the skeleton is the plan's own shape, and the
+                // retry is the plan's read to make again. A first load draws the plan's own skeleton,
                 // a failed first load says what nat said and offers the retry,
                 // and a failed refresh keeps the stale plan under one quiet
                 // warning line (the TUI convention: a failure leaves the
@@ -188,32 +318,6 @@ struct RailView: View {
                     .padding(.bottom, 10)
                 }
 
-                // ACTIVE section — always drawn, holding entries or holding
-                // its own note: what is running is the rail's standing
-                // question, and a heading that only appeared once something
-                // was read as chrome arriving from nowhere. It is the one
-                // flight section there is: the planning agent and the
-                // branches waiting on a review are entries of it rather than
-                // headings of their own, in that order.
-                sectionHeading("ACTIVE", icon: "bolt")
-
-                if railModel.active.isEmpty {
-                    activeEmptyNote
-                } else {
-                    ForEach(railModel.active) { entry in
-                        activeRow(for: entry)
-                            .contentShape(Rectangle())
-                            .onTapGesture { select(entry) }
-                    }
-                }
-
-                // The rule under the flight sections, drawn whatever they
-                // hold: ACTIVE is above it on every rail there is, so there
-                // is always a section for it to close.
-                Rule()
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-
                 // TODO — the milestones still holding work, folders in a
                 // file tree with their remaining slices as files.
                 if !railModel.todoFolders.isEmpty {
@@ -256,56 +360,7 @@ struct RailView: View {
                     }
                 }
             }
-            .padding(.top, 12)
             .padding(.bottom, 16)
-        }
-        .surface(.window)
-        .rule(.separator, edges: [.trailing], width: 0.5)
-        .alert(
-            "Delete \u{201C}\(sliceForDeletion?.name ?? "")\u{201D}?",
-            isPresented: Binding(
-                get: { sliceForDeletion != nil },
-                set: { if !$0 { sliceForDeletion = nil } }
-            ),
-            presenting: sliceForDeletion
-        ) { slice in
-            Button("Delete", role: .destructive) {
-                Task { await deleteSlice(slice) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { slice in
-            // Mirrors the board's own confirm: a Done slice is finished work,
-            // so dropping the record of it is warned about rather than refused.
-            Text(slice.glyph == .done
-                ? "This slice is Done — deleting it drops the record of finished work. The page goes to Notion's trash."
-                : "The page goes to Notion's trash.")
-        }
-        .alert(
-            "That didn't work",
-            isPresented: Binding(
-                get: { actionError != nil },
-                set: { if !$0 { actionError = nil } }
-            ),
-            presenting: actionError
-        ) { _ in
-            Button("OK") {}
-        } message: { message in
-            Text(message)
-        }
-        // The first plan to land opens the milestones already moving — the
-        // current one and any with work done or in flight — and leaves the
-        // untouched ones closed, the way the mock draws Wishlist; everything
-        // after that is the user's folding.
-        .onChange(of: railModel.todoFolders.isEmpty, initial: true) { _, isEmpty in
-            guard !expandedSeeded, !isEmpty else { return }
-            expandedSeeded = true
-            for folder in railModel.todoFolders
-            where folder.isCurrent || folder.done > 0 || folder.inFlightCount > 0 {
-                expandedMilestones.insert(folder.milestoneID)
-            }
-            if expandedMilestones.isEmpty, let first = railModel.todoFolders.first {
-                expandedMilestones.insert(first.milestoneID)
-            }
         }
     }
 
