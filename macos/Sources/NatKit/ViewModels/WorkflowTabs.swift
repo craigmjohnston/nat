@@ -53,6 +53,17 @@ public struct WorkflowTabState: Equatable {
         guard let tabIndex = tabs.firstIndex(of: tab) else { return false }
         return tabs[(tabIndex + 1)...].contains { reachable.contains($0) }
     }
+
+    /// Whether the separator drawn before `tab` — the one joining it to the
+    /// stage on its left — is lit. A separator is the step from one stage to
+    /// the next, so it lights only where both of its ends are reachable:
+    /// either end still locked and the step is not one that can be taken.
+    /// The first stage has nothing on its left and so no separator at all,
+    /// which reads as unlit, as does a tab this state says nothing about.
+    public func isSeparatorLit(before tab: WorkflowTab) -> Bool {
+        guard let tabIndex = tabs.firstIndex(of: tab), tabIndex > 0 else { return false }
+        return isReachable(tabs[tabIndex - 1]) && isReachable(tab)
+    }
 }
 
 /// Determines the workflow tab state for a slice.

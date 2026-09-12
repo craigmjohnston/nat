@@ -225,4 +225,58 @@ final class WorkflowTabsTests: XCTestCase {
 
         XCTAssertEqual(state.tabs, WorkflowTab.allCases)
     }
+
+    // MARK: - Separators
+
+    func testSeparatorLit_bothEndsReachable() {
+        let slice = Slice(
+            id: "s-1", name: "Task", status: "In progress", milestoneID: "m-1",
+            assignee: "", pr: "", url: "", blocked: false, handedBack: false
+        )
+
+        let state = buildWorkflowTabState(for: slice, hasLiveAgent: true)
+
+        // Brief and Agent are both reachable; Diff and PR are not.
+        XCTAssertTrue(state.isSeparatorLit(before: .agent))
+        XCTAssertFalse(state.isSeparatorLit(before: .diff))
+        XCTAssertFalse(state.isSeparatorLit(before: .pr))
+    }
+
+    func testSeparatorLit_firstStageHasNoSeparator() {
+        let slice = Slice(
+            id: "s-1", name: "Task", status: "In progress", milestoneID: "m-1",
+            assignee: "", pr: "https://github.com/...", url: "", branch: "feature-x",
+            blocked: false, handedBack: true
+        )
+
+        let state = buildWorkflowTabState(for: slice, hasLiveAgent: true)
+
+        XCTAssertFalse(state.isSeparatorLit(before: .brief))
+        XCTAssertTrue(state.isSeparatorLit(before: .agent))
+        XCTAssertTrue(state.isSeparatorLit(before: .diff))
+        XCTAssertTrue(state.isSeparatorLit(before: .pr))
+    }
+
+    func testSeparatorLit_reachableStageBehindALockedOne() {
+        // A Todo slice with a pull request recorded: PR is reachable, Diff
+        // and Agent are not, so neither separator either side of the gap
+        // lights even though the stages at the ends of the strip do.
+        let slice = Slice(
+            id: "s-1", name: "Task", status: "Todo", milestoneID: "m-1",
+            assignee: "", pr: "https://github.com/...", url: "", blocked: false, handedBack: false
+        )
+
+        let state = buildWorkflowTabState(for: slice, hasLiveAgent: false)
+
+        XCTAssertFalse(state.isSeparatorLit(before: .agent))
+        XCTAssertFalse(state.isSeparatorLit(before: .diff))
+        XCTAssertFalse(state.isSeparatorLit(before: .pr))
+    }
+
+    func testSeparatorLit_tabOutsideTheStrip() {
+        let state = WorkflowTabState(
+            tabs: [.brief, .agent], reachable: [.brief, .agent, .diff], defaultTab: .agent)
+
+        XCTAssertFalse(state.isSeparatorLit(before: .diff))
+    }
 }
