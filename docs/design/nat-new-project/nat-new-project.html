@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="design_doc_mode" content="canvas">
+<title>nat — New project experience</title>
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/colors.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/typography.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/materials.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/shadows.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/motion.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/tokens/interaction.css">
+<link rel="stylesheet" href="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/styles.css">
+<style>
+body{margin:0}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.frame{position:absolute}
+.frame-label{position:absolute;white-space:nowrap;font:600 12px/16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.4px;text-transform:uppercase;color:#71717a}
+.frame-note{position:absolute;white-space:nowrap;font:400 12px/16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#a1a1aa}
+@keyframes ws-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.ws-pulse{animation:ws-pulse 1.6s ease-in-out infinite;display:inline-block}
+.nat3{
+--window-bg:#2a2733;--control-bg:#2a2733;--card-bg:#312d3d;--field-bg:#211e29;
+--strip-bg:#211e29;--material-header-bg:#211e29;--under-window-bg:#1b1922;
+--separator:rgba(235,235,245,.12);--control-border:rgba(235,235,245,.16);--control-face:#3a3646;
+--label:#e9e8f0;--label-secondary:rgba(233,232,240,.68);--label-tertiary:rgba(233,232,240,.45);--label-quaternary:rgba(233,232,240,.13);
+--accent:#b1a8f2;--accent-text:#17161c;--selected-content-bg:#b1a8f2;--selected-content-bg-unemphasized:rgba(235,235,245,.14);
+--system-orange:#f2a87e;--system-yellow:#ecd495;--system-green:#a8dea1;--system-red:#ec8c9e;--system-blue:#91b7f2;--system-pink:#efb5e0;--system-teal:#95d8cc;--system-gray:#9a9aa5;
+color-scheme:dark;
+}
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="_ds/macos-native-design-system-1534034e-f59f-4478-8f04-41ed8c061cd2/_ds_bundle.js"></script>
+</head>
+<body>
+<div class="frame-label" style="left:60px;top:50px">New project experience</div>
+<div class="frame-note" style="left:60px;top:68px">Pressing + opens an Untitled tab — empty rail, starter card in the content pane</div>
+<div class="frame" style="left:60px;top:98px" data-screen-label="New project"><div id="root-np"></div></div>
+<div class="frame-label" style="left:1580px;top:50px">Workshopping</div>
+<div class="frame-note" style="left:1580px;top:68px">After Workshop the plan — Claude terminal in the pane, workshop session active in the rail, local storage by default</div>
+<div class="frame" style="left:1580px;top:98px" data-screen-label="Workshopping"><div id="root-nf1"></div></div>
+<div class="frame-label" style="left:3100px;top:50px">Proposal ready</div>
+<div class="frame-note" style="left:3100px;top:68px">Claude's suggested milestones/slices land in the rail as a PROPOSED tree — accept, or keep talking to revise</div>
+<div class="frame" style="left:3100px;top:98px" data-screen-label="Proposal ready"><div id="root-nf2"></div></div>
+<div class="frame-label" style="left:4620px;top:50px">Accepted — Notion nudge</div>
+<div class="frame-note" style="left:4620px;top:68px">Plan written locally, tab named; the one-time Notion mirror card sits at the rail bottom</div>
+<div class="frame" style="left:4620px;top:98px" data-screen-label="Accepted"><div id="root-nf4"></div></div>
+<div class="frame-label" style="left:1580px;top:1040px">Notion page picker</div>
+<div class="frame-note" style="left:1580px;top:1058px">From “Create Notion page…” in the rail's storage strip</div>
+<div class="frame" style="left:1580px;top:1088px" data-screen-label="Notion picker"><div id="root-nf3"></div></div>
+<script type="text/babel" src="ui-shared.jsx"></script>
+<script type="text/babel" src="ui-v3.jsx"></script>
+<script type="text/babel" src="ui-newproject.jsx"></script>
+<script type="text/babel" src="ui-npflow.jsx"></script>
+<script type="text/babel">
+ReactDOM.createRoot(document.getElementById("root-np")).render(<NPShell />);
+ReactDOM.createRoot(document.getElementById("root-nf1")).render(<NFShell stage="terminal" />);
+ReactDOM.createRoot(document.getElementById("root-nf2")).render(<NFShell stage="proposal" />);
+ReactDOM.createRoot(document.getElementById("root-nf4")).render(<NFShell stage="accepted" />);
+ReactDOM.createRoot(document.getElementById("root-nf3")).render(<NFNotionPicker />);
+</script>
+</body>
+</html>
