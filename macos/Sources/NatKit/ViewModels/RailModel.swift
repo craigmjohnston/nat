@@ -270,6 +270,41 @@ public struct RailModel: Equatable {
     }
 }
 
+// MARK: - ACTIVE Membership
+
+/// Whether the ACTIVE section's review half would hold this slice: a branch
+/// handed back and not yet approved, or — `openPRSliceIDs` being the slices
+/// whose pull request is positively read as open — one approved and waiting
+/// on the merge.
+public func isReviewSlice(_ slice: Slice, openPRSliceIDs: Set<String>) -> Bool {
+    slice.handedBack || openPRSliceIDs.contains(slice.id)
+}
+
+/// Whether the ACTIVE section's working half would hold this slice. Mirrors
+/// the gate `domain.StateOf` applies before a live agent ever enters into it:
+/// In progress, not handed back, and no pull request recorded. It is never
+/// "has a live tmux session" — a session can outlive the slice it was
+/// launched on.
+public func isActiveSlice(_ slice: Slice) -> Bool {
+    slice.status == "In progress" && !slice.handedBack && slice.pr.isEmpty
+}
+
+/// The slices the ACTIVE section would draw: the union of the two halves
+/// above. One rule, shared by the rail that draws the section and by
+/// `projectAttention`, which may only read a live agent whose slice is in it
+/// — so the tab's dot and the rail can never disagree about what is in
+/// flight. It takes the open-pull-request slice IDs rather than a readiness
+/// map, since the two callers hold that reading in different shapes and only
+/// its key set is the membership question.
+public func inFlightSliceIDs(slices: [Slice], openPRSliceIDs: Set<String>) -> Set<String> {
+    var ids = Set<String>()
+    for slice in slices where isReviewSlice(slice, openPRSliceIDs: openPRSliceIDs)
+        || isActiveSlice(slice) {
+        ids.insert(slice.id)
+    }
+    return ids
+}
+
 // MARK: - Rail Model Builder
 
 /// Builds a rail model from project info and live agents.
@@ -312,21 +347,14 @@ public func buildRailModel(
     // reading taken (app just opened, gh unreachable) the second kind is
     // simply absent, which is also what keeps every Done slice a project
     // ever finished from flooding the section.
-    let reviewSlices = slices.filter { $0.handedBack || prReadiness[$0.id] != nil }
+    let reviewSlices = slices.filter { isReviewSlice($0, openPRSliceIDs: openPRs) }
 
     // A milestone's name off its ID, for the session rows' second lines.
     let milestoneNames: [String: String] = milestones.reduce(into: [:]) { $0[$1.id] = $1.name }
 
-    // ACTIVE membership mirrors the gate `domain.StateOf` applies before a
-    // live agent ever enters into it: In progress, not handed back, and no
-    // pull request recorded. It is never "has a live tmux session" — a
-    // session can outlive the slice it was launched on (left idle on a Done
-    // slice, or on one already handed back), and none of that is this
-    // section's to draw. What a live agent refines is the label alone, in
-    // `activeDisplay` below.
-    let activeSlices = slices.filter {
-        $0.status == "In progress" && !$0.handedBack && $0.pr.isEmpty
-    }
+    // The working half of the section — `isActiveSlice`'s rule. What a live
+    // agent refines is the label alone, in `activeDisplay` below.
+    let activeSlices = slices.filter(isActiveSlice)
 
     // The review entries. A handed-back slice's meta is its diff tally; a
     // slice here for its open pull request has no branch stats to show, and
@@ -354,7 +382,7 @@ public func buildRailModel(
             )
         }
 
-    // The slices something is happening on.
+    // The rows for those slices.
     let working = activeSlices
         .sorted { $0.name < $1.name }
         .map { slice -> ActiveEntry in
@@ -383,7 +411,7 @@ public func buildRailModel(
 
     // The slices already drawn in a session section — never repeated inside
     // a TODO folder, so a slice is one row of the rail and not two.
-    let inFlightIDs = Set(reviewSlices.map(\.id)).union(activeSlices.map(\.id))
+    let inFlightIDs = inFlightSliceIDs(slices: slices, openPRSliceIDs: openPRs)
 
     let sortedMilestones = milestones.sorted { $0.order < $1.order }
 

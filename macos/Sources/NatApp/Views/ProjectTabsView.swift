@@ -107,8 +107,26 @@ struct ProjectTabsView: View {
                         .lineLimit(1)
                 }
 
+            // Everything above is the tab's identity and reads from its
+            // leading edge; the close button belongs to the trailing one,
+            // browser-fashion, with the tab's own width between them. It sat
+            // hard against the label before, which on a tab stretched to its
+            // 220pt maximum left some 120pt of tab to the right of it — every
+            // click aimed where a ✕ lives landed on the tab body and
+            // activated it instead, which is what made the button read as
+            // dead when it had always worked.
+            //
+            // A Spacer rather than a reserved slot: the label is leading-
+            // aligned whatever follows it, so nothing moves as the ✕ fades in
+            // under the mouse.
+            Spacer(minLength: 0)
+
             // Count badge — tight, caption-scale, tabular digits rather than
             // a switch to monospaced design (there's no code here to align).
+            // It sits past the Spacer, at the tab's trailing edge beside the
+            // ✕: the pill is news about the project rather than part of its
+            // name, and a count that trailed the label moved with every
+            // rename.
             if let badge = attention.badge {
                 // A badge is a chip: its own tint washed into the band behind
                 // it, with a word readable on that. It used to fill with
@@ -123,20 +141,6 @@ struct ProjectTabsView: View {
                     .background(DesignTokens.wash(.chip, tone: .labelSecondary, on: .header))
                     .cornerRadius(8)
             }
-
-            // Everything above is the tab's identity and reads from its
-            // leading edge; the close button belongs to the trailing one,
-            // browser-fashion, with the tab's own width between them. It sat
-            // hard against the label before, which on a tab stretched to its
-            // 220pt maximum left some 120pt of tab to the right of it — every
-            // click aimed where a ✕ lives landed on the tab body and
-            // activated it instead, which is what made the button read as
-            // dead when it had always worked.
-            //
-            // A Spacer rather than a reserved slot: the label is leading-
-            // aligned whatever follows it, so nothing moves as the ✕ fades in
-            // under the mouse.
-            Spacer(minLength: 0)
 
             if ProjectTabRules.showsClose(tabCount: appModel.projectTabs.count) {
                 let showClose = ProjectTabRules.closeIsVisible(

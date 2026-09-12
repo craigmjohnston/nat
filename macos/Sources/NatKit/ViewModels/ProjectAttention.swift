@@ -58,10 +58,11 @@ public struct ProjectAttention: Equatable, Sendable {
 /// store reached for here.
 ///
 /// `liveAgents` may be the whole activity map; only the entries naming a
-/// slice of this project are read, since the map is one reading across every
-/// project the app has open. The planning agent has no slice to be keyed by
-/// and is passed separately, nil where the map attributes none to this
-/// project.
+/// slice of this project that the rail's ACTIVE section would draw are read
+/// (`inFlightSliceIDs`), since the map is one reading across every project
+/// the app has open and a session can outlive its slice. The planning agent
+/// has no slice to be keyed by and is passed separately, nil where the map
+/// attributes none to this project.
 ///
 /// What counts towards the pill is a thing needing the user *now*: an agent
 /// waiting for input, a slice handed back for review, and a pull request
@@ -78,8 +79,13 @@ public func projectAttention(
     planningAgent: AgentActivity? = nil,
     prReadiness: [String: String] = [:]
 ) -> ProjectAttention {
-    let sliceIDs = Set(slices.map(\.id))
-    let agents = liveAgents.filter { sliceIDs.contains($0.key) }
+    // Only a slice the ACTIVE section would draw may contribute an agent:
+    // a tmux session can outlive the slice it was launched on — an idle
+    // Claude Code left in the pane of a Done slice whose pull request has
+    // merged — and the rail refuses exactly that. One rule for both, so the
+    // dot and the section can never disagree about what is in flight.
+    let inFlight = inFlightSliceIDs(slices: slices, openPRSliceIDs: Set(prReadiness.keys))
+    let agents = liveAgents.filter { inFlight.contains($0.key) }
     let waiting = agents.filter { $0.value == .waiting }.keys
     let planningWaiting = planningAgent == .waiting
 
