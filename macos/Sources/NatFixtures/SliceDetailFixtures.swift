@@ -119,6 +119,36 @@ extension Fixtures {
         )
     }
 
+    /// The same config with a second project on it. One project draws no
+    /// close button at all (`ProjectTabRules.showsClose`), so this is what a
+    /// story needs to show the tab strip as the user usually has it: a ✕ on
+    /// the active tab, with the count pill seated against it.
+    public static var twoProjectConfig: NatProjectConfig {
+        NatProjectConfig(
+            projects: [
+                projectID: ProjectConfig(
+                    name: "notion-agent-tracker",
+                    slicesDSID: "f1x70000-0000-4000-8000-0000000000d5",
+                    workingDir: "/Users/craig/Projects/notion-agent-tracker"
+                ),
+                secondProjectID: ProjectConfig(
+                    name: "gnat",
+                    slicesDSID: "f1x70000-0000-4000-8000-0000000000d6",
+                    workingDir: "/Users/craig/Projects/gnat"
+                ),
+            ],
+            agentSplitPercent: 45,
+            pollSeconds: 3600,
+            workshopAgent: AgentModel(model: "sonnet", effort: nil),
+            sliceAgent: AgentModel(model: "opus", effort: "high"),
+            assigneeUserName: "Craig Johnston"
+        )
+    }
+
+    /// The second project's page ID, sorting after `projectID` so the
+    /// fixture project stays the active tab.
+    public static let secondProjectID = "f1x70000-0000-4000-8000-000000000002"
+
     /// Config naming no project at all — what a first run reads, and what
     /// leaves the app on its onboarding screen.
     public static let emptyConfig = NatProjectConfig(projects: [:])

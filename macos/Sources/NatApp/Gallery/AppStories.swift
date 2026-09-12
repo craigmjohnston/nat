@@ -104,6 +104,21 @@ enum AppStories {
             )
         },
 
+        Story(
+            name: "project-tabs-multiple",
+            summary: "The tab strip with a second project open: the close button on the "
+                + "active tab, with the count pill seated against it.",
+            size: CGSize(width: 640, height: 40)
+        ) {
+            ProjectTabsView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner),
+                    config: Fixtures.twoProjectConfig
+                ),
+                onNewProject: {}
+            )
+        },
+
         // MARK: - The rail
 
         Story(

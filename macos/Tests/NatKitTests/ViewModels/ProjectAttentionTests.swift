@@ -153,6 +153,84 @@ final class ProjectAttentionTests: XCTestCase {
         XCTAssertEqual(attention.role, .waiting)
     }
 
+    // MARK: - Only ACTIVE-section work is read
+
+    // A tmux session outlives the slice it was launched on: an idle Claude
+    // Code left in the pane of a Done slice whose pull request has merged.
+    // The rail's ACTIVE section refuses exactly that, and so must the tab.
+
+    func testWorkingAgentOnADeadSlice_countsForNothing() {
+        let attention = projectAttention(
+            slices: [slice("s-1", status: "Done", pr: "https://pr/1")],
+            liveAgents: ["s-1": .working]
+        )
+
+        XCTAssertEqual(attention.role, .idle)
+        XCTAssertNil(attention.badge)
+        XCTAssertFalse(attention.pulses)
+    }
+
+    func testWaitingAgentOnADeadSlice_countsForNothing() {
+        let attention = projectAttention(
+            slices: [slice("s-1", status: "Done", pr: "https://pr/1")],
+            liveAgents: ["s-1": .waiting]
+        )
+
+        XCTAssertEqual(attention.role, .idle)
+        XCTAssertNil(attention.badge)
+    }
+
+    func testWaitingAgentOnADoneSliceWithAnOpenPR_counts() {
+        let attention = projectAttention(
+            slices: [slice("s-1", status: "Done", pr: "https://pr/1")],
+            liveAgents: ["s-1": .waiting],
+            prReadiness: ["s-1": PRStatusSlice.awaitingReview]
+        )
+
+        XCTAssertEqual(attention.role, .waiting)
+        XCTAssertEqual(attention.badge, 1)
+    }
+
+    func testAgentOnAHandedBackSlice_countsExactlyAsBefore() {
+        let attention = projectAttention(
+            slices: [slice("s-1", handedBack: true)],
+            liveAgents: ["s-1": .working]
+        )
+
+        XCTAssertEqual(attention.role, .review)
+        XCTAssertEqual(attention.badge, 1)
+    }
+
+    func testOnlyDeadSliceSessions_readAsIdle() {
+        let attention = projectAttention(
+            slices: [
+                slice("s-1", status: "Done", pr: "https://pr/1"),
+                slice("s-2", status: "Todo")
+            ],
+            liveAgents: ["s-1": .working, "s-2": .working]
+        )
+
+        XCTAssertEqual(attention, .none)
+    }
+
+    // MARK: - The shared ACTIVE membership rule
+
+    func testInFlightSliceIDs_isTheUnionOfTheTwoHalves() {
+        let slices = [
+            slice("active"),
+            slice("handed-back", handedBack: true),
+            slice("open-pr", status: "Done", pr: "https://pr/1"),
+            slice("merged", status: "Done", pr: "https://pr/2"),
+            slice("todo", status: "Todo"),
+            slice("approved-no-reading", pr: "https://pr/3")
+        ]
+
+        XCTAssertEqual(
+            inFlightSliceIDs(slices: slices, openPRSliceIDs: ["open-pr"]),
+            ["active", "handed-back", "open-pr"]
+        )
+    }
+
     // MARK: - One pulse rule across the tab and the rail
 
     func testOnlyWorkingPulses_onTheTab() {
