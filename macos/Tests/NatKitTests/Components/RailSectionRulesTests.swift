@@ -1,21 +1,24 @@
 import XCTest
 @testable import NatKit
 
-/// The rail's ACTIVE section is always there. Read off the source the way
+/// The rail's three sections — ACTIVE, TODO and DONE — each a pinned heading
+/// over a scroll of its own. Read off the source the way
 /// `ProjectTabStripRulesTests` reads the tab strip: the rail is a SwiftUI
 /// view in the app target, which the test target cannot import, so what is
-/// checked is that the section and the note under it are still built the way
-/// the rule says.
+/// checked is that the sections are still built the way the rules say.
 final class RailSectionRulesTests: XCTestCase {
-    private func source() throws -> String {
-        let root = URL(fileURLWithPath: #filePath)
+    private func packageRoot() -> URL {
+        URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // Components
             .deletingLastPathComponent()   // NatKitTests
             .deletingLastPathComponent()   // Tests
             .deletingLastPathComponent()   // the package root
-        let url = root.appendingPathComponent("Sources/NatApp/Views/RailView.swift")
+    }
+
+    private func source(_ relative: String = "Sources/NatApp/Views/RailView.swift") throws -> String {
+        let url = packageRoot().appendingPathComponent(relative)
         guard FileManager.default.fileExists(atPath: url.path) else {
-            throw XCTSkip("no RailView.swift beside the tests")
+            throw XCTSkip("no \(relative) beside the tests")
         }
         return try String(contentsOf: url, encoding: .utf8)
     }
@@ -34,7 +37,7 @@ final class RailSectionRulesTests: XCTestCase {
     /// point of the section being always on the rail.
     func testTheActiveHeadingIsNotConditional() throws {
         let s = try source()
-        guard let heading = s.range(of: #"sectionHeading("ACTIVE", icon: "bolt")"#) else {
+        guard let heading = s.range(of: "sectionHeading(.active)") else {
             return XCTFail("the rail should draw an ACTIVE heading")
         }
         // The line the heading is on, and the one above it: an `if` there is
@@ -79,7 +82,7 @@ final class RailSectionRulesTests: XCTestCase {
     func testTheEmptyNoteReservesATwoLineEntrysHeight() throws {
         let s = try source()
         guard let note = s.range(of: "private var activeEmptyNote: some View {"),
-              let end = s.range(of: "private func doneHeadingRow(", range: note.upperBound..<s.endIndex) else {
+              let end = s.range(of: "// MARK: - Session rows", range: note.upperBound..<s.endIndex) else {
             return XCTFail("the rail should hold an activeEmptyNote")
         }
         let body = String(s[note.upperBound..<end.lowerBound])
@@ -117,73 +120,184 @@ final class RailSectionRulesTests: XCTestCase {
         )
     }
 
-    /// The divider under the flight sections is unconditional now that the
-    /// section above it always is: the comment that explained the condition
-    /// is gone with it, so neither can be read as still true.
-    func testTheFlightDividerAlwaysDraws() throws {
+    // MARK: - Three sections, three scrolls
+
+    /// Each section is built by a builder of its own, in the order the rail
+    /// reads: what is running, what is queued, what is finished.
+    func testTheRailIsThreeSectionsInOneColumn() throws {
         let s = try source()
-        XCTAssertFalse(
-            s.contains("if workshopEntry != nil || !railModel.needsReview.isEmpty || !railModel.active.isEmpty"),
-            "the flight-sections divider should no longer be conditional"
+        guard let column = s.range(of: "private var railColumn: some View {"),
+              let active = s.range(of: "activeSection(height:", range: column.upperBound..<s.endIndex),
+              let todo = s.range(of: "todoSection(height:", range: active.upperBound..<s.endIndex),
+              let done = s.range(of: "doneSection(summary, height:", range: todo.upperBound..<s.endIndex)
+        else {
+            return XCTFail("the rail should stack its three sections in one column")
+        }
+        XCTAssertTrue(active.lowerBound < todo.lowerBound && todo.lowerBound < done.lowerBound)
+    }
+
+    /// No heading scrolls: in every section the heading is built before the
+    /// `ScrollView` rather than inside it, so the title holds still while
+    /// its own list moves under it.
+    func testEveryHeadingIsOutsideItsSectionsScroll() throws {
+        let s = try source()
+        for (builder, heading) in [
+            ("private func activeSection(height: CGFloat?) -> some View {", "sectionHeading(.active)"),
+            ("private func todoSection(height: CGFloat?) -> some View {", "sectionHeading(.todo)"),
+            ("private func doneSection(_ summary: DoneSummary, height: CGFloat?) -> some View {",
+             "sectionHeading(.done,")
+        ] {
+            guard let start = s.range(of: builder) else {
+                return XCTFail("the rail should build \(heading)'s section")
+            }
+            guard let title = s.range(of: heading, range: start.upperBound..<s.endIndex),
+                  let scroll = s.range(of: "ScrollView {", range: start.upperBound..<s.endIndex) else {
+                return XCTFail("\(heading) should sit over a scroll of its own")
+            }
+            XCTAssertTrue(title.lowerBound < scroll.lowerBound,
+                          "\(heading) must be built outside its section's ScrollView")
+        }
+    }
+
+    /// Three scrolls, one per section, and each is given its share as a
+    /// frame and scrolls within it — never the one shared scroll the plan
+    /// used to be.
+    func testEachSectionScrollsWithinItsOwnShare() throws {
+        let s = try source()
+        XCTAssertEqual(
+            s.components(separatedBy: "ScrollView {").count - 1, 3,
+            "one scroll per section and no more"
         )
-        XCTAssertFalse(
-            s.contains("an empty board opening with a bare line"),
-            "the comment about a bare line no longer applies and should not be left behind"
+        for section in RailSection.allCases {
+            XCTAssertTrue(
+                s.contains(".scrollDisabled(!scrolls(.\(section.rawValue), within: height))"),
+                "\(section.title) should scroll only once it has more than its share"
+            )
+        }
+        XCTAssertEqual(
+            s.components(separatedBy: ".frame(height: height)").count - 1, 3,
+            "every section should be drawn at the height it was given"
         )
     }
 
-    /// ACTIVE is pinned: it is built inside the band rather than inside the
-    /// scroll the plan is in, so scrolling the plan leaves it where it is.
-    func testTheActiveSectionIsInThePinnedBand() throws {
+    /// How the rail is shared out is `RailSectionLayout`'s answer rather
+    /// than a number typed into the view, so the rule and its tests are one
+    /// thing. A collapsed section is simply not in the share.
+    func testTheSharingIsTheSharedRule() throws {
         let s = try source()
-        guard let band = s.range(of: "private var pinnedBand: some View {"),
-              let plan = s.range(of: "private var planScroll: some View {"),
-              let heading = s.range(of: #"sectionHeading("ACTIVE", icon: "bolt")"#) else {
-            return XCTFail("the rail should build a pinned band and a scrolling plan")
-        }
-        XCTAssertTrue(band.lowerBound < heading.lowerBound && heading.lowerBound < plan.lowerBound,
-                      "the ACTIVE heading belongs to the pinned band")
+        XCTAssertTrue(s.contains("RailSectionLayout.heights("), "the shares come from the shared rule")
+        XCTAssertTrue(s.contains("RailSectionLayout.scrolls("), "and so does whether one scrolls")
+        XCTAssertTrue(s.contains("RailSectionLayout.footRoom"), "and the air under the last of them")
+        XCTAssertTrue(
+            s.contains("drawnSections.filter { !collapsed.contains($0) }"),
+            "a collapsed section takes no part in the share"
+        )
+        XCTAssertFalse(s.contains("RailPinnedBand"), "the band's own rule is gone with the band")
     }
 
-    /// TODO and DONE are the whole of what scrolls, and they scroll under the
-    /// band rather than beside it.
-    func testThePlanIsWhatScrolls() throws {
+    /// The rule between two sections belongs to the section under it and is
+    /// outside its scroll: a separator that moved with what it separates is
+    /// not one.
+    func testTheSeparatorsDoNotScroll() throws {
         let s = try source()
-        guard let plan = s.range(of: "private var planScroll: some View {") else {
-            return XCTFail("the rail should build a scrolling plan")
+        for builder in [
+            "private func todoSection(height: CGFloat?) -> some View {",
+            "private func doneSection(_ summary: DoneSummary, height: CGFloat?) -> some View {"
+        ] {
+            guard let start = s.range(of: builder),
+                  let rule = s.range(of: "sectionRule", range: start.upperBound..<s.endIndex),
+                  let scroll = s.range(of: "ScrollView {", range: start.upperBound..<s.endIndex) else {
+                return XCTFail("\(builder) should open with the rule above its heading")
+            }
+            XCTAssertTrue(rule.lowerBound < scroll.lowerBound, "the rule is chrome, not a row")
         }
-        let body = s[plan.upperBound...]
-        XCTAssertTrue(body.contains(#"sectionHeading("TODO", icon: "list.bullet")"#),
-                      "TODO scrolls with the plan")
-        XCTAssertTrue(body.contains("doneHeadingRow(summary)"), "so does DONE")
-        XCTAssertTrue(
-            s.contains("            pinnedBand\n            planScroll"),
-            "the band sits above the plan in one column")
     }
 
-    /// How tall the band is drawn is `RailPinnedBand`'s answer rather than a
-    /// number typed into the view, so the rule and its tests are one thing.
-    func testTheBandsHeightIsTheSharedRule() throws {
+    /// The load's own states stay with the plan: the skeleton, the retry and
+    /// the stale-plan warning are TODO's, since what they stand in for is
+    /// the plan.
+    func testTheLoadStatesStayWithThePlan() throws {
         let s = try source()
-        XCTAssertTrue(
-            s.contains(".frame(height: RailPinnedBand.height(content: pinnedHeight, rail: railHeight))"),
-            "the band should take its height from the shared rule")
-        XCTAssertTrue(
-            s.contains(".scrollDisabled(!RailPinnedBand.scrolls(content: pinnedHeight, rail: railHeight))"),
-            "and scroll within itself on the same rule's say-so")
+        guard let todo = s.range(of: "private func todoSection(height: CGFloat?) -> some View {"),
+              let states = s.range(of: "planLoadStates", range: todo.upperBound..<s.endIndex),
+              let done = s.range(of: "private func doneSection(") else {
+            return XCTFail("the load states belong to the TODO section")
+        }
+        XCTAssertTrue(states.lowerBound < done.lowerBound)
+        XCTAssertTrue(s.contains("RailSkeletonView()"), "a cold load still draws the plan's shape")
+        XCTAssertTrue(s.contains("Button(\"Try Again\")"), "a failed first load still offers the retry")
     }
 
-    /// The rule between the two regions is outside the band's own scroll: a
-    /// separator that scrolled with what it separates is not one.
-    func testTheSeparatorSitsBetweenTheRegions() throws {
+    // MARK: - The headings are one control
+
+    /// One builder draws all three headings, so none of them can drift from
+    /// the others — and every one of them carries its section's icon and the
+    /// fold chevron both.
+    func testEveryHeadingIsIconAndChevron() throws {
         let s = try source()
-        guard let frame = s.range(
-                of: ".frame(height: RailPinnedBand.height(content: pinnedHeight, rail: railHeight))"),
-              let rule = s.range(of: "Rule()", range: frame.upperBound..<s.endIndex),
-              let plan = s.range(of: "private var planScroll: some View {") else {
-            return XCTFail("the band should close with a rule")
+        XCTAssertTrue(
+            s.contains("private func sectionHeading(_ section: RailSection, trailing: String? = nil)"),
+            "the three headings should be one builder"
+        )
+        XCTAssertTrue(s.contains("Image(systemName: section.icon)"), "every heading wears its own icon")
+        XCTAssertTrue(
+            s.contains(#"Image(systemName: open ? "chevron.down" : "chevron.right")"#),
+            "and every heading wears a fold chevron"
+        )
+        XCTAssertFalse(s.contains("doneHeadingRow"), "DONE is drawn by the shared builder now")
+    }
+
+    /// Clicking a heading folds its section, and the fold is the view's own
+    /// state — never anything written to the plan.
+    func testAHeadingFoldsItsSection() throws {
+        let s = try source()
+        XCTAssertTrue(s.contains("@State private var collapsed: Set<RailSection>"),
+                      "the fold is the view's own state")
+        XCTAssertTrue(s.contains(".onTapGesture { toggle(section) }"),
+                      "the whole heading row is the fold's target")
+        XCTAssertTrue(s.contains("withAnimation(Motion.stateChange)"),
+                      "a fold moves the way every other state change does")
+    }
+
+    /// The one seam a story needs: which sections a rail opens with. The app
+    /// takes the default — DONE away, the rest open — so nothing about the
+    /// running rail is decided by the gallery.
+    func testTheFoldSeamIsTheStorysAlone() throws {
+        let s = try source()
+        XCTAssertTrue(
+            s.contains("init(appModel: AppModel, collapsedSections: Set<RailSection> = [.done])"),
+            "a story should be able to seed the fold it is a story about"
+        )
+        let stories = try source("Sources/NatApp/Gallery/AppStories.swift")
+        XCTAssertTrue(stories.contains("collapsedSections: [.active, .todo]"),
+                      "the gallery should cover a folded section")
+        XCTAssertTrue(stories.contains("collapsedSections: []"),
+                      "and all three of them open")
+    }
+
+    // MARK: - Elasticity
+
+    /// Every scroll in the app is inelastic: the rubber band says a list has
+    /// more to show when it has not, which on a rail of three scrolling
+    /// sections is three lies at once. The helper is applied to each
+    /// scroll's content, since that is what is inside the `NSScrollView`.
+    func testEveryScrollIsInelastic() throws {
+        let views = packageRoot().appendingPathComponent("Sources/NatApp/Views")
+        let names = try FileManager.default.contentsOfDirectory(atPath: views.path)
+            .filter { $0.hasSuffix(".swift") }
+            .sorted()
+        XCTAssertFalse(names.isEmpty, "there should be views to read")
+        var scrolls = 0
+        for name in names {
+            let text = try String(contentsOf: views.appendingPathComponent(name), encoding: .utf8)
+            let opens = text.components(separatedBy: "ScrollView {").count - 1
+            guard opens > 0 else { continue }
+            scrolls += opens
+            XCTAssertEqual(
+                text.components(separatedBy: ".inelastic()").count - 1, opens,
+                "\(name) should take the elasticity off every scroll it builds"
+            )
         }
-        XCTAssertTrue(rule.lowerBound < plan.lowerBound,
-                      "the separator belongs to the band, under its scroll")
+        XCTAssertGreaterThan(scrolls, 1, "the app should still be building scrolls")
     }
 }

@@ -2,11 +2,15 @@ import XCTest
 @testable import NatKit
 
 final class RailSkeletonTests: XCTestCase {
-    func testOpensWithASectionHeading() {
-        XCTAssertEqual(RailSkeleton.rows.first?.kind, .heading)
+    /// The skeleton is the plan's own shape and nothing else's: TODO's
+    /// heading is pinned above it whether or not the plan has landed, so a
+    /// heading block here would draw a second one under the real one.
+    func testOpensWithTheTreeRatherThanAHeading() {
+        XCTAssertEqual(RailSkeleton.rows.first?.kind, .folder)
+        XCTAssertEqual(Set(RailSkeletonRow.Kind.allCases), [.folder, .slice])
     }
 
-    func testDrawsFoldersAndSlicesUnderThatHeading() {
+    func testDrawsFoldersAndSlicesUnderTheSectionsOwnHeading() {
         let kinds = Set(RailSkeleton.rows.map(\.kind))
         XCTAssertTrue(kinds.contains(.folder))
         XCTAssertTrue(kinds.contains(.slice))
@@ -15,8 +19,8 @@ final class RailSkeletonTests: XCTestCase {
     func testHeadingsAndFoldersSitAtTheTreesRootAndSlicesOneLevelIn() {
         for row in RailSkeleton.rows {
             switch row.kind {
-            case .heading, .folder:
-                XCTAssertEqual(row.depth, 0, "a \(row.kind) is a root of the rail's tree")
+            case .folder:
+                XCTAssertEqual(row.depth, 0, "a folder is a root of the rail's tree")
             case .slice:
                 XCTAssertEqual(row.depth, 1, "a slice is drawn one indent inside its folder")
             }

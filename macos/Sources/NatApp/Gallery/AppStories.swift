@@ -36,6 +36,28 @@ enum AppStories {
     /// plan is in view.
     private static let rail = CGSize(width: 372, height: 840)
 
+    /// The fixture plan with a dozen more slices in flight — what a rail
+    /// with more running than fits looks like. The fixture plan's own six
+    /// sit inside any share the rail hands out; twice that is what the
+    /// sharing is for.
+    private static let crowdedPlan = ProjectInfo(
+        project: Fixtures.project,
+        milestones: Fixtures.milestones,
+        slices: Fixtures.slices + (1...12).map { n in
+            Slice(
+                id: "f1x75222-0000-4000-8000-0000000000\(String(format: "%02d", n))",
+                name: "Working slice \(n)",
+                status: "In progress",
+                milestoneID: "M2: Review flow",
+                assignee: "Craig Johnston",
+                pr: "",
+                url: "",
+                blocked: false,
+                handedBack: false
+            )
+        }
+    )
+
     static let catalog = StoryCatalog([
 
         // MARK: - The window
@@ -155,32 +177,37 @@ enum AppStories {
 
         Story(
             name: "rail-active-crowded",
-            summary: "A dozen slices in flight: the pinned band stops at half the rail "
-                + "and scrolls within itself, so TODO is still there under it.",
+            summary: "A dozen slices in flight: ACTIVE scrolls within its share of the "
+                + "rail rather than pushing TODO and DONE off it.",
             size: rail
         ) {
-            // The one story about the cap: the fixture plan holds six
-            // in-flight slices, which fit above the fold, and what the cap is
-            // for is the rail that has twice that.
-            let crowded = ProjectInfo(
-                project: Fixtures.project,
-                milestones: Fixtures.milestones,
-                slices: Fixtures.slices + (1...12).map { n in
-                    Slice(
-                        id: "f1x75222-0000-4000-8000-0000000000\(String(format: "%02d", n))",
-                        name: "Working slice \(n)",
-                        status: "In progress",
-                        milestoneID: "M2: Review flow",
-                        assignee: "Craig Johnston",
-                        pr: "",
-                        url: "",
-                        blocked: false,
-                        handedBack: false
-                    )
-                }
+            RailView(appModel: await Fixtures.startedAppModel(
+                client: FixtureNatClient(plan: crowdedPlan, agents: Fixtures.agentStatuses)))
+        },
+
+        Story(
+            name: "rail-folded",
+            summary: "ACTIVE and TODO folded away to their headings: the three titles "
+                + "hold their places and DONE takes the space the other two gave back.",
+            size: rail
+        ) {
+            RailView(
+                appModel: await Fixtures.startedAppModel(),
+                collapsedSections: [.active, .todo]
             )
-            return RailView(appModel: await Fixtures.startedAppModel(
-                client: FixtureNatClient(plan: crowded, agents: Fixtures.agentStatuses)))
+        },
+
+        Story(
+            name: "rail-sections-open",
+            summary: "All three sections open on a crowded plan: each heading pinned "
+                + "over a scroll of its own, the rail shared between them.",
+            size: rail
+        ) {
+            RailView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(plan: crowdedPlan, agents: Fixtures.agentStatuses)),
+                collapsedSections: []
+            )
         },
 
         Story(

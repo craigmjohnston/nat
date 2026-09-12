@@ -1,12 +1,10 @@
 import Foundation
 
-/// One row of the rail's skeleton: which of the rail's three row shapes it
+/// One row of the rail's skeleton: which of the rail's two tree shapes it
 /// stands in for, how deep in the tree it sits, and how much of the rail's
 /// width its title block takes.
 public struct RailSkeletonRow: Equatable, Sendable {
-    public enum Kind: Hashable, Sendable {
-        /// A section heading — TODO, ACTIVE — with its icon in the slot.
-        case heading
+    public enum Kind: Hashable, CaseIterable, Sendable {
         /// A milestone folder.
         case folder
         /// A slice under one.
@@ -14,8 +12,8 @@ public struct RailSkeletonRow: Equatable, Sendable {
     }
 
     public let kind: Kind
-    /// Tree depth, in `RailSlot.indent` steps: a heading and a folder sit at
-    /// 0 and a slice under a folder at 1, exactly as the real rows do.
+    /// Tree depth, in `RailSlot.indent` steps: a folder sits at 0 and a
+    /// slice under one at 1, exactly as the real rows do.
     public let depth: Int
     /// The title block's width as a fraction of the rail's own width.
     public let titleWidth: Double
@@ -28,16 +26,19 @@ public struct RailSkeletonRow: Equatable, Sendable {
 }
 
 /// The shape the rail draws while its first plan is still being read: a
-/// heading, a couple of open milestone folders and the slices under them —
-/// the shape nearly every plan lands in, so what arrives replaces it rather
-/// than pushing it out of the way.
+/// couple of open milestone folders and the slices under them — the shape
+/// nearly every plan lands in, so what arrives replaces it rather than
+/// pushing it out of the way.
+///
+/// It stands in for the plan and not for the section it is drawn in: TODO's
+/// own heading is pinned above it whether or not anything has landed, so a
+/// heading block here would be a second one under the real one.
 ///
 /// Fixed rather than random: the rail redraws for every hover and every
 /// window resize, and widths rolled afresh each time would have the whole
 /// column twitching.
 public enum RailSkeleton {
     public static let rows: [RailSkeletonRow] = [
-        RailSkeletonRow(kind: .heading, depth: 0, titleWidth: 0.22),
         RailSkeletonRow(kind: .folder, depth: 0, titleWidth: 0.58),
         RailSkeletonRow(kind: .slice, depth: 1, titleWidth: 0.62),
         RailSkeletonRow(kind: .slice, depth: 1, titleWidth: 0.44),

@@ -36,6 +36,17 @@ extension View {
     fileprivate func railHoverWash() -> some View {
         hoverWash(cornerRadius: 0)
     }
+
+    /// How the rail measures the pieces it shares its height between — a
+    /// section's chrome, a section's list. One helper rather than the same
+    /// `onGeometryChange` written out six times.
+    fileprivate func measuringHeight(_ action: @escaping (CGFloat) -> Void) -> some View {
+        onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            action(height)
+        }
+    }
 }
 
 struct RailView: View {
@@ -50,22 +61,26 @@ struct RailView: View {
     /// rather than `expandedMilestones`, since a part-done milestone is a
     /// folder in both sections and the two fold independently.
     @State private var expandedDoneFolders: Set<String> = []
-    /// Whether the DONE section is expanded to list its folders. The user's
-    /// own fold, like `expandedMilestones`.
-    @State private var expandedDoneSummary = false
+    /// The sections folded away to their heading alone. The view's own
+    /// state, like `expandedMilestones`: which of the three the user has put
+    /// away is about this rail on this screen and nothing the plan records.
+    /// DONE starts folded, which is the fold the rail always had.
+    @State private var collapsed: Set<RailSection>
     /// The slice the delete menu item was picked on, held while its confirm
     /// dialog is up — deleting is the one rail action that cannot be undone
     /// from here (the page goes to Notion's trash), so it asks first, the way
     /// the board's own d does.
     @State private var sliceForDeletion: MilestoneSliceRow?
-    /// How tall the rail itself is, and how tall the pinned band's content
-    /// comes to — the two numbers `RailPinnedBand` reads to decide where the
-    /// band stops growing and starts scrolling within itself. Measured with
-    /// `onGeometryChange` rather than assumed, since both move: the rail is
-    /// a resizable column and the band grows an entry at a time as agents
-    /// start.
+    /// The three numbers `RailSectionLayout` shares the rail out on: how
+    /// tall the rail is, how much of it each section's own chrome — its rule
+    /// and its pinned heading — has already taken, and how tall each
+    /// section's list comes to. Measured with `onGeometryChange` rather than
+    /// assumed, since all three move: the rail is a resizable column, a
+    /// section's heading comes and goes with the section, and the lists grow
+    /// an entry at a time as agents start and slices land.
     @State private var railHeight: CGFloat = 0
-    @State private var pinnedHeight: CGFloat = 0
+    @State private var chromeHeights: [RailSection: CGFloat] = [:]
+    @State private var contentHeights: [RailSection: CGFloat] = [:]
     /// What the last move or delete refused with — a slice in progress, gh
     /// down, whatever nat said — shown in an alert and cleared by dismissing
     /// it. The rail has no status bar to toast on.
@@ -87,6 +102,14 @@ struct RailView: View {
     /// The slice "Edit Description…" was picked on, held while the brief
     /// sheet is up.
     @State private var sliceForEdit: MilestoneSliceRow?
+
+    /// `collapsedSections` is the gallery's seam and nothing else's: a fold
+    /// is the user's own state, so the app takes the default — DONE away,
+    /// the rest open — and a story seeds the fold it is a story about.
+    init(appModel: AppModel, collapsedSections: Set<RailSection> = [.done]) {
+        self.appModel = appModel
+        _collapsed = State(initialValue: collapsedSections)
+    }
 
     var railModel: RailModel {
         if let projectInfo = appModel.projectStore?.state.projectInfo {
@@ -121,13 +144,10 @@ struct RailView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            pinnedBand
-            planScroll
-        }
-        // What the band's cap is a share of. Measured rather than assumed:
-        // the rail is a resizable column in a resizable window, so how much
-        // of it half is changes under the user's hands.
+        railColumn
+        // What the open sections divide between them. Measured rather than
+        // assumed: the rail is a resizable column in a resizable window, so
+        // how much there is to share changes under the user's hands.
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.height
         } action: { height in
@@ -237,164 +257,117 @@ struct RailView: View {
         }
     }
 
-    /// The in-flight band, pinned above the plan: ACTIVE and the rule that
-    /// closes it, held still while TODO and DONE scroll under them. What is
-    /// running is the rail's standing question, and an answer that scrolls
-    /// away with the plan is one the user has to go and look for.
+    // MARK: - The sections
+
+    /// The rail as three sections stacked in one column, each a pinned
+    /// heading over a scroll of its own: what is running, what is queued,
+    /// what is finished. No heading ever moves — only the list under it does
+    /// — so what is running is never something to go and scroll for, and
+    /// reading the far end of TODO does not take DONE off the rail.
     ///
-    /// The band is as tall as what it holds, so a rail with a quiet ACTIVE
-    /// section reads exactly as it did when the whole rail was one scroll —
-    /// and no taller than `RailPinnedBand.maxShare` of the rail, past which
-    /// it scrolls within itself rather than squeezing the plan out. The rule
-    /// is outside that inner scroll: it is the line between the two regions
-    /// and not a row of either.
-    private var pinnedBand: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    // ACTIVE section — always drawn, holding entries or holding
-                    // its own note: what is running is the rail's standing
-                    // question, and a heading that only appeared once something
-                    // was read as chrome arriving from nowhere. It is the one
-                    // flight section there is: the planning agent and the
-                    // branches waiting on a review are entries of it rather than
-                    // headings of their own, in that order.
-                    sectionHeading("ACTIVE", icon: "bolt")
-
-                    if railModel.active.isEmpty {
-                        activeEmptyNote
-                    } else {
-                        ForEach(railModel.active) { entry in
-                            activeRow(for: entry)
-                                .contentShape(Rectangle())
-                                .onTapGesture { select(entry) }
-                        }
-                    }
-                }
-                .padding(.top, 12)
-                .onGeometryChange(for: CGFloat.self) { proxy in
-                    proxy.size.height
-                } action: { height in
-                    pinnedHeight = height
-                }
+    /// What is left of the rail once the headings and the rules between them
+    /// have taken their lines is shared out by `RailSectionLayout`: a
+    /// collapsed section is not in that share at all, and an over-tall one
+    /// scrolls within the share it is given rather than squeezing the others
+    /// out.
+    private var railColumn: some View {
+        let heights = sectionHeights
+        return VStack(alignment: .leading, spacing: 0) {
+            activeSection(height: heights[.active])
+            todoSection(height: heights[.todo])
+            if let summary = railModel.doneSummary {
+                doneSection(summary, height: heights[.done])
             }
-            .scrollDisabled(!RailPinnedBand.scrolls(content: pinnedHeight, rail: railHeight))
-            .frame(height: RailPinnedBand.height(content: pinnedHeight, rail: railHeight))
-
-            // The rule under the flight sections, drawn whatever they
-            // hold: ACTIVE is above it on every rail there is, so there
-            // is always a section for it to close — and it is the line
-            // between the pinned band and the scrolling plan besides.
-            Rule()
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+            // The air under the last section, and what takes up the rail's
+            // slack when the three of them want less than there is.
+            Spacer(minLength: CGFloat(RailSectionLayout.footRoom))
         }
     }
 
-    /// The plan itself — the load's own states, then TODO and DONE — which
-    /// is the whole of what scrolls: the band above it does not move.
-    private var planScroll: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                // The load's own states lead the plan: a board that
-                // swallowed its failure would read as an empty tracker,
-                // which is worse than any error. They sit here rather than
-                // in the band above because what they stand in for is the
-                // plan — the skeleton is the plan's own shape, and the
-                // retry is the plan's read to make again. A first load draws the plan's own skeleton,
-                // a failed first load says what nat said and offers the retry,
-                // and a failed refresh keeps the stale plan under one quiet
-                // warning line (the TUI convention: a failure leaves the
-                // board as it was).
-                if let state = appModel.projectStore?.state {
-                    if state.isLoading && state.projectInfo == nil {
-                        // A cold load draws the plan's own shape rather than
-                        // a spinner in an empty column, so what arrives
-                        // replaces it without moving anything.
-                        RailSkeletonView()
-                    } else if let message = state.errorMessage, state.projectInfo == nil {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Label("The plan could not be loaded", systemImage: "exclamationmark.triangle")
-                                .font(.system(size: Typo.body, weight: .semibold))
-                                .ink(.warning)
-                            Text(message)
-                                .font(.system(size: Typo.caption))
-                                .ink(.secondary)
-                            Button("Try Again") {
-                                Task { await appModel.refresh() }
+    /// ACTIVE — always drawn, holding entries or holding its own note: what
+    /// is running is the rail's standing question, and a heading that only
+    /// appeared once something was read would be chrome arriving from
+    /// nowhere. It is the one flight section there is: the planning agent
+    /// and the branches waiting on a review are entries of it rather than
+    /// headings of their own, in that order.
+    private func activeSection(height: CGFloat?) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeading(.active)
+                .padding(.top, 12)
+                .measuringHeight { chromeHeights[.active] = $0 }
+
+            if let height {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        if railModel.active.isEmpty {
+                            activeEmptyNote
+                        } else {
+                            ForEach(railModel.active) { entry in
+                                activeRow(for: entry)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { select(entry) }
                             }
                         }
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .surface(.card)
-                        .cornerRadius(8)
-                        .padding(.horizontal, 12)
-                    } else if let message = state.errorMessage {
-                        HStack(spacing: 6) {
-                            Image(systemName: "exclamationmark.triangle")
-                                .font(.system(size: Typo.caption))
-                            Text("Refresh failed — showing the last plan")
-                                .font(.system(size: Typo.caption))
+                    }
+                    .inelastic()
+                    .measuringHeight { contentHeights[.active] = $0 }
+                }
+                .scrollDisabled(!scrolls(.active, within: height))
+                .frame(height: height)
+            }
+        }
+    }
+
+    /// TODO — the load's own states, then the milestones still holding work,
+    /// folders in a file tree with their remaining slices as files. The load
+    /// states belong here rather than to the rail at large because what they
+    /// stand in for is the plan: the skeleton is the plan's own shape and the
+    /// retry is the plan's read to make again.
+    private func todoSection(height: CGFloat?) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                sectionRule
+                sectionHeading(.todo)
+            }
+            .measuringHeight { chromeHeights[.todo] = $0 }
+
+            if let height {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        planLoadStates
+
+                        ForEach(railModel.todoFolders, id: \.milestoneID) { folder in
+                            folderRows(
+                                folder,
+                                inDone: false,
+                                expanded: expandedMilestones.contains(folder.milestoneID),
+                                onToggle: { toggle(folder.milestoneID, in: &expandedMilestones) }
+                            )
                         }
-                        .ink(.warning)
-                        .padding(.horizontal, RailSlot.leading)
-                        .padding(.bottom, 6)
-                        .help(message)
                     }
+                    .inelastic()
+                    .measuringHeight { contentHeights[.todo] = $0 }
                 }
+                .scrollDisabled(!scrolls(.todo, within: height))
+                .frame(height: height)
+            }
+        }
+    }
 
-                // A plan that landed holding nothing: a project opened or
-                // created from the "+" tab, whose rail would otherwise be a
-                // blank column saying neither that it loaded nor what to do.
-                if appModel.activePlanIsEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(EmptyProjectNote.title)
-                            .font(.system(size: Typo.body, weight: .semibold))
-                            .ink(.secondary)
-                        Text(EmptyProjectNote.subtitle(needsWorkingDir: appModel.activeProjectNeedsWorkingDir))
-                            .font(.system(size: Typo.subhead))
-                            .ink(.tertiary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .surface(.card)
-                    .cornerRadius(8)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 10)
-                }
+    /// DONE — the finished slices' home at the foot of the rail: every
+    /// milestone with work done lists under it as a folder of its own, one
+    /// level deeper than the tree.
+    private func doneSection(_ summary: DoneSummary, height: CGFloat?) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                sectionRule
+                sectionHeading(.done, trailing: "\(summary.doneCount)/\(summary.totalCount)")
+            }
+            .measuringHeight { chromeHeights[.done] = $0 }
 
-                // TODO — the milestones still holding work, folders in a
-                // file tree with their remaining slices as files.
-                if !railModel.todoFolders.isEmpty {
-                    sectionHeading("TODO", icon: "list.bullet")
-                        // TODO always lands under the flight-sections
-                        // divider now that ACTIVE is always above it, so the
-                        // air it needs there is no longer conditional.
-                        .padding(.top, 6)
-                }
-
-                ForEach(railModel.todoFolders, id: \.milestoneID) { folder in
-                    folderRows(
-                        folder,
-                        inDone: false,
-                        expanded: expandedMilestones.contains(folder.milestoneID),
-                        onToggle: { toggle(folder.milestoneID, in: &expandedMilestones) }
-                    )
-                }
-
-                // DONE — the finished slices' home, a heading at the foot of
-                // the plan: every milestone with work done expands under it
-                // as a folder of its own, one level deeper than the tree.
-                if let summary = railModel.doneSummary {
-                    Rule()
-                        .padding(.horizontal, 12)
-                        .padding(.top, 9)
-                        .padding(.bottom, 10)
-
-                    doneHeadingRow(summary)
-
-                    if expandedDoneSummary {
+            if let height {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
                         ForEach(railModel.doneFolders, id: \.milestoneID) { folder in
                             folderRows(
                                 folder,
@@ -404,32 +377,186 @@ struct RailView: View {
                             )
                         }
                     }
+                    .inelastic()
+                    .measuringHeight { contentHeights[.done] = $0 }
                 }
+                .scrollDisabled(!scrolls(.done, within: height))
+                .frame(height: height)
             }
-            .padding(.bottom, 16)
+        }
+    }
+
+    /// The load's own states, at the head of the plan: a board that
+    /// swallowed its failure would read as an empty tracker, which is worse
+    /// than any error. A first load draws the plan's own skeleton, a failed
+    /// first load says what nat said and offers the retry, and a failed
+    /// refresh keeps the stale plan under one quiet warning line (the TUI
+    /// convention: a failure leaves the board as it was).
+    @ViewBuilder
+    private var planLoadStates: some View {
+        if let state = appModel.projectStore?.state {
+            if state.isLoading && state.projectInfo == nil {
+                // A cold load draws the plan's own shape rather than a
+                // spinner in an empty column, so what arrives replaces it
+                // without moving anything.
+                RailSkeletonView()
+            } else if let message = state.errorMessage, state.projectInfo == nil {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("The plan could not be loaded", systemImage: "exclamationmark.triangle")
+                        .font(.system(size: Typo.body, weight: .semibold))
+                        .ink(.warning)
+                    Text(message)
+                        .font(.system(size: Typo.caption))
+                        .ink(.secondary)
+                    Button("Try Again") {
+                        Task { await appModel.refresh() }
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .surface(.card)
+                .cornerRadius(8)
+                .padding(.horizontal, 12)
+            } else if let message = state.errorMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: Typo.caption))
+                    Text("Refresh failed — showing the last plan")
+                        .font(.system(size: Typo.caption))
+                }
+                .ink(.warning)
+                .padding(.horizontal, RailSlot.leading)
+                .padding(.bottom, 6)
+                .help(message)
+            }
+        }
+
+        // A plan that landed holding nothing: a project opened or created
+        // from the "+" tab, whose rail would otherwise be a blank column
+        // saying neither that it loaded nor what to do.
+        if appModel.activePlanIsEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(EmptyProjectNote.title)
+                    .font(.system(size: Typo.body, weight: .semibold))
+                    .ink(.secondary)
+                Text(EmptyProjectNote.subtitle(needsWorkingDir: appModel.activeProjectNeedsWorkingDir))
+                    .font(.system(size: Typo.subhead))
+                    .ink(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .surface(.card)
+            .cornerRadius(8)
+            .padding(.bottom, 10)
+            .padding(.horizontal, 12)
+        }
+    }
+
+    // MARK: - Sharing the rail out
+
+    /// The sections this rail draws at all: DONE only once there is finished
+    /// work to list, the other two always.
+    private var drawnSections: [RailSection] {
+        RailSection.allCases.filter { $0 != .done || railModel.doneSummary != nil }
+    }
+
+    /// The open ones, in the order they are stacked — what the rail's height
+    /// is shared between. A collapsed section is its heading alone and takes
+    /// no part in the share.
+    private var openSections: [RailSection] {
+        drawnSections.filter { !collapsed.contains($0) }
+    }
+
+    /// Each open section's scroll height, off the shared rule. What is left
+    /// to share is the rail less every drawn section's own chrome — the rule
+    /// and the pinned heading, which never scroll and never yield — and less
+    /// the air under the last of them.
+    private var sectionHeights: [RailSection: CGFloat] {
+        let open = openSections
+        let chrome = drawnSections.reduce(CGFloat.zero) { $0 + (chromeHeights[$1] ?? 0) }
+        let shares = RailSectionLayout.heights(
+            open: open.map { Double(contentHeights[$0] ?? 0) },
+            available: Double(railHeight - chrome) - RailSectionLayout.footRoom
+        )
+        return Dictionary(uniqueKeysWithValues: zip(open, shares.map { CGFloat($0) }))
+    }
+
+    /// Whether a section has more to show than the share it was given — the
+    /// same rule its height came from, so a section and its scrolling cannot
+    /// disagree.
+    private func scrolls(_ section: RailSection, within height: CGFloat) -> Bool {
+        RailSectionLayout.scrolls(
+            content: Double(contentHeights[section] ?? 0),
+            height: Double(height)
+        )
+    }
+
+    /// Folding a section away, or bringing it back.
+    private func toggle(_ section: RailSection) {
+        withAnimation(Motion.stateChange) {
+            if collapsed.contains(section) {
+                collapsed.remove(section)
+            } else {
+                collapsed.insert(section)
+            }
         }
     }
 
     // MARK: - Section chrome
 
-    /// An all-caps heading with its small icon in the shared slot — or, for
-    /// DONE, a chevron in that slot instead, via `doneHeadingRow`.
-    private func sectionHeading(_ title: String, icon: String) -> some View {
-        HStack(spacing: RailSlot.spacing) {
-            Image(systemName: icon)
+    /// The line between two sections. It belongs to the section under it —
+    /// measured with that section's heading as chrome — and never scrolls:
+    /// a separator that moved with what it separates is not one.
+    private var sectionRule: some View {
+        Rule()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+    }
+
+    /// Every section's heading, and the one control all three of them are:
+    /// the section's own icon in the shared slot, so the labels keep the
+    /// rail's one left edge; its title; whatever it counts; and the fold
+    /// chevron at the trailing edge, pointing down while the section is open
+    /// and right while it is away. Clicking anywhere along it folds the
+    /// section to this row alone.
+    private func sectionHeading(_ section: RailSection, trailing: String? = nil) -> some View {
+        let open = !collapsed.contains(section)
+        return HStack(spacing: RailSlot.spacing) {
+            Image(systemName: section.icon)
                 .font(.system(size: Typo.caption, weight: .semibold))
                 .frame(width: RailSlot.slot)
                 .ink(.tertiary)
 
-            Text(title)
+            Text(section.title)
                 .font(.system(size: Typo.caption, weight: .semibold))
                 .ink(.tertiary)
 
             Spacer()
+
+            if let trailing {
+                Text(trailing)
+                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .monospacedDigit()
+                    .ink(.tertiary)
+            }
+
+            Image(systemName: open ? "chevron.down" : "chevron.right")
+                .font(.system(size: 11, weight: .bold))
+                .frame(width: RailSlot.slot, alignment: .trailing)
+                .ink(.tertiary)
         }
         .padding(.leading, RailSlot.leading)
         .padding(.trailing, RailSlot.trailing)
-        .padding(.bottom, 5)
+        // A row's height rather than the bare text line, so the hover wash
+        // has the same inset every other row's has instead of hugging the
+        // heading's own letters.
+        .frame(height: RailSlot.rowHeight)
+        .railHoverWash()
+        .contentShape(Rectangle())
+        .onTapGesture { toggle(section) }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("\(section.title), \(open ? "expanded" : "collapsed")")
     }
 
     /// What the ACTIVE section draws with nothing to list: the note indented
@@ -465,39 +592,6 @@ struct RailView: View {
         .padding(.leading, RailSlot.leading + RailSlot.slot + RailSlot.spacing)
         .padding(.trailing, RailSlot.trailing)
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func doneHeadingRow(_ summary: DoneSummary) -> some View {
-        HStack(spacing: RailSlot.spacing) {
-            Image(systemName: expandedDoneSummary ? "chevron.down" : "chevron.right")
-                .font(.system(size: 11, weight: .bold))
-                .frame(width: RailSlot.slot)
-                .ink(.tertiary)
-
-            Text("DONE")
-                .font(.system(size: Typo.caption, weight: .semibold))
-                .ink(.tertiary)
-
-            Spacer()
-
-            Text("\(summary.doneCount)/\(summary.totalCount)")
-                .font(.system(size: Typo.subhead, weight: .regular))
-                .monospacedDigit()
-                .ink(.tertiary)
-        }
-        .padding(.leading, RailSlot.leading)
-        .padding(.trailing, RailSlot.trailing)
-        // A row's height rather than the bare text line, so the hover wash
-        // has the same inset every other row's has instead of hugging the
-        // heading's own letters.
-        .frame(height: RailSlot.rowHeight)
-        .railHoverWash()
-        .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(Motion.stateChange) {
-                expandedDoneSummary.toggle()
-            }
-        }
     }
 
     // MARK: - Session rows
