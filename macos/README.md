@@ -97,6 +97,15 @@ sessions, so a Finder launch resolves `nat`, `tmux`, `gh` and `ntn` exactly
 as a terminal one would. `tmux`, `gh` and `ntn` remain the machine's own —
 credentialed tools on their own update schedules are not ours to bundle.
 
+The app itself does not resolve `nat` off that PATH, though: `NatBinary` says
+which nat it runs, and says it explicitly — `NAT_BIN` (the dev override), then
+the binary beside the app executable, by absolute path. A packaged app whose
+nat is missing reports a damaged install, in the onboarding checks and as the
+error of any command it was asked to run, rather than falling through to
+whatever older install PATH offers; only a bare dev executable outside any
+`.app` searches PATH at all. The PATH prepend stays because the agent sessions
+do resolve `nat` off PATH, inside tmux.
+
 ## Package Structure
 
 ```

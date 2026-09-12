@@ -45,9 +45,7 @@ struct OnboardingView: View {
                 .surface(.card)
                 .cornerRadius(10)
 
-                Text(natFound
-                    ? "Add a project to get started — one the workspace already has, or a new one."
-                    : "Install nat and run it once in a terminal to set up your workspace, then check again.")
+                Text(guidance)
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .ink(.tertiary)
                     .multilineTextAlignment(.center)
@@ -85,10 +83,31 @@ struct OnboardingView: View {
 
     /// Whether the sheet has anything to run: `nat` is what both of its
     /// paths are, so a machine without it is offered neither.
-    private var natFound: Bool { BinaryLocator.isFound("nat") }
+    private var natFound: Bool { natStatus.isFound }
+
+    /// What this machine's `nat` is, asked once for both the guidance and the
+    /// button — `NatBinary`'s own resolution, read through `BinaryLocator`.
+    private var natStatus: BinaryLocator.Status { BinaryLocator.status(of: "nat") }
+
+    /// What to do next, which is a different sentence for each of the three
+    /// things `nat` can be. A packaged app carries its own nat, so a bundle
+    /// with none is not a machine to install nat on — it is an install to
+    /// replace, and telling the user to go and install nat would have them
+    /// fix it by putting a second, mismatched one on PATH.
+    private var guidance: String {
+        switch natStatus {
+        case .found:
+            return "Add a project to get started — one the workspace already has, or a new one."
+        case .damagedInstall:
+            return "This copy of gnat is missing the nat it was built with. Reinstall gnat."
+        case .missing:
+            return "Install nat and run it once in a terminal to set up your workspace, then check again."
+        }
+    }
 
     private func binaryRow(_ binary: String) -> some View {
-        let found = BinaryLocator.isFound(binary)
+        let status = BinaryLocator.status(of: binary)
+        let found = status.isFound
         return HStack(spacing: 8) {
             Image(systemName: found ? "checkmark.circle.fill" : "xmark.circle")
                 .ink(found ? .success : .danger)
@@ -100,11 +119,21 @@ struct OnboardingView: View {
 
             Spacer()
 
-            Text(found ? "Found" : "Missing")
+            Text(verdict(status))
                 .font(.system(size: Typo.subhead, weight: .regular))
                 .ink(found ? .secondary : .danger)
         }
         .frame(width: 220)
+    }
+
+    /// The word in the row's right-hand column: where the binary is is no
+    /// part of a checklist, but that a bundle is damaged rather than bare is.
+    private func verdict(_ status: BinaryLocator.Status) -> String {
+        switch status {
+        case .found: return "Found"
+        case .missing: return "Missing"
+        case .damagedInstall: return "Damaged install"
+        }
     }
 
     private func checkAgain() {
