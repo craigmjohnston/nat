@@ -43,7 +43,10 @@ A native macOS application for the notion-agent-tracker project, built as a pure
   monospaced system font wherever the face cannot be had. Everything
   monospaced goes through it — the terminal, the diff, markdown code spans —
   and so does every `TextField` and `TextEditor` in the app, each at the point
-  size it already had. `.monospacedDigit()` is not monospaced text: those are
+  size it already had — bar the settings window's, which is built as a
+  built-in settings window is built and so sets its fields in the system
+  font; `MonoSourcesTests` names that one exception rather than leaving each
+  file to claim one. `.monospacedDigit()` is not monospaced text: those are
   proportional labels asking for lining digits, and they stay as they are.
   The fonts live in NatKit rather than NatApp because `Typo` and the markdown
   renderer do, and SwiftPM resources have to sit inside the target that

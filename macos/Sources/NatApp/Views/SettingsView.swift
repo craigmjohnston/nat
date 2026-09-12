@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import NatKit
 
@@ -53,13 +54,21 @@ struct SettingsView: View {
     @State private var saveChain: Task<Void, Never>?
 
     var body: some View {
+        // The macOS 15 tab builder rather than `.tabItem`, which is the
+        // current spelling of the same thing: the settings window's toolbar
+        // comes out `.preference` either way — read off `NSApp`'s own window
+        // at runtime — so the tabs already have the per-item metrics
+        // Safari's do, and there is no style to force.
         TabView {
-            generalTab
-                .tabItem { Label("General", systemImage: "gearshape") }
-            agentsTab
-                .tabItem { Label("Agents", systemImage: "sparkles") }
-            projectsTab
-                .tabItem { Label("Projects", systemImage: "folder") }
+            Tab("General", systemImage: "gearshape") {
+                generalTab
+            }
+            Tab("Agents", systemImage: "sparkles") {
+                agentsTab
+            }
+            Tab("Projects", systemImage: "folder") {
+                projectsTab
+            }
         }
         // Width alone: the height is the tab's own, which is what makes the
         // window resize to each tab the way a settings window does.
@@ -84,7 +93,11 @@ struct SettingsView: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.segmented)
-                    .frame(width: FieldWidth.segments)
+                    // Wide enough for its three words and no wider: a stock
+                    // segmented control in a grouped form is the width of
+                    // what it holds, trailing-aligned in the value column,
+                    // rather than stretched across it.
+                    .fixedSize()
                 }
             } footer: {
                 sectionFootnote("The palette the app draws with, the agent terminal included. Applies at once.")
@@ -233,13 +246,59 @@ struct SettingsView: View {
         }
     }
 
+    /// A path is as long as it is, so the field takes the whole value column
+    /// rather than a stub of it and says the rest in its tooltip — and beside
+    /// it the button every native path row has, since typing a path out is
+    /// not how anyone picks a directory.
     private func workingDirRow(projectID: String) -> some View {
-        settingRow(
+        let path = workingDirBinding(projectID: projectID)
+        return settingRow(
             title: projectNames[projectID] ?? projectID,
             key: SettingsModel.workingDirKey(projectID: projectID)
         ) {
-            commitField(workingDirBinding(projectID: projectID), width: FieldWidth.path)
+            HStack(spacing: 8) {
+                commitField(path)
+                    // An ideal width well short of any real path, so the
+                    // row's own label and control stay on one line — a
+                    // field asking for the width of what it holds is what
+                    // sends `LabeledContent` into its stacked layout — and
+                    // then all the width the value column has left.
+                    .frame(minWidth: 0, idealWidth: 160, maxWidth: .infinity)
+                    .help(path.wrappedValue)
+                Button("Choose…") { chooseDirectory(into: path) }
+            }
         }
+    }
+
+    /// The open panel as a settings window opens one: directories only,
+    /// started wherever the field already points when that is a directory
+    /// that exists, and writing what was chosen into the very binding the
+    /// field edits — so a choice commits exactly as a typed path does, and
+    /// one that changed nothing writes nothing, the diff having no change to
+    /// find. A cancelled panel writes nothing at all.
+    ///
+    /// `NSOpenPanel` rather than `fileImporter`: there is no presentation
+    /// state to hold per row, and the app is not sandboxed.
+    private func chooseDirectory(into path: Binding<String>) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose"
+        if let start = existingDirectory(path.wrappedValue) {
+            panel.directoryURL = start
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        path.wrappedValue = url.path
+        commit()
+    }
+
+    private func existingDirectory(_ path: String) -> URL? {
+        guard !path.isEmpty else { return nil }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return nil }
+        return URL(fileURLWithPath: path)
     }
 
     // MARK: - Controls
@@ -269,7 +328,6 @@ struct SettingsView: View {
             }
         }
         .labelsHidden()
-        .frame(width: FieldWidth.picker)
         .onChange(of: value.wrappedValue) { commit() }
     }
 
@@ -368,13 +426,13 @@ struct SettingsView: View {
     }
 }
 
-/// The widths the controls are pinned to, so the rows of a tab line up
-/// down the value column instead of each one sizing to its own content.
+/// The one width a control here is pinned to. Everything else sizes to its
+/// own content and trailing-aligns in the value column, as a stock control
+/// in a grouped form does; a small numeric field is the exception, since a
+/// field for two digits drawn the width of the column is what no settings
+/// window has.
 private enum FieldWidth {
-    static let segments: CGFloat = 240
     static let number: CGFloat = 80
-    static let picker: CGFloat = 140
-    static let path: CGFloat = 260
 }
 
 /// The wait on the config read, as one row of the form rather than a hole
@@ -421,10 +479,9 @@ private struct CommitTextField: View {
     var body: some View {
         TextField("", text: $text)
             .textFieldStyle(.roundedBorder)
-            // Every input in the app is set in the app's monospaced face;
-            // the size is the control's own 13pt, which is the ramp's code
-            // size, so the fields are the height they always were.
-            .font(Typo.mono(size: Typo.code))
+            // The system font, not the app's monospaced face: a settings
+            // window's fields are set in the face every other settings
+            // window on the Mac sets its own in.
             // The value column is trailing-aligned, and a field left to
             // inherit that alignment right-aligns the text inside itself.
             .multilineTextAlignment(.leading)

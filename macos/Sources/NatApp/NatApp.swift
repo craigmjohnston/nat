@@ -108,9 +108,13 @@ struct NatApp: App {
             }
         }
 
+        // No `preferredColorScheme` here on purpose: a settings window
+        // follows the Mac's own appearance, whatever the app draws itself
+        // in — Xcode is the precedent, its settings light over a dark
+        // editor. The theme picker inside goes on restyling the main
+        // window, which is the window the preference is about.
         Settings {
             SettingsView(appModel: appModel)
-                .preferredColorScheme(theme.colorScheme)
         }
     }
 

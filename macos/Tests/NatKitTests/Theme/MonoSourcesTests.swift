@@ -32,6 +32,13 @@ final class MonoSourcesTests: XCTestCase {
     /// `Typo.mono` itself, which is the whole point of there being one place.
     private let mayNameTheSystemFace = ["Theme/DesignTokens.swift"]
 
+    /// Where an input is set in the system's own face on purpose: the
+    /// settings window, which is built as a built-in settings window is
+    /// built — stock controls in the system font — and is the one place the
+    /// app's own chrome stops at the door. Named here rather than left to
+    /// each file, so widening the exception is an edit somebody reads.
+    private let mayUseTheSystemFaceForInputs = ["NatApp/Views/SettingsView.swift"]
+
     private let rules: [(String, String)] = [
         ("a monospaced system font at a call site", #"design:\s*\.monospaced\b"#),
         ("AppKit's monospaced system font at a call site", #"monospacedSystemFont\("#),
@@ -65,13 +72,15 @@ final class MonoSourcesTests: XCTestCase {
         )
     }
 
-    /// Every text input is set in that face too — the rule the brief pane,
-    /// the comment box and the settings fields all follow, and the one a new
-    /// input is likeliest to be written without.
+    /// Every text input is set in that face too — the rule the brief pane
+    /// and the comment box follow, and the one a new input is likeliest to
+    /// be written without. The settings window is the exception, and says so
+    /// in `mayUseTheSystemFaceForInputs`.
     func testEveryTextInputIsSetInTheAppsFace() throws {
         var strays: [String] = []
         for file in try swiftFiles() {
             let relative = file.path.replacingOccurrences(of: sourcesDirectory.path + "/", with: "")
+            if mayUseTheSystemFaceForInputs.contains(where: relative.hasSuffix) { continue }
             let lines = try String(contentsOf: file, encoding: .utf8).components(separatedBy: .newlines)
             for (line, text) in lines.enumerated() {
                 guard text.range(of: #"\b(TextField|TextEditor)\("#, options: .regularExpression) != nil,
@@ -102,6 +111,14 @@ final class MonoSourcesTests: XCTestCase {
         }
         XCTAssertTrue(relatives.contains("NatKit/Theme/MonoFont.swift"), "\(relatives.count) files found")
         XCTAssertTrue(relatives.contains("NatApp/Views/DiffFileBoxView.swift"), "\(relatives.count) files found")
+        // An exemption naming a file the scan does not see is an exemption
+        // that has quietly stopped meaning anything.
+        for exempt in mayNameTheSystemFace + mayUseTheSystemFaceForInputs {
+            XCTAssertTrue(
+                relatives.contains(where: { $0.hasSuffix(exempt) }),
+                "\(exempt) is exempted from a rule but is not among the \(relatives.count) files scanned"
+            )
+        }
     }
 
     private func swiftFiles() throws -> [URL] {
