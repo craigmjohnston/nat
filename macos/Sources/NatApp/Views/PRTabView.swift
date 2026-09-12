@@ -123,6 +123,7 @@ struct PRTabView: View {
                 .padding(.horizontal, 22)
                 .padding(.vertical, 18)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .inelastic()
             }
 
             Divider().frame(height: 0.5)

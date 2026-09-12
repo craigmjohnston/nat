@@ -176,6 +176,7 @@ struct BriefSkeletonView: View {
                 .padding(.horizontal, 22)
                 .padding(.vertical, 18)
                 .frame(maxWidth: 640)
+                .inelastic()
             }
 
             SkeletonRail(sections: BriefSkeleton.sidebarSections.map { [$0] }, width: sidebarWidth)
@@ -205,6 +206,7 @@ struct DiffSkeletonView: View {
                         Spacer(minLength: 0)
                     }
                     .padding(14)
+                    .inelastic()
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -300,6 +302,7 @@ struct PRSkeletonView: View {
                         .padding(.horizontal, 22)
                         .padding(.vertical, 18)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .inelastic()
                     }
 
                     Divider().frame(height: 0.5)

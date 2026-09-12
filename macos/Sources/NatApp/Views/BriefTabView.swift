@@ -163,6 +163,7 @@ struct BriefTabView: View {
                     .padding(.horizontal, 22)
                     .padding(.vertical, 18)
                     .frame(maxWidth: 640)
+                    .inelastic()
                 }
 
                 // The properties rail: status, milestone, branch and
@@ -536,6 +537,7 @@ struct BriefTabView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 18)
+            .inelastic()
         }
         .frame(width: sidebarWidth)
         .rule(.separator, edges: [.leading], width: 0.5)

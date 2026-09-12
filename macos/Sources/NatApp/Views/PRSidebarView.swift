@@ -22,6 +22,7 @@ struct PRSidebarView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 18)
+            .inelastic()
         }
         .frame(width: sidebarWidth)
         .rule(.separator, edges: [.leading], width: 0.5)

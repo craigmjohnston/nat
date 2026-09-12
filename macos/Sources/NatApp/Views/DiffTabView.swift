@@ -173,6 +173,7 @@ struct DiffTabView: View {
                         }
                         .scrollTargetLayout()
                         .padding(14)
+                        .inelastic()
                     }
                     .scrollPosition($fileScroll, anchor: .top)
 
