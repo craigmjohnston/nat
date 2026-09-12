@@ -24,7 +24,7 @@ struct ProjectTabsView: View {
                 projectTabView(tab: tab, liveCount: liveCount, isActive: isActive, color: color, index: index)
 
                 // Hairline separator after an inactive tab, unless the next
-                // one is active (the raised tab is its own edge). The last
+                // one is active (a filled tab is its own edge). The last
                 // tab has no next, so an inactive one carries the divider —
                 // the mock's rule, and what puts a divider between the strip
                 // and the "+" beside it.
@@ -33,11 +33,11 @@ struct ProjectTabsView: View {
                 if !isActive && !nextIsActive {
                     Rectangle()
                         .fill(DesignTokens.rule(.border, on: .header))
-                        .frame(width: 1, height: 16)
-                        // Centered on the band's content line, like the
-                        // tab labels beside it — bottom-aligned it hung
-                        // to the very foot of the band.
-                        .padding(.bottom, 12)
+                        // Full height, like the tabs either side of it: the
+                        // strip is a row of abutting cells now, and a rule
+                        // that stopped short would read as a gap between
+                        // them rather than as the edge where they meet.
+                        .frame(width: 1, height: 40)
                 }
             }
 
@@ -52,22 +52,18 @@ struct ProjectTabsView: View {
             .buttonStyle(.plain)
             .hoverWash(cornerRadius: 7)
             .help("Open or Create a Project…")
-            // 4pt rather than the tabs' 6: the box is 32 in a 40pt band, so
-            // 4 is what puts its icon on the same content line the tab
-            // labels and the toolbar cluster sit on.
+            // The box is 32 in a 40pt band, so 4 off the foot is what puts
+            // its icon on the same content line the full-height tabs' labels
+            // and the toolbar cluster sit on.
             .padding(.bottom, 4)
             .padding(.leading, 6)
 
             Spacer()
         }
-        // The row is 40pt tall outright — the mock's own 6pt top padding is
-        // what the `.bottom`-aligned 34pt tabs already leave above themselves
-        // inside that frame, not an addition on top of it. The alignment
-        // matters as much as the height: a frame centers by default, which
-        // floated the whole strip 2pt high of the band and took every label
-        // off the toolbar cluster's line — `.bottom` is what actually seats
-        // the tabs on the band's foot the way the HStack's own `.bottom`
-        // already promised.
+        // The row is 40pt tall outright, and a tab is the whole of it: the
+        // strip is a row of hard-edged cells filling the band rather than
+        // browser chrome raised off its foot, so there is no headroom above
+        // a tab for an alignment to decide.
         .frame(height: 40, alignment: .bottom)
     }
 
@@ -126,12 +122,25 @@ struct ProjectTabsView: View {
                     .cornerRadius(8)
             }
 
-            // Close button, browser-fashion: always there on the active tab,
-            // shown on hover elsewhere, and not there at all on the last tab
-            // standing — the strip never closes to nothing. Opacity rather
-            // than removal for the hover case, so a tab's width never jumps
-            // as the mouse crosses it.
-            if appModel.projectTabs.count > 1 {
+            // Everything above is the tab's identity and reads from its
+            // leading edge; the close button belongs to the trailing one,
+            // browser-fashion, with the tab's own width between them. It sat
+            // hard against the label before, which on a tab stretched to its
+            // 220pt maximum left some 120pt of tab to the right of it — every
+            // click aimed where a ✕ lives landed on the tab body and
+            // activated it instead, which is what made the button read as
+            // dead when it had always worked.
+            //
+            // A Spacer rather than a reserved slot: the label is leading-
+            // aligned whatever follows it, so nothing moves as the ✕ fades in
+            // under the mouse.
+            Spacer(minLength: 0)
+
+            if ProjectTabRules.showsClose(tabCount: appModel.projectTabs.count) {
+                let showClose = ProjectTabRules.closeIsVisible(
+                    isActive: isActive,
+                    isHovered: hoveredTabID == tab.id
+                )
                 Button(action: {
                     Task { await appModel.closeProject(tab.id) }
                 }) {
@@ -142,28 +151,30 @@ struct ProjectTabsView: View {
                 }
                 .buttonStyle(.plain)
                 .hoverWash(cornerRadius: 4)
-                .opacity(isActive || hoveredTabID == tab.id ? 1 : 0)
+                .opacity(showClose ? 1 : 0)
+                // The same answer the opacity takes: a ✕ faded out is one
+                // nobody can see, and it sits exactly where a click meaning
+                // to select the tab would land.
+                .allowsHitTesting(showClose)
                 .help("Close Tab")
             }
         }
-        // The mock's tab carries 6px of its own bottom padding, which is
-        // what sets its content on the band's center line — the line the
-        // toolbar cluster and the slice count already sit on.
-        .padding(.bottom, 6)
-        .frame(height: 34)
         .padding(.horizontal, 22)
-        // The mock's tab bounds: no narrower than 130 whatever its name,
-        // no wider than 220 however long — padding included, as the mock's
-        // border-box is.
+        // The tab fills the band outright rather than being seated on its
+        // foot: no bottom padding to lift it and no shortfall to center its
+        // contents in — the 40pt cell's own center is the band's center line,
+        // which is where the toolbar cluster and the slice count already sit.
+        .frame(height: 40)
+        // Tab bounds: no narrower than 130 whatever its name, no wider than
+        // 220 however long — padding included, as the mock's border-box is.
         .frame(minWidth: 130, maxWidth: 220, alignment: .leading)
         .background(
-            // The mock's browser tab is one silhouette: a top-rounded body
-            // with two concave flares where it meets the window below — one
-            // path, so the joins can never drift from the corners they curve
-            // out of. An inactive tab under the mouse takes the hover wash
-            // in this same silhouette, so what lights up is what a click
-            // would raise.
-            BrowserTabShape(cornerRadius: 10, flare: 10)
+            // A flat cell, not browser chrome: square corners, full height
+            // and hard against its neighbours, so the strip reads as a row
+            // of abutting tabs. An inactive tab under the mouse takes the
+            // hover wash in the same rectangle, so what lights up is exactly
+            // what a click would raise.
+            Rectangle()
                 .fill(
                     isActive
                         ? DesignTokens.fill(.window)
@@ -202,45 +213,6 @@ struct ProjectTabsView: View {
 }
 
 // MARK: - Helpers
-
-/// The mock's browser tab as one path (`ui-v2-shell.jsx`'s `VProjectTabs`,
-/// which builds it from a top-rounded rectangle plus two radial-gradient
-/// corner pieces): the body's top corners round inward by `cornerRadius`,
-/// and its bottom edge flares outward by `flare` on each side through a
-/// concave quarter-arc, which is the curve that merges the tab into the
-/// window band below it. The flares live inside this shape's own rect —
-/// the tab's content padding is what leaves them room.
-struct BrowserTabShape: Shape {
-    let cornerRadius: CGFloat
-    let flare: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        let r = cornerRadius
-        let f = flare
-        let left = rect.minX + f
-        let right = rect.maxX - f
-
-        p.move(to: CGPoint(x: rect.minX, y: rect.maxY))
-        // Concave flare up into the body's left edge.
-        p.addArc(center: CGPoint(x: rect.minX, y: rect.maxY - f), radius: f,
-                 startAngle: .degrees(90), endAngle: .degrees(0), clockwise: true)
-        p.addLine(to: CGPoint(x: left, y: rect.minY + r))
-        // Rounded top-left corner.
-        p.addArc(center: CGPoint(x: left + r, y: rect.minY + r), radius: r,
-                 startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
-        p.addLine(to: CGPoint(x: right - r, y: rect.minY))
-        // Rounded top-right corner.
-        p.addArc(center: CGPoint(x: right - r, y: rect.minY + r), radius: r,
-                 startAngle: .degrees(270), endAngle: .degrees(0), clockwise: false)
-        p.addLine(to: CGPoint(x: right, y: rect.maxY - f))
-        // Concave flare back out to the band's bottom on the right.
-        p.addArc(center: CGPoint(x: rect.maxX, y: rect.maxY - f), radius: f,
-                 startAngle: .degrees(180), endAngle: .degrees(90), clockwise: true)
-        p.closeSubpath()
-        return p
-    }
-}
 
 struct PulseModifier: ViewModifier {
     @State private var isAnimating = false
