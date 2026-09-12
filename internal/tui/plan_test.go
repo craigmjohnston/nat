@@ -77,17 +77,18 @@ func TestAppPlanLaunchStartsTheSessionAndAttaches(t *testing.T) {
 		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
 	}
 	got := launcher.launches[0]
-	if got.session != agent.PlanSession {
-		t.Errorf("session = %q, want %q", got.session, agent.PlanSession)
+	if want := agent.PlanSessionName(testProjectID); got.session != want {
+		t.Errorf("session = %q, want %q", got.session, want)
 	}
 	// The project default, unasked: there is no directory question any more.
 	if got.workdir != workdir {
 		t.Errorf("workdir = %q, want the project default %q", got.workdir, workdir)
 	}
-	// The sentinel, not a page ID: it is what the running planning agent is
-	// found by afterwards.
-	if got.sliceID != agent.PlanSentinel {
-		t.Errorf("tag = %q, want %q", got.sliceID, agent.PlanSentinel)
+	// The project's planning tag, not a page ID: it is what the running
+	// planning agent is found by afterwards, and it names the project so
+	// another project's workshop session is never mistaken for this one's.
+	if want := agent.PlanTag(testProjectID); got.sliceID != want {
+		t.Errorf("tag = %q, want %q", got.sliceID, want)
 	}
 
 	// The agent is seeded from the file, so what is in it is the whole contract.
@@ -110,7 +111,7 @@ func TestAppPlanLaunchStartsTheSessionAndAttaches(t *testing.T) {
 	if app.form != nil {
 		t.Fatalf("form = %T, want the agent shown with nothing to confirm", app.form)
 	}
-	if want := []string{agent.PlanSession}; !equal(launcher.clients, want) {
+	if want := []string{agent.PlanSessionName(testProjectID)}; !equal(launcher.clients, want) {
 		t.Errorf("clients = %v, want %v", launcher.clients, want)
 	}
 	if app.busy {
@@ -318,14 +319,14 @@ func TestAppPlanLaunchOpensTheViewer(t *testing.T) {
 	fakeTermFor(t)
 	// The refresh that follows the launch sees the session running, as the
 	// real tmux would; without it the viewer would be read as exited.
-	launcher.live = map[string]string{agent.PlanSentinel: agent.PlanSession}
+	launcher.live = map[string]string{agent.PlanTag(testProjectID): agent.PlanSessionName(testProjectID)}
 
 	planLaunch(t, app, "")
 
-	if want := []string{agent.PlanSession}; !reflect.DeepEqual(launcher.clients, want) {
+	if want := []string{agent.PlanSessionName(testProjectID)}; !reflect.DeepEqual(launcher.clients, want) {
 		t.Errorf("clients = %v, want %v", launcher.clients, want)
 	}
-	if app.viewer == nil || app.viewer.sliceID != agent.PlanSentinel {
+	if want := agent.PlanTag(testProjectID); app.viewer == nil || app.viewer.sliceID != want {
 		t.Errorf("viewer = %+v, want the planning agent on show", app.viewer)
 	}
 	if app.form != nil {
@@ -394,13 +395,52 @@ func TestAppPlanKeyTogglesTheRunningAgent(t *testing.T) {
 	}
 }
 
+// Another project's planning agent is no part of this board's plan: w neither
+// attaches it nor refuses to launch over it, so two projects can each be
+// workshopped at once.
+func TestAppPlanKeyIgnoresAnotherProjectsAgent(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	fakeTermFor(t)
+	app.live = map[string]string{agent.PlanTag("proj-2"): agent.PlanSessionName("proj-2")}
+
+	feed(t, app, press(app, "w"))
+
+	if _, ok := app.form.(*PlanForm); !ok {
+		t.Fatalf("form = %T, want the planning form for this project", app.form)
+	}
+	if len(launcher.clients) != 0 {
+		t.Errorf("clients = %v, want another project's session left alone", launcher.clients)
+	}
+}
+
+// A planning session a pre-upgrade nat left running is tagged with the bare
+// sentinel and belongs to no project, so it is still attached rather than
+// orphaned — and no second one is launched over it.
+func TestAppPlanKeyAttachesALegacySession(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	fakeTermFor(t)
+	app.live = map[string]string{agent.PlanSentinel: agent.PlanSession}
+
+	feed(t, app, press(app, "w"))
+
+	if app.form != nil {
+		t.Fatalf("form = %T, want the legacy session attached rather than a second launched", app.form)
+	}
+	if want := []string{agent.PlanSession}; !equal(launcher.clients, want) {
+		t.Errorf("clients = %v, want %v", launcher.clients, want)
+	}
+	if app.viewer == nil || app.viewer.sliceID != agent.PlanSentinel {
+		t.Errorf("viewer = %+v, want the legacy planning agent on show", app.viewer)
+	}
+}
+
 // The viewer's guidance names the key that opened it: w for the planning
 // agent, t for a slice's.
 func TestAppViewerHintsNameThePlanKey(t *testing.T) {
 	app, _, _ := launchApp(t)
 	app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 
-	app.viewer = &agentViewer{session: newFakeTerm(), sliceID: agent.PlanSentinel, name: "the plan"}
+	app.viewer = &agentViewer{session: newFakeTerm(), sliceID: agent.PlanTag(testProjectID), name: "the plan"}
 	if line := stripANSI(strings.Join(app.wrapHints(app.viewerHints(), 60, 1), "\n")); !strings.Contains(line, "w hide the agent") {
 		t.Errorf("line = %q, want the planning key named", line)
 	}
@@ -428,6 +468,14 @@ func TestAppReloadsThePlanWhenThePlanningAgentExits(t *testing.T) {
 		{"a failed poll", map[string]string{agent.PlanSentinel: agent.PlanSession},
 			liveSessionsMsg{err: errors.New("no server")}, 0},
 		{"a slice agent gone", map[string]string{"s5": "nat-5"},
+			liveSessionsMsg{live: map[string]string{}}, 0},
+		{"this project's planning agent gone",
+			map[string]string{agent.PlanTag(testProjectID): agent.PlanSessionName(testProjectID)},
+			liveSessionsMsg{live: map[string]string{}}, 1},
+		// Another project's plan is not this board's, so its session ending
+		// says nothing about what is on screen.
+		{"another project's planning agent gone",
+			map[string]string{agent.PlanTag("proj-2"): agent.PlanSessionName("proj-2")},
 			liveSessionsMsg{live: map[string]string{}}, 0},
 	}
 	for _, tt := range tests {

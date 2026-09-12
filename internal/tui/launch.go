@@ -583,7 +583,7 @@ func (a *App) refreshLive() tea.Cmd {
 // rather than an error banner: it is a background poll, and the plan is still
 // worth looking at without knowing what is running.
 func (a *App) liveLoaded(msg liveSessionsMsg) tea.Cmd {
-	planWasLive := a.live[agent.PlanSentinel] != ""
+	_, planSessionWas := agent.LivePlan(a.live, a.cfg.ActiveProjectID)
 	var cmds []tea.Cmd
 	if msg.err != nil {
 		a.live = nil
@@ -614,7 +614,8 @@ func (a *App) liveLoaded(msg liveSessionsMsg) tea.Cmd {
 	a.syncBoard()
 	// A planning agent that has exited has been editing the plan, so the board
 	// re-reads it rather than showing what was there before the session.
-	if msg.err == nil && planWasLive && a.live[agent.PlanSentinel] == "" {
+	_, planSessionNow := agent.LivePlan(a.live, a.cfg.ActiveProjectID)
+	if msg.err == nil && planSessionWas != "" && planSessionNow == "" {
 		cmds = append(cmds, a.startLoad())
 	}
 	return tea.Batch(cmds...)
@@ -647,8 +648,8 @@ func (a *App) agentLaunched(msg agentLaunchedMsg) (tea.Model, tea.Cmd) {
 	// The launch claimed the slice, so the row it was pressed on is a page
 	// behind: it is refetched the way any other write's row is, rather than the
 	// whole plan reloaded. The planning agent comes through here too and has no
-	// slice — the sentinel names no page there would be anything to read.
-	if a.project != nil && msg.slice.ID != agent.PlanSentinel {
+	// slice — a planning tag names no page there would be anything to read.
+	if a.project != nil && !agent.IsPlanTag(msg.slice.ID) {
 		cmds = append(cmds, a.refreshSlice(msg.slice.ID))
 	}
 	if !msg.attach {

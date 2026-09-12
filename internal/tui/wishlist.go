@@ -80,7 +80,7 @@ func (a *App) workshopFlow() tea.Cmd {
 	if !ok || a.launcher == nil || a.busy || len(a.wishlist) == 0 {
 		return nil
 	}
-	if a.live[agent.PlanSentinel] != "" {
+	if _, session := agent.LivePlan(a.live, a.cfg.ActiveProjectID); session != "" {
 		return nil
 	}
 	return launchWishlistAgent(a.launcher, a.cfg.ActiveProjectID, project.Name, expandHome(project.WorkingDir),
@@ -93,13 +93,14 @@ func (a *App) workshopFlow() tea.Cmd {
 // the failure reporting are handled in one place.
 func launchWishlistAgent(l AgentLauncher, projectID, projectName, workdir string, items []notion.WishlistItem, m config.AgentModel) tea.Cmd {
 	return func() tea.Msg {
-		file, err := agent.WritePromptFile(agent.PlanSession, agent.WishlistPrompt(projectID, projectName, workdir, items))
+		session, tag := agent.PlanSessionName(projectID), agent.PlanTag(projectID)
+		file, err := agent.WritePromptFile(session, agent.WishlistPrompt(projectID, projectName, workdir, items))
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch planning agent: %w", err)}
 		}
-		if err := l.Launch(agent.PlanSession, workdir, file, agent.PlanSentinel, m); err != nil {
+		if err := l.Launch(session, workdir, file, tag, m); err != nil {
 			return agentLaunchedMsg{err: err}
 		}
-		return agentLaunchedMsg{slice: planSlice(), session: agent.PlanSession, attach: true}
+		return agentLaunchedMsg{slice: planSlice(tag), session: session, attach: true}
 	}
 }

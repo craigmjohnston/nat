@@ -14,12 +14,12 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 )
 
-// planSlice is the planning agent as the launch plumbing sees it: the sentinel
-// where a slice's page ID would go, and a name for the strings the flow
-// prints. It exists so the show/attach path — which is about panes and
-// sessions, not slices — serves the planning agent unchanged.
-func planSlice() domain.Slice {
-	return domain.Slice{ID: agent.PlanSentinel, Name: "the plan"}
+// planSlice is the planning agent as the launch plumbing sees it: the tag of
+// the project being workshopped where a slice's page ID would go, and a name
+// for the strings the flow prints. It exists so the show/attach path — which is
+// about panes and sessions, not slices — serves the planning agent unchanged.
+func planSlice(tag string) domain.Slice {
+	return domain.Slice{ID: tag, Name: "the plan"}
 }
 
 // PlanForm is the modal behind w when no planning agent is running: what the
@@ -197,39 +197,45 @@ func (f *PlanForm) save(a *App) tea.Cmd {
 }
 
 // launchPlanAgent writes the planning prompt out — the user's request folded
-// in — and starts the detached session that reads it, tagged with the sentinel
-// rather than a slice ID. It comes back as the same message a slice launch
-// does, so the failure reporting is shared.
+// in — and starts the detached session that reads it, tagged with the project's
+// planning tag rather than a slice ID. It comes back as the same message a
+// slice launch does, so the failure reporting is shared.
 func launchPlanAgent(l AgentLauncher, projectID, projectName, workdir, request string, m config.AgentModel) tea.Cmd {
 	return func() tea.Msg {
-		file, err := agent.WritePromptFile(agent.PlanSession, agent.PlanPrompt(projectID, projectName, workdir, request))
+		session, tag := agent.PlanSessionName(projectID), agent.PlanTag(projectID)
+		file, err := agent.WritePromptFile(session, agent.PlanPrompt(projectID, projectName, workdir, request))
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch planning agent: %w", err)}
 		}
-		if err := l.Launch(agent.PlanSession, workdir, file, agent.PlanSentinel, m); err != nil {
+		if err := l.Launch(session, workdir, file, tag, m); err != nil {
 			return agentLaunchedMsg{err: err}
 		}
 		// A planning launch always attaches: the user has just said what they
 		// want to workshop, so the pane is shown straight away.
-		return agentLaunchedMsg{slice: planSlice(), session: agent.PlanSession, attach: true}
+		return agentLaunchedMsg{slice: planSlice(tag), session: session, attach: true}
 	}
 }
 
 // planAgentFlow is what w does: launches a planning agent when none is
 // running, and shows or hides the one that is — the same toggle t is for a
 // slice's agent, and it works the same way round, closing what is on show
-// before it looks for a session. One planning agent is enough: a second would
-// workshop the same plan the first is already holding in its head.
+// before it looks for a session. One planning agent per project is enough: a
+// second would workshop the same plan the first is already holding in its head.
+// It is the active project's own that the key toggles — another project's
+// workshop session is no part of this board's plan — bar a bare pre-upgrade
+// one, which belongs to no project and so is every project's to attach.
 func (a *App) planAgentFlow() tea.Cmd {
 	_, ok := a.activeProject()
 	if !ok || a.launcher == nil {
 		return nil
 	}
-	if a.viewer != nil && a.viewer.sliceID == agent.PlanSentinel {
+	// Whichever project's planning agent is on show, the key that hides it is
+	// this one: only one pane is ever drawn.
+	if a.viewer != nil && agent.IsPlanTag(a.viewer.sliceID) {
 		return a.closeViewer()
 	}
-	if session := a.live[agent.PlanSentinel]; session != "" {
-		return a.openAgentViewer(agent.PlanSentinel, planSlice().Name, session)
+	if tag, session := agent.LivePlan(a.live, a.cfg.ActiveProjectID); session != "" {
+		return a.openAgentViewer(tag, planSlice(tag).Name, session)
 	}
 	// Only the launch is a write, and only it waits on one already in flight.
 	if a.busy {

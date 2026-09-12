@@ -23,8 +23,12 @@ import (
 // request wins over a pending wishlist for the reason w's does: the user has
 // just said what they want to workshop, and the wishlist is not it.
 //
-// A planning session already live is refused: one is enough to hold a plan in
-// its head, the same rule the board's own w and W apply.
+// A planning session already live on this project is refused: one is enough to
+// hold its plan in its head, the same rule the board's own w and W apply. It is
+// that project's own session that refuses, so a second project can be
+// workshopped at the same time — and a bare pre-upgrade planning session, which
+// belongs to no project, refuses every project, since it is the one any of them
+// would attach.
 func workshopLaunch(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("workshop-launch", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -51,7 +55,7 @@ func workshopLaunch(ctx context.Context, args []string, env Env) error {
 	}
 
 	if live, err := env.NewTmux().LiveSlices(); err == nil {
-		if session, ok := live[agent.PlanSentinel]; ok {
+		if _, session := agent.LivePlan(live, projectID); session != "" {
 			return fmt.Errorf("a planning agent is already live: %s", session)
 		}
 	}
@@ -83,18 +87,19 @@ func workshopLaunch(ctx context.Context, args []string, env Env) error {
 	}
 	agentModel = actions.TrimModel(agentModel)
 
-	file, err := agent.WritePromptFile(agent.PlanSession, prompt)
+	session := agent.PlanSessionName(projectID)
+	file, err := agent.WritePromptFile(session, prompt)
 	if err != nil {
 		return fmt.Errorf("launch planning agent: %w", err)
 	}
-	if err := env.NewTmux().Launch(agent.PlanSession, workdir, file, agent.PlanSentinel, agentModel); err != nil {
+	if err := env.NewTmux().Launch(session, workdir, file, agent.PlanTag(projectID), agentModel); err != nil {
 		return err
 	}
 
 	if *asJSON {
-		return writeWorkshopLaunchJSON(env.Out, agent.PlanSession, workdir, wishlist)
+		return writeWorkshopLaunchJSON(env.Out, session, workdir, wishlist)
 	}
-	_, err = io.WriteString(env.Out, workshopLaunchMarkdown(agent.PlanSession, workdir, wishlist))
+	_, err = io.WriteString(env.Out, workshopLaunchMarkdown(session, workdir, wishlist))
 	return err
 }
 

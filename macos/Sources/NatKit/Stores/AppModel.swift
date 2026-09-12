@@ -21,10 +21,13 @@ public struct FileConfigReader: ConfigReaderProtocol {
 @MainActor
 @Observable
 public final class AppModel {
-    /// The slice-ID sentinel `nat status` reports the planning agent under —
-    /// `agent.PlanSentinel` on the Go side. The workshop has no slice, so
-    /// this is the key its live presence sits at in `activityStore.agents`.
-    public static let planSentinel = "plan"
+    /// The bare slice-ID sentinel `nat status` reported every planning agent
+    /// under before they were scoped to a project — `agent.PlanSentinel` on
+    /// the Go side. A planning agent launched now is keyed by its project
+    /// (`TmuxSession.planTag(projectID:)`); this is only what a session
+    /// started before the upgrade still answers to, and it belongs to no
+    /// project, so any of them may attach it.
+    public static let planSentinel = TmuxSession.planSentinel
 
     /// The current configuration.
     public private(set) var config: NatProjectConfig?
@@ -397,12 +400,28 @@ public final class AppModel {
 
     // MARK: - Workshop
 
-    /// The planning agent as the activity poll last saw it — nil while none
-    /// runs. The live reading is the whole source of workshop presence, so an
-    /// agent launched before this app started is found the same way one it
-    /// launched itself is.
+    /// The key the active project's planning agent sits at in
+    /// `activityStore.agents` — its own project-qualified tag, or the bare
+    /// legacy sentinel where that is what is running, since a session started
+    /// before planning agents were scoped belongs to no project and every
+    /// project may attach it. Nil when no project is active or none is live.
+    public var planningAgentKey: String? {
+        guard let activeID = activeProjectID, let agents = activityStore?.agents else { return nil }
+        let scoped = TmuxSession.planTag(projectID: activeID)
+        if agents[scoped] != nil { return scoped }
+        if agents[Self.planSentinel] != nil { return Self.planSentinel }
+        return nil
+    }
+
+    /// The active project's planning agent as the activity poll last saw it —
+    /// nil while none runs. The live reading is the whole source of workshop
+    /// presence, so an agent launched before this app started is found the same
+    /// way one it launched itself is. Another project's planning agent is not
+    /// this project's and is never drawn here: switching tabs switches the
+    /// workshop with everything else.
     public var planningAgent: AgentStatus? {
-        activityStore?.agents[Self.planSentinel]
+        guard let key = planningAgentKey else { return nil }
+        return activityStore?.agents[key]
     }
 
     /// Whether the active project's rail has the workshop row selected.
