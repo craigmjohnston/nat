@@ -52,7 +52,8 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   one slice, read the prose on a page — a slice's brief or a project's
   conventions, which are the same read — read the pull request description a
   hand-back filed, claim a slice, release one, close one out, record a pull
-  request on one, mark one Done, add milestones, rename one, remove one, add a slice, edit
+  request on one, mark one Done, add milestones, rename one, remove one, move one
+  in the plan, add a slice, edit
   one, record what one waits on, refile one, drop one. It is said in the app's
   own words — `domain.Slice` and `domain.Milestone` go in and come back, and no
   property type, request body or page shape crosses the line — so a second
@@ -458,7 +459,9 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   refused while any slice is still filed under it, naming them, since a
   milestone is nothing but the name its slices carry and emptying it first is
   the caller's own call about the work rather than the command's about the
-  plan — and
+  plan — `nat milestone-move <name> (--before <other> | --after <other>)`, which
+  changes the plan's order and nothing else, exactly one of the two flags naming
+  where it lands — and
   `nat slice-add <title> --milestone <name> [--description TEXT|-]
   [--repo DIR] [--depends-on <slice>]...` (Todo and unassigned, description as
   the page body; `--description -` reads it from stdin, so a slice-add typed
@@ -1478,7 +1481,19 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   milestone the plan no longer has, and there would be nothing left on the page
   to put it right from. Moving those slices with `slice-move` or dropping them
   with `slice-delete` is the caller's, being a decision about the work rather
-  than about the plan's shape. `next-slice` reads the plan the way the board does
+  than about the plan's shape. `milestone-move` is the one thing that changes
+  where a milestone sits rather than whether it is there, and it is the cheapest
+  of the three: a milestone's order is its place among the options, so the whole
+  move is those options sent back in another order
+  (`notion.PropertySchema.OptionMoved`) and otherwise exactly as they were read,
+  IDs and colours included — one schema write, no option created or retired and
+  so no slice refiled, which is why it is the one milestone edit that reads no
+  slices at all and says nothing about the status of what it moved. Exactly one
+  of `--before` and `--after` is required, since a move with neither names
+  nowhere to land and one with both names two places at once, and three things
+  are refused before the write: a name the plan does not hold, a target it does
+  not hold, and a move relative to the milestone itself, which names no place to
+  go. `next-slice` reads the plan the way the board does
   and takes work from the lowest-ordered milestone that is not Done: a
   milestone is Queued until a slice under it starts, so gating on Active would
   leave a plan on which nothing has begun with no way to begin.

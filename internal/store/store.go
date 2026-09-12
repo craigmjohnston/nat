@@ -193,6 +193,16 @@ type Store interface {
 	// comes back, since that place is what a caller's own record of the plan is
 	// keyed by.
 	RemoveMilestone(ctx context.Context, p Project, sh Shape, name string) (domain.Milestone, error)
+	// MoveMilestone moves a milestone to sit directly before or after another,
+	// and changes nothing else about the plan: a milestone's order is its place
+	// among the others, so a move is the order of the plan and nothing more —
+	// every milestone keeps its name and keeps its slices. A name the plan does
+	// not hold, a target it does not hold, and a move relative to the milestone
+	// itself are each refused before anything is written. The milestone as it
+	// now stands and the one it was placed relative to both come back, since
+	// each has a new place in the plan and that place is what a caller's own
+	// record of the plan is keyed by.
+	MoveMilestone(ctx context.Context, p Project, sh Shape, name, target string, before bool) (domain.Milestone, domain.Milestone, error)
 	// AddSlice files one slice under a milestone, Todo and unclaimed.
 	AddSlice(ctx context.Context, p Project, n NewSlice) (domain.Slice, error)
 	// EditSlice rewrites a slice's title, working directory and brief, leaving

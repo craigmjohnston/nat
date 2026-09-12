@@ -225,3 +225,52 @@ func (s PropertySchema) WithoutOption(name string) (PropertySchema, bool) {
 	}
 	return PropertySchema{Select: &OptionsConfig{Options: options}}, true
 }
+
+// OptionMoved builds the property definition that is this select with one option
+// lifted out of the list and put back directly before or after another. Every
+// option is exactly the one it was — ID, name and colour — and the order of the
+// list is the only thing that differs, which matters because Notion replaces an
+// option list wholesale rather than merging into it: an option sent back changed
+// would be changed, and one left out would be gone.
+//
+// It is how a milestone is moved in the plan. A milestone's order is its place
+// among these options, so reordering them is the whole of the move: no option
+// is created or retired, and so no slice has to be refiled — unlike a rename,
+// which the API will not do in place at all.
+//
+// It reports false for anything but a select, for the reason
+// [PropertySchema.AppendedOptions] does, and where the list does not hold both
+// named options — there is either nothing to move or nowhere to put it, and
+// naming one option twice is both at once.
+func (s PropertySchema) OptionMoved(name, target string, before bool) (PropertySchema, bool) {
+	if s.Select == nil {
+		return PropertySchema{}, false
+	}
+	var moved SelectOption
+	rest := make([]SelectOption, 0, len(s.Select.Options))
+	found, marked := false, false
+	for _, o := range s.Select.Options {
+		if o.Name == name {
+			moved, found = o, true
+			continue
+		}
+		rest = append(rest, o)
+		if o.Name == target {
+			marked = true
+		}
+	}
+	if !found || !marked {
+		return PropertySchema{}, false
+	}
+	options := make([]SelectOption, 0, len(s.Select.Options))
+	for _, o := range rest {
+		if o.Name == target && before {
+			options = append(options, moved)
+		}
+		options = append(options, o)
+		if o.Name == target && !before {
+			options = append(options, moved)
+		}
+	}
+	return PropertySchema{Select: &OptionsConfig{Options: options}}, true
+}
