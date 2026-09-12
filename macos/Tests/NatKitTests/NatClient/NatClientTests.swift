@@ -304,14 +304,6 @@ final class NatClientTests: XCTestCase {
         }
     }
 
-    func testAgentInterruptSuccess() async throws {
-        let fakeRunner = FakeRunner(fixture: .agentInterruptSuccess)
-        let client = NatClient(commandRunner: fakeRunner)
-
-        // Should not throw
-        try await client.agentInterrupt(projectID: "proj-123", sliceRef: "slice-1")
-    }
-
     func testAgentSendPostsThePromptOverStdin() async throws {
         let fakeRunner = FakeRunner(fixture: .agentSendSuccess)
         let client = NatClient(commandRunner: fakeRunner)
@@ -470,22 +462,6 @@ final class NatClientTests: XCTestCase {
         } catch let error as NatError {
             if case .commandFailed(let message) = error {
                 XCTAssertEqual(message, "\"Write the UI\" has no pull request recorded: nothing to comment on")
-            } else {
-                XCTFail("Expected commandFailed error")
-            }
-        }
-    }
-
-    func testAgentInterruptNoSession() async throws {
-        let fakeRunner = FakeRunner(fixture: .agentInterruptNoSession)
-        let client = NatClient(commandRunner: fakeRunner)
-
-        do {
-            try await client.agentInterrupt(projectID: "proj-123", sliceRef: "slice-1")
-            XCTFail("Should have thrown")
-        } catch let error as NatError {
-            if case .commandFailed(let message) = error {
-                XCTAssertEqual(message, "no live session for slice-id")
             } else {
                 XCTFail("Expected commandFailed error")
             }

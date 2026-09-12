@@ -120,16 +120,6 @@ public final class NatClient: Sendable {
         return try decodeJSON(SliceCommitsDoc.self, from: output)
     }
 
-    /// Send an interrupt signal to a running agent's tmux session.
-    ///
-    /// - Parameters:
-    ///   - projectID: The project's Notion page ID
-    ///   - sliceRef: The slice's URL or Notion page ID
-    /// - Throws: NatError if the command fails or no live session exists
-    public func agentInterrupt(projectID: String, sliceRef: String) async throws {
-        _ = try await runNat(arguments: ["agent-interrupt", "--project", projectID, sliceRef])
-    }
-
     /// Send a prompt to a running agent's tmux session — the pending review
     /// comments, typed at the pane and submitted as one turn.
     ///

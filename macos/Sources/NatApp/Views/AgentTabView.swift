@@ -6,7 +6,6 @@ import NatKit
 struct AgentTabView: View {
     @Bindable var appModel: AppModel
     let slice: Slice
-    @State private var interruptError: String?
     @State private var lifecycle = TerminalLifecycle()
 
     private var liveAgent: AgentStatus? {
@@ -35,38 +34,6 @@ struct AgentTabView: View {
                     .padding(.vertical, 14)
                     .padding(.horizontal, 18)
                 }
-
-                // Footer with buttons — the mock's own metrics: a ~34pt row,
-                // 8pt of vertical padding and a hairline top border rather
-                // than a bare Divider, matching every other pane border in
-                // the app (see ProgressBorderView).
-                HStack(spacing: 8) {
-                    Spacer()
-
-                    if let error = interruptError {
-                        Text(error)
-                            .font(.system(size: Typo.subhead, weight: .regular))
-                            .ink(.danger)
-                    }
-
-                    // Both secondary: neither is the pane's confirming
-                    // action — there is none — and the pair reads as the
-                    // diff footer's own does.
-                    Button(action: openInTerminal) {
-                        Text("Open in Terminal…")
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-
-                    Button(action: sendInterrupt) {
-                        Text("Interrupt")
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .frame(height: 34)
-                .surface(.card)
-                .rule(.separator, edges: [.top], width: 0.5)
             } else {
                 // Empty state
                 VStack(spacing: 12) {
@@ -87,50 +54,6 @@ struct AgentTabView: View {
             }
         }
         .surface(.window)
-    }
-
-    // MARK: - Actions
-
-    private func openInTerminal() {
-        guard let agent = liveAgent else { return }
-
-        let spec = AttachSpec(session: agent.session)
-        let scriptText = AttachCommandScript.generate(from: spec)
-
-        // Write script to temp file
-        let tempDir = FileManager.default.temporaryDirectory
-        let scriptPath = tempDir.appendingPathComponent("nat-attach-\(agent.session).command")
-
-        do {
-            try scriptText.write(toFile: scriptPath.path, atomically: true, encoding: .utf8)
-
-            // Make it executable
-            try FileManager.default.setAttributes(
-                [.posixPermissions: 0o755],
-                ofItemAtPath: scriptPath.path
-            )
-
-            // Open with NSWorkspace (Terminal.app will run it)
-            NSWorkspace.shared.open(scriptPath)
-        } catch {
-            interruptError = "Failed to open terminal: \(error.localizedDescription)"
-        }
-    }
-
-    private func sendInterrupt() {
-        guard let projectID = appModel.projectStore?.projectID else { return }
-
-        interruptError = nil
-
-        Task {
-            do {
-                try await NatClient().agentInterrupt(projectID: projectID, sliceRef: slice.id)
-            } catch {
-                await MainActor.run {
-                    interruptError = error.localizedDescription
-                }
-            }
-        }
     }
 
     private func sessionStillExists() -> Bool {

@@ -41,7 +41,6 @@ private final class MockPRClient: NatClientProtocol, @unchecked Sendable {
     func sliceEdit(projectID: String, sliceRef: String, description: String) async throws -> SliceEditResult {
         throw PRTestError()
     }
-    func agentInterrupt(projectID: String, sliceRef: String) async throws { throw PRTestError() }
     func agentSend(projectID: String, sliceRef: String, text: String) async throws { throw PRTestError() }
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String { throw PRTestError() }
     func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult {

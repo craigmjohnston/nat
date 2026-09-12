@@ -54,7 +54,6 @@ private final class MockSliceDetailClient: NatClientProtocol, @unchecked Sendabl
     func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult {
         throw SliceDetailTestError()
     }
-    func agentInterrupt(projectID: String, sliceRef: String) async throws { throw SliceDetailTestError() }
     func agentSend(projectID: String, sliceRef: String, text: String) async throws { throw SliceDetailTestError() }
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String { throw SliceDetailTestError() }
     func prStatus(projectID: String) async throws -> PRStatusDoc { throw SliceDetailTestError() }
