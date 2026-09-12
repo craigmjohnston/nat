@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 import NatKit
 
-@main
+/// Started by `main.swift` rather than by `@main`, which the gallery's
+/// argument parsing has to run ahead of — see the comment there.
 struct NatApp: App {
     @State private var appModel: AppModel
     @StateObject private var updaterViewModel = UpdaterViewModel()

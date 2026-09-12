@@ -80,6 +80,37 @@ open macos/Package.swift
 swift test --package-path macos
 ```
 
+### Render the view gallery:
+```bash
+swift build --package-path macos
+macos/.build/debug/gnat --list                                  # every story's name
+macos/.build/debug/gnat --story window-shell --out shell.png    # one of them
+macos/.build/debug/gnat --all --out /tmp/gallery                # the whole catalog
+```
+
+A *story* pairs a name with a view built from `NatFixtures` and the size to
+draw it at, and the gallery is how a window gets reviewed the way the Go TUI's
+golden snapshots let a screen be reviewed: a run touches no Notion, no `nat`
+and no tmux, writes its PNGs and exits, so the same pixels come out on any
+machine and in a clean checkout. A named story is about a second and a half.
+
+The catalog is `Sources/NatApp/Gallery/AppStories.swift` — adding a story is an
+entry in that array and nothing else. Names are slugs, because a name is both
+a `--story` argument and a file name; `Tests/NatKitTests/Gallery/StoryNamesTests.swift`
+holds that rule over the source, since a catalog of views cannot be built in a
+test target.
+
+`Story`/`StoryCatalog` and the argument parsing are in `NatKit/Gallery`, where
+they are tested; the AppKit capture is in `NatApp/Gallery`, where a window
+belongs. It captures the window's own drawn pixels
+(`bitmapImageRepForCachingDisplay` + `cacheDisplay`, the path `NAT_SNAPSHOT`
+already trusts) rather than `ImageRenderer`, which renders the tree afresh and
+skips scrollable containers' content — half the states worth drawing are inside
+a scroll view, so a renderer pass would hand back a gallery of empty panes.
+Reading the arguments has to happen before `App.main()` takes over the process,
+which is why `Sources/NatApp/main.swift` is the entry point and `NatApp` carries
+no `@main`.
+
 ### Build a release .app bundle:
 ```bash
 bash macos/Scripts/make-app.sh
