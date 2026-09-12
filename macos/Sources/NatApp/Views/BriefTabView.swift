@@ -206,6 +206,16 @@ struct BriefTabView: View {
                     // rather than over it — so it differs from every other
                     // submit in its two halves and in nothing else.
                     //
+                    // Which means the left half widens by the spinner while a
+                    // launch runs and the chevron beside it moves with it.
+                    // That is the point rather than something to hold still
+                    // for: the control saying the press landed is worth more
+                    // than a chevron staying put for the second or two a
+                    // launch takes, and drawing the label invisible under an
+                    // overlaid spinner to keep it there — which is what this
+                    // did — bought that with a button that said nothing at
+                    // all while it worked.
+                    //
                     // Dimmed as a whole rather than through each button's own
                     // disabled state, since a split control half-dimmed would
                     // read as only one half of it being unavailable.

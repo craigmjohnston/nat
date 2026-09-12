@@ -35,32 +35,56 @@ extension View {
 
 /// The label of a button whose action runs async: a small spinner beside the
 /// label at the text's own height, shown while the work is in flight — and
-/// its slot held whether it is spinning or not, so the button is exactly the
-/// same size busy and idle and nothing beside it moves when the work starts.
+/// shown by taking room rather than by filling room already held, so the
+/// button sits at its text's own width when idle and grows by the spinner
+/// for exactly as long as one is spinning.
 ///
-/// (Swapping the label for a bare `ProgressView` lays out at the spinner's
-/// full control size whatever `scaleEffect` draws it at — which is how the
-/// merge button used to grow into a square. Showing the spinner only while
-/// busy fixed the height and left the width jumping by the spinner's own,
-/// which in a trailing-aligned row of buttons shoves every button before it
-/// sideways for as long as the work runs.)
+/// The label stays where it is throughout: the spinner joins it rather than
+/// replacing it, so the button always says what it is doing. (Swapping the
+/// label for a bare `ProgressView` lays out at the spinner's full control
+/// size whatever `scaleEffect` draws it at — which is how the merge button
+/// used to grow into a square — and leaves the button reading as nothing but
+/// a spinner while the work runs.)
+///
+/// The slot was held either way once, so nothing beside the button moved when
+/// the work started; what that cost was every idle button wearing a blank
+/// 10pt column and the reserved `frame(width:)` paddings that made the gap
+/// look deliberate. Moving a neighbour for the length of a launch is the
+/// cheaper of the two, and the growth is itself a sign the press landed.
 struct AsyncActionLabel<Label: View>: View {
     let isBusy: Bool
     @ViewBuilder let label: () -> Label
 
     var body: some View {
         HStack(spacing: 5) {
-            BusySlot(isBusy: isBusy)
+            if isBusy {
+                BusySpinner()
+            }
             label()
         }
     }
 }
 
-/// The spinner's slot: 10 by 10 whether anything is spinning in it or not,
-/// so what it sits beside is laid out the same either way. Idle it is empty
-/// rather than a hidden `ProgressView`, since a spinner nobody can see still
-/// animates, and an app with a dozen async buttons on screen would be
-/// running a dozen of them for nothing.
+/// The spinner itself: sized down to 10 by 10 rather than laid out at the
+/// control's own size, which `scaleEffect` draws smaller without ever
+/// shrinking, so it sits at the height of the text beside it.
+struct BusySpinner: View {
+    var label: String = "Working…"
+
+    var body: some View {
+        ProgressView()
+            .controlSize(.small)
+            .scaleEffect(0.55)
+            .accessibilityLabel(label)
+            .frame(width: 10, height: 10)
+    }
+}
+
+/// The spinner's slot for what wants the room held whether anything is
+/// spinning in it or not — a mark on a pane rather than a button's label,
+/// where there is no press to explain a line of content shifting. Idle it is
+/// empty rather than a hidden `ProgressView`, since a spinner nobody can see
+/// still animates, and a screenful of them would be running for nothing.
 struct BusySlot: View {
     let isBusy: Bool
     var label: String = "Working…"
@@ -68,16 +92,13 @@ struct BusySlot: View {
     var body: some View {
         Group {
             if isBusy {
-                ProgressView()
-                    .controlSize(.small)
-                    .scaleEffect(0.55)
-                    .accessibilityLabel(label)
+                BusySpinner(label: label)
             } else {
                 Color.clear
                     .accessibilityHidden(true)
+                    .frame(width: 10, height: 10)
             }
         }
-        .frame(width: 10, height: 10)
     }
 }
 
@@ -179,9 +200,9 @@ extension View {
 /// stay the caller's job via .hoverWash().
 ///
 /// A button whose action runs async wraps its label in `AsyncActionLabel`
-/// rather than swapping the label out: with the height fixed here and the
-/// spinner's slot held there, a button is exactly the same size busy and
-/// idle.
+/// rather than swapping the label out: with the height fixed here, the only
+/// thing a spinner can change is the width — which it does, for as long as it
+/// shows, and never the label, which stays visible under it.
 
 /// The one submit style: a flat accent fill, not the brand gradient. The
 /// app's icon and its progress bars already carry the gradient, and a button

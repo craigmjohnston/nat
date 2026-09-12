@@ -86,7 +86,6 @@ struct NewSliceSheetView: View {
                 Button(action: submit) {
                     AsyncActionLabel(isBusy: isSubmitting) {
                         Text("Add Slice")
-                            .frame(minWidth: 60)
                     }
                 }
                 .buttonStyle(PrimaryButtonStyle())
