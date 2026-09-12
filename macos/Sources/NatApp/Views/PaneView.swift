@@ -45,8 +45,7 @@ struct PaneView: View {
                     HStack(spacing: 10) {
                         ForEach(Array(tabState.tabs.enumerated()), id: \.offset) { index, tab in
                             if index > 0 {
-                                Rule(.hairline, axis: .vertical)
-                                    .frame(width: 12, height: 1)
+                                stepperSeparator(lit: tabState.isSeparatorLit(before: tab))
                             }
 
                             stepperStage(
@@ -109,6 +108,22 @@ struct PaneView: View {
             // Reset tab when slice changes
             currentTab = workflowState?.defaultTab ?? .brief
         }
+    }
+
+    // MARK: - Stepper Separator
+
+    /// The step from one stage to the next: an arrow rather than a rule,
+    /// since what it marks is a direction and not a division. It is lit
+    /// where both stages it joins are reachable — the step is one that can
+    /// actually be taken — and muted otherwise, in the same quaternary the
+    /// locked stages' own glyphs are drawn in, so a run of locked stages
+    /// recedes as one thing rather than as stages behind lit arrows.
+    private func stepperSeparator(lit: Bool) -> some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: 9, weight: .semibold))
+            .ink(lit ? .secondary : .quaternary)
+            .frame(width: 12)
+            .accessibilityHidden(true)
     }
 
     // MARK: - Stepper Stage
