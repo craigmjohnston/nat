@@ -33,15 +33,28 @@ let package = Package(
                 .copy("Resources/Fonts")
             ]
         ),
+        // Canned app states — plain values of NatKit's own types — shared by
+        // the SwiftUI previews, the tests and the coming gallery runner, so
+        // there is one place a realistic loaded project (or a failing one)
+        // is written down rather than one per call site.
+        .target(
+            name: "NatFixtures",
+            dependencies: ["NatKit"],
+            path: "Sources/NatFixtures"
+        ),
         .testTarget(
             name: "NatKitTests",
-            dependencies: ["NatKit"],
+            dependencies: ["NatKit", "NatFixtures"],
             path: "Tests/NatKitTests"
         ),
         .executableTarget(
             name: "NatApp",
             dependencies: [
                 "NatKit",
+                // The previews under Sources/NatApp/Views draw from the
+                // fixtures; #Preview compiles into the target, so the app
+                // depends on them.
+                "NatFixtures",
                 .product(name: "SwiftTerm", package: "SwiftTerm"),
                 .product(name: "Sparkle", package: "Sparkle")
             ],
