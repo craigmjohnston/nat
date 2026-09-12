@@ -20,8 +20,6 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case sliceLaunchSuccess
         case sliceLaunchWithWarning
         case sliceLaunchFailure
-        case agentInterruptSuccess
-        case agentInterruptNoSession
         case agentSendSuccess
         case agentSendNoSession
         case sliceApproveSuccess
@@ -111,10 +109,6 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return (fixtureSliceLaunchWithWarning.data(using: .utf8)!, Data(), 0)
         case .sliceLaunchFailure:
             return (Data(), "slice is blocked by incomplete dependencies".data(using: .utf8)!, 1)
-        case .agentInterruptSuccess:
-            return ("success".data(using: .utf8)!, Data(), 0)
-        case .agentInterruptNoSession:
-            return (Data(), "no live session for slice-id".data(using: .utf8)!, 1)
         case .agentSendSuccess:
             // agent-send says nothing at all on success.
             return (Data(), Data(), 0)

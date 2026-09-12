@@ -102,10 +102,6 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
         throw DiffTestError()
     }
 
-    func agentInterrupt(projectID: String, sliceRef: String) async throws {
-        throw DiffTestError()
-    }
-
     func agentSend(projectID: String, sliceRef: String, text: String) async throws {
         sentPrompts.append((projectID, sliceRef, text))
         if let sendError {
