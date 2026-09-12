@@ -211,11 +211,16 @@ struct RailView: View {
                     }
                 }
 
-                // ACTIVE section
-                if !railModel.active.isEmpty {
-                    sectionHeading("ACTIVE", icon: "bolt")
-                        .padding(.top, railModel.needsReview.isEmpty && workshopEntry == nil ? 0 : 16)
+                // ACTIVE section — always drawn, holding entries or holding
+                // its own note: what is running is the rail's standing
+                // question, and a heading that only appeared once something
+                // was read as chrome arriving from nowhere.
+                sectionHeading("ACTIVE", icon: "bolt")
+                    .padding(.top, railModel.needsReview.isEmpty && workshopEntry == nil ? 0 : 16)
 
+                if railModel.active.isEmpty {
+                    activeEmptyNote
+                } else {
                     ForEach(railModel.active, id: \.sliceID) { entry in
                         activeRow(for: entry)
                             .contentShape(Rectangle())
@@ -225,24 +230,21 @@ struct RailView: View {
                     }
                 }
 
-                // The rule under the flight sections exists only where they
-                // do — an empty board opening with a bare line would read as
-                // chrome missing its content.
-                if workshopEntry != nil || !railModel.needsReview.isEmpty || !railModel.active.isEmpty {
-                    Rule()
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                }
+                // The rule under the flight sections, drawn whatever they
+                // hold: ACTIVE is above it on every rail there is, so there
+                // is always a section for it to close.
+                Rule()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
 
                 // TODO — the milestones still holding work, folders in a
                 // file tree with their remaining slices as files.
                 if !railModel.todoFolders.isEmpty {
                     sectionHeading("TODO", icon: "list.bullet")
-                        // Same "is this the first thing on the rail" zero as
-                        // the sections above — TODO only needs extra air when
-                        // it lands under the flight-sections divider.
-                        .padding(.top, workshopEntry == nil && railModel.needsReview.isEmpty
-                            && railModel.active.isEmpty ? 0 : 6)
+                        // TODO always lands under the flight-sections
+                        // divider now that ACTIVE is always above it, so the
+                        // air it needs there is no longer conditional.
+                        .padding(.top, 6)
                 }
 
                 ForEach(railModel.todoFolders, id: \.milestoneID) { folder in
@@ -350,6 +352,41 @@ struct RailView: View {
         .padding(.leading, RailSlot.leading)
         .padding(.trailing, RailSlot.trailing)
         .padding(.bottom, 5)
+    }
+
+    /// What the ACTIVE section draws with nothing to list: the note indented
+    /// to the column an entry's own name starts in, so the section reads as
+    /// one whose rows are missing rather than one drawn to another rule.
+    ///
+    /// It reserves the height of a two-line entry rather than the single
+    /// line the mock draws — the departure the design README records — so
+    /// the section, the divider under it and the whole plan below hold still
+    /// as the first agent starts and the last one finishes. Both lines are
+    /// reserved the way `sessionRow` builds them: a title line at the body
+    /// size the note itself is not set in, and a detail line under it.
+    private var activeEmptyNote: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            ZStack(alignment: .leading) {
+                Text(" ")
+                    .font(.system(size: Typo.body, weight: .regular))
+                    .hidden()
+
+                Text(EmptyActiveNote.text)
+                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .ink(.tertiary)
+                    .lineLimit(1)
+            }
+
+            Text(" ")
+                .font(.system(size: Typo.subhead, weight: .regular))
+                .hidden()
+        }
+        .padding(.vertical, 8)
+        // The entry text column: the row's own leading inset, plus the slot
+        // every dot and icon sits in and the gap after it.
+        .padding(.leading, RailSlot.leading + RailSlot.slot + RailSlot.spacing)
+        .padding(.trailing, RailSlot.trailing)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func doneHeadingRow(_ summary: DoneSummary) -> some View {
