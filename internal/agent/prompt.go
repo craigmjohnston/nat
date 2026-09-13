@@ -36,17 +36,33 @@ import (
 // straight into the prompt — the same document `nat start-slice` prints, so
 // the agent needs no command of its own to see it. Both are empty for a fix
 // launch, which reads neither.
+//
+// Milestone and MilestoneSlices are the raw material a launch renders
+// MilestoneDigest from: the slice's own milestone and every sibling slice
+// under it, excluding this one, in plan order. They come from the plan
+// already in the caller's hand — the board's own copy, or the one a headless
+// launch just read to find them — rather than from a further read of it, so
+// a caller that has no plan in hand simply leaves both unset.
+//
+// MilestoneDigest is [MilestoneDigest] already rendered from them, plus a
+// page fetch per Done sibling for its hand-back summary — the settled state
+// of the slice's own milestone, handed over so the agent does not have to go
+// and read it with `nat info` itself. Empty for a fix launch, and for a slice
+// filed under no milestone.
 type PromptContext struct {
-	Slice        domain.Slice
-	Project      config.ProjectConfig
-	ProjectID    string
-	WorkingDir   string
-	Branch       string
-	Repo         string
-	AssigneeName string
-	Fix          bool
-	Brief        string
-	Conventions  string
+	Slice           domain.Slice
+	Project         config.ProjectConfig
+	ProjectID       string
+	WorkingDir      string
+	Branch          string
+	Repo            string
+	AssigneeName    string
+	Fix             bool
+	Brief           string
+	Conventions     string
+	Milestone       domain.Milestone
+	MilestoneSlices []domain.Slice
+	MilestoneDigest string
 }
 
 // Prompt is the opening message for an agent session working one slice.
@@ -117,7 +133,7 @@ func Prompt(c PromptContext) string {
 	b.WriteString("it launches the agent for it, so there is nothing to run before starting\n")
 	b.WriteString("work. What follows is your brief: the slice's own body and acceptance\n")
 	b.WriteString("criteria, then the conventions that apply to every slice of the project.\n\n")
-	b.WriteString(BriefSections(c.Brief, c.Conventions))
+	b.WriteString(BriefSections(c.Brief, c.MilestoneDigest, c.Conventions))
 
 	b.WriteString("\nEvery `nat` command below names the project this slice is in:\n\n")
 	fmt.Fprintf(&b, "    --project %s\n\n", c.ProjectID)
@@ -127,14 +143,8 @@ func Prompt(c PromptContext) string {
 	b.WriteString("which they can switch while you work.\n")
 
 	b.WriteString("\n## Then read\n\n")
-	b.WriteString("1. `CLAUDE.md` in the working directory — architecture and the\n")
-	b.WriteString("   verification gate.\n")
-	b.WriteString("2. The other slices in this slice's own milestone, read with:\n\n")
-	fmt.Fprintf(&b, "       nat info --project %s\n\n", c.ProjectID)
-	b.WriteString("   Done ones especially. A Done slice in the same milestone is where a\n")
-	b.WriteString("   design decision that binds this one often already got settled; missing\n")
-	b.WriteString("   it is how a session builds the wrong architecture for the rest of its\n")
-	b.WriteString("   run.\n")
+	b.WriteString("`CLAUDE.md` in the working directory — architecture and the verification\n")
+	b.WriteString("gate.\n")
 
 	b.WriteString("\n## Before you write code\n\n")
 	b.WriteString("If this slice turns on an architecture question — a decision neither the\n")

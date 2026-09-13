@@ -16,6 +16,10 @@ criteria, then the conventions that apply to every slice of the project.
 
 Wire up a tmux session per agent and give it an opening prompt.
 
+## This slice's milestone
+
+_none_
+
 ## Project conventions
 
 Go, Bubble Tea v2, 100% coverage of new code.
@@ -31,16 +35,8 @@ which they can switch while you work.
 
 ## Then read
 
-1. `CLAUDE.md` in the working directory — architecture and the
-   verification gate.
-2. The other slices in this slice's own milestone, read with:
-
-       nat info --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
-
-   Done ones especially. A Done slice in the same milestone is where a
-   design decision that binds this one often already got settled; missing
-   it is how a session builds the wrong architecture for the rest of its
-   run.
+`CLAUDE.md` in the working directory — architecture and the verification
+gate.
 
 ## Before you write code
 

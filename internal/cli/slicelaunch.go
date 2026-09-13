@@ -13,6 +13,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
@@ -52,6 +53,7 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("no assignee in the config: open the board with `nat` and finish setting it up")
 	}
 	client := env.NewClient(env.Tokens.Token)
+	st := store.Over(client)
 
 	page, err := client.GetPage(ctx, id)
 	if err != nil {
@@ -80,15 +82,28 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 	}
 	agentModel = actions.TrimModel(agentModel)
 
-	promptContext := agent.PromptContext{
-		Slice:        s,
-		Project:      project,
-		ProjectID:    projectID,
-		WorkingDir:   actions.WorkdirFor(s, project),
-		AssigneeName: cfg.AssigneeUserName,
+	// The plan is read for the milestone digest alone: [actions.Launch] reads
+	// each Done sibling's hand-back summary itself, once it has the milestone
+	// and the siblings under it to read them for.
+	milestone, siblings := domain.Milestone{}, []domain.Slice(nil)
+	if plan, err := st.Plan(ctx, storeProject(projectID, project)); err == nil {
+		milestone = milestoneOf(s, plan.Shape.Milestones)
+		siblings = milestoneSiblings(plan.Project.Slices, milestone.ID, s.ID)
+	} else {
+		logging.Action("could not read the plan for the milestone digest", "slice", s.ID, "err", err)
 	}
 
-	result, err := actions.Launch(ctx, env.NewTmux(), env.NewWorktrees(), env.NewGit(), store.Over(client),
+	promptContext := agent.PromptContext{
+		Slice:           s,
+		Project:         project,
+		ProjectID:       projectID,
+		WorkingDir:      actions.WorkdirFor(s, project),
+		AssigneeName:    cfg.AssigneeUserName,
+		Milestone:       milestone,
+		MilestoneSlices: siblings,
+	}
+
+	result, err := actions.Launch(ctx, env.NewTmux(), env.NewWorktrees(), env.NewGit(), st,
 		cfg.AssigneeUserID, promptContext, agentModel)
 	if err != nil {
 		return err

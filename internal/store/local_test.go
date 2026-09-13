@@ -781,3 +781,26 @@ func TestLastMarkdownSection(t *testing.T) {
 		})
 	}
 }
+
+// HandbackSummaryOf reads whichever of the two headings a Done slice's last
+// hand-back was filed under: Summary for one closed straight to Done, Handed
+// back for one closed via a merge.
+func TestHandbackSummaryOf(t *testing.T) {
+	cases := []struct{ name, body, want string }{
+		{"no note at all", "Just a brief.", ""},
+		{"closed straight to Done", "## Summary\nDid the thing.", "Did the thing."},
+		{"handed back for review", "## Handed back\nPushed the branch.", "Pushed the branch."},
+		{
+			"the last of two hand-backs wins",
+			"## Handed back\nfirst\n\n## Handed back\nsecond",
+			"second",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := HandbackSummaryOf(c.body); got != c.want {
+				t.Errorf("HandbackSummaryOf(%q) = %q, want %q", c.body, got, c.want)
+			}
+		})
+	}
+}

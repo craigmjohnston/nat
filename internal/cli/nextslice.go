@@ -58,8 +58,9 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return fmt.Errorf("claimed %q but could not read the project conventions: %w", claimed.Name, err)
 	}
+	digest := milestoneDigestFor(ctx, st, milestone, milestoneSiblings(plan.Project.Slices, milestone.ID, claimed.ID))
 
-	b := briefOf(claimed, milestone, project, cfg.AssigneeUserName, brief, conventions)
+	b := briefOf(claimed, milestone, project, cfg.AssigneeUserName, brief, digest, conventions)
 	if asJSON {
 		return writeBriefJSON(env.Out, b, projectID, project.Name)
 	}
@@ -198,23 +199,65 @@ func plural(word string, n int) string {
 // brief is everything printed about a claimed slice, gathered once so the
 // markdown and the JSON say the same things.
 type brief struct {
-	Slice       domain.Slice
-	Milestone   domain.Milestone
-	Repo        string
-	Assignee    string
-	Body        string
-	Conventions string
+	Slice           domain.Slice
+	Milestone       domain.Milestone
+	Repo            string
+	Assignee        string
+	Body            string
+	MilestoneDigest string
+	Conventions     string
 }
 
 // briefOf assembles the brief. The repo is the slice's own override when it has
 // one and the project default otherwise — resolved here so the agent is told one
 // directory rather than a rule to apply.
-func briefOf(s domain.Slice, m domain.Milestone, project config.ProjectConfig, assignee, body, conventions string) brief {
+func briefOf(s domain.Slice, m domain.Milestone, project config.ProjectConfig, assignee, body, milestoneDigest, conventions string) brief {
 	repo := s.Repo
 	if repo == "" {
 		repo = project.WorkingDir
 	}
-	return brief{Slice: s, Milestone: m, Repo: repo, Assignee: assignee, Body: body, Conventions: conventions}
+	return brief{
+		Slice: s, Milestone: m, Repo: repo, Assignee: assignee,
+		Body: body, MilestoneDigest: milestoneDigest, Conventions: conventions,
+	}
+}
+
+// milestoneSiblings is every other slice filed under the given milestone, in
+// plan order — the raw material [milestoneDigestFor] renders. A slice filed
+// under no milestone at all is given nothing to be a sibling of.
+func milestoneSiblings(slices []domain.Slice, milestoneID, exclude string) []domain.Slice {
+	if milestoneID == "" {
+		return nil
+	}
+	var siblings []domain.Slice
+	for _, s := range slices {
+		if s.MilestoneID == milestoneID && s.ID != exclude {
+			siblings = append(siblings, s)
+		}
+	}
+	return siblings
+}
+
+// milestoneDigestFor reads the hand-back summary of every Done sibling and
+// renders the digest [agent.BriefSections] shows in place of the "go read the
+// milestone with `nat info`" step a session used to be told to do itself. A
+// summary that fails to read is logged and left out rather than failing the
+// whole brief: the claim has already gone through by the time this runs, and
+// a missing summary costs one line of context rather than the brief itself.
+func milestoneDigestFor(ctx context.Context, st store.Store, milestone domain.Milestone, siblings []domain.Slice) string {
+	summaries := map[string]string{}
+	for _, s := range siblings {
+		if s.Status != domain.SliceDone {
+			continue
+		}
+		body, err := st.Body(ctx, s.ID)
+		if err != nil {
+			logging.Action("could not read a milestone sibling's hand-back summary", "slice", s.ID, "err", err)
+			continue
+		}
+		summaries[s.ID] = store.HandbackSummaryOf(body)
+	}
+	return agent.MilestoneDigest(milestone, siblings, summaries)
 }
 
 // briefJSON is the structured form of the brief, for anything parsing it. It is
@@ -226,15 +269,16 @@ type briefJSON struct {
 }
 
 type briefSliceJSON struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Status        string `json:"status"`
-	Assignee      string `json:"assignee"`
-	MilestoneID   string `json:"milestone_id"`
-	MilestoneName string `json:"milestone_name"`
-	Repo          string `json:"repo"`
-	Brief         string `json:"brief"`
-	URL           string `json:"url"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Status          string `json:"status"`
+	Assignee        string `json:"assignee"`
+	MilestoneID     string `json:"milestone_id"`
+	MilestoneName   string `json:"milestone_name"`
+	MilestoneDigest string `json:"milestone_digest"`
+	Repo            string `json:"repo"`
+	Brief           string `json:"brief"`
+	URL             string `json:"url"`
 }
 
 // writeBriefJSON encodes the brief, indented for the same reason info's is: it
@@ -242,15 +286,16 @@ type briefSliceJSON struct {
 func writeBriefJSON(out io.Writer, b brief, projectID, projectName string) error {
 	doc := briefJSON{
 		Slice: briefSliceJSON{
-			ID:            b.Slice.ID,
-			Name:          b.Slice.Name,
-			Status:        b.Slice.StatusName,
-			Assignee:      b.Assignee,
-			MilestoneID:   b.Milestone.ID,
-			MilestoneName: b.Milestone.Name,
-			Repo:          b.Repo,
-			Brief:         b.Body,
-			URL:           b.Slice.URL,
+			ID:              b.Slice.ID,
+			Name:            b.Slice.Name,
+			Status:          b.Slice.StatusName,
+			Assignee:        b.Assignee,
+			MilestoneID:     b.Milestone.ID,
+			MilestoneName:   b.Milestone.Name,
+			MilestoneDigest: b.MilestoneDigest,
+			Repo:            b.Repo,
+			Brief:           b.Body,
+			URL:             b.Slice.URL,
 		},
 		Project: projectJSON{ID: projectID, Name: projectName, Conventions: b.Conventions},
 	}
@@ -286,6 +331,6 @@ func briefMarkdown(b brief, projectID, projectName string) string {
 	}
 
 	s.WriteString("\n")
-	s.WriteString(agent.BriefSections(b.Body, b.Conventions))
+	s.WriteString(agent.BriefSections(b.Body, b.MilestoneDigest, b.Conventions))
 	return s.String()
 }

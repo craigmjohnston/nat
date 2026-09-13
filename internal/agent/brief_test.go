@@ -11,9 +11,9 @@ func TestSectionOfAnEmptyBody(t *testing.T) {
 }
 
 func TestBriefSectionsWithNothingToShow(t *testing.T) {
-	got := BriefSections("", "")
-	want := "## Brief\n\n_none_\n\n## Project conventions\n\n_none_\n"
+	got := BriefSections("", "", "")
+	want := "## Brief\n\n_none_\n\n## This slice's milestone\n\n_none_\n\n## Project conventions\n\n_none_\n"
 	if got != want {
-		t.Errorf("BriefSections(\"\", \"\") = %q, want %q", got, want)
+		t.Errorf("BriefSections(\"\", \"\", \"\") = %q, want %q", got, want)
 	}
 }

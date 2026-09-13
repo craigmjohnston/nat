@@ -187,6 +187,93 @@ func TestLaunchReportsAFailedConventionsRead(t *testing.T) {
 	}
 }
 
+// TestLaunchIncludesAMilestoneDigest covers a launch given its milestone and
+// the siblings under it: the digest — each sibling's status, and the
+// hand-back summary of the Done one — lands in the prompt file, alongside
+// the brief and the conventions.
+func TestLaunchIncludesAMilestoneDigest(t *testing.T) {
+	l := &fakeLauncher{}
+	client := &fakeClient{
+		getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil },
+		blocks: func(id string) ([]notion.Block, error) {
+			if id == "s2" {
+				return []notion.Block{
+					block(t, "heading_3", "Handed back"),
+					block(t, "paragraph", "Laid out the columns."),
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), "u1",
+		agent.PromptContext{
+			Slice:      domain.Slice{ID: "s5", Name: "Info view"},
+			WorkingDir: t.TempDir(),
+			Milestone:  domain.Milestone{ID: "M1", Name: "M1: Board"},
+			MilestoneSlices: []domain.Slice{
+				{ID: "s2", Name: "Board scaffolding", Status: domain.SliceDone, StatusName: "Done"},
+				{ID: "s4", Name: "Style the board", Status: domain.SliceTodo, StatusName: "Todo"},
+			},
+		},
+		config.AgentModel{})
+
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through", err)
+	}
+	if res.Context.MilestoneDigest == "" {
+		t.Fatal("result carries no milestone digest")
+	}
+	prompt, err := os.ReadFile(l.launches[0].promptFile)
+	if err != nil {
+		t.Fatalf("read the prompt file: %v", err)
+	}
+	for _, want := range []string{"M1: Board", "- Done: Board scaffolding", "Laid out the columns.", "- Todo: Style the board"} {
+		if !strings.Contains(string(prompt), want) {
+			t.Errorf("prompt file does not carry the milestone digest — missing %q:\n%s", want, prompt)
+		}
+	}
+}
+
+// TestLaunchLogsAFailedMilestoneSummaryRead covers a Done sibling whose body
+// fails to read: the launch still goes ahead, with that sibling's summary
+// simply missing from the digest rather than the whole launch failing over
+// one page.
+func TestLaunchLogsAFailedMilestoneSummaryRead(t *testing.T) {
+	l := &fakeLauncher{}
+	client := &fakeClient{
+		getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil },
+		blocks: func(id string) ([]notion.Block, error) {
+			if id == "s2" {
+				return nil, errors.New("notion: 500")
+			}
+			return nil, nil
+		},
+	}
+
+	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), "u1",
+		agent.PromptContext{
+			Slice:      domain.Slice{ID: "s5", Name: "Info view"},
+			WorkingDir: t.TempDir(),
+			Milestone:  domain.Milestone{ID: "M1", Name: "M1: Board"},
+			MilestoneSlices: []domain.Slice{
+				{ID: "s2", Name: "Board scaffolding", Status: domain.SliceDone, StatusName: "Done"},
+			},
+		},
+		config.AgentModel{})
+
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through despite the failed read", err)
+	}
+	prompt, err := os.ReadFile(l.launches[0].promptFile)
+	if err != nil {
+		t.Fatalf("read the prompt file: %v", err)
+	}
+	if !strings.Contains(string(prompt), "- Done: Board scaffolding") {
+		t.Errorf("prompt file does not name the sibling despite its summary failing to read:\n%s", prompt)
+	}
+}
+
 // TestLaunchReportsAFailedPromptFile covers the prompt file itself failing to
 // write: the claim and the brief it is written with have already happened by
 // then, since fetching the brief needs the claim to have gone through first.
