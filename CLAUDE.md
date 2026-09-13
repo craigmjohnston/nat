@@ -1448,7 +1448,10 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   progress being the one answer that saves it. Every open tab's plan feeds the
   candidate rule, not only the active one's, so a session dangling on a tab
   nobody has switched back to is still caught; closing a tab runs that same
-  sweep once more with the visit holds ignored, before the tab itself is taken
+  sweep once more with the closing tab's own slices' visit holds ignored —
+  every other tab's stand, since a hold is about what the user just clicked
+  away from and closing one tab is not a click away from another's work —
+  before the tab itself is taken
   off the list — so the closing plan is still in the merge for this one last
   look, and no other open tab's session is mistaken for the closing one's own
   — since once the tab is gone nothing will consider its slices again. A

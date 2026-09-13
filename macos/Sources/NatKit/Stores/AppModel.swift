@@ -90,9 +90,11 @@ public final class AppModel {
     /// a project this run has not got open — another window's project, most
     /// likely — so there is nothing to re-verify about them until the app
     /// restarts. Read fresh every sweep would cost a `nat slice-status` apiece
-    /// forever; a project closed for good in the meantime is caught anyway,
-    /// since its session eventually goes idle or the window that owns it
-    /// reaps it itself.
+    /// forever. It holds only slices no open plan names, and is consulted
+    /// only for those: a slice an open plan does name has this run watching
+    /// its work end, and a cache entry that outlived that ending would keep
+    /// its session alive forever — opening the project a cached slice belongs
+    /// to is likewise what puts it back under the plan's own rule.
     private var verifiedElsewhere: Set<String> = []
 
     /// Project stores keyed by project ID (lazily created).
@@ -315,16 +317,19 @@ public final class AppModel {
     /// not onboarding.
     ///
     /// A closing tab's own dangling sessions get one final sweep first, with
-    /// visit holds ignored — once this tab is gone, its plan stops being one
-    /// the ordinary sweep considers at all, so this is the last chance for a
-    /// while to catch what it was tracking. It runs before the tab is removed
-    /// so every other open tab's plan is still in the mix, exactly as the
-    /// ordinary sweep sees it: a session belonging to one of them is not
+    /// the closing tab's own slices' visit holds ignored — once this tab is
+    /// gone, its plan stops being one the ordinary sweep considers at all, so
+    /// this is the last chance for a while to catch what it was tracking, and
+    /// a hold is about what the user just clicked away from, which closing
+    /// this tab is not for any other tab's work. It runs before the tab is
+    /// removed so every other open tab's plan is still in the mix, exactly as
+    /// the ordinary sweep sees it: a session belonging to one of them is not
     /// mistaken for this tab's own dangling one.
     public func closeProject(_ projectID: String) async {
         guard projectTabs.count > 1,
               let index = projectTabs.firstIndex(where: { $0.id == projectID }) else { return }
-        await reapFinishedAgents(ignoringHolds: true)
+        let closing = Set((stores[projectID]?.state.projectInfo?.slices ?? []).map(\.id))
+        await reapFinishedAgents(ignoringHoldsFor: closing)
         projectTabs.remove(at: index)
         if activeProjectID == projectID {
             let neighbour = projectTabs[min(index, projectTabs.count - 1)]
@@ -657,8 +662,11 @@ public final class AppModel {
     /// fresh per candidate, the last word, and this is the sweep that applies
     /// both. It rides every open tab's own plan-load cadence: the app
     /// starting, a nudge landing and the poll ticking each run it for
-    /// whichever tab they belong to, and `ignoringHolds` is what
-    /// `closeProject(_:)` asks for on a tab's way out.
+    /// whichever tab they belong to, and `ignoringHoldsFor` is what
+    /// `closeProject(_:)` asks for on a tab's way out — the closing tab's own
+    /// slices' holds dropped, every other tab's left standing, since a hold
+    /// is about what the user just clicked away from and closing one tab is
+    /// not a click away from another's work.
     ///
     /// Every open tab's plan is in the mix, not only the active one's — a
     /// session dangling on a tab nobody has clicked to is exactly the kind
@@ -679,11 +687,15 @@ public final class AppModel {
     /// reaped only where that read says so (`verifiedForReap`) — closing the
     /// race the plan reading alone cannot: a session's own claim is always
     /// written before the session exists, so this fresh read can never show a
-    /// phantom state the way the cached plan might. A candidate verified as
-    /// belonging to a live In-progress session of a project this run has no
-    /// open tab for is cached in `verifiedElsewhere` so future sweeps do not
-    /// pay for asking about it again.
-    private func reapFinishedAgents(ignoringHolds: Bool = false) async {
+    /// phantom state the way the cached plan might. Only a candidate no open
+    /// plan names is cached in `verifiedElsewhere` on an In-progress answer —
+    /// another window's project's, with nothing here to watch it finish. One
+    /// an open plan does name was nominated off a stale reading, which is
+    /// exactly the race the fresh read exists to close, and is left uncached:
+    /// the plan's next load stops nominating it by itself, and when its work
+    /// really does end, that ending still has to be verified rather than
+    /// found behind a cache entry that outlived it.
+    private func reapFinishedAgents(ignoringHoldsFor unheld: Set<String> = []) async {
         let plans = projectTabs.compactMap { stores[$0.id]?.state.projectInfo }
         guard !plans.isEmpty, let projectID = activeProjectID else { return }
         var slicesByID: [String: Slice] = [:]
@@ -694,18 +706,21 @@ public final class AppModel {
         let client = clientFactory()
         guard let statuses = try? await client.status() else { return }
 
+        var holds = heldUntil
+        for id in unheld { holds.removeValue(forKey: id) }
         let candidates = agentSessionsToReap(
             agents: statuses,
             slicesByID: slicesByID,
             selectedSliceID: selectedSliceID,
-            heldUntil: ignoringHolds ? [:] : heldUntil,
+            heldUntil: holds,
             now: now()
         )
         for sliceID in candidates {
-            if verifiedElsewhere.contains(sliceID) { continue }
+            let inOpenPlan = slicesByID[sliceID] != nil
+            if !inOpenPlan, verifiedElsewhere.contains(sliceID) { continue }
             let result = try? await client.sliceStatus(projectID: projectID, sliceRef: sliceID)
             guard verifiedForReap(result) else {
-                if case .found("In progress", false) = result {
+                if !inOpenPlan, case .found("In progress", false) = result {
                     verifiedElsewhere.insert(sliceID)
                 }
                 continue

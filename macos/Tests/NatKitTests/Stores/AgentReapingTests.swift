@@ -429,6 +429,32 @@ final class AgentReapingTests: XCTestCase {
         XCTAssertEqual(client.statusReadIDs, ["other-project-slice"])
     }
 
+    /// A candidate an open plan names, saved by a fresh In-progress read, is
+    /// the launch race being closed rather than another window's session: it
+    /// is never cached, so every later sweep verifies it afresh and its real
+    /// ending is still caught rather than found behind a cache entry that
+    /// outlived it.
+    @MainActor
+    func testARaceSavedCandidateIsVerifiedAfreshEverySweep() async {
+        let client = ReapingClient(
+            // The plan's copy is stale — it still says Todo — while the page
+            // itself, read fresh, says the claim has landed.
+            plans: ["proj-1": Self.plan([Self.slice("s-1", status: "Todo")])],
+            agents: [AgentStatus(sliceID: "s-1", session: "nat-s-1", activity: .waiting)],
+            statuses: ["s-1": .found(status: "In progress", trashed: false)]
+        )
+
+        let model = await startedModel(client: client)
+        XCTAssertEqual(client.statusReadIDs, ["s-1"])
+        XCTAssertEqual(client.kills, [])
+
+        // The stale plan nominates it again, and the fresh read is paid for
+        // again: a slice this run's own plan names is never cached away.
+        await model.refresh()
+        XCTAssertEqual(client.statusReadIDs, ["s-1", "s-1"])
+        XCTAssertEqual(client.kills, [])
+    }
+
     // MARK: - Closing a tab
 
     /// Closing a project's tab runs one final sweep for it, ignoring visit
@@ -482,6 +508,33 @@ final class AgentReapingTests: XCTestCase {
         await model.closeProject("proj-2")
 
         XCTAssertEqual(client.kills, [])
+    }
+
+    /// Closing a tab drops the closing tab's own holds and nobody else's: a
+    /// hold is about what the user just clicked away from, and closing one
+    /// tab is not a click away from another tab's work.
+    @MainActor
+    func testClosingATabLeavesAnotherTabsHeldSessionAlone() async {
+        let client = ReapingClient(
+            plans: [
+                "proj-1": Self.plan([Self.slice("s-1", status: "Done")]),
+                "proj-2": Self.plan([Self.slice("s-2", status: "Todo")]),
+            ],
+            agents: [AgentStatus(sliceID: "s-1", session: "nat-s-1", activity: .waiting)],
+            startsQuiet: true,
+            statuses: ["s-1": .found(status: "Done", trashed: false)]
+        )
+
+        let model = await startedModel(client: client, config: Self.config("proj-1", "proj-2"))
+        client.reveal()
+        // Visit proj-1's finished slice and click away from it: its session
+        // now lives on the hold alone, not the on-screen exemption.
+        model.selectedSliceID = "s-1"
+        model.selectedSliceID = nil
+
+        await model.closeProject("proj-2")
+
+        XCTAssertEqual(client.kills, [], "closing proj-2 must not drop proj-1's hold")
     }
 }
 
