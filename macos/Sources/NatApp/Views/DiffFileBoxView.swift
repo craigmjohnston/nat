@@ -107,6 +107,7 @@ struct DiffFileBoxView: View {
         HStack(spacing: Self.headerSpacing) {
             Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
                 .font(.system(size: 12, weight: .medium))
+                .frame(width: 12)
                 .ink(.tertiary)
 
             if isViewed {

@@ -97,6 +97,9 @@ struct RailView: View {
     /// The milestone a folder's "New Slice…" was picked on, held while its
     /// sheet is up so the picker opens on the folder the menu was opened on.
     @State private var milestoneForNewSlice: String?
+    /// TODO's own "New Slice…" button, beside its fold chevron — the same
+    /// sheet a folder's menu opens, but with no milestone preselected.
+    @State private var showTodoNewSliceSheet = false
     /// The milestone a folder's "Rename…" was picked on, and the name being
     /// typed for it. The text is seeded with the name it has, since a rename
     /// is nearly always an edit of what is there rather than a fresh string.
@@ -238,6 +241,17 @@ struct RailView: View {
                 }
             )
         }
+        .sheet(isPresented: $showTodoNewSliceSheet) {
+            NewSliceSheetView(
+                projectID: appModel.activeProjectID ?? "",
+                milestones: planMilestones,
+                onClose: { showTodoNewSliceSheet = false },
+                onCreated: {
+                    showTodoNewSliceSheet = false
+                    Task { await appModel.refresh() }
+                }
+            )
+        }
         .sheet(isPresented: presenting($sliceForEdit)) {
             EditBriefSheetView(
                 projectID: appModel.activeProjectID ?? "",
@@ -349,7 +363,7 @@ struct RailView: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 sectionRule
-                sectionHeading(.todo)
+                sectionHeading(.todo, showTodoActions: true)
             }
             .measuringHeight { chromeHeights[.todo] = $0 }
 
@@ -543,7 +557,13 @@ struct RailView: View {
     /// chevron at the trailing edge, pointing down while the section is open
     /// and right while it is away. Clicking anywhere along it folds the
     /// section to this row alone.
-    private func sectionHeading(_ section: RailSection, trailing: String? = nil) -> some View {
+    ///
+    /// TODO alone also carries the plan's own launch controls — New Slice and
+    /// Workshop the Plan, the same two buttons the window's masthead drew
+    /// before they moved here — seated beside its fold chevron rather than
+    /// floating over the whole window, since both are actions on the plan
+    /// this section is the queue of.
+    private func sectionHeading(_ section: RailSection, trailing: String? = nil, showTodoActions: Bool = false) -> some View {
         let open = !collapsed.contains(section)
         return HStack(spacing: RailSlot.spacing) {
             Image(systemName: section.icon)
@@ -564,6 +584,10 @@ struct RailView: View {
                     .ink(.tertiary)
             }
 
+            if showTodoActions {
+                todoHeaderActions
+            }
+
             Image(systemName: open ? "chevron.down" : "chevron.right")
                 .font(.system(size: 11, weight: .bold))
                 .frame(width: RailSlot.slot, alignment: .trailing)
@@ -580,6 +604,38 @@ struct RailView: View {
         .onTapGesture { toggle(section) }
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("\(section.title), \(open ? "expanded" : "collapsed")")
+    }
+
+    /// TODO's own two buttons, moved here from the window's masthead: New
+    /// Slice opens the same sheet a folder's own context menu does, unpinned
+    /// to any one milestone, and Workshop the Plan opens the planning agent —
+    /// unchanged actions, only where they are drawn.
+    private var todoHeaderActions: some View {
+        HStack(spacing: 2) {
+            Button(action: { showTodoNewSliceSheet = true }) {
+                Image(systemName: "plus.rectangle.on.rectangle")
+                    .font(.system(size: 12, weight: .medium))
+                    .ink(.tertiary)
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.plain)
+            .disabled(appModel.activeProjectID == nil)
+            .opacity(appModel.activeProjectID == nil ? 0.5 : 1)
+            .hoverWash(cornerRadius: 5, enabled: appModel.activeProjectID != nil)
+            .help("New Slice…")
+
+            Button(action: { appModel.openWorkshop() }) {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 12, weight: .medium))
+                    .ink(.tertiary)
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.plain)
+            .disabled(appModel.projectStore == nil)
+            .opacity(appModel.projectStore == nil ? 0.5 : 1)
+            .hoverWash(cornerRadius: 5, enabled: appModel.projectStore != nil)
+            .help("Workshop the Plan")
+        }
     }
 
     /// What the ACTIVE section draws with nothing to list: a recessed well,
@@ -834,6 +890,19 @@ struct RailView: View {
         RailSlot.leading + (inDone ? RailSlot.indent : 0) + (RailSlot.slot - 1) / 2
     }
 
+    /// `FolderGlyphShape` drawn open (filled) or closed (outline) — a `Shape`
+    /// hands back a different concrete view for `.fill` and `.stroke`, so
+    /// this is the one place that picks between them rather than every call
+    /// site repeating the branch.
+    @ViewBuilder
+    private func folderGlyph(open: Bool, color: Color) -> some View {
+        if open {
+            FolderGlyphShape(open: true).fill(color)
+        } else {
+            FolderGlyphShape(open: false).stroke(color, lineWidth: 1.1)
+        }
+    }
+
     private func folderRow(
         _ folder: MilestoneFolder,
         inDone: Bool,
@@ -845,13 +914,18 @@ struct RailView: View {
             // swung out while expanded, closed otherwise — sitting in the
             // slot the chevron held, so the tree keeps its one icon axis.
             // Drawn rather than an SF Symbol, since the system set has no
-            // open-folder glyph.
-            FolderGlyphShape(open: expanded)
-                .fill(DesignTokens.ink(
+            // open-folder glyph. Closed draws as an outline and open as the
+            // filled silhouette: the fill is what says a folder's contents
+            // are out on the tree already, and an outline is the neutral
+            // treatment for the ones still holding theirs back.
+            folderGlyph(
+                open: expanded,
+                color: DesignTokens.ink(
                     inDone ? .tertiary : folder.isCurrent ? .accent : .secondary,
                     on: ground
-                ))
-                .frame(width: RailSlot.slot, height: Self.folderGlyphHeight)
+                )
+            )
+            .frame(width: RailSlot.slot, height: Self.folderGlyphHeight)
 
             Text(folder.title)
                 .font(.system(size: Typo.body, weight: folder.isCurrent ? .semibold : .regular))

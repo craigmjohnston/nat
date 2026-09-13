@@ -5,7 +5,6 @@ import NatFixtures
 
 struct WindowShellView: View {
     @Bindable var appModel: AppModel
-    @State private var showNewSliceSheet = false
     @State private var showNewProjectSheet = false
 
     /// The header row's height — and, through TrafficLightAlignerView, the
@@ -41,17 +40,6 @@ struct WindowShellView: View {
         // out for the standard title bar's height, which in a 40pt header
         // sits them high and tight to the left edge.
         .background(TrafficLightAlignerView(headerHeight: Self.headerHeight))
-        .sheet(isPresented: $showNewSliceSheet) {
-            NewSliceSheetView(
-                projectID: appModel.activeProjectID ?? "",
-                milestones: appModel.projectStore?.state.projectInfo?.milestones ?? [],
-                onClose: { showNewSliceSheet = false },
-                onCreated: {
-                    showNewSliceSheet = false
-                    Task { await appModel.refresh() }
-                }
-            )
-        }
         // The "+" tab's sheet, and the welcome pane's own buttons: both ways
         // a project comes to be on the board, presented from the window
         // rather than from the 40pt band the "+" sits in.
@@ -76,48 +64,8 @@ struct WindowShellView: View {
             // is where macOS draws the traffic lights over it, and the whole
             // row is window-draggable the way a title bar always was.
             VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    // Project tabs
-                    ProjectTabsView(appModel: appModel, onNewProject: { showNewProjectSheet = true })
-
-                    // Right-side toolbar
-                    HStack(spacing: 12) {
-                        // Slice count — done over total, matching the mock
-                        // ("161/199 slices"), not the count still outstanding.
-                        if let projectInfo = appModel.projectStore?.state.projectInfo {
-                            Text("\(projectInfo.slices.filter { $0.status == "Done" }.count)/\(projectInfo.slices.count) slices")
-                                .font(.system(size: Typo.subhead, weight: .regular))
-                                .monospacedDigit()
-                                .ink(.tertiary)
-                        }
-
-                        Button(action: { showNewSliceSheet = true }) {
-                            Image(systemName: "plus.rectangle.on.rectangle")
-                                .font(.system(size: 15, weight: .medium))
-                                .ink(.tertiary)
-                                .frame(width: 28, height: 28)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(appModel.projectStore == nil)
-                        .opacity(appModel.projectStore == nil ? 0.5 : 1)
-                        .hoverWash(enabled: appModel.projectStore != nil)
-                        .help("New Slice…")
-
-                        Button(action: { appModel.openWorkshop() }) {
-                            Image(systemName: "wand.and.stars")
-                                .font(.system(size: 15, weight: .medium))
-                                .ink(.tertiary)
-                                .frame(width: 28, height: 28)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(appModel.projectStore == nil)
-                        .opacity(appModel.projectStore == nil ? 0.5 : 1)
-                        .hoverWash(enabled: appModel.projectStore != nil)
-                        .help("Workshop the Plan")
-                    }
-                    .padding(.horizontal, 16)
-                }
-                .padding(.leading, 78)
+                ProjectTabsView(appModel: appModel, onNewProject: { showNewProjectSheet = true })
+                    .padding(.leading, 78)
                 .background(
                     // The mock's `color-mix(in srgb, accent 9%, header)` as
                     // one opaque colour rather than two stacked layers: the
