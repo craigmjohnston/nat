@@ -153,7 +153,7 @@ func createProject(client NotionAPI, projectsDSID, name, info, workdir string, a
 		default:
 			return projectCreatedMsg{err: errors.New("create project: no project was returned")}
 		}
-		if blocks := paragraphBlocks(info); len(blocks) > 0 {
+		if blocks := notion.BlocksFromMarkdown(info); len(blocks) > 0 {
 			if _, aerr := client.AppendBlockChildren(ctx, s.PageID, blocks); aerr != nil {
 				err = errors.Join(err, fmt.Errorf("write project page: %w", aerr))
 			}
