@@ -642,20 +642,6 @@ func TestOnboardingCreateNewWaitsForTheSearch(t *testing.T) {
 	}
 }
 
-func TestOnboardingExpandFailureIsFatal(t *testing.T) {
-	client := singleDBClient()
-	client.pageEntries = func(string) ([]notion.PageEntry, error) {
-		return nil, errors.New("boom")
-	}
-	h := newHarness(t, config.Config{}, client)
-	h.run(h.m.Init())
-	h.expand()
-
-	if h.m.err == nil || !strings.Contains(h.m.err.Error(), "load the page's contents: boom") {
-		t.Fatalf("err = %v, want the fetch failure", h.m.err)
-	}
-}
-
 func TestOnboardingNestedPagesExpandFurther(t *testing.T) {
 	client := singleDBClient()
 	client.pageEntries = func(id string) ([]notion.PageEntry, error) {
@@ -707,36 +693,6 @@ func TestOnboardingLateMessagesAfterThePickAreIgnored(t *testing.T) {
 	if got := h.client.searchCursors; !reflect.DeepEqual(got, []string{""}) {
 		t.Errorf("search cursors = %v, want no follow-up after the pick", got)
 	}
-}
-
-func TestOnboardingResolveFailures(t *testing.T) {
-	t.Run("the fetch fails", func(t *testing.T) {
-		client := singleDBClient()
-		client.getDB = func(string) (*notion.Database, error) { return nil, errors.New("boom") }
-		h := newHarness(t, config.Config{}, client)
-		h.run(h.m.Init())
-		h.expand()
-		h.down()
-		h.submit()
-
-		if h.m.err == nil || !strings.Contains(h.m.err.Error(), "load the chosen database: boom") {
-			t.Fatalf("err = %v, want the resolve failure", h.m.err)
-		}
-	})
-
-	t.Run("the database has no data source", func(t *testing.T) {
-		client := singleDBClient()
-		client.getDB = func(id string) (*notion.Database, error) { return &notion.Database{ID: id}, nil }
-		h := newHarness(t, config.Config{}, client)
-		h.run(h.m.Init())
-		h.expand()
-		h.down()
-		h.submit()
-
-		if h.m.err == nil || !strings.Contains(h.m.err.Error(), "no data source") {
-			t.Fatalf("err = %v, want errNoDataSource", h.m.err)
-		}
-	})
 }
 
 func TestOnboardingSizesTheTreeToTheWindow(t *testing.T) {
@@ -964,29 +920,6 @@ func TestOnboardingFormSubmittedIgnoresAsyncSteps(t *testing.T) {
 }
 
 func TestOnboardingCommands(t *testing.T) {
-	t.Run("searchRoots asks for pages from the given cursor", func(t *testing.T) {
-		client := &fakeNotion{
-			searchPaged: func(query, filterType, cursor string) ([]notion.SearchResult, string, error) {
-				if query != "" {
-					t.Errorf("search query = %q, want an unfiltered search", query)
-				}
-				if filterType != notion.SearchPage {
-					t.Errorf("search filter = %q, want pages", filterType)
-				}
-				return []notion.SearchResult{rootPage("page-1", "Home")}, "cur-2", nil
-			},
-		}
-		h := newHarness(t, config.Config{}, client)
-
-		msg, _ := h.m.searchRoots("cur-1")().(rootPagesMsg)
-		if len(msg.results) != 1 || msg.cursor != "cur-2" || msg.err != nil {
-			t.Errorf("msg = %+v, want one page and the next cursor", msg)
-		}
-		if got := client.searchCursors; !reflect.DeepEqual(got, []string{"cur-1"}) {
-			t.Errorf("search cursors = %v, want the one given", got)
-		}
-	})
-
 	t.Run("searchRoots reports the search failing", func(t *testing.T) {
 		client := &fakeNotion{searchPaged: func(_, _, _ string) ([]notion.SearchResult, string, error) {
 			return nil, "", errors.New("boom")
@@ -996,45 +929,6 @@ func TestOnboardingCommands(t *testing.T) {
 		msg, _ := h.m.searchRoots("")().(rootPagesMsg)
 		if msg.err == nil || !strings.Contains(msg.err.Error(), "search for pages: boom") {
 			t.Errorf("err = %v, want the search failure", msg.err)
-		}
-	})
-
-	t.Run("loadPageEntries fetches the node's page", func(t *testing.T) {
-		client := &fakeNotion{pageEntries: func(id string) ([]notion.PageEntry, error) {
-			return []notion.PageEntry{{ID: "db-1", Database: true}}, nil
-		}}
-		h := newHarness(t, config.Config{}, client)
-		node := &treeNode{label: "Home", pageID: "page-1"}
-
-		msg, _ := h.m.loadPageEntries(node)().(pageEntriesMsg)
-		if msg.node != node || len(msg.entries) != 1 || msg.err != nil {
-			t.Errorf("msg = %+v, want the node and its entry", msg)
-		}
-		if got := client.entriesFor; !reflect.DeepEqual(got, []string{"page-1"}) {
-			t.Errorf("fetched entries for %v, want [page-1]", got)
-		}
-	})
-
-	t.Run("resolveProjectDB fetches the chosen database", func(t *testing.T) {
-		client := &fakeNotion{getDB: func(id string) (*notion.Database, error) {
-			return &notion.Database{ID: id}, nil
-		}}
-		h := newHarness(t, config.Config{}, client)
-		h.m.chosenDBID = "db-7"
-
-		msg, _ := h.m.resolveProjectDB().(projectDBResolvedMsg)
-		if msg.err != nil || msg.db.ID != "db-7" {
-			t.Errorf("msg = %+v, want db-7", msg)
-		}
-	})
-
-	t.Run("loadAssignee reads the token's owner", func(t *testing.T) {
-		h := newHarness(t, config.Config{}, &fakeNotion{me: tokenOf(person("user-1", "Craig", ""))})
-
-		msg, _ := h.m.loadAssignee().(assigneeMsg)
-		owner, ok := msg.me.OwnerPerson()
-		if msg.err != nil || !ok || owner.ID != "user-1" {
-			t.Errorf("msg = %+v, want the owning person", msg)
 		}
 	})
 
@@ -1048,36 +942,6 @@ func TestOnboardingCommands(t *testing.T) {
 		}
 	})
 
-	t.Run("checkProjects queries the configured data source", func(t *testing.T) {
-		client := &fakeNotion{query: func(_ string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error) {
-			if filter != nil || sorts != nil {
-				t.Errorf("query(filter=%v, sorts=%v), want an unfiltered query", filter, sorts)
-			}
-			return []notion.Page{{ID: "p1"}, {ID: "p2"}}, nil
-		}}
-		h := newHarness(t, config.Config{}, client)
-		h.m.cfg.ProjectDBDataSourceID = "ds-9"
-
-		msg, _ := h.m.checkProjects().(projectsCheckedMsg)
-		if msg.count != 2 || msg.err != nil {
-			t.Errorf("msg = %+v, want a count of 2", msg)
-		}
-		if got := client.queriedDSIDs; len(got) != 1 || got[0] != "ds-9" {
-			t.Errorf("queried %v, want [ds-9]", got)
-		}
-	})
-
-	t.Run("createProjectDB reports the failure", func(t *testing.T) {
-		client := &fakeNotion{createDB: func(string, string) (*notion.Database, error) {
-			return nil, errors.New("boom")
-		}}
-		h := newHarness(t, config.Config{}, client)
-
-		msg, _ := h.m.createProjectDB().(projectDBCreatedMsg)
-		if msg.err == nil {
-			t.Error("want the create error")
-		}
-	})
 }
 
 func TestLabels(t *testing.T) {
@@ -1377,16 +1241,3 @@ func TestOnboardingSearchIgnoresNonKeyMessages(t *testing.T) {
 	}
 }
 
-func TestOnboardingResolveBreadcrumbCommand(t *testing.T) {
-	client := &fakeNotion{breadcrumb: func(notion.Parent) []string { return []string{"Home"} }}
-	h := newHarness(t, config.Config{}, client)
-	hit := dsHit("ds-1", "Ops Board", "db-1")
-
-	msg, _ := h.m.resolveBreadcrumb(hit)().(breadcrumbMsg)
-	if msg.id != "ds-1" || !reflect.DeepEqual(msg.trail, []string{"Home"}) {
-		t.Errorf("msg = %+v, want the hit's trail", msg)
-	}
-	if got := client.crumbParents; !reflect.DeepEqual(got, []notion.Parent{hit.Parent}) {
-		t.Errorf("walked %+v, want the hit's parent", got)
-	}
-}

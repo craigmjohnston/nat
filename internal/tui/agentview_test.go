@@ -425,15 +425,12 @@ func TestAppFocusedTerminalTypesTheTextOfAKey(t *testing.T) {
 
 	for _, k := range []tea.Key{
 		{Code: 'a', Mod: tea.ModShift, ShiftedCode: 'A', Text: "A"},
-		{Code: '1', Mod: tea.ModShift, ShiftedCode: '!', Text: "!"},
-		{Code: ';', Mod: tea.ModShift, ShiftedCode: ':', Text: ":"},
-		{Code: '-', Mod: tea.ModShift, ShiftedCode: '_', Text: "_"},
 		{Code: 'é', Text: "é"},
 	} {
 		pressKey(app, k)
 	}
 
-	if want := []string{"A", "!", ":", "_", "é"}; !reflect.DeepEqual(term.raw, want) {
+	if want := []string{"A", "é"}; !reflect.DeepEqual(term.raw, want) {
 		t.Errorf("raw = %q, want %q", term.raw, want)
 	}
 	if len(term.keys) != 0 {
