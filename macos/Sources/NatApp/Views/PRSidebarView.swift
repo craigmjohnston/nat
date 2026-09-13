@@ -2,9 +2,10 @@ import AppKit
 import SwiftUI
 import NatKit
 
-/// The PR tab's right sidebar: checks, the review decision, and the changes
-/// — a hairline-bordered rail beside the main column, GitHub's own layout for
-/// a pull request's sidebar.
+/// The PR tab's checks/review/changes rail — GitHub's own layout for a pull
+/// request's sidebar. Its width, leading hairline and any inspector-top
+/// actions are `PRTabView.prSidebar`'s to wrap this in, alongside its own
+/// pinned foot, at the tab's own `@AppStorage` width.
 struct PRSidebarView: View {
     /// Every row of the rail — a check, the review verdict, the reviewer
     /// line — is laid out at this rather than left to its own type. Named
@@ -12,11 +13,6 @@ struct PRSidebarView: View {
     static let rowHeight: CGFloat = 26
 
     let pr: PRDetail
-
-    /// The sidebar's width, draggable at its divider and remembered across
-    /// launches — the default is the width it was fixed at before it was
-    /// resizable.
-    @AppStorage("prSidebarWidth") private var sidebarWidth = 216.0
 
     var body: some View {
         ScrollView {
@@ -28,12 +24,6 @@ struct PRSidebarView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 18)
             .inelastic()
-        }
-        .frame(width: sidebarWidth)
-        .rule(.separator, edges: [.leading], width: 0.5)
-        .overlay(alignment: .leading) {
-            PaneResizeHandle(width: $sidebarWidth, minWidth: 170, maxWidth: 400, edge: .leading)
-                .offset(x: -4.5)
         }
     }
 

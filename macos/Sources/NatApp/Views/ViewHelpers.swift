@@ -323,3 +323,159 @@ func buttonOpacity(isPressed: Bool, isEnabled: Bool) -> Double {
     if isPressed { return ButtonMetrics.pressedOpacity }
     return isEnabled ? 1.0 : ButtonMetrics.disabledOpacity
 }
+
+// MARK: - Inspector actions
+
+/// The primary and secondary styles a content pane's CTAs are drawn in at
+/// the top of its inspector — `PrimaryButtonStyle`/`SecondaryButtonStyle`'s
+/// own fill, ink and weight, but full-width and at `InspectorActionMetrics`'
+/// taller height rather than `ButtonMetrics`', since these stand alone atop
+/// the rail rather than beside another control on the same baseline.
+struct InspectorPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: Typo.subhead, weight: .semibold))
+            .ink(.onAccent)
+            .frame(maxWidth: .infinity)
+            .frame(height: InspectorActionMetrics.height)
+            .background(
+                DesignTokens.accent,
+                in: RoundedRectangle(cornerRadius: InspectorActionMetrics.cornerRadius)
+            )
+            .opacity(buttonOpacity(isPressed: configuration.isPressed, isEnabled: isEnabled))
+            .contentShape(RoundedRectangle(cornerRadius: InspectorActionMetrics.cornerRadius))
+    }
+}
+
+struct InspectorSecondaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: Typo.subhead, weight: .regular))
+            .ink(.primary)
+            .frame(maxWidth: .infinity)
+            .frame(height: InspectorActionMetrics.height)
+            .control(radius: InspectorActionMetrics.cornerRadius, border: .hairline)
+            .opacity(buttonOpacity(isPressed: configuration.isPressed, isEnabled: isEnabled))
+            .contentShape(RoundedRectangle(cornerRadius: InspectorActionMetrics.cornerRadius))
+    }
+}
+
+/// The split control an inspector opens with when its primary action needs a
+/// menu of options beside it — the Launch Agent button's own shape (a flat
+/// accent fill in two halves, split by a hairline drawn on the accent rather
+/// than a surface), pulled out of `BriefTabView` so it is full-width at the
+/// top of a rail instead of one control among others in a footer.
+///
+/// Dimmed as a whole rather than through each half's own disabled state,
+/// since a split control half-dimmed would read as only one half of it being
+/// unavailable.
+struct InspectorSplitButton<Menu: View>: View {
+    let title: String
+    var isBusy: Bool = false
+    var isEnabled: Bool = true
+    let onPrimary: () -> Void
+    @Binding var showMenu: Bool
+    @ViewBuilder var menu: () -> Menu
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button(action: onPrimary) {
+                AsyncActionLabel(isBusy: isBusy) {
+                    Text(title)
+                }
+                .font(.system(size: Typo.subhead, weight: .semibold))
+                .ink(.onAccent)
+                .frame(maxWidth: .infinity)
+                .frame(height: InspectorActionMetrics.height)
+            }
+            .buttonStyle(.plain)
+            .disabled(!isEnabled || isBusy)
+
+            Rectangle()
+                .fill(DesignTokens.onAccentSeparator)
+                .frame(width: 1, height: InspectorActionMetrics.height)
+
+            Button(action: { showMenu.toggle() }) {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 12, weight: .medium))
+                    .ink(.onAccent)
+                    .frame(width: InspectorActionMetrics.height, height: InspectorActionMetrics.height)
+            }
+            .buttonStyle(.plain)
+            .disabled(!isEnabled)
+        }
+        .background(DesignTokens.accent)
+        .clipShape(RoundedRectangle(cornerRadius: InspectorActionMetrics.cornerRadius))
+        .opacity(isEnabled ? 1 : ButtonMetrics.disabledOpacity)
+        .popover(isPresented: $showMenu, arrowEdge: .bottom) {
+            menu().padding(10)
+        }
+    }
+}
+
+/// The band the actions live in: stacked full-width, primary over secondary,
+/// with the hairline that separates them from the fields below — the
+/// standing home for a content pane's CTAs now that the bottom button bar is
+/// gone. Any pane with a sidebar/inspector opens it with this.
+struct InspectorActionsBar<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 8) {
+                content()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+
+            Rule(.hairline)
+        }
+    }
+}
+
+/// What a footer bar used to carry besides its buttons — the busy mark, a
+/// status line, whatever notice is live — now pinned at the foot of the
+/// inspector instead of the window's own bottom edge: a hairline above it
+/// and its own faint fill mark it as a band of its own, same as the bar it
+/// replaces.
+struct InspectorStatusFoot<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            content()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .overlay(alignment: .top) { Rule(.hairline) }
+        .surface(.band)
+    }
+}
+
+/// One line of an inspector's pinned foot: an optional glyph, the message,
+/// and the tint both are read in — a stale-read warning, a send/approve/merge
+/// error, a comment dropped from under a stale diff.
+struct InspectorNotice: View {
+    let text: String
+    var systemImage: String?
+    var role: InkRole = .warning
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 12, weight: .medium))
+                    .ink(role)
+            }
+            Text(text)
+                .font(.system(size: Typo.subhead, weight: .regular))
+                .ink(role)
+                .lineLimit(2)
+            Spacer()
+        }
+    }
+}

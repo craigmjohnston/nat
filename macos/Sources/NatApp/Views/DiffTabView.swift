@@ -2,69 +2,6 @@ import SwiftUI
 import NatKit
 import NatFixtures
 
-/// The diff footer's own actions: the review sent back, and the approve
-/// beside it where the slice is still waiting on one.
-///
-/// Its own view so `DiffSkeletonView` draws the very buttons the loaded
-/// footer does rather than blocks the size of them — they read the same
-/// before the branch is read and after, and what decides how deep the footer
-/// band is is their own height. `isRead` is the one thing the two states
-/// differ in: a footer with no diff behind it offers nothing to approve, for
-/// the reason a pending comment stops the approve — there is nothing yet to
-/// approve of.
-struct DiffFooterActions: View {
-    var pendingCount: Int = 0
-    var isSending = false
-    var isApproving = false
-    var showApprove: Bool = false
-    var commentsEditable = true
-    var isRead = false
-    var onSend: () -> Void = {}
-    var onApprove: () -> Void = {}
-
-    var body: some View {
-        Group {
-            Button(action: onSend) {
-                AsyncActionLabel(isBusy: isSending) {
-                    Text("Send \(pendingCount) \(plural(pendingCount, "Comment", "Comments"))")
-                        .font(.system(size: Typo.subhead, weight: .regular))
-                        .monospacedDigit()
-                }
-            }
-            // Secondary rather than primary: what this footer confirms
-            // is the approval beside it, and sending a review back is the
-            // step before that rather than the pane's own submit.
-            .buttonStyle(SecondaryButtonStyle())
-            .disabled(pendingCount == 0 || isSending || !commentsEditable)
-            .help(commentsEditable ? "" : "Comments are only sent while viewing All commits")
-
-            // Only a hand-back still awaiting approval has anything to
-            // approve — a Done slice's diff is the review continuing on
-            // a pull request already open, and drawing the button there
-            // would offer exactly what the CLI refuses.
-            if showApprove {
-                Button(action: onApprove) {
-                    AsyncActionLabel(isBusy: isApproving) {
-                        Text("Approve & Open PR…")
-                            .font(.system(size: Typo.subhead, weight: .semibold))
-                    }
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(!isRead || pendingCount > 0 || isApproving || !commentsEditable)
-                .help(commentsEditable
-                    ? Self.approveHelp(pendingCount: pendingCount)
-                    : "Approving is only available while viewing All commits")
-            }
-        }
-    }
-
-    static func approveHelp(pendingCount: Int) -> String {
-        guard pendingCount > 0 else { return "" }
-        return "Send or clear the \(pendingCount) pending \(plural(pendingCount, "comment", "comments")) first — " +
-            "a review with something left to say is not one that approves the work."
-    }
-}
-
 /// A run of one file's rows currently marked as a comment's anchor — purely
 /// transient view state (never persisted; `PendingComment` is what persists
 /// once the run actually has something said about it). `rowIDs` are ordered
@@ -240,86 +177,110 @@ struct DiffTabView: View {
                     }
                     .scrollPosition($fileScroll, anchor: .top)
 
-                    DiffFileSidebarView(
-                        files: diff.files,
-                        isViewed: { store.isViewed($0) },
-                        commentCount: { path in store.comments.filter { $0.path == path }.count },
-                        commits: store.commits,
-                        selectedCommit: store.selectedCommit,
-                        onSelectCommit: { sha in Task { await store.selectCommit(sha) } },
-                        onSelect: { path in
-                            withAnimation(Motion.stateChange) {
-                                fileScroll.scrollTo(id: path, anchor: .top)
-                            }
-                        }
-                    )
-                    .frame(width: sidebarWidth)
-                    .rule(.separator, edges: [.leading], width: 0.5)
-                    .overlay(alignment: .leading) {
-                        PaneResizeHandle(width: $sidebarWidth, minWidth: 180, maxWidth: 420, edge: .leading)
-                            .offset(x: -4.5)
-                    }
+                    diffSidebar(for: diff)
                 }
-
-                footer(for: diff)
             }
         }
     }
 
-    private func footer(for diff: DiffModel) -> some View {
+    /// The file list's own rail: the Send/Approve actions atop it — the
+    /// standing inspector-top slot every pane with a rail opens with — then
+    /// the file list itself, and a pinned foot for the busy mark, the
+    /// viewed/pending line, and whatever notice is live.
+    private func diffSidebar(for diff: DiffModel) -> some View {
         let viewedCount = diff.files.filter { store.isViewed($0.path) }.count
         let pendingCount = store.pendingCommentCount
         let commentsEditable = store.commentsEditable
 
         return VStack(spacing: 0) {
-            // A read that failed over a diff already on screen: what is up is
-            // the last good reading, and saying so is what stops it being
-            // read as the branch's current state.
-            if let staleMessage = store.loadState.errorMessage {
-                inlineNotice("Showing the last reading — \(staleMessage)", role: .warning)
-            }
-            if let dropNotice {
-                inlineNotice(dropNotice, role: .warning)
-            }
-            if let sendError {
-                inlineNotice(sendError, role: .danger)
-            }
-            if let approveError {
-                inlineNotice(approveError, role: .danger)
+            InspectorActionsBar {
+                // Only a hand-back still awaiting approval has anything to
+                // approve — a Done slice's diff is the review continuing on
+                // a pull request already open, and drawing the button there
+                // would offer exactly what the CLI refuses.
+                if slice.handedBack {
+                    Button(action: { showApproveConfirm = true }) {
+                        AsyncActionLabel(isBusy: isApproving) {
+                            Text("Approve & Open PR…")
+                                .font(.system(size: Typo.subhead, weight: .semibold))
+                        }
+                    }
+                    .buttonStyle(InspectorPrimaryButtonStyle())
+                    .disabled(pendingCount > 0 || isApproving || !commentsEditable)
+                    .help(commentsEditable
+                        ? Self.approveHelp(pendingCount: pendingCount)
+                        : "Approving is only available while viewing All commits")
+                }
+
+                // Secondary rather than primary: what this rail confirms is
+                // the approval above it, and sending a review back is the
+                // step before that rather than the pane's own submit.
+                Button(action: { Task { await sendComments() } }) {
+                    AsyncActionLabel(isBusy: isSending) {
+                        Text("Send \(pendingCount) \(plural(pendingCount, "Comment", "Comments"))")
+                            .font(.system(size: Typo.subhead, weight: .regular))
+                            .monospacedDigit()
+                    }
+                }
+                .buttonStyle(InspectorSecondaryButtonStyle())
+                .disabled(pendingCount == 0 || isSending || !commentsEditable)
+                .help(commentsEditable ? "" : "Comments are only sent while viewing All commits")
             }
 
-            Divider()
-                .frame(height: 0.5)
+            DiffFileSidebarView(
+                files: diff.files,
+                isViewed: { store.isViewed($0) },
+                commentCount: { path in store.comments.filter { $0.path == path }.count },
+                commits: store.commits,
+                selectedCommit: store.selectedCommit,
+                onSelectCommit: { sha in Task { await store.selectCommit(sha) } },
+                onSelect: { path in
+                    withAnimation(Motion.stateChange) {
+                        fileScroll.scrollTo(id: path, anchor: .top)
+                    }
+                }
+            )
 
-            HStack(spacing: 8) {
-                // The busy mark holds its slot whether a read is running or
-                // not, so a refresh admits to itself without moving the line
-                // beside it.
-                RefreshingMark(isRefreshing: store.isRefreshing)
+            InspectorStatusFoot {
+                // A read that failed over a diff already on screen: what is
+                // up is the last good reading, and saying so is what stops
+                // it being read as the branch's current state.
+                if let staleMessage = store.loadState.errorMessage {
+                    InspectorNotice(text: "Showing the last reading — \(staleMessage)", role: .warning)
+                }
+                if let dropNotice {
+                    InspectorNotice(text: dropNotice, role: .warning)
+                }
+                if let sendError {
+                    InspectorNotice(text: sendError, role: .danger)
+                }
+                if let approveError {
+                    InspectorNotice(text: approveError, role: .danger)
+                }
 
-                Text(footerLeftText(
-                    pendingCount: pendingCount, viewedCount: viewedCount, total: diff.files.count,
-                    commentsEditable: commentsEditable
-                ))
-                    .font(.system(size: Typo.subhead, weight: .regular))
-                    .monospacedDigit()
-                    .ink(.tertiary)
+                HStack(spacing: 8) {
+                    // The busy mark holds its slot whether a read is running
+                    // or not, so a refresh admits to itself without moving
+                    // the line beside it.
+                    RefreshingMark(isRefreshing: store.isRefreshing)
 
-                Spacer()
+                    Text(footerLeftText(
+                        pendingCount: pendingCount, viewedCount: viewedCount, total: diff.files.count,
+                        commentsEditable: commentsEditable
+                    ))
+                        .font(.system(size: Typo.subhead, weight: .regular))
+                        .monospacedDigit()
+                        .ink(.tertiary)
 
-                DiffFooterActions(
-                    pendingCount: pendingCount,
-                    isSending: isSending,
-                    isApproving: isApproving,
-                    showApprove: slice.handedBack,
-                    commentsEditable: commentsEditable,
-                    isRead: true,
-                    onSend: { Task { await sendComments() } },
-                    onApprove: { showApproveConfirm = true }
-                )
+                    Spacer()
+                }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+        }
+        .frame(width: sidebarWidth)
+        .rule(.separator, edges: [.leading], width: 0.5)
+        .overlay(alignment: .leading) {
+            PaneResizeHandle(width: $sidebarWidth, minWidth: 180, maxWidth: 420, edge: .leading)
+                .offset(x: -4.5)
         }
         .confirmationDialog(
             "Approve and open a pull request for \(diff.branch)?",
@@ -335,17 +296,10 @@ struct DiffTabView: View {
         .dialogIcon(Image(systemName: "checkmark.seal"))
     }
 
-    private func inlineNotice(_ text: String, role: InkRole) -> some View {
-        HStack {
-            Text(text)
-                .font(.system(size: Typo.subhead, weight: .regular))
-                .monospacedDigit()
-                .ink(role)
-                .lineLimit(2)
-            Spacer()
-        }
-        .padding(.horizontal, 14)
-        .padding(.top, 6)
+    private static func approveHelp(pendingCount: Int) -> String {
+        guard pendingCount > 0 else { return "" }
+        return "Send or clear the \(pendingCount) pending \(plural(pendingCount, "comment", "comments")) first — " +
+            "a review with something left to say is not one that approves the work."
     }
 
     private func footerLeftText(pendingCount: Int, viewedCount: Int, total: Int, commentsEditable: Bool) -> String {

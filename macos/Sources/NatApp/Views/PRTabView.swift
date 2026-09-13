@@ -3,43 +3,6 @@ import SwiftUI
 import NatKit
 import NatFixtures
 
-/// The PR footer's own actions: the pull request opened where GitHub draws
-/// it, and the merge.
-///
-/// Its own view for the reason `DiffFooterActions` is — `PRSkeletonView`
-/// draws these very buttons, whose height is what holds the footer band open
-/// — and with the same `isRead`: neither is offered over a reading that has
-/// not landed, since there is no pull request yet to open or to merge.
-struct PRFooterActions: View {
-    var isMerging = false
-    var canMerge = false
-    var isRead = false
-    var onOpenInGitHub: () -> Void = {}
-    var onMerge: () -> Void = {}
-
-    var body: some View {
-        Group {
-            Button(action: onOpenInGitHub) {
-                HStack(spacing: 5) {
-                    Text("Open in GitHub")
-                    Image(systemName: "arrow.up.right.square")
-                }
-                .font(.system(size: Typo.subhead, weight: .regular))
-            }
-            .buttonStyle(SecondaryButtonStyle())
-            .disabled(!isRead)
-
-            Button(action: onMerge) {
-                AsyncActionLabel(isBusy: isMerging) {
-                    Text("Merge")
-                }
-            }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(!isRead || !canMerge)
-        }
-    }
-}
-
 /// The PR tab: what GitHub says about a slice's pull request, read through
 /// `PRStore` and drawn beside a checks/review/changes sidebar — the desktop
 /// counterpart of the Go TUI's own PR screen (`internal/tui/prview.go`).
@@ -72,14 +35,20 @@ struct PRTabView: View {
     @State private var isSendingReply = false
     @State private var replyError: String?
 
+    /// The sidebar's width, draggable at its divider and remembered across
+    /// launches — the default is the width it was fixed at before it was
+    /// resizable, and the same key `PRSidebarView` used to hold it under
+    /// before its own frame/rule/resize became this tab's to wrap it in.
+    @AppStorage("prSidebarWidth") private var sidebarWidth = 216.0
+
     var body: some View {
         VStack(spacing: 0) {
             // A reading already on screen wins over the state that replaced
             // it: the five-second poll keeps its pull request (and says so
-            // with the footer's busy mark), and a `gh` that failed one of
-            // those readings keeps it too, with its words in a notice above
-            // the footer. Only a read with nothing ever behind it draws the
-            // skeleton or the failure.
+            // with the sidebar's pinned busy mark), and a `gh` that failed
+            // one of those readings keeps it too, with its words in a notice
+            // pinned there beside it. Only a read with nothing ever behind it
+            // draws the skeleton or the failure.
             if let pr = store.loadState.pr {
                 content(for: pr)
             } else if case .failed = store.loadState {
@@ -139,12 +108,9 @@ struct PRTabView: View {
     // MARK: - Loaded content
 
     private func content(for pr: PRDetail) -> some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                mainColumn(for: pr)
-                PRSidebarView(pr: pr)
-            }
-            footer(for: pr)
+        HStack(spacing: 0) {
+            mainColumn(for: pr)
+            prSidebar(for: pr)
         }
     }
 
@@ -284,65 +250,71 @@ struct PRTabView: View {
         }
     }
 
-    // MARK: - Footer (merge box)
+    // MARK: - Sidebar (checks/review/changes rail, and the merge box's actions)
 
-    private func footer(for pr: PRDetail) -> some View {
+    /// The PR tab's own rail: the Merge/Open-in-GitHub actions atop it — the
+    /// standing inspector-top slot every pane with a rail opens with — then
+    /// `PRSidebarView`'s checks/review/changes, and a pinned foot for the
+    /// merge box's own busy mark, its readiness heading, and any error.
+    private func prSidebar(for pr: PRDetail) -> some View {
         let rollup = mergeRollup(mergeVerdicts(pr))
+
         return VStack(spacing: 0) {
-            // A read that failed over a pull request already on screen: what
-            // is up is the last good reading, and saying so is what stops it
-            // being read as GitHub's current answer.
-            if let staleMessage = store.loadState.errorMessage {
-                HStack {
-                    Text("Showing the last reading — \(staleMessage)")
-                        .font(.system(size: Typo.subhead, weight: .regular))
-                        .ink(.warning)
-                        .lineLimit(2)
-                    Spacer()
+            InspectorActionsBar {
+                Button(action: { showMergeConfirm = true }) {
+                    AsyncActionLabel(isBusy: isMerging) {
+                        Text("Merge")
+                    }
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 6)
-            }
+                .buttonStyle(InspectorPrimaryButtonStyle())
+                .disabled(!mergeIsEnabled(for: pr) || isMerging)
 
-            if let mergeError {
-                HStack {
-                    Text(mergeError)
-                        .font(.system(size: Typo.subhead, weight: .regular))
-                        .ink(.danger)
-                        .lineLimit(2)
-                    Spacer()
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 6)
-            }
-
-            Divider().frame(height: 0.5)
-
-            HStack(spacing: 8) {
-                // Holds its slot whether a read is running or not, so the
-                // poll never moves the heading beside it.
-                RefreshingMark(isRefreshing: store.isRefreshing)
-
-                Image(systemName: footerMarkSymbolName(for: pr, rollup: rollup))
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(footerTint(for: pr, rollup: rollup))
-
-                Text(footerHeadingText(for: pr))
+                Button(action: openInGitHub) {
+                    HStack(spacing: 5) {
+                        Text("Open in GitHub")
+                        Image(systemName: "arrow.up.right.square")
+                    }
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .ink(.tertiary)
-
-                Spacer()
-
-                PRFooterActions(
-                    isMerging: isMerging,
-                    canMerge: mergeIsEnabled(for: pr) && !isMerging,
-                    isRead: true,
-                    onOpenInGitHub: openInGitHub,
-                    onMerge: { showMergeConfirm = true }
-                )
+                }
+                .buttonStyle(InspectorSecondaryButtonStyle())
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+
+            PRSidebarView(pr: pr)
+
+            InspectorStatusFoot {
+                // A read that failed over a pull request already on screen:
+                // what is up is the last good reading, and saying so is what
+                // stops it being read as GitHub's current answer.
+                if let staleMessage = store.loadState.errorMessage {
+                    InspectorNotice(text: "Showing the last reading — \(staleMessage)", role: .warning)
+                }
+                if let mergeError {
+                    InspectorNotice(text: mergeError, role: .danger)
+                }
+
+                HStack(spacing: 8) {
+                    // Holds its slot whether a read is running or not, so the
+                    // poll never moves the heading beside it.
+                    RefreshingMark(isRefreshing: store.isRefreshing)
+
+                    Image(systemName: footerMarkSymbolName(for: pr, rollup: rollup))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(footerTint(for: pr, rollup: rollup))
+
+                    Text(footerHeadingText(for: pr))
+                        .font(.system(size: Typo.subhead, weight: .regular))
+                        .ink(.tertiary)
+                        .lineLimit(2)
+
+                    Spacer()
+                }
+            }
+        }
+        .frame(width: sidebarWidth)
+        .rule(.separator, edges: [.leading], width: 0.5)
+        .overlay(alignment: .leading) {
+            PaneResizeHandle(width: $sidebarWidth, minWidth: 170, maxWidth: 400, edge: .leading)
+                .offset(x: -4.5)
         }
         .confirmationDialog(
             "Merge pull request #\(pr.number)?",
