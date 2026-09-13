@@ -142,6 +142,17 @@ window chrome or anything else that is not one pane's own. Both writes
 overwrite, so rendering before and after a change into two directories is how
 the difference is read.
 
+Crop or downscale to the element under test before reading a render, whether
+it is a story's PNG or a live `NAT_SNAPSHOT` capture, rather than reading the
+full window: one design-verification session read 17 full 2080x1360 frames
+(~210KB apiece, stored twice over by the transcript format) as images and
+came out an 8.8MB transcript for it, and the audit found the cropped
+side-by-side comparisons it also made (~50-230KB) were what actually drove
+every fix — the full frames mostly restated them. And render with any
+animation paused, or at a fixed phase, before comparing: an untimed capture
+can land mid-shimmer, and one session burned a whole debug detour chasing
+that as a layout bug before finding it was only the sweep's timing.
+
 If no story shows what changed, add one — an entry in
 `Sources/NatApp/Gallery/AppStories.swift` and nothing else — and render that.
 A pane that cannot be reviewed without launching the app is a gap in the

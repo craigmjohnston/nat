@@ -180,28 +180,3 @@ func editSlice(client NotionAPI, sliceID, title, description, repo string) tea.C
 		return sliceSavedMsg{note: fmt.Sprintf("Updated %q.", title), sliceID: sliceID}
 	}
 }
-
-// paragraphBlocks turns a brief into the blocks a slice page is written as: one
-// paragraph per blank-line-separated chunk, blank chunks dropped. Bodies
-// written here are paragraphs and nothing else — the form edits plain text, and
-// a body that round-trips through it should come back as what was typed.
-func paragraphBlocks(description string) []map[string]any {
-	var blocks []map[string]any
-	for _, chunk := range strings.Split(strings.ReplaceAll(description, "\r\n", "\n"), "\n\n") {
-		text := strings.TrimSpace(chunk)
-		if text == "" {
-			continue
-		}
-		blocks = append(blocks, map[string]any{
-			"object": "block",
-			"type":   "paragraph",
-			"paragraph": map[string]any{
-				"rich_text": []map[string]any{{
-					"type": "text",
-					"text": map[string]any{"content": text},
-				}},
-			},
-		})
-	}
-	return blocks
-}

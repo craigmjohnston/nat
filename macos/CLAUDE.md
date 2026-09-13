@@ -16,8 +16,12 @@ fuller structure and theme system.
   `/Applications/Xcode_26*.app`) — the runner's default is older and refuses
   the Swift 6.2 syntax this codebase uses.
 - **Verify a UI change by rendering the gallery, not launching the app**
-  (`gnat --list`/`--story`/`--all` — flags in root CLAUDE.md). Add a story
+  (`gnat --list`/`--story`/`--all` — flags in `macos/README.md`). Add a story
   (`Sources/NatApp/Gallery/AppStories.swift`) before a live screenshot.
+- Read a render cropped or downscaled to the element under test, never as a
+  full window frame, and pause any animation (or fix it to one phase) before
+  comparing — an untimed capture reads a mid-sweep shimmer back as a layout
+  bug. `macos/README.md` has the incidents behind both.
 
 ## NatClient: `nat` is the only source of truth
 

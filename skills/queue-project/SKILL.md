@@ -66,10 +66,16 @@ every slice: anything true of one slice alone belongs in that slice's brief.
 - A **slice** is a small unit of work one agent completes in a single fresh
   session. If the work is code, a slice maps to **exactly one PR** — split
   anything bigger.
-- Each slice gets a clear imperative title and a 2–6 sentence description
-  written as a self-contained brief: what, where, acceptance criteria. The
+- Each slice gets a clear imperative title and a self-contained brief. The
   agent that picks it up reads the brief and the project's conventions and
   nothing else of this conversation.
+- **Write the brief structured, not as one dense paragraph.** Short
+  paragraphs separated by blank lines, what and where first; acceptance
+  criteria as their own final paragraph or list. Enumerable detail — a
+  checklist, a list of file:line locations — goes as markdown bullets, one
+  item per line: `nat` now converts a brief's markdown into the page's own
+  blocks, so a list written this way renders as a real list rather than a
+  wall of prose with dashes in it.
 - Milestones are phases of the work, in the order they should happen: the
   plan's order is the order they are written in, and `nat next-slice` hands
   work out from the lowest-ordered milestone that is not Done.

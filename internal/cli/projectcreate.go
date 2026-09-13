@@ -83,7 +83,7 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 	}
 	logging.Action("project created", "project", s.PageID, "name", name, "assignee", assignee)
 
-	if blocks := paragraphBlocks(info); len(blocks) > 0 {
+	if blocks := notion.BlocksFromMarkdown(info); len(blocks) > 0 {
 		if aerr := appendPageBody(ctx, client, s.PageID, blocks); aerr != nil {
 			err = errors.Join(err, aerr)
 		}

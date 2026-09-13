@@ -683,7 +683,7 @@ func (n *Notion) AddSlice(ctx context.Context, p Project, s NewSlice) (domain.Sl
 	if len(s.DependsOn) > 0 {
 		properties[notion.PropDependsOn] = notion.NewRelation(s.DependsOn...)
 	}
-	page, err := n.api.CreatePage(ctx, notion.DataSourceParent(p.SlicesID), properties, paragraphBlocks(s.Brief))
+	page, err := n.api.CreatePage(ctx, notion.DataSourceParent(p.SlicesID), properties, notion.BlocksFromMarkdown(s.Brief))
 	if err != nil {
 		return domain.Slice{}, err
 	}
@@ -721,7 +721,7 @@ func (n *Notion) SetSliceBrief(ctx context.Context, id, brief string) error {
 			return fmt.Errorf("clear slice body: %w", err)
 		}
 	}
-	if children := paragraphBlocks(brief); len(children) > 0 {
+	if children := notion.BlocksFromMarkdown(brief); len(children) > 0 {
 		if _, err := n.api.AppendBlockChildren(ctx, id, children); err != nil {
 			return fmt.Errorf("write slice body: %w", err)
 		}

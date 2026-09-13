@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
@@ -63,9 +64,17 @@ func (l *Local) exec(ctx context.Context, tx *sql.Tx, doing, query string, args 
 
 // updateSlice is the shape of every write to one slice: the slice is read
 // afresh inside the transaction, the mutation is handed that reading to write
-// its delta onto, and the slice as the write left it is read back before the
-// commit — which is what the caller gets, so what comes back is the plan's own
-// answer rather than the caller's hopes for it.
+// its delta onto, the slice is marked dirty in that same transaction — a
+// replica's file is now ahead of the workspace on this slice, and the two must
+// never disagree about that — and the slice as the write left it is read back
+// before the commit — which is what the caller gets, so what comes back is the
+// plan's own answer rather than the caller's hopes for it.
+//
+// The dirty write is inside the transaction on purpose, rather than a second
+// call made after this one returns: a process killed between the two would
+// leave a change in the file, marked nothing, that no sync would ever send —
+// where a crash on the other side, between a push and marking a slice sent, only
+// resends a write the workspace already has.
 //
 // A slice that is not there is refused by the read, so a write to a slice
 // somebody has deleted says so instead of quietly updating no rows.
@@ -80,6 +89,9 @@ func (l *Local) updateSlice(ctx context.Context, id, doing string,
 		if err := f(tx, before); err != nil {
 			return err
 		}
+		if err := l.markDirty(ctx, tx, id); err != nil {
+			return err
+		}
 		after, err = l.slice(ctx, tx, id)
 		return err
 	})
@@ -87,6 +99,25 @@ func (l *Local) updateSlice(ctx context.Context, id, doing string,
 		return domain.Slice{}, err
 	}
 	return after, nil
+}
+
+// markDirty records that a slice's file copy has changed since it was last
+// brought into line with the workspace, inside whichever transaction the
+// change itself is being written in.
+func (l *Local) markDirty(ctx context.Context, tx *sql.Tx, id string) error {
+	return l.exec(ctx, tx, "mark the slice dirty",
+		`INSERT INTO sync (slice_id, dirty) VALUES (?, 1)
+		 ON CONFLICT(slice_id) DO UPDATE SET dirty = 1`, id)
+}
+
+// markSynced records that a slice's file copy was just brought into line with
+// the workspace — a pull, which is clean by definition, rather than a push,
+// which [Local.MarkSent] is the answer to.
+func (l *Local) markSynced(ctx context.Context, tx *sql.Tx, id string, at time.Time) error {
+	return l.exec(ctx, tx, "mark the slice synced",
+		`INSERT INTO sync (slice_id, dirty, synced_at) VALUES (?, 0, ?)
+		 ON CONFLICT(slice_id) DO UPDATE SET dirty = 0, synced_at = excluded.synced_at`,
+		id, timeStamp(at))
 }
 
 // sliceBody reads a slice's body as it stands, which is what a note is appended
@@ -504,6 +535,9 @@ func (l *Local) AddSlice(ctx context.Context, _ Project, n NewSlice) (domain.Sli
 		if err := l.writeDependencies(ctx, tx, id, n.DependsOn); err != nil {
 			return err
 		}
+		if err := l.markDirty(ctx, tx, id); err != nil {
+			return err
+		}
 		added, err = l.slice(ctx, tx, id)
 		return err
 	})
@@ -636,18 +670,363 @@ func (l *Local) DeleteSlice(ctx context.Context, id string) error {
 		if _, err := l.slice(ctx, tx, id); err != nil {
 			return err
 		}
-		if err := l.exec(ctx, tx, "delete the slice",
-			`DELETE FROM slice_deps WHERE slice_id = ? OR depends_on = ?`, id, id); err != nil {
-			return err
-		}
-		if err := l.exec(ctx, tx, "delete the slice",
-			`DELETE FROM sync WHERE slice_id = ?`, id); err != nil {
-			return err
-		}
-		return l.exec(ctx, tx, "delete the slice", `DELETE FROM slices WHERE id = ?`, id)
+		return l.deleteSliceRows(ctx, tx, id)
 	}); err != nil {
 		return err
 	}
 	logging.Action("slice deleted", "slice", id)
 	return nil
+}
+
+// deleteSliceRows takes every row a slice owns out of the plan: the waits
+// either side of it, its sync state, and the slice itself. It is the row-level
+// work [Local.DeleteSlice] does once a slice's presence has been checked, and
+// [Local.Hydrate] does again for every slice a reading no longer names, which
+// has already read the plan and has no second read to make of one slice.
+func (l *Local) deleteSliceRows(ctx context.Context, tx *sql.Tx, id string) error {
+	if err := l.exec(ctx, tx, "delete the slice",
+		`DELETE FROM slice_deps WHERE slice_id = ? OR depends_on = ?`, id, id); err != nil {
+		return err
+	}
+	if err := l.exec(ctx, tx, "delete the slice",
+		`DELETE FROM sync WHERE slice_id = ?`, id); err != nil {
+		return err
+	}
+	return l.exec(ctx, tx, "delete the slice", `DELETE FROM slices WHERE id = ?`, id)
+}
+
+// This is the replica half of [Local]: the writes a project read from Notion
+// but kept locally needs, and nothing above this package calls any of it yet.
+//
+// sliceIdentity is what a domain.Slice carries onto a row's assignee and
+// assignee_name columns — the workspace's own user ID, which is what a push
+// compares equality against, and the name it resolves that ID to, which is
+// what [Local.ApplyAssignee] alone fills in afterwards. A reading with no
+// assignee at all writes neither.
+func sliceIdentity(s domain.Slice) (assignee, name string) {
+	if len(s.AssigneeIDs) > 0 {
+		assignee = s.AssigneeIDs[0]
+	}
+	return assignee, s.AssigneeName
+}
+
+// sliceStatusName is the word a write puts in the status column: the
+// project's own word for it where the reading carries one, and the workflow
+// status otherwise — a reading may carry a [domain.Slice] with a Status and no
+// StatusName, and a plan storing neither would read back with no status at
+// all.
+func sliceStatusName(s domain.Slice) string {
+	if s.StatusName != "" {
+		return s.StatusName
+	}
+	return string(s.Status)
+}
+
+// existingSlicePosition is what [Local.Hydrate] already knows about a slice
+// before it writes anything: the place in the plan it holds, the milestone
+// that place is measured within, and whether it is dirty — ahead of the
+// workspace rather than behind it, and so not [Local.Hydrate]'s to overwrite.
+type existingSlicePosition struct {
+	position  float64
+	milestone string
+	dirty     bool
+}
+
+// existingSlicePositions reads every slice the plan already holds, and with
+// each its sync state, as one query rather than one per slice — the same
+// shape [Local.dependencies] reads a whole plan's waits in.
+func (l *Local) existingSlicePositions(ctx context.Context, q localQuerier) (map[string]existingSlicePosition, error) {
+	rows, err := q.QueryContext(ctx,
+		`SELECT s.id, s.position, COALESCE(s.milestone, ''), COALESCE(y.dirty, 0)
+		 FROM slices s LEFT JOIN sync y ON y.slice_id = s.id`)
+	if err != nil {
+		return nil, l.errorf(err, "read the plan")
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := map[string]existingSlicePosition{}
+	for rows.Next() {
+		var id string
+		var ex existingSlicePosition
+		if err := rows.Scan(&id, &ex.position, &ex.milestone, &ex.dirty); err != nil {
+			return nil, l.errorf(err, "read the plan")
+		}
+		out[id] = ex
+	}
+	if err := rows.Err(); err != nil {
+		return nil, l.errorf(err, "read the plan")
+	}
+	return out, nil
+}
+
+// nextSlicePositionInMilestone is where a slice new to the plan goes within
+// its milestone — past the highest position anything already filed there
+// holds — which is [Local.nextSlicePosition]'s rule applied within a milestone
+// rather than across the whole plan: [Local.AddSlice] puts a slice at the end
+// of the plan because that is where a person filing one by hand expects it,
+// and [Local.Hydrate] and [Local.TakeSlice] put one at the end of its
+// milestone because a reading names the milestone and nothing about the rest
+// of the plan.
+func (l *Local) nextSlicePositionInMilestone(ctx context.Context, tx *sql.Tx, milestone string) (float64, error) {
+	var last sql.NullFloat64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT MAX(position) FROM slices WHERE COALESCE(milestone, '') = ?`, milestone).Scan(&last); err != nil {
+		return 0, l.errorf(err, "read the plan order")
+	}
+	if !last.Valid {
+		return 0, nil
+	}
+	return last.Float64 + 1, nil
+}
+
+// sliceExists reports whether a slice is already in the plan, which is what
+// [Local.TakeSlice] asks before filing one: a slice the file already holds is
+// not new to it, whatever page prompted the read.
+func (l *Local) sliceExists(ctx context.Context, q localQuerier, id string) (bool, error) {
+	var found string
+	err := q.QueryRowContext(ctx, `SELECT id FROM slices WHERE id = ?`, id).Scan(&found)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, l.errorf(err, "read the slice")
+	}
+	return true, nil
+}
+
+// TakeSlice puts one slice the file has never seen into the plan, at the end
+// of its milestone: the one way a slice enters the file outside
+// [Local.Hydrate] — for a single slice read from the workspace by ID, and
+// equally the page [Local.AddSlice] has just had a write-through layer create
+// there — which is what keeps the write-through slice from having to grow a
+// second entry point of its own for a workspace-chosen ID.
+//
+// A slice the file already holds is left exactly where it is, position
+// included: it is not new to the plan, whatever page prompted the read. body
+// is written as the slice's own, stamped fresh as of at; an empty body is
+// still stamped, since "" is what a slice with no brief yet genuinely holds
+// and the stamp is what says that reading is current.
+func (l *Local) TakeSlice(ctx context.Context, s domain.Slice, body string, at time.Time) error {
+	return l.withTx(ctx, "take the slice into the plan", func(tx *sql.Tx) error {
+		held, err := l.sliceExists(ctx, tx, s.ID)
+		if err != nil {
+			return err
+		}
+		if held {
+			return nil
+		}
+		position, err := l.nextSlicePositionInMilestone(ctx, tx, s.MilestoneID)
+		if err != nil {
+			return err
+		}
+		assignee, assigneeName := sliceIdentity(s)
+		if err := l.exec(ctx, tx, "take the slice into the plan",
+			`INSERT INTO slices
+			   (id, title, status, milestone, position, assignee, assignee_name, repo, branch, pr, body, body_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			s.ID, s.Name, sliceStatusName(s), nullable(s.MilestoneID), position,
+			assignee, assigneeName, s.Repo, s.Branch, s.PRURL, body, timeStamp(at)); err != nil {
+			return err
+		}
+		if err := l.writeDependencies(ctx, tx, s.ID, s.DependsOn); err != nil {
+			return err
+		}
+		return l.markSynced(ctx, tx, s.ID, at)
+	})
+}
+
+// Hydrate brings the file into line with a reading taken from the workspace:
+// the project row, its milestones replaced wholesale — a milestone is nothing
+// but its name and its place, and its order lives in Notion's select options
+// rather than on any page, so the reading's answer for it is always current —
+// every slice the reading holds written over what was there except its
+// position, and the slices the reading does not name taken off.
+//
+// A slice the file already holds keeps the position it has, clean or dirty,
+// and only a slice the file has never seen takes one, appended at the end of
+// its milestone in the reading's own order. A slice marked dirty — the file
+// ahead of the workspace on it, not behind — is left alone entirely: neither
+// its fields, its dependencies, nor its body are written over, since the file
+// is right about it and the reading is what is stale.
+//
+// bodies is keyed by page ID — a slice's own, or the project's for its
+// conventions — and an absent entry leaves the stored prose exactly as it
+// was, because a pull often carries no bodies at all.
+func (l *Local) Hydrate(ctx context.Context, p Project, plan Plan, bodies map[string]string, at time.Time) error {
+	return l.withTx(ctx, "hydrate the plan", func(tx *sql.Tx) error {
+		if err := l.exec(ctx, tx, "hydrate the plan",
+			`INSERT INTO project (id, name, has_assignee, has_branch, synced_at)
+			 VALUES (?, ?, ?, ?, ?)
+			 ON CONFLICT(id) DO UPDATE SET
+			   name = excluded.name, has_assignee = excluded.has_assignee,
+			   has_branch = excluded.has_branch, synced_at = excluded.synced_at`,
+			p.ID, plan.Project.Name, boolColumn(plan.Shape.HasAssignee), boolColumn(plan.Shape.HasBranch),
+			timeStamp(at)); err != nil {
+			return err
+		}
+		if body, ok := bodies[p.ID]; ok {
+			if err := l.exec(ctx, tx, "hydrate the plan",
+				`UPDATE project SET conventions = ?, conventions_at = ? WHERE id = ?`,
+				body, timeStamp(at), p.ID); err != nil {
+				return err
+			}
+		}
+
+		if err := l.exec(ctx, tx, "hydrate the plan", `DELETE FROM milestones`); err != nil {
+			return err
+		}
+		for _, m := range plan.Project.Milestones {
+			if err := l.exec(ctx, tx, "hydrate the plan",
+				`INSERT INTO milestones (name, position, select_type) VALUES (?, ?, ?)`,
+				m.Name, m.Order, m.SelectType); err != nil {
+				return err
+			}
+		}
+
+		existing, err := l.existingSlicePositions(ctx, tx)
+		if err != nil {
+			return err
+		}
+		// Where the next new slice under a milestone lands, seeded from what the
+		// file already holds there so a reading's own new slices append after it
+		// rather than colliding with it.
+		nextPos := map[string]float64{}
+		for _, ex := range existing {
+			if n := ex.position + 1; n > nextPos[ex.milestone] {
+				nextPos[ex.milestone] = n
+			}
+		}
+
+		seen := map[string]bool{}
+		for _, s := range plan.Project.Slices {
+			seen[s.ID] = true
+			ex, held := existing[s.ID]
+			if held && ex.dirty {
+				continue
+			}
+			position := ex.position
+			if !held {
+				position = nextPos[s.MilestoneID]
+				nextPos[s.MilestoneID] = position + 1
+			}
+			assignee, assigneeName := sliceIdentity(s)
+			if err := l.exec(ctx, tx, "hydrate the plan",
+				`INSERT INTO slices
+				   (id, title, status, milestone, position, assignee, assignee_name, repo, branch, pr)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				 ON CONFLICT(id) DO UPDATE SET
+				   title = excluded.title, status = excluded.status, milestone = excluded.milestone,
+				   position = excluded.position, assignee = excluded.assignee,
+				   assignee_name = excluded.assignee_name, repo = excluded.repo,
+				   branch = excluded.branch, pr = excluded.pr`,
+				s.ID, s.Name, sliceStatusName(s), nullable(s.MilestoneID), position,
+				assignee, assigneeName, s.Repo, s.Branch, s.PRURL); err != nil {
+				return err
+			}
+			if body, ok := bodies[s.ID]; ok {
+				if err := l.exec(ctx, tx, "hydrate the plan",
+					`UPDATE slices SET body = ?, body_at = ? WHERE id = ?`,
+					body, timeStamp(at), s.ID); err != nil {
+					return err
+				}
+			}
+			if err := l.writeDependencies(ctx, tx, s.ID, s.DependsOn); err != nil {
+				return err
+			}
+			if err := l.markSynced(ctx, tx, s.ID, at); err != nil {
+				return err
+			}
+		}
+
+		for id := range existing {
+			if seen[id] {
+				continue
+			}
+			if err := l.deleteSliceRows(ctx, tx, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// SetBody writes the prose kept against an ID, stamped as read as of at — a
+// slice's brief, or a project's conventions, whichever the ID names, the same
+// duality [Local.Body] reads. An ID neither answers to is refused: unlike
+// [Local.Body], which is read against whatever project happens to be open,
+// this is always writing back a page just fetched by its own ID, and a page
+// that fetch found is a page this file ought to have a row for already.
+func (l *Local) SetBody(ctx context.Context, id, body string, at time.Time) error {
+	return l.withTx(ctx, "write the page body", func(tx *sql.Tx) error {
+		n, err := l.tryExec(ctx, tx, "write the page body",
+			`UPDATE slices SET body = ?, body_at = ? WHERE id = ?`, body, timeStamp(at), id)
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			return nil
+		}
+		n, err = l.tryExec(ctx, tx, "write the page body",
+			`UPDATE project SET conventions = ?, conventions_at = ? WHERE id = ?`, body, timeStamp(at), id)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return fmt.Errorf("no page %s in the plan at %s", id, l.path)
+		}
+		return nil
+	})
+}
+
+// tryExec is [Local.exec] with the rows it changed handed back, which is how
+// [Local.SetBody] tells a slice's page from a project's without reading either
+// first. RowsAffected cannot fail here — every statement this is given is a
+// plain UPDATE against this driver, which always answers it — so there is no
+// failure for a caller to act on, the same reason newLocalID does not check
+// crypto/rand's.
+func (l *Local) tryExec(ctx context.Context, tx *sql.Tx, doing, query string, args ...any) (int64, error) {
+	res, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, l.errorf(err, doing)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+// MarkSent records that a slice's file copy has just been pushed to the
+// workspace: dirty cleared, and the sync stamp set to when the push was made.
+//
+// It is deliberately its own step rather than something folded into the push
+// itself: a crash between the push landing and this call simply has the next
+// sync attempt send the same write again, which the workspace reads as the
+// write it already has — where the other direction, a local write committed
+// and never marked dirty, would lose that write from every sync to come. See
+// [Local.updateSlice].
+func (l *Local) MarkSent(ctx context.Context, id string, at time.Time) error {
+	return l.withTx(ctx, "mark the slice sent", func(tx *sql.Tx) error {
+		if _, err := l.slice(ctx, tx, id); err != nil {
+			return err
+		}
+		return l.markSynced(ctx, tx, id, at)
+	})
+}
+
+// ApplyAssignee records the workspace's own name for whoever holds a slice,
+// and nothing else about it. It is deliberately this narrow: an earlier
+// attempt wrote the whole slice the workspace answered a push with back over
+// the file's copy, which was wrong twice over — the file was written a moment
+// ago and is already right about everything else, and a workspace answering a
+// partial write with a partial page would blank whatever it left out.
+//
+// This is not a change the file is ahead of the workspace on, so unlike
+// [Local.updateSlice]'s writes it does not mark the slice dirty: it is telling
+// the file what the workspace already agrees to.
+func (l *Local) ApplyAssignee(ctx context.Context, id, name string) error {
+	return l.withTx(ctx, "record the assignee's name", func(tx *sql.Tx) error {
+		if _, err := l.slice(ctx, tx, id); err != nil {
+			return err
+		}
+		return l.exec(ctx, tx, "record the assignee's name",
+			`UPDATE slices SET assignee_name = ? WHERE id = ?`, name, id)
+	})
 }

@@ -30,31 +30,54 @@ import (
 // it. It is the launch's own word rather than something read back off the
 // slice, since it is the launch that established the pull request is open —
 // see [fixPrompt].
+//
+// Brief and Conventions are the slice's own page body and the project's
+// conventions, read by the launch after the claim succeeds and written
+// straight into the prompt — the same document `nat start-slice` prints, so
+// the agent needs no command of its own to see it. Both are empty for a fix
+// launch, which reads neither.
+//
+// Milestone and MilestoneSlices are the raw material a launch renders
+// MilestoneDigest from: the slice's own milestone and every sibling slice
+// under it, excluding this one, in plan order. They come from the plan
+// already in the caller's hand — the board's own copy, or the one a headless
+// launch just read to find them — rather than from a further read of it, so
+// a caller that has no plan in hand simply leaves both unset.
+//
+// MilestoneDigest is [MilestoneDigest] already rendered from them, plus a
+// page fetch per Done sibling for its hand-back summary — the settled state
+// of the slice's own milestone, handed over so the agent does not have to go
+// and read it with `nat info` itself. Empty for a fix launch, and for a slice
+// filed under no milestone.
 type PromptContext struct {
-	Slice        domain.Slice
-	Project      config.ProjectConfig
-	ProjectID    string
-	WorkingDir   string
-	Branch       string
-	Repo         string
-	AssigneeName string
-	Fix          bool
+	Slice           domain.Slice
+	Project         config.ProjectConfig
+	ProjectID       string
+	WorkingDir      string
+	Branch          string
+	Repo            string
+	AssigneeName    string
+	Fix             bool
+	Brief           string
+	Conventions     string
+	Milestone       domain.Milestone
+	MilestoneSlices []domain.Slice
+	MilestoneDigest string
 }
 
 // Prompt is the opening message for an agent session working one slice.
 //
 // The agent starts with no history, so the prompt has to carry the whole
-// contract: which slice, how to claim it before touching anything, where to
-// read the brief and the project's conventions, and how to record the outcome.
-// It deliberately does not restate the brief itself — the slice page is the
-// single source of truth for that, and copying it here would let the two drift.
+// contract: which slice, its own brief and the project's conventions, and how
+// to record the outcome. The slice is already claimed by the time the prompt
+// is written — the launch claims it before starting the session — so there is
+// nothing for the agent to run before it starts work; the brief comes with
+// it, read once at launch rather than by a command the agent runs itself.
 //
-// A relaunch is told so: a slice already in progress is one `start-slice`
-// re-opens rather than refuses, and a session placed on the very branch the
-// slice records is continuing work that is already there — see [resuming]. Both
-// are said rather than left to be discovered, since an agent that read the
-// ordinary prompt would take a refusal for a stop and a branch full of commits
-// for somebody else's.
+// A relaunch is told so: a session placed on the very branch the slice
+// records is continuing work that is already there — see [resuming] — rather
+// than left to be discovered, since an agent that read the ordinary prompt
+// would take a branch full of commits for somebody else's.
 //
 // Every step that touches the tracker is a `nat` command. The agent is told
 // nothing about Notion — not the data sources, not the properties, not even
@@ -106,23 +129,13 @@ func Prompt(c PromptContext) string {
 		b.WriteString("  handed it back. You are continuing that work, not starting again.\n")
 	}
 
-	b.WriteString("\n## Claim it first\n\n")
-	b.WriteString("Before doing any work, run:\n\n")
-	fmt.Fprintf(&b, "    nat start-slice %s --project %s\n\n", c.Slice.ID, c.ProjectID)
-	if c.Slice.Status == domain.SliceClaimed {
-		fmt.Fprintf(&b, "The slice is already in progress and held by %s, so that\n", c.AssigneeName)
-		b.WriteString("command re-opens it for you and writes nothing at all. Either way it\n")
-		b.WriteString("prints your brief: the slice's own body and acceptance criteria,\n")
-		b.WriteString("followed by the project's conventions. If it refuses — somebody else\n")
-		b.WriteString("holds the slice, or it is already done — stop and say so rather than\n")
-		b.WriteString("working it anyway.\n\n")
-	} else {
-		fmt.Fprintf(&b, "That claims the slice for %s and prints your brief: the slice's own\n", c.AssigneeName)
-		b.WriteString("body and acceptance criteria, followed by the project's conventions.\n")
-		b.WriteString("If it refuses — the slice is already claimed, or already done — stop and\n")
-		b.WriteString("say so rather than working the slice anyway.\n\n")
-	}
-	b.WriteString("Every `nat` command below names the project this slice is in:\n\n")
+	fmt.Fprintf(&b, "\nThis slice is already claimed for %s: the board claims a slice as\n", c.AssigneeName)
+	b.WriteString("it launches the agent for it, so there is nothing to run before starting\n")
+	b.WriteString("work. What follows is your brief: the slice's own body and acceptance\n")
+	b.WriteString("criteria, then the conventions that apply to every slice of the project.\n\n")
+	b.WriteString(BriefSections(c.Brief, c.MilestoneDigest, c.Conventions))
+
+	b.WriteString("\nEvery `nat` command below names the project this slice is in:\n\n")
 	fmt.Fprintf(&b, "    --project %s\n\n", c.ProjectID)
 	b.WriteString("Put it on any other one you run too.\n")
 	b.WriteString("A command given no project is refused: there is nothing for it to fall\n")
@@ -130,17 +143,8 @@ func Prompt(c PromptContext) string {
 	b.WriteString("which they can switch while you work.\n")
 
 	b.WriteString("\n## Then read\n\n")
-	b.WriteString("1. The brief the command printed — the slice, then the conventions that\n")
-	b.WriteString("   apply to every slice of the project.\n")
-	b.WriteString("2. `CLAUDE.md` in the working directory — architecture and the\n")
-	b.WriteString("   verification gate.\n")
-	b.WriteString("3. The other slices in this slice's own milestone — the one this brief\n")
-	b.WriteString("   named above, read with:\n\n")
-	fmt.Fprintf(&b, "       nat info --project %s\n\n", c.ProjectID)
-	b.WriteString("   Done ones especially. A Done slice in the same milestone is where a\n")
-	b.WriteString("   design decision that binds this one often already got settled; missing\n")
-	b.WriteString("   it is how a session builds the wrong architecture for the rest of its\n")
-	b.WriteString("   run.\n")
+	b.WriteString("`CLAUDE.md` in the working directory — architecture and the verification\n")
+	b.WriteString("gate.\n")
 
 	b.WriteString("\n## Before you write code\n\n")
 	b.WriteString("If this slice turns on an architecture question — a decision neither the\n")
@@ -155,6 +159,13 @@ func Prompt(c PromptContext) string {
 	b.WriteString("Work in the working directory above; if that is not where this session\n")
 	b.WriteString("started, use absolute paths or `git -C`. Honour the brief's acceptance\n")
 	b.WriteString("criteria and the project's verification gate before calling it done.\n\n")
+	b.WriteString("Read files with the Read tool, not `cat`/`sed`/`head` — Read handles\n")
+	b.WriteString("offsets for files too big to read whole. Edit files with Edit or Write,\n")
+	b.WriteString("not a shell heredoc — a heredoc edit re-transmits the whole old block and\n")
+	b.WriteString("the whole new one, and this codebase's house style is dense enough prose\n")
+	b.WriteString("that doubling it on every touch adds up fast. The shell is for running\n")
+	b.WriteString("things — tests, git, the verification gate — not for reading or editing\n")
+	b.WriteString("files.\n\n")
 	switch {
 	case resuming(c):
 		b.WriteString("That directory is a git worktree cut for this slice alone, already on\n")
@@ -187,12 +198,15 @@ func Prompt(c PromptContext) string {
 	b.WriteString("\n## Finish\n\n")
 	b.WriteString("On completion, record the outcome:\n\n")
 	fmt.Fprintf(&b, "    nat complete-slice %s --project %s \\\n", c.Slice.ID, c.ProjectID)
-	fmt.Fprintf(&b, "        --branch %s --summary '<what you did>' \\\n", branchArg(c))
+	fmt.Fprintf(&b, "        --branch %s --summary '- <what changed>\\n- <key decision>' \\\n", branchArg(c))
 	b.WriteString("        --pr-description '<title line>\n\n<what the PR does and why>'\n\n")
 	b.WriteString("That records the branch you pushed and hands the slice back for review,\n")
-	b.WriteString("writing the summary onto its page: what you did, key decisions, follow-ups\n")
-	b.WriteString("worth queueing. It leaves the slice in progress on purpose — approving it\n")
-	b.WriteString("on the board is what opens the pull request and marks it Done.\n\n")
+	b.WriteString("writing the summary onto its page. `--summary` is quoted back to a future\n")
+	b.WriteString("agent in its milestone's digest, not read by a person, so keep it a\n")
+	b.WriteString("handful of terse bullet points — what changed, key decisions, follow-ups\n")
+	b.WriteString("worth queueing — never a narrative of the session. It leaves the slice in\n")
+	b.WriteString("progress on purpose — approving it on the board is what opens the pull\n")
+	b.WriteString("request and marks it Done.\n\n")
 	b.WriteString("`--pr-description` is what that pull request is opened with: its first\n")
 	b.WriteString("line is the title and the rest the body, so write it ready to publish —\n")
 	b.WriteString("what the change does and why, for whoever reviews it on GitHub, not a\n")

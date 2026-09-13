@@ -406,6 +406,52 @@ final class RailModelTests: XCTestCase {
         XCTAssertFalse(core.slices.contains { $0.sliceID == "s-3" })
     }
 
+    func testBuildRailModel_emptiedMilestoneDropsFromTodo() {
+        // Core's three non-Done slices all move into a session section: s-2
+        // is already handed back, and s-3/s-4 become live work in progress
+        // with nothing out yet. Nothing of Core's is left to list in TODO, so
+        // its folder should not appear there at all.
+        var slices = testSlices!
+        slices[2] = Slice(
+            id: "s-3", name: "Feature B", status: "In progress", milestoneID: "m-2",
+            assignee: "user", pr: "", url: "", blocked: false, handedBack: false
+        )
+        slices[3] = Slice(
+            id: "s-4", name: "Blocked Task", status: "In progress", milestoneID: "m-2",
+            assignee: "user", pr: "", url: "", blocked: false, handedBack: false
+        )
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
+        let model = buildRailModel(from: projectInfo, liveAgents: [:])
+
+        XCTAssertNil(model.todoFolders.first { $0.milestoneID == "m-2" })
+        // Polish still holds work, and becomes the current folder in Core's
+        // absence.
+        let polish = model.todoFolders.first { $0.milestoneID == "m-3" }
+        XCTAssertNotNil(polish)
+        XCTAssertTrue(polish?.isCurrent ?? false)
+    }
+
+    func testBuildRailModel_releasedSliceRestoresTheTodoHeader() {
+        // The same emptied Core milestone, but s-3 has been released back to
+        // Todo — its TODO header should reappear, listing just that slice.
+        var slices = testSlices!
+        slices[2] = Slice(
+            id: "s-3", name: "Feature B", status: "Todo", milestoneID: "m-2",
+            assignee: "", pr: "", url: "", blocked: false, handedBack: false
+        )
+        slices[3] = Slice(
+            id: "s-4", name: "Blocked Task", status: "In progress", milestoneID: "m-2",
+            assignee: "user", pr: "", url: "", blocked: false, handedBack: false
+        )
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
+        let model = buildRailModel(from: projectInfo, liveAgents: [:])
+
+        let core = model.todoFolders.first { $0.milestoneID == "m-2" }
+        XCTAssertNotNil(core)
+        XCTAssertEqual(core?.slices.map(\.sliceID), ["s-3"])
+        XCTAssertTrue(core?.isCurrent ?? false)
+    }
+
     func testBuildRailModel_currentIsFirstMilestoneWithWorkRemaining() {
         let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: testSlices)
         let model = buildRailModel(from: projectInfo, liveAgents: [:])

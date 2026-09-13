@@ -7,16 +7,22 @@ You are a Claude Code agent working exactly one slice of the "notion-agent-track
 - Notion URL: https://app.notion.com/p/3b738308f65481708c99eccab4463d8f
 - Working directory: /Users/craig/Projects/notion-agent-tracker
 
-## Claim it first
+This slice is already claimed for Craig Johnston: the board claims a slice as
+it launches the agent for it, so there is nothing to run before starting
+work. What follows is your brief: the slice's own body and acceptance
+criteria, then the conventions that apply to every slice of the project.
 
-Before doing any work, run:
+## Brief
 
-    nat start-slice 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
+Wire up a tmux session per agent and give it an opening prompt.
 
-That claims the slice for Craig Johnston and prints your brief: the slice's own
-body and acceptance criteria, followed by the project's conventions.
-If it refuses — the slice is already claimed, or already done — stop and
-say so rather than working the slice anyway.
+## This slice's milestone
+
+_none_
+
+## Project conventions
+
+Go, Bubble Tea v2, 100% coverage of new code.
 
 Every `nat` command below names the project this slice is in:
 
@@ -29,19 +35,8 @@ which they can switch while you work.
 
 ## Then read
 
-1. The brief the command printed — the slice, then the conventions that
-   apply to every slice of the project.
-2. `CLAUDE.md` in the working directory — architecture and the
-   verification gate.
-3. The other slices in this slice's own milestone — the one this brief
-   named above, read with:
-
-       nat info --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
-
-   Done ones especially. A Done slice in the same milestone is where a
-   design decision that binds this one often already got settled; missing
-   it is how a session builds the wrong architecture for the rest of its
-   run.
+`CLAUDE.md` in the working directory — architecture and the verification
+gate.
 
 ## Before you write code
 
@@ -59,6 +54,14 @@ Work in the working directory above; if that is not where this session
 started, use absolute paths or `git -C`. Honour the brief's acceptance
 criteria and the project's verification gate before calling it done.
 
+Read files with the Read tool, not `cat`/`sed`/`head` — Read handles
+offsets for files too big to read whole. Edit files with Edit or Write,
+not a shell heredoc — a heredoc edit re-transmits the whole old block and
+the whole new one, and this codebase's house style is dense enough prose
+that doubling it on every touch adds up fast. The shell is for running
+things — tests, git, the verification gate — not for reading or editing
+files.
+
 If the work is code: branch for the slice — one branch, and exactly ONE
 change on it — commit, and push the branch. Do not run `gh`, and do not
 open a pull request: you hand the branch back and the user opens the
@@ -72,15 +75,18 @@ the deliverable the brief asks for and link it in the summary below.
 On completion, record the outcome:
 
     nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
-        --branch <branch> --summary '<what you did>' \
+        --branch <branch> --summary '- <what changed>\n- <key decision>' \
         --pr-description '<title line>
 
 <what the PR does and why>'
 
 That records the branch you pushed and hands the slice back for review,
-writing the summary onto its page: what you did, key decisions, follow-ups
-worth queueing. It leaves the slice in progress on purpose — approving it
-on the board is what opens the pull request and marks it Done.
+writing the summary onto its page. `--summary` is quoted back to a future
+agent in its milestone's digest, not read by a person, so keep it a
+handful of terse bullet points — what changed, key decisions, follow-ups
+worth queueing — never a narrative of the session. It leaves the slice in
+progress on purpose — approving it on the board is what opens the pull
+request and marks it Done.
 
 `--pr-description` is what that pull request is opened with: its first
 line is the title and the rest the body, so write it ready to publish —

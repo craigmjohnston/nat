@@ -210,35 +210,6 @@ func briefText(command, flagName, value string, in io.Reader) (string, error) {
 	return strings.TrimSpace(string(b)), nil
 }
 
-// paragraphBlocks turns a brief into the page body: one paragraph per
-// blank-line-separated chunk, and nothing at all for an empty brief. Plain
-// paragraphs only, for the same reason the completion note is — the text
-// arrives as text, and half-parsing markdown out of it would mislead.
-func paragraphBlocks(text string) []map[string]any {
-	var blocks []map[string]any
-	for _, chunk := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n\n") {
-		if trimmed := strings.TrimSpace(chunk); trimmed != "" {
-			blocks = append(blocks, textBlock("paragraph", trimmed))
-		}
-	}
-	return blocks
-}
-
-// textBlock builds a block of the given type holding one span of plain text,
-// which is the shape every block written from here takes.
-func textBlock(blockType, text string) map[string]any {
-	return map[string]any{
-		"object": "block",
-		"type":   blockType,
-		blockType: map[string]any{
-			"rich_text": []map[string]any{{
-				"type": "text",
-				"text": map[string]any{"content": text},
-			}},
-		},
-	}
-}
-
 // resolvedRepo is the directory work on the slice happens in: its own override
 // when it has one, the project default otherwise — the same resolution a brief
 // prints, so a slice reads the same when it is added as when it is claimed.

@@ -11,6 +11,8 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/logging"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // Launcher is what a launch needs of tmux: one detached session, started to
@@ -35,22 +37,25 @@ type LaunchResult struct {
 	Sev     Severity
 }
 
-// Launch gives the agent a worktree, writes its prompt out, claims the slice
-// and starts the detached session that reads it. The claim is the board's
-// rather than the agent's: a fresh Claude Code takes seconds to get as far as
-// start-slice, and a row that reads Todo all the while is one the user can
-// launch a second agent on. The prompt still tells the agent to run
-// start-slice, which re-opens the slice it was launched on and prints the
-// brief — and which refuses where somebody else holds it, so a race is
-// settled before any agent is handed a brief.
+// Launch gives the agent a worktree, claims the slice, fetches its brief and
+// writes the opening prompt with it inline, then starts the detached session
+// that reads that prompt. The claim is the board's rather than the agent's: a
+// fresh Claude Code takes seconds to start, and a row that reads Todo all the
+// while is one the user can launch a second agent on. Fetching the brief here
+// rather than leaving the agent to read it with its own start-slice is what
+// lets the prompt say nothing about running that command at all — the agent
+// is simply told the slice, its body and the project's conventions, the same
+// document start-slice would have printed.
 //
-// The claim goes last of the things that can fail before tmux is asked for
-// anything, so a worktree that could not be cut or a prompt that could not be
-// written leaves the slice where it was; a launch that fails after it leaves
-// the slice in progress with no session, which is the state a release
-// undoes. It is reported as a toast rather than a Go error, for the reason a
-// worktree failure is: nothing has gone wrong with the board, and the slice
-// is still there to launch.
+// The claim goes before the brief is read and before tmux is asked for
+// anything, so a refused claim — somebody else already holds the slice —
+// stops the launch with the slice untouched, and a worktree that could not
+// be cut or a prompt that could not be written leaves it exactly as it was
+// too; a launch that fails after the claim leaves the slice in progress with
+// no session, which is the state a release undoes. Both are reported as a
+// toast rather than a Go error, for the reason a worktree failure is:
+// nothing has gone wrong with the board, and the slice is still there to
+// launch.
 //
 // The worktree is resolved here rather than by the caller because it fetches
 // origin and then cuts the worktree, which is a checkout and runs the
@@ -65,25 +70,59 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, assi
 		return LaunchResult{Toast: p.Toast, Sev: p.Sev}, nil
 	}
 	c.WorkingDir, c.Branch, c.Repo = p.Dir, p.Branch, p.Repo
+	// A fix session claims nothing and reads no brief: the slice is Done, its
+	// record of what happened is written, and the work in flight is the pull
+	// request rather than the slice. Moving it back into progress would take
+	// it out of the state the approve flow left it in for a session that
+	// changes none of what that flow recorded, and [agent.Prompt] sends such a
+	// session at the fix prompt instead, which reads the review from GitHub.
+	if !c.Fix {
+		if err := ClaimSlice(ctx, st, c.Slice, assigneeID); err != nil {
+			return LaunchResult{Toast: fmt.Sprintf("Could not %v — no agent was launched.", err), Sev: SevError}, nil
+		}
+		brief, err := st.Body(ctx, c.Slice.ID)
+		if err != nil {
+			return LaunchResult{}, fmt.Errorf("claimed %q but could not read its brief: %w", c.Slice.Name, err)
+		}
+		conventions, err := st.Body(ctx, c.ProjectID)
+		if err != nil {
+			return LaunchResult{}, fmt.Errorf("claimed %q but could not read the project conventions: %w", c.Slice.Name, err)
+		}
+		c.Brief, c.Conventions = brief, conventions
+		c.MilestoneDigest = milestoneDigest(ctx, st, c.Milestone, c.MilestoneSlices)
+	}
 	session := agent.SessionName(c.Slice.ID)
 	file, err := agent.WritePromptFile(session, agent.Prompt(c))
 	if err != nil {
 		return LaunchResult{}, fmt.Errorf("launch agent: %w", err)
 	}
-	// A fix session claims nothing: the slice is Done, its record of what
-	// happened is written, and the work in flight is the pull request rather
-	// than the slice. Moving it back into progress would take it out of the
-	// state the approve flow left it in for a session that changes none of
-	// what that flow recorded.
-	if !c.Fix {
-		if err := ClaimSlice(ctx, st, c.Slice, assigneeID); err != nil {
-			return LaunchResult{Toast: fmt.Sprintf("Could not %v — no agent was launched.", err), Sev: SevError}, nil
-		}
-	}
 	if err := l.Launch(session, c.WorkingDir, file, c.Slice.ID, m); err != nil {
 		return LaunchResult{}, err
 	}
 	return LaunchResult{Context: c, Session: session, Toast: p.Toast, Sev: p.Sev}, nil
+}
+
+// milestoneDigest reads the hand-back summary of every Done sibling and
+// renders the digest a launch hands the agent in place of the "go read the
+// milestone with `nat info`" step a session used to be told to run itself.
+// milestone and siblings are the raw material, already read off the plan by
+// the caller; a summary that fails to read is logged and left out rather
+// than failing the whole launch, since a missing summary costs one line of
+// context rather than the launch itself.
+func milestoneDigest(ctx context.Context, st Store, milestone domain.Milestone, siblings []domain.Slice) string {
+	summaries := map[string]string{}
+	for _, s := range siblings {
+		if s.Status != domain.SliceDone {
+			continue
+		}
+		body, err := st.Body(ctx, s.ID)
+		if err != nil {
+			logging.Action("could not read a milestone sibling's hand-back summary", "slice", s.ID, "err", err)
+			continue
+		}
+		summaries[s.ID] = store.HandbackSummaryOf(body)
+	}
+	return agent.MilestoneDigest(milestone, siblings, summaries)
 }
 
 // WorkdirFor is the directory a slice's agent starts in: its own repo

@@ -136,9 +136,147 @@ func TestLaunchRefusesAWorktreeThatCannotBeMade(t *testing.T) {
 	}
 }
 
+// TestLaunchReportsAFailedBriefRead covers the slice's own body refusing to
+// read after the claim has gone through: nothing is launched, and the claim
+// stands, since the claim is what makes the brief worth reading in the first
+// place.
+func TestLaunchReportsAFailedBriefRead(t *testing.T) {
+	l := &fakeLauncher{}
+	client := &fakeClient{
+		getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil },
+		blocks:  func(string) ([]notion.Block, error) { return nil, errors.New("notion: 500") },
+	}
+
+	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), "u1",
+		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: t.TempDir()},
+		config.AgentModel{})
+
+	if err == nil || !strings.Contains(err.Error(), `claimed "Info view" but could not read its brief: notion: 500`) {
+		t.Errorf("err = %v, want the brief's read failure named", err)
+	}
+	if len(l.launches) != 0 {
+		t.Error("no session should start without a brief to seed it")
+	}
+}
+
+// TestLaunchReportsAFailedConventionsRead covers the project's own body
+// refusing to read: the slice's own brief came back fine, but the launch
+// still stops rather than writing a prompt with half the document missing.
+func TestLaunchReportsAFailedConventionsRead(t *testing.T) {
+	l := &fakeLauncher{}
+	client := &fakeClient{
+		getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil },
+		blocks: func(id string) ([]notion.Block, error) {
+			if id == "p1" {
+				return nil, errors.New("notion: 500")
+			}
+			return nil, nil
+		},
+	}
+
+	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), "u1",
+		agent.PromptContext{
+			Slice: domain.Slice{ID: "s5", Name: "Info view"}, ProjectID: "p1", WorkingDir: t.TempDir(),
+		}, config.AgentModel{})
+
+	if err == nil || !strings.Contains(err.Error(), `claimed "Info view" but could not read the project conventions: notion: 500`) {
+		t.Errorf("err = %v, want the conventions' read failure named", err)
+	}
+	if len(l.launches) != 0 {
+		t.Error("no session should start without the project conventions to seed it")
+	}
+}
+
+// TestLaunchIncludesAMilestoneDigest covers a launch given its milestone and
+// the siblings under it: the digest — each sibling's status, and the
+// hand-back summary of the Done one — lands in the prompt file, alongside
+// the brief and the conventions.
+func TestLaunchIncludesAMilestoneDigest(t *testing.T) {
+	l := &fakeLauncher{}
+	client := &fakeClient{
+		getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil },
+		blocks: func(id string) ([]notion.Block, error) {
+			if id == "s2" {
+				return []notion.Block{
+					block(t, "heading_3", "Handed back"),
+					block(t, "paragraph", "Laid out the columns."),
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), "u1",
+		agent.PromptContext{
+			Slice:      domain.Slice{ID: "s5", Name: "Info view"},
+			WorkingDir: t.TempDir(),
+			Milestone:  domain.Milestone{ID: "M1", Name: "M1: Board"},
+			MilestoneSlices: []domain.Slice{
+				{ID: "s2", Name: "Board scaffolding", Status: domain.SliceDone, StatusName: "Done"},
+				{ID: "s4", Name: "Style the board", Status: domain.SliceTodo, StatusName: "Todo"},
+			},
+		},
+		config.AgentModel{})
+
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through", err)
+	}
+	if res.Context.MilestoneDigest == "" {
+		t.Fatal("result carries no milestone digest")
+	}
+	prompt, err := os.ReadFile(l.launches[0].promptFile)
+	if err != nil {
+		t.Fatalf("read the prompt file: %v", err)
+	}
+	for _, want := range []string{"M1: Board", "- Done: Board scaffolding", "Laid out the columns.", "- Todo: Style the board"} {
+		if !strings.Contains(string(prompt), want) {
+			t.Errorf("prompt file does not carry the milestone digest — missing %q:\n%s", want, prompt)
+		}
+	}
+}
+
+// TestLaunchLogsAFailedMilestoneSummaryRead covers a Done sibling whose body
+// fails to read: the launch still goes ahead, with that sibling's summary
+// simply missing from the digest rather than the whole launch failing over
+// one page.
+func TestLaunchLogsAFailedMilestoneSummaryRead(t *testing.T) {
+	l := &fakeLauncher{}
+	client := &fakeClient{
+		getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil },
+		blocks: func(id string) ([]notion.Block, error) {
+			if id == "s2" {
+				return nil, errors.New("notion: 500")
+			}
+			return nil, nil
+		},
+	}
+
+	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), "u1",
+		agent.PromptContext{
+			Slice:      domain.Slice{ID: "s5", Name: "Info view"},
+			WorkingDir: t.TempDir(),
+			Milestone:  domain.Milestone{ID: "M1", Name: "M1: Board"},
+			MilestoneSlices: []domain.Slice{
+				{ID: "s2", Name: "Board scaffolding", Status: domain.SliceDone, StatusName: "Done"},
+			},
+		},
+		config.AgentModel{})
+
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through despite the failed read", err)
+	}
+	prompt, err := os.ReadFile(l.launches[0].promptFile)
+	if err != nil {
+		t.Fatalf("read the prompt file: %v", err)
+	}
+	if !strings.Contains(string(prompt), "- Done: Board scaffolding") {
+		t.Errorf("prompt file does not name the sibling despite its summary failing to read:\n%s", prompt)
+	}
+}
+
 // TestLaunchReportsAFailedPromptFile covers the prompt file itself failing to
-// write: the claim is never reached, since a launch that got no further
-// leaves the slice exactly where it was.
+// write: the claim and the brief it is written with have already happened by
+// then, since fetching the brief needs the claim to have gone through first.
 func TestLaunchReportsAFailedPromptFile(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
 	l := &fakeLauncher{}
@@ -154,8 +292,8 @@ func TestLaunchReportsAFailedPromptFile(t *testing.T) {
 	if len(l.launches) != 0 {
 		t.Error("no session should start without a prompt to seed it")
 	}
-	if len(client.updated) != 0 {
-		t.Errorf("wrote %+v, want the slice untouched", client.updated)
+	if len(client.updated) != 1 {
+		t.Errorf("wrote %+v, want the slice claimed", client.updated)
 	}
 }
 
