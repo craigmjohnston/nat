@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
@@ -171,12 +172,13 @@ func (l *Local) Path() string { return l.path }
 // SQLite's own user_version, so opening a plan written by this build is one
 // read and no writes, and a plan written by a later one can be refused rather
 // than half understood.
-const localSchemaVersion = 1
+const localSchemaVersion = 2
 
-// localSchema is the plan as tables. Every column maps one-to-one onto
-// [domain.Slice] or [domain.Milestone], so this store produces the same structs
-// the Notion mapper does and everything above them — domain.Blockers, StateOf,
-// HandedBack, the board, next-slice — is untouched.
+// localSchemaV1 is the plan as tables, exactly as the first build of this store
+// created it. Every column maps one-to-one onto [domain.Slice] or
+// [domain.Milestone], so this store produces the same structs the Notion
+// mapper does and everything above them — domain.Blockers, StateOf, HandedBack,
+// the board, next-slice — is untouched.
 //
 // body and conventions hold markdown verbatim, which is the brief exactly as an
 // agent receives it: the one constraint the format could not trade away.
@@ -185,7 +187,7 @@ const localSchemaVersion = 1
 // plan, and an index kept in step by triggers is machinery to write when there
 // is a query to serve. user_version is what makes adding it later one
 // migration rather than a second format.
-const localSchema = `
+const localSchemaV1 = `
 CREATE TABLE project (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
@@ -224,6 +226,43 @@ CREATE TABLE sync (
 );
 `
 
+// localSchemaV2 is what a replica needs that a plan of its own never did: a
+// name for whoever holds a slice, kept apart from the identity the existing
+// assignee column already is — a plan of its own has no directory of users, so
+// one string was both, and a replica of a Notion project cannot, Notion
+// recording a person as a user ID with a name the workspace supplies; a stamp
+// on every piece of prose fetched apart from the plan, so a re-pull knows
+// whether its copy is worth trusting; and on the project, when it was last
+// brought into line with the workspace and the shape read off it, so Shape can
+// be answered from the file rather than putting a request back on every read.
+// milestones.select_type is the one column [domain.Milestone] already carries
+// that the file would otherwise drop — the property type a write to Notion's
+// Milestone column has to be sent as.
+//
+// assignee_name is back-filled from assignee, which is exactly right for every
+// plan written before this column existed: such a plan has no directory of
+// users either, so the name a claim wrote is the only name there ever was.
+const localSchemaV2 = `
+ALTER TABLE slices ADD COLUMN assignee_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE slices ADD COLUMN body_at TEXT;
+ALTER TABLE project ADD COLUMN conventions_at TEXT;
+ALTER TABLE project ADD COLUMN synced_at TEXT;
+ALTER TABLE project ADD COLUMN has_assignee INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE project ADD COLUMN has_branch INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE milestones ADD COLUMN select_type TEXT NOT NULL DEFAULT '';
+
+UPDATE slices SET assignee_name = assignee WHERE assignee != '';
+`
+
+// localMigrations is what [Local.migrate] walks version+1..[localSchemaVersion]
+// through, so a plan lands on today's schema whichever version it started at —
+// an empty file walking every migration there is, and a plan already at v1
+// walking only the ones written since.
+var localMigrations = map[int]string{
+	1: localSchemaV1,
+	2: localSchemaV2,
+}
+
 // migrate brings the file up to the schema this build speaks, and is what every
 // open runs: an empty file becomes an empty plan, a plan already at this
 // version is read and left alone, and a plan from a later build is refused
@@ -233,20 +272,19 @@ func (l *Local) migrate(ctx context.Context) error {
 	if err := l.db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return l.errorf(err, "read the plan")
 	}
-	switch {
-	case version == localSchemaVersion:
-		return nil
-	case version > localSchemaVersion:
+	if version > localSchemaVersion {
 		return fmt.Errorf("the plan at %s was written by a newer nat (schema %d, this build reads %d)",
 			l.path, version, localSchemaVersion)
 	}
-	// The stamp goes on in the same statement as the tables, so a plan is never
-	// left holding the schema without the version that says which schema it is.
-	// PRAGMA takes no parameters, and the value is a constant of this build's
-	// own rather than anything read from the file.
-	if _, err := l.db.ExecContext(ctx,
-		localSchema+fmt.Sprintf("\nPRAGMA user_version = %d;\n", localSchemaVersion)); err != nil {
-		return l.errorf(err, "create the plan")
+	// The stamp goes on in the same statement as each step, so a plan is never
+	// left holding a schema without the version that says which schema it is —
+	// and a build killed part way through several steps resumes at the one it
+	// never finished rather than repeating one already stamped in.
+	for v := version + 1; v <= localSchemaVersion; v++ {
+		stmt := localMigrations[v]
+		if _, err := l.db.ExecContext(ctx, stmt+fmt.Sprintf("\nPRAGMA user_version = %d;\n", v)); err != nil {
+			return l.errorf(err, "bring the plan to schema "+fmt.Sprint(v))
+		}
 	}
 	return nil
 }
@@ -564,4 +602,107 @@ func fenceOf(line string) string {
 		}
 	}
 	return ""
+}
+
+// timeStamp is a moment as the plan stores one — a column of its own type
+// rather than a driver's guess at one, since every stamp here is compared and
+// sorted in Go and never in SQL. A zero moment, which is a stamp nothing has
+// ever set, is stored as NULL rather than as a time that sorts before every
+// other, so "never" cannot be mistaken for "long ago".
+func timeStamp(t time.Time) any {
+	if t.IsZero() {
+		return nil
+	}
+	return t.UTC().Format(time.RFC3339Nano)
+}
+
+// parseTimeStamp reads a column [timeStamp] wrote, and false for a NULL one —
+// which is either a page nothing has stamped yet, or one with no sync row at
+// all, and the two callers that read this both treat them alike.
+func parseTimeStamp(s sql.NullString) (time.Time, bool, error) {
+	if !s.Valid {
+		return time.Time{}, false, nil
+	}
+	t, err := time.Parse(time.RFC3339Nano, s.String)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return t, true, nil
+}
+
+// boolColumn is a bool as the plan stores one — SQLite has no boolean type of
+// its own, so [domain.Milestone]-and-Slice-shaped columns already spell it as
+// an integer (see slices.status's sibling columns), and the project's shape
+// columns follow the same rule.
+func boolColumn(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// Dirty reports whether a slice's file copy is ahead of the workspace: written
+// locally since it was last pushed, or never pushed at all. A slice with no
+// sync row — every slice a plan of its own ever writes, since only a pull or a
+// push touches that table — is clean: there is no workspace for it to be ahead
+// of.
+func (l *Local) Dirty(ctx context.Context, id string) (bool, error) {
+	var dirty bool
+	err := l.db.QueryRowContext(ctx, `SELECT dirty FROM sync WHERE slice_id = ?`, id).Scan(&dirty)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, l.errorf(err, "read the slice's sync state")
+	}
+	return dirty, nil
+}
+
+// LastSynced is when a slice's file copy was last brought into line with the
+// workspace — read fresh by [Local.Hydrate] or [Local.TakeSlice], or pushed by
+// [Local.MarkSent] — and false where it never has been.
+func (l *Local) LastSynced(ctx context.Context, id string) (time.Time, bool, error) {
+	var at sql.NullString
+	err := l.db.QueryRowContext(ctx, `SELECT synced_at FROM sync WHERE slice_id = ?`, id).Scan(&at)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return time.Time{}, false, nil
+	case err != nil:
+		return time.Time{}, false, l.errorf(err, "read the slice's sync state")
+	}
+	t, ok, err := parseTimeStamp(at)
+	if err != nil {
+		return time.Time{}, false, l.errorf(err, "read the slice's sync state")
+	}
+	return t, ok, nil
+}
+
+// BodyFresh reports whether the prose held for a page — a slice's brief, or a
+// project's conventions — was read since the given moment, and false both for
+// prose that has never been stamped and for an ID neither a slice nor a
+// project answers to: there is nothing fresh about a page that was never
+// fetched, or that is not there at all.
+func (l *Local) BodyFresh(ctx context.Context, id string, since time.Time) (bool, error) {
+	var at sql.NullString
+	err := l.db.QueryRowContext(ctx, `SELECT body_at FROM slices WHERE id = ?`, id).Scan(&at)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		err = l.db.QueryRowContext(ctx, `SELECT conventions_at FROM project WHERE id = ?`, id).Scan(&at)
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		if err != nil {
+			return false, l.errorf(err, "read the page's freshness")
+		}
+	case err != nil:
+		return false, l.errorf(err, "read the page's freshness")
+	}
+	t, ok, err := parseTimeStamp(at)
+	if err != nil {
+		return false, l.errorf(err, "read the page's freshness")
+	}
+	if !ok {
+		return false, nil
+	}
+	return !t.Before(since), nil
 }
