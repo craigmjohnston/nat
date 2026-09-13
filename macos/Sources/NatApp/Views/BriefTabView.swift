@@ -58,13 +58,18 @@ struct BriefTabView: View {
     @State private var isSavingBrief = false
     @State private var briefSaveError: String?
 
-    // Launch Agent UI state
+    // Launch Agent UI state — empty is "leave it to Claude Code", matching
+    // the config's own convention for an unset value.
     @State private var showLaunchPopover = false
-    @State private var selectedModel: String = "Default"
-    @State private var selectedEffort: String = "Default"
+    @State private var selectedModel: String = ""
+    @State private var selectedEffort: String = ""
     @State private var isLaunching = false
     @State private var launchError: String?
     @State private var launchWarning: String?
+
+    /// The models and effort levels the popover offers — see
+    /// `SettingsView`'s own use of the same cache.
+    @State private var agentOptions = AgentOptions.fallback
 
     /// The sidebar's width, draggable at its divider and remembered across
     /// launches — the same `PaneResizeHandle` bargain the PR tab's sidebar
@@ -102,6 +107,9 @@ struct BriefTabView: View {
         }
         .task {
             resetLaunchState()
+        }
+        .task {
+            agentOptions = await AgentOptionsCache.shared.resolve()
         }
     }
 
@@ -429,11 +437,11 @@ struct BriefTabView: View {
 
         // Prefill from config
         if let agent = appModel.config?.sliceAgent {
-            selectedModel = agent.model ?? "Default"
-            selectedEffort = agent.effort ?? "Default"
+            selectedModel = agent.model ?? ""
+            selectedEffort = agent.effort ?? ""
         } else {
-            selectedModel = "Default"
-            selectedEffort = "Default"
+            selectedModel = ""
+            selectedEffort = ""
         }
     }
 
@@ -450,9 +458,10 @@ struct BriefTabView: View {
                     return
                 }
 
-                // Build model and effort (nil if "Default")
-                let model = selectedModel == "Default" ? nil : selectedModel
-                let effort = selectedEffort == "Default" ? nil : selectedEffort
+                // Build model and effort (nil if left blank, which is
+                // "leave it to Claude Code")
+                let model = selectedModel.isEmpty ? nil : selectedModel
+                let effort = selectedEffort.isEmpty ? nil : selectedEffort
 
                 let result = try await NatClient().sliceLaunch(
                     projectID: projectID,
@@ -492,39 +501,39 @@ struct BriefTabView: View {
     @ViewBuilder
     private func launchPopoverContent() -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Model selector
+            // Model — free text rather than a fixed picker: the aliases
+            // `claude` accepts change faster than either binary does, and a
+            // full model ID is always valid besides. `agentOptions.models`
+            // is offered as a placeholder's worth of suggestion only.
             HStack(spacing: 8) {
                 Text("Model")
                     .font(.system(size: Typo.subhead, weight: .semibold))
                     .frame(width: 50, alignment: .leading)
 
-                Picker("Model", selection: $selectedModel) {
-                    Text("Default").tag("Default")
-                    Text("sonnet").tag("sonnet")
-                    Text("opus").tag("opus")
-                    Text("haiku").tag("haiku")
-                }
-                .pickerStyle(.menu)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                TextField(agentOptions.models.joined(separator: ", "), text: $selectedModel)
+                    .textFieldStyle(.roundedBorder)
+                    .font(Typo.mono(size: Typo.code))
+                    .frame(maxWidth: .infinity)
             }
 
             Divider()
                 .padding(.vertical, 4)
 
-            // Effort selector
+            // Effort selector — a fixed set the CLI rejects anything outside
+            // of, read from the same source the model field's placeholder is.
             HStack(spacing: 8) {
                 Text("Effort")
                     .font(.system(size: Typo.subhead, weight: .semibold))
                     .frame(width: 50, alignment: .leading)
 
                 Picker("Effort", selection: $selectedEffort) {
-                    Text("Default").tag("Default")
-                    Text("low").tag("low")
-                    Text("med").tag("med")
-                    Text("high").tag("high")
+                    Text("Default").tag("")
+                    ForEach(agentOptions.efforts, id: \.self) { level in
+                        Text(level).tag(level)
+                    }
                 }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: .infinity)
+                .pickerStyle(.menu)
+                .frame(maxWidth: .infinity, alignment: .trailing)
             }
 
             Divider()

@@ -30,6 +30,12 @@ import NatKit
 /// rather than a paragraph per row, since three rows of one section rarely
 /// have three different things to say and a caption in the value column
 /// drags the control out of its column and wraps it right-aligned.
+/// The scene's three tabs, named so a story can open on one other than
+/// General — the tab builder's own `TabView` selection has no other seam.
+enum SettingsTab: Hashable {
+    case general, agents, projects
+}
+
 struct SettingsView: View {
     @Bindable var appModel: AppModel
 
@@ -38,6 +44,17 @@ struct SettingsView: View {
     /// a settings screen can be drawn without spawning a `nat config show`
     /// against whatever machine is rendering it.
     var client: NatClientProtocol = NatClient()
+
+    @State private var selectedTab: SettingsTab
+
+    /// - Parameter initialTab: Which tab the scene opens on — General for
+    ///   the window itself, and whichever tab's own story wants to show for
+    ///   a gallery capture.
+    init(appModel: AppModel, client: NatClientProtocol = NatClient(), initialTab: SettingsTab = .general) {
+        self.appModel = appModel
+        self.client = client
+        _selectedTab = State(initialValue: initialTab)
+    }
 
     /// The theme, which is this app's own preference rather than one of
     /// nat's: it is written to `UserDefaults` the moment it is picked and
@@ -59,20 +76,26 @@ struct SettingsView: View {
     @State private var fieldErrors: [String: String] = [:]
     @State private var saveChain: Task<Void, Never>?
 
+    /// The models and effort levels the Agents tab offers, read once from
+    /// `AgentOptionsCache` — the fallback list until that read lands, since a
+    /// blank picker while it is in flight would be worse than the stale-but-
+    /// reasonable answer it starts with.
+    @State private var agentOptions = AgentOptions.fallback
+
     var body: some View {
         // The macOS 15 tab builder rather than `.tabItem`, which is the
         // current spelling of the same thing: the settings window's toolbar
         // comes out `.preference` either way — read off `NSApp`'s own window
         // at runtime — so the tabs already have the per-item metrics
         // Safari's do, and there is no style to force.
-        TabView {
-            Tab("General", systemImage: "gearshape") {
+        TabView(selection: $selectedTab) {
+            Tab("General", systemImage: "gearshape", value: SettingsTab.general) {
                 generalTab
             }
-            Tab("Agents", systemImage: "sparkles") {
+            Tab("Agents", systemImage: "sparkles", value: SettingsTab.agents) {
                 agentsTab
             }
-            Tab("Projects", systemImage: "folder") {
+            Tab("Projects", systemImage: "folder", value: SettingsTab.projects) {
                 projectsTab
             }
         }
@@ -80,6 +103,7 @@ struct SettingsView: View {
         // window resize to each tab the way a settings window does.
         .frame(width: 520)
         .task { await load() }
+        .task { agentOptions = await AgentOptionsCache.shared.resolve() }
         // A window closed on a field still focused would otherwise take that
         // edit with it: the focus change never arrives, because the view is
         // gone. The commit chain outlives the view, so this one lands.
@@ -243,12 +267,17 @@ struct SettingsView: View {
         model: Binding<String>,
         effort: Binding<String>
     ) -> some View {
+        // Free text rather than a picker: the aliases `claude` accepts
+        // change faster than either binary does, and a full model ID is
+        // always valid besides — `agentOptions.models` is a placeholder's
+        // worth of suggestion, not a menu of everything this field allows.
         settingRow(title: "Model", key: modelKey) {
-            defaultablePicker(model, options: ["sonnet", "opus", "haiku"])
+            commitField(model, width: FieldWidth.model)
+                .help("An alias (\(agentOptions.models.joined(separator: ", "))) or a full model ID; empty leaves it to Claude Code.")
         }
 
         settingRow(title: "Effort", key: effortKey) {
-            defaultablePicker(effort, options: ["low", "med", "high"])
+            defaultablePicker(effort, options: agentOptions.efforts)
         }
     }
 
@@ -439,6 +468,7 @@ struct SettingsView: View {
 /// window has.
 private enum FieldWidth {
     static let number: CGFloat = 80
+    static let model: CGFloat = 160
 }
 
 /// The wait on the config read, as one row of the form rather than a hole
