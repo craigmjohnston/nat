@@ -132,7 +132,18 @@ struct PaneResizeHandle: View {
         Color.clear
             .frame(width: 9)
             .contentShape(Rectangle())
-            .background(ResizeCursorView())
+            // SwiftUI's own pointer style rather than an AppKit cursor of our
+            // own. A cursor rect only applies to the view AppKit finds under
+            // the pointer, so the one this handle used to carry — mounted
+            // behind it and opting out of hit testing, the better to leave the
+            // drag gesture the mouse — was never the view found, and the
+            // window's cursor floor answered every hover with the arrow.
+            // SwiftTerm's I-beam is the same mechanism done the other way and
+            // is exactly why it wins: an ordinary, hit-testable view. This is
+            // the SwiftUI-level equivalent, applied to the strip itself, which
+            // is hit-testable by construction — `contentShape` above is what
+            // the drag already relies on.
+            .pointerStyle(.columnResize)
             .background(
                 GeometryReader { proxy in
                     Color.clear
