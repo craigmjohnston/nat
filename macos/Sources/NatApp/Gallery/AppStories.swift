@@ -58,6 +58,34 @@ enum AppStories {
         }
     )
 
+    /// The fixture plan with two of M2's slices marked Done, so the status
+    /// bar has a started (partially filled) milestone alongside M3's
+    /// untouched one — the fixture plan alone never puts a Done slice
+    /// outside a fully Done milestone.
+    private static let statusBarPlan = ProjectInfo(
+        project: Fixtures.project,
+        milestones: Fixtures.milestones,
+        slices: Fixtures.slices.map { slice in
+            guard slice.id == Fixtures.diffPaneSliceID || slice.id == Fixtures.activitySliceID else {
+                return slice
+            }
+            return Slice(
+                id: slice.id,
+                name: slice.name,
+                status: "Done",
+                milestoneID: slice.milestoneID,
+                assignee: slice.assignee,
+                pr: slice.pr,
+                url: slice.url,
+                branch: slice.branch,
+                repo: slice.repo,
+                dependsOn: slice.dependsOn,
+                blocked: slice.blocked,
+                handedBack: slice.handedBack
+            )
+        }
+    )
+
     static let catalog = StoryCatalog([
 
         // MARK: - The window
@@ -127,6 +155,46 @@ enum AppStories {
             let appModel = await Fixtures.startedAppModel(config: Fixtures.emptyConfig)
             return WindowShellView(appModel: appModel)
                 .environment(\.toolStatus, { Fixtures.toolStatus($0, in: Fixtures.toolsWithoutNat) })
+        },
+
+        // MARK: - The status bar
+
+        Story(
+            name: "status-bar-mixed",
+            summary: "The status bar with a done stub, a started milestone drawing "
+                + "partway full, and an untouched one collapsed to a circle.",
+            size: CGSize(width: 1360, height: StatusBarView.height)
+        ) {
+            StatusBarView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(plan: statusBarPlan, agents: Fixtures.agentStatuses)),
+                railWidth: 372
+            )
+        },
+
+        Story(
+            name: "status-bar-no-agents",
+            summary: "The same bar with nothing running: the agent count reads zero.",
+            size: CGSize(width: 1360, height: StatusBarView.height)
+        ) {
+            StatusBarView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(plan: statusBarPlan, agents: [])),
+                railWidth: 372
+            )
+        },
+
+        Story(
+            name: "status-bar-several-agents",
+            summary: "The bar with the crowded plan and three agents live: the count "
+                + "pluralizes and the plan's own progress bar still fits the sidebar's width.",
+            size: CGSize(width: 1360, height: StatusBarView.height)
+        ) {
+            StatusBarView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(plan: crowdedPlan, agents: Fixtures.agentStatusesWithPlanner)),
+                railWidth: 372
+            )
         },
 
         // MARK: - The header
