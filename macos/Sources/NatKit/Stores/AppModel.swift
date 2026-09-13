@@ -611,10 +611,12 @@ public final class AppModel {
     /// rather than at the next plan load.
     ///
     /// Answers with the refusal's own first line where nat refused, and nil
-    /// where the session is gone; the caller is the button that asked, and
-    /// this is not the app's error banner.
+    /// where the session is gone. Nothing in the app asks for a kill by hand
+    /// — `reapFinishedAgents` is the only caller — so a refusal is something
+    /// to log rather than the app's error banner; `nat agent-kill` is where
+    /// a kill is asked for outright.
     @discardableResult
-    public func killAgent(sliceID: String) async -> String? {
+    func killAgent(sliceID: String) async -> String? {
         guard let projectID = activeProjectID else { return "No project loaded" }
         do {
             try await clientFactory().agentKill(projectID: projectID, sliceRef: sliceID)

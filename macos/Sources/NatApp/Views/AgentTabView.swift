@@ -7,11 +7,6 @@ struct AgentTabView: View {
     @Bindable var appModel: AppModel
     let slice: Slice
     @State private var lifecycle = TerminalLifecycle()
-    /// The kill in flight, and what nat said if it refused — the button's own
-    /// state, since ending a session is something the user asked for here and
-    /// not news the whole app needs.
-    @State private var isKilling = false
-    @State private var killError: String?
     /// A story draws the region rather than attaching to it — see
     /// `StorySeams`.
     @Environment(\.terminalStubbed) private var terminalStubbed
@@ -48,7 +43,6 @@ struct AgentTabView: View {
                     .padding(.vertical, 14)
                     .padding(.horizontal, 18)
                 }
-                .overlay(alignment: .topTrailing) { endSessionControl }
             } else {
                 // Empty state
                 VStack(spacing: 12) {
@@ -69,56 +63,6 @@ struct AgentTabView: View {
             }
         }
         .surface(.window)
-    }
-
-    /// The one action the tab has beyond watching: end the session. Closing
-    /// the tab only detaches the viewer — the session goes on running, which
-    /// is right while there is work in it and is how a finished slice's
-    /// session sits on the tmux server forever — so ending one has to be
-    /// asked for, and this is where.
-    ///
-    /// It is a control on the terminal rather than a band under it: the
-    /// terminal is the whole of this tab, and a strip of chrome for one
-    /// button would take a row off it on every slice. It does not ask before
-    /// killing either — the button says what it does, and an agent whose
-    /// session ended is relaunched from the Brief tab.
-    @ViewBuilder
-    private var endSessionControl: some View {
-        VStack(alignment: .trailing, spacing: 6) {
-            Button(action: performKill) {
-                AsyncActionLabel(isBusy: isKilling) {
-                    Label("End session", systemImage: "stop.circle")
-                        .labelStyle(.titleAndIcon)
-                }
-                .font(.system(size: Typo.caption, weight: .medium))
-                .ink(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-            }
-            .buttonStyle(.plain)
-            .hoverWash()
-            .disabled(isKilling)
-
-            if let killError {
-                Text(killError)
-                    .font(.system(size: Typo.caption, weight: .regular))
-                    .ink(.danger)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.trailing)
-                    .frame(maxWidth: 260, alignment: .trailing)
-            }
-        }
-        .padding(.top, 6)
-        .padding(.trailing, 8)
-    }
-
-    private func performKill() {
-        Task {
-            isKilling = true
-            killError = nil
-            killError = await appModel.killAgent(sliceID: slice.id)
-            isKilling = false
-        }
     }
 
     private func sessionStillExists() -> Bool {
