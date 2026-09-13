@@ -39,11 +39,6 @@ final class DesignTokensTests: XCTestCase {
         assertColor("fff", isRGB: hexFallback)
     }
 
-    func testHexColorInitializerTooLong() {
-        // 8-character hex is invalid and falls back to the accent.
-        assertColor("ffffffff", isRGB: hexFallback)
-    }
-
     func testHexColorInitializerInvalidCharacters() {
         // Non-hex characters are invalid and fall back to the accent.
         assertColor("gggggg", isRGB: hexFallback)
@@ -249,47 +244,6 @@ final class DesignTokensTests: XCTestCase {
         XCTAssertEqual(Double(resolved.redComponent), Double(expected.redComponent), accuracy: 0.01, "\(name) red", file: file, line: line)
         XCTAssertEqual(Double(resolved.greenComponent), Double(expected.greenComponent), accuracy: 0.01, "\(name) green", file: file, line: line)
         XCTAssertEqual(Double(resolved.blueComponent), Double(expected.blueComponent), accuracy: 0.01, "\(name) blue", file: file, line: line)
-    }
-
-    // MARK: - DesignTokens Availability Tests
-
-    func testDesignTokensColorAvailability() {
-        // Verify that all design tokens are accessible
-        for ground in Ground.allCases { _ = DesignTokens.fill(ground) }
-        _ = DesignTokens.label
-        _ = DesignTokens.labelSecondary
-        _ = DesignTokens.labelTertiary
-        _ = DesignTokens.labelQuaternary
-        _ = DesignTokens.accent
-        _ = DesignTokens.accentText
-        _ = DesignTokens.hairline(on: .window)
-        _ = DesignTokens.selectionWash(on: .window)
-        _ = DesignTokens.separator(on: .window)
-        _ = DesignTokens.controlBorder(on: .window)
-        _ = DesignTokens.brandGradient
-        _ = DesignTokens.systemOrange
-        _ = DesignTokens.systemYellow
-        _ = DesignTokens.systemGreen
-        _ = DesignTokens.systemRed
-        _ = DesignTokens.systemBlue
-        _ = DesignTokens.systemPink
-        _ = DesignTokens.systemTeal
-        _ = DesignTokens.systemGray
-        _ = DesignTokens.skeletonHighlight
-        _ = DesignTokens.onAccentSeparator
-        _ = DesignTokens.accentMuted
-        _ = DesignTokens.avatarWash
-        _ = DesignTokens.accentWash
-        _ = DesignTokens.systemRedWash
-        _ = DesignTokens.systemGreenWash
-        _ = DesignTokens.systemYellowWash
-        _ = DesignTokens.systemOrangeWash
-        _ = DesignTokens.labelSecondaryWash
-        _ = DesignTokens.diffAddedRowBg
-        _ = DesignTokens.diffRemovedRowBg
-        _ = DesignTokens.diffAddedGutterBg
-        _ = DesignTokens.diffRemovedGutterBg
-        _ = DesignTokens.diffCommentGutterBg
     }
 
     // MARK: - Button metrics

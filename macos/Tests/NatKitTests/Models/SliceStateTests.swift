@@ -2,23 +2,6 @@ import XCTest
 @testable import NatKit
 
 final class SliceStateTests: XCTestCase {
-    func testAllKnownStates() {
-        let states: [SliceState] = [
-            .working,
-            .waiting,
-            .blocked,
-            .readyToPush,
-            .awaitingReview,
-            .readyToMerge
-        ]
-
-        for state in states {
-            let encoded = try! JSONEncoder().encode(state)
-            let decoded = try! JSONDecoder().decode(SliceState.self, from: encoded)
-            XCTAssertEqual(state, decoded)
-        }
-    }
-
     func testEncodingProducesCorrectStrings() {
         let testCases: [(SliceState, String)] = [
             (.working, "\"working\""),

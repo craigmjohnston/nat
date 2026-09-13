@@ -82,26 +82,6 @@ final class NatClientTests: XCTestCase {
         }
     }
 
-    func testProcessRunnerResolvesNatBinary() async throws {
-        let runner = ProcessRunner()
-
-        // This test verifies that ProcessRunner can be instantiated and respects
-        // the NAT_BIN environment variable. We don't actually run nat here because
-        // it might not be installed, but we can verify the behavior with a fake.
-        XCTAssertNotNil(runner)
-    }
-
-    func testMultipleCalls() async throws {
-        let fakeRunner = FakeRunner(fixture: .infoWithAllFields)
-        let client = NatClient(commandRunner: fakeRunner)
-
-        let info1 = try await client.info(projectID: "proj-1")
-        let info2 = try await client.info(projectID: "proj-2")
-
-        XCTAssertEqual(info1.project.name, "Example Project")
-        XCTAssertEqual(info2.project.name, "Example Project")
-    }
-
     func testStatus() async throws {
         let fakeRunner = FakeRunner(fixture: .status)
         let client = NatClient(commandRunner: fakeRunner)

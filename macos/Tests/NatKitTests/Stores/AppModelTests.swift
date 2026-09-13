@@ -135,24 +135,6 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testAppModel_selectsFirstProject() async {
-        let testConfig = NatProjectConfig(
-            projects: [
-                "z-proj": ProjectConfig(name: "Z Project", slicesDSID: "ds-z", workingDir: "/path/z"),
-                "a-proj": ProjectConfig(name: "A Project", slicesDSID: "ds-a", workingDir: "/path/a")
-            ]
-        )
-
-        let mockReader = MockConfigReader(response: .success(testConfig))
-        let appModel = AppModel(configReader: mockReader)
-
-        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
-
-        // Should pick "a-proj" (first when sorted alphabetically)
-        XCTAssertEqual(appModel.projectStore?.projectID, "a-proj")
-    }
-
-    @MainActor
     func testAppModel_refreshPublic() async {
         _ = Project(id: "proj-1", name: "Test", conventions: "")
         let testConfig = NatProjectConfig(

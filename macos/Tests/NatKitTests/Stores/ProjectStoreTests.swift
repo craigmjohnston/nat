@@ -155,30 +155,22 @@ final class ProjectStoreTests: XCTestCase {
 
     @MainActor
     func testFailureKeepsPreviousLoad() async {
-        let successClient = MockNatClient(response: .success(testProjectInfo))
-        let store = ProjectStore(projectID: "proj-1", client: successClient, cache: FakePlanCache())
+        // A failure on a store that has already loaded successfully must
+        // report the failure over the plan it already has, rather than
+        // clearing it the way a first, cold failure does.
+        let mockClient = MockNatClient(response: .success(testProjectInfo))
+        let store = ProjectStore(projectID: "proj-1", client: mockClient, cache: FakePlanCache())
 
-        // First load succeeds
         await store.load()
-        XCTAssertEqual(successClient.callCount, 1)
+        XCTAssertEqual(store.state, .loaded(testProjectInfo))
 
-        // Verify loaded state
-        if case .loaded = store.state {
-            // Expected
+        mockClient.response = .failure
+        await store.refresh()
+
+        if case .failed(_, let previous) = store.state {
+            XCTAssertEqual(previous, testProjectInfo)
         } else {
-            XCTFail("Expected loaded state after success")
-        }
-
-        // Now create a store with a failing client and verify it starts with idle state
-        let failureClient = MockNatClient(response: .failure)
-        let failingStore = ProjectStore(projectID: "proj-1", client: failureClient, cache: FakePlanCache())
-        await failingStore.load()
-
-        if case .failed(_, let previous) = failingStore.state {
-            // When failing with no prior state, previous would be nil
-            XCTAssertNil(previous)
-        } else {
-            XCTFail("Expected failed state")
+            XCTFail("Expected failed state with the previous load kept")
         }
     }
 

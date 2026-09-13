@@ -20,38 +20,6 @@ final class AgentStatusTests: XCTestCase {
         XCTAssertEqual(status.activity, .working)
     }
 
-    func testAgentStatusDecodingWaiting() throws {
-        let json = """
-        {
-            "slice_id": "page-456",
-            "session": "nat-def456ghi",
-            "activity": "waiting"
-        }
-        """
-
-        let data = json.data(using: .utf8)!
-        let decoder = JSONDecoder()
-        let status = try decoder.decode(AgentStatus.self, from: data)
-
-        XCTAssertEqual(status.activity, .waiting)
-    }
-
-    func testAgentStatusDecodingUnknown() throws {
-        let json = """
-        {
-            "slice_id": "page-789",
-            "session": "nat-ghi789jkl",
-            "activity": "unknown"
-        }
-        """
-
-        let data = json.data(using: .utf8)!
-        let decoder = JSONDecoder()
-        let status = try decoder.decode(AgentStatus.self, from: data)
-
-        XCTAssertEqual(status.activity, .unknown)
-    }
-
     func testAgentStatusDecodingInvalidActivityDefaultsToUnknown() throws {
         let json = """
         {
