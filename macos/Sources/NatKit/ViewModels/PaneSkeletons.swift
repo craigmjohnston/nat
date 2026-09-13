@@ -19,6 +19,19 @@ import Foundation
 /// values.
 public typealias SkeletonLines = [Double]
 
+/// One section of a properties rail: the heading it is drawn under, which is
+/// a fixed label in either rail and so is drawn as itself rather than stood
+/// in for, and the widths of the rows being read into it, which are not.
+public struct SkeletonRailSectionShape: Equatable, Sendable {
+    public let title: String
+    public let rows: SkeletonLines
+
+    public init(title: String, rows: SkeletonLines) {
+        self.title = title
+        self.rows = rows
+    }
+}
+
 /// The Brief tab while a slice's detail is being read for the first time:
 /// the brief card's prose, and the properties rail beside it — which is
 /// drawn only once there is a detail to read it off, so a skeleton that
@@ -32,11 +45,15 @@ public enum BriefSkeleton {
         [0.98, 0.94, 0.71]
     ]
 
-    /// The properties rail's sections — `STATUS`, `MILESTONE`, `BRANCH`,
-    /// `DEPENDS ON` — as the width of each one's value line. The heading
-    /// above each is drawn at a width of its own by the view, since every
-    /// section's heading is the same short all-caps run.
-    public static let sidebarSections: SkeletonLines = [0.52, 0.74, 0.86, 0.63]
+    /// The properties rail's sections, each its own heading — the same four
+    /// `BriefTabView` draws whatever the slice turns out to be — and the
+    /// width of the value being read into it.
+    public static let sidebarSections: [SkeletonRailSectionShape] = [
+        SkeletonRailSectionShape(title: "STATUS", rows: [0.52]),
+        SkeletonRailSectionShape(title: "MILESTONE", rows: [0.74]),
+        SkeletonRailSectionShape(title: "BRANCH", rows: [0.86]),
+        SkeletonRailSectionShape(title: "DEPENDS ON", rows: [0.63])
+    ]
 
     /// What a screen reader is told while the blocks are up, since they say
     /// nothing themselves.
@@ -97,12 +114,14 @@ public enum PRSkeleton {
         [0.86, 0.95, 0.52]
     ]
 
-    /// The rail's sections — checks, review, changes — as the width of each
-    /// one's rows.
-    public static let sidebarSections: [SkeletonLines] = [
-        [0.88, 0.72, 0.80],
-        [0.66],
-        [0.58, 0.45]
+    /// The rail's sections, each its own heading and the widths of the rows
+    /// being read into it. `CHECKS` grows a count beside it once the checks
+    /// are in — the word itself is there either way, and it is leading, so
+    /// nothing under it moves when the count arrives.
+    public static let sidebarSections: [SkeletonRailSectionShape] = [
+        SkeletonRailSectionShape(title: "CHECKS", rows: [0.88, 0.72, 0.80]),
+        SkeletonRailSectionShape(title: "REVIEW", rows: [0.66, 0.52]),
+        SkeletonRailSectionShape(title: "CHANGES", rows: [0.58, 0.45])
     ]
 
     public static let accessibilityLabel = "Reading the pull request…"

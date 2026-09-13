@@ -148,23 +148,30 @@ struct RefreshingMark: View {
 /// A properties rail's section: its all-caps heading and the rows under it,
 /// at the 8pt spacing every real section in either rail uses.
 ///
+/// The heading is drawn as itself — see the note at the top of the file —
+/// and only the rows under it are blocks, since what a section says about
+/// the slice or the pull request is exactly what is being read.
+///
 /// `rowHeight` is the PR rail's: its check, review and changes rows are laid
 /// out at a fixed 26pt each rather than left to their type, so a section
 /// standing in for one reserves that and a section standing in for the
 /// brief's plain value lines (nil) reserves the line itself.
 private struct SkeletonRailSection: View {
-    let lines: SkeletonLines
+    let section: SkeletonRailSectionShape
     var type: SkeletonType = .system(Typo.subhead)
     var rowHeight: CGFloat?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // The heading: every section's is the same short all-caps run of
-            // the rail's own semibold subhead.
-            SkeletonTextLine(width: 0.42, type: .system(Typo.subhead, weight: .semibold), cornerRadius: 2)
+            // The heading itself: which sections either rail has is fixed,
+            // so what stands over the rows is the label rather than a block
+            // the label replaces.
+            Text(section.title)
+                .font(.system(size: Typo.subhead, weight: .semibold))
+                .ink(.tertiary)
 
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(Array(lines.enumerated()), id: \.offset) { _, width in
+                ForEach(Array(section.rows.enumerated()), id: \.offset) { _, width in
                     row(width)
                 }
             }
@@ -186,7 +193,7 @@ private struct SkeletonRailSection: View {
 /// the same leading hairline and insets the real one draws, so the reading
 /// column beside it is exactly as wide as it will be when the content lands.
 private struct SkeletonRail: View {
-    let sections: [SkeletonLines]
+    let sections: [SkeletonRailSectionShape]
     let width: Double
     var type: SkeletonType = .system(Typo.subhead)
     var rowHeight: CGFloat?
@@ -195,7 +202,7 @@ private struct SkeletonRail: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
-                    SkeletonRailSection(lines: section, type: type, rowHeight: rowHeight)
+                    SkeletonRailSection(section: section, type: type, rowHeight: rowHeight)
                 }
             }
             .padding(.horizontal, 14)
@@ -284,7 +291,7 @@ struct BriefSkeletonView: View {
                 .inelastic()
             }
 
-            SkeletonRail(sections: BriefSkeleton.sidebarSections.map { [$0] }, width: sidebarWidth)
+            SkeletonRail(sections: BriefSkeleton.sidebarSections, width: sidebarWidth)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .ignore)
