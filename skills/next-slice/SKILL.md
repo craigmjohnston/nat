@@ -125,7 +125,31 @@ then `git switch -c slice/<slug> <origin's default branch>`. A git that ran and
 refused is different — something is wrong with the repository — so report what
 it said and stop rather than working half-placed.
 
-## 3. Do the work
+## 3. Read the milestone before you write code
+
+The brief is the slice's own body and the project's conventions, but it is not
+the whole plan: before touching any code, read the other slices in this
+slice's own milestone too — Done ones especially — with:
+
+```
+nat info --project <project>
+```
+
+A Done slice in the same milestone is often where a design decision that binds
+this one already got settled — the shape of a store, a naming convention, an
+architecture a later slice is meant to build on. Missing it is how a session
+builds the wrong architecture and finds out only at review, with the work
+already done.
+
+If this slice turns on an architecture question that neither the brief nor a
+Done slice in the milestone actually settles, do not guess and start writing:
+raise it with the user right away, before code — not at hand-back, once an
+hour or more of the wrong shape is already sunk. And never run
+`complete-slice` on work whose architecture is still unsettled that way; a
+hand-back is a claim that the shape is right, not a place to flag that it
+might not be.
+
+## 4. Do the work
 
 - The brief is what the command printed: the slice's body first, then the
   project conventions. Read `CLAUDE.md` in the working directory too.
@@ -141,7 +165,7 @@ it said and stop rather than working half-placed.
 - **If the work is not code** (docs, research, written-up findings): produce
   the deliverable the brief asks for and link it in the summary below.
 
-## 4. Finish
+## 5. Finish
 
 Record the outcome with the slice's page ID or URL, as printed in the brief:
 
@@ -166,6 +190,12 @@ report of your session. It is filed on the slice page under its own heading, so
 the user can approve the branch days later and still get it. Pass
 `--pr-description -` to read it from stdin when it is too long for an argument,
 and give `--summary` as a flag then, since stdin is taken.
+
+Make no unverifiable claims in either one: say only what you actually checked,
+never what you assume or expect to be true. A summary that says a value was
+"unchanged" or "nothing invented" when you interpolated it rather than read it
+is exactly the kind of line that costs somebody else an hour redoing the work
+to find out it was wrong.
 
 Leave `--branch` off when there was no branch — a docs or research slice — and
 the slice is marked Done there and then, with no pull request to describe. Pipe

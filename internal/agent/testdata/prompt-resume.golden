@@ -38,6 +38,25 @@ which they can switch while you work.
    apply to every slice of the project.
 2. `CLAUDE.md` in the working directory — architecture and the
    verification gate.
+3. The other slices in this slice's own milestone — the one this brief
+   named above, read with:
+
+       nat info --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
+
+   Done ones especially. A Done slice in the same milestone is where a
+   design decision that binds this one often already got settled; missing
+   it is how a session builds the wrong architecture for the rest of its
+   run.
+
+## Before you write code
+
+If this slice turns on an architecture question — a decision neither the
+brief nor a Done slice in the milestone actually settles — do not guess
+and start writing: raise it with the user right away, before code, not at
+hand-back where an hour of the wrong shape is already sunk. And never run
+`complete-slice` on work whose architecture is still unsettled that way —
+a hand-back is a claim the shape is right, not a place to flag that it
+might not be.
 
 ## Do the work
 
@@ -79,6 +98,12 @@ line is the title and the rest the body, so write it ready to publish —
 what the change does and why, for whoever reviews it on GitHub, not a
 report of your session. Pass `--pr-description -` to read it from stdin
 when it is too long for an argument, and give `--summary` as a flag then.
+
+Make no unverifiable claims in either one: say only what you actually
+checked, never what you assume or expect to be true. "nothing invented"
+about a value you interpolated rather than read is exactly the kind of
+line that costs somebody else an hour redoing the work to find out it
+was wrong.
 
 Leave `--branch` off when the slice produced no branch — a docs or
 research slice — and it is marked Done there and then, with no pull
