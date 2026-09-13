@@ -29,15 +29,27 @@ final class SkeletonLayoutTests: XCTestCase {
         XCTAssertEqual(SkeletonLayout.lineWidth(0.5, in: -20), 0)
     }
 
-    func testAParagraphIsItsLinesAndTheSpacingBetweenThem() {
-        XCTAssertEqual(SkeletonLayout.paragraphHeight(3, height: 10, spacing: 8), 46)
+    /// A line stands in for the ink of a run of type rather than for the row
+    /// it is set on, so it is drawn at about the cap height of it.
+    func testALineIsDrawnAtTheCapHeightOfTheTypeItStandsInFor() {
+        XCTAssertEqual(SkeletonLayout.lineThickness(forTextOf: 14), 9)
+        XCTAssertEqual(SkeletonLayout.lineThickness(forTextOf: 13), 8)
+        XCTAssertEqual(SkeletonLayout.lineThickness(forTextOf: 12), 7)
     }
 
-    func testOneLineHasNoSpacingUnderIt() {
-        XCTAssertEqual(SkeletonLayout.paragraphHeight(1, height: 10, spacing: 8), 10)
+    /// Whole points: a block drawn on a half point is a blurred one.
+    func testAThicknessIsAWholeNumberOfPoints() {
+        for size in stride(from: CGFloat(8), through: 24, by: 1) {
+            let thickness = SkeletonLayout.lineThickness(forTextOf: size)
+            XCTAssertEqual(thickness, thickness.rounded(), "\(size)")
+        }
     }
 
-    func testNoLinesTakeNoHeightAtAll() {
-        XCTAssertEqual(SkeletonLayout.paragraphHeight(0, height: 10, spacing: 8), 0)
+    /// Bigger type inks a thicker line, all the way up the ramp.
+    func testBiggerTypeInksAThickerLine() {
+        XCTAssertGreaterThan(
+            SkeletonLayout.lineThickness(forTextOf: 15),
+            SkeletonLayout.lineThickness(forTextOf: 11)
+        )
     }
 }

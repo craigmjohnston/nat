@@ -4,13 +4,8 @@ import NatKit
 /// The file list beside the diff: the "All commits" dropdown, then one row
 /// per file — a viewed checkmark, the path truncated from the front so its
 /// filename stays visible, an A/M/R change-kind badge, and the ± tally.
-/// Clicking a row scrolls the content pane to that file.
-///
-/// The dropdown is real: titled "All commits" (or, with one selected, that
-/// commit's own subject) with a count badge, it lists "All commits" first and
-/// then every commit — subject, and its short sha in a monospaced font, per
-/// the mock. Picking one is `onSelectCommit`'s to act on; this view holds no
-/// opinion about what a selection means to the diff beside it.
+/// Clicking a row scrolls the content pane to that file. The dropdown is
+/// `DiffCommitsMenu`, and real.
 struct DiffFileSidebarView: View {
     let files: [DiffFileModel]
     let isViewed: (String) -> Bool
@@ -23,7 +18,11 @@ struct DiffFileSidebarView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 2) {
-                allCommitsMenu
+                DiffCommitsMenu(
+                    commits: commits,
+                    selectedCommit: selectedCommit,
+                    onSelectCommit: onSelectCommit
+                )
 
                 ForEach(files) { file in
                     DiffFileSidebarRow(file: file, isViewed: isViewed(file.path), commentCount: commentCount(file.path))
@@ -38,6 +37,24 @@ struct DiffFileSidebarView: View {
             .inelastic()
         }
     }
+}
+
+/// The file list's own commits dropdown: titled "All commits" (or, with one
+/// selected, that commit's own subject) with a count badge, listing "All
+/// commits" first and then every commit — subject, and its short sha in a
+/// monospaced font, per the mock. Picking one is `onSelectCommit`'s to act
+/// on; this view holds no opinion about what a selection means to the diff
+/// beside it.
+///
+/// Its own view rather than a piece of `DiffFileSidebarView`, because it is
+/// chrome rather than content — the same control before the branch is read
+/// and after, saying "All commits" and nothing of no commits either way — so
+/// `DiffSkeletonView` draws this very thing instead of a block that would be
+/// replaced by it.
+struct DiffCommitsMenu: View {
+    var commits: [SliceCommit] = []
+    var selectedCommit: String?
+    var onSelectCommit: (String?) -> Void = { _ in }
 
     private var selectedCommitTitle: String {
         guard let selectedCommit, let commit = commits.first(where: { $0.sha == selectedCommit }) else {
@@ -46,7 +63,7 @@ struct DiffFileSidebarView: View {
         return commit.subject
     }
 
-    private var allCommitsMenu: some View {
+    var body: some View {
         Menu {
             Button {
                 onSelectCommit(nil)
@@ -135,6 +152,14 @@ private enum ChangeBadge {
 }
 
 struct DiffFileSidebarRow: View {
+    /// The row's own geometry, named rather than inline so `DiffSkeletonView`
+    /// reserves exactly the rows this draws: the tick's slot, which is held
+    /// whether the file has been viewed or not, the gap after it, and the
+    /// height of the row itself.
+    static let tickWidth: CGFloat = 13
+    static let spacing: CGFloat = 5
+    static let height: CGFloat = 28
+
     let file: DiffFileModel
     let isViewed: Bool
     var commentCount: Int = 0
@@ -142,14 +167,14 @@ struct DiffFileSidebarRow: View {
     private var badge: ChangeBadge { ChangeBadge(file: file) }
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: Self.spacing) {
             if isViewed {
                 Image(systemName: "checkmark")
                     .font(.system(size: 12, weight: .medium))
                     .ink(.success)
-                    .frame(width: 13)
+                    .frame(width: Self.tickWidth)
             } else {
-                Color.clear.frame(width: 13)
+                Color.clear.frame(width: Self.tickWidth)
             }
 
             // Truncated from the front rather than the tail: what names a
@@ -194,7 +219,7 @@ struct DiffFileSidebarRow: View {
             }
         }
         .padding(.horizontal, 8)
-        .frame(height: 28)
+        .frame(height: Self.height)
         .clipShape(RoundedRectangle(cornerRadius: 5))
     }
 }

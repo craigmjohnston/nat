@@ -13,6 +13,17 @@ final class PaneSkeletonsTests: XCTestCase {
         }
     }
 
+    /// A rail's sections: a heading that is drawn as itself, so it has to be
+    /// the real label, and rows that are placeholders, so they have to be
+    /// fractions of the column.
+    private func assertRail(_ sections: [SkeletonRailSectionShape], _ what: String, line: UInt = #line) {
+        XCTAssertFalse(sections.isEmpty, "\(what) draws nothing at all", line: line)
+        for section in sections {
+            XCTAssertFalse(section.title.isEmpty, "\(what) has a section with no heading", line: line)
+            assertFractions(section.rows, "a section of \(what)", line: line)
+        }
+    }
+
     // MARK: - Brief
 
     func testTheBriefIsDrawnAsParagraphsOfProse() {
@@ -36,7 +47,12 @@ final class PaneSkeletonsTests: XCTestCase {
     /// off, so a skeleton with no rail would have the reading column narrow
     /// the moment the brief landed — which is the shift this slice is about.
     func testTheBriefSkeletonHasARailBesideIt() {
-        assertFractions(BriefSkeleton.sidebarSections, "the brief's properties rail")
+        assertRail(BriefSkeleton.sidebarSections, "the brief's properties rail")
+        XCTAssertEqual(
+            BriefSkeleton.sidebarSections.map(\.title),
+            ["STATUS", "MILESTONE", "BRANCH", "DEPENDS ON"],
+            "the four sections `BriefTabView` draws, in its own order"
+        )
     }
 
     func testTheBriefSaysItIsLoadingForAnyoneWhoCannotSeeTheBlocks() {
@@ -93,11 +109,12 @@ final class PaneSkeletonsTests: XCTestCase {
     }
 
     func testThePullRequestSkeletonHasItsRailBesideIt() {
-        XCTAssertEqual(PRSkeleton.sidebarSections.count, 3,
-                       "checks, review and changes are the rail's three sections")
-        for section in PRSkeleton.sidebarSections {
-            assertFractions(section, "a pull request rail section")
-        }
+        assertRail(PRSkeleton.sidebarSections, "the pull request's rail")
+        XCTAssertEqual(
+            PRSkeleton.sidebarSections.map(\.title),
+            ["CHECKS", "REVIEW", "CHANGES"],
+            "the three sections `PRSidebarView` draws, in its own order"
+        )
     }
 
     func testThePullRequestSaysItIsLoadingForAnyoneWhoCannotSeeTheBlocks() {

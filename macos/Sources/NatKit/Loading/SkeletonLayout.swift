@@ -23,11 +23,21 @@ public enum SkeletonLayout {
         return min(available, max(minimumLineWidth, available * CGFloat(fraction)))
     }
 
-    /// How tall a run of `count` lines comes to at that height and spacing —
-    /// what the paragraph's own frame is set to, since a `GeometryReader`
-    /// left to itself is greedy in both axes and would take the whole pane.
-    public static func paragraphHeight(_ count: Int, height: CGFloat, spacing: CGFloat) -> CGFloat {
-        guard count > 0 else { return 0 }
-        return CGFloat(count) * height + CGFloat(count - 1) * spacing
+    /// How thick a placeholder line is drawn for type at `size`: roughly the
+    /// cap height of it, so the block reads as the ink of a line rather than
+    /// as the line's whole box — which, at the leading a text row actually
+    /// takes, would be a slab.
+    ///
+    /// Derived rather than picked per call site: every placeholder line in
+    /// the app stands in for a run of type whose size is already a number
+    /// the design system holds (`Typo`), and a thickness chosen beside each
+    /// one is how the skeletons came to be drawn at heights the views they
+    /// replace never used.
+    public static func lineThickness(forTextOf size: CGFloat) -> CGFloat {
+        (size * capHeightRatio).rounded()
     }
+
+    /// What share of its point size a line of type inks — near enough the
+    /// cap height of the faces the app is set in.
+    static let capHeightRatio: CGFloat = 0.62
 }

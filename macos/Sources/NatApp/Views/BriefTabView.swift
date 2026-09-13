@@ -2,6 +2,38 @@ import SwiftUI
 import NatKit
 import NatFixtures
 
+/// The brief card's own header: its label and the Edit button. Its own view
+/// rather than a row inside the card, because it is chrome rather than
+/// content — identical before the slice's detail lands and after it — so
+/// `BriefSkeletonView` draws this very thing from the first frame instead of
+/// blocks that would be replaced by it.
+///
+/// Its defaults are the skeleton's state: nothing to edit yet, which is what
+/// `canEditBrief` says of a slice with no detail read.
+struct BriefCardHeader: View {
+    var canEdit: Bool = false
+    var help: String = ""
+    var onEdit: () -> Void = {}
+
+    var body: some View {
+        HStack {
+            Text("Brief")
+                .font(.system(size: Typo.subhead, weight: .semibold))
+                .ink(.secondary)
+
+            Spacer()
+
+            Button(action: onEdit) {
+                Text("Edit…")
+                    .font(.system(size: Typo.subhead, weight: .regular))
+            }
+            .buttonStyle(GhostButtonStyle())
+            .disabled(!canEdit)
+            .help(help)
+        }
+    }
+}
+
 struct BriefTabView: View {
     /// What the brief is drawn on, for the one colour it computes as a
     /// value — a status dot's fill, chosen by a switch before it is applied.
@@ -86,22 +118,14 @@ struct BriefTabView: View {
                         // this up stays outside — the card wraps only what
                         // it actually holds.
                         VStack(alignment: .leading, spacing: 16) {
-                            // Brief section label
-                            HStack {
-                                Text("Brief")
-                                    .font(.system(size: Typo.subhead, weight: .semibold))
-                                    .ink(.secondary)
-
-                                Spacer()
-
-                                Button(action: startEditingBrief) {
-                                    Text("Edit…")
-                                        .font(.system(size: Typo.subhead, weight: .regular))
-                                }
-                                .buttonStyle(GhostButtonStyle())
-                                .disabled(!canEditBrief)
-                                .help(editBriefHelp)
-                            }
+                            // Brief section label — the same row
+                            // `BriefSkeletonView` draws while the read is in
+                            // flight, since it says the same thing either way.
+                            BriefCardHeader(
+                                canEdit: canEditBrief,
+                                help: editBriefHelp,
+                                onEdit: startEditingBrief
+                            )
 
                             // Brief content — a cached detail (even a stale one
                             // still showing while a background read replaces it, or

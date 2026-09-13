@@ -55,13 +55,17 @@ public enum Skeleton {
 /// whatever the caller frames it in.
 public struct SkeletonBlock: View {
     private let width: CGFloat?
-    private let height: CGFloat
+    private let height: CGFloat?
     private let cornerRadius: CGFloat
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var phase: Double = 0
 
-    public init(width: CGFloat? = nil, height: CGFloat, cornerRadius: CGFloat = 3) {
+    /// Either dimension left out fills whatever the caller frames it in —
+    /// which is how a block stands in for something whose own height is a
+    /// range rather than a number, the PR tab's composer being the one that
+    /// opens at its ceiling wherever the pane has the room for it.
+    public init(width: CGFloat? = nil, height: CGFloat? = nil, cornerRadius: CGFloat = 3) {
         self.width = width
         self.height = height
         self.cornerRadius = cornerRadius

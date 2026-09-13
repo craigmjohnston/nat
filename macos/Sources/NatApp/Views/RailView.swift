@@ -50,6 +50,13 @@ extension View {
 }
 
 struct RailView: View {
+    /// The two tree glyphs' own sizes: the folder shape, which is drawn
+    /// rather than set in type, and the slice icon's point size. Named
+    /// rather than inline so `RailSkeletonView` stands in for them at what
+    /// they actually come to.
+    static let folderGlyphHeight: CGFloat = 10.5
+    static let sliceGlyphSize: CGFloat = 12
+
     @Bindable var appModel: AppModel
     /// What the rail is drawn on, for the few colours it has to compute as a
     /// value rather than apply as a modifier — a selection fill inside a
@@ -844,7 +851,7 @@ struct RailView: View {
                     inDone ? .tertiary : folder.isCurrent ? .accent : .secondary,
                     on: ground
                 ))
-                .frame(width: RailSlot.slot, height: 10.5)
+                .frame(width: RailSlot.slot, height: Self.folderGlyphHeight)
 
             Text(folder.title)
                 .font(.system(size: Typo.body, weight: folder.isCurrent ? .semibold : .regular))
@@ -883,7 +890,7 @@ struct RailView: View {
 
         return HStack(spacing: RailSlot.spacing) {
             Image(systemName: slice.glyph.rawValue)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: Self.sliceGlyphSize, weight: .medium))
                 .frame(width: RailSlot.slot)
                 .ink(glyphColor(for: slice.glyph))
 

@@ -6,6 +6,11 @@ import NatKit
 /// — a hairline-bordered rail beside the main column, GitHub's own layout for
 /// a pull request's sidebar.
 struct PRSidebarView: View {
+    /// Every row of the rail — a check, the review verdict, the reviewer
+    /// line — is laid out at this rather than left to its own type. Named
+    /// rather than inline so `PRSkeletonView` reserves the same rows.
+    static let rowHeight: CGFloat = 26
+
     let pr: PRDetail
 
     /// The sidebar's width, draggable at its divider and remembered across
@@ -84,7 +89,7 @@ struct PRSidebarView: View {
                 .font(.system(size: Typo.caption, weight: .regular))
                 .ink(.tertiary)
         }
-        .frame(height: 26)
+        .frame(height: Self.rowHeight)
     }
 
     // MARK: - Review
@@ -105,7 +110,7 @@ struct PRSidebarView: View {
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .ink(.primary)
             }
-            .frame(height: 26)
+            .frame(height: Self.rowHeight)
 
             // nat has no reviewer-request flow of its own — GitHub's is the
             // only one, so this opens the pull request there rather than
@@ -119,7 +124,7 @@ struct PRSidebarView: View {
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .ink(.secondary)
             }
-            .frame(height: 26)
+            .frame(height: Self.rowHeight)
             .contentShape(Rectangle())
             .onTapGesture { openPROnGitHub() }
         }

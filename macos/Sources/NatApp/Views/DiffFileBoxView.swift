@@ -15,6 +15,12 @@ import NatKit
 /// renderer, forwarding every click back to `DiffTabView`, which is the one
 /// place selection, drafting and the pending review actually live.
 struct DiffFileBoxView: View {
+    /// The header row's own geometry, named rather than inline so
+    /// `DiffSkeletonView` reserves exactly the row this draws — its height is
+    /// what holds the box open over the "Viewed" button inside it.
+    static let headerSpacing: CGFloat = 10
+    static let headerHeight: CGFloat = 32
+
     let file: DiffFileModel
     let numberWidth: Int
     let isViewed: Bool
@@ -98,7 +104,7 @@ struct DiffFileBoxView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Self.headerSpacing) {
             Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
                 .font(.system(size: 12, weight: .medium))
                 .ink(.tertiary)
@@ -154,7 +160,7 @@ struct DiffFileBoxView: View {
             .buttonStyle(GhostButtonStyle())
         }
         .padding(.horizontal, 12)
-        .frame(height: 32)
+        .frame(height: Self.headerHeight)
         .surface(.rowAlt)
         .contentShape(Rectangle())
         .onTapGesture {
@@ -248,6 +254,11 @@ struct DiffRowView: View {
         }
     }
 
+    /// What a row of a file's body is at least — one line of code, its
+    /// vertical padding included. Named rather than inline for the reason the
+    /// header's height is: `DiffSkeletonView` stands in for these rows.
+    static let minimumRowHeight: CGFloat = 19
+
     // Top-aligned, not centred: a long line wraps, and everything that
     // belongs to the line as a whole — its numbers, its +/- — belongs on the
     // first of its rows, not floating in the middle of them. The 1.5pt
@@ -290,7 +301,7 @@ struct DiffRowView: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 1.5)
-        .frame(minHeight: 19)
+        .frame(minHeight: Self.minimumRowHeight)
         .background(alignment: .leading) {
             gutterCell(gutterFill)
         }

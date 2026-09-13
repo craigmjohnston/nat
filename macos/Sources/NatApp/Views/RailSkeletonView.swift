@@ -33,11 +33,11 @@ struct RailSkeletonView: View {
         HStack(spacing: RailSlot.spacing) {
             SkeletonBlock(
                 width: RailSlot.slot,
-                height: row.kind == .folder ? 10.5 : 12,
+                height: row.kind == .folder ? RailView.folderGlyphHeight : RailView.sliceGlyphSize,
                 cornerRadius: 2
             )
 
-            titleBlock(row, height: 9)
+            titleBlock(row)
 
             Spacer(minLength: 0)
         }
@@ -46,13 +46,14 @@ struct RailSkeletonView: View {
         .padding(.trailing, RailSlot.trailing)
     }
 
-    /// The title block, at its share of the rail: measured off the rail's own
+    /// The title block, at the thickness a row's own body type inks and at
+    /// its share of the rail: measured off the rail's own
     /// width rather than a `GeometryReader`, so a row keeps the natural
     /// height its content gives it. Floored so a rail dragged narrow still
     /// shows a block, and capped at the room left beside the glyph so one
     /// never runs out past the trailing edge.
-    private func titleBlock(_ row: RailSkeletonRow, height: CGFloat, cornerRadius: CGFloat = 3) -> some View {
-        SkeletonBlock(height: height, cornerRadius: cornerRadius)
+    private func titleBlock(_ row: RailSkeletonRow, cornerRadius: CGFloat = 3) -> some View {
+        SkeletonBlock(height: SkeletonLayout.lineThickness(forTextOf: Typo.body), cornerRadius: cornerRadius)
             .containerRelativeFrame(.horizontal, alignment: .leading) { width, _ in
                 let inset = RailSlot.leading + CGFloat(row.depth) * RailSlot.indent
                     + RailSlot.slot + RailSlot.spacing + RailSlot.trailing
