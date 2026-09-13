@@ -37,6 +37,30 @@ func MarkDone(ctx context.Context, st Store, s domain.Slice) error {
 	return nil
 }
 
+// ReopenUnmerged writes a slice back to In progress: the mirror of
+// [SettleMerged], for a slice Done under the old rule — Done written at
+// approve, rather than at the merge — whose pull request a reading has found
+// still open. Notion's Done no longer agrees with the work: the review, or
+// the merge, is still to come, and In progress is what says so everywhere
+// else the app reads a slice's status from — see the domain rule on
+// StateOf. This converges the plan lazily, one slice at a time, as each is
+// next read rather than all at once.
+//
+// The slice is read first for the shape it can be written in, exactly as
+// [MarkDone]'s own read is, since a project converted in the Notion UI since
+// this slice was marked Done may have changed under the app.
+func ReopenUnmerged(ctx context.Context, st Store, s domain.Slice) error {
+	_, shape, err := st.Slice(ctx, s.ID)
+	if err != nil {
+		return fmt.Errorf("reopen %q to In progress: %w", s.Name, err)
+	}
+	if err := st.ReopenSlice(ctx, s.ID, shape); err != nil {
+		return fmt.Errorf("reopen %q to In progress: %w", s.Name, err)
+	}
+	logging.Action("slice reopened to In progress", "slice", s.ID, "name", s.Name)
+	return nil
+}
+
 // SettleMerged asks GitHub what became of a pull request an open listing no
 // longer names, and marks the slice Done where the answer is merged — how a
 // merge made on GitHub itself, with nat not running to make it, still moves

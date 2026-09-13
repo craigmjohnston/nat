@@ -24,6 +24,17 @@ private struct SliceAddedEnvelope: Codable {
     let slice: SliceAddResult
 }
 
+/// Envelope for `slice-status --json`'s output, which is one of two shapes:
+/// `{"status":..., "trashed":...}` for a page still there to read, or
+/// `{"gone":true}` for one Notion no longer has any record of at all —
+/// `slicestatus.go`'s own two JSON structs, read into one Codable type since
+/// only one of the two ever answers a given call.
+private struct SliceStatusEnvelope: Codable {
+    let status: String?
+    let trashed: Bool?
+    let gone: Bool?
+}
+
 /// Envelope for `project-open --json`'s and `project-create --json`'s
 /// output: the config entry each wrote, wrapped in a named field the way
 /// every other creation in the CLI wraps what it made.
@@ -151,6 +162,26 @@ public final class NatClient: Sendable {
     /// - Throws: NatError if the command fails or no live session exists
     public func agentKill(projectID: String, sliceRef: String) async throws {
         _ = try await runNatRaw(arguments: ["agent-kill", "--project", projectID, sliceRef])
+    }
+
+    /// Read one slice's status fresh, straight off its page — `nat
+    /// slice-status`, the reaper's last word before a kill. `projectID` only
+    /// pins the credentials the read is made with; the slice need not be in
+    /// that project's own plan.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID, for its config and token
+    ///   - sliceRef: The slice's URL or Notion page ID
+    /// - Returns: The slice's status and whether its page is trashed, or
+    ///   `.gone` for a page Notion no longer has any record of
+    /// - Throws: NatError if nat itself fails
+    public func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult {
+        let output = try await runNat(arguments: ["slice-status", "--project", projectID, "--json", sliceRef])
+        let envelope = try decodeJSON(SliceStatusEnvelope.self, from: output)
+        if envelope.gone == true {
+            return .gone
+        }
+        return .found(status: envelope.status ?? "", trashed: envelope.trashed ?? false)
     }
 
     /// Launch an agent on a slice in a tmux session.

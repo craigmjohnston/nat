@@ -1073,10 +1073,14 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   lands, since a pull request being approved is news of the same kind and much
   the same age as the plan itself — and it is skipped entirely when the plan has
   no pull request left to ask about, which is most boards most of the time. Two
-  kinds of slice are asked about and for the same reason: one in progress is
-  waiting on the review, and a Done one is waiting on the merge, since the board
-  marks a slice Done as it opens the pull request and the work is not on main
-  until that lands. It is one `OpenPRs` listing per repository the plan spans
+  kinds of slice are asked about, and for two different reasons now: one in
+  progress is waiting on the review, and a Done one is asked about only so a
+  legacy row — one marked Done at approve, under the rule before Done followed
+  the merge — can be caught and written back to `In progress` the moment its
+  pull request reads open (`ReopenUnmerged`, above). A newly-finished project
+  never has such a row to begin with, since Done is written only by the merge
+  now, so this half of the reading converges to asking about nothing. It is
+  one `OpenPRs` listing per repository the plan spans
   rather than one reading per slice, so the cost is the number of repositories
   rather than the number of pull requests the project has ever produced, and a
   pull request the listing no longer names is settled for the session
@@ -1371,26 +1375,24 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   status-bar toast naming what it waits on and how far off each is. A toast
   rather than an error banner: nothing has gone wrong, and the slice is still
   there to launch once its dependencies land.
-- Everything the board knows about a slice in flight adds up to one state
-  (`domain.StateOf`, `internal/domain/state.go`): working, waiting, blocked,
-  ready to push, awaiting review, ready to merge — or none at all for a slice
-  that is not in flight, which is a Todo one and a Done one whose work has
-  landed. A Done slice is tested first and against its pull request alone.
-  Done now follows the merge — approving only records the pull request, and
-  the merge (nat's own, or one the background reading finds GitHub already
-  made) is what writes the status — but a slice marked Done under the old
-  rule, at approve, may still have its pull request open, and until that
-  merges the work is not on main and the review is not over, so such a slice
-  is still in whatever state its pull request is in. It takes a positive reading to say so — with
-  nothing read, a Done slice is in no state at all, which is what every Done
-  slice a project ever finished must go on being. After that, the
-  order the facts are tested in is the order they are true in: a live agent
-  wins over everything on the page, because it is the only reading taken fresh
-  — an agent running on a handed-back branch is the review going back to it —
-  then work that is out (a `Branch`, a `PR`) is what there is to do something
-  about, then the wait on a dependency, and what is left is a slice in progress
-  that nothing is happening on and nothing has come out of. The agent is passed
-  as `domain.AgentPresence`, domain's own saying of the board's two readings —
+- Notion's status is the one source of lifecycle truth for a slice, and
+  everything the board knows about one in flight adds up to one state read
+  straight off it (`domain.StateOf`, `internal/domain/state.go`): working,
+  waiting, blocked, ready to push, awaiting review, ready to merge — or none at
+  all for a slice that is not in flight, which is a Todo one and a Done one,
+  full stop. Done is written only by a real event — the merge (nat's own, or
+  one the background reading finds GitHub already made), or completing a slice
+  with no pull request — never derived here, so a Done slice needs no second
+  look at its pull request: it is in no state at all, and nothing about that
+  is conditional. The order the remaining facts are tested in is the order
+  they are true in: a slice that is not in progress is out before anything
+  else on the page is asked; then a live agent wins over everything else,
+  because it is the only reading taken fresh — an agent running on a
+  handed-back branch is the review going back to it — then work that is out (a
+  `Branch`, a `PR`) is what there is to do something about, then the wait on a
+  dependency, and what is left is a slice in progress that nothing is
+  happening on and nothing has come out of. The agent is passed as
+  `domain.AgentPresence`, domain's own saying of the board's two readings —
   the live map and the activity watcher — as one value, since `internal/agent`
   and `internal/tui` both import this package and neither's enum could be
   reached from here. What tells the two endings of work that is out apart is
@@ -1403,11 +1405,60 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   therefore three things at once — no pull request, none read of, and one no
   longer open — and no rule here wants them told apart. It is a board nobody has
   asked gh anything on, so the whole refinement is absent rather than wrong where
-  there is no gh to ask, and it is the one thing keeping a Done slice in flight,
-  so a Done slice with no reading behind it is out of the section rather than
-  every Done slice in the project's history flooding it — see
-  `internal/tui/prstate.go`. The Active section is what draws it — see
-  `internal/tui/active.go`.
+  there is no gh to ask — see `internal/tui/prstate.go`. The Active section is
+  what draws it — see `internal/tui/active.go`.
+  A slice marked Done under the old rule, at approve, may still have its pull
+  request open; that is not `StateOf`'s problem to paper over, because Notion
+  itself is wrong about it and the fix is to write Notion back rather than to
+  keep reading around it. `actions.ReopenUnmerged` is that write — the mirror
+  of `actions.SettleMerged` — and it is what `internal/tui/prstate.go`'s own
+  reading makes the moment it finds a Done slice's pull request still open:
+  Status back to `In progress`, nothing else on the page touched, the same
+  re-read-the-page-for-the-Status-column-type-before-writing discipline every
+  other write here has. `internal/cli/prstatus.go`'s `prReadings` — the
+  headless mirror of `refreshPRStates` that `nat pr-status` runs and the macOS
+  app polls — makes the identical write for the identical reason, so a legacy
+  row converges whichever of the two ever reads it next. Once written, the
+  slice is an ordinary in-progress one and `StateOf` needs nothing special to
+  read it correctly; the row on screen catches up the moment the reading's own
+  refetch lands (`refreshSlice`), same as any other single-page patch. This
+  converges the plan lazily, one slice at a time, as each is next read, rather
+  than in a bulk migration pass — a project finished before Done followed the
+  merge is exactly as likely to hold such a row as one still active, and both
+  are caught by the same reading.
+  `nat slice-status <slice> [--json] --project ID` is the third way a slice's
+  status is read, and the odd one out: it names no project's plan at all,
+  reading the page directly by ID with `--project` supplying only the
+  credentials to read it with, and answers gone rather than refusing outright
+  where Notion has no record of the page. It writes nothing and fires no
+  nudge. It exists for the macOS app's session reaper, which is the one
+  caller that has to ask after a slice fresh, by ID alone, without first
+  knowing — or trusting — which project's plan the slice belongs to: a
+  session's own claim is always written before the session exists, so a fresh
+  read of this shape is the one that can never show a phantom state, where a
+  cached plan reading taken a sweep ago might. See `SessionReaping.swift` (in
+  `macos/Sources/NatKit/ViewModels/`) and `AppModel.reapFinishedAgents()` for
+  the reaper this feeds: `agentSessionsToReap` is its pure candidate rule —
+  every live session (`nat status`) whose slice is absent from every project
+  tab this run has open, or present with a status other than In progress,
+  minus an agent mid-turn, the slice on screen, and one still inside its
+  five-minute visit hold (set on every visit to a slice's pane, any of its
+  tabs, and never on leaving one) — and `verifiedForReap` is the last word
+  `nat slice-status` gives on each candidate right before the kill, In
+  progress being the one answer that saves it. Every open tab's plan feeds the
+  candidate rule, not only the active one's, so a session dangling on a tab
+  nobody has switched back to is still caught; closing a tab runs that same
+  sweep once more with the closing tab's own slices' visit holds ignored —
+  every other tab's stand, since a hold is about what the user just clicked
+  away from and closing one tab is not a click away from another's work —
+  before the tab itself is taken
+  off the list — so the closing plan is still in the merge for this one last
+  look, and no other open tab's session is mistaken for the closing one's own
+  — since once the tab is gone nothing will consider its slices again. A
+  candidate verified as a live In-progress session belonging to no project
+  this run has open at all is someone else's window's to reap, and is
+  remembered for the rest of the run so it is not asked about on every later
+  sweep.
 - A project keeps its whole plan on one page: no Milestones database, and a
   `Milestone` **select** on the Slices data source whose options are the
   milestones, in plan order. `domain.MilestonesFromOptions` maps them —

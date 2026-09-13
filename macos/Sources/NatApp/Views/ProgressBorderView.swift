@@ -6,13 +6,7 @@ struct ProgressBorderView: View {
 
     var segments: [ProgressSegment] {
         if let projectInfo = appModel.projectStore?.state.projectInfo {
-            // The PR-readiness reading keeps a Done slice whose pull request
-            // is still open from counting as progress — merged is done, the
-            // same rule the rail's review entries ride.
-            return buildProgressSegments(
-                from: projectInfo,
-                openPRSliceIDs: Set((appModel.reviewStatsStore?.prReadiness ?? [:]).keys)
-            )
+            return buildProgressSegments(from: projectInfo)
         }
         return []
     }

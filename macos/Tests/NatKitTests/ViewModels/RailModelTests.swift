@@ -81,15 +81,13 @@ final class RailModelTests: XCTestCase {
         XCTAssertEqual(reviews(model)[0].detail, ["Core"], "the milestone alone with no file count fetched")
     }
 
-    /// A Done slice whose pull request is positively read as open is still in
-    /// review — the board marks a slice Done as it opens the pull request,
-    /// and the review is not over until that lands. Without a reading it is
-    /// out, which is what keeps a project's finished history from flooding
-    /// the section on a board nobody has asked gh anything on.
-    func testBuildRailModel_doneSliceWithAnOpenPRIsInReview() {
+    /// An in-progress slice whose pull request is positively read as open is
+    /// a review entry — its meta is the reading's own words, since a PR-open
+    /// slice has no branch tally of its own.
+    func testBuildRailModel_openPRSliceIsInReview() {
         var slices = testSlices!
         slices.append(Slice(
-            id: "s-pr", name: "Awaiting merge", status: "Done", milestoneID: "m-2",
+            id: "s-pr", name: "Awaiting review", status: "In progress", milestoneID: "m-2",
             assignee: "", pr: "https://github.com/x/y/pull/9", url: "", blocked: false, handedBack: false
         ))
         let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
@@ -106,6 +104,25 @@ final class RailModelTests: XCTestCase {
         XCTAssertNotNil(entry)
         XCTAssertEqual(entry?.meta, "awaiting review",
                        "a PR-open slice has no branch tally; its meta is the reading's own words")
+    }
+
+    /// A Done slice's pull request being positively read as open does not put
+    /// it in review any more: Notion's status is read straight, so a Done
+    /// slice is never a review entry until the un-done rule writes it back to
+    /// In progress on the page itself.
+    func testBuildRailModel_doneSliceWithAnOpenPRIsNotInReview() {
+        var slices = testSlices!
+        slices.append(Slice(
+            id: "s-pr", name: "Awaiting merge", status: "Done", milestoneID: "m-2",
+            assignee: "", pr: "https://github.com/x/y/pull/9", url: "", blocked: false, handedBack: false
+        ))
+        let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
+
+        let model = buildRailModel(
+            from: projectInfo, liveAgents: [:],
+            prReadiness: ["s-pr": "awaiting review"]
+        )
+        XCTAssertFalse(reviews(model).contains { $0.sliceID == "s-pr" })
     }
 
     /// The diff tally wins the meta where the slice has one — a handed-back
@@ -510,23 +527,22 @@ final class RailModelTests: XCTestCase {
         XCTAssertTrue(model.doneFolders.isEmpty)
     }
 
-    /// A Done slice whose pull request is still open reads as work in flight
-    /// everywhere the rail counts done-ness: out of the DONE folder and its
-    /// counts, out of the summary, and its milestone not folded complete —
-    /// the same rule the progress bar applies. It is a review entry
-    /// instead, awaiting its merge.
-    func testBuildRailModel_openPRHoldsADoneSliceOutOfDone() {
+    /// A Done slice whose pull request still reads open — a legacy row the
+    /// un-done rule has not yet written back to In progress — is neither a
+    /// review entry nor held out of the DONE folder: Notion's status is the
+    /// one source of lifecycle truth and is read straight, exactly as
+    /// `domain.StateOf` reads it on the Go side. Closing that window is the
+    /// un-done rule's job (`nat pr-status`, `internal/actions.ReopenUnmerged`),
+    /// not this view's to paper over.
+    func testBuildRailModel_doneSliceWithAnOpenPRIsReadAsDone() {
         let milestones = [
             Milestone(id: "m-1", name: "Foundation", order: 1, status: "Done"),
-            Milestone(id: "m-2", name: "Core", order: 2, status: "Active"),
         ]
         let slices = [
             Slice(id: "s-1", name: "Merged already", status: "Done", milestoneID: "m-1",
                   assignee: "", pr: "https://github.com/o/r/pull/1", url: "", blocked: false, handedBack: false),
             Slice(id: "s-2", name: "Awaiting merge", status: "Done", milestoneID: "m-1",
                   assignee: "", pr: "https://github.com/o/r/pull/2", url: "", blocked: false, handedBack: false),
-            Slice(id: "s-3", name: "Feature B", status: "Todo", milestoneID: "m-2",
-                  assignee: "", pr: "", url: "", blocked: false, handedBack: false),
         ]
         let projectInfo = ProjectInfo(project: testProject, milestones: milestones, slices: slices)
         let model = buildRailModel(
@@ -534,18 +550,31 @@ final class RailModelTests: XCTestCase {
             prReadiness: ["s-2": "awaiting review"]
         )
 
-        // The slice awaiting its merge is review work, not a DONE row.
-        XCTAssertEqual(reviews(model).map(\.sliceID), ["s-2"])
+        XCTAssertTrue(reviews(model).isEmpty)
         XCTAssertEqual(model.doneFolders.count, 1)
         let folder = model.doneFolders[0]
-        XCTAssertEqual(folder.slices.map(\.sliceID), ["s-1"])
-        XCTAssertEqual(folder.done, 1)
-        XCTAssertFalse(folder.isComplete)
-        XCTAssertEqual(model.doneSummary, DoneSummary(doneCount: 1, totalCount: 3))
-        // The milestone is not folded away: it still holds moving work, so
-        // it stays a TODO folder — and the current one, since its work moves.
-        XCTAssertEqual(model.todoFolders.map(\.milestoneID), ["m-1", "m-2"])
-        XCTAssertTrue(model.todoFolders[0].isCurrent)
+        XCTAssertEqual(folder.slices.map(\.sliceID).sorted(), ["s-1", "s-2"])
+        XCTAssertEqual(folder.done, 2)
+        XCTAssertTrue(folder.isComplete)
+        XCTAssertEqual(model.doneSummary, DoneSummary(doneCount: 2, totalCount: 2))
+        XCTAssertTrue(model.todoFolders.isEmpty)
+    }
+
+    /// An in-progress slice with a pull request still open is a review entry
+    /// — the ordinary case `isReviewSlice`'s status gate is not about.
+    func testBuildRailModel_inProgressSliceWithAnOpenPRIsAReviewEntry() {
+        let milestones = [Milestone(id: "m-1", name: "Foundation", order: 1, status: "Active")]
+        let slices = [
+            Slice(id: "s-1", name: "Awaiting review", status: "In progress", milestoneID: "m-1",
+                  assignee: "", pr: "https://github.com/o/r/pull/1", url: "", blocked: false, handedBack: false),
+        ]
+        let projectInfo = ProjectInfo(project: testProject, milestones: milestones, slices: slices)
+        let model = buildRailModel(
+            from: projectInfo, liveAgents: [:],
+            prReadiness: ["s-1": "awaiting review"]
+        )
+
+        XCTAssertEqual(reviews(model).map(\.sliceID), ["s-1"])
     }
 
     func testMilestoneFolderIsCompleteNeedsSlices() {

@@ -148,9 +148,10 @@ func TestStateOf(t *testing.T) {
 // approved and mergeable is a review that is over, and everything else — an
 // unreviewed one, and one nothing could be read of at all — is a review still
 // to come. It applies to work that is out and to nothing else: a slice with an
-// agent on it, one with nothing pushed, and one that is not in flight at all
-// are what they were whatever GitHub says about a pull request they do not
-// have.
+// agent on it, one with nothing pushed, a Done slice, and one that is not in
+// flight at all are what they were whatever GitHub says about a pull request
+// they do not have — or, for a Done slice, whatever it says at all, since
+// Done is in no state no matter what pr reads as.
 func TestStateOfPRReadiness(t *testing.T) {
 	byID := SlicesByID(nil)
 
@@ -179,21 +180,20 @@ func TestStateOfPRReadiness(t *testing.T) {
 			readiness: PRReadyToMerge, want: SliceStateWorking},
 		{name: "nothing out", status: SliceClaimed, readiness: PRReadyToMerge, want: SliceStateReadyToPush},
 
-		// A Done slice is Notion's word for the slice and not for the work: the
-		// board marks it Done as it opens the pull request, and until that pull
-		// request lands the slice is still in whatever state the review is in.
+		// A Done slice is in no state at all whatever pr says — Notion's status
+		// is the one source of lifecycle truth now, and nothing here second-
+		// guesses it. A slice Done under the old rule with its pull request
+		// still open is not this function's problem: a positive reading writes
+		// it back to In progress on the page (actions.ReopenUnmerged), and from
+		// there it is an ordinary in-progress slice again.
 		{name: "done, ready to merge", status: SliceDone, prURL: "https://gh/pr/1",
-			readiness: PRReadyToMerge, want: SliceStateReadyToMerge},
+			readiness: PRReadyToMerge, want: SliceStateNone},
 		{name: "done, awaiting review", status: SliceDone, prURL: "https://gh/pr/1",
-			readiness: PRAwaitingReview, want: SliceStateAwaitingReview},
-		// And nothing at all with no reading to say the pull request is open,
-		// which is what every Done slice a project ever finished must read as.
+			readiness: PRAwaitingReview, want: SliceStateNone},
 		{name: "done, nothing read", status: SliceDone, prURL: "https://gh/pr/1",
 			readiness: PRUnread, want: SliceStateNone},
-		// It is pr's answer and nothing else on the page: a branch, and even an
-		// agent somehow still running, say nothing about a merge.
 		{name: "done, agent on it", status: SliceDone, presence: AgentWorking, branch: "slice/x",
-			prURL: "https://gh/pr/1", readiness: PRAwaitingReview, want: SliceStateAwaitingReview},
+			prURL: "https://gh/pr/1", readiness: PRAwaitingReview, want: SliceStateNone},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

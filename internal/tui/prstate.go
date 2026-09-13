@@ -31,16 +31,20 @@ func defaultPRReader() PRReader { return gh.New() }
 
 // prStateMsg carries one reading of the pull requests of the slices whose work
 // is out: how ready each open one is, keyed by slice ID, the slices whose
-// pull request the reading found is no longer open at all, and — of those —
-// the ones the reading marked Done because the pull request had merged.
+// pull request the reading found is no longer open at all, the ones the
+// reading marked Done because the pull request had merged, and the ones it
+// wrote back to In progress because a Done slice's pull request read open —
+// the un-done rule, for a slice marked Done under the old rule (see the
+// domain rule on StateOf).
 //
 // A slice in none of them is one gh could not be asked about, which the board
 // reads as a review still to come on work in flight and as nothing at all on
 // work that is finished — exactly what each said before there was any reading.
 type prStateMsg struct {
-	state   map[string]domain.PRReadiness
-	settled []string
-	marked  []string
+	state    map[string]domain.PRReadiness
+	settled  []string
+	marked   []string
+	reopened []string
 }
 
 // refreshPRStates reads what GitHub says about the pull request of every slice
@@ -131,6 +135,20 @@ func (a *App) refreshPRStates() tea.Cmd {
 					continue
 				}
 				msg.state[s.ID] = readinessOf(status)
+				if s.Status == domain.SliceDone {
+					// A Done slice whose pull request reads open is Notion's
+					// word disagreeing with the work: Done was written at
+					// approve, under the old rule, rather than at a merge
+					// that has not happened. Writing it back to In progress
+					// is the un-done rule — the mirror of the settle branch
+					// above — and what lets every other reading of the page
+					// trust Done to mean merged from here on.
+					if err := actions.ReopenUnmerged(context.Background(), store.Over(client), s); err != nil {
+						logging.Action("left a Done slice with an open pull request unreopened", "slice", s.ID, "error", err)
+						continue
+					}
+					msg.reopened = append(msg.reopened, s.ID)
+				}
 			}
 		}
 		return msg
@@ -184,9 +202,13 @@ func (a *App) prStateRead(msg prStateMsg) tea.Cmd {
 	// that is not synced never reaches the screen.
 	a.syncBoard()
 	cmds := []tea.Cmd{a.removeLanded(msg.settled)}
-	// A slice the reading marked Done changed under the plan's copy of it,
-	// and the row should say so without waiting for a poll.
+	// A slice the reading marked Done, or reopened to In progress, changed
+	// under the plan's copy of it, and the row should say so without waiting
+	// for a poll.
 	for _, id := range msg.marked {
+		cmds = append(cmds, a.refreshSlice(id))
+	}
+	for _, id := range msg.reopened {
 		cmds = append(cmds, a.refreshSlice(id))
 	}
 	return tea.Batch(cmds...)

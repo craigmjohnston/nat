@@ -31,8 +31,13 @@ type PRReader interface {
 // It is also where a merge made on GitHub itself reaches Notion for anything
 // that polls through this command: an in-progress slice whose pull request
 // the listing no longer names is asked about directly, and one that merged is
-// marked Done — see [actions.SettleMerged]. The one write this read can make,
-// and only ever the write the merge already earned.
+// marked Done — see [actions.SettleMerged]. It is likewise where a slice Done
+// under the old rule — at approve, rather than at the merge — is caught and
+// written back to In progress once its pull request reads open — see
+// [actions.ReopenUnmerged], the mirror of SettleMerged and of
+// internal/tui/prstate.go's own un-done rule. Between the two, these are the
+// only writes this read can make, and only ever the writes the facts already
+// earned.
 func prStatus(ctx context.Context, args []string, env Env) error {
 	asJSON, projectRef, err := parseJSONFlag("pr-status", args)
 	if err != nil {
@@ -110,6 +115,11 @@ func readinessOf(status gh.PRStatus) domain.PRReadiness {
 // sends the work round again, and the pull request's own reading tells them
 // apart — a merged one marks the slice Done, a failed reading is logged and
 // changes nothing, and the next run asks again.
+//
+// The other exception is a Done slice whose pull request is still open: the
+// un-done rule, [actions.ReopenUnmerged], written back to In progress so
+// Done goes on meaning what the merge made true everywhere else the app reads
+// a slice's status from.
 func prReadings(ctx context.Context, client API, ghClient GH, slices []domain.Slice, project config.ProjectConfig) ([]prReading, bool) {
 	var dirs []string
 	reads := map[string][]domain.Slice{}
@@ -135,6 +145,13 @@ func prReadings(ctx context.Context, client API, ghClient GH, slices []domain.Sl
 		for _, s := range reads[dir] {
 			if status, still := open[gh.NormaliseURL(s.PRURL)]; still {
 				state[s.ID] = readinessOf(status)
+				if s.Status == domain.SliceDone {
+					if err := actions.ReopenUnmerged(ctx, store.Over(client), s); err != nil {
+						logging.Action("left a Done slice with an open pull request unreopened", "slice", s.ID, "error", err)
+						continue
+					}
+					marked = true
+				}
 				continue
 			}
 			if s.Status != domain.SliceClaimed {

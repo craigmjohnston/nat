@@ -19,4 +19,5 @@ type Store interface {
 	ClaimSlice(ctx context.Context, id string, sh store.Shape, userID string) (domain.Slice, error)
 	RecordPR(ctx context.Context, id, url string) error
 	MarkDone(ctx context.Context, id string, sh store.Shape) error
+	ReopenSlice(ctx context.Context, id string, sh store.Shape) error
 }

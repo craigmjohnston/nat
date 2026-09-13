@@ -115,6 +115,10 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         try await answer(Fixtures.prStatusDoc)
     }
 
+    public func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult {
+        try await answer(.found(status: "In progress", trashed: false))
+    }
+
     public func configShow() async throws -> ConfigDoc {
         try await answer(Fixtures.configDoc)
     }

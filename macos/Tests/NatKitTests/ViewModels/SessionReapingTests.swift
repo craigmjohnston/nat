@@ -4,10 +4,10 @@ import XCTest
 final class SessionReapingTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
-    private func slice(_ id: String, status: String, pr: String = "") -> Slice {
+    private func slice(_ id: String, status: String) -> Slice {
         Slice(
             id: id, name: id, status: status, milestoneID: "m-1",
-            assignee: "", pr: pr, url: "", blocked: false, handedBack: false
+            assignee: "", pr: "", url: "", blocked: false, handedBack: false
         )
     }
 
@@ -17,77 +17,46 @@ final class SessionReapingTests: XCTestCase {
 
     private func reap(
         agents: [AgentStatus],
-        slices: [Slice],
-        openPRSliceIDs: Set<String> = [],
+        slicesByID: [String: Slice],
         selected: String? = nil,
-        leftAt: [String: Date] = [:]
+        heldUntil: [String: Date] = [:]
     ) -> [String] {
         agentSessionsToReap(
-            agents: agents.reduce(into: [:]) { $0[$1.sliceID] = $1 },
-            slices: slices,
-            openPRSliceIDs: openPRSliceIDs,
+            agents: agents,
+            slicesByID: slicesByID,
             selectedSliceID: selected,
-            leftAt: leftAt,
-            now: now,
-            grace: 300
+            heldUntil: heldUntil,
+            now: now
         )
     }
+
+    // MARK: - The candidate rule
 
     /// A session left over from a previous run of the app: its slice was
-    /// never selected, so there is no stamp and nothing to wait for.
-    func testNeverSelectedDoneSliceIsReapedAtOnce() {
-        let reaped = reap(agents: [agent("s-1")], slices: [slice("s-1", status: "Done")])
+    /// never visited, so there is no hold and nothing to wait for.
+    func testNeverVisitedDoneSliceIsACandidateAtOnce() {
+        let reaped = reap(agents: [agent("s-1")], slicesByID: ["s-1": slice("s-1", status: "Done")])
 
         XCTAssertEqual(reaped, ["s-1"])
     }
 
-    func testDoneSliceIsLeftAloneInsideTheGracePeriod() {
-        let reaped = reap(
-            agents: [agent("s-1")],
-            slices: [slice("s-1", status: "Done")],
-            leftAt: ["s-1": now.addingTimeInterval(-60)]
-        )
-
-        XCTAssertEqual(reaped, [])
-    }
-
-    func testDoneSliceIsReapedOnceTheGracePeriodIsUp() {
-        let reaped = reap(
-            agents: [agent("s-1")],
-            slices: [slice("s-1", status: "Done")],
-            leftAt: ["s-1": now.addingTimeInterval(-301)]
-        )
+    func testTodoSliceIsACandidateToo() {
+        let reaped = reap(agents: [agent("s-1")], slicesByID: ["s-1": slice("s-1", status: "Todo")])
 
         XCTAssertEqual(reaped, ["s-1"])
     }
 
-    func testTheSliceOnScreenIsNeverReaped() {
-        let reaped = reap(
-            agents: [agent("s-1")],
-            slices: [slice("s-1", status: "Done")],
-            selected: "s-1"
-        )
+    /// A slice absent from every open project's plan — another project's
+    /// session, or one whose slice has since been deleted — is a candidate
+    /// exactly as one present with the wrong status is.
+    func testASliceAbsentFromEveryOpenPlanIsACandidate() {
+        let reaped = reap(agents: [agent("s-1")], slicesByID: [:])
 
-        XCTAssertEqual(reaped, [])
+        XCTAssertEqual(reaped, ["s-1"])
     }
 
-    func testAnUnfinishedSliceIsNeverReaped() {
-        let reaped = reap(
-            agents: [agent("s-1")],
-            slices: [slice("s-1", status: "In progress")]
-        )
-
-        XCTAssertEqual(reaped, [])
-    }
-
-    /// A Done slice whose pull request is still open is the very slice a fix
-    /// session runs on — `sliceWorkDone` says its work is not done yet.
-    func testADoneSliceWithAnOpenPullRequestIsNeverReaped() {
-        let reaped = reap(
-            agents: [agent("s-1")],
-            slices: [slice("s-1", status: "Done", pr: "https://github.test/pr/1")],
-            openPRSliceIDs: ["s-1"]
-        )
+    func testAnInProgressSliceIsNeverACandidate() {
+        let reaped = reap(agents: [agent("s-1")], slicesByID: ["s-1": slice("s-1", status: "In progress")])
 
         XCTAssertEqual(reaped, [])
     }
@@ -95,22 +64,56 @@ final class SessionReapingTests: XCTestCase {
     func testAnAgentMidTurnIsLeftToFinish() {
         let reaped = reap(
             agents: [agent("s-1", activity: .working)],
-            slices: [slice("s-1", status: "Done")]
+            slicesByID: ["s-1": slice("s-1", status: "Done")]
         )
 
         XCTAssertEqual(reaped, [])
     }
 
-    func testASliceWithNoAgentRunningIsNotReported() {
-        let reaped = reap(agents: [], slices: [slice("s-1", status: "Done")])
+    func testTheSliceOnScreenIsNeverACandidate() {
+        let reaped = reap(
+            agents: [agent("s-1")],
+            slicesByID: ["s-1": slice("s-1", status: "Done")],
+            selected: "s-1"
+        )
 
         XCTAssertEqual(reaped, [])
     }
 
-    /// An agent whose slice is not this project's — another project's, or the
-    /// planning agent, whose key is its project's tag rather than a slice.
-    func testAnAgentOnNoSliceOfThisPlanIsNotReported() {
-        let reaped = reap(agents: [agent("plan:proj-1")], slices: [slice("s-1", status: "Done")])
+    func testAHeldSliceIsNotACandidateWhileTheHoldRuns() {
+        let reaped = reap(
+            agents: [agent("s-1")],
+            slicesByID: ["s-1": slice("s-1", status: "Done")],
+            heldUntil: ["s-1": now.addingTimeInterval(60)]
+        )
+
+        XCTAssertEqual(reaped, [])
+    }
+
+    func testASliceIsACandidateOnceItsHoldHasExpired() {
+        let reaped = reap(
+            agents: [agent("s-1")],
+            slicesByID: ["s-1": slice("s-1", status: "Done")],
+            heldUntil: ["s-1": now.addingTimeInterval(-1)]
+        )
+
+        XCTAssertEqual(reaped, ["s-1"])
+    }
+
+    /// A planning agent's session is tagged by its project rather than by a
+    /// slice, and is never a candidate here: it belongs to no slice for a
+    /// status to disagree with, and reaping it is not this rule's job.
+    func testAPlanningAgentSessionIsNeverACandidate() {
+        let reaped = reap(agents: [agent("plan:proj-1")], slicesByID: [:])
+
+        XCTAssertEqual(reaped, [])
+
+        let legacy = reap(agents: [agent("plan")], slicesByID: [:])
+        XCTAssertEqual(legacy, [])
+    }
+
+    func testASliceWithNoAgentRunningIsNotReported() {
+        let reaped = reap(agents: [], slicesByID: ["s-1": slice("s-1", status: "Done")])
 
         XCTAssertEqual(reaped, [])
     }
@@ -118,38 +121,41 @@ final class SessionReapingTests: XCTestCase {
     func testTheAnswerIsSorted() {
         let reaped = reap(
             agents: [agent("s-2"), agent("s-1")],
-            slices: [slice("s-2", status: "Done"), slice("s-1", status: "Done")]
+            slicesByID: ["s-1": slice("s-1", status: "Done"), "s-2": slice("s-2", status: "Done")]
         )
 
         XCTAssertEqual(reaped, ["s-1", "s-2"])
     }
 }
 
-final class PRSettledTests: XCTestCase {
-    private func pr(_ state: String) -> PRDetail {
-        PRDetail(
-            number: 1, title: "t", body: "", state: state, isDraft: false,
-            author: "craig", baseRefName: "main", headRefName: "slice/x",
-            url: "https://github.test/craig/nat/pull/1",
-            reviewDecision: "", mergeable: "MERGEABLE", mergeStateStatus: "CLEAN"
-        )
+final class VerifiedForReapTests: XCTestCase {
+    func testInProgressIsKept() {
+        XCTAssertFalse(verifiedForReap(.found(status: "In progress", trashed: false)))
     }
 
-    func testAMergedPullRequestIsSettled() {
-        XCTAssertTrue(prIsSettled(pr(PRLifecycleState.merged)))
+    func testDoneIsReaped() {
+        XCTAssertTrue(verifiedForReap(.found(status: "Done", trashed: false)))
     }
 
-    func testAClosedPullRequestIsSettled() {
-        XCTAssertTrue(prIsSettled(pr(PRLifecycleState.closed)))
+    func testTodoIsReaped() {
+        XCTAssertTrue(verifiedForReap(.found(status: "Todo", trashed: false)))
     }
 
-    func testAnOpenPullRequestIsNot() {
-        XCTAssertFalse(prIsSettled(pr("OPEN")))
+    /// A page trashed while it read In progress is reaped anyway: whatever
+    /// the status column still says, nothing is claiming the session on a
+    /// page that has been thrown away.
+    func testATrashedInProgressPageIsReaped() {
+        XCTAssertTrue(verifiedForReap(.found(status: "In progress", trashed: true)))
     }
 
-    /// A word this build does not know is not one of the two endings, so it
-    /// is not settled — the direction to be wrong in when a kill rides on it.
-    func testAWordThisBuildDoesNotKnowIsNot() {
-        XCTAssertFalse(prIsSettled(pr("SOMETHING_NEW")))
+    func testAGonePageIsReaped() {
+        XCTAssertTrue(verifiedForReap(.gone))
+    }
+
+    /// A read that failed answers no: nothing is killed on no news, since the
+    /// one question standing between a session and a kill did not get an
+    /// answer.
+    func testAFailedReadIsKept() {
+        XCTAssertFalse(verifiedForReap(nil))
     }
 }

@@ -275,9 +275,16 @@ public struct RailModel: Equatable {
 /// Whether the ACTIVE section's review half would hold this slice: a branch
 /// handed back and not yet approved, or — `openPRSliceIDs` being the slices
 /// whose pull request is positively read as open — one approved and waiting
-/// on the merge.
+/// on the merge. Both halves require In progress, mirroring the gate
+/// `domain.StateOf` applies before either one counts: Notion's status is the
+/// one source of lifecycle truth, so a Done slice is never a review entry
+/// here even while its pull request still reads open — that window is the
+/// un-done rule's to close, by writing the page back to In progress, not this
+/// function's to paper over. `handedBack` is already status-gated at the
+/// source (`domain.Slice.HandedBack`), so only the pull-request half needs
+/// asking here.
 public func isReviewSlice(_ slice: Slice, openPRSliceIDs: Set<String>) -> Bool {
-    slice.handedBack || openPRSliceIDs.contains(slice.id)
+    slice.handedBack || (slice.status == "In progress" && openPRSliceIDs.contains(slice.id))
 }
 
 /// Whether the ACTIVE section's working half would hold this slice. Mirrors
@@ -333,10 +340,11 @@ public func buildRailModel(
     let slices = projectInfo.slices
     let milestones = projectInfo.milestones
 
-    // The slices whose pull request is positively read as open — what
-    // `sliceWorkDone` gates a Done status behind, so the DONE folders, their
-    // counts and the summary all read done-ness by the same rule the
-    // progress bar does: merged is done.
+    // The slices whose pull request is positively read as open — what the
+    // review entries and the in-flight index below are drawn from. Done-ness
+    // itself is Notion's own status now, read directly (`slice.status ==
+    // "Done"`) wherever the DONE folders, their counts and the summary count
+    // it, the same rule the progress bar applies.
     let openPRs = Set(prReadiness.keys)
 
     // The review entries hold the work a review still owes something: a branch
@@ -421,26 +429,26 @@ public func buildRailModel(
     var currentAssigned = false
 
     for milestone in sortedMilestones {
-        // A milestone Notion reads as Done still holds moving work while any
-        // of its slices waits on a merge — the same gate the progress bar
-        // applies before folding one into its Done run.
+        // A milestone's own Done status is read directly against its
+        // slices' Notion status now — the same status-only rule the
+        // progress bar applies before folding one into its Done run.
         let milestoneSlices = slices.filter { $0.milestoneID == milestone.id }
         let milestoneDone = milestone.status == "Done"
-            && milestoneSlices.allSatisfy { sliceWorkDone($0, openPRSliceIDs: openPRs) }
-        let doneCount = milestoneSlices.filter { sliceWorkDone($0, openPRSliceIDs: openPRs) }.count
+            && milestoneSlices.allSatisfy { $0.status == "Done" }
+        let doneCount = milestoneSlices.filter { $0.status == "Done" }.count
         let totalCount = milestoneSlices.count
 
         if !milestoneDone {
             // The first milestone still holding work is the current one.
             let isCurrent = !currentAssigned
-                && milestoneSlices.contains { !sliceWorkDone($0, openPRSliceIDs: openPRs) }
+                && milestoneSlices.contains { $0.status != "Done" }
             if isCurrent { currentAssigned = true }
 
             // Remaining slices: work not yet done and not drawn in a session
             // section (a Done slice awaiting its merge is the section's, not
             // this folder's).
             let remaining = milestoneSlices
-                .filter { !sliceWorkDone($0, openPRSliceIDs: openPRs) && !inFlightIDs.contains($0.id) }
+                .filter { $0.status != "Done" && !inFlightIDs.contains($0.id) }
                 .map { sliceRow(for: $0) }
 
             todoFolders.append(MilestoneFolder(
@@ -463,7 +471,7 @@ public func buildRailModel(
                 total: max(1, totalCount),
                 isCurrent: false,
                 slices: milestoneSlices
-                    .filter { sliceWorkDone($0, openPRSliceIDs: openPRs) }
+                    .filter { $0.status == "Done" }
                     .map { sliceRow(for: $0) }
             )
             if folder.isComplete {
@@ -478,7 +486,7 @@ public func buildRailModel(
     // being fed — then the finished ones newest-first.
     let doneFolders = partialDoneFolders + completeDoneFolders.reversed()
 
-    let doneSliceCount = slices.filter { sliceWorkDone($0, openPRSliceIDs: openPRs) }.count
+    let doneSliceCount = slices.filter { $0.status == "Done" }.count
     let doneSummary = doneFolders.isEmpty ? nil : DoneSummary(
         doneCount: doneSliceCount,
         totalCount: slices.count

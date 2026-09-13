@@ -25,17 +25,10 @@ public struct ProgressSegment: Equatable {
 /// The combined segment's title names the milestones it holds, since it is
 /// what the tooltip shows.
 ///
-/// `openPRSliceIDs` is the PR-readiness reading — the slices whose pull
-/// request is positively read as open. A Done slice among them does not count
-/// as progress yet: the board marks a slice Done as it opens the pull request,
-/// and the work is not on main until that merges — the same rule that keeps
-/// such a slice among the rail's review entries. With no reading taken the
-/// set is empty and every Done slice counts, which is what every finished
-/// project must go on reading as.
-public func buildProgressSegments(
-    from projectInfo: ProjectInfo,
-    openPRSliceIDs: Set<String> = []
-) -> [ProgressSegment] {
+/// Done-ness is Notion's own status, read directly: a slice counts as done
+/// once its page says so, which is written only by a real event now — a
+/// merge, or completing a slice with no pull request — never derived here.
+public func buildProgressSegments(from projectInfo: ProjectInfo) -> [ProgressSegment] {
     let sortedMilestones = projectInfo.milestones.sorted { $0.order < $1.order }
 
     var doneTitles: [String] = []
@@ -44,12 +37,9 @@ public func buildProgressSegments(
 
     for milestone in sortedMilestones {
         let slices = projectInfo.slices.filter { $0.milestoneID == milestone.id }
-        let doneCount = slices.filter { sliceWorkDone($0, openPRSliceIDs: openPRSliceIDs) }.count
+        let doneCount = slices.filter { $0.status == "Done" }.count
         let totalCount = slices.count
 
-        // A milestone Notion reads as Done still holds moving work while any
-        // of its slices waits on a merge, so it stays an open segment until
-        // the reading lets every slice count.
         if milestone.status == "Done" && doneCount == totalCount {
             doneTitles.append(milestone.name)
             doneWeight += max(1, totalCount)

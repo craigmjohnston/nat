@@ -238,6 +238,18 @@ func (l *Local) MarkDone(ctx context.Context, id string, _ Shape) error {
 	return nil
 }
 
+// ReopenSlice writes a slice back to In progress, MarkDone undone.
+func (l *Local) ReopenSlice(ctx context.Context, id string, _ Shape) error {
+	if _, err := l.updateSlice(ctx, id, "reopen the slice to In progress", func(tx *sql.Tx, _ domain.Slice) error {
+		return l.exec(ctx, tx, "reopen the slice to In progress",
+			`UPDATE slices SET status = ? WHERE id = ?`, notion.SliceInProgress, id)
+	}); err != nil {
+		return err
+	}
+	logging.Action("slice reopened to In progress", "slice", id)
+	return nil
+}
+
 // AddMilestones files milestones at the end of the plan, all of them or none.
 //
 // The names they are refused for clashing with are the plan's own as the

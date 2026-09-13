@@ -13,6 +13,13 @@ type Page struct {
 	Properties  map[string]PropertyValue `json:"properties"`
 	// Parent is where the page lives, which the breadcrumb walk climbs.
 	Parent Parent `json:"parent"`
+	// Archived is Notion's own word for a page moved to the trash — what
+	// TrashPage sets and what a page GetPage still finds, but only just, reads
+	// back as.
+	Archived bool `json:"archived"`
+	// InTrash is Notion's newer name for the same fact as Archived; the API
+	// sends both, and a page is trashed if either says so.
+	InTrash bool `json:"in_trash"`
 }
 
 // TitleText returns the page's name — the text of whichever property holds its

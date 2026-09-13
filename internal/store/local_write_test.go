@@ -187,7 +187,7 @@ func TestLocalCompleteSlice(t *testing.T) {
 	}
 }
 
-func TestLocalRecordPRAndMarkDone(t *testing.T) {
+func TestLocalRecordPRMarkDoneAndReopenSlice(t *testing.T) {
 	l, _ := openPlan(t)
 	fillPlan(t, l)
 	ctx := context.Background()
@@ -208,6 +208,13 @@ func TestLocalRecordPRAndMarkDone(t *testing.T) {
 	}
 	if got := readBack(t, l, "reads"); got.Status != domain.SliceDone {
 		t.Errorf("status = %q, want Done", got.Status)
+	}
+
+	if err := l.ReopenSlice(ctx, "reads", wholeShape); err != nil {
+		t.Fatalf("ReopenSlice: %v", err)
+	}
+	if got := readBack(t, l, "reads"); got.Status != domain.SliceClaimed {
+		t.Errorf("status = %q, want In progress, MarkDone undone", got.Status)
 	}
 }
 
@@ -467,6 +474,7 @@ func TestLocalWritesRefuseASliceThatIsNotThere(t *testing.T) {
 		},
 		"RecordPR":        func() error { return l.RecordPR(ctx, "ghost", "url") },
 		"MarkDone":        func() error { return l.MarkDone(ctx, "ghost", wholeShape) },
+		"ReopenSlice":     func() error { return l.ReopenSlice(ctx, "ghost", wholeShape) },
 		"EditSlice":       func() error { return l.EditSlice(ctx, "ghost", "t", "r", "b") },
 		"SetSliceBrief":   func() error { return l.SetSliceBrief(ctx, "ghost", "b") },
 		"SetDependencies": func() error { _, err := l.SetDependencies(ctx, "ghost", nil); return err },
@@ -677,6 +685,7 @@ func TestLocalNamesItsFileWhenAWriteIsRefused(t *testing.T) {
 		},
 		"RecordPR":      func() error { return l.RecordPR(ctx, "writes", "url") },
 		"MarkDone":      func() error { return l.MarkDone(ctx, "writes", wholeShape) },
+		"ReopenSlice":   func() error { return l.ReopenSlice(ctx, "writes", wholeShape) },
 		"EditSlice":     func() error { return l.EditSlice(ctx, "writes", "t", "r", "b") },
 		"SetSliceBrief": func() error { return l.SetSliceBrief(ctx, "writes", "b") },
 		"MoveSlice":     func() error { return l.MoveSlice(ctx, "writes", domain.Milestone{}) },

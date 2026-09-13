@@ -78,11 +78,24 @@ public final class AppModel {
     /// Per-project selected slice IDs.
     private var selectedSliceIDs: [String: String?] = [:]
 
-    /// When each slice last lost the selection, keyed by slice ID — what the
-    /// session reaper measures its grace period from. A slice with no stamp
-    /// was never selected this run, which is what makes a session left over
-    /// from a previous run dangling rather than merely idle.
-    private var sliceLeftAt: [String: Date] = [:]
+    /// How long each visited slice's session is held from being reaped, keyed
+    /// by slice ID and set to visit-time-plus-hold on every visit — the
+    /// session reaper's guard against killing what was just looked at. A
+    /// slice with no entry was never visited this run, which is what makes a
+    /// session left over from a previous run dangling rather than merely
+    /// idle: holds exist only within the current app run.
+    private var heldUntil: [String: Date] = [:]
+
+    /// Slice IDs a sweep has verified belong to a live In-progress session of
+    /// a project this run has not got open — another window's project, most
+    /// likely — so there is nothing to re-verify about them until the app
+    /// restarts. Read fresh every sweep would cost a `nat slice-status` apiece
+    /// forever. It holds only slices no open plan names, and is consulted
+    /// only for those: a slice an open plan does name has this run watching
+    /// its work end, and a cache entry that outlived that ending would keep
+    /// its session alive forever — opening the project a cached slice belongs
+    /// to is likewise what puts it back under the plan's own rule.
+    private var verifiedElsewhere: Set<String> = []
 
     /// Project stores keyed by project ID (lazily created).
     private var stores: [String: ProjectStore] = [:]
@@ -148,14 +161,14 @@ public final class AppModel {
     /// so a test never waits a quarter of a second for anything.
     private let launchSettleWait: @MainActor @Sendable () async -> Void
 
-    /// The clock the session reaper measures its grace period on.
-    /// Injectable so a test can say what "five minutes later" means without
-    /// waiting five minutes.
+    /// The clock the session reaper's visit holds are measured on. Injectable
+    /// so a test can say what "five minutes later" means without waiting five
+    /// minutes.
     private let now: @Sendable () -> Date
 
-    /// How long a finished slice's session survives being clicked away from
-    /// — `agentReapGrace` unless a test says otherwise.
-    private let reapGrace: TimeInterval
+    /// How long a visited slice's session is held from being reaped —
+    /// `agentVisitHold` unless a test says otherwise.
+    private let visitHold: TimeInterval
 
     /// How many of those waits a launched session gets to appear in before
     /// the pane gives up on it and says so — thirty seconds at the default
@@ -176,7 +189,7 @@ public final class AppModel {
             try? await Task.sleep(nanoseconds: 250_000_000)
         },
         now: @escaping @Sendable () -> Date = { Date() },
-        reapGrace: TimeInterval = agentReapGrace
+        visitHold: TimeInterval = agentVisitHold
     ) {
         self.configReader = configReader
         self.planCache = planCache
@@ -187,7 +200,7 @@ public final class AppModel {
         self.activityStoreFactory = activityStoreFactory
         self.launchSettleWait = launchSettleWait
         self.now = now
-        self.reapGrace = reapGrace
+        self.visitHold = visitHold
     }
 
     /// Start the app resolving the config and nudge paths from `nat paths`,
@@ -302,9 +315,21 @@ public final class AppModel {
     /// followed it, else the one before), and the last tab refuses to close:
     /// a board with no project is the onboarding screen's shape, and this is
     /// not onboarding.
+    ///
+    /// A closing tab's own dangling sessions get one final sweep first, with
+    /// the closing tab's own slices' visit holds ignored — once this tab is
+    /// gone, its plan stops being one the ordinary sweep considers at all, so
+    /// this is the last chance for a while to catch what it was tracking, and
+    /// a hold is about what the user just clicked away from, which closing
+    /// this tab is not for any other tab's work. It runs before the tab is
+    /// removed so every other open tab's plan is still in the mix, exactly as
+    /// the ordinary sweep sees it: a session belonging to one of them is not
+    /// mistaken for this tab's own dangling one.
     public func closeProject(_ projectID: String) async {
         guard projectTabs.count > 1,
               let index = projectTabs.firstIndex(where: { $0.id == projectID }) else { return }
+        let closing = Set((stores[projectID]?.state.projectInfo?.slices ?? []).map(\.id))
+        await reapFinishedAgents(ignoringHoldsFor: closing)
         projectTabs.remove(at: index)
         if activeProjectID == projectID {
             let neighbour = projectTabs[min(index, projectTabs.count - 1)]
@@ -420,8 +445,8 @@ public final class AppModel {
         }
         set {
             guard let activeID = activeProjectID else { return }
-            noteSelectionLeft(selectedSliceIDs[activeID] ?? nil, for: newValue)
             selectedSliceIDs[activeID] = newValue
+            noteVisited(newValue)
             if newValue != nil {
                 workshopSelectedProjects.remove(activeID)
                 workshopLaunchError = nil
@@ -429,12 +454,15 @@ public final class AppModel {
         }
     }
 
-    /// Stamps the slice the selection has just left, which is what the
-    /// reaper's grace period is measured from. Re-selecting the same slice
-    /// leaves it alone: nothing was clicked away from.
-    private func noteSelectionLeft(_ previous: String?, for next: String?) {
-        guard let previous, previous != next else { return }
-        sliceLeftAt[previous] = now()
+    /// Stamps a slice as visited: its session is held from being reaped until
+    /// `visitHold` from now, reset on every visit. The slice currently on
+    /// screen is separately exempted outright by the reaper's own candidate
+    /// rule, so what this hold is actually for is the window right after —
+    /// long enough that clicking through the rail never kills the session the
+    /// user is about to come back to.
+    private func noteVisited(_ sliceID: String?) {
+        guard let sliceID else { return }
+        heldUntil[sliceID] = now().addingTimeInterval(visitHold)
     }
 
     // MARK: - Workshop
@@ -474,7 +502,6 @@ public final class AppModel {
             guard let activeID = activeProjectID else { return }
             if newValue {
                 workshopSelectedProjects.insert(activeID)
-                noteSelectionLeft(selectedSliceIDs[activeID] ?? nil, for: nil)
                 selectedSliceIDs[activeID] = nil
             } else {
                 workshopSelectedProjects.remove(activeID)
@@ -630,11 +657,24 @@ public final class AppModel {
         return nil
     }
 
-    /// Kills the agent sessions of slices this project has finished with —
-    /// `agentSessionsToReap` is the candidate rule, `prIsSettled` the last
-    /// word, and this is the sweep that applies both. It rides the plan's own
-    /// cadence: every load, which is the app starting, a nudge landing and
-    /// the poll ticking.
+    /// Kills the agent sessions this run's open tabs have finished with —
+    /// `agentSessionsToReap` is the candidate rule, `nat slice-status`, read
+    /// fresh per candidate, the last word, and this is the sweep that applies
+    /// both. It rides every open tab's own plan-load cadence: the app
+    /// starting, a nudge landing and the poll ticking each run it for
+    /// whichever tab they belong to, and `ignoringHoldsFor` is what
+    /// `closeProject(_:)` asks for on a tab's way out — the closing tab's own
+    /// slices' holds dropped, every other tab's left standing, since a hold
+    /// is about what the user just clicked away from and closing one tab is
+    /// not a click away from another's work.
+    ///
+    /// Every open tab's plan is in the mix, not only the active one's — a
+    /// session dangling on a tab nobody has clicked to is exactly the kind
+    /// this sweep exists to catch, and it would otherwise sit there until the
+    /// user switched to that tab by hand. `projectTabs` is what "open" means;
+    /// a project's `ProjectStore` can outlive its tab being closed (kept
+    /// warm for a reopen), so reading `stores` directly would go on sweeping
+    /// a project the user no longer has open at all.
     ///
     /// The activity reading is taken fresh rather than read off
     /// `activityStore`, whose first poll has not landed when the app has only
@@ -643,40 +683,48 @@ public final class AppModel {
     /// fails reaps nothing: a sweep is a kill, and nothing is killed on no
     /// news.
     ///
-    /// A candidate carrying a pull request is then read in full
-    /// (`nat pr-view`) and reaped only where GitHub says it has merged or
-    /// closed. That reading is per candidate and so costs a `gh` apiece —
-    /// affordable because the candidates are the finished slices still
-    /// holding a session, which is nearly always none, and necessary because
-    /// the cheap listing the rest of the app rides cannot tell a landed pull
-    /// request from one it could not ask about. A candidate whose slice
-    /// records no pull request at all is asked nothing: work that produced
-    /// none has no merge coming.
-    private func reapFinishedAgents() async {
-        guard let projectStore = projectStore,
-              let info = projectStore.state.projectInfo else { return }
-        let projectID = projectStore.projectID
+    /// Each candidate is then verified with a fresh `nat slice-status` and
+    /// reaped only where that read says so (`verifiedForReap`) — closing the
+    /// race the plan reading alone cannot: a session's own claim is always
+    /// written before the session exists, so this fresh read can never show a
+    /// phantom state the way the cached plan might. Only a candidate no open
+    /// plan names is cached in `verifiedElsewhere` on an In-progress answer —
+    /// another window's project's, with nothing here to watch it finish. One
+    /// an open plan does name was nominated off a stale reading, which is
+    /// exactly the race the fresh read exists to close, and is left uncached:
+    /// the plan's next load stops nominating it by itself, and when its work
+    /// really does end, that ending still has to be verified rather than
+    /// found behind a cache entry that outlived it.
+    private func reapFinishedAgents(ignoringHoldsFor unheld: Set<String> = []) async {
+        let plans = projectTabs.compactMap { stores[$0.id]?.state.projectInfo }
+        guard !plans.isEmpty, let projectID = activeProjectID else { return }
+        var slicesByID: [String: Slice] = [:]
+        for info in plans {
+            for slice in info.slices { slicesByID[slice.id] = slice }
+        }
+
         let client = clientFactory()
         guard let statuses = try? await client.status() else { return }
 
-        let agents = statuses.reduce(into: [String: AgentStatus]()) { map, status in
-            map[status.sliceID] = status
-        }
+        var holds = heldUntil
+        for id in unheld { holds.removeValue(forKey: id) }
         let candidates = agentSessionsToReap(
-            agents: agents,
-            slices: info.slices,
-            openPRSliceIDs: Set((reviewStatsStore?.prReadiness ?? [:]).keys),
+            agents: statuses,
+            slicesByID: slicesByID,
             selectedSliceID: selectedSliceID,
-            leftAt: sliceLeftAt,
-            now: now(),
-            grace: reapGrace
+            heldUntil: holds,
+            now: now()
         )
-        let bySlice = info.slices.reduce(into: [String: Slice]()) { map, slice in
-            map[slice.id] = slice
-        }
         for sliceID in candidates {
-            guard await pullRequestHasLanded(bySlice[sliceID], projectID: projectID, client: client)
-            else { continue }
+            let inOpenPlan = slicesByID[sliceID] != nil
+            if !inOpenPlan, verifiedElsewhere.contains(sliceID) { continue }
+            let result = try? await client.sliceStatus(projectID: projectID, sliceRef: sliceID)
+            guard verifiedForReap(result) else {
+                if !inOpenPlan, case .found("In progress", false) = result {
+                    verifiedElsewhere.insert(sliceID)
+                }
+                continue
+            }
             if let refusal = await killAgent(sliceID: sliceID) {
                 // Nothing to say to the user: nobody asked for this sweep,
                 // and a session that would not die is one the next sweep
@@ -684,22 +732,6 @@ public final class AppModel {
                 NSLog("AppModel: could not reap the session for %@: %@", sliceID, refusal)
             }
         }
-    }
-
-    /// Whether a candidate's pull request is over — true for a slice that
-    /// records none, and otherwise GitHub's own word for it, read in full.
-    /// A read that fails is a no, since it is the only reading standing
-    /// between a session and a kill.
-    private func pullRequestHasLanded(
-        _ slice: Slice?, projectID: String, client: NatClientProtocol
-    ) async -> Bool {
-        guard let slice else { return false }
-        guard !slice.pr.isEmpty else { return true }
-        guard let pr = try? await client.prView(projectID: projectID, sliceRef: slice.id) else {
-            NSLog("AppModel: could not read the pull request for %@; its session stays", slice.id)
-            return false
-        }
-        return prIsSettled(pr)
     }
 
     // MARK: - Private Helpers
