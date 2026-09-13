@@ -2,6 +2,69 @@ import SwiftUI
 import NatKit
 import NatFixtures
 
+/// The diff footer's own actions: the review sent back, and the approve
+/// beside it where the slice is still waiting on one.
+///
+/// Its own view so `DiffSkeletonView` draws the very buttons the loaded
+/// footer does rather than blocks the size of them — they read the same
+/// before the branch is read and after, and what decides how deep the footer
+/// band is is their own height. `isRead` is the one thing the two states
+/// differ in: a footer with no diff behind it offers nothing to approve, for
+/// the reason a pending comment stops the approve — there is nothing yet to
+/// approve of.
+struct DiffFooterActions: View {
+    var pendingCount: Int = 0
+    var isSending = false
+    var isApproving = false
+    var showApprove: Bool = false
+    var commentsEditable = true
+    var isRead = false
+    var onSend: () -> Void = {}
+    var onApprove: () -> Void = {}
+
+    var body: some View {
+        Group {
+            Button(action: onSend) {
+                AsyncActionLabel(isBusy: isSending) {
+                    Text("Send \(pendingCount) \(plural(pendingCount, "Comment", "Comments"))")
+                        .font(.system(size: Typo.subhead, weight: .regular))
+                        .monospacedDigit()
+                }
+            }
+            // Secondary rather than primary: what this footer confirms
+            // is the approval beside it, and sending a review back is the
+            // step before that rather than the pane's own submit.
+            .buttonStyle(SecondaryButtonStyle())
+            .disabled(pendingCount == 0 || isSending || !commentsEditable)
+            .help(commentsEditable ? "" : "Comments are only sent while viewing All commits")
+
+            // Only a hand-back still awaiting approval has anything to
+            // approve — a Done slice's diff is the review continuing on
+            // a pull request already open, and drawing the button there
+            // would offer exactly what the CLI refuses.
+            if showApprove {
+                Button(action: onApprove) {
+                    AsyncActionLabel(isBusy: isApproving) {
+                        Text("Approve & Open PR…")
+                            .font(.system(size: Typo.subhead, weight: .semibold))
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(!isRead || pendingCount > 0 || isApproving || !commentsEditable)
+                .help(commentsEditable
+                    ? Self.approveHelp(pendingCount: pendingCount)
+                    : "Approving is only available while viewing All commits")
+            }
+        }
+    }
+
+    static func approveHelp(pendingCount: Int) -> String {
+        guard pendingCount > 0 else { return "" }
+        return "Send or clear the \(pendingCount) pending \(plural(pendingCount, "comment", "comments")) first — " +
+            "a review with something left to say is not one that approves the work."
+    }
+}
+
 /// A run of one file's rows currently marked as a comment's anchor — purely
 /// transient view state (never persisted; `PendingComment` is what persists
 /// once the run actually has something said about it). `rowIDs` are ordered
@@ -99,7 +162,7 @@ struct DiffTabView: View {
     /// `DiffSkeletonView`. A re-read never reaches this: it keeps the diff
     /// it has.
     private var loadingState: some View {
-        DiffSkeletonView()
+        DiffSkeletonView(handedBack: slice.handedBack)
     }
 
     private var failedState: some View {
@@ -244,37 +307,16 @@ struct DiffTabView: View {
 
                 Spacer()
 
-                Button(action: { Task { await sendComments() } }) {
-                    AsyncActionLabel(isBusy: isSending) {
-                        Text("Send \(pendingCount) \(plural(pendingCount, "Comment", "Comments"))")
-                            .font(.system(size: Typo.subhead, weight: .regular))
-                            .monospacedDigit()
-                    }
-                }
-                // Secondary rather than primary: what this footer confirms
-                // is the approval beside it, and sending a review back is the
-                // step before that rather than the pane's own submit.
-                .buttonStyle(SecondaryButtonStyle())
-                .disabled(pendingCount == 0 || isSending || !commentsEditable)
-                .help(commentsEditable ? "" : "Comments are only sent while viewing All commits")
-
-                // Only a hand-back still awaiting approval has anything to
-                // approve — a Done slice's diff is the review continuing on
-                // a pull request already open, and drawing the button there
-                // would offer exactly what the CLI refuses.
-                if slice.handedBack {
-                    Button(action: { showApproveConfirm = true }) {
-                        AsyncActionLabel(isBusy: isApproving) {
-                            Text("Approve & Open PR…")
-                                .font(.system(size: Typo.subhead, weight: .semibold))
-                        }
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(pendingCount > 0 || isApproving || !commentsEditable)
-                    .help(commentsEditable
-                        ? approveHelp(pendingCount: pendingCount)
-                        : "Approving is only available while viewing All commits")
-                }
+                DiffFooterActions(
+                    pendingCount: pendingCount,
+                    isSending: isSending,
+                    isApproving: isApproving,
+                    showApprove: slice.handedBack,
+                    commentsEditable: commentsEditable,
+                    isRead: true,
+                    onSend: { Task { await sendComments() } },
+                    onApprove: { showApproveConfirm = true }
+                )
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -313,12 +355,6 @@ struct DiffTabView: View {
         let viewedText = "\(viewedCount) of \(total) viewed"
         guard pendingCount > 0 else { return viewedText }
         return "\(pendingCount) pending \(plural(pendingCount, "comment", "comments")) · \(viewedText)"
-    }
-
-    private func approveHelp(pendingCount: Int) -> String {
-        guard pendingCount > 0 else { return "" }
-        return "Send or clear the \(pendingCount) pending \(plural(pendingCount, "comment", "comments")) first — " +
-            "a review with something left to say is not one that approves the work."
     }
 
     // MARK: - Selection & comment editing

@@ -63,6 +63,13 @@ public enum DiffSkeleton {
         DiffSkeletonFile(pathWidth: 0.27, rows: [0.48, 0.66, 0.35, 0.59])
     ]
 
+    /// How many digits the gutter is drawn at — what `DiffModel.numberWidth`
+    /// comes to for a file of a few hundred lines, which is the ordinary
+    /// case. It is the one number here a reading actually replaces: the
+    /// gutter is as wide as the longest line number in the diff, so a branch
+    /// touching a very long file widens it as it lands.
+    public static let numberWidth = 3
+
     /// The file list's own rows — one per file the branch touches, of which
     /// the boxes above are only the first few, so the sidebar reads as the
     /// longer list it always is.

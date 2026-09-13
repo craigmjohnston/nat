@@ -3,6 +3,43 @@ import SwiftUI
 import NatKit
 import NatFixtures
 
+/// The PR footer's own actions: the pull request opened where GitHub draws
+/// it, and the merge.
+///
+/// Its own view for the reason `DiffFooterActions` is — `PRSkeletonView`
+/// draws these very buttons, whose height is what holds the footer band open
+/// — and with the same `isRead`: neither is offered over a reading that has
+/// not landed, since there is no pull request yet to open or to merge.
+struct PRFooterActions: View {
+    var isMerging = false
+    var canMerge = false
+    var isRead = false
+    var onOpenInGitHub: () -> Void = {}
+    var onMerge: () -> Void = {}
+
+    var body: some View {
+        Group {
+            Button(action: onOpenInGitHub) {
+                HStack(spacing: 5) {
+                    Text("Open in GitHub")
+                    Image(systemName: "arrow.up.right.square")
+                }
+                .font(.system(size: Typo.subhead, weight: .regular))
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .disabled(!isRead)
+
+            Button(action: onMerge) {
+                AsyncActionLabel(isBusy: isMerging) {
+                    Text("Merge")
+                }
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(!isRead || !canMerge)
+        }
+    }
+}
+
 /// The PR tab: what GitHub says about a slice's pull request, read through
 /// `PRStore` and drawn beside a checks/review/changes sidebar — the desktop
 /// counterpart of the Go TUI's own PR screen (`internal/tui/prview.go`).
@@ -296,22 +333,13 @@ struct PRTabView: View {
 
                 Spacer()
 
-                Button(action: openInGitHub) {
-                    HStack(spacing: 5) {
-                        Text("Open in GitHub")
-                        Image(systemName: "arrow.up.right.square")
-                    }
-                    .font(.system(size: Typo.subhead, weight: .regular))
-                }
-                .buttonStyle(SecondaryButtonStyle())
-
-                Button(action: { showMergeConfirm = true }) {
-                    AsyncActionLabel(isBusy: isMerging) {
-                        Text("Merge")
-                    }
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(!mergeIsEnabled(for: pr) || isMerging)
+                PRFooterActions(
+                    isMerging: isMerging,
+                    canMerge: mergeIsEnabled(for: pr) && !isMerging,
+                    isRead: true,
+                    onOpenInGitHub: openInGitHub,
+                    onMerge: { showMergeConfirm = true }
+                )
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -466,8 +494,11 @@ struct PRTabView: View {
 struct PRConversationEntryView: View {
     let entry: ConvoEntry
 
-    private static let avatarSize: CGFloat = 22
-    private static let avatarGap: CGFloat = 10
+    /// The byline's avatar and the gap after it. Internal rather than
+    /// private, so `PRSkeletonView` stands its entries in the very column
+    /// these put the text in.
+    static let avatarSize: CGFloat = 22
+    static let avatarGap: CGFloat = 10
 
     var body: some View {
         HStack(alignment: .top, spacing: Self.avatarGap) {
@@ -502,6 +533,44 @@ struct PRConversationEntryView: View {
                 }
             }
         }
+    }
+}
+
+/// The composer's own metrics. Named rather than inline for the reason
+/// `ButtonMetrics` is, and for one more: `PRSkeletonView` reserves the band
+/// this opens at, and a skeleton that guessed it would hand the reading
+/// column rows the composer then took back.
+enum PRComposerMetrics {
+    /// What the editor is at least, and at most, in each of its two sizes.
+    static func editorMinHeight(compact: Bool) -> CGFloat { compact ? 22 : 36 }
+    static func editorMaxHeight(compact: Bool) -> CGFloat { compact ? 70 : 120 }
+    /// The inset over the editor, which is the only one that differs between
+    /// them.
+    static func editorTopPadding(compact: Bool) -> CGFloat { compact ? 5 : 7 }
+    /// The send row under it: the button's own height and the insets around
+    /// the row.
+    static let sendRowHeight: CGFloat = 22
+    static let sendRowTopPadding: CGFloat = 5
+    static let sendRowBottomPadding: CGFloat = 7
+    /// The field's corner.
+    static let cornerRadius: CGFloat = 8
+
+    /// What the box comes to at its floor: the editor at its own minimum,
+    /// the send row under it, and the insets around both.
+    static func height(compact: Bool) -> CGFloat {
+        chrome + editorMinHeight(compact: compact)
+    }
+
+    /// And at its ceiling, which is what the one at the tab's foot actually
+    /// opens at: the editor is flexible, so a `VStack` with room to spare
+    /// gives it every point up to its maximum.
+    static func maxHeight(compact: Bool) -> CGFloat {
+        chrome + editorMaxHeight(compact: compact)
+    }
+
+    /// Everything the box is but its editor.
+    private static var chrome: CGFloat {
+        editorTopPadding(compact: false) + sendRowTopPadding + sendRowHeight + sendRowBottomPadding
     }
 }
 
@@ -545,11 +614,14 @@ struct PRComposerView: View {
                     TextEditor(text: $text)
                         .font(Typo.mono(size: Typo.subhead))
                         .scrollContentBackground(.hidden)
-                        .frame(minHeight: compact ? 22 : 36, maxHeight: compact ? 70 : 120)
+                        .frame(
+                            minHeight: PRComposerMetrics.editorMinHeight(compact: compact),
+                            maxHeight: PRComposerMetrics.editorMaxHeight(compact: compact)
+                        )
                         .padding(.horizontal, 2)
                 }
                 .padding(.horizontal, 9)
-                .padding(.top, compact ? 5 : 7)
+                .padding(.top, PRComposerMetrics.editorTopPadding(compact: compact))
 
                 // The mock's toolbar row also draws textformat and paperclip
                 // icons here; neither has anything real to do — gh has no API
@@ -578,7 +650,7 @@ struct PRComposerView: View {
                                     .ink(.onAccent)
                             }
                         }
-                        .frame(width: 24, height: 22)
+                        .frame(width: 24, height: PRComposerMetrics.sendRowHeight)
                         .background(canSend ? DesignTokens.accent : DesignTokens.accentMuted(on: .field))
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
@@ -587,10 +659,10 @@ struct PRComposerView: View {
                     .help("Send")
                 }
                 .padding(.horizontal, 8)
-                .padding(.top, 5)
-                .padding(.bottom, 7)
+                .padding(.top, PRComposerMetrics.sendRowTopPadding)
+                .padding(.bottom, PRComposerMetrics.sendRowBottomPadding)
             }
-            .field(radius: 8)
+            .field(radius: PRComposerMetrics.cornerRadius)
 
             if let error {
                 Text(error)

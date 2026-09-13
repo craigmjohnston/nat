@@ -248,6 +248,19 @@ enum AppStories {
         // MARK: - The workflow's tabs
 
         Story(
+            name: "brief-skeleton",
+            summary: "The Brief tab on a first read that has not landed — the brief's own "
+                + "placeholder, under the footer the loaded pane draws.",
+            size: pane
+        ) {
+            // A client that never answers, for the reason `rail-skeleton`
+            // has one: the skeleton is a moment a fixture that answers
+            // instantly never has.
+            BriefTabView(appModel: Fixtures.loadingAppModel(), slice: Fixtures.slice(Fixtures.mergeBoxSliceID))
+                .surface(.window)
+        },
+
+        Story(
             name: "brief-handed-back",
             summary: "The Brief tab of a slice whose branch is waiting to be reviewed.",
             size: pane
@@ -279,6 +292,16 @@ enum AppStories {
         },
 
         Story(
+            name: "diff-skeleton",
+            summary: "The Diff tab on a branch still being read — file boxes and the file "
+                + "list as placeholders, with the commits menu and the footer drawn real.",
+            size: pane
+        ) {
+            DiffTabView(appModel: Fixtures.loadingAppModel(), slice: Fixtures.slice(Fixtures.mergeBoxSliceID))
+                .surface(.window)
+        },
+
+        Story(
             name: "diff-handed-back",
             summary: "The Diff tab: the handed-back branch, one box per file, beside its file list.",
             size: pane
@@ -303,6 +326,16 @@ enum AppStories {
             await store.fetch(projectID: Fixtures.projectID, sliceRef: slice.id)
             Fixtures.seedPendingComments(into: store)
             return DiffTabView(appModel: appModel, slice: slice)
+                .surface(.window)
+        },
+
+        Story(
+            name: "pr-skeleton",
+            summary: "The PR tab on a pull request still being read — the placeholder under "
+                + "the section labels, composer and footer the loaded pane draws.",
+            size: pane
+        ) {
+            PRTabView(appModel: Fixtures.loadingAppModel(), slice: Fixtures.slice(Fixtures.approveSliceID))
                 .surface(.window)
         },
 
