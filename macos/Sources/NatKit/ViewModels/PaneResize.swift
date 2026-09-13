@@ -26,3 +26,15 @@ public func paneResizedWidth(
     let delta = edge == .trailing ? translation : -translation
     return min(maxWidth, max(minWidth, startWidth + delta))
 }
+
+/// Whether a resize drag finished with the pointer still over its handle.
+/// Cursor updates are suppressed for the length of a drag and AppKit
+/// re-asserts a cursor rect only as the pointer crosses into it, so the
+/// cursor a drag ends under is whatever the drag last set — which leaves the
+/// resize cursor up over ordinary content when a drag wanders off the strip
+/// (clamped at a bound, or flung past it) and never comes back. The handle's
+/// frame and the drag's last location are both read in the window's own
+/// coordinate space, so this is the one question the caller has to ask.
+public func paneDragEndedOverHandle(handleFrame: CGRect, endLocation: CGPoint) -> Bool {
+    handleFrame.contains(endLocation)
+}

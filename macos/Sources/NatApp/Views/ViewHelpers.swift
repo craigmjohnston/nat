@@ -122,11 +122,25 @@ struct PaneResizeHandle: View {
     /// `paneResizedWidth`.
     @State private var startWidth: Double?
 
+    /// Where the strip currently sits in the window, kept live because the
+    /// divider moves under the pointer as the drag resizes the pane — it is
+    /// what a finished drag's last location is tested against; see
+    /// `paneDragEndedOverHandle`.
+    @State private var frame: CGRect = .zero
+
     var body: some View {
         Color.clear
             .frame(width: 9)
             .contentShape(Rectangle())
             .background(ResizeCursorView())
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onChange(of: proxy.frame(in: .global), initial: true) { _, rect in
+                            frame = rect
+                        }
+                }
+            )
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in
@@ -144,7 +158,18 @@ struct PaneResizeHandle: View {
                         // 9pt wide) would otherwise run under the arrow.
                         NSCursor.resizeLeftRight.set()
                     }
-                    .onEnded { _ in startWidth = nil }
+                    .onEnded { value in
+                        startWidth = nil
+                        // The cursor the drag kept setting stays up until the
+                        // pointer crosses into a cursor rect again, so a drag
+                        // that ended away from the strip has to hand the arrow
+                        // back itself.
+                        if paneDragEndedOverHandle(handleFrame: frame, endLocation: value.location) {
+                            NSCursor.resizeLeftRight.set()
+                        } else {
+                            NSCursor.arrow.set()
+                        }
+                    }
             )
     }
 }
