@@ -312,6 +312,24 @@ enum AppStories {
         },
 
         Story(
+            name: "diff-collapsed-file",
+            summary: "The same diff with one file folded to its header row — the fold "
+                + "chevron's slot holds its width whichever way it points, so the path "
+                + "beside it never shifts.",
+            size: pane
+        ) {
+            let appModel = await Fixtures.startedAppModel()
+            let slice = Fixtures.slice(Fixtures.mergeBoxSliceID)
+            let store = appModel.diffStore(projectID: Fixtures.projectID)
+            await store.fetch(projectID: Fixtures.projectID, sliceRef: slice.id)
+            if let path = store.loadState.diff?.files.first?.path {
+                store.toggleCollapsed(path)
+            }
+            return DiffTabView(appModel: appModel, slice: slice)
+                .surface(.window)
+        },
+
+        Story(
             name: "diff-pending-comments",
             summary: "The same diff with a review left on it and not yet sent.",
             size: pane

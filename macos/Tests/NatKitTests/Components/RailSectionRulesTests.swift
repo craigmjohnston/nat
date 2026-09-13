@@ -187,7 +187,7 @@ final class RailSectionRulesTests: XCTestCase {
         let s = try source()
         for (builder, heading) in [
             ("private func activeSection(height: CGFloat?) -> some View {", "sectionHeading(.active)"),
-            ("private func todoSection(height: CGFloat?) -> some View {", "sectionHeading(.todo)"),
+            ("private func todoSection(height: CGFloat?) -> some View {", "sectionHeading(.todo,"),
             ("private func doneSection(_ summary: DoneSummary, height: CGFloat?) -> some View {",
              "sectionHeading(.done,")
         ] {
@@ -280,7 +280,9 @@ final class RailSectionRulesTests: XCTestCase {
     func testEveryHeadingIsIconAndChevron() throws {
         let s = try source()
         XCTAssertTrue(
-            s.contains("private func sectionHeading(_ section: RailSection, trailing: String? = nil)"),
+            s.contains(
+                "private func sectionHeading(_ section: RailSection, trailing: String? = nil, "
+                    + "showTodoActions: Bool = false)"),
             "the three headings should be one builder"
         )
         XCTAssertTrue(s.contains("Image(systemName: section.icon)"), "every heading wears its own icon")

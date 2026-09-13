@@ -119,7 +119,7 @@ struct PaneView: View {
     /// locked stages' own glyphs are drawn in, so a run of locked stages
     /// recedes as one thing rather than as stages behind lit arrows.
     private func stepperSeparator(lit: Bool) -> some View {
-        Image(systemName: "chevron.right")
+        Image(systemName: "arrow.right")
             .font(.system(size: 9, weight: .semibold))
             .ink(lit ? .secondary : .quaternary)
             .frame(width: 12)
@@ -132,8 +132,10 @@ struct PaneView: View {
     /// `WorkflowTabState` the tabs always used — a stage can be both complete
     /// and current (its check stays green, the current wash still applies) —
     /// so there's nothing new to keep in sync with the content switch below.
-    /// Unlike the old tabs, a stage isn't sized to a fixed width: the
-    /// glyph+label take only the room they need.
+    /// Unlike the old tabs, a stage isn't sized to a fixed width: the label
+    /// takes only the room it needs — only the glyph ahead of it is, so a
+    /// stage's label lines up with its neighbours' regardless of which glyph
+    /// it's showing.
     private func stepperStage(
         _ tab: WorkflowTab,
         isCurrentTab: Bool,
@@ -183,6 +185,11 @@ struct PaneView: View {
                         .font(.system(size: 8))
                 }
             }
+            // Fixed rather than sized to whichever glyph is showing — the
+            // checkmark and the two circles differ enough in intrinsic
+            // width that without this each stage's label started at its own
+            // x rather than one shared column.
+            .frame(width: 13)
             .ink(glyphColor)
 
             Text(tab.rawValue)
