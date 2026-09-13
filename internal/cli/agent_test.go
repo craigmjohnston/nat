@@ -14,7 +14,8 @@ import (
 // agentTestRunner is a fake tmux runner, standing in for the tmux binary
 // across every command that reads or drives a live session: which slices are
 // running (list-panes), a prompt sent to one (set-buffer, paste-buffer), an
-// interrupt (send-keys Escape) and a launch (new-session, set-option).
+// interrupt (send-keys Escape), a kill (kill-session) and a launch
+// (new-session, set-option).
 type agentTestRunner struct {
 	liveSessions map[string]string
 	liveErr      string // returned as an ExitError from list-panes when set
@@ -29,6 +30,8 @@ type agentTestRunner struct {
 	sendErr      string // returned as an ExitError from paste-buffer when set
 	interrupts   []string
 	interruptErr string // returned as an ExitError from send-keys Escape when set
+	kills        []string
+	killErr      string // returned as an ExitError from kill-session when set
 	// stagingBuffer holds the most recent prompt text staged for sending.
 	stagingBuffer string
 
@@ -100,6 +103,14 @@ func (r *agentTestRunner) Run(name string, args ...string) (string, error) {
 			if len(args) > 3 && args[3] == "Escape" {
 				r.interrupts = append(r.interrupts, session)
 			}
+		}
+		return "", nil
+	case "kill-session":
+		if r.killErr != "" {
+			return "", &agent.ExitError{Code: 1, Stderr: r.killErr}
+		}
+		if len(args) > 2 && args[1] == "-t" {
+			r.kills = append(r.kills, args[2])
 		}
 		return "", nil
 	case "new-session":
@@ -499,5 +510,100 @@ func TestAgentInterruptReportsAFailedLiveRead(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "could not read live sessions") {
 		t.Errorf("err = %v, want the failed read named", err)
+	}
+}
+
+func TestAgentKillRefusesWrongArgumentCount(t *testing.T) {
+	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+
+	err := Run(context.Background(), []string{"agent-kill", "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "want exactly one") {
+		t.Errorf("agent-kill error: %v, want 'want exactly one'", err)
+	}
+}
+
+func TestAgentKillInvalidSliceID(t *testing.T) {
+	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+
+	err := Run(context.Background(), []string{"agent-kill", "not-a-uuid", "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "not a slice") {
+		t.Errorf("agent-kill error: %v, want 'not a slice'", err)
+	}
+}
+
+func TestAgentKillRefusesAnUnknownFlag(t *testing.T) {
+	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+
+	err := Run(context.Background(), []string{"agent-kill", testSliceID, "--bogus", "--project", "project-1"}, env)
+
+	var usage *UsageError
+	if !errors.As(err, &usage) {
+		t.Fatalf("err = %v (%T), want a *UsageError", err, err)
+	}
+}
+
+func TestAgentKillRefusesAnUnknownProject(t *testing.T) {
+	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+
+	err := Run(context.Background(), []string{"agent-kill", testSliceID, "--project", "nope"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "no project nope") {
+		t.Errorf("err = %v, want the unknown project named", err)
+	}
+}
+
+func TestAgentKillWithLiveSession(t *testing.T) {
+	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	runner := &agentTestRunner{liveSessions: map[string]string{testSliceID: "nat-abcd1234"}}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+
+	err := Run(context.Background(), []string{"agent-kill", testSliceID, "--project", "project-1"}, env)
+
+	if err != nil {
+		t.Errorf("agent-kill: unexpected error: %v", err)
+	}
+	if len(runner.kills) != 1 || runner.kills[0] != "nat-abcd1234" {
+		t.Errorf("kills = %v, want the slice's own session killed once", runner.kills)
+	}
+}
+
+func TestAgentKillRefusesNoLiveSession(t *testing.T) {
+	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	runner := &agentTestRunner{liveSessions: map[string]string{}}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+
+	err := Run(context.Background(), []string{"agent-kill", testSliceID, "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "no live session") {
+		t.Errorf("agent-kill error: %v, want 'no live session'", err)
+	}
+}
+
+func TestAgentKillReportsAFailedLiveRead(t *testing.T) {
+	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	runner := &agentTestRunner{liveFatalErr: "no server running"}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+
+	err := Run(context.Background(), []string{"agent-kill", testSliceID, "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "could not read live sessions") {
+		t.Errorf("err = %v, want the failed read named", err)
+	}
+}
+
+func TestAgentKillFailure(t *testing.T) {
+	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	runner := &agentTestRunner{
+		liveSessions: map[string]string{testSliceID: "nat-abcd1234"},
+		killErr:      "tmux failed",
+	}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+
+	err := Run(context.Background(), []string{"agent-kill", testSliceID, "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "kill the session") {
+		t.Errorf("err = %v, want the kill's failure named", err)
 	}
 }

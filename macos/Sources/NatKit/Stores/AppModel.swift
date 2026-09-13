@@ -78,6 +78,12 @@ public final class AppModel {
     /// Per-project selected slice IDs.
     private var selectedSliceIDs: [String: String?] = [:]
 
+    /// When each slice last lost the selection, keyed by slice ID — what the
+    /// session reaper measures its grace period from. A slice with no stamp
+    /// was never selected this run, which is what makes a session left over
+    /// from a previous run dangling rather than merely idle.
+    private var sliceLeftAt: [String: Date] = [:]
+
     /// Project stores keyed by project ID (lazily created).
     private var stores: [String: ProjectStore] = [:]
 
@@ -142,6 +148,15 @@ public final class AppModel {
     /// so a test never waits a quarter of a second for anything.
     private let launchSettleWait: @MainActor @Sendable () async -> Void
 
+    /// The clock the session reaper measures its grace period on.
+    /// Injectable so a test can say what "five minutes later" means without
+    /// waiting five minutes.
+    private let now: @Sendable () -> Date
+
+    /// How long a finished slice's session survives being clicked away from
+    /// — `agentReapGrace` unless a test says otherwise.
+    private let reapGrace: TimeInterval
+
     /// How many of those waits a launched session gets to appear in before
     /// the pane gives up on it and says so — thirty seconds at the default
     /// wait, which is long past the two the poll's own cadence costs.
@@ -159,7 +174,9 @@ public final class AppModel {
         activityStoreFactory: @escaping @MainActor @Sendable () -> ActivityStore = { ActivityStore() },
         launchSettleWait: @escaping @MainActor @Sendable () async -> Void = {
             try? await Task.sleep(nanoseconds: 250_000_000)
-        }
+        },
+        now: @escaping @Sendable () -> Date = { Date() },
+        reapGrace: TimeInterval = agentReapGrace
     ) {
         self.configReader = configReader
         self.planCache = planCache
@@ -169,6 +186,8 @@ public final class AppModel {
         self.workshopLauncher = workshopLauncher
         self.activityStoreFactory = activityStoreFactory
         self.launchSettleWait = launchSettleWait
+        self.now = now
+        self.reapGrace = reapGrace
     }
 
     /// Start the app resolving the config and nudge paths from `nat paths`,
@@ -253,6 +272,9 @@ public final class AppModel {
         // Load the project store
         await projectStore.load()
         await updateReviewStats(projectID: projectID, projectStore: projectStore)
+        // Every session a previous run left behind on a finished slice is
+        // dangling, and this is the first sweep that sees them.
+        await reapFinishedAgents()
 
         // Re-arm activity polling
         activityStore?.kick()
@@ -398,12 +420,21 @@ public final class AppModel {
         }
         set {
             guard let activeID = activeProjectID else { return }
+            noteSelectionLeft(selectedSliceIDs[activeID] ?? nil, for: newValue)
             selectedSliceIDs[activeID] = newValue
             if newValue != nil {
                 workshopSelectedProjects.remove(activeID)
                 workshopLaunchError = nil
             }
         }
+    }
+
+    /// Stamps the slice the selection has just left, which is what the
+    /// reaper's grace period is measured from. Re-selecting the same slice
+    /// leaves it alone: nothing was clicked away from.
+    private func noteSelectionLeft(_ previous: String?, for next: String?) {
+        guard let previous, previous != next else { return }
+        sliceLeftAt[previous] = now()
     }
 
     // MARK: - Workshop
@@ -443,6 +474,7 @@ public final class AppModel {
             guard let activeID = activeProjectID else { return }
             if newValue {
                 workshopSelectedProjects.insert(activeID)
+                noteSelectionLeft(selectedSliceIDs[activeID] ?? nil, for: nil)
                 selectedSliceIDs[activeID] = nil
             } else {
                 workshopSelectedProjects.remove(activeID)
@@ -559,6 +591,7 @@ public final class AppModel {
         guard let projectStore = projectStore else { return }
         await projectStore.refresh()
         await updateReviewStats(projectID: projectStore.projectID, projectStore: projectStore)
+        await reapFinishedAgents()
         activityStore?.kick()
         // A slice's page may have changed underneath any reading of it taken
         // before this refresh landed — every cached reading but the one
@@ -567,6 +600,106 @@ public final class AppModel {
         // forever; the one on screen is left alone; blanking it here would
         // only cost the user their brief with nothing about to refetch it.
         sliceDetailStores[projectStore.projectID]?.invalidateCache(keeping: selectedSliceID)
+    }
+
+    // MARK: - Agent sessions
+
+    /// End a slice's agent session outright — `nat agent-kill`, the one
+    /// thing that actually reaps a session, since closing the Agent tab only
+    /// detaches the viewer. The activity poll is re-armed straight after, so
+    /// the session leaves the rail's live indicators on its next reading
+    /// rather than at the next plan load.
+    ///
+    /// Answers with the refusal's own first line where nat refused, and nil
+    /// where the session is gone. Nothing in the app asks for a kill by hand
+    /// — `reapFinishedAgents` is the only caller — so a refusal is something
+    /// to log rather than the app's error banner; `nat agent-kill` is where
+    /// a kill is asked for outright.
+    @discardableResult
+    func killAgent(sliceID: String) async -> String? {
+        guard let projectID = activeProjectID else { return "No project loaded" }
+        do {
+            try await clientFactory().agentKill(projectID: projectID, sliceRef: sliceID)
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error { return message }
+            return error.localizedDescription
+        } catch {
+            return error.localizedDescription
+        }
+        activityStore?.kick()
+        return nil
+    }
+
+    /// Kills the agent sessions of slices this project has finished with —
+    /// `agentSessionsToReap` is the candidate rule, `prIsSettled` the last
+    /// word, and this is the sweep that applies both. It rides the plan's own
+    /// cadence: every load, which is the app starting, a nudge landing and
+    /// the poll ticking.
+    ///
+    /// The activity reading is taken fresh rather than read off
+    /// `activityStore`, whose first poll has not landed when the app has only
+    /// just started — which is exactly the sweep that matters, since every
+    /// session left running by a previous run is dangling. A reading that
+    /// fails reaps nothing: a sweep is a kill, and nothing is killed on no
+    /// news.
+    ///
+    /// A candidate carrying a pull request is then read in full
+    /// (`nat pr-view`) and reaped only where GitHub says it has merged or
+    /// closed. That reading is per candidate and so costs a `gh` apiece —
+    /// affordable because the candidates are the finished slices still
+    /// holding a session, which is nearly always none, and necessary because
+    /// the cheap listing the rest of the app rides cannot tell a landed pull
+    /// request from one it could not ask about. A candidate whose slice
+    /// records no pull request at all is asked nothing: work that produced
+    /// none has no merge coming.
+    private func reapFinishedAgents() async {
+        guard let projectStore = projectStore,
+              let info = projectStore.state.projectInfo else { return }
+        let projectID = projectStore.projectID
+        let client = clientFactory()
+        guard let statuses = try? await client.status() else { return }
+
+        let agents = statuses.reduce(into: [String: AgentStatus]()) { map, status in
+            map[status.sliceID] = status
+        }
+        let candidates = agentSessionsToReap(
+            agents: agents,
+            slices: info.slices,
+            openPRSliceIDs: Set((reviewStatsStore?.prReadiness ?? [:]).keys),
+            selectedSliceID: selectedSliceID,
+            leftAt: sliceLeftAt,
+            now: now(),
+            grace: reapGrace
+        )
+        let bySlice = info.slices.reduce(into: [String: Slice]()) { map, slice in
+            map[slice.id] = slice
+        }
+        for sliceID in candidates {
+            guard await pullRequestHasLanded(bySlice[sliceID], projectID: projectID, client: client)
+            else { continue }
+            if let refusal = await killAgent(sliceID: sliceID) {
+                // Nothing to say to the user: nobody asked for this sweep,
+                // and a session that would not die is one the next sweep
+                // tries again on.
+                NSLog("AppModel: could not reap the session for %@: %@", sliceID, refusal)
+            }
+        }
+    }
+
+    /// Whether a candidate's pull request is over — true for a slice that
+    /// records none, and otherwise GitHub's own word for it, read in full.
+    /// A read that fails is a no, since it is the only reading standing
+    /// between a session and a kill.
+    private func pullRequestHasLanded(
+        _ slice: Slice?, projectID: String, client: NatClientProtocol
+    ) async -> Bool {
+        guard let slice else { return false }
+        guard !slice.pr.isEmpty else { return true }
+        guard let pr = try? await client.prView(projectID: projectID, sliceRef: slice.id) else {
+            NSLog("AppModel: could not read the pull request for %@; its session stays", slice.id)
+            return false
+        }
+        return prIsSettled(pr)
     }
 
     // MARK: - Private Helpers

@@ -28,6 +28,7 @@ private final class MockReviewStatsClient: NatClientProtocol, @unchecked Sendabl
         throw ReviewStatsTestError()
     }
     func agentSend(projectID: String, sliceRef: String, text: String) async throws { throw ReviewStatsTestError() }
+    func agentKill(projectID: String, sliceRef: String) async throws { throw ReviewStatsTestError() }
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String { throw ReviewStatsTestError() }
     func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult {
         throw ReviewStatsTestError()

@@ -22,6 +22,8 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case sliceLaunchFailure
         case agentSendSuccess
         case agentSendNoSession
+        case agentKillSuccess
+        case agentKillNoSession
         case sliceApproveSuccess
         case sliceApproveFailure
         case prViewFull
@@ -119,6 +121,11 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             // agent-send says nothing at all on success.
             return (Data(), Data(), 0)
         case .agentSendNoSession:
+            return (Data(), "no live session for slice-id".data(using: .utf8)!, 1)
+        case .agentKillSuccess:
+            // agent-kill, like agent-send, says nothing at all on success.
+            return (Data(), Data(), 0)
+        case .agentKillNoSession:
             return (Data(), "no live session for slice-id".data(using: .utf8)!, 1)
         case .sliceApproveSuccess:
             return (fixtureSliceApprove.data(using: .utf8)!, Data(), 0)

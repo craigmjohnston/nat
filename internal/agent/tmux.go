@@ -688,6 +688,28 @@ func (t *Tmux) Interrupt(session string) error {
 	return nil
 }
 
+// Kill ends the tmux session an agent is running in, taking the agent with
+// it. It is the one thing here that stops an agent rather than talking to
+// one: [Tmux.Interrupt] ends a turn and leaves the session sitting there,
+// where a slice that is finished with has no more turns to end and its
+// session is only holding a pane on the server forever.
+//
+// A session tmux does not have is not a failure — kill-session exits non-zero
+// saying so, and a session already gone is exactly the state the call was
+// asking for. Anything else it refuses over is handed back.
+func (t *Tmux) Kill(session string) error {
+	if _, err := t.run("kill-session", "-t", session); err != nil {
+		var exit *ExitError
+		if errors.As(err, &exit) && strings.Contains(exit.Stderr, "can't find session") {
+			logging.Action("agent session already gone", "session", session)
+			return nil
+		}
+		return fmt.Errorf("kill %s: %w", session, err)
+	}
+	logging.Action("agent session killed", "session", session)
+	return nil
+}
+
 // SessionEnv is set by tmux in every pane it runs, to the socket and session
 // the pane belongs to. tmux refuses to attach a client from inside one of its
 // own panes when it is non-empty, so an attach that runs under the board — the

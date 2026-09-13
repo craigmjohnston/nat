@@ -52,6 +52,10 @@ class MockActivityClient: NatClientProtocol, @unchecked Sendable {
         throw NSError(domain: "test", code: -1)
     }
 
+    func agentKill(projectID: String, sliceRef: String) async throws {
+        throw NSError(domain: "test", code: -1)
+    }
+
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String {
         throw NSError(domain: "test", code: -1)
     }

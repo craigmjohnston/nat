@@ -197,6 +197,10 @@ usage:
                       from stdin
   nat agent-interrupt <slice> --project ID
                       send an interrupt signal to a live agent session
+  nat agent-kill <slice> --project ID
+                      end a live agent session, taking its agent with it — for
+                      a slice that is finished with, whose session would
+                      otherwise sit on the tmux server forever
   nat project-create <name> [--repo DIR] [--description TEXT|-] [--json]
                       create a project and its Slices database, register it in
                       local config and write the description as its page body;
@@ -343,6 +347,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return agentSend(ctx, args[1:], env)
 	case "agent-interrupt":
 		return agentInterrupt(ctx, args[1:], env)
+	case "agent-kill":
+		return agentKill(ctx, args[1:], env)
 	case "project-create":
 		return projectCreate(ctx, args[1:], env)
 	case "milestone-add":
