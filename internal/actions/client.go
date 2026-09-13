@@ -15,6 +15,10 @@ import (
 // either flow touches.
 type Store interface {
 	Slice(ctx context.Context, id string) (domain.Slice, store.Shape, error)
+	// Body reads the prose kept on a page — a slice's brief, a project's
+	// conventions — as markdown, which a launch writes into the agent's
+	// opening prompt.
+	Body(ctx context.Context, id string) (string, error)
 	PRDescription(ctx context.Context, id string) (string, error)
 	ClaimSlice(ctx context.Context, id string, sh store.Shape, userID string) (domain.Slice, error)
 	RecordPR(ctx context.Context, id, url string) error

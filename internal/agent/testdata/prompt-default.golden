@@ -7,16 +7,18 @@ You are a Claude Code agent working exactly one slice of the "notion-agent-track
 - Notion URL: https://app.notion.com/p/3b738308f65481708c99eccab4463d8f
 - Working directory: /Users/craig/Projects/notion-agent-tracker
 
-## Claim it first
+This slice is already claimed for Craig Johnston: the board claims a slice as
+it launches the agent for it, so there is nothing to run before starting
+work. What follows is your brief: the slice's own body and acceptance
+criteria, then the conventions that apply to every slice of the project.
 
-Before doing any work, run:
+## Brief
 
-    nat start-slice 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
+Wire up a tmux session per agent and give it an opening prompt.
 
-That claims the slice for Craig Johnston and prints your brief: the slice's own
-body and acceptance criteria, followed by the project's conventions.
-If it refuses — the slice is already claimed, or already done — stop and
-say so rather than working the slice anyway.
+## Project conventions
+
+Go, Bubble Tea v2, 100% coverage of new code.
 
 Every `nat` command below names the project this slice is in:
 
@@ -29,12 +31,9 @@ which they can switch while you work.
 
 ## Then read
 
-1. The brief the command printed — the slice, then the conventions that
-   apply to every slice of the project.
-2. `CLAUDE.md` in the working directory — architecture and the
+1. `CLAUDE.md` in the working directory — architecture and the
    verification gate.
-3. The other slices in this slice's own milestone — the one this brief
-   named above, read with:
+2. The other slices in this slice's own milestone, read with:
 
        nat info --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
 

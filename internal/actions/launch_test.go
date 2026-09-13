@@ -136,9 +136,60 @@ func TestLaunchRefusesAWorktreeThatCannotBeMade(t *testing.T) {
 	}
 }
 
+// TestLaunchReportsAFailedBriefRead covers the slice's own body refusing to
+// read after the claim has gone through: nothing is launched, and the claim
+// stands, since the claim is what makes the brief worth reading in the first
+// place.
+func TestLaunchReportsAFailedBriefRead(t *testing.T) {
+	l := &fakeLauncher{}
+	client := &fakeClient{
+		getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil },
+		blocks:  func(string) ([]notion.Block, error) { return nil, errors.New("notion: 500") },
+	}
+
+	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), "u1",
+		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: t.TempDir()},
+		config.AgentModel{})
+
+	if err == nil || !strings.Contains(err.Error(), `claimed "Info view" but could not read its brief: notion: 500`) {
+		t.Errorf("err = %v, want the brief's read failure named", err)
+	}
+	if len(l.launches) != 0 {
+		t.Error("no session should start without a brief to seed it")
+	}
+}
+
+// TestLaunchReportsAFailedConventionsRead covers the project's own body
+// refusing to read: the slice's own brief came back fine, but the launch
+// still stops rather than writing a prompt with half the document missing.
+func TestLaunchReportsAFailedConventionsRead(t *testing.T) {
+	l := &fakeLauncher{}
+	client := &fakeClient{
+		getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil },
+		blocks: func(id string) ([]notion.Block, error) {
+			if id == "p1" {
+				return nil, errors.New("notion: 500")
+			}
+			return nil, nil
+		},
+	}
+
+	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), "u1",
+		agent.PromptContext{
+			Slice: domain.Slice{ID: "s5", Name: "Info view"}, ProjectID: "p1", WorkingDir: t.TempDir(),
+		}, config.AgentModel{})
+
+	if err == nil || !strings.Contains(err.Error(), `claimed "Info view" but could not read the project conventions: notion: 500`) {
+		t.Errorf("err = %v, want the conventions' read failure named", err)
+	}
+	if len(l.launches) != 0 {
+		t.Error("no session should start without the project conventions to seed it")
+	}
+}
+
 // TestLaunchReportsAFailedPromptFile covers the prompt file itself failing to
-// write: the claim is never reached, since a launch that got no further
-// leaves the slice exactly where it was.
+// write: the claim and the brief it is written with have already happened by
+// then, since fetching the brief needs the claim to have gone through first.
 func TestLaunchReportsAFailedPromptFile(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
 	l := &fakeLauncher{}
@@ -154,8 +205,8 @@ func TestLaunchReportsAFailedPromptFile(t *testing.T) {
 	if len(l.launches) != 0 {
 		t.Error("no session should start without a prompt to seed it")
 	}
-	if len(client.updated) != 0 {
-		t.Errorf("wrote %+v, want the slice untouched", client.updated)
+	if len(client.updated) != 1 {
+		t.Errorf("wrote %+v, want the slice claimed", client.updated)
 	}
 }
 

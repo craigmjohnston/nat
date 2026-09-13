@@ -56,6 +56,8 @@ func testContext() PromptContext {
 		ProjectID:    testProjectID,
 		WorkingDir:   "/Users/craig/Projects/notion-agent-tracker",
 		AssigneeName: "Craig Johnston",
+		Brief:        "Wire up a tmux session per agent and give it an opening prompt.",
+		Conventions:  "Go, Bubble Tea v2, 100% coverage of new code.",
 	}
 }
 
@@ -83,7 +85,6 @@ func TestPromptWithoutOptionalContext(t *testing.T) {
 func TestPromptRoutesEverythingThroughTheCLI(t *testing.T) {
 	got := Prompt(testContext())
 	for _, want := range []string{
-		"nat start-slice 3b738308-f654-8170-8c99-eccab4463d8f --project " + testProjectID,
 		"nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --project " + testProjectID,
 		"--branch",
 		"--blocked",
@@ -95,6 +96,22 @@ func TestPromptRoutesEverythingThroughTheCLI(t *testing.T) {
 	for _, unwanted := range []string{"Notion MCP", "`Status`", "`Assignee`", "`PR` property"} {
 		if strings.Contains(got, unwanted) {
 			t.Errorf("prompt still tells the agent about %s rather than the commands", unwanted)
+		}
+	}
+}
+
+// The board already claims a slice as it launches the agent for it, so the
+// prompt must never tell a board-launched agent to run start-slice itself —
+// that command is for a session started outside the board, which has no
+// claim of its own yet.
+func TestPromptNeverTellsTheAgentToRunStartSlice(t *testing.T) {
+	for name, got := range map[string]string{
+		"fresh":    Prompt(testContext()),
+		"worktree": Prompt(worktreeContext()),
+		"resume":   Prompt(resumeContext()),
+	} {
+		if strings.Contains(got, "start-slice") {
+			t.Errorf("%s prompt still tells the agent to run start-slice:\n%s", name, got)
 		}
 	}
 }
@@ -138,6 +155,21 @@ func TestPromptNamesTheSlice(t *testing.T) {
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not mention %q", want)
+		}
+	}
+}
+
+// The prompt carries the brief itself rather than pointing the agent at a
+// command that would print it: the launch reads it once, after the claim, and
+// writes it straight into the opening message.
+func TestPromptCarriesTheBriefInline(t *testing.T) {
+	got := Prompt(testContext())
+	for _, want := range []string{
+		"## Brief\n\nWire up a tmux session per agent and give it an opening prompt.",
+		"## Project conventions\n\nGo, Bubble Tea v2, 100% coverage of new code.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt does not carry the brief inline — missing %q:\n%s", want, got)
 		}
 	}
 }
@@ -290,32 +322,6 @@ func TestPromptTellsAResumingAgentTheWorkIsAlreadyThere(t *testing.T) {
 	}
 	if strings.Contains(got, "branch for the slice") {
 		t.Error("prompt tells a resuming agent to make its own branch")
-	}
-}
-
-// A slice already in progress is one start-slice re-opens rather than refuses,
-// so the prompt says as much: an agent told to stop on a refusal would stop on
-// the very answer the command gives it.
-func TestPromptSaysAnInProgressSliceIsReopened(t *testing.T) {
-	c := testContext()
-	c.Slice.Status = domain.SliceClaimed
-	got := Prompt(c)
-	for _, want := range []string{
-		"already in progress and held by Craig Johnston",
-		"re-opens it for you and writes nothing at all",
-		"somebody else\nholds the slice, or it is already done",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("prompt does not say %q:\n%s", want, got)
-		}
-	}
-	if strings.Contains(got, "the slice is already claimed, or already done") {
-		t.Error("prompt still tells a relaunch to stop on a claim it is meant to re-open")
-	}
-	// No branch is recorded, so nothing says there is work waiting: this is a
-	// fresh start on a slice a dead session left in progress.
-	if strings.Contains(got, "There is work on that branch already") {
-		t.Error("prompt claims work exists for a slice that handed none back")
 	}
 }
 

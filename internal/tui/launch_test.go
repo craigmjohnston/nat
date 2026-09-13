@@ -1148,10 +1148,10 @@ func TestLaunchAgentReportsAFailedPromptFile(t *testing.T) {
 	if len(launcher.launches) != 0 {
 		t.Error("no session should start without a prompt to seed it")
 	}
-	// The claim comes after the prompt file, so a launch that got no further
-	// leaves the slice exactly where it was.
-	if len(client.updated) != 0 {
-		t.Errorf("writes = %+v, want the slice untouched", client.updated)
+	// The claim comes before the prompt file now, so a launch that failed
+	// writing it has already claimed the slice — the state a release undoes.
+	if len(client.updated) != 1 {
+		t.Errorf("writes = %+v, want the slice claimed", client.updated)
 	}
 }
 
