@@ -631,24 +631,38 @@ public final class AppModel {
     }
 
     /// Kills the agent sessions of slices this project has finished with —
-    /// `agentSessionsToReap` is the rule, and this is the sweep that applies
-    /// it. It rides the plan's own cadence: every load, which is the app
-    /// starting, a nudge landing and the poll ticking.
+    /// `agentSessionsToReap` is the candidate rule, `prIsSettled` the last
+    /// word, and this is the sweep that applies both. It rides the plan's own
+    /// cadence: every load, which is the app starting, a nudge landing and
+    /// the poll ticking.
     ///
-    /// The reading is taken fresh rather than read off `activityStore`,
-    /// whose first poll has not landed when the app has only just started —
-    /// which is exactly the sweep that matters, since every session left
-    /// running by a previous run is dangling. A reading that fails reaps
-    /// nothing: a sweep is a kill, and nothing is killed on no news.
+    /// The activity reading is taken fresh rather than read off
+    /// `activityStore`, whose first poll has not landed when the app has only
+    /// just started — which is exactly the sweep that matters, since every
+    /// session left running by a previous run is dangling. A reading that
+    /// fails reaps nothing: a sweep is a kill, and nothing is killed on no
+    /// news.
+    ///
+    /// A candidate carrying a pull request is then read in full
+    /// (`nat pr-view`) and reaped only where GitHub says it has merged or
+    /// closed. That reading is per candidate and so costs a `gh` apiece —
+    /// affordable because the candidates are the finished slices still
+    /// holding a session, which is nearly always none, and necessary because
+    /// the cheap listing the rest of the app rides cannot tell a landed pull
+    /// request from one it could not ask about. A candidate whose slice
+    /// records no pull request at all is asked nothing: work that produced
+    /// none has no merge coming.
     private func reapFinishedAgents() async {
         guard let projectStore = projectStore,
               let info = projectStore.state.projectInfo else { return }
-        guard let statuses = try? await clientFactory().status() else { return }
+        let projectID = projectStore.projectID
+        let client = clientFactory()
+        guard let statuses = try? await client.status() else { return }
 
         let agents = statuses.reduce(into: [String: AgentStatus]()) { map, status in
             map[status.sliceID] = status
         }
-        let reapable = agentSessionsToReap(
+        let candidates = agentSessionsToReap(
             agents: agents,
             slices: info.slices,
             openPRSliceIDs: Set((reviewStatsStore?.prReadiness ?? [:]).keys),
@@ -657,7 +671,12 @@ public final class AppModel {
             now: now(),
             grace: reapGrace
         )
-        for sliceID in reapable {
+        let bySlice = info.slices.reduce(into: [String: Slice]()) { map, slice in
+            map[slice.id] = slice
+        }
+        for sliceID in candidates {
+            guard await pullRequestHasLanded(bySlice[sliceID], projectID: projectID, client: client)
+            else { continue }
             if let refusal = await killAgent(sliceID: sliceID) {
                 // Nothing to say to the user: nobody asked for this sweep,
                 // and a session that would not die is one the next sweep
@@ -665,6 +684,22 @@ public final class AppModel {
                 NSLog("AppModel: could not reap the session for %@: %@", sliceID, refusal)
             }
         }
+    }
+
+    /// Whether a candidate's pull request is over — true for a slice that
+    /// records none, and otherwise GitHub's own word for it, read in full.
+    /// A read that fails is a no, since it is the only reading standing
+    /// between a session and a kill.
+    private func pullRequestHasLanded(
+        _ slice: Slice?, projectID: String, client: NatClientProtocol
+    ) async -> Bool {
+        guard let slice else { return false }
+        guard !slice.pr.isEmpty else { return true }
+        guard let pr = try? await client.prView(projectID: projectID, sliceRef: slice.id) else {
+            NSLog("AppModel: could not read the pull request for %@; its session stays", slice.id)
+            return false
+        }
+        return prIsSettled(pr)
     }
 
     // MARK: - Private Helpers

@@ -124,3 +124,32 @@ final class SessionReapingTests: XCTestCase {
         XCTAssertEqual(reaped, ["s-1", "s-2"])
     }
 }
+
+final class PRSettledTests: XCTestCase {
+    private func pr(_ state: String) -> PRDetail {
+        PRDetail(
+            number: 1, title: "t", body: "", state: state, isDraft: false,
+            author: "craig", baseRefName: "main", headRefName: "slice/x",
+            url: "https://github.test/craig/nat/pull/1",
+            reviewDecision: "", mergeable: "MERGEABLE", mergeStateStatus: "CLEAN"
+        )
+    }
+
+    func testAMergedPullRequestIsSettled() {
+        XCTAssertTrue(prIsSettled(pr(PRLifecycleState.merged)))
+    }
+
+    func testAClosedPullRequestIsSettled() {
+        XCTAssertTrue(prIsSettled(pr(PRLifecycleState.closed)))
+    }
+
+    func testAnOpenPullRequestIsNot() {
+        XCTAssertFalse(prIsSettled(pr("OPEN")))
+    }
+
+    /// A word this build does not know is not one of the two endings, so it
+    /// is not settled — the direction to be wrong in when a kill rides on it.
+    func testAWordThisBuildDoesNotKnowIsNot() {
+        XCTAssertFalse(prIsSettled(pr("SOMETHING_NEW")))
+    }
+}
