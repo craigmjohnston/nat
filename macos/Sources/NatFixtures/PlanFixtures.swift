@@ -147,7 +147,7 @@ extension Fixtures {
         Slice(
             id: approveSliceID,
             name: "Approve opens the pull request",
-            status: "Done",
+            status: "In progress",
             milestoneID: "M2: Review flow",
             assignee: "Craig Johnston",
             pr: prURL,
@@ -318,8 +318,9 @@ extension Fixtures {
 
     /// The rail with no live reading behind it at all — the board a second
     /// after it opened, or one on a machine with no tmux and no gh: every
-    /// ACTIVE row reads by its page alone, and the Done slice awaiting its
-    /// merge is out of the section rather than in it.
+    /// ACTIVE row reads by its page alone, and the slice awaiting its merge
+    /// is out of the section rather than in it, since nothing here has
+    /// positively read its pull request as open.
     public static var unreadRailModel: RailModel {
         buildRailModel(from: projectInfo, liveAgents: [:], now: now)
     }

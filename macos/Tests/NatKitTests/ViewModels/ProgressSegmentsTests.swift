@@ -123,38 +123,13 @@ final class ProgressSegmentsTests: XCTestCase {
         XCTAssertFalse(segments[0].isComplete)
     }
 
-    /// A Done slice whose pull request is still open is not progress yet:
-    /// the work is not on main until the merge, so it neither fills its
-    /// milestone's fraction nor lets the milestone fold into the combined
-    /// Done run.
-    func testBuildProgressSegments_openPRHoldsADoneSliceBack() {
-        let milestones = [
-            Milestone(id: "m-1", name: "Setup", order: 1, status: "Done"),
-            Milestone(id: "m-2", name: "Core", order: 2, status: "Active")
-        ]
-        let slices = [
-            Slice(id: "s-1", name: "S1", status: "Done", milestoneID: "m-1",
-                  assignee: "", pr: "https://github.com/o/r/pull/1", url: "", blocked: false, handedBack: false),
-            Slice(id: "s-2", name: "S2", status: "Done", milestoneID: "m-1",
-                  assignee: "", pr: "", url: "", blocked: false, handedBack: false),
-            Slice(id: "s-3", name: "S3", status: "Todo", milestoneID: "m-2",
-                  assignee: "", pr: "", url: "", blocked: false, handedBack: false)
-        ]
-
-        let projectInfo = ProjectInfo(project: testProject, milestones: milestones, slices: slices)
-        let segments = buildProgressSegments(from: projectInfo, openPRSliceIDs: ["s-1"])
-
-        // Nothing folds: the Done milestone still has a merge outstanding.
-        XCTAssertEqual(segments.count, 2)
-        XCTAssertEqual(segments[0].title, "Setup")
-        XCTAssertFalse(segments[0].isComplete)
-        XCTAssertEqual(segments[0].fraction, 0.5)
-        XCTAssertEqual(segments[1].title, "Core")
-    }
-
-    /// The same plan with no reading taken (or the merge landed) folds as it
-    /// always did — an empty set changes nothing.
-    func testBuildProgressSegments_noReadingCountsEveryDoneSlice() {
+    /// A Done slice counts as progress the moment its page says so — Notion's
+    /// status is the one source of lifecycle truth, and nothing here asks
+    /// whether a pull request is still open. A slice marked Done under the
+    /// old rule with its pull request still out is not this view's problem:
+    /// the un-done rule writes it back to In progress on the page itself,
+    /// and from there it simply is not Done yet as far as this reads.
+    func testBuildProgressSegments_doneIsReadStraightOffTheStatus() {
         let milestones = [
             Milestone(id: "m-1", name: "Setup", order: 1, status: "Done")
         ]

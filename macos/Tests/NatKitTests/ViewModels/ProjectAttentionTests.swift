@@ -40,7 +40,7 @@ final class ProjectAttentionTests: XCTestCase {
 
     func testReadyToMergePR_isReview() {
         let attention = projectAttention(
-            slices: [slice("s-1", status: "Done", pr: "https://pr/1")],
+            slices: [slice("s-1", pr: "https://pr/1")],
             liveAgents: [:],
             prReadiness: ["s-1": PRStatusSlice.readyToMerge]
         )
@@ -139,7 +139,7 @@ final class ProjectAttentionTests: XCTestCase {
             slices: [
                 slice("s-1", handedBack: true),
                 slice("s-2"),
-                slice("s-3", status: "Done", pr: "https://pr/3"),
+                slice("s-3", pr: "https://pr/3"),
                 slice("s-4")
             ],
             liveAgents: ["s-2": .waiting, "s-4": .working],
@@ -180,15 +180,22 @@ final class ProjectAttentionTests: XCTestCase {
         XCTAssertNil(attention.badge)
     }
 
-    func testWaitingAgentOnADoneSliceWithAnOpenPR_counts() {
+    /// A live agent on a Done slice — a fix session answering review comments
+    /// on a pull request the merge has not landed yet — is not this count's
+    /// either, exactly as it is not `domain.StateOf`'s on the Go side: Notion's
+    /// status is read straight, before presence is ever asked about, so a
+    /// Done slice contributes nothing here whatever is running on it. The
+    /// star drawn on the row itself is what says the session is there; this
+    /// count is about what the ACTIVE section holds.
+    func testWaitingAgentOnADoneSliceWithAnOpenPR_countsForNothing() {
         let attention = projectAttention(
             slices: [slice("s-1", status: "Done", pr: "https://pr/1")],
             liveAgents: ["s-1": .waiting],
             prReadiness: ["s-1": PRStatusSlice.awaitingReview]
         )
 
-        XCTAssertEqual(attention.role, .waiting)
-        XCTAssertEqual(attention.badge, 1)
+        XCTAssertEqual(attention.role, .idle)
+        XCTAssertNil(attention.badge)
     }
 
     func testAgentOnAHandedBackSlice_countsExactlyAsBefore() {
@@ -219,14 +226,18 @@ final class ProjectAttentionTests: XCTestCase {
         let slices = [
             slice("active"),
             slice("handed-back", handedBack: true),
-            slice("open-pr", status: "Done", pr: "https://pr/1"),
-            slice("merged", status: "Done", pr: "https://pr/2"),
+            slice("open-pr", pr: "https://pr/1"),
+            slice("done-with-open-pr", status: "Done", pr: "https://pr/2"),
             slice("todo", status: "Todo"),
             slice("approved-no-reading", pr: "https://pr/3")
         ]
 
+        // "done-with-open-pr" is left out even though its own pull request is
+        // in the readiness set named: Notion's status is read straight, and a
+        // Done slice is never a review entry until the un-done rule writes it
+        // back to In progress.
         XCTAssertEqual(
-            inFlightSliceIDs(slices: slices, openPRSliceIDs: ["open-pr"]),
+            inFlightSliceIDs(slices: slices, openPRSliceIDs: ["open-pr", "done-with-open-pr"]),
             ["active", "handed-back", "open-pr"]
         )
     }

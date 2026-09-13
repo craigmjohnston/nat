@@ -89,10 +89,16 @@ public func projectAttention(
     let waiting = agents.filter { $0.value == .waiting }.keys
     let planningWaiting = planningAgent == .waiting
 
-    // The slices with something for the user to do about them.
+    // The slices with something for the user to do about them. Ready to
+    // merge is gated on In progress for the reason `isReviewSlice`'s own
+    // pull-request half is: a Done slice does not count merely because its
+    // pull request still reads open — Notion's status is read straight, and
+    // a Done slice marked so under the old rule is the un-done rule's to
+    // catch, not this count's. `handedBack` needs no such gate, being
+    // already status-gated at the source (`domain.Slice.HandedBack`).
     var pending = Set(
         slices
-            .filter { $0.handedBack || prReadiness[$0.id] == PRStatusSlice.readyToMerge }
+            .filter { $0.handedBack || ($0.status == "In progress" && prReadiness[$0.id] == PRStatusSlice.readyToMerge) }
             .map(\.id)
     )
     pending.formUnion(waiting)
