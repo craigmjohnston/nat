@@ -65,7 +65,10 @@ func fixPrompt(c PromptContext) string {
 	fmt.Fprintf(&b, "    gh pr checks %s\n\n", c.Slice.PRURL)
 	b.WriteString("Those two reads are the only `gh` you may run. Never open, merge, close\n")
 	b.WriteString("or reopen a pull request: merging this one is a key on the user's board,\n")
-	b.WriteString("pressed once they are satisfied with what you did.\n")
+	b.WriteString("pressed once they are satisfied with what you did.\n\n")
+	b.WriteString("Read files with the Read tool, not `cat`/`sed`/`head`, and edit with Edit\n")
+	b.WriteString("or Write, not a shell heredoc — the shell is for running things, not for\n")
+	b.WriteString("reading or editing files.\n")
 
 	b.WriteString("\n## Then read\n\n")
 	b.WriteString("1. `CLAUDE.md` in the working directory — architecture and the\n")

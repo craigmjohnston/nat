@@ -55,6 +55,14 @@ Work in the working directory above; if that is not where this session
 started, use absolute paths or `git -C`. Honour the brief's acceptance
 criteria and the project's verification gate before calling it done.
 
+Read files with the Read tool, not `cat`/`sed`/`head` — Read handles
+offsets for files too big to read whole. Edit files with Edit or Write,
+not a shell heredoc — a heredoc edit re-transmits the whole old block and
+the whole new one, and this codebase's house style is dense enough prose
+that doubling it on every touch adds up fast. The shell is for running
+things — tests, git, the verification gate — not for reading or editing
+files.
+
 If the work is code: branch for the slice — one branch, and exactly ONE
 change on it — commit, and push the branch. Do not run `gh`, and do not
 open a pull request: you hand the branch back and the user opens the

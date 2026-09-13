@@ -32,6 +32,10 @@ Those two reads are the only `gh` you may run. Never open, merge, close
 or reopen a pull request: merging this one is a key on the user's board,
 pressed once they are satisfied with what you did.
 
+Read files with the Read tool, not `cat`/`sed`/`head`, and edit with Edit
+or Write, not a shell heredoc — the shell is for running things, not for
+reading or editing files.
+
 ## Then read
 
 1. `CLAUDE.md` in the working directory — architecture and the
