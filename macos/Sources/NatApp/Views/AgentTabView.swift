@@ -12,7 +12,6 @@ struct AgentTabView: View {
     /// not news the whole app needs.
     @State private var isKilling = false
     @State private var killError: String?
-    @State private var confirmingKill = false
     /// A story draws the region rather than attaching to it — see
     /// `StorySeams`.
     @Environment(\.terminalStubbed) private var terminalStubbed
@@ -49,8 +48,7 @@ struct AgentTabView: View {
                     .padding(.vertical, 14)
                     .padding(.horizontal, 18)
                 }
-
-                sessionBar(agent)
+                .overlay(alignment: .topTrailing) { endSessionControl }
             } else {
                 // Empty state
                 VStack(spacing: 12) {
@@ -73,64 +71,45 @@ struct AgentTabView: View {
         .surface(.window)
     }
 
-    /// The band under the terminal: which session this is, and the one action
-    /// that ends it. Closing the tab only detaches the viewer — the session
-    /// goes on running, which is right while there is work in it and is how a
-    /// finished slice's session sits on the tmux server forever — so ending
-    /// one is a thing that has to be asked for, and this is where.
+    /// The one action the tab has beyond watching: end the session. Closing
+    /// the tab only detaches the viewer — the session goes on running, which
+    /// is right while there is work in it and is how a finished slice's
+    /// session sits on the tmux server forever — so ending one has to be
+    /// asked for, and this is where.
     ///
-    /// It asks first, because a session with a turn in flight loses that turn.
+    /// It is a control on the terminal rather than a band under it: the
+    /// terminal is the whole of this tab, and a strip of chrome for one
+    /// button would take a row off it on every slice. It does not ask before
+    /// killing either — the button says what it does, and an agent whose
+    /// session ended is relaunched from the Brief tab.
     @ViewBuilder
-    private func sessionBar(_ agent: AgentStatus) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Text(agent.session)
-                    .font(Typo.mono(size: Typo.caption))
-                    .ink(.tertiary)
-                    .lineLimit(1)
-
-                Spacer()
-
-                Button(action: { confirmingKill = true }) {
-                    AsyncActionLabel(isBusy: isKilling) {
-                        Text("End session")
-                    }
+    private var endSessionControl: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            Button(action: performKill) {
+                AsyncActionLabel(isBusy: isKilling) {
+                    Label("End session", systemImage: "stop.circle")
+                        .labelStyle(.titleAndIcon)
                 }
-                .buttonStyle(SecondaryButtonStyle())
-                .disabled(isKilling)
-                .confirmationDialog(
-                    "End the agent session for this slice?",
-                    isPresented: $confirmingKill
-                ) {
-                    Button("End session", role: .destructive) { performKill() }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("The tmux session is killed. Anything the agent is part way through is lost.")
-                }
+                .font(.system(size: Typo.caption, weight: .medium))
+                .ink(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .buttonStyle(.plain)
+            .hoverWash()
+            .disabled(isKilling)
 
             if let killError {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .ink(.danger)
-                        .font(.system(size: 12, weight: .medium))
-                    Text(killError)
-                        .font(.system(size: Typo.subhead, weight: .regular))
-                        .ink(.danger)
-                        .lineLimit(2)
-                    Spacer()
-                }
-                .padding(.horizontal, 14)
-                .padding(.bottom, 8)
+                Text(killError)
+                    .font(.system(size: Typo.caption, weight: .regular))
+                    .ink(.danger)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: 260, alignment: .trailing)
             }
         }
-        .frame(maxWidth: .infinity)
-        .overlay(alignment: .top) {
-            Rule(.hairline)
-        }
-        .surface(.band)
+        .padding(.top, 6)
+        .padding(.trailing, 8)
     }
 
     private func performKill() {
