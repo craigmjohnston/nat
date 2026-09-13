@@ -545,10 +545,26 @@ func (l *Local) PRDescription(ctx context.Context, id string) (string, error) {
 	return lastMarkdownSection(body, notion.PRDescriptionHeading), nil
 }
 
-// lastMarkdownSection is that rule. A fenced block is passed over whole, so a
-// PR description quoting a diff or a shell session is not cut short by a line
-// of its own that happens to start with a hash.
-func lastMarkdownSection(body, heading string) string {
+// HandbackSummaryOf is the note a Done slice's last hand-back left on its
+// page: the summary of what was done, filed under whichever heading closing
+// it out wrote — see noteHeading in notion.go. Both headings are read here
+// rather than one, because which of them a Done slice carries depends on how
+// it got there: Summary for one closed straight to Done, Handed back for one
+// closed via a merge that landed after its branch was reviewed. It works on
+// the markdown [Store.Body] already reads, since the note is written there
+// rather than as a property of its own, so a caller building a milestone
+// digest needs nothing more of a store than the body it already has to fetch
+// for every Done sibling.
+func HandbackSummaryOf(body string) string {
+	return lastMarkdownSection(body, summaryHeading, handedBackHeading)
+}
+
+// lastMarkdownSection is the rule [Local.PRDescription] and [HandbackSummaryOf]
+// both apply: the blocks under the last heading matching any of the given
+// names, up to the next heading of the same or higher level. A fenced block is
+// passed over whole, so a section quoting a diff or a shell session is not cut
+// short by a line of its own that happens to start with a hash.
+func lastMarkdownSection(body string, headings ...string) string {
 	var section []string
 	level, fence := 0, ""
 	for _, line := range strings.Split(body, "\n") {
@@ -567,7 +583,7 @@ func lastMarkdownSection(body, heading string) string {
 		if h > 0 && h <= level {
 			level = 0
 		}
-		if h > 0 && strings.EqualFold(text, heading) {
+		if h > 0 && matchesHeading(text, headings) {
 			level, section = h, nil
 			continue
 		}
@@ -576,6 +592,17 @@ func lastMarkdownSection(body, heading string) string {
 		}
 	}
 	return strings.TrimSpace(strings.Join(section, "\n"))
+}
+
+// matchesHeading reports whether text names one of the given headings,
+// case-insensitively.
+func matchesHeading(text string, headings []string) bool {
+	for _, h := range headings {
+		if strings.EqualFold(text, h) {
+			return true
+		}
+	}
+	return false
 }
 
 // headingOf is the level of an ATX heading and the text of it, and zero for a

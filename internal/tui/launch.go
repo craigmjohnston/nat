@@ -263,14 +263,41 @@ func (f *LaunchForm) save(a *App) tea.Cmd {
 // configured one, so this is that project.
 func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, attach bool) tea.Cmd {
 	project, _ := a.activeProject()
+	milestone, siblings := milestoneContext(a.project, s)
 	return launchAgent(a.launcher, newWorktrees(), newRepo(), a.client, a.prViewer, a.cfg.AssigneeUserID, agent.PromptContext{
-		Slice:        s,
-		Project:      project,
-		ProjectID:    a.cfg.ActiveProjectID,
-		WorkingDir:   expandHome(strings.TrimSpace(workdir)),
-		AssigneeName: a.cfg.AssigneeUserName,
-		Fix:          fixLaunch(s),
+		Slice:           s,
+		Project:         project,
+		ProjectID:       a.cfg.ActiveProjectID,
+		WorkingDir:      expandHome(strings.TrimSpace(workdir)),
+		AssigneeName:    a.cfg.AssigneeUserName,
+		Fix:             fixLaunch(s),
+		Milestone:       milestone,
+		MilestoneSlices: siblings,
 	}, trimModel(m), attach)
+}
+
+// milestoneContext is a slice's own milestone and its siblings under it, read
+// off the board's own copy of the plan — already in memory, since the board
+// polls it — rather than by a further read of it: the raw material
+// [actions.Launch] renders the launch's milestone digest from.
+func milestoneContext(project *domain.Project, s domain.Slice) (domain.Milestone, []domain.Slice) {
+	if project == nil || s.MilestoneID == "" {
+		return domain.Milestone{}, nil
+	}
+	var milestone domain.Milestone
+	for _, m := range project.Milestones {
+		if m.ID == s.MilestoneID {
+			milestone = m
+			break
+		}
+	}
+	var siblings []domain.Slice
+	for _, sl := range project.Slices {
+		if sl.MilestoneID == s.MilestoneID && sl.ID != s.ID {
+			siblings = append(siblings, sl)
+		}
+	}
+	return milestone, siblings
 }
 
 // trimModel is the model pair as a launch sends it: what the user typed, with

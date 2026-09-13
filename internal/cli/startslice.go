@@ -57,10 +57,11 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	client := env.NewClient(env.Tokens.Token)
 	st := store.Over(client)
 
-	shape, err := sliceShape(ctx, st, projectID, project)
+	plan, err := st.Plan(ctx, storeProject(projectID, project))
 	if err != nil {
 		return err
 	}
+	shape := plan.Shape
 	waiting, pageShape, err := loadSlice(ctx, st, id)
 	if err != nil {
 		return err
@@ -70,9 +71,10 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	// The dependencies are read one page at a time rather than off the plan:
-	// this command was pointed at a slice, so there is no plan loaded, and a
-	// slice waits on few enough slices for that to be the cheaper read.
+	// The dependencies are read one page at a time rather than off the plan
+	// just loaded: a slice waits on few enough slices for that to still be the
+	// cheaper read, and the plan itself is loaded only for the milestone digest
+	// below.
 	if blockers, _ := domain.Blockers(waiting, dependencyIndex(ctx, client, waiting)); len(blockers) > 0 {
 		return blockedError(waiting, blockers)
 	}
@@ -100,8 +102,9 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return fmt.Errorf("claimed %q but could not read the project conventions: %w", claimed.Name, err)
 	}
+	digest := milestoneDigestFor(ctx, st, milestone, milestoneSiblings(plan.Project.Slices, milestone.ID, claimed.ID))
 
-	b := briefOf(claimed, milestone, project, cfg.AssigneeUserName, brief, conventions)
+	b := briefOf(claimed, milestone, project, cfg.AssigneeUserName, brief, digest, conventions)
 	if *asJSON {
 		return writeBriefJSON(env.Out, b, projectID, project.Name)
 	}

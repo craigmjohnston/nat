@@ -21,6 +21,48 @@ import (
 	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
+// milestoneContext reads a slice's milestone and siblings off the board's own
+// copy of the plan — nothing at all with no plan loaded, or a slice filed
+// under no milestone; otherwise the milestone named and every other slice
+// under it, in plan order.
+func TestMilestoneContextWithNoProjectLoaded(t *testing.T) {
+	m, s := milestoneContext(nil, domain.Slice{ID: "s1", MilestoneID: "M1"})
+	if m.Name != "" || s != nil {
+		t.Errorf("milestoneContext(nil, ...) = %+v, %+v, want both empty", m, s)
+	}
+}
+
+func TestMilestoneContextWithASliceFiledUnderNoMilestone(t *testing.T) {
+	project := &domain.Project{Milestones: []domain.Milestone{{ID: "M1", Name: "M1"}}}
+	m, s := milestoneContext(project, domain.Slice{ID: "s1"})
+	if m.Name != "" || s != nil {
+		t.Errorf("milestoneContext with no milestone = %+v, %+v, want both empty", m, s)
+	}
+}
+
+func TestMilestoneContextFindsTheMilestoneAndItsSiblings(t *testing.T) {
+	project := &domain.Project{
+		Milestones: []domain.Milestone{{ID: "M1", Name: "M1: First"}, {ID: "M2", Name: "M2: Board"}},
+		Slices: []domain.Slice{
+			{ID: "s1", MilestoneID: "M1"},
+			{ID: "s2", MilestoneID: "M2"},
+			{ID: "s3", MilestoneID: "M2"},
+			{ID: "s4", MilestoneID: "M2"},
+		},
+	}
+	m, siblings := milestoneContext(project, project.Slices[2])
+	if m.Name != "M2: Board" {
+		t.Errorf("milestone = %+v, want M2: Board", m)
+	}
+	var ids []string
+	for _, s := range siblings {
+		ids = append(ids, s.ID)
+	}
+	if want := []string{"s2", "s4"}; !reflect.DeepEqual(ids, want) {
+		t.Errorf("siblings = %v, want %v — the slice itself excluded", ids, want)
+	}
+}
+
 // TestMain keeps the package's tests away from the real tmux: every app polls
 // for live sessions as it starts, and the timer behind the poll would otherwise
 // hold each test up for half a minute. Tests that care about launching put

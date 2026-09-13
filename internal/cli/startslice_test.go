@@ -33,6 +33,10 @@ Claimed for Craig Johnston. Work exactly this slice.
 
 Render the board, then stop.
 
+## This slice's milestone
+
+_none_
+
 ## Project conventions
 
 Branch per slice.
@@ -84,8 +88,8 @@ func TestStartSliceClaimsTheNamedSliceAndPrintsTheBrief(t *testing.T) {
 	if name := api.updates[0].props[notion.PropStatus].SelectName(); name != notion.SliceInProgress {
 		t.Errorf("status = %q, want %q", name, notion.SliceInProgress)
 	}
-	if len(api.queries) != 0 {
-		t.Errorf("queries = %+v, want none: the slice was named, not chosen", api.queries)
+	if len(api.queries) != 1 {
+		t.Errorf("queries = %+v, want exactly one: the plan read for the milestone digest", api.queries)
 	}
 }
 
@@ -189,8 +193,8 @@ func TestStartSliceReadsTheMilestoneOffTheSchema(t *testing.T) {
 	if len(api.gets) != 1 || api.gets[0] != startSliceID {
 		t.Errorf("gets = %v, want only the slice fetched", api.gets)
 	}
-	if len(api.queries) != 0 {
-		t.Errorf("queries = %+v, want none: the slice was named, not chosen", api.queries)
+	if len(api.queries) != 1 {
+		t.Errorf("queries = %+v, want exactly one: the plan read for the milestone digest", api.queries)
 	}
 }
 

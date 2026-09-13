@@ -11,6 +11,8 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/logging"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // Launcher is what a launch needs of tmux: one detached session, started to
@@ -87,6 +89,7 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, assi
 			return LaunchResult{}, fmt.Errorf("claimed %q but could not read the project conventions: %w", c.Slice.Name, err)
 		}
 		c.Brief, c.Conventions = brief, conventions
+		c.MilestoneDigest = milestoneDigest(ctx, st, c.Milestone, c.MilestoneSlices)
 	}
 	session := agent.SessionName(c.Slice.ID)
 	file, err := agent.WritePromptFile(session, agent.Prompt(c))
@@ -97,6 +100,29 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, assi
 		return LaunchResult{}, err
 	}
 	return LaunchResult{Context: c, Session: session, Toast: p.Toast, Sev: p.Sev}, nil
+}
+
+// milestoneDigest reads the hand-back summary of every Done sibling and
+// renders the digest a launch hands the agent in place of the "go read the
+// milestone with `nat info`" step a session used to be told to run itself.
+// milestone and siblings are the raw material, already read off the plan by
+// the caller; a summary that fails to read is logged and left out rather
+// than failing the whole launch, since a missing summary costs one line of
+// context rather than the launch itself.
+func milestoneDigest(ctx context.Context, st Store, milestone domain.Milestone, siblings []domain.Slice) string {
+	summaries := map[string]string{}
+	for _, s := range siblings {
+		if s.Status != domain.SliceDone {
+			continue
+		}
+		body, err := st.Body(ctx, s.ID)
+		if err != nil {
+			logging.Action("could not read a milestone sibling's hand-back summary", "slice", s.ID, "err", err)
+			continue
+		}
+		summaries[s.ID] = store.HandbackSummaryOf(body)
+	}
+	return agent.MilestoneDigest(milestone, siblings, summaries)
 }
 
 // WorkdirFor is the directory a slice's agent starts in: its own repo

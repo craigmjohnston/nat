@@ -38,8 +38,8 @@ Run `nat next-slice --project <project>`. It claims the next unclaimed Todo
 slice under the lowest-ordered milestone that is not Done — a milestone has no
 status of its own, so what is unfinished is what work is taken from — and
 prints its brief: the slice's name, page ID and URL, the project's own page ID,
-the working directory to use, the slice's own body, and the project's
-conventions.
+the working directory to use, the slice's own body, a digest of the other
+slices in its milestone, and the project's conventions.
 
 - If the user asked for a particular slice, run
   `nat start-slice <URL|ID> --project <project>` instead — same claim, same
@@ -125,21 +125,12 @@ then `git switch -c slice/<slug> <origin's default branch>`. A git that ran and
 refused is different — something is wrong with the repository — so report what
 it said and stop rather than working half-placed.
 
-## 3. Read the milestone before you write code
+## 3. Before you write code
 
-The brief is the slice's own body and the project's conventions, but it is not
-the whole plan: before touching any code, read the other slices in this
-slice's own milestone too — Done ones especially — with:
-
-```
-nat info --project <project>
-```
-
-A Done slice in the same milestone is often where a design decision that binds
-this one already got settled — the shape of a store, a naming convention, an
-architecture a later slice is meant to build on. Missing it is how a session
-builds the wrong architecture and finds out only at review, with the work
-already done.
+The brief already carries the slice's own body, the project's conventions and
+a digest of its milestone — every sibling slice's status, and the hand-back
+summary of each Done one, which is often where a design decision that binds
+this one already got settled.
 
 If this slice turns on an architecture question that neither the brief nor a
 Done slice in the milestone actually settles, do not guess and start writing:

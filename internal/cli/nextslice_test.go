@@ -91,6 +91,13 @@ Claimed for Craig Johnston. Work exactly this slice.
 
 Render the board, then stop.
 
+## This slice's milestone
+
+M2: Board
+
+- Done: Board scaffolding
+- Todo: Style the board
+
 ## Project conventions
 
 Branch per slice.
@@ -194,6 +201,22 @@ func TestNextSliceHonoursARepoOverride(t *testing.T) {
 
 // A slice with no brief written on it, in a project with no conventions, still
 // prints both headings — an empty one reads as output that got cut off.
+// A Done sibling whose page will not read costs the digest one line rather
+// than the whole brief: the summary is simply left out.
+func TestNextSliceLogsAFailedMilestoneSummaryRead(t *testing.T) {
+	api := claimableAPI(t)
+	api.blocksErrByID = map[string]error{"s2": errors.New("notion: 500")}
+	env, out := testEnv(testClaimConfig(), api)
+
+	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("next-slice: %v", err)
+	}
+
+	if !strings.Contains(out.String(), "- Done: Board scaffolding") {
+		t.Errorf("output =\n%s\nwant the sibling named despite its summary failing to read", out.String())
+	}
+}
+
 func TestNextSlicePrintsEmptyBodies(t *testing.T) {
 	api := claimableAPI(t)
 	api.blocksByID = nil
@@ -242,7 +265,8 @@ func TestNextSlicePrintsJSON(t *testing.T) {
 		Slice: briefSliceJSON{
 			ID: "s3", Name: "Render the board", Status: notion.SliceInProgress,
 			Assignee: "Craig Johnston", MilestoneID: "M2: Board", MilestoneName: "M2: Board",
-			Repo: "/tmp/nat", Brief: "Render the board, then stop.", URL: "https://notion.so/s3",
+			MilestoneDigest: "M2: Board\n\n- Done: Board scaffolding\n- Todo: Style the board",
+			Repo:            "/tmp/nat", Brief: "Render the board, then stop.", URL: "https://notion.so/s3",
 		},
 		Project: projectJSON{ID: "project-1", Name: "nat", Conventions: "Branch per slice."},
 	}

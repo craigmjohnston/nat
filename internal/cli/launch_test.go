@@ -171,6 +171,32 @@ func TestSliceLaunchReportsAFailedRead(t *testing.T) {
 	}
 }
 
+// A plan that will not read costs the launch its milestone digest rather
+// than the launch itself: the agent still starts, with no digest section
+// filled in.
+func TestSliceLaunchGoesAheadWithoutAMilestoneDigestWhenThePlanFails(t *testing.T) {
+	dir := t.TempDir()
+	api := &fakeAPI{
+		pages:    map[string][]notion.Page{"slices-ds": {slicePageForLaunch(dir)}},
+		queryErr: map[string]error{"slices-ds": errors.New("notion: 500")},
+	}
+	env, _ := testEnv(testClaimConfig(), api)
+	runner := &agentTestRunner{}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+	env.NewGit = func() GitCLI { return nil }
+	env.NewWorktrees = func() actions.Worktrees { return nil }
+	var out strings.Builder
+	env.Out = &out
+
+	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
+	if err != nil {
+		t.Fatalf("slice-launch: %v", err)
+	}
+	if len(runner.launchArgs) == 0 {
+		t.Error("want the agent launched despite the failed plan read")
+	}
+}
+
 // slicePageForLaunch is a Todo slice with no dependencies, filed under a
 // repo the test names directly — an empty directory rather than a git
 // repository, so the launch falls back to the shared checkout and neither a

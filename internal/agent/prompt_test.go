@@ -78,6 +78,46 @@ func TestPromptWithoutOptionalContext(t *testing.T) {
 	golden(t, "prompt-minimal", Prompt(c))
 }
 
+func TestPromptWithAMilestoneDigest(t *testing.T) {
+	c := testContext()
+	c.MilestoneDigest = MilestoneDigest(
+		domain.Milestone{ID: "M2: Board", Name: "M2: Board"},
+		[]domain.Slice{
+			{ID: "s2", Name: "Board scaffolding", Status: domain.SliceDone, StatusName: "Done"},
+			{ID: "s4", Name: "Style the board", Status: domain.SliceTodo, StatusName: "Todo"},
+		},
+		map[string]string{"s2": "Laid out the board's own columns and progress bar."},
+	)
+	golden(t, "prompt-milestone-digest", Prompt(c))
+}
+
+// The digest is rendered in place of the step a session used to be told to
+// run itself, so the agent has the settled state of the milestone — status
+// and hand-back summary alike — without running `nat info` to go and dig it
+// up.
+func TestPromptCarriesTheMilestoneDigestInline(t *testing.T) {
+	c := testContext()
+	c.MilestoneDigest = MilestoneDigest(
+		domain.Milestone{ID: "M2: Board", Name: "M2: Board"},
+		[]domain.Slice{
+			{ID: "s2", Name: "Board scaffolding", Status: domain.SliceDone, StatusName: "Done"},
+			{ID: "s4", Name: "Style the board", Status: domain.SliceTodo, StatusName: "Todo"},
+		},
+		map[string]string{"s2": "Laid out the board's own columns and progress bar."},
+	)
+	got := Prompt(c)
+	for _, want := range []string{
+		"## This slice's milestone\n\nM2: Board",
+		"- Done: Board scaffolding",
+		"  Laid out the board's own columns and progress bar.",
+		"- Todo: Style the board",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt does not carry the milestone digest — missing %q:\n%s", want, got)
+		}
+	}
+}
+
 // The prompt is the whole of what an agent is told, so what it does not say
 // matters as much as what it does: an agent that learns Notion is behind the
 // commands has a second way to move a slice, and none of the guardrails the

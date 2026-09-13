@@ -4,6 +4,7 @@ You are a Claude Code agent working exactly one slice of the "notion-agent-track
 
 - Name: tmux integration + agent prompt template
 - Notion page ID: 3b738308-f654-8170-8c99-eccab4463d8f
+- Notion URL: https://app.notion.com/p/3b738308f65481708c99eccab4463d8f
 - Working directory: /Users/craig/Projects/notion-agent-tracker
 
 This slice is already claimed for Craig Johnston: the board claims a slice as
@@ -17,7 +18,11 @@ Wire up a tmux session per agent and give it an opening prompt.
 
 ## This slice's milestone
 
-_none_
+M2: Board
+
+- Done: Board scaffolding
+  Laid out the board's own columns and progress bar.
+- Todo: Style the board
 
 ## Project conventions
 
