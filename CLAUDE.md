@@ -1,1566 +1,184 @@
 # notion-agent-tracker
 
-A Go TUI over Notion for tracking project work executed by Claude Code agents.
-Craig manages the plan and launches agents from the TUI; agents run as fresh
-`claude` sessions in tmux and reach the tracker only through the headless `nat`
-commands — they need no Notion access of their own. The TUI talks to the Notion
-REST API directly (`Notion-Version: 2026-03-11`, data-source model).
+A Go TUI over Notion for tracking project work executed by Claude Code
+agents. Craig manages the plan and launches agents from the TUI; agents run
+as fresh `claude` sessions in tmux and reach the tracker only through the
+headless `nat` commands — they need no Notion access of their own. The TUI
+talks to the Notion REST API directly (`Notion-Version: 2026-03-11`,
+data-source model).
 
-## Architecture
+Package detail — implementation, seams, hard-won gotchas — lives in nested
+`CLAUDE.md` files, one per package, loaded only when you're working in that
+package. This file is cross-cutting rules: what's true everywhere, not how
+any one package does it.
 
-- `main.go` — entrypoint; module path `github.com/craigmjohnston/nat`, so
-  `go install github.com/craigmjohnston/nat@latest` yields a `nat` binary.
-  It runs in the terminal it was started in and hosts itself in nothing: the
-  status band is drawn inside nat's own frame and the agent terminal beside the
-  board is nat's own widget, so there is nothing a session of its own would
-  provide, and inside a tmux session the user made it behaves exactly the same.
-  The agents still live in tmux — that is what lets one outlive the board and be
-  attached to again — and the server they need is the one the first detached
-  launch starts, so all `requireTmux` does for them is check the binary is on
-  PATH before the terminal is taken over, naming `brew install tmux` when it is
-  not. A subcommand runs before even that: none of them launches an agent.
-- `internal/config/` — XDG config (`~/.config/notion-agent-tracker/config.json`)
-  + the Notion bearer token, read from Notion's official CLI via
-  `ntn auth token` (the app stores no credential of its own).
-  `AgentModel` — a `model` and an `effort`, exactly as Claude Code's own flags
-  take them — is which Claude Code a launched agent runs as, and the config
-  holds two of them: `workshop_agent` for the planning agent and `slice_agent`
-  for a slice's, because workshopping a plan is conversation and often wants a
-  lighter model than the agent that writes the code. Either half of either may
-  be unset, and an unset half contributes no flag at all, which is the launch
-  saying nothing and Claude Code deciding as it always did. Both are defaults
-  rather than settings a launch is bound by: the planning form and the launch
-  options show the pair prefilled and editable for that one launch, which
-  writes nothing back — the planning form only once `ctrl+o` has asked for it,
-  since a workshop launch nearly always wants the pair the config already
-  names. `W` is the exception, as it always is — it asks nothing
-  at all, so it takes the workshop pair as it stands.
-  `SplitPercent()` and `PollInterval()` swap the default back in for a number
-  outside the bounds, which is a typo read as an instruction and lost without a
-  word; `ValidSplitPercent`/`ValidPollSeconds` are the same bounds said out
-  loud, so the settings form refuses exactly what a later read would have
-  discarded. Zero passes both: it is how the config writes "unset", and the
-  getters answer it with the default of their own accord.
-- `internal/notion/` — hand-rolled stdlib Notion client (no third-party client
-  supports data sources); minimal structs, only fields we use. Built with
-  `NewWithToken(TokenFunc)`: the token is fetched per attempt and a 401 is
-  retried once with a fresh one, so a token rotated by the CLI is picked up
-  mid-session. Nothing constructs one: `store.NewClient` is the single call
-  to `NewWithToken` in the tree, and everything else asks the store.
-- `internal/store/` — the seam between nat and wherever a project's plan is
-  kept. `Store` is the port: read a project's shape, read its whole plan, read
-  one slice, read the prose on a page — a slice's brief or a project's
-  conventions, which are the same read — read the pull request description a
-  hand-back filed, claim a slice, release one, close one out, record a pull
-  request on one, mark one Done, add milestones, rename one, remove one, move one
-  in the plan, add a slice, edit
-  one, record what one waits on, refile one, drop one. It is said in the app's
-  own words — `domain.Slice` and `domain.Milestone` go in and come back, and no
-  property type, request body or page shape crosses the line — so a second
-  backend plugs in here and nothing above has to learn about it. `Notion` is
-  the first implementation and for now the only one, built over a narrow `API` (the ten
-  calls the plan operations are made of) with `Over`, so the board and a
-  headless command hand over the client they already hold rather than making a
-  second, and a test drives the real store over its own fake.
-  `Shape` is the one value that travels both ways: what a project can record
-  about a slice — whether it has an Assignee or a Branch column, and the
-  milestones there are to file under — plus, unexported, whatever the store
-  that read it needs to write with, which here is the type its Status column
-  is kept in and the Milestone column as it stands, options and colours and
-  all, since rebuilding that from its option names alone would quietly rewrite
-  every option already there. A caller takes a Shape from a read and hands the
-  same one back to the write and never sees inside it. `Shape.On` is how a
-  caller holding both the project's schema and one slice's own page writes:
-  which columns exist stays the schema's answer, since a column holding
-  nothing may simply not appear on a page, while the type a status is written
-  in becomes the page's, because that is the value the write has to match.
-  `Holds` is the ownership rule every operation that may only touch the
-  caller's own slice asks first, and it is here rather than in `domain`
-  because it is a question about the shape as much as about the slice.
-  Errors are the backend's own wherever an operation is a single write —
-  the caller says what it was doing, since "delete the slice" is the command's
-  sentence and not the store's — and the store's own only where one operation
-  is several writes and which of them failed is a different state to recover
-  from: a release's line and its status, a completion's note and its
-  properties, an edit's three steps. The wishlist is the one thing still read
-  off a project page outside this package — `nat wishlist`, `wishlist-clear`
-  and the workshop launch — because it is a section with editing rules of its
-  own rather than prose, and pulling it in wants a type of its own here.
-  `Local` is the second implementation and the first that is not Notion: a
-  plan kept in a SQLite database of nat's own, one file per project under nat's
-  data directory (`LocalDir`/`LocalPath` — `~/Library/Application Support` on
-  macOS, `$XDG_DATA_HOME` or `~/.local/share` elsewhere, the project's ID
-  slugged), opened through `github.com/ncruces/go-sqlite3` — SQLite's own C as
-  WebAssembly, so `go install ...@latest` keeps working on a bare machine and
-  the release pipeline goes on cross-building per arch — in WAL with a busy
-  timeout, which is what lets a board and several agents' `nat` commands read
-  and write the one file at once. A file per project keeps each project's blast
-  radius its own. This is the read half: the plan, one slice, the prose on a
-  page, and the pull request description a hand-back filed, which is the last
-  `## PR description` section of the body — `notion.PRDescriptionOf`'s rule
-  exactly, applied to markdown rather than to blocks, since here the markdown
-  is what is stored. Every column maps one-to-one onto `domain.Slice` or
-  `domain.Milestone`, so the structs that come out are the structs the Notion
-  mapper produces and every rule above the store is untouched; the order is a
-  `position` column, sparsely allocated and tied on ID, rather than a view's
-  row order, so there is no second round trip to read it. A shape is every
-  column there is, since the file is nat's own and no project in it is old
-  enough to be missing one, and ownership is the assignee's name, which is both
-  what a reader sees and what `Holds` compares against — there is no directory
-  of users behind a plan kept in a file. `OpenLocal` creates the directory, the
-  file and the schema where there is none, which is what makes a project
-  nothing has been written to an empty plan rather than a failure; a file that
-  is not a plan, a row that will not scan and a read that fails part way are
-  each reported with the path and what SQLite made of it, since the path is the
-  whole of what there is to go and look at. The schema is stamped in SQLite's
-  own `user_version`, so a reopen is one read and no writes and a plan written
-  by a later build is refused rather than half understood. `local_write.go` is
-  the other half, and two rules run through all of it. A mutation is one
-  transaction, which is what the design's own temp file and rename were for —
-  nothing ever reads half a write — only better, since a rename publishes one
-  writer's whole idea of the plan over another's where a transaction touches
-  only the rows it is about: nothing there writes the plan, everything writes a
-  row of it. And a mutation reads inside that transaction before it writes,
-  writing what the reading says rather than what the caller was last told,
-  since a board's copy of a slice is as old as its last poll and an agent has
-  been writing since — `updateSlice` is that shape said once, the slice read
-  afresh, the mutation handed that reading, and the slice as the write left it
-  read back before the commit, so a slice somebody deleted is refused rather
-  than quietly updated in no rows. Every transaction is `BEGIN IMMEDIATE`
-  (`_txlock` in the DSN), because a deferred one takes its read lock at the
-  first `SELECT` and asks for the write lock after, which is the one upgrade
-  SQLite refuses outright instead of waiting out the busy timeout for — so two
-  agents writing at once would fail rather than queue. What a write leaves on a
-  slice's body is markdown under the very headings the Notion store writes as
-  blocks, so `PRDescriptionOf`'s rule finds a hand-back's description either
-  way; a milestone is appended at the end of the plan and refused for a name
-  the plan already holds, as the options of a `Milestone` column are; a new
-  slice is given an ID of nat's own, since there is no page create to hand one
-  back, and is refused a milestone the plan does not hold, which is what
-  Notion's select column refuses for the other store; and a delete is a delete,
-  there being no trash in a file — what a local plan offers instead is the file
-  itself, one project to a database. The full-text index the design settles on
-  is still the next slice's.
-- `internal/domain/` — Project/Milestone/Slice models, progress math
-- `internal/logging/` — the log file: `~/Library/Logs/notion-agent-tracker/` on
-  macOS, the XDG state dir elsewhere, size-capped with one previous file kept.
-  Opened by `main` and discarded until then, so importing it writes nothing.
-  Failures and writes are logged by the Notion client and the tmux layer
-  themselves; startup failures name the log path on stderr, because a terminal
-  that closes with the process takes stderr with it. Everything on its
-  way to the file passes through a redactor — never log a token or a request
-  body.
-- `internal/nudge/` — the marker file the headless commands touch after a
-  successful Notion write (`nudge` in the log/state dir), and the board's way of
-  reading it: the TUI stats its mtime every second and refetches the plan when
-  it moves, so agent-driven changes show within a second instead of a poll
-  interval. Fire-and-forget on the CLI side — a touch that fails is logged and
-  swallowed, and commands are wired to it through `Env.Nudge`.
-- `internal/agent/` — agent prompt template + tmux session management. A
-  running agent is identified by its pane's `@nat_slice` option (the full slice
-  page ID); the session name `nat-<last-8-hex-of-slice-page-id>` is only a
-  human label, and takes the tail because page IDs share a leading prefix.
-  A planning agent has no slice to be tagged with, so it is tagged with the
-  project it is workshopping instead — `plan:<project page ID>`
-  (`PlanTag`), in the session `nat-plan-<last-8-hex-of-project-page-id>`
-  (`PlanSessionName`) — which is what makes it one planning agent per project
-  rather than one per machine: two projects can be workshopped at once, and
-  `w`, `W`, `nat workshop-launch` and the macOS app's workshop pane each read
-  only the active project's (`LivePlan`). The bare `plan` tag (`PlanSentinel`,
-  the session `nat-plan`) is what every planning agent used to carry and
-  nothing launches under any more; a session a pre-upgrade nat left running
-  still does, and is read as a planning agent belonging to no project in
-  particular — legacy that any project may attach, and that refuses a second
-  launch on every project, rather than one orphaned by the upgrade.
-  Viewing an agent joins no panes: the board runs an attach client on a PTY of
-  its own and draws it, so an agent's pane stays in the session it launched in
-  and nothing here makes a stray. `ReclaimStrays` — with its private
-  `breakOut`/`breakOutAll`/`placeholderCommand`, all under one deprecation
-  comment — is the exception, still run at startup to re-home the panes a
-  pre-upgrade nat left joined, and comes out next release — `TUISession` is
-  kept for it alone, the name of the session nat used to host itself in and
-  makes no more.
-  `prompt.go` writes what a fresh session is told, and `fixprompt.go` the one
-  thing that is not a fresh session's work: `PromptContext.Fix` is the launch
-  saying it is sending an agent at the pull request a Done slice already
-  produced rather than at the slice, and `Prompt` hands such a context straight
-  to `fixPrompt`, since almost nothing about claiming, working or handing back a
-  slice applies to work that has been published — see the domain rule on `l`.
-  Every `nat` command in
-  any of its templates — the slice prompt's, the fix one's, the planning one's,
-  the wishlist clear — names its project with `--project <the project's page ID>`, which the
-  launch carries in (`PromptContext.ProjectID`, and the first argument of
-  `PlanPrompt`/`WishlistPrompt`; a `ProjectConfig` cannot supply it, being the
-  value of the config's Projects map rather than the key). An unpinned command
-  is refused outright now that the active-project fallback is gone, and that
-  refusal is the point: a fallback would have had a session launched on one
-  project go on writing wherever the board got to. The prompts say so as well
-  as doing it, since the
-  commands an agent runs of its own accord are the ones no template can spell
-  out. The golden files hold the exact commands, and one test walks every
-  template for a `nat` invocation naming no project.
-  Every session nat makes is an agent's, and has tmux's own status bar off: the
-  bar says nothing its session does not. The sessions the user was already in
-  are never nat's to set options on, nat's own terminal included.
-  Each launch also carries the launching process's PATH into its session
-  (new-session's `-e`): a session's environment otherwise comes from the tmux
-  server, which inherited whoever started it first — for a server the macOS
-  app started from the Finder, launchd's bare PATH, with no nat on it — and
-  the PATH nat and claude were resolved on is the one the agent's own `nat`
-  commands must resolve on too, the app's bundled nat included. An empty PATH
-  says nothing rather than writing an empty variable over the server's, and
-  a tmux positively read as older than 3.2 (`supportsSessionEnv`, off
-  `tmux -V`) is not handed the flag at all — it would refuse the whole
-  launch over it — where a version nobody can read says nothing about age.
-  `activity.go` is how those agents are told apart from each other's states:
-  `Tmux.Activity` scans the panes once and reads the screen of each tagged one
-  (`capture-pane -p -J`), answering working / waiting / gone / unknown per slice
-  page ID — the same keys `LiveSlices` uses, so one map lays over the other. The
-  signal is Claude Code's running status line, matched against the visible
-  screen alone by its shape rather than its wording — a verb that trails off and
-  then the turn's elapsed time in brackets, `✻ Quantumizing… (1m 6s · …)`: it is
-  on every busy screen and no idle one, where enumerating the shapes it stops
-  for — a permission prompt, a question, the end of a turn — would be a list
-  that goes stale, and so would any of the words in the line itself. A dead pane
-  (`pane_dead`, which only appears where the user has set remain-on-exit) is
-  gone without a capture, as is one that vanishes between the scan and the
-  capture; a capture that fails outright leaves the state unread rather than
-  declaring a running agent gone. It is a poll, with no timer of its own — the
-  TUI decides how often to take a reading.
-  `SendPrompt` is the one thing nat says to a running agent rather than about
-  one: the diff screen's review comments, typed at the session's pane and
-  submitted. It goes through a paste buffer of the session's own
-  (`set-buffer`, then `paste-buffer -d -p`) rather than send-keys' literal
-  mode, because a prompt is several lines and keys sent one at a time would
-  submit at the first newline; the enter after the paste is what sends the turn,
-  and the bracketing is how Claude Code's composer tells a pasted newline from a
-  typed one. A paste that never happened takes its buffer back off the server,
-  and the text is never logged — a review comment is the user's own words about
-  their own code.
-  Both ways of attaching to a session — `AttachCmd`, full-screen through
-  `tea.ExecProcess`, and `AttachClientCmd`, the hidden client the embedded
-  viewer runs on a PTY of its own — build the same argv, `tmux -T
-  <ViewerFeatures> attach-session -t <session>`, and drop `TMUX`/`TMUX_PANE`
-  from the environment, since tmux refuses to nest an attach while they are
-  set. Only the client command replaces `TERM` (with `xterm-256color`): the
-  terminal on the far end of its PTY is the viewer's emulator, where the
-  full-screen attach's is the user's own.
-- `internal/gh/` — the GitHub CLI, wrapped as thinly as it can be. Agents open
-  no pull requests; they hand a slice back on a pushed branch, and the review
-  screen's approve action turns that branch into one with
-  `gh pr create --head <branch>`,
-  run in the slice's repo, titled and bodied with the description the agent
-  recorded at hand-back and read back off the slice page. A hand-back that left
-  none — every one written before there was a flag for it — falls back to
-  `--fill`, which is what the key always did: nothing is ever asked for at a
-  prompt, since a key pressed on a screen cannot answer one. No `--base`, because gh's own
-  answer — the repository's default branch — is the right one. `Runner` is the seam the tests replace, and it takes a working
-  directory, which is the whole reason it is not `agent.Runner`. A gh that ran
-  and refused comes back as an `*ExitError` whose message is the first line of
-  its stderr, since "a pull request for branch X already exists" is the entire
-  point of showing the failure. `OpenPRs` is the one thing it reads rather than
-  writes: `gh pr list --state open --json url,reviewDecision,mergeable --limit
-  100`, in the slice's repo, answering with every pull request the repository
-  currently has open — keyed by URL — and, of each, whether a review has approved
-  it and whether GitHub can merge it as it stands. One listing per repository
-  rather than one `pr view` per pull request, because the board takes this
-  reading for every slice that has a pull request recorded, a whole project's
-  Done ones included: a view per slice would grow with the plan forever and a
-  listing does not grow at all. Being in the answer is itself a fact the caller
-  reads — a merged or closed pull request is simply not listed — which is why a
-  gh that failed is logged and handed straight back, as is output that is not the
-  JSON it was asked for: nothing may be concluded from a listing that never
-  happened. Three fields rather than the whole pull request, since the rest is
-  JSON nobody here reads; GitHub's own words are decoded where they are known —
-  only `APPROVED` and `MERGEABLE` count, and everything else it says
-  (`REVIEW_REQUIRED`, `CHANGES_REQUESTED`, `CONFLICTING`, `UNKNOWN`, and the
-  empty decision of a repository that requires no review) is the fact not being
-  true. The limit is past gh's own default of thirty, and a repository with more
-  open than that has its oldest left out, which reads as a pull request no longer
-  open — the same thing an unread one reads as, and the quiet direction to be
-  wrong in. `NormaliseURL` is how a URL typed onto a Notion page finds the
-  canonical one gh prints: the query string or fragment of a link copied from a
-  review or a comment, a trailing slash, and the case of an owner or repository
-  are none of them distinctions GitHub makes. `ViewPR` is the second read, and
-  the opposite reading to `OpenPRs`: one pull request in full rather than a
-  repository's open ones in three fields, `gh pr view <ref> --json <the viewer's
-  fields>` in the slice's repo, for the screen that draws one. The ref is
-  whatever names it — a branch, a number, or the URL the slice's `PR` property
-  holds — handed to gh as it stands, since gh reads all three; an empty one is
-  refused before gh is run at all, because gh with nothing named reads the pull
-  request of whatever branch the directory happens to be on, which in a shared
-  checkout is nobody's slice in particular. The fields asked for are the screen's
-  own contents written out and nothing else, the way `OpenPRs` asks for three:
-  what the pull request is, whether it is open, merged or a draft, what stands
-  between it and main, and what has been said on it. GitHub's vocabulary is kept
-  as GitHub writes it — `State`, `ReviewDecision`, `Mergeable`,
-  `MergeStateStatus` — because what any of those words means is the caller's
-  question and a word invented here would only have to be turned back; the two
-  shapes GitHub reports a check in are the one place that does not hold, since
-  a `CheckRun` and a `StatusContext` differ in their wording rather than in
-  anything a viewer draws differently, so both arrive as a name, a state and a
-  link, a finished run worth its conclusion and one still going worth its status.
-  A gh that refuses comes back as its `*ExitError` exactly as everything else
-  here does — "no pull requests found for branch X" is the sentence to show.
-  `MergePR` is the one thing here that changes a pull request rather than opens
-  or reads one: `gh pr merge <ref> --merge` in the slice's repo, the ref taken
-  as it stands and refused when empty for exactly the reasons `ViewPR`'s is,
-  only more so — a reading taken of the wrong pull request can be taken again
-  and a merge cannot. The strategy flag is said out loud because a `Runner` is a
-  subprocess with nothing on its standard input: without one gh asks which
-  strategy to use at a prompt and the merge hangs rather than happens, and
-  `--merge` is the one to name since a merge commit is how this repository's own
-  history reads. Whether the pull request can merge at all is asked of the merge
-  box before this is reached, so what is left for gh to refuse over is
-  everything GitHub knows and nat does not — a branch protection rule, a review
-  dismissed by a push, a check that went red between the reading and the key —
-  and all of it comes back as the same `*ExitError`.
-- `internal/git/` — git, wrapped as thinly as gh is and for the same reason: the
-  one thing the board asks of it is the diff of a slice's handed-back branch, so
-  the work can be read before `a` on that screen turns it into a pull request. `Diff` runs one
-  `git diff --merge-base <base> <branch>` in the slice's repo and hands back what
-  git wrote alongside the base it measured against — the merge base rather than
-  the tip, since what the branch did is the point and not everything main has
-  moved on by. The base is whatever `refs/remotes/origin/HEAD` names, and where
-  there is no such ref `origin/main`, falling back to a bare `main` only where
-  that is unreadable too. Both steps are logged and swallowed rather than
-  returned: the fallback is the project's own convention, and refusing a diff
-  over it would be worse than showing one against main. The remote ref comes
-  first because the local branch is precisely the staleness `Fetch` runs to get
-  past — a shared checkout nobody has pulled in a fortnight has a `main` a
-  fortnight behind what the fetch just brought down, and a slice cut from it
-  starts life exactly that far behind, which is what a fetch and no base at all
-  did. The bare `main` is kept for the one repository the remote ref cannot
-  serve, one with no origin, where the local branch is all there is. That
-  fallback is not the rare path it sounds: git writes `origin/HEAD` at clone
-  time and nothing maintains it afterwards, so a checkout made any other way —
-  or one it was pruned from — has none until
-  `git remote set-head origin --auto` puts it back. `Fetch` is the one call that goes to
-  the network: `git fetch origin` in the repo, so the base a slice's worktree is
-  cut from is origin's tip rather than whatever the shared checkout last heard
-  about. It returns nothing — a fetch with no network, no origin or a remote that
-  refused is logged and swallowed, since working from the refs as last fetched is
-  what every offline git command already does and far better than refusing to
-  launch an agent over it. The prefixes are pinned and any
-  external diff driver refused (`--src-prefix=a/ --dst-prefix=b/ --no-ext-diff
-  --no-color`), because the output is parsed rather than shown as it stands and a
-  repository configured with `diff.noprefix` would hand back something else.
-  `Show` is the second thing it asks, and only because a unified diff is a few
-  lines of context around each change and nothing else: `git show
-  <branch>:<path>` is the whole file at the branch, which is the only place the
-  lines between the hunks can come from. Textconv is refused for the reason the
-  diff refuses an external driver — the lines are lined up against the diff's own
-  numbers rather than shown as they stand — and a file the branch does not have,
-  which is one the change deleted, comes back as git's own refusal, logged and
-  handed on: what it costs is the expanding around that one file's diff.
-  `ParseFiles` splits that output into `File`s — the paths, the ± tallies,
-  whether git described the file rather than diffing it, and the section's lines
-  verbatim, since the viewer is read-only and the shape it needs is the shape git
-  already produced. The paths come from the `+++`/`---` lines rather than the
-  `diff --git` header they follow, which pairs two paths with one space between
-  them and cannot be split where a filename holds spaces of its own. `Runner` is
-  its own rather than `gh.Runner`, because a package about git has no business
-  importing the GitHub CLI to borrow a type off it.
-- `internal/worktree/` — git's own worktrees, driven through the `git` binary
-  and wrapped as thinly as `internal/gh` and `internal/git` are, with a `Runner`
-  seam of its own for the same reason, so a slice's agent can be given a
-  worktree rather than made to share the project's one checkout with every other
-  agent and with the user. Three operations, and one convention git has no
-  opinion about: where a new worktree goes, which is nat's rule because a
-  relaunch has to arrive at the same answer — a sibling `<repo>.worktrees/`
-  directory, one entry per branch, named by `pathSlug` (every run of anything
-  but a letter, a digit, a dot, a hyphen or an underscore collapsed to one
-  hyphen, so `slice/worktrees` is `slice-worktrees`). A sibling rather than a
-  child, so nothing nat cuts appears inside the checkout the user works in or
-  the diffs taken from it, and beside the repository every worktree shares
-  (`rev-parse --path-format=absolute --git-common-dir`, its directory) rather
-  than beside whichever worktree nat was launched from. `Create` runs
-  `git worktree add <path> -b <branch> <base>` in the repo; the base is the
-  caller's to resolve and goes through as it stands, an empty one saying nothing
-  at all and leaving git to cut from where the repository is, because which ref
-  a slice is cut from — and how current it is — is a question about the project
-  rather than about git. A branch that already exists is checked out instead
-  (`git worktree add <path> <branch>`, the base not consulted at all), since its
-  commits are the work a relaunch wants; that is not a rare path, because a
-  squash-merged slice keeps its branch. `Path` reads
-  `git worktree list --porcelain` — one record per worktree, opened by its path
-  and naming the branch it has checked out as a full ref — and a branch with no
-  worktree is reported as such rather than as an empty path, which is the
-  ordinary answer for a slice nobody has worked yet. `Remove` finds that path
-  and runs `git worktree remove <path>`, leaving what removal refuses to git,
-  which keeps a worktree holding modified or untracked files: a refusal is
-  recoverable and work thrown away is not. The branch goes after it with
-  `git branch -d`, whose own refusal is logged and swallowed — a squash merge
-  leaves a branch nothing else reaches, and a leftover branch costs nothing,
-  since `Create` checks an existing one out rather than tripping over it. A git
-  that ran and refused comes back as an `*ExitError` whose message is the first
-  line of its stderr, exactly as gh's does; a git that is not there at all comes
-  back as os/exec's own report, told apart from nothing, because no caller acts
-  on the difference — git is what the board reads a diff with as well as what it
-  cuts a worktree with, so a machine without it has no working board to fall
-  back to.
-- `internal/cli/` — the headless commands (`nat info [--json]`,
-  `nat next-slice [--json]`, which claims the next unblocked Todo slice under
-  the lowest-ordered open milestone and prints its brief,
-  `nat start-slice <slice> [--json]`, which claims one named slice and
-  prints the same brief — the command a board-launched agent runs, since it is
-  pointed at a slice rather than choosing one. It takes a second kind of slice
-  besides: one already in progress that the configured user holds (or, on a
-  project with no Assignee column, simply in progress) is re-opened rather than
-  refused — the same brief printed and no write made at all, since such a slice
-  is already everything a claim would make it. That is what lets something else
-  claim a slice before the agent runs, so a session finds its own claim rather
-  than a refusal. Every other refusal stands and still happens before any
-  write: a slice in progress held by somebody else, a Done one, and a blocked
-  one, which is refused by name along with what it waits on whichever of the
-  two kinds it is. That brief names the project's
-  own page ID and says it is what `--project` takes, so a session that reads
-  only the brief is not left running commands against whatever project the
-  board is on —
-  `nat complete-slice <slice> [--branch NAME] [--pr URL] [--summary TEXT]
-  [--pr-description TEXT|-] [--blocked]`, which closes out a slice the
-  configured user holds — three
-  endings, and no two of them at once: `--branch` records the branch the work
-  was pushed to and leaves the slice in progress, handed back for review, which
-  is how an agent ends now; `--pr` records a pull request and leaves the slice
-  in progress too, since Done means the work is on main and the merge is what
-  writes it; `--blocked` leaves it in progress with a note saying what stopped
-  it. A slice closed out with none of the three goes straight to Done — work
-  with no pull request has no merge coming.
-  `--pr-description` belongs to the first of those alone — the only ending with
-  a pull request still to open — and is filed on the page under a `PR
-  description` heading beside the `Handed back` note, where it outlives the
-  agent's session and is what the review screen's approve opens the pull request with days
-  later. `-` reads it from stdin, so a description too long for an argument
-  gets in; there is one stdin, so `--summary` is then the flag —
-  `nat release-slice <slice>`, which is the fourth ending and the only one that
-  goes backwards: Status to `Todo`, the Assignee cleared and one line on the
-  page saying so, for a session that ended without finishing at all,
-  `nat project-create <name> [--repo DIR] [--description TEXT|-]`, which is a
-  whole tracked project without the board — `notion.CreateProject` for the
-  project row and its Slices database, the description written as the page body
-  because that is what `nat info` prints back as the project's conventions, and
-  the entry in local config that makes it a project this machine can open
-  (`WorkingDir` from `--repo`, defaulting to the directory the command was typed
-  in, since a project is usually created from inside its own checkout). Whether
-  the Slices table carries an `Assignee` column follows the configured user, the
-  one thing there is to go on where the board would ask. It leaves
-  `ActiveProjectID` exactly as it was: the active project is the board's alone,
-  and moving it from a headless command would move the board out from under the
-  user. The board's switch picker — which reads the config this wrote — is how
-  the new project gets opened, and `--project <the id it printed>` is how a
-  session reaches it in the meantime. It is also the one
-  command that writes local config, which is why `Env` has a `Save` at all,
-  and the one-off additions
-  `nat milestone-add <name>` (Queued, at the end of the plan),
-  `nat milestone-rename <old> <new>`, which gives a milestone another name and
-  changes nothing else about the plan — see the domain rule below for what that
-  costs — `nat milestone-remove <name>`, which takes one off the plan and is
-  refused while any slice is still filed under it, naming them, since a
-  milestone is nothing but the name its slices carry and emptying it first is
-  the caller's own call about the work rather than the command's about the
-  plan — `nat milestone-move <name> (--before <other> | --after <other>)`, which
-  changes the plan's order and nothing else, exactly one of the two flags naming
-  where it lands — and
-  `nat slice-add <title> --milestone <name> [--description TEXT|-]
-  [--repo DIR] [--depends-on <slice>]...` (Todo and unassigned, description as
-  the page body; `--description -` reads it from stdin, so a slice-add typed
-  with no brief does not wait on one), `nat slice-depends <slice> [--on
-  <slice>]... [--clear]`, which records what a slice waits on — `--on` adds and
-  every named slice is read first, since a dependency nobody can fetch is a wait
-  with no end, and `--clear` drops what is there, so on its own it frees the
-  slice and with `--on` replaces the list outright; an `--on` that would leave
-  the slice waiting on itself is refused before the write, which takes reading
-  the whole plan, since a cycle closes through however many other slices, and
-  the check is made against the graph the write would leave rather than the one
-  there is, so a `--clear` that drops the closing edge is how a slice already
-  caught in a cycle gets out — a `--clear` alone reads no plan at all, because
-  taking edges away cannot close anything — the wishlist pair `nat wishlist [--json]`, which prints
-  the pending items written under the project page's Wishlist heading (with
-  their block IDs under `--json`), and `nat wishlist-clear <block-id>...`,
-  which trashes exactly the named items — never the section wholesale, so an
-  idea typed while a workshop session runs survives it — and leaves the section
-  holding one empty bullet, and `nat plan-apply [FILE] [--project ID]`, which creates a whole
-  drafted plan of milestones and slices from a JSON document (read from FILE or
-  stdin, validated entirely before the first write, and creating pages and
-  nothing else bar one relation — its optional `depends_on` names slices by
-  title, one the document creates or one already in the plan, and those
-  relations go on last, since a slice may wait on one written further down and
-  there is no page to point at until every slice exists; the document's
-  optional top-level `dependencies` list — `{"slice": <title>, "on":
-  [<titles>]}` — is how it reaches a slice already on the board, added to what
-  that slice already waits on the way `slice-depends --on` is and written in
-  that same last phase, and it is the one thing a plan changes rather than
-  creates, which is why a document may hold it and nothing else; the graph all
-  of that would leave — the plan's own slices, the project's, and every edge
-  either side records — is checked for cycles as the last step of validation and
-  so before the first page is written, and a document that would leave one is
-  refused whole with each cycle read out in order, a plan's own slice first
-  where one is in it; a cycle the board already has is refused too, since it is
-  a cycle the document would leave, and filing more work into a plan nobody can
-  finish only buries it deeper; where the plan
-  lands is the command line's rather than the document's, which is what the
-  shared `--project` below is for — a document says what work there is and not
-  whose it is, and everything past that resolution — the migration, the
-  validation, the write order, the nudge — is the same either way; the slices
-  themselves are written back to front, which is the only thing a run can do
-  about where they land on the board — `notion.PlanOrder` reads the order off
-  the Slices view's manual row order, nothing in the API adds a created row to
-  that order, and such a row reads back newest created first, so the document
-  reversed reads back as the document, and the command says so in its output
-  and as `"ordering"` in its JSON), and `nat setup`, which installs the embedded skills into
-  `~/.claude/skills` — the only command that talks to neither Notion nor the
-  config file, since it is what a machine with only the binary runs first), what
-  the binary does when given a subcommand. Run before even the tmux check and
-  with no TUI code in the path: a command prints to the terminal it was typed in
-  and exits.
-  Every command that acts on a project already tracked requires `--project`,
-  naming one by a key of the config's `Projects` map — the project page's own
-  ID — which is what lets a session work a project other than the one the board
-  happens to be on without editing local config. `setup` and `project-create`
-  are the two that do not: neither acts on a project already there. There is no
-  fallback behind the flag. The active project is the board's own idea of where
-  the user is looking, and the user moves it while an agent runs, so a headless
-  write that took it would land in whichever project the board had got to rather
-  than the one the session was launched on — which is exactly the failure a
-  command run anonymously used to be one keystroke away from.
-  `Env.projectFor` is the one place that is decided, `noProject` and
-  `namedProject` its two halves: an ID is matched as written and then
-  normalised, since one copied out of a page URL has no dashes, and a project
-  the config does not know is refused by name — with what it does know listed —
-  before anything is read or written; no ID at all is refused with that same
-  listing (`knownProjects`), so the ID to pass is one failed call away rather
-  than something to go and read the config file for. Both answer with the
-  project's page ID beside its config entry, because a command that reads the
-  project page itself, its conventions or its wishlist, can no longer take that
-  from `ActiveProjectID` — which nothing outside `internal/tui` reads at all.
-- `internal/vterm/` — a child command run on a PTY (`x/xpty`) with its screen
-  mirrored by an in-process VT emulator (`x/vt`), so the TUI can draw an agent
-  as a widget instead of joining its tmux pane. `Start` returns a `Session`:
-  `Render`/`Cursor` to draw it, `SendKey`/`SendBytes`/`Paste` to type at it and
-  `SendMouse` to click and scroll at it — a cell, a button, the modifiers held
-  and a kind of event (press, release, motion, wheel), which the emulator
-  encodes for the child's active mouse modes, or drops where the child has asked
-  for no reporting; the modifiers are not decoration, since tmux binds
-  `C-MouseDown1Pane` as well as `MouseDown1Pane` and a click stripped of its
-  ctrl fires the wrong one,
-  `Resize`, `Output` to know when to redraw and `Done`/`Err` when it has gone.
-  Two goroutines: the read pump feeds the PTY into the emulator under the
-  Session's own mutex (`vt.SafeEmulator`'s lock is not trusted alone — an
-  upstream race fix there was merged and reverted), and the reply pump drains
-  the emulator's answers to the child's startup queries back to the PTY, which
-  a child that asks DA1/DSR stalls without. Two seams for fakes, `newPty` and
-  `waitProcess`. Three details the packages make you find out the hard way: the
-  parent's copy of the PTY's child end has to be closed after `Start` or the
-  read never ends; the screen is read only through `Render`, since the damage
-  list `Draw`/`Touched` work from goes nil across a resize; and the emulator's
-  input pipe is ended by closing it directly rather than through the
-  emulator's own `Close`, which races the reply pump. `internal/tui/agentview.go`
-  is its one caller.
-- `internal/tui/` — bubbletea v2 (`charm.land/*/v2` imports); root model in
-  `app.go` routes screens; all Notion I/O via tea.Cmd → typed msgs.
-  The window is four bands, shared out from the bottom: the status band, the
-  boxed header, the hints row and the body with what is left. The status band is
-  the last of them — the mode of a screen over the board (the board itself has
-  no chip: its heading names the app), the error or toast waiting, and the
-  standing indicators — drawn inside a border like the header and the body and
-  in the frame's own colour, with no fill of its own, so nat's bottom border is
-  the last line of the terminal. Below the framed threshold every band is drawn
-  bare, the status line included, and a window of one line is that line alone.
-  The same text goes out as the terminal's title, stripped of its styling, since
-  a title is text.
-  `claim.go` is the other thing the launch does before it starts a session:
-  `claimSlice` reads the slice's page for the type of its `Status` column and
-  for whether it carries an `Assignee` at all — the same read the release and
-  the approve make — and writes the claim. It runs last of the things that can
-  fail before tmux is asked for anything, so a worktree that could not be cut or
-  a prompt that could not be written leaves the slice exactly where it was. See
-  the domain rule below.
-  `worktrees.go` sits between the launch flow's `workdirFor` and the session it
-  starts: a slice's agent is given a worktree of its own through
-  `internal/worktree`, so it works on its own branch in its own directory rather
-  than sharing the one checkout with every other agent and with the user. The
-  branch is `agentBranch`: the one the slice records where an agent has handed
-  one back, since what was actually pushed is what its worktree is checked out
-  on and is what a relaunch wants, and otherwise derived —
-  `slice/<the title slugged>`, since
-  nothing holds a branch name until the agent hands the work back and a relaunch
-  has to arrive at the same string. It is the same answer `landed.go` removes a
-  worktree by, so the launch and the merge never disagree about which one a
-  slice has. A branch that already has a worktree is
-  reused rather than cut a second one, because a relaunched slice wants its work
-  so far — and only a fresh cut goes near the remote, since a worktree that
-  already exists is where the last session left it. A fresh one is cut from the
-  remote's default branch as it stands: its `Repo` seam is git's other half of
-  the launch, `Fetch` then `Base`, so the branch starts at origin's tip rather
-  than at whatever state the shared checkout's own `main` was last left in — a
-  fetch that failed cuts from the refs as last fetched, which is what an offline
-  launch would have had anyway. The path it answers with is the `agent.PromptContext.WorkingDir` the
-  session is started in and the prompt is written from, so tmux and the agent
-  never disagree about where it is. One way out falls back to the shared
-  checkout with a toast saying so — a working directory that is in no git
-  repository at all — since that is the launch that worked before there were
-  worktrees, and where the agent is working is what decides what its branch
-  instructions mean. A machine with no git on it is not a second way out: git is
-  what the diff screen reads a branch with too, so there is nothing for such a
-  machine to fall back to, and a look-up that fails for any reason is simply not
-  read — the cut that follows is what says whether the agent can be placed. A
-  git that ran and refused is a toast too and launches nothing at all, because
-  an agent placed half way is one working somewhere nobody chose. All of it is resolved inside
-  the launch command rather than before it: fetching reaches the network and
-  cutting a worktree runs the repository's own hooks, and that is the goroutine
-  to be slow in. Its
-  `Worktrees` seam is the board's whole dealing with worktrees rather than the
-  launch's alone: `Remove` is on it too, and `landed.go` is what calls it —
-  the worktree of a slice whose pull request has merged, taken away at the
-  transition that news arrives on and swept for again on every plan load. See
-  the domain rule below.
-  `approve.go` is `a` on the review screen, the app's one action that reaches
-  outside Notion — the domain rule on `Branch` says what it does and why gh's
-  failures are toasts. The board has no approve key: approving is offered where
-  the change has actually been read, so `v` is the only way to it. `diff.go` and
-  `diffflow.go` are that `v`:
-  the unified diff of a handed-back branch, read through `internal/git` and drawn
-  as a screen over the board like help and info, which is where the work is read
-  before it is approved. It is read-only — nothing on it writes anything, the
-  approve being the root model's — and it
-  holds the parsed files rather than the rendered body, because a body row is
-  wrapped to the width it is drawn at and a resize renders again. A line too wide
-  for the box takes as many rows as it needs rather than being cut off, since the
-  tail of a long line is often what changed; `bodyLine.seg` is what tells a row
-  that continues a line from one that starts one, so the cursor stops only where
-  a line begins, a range covers whole lines, and the +/- colour carries onto a
-  continuation while its numbers do not. The file jumps, the line cursor and the
-  comments are all row numbers into that body, so `render` records where each
-  file opens after the wrapping rather than before, and every one of those
-  numbers is rebuilt with the body — the cursor and any range mark put back on
-  the line they were on rather than the row it used to be at.
-  `diffbox.go` is the shape the body takes: one bordered box per
-  file, GitHub-fashion — a header row naming the path with its ± tally, the
-  file's diff inside it, a footer row closing it, and the old and new
-  line numbers of every line down the left, read off the same hunk headers
-  `diffref.go` names a comment's lines by, so the gutter and the prompt are one
-  answer. What git wrote about the file rather than in it is not drawn at all
-  (`diffnoise.go`): the `diff --git` line, the `index` line and the `---`/`+++`
-  pair are what the header row already says, and a hunk header is what the
-  gutter already carries — the first of a file goes silently and every later one
-  leaves a dashed break across the box, so the numbers jumping is not the only
-  sign that lines were skipped — or, where the file behind the diff could be
-  read, the expand controls `diffzones.go` puts there instead, which say the same
-  thing and offer the lines besides. Only the render skips them: parsing keeps every
-  line, so the numbers, the lines a comment quotes and the anchors a re-read
-  finds them by are all read off the section as git wrote it, and a body row
-  that is a line at all is still one of its lines. The number columns are as wide as the widest number anywhere in the
-  diff, so code starts at the same column in every box; a box's own two rows
-  belong to no file's section, which is what the line cursor steps over — bar
-  the header row of a file with no line drawn under it, collapsed or all
-  headers, which is all that file has — and what a
-  jump scrolls to, since the row that names the file is worth the line it
-  costs. A binary or otherwise described file keeps the one line git wrote for it
-  inside its box like any other. The file list beside it is what `n`/`p` move
-  through, and it
-  goes entirely on a window under 60 columns, where the columns are worth more to
-  the diff than to a list of paths — the jumps go on working either way, which is
-  what per-file navigation actually needs. A line's shape is read off its prefix
-  (`lineShapeOf`), the header lines tested before the +/- ones they look like,
-  since `+++ b/main.go` is a header and not three added characters, and answered
-  three ways: the colour it is drawn in, the wash it is drawn on, and whether it
-  holds code to lex at all.
-  `diffsyntax.go` is that lexing — the content of a line coloured by the language
-  of the file it belongs to, chroma's lexers matched on the path (chroma is in
-  the module graph either way, pulled in by glamour). It sits inside the diff's
-  own +/- colouring rather than instead of it: an added line whose foreground has
-  gone to the syntax says it is added with a wash under the whole row instead —
-  the palette's `SuccessWash`/`DangerWash`, a fifth of the outcome colour mixed
-  into the base — and the +/- itself keeps the green or the red. A file whose
-  language chroma does not know, and one git described rather than diffed, takes
-  no wash and is drawn exactly as the viewer drew everything before there was
-  any highlighting, so what falls back falls all the way back. The colours are
-  few on purpose — text, comment, keyword, string, number, and the names a file
-  declares — and come from `Styles` like everything else, so the screen restyles
-  with the light and dark palettes; the strings take the pending yellow rather
-  than the green they take in most themes, since the green is what an added line
-  is. A file is lexed once, when the branch is read, and into token kinds rather
-  than styles: the render runs on every cursor move, and a palette swapped under
-  the screen is picked up without a re-lex. Wrapping is over those runs
-  (`wrapRuns`, which `wrapLine` is one unlexed run of), so a highlighted line
-  takes exactly the rows an unhighlighted one would and `Diff.offsets` — what
-  `n`/`p` scroll to — is unmoved by any of it. A read
-  that fails takes the diff it replaced with it, unlike the info screen's,
-  because a diff is of one branch at one moment and leaving the last one up under
-  a failure would be showing the wrong change; the refresh key reads the branch
-  again while the screen is up, which is what an agent pushing another commit is
-  worth asking about.
-  `diffzones.go` is what fills those skipped lines back in, GitHub's expand
-  controls as box rows: every gap a file's hunks leave — above the first, between
-  each pair, below the last — is a zone, measured off the hunk headers and, for
-  the last one, off the file itself, since the diff says where its hunks end and
-  nothing about how much file follows. A zone draws a control offering the next
-  fifteen of its lines and, only where fifteen will not finish it, a second
-  offering the whole gap; `enter` on the row under the cursor and a left click
-  both activate one, and the render is what drops a control whose gap is full. A
-  revealed line is drawn with its numbers on both sides and no ± of its own,
-  since a gap is context and every line in it is on both sides — the base's
-  number is the branch's plus the offset the hunks above have accumulated. It is
-  coloured by the file's own language like every other line in the box, which is
-  why `fileSyntax` keeps the lexer it lexed with: a revealed line comes from the
-  file rather than from the diff, so it was not lexed when the branch was read
-  and the render is where it goes through the same lexer. Every
-  zone but the last reveals upwards, towards the hunk below it, and says so with
-  `↑`; the gap after the last hunk has no hunk below to reveal towards, so it
-  reveals down and out of the change, and draws `↓`. The lines are the file's
-  rather than the diff's, so the cursor steps over them the way it steps over a
-  comment's rows and there is nothing on one to comment on — the control itself
-  is the one row that is no line at all and still a place the cursor stops. What
-  has been expanded is the screen's own, like a fold, and a read of the branch
-  measures its gaps afresh. A file git would not show — one the change deleted, a
-  binary one — has no zones and draws exactly as it did before there were any,
-  hunk breaks and all.
-  `diffmouse.go` and the fold beside it are how a file that has been read is put
-  away, GitHub's viewed checkbox as a box row: `enter` on the file the cursor is
-  in — or a left click on either of its box's own two rows — collapses it to its
-  header row alone, ticked where the rule would be, and does it again in
-  reverse. That header is then the one place in the file the cursor stops, so
-  `j`/`k`, `n`/`p` and the file list all move over a collapsed file and land on
-  it, and `v`/`c` find nothing to say about a row that shows no lines. It is the
-  screen's own state and nothing else's — never written anywhere, and dropped
-  entirely by any read of the branch, since a fold says the user has seen what
-  was there and that is exactly what a fresh read may have changed. A pending
-  comment on a folded file is untouched: it is about lines, which are still
-  there. The screen asks for the mouse while it is up (the button events alone,
-  where the agent terminal wants all motion), which is what takes the wheel off
-  the outer terminal, so the wheel scrolls the diff from here too.
-  `diffcomment.go` and `diffref.go` are the review left on what that screen
-  shows: `j`/`k` are a line cursor rather than the scroll they were, `v` marks
-  the other end of a range — never leaving the file it was started in, since a
-  comment across two files is two comments — `c` opens a huh box on the lines
-  under it, prefilled with whatever was said about them before and emptied to
-  take it back, and `s` hands every pending comment to the agent as one prompt.
-  They are ephemeral by design: held in the session alone, never written to
-  Notion or to GitHub, marked in a gutter column the body reserves on every line
-  and cleared once they have actually reached the pane — a send that failed
-  leaves them where they are, because nothing else is holding them. A comment is
-  also drawn where it was left: its text, wrapped to the box and started at the
-  column the code starts at, on rows under the last of the lines it covers, so a
-  review is read in place rather than behind a mark. Those rows are a third kind
-  of row that belongs to no file's section (`boxCommentRow`) — the line cursor
-  steps over them the way it steps over a box's borders, `v` and `c` say nothing
-  about them and a click on one folds nothing — and they are built with the body
-  on every render like the wrapped rows and the fold offsets, so a resize wraps
-  them again and a re-read draws them under wherever their lines have got to, or
-  not at all where it dropped the comment. The prompt
-  names each comment's lines by the numbers they sit at in the file
-  (`diffref.go`, read off the hunk headers — the new side's, or the base's for a
-  run that is nothing but deletions) and quotes them as git wrote them, since the
-  numbers are what an agent opens the file by and the text is what tells it it
-  has landed in the right place. A re-read of the branch carries a comment onto
-  the lines it was left on wherever they have got to, and drops it — saying so —
-  when they have changed or now occur twice; a fresh read of the same slice keeps
-  them, and any other slice starts with none. `openForm` remembers the screen it
-  was opened over for this one form's sake: every other form is the board's and
-  closes back onto it, where dropping the user there after typing a comment would
-  lose their place in a change they are half way through reading.
-  `prview.go` and `prflow.go` are the reading after that one: `V` on a slice
-  whose `PR` property names a pull request opens it as a screen over the board,
-  the way `v` opens the diff, read through `internal/gh`'s `ViewPR` in the
-  slice's repo and drawn from the branch's own reading rather than the
-  repository's listing — one pull request in full, since a screen about one is
-  the one place the rest of gh's answer is worth asking for. The screen's own
-  header is two lines above the body: a state chip in GitHub's four words
-  (`prStateChip` — merged and closed are tested before the draft flag, since a
-  draft that has since merged is no longer one, and anything GitHub says that
-  this build does not know reads as open, because a pull request that has
-  neither merged nor closed is open whatever it is called), the number and the
-  title, and under them what the pull request would move, `head → base`. The
-  body is the description, rendered through the same glamour the
-  info screen renders the project page with, and under it the conversation, the
-  checks and the merge box, all four scrolled in one viewport of its
-  own, which is why the screen holds gh's answer rather than the rendered text:
-  a resize renders it again. `prchecks.go` is that third part — the status
-  check rollup as a heading with one line summarising the lot beside it and a
-  row per check under it, the name, GitHub's own word for where it stands, and
-  a mark and a colour saying what that word amounts to. That is
-  `checkOutcome`, the four things a check is to a reader — passing, failing,
-  pending, skipped — since GitHub has a word for every way each of them
-  happens and a summary counting words would have a column apiece; a state this
-  build does not know is pending rather than passing, because a check nobody
-  can classify is exactly the one to keep watching and calling it a pass would
-  have the rollup line say the work is ready when nothing said so. The rollup
-  names only the outcomes some check is in, worst first, and is coloured by the
-  worst of them, so it says what the rows do and nothing else. The section goes
-  under the conversation rather than over it — what people said about the work
-  is read before what the machines said about it — and directly over the merge
-  box, whose checks verdict is this very rollup, so the two lines that could
-  disagree are next to each other. It is inside the viewport rather than pinned
-  above it, since
-  a repository with a workflow per platform has more checks than a screen has
-  lines. A pull request nothing runs on is one line saying so: an empty section
-  under a heading would read as checks yet to report. `prconvo.go` is the part
-  above it: everything said on the pull request as one timeline, the issue
-  comments and the submitted reviews interleaved by the moment each was said,
-  oldest first, under a heading counting the two kinds in their own words. An
-  entry is its own line — a mark, the author, what they did in saying it and how
-  long ago (`ago`, the same coarse words the status line's freshness reads in,
-  off the same `timeNow`) — with whatever they wrote under it, rendered through
-  the very glamour the description is, since a comment is markdown and long ones
-  are the ones worth reading. `convoTone` is what the mark and the colour say,
-  and it is the conversation's own reading rather than `checkOutcome`: approved,
-  changes requested and dismissed take a check's marks because a person is
-  saying what a check says, and everything else — a comment, a review that is
-  only a remark — is neutral and recedes, since reading a comment as passing or
-  failing would put a colour on it that nobody wrote. Two reviews are no part of
-  the conversation at all: one never submitted, which nobody but its author can
-  see and which carries no time to place it by, and a `COMMENTED` review with no
-  words, which is the wrapper GitHub puts around comments left on lines of the
-  diff — comments `gh pr view` does not carry, so drawing it would be an entry
-  saying somebody reviewed and nothing about what they said. Every other
-  wordless review is a verdict, which is the whole of what it had to say, and
-  draws as its line alone. A state this build does not know is still a review
-  somebody submitted and is drawn in GitHub's own word rather than dropped. The
-  sort is stable over the comments first, so two things stamped with the same
-  second keep an order between readings rather than swapping. A pull request
-  nobody has said anything on is one quiet line, for the reason a pull request
-  with no checks is. `prmerge.go` is what those
-  rows are read into — GitHub's merge box as one section under them, three
-  verdicts answering "can this merge": the review decision, the checks, and the
-  branch itself. Each is one line with a mark and a colour, and they are the
-  same `checkOutcome` the checks are drawn in rather than an enum of their own,
-  since a verdict is read exactly as a check is; the heading says what the three
-  come to — ready to merge, not ready to merge, cannot merge — coloured by the
-  worst of them, so green across the board is the section's yes. The checks line
-  is `checkSummary`/`checkRollup` themselves rather than a second reading of the
-  same rollup, which is what makes it impossible for the two sections to
-  disagree. The review's empty decision — a repository that requires no review at
-  all — is the question never having been asked rather than an approval, and
-  mergeability is read off `mergeable` and `mergeStateStatus` together, so a
-  branch that conflicts with its base is named as conflicting and one merely
-  behind it as behind: "unmergeable" says what is not true and nothing about why.
-  Anything either field says that this build does not know is a verdict still to
-  come, for the reason an unrecognised check is pending. A merged or closed pull
-  request has the whole section replaced by that ending, since three verdicts
-  about a branch already in — or already given up on — would read as a question
-  still open. `r` reads the pull request again while the screen
-  is up — a review left, a check finished or a merge since it came up is
-  exactly what a refresh is being asked about — and a read that fails is a state
-  of the screen rather than an error over the app, taking the last reading with
-  it the way the diff's does: the slice and its pull request are still there,
-  and what is stale is only what GitHub last said. The key is refused with the
-  row's own confirmation on a slice with no pull request recorded, which is
-  every slice the approve key has not been pressed on, and it is out of the
-  hints row for the reason `R` is — it does something on fewer rows than any
-  key that is in it, and the help screen names it.
-  `prmergeflow.go` is the one key on that screen that acts rather than reads:
-  `m` merges the pull request on show, `gh pr merge` through `internal/gh`'s
-  `MergePR` in the slice's repo, on the very ref the screen was opened with. It
-  asks first, and it asks on the merge box — `PRView` holds a `rowPrompt` of the
-  board's own kind and draws it on the heading line that says whether the answer
-  is yes, since that heading is what the question is about; esc and the cancel
-  beside the merge are both ways out of it, and neither says anything, because
-  nothing was in flight. `mergeRefusal` is what the key refuses on, read off the
-  very verdicts the box draws so the toast and the line above it cannot
-  disagree: the first failing one, in its own words — `review: changes
-  requested`, `checks: 1 failing`, `mergeable: conflicting with main`. Only a
-  failing verdict refuses. A verdict still to come is not a no, and GitHub is
-  the one to say whether it will take the merge anyway; a pull request already
-  merged or closed, and a screen with no reading on it, have nothing to merge at
-  all and are refused as such (`PRView.Mergeable`, which is also what decides
-  whether the hints row names the key). gh refusing anyway is a toast carrying
-  its first stderr line rather than an error banner, exactly as the approve
-  key's refusal is: the pull request is still there and still open, and nothing
-  is read again over it. A merge that succeeded reads the pull request again, so
-  the screen says merged rather than going on offering the key that merged it,
-  and marks the slice Done on Notion — Done means the work is on main, and the
-  merge is the one event that makes it true; a merge made on GitHub itself is
-  caught by the background reading, which asks what became of an in-progress
-  slice's absent pull request and writes Done where the answer is merged
-  (`actions.SettleMerged`).
-  What the merge does move is the slice's worktree, which the board takes away
-  at the next reading that finds the pull request no longer open — see the
-  domain rule on `landed.go`. An inline prompt is now two screens' rather than
-  the board's alone, which is what `App.promptHost` is: the board and the pull
-  request screen answer the same `promptKey` through one interface, and the
-  board's redraw — the plan is cached in a viewport, the pull request screen
-  draws its own content — is what the two differ in. A plan landing closes a
-  prompt anchored to a row (`App.closeBoardPrompt`) and leaves one asked about a
-  pull request alone, since the row may have moved and the pull request has not.
-  `newproject.go` is `N` and `P`, the two ways a project comes to be on the
-  board. `P` is one picker for both halves of "which project": the ones local
-  config knows, and under them — marked, so picking one says what it does — the
-  rows of the workspace's projects database it does not, since which of the two
-  a project is is an accident of where it was created. The configured half is
-  there the moment the key is pressed and the read of the projects database
-  lands into the picker already on screen, so a database that is slow, or that
-  cannot be read at all, holds up no switch — such a read is logged and
-  otherwise passed over, and an answer arriving after the picker has closed
-  fills in nothing. That landing rebuilds the form rather than adding to the
-  field it holds, because huh measures a group's height as it is built and a
-  list that grew past it would be drawn cut off. Picking an unconfigured page
-  is a `notion.ResolveProject` first — the name and the data source its plan
-  lives in, which is exactly what config has no record of — then the config
-  entry and the very switch a configured project is (`activateProject`, what
-  both endings share). The working directory is left unset, since where the
-  code lives is this machine's answer and no part of what was read, and the
-  toast says where to give one. A page that will not resolve is a toast naming
-  the resolver's own refusal with local config untouched: half a project
-  recorded is worse than none. The key refuses only when neither half can grow
-  — one configured project and no projects database — which is why a machine
-  that has opened nothing at all still gets a picker.
-  `settings.go` is `S`, the config file as a form, so nothing local has to be
-  edited by hand: the active project's working directory, the agent split, the
-  poll interval and the two model pairs — and nothing else in the file, since
-  the workspace's databases and the assignee are wiring the wizard and the
-  project keys write rather than text to type over, and the Notion token is not
-  in the config at all. The numbers are held as the strings they were typed as,
-  so a field cleared back to empty is "unset" and not a zero to render; both are
-  validated against `config`'s own bounds rather than a copy of them, so the
-  form refuses exactly what a later read would have swapped the default in for.
-  It is one huh group and not a section apiece, because huh pages a form group
-  by group and a settings screen is somewhere the user arrives knowing which
-  field they came for: every field is on the one page and tab reaches any of
-  them, and what the two model pairs belong to is said in their titles
-  (`modelFieldsFor`) rather than in a group heading above them.
-  The key is global rather than the board's — the config is the app's, not any
-  one screen's — and out of the hints row for the reason `W` is: it is pressed
-  rarely and once. Saving applies to the session first and persists after, the
-  bargain `persist` describes, and it re-shares the window on the spot, which is
-  what makes the split live; the poll takes its new interval on the next tick,
-  and the directory and the models are read at the next launch, which the
-  fields' own descriptions say. `poll.go` is
-  the background refetch of the plan, for the changes no nudge reports because
-  no `nat` command made them: a tick every `poll_seconds` (default 30, bounded)
-  running the same load the refresh key does, so the plan stays on screen while
-  it is in flight and a failure leaves the board as it was. It is passed over —
-  never cancelled, so it resumes on the next tick by itself — while the wizard,
-  a form, a row prompt, a write or another load is in flight, since a plan
-  landing under any of those would clobber what the user is in the middle of. An
-  open agent terminal never suspends it: the plan behind the split stays live.
-  `agentview.go` is that terminal — `t` (and `w` for the planning agent) runs
-  `AttachClientCmd` on a `vterm.Session` and draws it in a box beside the board,
-  sized from `agent_split_percent`, so nat owns the whole rectangle while the
-  agent goes on living in its own tmux session and survives a board restart. One
-  is on show at a time; it opens unfocused (`tab` focuses, `ctrl+\` comes back)
-  and while it is focused every key is the agent's — `ctrl+c` and tmux's own
-  prefix included, which is deliberate: nat sits in no session of its own for a
-  prefix to drive by mistake, so it belongs to the agent's. A key that stands
-  for characters is written as those characters and only the rest goes to the
-  emulator's key encoder, which writes a printable key only when it carries no
-  modifier at all and so typed nothing for a capital letter or any shifted
-  punctuation; ctrl is excluded, since a ctrl combination is a control byte
-  however it was decoded. It is drawn only on
-  the board and only in a framed window, and stays alive undrawn behind help,
-  info and a form. Its redraw is capped at the renderer's own frame: the wait
-  re-armed after a capture (`awaitFrame`) holds off `frameInterval` — 1/60s —
-  before listening again, and the session coalesces everything the child wrote
-  meanwhile into its one pending notification, so a burst costs one read of the
-  emulator's screen and one render of the window per frame instead of one per
-  write. The board beside it is drawn once and kept (`App.boardBox`, dropped by
-  `syncBoard`, which everything that changes what the board shows goes through),
-  so an agent writing flat out redraws only its own box.
-  An agent that exits takes its box with it: the terminal closes
-  (`dropViewer` — the viewer dropped, the session closed, the board resized back
-  to full width), because a frame nothing will write to again is the board's
-  columns held by a dead agent. That happens whichever way the news arrives —
-  the hidden client's EOF, or the live poll finding the session gone — and
-  dropping the viewer is what the second one is recognised by, so the
-  after-viewing refetch (the slice's page, or the whole plan for the planning
-  agent) runs exactly once. The trigger is the end of the client's
-  pseudo-terminal, not the status it exited with: `tmux attach-session` exits
-  zero whether its session ended under it or the user detached. A client that
-  dies with its session still running closes the box too, but says so in a toast
-  naming the session, since reattaching is what the user wants next.
-  `T` is the hatch to the old full-screen attach. The
-  mouse is the terminal's too: all-motion reporting is asked for on the view
-  only while one is on show — with it off the user's own selection and
-  scrollback are left alone, and there is nothing on screen a key does not reach
-  — and an event inside the box is turned into a cell of the child's screen and
-  handed to `SendMouse` with the modifiers it arrived with, a press there taking
-  the keyboard as well. Everything outside the box is dropped, bar a press, which
-  hands the keyboard back. Nothing between swallows it: tmux passes mouse
-  reporting through unless its own `mouse` option is on, which nat sets for the
-  sessions it makes for agents and never for one the user started nat in. What
-  the agent's own tmux does with what arrives is unchanged by the hop: a click on
-  an OSC 8 hyperlink fires the `MouseDown1Pane` binding and opens it, and a wheel
-  enters copy-mode over the pane's scrollback and leaves it again on the way back
-  down (tmux's stock `copy-mode -e`), exactly as they did through a joined pane.
-  `boardmouse.go` is the other half of that, since reporting takes the mouse off
-  the outer terminal over the whole window rather than over the terminal's box:
-  what the viewer does not take, the board does. A left click selects the row
-  the line it landed on belongs to — `Board.RowAtLine`, off the same `rowLines`
-  the cursor's own span and the animation's re-sync are measured from — and the
-  wheel scrolls the plan three lines a notch, dragging the cursor no further than
-  the nearest row still whole on screen, because `syncBoard` would otherwise
-  scroll straight back to it. A click on the PR chip opens the pull request:
-  `Board.LinkAt` walks the drawn row for the OSC 8 hyperlink covering that cell
-  and the app hands the URL to the platform opener (`agent.URLOpener`), which is
-  what the terminal itself would have done with the click had nat not taken it.
-  The board is deaf to all of it while the wizard, a form or a row prompt is up,
-  for the same reason the keys are.
-  `presence.go` is the star a slice with an agent on it is marked with: it
-  pulses — the same star swelling and settling, one cell wide at every frame so
-  the row does not shift under it — while the agent works, and holds a star of
-  its own steady when the agent has stopped for input. Liveness is the live
-  map's answer and the classification only refines it, so an agent that has gone
-  has no star whatever was last read of it, and one nobody has classified draws
-  as working. The whole
-  board animates off one timer, armed by the live read and stopping itself as
-  soon as nothing is pulsing; each frame re-syncs the board, since its rows are
-  cached in a viewport. Both the glyph and the colour move, because a selected
-  row is drawn without any chip's styling.
-  `activity.go` is what does the classifying: a reading of
-  `agent.Tmux.Activity` every two seconds — far shorter than the live read's
-  half a minute, because this is the reading a star moves with — turned into the
-  presence map the board draws from. Like the pulse it runs off one timer, armed
-  by a live read that finds an agent and stopping itself once the last one has
-  gone, and it takes no reading at all with nothing running. A failed reading is
-  logged and dropped rather than toasted or written to the board: the stars go
-  on saying what they last said, which for an agent still running is true for a
-  while yet. An agent read as gone is left out of the map entirely — whether
-  there is an agent at all is the live map's answer, and a second opinion here
-  would only be a staler one.
-  `active.go` is the Active panel: the slices in flight, drawn as a vertical
-  list in a box of its own above the plan's box rather than scattered through
-  the milestones they happen to be filed under. The two are siblings of the
-  body band, each framed the way the header and the status band are, so no
-  border of the layout sits inside another — `App.bodyPanels` is where the band
-  splits, `App.activeRegion` the panel itself, built like the agent terminal's
-  region (a hand-made title line over a box drawn without its top border, since
-  lipgloss has no border-title API). Membership is `domain.StateOf`'s own
-  answer — a slice it says nothing about is one there is nothing to say about —
-  so the section holds every slice in progress, plus a Done slice for as long as
-  gh says its pull request is still open, and nothing else. A plan with none
-  draws no panel at all and reads exactly as it did before there was one. An
-  entry is two lines: a state dot and the slice's name, then a muted line
-  reading `<state> · <milestone>`, with the dot and the state word in the
-  state's own colour (`Board.stateStyle`, the roles the board already reads
-  those states in). The selected entry is a fill rather than a marker, merged
-  into every piece's own style through `wash` so the dot keeps its colour over
-  it — the board's usual trick of drawing a selected row plain would flatten
-  exactly what the entry is read by. The entries are rows of this same board,
-  the first rows there are, so the cursor runs from the section straight on into
-  the plan and every key that acts on a slice acts on the one under it —
-  `Board.SelectedSlice` answers for an entry as for a plan row, since it is the
-  same page drawn a second time. What those keys put on the row is drawn on the
-  entry too: the inline confirmation, or the prompt waiting to be answered, laid
-  over the entry's foot line — its last, which is where `Board.finishRow` puts
-  them on a plan row — through the one `Board.overlayAnchored` both go through.
-  A key that opens a prompt takes every key until it is answered, so an entry
-  that drew nothing would be a board that had stopped responding.
-  Everything the board measures over its rows is
-  measured over the plan's alone (`Board.rowLines`, `CursorSpan`, `RowAtLine`,
-  `CursorToVisible`, `LinkAt`), and the panel answers for its own in the lines
-  of its own box (`ActiveLines`, `ActiveCursorSpan`, `ActiveRowAtLine`); the two
-  scroll independently, the plan in `App.boardVP` and the panel on
-  `App.activeOffset`, so a cursor in one says nothing about where the other is.
-  The wheel is the plan's wherever it lands, since the panel follows the cursor
-  rather than scrolling on its own. How many lines the panel gets is the
-  layout's (`App.activeBandHeight`): as many as its entries need, never more
-  than leaves the plan a band worth drawing in, and none at all where there is
-  no room — which `Board.SetShowActive` tells the board, so the entries take no
-  rows either and the cursor is never left on one nothing draws. Below the
-  framed threshold the section follows every other band and draws bare: its
-  heading on a line of its own where the panel has one let into its border.
-  Nothing folds: an entry is a slice, and a slice row has never folded.
-  `SetPRState` is the one reading that can change which slices the section holds
-  at all, so it rebuilds the rows — but only when the reading says something the
-  last one did not, since a rebuild the user cannot see is one the cursor pays
-  for, and it puts the cursor back on what it was on either way: the slice for an
-  entry of the section, whose position is exactly what the rebuild moves, and the
-  row itself for anything in the plan below it.
-  `prstate.go` is the second reading behind those states, beside the activity
-  watcher's: what GitHub currently has open, read through `internal/gh` and kept
-  as a map of `domain.PRReadiness` the board is given like the activity map. It
-  has no timer of its own — it rides the plan's, kicked off by each plan that
-  lands, since a pull request being approved is news of the same kind and much
-  the same age as the plan itself — and it is skipped entirely when the plan has
-  no pull request left to ask about, which is most boards most of the time. Two
-  kinds of slice are asked about, and for two different reasons now: one in
-  progress is waiting on the review, and a Done one is asked about only so a
-  legacy row — one marked Done at approve, under the rule before Done followed
-  the merge — can be caught and written back to `In progress` the moment its
-  pull request reads open (`ReopenUnmerged`, above). A newly-finished project
-  never has such a row to begin with, since Done is written only by the merge
-  now, so this half of the reading converges to asking about nothing. It is
-  one `OpenPRs` listing per repository the plan spans
-  rather than one reading per slice, so the cost is the number of repositories
-  rather than the number of pull requests the project has ever produced, and a
-  pull request the listing no longer names is settled for the session
-  (`App.prSettled`) and never asked about again — a merged pull request does not
-  unmerge, and a mature plan is mostly finished work. One reading runs at a time
-  (`App.prReading`), because a gh on a slow network can outlast the interval it
-  was started on. A repository whose listing failed has every slice of it left
-  out of the map, and settles nothing at all: the board reads an absent slice as
-  a review still to come while it is in flight and as nothing whatever once it is
-  Done, which is exactly what each said before there was any reading, so a gh
-  that is not installed or not authenticated changes nothing and is logged and
-  nowhere else — and, above all, a listing that never happened is never taken for
-  a pull request that has landed. `readinessOf` is where gh's vocabulary becomes
-  the rule's, the way `agentPresence` is for tmux's.
-- `skills/` — the agent skills (/queue-work planning, /queue-project the same
-  planning for work that has no project yet, /next-slice execution),
-  embedded in the binary with `go:embed` and installed by `nat setup`. A
-  checkout works on them in place by symlinking them into `~/.claude/skills/`,
-  which `nat setup` leaves alone rather than writing back through. /next-slice
-  and `internal/agent`'s slice prompt end the same way and say so in the same
-  words: the branch pushed and handed back with `complete-slice --branch`, its
-  `--pr-description` written ready to publish rather than as a report of the
-  session, and no `gh` and no pull request, since opening one is the approve key
-  the user presses on the review screen once they have read the branch. They arrive at the same branch too: a board launch
-  puts its agent in a worktree already on one and names it, and /next-slice is
-  run by a session that is wherever the user was, so it cuts that worktree
-  itself, with the same plain git the board cuts one with — `git worktree list
-  --porcelain` for a worktree the branch already has, and otherwise `git fetch
-  origin` and then `git worktree add <repo>.worktrees/<the branch slugged> -b
-  slice/<the title slugged> <origin's default branch>` in the working directory
-  the brief names — so both sides arrive at the same branch in the same place.
-  The slug rule `tui.sliceBranch` applies, the path rule
-  `worktree.pathSlug` and `worktree.dirSuffix` apply (the repository read off
-  `rev-parse --path-format=absolute --git-common-dir`, as `worktree.CLI.root`
-  reads it) and the base rule `git.CLI.Base` applies are all written out rather
-  than shared, since a skill is read by an agent and not compiled.
-  A machine with no git and a working directory in no repository fall
-  back to branching in place — the second of those is what the board falls back
-  to the shared checkout for, and the first is the skill's own belt and braces,
-  since a session that cannot run git at all still has to end somewhere.
-  /queue-project is /queue-work's drafting rules plus the two headless commands
-  that make a project to file the draft into: `project-create` with the brief on
-  stdin, then `plan-apply --project <the id it printed>`. That order and that
-  flag are the whole of it, and are what its tests hold to — `plan-apply` run
-  without `--project` files nothing at all, since `project-create` deliberately
-  leaves the active project alone and there is nothing else for the flag to
-  fall back to.
-  Which is also why the skill ends by sending the user to the board's switch
-  picker rather than the CLI, which has no switch of its own: the last step is
-  the user's, and `--project` is how a skill reaches a project that is not the
-  active one in the meantime.
-  Every `nat` command a skill spells out carries `--project`, exactly as the
-  prompts do and for the same reason. A skill is not launched with an ID the
-  way a prompt is written with one, so each says where its own comes from — the
-  launch prompt where there was one, and otherwise the refusal a project-scoped
-  command gives when it is run bare, which lists every project this machine
-  tracks with its ID. That listing is the whole bootstrap: there is no read to
-  leave unpinned, because there is no unpinned read.
-  /queue-project's exception is `project-create` itself, which is what
-  makes the project there is no ID for yet. The rest is held to by tests over
-  the embedded files: a command inside a fenced block names a project or it is
-  one an agent would copy and find refused.
+## Architecture map
+
+- `main.go` — entrypoint (`github.com/craigmjohnston/nat`). A subcommand
+  runs before even the tmux check; none of them launches an agent.
+- `internal/config/` — XDG config + `AgentModel` (model/effort pairs for
+  `workshop_agent`/`slice_agent`); unset halves contribute no flag.
+- `internal/notion/` — the Notion client. See `internal/notion/CLAUDE.md`.
+- `internal/store/` — the port between nat and wherever a plan lives
+  (`Notion`, `Local`/SQLite). See `internal/store/CLAUDE.md`.
+- `internal/domain/` — Project/Milestone/Slice models, `StateOf`, progress math.
+- `internal/actions/` — headless claim/launch/approve/landed/worktree flow,
+  shared by `internal/tui` and `internal/cli`. See `internal/actions/CLAUDE.md`.
+- `internal/agent/` — prompt templates + tmux session management. See
+  `internal/agent/CLAUDE.md`.
+- `internal/gh/`, `internal/git/`, `internal/worktree/` — thin CLI wrappers.
+  See each package's `CLAUDE.md`.
+- `internal/vterm/` — PTY + VT emulator behind the embedded agent terminal.
+  See `internal/vterm/CLAUDE.md` (the three hard-won gotchas — read before
+  touching it).
+- `internal/cli/` — the headless `nat` subcommands; the macOS app's whole
+  backend contract. See `internal/cli/CLAUDE.md`.
+- `internal/tui/` — the board. See `internal/tui/CLAUDE.md`.
+- `internal/logging/`, `internal/nudge/` — the log file and the
+  write-marker file the board polls every second for near-instant refresh.
+- `skills/` — `/queue-work`, `/queue-project`, `/next-slice`, embedded via
+  `go:embed`, installed by `nat setup`.
+- `macos/` — `gnat`, the native macOS app wrapping `nat`. See `macos/CLAUDE.md`.
+
+**Never log or commit the Notion token or a request body.** The token
+belongs to the `ntn` CLI (`ntn auth token`) and is held in memory only for
+the lifetime of one request; nat stores no credential of its own.
+`internal/logging`'s redactor is the enforcement point — don't add a logging
+call that bypasses it.
 
 ## Domain rules
 
-- Slice workflow: Todo → in progress → Done. Never edit an in-progress or Done
-  slice.
-- The in-progress status is called `In progress`. Projects made before the app
-  asked called it `Claimed`; that name is migrated away at load
-  (`notion.MigrateProject`) rather than read anywhere. `notion.ShapeOf` still
-  reads the types of the `Status` and `Milestone` columns off the Slices data
-  source — either may have been converted to Notion's own status type in the UI
-  — and whether the project has an `Assignee` or a `Branch` column at all.
-- Claiming = Status → `In progress`, plus Assignee (people
-  property, the configured real Notion user) where the project has that column.
-  Without one, ownership is decided on status alone. The board claims a slice
-  itself as it launches the agent (`internal/tui/claim.go`), before tmux is
-  asked for anything: a fresh Claude Code takes seconds to reach `start-slice`,
-  and a row that reads Todo all the while is one a second agent can be launched
-  on. A claim Notion refused stops the launch outright — a toast naming what it
-  said, and no session — while a launch that fails after it leaves the slice in
-  progress with no agent, which is the state `R` releases. The agent still runs
-  `start-slice`, which finds the claim it was launched on and re-opens the slice
-  rather than claiming it again — and which refuses outright where the claim did
-  not stick, so a race is settled before any agent is handed a brief.
-- Releasing is the claim undone, and the way out of the one state a slice gets
-  stuck in: a session that died — a crashed agent, a killed pane, a context that
-  ran out — leaves its slice in progress and held, where `next-slice` steps over
-  it, `start-slice` refuses it and `complete-slice` only goes forward. Status
-  back to `Todo` and the Assignee cleared (`NewPeople()` with no user, the empty
-  list Notion reads as nobody, which is why `PropertyValue.People` is a pointer
-  — the same reason `Relation` is), and nothing else on the page touched: the
-  description, `Depends on`, `Repo` and any `Branch` are exactly the brief and
-  the work-so-far the next session wants. One line goes on the page first, so a
-  slice that went round twice reads as having done so; it is written before the
-  status for the reason `complete-slice` writes its note first, since a slice
-  already back at `Todo` is one the command would refuse to add a line to. Only
-  a slice the configured user holds can be released — the same ownership rule
-  `complete-slice` applies (`notOursError`, which now names the action it
-  refused) — and the page is re-read for the type of its `Status` column, as
-  every other write to a slice is. `nat release-slice <slice>` is the headless
-  half; `R` on the board is the other, confirmed on the row the way `d` is,
-  ignored on a slice that is not in progress, and refused with a toast on a
-  slice an agent is still live on, since releasing one out from under a working
-  session is how two sessions end up on one branch.
-- `l` launches an agent on a slice nothing is happening on, which is both of
-  the states short of Done: `Todo`, work not yet started, and in progress with
-  no live session — a session that died, or one the board has been restarted
-  since (`tui.launchable`). A slice with a live session is refused whatever its
-  status, with the key that attaches to the agent already there, and that
-  refusal is checked first, since it is the one with somewhere to send the user.
-  Any status a project has invented is refused. The launch
-  writes nothing to Notion either way — the agent's own `start-slice` is the
-  claim, and that command re-opens a slice its holder already claimed rather
-  than refusing it, which is what makes the second state work at all. A
-  relaunched slice is placed back on `agentBranch`, so one with a branch handed
-  back gets the worktree that work is in; the prompt says so and tells the agent
-  it is continuing rather than starting (`agent.resuming`), and a slice with no
-  branch reads as the fresh start it is.
-  A Done slice is launchable too, and for exactly as long as its pull request
-  is: Done is Notion's word for the slice and not for the work, so until that
-  pull request merges the review on it — comments to answer, checks to get
-  green — is work an agent can do. Such a launch is a fix session
-  (`tui.fixLaunch`), and it is the one launch that writes nothing at all: no
-  claim, because the slice is already everything a claim would make it and the
-  record of what was done is not the session's to rewrite, which is what leaves
-  the approve flow's own state untouched. The live-session star is what says
-  the work is in flight. Whether the pull request is still open is gh's to say
-  and gh is not asked on a keystroke, so the question is asked once the launch
-  is under way, first of everything and before any worktree is cut
-  (`tui.prStillOpen`, `gh.CLI.ViewPR` on the URL the page records): a merged
-  one, a closed one and one that could not be read at all each refuse with a
-  toast of their own, and each leaves the board exactly as it was. That last is
-  the opposite reading to everywhere else the board reads gh, where an unread
-  pull request is no news — what it costs there is an undrawn chip, and what it
-  would cost here is a session started on a review that ended an hour ago. A
-  Done slice with no pull request recorded is refused on the keystroke and in
-  its own words: there is no review to read and nothing about the slice left to
-  do. Dependencies are not asked about on that path — an open pull request
-  waits on its review and on nothing else — and the worktree is the one
-  `agentBranch` names, which is the branch the pull request is built from. What
-  such a session is told is `agent.fixPrompt` rather than the slice prompt:
-  nothing to claim, nothing to hand back, the pull request read from GitHub
-  itself (`gh pr view --comments`, `gh pr checks` — the one place the standing
-  ban on `gh` is relaxed, and only for those two reads), and an ending that is
-  a push to the same branch, since the pull request picks that up by itself.
-- Slices ↔ PRs are 1:1 when work is code; PR URL recorded in the `PR` property.
-  That URL is what `V` reads back: the board hands it to gh as the ref naming
-  the pull request, and the screen it opens is where what became of an approved
-  slice is read — see `internal/tui/prview.go`. It is the only thing on the row
-  the key needs, so a slice with none is refused rather than shown an empty
-  screen.
-- A slice may carry a `Branch` — the branch an agent pushed its work to and
-  handed back on. It is read off the page like any other property and empty on a
-  project whose Slices table has no such column, and a slice in progress that
-  names one is work waiting to be reviewed (`domain.Slice.HandedBack`), which
-  the board draws as a green `↑ review` chip so a hand-back does not read as
-  another slice being worked. `complete-slice --branch` is what writes it: the
-  branch recorded, the status left alone, and the note filed under a
-  `Handed back` heading rather than `Summary` — with whatever
-  `--pr-description` was given beside it under a `PR description` heading of its
-  own, in the same write, since the two are one hand-back. That is where the
-  description lives rather than only in the command that carried it, so it
-  outlasts the agent's session and the approve can happen whenever the review
-  does; `notion.PRDescriptionOf` is the read, taking the last such section, as a
-  slice handed back twice has one per hand-back. A branch is refused outright
-  where `notion.ShapeOf` reads no `Branch` text column — a hand-back written
-  nowhere is one lost — and refused before the note goes on, so the slice is
-  left as it was. `v` on the board is how that wait is read — the branch's diff
-  against the base it was cut from, on a screen of its own — and only a
-  handed-back slice has one to read, which is now the one place that rule is
-  applied, since approving is a key on that screen rather than on the board.
-  A review can go back rather than only be read: comments left on the
-  diff's lines are sent to the agent that wrote the branch, all of them in one
-  prompt, which needs that agent's session to still be running — one that has
-  exited is not there to be told anything, and the comments stay pending until
-  there is one that is. They are recorded nowhere: not on the slice, not on
-  Notion, not on GitHub.
-  `a` on that review screen is what ends the wait: it runs `gh pr create` in the
-  slice's repo from that branch, and writes the URL it gets back onto the `PR`
-  property — the status stays `In progress`, since Done means the work is on
-  main and the merge is what writes it — the one TUI key that reaches
-  outside Notion, and the only place a slice's PR is recorded from the TUI. It
-  asks nothing before doing it: the screen is the confirmation, since nothing
-  reaches this key without the change having been put in front of the user,
-  which is exactly what a key on the board could not say, and the board's own
-  `p` is gone rather than moved. Pending comments are the one thing that stops
-  it — a review with something still to say is not one that approves the work,
-  and the comments live nowhere but the session — and the review closes back
-  onto the board either way, since the confirmation this ends in is anchored to
-  the slice's row. What
-  it opens the pull request with is read off the slice page first: the last `PR
-  description` section, its first line the title and the rest the body, or
-  nothing at all for a hand-back that recorded none, which is gh's `--fill`
-  again. A read that fails stops the approve rather than falling back, since a
-  pull request opened under the wrong title is not one this key can open twice.
-  The page is re-read for the type of its `Status` column before the write, exactly as
-  `complete-slice` does. gh refusing is a toast naming its own reason, not an
-  error banner: the branch is still there and the slice is still handed back. A
-  pull request opened and then not recorded is the one half-done state there is,
-  and running the key again says so rather than opening a second one, since gh
-  refuses a branch that already has one. The slice's worktree stays exactly
-  where it is: approving is the review starting rather than the work ending, and
-  a review that asks for one more commit needs the checkout that commit is
-  written in. What takes a worktree away is the merge — see
-  `internal/tui/landed.go`. gh stays in the shared checkout, so nothing there is
-  ever stranded, and `R` deliberately keeps its worktree too — the work so far
-  is exactly what the next session wants.
-- A slice's worktree goes when its pull request merges, and nowhere else
-  (`internal/tui/landed.go`). The removal rides the transition the board already
-  watches: the gh reading finding a Done slice's pull request no longer open,
-  which is the same edge that drops the slice from the Active panel, so it is
-  witnessed exactly once — and whether the merge was made on GitHub or with `m`
-  on the pull request screen, which merges and does nothing else whatever.
-  Because it has to be witnessed, every plan load sweeps
-  the slices already settled (`App.settledSlices`) through the same
-  `Worktrees.Remove`, which is the retry for a removal git refused at the
-  transition; a removal that succeeded — or found no worktree to make — is
-  remembered for the session (`App.worktreeGone`, the same trick as
-  `App.prSettled`) and asked about no more, so the sweep is git nobody pays for
-  twice. Only a Done slice is swept: one in progress whose pull request was
-  closed rather than merged is work going round again, and the checkout it is
-  going round in is what the next session wants. The branch is `agentBranch`,
-  the same answer the launch places an agent on: the one recorded at hand-back
-  rather than the one a title derives — what the agent pushed is
-  what its worktree is on, whatever it was cut as — falling back to the derived
-  name for a slice finished before there was a `Branch` column. A branch git
-  names no worktree for passes silently, since that is every settled slice on
-  every later sweep; a removal git refuses — a dirty worktree, a repository it
-  will not answer about — is one line in the log and nothing else: the pull
-  request is merged and the slice is Done whatever became of the checkout, and
-  git's own rules mean a refusal never costs any work. A board with no gh to ask
-  observes no merge and so removes nothing, which is the same nothing it did
-  before there was any reading.
-- Slices may carry a `Repo` override; otherwise the project default working
-  dir from local config applies.
-- A slice may declare the slices it waits on: `Depends on`, a **dual-property**
-  relation from the Slices data source to itself, whose reciprocal half is
-  `Blocks` — created alongside the other columns, though as a second write,
-  since a self-relation cannot name a data source the create has not returned
-  yet, and back-filled at load onto a project created before there was one.
-  `Blocks` is there so that Notion has somewhere to write that is not `Depends
-  on`, and nothing reads it: a self-relation kept on one side alone has nowhere
-  but `Depends on` to put the far end of a link, so recording that A waits on B
-  can read back as the two waiting on each other — a mutual block neither
-  `next-slice` nor `l` will step past. Given a side of its own, Notion's far end
-  lands in `Blocks` and `Depends on` stays directional. A project older than the
-  reciprocal is converted in place at load, in the very write `addColumns`
-  back-fills a missing column with: Notion keeps everything `Depends on` already
-  holds and starts `Blocks` empty, which is exactly right, since nothing reads
-  it. Only a relation pointing at the slices themselves is converted
-  (`notion.SingleSelfRelation`) — one pointing anywhere else is somebody's own
-  column sharing a name, and re-targeting it would throw away what it holds.
-  A cycle in that relation is the one wait no landing slice can ever end, and
-  `domain.Cycles`/`domain.CycleIndex` — over `domain.GraphCycles`, which walks a
-  graph keyed however the caller keys its nodes, so a document being validated
-  can mix the slices it has yet to create with the slices already filed — are
-  what find one, each cycle read out as the way round it (`domain.CyclePath`,
-  `A → B → A`) from whichever slice is asking. Nothing is written to keep it
-  from happening: `plan-apply` and `slice-depends --on` refuse before their
-  first write, and a cycle already on the board is a plan that has to be read
-  as one — logged at error level wherever a plan is read (`tui.Board.SetProject`,
-  `cli.logCycles`), and reported as itself rather than as an ordinary wait by
-  the board's status line, the launch key's refusal and `next-slice`'s. Only a
-  blocked slice is ever reported as being in one: a cycle whose members are all
-  Done stops nothing, and such a slice is handed out exactly as it was.
-  The rule is one line
-  (`domain.Blockers`): a slice is blocked while any slice it names is not Done,
-  and a slice names none where the column is absent or empty, so a project whose
-  table has no such column behaves exactly as it did before there was one. A
-  dependency whose page cannot be read is logged and passed over rather than
-  counted, because a trashed slice must not wedge the plan forever. The two
-  commands that hand work out are what honour it: `next-slice` steps over a
-  blocked slice rather than stopping at it — the work below may well be ready —
-  and says which slices wait on what only when every candidate is blocked, and
-  `start-slice`, which was pointed at one slice and so has nothing to skip,
-  refuses it by name and lists what it waits on, before it claims anything. The
-  board honours it too: it indexes the blocked slices of the plan whenever one
-  is loaded (`Board.Blockers`, off the whole plan, since a dependency is another
-  row of the same board) and draws such a row as one there is nothing to do
-  about yet — a `⊘` in the row's marker cell, the one the agent star takes
-  (`Board.marker`, and the star wins the cell in the case the two are somehow
-  both true), the row's own text in the muted Blocked colour, and the row itself
-  sunk to the bottom of its milestone (`appendGroup`, keeping the plan's order
-  among the sunk ones). The sinking is the drawn rows and nothing else: the view
-  order in Notion is untouched, so `next-slice` and `PlanOrder` hand work out
-  exactly as they did. What the wait is on is the status band's, not the row's:
-  while a blocked row is selected, the board's own screen reads `blocked by
-  <milestone>: <slice>` for each blocker (`Board.BlockedBy` and
-  `App.blockedIndicator`), first of the standing indicators, since it is the
-  only one about the row the user is on. `l` on such a row is refused with a
-  status-bar toast naming what it waits on and how far off each is. A toast
-  rather than an error banner: nothing has gone wrong, and the slice is still
-  there to launch once its dependencies land.
-- Notion's status is the one source of lifecycle truth for a slice, and
-  everything the board knows about one in flight adds up to one state read
-  straight off it (`domain.StateOf`, `internal/domain/state.go`): working,
-  waiting, blocked, ready to push, awaiting review, ready to merge — or none at
-  all for a slice that is not in flight, which is a Todo one and a Done one,
-  full stop. Done is written only by a real event — the merge (nat's own, or
-  one the background reading finds GitHub already made), or completing a slice
-  with no pull request — never derived here, so a Done slice needs no second
-  look at its pull request: it is in no state at all, and nothing about that
-  is conditional. The order the remaining facts are tested in is the order
-  they are true in: a slice that is not in progress is out before anything
-  else on the page is asked; then a live agent wins over everything else,
-  because it is the only reading taken fresh — an agent running on a
-  handed-back branch is the review going back to it — then work that is out (a
-  `Branch`, a `PR`) is what there is to do something about, then the wait on a
-  dependency, and what is left is a slice in progress that nothing is
-  happening on and nothing has come out of. The agent is passed as
-  `domain.AgentPresence`, domain's own saying of the board's two readings —
-  the live map and the activity watcher — as one value, since `internal/agent`
-  and `internal/tui` both import this package and neither's enum could be
-  reached from here. What tells the two endings of work that is out apart is
-  `domain.PRReadiness`, the same trick for the GitHub CLI: a pull request read
-  as open and as approved and mergeable is ready to merge, and everything else
-  about an open one — unreviewed, changes asked for, unmergeable — is the review
-  still to come, which is what a branch handed back with no pull request on it is
-  too. Both affirmative values mean a pull request positively read as open, since
-  the reading is a listing of what a repository has open; the zero value is
-  therefore three things at once — no pull request, none read of, and one no
-  longer open — and no rule here wants them told apart. It is a board nobody has
-  asked gh anything on, so the whole refinement is absent rather than wrong where
-  there is no gh to ask — see `internal/tui/prstate.go`. The Active section is
-  what draws it — see `internal/tui/active.go`.
-  A slice marked Done under the old rule, at approve, may still have its pull
-  request open; that is not `StateOf`'s problem to paper over, because Notion
-  itself is wrong about it and the fix is to write Notion back rather than to
-  keep reading around it. `actions.ReopenUnmerged` is that write — the mirror
-  of `actions.SettleMerged` — and it is what `internal/tui/prstate.go`'s own
-  reading makes the moment it finds a Done slice's pull request still open:
-  Status back to `In progress`, nothing else on the page touched, the same
-  re-read-the-page-for-the-Status-column-type-before-writing discipline every
-  other write here has. `internal/cli/prstatus.go`'s `prReadings` — the
-  headless mirror of `refreshPRStates` that `nat pr-status` runs and the macOS
-  app polls — makes the identical write for the identical reason, so a legacy
-  row converges whichever of the two ever reads it next. Once written, the
-  slice is an ordinary in-progress one and `StateOf` needs nothing special to
-  read it correctly; the row on screen catches up the moment the reading's own
-  refetch lands (`refreshSlice`), same as any other single-page patch. This
-  converges the plan lazily, one slice at a time, as each is next read, rather
-  than in a bulk migration pass — a project finished before Done followed the
-  merge is exactly as likely to hold such a row as one still active, and both
-  are caught by the same reading.
-  `nat slice-status <slice> [--json] --project ID` is the third way a slice's
-  status is read, and the odd one out: it names no project's plan at all,
-  reading the page directly by ID with `--project` supplying only the
-  credentials to read it with, and answers gone rather than refusing outright
-  where Notion has no record of the page. It writes nothing and fires no
-  nudge. It exists for the macOS app's session reaper, which is the one
-  caller that has to ask after a slice fresh, by ID alone, without first
-  knowing — or trusting — which project's plan the slice belongs to: a
-  session's own claim is always written before the session exists, so a fresh
-  read of this shape is the one that can never show a phantom state, where a
-  cached plan reading taken a sweep ago might. See `SessionReaping.swift` (in
-  `macos/Sources/NatKit/ViewModels/`) and `AppModel.reapFinishedAgents()` for
-  the reaper this feeds: `agentSessionsToReap` is its pure candidate rule —
-  every live session (`nat status`) whose slice is absent from every project
-  tab this run has open, or present with a status other than In progress,
-  minus an agent mid-turn, the slice on screen, and one still inside its
-  five-minute visit hold (set on every visit to a slice's pane, any of its
-  tabs, and never on leaving one) — and `verifiedForReap` is the last word
-  `nat slice-status` gives on each candidate right before the kill, In
-  progress being the one answer that saves it. Every open tab's plan feeds the
-  candidate rule, not only the active one's, so a session dangling on a tab
-  nobody has switched back to is still caught; closing a tab runs that same
-  sweep once more with the closing tab's own slices' visit holds ignored —
-  every other tab's stand, since a hold is about what the user just clicked
-  away from and closing one tab is not a click away from another's work —
-  before the tab itself is taken
-  off the list — so the closing plan is still in the merge for this one last
-  look, and no other open tab's session is mistaken for the closing one's own
-  — since once the tab is gone nothing will consider its slices again. A
-  candidate verified as a live In-progress session belonging to no project
-  this run has open at all is someone else's window's to reap, and is
-  remembered for the rest of the run so it is not asked about on every later
-  sweep.
-- A project keeps its whole plan on one page: no Milestones database, and a
-  `Milestone` **select** on the Slices data source whose options are the
-  milestones, in plan order. `domain.MilestonesFromOptions` maps them —
-  milestone name as ID, option index as order — so a milestone is nothing but
-  its name. It has no status of its own: `domain.NewProject` computes it from
-  the slices under it — Queued until one starts, Active while any is in progress
-  or only some are Done, Done when they all are — so there is nothing on a
-  milestone to write, and the board has no key that would.
-- A project still in the old shape — a Milestones database with a `Milestone`
-  relation on the Slices data source, and/or a `Claimed` status option — is
-  migrated in place the first time it is loaded, by the board and by every
-  headless command alike (`notion.MigrateProject`, run from `tui.fetchProject`
-  and `cli.slicesDataSource`): the milestone pages become the options of a
-  `Milestone` select, in plan order; every slice is refiled onto the option its
-  relation named; and the Milestones database, its plan now wholly on the
-  column, goes to Notion's trash — recoverable, and only after everything else
-  has succeeded. The Slices database itself — a full-page child of the project
-  page, its first view the table the plan's order is read from — is left
-  exactly as it is. `Claimed` becomes `In progress` the long way — appended,
-  the slices holding it moved over, then dropped — because the API silently
-  ignores renaming an option in place (a 200 whose body still says the old
-  name). The whole migration is settled before the first write — a `Status`
-  column converted in the Notion UI cannot have its options written, and such a
-  project is refused with the one edit to make there rather than half-migrated,
-  as is one whose milestones data source names no database to trash — and the
-  plan is read in full before the schema changes, because converting the column
-  is what discards the relations it is read from. It is idempotent: a project
-  already in the one shape is read and left alone, which is what every load
-  after the first does. What changed is logged, and the board says so in a
-  toast. One step there is every project's rather than an old-shape project's:
-  a missing `Depends on` or `Branch` column is added, and a `Depends on` Notion
-  keeps on one side alone is given its `Blocks` half (`addColumns`).
-  `CreateProject` writes both, but only for the projects it creates, so a
-  project older than slice dependencies, or than handing work back on a branch,
-  has nothing for one to be recorded on and Notion refuses every write against
-  it — and they go on last, in one write, after the shape changes and whether or
-  not there were any, so a project refused part way through them is left as
-  those steps found it.
-- Filing a slice under a milestone — the board's `a` and `m`, `slice-add`,
-  `plan-apply` — writes the option naming it (`domain.Milestone.Ref()`, sent as
-  `SelectType`, the column's own type). `milestone-add` and `plan-apply` add
-  milestones by appending options to the `Milestone` column, one schema write
-  per run, after the options already there, since their order is the plan's
-  order. A name the plan already holds is refused before that write, because
-  such a milestone is nothing but its name — and for the same reason a milestone
-  is named by name alone, never by URL or ID. `milestone-rename` is the one
-  thing that changes a milestone rather than adding one, and it goes the long
-  way the `Claimed` migration does, for the same reason: Notion silently ignores
-  renaming a select option in place, a 200 whose body still says the old name.
-  The new option is written beside the old one
-  (`notion.PropertySchema.OptionInsertedAfter`) rather than after every option
-  there is, since a milestone's order is its place among the options and
-  appending would rename it and move it to the end of the plan in the one write;
-  every slice holding the old option is refiled onto the new one; and only then
-  is the old option dropped (`WithoutOption`, which the migration's own last
-  step now shares). That order is the point — a run refused part way leaves
-  every slice on a milestone that exists — and the plan is read before the first
-  write for the same reason. Two names are refused before any of it: a new name
-  the plan already holds, which is the rule `milestone-add` applies and includes
-  the name it already has, and an old name the plan does not, each said with
-  what the plan does hold. `milestone-remove` is the one thing that takes a
-  milestone off the plan, and it is one schema write: the option dropped
-  (`WithoutOption` again) with every surviving option sent back exactly as it
-  was read, IDs and colours included, so nothing else about the column changes
-  and the options after it close up, which is the order the plan is read in.
-  Two things are refused before that write and both are read first — a name the
-  plan does not hold, said with what it does, and a milestone with any slice
-  still filed under it, said with those slices' own names. The second is why
-  the command is this narrow: a slice records its milestone as that option's
-  name, so dropping the option out from under it would file it under a
-  milestone the plan no longer has, and there would be nothing left on the page
-  to put it right from. Moving those slices with `slice-move` or dropping them
-  with `slice-delete` is the caller's, being a decision about the work rather
-  than about the plan's shape. `milestone-move` is the one thing that changes
-  where a milestone sits rather than whether it is there, and it is the cheapest
-  of the three: a milestone's order is its place among the options, so the whole
-  move is those options sent back in another order
-  (`notion.PropertySchema.OptionMoved`) and otherwise exactly as they were read,
-  IDs and colours included — one schema write, no option created or retired and
-  so no slice refiled, which is why it is the one milestone edit that reads no
-  slices at all and says nothing about the status of what it moved. Exactly one
-  of `--before` and `--after` is required, since a move with neither names
-  nowhere to land and one with both names two places at once, and three things
-  are refused before the write: a name the plan does not hold, a target it does
-  not hold, and a move relative to the milestone itself, which names no place to
-  go. `next-slice` reads the plan the way the board does
-  and takes work from the lowest-ordered milestone that is not Done: a
-  milestone is Queued until a slice under it starts, so gating on Active would
-  leave a plan on which nothing has begun with no way to begin.
-  `start-slice` names a slice's milestone from the schema's options, and
-  `complete-slice` touches no milestone at all.
-- Slice order is where the slices sit in the project's own board:
-  `notion.PlanOrder` reads the row order of the Slices data source's first view
-  (`GET /views`, then `POST /views/{id}/queries`, which is exposed from
-  `2026-03-11`) and `domain.InViewOrder` applies it, with anything the view does
-  not name trailing in the order it was queried. A failure to read it is logged
-  and the plan drawn unordered rather than not at all. Notion records
-  `created_time` only to the minute, so the created-time sort every other read
-  uses is no order at all for a plan written in one go — which is why this one
-  is read. `next-slice` reads it too, so the slice it hands out is the one at
-  the top of the milestone on the board rather than whichever the query happened
-  to return first.
+These hold everywhere in the app — TUI, every headless command, and the
+macOS app via `NatClient`. Package-local mechanics for each are in the
+nested `CLAUDE.md` named alongside each rule; don't restate the mechanics
+here when you're just applying the rule.
+
+**Lifecycle.** Todo → In progress → Done. Never edit or move the milestone
+of an in-progress slice; never edit a Done one either (`internal/tui/CLAUDE.md`,
+`internal/cli/CLAUDE.md` — the exact per-action refusal differs: edit is
+Todo-only, move/delete refuse only In progress). In-progress is called `In
+progress`; a project still saying `Claimed` is migrated at load
+(`internal/notion/CLAUDE.md`).
+
+**Claiming.** Status → In progress, + Assignee where the project has that
+column (status alone otherwise). The *board* claims before tmux is touched —
+a fresh Claude Code takes seconds to reach `start-slice`, and a Todo row in
+the meantime is one a second agent could be launched on. `start-slice`
+re-opens a claim its own holder already made rather than re-claiming, and
+refuses outright where the claim didn't stick — a race is settled before any
+agent gets a brief. `nat slice-launch` is a third way to reach the same
+`actions.Launch` flow (`internal/actions/CLAUDE.md`).
+
+**Releasing** (`R` / `nat release-slice`) writes its note **before** flipping
+Status back to Todo — the same order `complete-slice` writes in, since a
+slice already back at Todo would refuse a note added to it. Assignee cleared;
+everything else on the page (brief, `Depends on`, `Repo`, any `Branch`)
+untouched. Refused on a slice with a live agent.
+
+**Launching** (`l`) covers two states: Todo, and In progress with no live
+session (a relaunch — placed back on `agentBranch`, told it's continuing).
+A slice with a live agent is refused outright, whatever its status.
+
+**Fix sessions** — a Done slice with a PR still open is launchable too
+(`fixLaunch`): the review is unfinished work. This is the one launch that
+**writes nothing at all** — no claim, since the slice is already everything
+a claim would make it. Before any worktree is cut, `prStillOpen` asks gh
+directly whether that PR is still open (a merged/closed/unreadable PR each
+refuse the launch with a toast, and — unlike everywhere else the app reads
+gh — an unread PR here refuses too, since the cost of being wrong is an
+agent sent at a review that's already over). Dependencies are not checked.
+`agent.fixPrompt` is what such a session is told, and it's the one place the
+standing ban on agents running `gh` is relaxed — for exactly `gh pr view
+--comments` and `gh pr checks`.
+
+**Hand-back.** `complete-slice --branch` (or `/next-slice`'s own end)
+records the branch and leaves status alone — refused outright on a project
+with no `Branch` column, before the note goes on. The hand-back note and any
+`--pr-description` are filed in the **same write**, under `Handed back` and
+`PR description` headings; `notion.PRDescriptionOf` reads the *last* such
+section, since a slice handed back twice has one per hand-back.
+
+**Approving** (`a` on the diff screen, or `nat slice-approve`) opens the PR
+and records only its URL — status stays In progress. **Done means the work
+is on main**, and only the merge writes it: `m` / `nat pr-merge`, or
+`actions.SettleMerged` (the board's background PR-state read, and headless
+`nat pr-status`) catching a merge made on GitHub directly. A slice marked
+Done under the *old* rule (Done written at approve, before this rewrite)
+whose PR reads open is corrected the opposite way, lazily, one slice at a
+time as each is next read: `actions.ReopenUnmerged` writes it back to In
+progress. The macOS app mirrors this exact gate in Swift
+(`RailModel.isReviewSlice`/`isActiveSlice` — see `macos/CLAUDE.md`); change
+one side, change the other.
+
+**Worktree lifecycle.** A slice's worktree is removed **only** on merge,
+witnessed once at the transition and swept again (idempotently) on every
+plan load as a retry. Both the launch's placement and the merge's removal
+name the checkout by `actions.AgentBranch` (the branch recorded at
+hand-back, else the derived `slice/<slug>`) — the two must never disagree.
+An existing branch's worktree is reused, never re-cut; a removal git refuses
+is logged and left, since the PR is merged either way. `R` deliberately
+*keeps* the worktree — the work so far is what the next session wants.
+
+**Dependencies.** `Depends on` is a dual-property relation (`Blocks` is its
+unread reciprocal, there only so Notion has somewhere to mirror the far end
+— see `internal/notion/CLAUDE.md` for why a single-property version would
+read as a mutual block). A slice is blocked while anything it names isn't
+Done; an unreadable dependency is logged and never counted, so a trashed
+page can't wedge the plan forever. A write that would leave a cycle is
+refused before it happens (`plan-apply`, `slice-depends --on`); a cycle
+already on the board is reported as one, not an ordinary wait, everywhere it
+matters (status line, launch refusal, `next-slice`). `next-slice` steps over
+a blocked slice; `start-slice`, pointed at one slice, refuses it by name.
+
+**One state, one source.** Notion's status is the *only* source of
+lifecycle truth (`domain.StateOf`). A Done slice is Done, full stop, and is
+never re-derived into some other state even with a stale open PR — that's
+`ReopenUnmerged`'s job to *correct on Notion*, not `StateOf`'s to paper over
+by reading around it. For a slice still in progress, state is read in the
+order the facts are true in: a live agent (freshest reading) beats
+everything else on the page; then handed-back-but-not-agent work (a
+`Branch`/`PR`); then a dependency wait; then plain "in progress, nothing
+happening." `domain.AgentPresence` and `domain.PRReadiness` fold the board's
+tmux and gh readings into this rule — their zero values mean "no PR / never
+read / no longer open" indistinguishably, on purpose: nowhere here needs
+those three told apart. Absent a gh reading at all, the refinement is simply
+absent, not wrong — that's what keeps a Done slice with no PR-state read out
+of the Active panel rather than flooding it with a project's entire history.
+
+**`--project` pinning.** Every project-scoped `nat` command requires
+`--project <page ID>`, no active-project fallback — every template (slice,
+fix, planning, wishlist prompts) and every skill spells this out explicitly,
+and one test walks every template for an unpinned invocation. The
+`SliceBranch`/`pathSlug`/`Base` naming triad (how a branch name and its
+worktree path are derived — implemented once, in `internal/actions`,
+`internal/worktree` and `internal/git`) is **re-spelled in prose twice**:
+in `internal/agent`'s prompt templates and in `skills/next-slice/SKILL.md`.
+**Never deduplicate this** — a prompt and a skill are both text handed to an
+LLM, not code, so neither can call the Go implementation; both copies must
+independently say the same thing.
+
+**Milestones.** A `Milestone` select column, options in plan order — a
+milestone is nothing but its name, never referenced by URL or ID. Renaming
+one goes the long way (Notion silently ignores an in-place option rename;
+see `internal/notion/CLAUDE.md`); removing one refuses while any slice is
+still filed under it; moving one changes only its place among the options,
+reading and writing no slice at all.
+
+**Plan order.** Read from the Slices data source's first view's own row
+order (`notion.PlanOrder`), never from `created_time` — Notion records that
+only to the minute, which is no order at all for a plan written in one
+sitting. A failed read logs and draws the plan unordered rather than not at
+all.
+
+**Reads that fail conclude nothing** — the default posture everywhere in
+this app: a failed `OpenPRs` listing is no news (never read as "merged" or
+"closed"), a failed `Fetch` cuts from refs as last known, an unreadable
+dependency never blocks. The one deliberate exception is the diff screen: a
+failed re-read of a handed-back branch **drops** what was on screen, since a
+diff is of one branch at one moment and an old one under a fresh push would
+be showing the wrong change (the pull request screen's own failed re-read
+does the opposite — keeps its stale reading, since a stale PR view is still
+about the right PR).
 
 ## Conventions
 
@@ -1575,47 +193,16 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
 - Bubble Tea v2 idioms: `View()` returns `tea.View`; match `tea.KeyPressMsg`;
   `tea.ExecProcess` for tmux attach.
 - Tests: aim for 100% coverage of new code. httptest for the Notion client
-  (assert exact request JSON), interfaces + fakes for the ntn CLI/tmux, teatest
-  for TUI flows, golden snapshots for renders.
+  (assert exact request JSON), interfaces + fakes for the ntn CLI/tmux,
+  teatest for TUI flows, golden snapshots for renders.
 - Gate before claiming done: `go vet ./... && go test -race
   -coverprofile=coverage.out ./... && ./scripts/no-uncovered.sh &&
-  golangci-lint run`. The profile rather than `-cover`, because the percentage
-  is printed to one decimal and a single unrun statement in a package of
-  thousands reads as 100.0%; `scripts/no-uncovered.sh` reads the profile itself,
-  which does not round, and prints the blocks nothing ran. One `go test ./...`
-  writes it, since the blocks are merged across packages — a helper covered only
-  by another package's tests is still covered. All four run in CI, so a failing
-  lint or an unrun statement fails the PR;
-  `brew install golangci-lint` if the binary is missing. `.golangci.yml` runs
-  the default linter set with one exclusion — see the file — so an unchecked
-  error is either handled or assigned to `_` where the reason can be read.
-- A UI change to the macOS app (`macos/`, the `gnat` binary) is verified by
-  rendering the gallery stories it touches and looking at the PNGs, not by
-  launching the app: `swift build --package-path macos`, then
-  `macos/.build/debug/gnat --list` for the index of stories and what each
-  shows, `macos/.build/debug/gnat --story <name> --out <file>.png` for one of
-  them, and `macos/.build/debug/gnat --all --out <dir>` for the whole catalog
-  — one `<story-name>.png` per story, into a directory it creates — which is
-  the run to make when what changed is the theme or the window chrome rather
-  than one pane. A story is canned data drawn headlessly, so it touches no
-  Notion, no `nat` and no tmux and comes out the same on any machine, where
-  launching the app needs a Notion in a particular state and somebody to drive
-  it to the pane in question. Where no story shows what changed, add one — an
-  entry in `macos/Sources/NatApp/Gallery/AppStories.swift` and nothing else —
-  and render that, since a pane that can only be reviewed by launching the app
-  is a gap in the catalog. `NAT_SNAPSHOT` and a live screenshot are for what a
-  story cannot show and only that: a real tmux session in the agent terminal, a
-  real load against Notion, the onboarding checklist as it reads on this
-  machine. `macos/README.md` is the longer version. Whichever screenshots a
-  design-verification session compares — story renders or a live one — read
-  them cropped or downscaled to the element under test, never as full-window
-  frames: a full 2080x1360 frame mostly restates what a crop already shows,
-  and an image tool decodes and stores what it is handed whether or not the
-  session ends up looking at all of it. And pause any animation, or fix it
-  to one phase, before comparing: an untimed capture can catch a shimmer
-  mid-sweep and read it back as a layout bug.
-- Never log or commit the Notion token; it belongs to the `ntn` CLI and is only
-  ever held in memory for the lifetime of a request.
+  golangci-lint run`. Use the profile, not `-cover`'s rounded percentage —
+  `scripts/no-uncovered.sh` reads it exactly and prints any block nothing
+  ran; one `go test ./...` writes it, since coverage merges across packages.
+  `brew install golangci-lint` if missing.
+- A macOS UI change is verified by rendering its gallery, not launching the
+  app — see `macos/CLAUDE.md`/`macos/README.md`.
 - Before starting work, pull the latest `main` and branch off it. Only ever
-  base branches — and PRs — on `main`, never on another slice branch, so every
-  PR merges into `main`.
+  base branches — and PRs — on `main`, never on another slice branch, so
+  every PR merges into `main`.

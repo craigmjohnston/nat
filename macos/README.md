@@ -1,18 +1,26 @@
-# nat macOS App
+# nat macOS App — gnat
 
-A native macOS application for the notion-agent-tracker project, built as a pure SwiftPM package.
+A native macOS application for the notion-agent-tracker project ("gnat",
+graphical nat), built as a pure SwiftPM package that wraps the `nat` CLI
+rather than reimplementing the tracker. See `macos/CLAUDE.md` for the
+always-loaded conventions (build/test commands, the NatKit/NatApp split,
+the NatClient contract, release quirks); this file is the longer-form
+structure and design-system writeup.
 
 ## Architecture
 
-- **NatKit** — Core library containing all business logic, models, and theme definitions. All code lives here.
-- **NatApp** — Minimal executable target with thin SwiftUI views. Views bind to NatKit logic but contain no business logic themselves.
-- **NatKitTests** — Unit tests for NatKit. Views are not tested for pixel perfection; only the underlying logic is tested.
+- **NatKit** — the library. All business logic, models, state management and
+  theme definitions live here.
+- **NatFixtures** — canned NatKit values (a realistic loaded project, a
+  failing one, …) shared by SwiftUI `#Preview`s, `NatKitTests`, and the
+  gallery, so a state worth looking at is written down once rather than once
+  per call site.
+- **NatApp** — the `gnat` executable: thin SwiftUI views bound to NatKit/
+  NatFixtures, plus the app's entry point and Sparkle-based updater.
+- **NatKitTests** — unit tests for NatKit only. Views are not tested for
+  pixel perfection — see "Verify a UI change: render the gallery" below.
 
 ## Conventions
-
-- All domain logic and state management lives in `NatKit`.
-- Views in `NatApp` are thin bindings to logic in `NatKit` — they format and display state but never process it.
-- Tests target logic, not pixels. The teatest/golden-snapshot approach from the Go codebase does not apply here; instead, focus on unit tests for models and business logic.
 - The design reference lives in `docs/design/nat-ui-v2/nat-ui-v2.html` — all colors and token values come from the `.nat` CSS block in that file.
 - Theme tokens are centralized in `NatKit/Theme/DesignTokens.swift`, and are
   *dynamic*: each one holds both palettes and resolves the one the window's
@@ -231,24 +239,35 @@ do resolve `nat` off PATH, inside tmux.
 macos/
 ├── Package.swift                 — SwiftPM manifest
 ├── Sources/
-│   ├── NatKit/
-│   │   ├── Resources/Fonts/      — JetBrains Mono (bundled, OFL)
-│   │   ├── Theme/                — Design tokens and styling
-│   │   ├── Models/               — Domain models
-│   │   ├── NatClient/            — Notion API client (future)
-│   │   └── Stores/               — State management (future)
-│   └── NatApp/
-│       └── NatApp.swift          — Entry point and minimal views
+│   ├── NatKit/                   — all business logic, models and theme; see macos/CLAUDE.md
+│   │   ├── Components/           — shared SwiftUI building blocks
+│   │   ├── Cursor/                — the board's row-cursor model
+│   │   ├── Gallery/               — Story/StoryCatalog, tested here (capture itself is in NatApp/Gallery)
+│   │   ├── Loading/               — loading/skeleton state helpers
+│   │   ├── Markdown/              — glamour-equivalent markdown rendering
+│   │   ├── Models/                — ~16 files: the JSON-decoded shapes NatClient's commands return
+│   │   ├── NatClient/             — the nat subprocess contract (NatClient, NatBinary, PathBootstrap, ProcessRunner)
+│   │   ├── Nudge/                 — the nudge-marker poll, mirroring internal/nudge's read side
+│   │   ├── Onboarding/            — first-run checklist logic
+│   │   ├── Resources/Fonts/       — JetBrains Mono (bundled, OFL)
+│   │   ├── Stores/                — ~9 files: state management (ActivityStore, ReviewStatsStore, …)
+│   │   ├── Terminal/              — agent-terminal key encoding, link and mouse handling
+│   │   ├── Theme/                 — DesignTokens, Palette (Catppuccin), Theme, MonoFont
+│   │   ├── ViewModels/            — ~22 files: RailModel, SettingsModel, and the rest of the view-facing logic
+│   │   └── Window/                — window-chrome helpers
+│   └── NatApp/                   — thin SwiftUI views binding to NatKit; see macos/CLAUDE.md
+│       ├── Views/                 — ~27 files: the window shell, rail, tabs, settings, onboarding, terminal host
+│       ├── Gallery/               — the AppKit story capture (AppStories.swift, the window-pixel renderer)
+│       ├── Resources/             — app-level resources (icons, etc.)
+│       └── main.swift             — entry point (no @main — the gallery's argument parsing runs before App.main())
+├── NatFixtures/                  — canned data the gallery's stories and NatKitTests are built from
 ├── Tests/
-│   └── NatKitTests/              — Unit tests
+│   └── NatKitTests/              — unit tests; views are not tested for pixel perfection, only logic
 ├── Scripts/
-│   └── make-app.sh               — Release build script
-└── README.md                     — This file
+│   └── make-app.sh               — release build script (builds a universal gnat + bundles a universal nat)
+└── README.md                     — this file
 ```
 
-## Next Steps
-
-- Add models in `NatKit/Models/`
-- Implement Notion API client in `NatKit/NatClient/`
-- Add state management in `NatKit/Stores/`
-- Build view hierarchy in `NatApp/` using tokens from `DesignTokens`
+Conventions — what belongs in NatKit vs NatApp, the NatClient/nat contract, the
+native-settings rule, the Done/StateOf pairing, release-build quirks, and the
+design-token source — are in `macos/CLAUDE.md`, not repeated here.

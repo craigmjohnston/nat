@@ -12,8 +12,9 @@
   with `nat start-slice`, do the work, and close it out with
   `nat complete-slice`. The CLI is their only way into the tracker.
 - **Notion** is the source of truth: a Project DB contains project pages; each
-  project page holds its own Slices DB and Milestones DB, plus free-form
-  project info in the page body.
+  project page holds its own Slices DB — milestones are an option list on the
+  Slices DB's own Milestone column, not a database of their own — plus
+  free-form project info in the page body.
 
 ## Requirements
 
