@@ -395,5 +395,16 @@ enum AppStories {
         ) {
             SettingsView(appModel: await Fixtures.startedAppModel(), client: FixtureNatClient())
         },
+
+        Story(
+            name: "settings-agents",
+            summary: "The settings window's Agents tab: the model field is free text now, "
+                + "and the effort picker's options come from AgentOptions rather than a "
+                + "hardcoded list.",
+            size: CGSize(width: 520, height: 360),
+            colorScheme: .light
+        ) {
+            SettingsView(appModel: await Fixtures.startedAppModel(), client: FixtureNatClient(), initialTab: .agents)
+        },
     ])
 }
