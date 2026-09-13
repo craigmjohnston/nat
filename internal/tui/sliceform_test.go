@@ -169,33 +169,6 @@ func paragraphTexts(t *testing.T, blocks []map[string]any) []string {
 	return texts
 }
 
-func TestParagraphBlocksSplitsOnBlankLines(t *testing.T) {
-	tests := []struct {
-		name        string
-		description string
-		want        []string
-	}{
-		{"empty", "", nil},
-		{"blank", "  \n\n\t", nil},
-		{"one paragraph", "Just the one.", []string{"Just the one."}},
-		{"two paragraphs", "First.\n\nSecond.", []string{"First.", "Second."}},
-		{"blank runs collapse", "First.\n\n\n\nSecond.", []string{"First.", "Second."}},
-		{"lines within a paragraph are kept", "- a\n- b", []string{"- a\n- b"}},
-		{"crlf", "First.\r\n\r\nSecond.", []string{"First.", "Second."}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := paragraphTexts(t, paragraphBlocks(tt.description))
-			if len(got) == 0 && len(tt.want) == 0 {
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("paragraphs = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestCreateSliceFilesANewTodoSlice(t *testing.T) {
 	client := &fakeNotion{}
 

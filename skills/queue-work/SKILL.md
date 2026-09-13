@@ -32,10 +32,16 @@ conventions, its milestones in plan order, and its slices grouped under them.
 - A **slice** is a small unit of work one agent completes in a single fresh
   session. If the work is code, a slice maps to **exactly one PR** — split
   anything bigger.
-- Each slice gets: a clear imperative title, a 2–6 sentence description
-  (written as a self-contained brief: what, where, acceptance criteria), a
+- Each slice gets: a clear imperative title, a self-contained brief, a
   milestone, and — only when it deviates from the project's default working
   directory — a `repo` override.
+- **Write the brief structured, not as one dense paragraph.** Short
+  paragraphs separated by blank lines, what and where first; acceptance
+  criteria as their own final paragraph or list. Enumerable detail — a
+  checklist, a list of file:line locations — goes as markdown bullets, one
+  item per line: `nat` now converts a brief's markdown into the page's own
+  blocks, so a list written this way renders as a real list rather than a
+  wall of prose with dashes in it.
 - Slot new slices into existing milestones when they fit; create new
   milestones only for genuinely new phases of work.
 - **List the slices in the order they should be worked**, and the milestones

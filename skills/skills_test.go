@@ -342,3 +342,29 @@ func TestPlanningSkillsDraftOrderAndDependencies(t *testing.T) {
 // space, so a rule can be asserted as the sentence it is rather than as the
 // lines the file's own wrapping happens to break it over.
 func unwrapped(text string) string { return strings.Join(strings.Fields(text), " ") }
+
+// A brief's markdown is now converted into the page's own blocks rather than
+// flattened to plain paragraphs, so a drafting agent that still wrote dense
+// prose would be leaving real lists and headings on the table. Both planning
+// skills ship inside the binary, so the structure guidance has to be said
+// here or it is not said anywhere an agent reads.
+func TestPlanningSkillsDraftStructuredBriefs(t *testing.T) {
+	for _, skill := range []string{"queue-work", "queue-project"} {
+		body, err := fs.ReadFile(FS(), skill+"/SKILL.md")
+		if err != nil {
+			t.Errorf("read the %s skill: %v", skill, err)
+			continue
+		}
+		text := unwrapped(string(body))
+		for _, want := range []string{
+			"Write the brief structured, not as one dense paragraph.",
+			"Short paragraphs separated by blank lines, what and where first",
+			"acceptance criteria as their own final paragraph or list",
+			"markdown bullets, one item per line",
+		} {
+			if !strings.Contains(text, want) {
+				t.Errorf("the %s skill does not say %q", skill, want)
+			}
+		}
+	}
+}
