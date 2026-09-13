@@ -170,21 +170,50 @@ func TestPRStatesReadOnEveryPlanThatLands(t *testing.T) {
 	}
 }
 
-// A slice marked Done stays in the Active section for as long as gh says its
-// pull request is open: the board marks a slice Done as it opens the pull
-// request, and the work is not on main until that merges.
-func TestADoneSliceStaysActiveWhileItsPRIsOpen(t *testing.T) {
+// A slice marked Done under the old rule — at approve, rather than at the
+// merge — with its pull request found still open is written back to In
+// progress: the un-done rule (actions.ReopenUnmerged), which is what keeps
+// such a slice in the Active section now rather than StateOf second-guessing
+// Notion's own word for it.
+func TestADoneSliceWithAnOpenPRIsReopenedToInProgress(t *testing.T) {
 	app, _ := prStateApp()
 	p := prStatePlan()
+	client := app.client.(*fakeNotion)
+	// The refetch the reading kicks off: the real Notion would answer with
+	// the page as it now stands, PR URL and all — syncPage rather than
+	// slicePage, since a read's title carries plain_text where a write's does
+	// not.
+	client.getPage = func(id string) (*notion.Page, error) {
+		if id != donePR {
+			return &notion.Page{ID: id}, nil
+		}
+		pg := syncPage(donePR, "Awaiting merge", notion.SliceInProgress, "M1: Review")
+		pg.Properties[notion.PropPR] = notion.PropertyValue{URL: "https://github.test/pr/4"}
+		return &pg, nil
+	}
 
 	_, cmd := app.Update(projectLoadedMsg{project: p})
 	runPRRead(t, app, cmd)
 
-	if got := app.board.state(sliceByID(t, p, donePR)); got != domain.SliceStateAwaitingReview {
-		t.Errorf("the Done slice with an open pull request is %v, want awaiting review", got)
+	var wroteInProgress bool
+	for _, w := range client.updated {
+		if w.pageID != donePR {
+			continue
+		}
+		if s := w.properties[notion.PropStatus]; s.Select != nil && s.Select.Name == notion.SliceInProgress {
+			wroteInProgress = true
+		}
+	}
+	if !wroteInProgress {
+		t.Errorf("wrote %+v, want the slice reopened to In progress", client.updated)
+	}
+
+	patched := app.project.Slices[sliceIndex(app.project.Slices, donePR)]
+	if got := app.board.state(patched); got != domain.SliceStateAwaitingReview {
+		t.Errorf("the reopened slice reads %v, want awaiting review", got)
 	}
 	if section := activeSection(app); !strings.Contains(section, "Awaiting merge") {
-		t.Errorf("the section left out a Done slice whose pull request is open:\n%s", section)
+		t.Errorf("the section left out the reopened slice:\n%s", section)
 	}
 }
 
@@ -368,43 +397,60 @@ func TestPRStateOfASliceNoLongerOnThePlan(t *testing.T) {
 	}
 }
 
-// A reading that changes what the Active section holds rebuilds the rows under
-// the cursor, so it is put back on whatever it was on: the slice, for an entry
-// of the section, and the row itself for anything in the plan below it.
+// A reopen that fails is logged and changes nothing else: the readiness
+// reading itself still lands, and the slice is asked about again on the next
+// pass rather than watched for an answer nobody has.
+func TestAFailedReopenIsAskedAgain(t *testing.T) {
+	app, _ := prStateApp()
+	p := prStatePlan()
+	client := app.client.(*fakeNotion)
+	client.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
+		return nil, errors.New("notion is down")
+	}
+
+	_, cmd := app.Update(projectLoadedMsg{project: p})
+	runPRRead(t, app, cmd)
+
+	if got := app.board.state(sliceByID(t, p, donePR)); got != domain.SliceStateNone {
+		t.Errorf("the unreopened slice is %v, want it left as Done reads: no state at all", got)
+	}
+	if app.err != nil || app.toast != "" {
+		t.Errorf("err = %v, toast = %q, want the failure kept to the log", app.err, app.toast)
+	}
+}
+
+// A reading rebuilds the rows under the cursor — Notion's status is the one
+// thing that moves a slice into or out of the Active section now, so a
+// readiness reading alone never changes how many rows there are, only the
+// label an existing entry draws. The cursor is put back on whatever it was on
+// regardless: the slice, for an entry of the section, and the row itself for
+// anything in the plan below it. See TestADoneSliceWithAnOpenPRIsReopenedToInProgress
+// for the reading that does take an entry out of the section, by writing
+// Notion back to In progress first.
 func TestPRStateReadingKeepsTheCursorWhereItWas(t *testing.T) {
 	p := prStatePlan()
 	b := NewBoard(DefaultStyles())
 	b.SetProject(&p)
-	open := map[string]domain.PRReadiness{donePR: domain.PRAwaitingReview}
+	open := map[string]domain.PRReadiness{approvedPR: domain.PRReadyToMerge}
 
 	// On an entry of the section: the entry it is on outlives the reading, so
-	// the cursor is on the same slice however the rows moved.
+	// the cursor is on the same slice however its label changed.
 	b.cursorTo(func(r row) bool { return r.kind == rowActive && b.active[r.slice].ID == "hb" })
 	b.SetPRState(open)
 	if s, ok := b.SelectedActive(); !ok || s.ID != "hb" {
 		t.Errorf("the cursor is on %+v, want it left on the slice it was on", b.rows[b.cursor])
 	}
 
-	// On a row of the plan, with an entry appearing above it: the row moves down
-	// the board and the cursor moves with it.
+	// On a row of the plan: nothing about the Active section's row count moved
+	// under it, so the cursor is exactly where it was.
 	b.cursorTo(func(r row) bool { return r.kind == rowMilestone })
 	was := b.cursor
 	b.SetPRState(nil)
 	if r := b.rows[b.cursor]; r.kind != rowMilestone {
 		t.Errorf("the cursor is on %+v, want it back on the milestone's own row", r)
 	}
-	if b.cursor == was {
-		t.Error("the milestone's row did not move, want the reading to have taken an entry away")
-	}
-
-	// And on an entry whose slice has left the section — its pull request has
-	// landed — the cursor stays where that entry was.
-	b.SetPRState(open)
-	b.cursorTo(func(r row) bool { return r.kind == rowActive && b.active[r.slice].ID == donePR })
-	was = b.cursor
-	b.SetPRState(nil)
 	if b.cursor != was {
-		t.Errorf("the cursor moved to %d, want it left at %d where the entry was", b.cursor, was)
+		t.Errorf("the cursor moved to %d, want it left at %d: nothing left the section", b.cursor, was)
 	}
 }
 

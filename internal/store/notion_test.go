@@ -304,6 +304,25 @@ func TestMarkDoneCarriesTheWritesFailureUp(t *testing.T) {
 	}
 }
 
+func TestReopenSliceWritesTheStatus(t *testing.T) {
+	api := &fakeAPI{}
+	if err := Over(api).ReopenSlice(context.Background(), "s5", Shape{}); err != nil {
+		t.Fatalf("ReopenSlice() error = %v", err)
+	}
+	if got := api.updates[0][notion.PropStatus].SelectName(); got != notion.SliceInProgress {
+		t.Errorf("status = %q, want In progress", got)
+	}
+}
+
+func TestReopenSliceCarriesTheWritesFailureUp(t *testing.T) {
+	api := &fakeAPI{updatePage: func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
+		return nil, errBoom
+	}}
+	if err := Over(api).ReopenSlice(context.Background(), "s5", Shape{}); !errors.Is(err, errBoom) {
+		t.Errorf("err = %v, want the write's failure", err)
+	}
+}
+
 // Adding milestones appends options to the Milestone column, after the ones
 // already there, in one write.
 func TestAddMilestonesAppendsToThePlan(t *testing.T) {

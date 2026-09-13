@@ -141,14 +141,15 @@ func (s SliceState) String() string {
 // already holds — no tmux and no Notion — which is why it is here rather than
 // beside either reading.
 //
-// A Done slice is tested first and against pr alone, because Done is Notion's
-// word for the slice rather than for the work: the board marks a slice Done as
-// it opens its pull request, and until that pull request merges the work is not
-// on main and the review is not over. Such a slice is still in flight, in
-// whatever state its pull request is in — which is why the answer is pr's and
-// nothing else on the page bears on it. It takes a positive reading to say so:
-// with no pull request read as open, a Done slice is in no state at all, which
-// is what every Done slice a project ever finished must go on being.
+// Notion's status is the one source of lifecycle truth: a Done slice is in no
+// state at all, full stop, whatever pr says. Done is written only by a real
+// event — a merge, or completing a slice with no pull request — never by
+// anything derived here, so there is nothing left for this function to
+// second-guess about it. A slice marked Done under the old rule, before Done
+// followed the merge, is not this function's problem: a positive reading of
+// its pull request writes it back to In progress on the page itself (see
+// [github.com/craigmjohnston/nat/internal/actions.ReopenUnmerged]), and from
+// there the ordinary in-progress rules below apply to it like any other slice.
 //
 // After that, the order the facts are tested in is the order they are true in.
 // A slice that is not in progress is in no state at all, whatever else is
@@ -169,8 +170,6 @@ func (s SliceState) String() string {
 // is too.
 func StateOf(s Slice, presence AgentPresence, pr PRReadiness, byID map[string]Slice) SliceState {
 	switch {
-	case s.Status == SliceDone:
-		return openPRState(pr)
 	case s.Status != SliceClaimed:
 		return SliceStateNone
 	case presence == AgentWaiting:
@@ -186,21 +185,5 @@ func StateOf(s Slice, presence AgentPresence, pr PRReadiness, byID map[string]Sl
 		return SliceStateBlocked
 	default:
 		return SliceStateReadyToPush
-	}
-}
-
-// openPRState is a slice whose only claim on the board's attention is a pull
-// request still open: where the review on it has got to, and no state at all
-// where nothing says it is open. It is the same two states work out on a branch
-// takes, because it is the same wait — a pull request nobody has approved is
-// waiting on a reviewer whether or not Notion has been told the slice is Done.
-func openPRState(pr PRReadiness) SliceState {
-	switch pr {
-	case PRReadyToMerge:
-		return SliceStateReadyToMerge
-	case PRAwaitingReview:
-		return SliceStateAwaitingReview
-	default:
-		return SliceStateNone
 	}
 }

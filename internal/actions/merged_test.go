@@ -91,6 +91,72 @@ func TestMarkDoneReportsAFailedWrite(t *testing.T) {
 	}
 }
 
+// TestReopenUnmergedWritesInProgress covers the whole write: In progress in
+// the shape the page's own Status column was read as, and nothing else
+// touched — the mirror of TestMarkDone.
+func TestReopenUnmergedWritesInProgress(t *testing.T) {
+	client := &fakeClient{getPage: func(id string) (*notion.Page, error) {
+		return &notion.Page{ID: id, Properties: map[string]notion.PropertyValue{
+			notion.PropStatus: {Type: notion.TypeStatus, Status: &notion.SelectOption{Name: notion.SliceDone}},
+		}}, nil
+	}}
+
+	err := ReopenUnmerged(context.Background(), client.store(), domain.Slice{ID: "hb", Name: "Old rule slice"})
+	if err != nil {
+		t.Fatalf("ReopenUnmerged() = %v, want it to go through", err)
+	}
+
+	if len(client.updated) != 1 || client.updated[0].pageID != "hb" {
+		t.Fatalf("wrote %+v, want exactly the slice", client.updated)
+	}
+	props := client.updated[0].properties
+	if len(props) != 1 {
+		t.Errorf("props = %v, want the Status column alone", props)
+	}
+	status := props[notion.PropStatus]
+	if status.Status == nil || status.Status.Name != notion.SliceInProgress {
+		t.Errorf("Status = %+v, want the status shape saying In progress", status)
+	}
+}
+
+// TestReopenUnmergedWritesASelectStatus covers the shape every project
+// without a converted Status column is in: a plain select.
+func TestReopenUnmergedWritesASelectStatus(t *testing.T) {
+	client := &fakeClient{}
+	if err := ReopenUnmerged(context.Background(), client.store(), domain.Slice{ID: "hb", Name: "Old rule slice"}); err != nil {
+		t.Fatalf("ReopenUnmerged() = %v, want it to go through", err)
+	}
+	status := client.updated[0].properties[notion.PropStatus]
+	if status.Select == nil || status.Select.Name != notion.SliceInProgress {
+		t.Errorf("Status = %+v, want the select shape saying In progress", status)
+	}
+}
+
+func TestReopenUnmergedReportsAFailedRead(t *testing.T) {
+	client := &fakeClient{getPage: func(string) (*notion.Page, error) { return nil, errors.New("notion is down") }}
+
+	err := ReopenUnmerged(context.Background(), client.store(), domain.Slice{ID: "hb", Name: "Old rule slice"})
+
+	if err == nil || !strings.Contains(err.Error(), `reopen "Old rule slice" to In progress`) {
+		t.Errorf("err = %v, want the read's failure named", err)
+	}
+	if len(client.updated) != 0 {
+		t.Errorf("a failed read still wrote: %+v", client.updated)
+	}
+}
+
+func TestReopenUnmergedReportsAFailedWrite(t *testing.T) {
+	client := &fakeClient{updatePage: func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
+		return nil, errors.New("notion is down")
+	}}
+
+	err := ReopenUnmerged(context.Background(), client.store(), domain.Slice{ID: "hb", Name: "Old rule slice"})
+
+	if err == nil || !strings.Contains(err.Error(), `reopen "Old rule slice" to In progress`) {
+		t.Errorf("err = %v, want the write's failure named", err)
+	}
+}
+
 // TestSettleMergedMarksAMergedPRDone covers the merge nat was not running to
 // witness: the pull request's own reading says merged, so the slice goes
 // Done.

@@ -222,6 +222,73 @@ func TestPRStatusMarksAMergedAbsentPRDone(t *testing.T) {
 	}
 }
 
+// A slice Done under the old rule — at approve, rather than at the merge —
+// whose pull request the listing still names is written back to In progress:
+// the un-done rule, with a nudge like any other write this read makes.
+func TestPRStatusReopensADoneSliceWithAnOpenPR(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageForStatus("s2", "Awaiting merge", notion.SliceDone, "",
+				"https://github.test/craig/nat/pull/2")},
+		},
+	}
+	env, out := testEnv(testConfig(), api)
+	var nudges int
+	env.Nudge = func() { nudges++ }
+	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
+		"/tmp/nat": {"https://github.test/craig/nat/pull/2": {Approved: true, Mergeable: true}},
+	}}
+	env.NewGH = func() GH { return reader }
+
+	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
+	if err != nil {
+		t.Fatalf("pr-status: %v", err)
+	}
+	if len(api.updates) != 1 || api.updates[0].id != "s2" {
+		t.Fatalf("updates = %+v, want the slice reopened", api.updates)
+	}
+	if name := api.updates[0].props[notion.PropStatus].SelectName(); name != notion.SliceInProgress {
+		t.Errorf("status = %q, want %q", name, notion.SliceInProgress)
+	}
+	if nudges != 1 {
+		t.Errorf("nudges = %d, want one for the write", nudges)
+	}
+	// The readiness reading itself is unaffected: still ready to merge.
+	if !strings.Contains(out.String(), "Awaiting merge — ready to merge — ") {
+		t.Errorf("output = %q, want the readiness reported as it read", out.String())
+	}
+}
+
+// A reopen that fails is logged and changes nothing else: the readiness
+// reading still reports and the next run tries the write again.
+func TestPRStatusLeavesAnUnreopenableDoneSliceAlone(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageForStatus("s2", "Awaiting merge", notion.SliceDone, "",
+				"https://github.test/craig/nat/pull/2")},
+		},
+		updateErr: errors.New("notion is down"),
+	}
+	env, out := testEnv(testConfig(), api)
+	var nudges int
+	env.Nudge = func() { nudges++ }
+	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
+		"/tmp/nat": {"https://github.test/craig/nat/pull/2": {Approved: true, Mergeable: true}},
+	}}
+	env.NewGH = func() GH { return reader }
+
+	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
+	if err != nil {
+		t.Fatalf("pr-status: %v", err)
+	}
+	if nudges != 0 {
+		t.Errorf("nudges = %d, want none for a write that failed", nudges)
+	}
+	if !strings.Contains(out.String(), "Awaiting merge — ready to merge — ") {
+		t.Errorf("output = %q, want the readiness reported despite the failed write", out.String())
+	}
+}
+
 // The other thing absence means: a pull request closed unmerged is work going
 // round again, and the slice is left exactly as it is — no write, no nudge.
 func TestPRStatusLeavesAClosedAbsentPRAlone(t *testing.T) {

@@ -278,6 +278,17 @@ func (n *Notion) MarkDone(ctx context.Context, id string, sh Shape) error {
 	return nil
 }
 
+// ReopenSlice writes a slice back to In progress, MarkDone undone.
+func (n *Notion) ReopenSlice(ctx context.Context, id string, sh Shape) error {
+	if _, err := n.api.UpdatePageProperties(ctx, id, map[string]notion.PropertyValue{
+		notion.PropStatus: notion.NewChoice(sh.statusType, notion.SliceInProgress),
+	}); err != nil {
+		return err
+	}
+	logging.Action("slice reopened to In progress", "slice", id)
+	return nil
+}
+
 // AddMilestones files milestones at the end of the plan, which is the options
 // of the slices' own Milestone column, in one schema write: either they all
 // arrive or none do, since their order in the column is the order of the plan.

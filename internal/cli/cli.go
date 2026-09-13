@@ -165,6 +165,12 @@ usage:
                       brief
   nat slice-show <slice> [--json] --project ID
                       print one slice's full status and brief, no claim
+  nat slice-status <slice> [--json] --project ID
+                      read one slice's status straight off its page, fresh:
+                      the slice need not be in the named project's own plan,
+                      since --project only pins which credentials to read
+                      with. A page Notion no longer has any record of reads
+                      as gone rather than as a refusal
   nat slice-launch <slice> [--model M] [--effort E] [--json] --project ID
                       launch a detached agent for a slice with optional model
                       and effort overrides
@@ -331,6 +337,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return startSlice(ctx, args[1:], env)
 	case "slice-show":
 		return sliceShow(ctx, args[1:], env)
+	case "slice-status":
+		return sliceStatus(ctx, args[1:], env)
 	case "slice-launch":
 		return sliceLaunch(ctx, args[1:], env)
 	case "slice-approve":

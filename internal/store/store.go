@@ -176,6 +176,12 @@ type Store interface {
 	// MarkDone moves a slice to Done — the one write that says its work is on
 	// main.
 	MarkDone(ctx context.Context, id string, sh Shape) error
+	// ReopenSlice writes a slice back to In progress — MarkDone undone, for a
+	// slice Done under the old rule (Done written at approve, rather than at
+	// the merge) whose pull request a reading has found still open. It is the
+	// mirror of MarkDone rather than ClaimSlice: nothing about ownership
+	// changes, only the one property that says whether the work is on main.
+	ReopenSlice(ctx context.Context, id string, sh Shape) error
 	// AddMilestones files milestones at the end of the plan, all of them or
 	// none, and returns them in the order they were given.
 	AddMilestones(ctx context.Context, p Project, sh Shape, names []string) ([]domain.Milestone, error)
