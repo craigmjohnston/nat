@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
@@ -284,18 +285,7 @@ func briefMarkdown(b brief, projectID, projectName string) string {
 		fmt.Fprintf(&s, "- Working directory: %s\n", b.Repo)
 	}
 
-	s.WriteString("\n## Brief\n\n")
-	s.WriteString(section(b.Body))
-	s.WriteString("\n## Project conventions\n\n")
-	s.WriteString(section(b.Conventions))
+	s.WriteString("\n")
+	s.WriteString(agent.BriefSections(b.Body, b.Conventions))
 	return s.String()
-}
-
-// section prints a page body, or says it is empty — an empty heading reads as
-// output that got cut off.
-func section(text string) string {
-	if text == "" {
-		return "_none_\n"
-	}
-	return text + "\n"
 }
