@@ -439,26 +439,30 @@ public func buildRailModel(
         let totalCount = milestoneSlices.count
 
         if !milestoneDone {
-            // The first milestone still holding work is the current one.
-            let isCurrent = !currentAssigned
-                && milestoneSlices.contains { $0.status != "Done" }
-            if isCurrent { currentAssigned = true }
-
             // Remaining slices: work not yet done and not drawn in a session
             // section (a Done slice awaiting its merge is the section's, not
-            // this folder's).
+            // this folder's). A milestone with none of its own left to list
+            // here — every one moved into ACTIVE/NEEDS REVIEW, or Done — earns
+            // no TODO header at all: an empty folder is not a milestone
+            // "still holding work" the way this section means it.
             let remaining = milestoneSlices
                 .filter { $0.status != "Done" && !inFlightIDs.contains($0.id) }
                 .map { sliceRow(for: $0) }
 
-            todoFolders.append(MilestoneFolder(
-                milestoneID: milestone.id,
-                title: milestone.name,
-                done: doneCount,
-                total: max(1, totalCount),
-                isCurrent: isCurrent,
-                slices: remaining
-            ))
+            if !remaining.isEmpty {
+                // The first milestone still listed here is the current one.
+                let isCurrent = !currentAssigned
+                if isCurrent { currentAssigned = true }
+
+                todoFolders.append(MilestoneFolder(
+                    milestoneID: milestone.id,
+                    title: milestone.name,
+                    done: doneCount,
+                    total: max(1, totalCount),
+                    isCurrent: isCurrent,
+                    slices: remaining
+                ))
+            }
         }
 
         // Every finished slice lives under DONE, so a milestone part-way
