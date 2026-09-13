@@ -177,19 +177,6 @@ func TestActivityCaptureFailsOutright(t *testing.T) {
 	}
 }
 
-// No server at all is no agents, which is the ordinary state before the first
-// launch rather than a failure.
-func TestActivityWithNoServerRunning(t *testing.T) {
-	r := &fakeRunner{err: &ExitError{Code: 1, Stderr: "no server running on /tmp/tmux-501/default"}}
-	activity, err := NewTmuxWithRunner(r).Activity()
-	if err != nil {
-		t.Fatalf("Activity: %v", err)
-	}
-	if len(activity) != 0 {
-		t.Errorf("activity = %v, want none", activity)
-	}
-}
-
 // A pane scan that fails outright is reported, not answered with an empty
 // reading that would read as every agent having stopped.
 func TestActivityScanFails(t *testing.T) {

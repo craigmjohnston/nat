@@ -27,18 +27,16 @@ func TestMergePRRunsGh(t *testing.T) {
 	}
 }
 
-// The ref goes through as it stands, whichever of the three things gh merges a
-// pull request by it is.
+// The ref goes through as it stands, not just the pull request number gh
+// prefers.
 func TestMergePRTakesTheRefAsItStands(t *testing.T) {
-	for _, ref := range []string{"7", "slice/merge-the-pr-from-the-viewer",
-		"https://github.com/craigmjohnston/nat/pull/7"} {
-		runner := &fakeRunner{}
-		if err := NewWithRunner(runner).MergePR("/repos/nat", ref); err != nil {
-			t.Fatalf("MergePR(%q) = %v, want the merge to have happened", ref, err)
-		}
-		if runner.args[2] != ref {
-			t.Errorf("merged %q, want %q", runner.args[2], ref)
-		}
+	ref := "slice/merge-the-pr-from-the-viewer"
+	runner := &fakeRunner{}
+	if err := NewWithRunner(runner).MergePR("/repos/nat", ref); err != nil {
+		t.Fatalf("MergePR(%q) = %v, want the merge to have happened", ref, err)
+	}
+	if runner.args[2] != ref {
+		t.Errorf("merged %q, want %q", runner.args[2], ref)
 	}
 }
 

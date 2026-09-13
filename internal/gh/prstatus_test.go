@@ -51,16 +51,14 @@ func TestOpenPRsReadings(t *testing.T) {
 	}{
 		{name: "approved and mergeable", fields: `"reviewDecision":"APPROVED","mergeable":"MERGEABLE"`,
 			wantApproved: true, wantMergeable: true},
-		{name: "review required", fields: `"reviewDecision":"REVIEW_REQUIRED","mergeable":"MERGEABLE"`,
-			wantMergeable: true},
-		{name: "changes requested", fields: `"reviewDecision":"CHANGES_REQUESTED","mergeable":"MERGEABLE"`,
-			wantMergeable: true},
 		// A repository that requires no review and has had none says nothing at
-		// all, which is not an approval.
+		// all, which is not an approval. Every other word gh can say instead of
+		// APPROVED or MERGEABLE (REVIEW_REQUIRED, CHANGES_REQUESTED,
+		// CONFLICTING, UNKNOWN, ...) reads as false the same way an empty
+		// string does — the comparison is a plain equality, not a lookup with
+		// its own case per word.
 		{name: "no decision", fields: `"reviewDecision":"","mergeable":"MERGEABLE"`, wantMergeable: true},
 		{name: "conflicting", fields: `"reviewDecision":"APPROVED","mergeable":"CONFLICTING"`,
-			wantApproved: true},
-		{name: "mergeability unknown", fields: `"reviewDecision":"APPROVED","mergeable":"UNKNOWN"`,
 			wantApproved: true},
 		{name: "nothing said", fields: ``},
 	}

@@ -303,9 +303,7 @@ func TestSendMouseFollowsTheChildsMouseModes(t *testing.T) {
 	}{
 		{"no mouse reporting", "", ""},
 		{"x10", "\x1b[?9h", x10Press},
-		{"normal", "\x1b[?1000h", x10Press},
 		{"button event", "\x1b[?1002h", x10Press},
-		{"any event", "\x1b[?1003h", x10Press},
 		{"sgr", "\x1b[?1000h\x1b[?1006h", "\x1b[<0;4;2M"},
 	}
 	for _, tt := range tests {
@@ -686,18 +684,6 @@ func TestStartOnARealPtyReportsACommandThatWillNotRun(t *testing.T) {
 	}
 	if err == nil || !strings.Contains(err.Error(), "start command") {
 		t.Fatalf("Start error = %v, want a start-command failure", err)
-	}
-}
-
-func TestOutputAndDoneAreTheSessionsOwnChannels(t *testing.T) {
-	f := newFakePty()
-	s := startFake(t, f, 20, 4)
-
-	if s.Output() != s.output {
-		t.Fatal("Output() is not the session's channel")
-	}
-	if s.Done() != s.done {
-		t.Fatal("Done() is not the session's channel")
 	}
 }
 

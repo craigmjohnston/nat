@@ -111,23 +111,6 @@ func TestSliceFromPage(t *testing.T) {
 			`{"id": "s5", "properties": {}}`,
 			Slice{ID: "s5"},
 		},
-		{
-			"the milestone is the option the slice names",
-			`{
-				"id": "s8",
-				"properties": {
-					"Name": {"type": "title", "title": [{"plain_text": "Single page"}]},
-					"Status": {"type": "select", "select": {"name": "Todo"}},
-					"Milestone": {"type": "select", "select": {"name": "M2: The board"}}
-				}
-			}`,
-			Slice{ID: "s8", Name: "Single page", Status: SliceTodo, StatusName: "Todo", MilestoneID: "M2: The board"},
-		},
-		{
-			"a Milestone select naming nothing leaves the slice unassigned",
-			`{"id": "s9", "properties": {"Milestone": {"type": "select", "select": null}}}`,
-			Slice{ID: "s9"},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

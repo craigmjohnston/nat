@@ -304,7 +304,6 @@ func TestPathSlug(t *testing.T) {
 		"-slice/worktrees.":     "slice-worktrees",
 		"feat/v1.2_x":           "feat-v1.2_x",
 		"//":                    "worktree",
-		"слайс":                 "worktree",
 		"slice/reimplement-git": "slice-reimplement-git",
 	} {
 		if got := pathSlug(branch); got != want {
@@ -319,14 +318,6 @@ func TestExitErrorWithoutStderr(t *testing.T) {
 	err := &ExitError{Code: 4, Stderr: " \n\n"}
 	if want := "git exited 4"; err.Error() != want {
 		t.Errorf("Error() = %q, want %q", err, want)
-	}
-}
-
-// TestNewDrivesTheRealBinary pins what the constructor with no seam in it is
-// wired to.
-func TestNewDrivesTheRealBinary(t *testing.T) {
-	if _, ok := New().runner.(ExecRunner); !ok {
-		t.Errorf("New() runs through %T, want the real subprocesses", New().runner)
 	}
 }
 

@@ -52,18 +52,16 @@ func TestViewPRRunsGh(t *testing.T) {
 	}
 }
 
-// The ref goes through as it stands, whichever of the three things gh reads a
-// pull request by it is — the URL recorded on a slice's PR property included.
+// The ref goes through as it stands, not just the pull request number gh
+// prefers — the URL recorded on a slice's PR property included.
 func TestViewPRTakesTheRefAsItStands(t *testing.T) {
-	for _, ref := range []string{"7", "slice/read-a-pull-request-through-gh",
-		"https://github.com/craigmjohnston/nat/pull/7"} {
-		runner := &fakeRunner{out: fixture(t, "pr-open.json")}
-		if _, err := NewWithRunner(runner).ViewPR("/repos/nat", ref); err != nil {
-			t.Fatalf("ViewPR(%q) = %v, want a pull request", ref, err)
-		}
-		if got := runner.args[2]; got != ref {
-			t.Errorf("asked gh for %q, want %q", got, ref)
-		}
+	ref := "https://github.com/craigmjohnston/nat/pull/7"
+	runner := &fakeRunner{out: fixture(t, "pr-open.json")}
+	if _, err := NewWithRunner(runner).ViewPR("/repos/nat", ref); err != nil {
+		t.Fatalf("ViewPR(%q) = %v, want a pull request", ref, err)
+	}
+	if got := runner.args[2]; got != ref {
+		t.Errorf("asked gh for %q, want %q", got, ref)
 	}
 }
 

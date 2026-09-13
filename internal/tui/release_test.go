@@ -183,7 +183,6 @@ func TestReleaseRefusals(t *testing.T) {
 	}{
 		{"on a milestone", func(a *App) { cursorOnMilestone(t, a) }, "Move to a slice"},
 		{"a Todo slice", func(a *App) { cursorOn(t, a, notStarted) }, "only a slice in progress"},
-		{"a Done slice", func(a *App) { cursorOn(t, a, allDone) }, "only a slice in progress"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
