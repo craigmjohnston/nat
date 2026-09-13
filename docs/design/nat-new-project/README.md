@@ -29,10 +29,15 @@ the spec except for these:
   deprecated* tab style. Keep the app's current tab style; take only the
   behaviour — the `+` button opening an Untitled tab, the italic "Untitled"
   title, the neutral (label-quaternary) dot, the close affordance.
-- **ACTIVE empty state height.** The mock shows "Nothing running" as a
-  single line of subheadline text. Build it reserving the height of one
-  two-line active entry, so the section does not change height when the
-  first entry lands.
+- **ACTIVE empty state.** The mock shows "Nothing running" as a single
+  line of subheadline text indented to the entry column. Build it instead
+  as a recessed well: a full-bleed band across the rail, exactly the height
+  of one two-line active entry so the section does not change height when
+  the first entry lands, drawn on the field ground with an inner shadow
+  along its top edge and hairlines on its top and bottom edges alone, and
+  holding a centred `moon.zzz` glyph and the note in tertiary label. This
+  supersedes the earlier departure, which reserved that same height but
+  kept the mock's indented line.
 - **Workshop terminal.** The mock's workshop pane transcript
   (`NFTerminal`) is illustrative. The real pane is the existing embedded
   Claude Code terminal (the workshop pane the app already has) — no custom

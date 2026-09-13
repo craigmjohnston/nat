@@ -23,6 +23,18 @@ final class RailSectionRulesTests: XCTestCase {
         return try String(contentsOf: url, encoding: .utf8)
     }
 
+    /// The empty state's own source, from its builder to the rows it stands
+    /// in for — the well's builder beside it included, since the two are
+    /// one view.
+    private func emptyNoteBody() throws -> String {
+        let s = try source()
+        guard let note = s.range(of: "private var activeEmptyNote: some View {"),
+              let end = s.range(of: "// MARK: - Session rows", range: note.upperBound..<s.endIndex) else {
+            throw XCTSkip("the rail should hold an activeEmptyNote")
+        }
+        return String(s[note.upperBound..<end.lowerBound])
+    }
+
     /// The note is one string in one place, so the rail and anything else
     /// that ever says it cannot say two different things.
     func testTheEmptyNoteIsTheSharedOne() throws {
@@ -64,28 +76,60 @@ final class RailSectionRulesTests: XCTestCase {
         XCTAssertTrue(note.lowerBound < rows.lowerBound, "the note is the empty half of the branch")
     }
 
-    /// The note sits in the column an entry's name starts in, and it is the
-    /// rail's own geometry that puts it there rather than a number typed out
-    /// beside it.
-    func testTheNoteIsIndentedToTheEntryTextColumn() throws {
-        XCTAssertTrue(
-            try source().contains(".padding(.leading, RailSlot.leading + RailSlot.slot + RailSlot.spacing)"),
-            "the note should be indented off the shared slot geometry"
+    /// The empty state is a well rather than a line of prose: a band that
+    /// spans the rail, centred on its glyph and its note, indented to
+    /// nothing at all — the old indent to the entry text column is gone
+    /// with the line that sat in it.
+    func testTheEmptyStateIsAFullBleedBand() throws {
+        let body = try emptyNoteBody()
+        XCTAssertTrue(body.contains(".frame(maxWidth: .infinity)"), "the band spans the rail")
+        XCTAssertFalse(
+            body.contains(".padding(.leading, RailSlot.leading + RailSlot.slot + RailSlot.spacing)"),
+            "a full-bleed band is indented to nothing"
+        )
+        XCTAssertFalse(
+            body.contains(".frame(maxWidth: .infinity, alignment: .leading)"),
+            "the glyph and the note are centred in the band, not run up its leading edge"
         )
     }
 
-    /// The empty state reserves a two-line entry's height — the departure
-    /// from the mock the design README records — so the rail below it does
-    /// not jump as the first entry lands or the last one leaves. The two
-    /// hidden lines and the same vertical padding `sessionRow` carries are
-    /// what make the two heights one.
-    func testTheEmptyNoteReservesATwoLineEntrysHeight() throws {
+    /// What makes it read as an empty socket: the field ground, the light
+    /// caught along the top edge, and a hairline on the top and bottom
+    /// edges alone — no sides, and no corner radius anywhere.
+    func testTheWellIsRecessedAndSquare() throws {
         let s = try source()
-        guard let note = s.range(of: "private var activeEmptyNote: some View {"),
-              let end = s.range(of: "// MARK: - Session rows", range: note.upperBound..<s.endIndex) else {
-            return XCTFail("the rail should hold an activeEmptyNote")
+        guard let well = s.range(of: "private var emptyWell: some View {"),
+              let end = s.range(of: "// MARK: - Session rows", range: well.upperBound..<s.endIndex) else {
+            return XCTFail("the rail should hold an emptyWell")
         }
-        let body = String(s[note.upperBound..<end.lowerBound])
+        let body = String(s[well.upperBound..<end.lowerBound])
+        XCTAssertTrue(body.contains("DesignTokens.fill(.field)"), "the well sits on the field ground")
+        XCTAssertTrue(
+            body.contains(".shadow(.inner(color: .black.opacity(0.3), radius: 1.5, x: 0, y: 0.5))"),
+            "the recess is an inner shadow along the top edge"
+        )
+        XCTAssertTrue(body.contains("overlay(alignment: .top) { Rule(.hairline) }"), "a hairline on top")
+        XCTAssertTrue(body.contains("overlay(alignment: .bottom) { Rule(.hairline) }"), "and one under")
+        XCTAssertFalse(body.contains("cornerRadius"), "a band across the rail has no corners")
+    }
+
+    /// The glyph and the note, at the sizes and in the colour the design
+    /// asks for, with the gap between them written out once.
+    func testTheWellHoldsTheGlyphAndTheNote() throws {
+        let body = try emptyNoteBody()
+        XCTAssertTrue(body.contains(#"Image(systemName: "moon.zzz")"#), "the socket wears a sleeping moon")
+        XCTAssertTrue(body.contains("HStack(spacing: 7)"), "seven points between the glyph and the note")
+        XCTAssertTrue(body.contains(".font(.system(size: 13, weight: .regular))"), "the glyph is 13pt")
+        XCTAssertTrue(body.contains(".ink(.tertiary)"), "both of them recede")
+    }
+
+    /// The band is a two-line entry tall — the departure from the mock the
+    /// design README records — so the rail below it does not jump as the
+    /// first entry lands or the last one leaves. The two hidden lines and
+    /// the same vertical padding `sessionRow` carries are what make the two
+    /// heights one.
+    func testTheEmptyNoteReservesATwoLineEntrysHeight() throws {
+        let body = try emptyNoteBody()
         XCTAssertEqual(
             body.components(separatedBy: ".hidden()").count - 1, 2,
             "both of an entry's lines should be reserved"

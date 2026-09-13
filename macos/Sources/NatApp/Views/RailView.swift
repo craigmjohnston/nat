@@ -575,39 +575,62 @@ struct RailView: View {
         .accessibilityLabel("\(section.title), \(open ? "expanded" : "collapsed")")
     }
 
-    /// What the ACTIVE section draws with nothing to list: the note indented
-    /// to the column an entry's own name starts in, so the section reads as
-    /// one whose rows are missing rather than one drawn to another rule.
+    /// What the ACTIVE section draws with nothing to list: a recessed well,
+    /// full-bleed across the rail and exactly one active entry tall, so the
+    /// section, the rule under it and the whole plan below hold still as the
+    /// first agent starts and the last one finishes.
     ///
-    /// It reserves the height of a two-line entry rather than the single
-    /// line the mock draws — the departure the design README records — so
-    /// the section, the divider under it and the whole plan below hold still
-    /// as the first agent starts and the last one finishes. Both lines are
-    /// reserved the way `sessionRow` builds them: a title line at the body
-    /// size the note itself is not set in, and a detail line under it.
+    /// It reads as an empty socket rather than as a line of prose where a
+    /// row should be: the field ground, which is the darkest surface the
+    /// palette has and so sits below the rail's own; an inner shadow along
+    /// the top edge, the light the recess is cut out of; and a hairline on
+    /// the top and bottom edges alone — no sides and no corners, since the
+    /// band spans the rail and a rounded card floating in it would read as
+    /// something to click. Centred in it, the glyph and the note.
+    ///
+    /// The height is the height of an entry rather than a number typed out
+    /// beside one: the two lines `sessionRow` builds, spaced and padded as
+    /// it spaces and pads them, drawn as nothing at all. The edges are
+    /// overlaid rather than stacked, so the hairlines cost the band no
+    /// height of their own.
     private var activeEmptyNote: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            ZStack(alignment: .leading) {
+        ZStack {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(" ")
                     .font(.system(size: Typo.body, weight: .regular))
                     .hidden()
 
+                Text(" ")
+                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .hidden()
+            }
+            .padding(.vertical, 8)
+
+            HStack(spacing: 7) {
+                Image(systemName: "moon.zzz")
+                    .font(.system(size: 13, weight: .regular))
+
                 Text(EmptyActiveNote.text)
                     .font(.system(size: Typo.subhead, weight: .regular))
-                    .ink(.tertiary)
                     .lineLimit(1)
             }
-
-            Text(" ")
-                .font(.system(size: Typo.subhead, weight: .regular))
-                .hidden()
+            .ink(.tertiary)
         }
-        .padding(.vertical, 8)
-        // The entry text column: the row's own leading inset, plus the slot
-        // every dot and icon sits in and the gap after it.
-        .padding(.leading, RailSlot.leading + RailSlot.slot + RailSlot.spacing)
-        .padding(.trailing, RailSlot.trailing)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
+        .background(emptyWell)
+        .environment(\.ground, .field)
+    }
+
+    /// The socket itself: the field ground with the light caught along its
+    /// top edge, and the hairline the band meets the rail on at either end.
+    private var emptyWell: some View {
+        Rectangle()
+            .fill(
+                DesignTokens.fill(.field)
+                    .shadow(.inner(color: .black.opacity(0.3), radius: 1.5, x: 0, y: 0.5))
+            )
+            .overlay(alignment: .top) { Rule(.hairline) }
+            .overlay(alignment: .bottom) { Rule(.hairline) }
     }
 
     // MARK: - Session rows
