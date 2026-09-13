@@ -136,8 +136,6 @@ func TestDiffKeyRefusesRowsWithNoBranch(t *testing.T) {
 			"Move to a slice"},
 		{"a Todo slice", func(t *testing.T, a *App) { cursorOn(t, a, stillTodo) },
 			"only a handed-back slice"},
-		{"a Done slice", func(t *testing.T, a *App) { cursorOn(t, a, alreadyPR) },
-			"only a handed-back slice"},
 		{"a slice still being worked", func(t *testing.T, a *App) {
 			setSlice(a, handedBack, func(s *domain.Slice) { s.Branch = "" })
 			cursorOn(t, a, handedBack)

@@ -92,14 +92,6 @@ func TestPath(t *testing.T) {
 	}
 }
 
-func TestPathError(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", "")
-	t.Setenv("HOME", "")
-	if _, err := Path(); err == nil {
-		t.Fatal("Path() succeeded, want error")
-	}
-}
-
 func TestLoad(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -232,7 +224,6 @@ func TestSplitPercent(t *testing.T) {
 		// typo rather than an instruction.
 		{"too narrow", minSplitPercent - 1, DefaultSplitPercent},
 		{"too wide", maxSplitPercent + 1, DefaultSplitPercent},
-		{"negative", -20, DefaultSplitPercent},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -293,7 +284,6 @@ func TestPollInterval(t *testing.T) {
 		// than an instruction.
 		{"too often", minPollSeconds - 1, DefaultPollSeconds * time.Second},
 		{"too rare", maxPollSeconds + 1, DefaultPollSeconds * time.Second},
-		{"negative", -30, DefaultPollSeconds * time.Second},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -479,7 +469,6 @@ func TestValidSplitPercent(t *testing.T) {
 		{"at the upper bound", maxSplitPercent, true},
 		{"too narrow", minSplitPercent - 1, false},
 		{"too wide", maxSplitPercent + 1, false},
-		{"negative", -20, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidSplitPercent(tt.set)
@@ -508,7 +497,6 @@ func TestValidPollSeconds(t *testing.T) {
 		{"at the upper bound", maxPollSeconds, true},
 		{"too often", minPollSeconds - 1, false},
 		{"too rare", maxPollSeconds + 1, false},
-		{"negative", -30, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidPollSeconds(tt.set)

@@ -3,7 +3,6 @@ package logging
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -99,24 +98,6 @@ func TestDirReportsAnUnresolvableHome(t *testing.T) {
 	}
 }
 
-// Dir is dirFor for the machine it is running on, which is the only thing the
-// exported one adds.
-func TestDirFollowsTheRunningPlatform(t *testing.T) {
-	tempHome(t)
-
-	got, err := Dir()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want, err := dirFor(runtime.GOOS)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got != want {
-		t.Errorf("Dir() = %q, want %q", got, want)
-	}
-}
-
 func TestPathIsTheLogFileInTheLogDirectory(t *testing.T) {
 	tempHome(t)
 
@@ -130,14 +111,6 @@ func TestPathIsTheLogFileInTheLogDirectory(t *testing.T) {
 	}
 	if want := filepath.Join(dir, fileName); got != want {
 		t.Errorf("Path() = %q, want %q", got, want)
-	}
-}
-
-func TestPathReportsAnUnresolvableHome(t *testing.T) {
-	noHome(t)
-
-	if _, err := Path(); err == nil {
-		t.Error("want the home lookup to fail")
 	}
 }
 

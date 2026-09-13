@@ -64,6 +64,14 @@ func TestPRReadinessString(t *testing.T) {
 // statuses that are in no flight at all. The reading of the pull request is
 // left at its zero value here, which is every board before gh has been asked
 // anything; TestStateOfPRReadiness is what walks the rest of it.
+//
+// StateOf short-circuits on the first fact that applies, so most combinations
+// of the remaining fields are never read at all and add nothing as separate
+// cases: presence != AgentNone is one branch regardless of whether presence is
+// AgentUnknown or AgentWorking, blocked is never read once branch or PR is
+// set, and no field but status is read once status != SliceClaimed. Each
+// block below keeps only the cases that exercise a distinct branch or a
+// distinct override of one branch by the one before it in StateOf's switch.
 func TestStateOf(t *testing.T) {
 	plan := []Slice{
 		{ID: "dep", Name: "Notion client", Status: SliceTodo, StatusName: "Todo"},
@@ -83,50 +91,34 @@ func TestStateOf(t *testing.T) {
 		{name: "in progress, alone", status: SliceClaimed, want: SliceStateReadyToPush},
 		// No agent, nothing out, a dependency unfinished.
 		{name: "in progress, blocked", status: SliceClaimed, blocked: true, want: SliceStateBlocked},
-		// No agent, work out: a branch, a PR, or both — blocked or not, the
-		// review is what there is to do.
+		// No agent, work out: a branch or a PR, the two distinct OR operands
+		// that reach the same review-pending case. A combination of the two,
+		// or either one with blocked also set, is not read any differently.
 		{name: "handed back", status: SliceClaimed, branch: "slice/x", want: SliceStateAwaitingReview},
-		{name: "handed back, blocked", status: SliceClaimed, branch: "slice/x", blocked: true, want: SliceStateAwaitingReview},
 		{name: "PR recorded", status: SliceClaimed, pr: "https://gh/pr/1", want: SliceStateAwaitingReview},
-		{name: "PR recorded, blocked", status: SliceClaimed, pr: "https://gh/pr/1", blocked: true, want: SliceStateAwaitingReview},
-		{name: "branch and PR", status: SliceClaimed, branch: "slice/x", pr: "https://gh/pr/1", want: SliceStateAwaitingReview},
-		{name: "branch and PR, blocked", status: SliceClaimed, branch: "slice/x", pr: "https://gh/pr/1", blocked: true, want: SliceStateAwaitingReview},
 
-		// A live agent nobody has classified is running, so it is working —
-		// whatever else the page records.
+		// A live agent — unclassified or working, which StateOf treats alike
+		// via presence != AgentNone — wins over everything else on the page.
+		// One bare case per presence value, plus one case showing a live agent
+		// overrides a handed-back branch and one showing it overrides
+		// blocked; unclassified and working short-circuit identically, so
+		// only one of the two needs the overrides exercised.
 		{name: "unclassified agent", status: SliceClaimed, presence: AgentUnknown, want: SliceStateWorking},
-		{name: "unclassified agent, blocked", status: SliceClaimed, presence: AgentUnknown, blocked: true, want: SliceStateWorking},
-		{name: "unclassified agent, handed back", status: SliceClaimed, presence: AgentUnknown, branch: "slice/x", want: SliceStateWorking},
-		{name: "unclassified agent, handed back, blocked", status: SliceClaimed, presence: AgentUnknown, branch: "slice/x", blocked: true, want: SliceStateWorking},
-		{name: "unclassified agent, PR", status: SliceClaimed, presence: AgentUnknown, pr: "https://gh/pr/1", want: SliceStateWorking},
-		{name: "unclassified agent, PR, blocked", status: SliceClaimed, presence: AgentUnknown, pr: "https://gh/pr/1", blocked: true, want: SliceStateWorking},
-		{name: "unclassified agent, branch and PR", status: SliceClaimed, presence: AgentUnknown, branch: "slice/x", pr: "https://gh/pr/1", want: SliceStateWorking},
-		{name: "unclassified agent, branch and PR, blocked", status: SliceClaimed, presence: AgentUnknown, branch: "slice/x", pr: "https://gh/pr/1", blocked: true, want: SliceStateWorking},
-
 		{name: "working agent", status: SliceClaimed, presence: AgentWorking, want: SliceStateWorking},
-		{name: "working agent, blocked", status: SliceClaimed, presence: AgentWorking, blocked: true, want: SliceStateWorking},
 		{name: "working agent, handed back", status: SliceClaimed, presence: AgentWorking, branch: "slice/x", want: SliceStateWorking},
-		{name: "working agent, handed back, blocked", status: SliceClaimed, presence: AgentWorking, branch: "slice/x", blocked: true, want: SliceStateWorking},
-		{name: "working agent, PR", status: SliceClaimed, presence: AgentWorking, pr: "https://gh/pr/1", want: SliceStateWorking},
-		{name: "working agent, PR, blocked", status: SliceClaimed, presence: AgentWorking, pr: "https://gh/pr/1", blocked: true, want: SliceStateWorking},
-		{name: "working agent, branch and PR", status: SliceClaimed, presence: AgentWorking, branch: "slice/x", pr: "https://gh/pr/1", want: SliceStateWorking},
-		{name: "working agent, branch and PR, blocked", status: SliceClaimed, presence: AgentWorking, branch: "slice/x", pr: "https://gh/pr/1", blocked: true, want: SliceStateWorking},
+		{name: "working agent, blocked", status: SliceClaimed, presence: AgentWorking, blocked: true, want: SliceStateWorking},
 
 		// An agent that has stopped for input is the one thing louder than a
 		// working one, and it too wins over everything on the page.
 		{name: "waiting agent", status: SliceClaimed, presence: AgentWaiting, want: SliceStateWaiting},
-		{name: "waiting agent, blocked", status: SliceClaimed, presence: AgentWaiting, blocked: true, want: SliceStateWaiting},
 		{name: "waiting agent, handed back", status: SliceClaimed, presence: AgentWaiting, branch: "slice/x", want: SliceStateWaiting},
-		{name: "waiting agent, handed back, blocked", status: SliceClaimed, presence: AgentWaiting, branch: "slice/x", blocked: true, want: SliceStateWaiting},
-		{name: "waiting agent, PR", status: SliceClaimed, presence: AgentWaiting, pr: "https://gh/pr/1", want: SliceStateWaiting},
-		{name: "waiting agent, PR, blocked", status: SliceClaimed, presence: AgentWaiting, pr: "https://gh/pr/1", blocked: true, want: SliceStateWaiting},
-		{name: "waiting agent, branch and PR", status: SliceClaimed, presence: AgentWaiting, branch: "slice/x", pr: "https://gh/pr/1", want: SliceStateWaiting},
-		{name: "waiting agent, branch and PR, blocked", status: SliceClaimed, presence: AgentWaiting, branch: "slice/x", pr: "https://gh/pr/1", blocked: true, want: SliceStateWaiting},
+		{name: "waiting agent, blocked", status: SliceClaimed, presence: AgentWaiting, blocked: true, want: SliceStateWaiting},
 
-		// Nothing that is not in progress is in flight, however loaded the page.
+		// Nothing that is not in progress is in flight, however loaded the
+		// page — status is read first and the function returns before any
+		// other field is, so a Todo row with blocked or an agent set would add
+		// nothing beyond the bare "todo" case below.
 		{name: "todo", status: SliceTodo, want: SliceStateNone},
-		{name: "todo, blocked", status: SliceTodo, blocked: true, want: SliceStateNone},
-		{name: "todo with an agent on it", status: SliceTodo, presence: AgentWorking, want: SliceStateNone},
 		{name: "done", status: SliceDone, branch: "slice/x", pr: "https://gh/pr/1", want: SliceStateNone},
 		{name: "done with an agent still on it", status: SliceDone, presence: AgentWaiting, want: SliceStateNone},
 		{name: "a status nobody knows", status: SliceStatus("Parked"), presence: AgentWorking, want: SliceStateNone},

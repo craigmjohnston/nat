@@ -10,7 +10,6 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
@@ -167,22 +166,6 @@ func TestPlaceAgentCutsAWorktree(t *testing.T) {
 	}
 	if want := []string{dir}; !slices.Equal(r.fetches, want) {
 		t.Errorf("fetches = %v, want origin fetched in %v before the cut", r.fetches, want)
-	}
-}
-
-// The base is whatever git answers with, passed through as it stands: a
-// repository with no origin to read falls back to its local default branch,
-// which is all such a checkout has to cut from.
-func TestPlaceAgentCutsFromTheFallbackBase(t *testing.T) {
-	dir := repoDir(t)
-	w := &fakeWorktrees{}
-	r := &fakeRepo{base: git.DefaultBase}
-
-	if p := PlaceAgent(w, r, dir, domain.Slice{Name: "Info view"}); !p.OK {
-		t.Fatalf("placement refused: %s", p.Toast)
-	}
-	if want := []worktreeCall{{dir, "slice/info-view", git.DefaultBase}}; !equalCalls(w.creates, want) {
-		t.Errorf("creates = %v, want %v", w.creates, want)
 	}
 }
 

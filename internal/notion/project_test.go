@@ -357,20 +357,14 @@ func TestVerifyProjectSchema(t *testing.T) {
 }
 
 func TestProjectSchemas(t *testing.T) {
-	// The schemas are what CreateProject sends; onboarding and the new-project
-	// flow reuse them, so pin their shape.
+	// SlicesSchema(false) and ProjectsSchema() are pinned by TestCreateProject
+	// and TestCreateProjectsDatabase, which check the exact request bodies
+	// they end up in; the one shape not covered there is includeAssignee=true.
 	tests := []struct {
 		name   string
 		schema map[string]PropertySchema
 		want   string
 	}{
-		{
-			"slices",
-			SlicesSchema(false),
-			`{"Branch":{"rich_text":{}},"Milestone":{"select":{}},` +
-				`"Name":{"title":{}},"PR":{"url":{}},"Repo":{"rich_text":{}},` +
-				`"Status":{"select":{"options":[{"name":"Todo"},{"name":"In progress"},{"name":"Done"}]}}}`,
-		},
 		{
 			"slices with an assignee",
 			SlicesSchema(true),
@@ -378,7 +372,6 @@ func TestProjectSchemas(t *testing.T) {
 				`"Name":{"title":{}},"PR":{"url":{}},"Repo":{"rich_text":{}},` +
 				`"Status":{"select":{"options":[{"name":"Todo"},{"name":"In progress"},{"name":"Done"}]}}}`,
 		},
-		{"projects", ProjectsSchema(), `{"Name":{"title":{}}}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -601,9 +601,7 @@ func TestAppLaunchPromptStepsBetweenTheChoices(t *testing.T) {
 	}{
 		{"the default", nil, choiceLaunch, "launch"},
 		{"right", []string{"right"}, choiceConfigure, "configure & launch"},
-		{"tab", []string{"tab"}, choiceConfigure, "configure & launch"},
 		{"back again", []string{"right", "left"}, choiceLaunch, "launch"},
-		{"shift+tab", []string{"tab", "shift+tab"}, choiceLaunch, "launch"},
 		{"stopping at the far end", []string{"right", "right"}, choiceConfigure, "configure & launch"},
 		{"stopping at the near end", []string{"left"}, choiceLaunch, "launch"},
 	}

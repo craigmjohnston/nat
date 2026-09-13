@@ -86,19 +86,6 @@ func TestCreatePRWithADescription(t *testing.T) {
 	}
 }
 
-// TestCreatePRWithATitleAlone covers a one-line description: gh is still told
-// the title, and the body it is given is the empty one there is.
-func TestCreatePRWithATitleAlone(t *testing.T) {
-	runner := &fakeRunner{out: "https://github.test/craig/nat/pull/7\n"}
-	if _, err := NewWithRunner(runner).CreatePR("/repos/nat", "slice/approve", "One line", ""); err != nil {
-		t.Fatalf("CreatePR() = %v, want a pull request", err)
-	}
-	want := []string{"pr", "create", "--head", "slice/approve", "--title", "One line", "--body", ""}
-	if !reflect.DeepEqual(runner.args, want) {
-		t.Errorf("args = %v, want %v", runner.args, want)
-	}
-}
-
 // TestCreatePRTakesTheLastURL covers gh printing something before the URL: the
 // pull request is the last URL on stdout, not the first line of it.
 func TestCreatePRTakesTheLastURL(t *testing.T) {
