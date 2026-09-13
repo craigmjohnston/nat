@@ -7,11 +7,12 @@ import NatKit
 /// geometry, so the arriving brief, diff or pull request lands on a layout
 /// that is already correct and nothing shifts under it.
 ///
-/// Each of them draws the rail beside its content too, and its footer under
-/// it, because those are exactly the pieces a pane grows once its read lands
-/// — a skeleton of the reading column alone would settle the prose and then
-/// narrow it the moment the content arrived, which is the shift rather than
-/// the fix for it.
+/// Each of them draws the rail beside its content too, with the same
+/// inspector-top actions and pinned foot the loaded rail opens and closes
+/// with, because those are exactly the pieces a pane grows once its read
+/// lands — a skeleton of the reading column alone would settle the prose and
+/// then narrow it the moment the content arrived, which is the shift rather
+/// than the fix for it.
 ///
 /// Two rules run through all of it. Every placeholder line is sized off the
 /// very type it stands in for — `SkeletonType` carries the real view's own
@@ -189,12 +190,13 @@ private struct SkeletonRailSection: View {
     }
 }
 
-/// The rail itself, at the width the pane's own `@AppStorage` holds and with
-/// the same leading hairline and insets the real one draws, so the reading
-/// column beside it is exactly as wide as it will be when the content lands.
+/// The rail's own scrolling fields, with the same insets the real one draws.
+/// The width, leading hairline and any inspector-top actions are the whole
+/// rail's — its call site's to wrap this in, alongside `SkeletonStatusFoot`,
+/// at the pane's own `@AppStorage` width — so the reading column beside it is
+/// exactly as wide as it will be when the content lands.
 private struct SkeletonRail: View {
     let sections: [SkeletonRailSectionShape]
-    let width: Double
     var type: SkeletonType = .system(Typo.subhead)
     var rowHeight: CGFloat?
 
@@ -210,40 +212,22 @@ private struct SkeletonRail: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .inelastic()
         }
-        .frame(width: width)
-        .rule(.separator, edges: [.leading], width: 0.5)
     }
 }
 
-/// A pane's footer bar: the diff's and the pull request's are the same band
-/// — a hairline, the busy mark's slot, a line of state and the actions — and
-/// a pane without it would give the reading column those rows and take them
-/// back.
-///
-/// The mark and the actions are the real ones — the same slot and the same
-/// buttons before the read lands as after, and the buttons' own height is
-/// what decides how deep the band is, so a block standing in for them would
-/// be a placeholder for something already drawable. Only the line between
-/// them is a block: what it says is counted off the very reading still in
-/// flight.
-private struct SkeletonFooter<Actions: View>: View {
-    @ViewBuilder let actions: () -> Actions
+/// An inspector's pinned foot while its first read is still in flight: the
+/// same `RefreshingMark` and status line the loaded pane pins there, always
+/// showing a read in progress since a skeleton is only ever drawn for one.
+private struct SkeletonStatusFoot: View {
+    var lineWidth: Double = 0.24
 
     var body: some View {
-        VStack(spacing: 0) {
-            Divider().frame(height: 0.5)
-
+        InspectorStatusFoot {
             HStack(spacing: 8) {
                 RefreshingMark(isRefreshing: true)
-
-                // Greedy, so it is the `Spacer` the loaded footer puts
-                // between its line and its actions as well as the line.
-                SkeletonTextLine(width: 0.24, type: .system(Typo.subhead))
-
-                actions()
+                SkeletonTextLine(width: lineWidth, type: .system(Typo.subhead))
+                Spacer()
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
         }
     }
 }
@@ -291,7 +275,26 @@ struct BriefSkeletonView: View {
                 .inelastic()
             }
 
-            SkeletonRail(sections: BriefSkeleton.sidebarSections, width: sidebarWidth)
+            VStack(spacing: 0) {
+                // The Launch Agent split button, disabled: there is nothing
+                // to launch yet, exactly the state `launchIsEnabled()` reads
+                // before a detail lands.
+                InspectorActionsBar {
+                    InspectorSplitButton(
+                        title: "Launch Agent",
+                        isEnabled: false,
+                        onPrimary: {},
+                        showMenu: .constant(false),
+                        menu: { EmptyView() }
+                    )
+                }
+
+                SkeletonRail(sections: BriefSkeleton.sidebarSections)
+
+                SkeletonStatusFoot()
+            }
+            .frame(width: sidebarWidth)
+            .rule(.separator, edges: [.leading], width: 0.5)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .ignore)
@@ -316,35 +319,61 @@ struct DiffSkeletonView: View {
     @AppStorage("diffSidebarWidth") private var sidebarWidth = 232.0
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(Array(DiffSkeleton.files.enumerated()), id: \.offset) { _, file in
-                            fileBox(file)
-                        }
+        HStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(DiffSkeleton.files.enumerated()), id: \.offset) { _, file in
+                        fileBox(file)
                     }
-                    .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .inelastic()
                 }
-
-                sidebar
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .inelastic()
             }
 
-            SkeletonFooter {
-                DiffFooterActions(showApprove: handedBack)
+            VStack(spacing: 0) {
+                sidebarActions
+
+                fileList
+
+                SkeletonStatusFoot()
             }
+            .frame(width: sidebarWidth)
+            .rule(.separator, edges: [.leading], width: 0.5)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(DiffSkeleton.accessibilityLabel)
     }
 
+    /// The Send/Approve actions atop the file list, disabled: nothing is
+    /// pending and nothing has been read yet, exactly the state
+    /// `DiffFooterActions`' own defaults drew before this moved.
+    private var sidebarActions: some View {
+        InspectorActionsBar {
+            if handedBack {
+                Button(action: {}) {
+                    Text("Approve & Open PR…")
+                        .font(.system(size: Typo.subhead, weight: .semibold))
+                }
+                .buttonStyle(InspectorPrimaryButtonStyle())
+                .disabled(true)
+            }
+
+            Button(action: {}) {
+                Text("Send 0 Comments")
+                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .monospacedDigit()
+            }
+            .buttonStyle(InspectorSecondaryButtonStyle())
+            .disabled(true)
+        }
+    }
+
     /// The file list: `DiffFileSidebarView`'s own scroll, spacing and inset,
     /// its real commits menu, and one placeholder per file at the 28pt every
     /// `DiffFileSidebarRow` is drawn at.
-    private var sidebar: some View {
+    private var fileList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 2) {
                 DiffCommitsMenu(commits: [], selectedCommit: nil, onSelectCommit: { _ in })
@@ -365,8 +394,6 @@ struct DiffSkeletonView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .inelastic()
         }
-        .frame(width: sidebarWidth)
-        .rule(.separator, edges: [.leading], width: 0.5)
     }
 
     /// One file's box, at `DiffFileBoxView`'s own shape: its 32pt header row
@@ -443,53 +470,78 @@ struct PRSkeletonView: View {
     @AppStorage("prSidebarWidth") private var sidebarWidth = 216.0
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            header
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        header
 
-                            // `head → base`, in the code face the real line
-                            // is set in.
-                            SkeletonTextLine(width: PRSkeleton.branchLineWidth, type: .mono(Typo.code))
+                        // `head → base`, in the code face the real line
+                        // is set in.
+                        SkeletonTextLine(width: PRSkeleton.branchLineWidth, type: .mono(Typo.code))
 
-                            description
+                        description
 
-                            conversation
+                        conversation
 
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 18)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .inelastic()
+                        Spacer(minLength: 0)
                     }
-
-                    Divider().frame(height: 0.5)
-
-                    // The composer pinned at the tab's foot.
-                    composer(compact: false)
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 12)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 18)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .inelastic()
                 }
-                .frame(maxWidth: .infinity)
+
+                Divider().frame(height: 0.5)
+
+                // The composer pinned at the tab's foot.
+                composer(compact: false)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 12)
+            }
+            .frame(maxWidth: .infinity)
+
+            VStack(spacing: 0) {
+                sidebarActions
 
                 SkeletonRail(
                     sections: PRSkeleton.sidebarSections,
-                    width: sidebarWidth,
                     type: .mono(Typo.code - 1),
                     rowHeight: PRSidebarView.rowHeight
                 )
-            }
 
-            SkeletonFooter {
-                PRFooterActions()
+                SkeletonStatusFoot()
             }
+            .frame(width: sidebarWidth)
+            .rule(.separator, edges: [.leading], width: 0.5)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(PRSkeleton.accessibilityLabel)
+    }
+
+    /// The Merge/Open-in-GitHub actions atop the sidebar, disabled: neither
+    /// is offered over a reading that has not landed, exactly the state
+    /// `PRFooterActions`' own defaults drew before this moved.
+    private var sidebarActions: some View {
+        InspectorActionsBar {
+            Button(action: {}) {
+                Text("Merge")
+                    .font(.system(size: Typo.subhead, weight: .semibold))
+            }
+            .buttonStyle(InspectorPrimaryButtonStyle())
+            .disabled(true)
+
+            Button(action: {}) {
+                HStack(spacing: 5) {
+                    Text("Open in GitHub")
+                    Image(systemName: "arrow.up.right.square")
+                }
+                .font(.system(size: Typo.subhead, weight: .regular))
+            }
+            .buttonStyle(InspectorSecondaryButtonStyle())
+            .disabled(true)
+        }
     }
 
     /// The state chip and the title beside it, at the real header's spacing

@@ -318,7 +318,8 @@ enum AppStories {
         Story(
             name: "brief-skeleton",
             summary: "The Brief tab on a first read that has not landed — the brief's own "
-                + "placeholder, under the footer the loaded pane draws.",
+                + "placeholder, under the disabled Launch Agent split button the loaded "
+                + "pane's inspector opens with.",
             size: pane
         ) {
             // A client that never answers, for the reason `rail-skeleton`
@@ -330,7 +331,8 @@ enum AppStories {
 
         Story(
             name: "brief-handed-back",
-            summary: "The Brief tab of a slice whose branch is waiting to be reviewed.",
+            summary: "The Brief tab of a slice whose branch is waiting to be reviewed, the "
+                + "Launch Agent split button atop the inspector.",
             size: pane
         ) {
             let appModel = await Fixtures.startedAppModel()
@@ -362,7 +364,8 @@ enum AppStories {
         Story(
             name: "diff-skeleton",
             summary: "The Diff tab on a branch still being read — file boxes and the file "
-                + "list as placeholders, with the commits menu and the footer drawn real.",
+                + "list as placeholders, with the commits menu and the disabled "
+                + "Send/Approve actions atop the rail drawn real.",
             size: pane
         ) {
             DiffTabView(appModel: Fixtures.loadingAppModel(), slice: Fixtures.slice(Fixtures.mergeBoxSliceID))
@@ -418,7 +421,8 @@ enum AppStories {
         Story(
             name: "pr-skeleton",
             summary: "The PR tab on a pull request still being read — the placeholder under "
-                + "the section labels, composer and footer the loaded pane draws.",
+                + "the disabled Merge/Open-in-GitHub actions, section labels and composer "
+                + "the loaded pane draws.",
             size: pane
         ) {
             PRTabView(appModel: Fixtures.loadingAppModel(), slice: Fixtures.slice(Fixtures.approveSliceID))

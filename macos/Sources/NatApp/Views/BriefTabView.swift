@@ -82,15 +82,14 @@ struct BriefTabView: View {
             // card, prose and properties rail — rather than as a spinner in
             // a card with no rail beside it, which would narrow the reading
             // column the moment the brief landed. A re-read never reaches
-            // this: `SliceDetailLoadState` keeps what it has, and the footer's
-            // busy mark is what says a read is running over it.
+            // this: `SliceDetailLoadState` keeps what it has, and the
+            // inspector's own pinned busy mark is what says a read is
+            // running over it.
             if detailState.detail == nil, detailState.isLoading {
                 BriefSkeletonView()
             } else {
                 loadedBody
             }
-
-            footerBar
         }
         .surface(.window)
         .task {
@@ -208,128 +207,6 @@ struct BriefTabView: View {
                     briefSidebar(detail)
                 }
             }
-        }
-    }
-
-    /// Footer bar: the Launch Agent split control alone now — the card's own
-    /// "Edit…" is the one edit affordance, so the footer isn't offering a
-    /// second. A top hairline (rather than a Divider) plus a faint fill mark
-    /// it as its own action-bar surface, distinct from the content above it.
-    ///
-    /// Drawn under the skeleton as well as under the brief, since it is a
-    /// band of the pane either way and one that appeared with the content
-    /// would take rows off the reading column as it arrived.
-    private var footerBar: some View {
-        VStack(spacing: 0) {
-                HStack(spacing: 8) {
-                    // A background re-read of the brief, admitted to in a
-                    // slot that is there whether one is running or not.
-                    RefreshingMark(isRefreshing: detailState.isLoading && detailState.detail != nil)
-
-                    Spacer()
-
-                    // Split Launch Agent button — the one primary action on
-                    // this screen, per the button grammar, and the one place
-                    // that grammar is drawn by hand rather than through
-                    // `PrimaryButtonStyle`: a split control is two buttons
-                    // sharing one fill, which a ButtonStyle (drawing a fill
-                    // per button) cannot be. Everything else about it is the
-                    // primary style's own — `ButtonMetrics`' height, radius
-                    // and dimming, the flat accent fill, `accentText`, the
-                    // semibold subhead, and the spinner beside the label
-                    // rather than over it — so it differs from every other
-                    // submit in its two halves and in nothing else.
-                    //
-                    // Which means the left half widens by the spinner while a
-                    // launch runs and the chevron beside it moves with it.
-                    // That is the point rather than something to hold still
-                    // for: the control saying the press landed is worth more
-                    // than a chevron staying put for the second or two a
-                    // launch takes, and drawing the label invisible under an
-                    // overlaid spinner to keep it there — which is what this
-                    // did — bought that with a button that said nothing at
-                    // all while it worked.
-                    //
-                    // Dimmed as a whole rather than through each button's own
-                    // disabled state, since a split control half-dimmed would
-                    // read as only one half of it being unavailable.
-                    ZStack {
-                        HStack(spacing: 0) {
-                            Button(action: performLaunch) {
-                                AsyncActionLabel(isBusy: isLaunching) {
-                                    Text("Launch Agent")
-                                }
-                                .font(.system(size: Typo.subhead, weight: .semibold))
-                                .ink(.onAccent)
-                                .padding(.horizontal, ButtonMetrics.horizontalPadding)
-                                .frame(height: ButtonMetrics.height)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(!launchIsEnabled() || isLaunching)
-
-                            // A rule rather than a `Divider`, which draws
-                            // the system separator: this line sits on the
-                            // accent slab, which is pinned to the theme, so
-                            // the line on it has to be too.
-                            Rectangle()
-                                .fill(DesignTokens.onAccentSeparator)
-                                .frame(width: 1, height: ButtonMetrics.height)
-
-                            Button(action: { showLaunchPopover.toggle() }) {
-                                Image(systemName: "chevron.down")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .ink(.onAccent)
-                                    .frame(width: 20, height: ButtonMetrics.height)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(!launchIsEnabled())
-                        }
-                        .background(DesignTokens.accent)
-                        .clipShape(RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius))
-                    }
-                    .opacity(launchIsEnabled() ? 1 : ButtonMetrics.disabledOpacity)
-                    .popover(isPresented: $showLaunchPopover, arrowEdge: .bottom) {
-                        launchPopoverContent()
-                            .padding(10)
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .overlay(alignment: .top) {
-                    Rule(.hairline)
-                }
-                .surface(.band)
-
-                // Error or warning message
-                if let error = launchError {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .ink(.danger)
-                            .font(.system(size: 12, weight: .medium))
-                        Text(error)
-                            .font(.system(size: Typo.subhead, weight: .regular))
-                            .ink(.danger)
-                            .lineLimit(2)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .surface(.band)
-                } else if let warning = launchWarning {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .ink(.warning)
-                            .font(.system(size: 12, weight: .medium))
-                        Text(warning)
-                            .font(.system(size: Typo.subhead, weight: .regular))
-                            .ink(.warning)
-                            .lineLimit(2)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .surface(.band)
-                }
         }
     }
 
@@ -554,23 +431,54 @@ struct BriefTabView: View {
 
     // MARK: - Properties sidebar
 
-    /// The right-hand rail: everything structured about the slice, read at a
-    /// glance rather than threaded through the brief's prose — the same
+    /// The right-hand rail: the Launch Agent split button atop it — the
+    /// standing inspector-top slot every pane with a rail opens with — then
+    /// everything structured about the slice, read at a glance rather than
+    /// threaded through the brief's prose, and a pinned foot for the launch's
+    /// own busy mark and any error or warning it left behind. The same
     /// resizable, hairline-bordered shape `PRSidebarView` draws beside the PR
     /// tab's main column, right down to its own `@AppStorage` width.
     private func briefSidebar(_ detail: SliceDetail) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                statusSection(detail)
-                if let milestoneName {
-                    milestoneSection(milestoneName)
-                }
-                branchSection(detail)
-                dependsOnSection(detail)
+        VStack(spacing: 0) {
+            InspectorActionsBar {
+                InspectorSplitButton(
+                    title: "Launch Agent",
+                    isBusy: isLaunching,
+                    isEnabled: launchIsEnabled(),
+                    onPrimary: performLaunch,
+                    showMenu: $showLaunchPopover,
+                    menu: launchPopoverContent
+                )
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 18)
-            .inelastic()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    statusSection(detail)
+                    if let milestoneName {
+                        milestoneSection(milestoneName)
+                    }
+                    branchSection(detail)
+                    dependsOnSection(detail)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 18)
+                .inelastic()
+            }
+
+            InspectorStatusFoot {
+                HStack(spacing: 8) {
+                    // A background re-read of the brief, admitted to in a
+                    // slot that is there whether one is running or not.
+                    RefreshingMark(isRefreshing: detailState.isLoading && detailState.detail != nil)
+                    Spacer()
+                }
+
+                if let error = launchError {
+                    InspectorNotice(text: error, systemImage: "exclamationmark.circle.fill", role: .danger)
+                } else if let warning = launchWarning {
+                    InspectorNotice(text: warning, systemImage: "exclamationmark.triangle.fill", role: .warning)
+                }
+            }
         }
         .frame(width: sidebarWidth)
         .rule(.separator, edges: [.leading], width: 0.5)

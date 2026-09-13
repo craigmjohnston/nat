@@ -491,6 +491,17 @@ public enum ButtonMetrics {
     public static let pressedOpacity: Double = 0.85
 }
 
+/// The geometry of the actions stacked atop an inspector — the standing home
+/// for a content pane's CTAs now that the bottom button bar is gone. Taller
+/// than `ButtonMetrics.height`: full-width and first thing in the rail, these
+/// read as the pane's own header-of-sorts rather than a button among fields.
+public enum InspectorActionMetrics {
+    /// The height of every inspector-top button, split or plain.
+    public static let height: CGFloat = 28
+    /// The corner radius of their fills and strokes.
+    public static let cornerRadius: CGFloat = 6
+}
+
 /// The metrics of a pane's header — the one `PaneHeader` every pane opens
 /// with. Numbers rather than a shape each pane arrives at on its own, for the
 /// reason `ButtonMetrics` is: a header that differs between panes reads as a
