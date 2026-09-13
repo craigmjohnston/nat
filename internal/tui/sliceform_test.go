@@ -411,6 +411,9 @@ func TestAppAddWritesTheCompletedForm(t *testing.T) {
 	if got := paragraphTexts(t, client.created[0].children); !reflect.DeepEqual(got, []string{"The brief."}) {
 		t.Errorf("body = %q, want the brief that was typed", got)
 	}
+	if want := notion.NewSelect("M2: Board"); !reflect.DeepEqual(props[notion.PropMilestone], want) {
+		t.Errorf("milestone = %+v, want %+v", props[notion.PropMilestone], want)
+	}
 	if app.board.confirmText != `Added "New slice".` {
 		t.Errorf("confirm = %q, want the created confirmation", app.board.confirmText)
 	}
@@ -649,25 +652,3 @@ func TestCreateSliceNamesTheMilestoneOption(t *testing.T) {
 	}
 }
 
-// TestAppAddWritesTheMilestoneOption drives the whole key: a is pressed on a
-// milestone and the slice that falls out names it the way the project's slices
-// do.
-func TestAppAddWritesTheMilestoneOption(t *testing.T) {
-	client := &fakeNotion{}
-	app := newWriteApp(client)
-	app.board.cursor = rowActiveMilestone
-
-	feed(t, app, press(app, "a"))
-	fillForm(t, app, "New slice", "The brief.", "")
-
-	if len(client.created) != 1 {
-		t.Fatalf("created %d pages, want the slice written", len(client.created))
-	}
-	want := notion.NewSelect("M2: Board")
-	if got := client.created[0].properties[notion.PropMilestone]; !reflect.DeepEqual(got, want) {
-		t.Errorf("milestone = %+v, want %+v", got, want)
-	}
-	if app.board.confirmText != `Added "New slice".` {
-		t.Errorf("confirm = %q, want the created confirmation", app.board.confirmText)
-	}
-}

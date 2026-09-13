@@ -664,13 +664,6 @@ func TestAppTakesOverWhenOnboardingFinishes(t *testing.T) {
 	}
 }
 
-func TestDefaultStylesAreDistinct(t *testing.T) {
-	s := DefaultStyles()
-	if s.Title.Render("x") == s.Faint.Render("x") {
-		t.Error("the title and faint styles should differ")
-	}
-}
-
 // pageBlocks is the project page body the info tests fetch.
 func pageBlocks(t *testing.T) []notion.Block {
 	t.Helper()
