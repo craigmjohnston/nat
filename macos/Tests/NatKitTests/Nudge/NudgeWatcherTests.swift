@@ -22,6 +22,13 @@ final class NudgeWatcherTests: XCTestCase {
         super.tearDown()
     }
 
+    /// Spins the current thread's run loop so `NudgeWatcher`'s real `Timer`
+    /// actually fires: an `await Task.sleep` merely suspends the task and
+    /// never drives the run loop that owns the timer.
+    private func pump(_ seconds: TimeInterval) {
+        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+    }
+
     func testBaselineReadingIsNotReported() async throws {
         let watcher = NudgeWatcher()
         var callCount = 0
@@ -42,10 +49,7 @@ final class NudgeWatcherTests: XCTestCase {
         watcher.stop()
     }
 
-    func testFileModificationTriggersCallback() async throws {
-        // Note: Timer in tests has runloop issues in async context.
-        // This test verifies the watcher can be started/stopped with a real file,
-        // but actual callback timing would need RunLoop manipulation in tests.
+    func testFileModificationTriggersCallback() throws {
         let watcher = NudgeWatcher()
 
         // Create the file before starting the watcher
@@ -56,12 +60,13 @@ final class NudgeWatcherTests: XCTestCase {
             callCount += 1
         }
 
-        // Basic verification that watcher is running
-        XCTAssertNotNil(testFilePath)
+        // One full poll tick with no change: the baseline read must not fire.
+        pump(1.2)
+        XCTAssertEqual(callCount, 0)
 
-        // Modify the file (real test would need RunLoop.main.run for Timer to fire)
-        try await Task.sleep(nanoseconds: 100_000_000) // Brief delay
         try "modified".write(toFile: testFilePath, atomically: true, encoding: .utf8)
+        pump(1.2)
+        XCTAssertEqual(callCount, 1)
 
         watcher.stop()
     }
@@ -84,7 +89,7 @@ final class NudgeWatcherTests: XCTestCase {
         watcher.stop()
     }
 
-    func testFileCreationTriggersCallback() async throws {
+    func testFileCreationTriggersCallback() throws {
         let watcher = NudgeWatcher()
 
         // Start watching a file that doesn't exist
@@ -93,15 +98,13 @@ final class NudgeWatcherTests: XCTestCase {
             callCount += 1
         }
 
-        // Wait briefly (file doesn't exist yet - no callback expected)
-        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        // One full poll tick with the file still absent: no callback expected.
+        pump(1.2)
+        XCTAssertEqual(callCount, 0)
 
-        // Create the file
         try "created".write(toFile: testFilePath, atomically: true, encoding: .utf8)
-
-        // Note: Timer callback timing in async tests requires RunLoop manipulation.
-        // This test verifies watcher can handle file creation, real timing tested separately.
-        XCTAssertNotNil(testFilePath)
+        pump(1.2)
+        XCTAssertEqual(callCount, 1)
 
         watcher.stop()
     }
@@ -131,7 +134,7 @@ final class NudgeWatcherTests: XCTestCase {
         XCTAssertEqual(callCount, 0)
     }
 
-    func testMultipleModificationsAllTriggerCallbacks() async throws {
+    func testMultipleModificationsAllTriggerCallbacks() throws {
         let watcher = NudgeWatcher()
         var callCount = 0
 
@@ -140,18 +143,15 @@ final class NudgeWatcherTests: XCTestCase {
         watcher.start(path: testFilePath) {
             callCount += 1
         }
+        pump(1.2)
+        XCTAssertEqual(callCount, 0)
 
-        // Brief wait
-        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-
-        // Make multiple modifications - verify watcher doesn't crash on rapid changes
+        // Each modification is given its own poll tick, so each is counted.
         for i in 1...2 {
             try "modification \(i)".write(toFile: testFilePath, atomically: true, encoding: .utf8)
-            try await Task.sleep(nanoseconds: 100_000_000) // 100ms between modifications
+            pump(1.2)
+            XCTAssertEqual(callCount, i)
         }
-
-        // Watcher should handle multiple modifications without crashing
-        XCTAssertNotNil(testFilePath)
 
         watcher.stop()
     }

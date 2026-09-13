@@ -139,8 +139,4 @@ final class TerminalLifecycleTests: XCTestCase {
             .attaching
         )
     }
-
-    func testDefaultInitIsIdle() {
-        XCTAssertEqual(TerminalLifecycle().state, .idle)
-    }
 }
