@@ -443,6 +443,31 @@ final class NatClientTests: XCTestCase {
         }
     }
 
+    func testAgentKillNamesTheSliceAndTheProject() async throws {
+        let fakeRunner = FakeRunner(fixture: .agentKillSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.agentKill(projectID: "proj-123", sliceRef: "slice-1")
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["agent-kill", "--project", "proj-123", "slice-1"])
+    }
+
+    func testAgentKillNoSession() async throws {
+        let fakeRunner = FakeRunner(fixture: .agentKillNoSession)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            try await client.agentKill(projectID: "proj-123", sliceRef: "slice-1")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "no live session for slice-id")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
+
     func testSliceApproveReturnsTheURL() async throws {
         let fakeRunner = FakeRunner(fixture: .sliceApproveSuccess)
         let client = NatClient(commandRunner: fakeRunner)

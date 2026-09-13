@@ -7,6 +7,12 @@ struct AgentTabView: View {
     @Bindable var appModel: AppModel
     let slice: Slice
     @State private var lifecycle = TerminalLifecycle()
+    /// The kill in flight, and what nat said if it refused — the button's own
+    /// state, since ending a session is something the user asked for here and
+    /// not news the whole app needs.
+    @State private var isKilling = false
+    @State private var killError: String?
+    @State private var confirmingKill = false
     /// A story draws the region rather than attaching to it — see
     /// `StorySeams`.
     @Environment(\.terminalStubbed) private var terminalStubbed
@@ -43,6 +49,8 @@ struct AgentTabView: View {
                     .padding(.vertical, 14)
                     .padding(.horizontal, 18)
                 }
+
+                sessionBar(agent)
             } else {
                 // Empty state
                 VStack(spacing: 12) {
@@ -63,6 +71,75 @@ struct AgentTabView: View {
             }
         }
         .surface(.window)
+    }
+
+    /// The band under the terminal: which session this is, and the one action
+    /// that ends it. Closing the tab only detaches the viewer — the session
+    /// goes on running, which is right while there is work in it and is how a
+    /// finished slice's session sits on the tmux server forever — so ending
+    /// one is a thing that has to be asked for, and this is where.
+    ///
+    /// It asks first, because a session with a turn in flight loses that turn.
+    @ViewBuilder
+    private func sessionBar(_ agent: AgentStatus) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text(agent.session)
+                    .font(Typo.mono(size: Typo.caption))
+                    .ink(.tertiary)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Button(action: { confirmingKill = true }) {
+                    AsyncActionLabel(isBusy: isKilling) {
+                        Text("End session")
+                    }
+                }
+                .buttonStyle(SecondaryButtonStyle())
+                .disabled(isKilling)
+                .confirmationDialog(
+                    "End the agent session for this slice?",
+                    isPresented: $confirmingKill
+                ) {
+                    Button("End session", role: .destructive) { performKill() }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("The tmux session is killed. Anything the agent is part way through is lost.")
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+
+            if let killError {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .ink(.danger)
+                        .font(.system(size: 12, weight: .medium))
+                    Text(killError)
+                        .font(.system(size: Typo.subhead, weight: .regular))
+                        .ink(.danger)
+                        .lineLimit(2)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 8)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .overlay(alignment: .top) {
+            Rule(.hairline)
+        }
+        .surface(.band)
+    }
+
+    private func performKill() {
+        Task {
+            isKilling = true
+            killError = nil
+            killError = await appModel.killAgent(sliceID: slice.id)
+            isKilling = false
+        }
     }
 
     private func sessionStillExists() -> Bool {

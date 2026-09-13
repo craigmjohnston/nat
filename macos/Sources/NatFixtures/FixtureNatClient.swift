@@ -145,6 +145,10 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         try await record("agent-send \(sliceRef)")
     }
 
+    public func agentKill(projectID: String, sliceRef: String) async throws {
+        try await record("agent-kill \(sliceRef)")
+    }
+
     public func sliceApprove(projectID: String, sliceRef: String) async throws -> String {
         try await record("slice-approve \(sliceRef)")
         return Fixtures.prURL

@@ -139,6 +139,20 @@ public final class NatClient: Sendable {
         )
     }
 
+    /// End a slice's agent session outright, taking the agent with it —
+    /// `nat agent-kill`. Closing the Agent tab only detaches the viewer, so
+    /// this is the one thing that actually reaps a session; a slice with
+    /// nothing running on it is refused by the CLI, which passes straight
+    /// through as `NatError.commandFailed`.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sliceRef: The slice's URL or Notion page ID
+    /// - Throws: NatError if the command fails or no live session exists
+    public func agentKill(projectID: String, sliceRef: String) async throws {
+        _ = try await runNatRaw(arguments: ["agent-kill", "--project", projectID, sliceRef])
+    }
+
     /// Launch an agent on a slice in a tmux session.
     ///
     /// - Parameters:

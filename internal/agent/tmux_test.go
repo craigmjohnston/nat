@@ -1159,3 +1159,46 @@ func TestInterruptFailure(t *testing.T) {
 		t.Errorf("error = %v, want to mention 'send interrupt' and session name", err)
 	}
 }
+
+// TestKill covers ending an agent's session outright.
+func TestKill(t *testing.T) {
+	runner := &fakeRunner{}
+	err := NewTmuxWithRunner(runner).Kill("nat-test-session")
+	if err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	if len(runner.calls) != 1 {
+		t.Fatalf("calls = %d, want exactly 1", len(runner.calls))
+	}
+	call := runner.calls[0]
+	if call.name != TmuxBinary {
+		t.Errorf("command = %s, want %s", call.name, TmuxBinary)
+	}
+	want := []string{"-u", "kill-session", "-t", "nat-test-session"}
+	if !slices.Equal(call.args, want) {
+		t.Errorf("args = %v, want %v", call.args, want)
+	}
+}
+
+// TestKillSessionAlreadyGone covers tmux's own refusal for a session that is
+// not there: the call was asking for exactly that state, so it succeeds.
+func TestKillSessionAlreadyGone(t *testing.T) {
+	runner := &fakeRunner{errs: map[string]error{
+		"kill-session": &ExitError{Code: 1, Stderr: "can't find session: nat-test-session"},
+	}}
+	if err := NewTmuxWithRunner(runner).Kill("nat-test-session"); err != nil {
+		t.Errorf("Kill: %v, want a session already gone to be no failure", err)
+	}
+}
+
+// TestKillFailure covers a kill tmux refused for any other reason.
+func TestKillFailure(t *testing.T) {
+	runner := &fakeRunner{errs: map[string]error{"kill-session": errors.New("tmux not responding")}}
+	err := NewTmuxWithRunner(runner).Kill("nat-test-session")
+	if err == nil {
+		t.Fatal("Kill: expected error")
+	}
+	if !strings.Contains(err.Error(), "kill nat-test-session") {
+		t.Errorf("error = %v, want the session named", err)
+	}
+}

@@ -109,6 +109,10 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
         }
     }
 
+    func agentKill(projectID: String, sliceRef: String) async throws {
+        throw DiffTestError()
+    }
+
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String {
         approveCalls.append((projectID, sliceRef))
         return try approveResult.get()
