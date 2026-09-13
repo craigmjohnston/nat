@@ -159,6 +159,13 @@ func Prompt(c PromptContext) string {
 	b.WriteString("Work in the working directory above; if that is not where this session\n")
 	b.WriteString("started, use absolute paths or `git -C`. Honour the brief's acceptance\n")
 	b.WriteString("criteria and the project's verification gate before calling it done.\n\n")
+	b.WriteString("Read files with the Read tool, not `cat`/`sed`/`head` — Read handles\n")
+	b.WriteString("offsets for files too big to read whole. Edit files with Edit or Write,\n")
+	b.WriteString("not a shell heredoc — a heredoc edit re-transmits the whole old block and\n")
+	b.WriteString("the whole new one, and this codebase's house style is dense enough prose\n")
+	b.WriteString("that doubling it on every touch adds up fast. The shell is for running\n")
+	b.WriteString("things — tests, git, the verification gate — not for reading or editing\n")
+	b.WriteString("files.\n\n")
 	switch {
 	case resuming(c):
 		b.WriteString("That directory is a git worktree cut for this slice alone, already on\n")

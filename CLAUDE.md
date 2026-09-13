@@ -1564,6 +1564,14 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
 
 ## Conventions
 
+- Read files with the Read tool, not `cat`/`sed`/`head` through Bash — Read
+  handles offsets for files too big to read whole, where a shell read has to
+  choose a fixed window up front or bring back the whole file. Edit files with
+  Edit or Write, not a shell heredoc — a heredoc edit re-transmits the whole
+  old block and the whole new one, which roughly doubles edit-phase output on
+  a codebase whose house style is this much comment prose, since every touch
+  re-quotes it. The shell is for running things — tests, git, the verification
+  gate — not for reading or editing files.
 - Bubble Tea v2 idioms: `View()` returns `tea.View`; match `tea.KeyPressMsg`;
   `tea.ExecProcess` for tmux attach.
 - Tests: aim for 100% coverage of new code. httptest for the Notion client

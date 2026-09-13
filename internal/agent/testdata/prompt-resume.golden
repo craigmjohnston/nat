@@ -57,6 +57,14 @@ Work in the working directory above; if that is not where this session
 started, use absolute paths or `git -C`. Honour the brief's acceptance
 criteria and the project's verification gate before calling it done.
 
+Read files with the Read tool, not `cat`/`sed`/`head` — Read handles
+offsets for files too big to read whole. Edit files with Edit or Write,
+not a shell heredoc — a heredoc edit re-transmits the whole old block and
+the whole new one, and this codebase's house style is dense enough prose
+that doubling it on every touch adds up fast. The shell is for running
+things — tests, git, the verification gate — not for reading or editing
+files.
+
 That directory is a git worktree cut for this slice alone, already on
 the branch slice/tmux-integration-agent-prompt-template and shared with nobody, and the work an earlier
 session pushed is already on it. Read what is there before adding to
