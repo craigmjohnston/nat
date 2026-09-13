@@ -1598,7 +1598,14 @@ REST API directly (`Notion-Version: 2026-03-11`, data-source model).
   is a gap in the catalog. `NAT_SNAPSHOT` and a live screenshot are for what a
   story cannot show and only that: a real tmux session in the agent terminal, a
   real load against Notion, the onboarding checklist as it reads on this
-  machine. `macos/README.md` is the longer version.
+  machine. `macos/README.md` is the longer version. Whichever screenshots a
+  design-verification session compares — story renders or a live one — read
+  them cropped or downscaled to the element under test, never as full-window
+  frames: a full 2080x1360 frame mostly restates what a crop already shows,
+  and an image tool decodes and stores what it is handed whether or not the
+  session ends up looking at all of it. And pause any animation, or fix it
+  to one phase, before comparing: an untimed capture can catch a shimmer
+  mid-sweep and read it back as a layout bug.
 - Never log or commit the Notion token; it belongs to the `ntn` CLI and is only
   ever held in memory for the lifetime of a request.
 - Before starting work, pull the latest `main` and branch off it. Only ever
