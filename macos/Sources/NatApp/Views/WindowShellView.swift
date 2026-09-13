@@ -164,10 +164,9 @@ struct WindowShellView: View {
             }
             .frame(maxHeight: .infinity)
 
-            // Progress border — it sizes itself (the 7pt bar plus its own
-            // vertical padding); clamping it to the bar's height alone let
-            // the padding spill out and be clipped at the window's bottom.
-            ProgressBorderView(appModel: appModel)
+            // Status bar — full window width, split at the same x-position
+            // as the rail/pane divider above it.
+            StatusBarView(appModel: appModel, railWidth: railWidth)
         }
     }
 
