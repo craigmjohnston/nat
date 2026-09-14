@@ -141,6 +141,15 @@ func (e Env) nudged() {
 	}
 }
 
+// storeFor is the one place a command builds the store it reads and writes a
+// project's plan through: [store.ForProject], over a Notion client built
+// from this Env's own token source. Every command that used to build its own
+// [store.Over] calls this instead, so a plan is opened and hydrated the same
+// way wherever a command reaches for one.
+func (e Env) storeFor(ctx context.Context, projectID string, project config.ProjectConfig) (store.Store, error) {
+	return store.ForProject(ctx, storeProject(projectID, project), store.Over(e.NewClient(e.Tokens.Token)))
+}
+
 // Usage is the help text, listing every way the binary can be run.
 const Usage = `nat — track project work in Notion
 

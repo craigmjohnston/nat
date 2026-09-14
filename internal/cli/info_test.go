@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // conventionBlocks is a project page body, in the shape the blocks endpoint
@@ -70,7 +72,7 @@ func populatedAPI(t *testing.T) *fakeAPI {
 }
 
 func TestInfoPrintsTheProjectAsMarkdown(t *testing.T) {
-	env, out := testEnv(testConfig(), populatedAPI(t))
+	env, out := testEnv(testConfig(t), populatedAPI(t))
 
 	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info: %v", err)
@@ -109,7 +111,7 @@ Branch per slice.
 // pick them up in.
 func TestInfoQueriesOnlyTheSlices(t *testing.T) {
 	api := populatedAPI(t)
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info: %v", err)
@@ -128,7 +130,7 @@ func TestInfoQueriesOnlyTheSlices(t *testing.T) {
 // stops the command rather than having it guess a shape.
 func TestInfoReportsAFailedSchemaRead(t *testing.T) {
 	boom := errors.New("boom")
-	env, _ := testEnv(testConfig(), &fakeAPI{dataSourceErr: boom})
+	env, _ := testEnv(testConfig(t), &fakeAPI{dataSourceErr: boom})
 
 	err := Run(context.Background(), []string{"info", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "load the slices schema") {
@@ -175,7 +177,7 @@ func dependsOnColumn(dsID string) notion.PropertySchema {
 // A project with nothing in it yet still prints its headings, so the output
 // says "there is nothing here" rather than looking truncated.
 func TestInfoPrintsAnEmptyProject(t *testing.T) {
-	env, out := testEnv(testConfig(), &fakeAPI{})
+	env, out := testEnv(testConfig(t), &fakeAPI{})
 
 	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info: %v", err)
@@ -197,7 +199,7 @@ _none_
 }
 
 func TestInfoPrintsJSON(t *testing.T) {
-	env, out := testEnv(testConfig(), populatedAPI(t))
+	env, out := testEnv(testConfig(t), populatedAPI(t))
 
 	if err := Run(context.Background(), []string{"info", "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info --json: %v", err)
@@ -260,7 +262,7 @@ func TestInfoJSONIncludesNewSliceFields(t *testing.T) {
 			},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"info", "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info --json: %v", err)
@@ -311,7 +313,7 @@ func TestInfoJSONIncludesNewSliceFields(t *testing.T) {
 // An empty project encodes as empty arrays rather than nulls, so a consumer can
 // range over them without a nil check.
 func TestInfoJSONHasEmptyListsNotNulls(t *testing.T) {
-	env, out := testEnv(testConfig(), &fakeAPI{})
+	env, out := testEnv(testConfig(t), &fakeAPI{})
 
 	if err := Run(context.Background(), []string{"info", "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info --json: %v", err)
@@ -323,7 +325,7 @@ func TestInfoJSONHasEmptyListsNotNulls(t *testing.T) {
 }
 
 func TestInfoJSONReportsAFailedWrite(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	env.Out = failingWriter{}
 
 	err := Run(context.Background(), []string{"info", "--json", "--project", "project-1"}, env)
@@ -334,7 +336,7 @@ func TestInfoJSONReportsAFailedWrite(t *testing.T) {
 }
 
 func TestInfoMarkdownReportsAFailedWrite(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	env.Out = failingWriter{}
 
 	err := Run(context.Background(), []string{"info", "--project", "project-1"}, env)
@@ -344,40 +346,107 @@ func TestInfoMarkdownReportsAFailedWrite(t *testing.T) {
 	}
 }
 
+// A failed query for the slices themselves still fails the command: it is
+// what the store's very first read of this project — hydrating the local
+// plan file from the workspace, since a fresh test starts with none — cannot
+// do without.
 func TestInfoReportsAFailedCall(t *testing.T) {
 	boom := errors.New("notion: 500")
-	tests := []struct {
-		name string
-		api  *fakeAPI
-		want string
-	}{
-		{
-			name: "project page",
-			api:  &fakeAPI{blocksErr: boom},
-			want: "load project page",
-		},
-		{
-			name: "slices",
-			api:  &fakeAPI{queryErr: map[string]error{"slices-ds": boom}},
-			want: "load slices",
-		},
+	api := &fakeAPI{queryErr: map[string]error{"slices-ds": boom}}
+	env, out := testEnv(testConfig(t), api)
+
+	err := Run(context.Background(), []string{"info", "--project", "project-1"}, env)
+
+	if !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want %v", err, boom)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			env, out := testEnv(testConfig(), tt.api)
+	if !strings.Contains(err.Error(), "load slices") {
+		t.Errorf("err = %q, want it to mention %q", err, "load slices")
+	}
+	if out.Len() != 0 {
+		t.Errorf("output = %q, want nothing", out.String())
+	}
+}
 
-			err := Run(context.Background(), []string{"info", "--project", "project-1"}, env)
+// A conventions read that cannot reach the workspace is not fatal, unlike the
+// slices query above: store.Mirrored.Body falls back to the file's own stale
+// copy of the project's body — empty, the first time anything opens the plan
+// — rather than failing the read outright, since the file is still the best
+// anyone has and a request that fails says nothing about whether it is still
+// true.
+func TestInfoFallsBackToTheStaleConventionsWhenTheWorkspaceWillNotAnswer(t *testing.T) {
+	api := &fakeAPI{blocksErr: errors.New("notion: 500")}
+	env, out := testEnv(testConfig(t), api)
 
-			if !errors.Is(err, boom) {
-				t.Fatalf("err = %v, want %v", err, boom)
-			}
-			if !strings.Contains(err.Error(), tt.want) {
-				t.Errorf("err = %q, want it to mention %q", err, tt.want)
-			}
-			if out.Len() != 0 {
-				t.Errorf("output = %q, want nothing", out.String())
-			}
-		})
+	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("info: %v", err)
+	}
+	if !strings.HasPrefix(out.String(), "# nat\n") {
+		t.Errorf("output =\n%s\nwant the project printed with no conventions", out.String())
+	}
+}
+
+// Once a plan is hydrated, Body's own fallback to the file (see
+// TestInfoFallsBackToTheStaleConventionsWhenTheWorkspaceWillNotAnswer) is
+// what a Notion outage hits — so the one way left to fail this read is a
+// file that cannot even answer with its own stale copy.
+func TestInfoReportsAFailedConventionsFallback(t *testing.T) {
+	cfg := testConfig(t)
+	api := populatedAPI(t)
+	env, _ := testEnv(cfg, api)
+	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("info (hydrate): %v", err)
+	}
+
+	path, err := store.LocalPath("project-1")
+	if err != nil {
+		t.Fatalf("LocalPath: %v", err)
+	}
+	db, err := sql.Open("sqlite3", "file:"+path)
+	if err != nil {
+		t.Fatalf("open the plan: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.Exec(`ALTER TABLE project DROP COLUMN conventions_at`); err != nil {
+		t.Fatalf("drop conventions_at: %v", err)
+	}
+
+	env2, _ := testEnv(cfg, api)
+	err = Run(context.Background(), []string{"info", "--project", "project-1"}, env2)
+
+	if err == nil || !strings.Contains(err.Error(), "load project page") {
+		t.Fatalf("err = %v, want the broken fallback reported", err)
+	}
+}
+
+// Once a plan is hydrated, Plan reads the file alone — so a failure there is
+// a failure of the file, not anything a fakeAPI can still stage.
+func TestInfoReportsAFailedPlanReadOnAnAlreadyHydratedPlan(t *testing.T) {
+	cfg := testConfig(t)
+	api := populatedAPI(t)
+	env, _ := testEnv(cfg, api)
+	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("info (hydrate): %v", err)
+	}
+
+	path, err := store.LocalPath("project-1")
+	if err != nil {
+		t.Fatalf("LocalPath: %v", err)
+	}
+	db, err := sql.Open("sqlite3", "file:"+path)
+	if err != nil {
+		t.Fatalf("open the plan: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.Exec(`DROP TABLE milestones`); err != nil {
+		t.Fatalf("drop milestones: %v", err)
+	}
+
+	env2, _ := testEnv(cfg, api)
+	err = Run(context.Background(), []string{"info", "--project", "project-1"}, env2)
+
+	if err == nil || !strings.Contains(err.Error(), "milestones") {
+		t.Fatalf("err = %v, want the broken read reported", err)
 	}
 }
 
@@ -393,7 +462,7 @@ func TestInfoRejectsAMisusedCommandLine(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := populatedAPI(t)
-			env, out := testEnv(testConfig(), api)
+			env, out := testEnv(testConfig(t), api)
 
 			err := Run(context.Background(), tt.args, env)
 
@@ -416,7 +485,7 @@ func TestInfoRejectsAMisusedCommandLine(t *testing.T) {
 
 // The command reads the project --project names, whichever of several that is.
 func TestInfoReadsTheProjectItWasGiven(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	cfg.Projects["project-2"] = config.ProjectConfig{Name: "other", SlicesDSID: "other-slices"}
 	api := &fakeAPI{}
 	env, out := testEnv(cfg, api)
@@ -441,30 +510,39 @@ func reflectEqual(a, b infoJSON) bool {
 	return string(x) == string(y)
 }
 
-// A plan has no Order to sort its slices by, so info prints them in the order
-// the project's own view puts them in.
-func TestInfoOrdersThePlanByItsBoard(t *testing.T) {
+// A plan has no Order to sort its slices by. info used to read the project's
+// own view to get one; now every command reads its plan from the local file
+// store.ForProject hydrates on first use, and that hydrate — [Notion.planForPull]
+// — deliberately never asks for the board's view order at all (see its own
+// doc comment: [Local.Hydrate] only uses a reading's order to seat a slice
+// new to the file, so the view-order request is never even looked at on this
+// path). The order info now prints is the local file's own position, seeded
+// from whatever order the workspace's slices query answered in — nothing
+// about the board's own view is read any more, on this path or any other.
+func TestInfoOrdersThePlanByTheFileItWasHydratedFrom(t *testing.T) {
 	api := &fakeAPI{
 		dataSources: map[string]notion.DataSource{"slices-ds": selectMilestoneSlicesDS("M1: Client")},
 		pages: map[string][]notion.Page{
 			"slices-ds": {
-				slicePage("s1", "First read", notion.SliceTodo, "M1: Client", "", ""),
 				slicePage("s2", "Second read", notion.SliceTodo, "M1: Client", "", ""),
+				slicePage("s1", "First read", notion.SliceTodo, "M1: Client", "", ""),
 			},
 		},
-		order: map[string][]string{"slices-ds": {"s2", "s1"}},
+		// A view the board reads its own order from would put these back to
+		// front; nothing here should ever be read.
+		order: map[string][]string{"slices-ds": {"s1", "s2"}},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info: %v", err)
 	}
 
-	if got := api.ordered; len(got) != 1 || got[0] != "slices-ds" {
-		t.Fatalf("read the order of %v, want the slices data source once", got)
+	if len(api.ordered) != 0 {
+		t.Errorf("read the board's view order %v, want it never read", api.ordered)
 	}
 	if !strings.Contains(out.String(), "- Second read — Todo\n- First read — Todo") {
-		t.Errorf("output =\n%s\nwant the board's order", out.String())
+		t.Errorf("output =\n%s\nwant the order the query answered in", out.String())
 	}
 }
 
@@ -477,7 +555,7 @@ func TestInfoPrintsThePlanWhenTheOrderCannotBeRead(t *testing.T) {
 		},
 		orderErr: errors.New("boom"),
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info: %v", err)
@@ -497,7 +575,7 @@ func TestInfoLeavesAnEmptyMilestoneOutOfTheSlices(t *testing.T) {
 			"slices-ds": {slicePage("s1", "Render the board", notion.SliceTodo, "M2: Board", "", "")},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info: %v", err)

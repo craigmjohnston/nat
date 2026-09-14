@@ -50,8 +50,8 @@ func everyCommandAPI(t *testing.T) *fakeAPI {
 
 // everyCommandConfig is twoProjectConfig with an assignee, since half the
 // commands swept here claim or close out a slice.
-func everyCommandConfig() config.Config {
-	cfg := twoProjectConfig(otherProjectID)
+func everyCommandConfig(t testing.TB) config.Config {
+	cfg := twoProjectConfig(t, otherProjectID)
 	cfg.AssigneeUserID = "u1"
 	cfg.AssigneeUserName = "Craig Johnston"
 	return cfg
@@ -98,7 +98,7 @@ func TestEveryProjectScopedCommandTakesAProjectFlag(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := everyCommandAPI(t)
-			env, _ := testEnv(everyCommandConfig(), api)
+			env, _ := testEnv(everyCommandConfig(t), api)
 			env.In = strings.NewReader(tt.in)
 
 			args := append(append([]string{}, tt.args...), "--project", otherProjectID)
@@ -160,7 +160,7 @@ func touches(ids []string, want string) bool {
 // already gave on plan-apply, now given by every command that takes the flag.
 func TestProjectFlagRefusesAProjectTheConfigDoesNotHold(t *testing.T) {
 	api := everyCommandAPI(t)
-	env, out := testEnv(everyCommandConfig(), api)
+	env, out := testEnv(everyCommandConfig(t), api)
 
 	err := Run(context.Background(), []string{"info", "--project", "project-9"}, env)
 
@@ -198,7 +198,7 @@ func TestWithoutTheFlagEveryProjectScopedCommandIsRefused(t *testing.T) {
 	} {
 		t.Run(args[0], func(t *testing.T) {
 			api := everyCommandAPI(t)
-			env, out := testEnv(everyCommandConfig(), api)
+			env, out := testEnv(everyCommandConfig(t), api)
 			env.In = strings.NewReader(`{"milestones": [{"name": "M2: Other"}]}`)
 
 			err := Run(context.Background(), args, env)
@@ -222,7 +222,7 @@ func TestWithoutTheFlagEveryProjectScopedCommandIsRefused(t *testing.T) {
 // missing flag with a complaint about the file: the flag is missing either way,
 // and a second error would only bury the first.
 func TestWithoutTheFlagAnUnreadableConfigStillNamesTheFlag(t *testing.T) {
-	env, _ := testEnv(everyCommandConfig(), everyCommandAPI(t))
+	env, _ := testEnv(everyCommandConfig(t), everyCommandAPI(t))
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, errors.New("disk gone") }
 
 	err := Run(context.Background(), []string{"info"}, env)
@@ -236,7 +236,7 @@ func TestWithoutTheFlagAnUnreadableConfigStillNamesTheFlag(t *testing.T) {
 // The project a command was pointed at is the project its output names, since
 // an agent reading a brief has no other way of telling which plan it came from.
 func TestAProjectScopedCommandNamesTheProjectItRanAgainst(t *testing.T) {
-	env, out := testEnv(everyCommandConfig(), everyCommandAPI(t))
+	env, out := testEnv(everyCommandConfig(t), everyCommandAPI(t))
 
 	args := []string{"start-slice", otherTodoID, "--project", otherProjectID}
 	if err := Run(context.Background(), args, env); err != nil {

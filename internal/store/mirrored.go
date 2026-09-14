@@ -94,6 +94,14 @@ func (m *Mirrored) Slice(ctx context.Context, id string) (domain.Slice, Shape, e
 	if err != nil {
 		return domain.Slice{}, Shape{}, err
 	}
+	// The file keeps edges between rows it holds, so anything s depends on has
+	// to be taken in first — the same rule ensureHeld already enforces for a
+	// dependency AddSlice writes, applied here because a slice read straight
+	// off the workspace, rather than through the plan, may equally name a
+	// dependency the file has never met.
+	if err := m.ensureHeld(ctx, s.DependsOn); err != nil {
+		return domain.Slice{}, Shape{}, err
+	}
 	if err := m.local.TakeSlice(ctx, s, body, time.Now()); err != nil {
 		return domain.Slice{}, Shape{}, err
 	}
@@ -143,7 +151,13 @@ func (m *Mirrored) PRDescription(ctx context.Context, id string) (string, error)
 // writes a status needs, since a Status column converted in Notion's own UI
 // takes a different value from the select every project this app made has,
 // and that is a read of the page rather than something the caller's own
-// [Shape] can answer.
+// [Shape] can answer. Every caller folds this into its own Shape with
+// [Shape.On] rather than pushing it bare: a page that has never carried an
+// Assignee or Branch value yet — the ordinary state of a slice about to be
+// claimed or handed back for the first time — reads back with neither
+// property present at all, and pushing that reading raw would silently drop
+// the write [Local]'s own copy, built from the project's schema, already got
+// right.
 func (m *Mirrored) pageShape(ctx context.Context, id string) (Shape, error) {
 	_, sh, err := m.remote.Slice(ctx, id)
 	return sh, err
@@ -176,7 +190,7 @@ func (m *Mirrored) ClaimSlice(ctx context.Context, id string, sh Shape, userID s
 		if err != nil {
 			return err
 		}
-		_, err = m.remote.ClaimSlice(ctx, id, pageSh, userID)
+		_, err = m.remote.ClaimSlice(ctx, id, sh.On(pageSh), userID)
 		return err
 	})
 	return s, nil
@@ -194,7 +208,7 @@ func (m *Mirrored) ReleaseSlice(ctx context.Context, id string, sh Shape, by str
 		if err != nil {
 			return err
 		}
-		_, err = m.remote.ReleaseSlice(ctx, id, pageSh, by)
+		_, err = m.remote.ReleaseSlice(ctx, id, sh.On(pageSh), by)
 		return err
 	})
 	return s, nil
@@ -217,7 +231,7 @@ func (m *Mirrored) CompleteSlice(ctx context.Context, id string, sh Shape, o Out
 			if err != nil {
 				return err
 			}
-			pushSh = pageSh
+			pushSh = sh.On(pageSh)
 		}
 		_, err := m.remote.CompleteSlice(ctx, id, pushSh, o)
 		return err
@@ -245,7 +259,7 @@ func (m *Mirrored) MarkDone(ctx context.Context, id string, sh Shape) error {
 		if err != nil {
 			return err
 		}
-		return m.remote.MarkDone(ctx, id, pageSh)
+		return m.remote.MarkDone(ctx, id, sh.On(pageSh))
 	})
 	return nil
 }
@@ -261,7 +275,7 @@ func (m *Mirrored) ReopenSlice(ctx context.Context, id string, sh Shape) error {
 		if err != nil {
 			return err
 		}
-		return m.remote.ReopenSlice(ctx, id, pageSh)
+		return m.remote.ReopenSlice(ctx, id, sh.On(pageSh))
 	})
 	return nil
 }

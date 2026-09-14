@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // releasableAPI answers with one slice in progress, held by the configured
@@ -22,8 +24,8 @@ func releasableAPI() *fakeAPI {
 
 // releaseEnv builds an Env for the command; it reads nothing from stdin, since
 // release-slice takes no note to write.
-func releaseEnv(api *fakeAPI) (Env, *strings.Builder) {
-	env, _ := testEnv(testClaimConfig(), api)
+func releaseEnv(t testing.TB, api *fakeAPI) (Env, *strings.Builder) {
+	env, _ := testEnv(testClaimConfig(t), api)
 	var out strings.Builder
 	env.Out = &out
 	return env, &out
@@ -33,7 +35,7 @@ func releaseEnv(api *fakeAPI) (Env, *strings.Builder) {
 // nobody, one line on the page, and nothing else written.
 func TestReleaseSliceHandsTheSliceBack(t *testing.T) {
 	api := releasableAPI()
-	env, out := releaseEnv(api)
+	env, out := releaseEnv(t, api)
 	var nudges int
 	env.Nudge = func() { nudges++ }
 
@@ -41,9 +43,6 @@ func TestReleaseSliceHandsTheSliceBack(t *testing.T) {
 		t.Fatalf("release-slice: %v", err)
 	}
 
-	if len(api.gets) != 1 || api.gets[0] != sliceID {
-		t.Errorf("fetched %v, want [%s]", api.gets, sliceID)
-	}
 	if len(api.appends) != 1 || api.appends[0].id != sliceID {
 		t.Fatalf("appends = %+v, want exactly one, to the slice", api.appends)
 	}
@@ -96,7 +95,7 @@ func TestReleaseSliceWithoutAnAssigneeColumn(t *testing.T) {
 	api := releasableAPI()
 	api.dataSources = map[string]notion.DataSource{"slices-ds": soloSlicesDS()}
 	delete(api.pages["slices-ds"][0].Properties, notion.PropAssignee)
-	env, _ := releaseEnv(api)
+	env, _ := releaseEnv(t, api)
 
 	if err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("release-slice: %v", err)
@@ -117,7 +116,7 @@ func TestReleaseSliceWritesTheStatusShapeItRead(t *testing.T) {
 	api.pages["slices-ds"][0].Properties[notion.PropStatus] = notion.PropertyValue{
 		Type: notion.TypeStatus, Status: &notion.SelectOption{Name: notion.SliceInProgress},
 	}
-	env, _ := releaseEnv(api)
+	env, _ := releaseEnv(t, api)
 
 	if err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("release-slice: %v", err)
@@ -163,7 +162,7 @@ func TestReleaseSliceRefusals(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			api := releasableAPI()
 			api.pages["slices-ds"] = []notion.Page{tt.page}
-			env, out := releaseEnv(api)
+			env, out := releaseEnv(t, api)
 			var nudges int
 			env.Nudge = func() { nudges++ }
 
@@ -199,7 +198,7 @@ func TestReleaseSliceMisuse(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := releasableAPI()
-			env, _ := releaseEnv(api)
+			env, _ := releaseEnv(t, api)
 
 			err := Run(context.Background(), tt.args, env)
 			var usage *UsageError
@@ -231,14 +230,12 @@ func TestReleaseSliceFailures(t *testing.T) {
 			}},
 		{name: "no assignee configured", want: "no assignee in the config",
 			env: func(e *Env) {
-				cfg := testConfig()
+				cfg := testConfig(t)
 				e.Load = func() (config.Config, bool, error) { return cfg, true, nil }
 			}},
+		// The schema read is the plan file's own initial hydrate — every other
+		// read this command makes is local by the time it runs.
 		{name: "the schema", want: "boom", set: func(a *fakeAPI) { a.dataSourceErr = boom }},
-		{name: "the page", want: "load the slice: boom", set: func(a *fakeAPI) { a.getErr = boom }},
-		{name: "the note", want: "note the release on the slice: boom",
-			set: func(a *fakeAPI) { a.appendErr = boom }},
-		{name: "the write", want: "release the slice: boom", set: func(a *fakeAPI) { a.updateErr = boom }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -246,7 +243,7 @@ func TestReleaseSliceFailures(t *testing.T) {
 			if tt.set != nil {
 				tt.set(api)
 			}
-			env, _ := releaseEnv(api)
+			env, _ := releaseEnv(t, api)
 			var nudges int
 			env.Nudge = func() { nudges++ }
 			if tt.env != nil {
@@ -261,5 +258,116 @@ func TestReleaseSliceFailures(t *testing.T) {
 				t.Errorf("nudged %d times, want none — nothing landed", nudges)
 			}
 		})
+	}
+}
+
+// A push to the workspace that fails does not fail release-slice: the write
+// already landed in the local plan file, the command reports success and
+// still nudges the board, and the slice is left dirty for the next sync to
+// resend.
+func TestReleaseSliceLeavesTheSliceDirtyOnAFailedPush(t *testing.T) {
+	boom := errors.New("boom")
+	tests := []struct {
+		name string
+		set  func(*fakeAPI)
+	}{
+		{name: "the note", set: func(a *fakeAPI) { a.appendErr = boom }},
+		{name: "the write", set: func(a *fakeAPI) { a.updateErr = boom }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			api := releasableAPI()
+			tt.set(api)
+			env, out := releaseEnv(t, api)
+			var nudges int
+			env.Nudge = func() { nudges++ }
+
+			if err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env); err != nil {
+				t.Fatalf("release-slice: %v", err)
+			}
+			if nudges != 1 {
+				t.Errorf("nudged %d times, want exactly one — the local write landed", nudges)
+			}
+			if out.Len() == 0 {
+				t.Errorf("output = %q, want the slice reported released despite the failed push", out.String())
+			}
+
+			path, err := store.LocalPath("project-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			local, err := store.OpenLocal(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = local.Close() }()
+			dirty, err := local.Dirty(context.Background(), sliceID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !dirty {
+				t.Error("dirty = false, want the slice left dirty for the next sync")
+			}
+		})
+	}
+}
+
+// The project's shape is read from the local file once the plan has been
+// pulled — no request of its own — and a file that cannot even answer that
+// fails the command before the slice is ever looked at.
+func TestReleaseSliceReportsAFailedLocalShapeRead(t *testing.T) {
+	cfg := testClaimConfig(t)
+	seedHydratedSlice(t, "project-1", sliceID, "Render the board", "In progress", func(db *sql.DB) {
+		if _, err := db.Exec(`ALTER TABLE project DROP COLUMN has_assignee`); err != nil {
+			t.Fatalf("break the plan's has_assignee column: %v", err)
+		}
+	})
+	env, _ := testEnv(cfg, &fakeAPI{})
+
+	err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env)
+
+	if err == nil {
+		t.Error("release-slice over a plan that cannot read its own shape: want an error")
+	}
+}
+
+// The slice itself is read from the same local file, and a file that cannot
+// answer that fails the command the same way.
+func TestReleaseSliceReportsAFailedLocalSliceRead(t *testing.T) {
+	cfg := testClaimConfig(t)
+	seedHydratedSlice(t, "project-1", sliceID, "Render the board", "In progress", func(db *sql.DB) {
+		if _, err := db.Exec(`DROP TABLE slices`); err != nil {
+			t.Fatalf("break the plan's slices table: %v", err)
+		}
+	})
+	env, _ := testEnv(cfg, &fakeAPI{})
+
+	err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env)
+
+	if err == nil {
+		t.Error("release-slice over a plan that cannot read the slice: want an error")
+	}
+}
+
+// The release itself is a local write before anything is asked of the
+// workspace, and a plan that cannot make that write fails the command
+// outright — there is nothing to push if nothing was actually released.
+func TestReleaseSliceReportsAFailedLocalWrite(t *testing.T) {
+	cfg := testClaimConfig(t)
+	seedHydratedSlice(t, "project-1", sliceID, "Render the board", "In progress", func(db *sql.DB) {
+		if _, err := db.Exec(`UPDATE slices SET assignee = ?, assignee_name = ? WHERE id = ?`,
+			"u1", "Craig Johnston", sliceID); err != nil {
+			t.Fatalf("seed the assignee: %v", err)
+		}
+		if _, err := db.Exec(`DROP TABLE sync`); err != nil {
+			t.Fatalf("break the plan's sync table: %v", err)
+		}
+	})
+	env, _ := testEnv(cfg, &fakeAPI{})
+
+	err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env)
+
+	if err == nil {
+		t.Error("release-slice over a plan that cannot make the write: want an error")
 	}
 }

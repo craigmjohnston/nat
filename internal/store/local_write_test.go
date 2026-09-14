@@ -493,6 +493,27 @@ func TestLocalWritesRefuseASliceThatIsNotThere(t *testing.T) {
 	}
 }
 
+// ReleaseSlice and CompleteSlice both append a note to the slice's own body,
+// re-read inside the same transaction they write in — and a body that
+// cannot be re-read that way fails the write rather than appending onto
+// nothing.
+func TestLocalReleaseAndCompleteReportAFailedBodyRead(t *testing.T) {
+	l, path := openPlan(t)
+	fillPlan(t, l)
+	ctx := context.Background()
+	write(t, l, `ALTER TABLE slices DROP COLUMN body`)
+
+	writes := map[string]func() error{
+		"ReleaseSlice":  func() error { _, err := l.ReleaseSlice(ctx, "writes", wholeShape, "u"); return err },
+		"CompleteSlice": func() error { _, err := l.CompleteSlice(ctx, "writes", wholeShape, Outcome{Summary: "done"}); return err },
+	}
+	for name, w := range writes {
+		if err := w(); err == nil || !strings.Contains(err.Error(), path) {
+			t.Errorf("%s err = %v, want the path named", name, err)
+		}
+	}
+}
+
 // The point of reading inside the write: a change another process made after
 // the caller last read the slice is still there afterwards. The board's copy of
 // a slice is as old as its last poll, and an agent has been writing since.

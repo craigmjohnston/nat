@@ -177,6 +177,34 @@ func TestSliceMissingFromTheFileReadsThroughToTheWorkspace(t *testing.T) {
 	}
 }
 
+// A slice read straight off the workspace may name a dependency the file has
+// never met either — the same rule AddSlice's own ensureHeld already
+// enforces, applied here because this path reaches the workspace by ID
+// rather than through the plan. A dependency that cannot itself be taken in
+// fails the whole read, rather than landing a slice whose edge points
+// nowhere the file can ever resolve.
+func TestSliceMissingFromTheFileCarriesAnUnheldDependencysFailureUp(t *testing.T) {
+	l, _ := openPlan(t)
+	api := &fakeAPI{
+		page: func(id string) (*notion.Page, error) {
+			if id == "dep" {
+				return nil, errBoom
+			}
+			page := slicePage(id, "Read from the workspace", notion.SliceTodo)
+			page.Properties[notion.PropDependsOn] = notion.NewRelation("dep")
+			return page, nil
+		},
+		blocks: func(string) ([]notion.Block, error) {
+			return paragraphBlock(t, "Brief from the workspace."), nil
+		},
+	}
+	m := Mirror(l, Over(api))
+
+	if _, _, err := m.Slice(context.Background(), "remote-only"); !errors.Is(err, errBoom) {
+		t.Errorf("err = %v, want the unheld dependency's own failure", err)
+	}
+}
+
 func TestSliceMissingFromTheFileCarriesThePagesReadFailureUp(t *testing.T) {
 	l, _ := openPlan(t)
 	api := &fakeAPI{page: func(string) (*notion.Page, error) { return nil, errBoom }}

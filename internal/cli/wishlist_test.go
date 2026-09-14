@@ -50,7 +50,7 @@ func emptyWishlistPage(t *testing.T) []notion.Block {
 }
 
 func TestWishlistPrintsTheItemsAsMarkdown(t *testing.T) {
-	env, out := testEnv(testConfig(), &fakeAPI{blocks: wishlistPage(t)})
+	env, out := testEnv(testConfig(t), &fakeAPI{blocks: wishlistPage(t)})
 
 	if err := Run(context.Background(), []string{"wishlist", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("Run() = %v", err)
@@ -63,7 +63,7 @@ func TestWishlistPrintsTheItemsAsMarkdown(t *testing.T) {
 }
 
 func TestWishlistSaysWhenThereIsNothingOnIt(t *testing.T) {
-	env, out := testEnv(testConfig(), &fakeAPI{blocks: emptyWishlistPage(t)})
+	env, out := testEnv(testConfig(t), &fakeAPI{blocks: emptyWishlistPage(t)})
 
 	if err := Run(context.Background(), []string{"wishlist", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("Run() = %v", err)
@@ -76,7 +76,7 @@ func TestWishlistSaysWhenThereIsNothingOnIt(t *testing.T) {
 }
 
 func TestWishlistJSONNamesTheBlockOfEveryItem(t *testing.T) {
-	env, out := testEnv(testConfig(), &fakeAPI{blocks: wishlistPage(t)})
+	env, out := testEnv(testConfig(t), &fakeAPI{blocks: wishlistPage(t)})
 
 	if err := Run(context.Background(), []string{"wishlist", "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("Run() = %v", err)
@@ -103,7 +103,7 @@ func TestWishlistJSONNamesTheBlockOfEveryItem(t *testing.T) {
 // An empty wishlist is an empty array, not null: whatever reads this should be
 // able to range over it without checking first.
 func TestWishlistJSONOfAnEmptyWishlistIsAnEmptyArray(t *testing.T) {
-	env, out := testEnv(testConfig(), &fakeAPI{blocks: emptyWishlistPage(t)})
+	env, out := testEnv(testConfig(t), &fakeAPI{blocks: emptyWishlistPage(t)})
 
 	if err := Run(context.Background(), []string{"wishlist", "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("Run() = %v", err)
@@ -116,7 +116,7 @@ func TestWishlistJSONOfAnEmptyWishlistIsAnEmptyArray(t *testing.T) {
 
 func TestWishlistReportsAFailedPageRead(t *testing.T) {
 	boom := errors.New("notion is down")
-	env, _ := testEnv(testConfig(), &fakeAPI{blocksErr: boom})
+	env, _ := testEnv(testConfig(t), &fakeAPI{blocksErr: boom})
 
 	err := Run(context.Background(), []string{"wishlist", "--project", "project-1"}, env)
 
@@ -137,7 +137,7 @@ func TestWishlistReportsMissingConfiguration(t *testing.T) {
 }
 
 func TestWishlistRejectsAnUnknownFlag(t *testing.T) {
-	env, out := testEnv(testConfig(), &fakeAPI{blocks: wishlistPage(t)})
+	env, out := testEnv(testConfig(t), &fakeAPI{blocks: wishlistPage(t)})
 
 	err := Run(context.Background(), []string{"wishlist", "--all", "--project", "project-1"}, env)
 
@@ -151,7 +151,7 @@ func TestWishlistRejectsAnUnknownFlag(t *testing.T) {
 }
 
 func TestWishlistReportsAFailedWrite(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{blocks: wishlistPage(t)})
+	env, _ := testEnv(testConfig(t), &fakeAPI{blocks: wishlistPage(t)})
 	env.Out = failingWriter{}
 
 	err := Run(context.Background(), []string{"wishlist", "--project", "project-1"}, env)
@@ -163,7 +163,7 @@ func TestWishlistReportsAFailedWrite(t *testing.T) {
 
 func TestWishlistClearTrashesTheNamedItemsAndSeedsAnEmptyOne(t *testing.T) {
 	api := &fakeAPI{blocks: wishlistPage(t)}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"wishlist-clear", "w1", "w2", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("Run() = %v", err)
@@ -200,7 +200,7 @@ func TestWishlistClearLeavesAnExistingEmptyItemAlone(t *testing.T) {
 		{"id":"w1","type":"bulleted_list_item","bulleted_list_item":{"rich_text":[{"plain_text":"Local file storage"}]}},
 		{"id":"blank","type":"bulleted_list_item","bulleted_list_item":{"rich_text":[]}}
 	]`)}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"wishlist-clear", "w1", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("Run() = %v", err)
@@ -224,7 +224,7 @@ func TestWishlistClearSeedsUnderTheHeadingWhenNothingIsLeft(t *testing.T) {
 		{"id":"wishlist","type":"heading_2","heading_2":{"rich_text":[{"plain_text":"Wishlist"}]}},
 		{"id":"w1","type":"bulleted_list_item","bulleted_list_item":{"rich_text":[{"plain_text":"Local file storage"}]}}
 	]`)}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"wishlist-clear", "w1", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("Run() = %v", err)
@@ -241,7 +241,7 @@ func TestWishlistClearRefusesABlockThatIsNotAWishlistItem(t *testing.T) {
 	for _, id := range []string{"outside", "after", "aside", "conventions", "never-seen"} {
 		t.Run(id, func(t *testing.T) {
 			api := &fakeAPI{blocks: wishlistPage(t)}
-			env, out := testEnv(testConfig(), api)
+			env, out := testEnv(testConfig(t), api)
 
 			if err := Run(context.Background(), []string{"wishlist-clear", id, "--project", "project-1"}, env); err != nil {
 				t.Fatalf("Run() = %v", err)
@@ -266,7 +266,7 @@ func TestWishlistClearRefusesABlockThatIsNotAWishlistItem(t *testing.T) {
 // One good ID among bad ones still lands: the bad ones are reported, not fatal.
 func TestWishlistClearTrashesWhatItCanAndReportsTheRest(t *testing.T) {
 	api := &fakeAPI{blocks: wishlistPage(t)}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"wishlist-clear", "gone-already", "w1", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("Run() = %v", err)
@@ -285,7 +285,7 @@ func TestWishlistClearOnAPageWithNoWishlistDeletesNothing(t *testing.T) {
 		{"id":"conventions","type":"heading_2","heading_2":{"rich_text":[{"plain_text":"Conventions"}]}},
 		{"id":"outside","type":"bulleted_list_item","bulleted_list_item":{"rich_text":[{"plain_text":"Branch per slice."}]}}
 	]`)}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"wishlist-clear", "outside", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("Run() = %v", err)
@@ -307,7 +307,7 @@ func TestWishlistClearMatchesIDsHoweverTheyAreWritten(t *testing.T) {
 		{"id":"3bd38308-f654-8142-9534-d3d80043f35a","type":"bulleted_list_item","bulleted_list_item":{"rich_text":[{"plain_text":"Local file storage"}]}},
 		{"id":"blank","type":"bulleted_list_item","bulleted_list_item":{"rich_text":[]}}
 	]`)}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"wishlist-clear", "3BD38308F65481429534D3D80043F35A", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("Run() = %v", err)
@@ -322,7 +322,7 @@ func TestWishlistClearMatchesIDsHoweverTheyAreWritten(t *testing.T) {
 // block already gone, which Notion refuses.
 func TestWishlistClearIgnoresARepeatedID(t *testing.T) {
 	api := &fakeAPI{blocks: wishlistPage(t)}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"wishlist-clear", "w1", "w1", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("Run() = %v", err)
@@ -340,7 +340,7 @@ func TestWishlistClearWantsSomethingToClear(t *testing.T) {
 	for _, args := range [][]string{{"wishlist-clear", "--project", "project-1"}, {"wishlist-clear", "--all", "--project", "project-1"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			api := &fakeAPI{blocks: wishlistPage(t)}
-			env, out := testEnv(testConfig(), api)
+			env, out := testEnv(testConfig(t), api)
 
 			err := Run(context.Background(), args, env)
 
@@ -371,7 +371,7 @@ func TestWishlistClearReportsMissingConfiguration(t *testing.T) {
 
 func TestWishlistClearReportsAFailedPageRead(t *testing.T) {
 	boom := errors.New("notion is down")
-	env, _ := testEnv(testConfig(), &fakeAPI{blocksErr: boom})
+	env, _ := testEnv(testConfig(t), &fakeAPI{blocksErr: boom})
 
 	err := Run(context.Background(), []string{"wishlist-clear", "w1", "--project", "project-1"}, env)
 
@@ -383,7 +383,7 @@ func TestWishlistClearReportsAFailedPageRead(t *testing.T) {
 func TestWishlistClearReportsAFailedTrashing(t *testing.T) {
 	boom := errors.New("notion is down")
 	api := &fakeAPI{blocks: wishlistPage(t), deleteErr: boom}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"wishlist-clear", "w1", "--project", "project-1"}, env)
 
@@ -398,7 +398,7 @@ func TestWishlistClearReportsAFailedTrashing(t *testing.T) {
 func TestWishlistClearReportsAFailedSeeding(t *testing.T) {
 	boom := errors.New("notion is down")
 	api := &fakeAPI{blocks: wishlistPage(t), appendErr: boom}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"wishlist-clear", "w1", "w2", "--project", "project-1"}, env)
 
@@ -408,7 +408,7 @@ func TestWishlistClearReportsAFailedSeeding(t *testing.T) {
 }
 
 func TestWishlistClearReportsAFailedWrite(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{blocks: wishlistPage(t)})
+	env, _ := testEnv(testConfig(t), &fakeAPI{blocks: wishlistPage(t)})
 	env.Out = failingWriter{}
 
 	err := Run(context.Background(), []string{"wishlist-clear", "w1", "--project", "project-1"}, env)

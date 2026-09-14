@@ -10,7 +10,6 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // sliceShow reads and prints one slice in full, without claiming it. It is
@@ -37,8 +36,10 @@ func sliceShow(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
-	st := store.Over(client)
+	st, err := env.storeFor(ctx, projectID, project)
+	if err != nil {
+		return err
+	}
 
 	shape, err := sliceShape(ctx, st, projectID, project)
 	if err != nil {
@@ -50,7 +51,7 @@ func sliceShow(ctx context.Context, args []string, env Env) error {
 	}
 
 	// Read the slice's dependencies.
-	depByID := dependencyIndex(ctx, client, s)
+	depByID := dependencyIndex(ctx, st, s)
 
 	milestone := milestoneOf(s, shape.Milestones)
 	brief, err := st.Body(ctx, s.ID)

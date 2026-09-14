@@ -30,7 +30,7 @@ func removableAPI() *fakeAPI {
 // in the order it was in.
 func TestMilestoneRemoveDropsAnEmptyMilestone(t *testing.T) {
 	api := removableAPI()
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	nudges := nudgeCounter(&env)
 
 	if err := Run(context.Background(),
@@ -63,7 +63,7 @@ Removed from nat, where it was milestone 3 and held no slices.
 }
 
 func TestMilestoneRemovePrintsJSON(t *testing.T) {
-	env, out := testEnv(testConfig(), removableAPI())
+	env, out := testEnv(testConfig(t), removableAPI())
 
 	if err := Run(context.Background(),
 		[]string{"milestone-remove", "  m3: agents  ", "--json", "--project", "project-1"}, env); err != nil {
@@ -110,7 +110,7 @@ func TestMilestoneRemoveRefusals(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := removableAPI()
-			env, out := testEnv(testConfig(), api)
+			env, out := testEnv(testConfig(t), api)
 			nudges := nudgeCounter(&env)
 
 			err := Run(context.Background(), append(tt.args, "--project", "project-1"), env)
@@ -138,7 +138,7 @@ func TestMilestoneRemoveRefusals(t *testing.T) {
 func TestMilestoneRemoveCountsOneSlice(t *testing.T) {
 	api := plannedAPI(addedMilestoneID)
 	api.pages = map[string][]notion.Page{"slices-ds": {filedSlice("s1", "Draw a row", "M2: Board")}}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"milestone-remove", "M2: Board", "--project", "project-1"}, env)
 
@@ -151,7 +151,7 @@ func TestMilestoneRemoveCountsOneSlice(t *testing.T) {
 func TestMilestoneRemoveNamesTheMilestonesThePlanHas(t *testing.T) {
 	api := plannedAPI(addedMilestoneID)
 	api.dataSources["slices-ds"] = selectMilestoneSlicesDS()
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"milestone-remove", "M1: Client", "--project", "project-1"}, env)
 
@@ -186,7 +186,7 @@ func TestMilestoneRemoveRejectsAMisusedCommandLine(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := removableAPI()
-			env, out := testEnv(testConfig(), api)
+			env, out := testEnv(testConfig(t), api)
 
 			err := Run(context.Background(), tt.args, env)
 
@@ -235,7 +235,7 @@ func TestMilestoneRemoveReportsAFailedCall(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			api := removableAPI()
 			tt.fail(api)
-			env, out := testEnv(testConfig(), api)
+			env, out := testEnv(testConfig(t), api)
 			nudges := nudgeCounter(&env)
 
 			err := Run(context.Background(),
@@ -257,9 +257,26 @@ func TestMilestoneRemoveReportsAFailedCall(t *testing.T) {
 	}
 }
 
+// A plan already hydrated reads its shape from the file, not the workspace —
+// so a failure there is a failure of the file, not anything a fakeAPI can
+// still stage.
+func TestMilestoneRemoveReportsAFailedShapeReadOnAnAlreadyHydratedPlan(t *testing.T) {
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
+	db := hydratedPlanDB(t, "project-1")
+	if _, err := db.Exec(`DROP TABLE milestones`); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Run(context.Background(), []string{"milestone-remove", "M3: Agents", "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "milestones") {
+		t.Errorf("err = %v, want the broken read reported", err)
+	}
+}
+
 func TestMilestoneRemoveNeedsAConfiguredProject(t *testing.T) {
 	api := removableAPI()
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 
 	err := Run(context.Background(), []string{"milestone-remove", "M3: Agents", "--project", "project-1"}, env)
@@ -273,7 +290,7 @@ func TestMilestoneRemoveNeedsAConfiguredProject(t *testing.T) {
 func TestMilestoneRemoveReportsAFailedWrite(t *testing.T) {
 	for _, extra := range [][]string{nil, {"--json"}} {
 		t.Run(strings.Join(append([]string{"milestone-remove"}, extra...), " "), func(t *testing.T) {
-			env, _ := testEnv(testConfig(), removableAPI())
+			env, _ := testEnv(testConfig(t), removableAPI())
 			env.Out = failingWriter{}
 
 			args := append([]string{"milestone-remove", "M3: Agents"}, extra...)

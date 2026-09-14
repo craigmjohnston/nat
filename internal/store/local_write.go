@@ -696,13 +696,14 @@ func (l *Local) deleteSliceRows(ctx context.Context, tx *sql.Tx, id string) erro
 }
 
 // This is the replica half of [Local]: the writes a project read from Notion
-// but kept locally needs, and nothing above this package calls any of it yet.
+// but kept locally needs.
 //
 // sliceIdentity is what a domain.Slice carries onto a row's assignee and
 // assignee_name columns — the workspace's own user ID, which is what a push
-// compares equality against, and the name it resolves that ID to, which is
-// what [Local.ApplyAssignee] alone fills in afterwards. A reading with no
-// assignee at all writes neither.
+// compares equality against, and the name it resolves that ID to. A reading
+// with no assignee at all writes neither. [Local.ApplyAssignee] is the one
+// other writer of assignee_name — for a claim, whose own write only ever
+// knows the ID it was given, not the name the workspace resolves it to.
 func sliceIdentity(s domain.Slice) (assignee, name string) {
 	if len(s.AssigneeIDs) > 0 {
 		assignee = s.AssigneeIDs[0]
@@ -822,10 +823,10 @@ func (l *Local) TakeSlice(ctx context.Context, s domain.Slice, body string, at t
 		assignee, assigneeName := sliceIdentity(s)
 		if err := l.exec(ctx, tx, "take the slice into the plan",
 			`INSERT INTO slices
-			   (id, title, status, milestone, position, assignee, assignee_name, repo, branch, pr, body, body_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			   (id, title, status, milestone, position, assignee, assignee_name, repo, branch, pr, url, body, body_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			s.ID, s.Name, sliceStatusName(s), nullable(s.MilestoneID), position,
-			assignee, assigneeName, s.Repo, s.Branch, s.PRURL, body, timeStamp(at)); err != nil {
+			assignee, assigneeName, s.Repo, s.Branch, s.PRURL, s.URL, body, timeStamp(at)); err != nil {
 			return err
 		}
 		if err := l.writeDependencies(ctx, tx, s.ID, s.DependsOn); err != nil {
@@ -912,15 +913,15 @@ func (l *Local) Hydrate(ctx context.Context, p Project, plan Plan, bodies map[st
 			assignee, assigneeName := sliceIdentity(s)
 			if err := l.exec(ctx, tx, "hydrate the plan",
 				`INSERT INTO slices
-				   (id, title, status, milestone, position, assignee, assignee_name, repo, branch, pr)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				   (id, title, status, milestone, position, assignee, assignee_name, repo, branch, pr, url)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				 ON CONFLICT(id) DO UPDATE SET
 				   title = excluded.title, status = excluded.status, milestone = excluded.milestone,
 				   position = excluded.position, assignee = excluded.assignee,
 				   assignee_name = excluded.assignee_name, repo = excluded.repo,
-				   branch = excluded.branch, pr = excluded.pr`,
+				   branch = excluded.branch, pr = excluded.pr, url = excluded.url`,
 				s.ID, s.Name, sliceStatusName(s), nullable(s.MilestoneID), position,
-				assignee, assigneeName, s.Repo, s.Branch, s.PRURL); err != nil {
+				assignee, assigneeName, s.Repo, s.Branch, s.PRURL, s.URL); err != nil {
 				return err
 			}
 			if body, ok := bodies[s.ID]; ok {
@@ -930,10 +931,38 @@ func (l *Local) Hydrate(ctx context.Context, p Project, plan Plan, bodies map[st
 					return err
 				}
 			}
-			if err := l.writeDependencies(ctx, tx, s.ID, s.DependsOn); err != nil {
+			if err := l.markSynced(ctx, tx, s.ID, at); err != nil {
 				return err
 			}
-			if err := l.markSynced(ctx, tx, s.ID, at); err != nil {
+		}
+
+		// Dependencies are written only once every slice of the reading has a
+		// row of its own — a slice inserted early may wait on one the reading
+		// names further down, and slice_deps' foreign keys make writing that
+		// edge before the row it points to exists impossible rather than
+		// merely wrong. A dependency naming a slice outside this reading
+		// entirely — one this project's own query could never actually
+		// return, since a slice's Depends on relation is typed to its own
+		// data source, but which an unreadable or since-moved page could
+		// still echo back — is logged and dropped rather than written: the
+		// same "an unreadable dependency is never counted" rule every other
+		// reader of a plan's dependencies already follows, applied here
+		// because slice_deps' foreign keys make anything else impossible.
+		for _, s := range plan.Project.Slices {
+			if ex, held := existing[s.ID]; held && ex.dirty {
+				continue
+			}
+			on := s.DependsOn
+			kept := on[:0:0]
+			for _, id := range on {
+				_, held := existing[id]
+				if seen[id] || held {
+					kept = append(kept, id)
+					continue
+				}
+				logging.Action("dependency outside the reading dropped on hydrate", "slice", s.ID, "dependency", id)
+			}
+			if err := l.writeDependencies(ctx, tx, s.ID, kept); err != nil {
 				return err
 			}
 		}

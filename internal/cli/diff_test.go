@@ -98,7 +98,7 @@ func TestSliceDiffRefusesNotHandedBack(t *testing.T) {
 			"slices-ds": {slicePage(testSliceID, "Write the UI", notion.SliceTodo, "m1", "", "")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	var out strings.Builder
 	env.Out = &out
 
@@ -123,7 +123,7 @@ func TestSliceDiffReadsADoneSlicesBranch(t *testing.T) {
 			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceDone, "m1", "slice/ui")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &fakeGitRunner{diffOut: sampleDiff}
 	env.NewGit = func() GitCLI { return git.NewWithRunner(runner) }
 	prs := &fakePRBase{}
@@ -155,7 +155,7 @@ func TestSliceDiffUsesThePullRequestsBase(t *testing.T) {
 				"slice/ui", "https://github.test/craig/nat/pull/9")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &fakeGitRunner{diffOut: sampleDiff, knownRefs: []string{"refs/remotes/origin/release"}}
 	env.NewGit = func() GitCLI { return git.NewWithRunner(runner) }
 	env.NewGH = func() GH { return &fakePRBase{base: "release"} }
@@ -184,7 +184,7 @@ func TestSliceDiffFallsBackWhenThePullRequestCannotBeRead(t *testing.T) {
 				"slice/ui", "https://github.test/craig/nat/pull/9")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &fakeGitRunner{diffOut: sampleDiff}
 	env.NewGit = func() GitCLI { return git.NewWithRunner(runner) }
 	env.NewGH = func() GH { return &fakePRBase{err: errors.New("no network")} }
@@ -218,7 +218,7 @@ func TestSliceDiffReadsDiff(t *testing.T) {
 			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "main")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &fakeGitRunner{diffOut: sampleDiff}
 	env.NewGit = func() GitCLI { return git.NewWithRunner(runner) }
 	var out strings.Builder
@@ -244,7 +244,7 @@ func TestSliceDiffFailure(t *testing.T) {
 			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "main")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.NewGit = func() GitCLI {
 		return git.NewWithRunner(&fakeGitRunner{
 			diffErr: &git.ExitError{Code: 1, Stderr: "branch not found"},
@@ -270,7 +270,7 @@ func TestSliceDiffJSON(t *testing.T) {
 			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.NewGit = func() GitCLI {
 		return git.NewWithRunner(&fakeGitRunner{diffOut: sampleDiff, base: "origin/main"})
 	}
@@ -330,7 +330,7 @@ func TestSliceDiffJSONOmitsTokensWithoutALanguage(t *testing.T) {
 			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/notes")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.NewGit = func() GitCLI { return git.NewWithRunner(&fakeGitRunner{diffOut: unmatchedDiff}) }
 	var out strings.Builder
 	env.Out = &out
@@ -360,7 +360,7 @@ func TestSliceDiffJSONOmitsTokensForADescribedFile(t *testing.T) {
 			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/shot")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.NewGit = func() GitCLI { return git.NewWithRunner(&fakeGitRunner{diffOut: binaryDiff}) }
 	var out strings.Builder
 	env.Out = &out
@@ -387,7 +387,7 @@ func TestSliceDiffJSONOmitsTokensForADescribedFile(t *testing.T) {
 }
 
 func TestSliceDiffRefusesWrongArgumentCount(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	var out strings.Builder
 	env.Out = &out
 
@@ -403,7 +403,7 @@ func TestSliceDiffRefusesWrongArgumentCount(t *testing.T) {
 }
 
 func TestSliceDiffRefusesAnInvalidSliceID(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	var out strings.Builder
 	env.Out = &out
 
@@ -416,7 +416,7 @@ func TestSliceDiffRefusesAnInvalidSliceID(t *testing.T) {
 }
 
 func TestSliceDiffRefusesAnUnknownFlag(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"slice-diff", testSliceID, "--bogus", "--project", "project-1"}, env)
 
@@ -427,7 +427,7 @@ func TestSliceDiffRefusesAnUnknownFlag(t *testing.T) {
 }
 
 func TestSliceDiffRefusesAnUnknownProject(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"slice-diff", testSliceID, "--project", "nope"}, env)
 
@@ -438,12 +438,27 @@ func TestSliceDiffRefusesAnUnknownProject(t *testing.T) {
 
 func TestSliceDiffReportsAFailedRead(t *testing.T) {
 	api := &fakeAPI{getErr: errors.New("notion is down")}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-diff", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load the slice") {
 		t.Errorf("err = %v, want the failed read named", err)
+	}
+}
+
+// A plan never pulled from the workspace is hydrated on the way to reading
+// anything at all, and a workspace that will not answer that pull fails the
+// whole command before the slice itself is ever read.
+func TestSliceDiffReportsAFailedHydrate(t *testing.T) {
+	boom := errors.New("notion is down")
+	api := &fakeAPI{dataSourceErr: boom}
+	env, _ := testEnv(testClaimConfig(t), api)
+
+	err := Run(context.Background(), []string{"slice-diff", testSliceID, "--project", "project-1"}, env)
+
+	if !errors.Is(err, boom) {
+		t.Errorf("err = %v, want %v", err, boom)
 	}
 }
 
@@ -458,7 +473,7 @@ func TestSliceDiffCommitsListsTheHistory(t *testing.T) {
 			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.NewGit = func() GitCLI {
 		return git.NewWithRunner(&fakeGitRunner{logOut: sliceCommitLog, base: "origin/main"})
 	}
@@ -485,7 +500,7 @@ func TestSliceDiffCommitsJSON(t *testing.T) {
 			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.NewGit = func() GitCLI {
 		return git.NewWithRunner(&fakeGitRunner{logOut: sliceCommitLog, base: "origin/main"})
 	}
@@ -519,7 +534,7 @@ func TestSliceDiffCommitsOfAnEmptyRange(t *testing.T) {
 			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.NewGit = func() GitCLI { return git.NewWithRunner(&fakeGitRunner{base: "origin/main"}) }
 	var out strings.Builder
 	env.Out = &out
@@ -543,7 +558,7 @@ func TestSliceDiffCommitsShortSHA(t *testing.T) {
 			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	shortLog := "abc1234\x00Short sha\x00Craig Johnston\x002026-08-28T11:30:00+02:00\n"
 	env.NewGit = func() GitCLI {
 		return git.NewWithRunner(&fakeGitRunner{logOut: shortLog, base: "origin/main"})
@@ -568,7 +583,7 @@ func TestSliceDiffCommitsFailure(t *testing.T) {
 			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.NewGit = func() GitCLI {
 		return git.NewWithRunner(&fakeGitRunner{base: "origin/main",
 			logErr: &git.ExitError{Code: 128, Stderr: "fatal: bad revision"}})
@@ -588,7 +603,7 @@ func TestSliceDiffCommitDiffsOneCommit(t *testing.T) {
 			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.NewGit = func() GitCLI { return git.NewWithRunner(&fakeGitRunner{diffOut: sampleDiff}) }
 	var out strings.Builder
 	env.Out = &out
@@ -610,7 +625,7 @@ func TestSliceDiffCommitJSON(t *testing.T) {
 			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.NewGit = func() GitCLI { return git.NewWithRunner(&fakeGitRunner{diffOut: sampleDiff}) }
 	var out strings.Builder
 	env.Out = &out
@@ -639,7 +654,7 @@ func TestSliceDiffCommitRefusesARootCommit(t *testing.T) {
 			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "feature/ui")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.NewGit = func() GitCLI {
 		return git.NewWithRunner(&fakeGitRunner{verifyErr: &git.ExitError{Code: 128}})
 	}
@@ -653,7 +668,7 @@ func TestSliceDiffCommitRefusesARootCommit(t *testing.T) {
 }
 
 func TestSliceDiffRefusesCommitsAndCommitTogether(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{
 		"slice-diff", testSliceID, "--commits", "--commit", "aaa111", "--project", "project-1",

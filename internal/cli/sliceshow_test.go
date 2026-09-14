@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -20,7 +21,7 @@ func TestSliceShowPrintsSliceAsMarkdown(t *testing.T) {
 			"slices-ds": selectMilestoneSlicesDS("M1: First"),
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-show", sliceID, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-show: %v", err)
@@ -51,7 +52,7 @@ func TestSliceShowPrintsJSON(t *testing.T) {
 			"slices-ds": selectMilestoneSlicesDS("M1: First"),
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-show --json: %v", err)
@@ -94,7 +95,7 @@ func TestSliceShowComputesBlocked(t *testing.T) {
 			"slices-ds": selectMilestoneSlicesDS("M1: First"),
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-show --json: %v", err)
@@ -123,7 +124,7 @@ func TestSliceShowComputesNotBlocked(t *testing.T) {
 			"slices-ds": selectMilestoneSlicesDS("M1: First"),
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-show --json: %v", err)
@@ -153,7 +154,7 @@ func TestSliceShowIncludeBrief(t *testing.T) {
 			sliceID: briefBlocks(t, briefText),
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-show --json: %v", err)
@@ -179,7 +180,7 @@ func TestSliceShowNoDependencies(t *testing.T) {
 			"slices-ds": selectMilestoneSlicesDS("M1: First"),
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-show --json: %v", err)
@@ -207,7 +208,7 @@ func TestSliceShowByURL(t *testing.T) {
 			"slices-ds": selectMilestoneSlicesDS("M1: First"),
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	// Use a URL that will be parsed to extract the ID
 	url := "https://www.notion.so/3b738308f65481708c99eccab4463d8f"
@@ -222,7 +223,7 @@ func TestSliceShowByURL(t *testing.T) {
 
 func TestSliceShowInvalidSliceRef(t *testing.T) {
 	api := &fakeAPI{}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-show", "not-a-url-or-id", "--project", "project-1"}, env)
 	if err == nil {
@@ -236,7 +237,7 @@ func TestSliceShowInvalidSliceRef(t *testing.T) {
 func TestSliceShowMissingProject(t *testing.T) {
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
 	api := &fakeAPI{}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-show", sliceID}, env)
 	if err == nil {
@@ -249,7 +250,7 @@ func TestSliceShowMissingProject(t *testing.T) {
 
 func TestSliceShowNoArgument(t *testing.T) {
 	api := &fakeAPI{}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-show", "--project", "project-1"}, env)
 	if err == nil {
@@ -262,7 +263,7 @@ func TestSliceShowNoArgument(t *testing.T) {
 
 func TestSliceShowTooManyArguments(t *testing.T) {
 	api := &fakeAPI{}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
 	err := Run(context.Background(), []string{"slice-show", sliceID, "extra", "--project", "project-1"}, env)
@@ -278,7 +279,7 @@ func TestSliceShowSchemaReadError(t *testing.T) {
 	api := &fakeAPI{
 		dataSourceErr: errors.New("schema read failed"),
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
 	err := Run(context.Background(), []string{"slice-show", sliceID, "--project", "project-1"}, env)
@@ -290,6 +291,46 @@ func TestSliceShowSchemaReadError(t *testing.T) {
 	}
 }
 
+// The project's shape is read from the local file once the plan has been
+// pulled — no request of its own — and a file that cannot even answer that
+// fails the command before the slice is ever loaded.
+func TestSliceShowReportsAFailedLocalShapeRead(t *testing.T) {
+	cfg := testConfig(t)
+	const sliceID = "3b738308f65481708c99eccab4463d8f"
+	seedHydratedSlice(t, "project-1", sliceID, "Render the board", "Todo", func(db *sql.DB) {
+		if _, err := db.Exec(`ALTER TABLE project DROP COLUMN has_assignee`); err != nil {
+			t.Fatalf("break the plan's has_assignee column: %v", err)
+		}
+	})
+	env, _ := testEnv(cfg, &fakeAPI{})
+
+	err := Run(context.Background(), []string{"slice-show", sliceID, "--project", "project-1"}, env)
+
+	if err == nil {
+		t.Error("slice-show over a plan that cannot read its own shape: want an error")
+	}
+}
+
+// The brief is read from the local file once the slice itself has been, and
+// a file that cannot answer that read fails the command with its own words
+// rather than loadSlice's.
+func TestSliceShowReportsAFailedBriefRead(t *testing.T) {
+	cfg := testConfig(t)
+	const sliceID = "3b738308f65481708c99eccab4463d8f"
+	seedHydratedSlice(t, "project-1", sliceID, "Render the board", "Todo", func(db *sql.DB) {
+		if _, err := db.Exec(`ALTER TABLE slices DROP COLUMN body_at`); err != nil {
+			t.Fatalf("break the plan's body_at column: %v", err)
+		}
+	})
+	env, _ := testEnv(cfg, &fakeAPI{})
+
+	err := Run(context.Background(), []string{"slice-show", sliceID, "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "could not read the slice's brief") {
+		t.Errorf("err = %v, want the failed brief read named", err)
+	}
+}
+
 func TestSliceShowPageLoadError(t *testing.T) {
 	api := &fakeAPI{
 		getErr: errors.New("page load failed"),
@@ -297,7 +338,7 @@ func TestSliceShowPageLoadError(t *testing.T) {
 			"slices-ds": selectMilestoneSlicesDS("M1: First"),
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
 	err := Run(context.Background(), []string{"slice-show", sliceID, "--project", "project-1"}, env)
@@ -309,6 +350,14 @@ func TestSliceShowPageLoadError(t *testing.T) {
 	}
 }
 
+// A slice the local plan has never seen — this fixture's pages are keyed by
+// the slice's own ID rather than by "slices-ds", so the store's initial
+// hydrate pulls in none of them — is taken in by store.Mirrored.Slice on this
+// read, and taking one in needs its body to seed the file with: there is no
+// stale local copy for a slice new to the file the way store.Mirrored.Body's
+// own lazy refresh has, so a body read that fails here fails the load itself,
+// reported as loadSlice wraps it ("load the slice: ..."), rather than reaching
+// sliceShow's own later "could not read the slice's brief" wrapping at all.
 func TestSliceShowBriefReadError(t *testing.T) {
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
 	api := &fakeAPI{
@@ -320,14 +369,14 @@ func TestSliceShowBriefReadError(t *testing.T) {
 		},
 		blocksErr: errors.New("brief read failed"),
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-show", sliceID, "--project", "project-1"}, env)
 	if err == nil {
 		t.Fatal("slice-show with brief read error: want error, got nil")
 	}
-	if !strings.Contains(err.Error(), "could not read the slice's brief") {
-		t.Errorf("err = %v, want it to mention 'could not read the slice's brief'", err)
+	if !strings.Contains(err.Error(), "load the slice") || !strings.Contains(err.Error(), "brief read failed") {
+		t.Errorf("err = %v, want it to say the slice load failed and name the underlying error", err)
 	}
 }
 
@@ -341,7 +390,7 @@ func TestSliceShowJSONWriteError(t *testing.T) {
 			"slices-ds": selectMilestoneSlicesDS("M1: First"),
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.Out = failingWriter{}
 
 	err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env)
@@ -360,7 +409,7 @@ func TestSliceShowMarkdownWriteError(t *testing.T) {
 			"slices-ds": selectMilestoneSlicesDS("M1: First"),
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.Out = failingWriter{}
 
 	err := Run(context.Background(), []string{"slice-show", sliceID, "--project", "project-1"}, env)
@@ -405,7 +454,7 @@ func TestSliceShowAllOptionalFields(t *testing.T) {
 			"slices-ds": selectMilestoneSlicesDS("M1: First"),
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-show", sliceID, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-show: %v", err)
@@ -445,7 +494,7 @@ func TestSliceShowJSONWithRepo(t *testing.T) {
 			"slices-ds": selectMilestoneSlicesDS("M1: First"),
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-show --json: %v", err)

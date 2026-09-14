@@ -43,7 +43,7 @@ func TestPRCommentPostsTheComment(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	runner := &fakeCommentRunner{out: "https://github.test/craig/nat/pull/7#issuecomment-1\n"}
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
@@ -80,7 +80,7 @@ func TestPRCommentReadsTheBodyFromStdinByDefault(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.In = strings.NewReader("Piped in comment.")
 	runner := &fakeCommentRunner{}
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
@@ -101,7 +101,7 @@ func TestPRCommentJSON(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	runner := &fakeCommentRunner{out: "https://github.test/craig/nat/pull/7#issuecomment-1\n"}
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
@@ -127,7 +127,7 @@ func TestPRCommentRefusesNoPullRequest(t *testing.T) {
 			"slices-ds": {slicePageWithPR(testSliceID, "Write the UI", notion.SliceInProgress, "")},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
 		"pr-comment", testSliceID, "--body", "Looks good.", "--project", "project-1",
@@ -141,7 +141,7 @@ func TestPRCommentRefusesNoPullRequest(t *testing.T) {
 // anything piped in at all: nothing to read, so it is the same empty-comment
 // refusal rather than a wait on a stdin that will never arrive.
 func TestPRCommentRefusesNoBodyAndNoStdin(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"pr-comment", testSliceID, "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "no comment given") {
@@ -150,7 +150,7 @@ func TestPRCommentRefusesNoBodyAndNoStdin(t *testing.T) {
 }
 
 func TestPRCommentRefusesAnEmptyBody(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{
 		"pr-comment", testSliceID, "--body", "   ", "--project", "project-1",
@@ -167,7 +167,7 @@ func TestPRCommentReportsAGHFailure(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.NewGH = func() GH {
 		return gh.NewWithRunner(&fakeCommentRunner{err: &gh.ExitError{Code: 1, Stderr: "no such pull request"}})
 	}
@@ -181,7 +181,7 @@ func TestPRCommentReportsAGHFailure(t *testing.T) {
 }
 
 func TestPRCommentRefusesWrongArgumentCount(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"pr-comment", "--project", "project-1"}, env)
 
@@ -191,7 +191,7 @@ func TestPRCommentRefusesWrongArgumentCount(t *testing.T) {
 }
 
 func TestPRCommentRefusesAnUnknownFlag(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"pr-comment", testSliceID, "--bogus", "--project", "project-1"}, env)
 
@@ -202,7 +202,7 @@ func TestPRCommentRefusesAnUnknownFlag(t *testing.T) {
 }
 
 func TestPRCommentRefusesAnInvalidSliceID(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"pr-comment", "not-a-uuid", "--body", "x", "--project", "project-1"}, env)
 
@@ -212,7 +212,7 @@ func TestPRCommentRefusesAnInvalidSliceID(t *testing.T) {
 }
 
 func TestPRCommentRefusesAnUnknownProject(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"pr-comment", testSliceID, "--body", "x", "--project", "nope"}, env)
 
@@ -224,7 +224,7 @@ func TestPRCommentRefusesAnUnknownProject(t *testing.T) {
 // A stdin that cannot be read fails before Notion is touched at all, the same
 // as every other command that may read the flag it takes off a pipe.
 func TestPRCommentRefusesAnUnreadableStdin(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	env.In = errReader{err: errors.New("boom")}
 
 	err := Run(context.Background(), []string{"pr-comment", testSliceID, "--project", "project-1"}, env)
@@ -235,11 +235,25 @@ func TestPRCommentRefusesAnUnreadableStdin(t *testing.T) {
 
 func TestPRCommentReportsAFailedRead(t *testing.T) {
 	api := &fakeAPI{getErr: errors.New("notion is down")}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"pr-comment", testSliceID, "--body", "x", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load the slice") {
 		t.Errorf("err = %v, want the failed read named", err)
+	}
+}
+
+// The plan file is hydrated from the workspace before anything else, and a
+// workspace that will not answer that first read fails the command before
+// it ever gets to the slice itself.
+func TestPRCommentReportsAFailedHydrate(t *testing.T) {
+	api := &fakeAPI{dataSourceErr: errors.New("notion is down")}
+	env, _ := testEnv(testConfig(t), api)
+
+	err := Run(context.Background(), []string{"pr-comment", testSliceID, "--body", "x", "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "hydrate the plan") {
+		t.Errorf("err = %v, want the failed hydrate named", err)
 	}
 }

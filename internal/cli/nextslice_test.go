@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -9,7 +10,9 @@ import (
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // briefBlocks is a slice page body, in the shape the blocks endpoint returns it.
@@ -61,8 +64,8 @@ func claimableAPI(t *testing.T) *fakeAPI {
 
 // testClaimConfig is a config with an assignee to claim as, which is what
 // onboarding writes and what claiming needs.
-func testClaimConfig() config.Config {
-	cfg := testConfig()
+func testClaimConfig(t testing.TB) config.Config {
+	cfg := testConfig(t)
 	cfg.AssigneeUserID = "u1"
 	cfg.AssigneeUserName = "Craig Johnston"
 	return cfg
@@ -70,7 +73,7 @@ func testClaimConfig() config.Config {
 
 func TestNextSliceClaimsAndPrintsTheBrief(t *testing.T) {
 	api := claimableAPI(t)
-	env, out := testEnv(testClaimConfig(), api)
+	env, out := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
@@ -112,7 +115,7 @@ Branch per slice.
 // held, and not a later one under the same milestone.
 func TestNextSliceClaimsTheRightSlice(t *testing.T) {
 	api := claimableAPI(t)
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
@@ -150,7 +153,7 @@ func TestNextSliceWritesTheStatusShapeItRead(t *testing.T) {
 		Status: &notion.OptionsConfig{Options: []notion.SelectOption{{Name: notion.SliceInProgress}}},
 	}
 	api.dataSources = map[string]notion.DataSource{"slices-ds": ds}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
@@ -166,7 +169,7 @@ func TestNextSliceWritesTheStatusShapeItRead(t *testing.T) {
 // first, which is what makes "the next slice" mean anything.
 func TestNextSliceQueriesOnlyTheSlices(t *testing.T) {
 	api := claimableAPI(t)
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
@@ -188,7 +191,7 @@ func TestNextSliceHonoursARepoOverride(t *testing.T) {
 	api.pages["slices-ds"][2].Properties[notion.PropRepo] = notion.PropertyValue{
 		RichText: []notion.RichText{{PlainText: "/tmp/other"}},
 	}
-	env, out := testEnv(testClaimConfig(), api)
+	env, out := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
@@ -206,7 +209,7 @@ func TestNextSliceHonoursARepoOverride(t *testing.T) {
 func TestNextSliceLogsAFailedMilestoneSummaryRead(t *testing.T) {
 	api := claimableAPI(t)
 	api.blocksErrByID = map[string]error{"s2": errors.New("notion: 500")}
-	env, out := testEnv(testClaimConfig(), api)
+	env, out := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
@@ -220,7 +223,7 @@ func TestNextSliceLogsAFailedMilestoneSummaryRead(t *testing.T) {
 func TestNextSlicePrintsEmptyBodies(t *testing.T) {
 	api := claimableAPI(t)
 	api.blocksByID = nil
-	env, out := testEnv(testClaimConfig(), api)
+	env, out := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
@@ -236,7 +239,7 @@ func TestNextSlicePrintsEmptyBodies(t *testing.T) {
 func TestNextSliceOmitsAMissingURL(t *testing.T) {
 	api := claimableAPI(t)
 	api.pages["slices-ds"][2].URL = ""
-	cfg := testClaimConfig()
+	cfg := testClaimConfig(t)
 	cfg.Projects["project-1"] = config.ProjectConfig{Name: "nat", SlicesDSID: "slices-ds"}
 	env, out := testEnv(cfg, api)
 
@@ -251,7 +254,7 @@ func TestNextSliceOmitsAMissingURL(t *testing.T) {
 
 func TestNextSlicePrintsJSON(t *testing.T) {
 	api := claimableAPI(t)
-	env, out := testEnv(testClaimConfig(), api)
+	env, out := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"next-slice", "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice --json: %v", err)
@@ -275,37 +278,42 @@ func TestNextSlicePrintsJSON(t *testing.T) {
 	}
 }
 
-// A claim that comes back without the assignee on it — the shape Notion answers
-// with when it will not record the write — is a claim that did not happen.
-func TestNextSliceReportsAClaimThatDidNotStick(t *testing.T) {
+// claim's own guard — that a claim which comes back not naming the caller (or
+// leaving the slice where it was) is refused rather than trusted — is no
+// longer reachable through a full next-slice run: every command now claims
+// through store.Local (store.Mirrored's local-first half), whose ClaimSlice
+// always writes exactly the assignee it was asked to, unconditionally, so a
+// local claim always sticks for whoever made it. The old next-slice-level
+// test relied on Notion's own fake echoing back a mangled page — a shape that
+// can no longer surface through this command at all. This tests claim() on
+// its own instead, against a store.Store whose ClaimSlice hands back a slice
+// that does not actually reflect the claim, which is exactly the shape the
+// guard exists to catch.
+func TestClaimRefusesAClaimThatDidNotStick(t *testing.T) {
 	tests := []struct {
-		name   string
-		mangle func(*notion.Page)
+		name    string
+		claimed domain.Slice
 	}{
 		{
-			name:   "assignee dropped",
-			mangle: func(p *notion.Page) { delete(p.Properties, notion.PropAssignee) },
+			name:    "assignee dropped",
+			claimed: domain.Slice{ID: sliceID, Name: "Render the board", Status: domain.SliceClaimed},
 		},
 		{
 			name: "someone else holds it",
-			mangle: func(p *notion.Page) {
-				p.Properties[notion.PropAssignee] = notion.NewPeople("u2")
+			claimed: domain.Slice{
+				ID: sliceID, Name: "Render the board", Status: domain.SliceClaimed, AssigneeIDs: []string{"u2"},
 			},
 		},
 		{
-			name: "status unchanged",
-			mangle: func(p *notion.Page) {
-				p.Properties[notion.PropStatus] = notion.NewSelect(notion.SliceTodo)
-			},
+			name:    "status unchanged",
+			claimed: domain.Slice{ID: sliceID, Name: "Render the board", Status: domain.SliceTodo},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			api := claimableAPI(t)
-			api.mangle = tt.mangle
-			env, out := testEnv(testClaimConfig(), api)
+			st := stubClaimStore{claimed: tt.claimed}
 
-			err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
+			_, err := claim(context.Background(), st, sliceID, store.Shape{HasAssignee: true}, "u1")
 
 			if err == nil || !strings.Contains(err.Error(), "did not stick") {
 				t.Fatalf("err = %v, want a refused claim", err)
@@ -313,71 +321,225 @@ func TestNextSliceReportsAClaimThatDidNotStick(t *testing.T) {
 			if !strings.Contains(err.Error(), "Render the board") {
 				t.Errorf("err = %q, want it to name the slice", err)
 			}
-			if out.Len() != 0 {
-				t.Errorf("output = %q, want nothing", out.String())
+		})
+	}
+}
+
+// stubClaimStore answers ClaimSlice with whatever it is given and panics on
+// any other call — claim() only ever calls ClaimSlice, and a test that
+// reached further would be testing something else.
+type stubClaimStore struct {
+	store.Store
+	claimed domain.Slice
+}
+
+func (s stubClaimStore) ClaimSlice(context.Context, string, store.Shape, string) (domain.Slice, error) {
+	return s.claimed, nil
+}
+
+// The only call left that can still fail the whole command is the plan's own
+// first read: the store's initial hydrate, which every command needs and
+// none can work without. Claiming, reading the brief and reading the
+// conventions used to be three more ways next-slice could fail outright —
+// they no longer are. store.Mirrored.ClaimSlice writes the claim to the
+// local file first and only then pushes it to the workspace; that push is
+// fire-and-forget (see store.Mirrored's own doc comment), so a workspace
+// that refuses the write leaves the claim landed and the command successful.
+// store.Mirrored.Body falls back to the file's own stale copy — empty, for a
+// body never fetched — rather than failing when the workspace cannot answer.
+// See TestNextSliceSucceedsThoughTheWorkspaceCannotBeReached below for that
+// half of the old test's story.
+func TestNextSliceReportsAFailedCall(t *testing.T) {
+	boom := errors.New("notion: 500")
+	api := &fakeAPI{queryErr: map[string]error{"slices-ds": boom}}
+	env, out := testEnv(testClaimConfig(t), api)
+
+	err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
+
+	if !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want %v", err, boom)
+	}
+	if !strings.Contains(err.Error(), "load slices") {
+		t.Errorf("err = %q, want it to mention %q", err, "load slices")
+	}
+	if out.Len() != 0 {
+		t.Errorf("output = %q, want nothing", out.String())
+	}
+}
+
+// A claim that lands locally but cannot be pushed, and a brief or the
+// project's conventions that cannot be freshly read, none of them fail the
+// command any more — next-slice succeeds, with whatever it could read.
+func TestNextSliceSucceedsThoughTheWorkspaceCannotBeReached(t *testing.T) {
+	boom := errors.New("notion: 500")
+	tests := []struct {
+		name string
+		set  func(*fakeAPI)
+	}{
+		{name: "the claim's push", set: func(a *fakeAPI) { a.updateErr = boom }},
+		{name: "the brief", set: func(a *fakeAPI) { a.blocksErrByID = map[string]error{"s3": boom} }},
+		{name: "the conventions", set: func(a *fakeAPI) { a.blocksErrByID = map[string]error{"project-1": boom} }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			api := claimableAPI(t)
+			tt.set(api)
+			env, out := testEnv(testClaimConfig(t), api)
+
+			if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
+				t.Fatalf("next-slice: %v", err)
+			}
+			if !strings.Contains(out.String(), "Render the board") {
+				t.Errorf("output =\n%s\nwant the claimed slice reported", out.String())
 			}
 		})
 	}
 }
 
-func TestNextSliceReportsAFailedCall(t *testing.T) {
-	boom := errors.New("notion: 500")
-	tests := []struct {
-		name string
-		api  func(*testing.T) *fakeAPI
-		want string
-	}{
-		{
-			name: "slices",
-			api: func(t *testing.T) *fakeAPI {
-				return &fakeAPI{queryErr: map[string]error{"slices-ds": boom}}
-			},
-			want: "load slices",
-		},
-		{
-			name: "the claim",
-			api: func(t *testing.T) *fakeAPI {
-				api := claimableAPI(t)
-				api.updateErr = boom
-				return api
-			},
-			want: "claim the slice",
-		},
-		{
-			name: "the brief",
-			api: func(t *testing.T) *fakeAPI {
-				api := claimableAPI(t)
-				api.blocksErrByID = map[string]error{"s3": boom}
-				return api
-			},
-			want: `claimed "Render the board" but could not read its brief`,
-		},
-		{
-			name: "the conventions",
-			api: func(t *testing.T) *fakeAPI {
-				api := claimableAPI(t)
-				api.blocksErrByID = map[string]error{"project-1": boom}
-				return api
-			},
-			want: `claimed "Render the board" but could not read the project conventions`,
-		},
+// Once the plan is hydrated, Plan reads the file alone — so a failure there
+// is a failure of the file, not anything a fakeAPI can still stage. See
+// TestNextSliceReportsAFailedCall for the hydrate's own read failing instead.
+func TestNextSliceReportsAFailedPlanReadOnAnAlreadyHydratedPlan(t *testing.T) {
+	cfg := testClaimConfig(t)
+	api := claimableAPI(t)
+	path, err := store.LocalPath("project-1")
+	if err != nil {
+		t.Fatalf("LocalPath: %v", err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			env, out := testEnv(testClaimConfig(), tt.api(t))
+	db := hydratedPlanDBAt(t, cfg, path)
+	if _, err := db.Exec(`DROP TABLE milestones`); err != nil {
+		t.Fatalf("drop milestones: %v", err)
+	}
 
-			err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
+	env, _ := testEnv(cfg, api)
+	err = Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
 
-			if !errors.Is(err, boom) {
-				t.Fatalf("err = %v, want %v", err, boom)
-			}
-			if !strings.Contains(err.Error(), tt.want) {
-				t.Errorf("err = %q, want it to mention %q", err, tt.want)
-			}
-			if out.Len() != 0 {
-				t.Errorf("output = %q, want nothing", out.String())
-			}
-		})
+	if err == nil || !strings.Contains(err.Error(), "milestones") {
+		t.Errorf("err = %v, want the broken read reported", err)
+	}
+}
+
+// Once the plan is hydrated, a claim is a write to the file first — so a
+// file that cannot even record it fails the command outright, unlike a
+// workspace refusing the push afterward, whose own failure is only logged.
+func TestNextSliceReportsAFailedClaimOnAnAlreadyHydratedPlan(t *testing.T) {
+	cfg := testClaimConfig(t)
+	api := claimableAPI(t)
+	env, _ := testEnv(cfg, api)
+	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("next-slice (claim s3): %v", err)
+	}
+
+	path, err := store.LocalPath("project-1")
+	if err != nil {
+		t.Fatalf("LocalPath: %v", err)
+	}
+	db, err := sql.Open("sqlite3", "file:"+path)
+	if err != nil {
+		t.Fatalf("open the plan: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.Exec(`DROP TABLE sync`); err != nil {
+		t.Fatalf("drop sync: %v", err)
+	}
+
+	env2, _ := testEnv(cfg, api)
+	err = Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env2)
+
+	if err == nil {
+		t.Error("err = nil, want the failed local write reported")
+	}
+}
+
+// BodyFresh's own read fails outright rather than falling back to the
+// workspace — the fallback is for a workspace that will not answer, not for
+// a file that cannot even say whether its copy is fresh.
+func TestNextSliceReportsAFailedBriefFreshnessCheck(t *testing.T) {
+	cfg := testClaimConfig(t)
+	api := claimableAPI(t)
+	path, err := store.LocalPath("project-1")
+	if err != nil {
+		t.Fatalf("LocalPath: %v", err)
+	}
+	db := hydratedPlanDBAt(t, cfg, path)
+	if _, err := db.Exec(`ALTER TABLE slices DROP COLUMN body_at`); err != nil {
+		t.Fatalf("drop body_at: %v", err)
+	}
+
+	env, _ := testEnv(cfg, api)
+	err = Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "could not read its brief") {
+		t.Errorf("err = %v, want the broken freshness check reported", err)
+	}
+}
+
+// The same freshness check, for the project's own conventions instead of a
+// slice's brief.
+func TestNextSliceReportsAFailedConventionsFreshnessCheck(t *testing.T) {
+	cfg := testClaimConfig(t)
+	api := claimableAPI(t)
+	path, err := store.LocalPath("project-1")
+	if err != nil {
+		t.Fatalf("LocalPath: %v", err)
+	}
+	db := hydratedPlanDBAt(t, cfg, path)
+	if _, err := db.Exec(`ALTER TABLE project DROP COLUMN conventions_at`); err != nil {
+		t.Fatalf("drop conventions_at: %v", err)
+	}
+
+	env, _ := testEnv(cfg, api)
+	err = Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "could not read the project conventions") {
+		t.Errorf("err = %v, want the broken freshness check reported", err)
+	}
+}
+
+// hydratedPlanDBAt hydrates the given config's project-1 plan by claiming its
+// one workable slice, then hands back a raw connection to the same file so a
+// test can break some column a later, already-hydrated read still has to
+// use.
+func hydratedPlanDBAt(t *testing.T, cfg config.Config, path string) *sql.DB {
+	t.Helper()
+	env, _ := testEnv(cfg, claimableAPI(t))
+	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("next-slice (hydrate): %v", err)
+	}
+	db, err := sql.Open("sqlite3", "file:"+path)
+	if err != nil {
+		t.Fatalf("open the plan: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+// A milestone sibling's own hand-back summary comes from st.Body too, and is
+// read the same lazy way a slice's brief is — [Mirrored.Body] falling back to
+// the workspace only once BodyFresh says the file's copy is stale, and
+// falling back to the file's own stale copy, silently, when the workspace
+// will not answer (see TestNextSliceLogsAFailedMilestoneSummaryRead). The one
+// way this read still fails outright is BodyFresh's own check failing — a
+// garbled stamp on the file, not a Notion outage.
+func TestNextSliceLogsAFailedFreshnessCheckOnAMilestoneSibling(t *testing.T) {
+	cfg := testClaimConfig(t)
+	api := claimableAPI(t)
+	path, err := store.LocalPath("project-1")
+	if err != nil {
+		t.Fatalf("LocalPath: %v", err)
+	}
+	db := hydratedPlanDBAt(t, cfg, path)
+	if _, err := db.Exec(`UPDATE slices SET body_at = 'not a timestamp' WHERE id = 's2'`); err != nil {
+		t.Fatalf("corrupt s2's stamp: %v", err)
+	}
+
+	env, out := testEnv(cfg, api)
+	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("next-slice: %v", err)
+	}
+
+	if !strings.Contains(out.String(), "- Done: Board scaffolding") {
+		t.Errorf("output =\n%s\nwant the sibling named despite its summary failing to read", out.String())
 	}
 }
 
@@ -385,7 +547,7 @@ func TestNextSliceReportsAFailedCall(t *testing.T) {
 // wrote. Without it nothing is read and nothing is written.
 func TestNextSliceNeedsAnAssignee(t *testing.T) {
 	api := claimableAPI(t)
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
 
@@ -403,7 +565,7 @@ func TestNextSliceNeedsAnAssignee(t *testing.T) {
 // Setup that has not happened yet is reported before anything is claimed.
 func TestNextSliceReportsUnfinishedSetup(t *testing.T) {
 	api := claimableAPI(t)
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 
 	err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
@@ -419,7 +581,7 @@ func TestNextSliceReportsUnfinishedSetup(t *testing.T) {
 func TestNextSliceReportsAFailedWrite(t *testing.T) {
 	for _, args := range [][]string{{"next-slice", "--project", "project-1"}, {"next-slice", "--json", "--project", "project-1"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			env, _ := testEnv(testClaimConfig(), claimableAPI(t))
+			env, _ := testEnv(testClaimConfig(t), claimableAPI(t))
 			env.Out = failingWriter{}
 
 			err := Run(context.Background(), args, env)
@@ -443,7 +605,7 @@ func TestNextSliceRejectsAMisusedCommandLine(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := claimableAPI(t)
-			env, out := testEnv(testClaimConfig(), api)
+			env, out := testEnv(testClaimConfig(t), api)
 
 			err := Run(context.Background(), tt.args, env)
 
@@ -475,7 +637,7 @@ func TestNextSliceClaimsAProjectWithNoAssigneeColumn(t *testing.T) {
 	api.dataSources = map[string]notion.DataSource{
 		"slices-ds": selectMilestoneSlicesDS("M1: Client", "M2: Board", "M3: Later"),
 	}
-	env, out := testEnv(testClaimConfig(), api)
+	env, out := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
@@ -500,20 +662,29 @@ func TestNextSliceClaimsAProjectWithNoAssigneeColumn(t *testing.T) {
 // own board, not whichever the query happened to return first: a plan written
 // in one go shares a created time to the minute, so the board's order is the
 // only order it has.
-func TestNextSliceTakesTheTopSliceOfTheBoard(t *testing.T) {
+// next-slice used to read the board's own view order (notion.PlanOrder) to
+// decide which Todo slice comes first. Every command now reads its plan from
+// the local file store.ForProject hydrates once, and that hydrate — see
+// Notion.planForPull's own doc comment — deliberately never asks for the
+// board's view order at all: the local file's own position, seeded from
+// whatever order the workspace's slices query answered in, is the plan's
+// order from here on, on this path and every other.
+func TestNextSliceTakesTheFirstSliceTheQueryAnswered(t *testing.T) {
 	api := claimableAPI(t)
+	// A view order that would pick a different slice first, to prove it is
+	// never read.
 	api.order = map[string][]string{"slices-ds": {"s1", "s2", "s5", "s4", "s3"}}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
 	}
 
-	if len(api.updates) != 1 || api.updates[0].id != "s4" {
-		t.Fatalf("updates = %+v, want s4, the board's first Todo slice of M2: Board", api.updates)
+	if len(api.updates) != 1 || api.updates[0].id != "s3" {
+		t.Fatalf("updates = %+v, want s3, the first Todo slice the query answered", api.updates)
 	}
-	if len(api.ordered) != 1 || api.ordered[0] != "slices-ds" {
-		t.Errorf("order reads = %v, want the slices' own view read once", api.ordered)
+	if len(api.ordered) != 0 {
+		t.Errorf("read the board's view order %v, want it never read", api.ordered)
 	}
 }
 
@@ -522,7 +693,7 @@ func TestNextSliceTakesTheTopSliceOfTheBoard(t *testing.T) {
 func TestNextSliceWorksWithoutAReadableBoardOrder(t *testing.T) {
 	api := claimableAPI(t)
 	api.orderErr = errors.New("notion: 500")
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
@@ -575,7 +746,7 @@ func TestNextSliceReportsNothingToClaim(t *testing.T) {
 				dataSources: map[string]notion.DataSource{"slices-ds": selectMilestoneSlicesDS(tt.options...)},
 				pages:       map[string][]notion.Page{"slices-ds": tt.slices},
 			}
-			env, out := testEnv(testClaimConfig(), api)
+			env, out := testEnv(testClaimConfig(t), api)
 
 			err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
 
@@ -605,7 +776,7 @@ func TestNextSlicePassesOverASliceOutsideThePlan(t *testing.T) {
 		dataSources: map[string]notion.DataSource{"slices-ds": selectMilestoneSlicesDS("M1: Client")},
 		pages:       map[string][]notion.Page{"slices-ds": {slicePage("s1", "Orphan", notion.SliceTodo, "gone", "", "")}},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
 
@@ -622,7 +793,7 @@ func TestNextSlicePassesOverASliceOutsideThePlan(t *testing.T) {
 func TestNextSliceReportsAFailedSchemaRead(t *testing.T) {
 	api := claimableAPI(t)
 	api.dataSourceErr = errors.New("boom")
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "load the slices schema") {
@@ -668,7 +839,7 @@ func TestNextSliceMigratesAnOldProject(t *testing.T) {
 			},
 		},
 	}
-	env, out := testEnv(testClaimConfig(), api)
+	env, out := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
@@ -717,4 +888,26 @@ func relatedSlicePage(id, name, status, milestoneID string) notion.Page {
 	p := slicePage(id, name, status, "", "", "")
 	p.Properties[notion.PropMilestone] = notion.PropertyValue{Relation: &[]notion.Relation{{ID: milestoneID}}}
 	return p
+}
+
+// selectNextSlice is handed a domain.Project directly, so a dependency
+// naming an ID the plan itself never carries — logged and never counted, the
+// same rule Blockers itself follows — is exactly checkable here, whatever
+// backend actually produced the plan; the local replica's own foreign keys
+// make such an edge impossible to have hydrated with in the first place, so
+// this is the one place left able to construct it at all.
+func TestSelectNextSlicePassesOverAnUnknownDependency(t *testing.T) {
+	milestone := domain.Milestone{ID: "M1", Name: "M1", Status: domain.MilestoneActive}
+	plan := domain.NewProject("proj", "nat", []domain.Milestone{milestone}, []domain.Slice{
+		{ID: "s1", Name: "Waits on nothing readable", Status: domain.SliceTodo, MilestoneID: "M1",
+			DependsOn: []string{"nowhere"}},
+	})
+
+	_, s, err := selectNextSlice(plan)
+	if err != nil {
+		t.Fatalf("selectNextSlice: %v", err)
+	}
+	if s.ID != "s1" {
+		t.Errorf("slice = %+v, want the one unknown-dependency slice handed out", s)
+	}
 }

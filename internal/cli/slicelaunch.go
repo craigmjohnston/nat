@@ -14,7 +14,6 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
-	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // sliceLaunch runs the board's own l key headlessly: it claims a slice and
@@ -56,19 +55,20 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 	if cfg.AssigneeUserID == "" {
 		return fmt.Errorf("no assignee in the config: open the board with `nat` and finish setting it up")
 	}
-	client := env.NewClient(env.Tokens.Token)
-	st := store.Over(client)
+	st, err := env.storeFor(ctx, projectID, project)
+	if err != nil {
+		return err
+	}
 
-	page, err := client.GetPage(ctx, id)
+	s, _, err := st.Slice(ctx, id)
 	if err != nil {
 		return fmt.Errorf("load the slice: %w", err)
 	}
-	s := domain.SliceFromPage(*page)
 	if s.Status != domain.SliceTodo && s.Status != domain.SliceClaimed {
 		return fmt.Errorf("%q is %s: only a Todo slice or one in progress with no live session can be launched",
 			s.Name, s.StatusName)
 	}
-	if blockers, _ := domain.Blockers(s, dependencyIndex(ctx, client, s)); len(blockers) > 0 {
+	if blockers, _ := domain.Blockers(s, dependencyIndex(ctx, st, s)); len(blockers) > 0 {
 		return blockedError(s, blockers)
 	}
 	if live, err := env.NewTmux().LiveSlices(); err == nil {

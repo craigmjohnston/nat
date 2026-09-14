@@ -268,11 +268,12 @@ func TestLocalApplyAssigneeRecordsTheNameAndNothingElse(t *testing.T) {
 		t.Errorf("assignee = %q, want the identity column untouched", got.assignee)
 	}
 
-	// Slice() reads AssigneeName off the identity column alone, so nothing
-	// this write touched shows up there — which is exactly the point: this
-	// slice adds the column without changing anything that already reads it.
-	if after := readBack(t, l, "design"); !reflect.DeepEqual(before, after) {
-		t.Errorf("slice = %+v, want nothing the existing reads see to have changed", after)
+	// Slice() reads AssigneeName off assignee_name, so this write is exactly
+	// what shows up there; everything else about the slice is untouched.
+	after := readBack(t, l, "design")
+	before.AssigneeName = "Craig Johnston (workspace)"
+	if !reflect.DeepEqual(before, after) {
+		t.Errorf("slice = %+v, want only AssigneeName changed: %+v", after, before)
 	}
 	if dirty, err := l.Dirty(ctx, "design"); err != nil || dirty {
 		t.Errorf("Dirty after ApplyAssignee = %v, %v, want it to leave the slice clean", dirty, err)
@@ -645,6 +646,34 @@ func TestLocalHydrateRepullUpdatesReordersAndDrops(t *testing.T) {
 	}
 	if got := readRawSlice(t, l, "d").position; got <= posB {
 		t.Errorf("position(d) = %v, want it appended past b's own %v", got, posB)
+	}
+}
+
+// A dependency naming a slice the reading itself never returned, and the file
+// has never met either, is dropped rather than written: slice_deps' foreign
+// keys make writing it impossible, and the rule everywhere else that reads a
+// plan's dependencies already follows is that an unreadable one is never
+// counted.
+func TestLocalHydrateDropsADependencyOutsideTheReading(t *testing.T) {
+	l, _ := openPlan(t)
+	ctx := context.Background()
+
+	reading := Plan{
+		Project: domain.Project{
+			ID: "proj", Name: "A replica",
+			Slices: []domain.Slice{
+				{ID: "a", Name: "First", Status: domain.SliceTodo, StatusName: "Todo",
+					DependsOn: []string{"nowhere"}},
+			},
+		},
+	}
+	if err := l.Hydrate(ctx, Project{ID: "proj"}, reading, nil, time.Now()); err != nil {
+		t.Fatalf("Hydrate: %v", err)
+	}
+
+	got := readBack(t, l, "a")
+	if len(got.DependsOn) != 0 {
+		t.Errorf("depends on = %v, want the edge to an unmet slice dropped", got.DependsOn)
 	}
 }
 

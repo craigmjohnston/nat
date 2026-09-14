@@ -9,7 +9,7 @@ import (
 )
 
 func TestPathsPrintsConfigLogDirAndNudgePath(t *testing.T) {
-	env, out := testEnv(testConfig(), &fakeAPI{})
+	env, out := testEnv(testConfig(t), &fakeAPI{})
 
 	if err := Run(context.Background(), []string{"paths"}, env); err != nil {
 		t.Fatalf("paths: %v", err)
@@ -28,7 +28,7 @@ func TestPathsPrintsConfigLogDirAndNudgePath(t *testing.T) {
 }
 
 func TestPathsPrintsJSON(t *testing.T) {
-	env, out := testEnv(testConfig(), &fakeAPI{})
+	env, out := testEnv(testConfig(t), &fakeAPI{})
 
 	if err := Run(context.Background(), []string{"paths", "--json"}, env); err != nil {
 		t.Fatalf("paths --json: %v", err)
@@ -51,7 +51,7 @@ func TestPathsPrintsJSON(t *testing.T) {
 }
 
 func TestPathsTakesNoArguments(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"paths", "stray"}, env)
 
@@ -64,7 +64,7 @@ func TestPathsTakesNoArguments(t *testing.T) {
 }
 
 func TestPathsRejectsUnknownFlag(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"paths", "--unknown"}, env)
 
@@ -76,7 +76,7 @@ func TestPathsRejectsUnknownFlag(t *testing.T) {
 // TestPathsHandlesUnresolvableHomes tests that paths reports errors when
 // path resolution fails due to missing HOME.
 func TestPathsHandlesUnresolvableHomes(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	t.Setenv("HOME", "")
 	t.Setenv("XDG_CONFIG_HOME", "")
@@ -94,7 +94,7 @@ func TestPathsHandlesUnresolvableHomes(t *testing.T) {
 // CONFIG_HOME so config.Path() succeeds, but unset HOME and XDG_STATE_HOME
 // so logging.Dir() fails.
 func TestPathsHandlesUnresolvableLogDir(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	// Set a valid XDG_CONFIG_HOME so config.Path() succeeds
 	t.Setenv("XDG_CONFIG_HOME", "/tmp/xdg_config")
@@ -116,7 +116,7 @@ func TestPathsHandlesUnresolvableLogDir(t *testing.T) {
 // nudge path resolution fails. We use the nudgePathFunc hook to stub out
 // nudge.Path() to return an error.
 func TestPathsHandlesUnresolvableNudgePath(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	// Save the original nudgePathFunc and restore it at the end
 	origNudgePathFunc := nudgePathFunc

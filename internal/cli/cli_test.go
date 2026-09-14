@@ -5,12 +5,35 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
+
+// TestMain pins HOME and XDG_DATA_HOME to a directory this test binary made
+// for itself, before a single test runs. Every headless command now opens a
+// project's plan file (store.LocalDir, under one or the other depending on
+// the OS) whether or not a test means to exercise it, and without this a
+// plan opened by a test that forgot to isolate itself would land in whatever
+// this machine's real plans directory is. testConfig itself overrides both
+// again, per test, with a directory of that test's own — this is the
+// fallback for anything that reaches a plan file without going through it.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "nat-cli-test-*")
+	if err != nil {
+		panic(err)
+	}
+	if err := os.Setenv("HOME", dir); err != nil {
+		panic(err)
+	}
+	if err := os.Setenv("XDG_DATA_HOME", dir); err != nil {
+		panic(err)
+	}
+	os.Exit(m.Run())
+}
 
 // testSliceID is a valid Notion page ID for testing.
 const testSliceID = "3b738308f654815fa843dce9c020efb4"
@@ -400,7 +423,17 @@ func testEnv(cfg config.Config, api *fakeAPI) (Env, *bytes.Buffer) {
 }
 
 // testConfig is a config pointing at one project, as onboarding writes it.
-func testConfig() config.Config {
+// Every test in this package names the same project, "project-1" — so
+// without a plan directory of its own, one test would find the plan the
+// previous test already hydrated. HOME and XDG_DATA_HOME, pinned here to a
+// fresh directory of this test's own, are what store.LocalDir resolves a
+// plan's path from, on macOS and everywhere else respectively; t.Setenv
+// restores both once this test ends.
+func testConfig(t testing.TB) config.Config {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_DATA_HOME", dir)
 	return config.Config{
 		ActiveProjectID: "project-1",
 		Projects: map[string]config.ProjectConfig{
@@ -425,7 +458,7 @@ func TestIsCommandTellsACommandFromTheBoard(t *testing.T) {
 func TestRunPrintsTheHelpText(t *testing.T) {
 	for _, arg := range []string{"help", "-h", "--help"} {
 		t.Run(arg, func(t *testing.T) {
-			env, out := testEnv(testConfig(), &fakeAPI{})
+			env, out := testEnv(testConfig(t), &fakeAPI{})
 
 			if err := Run(context.Background(), []string{arg}, env); err != nil {
 				t.Fatalf("Run(%q) = %v", arg, err)
@@ -440,7 +473,7 @@ func TestRunPrintsTheHelpText(t *testing.T) {
 // The help text is the one thing worth saying when a write fails, and there is
 // nowhere left to say it — so the error is handed back to the caller.
 func TestRunReportsAFailedWrite(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	env.Out = failingWriter{}
 
 	err := Run(context.Background(), []string{"help"}, env)
@@ -458,7 +491,7 @@ var errWrite = errors.New("no room")
 func (failingWriter) Write([]byte) (int, error) { return 0, errWrite }
 
 func TestRunRejectsAnUnknownCommand(t *testing.T) {
-	env, out := testEnv(testConfig(), &fakeAPI{})
+	env, out := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"bogus"}, env)
 
@@ -478,7 +511,7 @@ func TestRunRejectsAnUnknownCommand(t *testing.T) {
 }
 
 func TestRunRejectsAnEmptyCommandLine(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), nil, env)
 
