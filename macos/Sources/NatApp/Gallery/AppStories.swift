@@ -36,6 +36,16 @@ enum AppStories {
     /// plan is in view.
     private static let rail = CGSize(width: 372, height: 840)
 
+    /// Waits for a background (never-activated) project's tab to have a
+    /// loaded plan — the async task `AppModel.start` fires for every tab but
+    /// the active one — without ever activating it, which is the point of
+    /// the story this backs.
+    private static func waitForBackgroundAttention(_ appModel: AppModel, projectID: String) async {
+        while appModel.attention(projectID: projectID) == .none {
+            await Task.yield()
+        }
+    }
+
     /// The fixture plan with a dozen more slices in flight — what a rail
     /// with more running than fits looks like. The fixture plan's own six
     /// sit inside any share the rail hands out; twice that is what the
@@ -287,6 +297,21 @@ enum AppStories {
                 ),
                 onNewProject: {}
             )
+        },
+
+        Story(
+            name: "project-tabs-background-attention",
+            summary: "A second project's tab carries the attention dot for a live agent "
+                + "even though this run has never opened it — loaded from its own cache "
+                + "and a background refresh, not a click.",
+            size: CGSize(width: 640, height: 40)
+        ) {
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(agents: Fixtures.agentStatuses),
+                config: Fixtures.twoProjectConfig
+            )
+            await waitForBackgroundAttention(appModel, projectID: Fixtures.secondProjectID)
+            return ProjectTabsView(appModel: appModel, onNewProject: {})
         },
 
         // MARK: - The rail

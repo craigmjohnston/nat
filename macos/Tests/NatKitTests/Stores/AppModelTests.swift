@@ -367,6 +367,60 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(appModel.projectStore?.projectID, "proj-b")
     }
 
+    /// A live agent on a project the user has never clicked into still shows
+    /// attention on its tab — `start()` loads every tab's plan, not only the
+    /// active one, so `attention(projectID:)` has something to attribute the
+    /// activity poll's reading to.
+    @MainActor
+    func testAppModel_backgroundTabShowsAttentionWithoutBeingVisited() async {
+        let liveSlice = Slice(
+            id: "s-b", name: "Slice B", status: "In progress", milestoneID: "m-1",
+            assignee: "", pr: "", url: "", blocked: false, handedBack: false
+        )
+        let client = ReapingClient(
+            plans: [
+                "proj-a": ProjectInfo(
+                    project: Project(id: "proj-a", name: "A Project", conventions: ""),
+                    milestones: [], slices: []
+                ),
+                "proj-b": ProjectInfo(
+                    project: Project(id: "proj-b", name: "B Project", conventions: ""),
+                    milestones: [Milestone(id: "m-1", name: "M1", order: 1, status: "Active")],
+                    slices: [liveSlice]
+                ),
+            ],
+            agents: [AgentStatus(sliceID: "s-b", session: "nat-s-b", activity: .working)]
+        )
+        let testConfig = NatProjectConfig(
+            projects: [
+                "proj-a": ProjectConfig(name: "A Project", slicesDSID: "ds-a", workingDir: "/path/a"),
+                "proj-b": ProjectConfig(name: "B Project", slicesDSID: "ds-b", workingDir: "/path/b")
+            ]
+        )
+        let appModel = AppModel(
+            configReader: MockConfigReader(response: .success(testConfig)),
+            planCache: NullTestPlanCache(),
+            pollIntervalSeconds: 3600,
+            pathsProvider: { NatPaths(config: "/fake/config.json", logDir: "/fake", nudge: "/fake/nudge") },
+            clientFactory: { client },
+            activityStoreFactory: { ActivityStore(client: client) }
+        )
+
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+        XCTAssertEqual(appModel.activeProjectID, "proj-a", "proj-a must stay active — this is not a tab switch")
+
+        // The activity poll and proj-b's own background load both land
+        // asynchronously; wait for both without ever activating proj-b.
+        while appModel.activityStore?.agents.isEmpty ?? true {
+            await Task.yield()
+        }
+        while appModel.attention(projectID: "proj-b") == .none {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(appModel.attention(projectID: "proj-b").role, .working)
+    }
+
     // MARK: - Per-project detail/diff/PR stores
 
     @MainActor

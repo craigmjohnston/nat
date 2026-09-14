@@ -11,26 +11,37 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 )
 
-// usageProbeTimeout is how long a probe waits for the sink file to appear
-// before giving up and reporting unavailable. rate_limits only appears after
-// the session's first API response, so this has to cover one haiku turn's
-// reply as well as the statusline write that follows it — long enough for
-// that, short enough that gnat's refresh is never left hanging on a probe
-// that will not land.
+// usageProbeTimeout is how long a probe waits for a qualifying reading (one
+// carrying at least one rate-limit window) before giving up and reporting
+// unavailable — long enough for the /usage panel to open, fetch, and close,
+// short enough that gnat's refresh is never left hanging on a probe that
+// will not land.
 var usageProbeTimeout = 30 * time.Second
 
-// usagePollInterval is how often the probe checks for the sink file.
+// usagePollInterval is how often the probe checks for a qualifying reading.
 var usagePollInterval = 500 * time.Millisecond
 
-// usageSleep is what the probe waits on between polls and before its first
-// prompt; time.Sleep in production, faked in tests so a command exercising a
+// usageSleep is what the probe waits on between polls and before driving the
+// panel; time.Sleep in production, faked in tests so a command exercising a
 // 30-second timeout does not take 30 seconds to run.
 var usageSleep = time.Sleep
 
+// usageNow is how the probe reads the current time for its timeout and
+// half-timeout-retry math; time.Now in production, replaced in tests
+// alongside usageSleep so a poll loop's timing is exercised deterministically
+// rather than by waiting on the wall clock.
+var usageNow = time.Now
+
 // usagePromptSettleWait is how long the probe waits after launching Claude
-// Code before pasting its prompt — long enough for the composer to be ready
-// to receive it.
+// Code before driving the /usage command — long enough for the composer to
+// be ready to receive it.
 var usagePromptSettleWait = 3 * time.Second
+
+// usagePanelWait is how long the probe waits after opening the /usage panel
+// before closing it again — long enough for the panel's own fetch to land,
+// since closing the panel is what triggers the statusline write that
+// actually carries the reading.
+var usagePanelWait = 2 * time.Second
 
 // usageProbeDirFunc resolves the probe's scratch directory; agent.UsageProbeDir
 // in production, pointed at a throwaway directory in tests so a test run
@@ -71,9 +82,14 @@ func usage(args []string, env Env) error {
 }
 
 // probeUsage runs one throwaway probe session end to end: lay the settings
-// and clear any stale sink left by a killed prior run, launch, prompt, poll,
-// and clean up — the tmux session, the sink file and the probe's own
-// transcript — whatever the outcome.
+// and clear any stale sink left by a killed prior run, launch, drive the
+// local /usage panel, poll, and clean up — the tmux session, the sink file
+// and the probe's own transcript — whatever the outcome.
+//
+// The probe never sends this session a prompt and spends no model turn to
+// read usage: /usage is a local slash command, free to open and close, and
+// is driven by literal keystrokes ([agent.Tmux.SendKeys]/[agent.Tmux.Interrupt])
+// rather than [agent.Tmux.SendPrompt], which this file never calls.
 func probeUsage(env Env) (agent.UsageReading, error) {
 	dir, err := usageProbeDirFunc()
 	if err != nil {
@@ -105,19 +121,25 @@ func probeUsage(env Env) (agent.UsageReading, error) {
 		return agent.UsageReading{}, err
 	}
 
-	// rate_limits only appears after the session's first API response, so one
-	// minimal prompt is sent once the composer has had a moment to come up.
+	// Once the composer has had a moment to come up, /usage opens the panel —
+	// literal keystrokes, never a prompt.
 	usageSleep(usagePromptSettleWait)
-	if err := tmux.SendPrompt(session, "hi"); err != nil {
-		return agent.UsageReading{}, fmt.Errorf("prompt the usage probe: %w", err)
+	if err := tmux.SendKeys(session, "/usage", "Enter"); err != nil {
+		return agent.UsageReading{}, fmt.Errorf("open the usage panel in the usage probe: %w", err)
 	}
 
-	data, err := waitForUsageSink(sinkPath, usageProbeTimeout)
-	if err != nil {
-		return agent.UsageReading{}, err
+	// Verified live 2026-09-14 on Claude Code 2.1.236: the /usage panel's own
+	// fetch populates the session's rate-limit state itself, ahead of the
+	// statusline docs' claim that rate_limits appears "only after the first
+	// API response" — that is inexact, /usage populates it too. Closing the
+	// panel is what triggers the statusline refresh that carries the
+	// reading.
+	usageSleep(usagePanelWait)
+	if err := tmux.Interrupt(session); err != nil {
+		return agent.UsageReading{}, fmt.Errorf("close the usage panel in the usage probe: %w", err)
 	}
 
-	reading, transcriptPath, err := agent.ParseUsageSink(data)
+	reading, transcriptPath, err := waitForUsageReading(tmux, session, sinkPath, usageProbeTimeout)
 	_ = os.Remove(sinkPath)
 	if transcriptPath != "" {
 		_ = os.Remove(transcriptPath)
@@ -128,18 +150,31 @@ func probeUsage(env Env) (agent.UsageReading, error) {
 	return reading, nil
 }
 
-// waitForUsageSink polls for the probe's sink file to appear, up to timeout,
-// answering its contents the first time a read succeeds. A read that fails —
-// the file does not exist yet, or is only half written by the redirect that
-// is still going — is not itself a failure; only running out of time is.
-func waitForUsageSink(path string, timeout time.Duration) ([]byte, error) {
-	deadline := time.Now().Add(timeout)
+// waitForUsageReading polls the probe's sink file up to timeout, answering
+// the first reading that carries at least one rate-limit window. Claude Code
+// writes a statusline payload at startup, before any rate-limit state
+// exists — a payload that parses but carries neither window is "not yet",
+// never an answer, and so is one that fails to parse at all (the redirect
+// writing it can be read mid-write). If half the timeout passes with nothing
+// to show, Escape is sent again — harmless at the composer, and covers a
+// panel that opened late.
+func waitForUsageReading(tmux *agent.Tmux, session, path string, timeout time.Duration) (agent.UsageReading, string, error) {
+	deadline := usageNow().Add(timeout)
+	retryAt := usageNow().Add(timeout / 2)
+	retried := false
 	for {
 		if data, err := os.ReadFile(path); err == nil {
-			return data, nil
+			if reading, transcriptPath, err := agent.ParseUsageSink(data); err == nil &&
+				(reading.FiveHour != nil || reading.SevenDay != nil) {
+				return reading, transcriptPath, nil
+			}
 		}
-		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("usage probe timed out after %s waiting for a reading", timeout)
+		if usageNow().After(deadline) {
+			return agent.UsageReading{}, "", fmt.Errorf("usage probe timed out after %s waiting for a reading", timeout)
+		}
+		if !retried && !usageNow().Before(retryAt) {
+			retried = true
+			_ = tmux.Interrupt(session)
 		}
 		usageSleep(usagePollInterval)
 	}

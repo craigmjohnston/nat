@@ -262,6 +262,15 @@ public final class AppModel {
             if let firstProjectID = sortedProjects.first?.key {
                 await activateProject(firstProjectID, nudgePath: nudgePath, config: loadedConfig)
             }
+
+            // Every other tab needs a loaded plan too, so a live agent on a
+            // project the user has never clicked into still shows attention
+            // on its tab (`attention(projectID:)` has nothing to attribute
+            // without one) — loaded from each project's own cache and then
+            // refreshed in the background, never blocking startup on it.
+            for tab in projectTabs where tab.id != sortedProjects.first?.key {
+                loadBackgroundProject(tab.id)
+            }
         } catch {
             // No config file to read from is the common case here, not a
             // crash-worthy one: it is exactly what a first run looks like.
@@ -309,6 +318,20 @@ public final class AppModel {
         // (Re)start nudge watcher and polling
         startNudgeWatcher(for: projectStore, nudgePath: nudgePath)
         startPolling(for: projectStore, seconds: pollSeconds(config))
+    }
+
+    /// Gives a background (never-activated) project's tab a loaded plan to
+    /// attribute a live agent to, without the polling, nudge watcher or
+    /// review-stats reading that only the active project gets: creates its
+    /// store if it has none, then loads it — cache first, then a network
+    /// refresh, `ProjectStore.load()`'s own shape — as an unawaited task, so
+    /// one slow project's read never holds up the rest of startup.
+    private func loadBackgroundProject(_ projectID: String) {
+        if stores[projectID] == nil {
+            stores[projectID] = ProjectStore(projectID: projectID, client: clientFactory(), cache: planCache)
+        }
+        guard let store = stores[projectID] else { return }
+        Task { await store.load() }
     }
 
     /// Activate a project by ID (public convenience).
