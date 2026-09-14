@@ -203,7 +203,7 @@ func (f *PlanForm) save(a *App) tea.Cmd {
 func launchPlanAgent(l AgentLauncher, projectID, projectName, workdir, request string, m config.AgentModel) tea.Cmd {
 	return func() tea.Msg {
 		session, tag := agent.PlanSessionName(projectID), agent.PlanTag(projectID)
-		file, err := agent.WritePromptFile(session, agent.PlanPrompt(projectID, projectName, workdir, request))
+		file, err := agent.WritePromptFile(session, agent.PlanPrompt(projectID, projectName, workdir, request, agent.FrontendTUI))
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch planning agent: %w", err)}
 		}

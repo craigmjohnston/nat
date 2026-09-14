@@ -369,6 +369,67 @@ func TestSliceLaunchWritesTheFullPromptContext(t *testing.T) {
 	}
 }
 
+// A hand-run slice-launch with no --frontend claims nothing about where the
+// user is; --frontend gnat carries that claim straight into the prompt, the
+// same one gnat's own NatClient passes on every launch.
+func TestSliceLaunchWritesTheFrontendIntoThePrompt(t *testing.T) {
+	dir := t.TempDir()
+	page := slicePageForLaunch(dir)
+	api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {page}}}
+	cfg := testClaimConfig(t)
+	env, _ := testEnv(cfg, api)
+	runner := &agentTestRunner{}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+	env.NewGit = func() GitCLI { return nil }
+	env.NewWorktrees = func() actions.Worktrees { return nil }
+	var out strings.Builder
+	env.Out = &out
+
+	err := Run(context.Background(), []string{
+		"slice-launch", testSliceID, "--project", "project-1", "--frontend", "gnat",
+	}, env)
+	if err != nil {
+		t.Fatalf("slice-launch: %v", err)
+	}
+
+	argv := strings.Join(runner.launchArgs, " ")
+	m := regexp.MustCompile(`\$\(cat '([^']+)'\)`).FindStringSubmatch(argv)
+	if m == nil {
+		t.Fatalf("launch argv = %q, want the prompt file read back with $(cat ...)", argv)
+	}
+	prompt, readErr := os.ReadFile(m[1])
+	if readErr != nil {
+		t.Fatalf("read the prompt file: %v", readErr)
+	}
+	if !strings.Contains(string(prompt), "The user is driving this from gnat, the macOS app.") {
+		t.Errorf("prompt does not name gnat as the frontend:\n%s", prompt)
+	}
+}
+
+// An invalid --frontend value is refused before anything is claimed or
+// launched, rather than silently ignored or read as unspecified.
+func TestSliceLaunchRefusesAnInvalidFrontend(t *testing.T) {
+	api := &fakeAPI{pages: map[string][]notion.Page{
+		"slices-ds": {slicePage(testSliceID, "Write the UI", notion.SliceTodo, "m1", "", "")},
+	}}
+	env, _ := testEnv(testClaimConfig(t), api)
+	var out strings.Builder
+	env.Out = &out
+
+	err := Run(context.Background(), []string{
+		"slice-launch", testSliceID, "--project", "project-1", "--frontend", "web",
+	}, env)
+	if err == nil {
+		t.Fatal("slice-launch: expected error for an invalid --frontend value")
+	}
+	if !strings.Contains(err.Error(), "--frontend") {
+		t.Errorf("slice-launch error: %v, want it to name --frontend", err)
+	}
+	if len(api.updates) != 0 {
+		t.Errorf("updates = %+v, want nothing claimed for a refused launch", api.updates)
+	}
+}
+
 func TestSliceLaunchModelFlagsOverrideConfig(t *testing.T) {
 	dir := t.TempDir()
 	api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {slicePageForLaunch(dir)}}}

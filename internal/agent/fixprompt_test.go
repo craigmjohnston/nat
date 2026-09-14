@@ -23,6 +23,53 @@ func TestFixPrompt(t *testing.T) {
 	golden(t, "fix-prompt", Prompt(fixContext()))
 }
 
+func TestFixPromptOnTUI(t *testing.T) {
+	c := fixContext()
+	c.Frontend = FrontendTUI
+	golden(t, "fix-prompt-tui", Prompt(c))
+}
+
+func TestFixPromptOnGnat(t *testing.T) {
+	c := fixContext()
+	c.Frontend = FrontendGnat
+	golden(t, "fix-prompt-gnat", Prompt(c))
+}
+
+// The frontend note and the merge sentence are the only two places the fix
+// prompt says anything about which surface the user is on; an unspecified
+// launch says neither.
+func TestFixPromptNamesTheFrontend(t *testing.T) {
+	unset := Prompt(fixContext())
+	for _, unwanted := range []string{"driving this from", "button in the app's PR"} {
+		if strings.Contains(unset, unwanted) {
+			t.Errorf("an unspecified launch's prompt says %q:\n%s", unwanted, unset)
+		}
+	}
+
+	c := fixContext()
+	c.Frontend = FrontendTUI
+	tui := Prompt(c)
+	if want := "The user is driving this from the TUI board.\n\n"; !strings.Contains(tui, want) {
+		t.Errorf("tui prompt does not say %q:\n%s", want, tui)
+	}
+	if want := "merging this one is a key on the user's board"; !strings.Contains(tui, want) {
+		t.Errorf("tui prompt does not say %q:\n%s", want, tui)
+	}
+
+	c = fixContext()
+	c.Frontend = FrontendGnat
+	gnat := Prompt(c)
+	if want := "The user is driving this from gnat, the macOS app.\n\n"; !strings.Contains(gnat, want) {
+		t.Errorf("gnat prompt does not say %q:\n%s", want, gnat)
+	}
+	if want := "merging this one is a button in the app's PR\ntab"; !strings.Contains(gnat, want) {
+		t.Errorf("gnat prompt does not say %q:\n%s", want, gnat)
+	}
+	if strings.Contains(gnat, "a key on the user's board") {
+		t.Errorf("gnat prompt still carries the TUI's board wording:\n%s", gnat)
+	}
+}
+
 // The pull request is the whole brief, and it moves while the session runs, so
 // the agent is told to read it from GitHub rather than handed a copy of what it
 // said at launch. Those two reads are the one place the standing prohibition on

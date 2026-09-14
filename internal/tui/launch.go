@@ -273,6 +273,7 @@ func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, at
 		Fix:             fixLaunch(s),
 		Milestone:       milestone,
 		MilestoneSlices: siblings,
+		Frontend:        agent.FrontendTUI,
 	}, trimModel(m), attach)
 }
 

@@ -131,6 +131,58 @@ func TestWorkshopLaunchFoldsTheRequestIntoThePrompt(t *testing.T) {
 	}
 }
 
+// A hand-run workshop-launch with no --frontend claims nothing about where
+// the user is; --frontend gnat carries that claim into the prompt, the same
+// one gnat's own NatClient passes on every launch.
+func TestWorkshopLaunchWritesTheFrontendIntoThePrompt(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("TMPDIR", dir)
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
+
+	err := Run(context.Background(), []string{
+		"workshop-launch", "--project", "project-1", "--frontend", "gnat",
+	}, env)
+	if err != nil {
+		t.Fatalf("workshop-launch: %v", err)
+	}
+	prompt := launchedPlanPrompt(t, dir)
+	if !strings.Contains(prompt, "The user is driving this from gnat, the macOS app.") {
+		t.Errorf("prompt does not name gnat as the frontend:\n%s", prompt)
+	}
+}
+
+func TestWorkshopLaunchWritesNoFrontendNoteWhenUnset(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("TMPDIR", dir)
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
+
+	err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env)
+	if err != nil {
+		t.Fatalf("workshop-launch: %v", err)
+	}
+	if prompt := launchedPlanPrompt(t, dir); strings.Contains(prompt, "driving this from") {
+		t.Errorf("prompt names a frontend for an unflagged launch:\n%s", prompt)
+	}
+}
+
+// An invalid --frontend value is refused before a session is launched.
+func TestWorkshopLaunchRefusesAnInvalidFrontend(t *testing.T) {
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
+
+	err := Run(context.Background(), []string{
+		"workshop-launch", "--project", "project-1", "--frontend", "web",
+	}, env)
+	if err == nil {
+		t.Fatal("workshop-launch: expected error for an invalid --frontend value")
+	}
+	if !strings.Contains(err.Error(), "--frontend") {
+		t.Errorf("workshop-launch error: %v, want it to name --frontend", err)
+	}
+}
+
 func TestWorkshopLaunchRequestOutranksThePendingWishlist(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)

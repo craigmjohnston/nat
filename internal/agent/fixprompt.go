@@ -33,6 +33,7 @@ func fixPrompt(c PromptContext) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "You are a Claude Code agent working the review of one already-published\nslice of the %q project.\n\n", c.Project.Name)
+	b.WriteString(frontendNote(c.Frontend))
 
 	b.WriteString("## The slice and its pull request\n\n")
 	fmt.Fprintf(&b, "- Name: %s\n", c.Slice.Name)
@@ -64,8 +65,13 @@ func fixPrompt(c PromptContext) string {
 	fmt.Fprintf(&b, "    gh pr view %s --comments\n", c.Slice.PRURL)
 	fmt.Fprintf(&b, "    gh pr checks %s\n\n", c.Slice.PRURL)
 	b.WriteString("Those two reads are the only `gh` you may run. Never open, merge, close\n")
-	b.WriteString("or reopen a pull request: merging this one is a key on the user's board,\n")
-	b.WriteString("pressed once they are satisfied with what you did.\n\n")
+	if c.Frontend == FrontendGnat {
+		b.WriteString("or reopen a pull request: merging this one is a button in the app's PR\n")
+		b.WriteString("tab, pressed once they are satisfied with what you did.\n\n")
+	} else {
+		b.WriteString("or reopen a pull request: merging this one is a key on the user's board,\n")
+		b.WriteString("pressed once they are satisfied with what you did.\n\n")
+	}
 	b.WriteString("Read files with the Read tool, not `cat`/`sed`/`head`, and edit with Edit\n")
 	b.WriteString("or Write, not a shell heredoc — the shell is for running things, not for\n")
 	b.WriteString("reading or editing files.\n")

@@ -628,7 +628,9 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(result.workdir, "/path/to/worktree")
         XCTAssertEqual(result.branch, "slice/test-slice")
         XCTAssertNil(result.warning)
-        XCTAssertEqual(fakeRunner.lastArguments, ["slice-launch", "--project", "proj-123", "--json", "--model", "opus", "--effort", "high", "slice-1"])
+        XCTAssertEqual(fakeRunner.lastArguments, [
+            "slice-launch", "--project", "proj-123", "--json", "--frontend", "gnat", "--model", "opus", "--effort", "high", "slice-1",
+        ])
     }
 
     func testSliceLaunchWithWarning() async throws {
@@ -641,7 +643,24 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(result.workdir, "/path/to/worktree")
         XCTAssertEqual(result.branch, "slice/test-slice")
         XCTAssertEqual(result.warning, "worktrunk not installed; using shared checkout instead")
-        XCTAssertEqual(fakeRunner.lastArguments, ["slice-launch", "--project", "proj-123", "--json", "slice-1"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["slice-launch", "--project", "proj-123", "--json", "--frontend", "gnat", "slice-1"])
+    }
+
+    // gnat always says which frontend it is: the agent's prompt names the app
+    // and phrases pickup/approve/merge as its own tabs rather than the TUI
+    // board's exit-and-refresh and its keys.
+    func testSliceLaunchAlwaysPassesTheGnatFrontend() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceLaunchSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        _ = try await client.sliceLaunch(projectID: "proj-123", sliceRef: "slice-1", model: nil, effort: nil)
+
+        let arguments = fakeRunner.lastArguments ?? []
+        guard let index = arguments.firstIndex(of: "--frontend") else {
+            XCTFail("arguments \(arguments) do not pass --frontend")
+            return
+        }
+        XCTAssertEqual(arguments[index + 1], "gnat")
     }
 
     func testSliceLaunchFailure() async throws {
@@ -671,7 +690,7 @@ final class NatClientTests: XCTestCase {
         XCTAssertTrue(result.wishlist)
         XCTAssertEqual(
             fakeRunner.lastArguments,
-            ["workshop-launch", "--project", "proj-123", "--json", "--model", "opus", "--effort", "high"]
+            ["workshop-launch", "--project", "proj-123", "--json", "--frontend", "gnat", "--model", "opus", "--effort", "high"]
         )
         XCTAssertNil(fakeRunner.lastStandardInput)
     }
@@ -682,7 +701,7 @@ final class NatClientTests: XCTestCase {
 
         _ = try await client.workshopLaunch(projectID: "proj-123", model: nil, effort: nil, request: nil)
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["workshop-launch", "--project", "proj-123", "--json"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["workshop-launch", "--project", "proj-123", "--json", "--frontend", "gnat"])
     }
 
     func testWorkshopLaunchSendsTheRequestOverStdin() async throws {
@@ -695,7 +714,7 @@ final class NatClientTests: XCTestCase {
 
         XCTAssertEqual(
             fakeRunner.lastArguments,
-            ["workshop-launch", "--project", "proj-123", "--json", "--request", "-"]
+            ["workshop-launch", "--project", "proj-123", "--json", "--frontend", "gnat", "--request", "-"]
         )
         XCTAssertEqual(fakeRunner.lastStandardInput, "Add dark mode\nto the board.".data(using: .utf8))
     }
@@ -706,8 +725,23 @@ final class NatClientTests: XCTestCase {
 
         _ = try await client.workshopLaunch(projectID: "proj-123", model: nil, effort: nil, request: "")
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["workshop-launch", "--project", "proj-123", "--json"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["workshop-launch", "--project", "proj-123", "--json", "--frontend", "gnat"])
         XCTAssertNil(fakeRunner.lastStandardInput)
+    }
+
+    // gnat always says which frontend it is — see testSliceLaunchAlwaysPassesTheGnatFrontend.
+    func testWorkshopLaunchAlwaysPassesTheGnatFrontend() async throws {
+        let fakeRunner = FakeRunner(fixture: .workshopLaunchSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        _ = try await client.workshopLaunch(projectID: "proj-123", model: nil, effort: nil, request: nil)
+
+        let arguments = fakeRunner.lastArguments ?? []
+        guard let index = arguments.firstIndex(of: "--frontend") else {
+            XCTFail("arguments \(arguments) do not pass --frontend")
+            return
+        }
+        XCTAssertEqual(arguments[index + 1], "gnat")
     }
 
     func testWorkshopLaunchAlreadyLiveFailure() async throws {
