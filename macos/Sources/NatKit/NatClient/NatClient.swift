@@ -205,15 +205,25 @@ public final class NatClient: Sendable {
     ///   - sliceRef: The slice's URL or Notion page ID
     ///   - model: Optional model name (e.g., "sonnet", "opus", "haiku")
     ///   - effort: Optional effort level (e.g., "low", "medium", "high")
+    ///   - theme: The palette to start Claude Code on (`"light"` or
+    ///     `"dark"`, the same two values `agent.ThemeLight`/`agent.ThemeDark`
+    ///     name on the Go side) — gnat's own light/dark reading, or nil to
+    ///     leave it to Claude Code to decide, which is what an omitted flag
+    ///     always meant before there was a theme to carry
     /// - Returns: LaunchResult with session info and optional warning
     /// - Throws: NatError if the command fails
-    public func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult {
+    public func sliceLaunch(
+        projectID: String, sliceRef: String, model: String?, effort: String?, theme: String? = nil
+    ) async throws -> LaunchResult {
         var arguments = ["slice-launch", "--project", projectID, "--json"]
         if let model = model {
             arguments.append(contentsOf: ["--model", model])
         }
         if let effort = effort {
             arguments.append(contentsOf: ["--effort", effort])
+        }
+        if let theme = theme {
+            arguments.append(contentsOf: ["--theme", theme])
         }
         arguments.append(sliceRef)
         let output = try await runNat(arguments: arguments)
@@ -318,11 +328,15 @@ public final class NatClient: Sendable {
     ///   - effort: Optional effort level, overriding the config's workshop_agent
     ///   - request: What the user wants to workshop, folded into the agent's
     ///     prompt so the session starts on it
+    ///   - theme: The palette to start Claude Code on (`"light"` or
+    ///     `"dark"`, the same two values `agent.ThemeLight`/`agent.ThemeDark`
+    ///     name on the Go side) — gnat's own light/dark reading, or nil to
+    ///     leave it to Claude Code to decide
     /// - Returns: The launched session, its working directory, and whether it
     ///   was launched on the project's pending wishlist
     /// - Throws: NatError if a planning agent is already live, or the command fails
     public func workshopLaunch(
-        projectID: String, model: String?, effort: String?, request: String?
+        projectID: String, model: String?, effort: String?, request: String?, theme: String? = nil
     ) async throws -> WorkshopLaunchResult {
         var arguments = ["workshop-launch", "--project", projectID, "--json"]
         if let model = model, !model.isEmpty {
@@ -330,6 +344,9 @@ public final class NatClient: Sendable {
         }
         if let effort = effort, !effort.isEmpty {
             arguments.append(contentsOf: ["--effort", effort])
+        }
+        if let theme = theme, !theme.isEmpty {
+            arguments.append(contentsOf: ["--theme", theme])
         }
         var standardInput: Data?
         if let request = request, !request.isEmpty {
