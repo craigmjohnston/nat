@@ -482,6 +482,13 @@ func TestAppReloadsThePlanWhenThePlanningAgentExits(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			app, _, _ := launchApp(t)
 			app.live = tt.live
+			// The reload this triggers is an ordinary one, which pulls the
+			// workspace only when the file's own copy has gone stale (see
+			// store.Mirrored.Plan) — backdated here past that, so a case
+			// that does reload is still one query against the fakeNotion to
+			// count, exactly as it was before the board read a plan file at
+			// all.
+			makeLocalPlanStale(t, testProjectID)
 
 			_, cmd := app.Update(tt.msg)
 			run(cmd)

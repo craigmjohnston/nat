@@ -3,10 +3,12 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
+	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // Mirrored is the store a project tracked in Notion reads and writes
@@ -34,6 +36,12 @@ import (
 type Mirrored struct {
 	local  *Local
 	remote *Notion
+	// project is what a Mirrored was wired for, which is what
+	// [Mirrored.ensureHydrated] pulls against when a read reaches the file
+	// before anything else ever has — a caller opening a store afresh and
+	// reading straight from it, rather than by way of [ForProject], which
+	// hydrates eagerly itself before handing one back.
+	project Project
 
 	// migrated is what the last [Mirrored.Pull]'s own migration note said. The
 	// file has nowhere of its own to keep a sentence, so the news that a
@@ -47,11 +55,92 @@ type Mirrored struct {
 	lastPull time.Time
 }
 
-// Mirror wires a local replica to the workspace it mirrors.
-func Mirror(local *Local, remote *Notion) *Mirrored { return &Mirrored{local: local, remote: remote} }
+// Mirror wires a local replica to the workspace it mirrors, for the project p
+// names — which [Mirrored.ensureHydrated] falls back on pulling against, since
+// a read reaching the file may come before [ForProject]'s own hydrate ever
+// has, or before anything has: an app that opens a project's store once and
+// holds it for as long as it runs, rather than building a fresh one per
+// command, has no second chance to hydrate eagerly up front the way
+// [ForProject] does.
+func Mirror(local *Local, remote *Notion, p Project) *Mirrored {
+	return &Mirrored{local: local, remote: remote, project: p}
+}
 
 // Mirrored is a Store.
 var _ Store = (*Mirrored)(nil)
+
+// Puller is answered by a store with a workspace behind it, which pulling
+// only ever means something for. A [Local] plan of its own answers no such
+// interface — there is nowhere for it to pull from — so [Pull] treats its
+// absence as nothing to do rather than an error.
+type Puller interface {
+	Pull(ctx context.Context, p Project) error
+}
+
+// Pull forces a store to bring its copy of a plan into line with whatever is
+// behind it, for the two moments a caller knows better than the clock a
+// read otherwise waits on — the refresh key and the background poll — rather
+// than the staleness an ordinary read pulls for itself over; see
+// [Mirrored.Plan]. A store with nothing behind it answers nil: there is
+// nothing to do, and nothing wrong with asking.
+func Pull(ctx context.Context, s Store, p Project) error {
+	pl, ok := s.(Puller)
+	if !ok {
+		return nil
+	}
+	return pl.Pull(ctx, p)
+}
+
+// planStaleAfter is how old the file's own record of when it was last
+// brought into line with the workspace can be before [Mirrored.Plan] pulls
+// again rather than trusting it. It is long enough that the background poll
+// and the refresh key — which force a pull well inside it — are what
+// normally keeps a copy this young, and short enough that a plan opened
+// after nat has been shut a while catches up on its own rather than waiting
+// on either.
+const planStaleAfter = 5 * time.Minute
+
+// stale reports whether the file's copy of the plan is old enough that
+// [Mirrored.Plan] should pull again before answering from it: never hydrated
+// at all, or hydrated longer ago than planStaleAfter. A freshness reading
+// that itself fails is read as stale — there is nothing safer to assume.
+func (m *Mirrored) stale(ctx context.Context, p Project) bool {
+	synced, err := m.local.SyncedAt(ctx, p.ID)
+	if err != nil || synced.IsZero() {
+		return true
+	}
+	return time.Since(synced) > planStaleAfter
+}
+
+// ensureHydrated brings the file into line with the workspace the one time
+// it has never been at all — a read reaching this Mirrored before it has
+// been hydrated any other way, which is what a store opened once and held
+// for the life of an app (rather than built afresh per command, the way
+// [ForProject] itself already hydrates eagerly before ever handing one back)
+// can no longer rule out: the very first read against it may be any of
+// [Mirrored]'s own methods, not only [Mirrored.Plan]. Unlike the staleness
+// pull [Mirrored.Plan] and [Mirrored.Body] otherwise run, a failure here is
+// not swallowed — there is nothing in the file yet for either to fall back
+// on.
+//
+// ordered says whether this first pull is read by the board's own view order
+// rather than left as the query gave it — true for the board itself, whose
+// domain rule this is, and false for [ForProject]'s own call, which nothing
+// but a headless command's first-ever run against a project reaches and
+// which has no board to read an order for.
+func (m *Mirrored) ensureHydrated(ctx context.Context, ordered bool) error {
+	hydrated, err := m.local.hydrated(ctx, m.project.ID)
+	if err != nil {
+		return err
+	}
+	if hydrated {
+		return nil
+	}
+	if err := m.pull(ctx, m.project, ordered); err != nil {
+		return fmt.Errorf("hydrate the plan: %w", err)
+	}
+	return nil
+}
 
 // Shape reads what can be recorded about a project's slices from the file —
 // never a request, since the file already knows.
@@ -59,11 +148,29 @@ func (m *Mirrored) Shape(ctx context.Context, p Project) (Shape, error) {
 	return m.local.Shape(ctx, p)
 }
 
-// Plan reads the whole plan from the file, carrying through whatever the last
-// [Mirrored.Pull]'s own migration note said — the file has no column for a
-// sentence, so this process's own memory of its last pull is the only place
-// that news survives to be read back.
+// Plan reads the whole plan from the file, hydrating it first if it has never
+// been at all ([Mirrored.ensureHydrated], whose own failure this returns
+// rather than a plan read off an empty file), then pulling again when the
+// file's own copy has gone stale since (see [Mirrored.stale]) — the moments a
+// caller knows better than the clock, [Pull]'s forced reading, are the
+// refresh key and the background poll; every other read leaves that judgment
+// here. A staleness pull that fails is logged and swallowed rather than
+// returned: the file already has a plan in it, reads that fail conclude
+// nothing, and what is on screen is worth more than an error over it.
+//
+// It carries through whatever the last pull's own migration note said — the
+// file has no column for a sentence, so this process's own memory of its
+// last pull is the only place that news survives to be read back.
 func (m *Mirrored) Plan(ctx context.Context, p Project) (Plan, error) {
+	if err := m.ensureHydrated(ctx, true); err != nil {
+		return Plan{}, err
+	}
+	if m.stale(ctx, p) {
+		if err := m.Pull(ctx, p); err != nil {
+			logging.Error("could not refresh a stale plan, reading the file as it stands",
+				"project", p.ID, "err", err)
+		}
+	}
 	plan, err := m.local.Plan(ctx, p)
 	if err != nil {
 		return Plan{}, err
@@ -121,6 +228,9 @@ func (m *Mirrored) Slice(ctx context.Context, id string) (domain.Slice, Shape, e
 // back on: the file is still the best anyone has, and a request that fails
 // says nothing about whether it is still true.
 func (m *Mirrored) Body(ctx context.Context, id string) (string, error) {
+	if err := m.ensureHydrated(ctx, true); err != nil {
+		return "", err
+	}
 	fresh, err := m.local.BodyFresh(ctx, id, m.lastPull)
 	if err != nil {
 		return "", err
@@ -139,12 +249,16 @@ func (m *Mirrored) Body(ctx context.Context, id string) (string, error) {
 }
 
 // PRDescription reads the pull request description a hand-back filed on a
-// slice, from the file — the same section of the same body [Mirrored.Body]
-// answers from the file whenever it is fresh, read here without paying for a
-// laziness this text has never needed: a PR description is read once, at
-// approve, not on every board poll.
+// slice: [Mirrored.Body]'s own laziness, so a plan whose pull never fetches
+// bodies still has this section fresh at the one moment it is asked for —
+// approve — rather than reading whatever the file happened to cache last,
+// which may be nothing at all.
 func (m *Mirrored) PRDescription(ctx context.Context, id string) (string, error) {
-	return m.local.PRDescription(ctx, id)
+	body, err := m.Body(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return lastMarkdownSection(body, notion.PRDescriptionHeading), nil
 }
 
 // pageShape reads the page's own shape from the workspace — what a push that
@@ -456,7 +570,18 @@ func (m *Mirrored) DeleteSlice(ctx context.Context, id string) error {
 // only ever places a slice the file has never seen, so the board's own view
 // order — a request of its own — is never even looked at on this path.
 func (m *Mirrored) Pull(ctx context.Context, p Project) error {
-	plan, err := m.remote.planForPull(ctx, p)
+	return m.pull(ctx, p, false)
+}
+
+// pull is [Mirrored.Pull]'s own body, and [Mirrored.ensureHydrated]'s: reading
+// the plan through the workspace either way — ordered by the board's own
+// view, or left as the query gave it — and taking it into the file.
+func (m *Mirrored) pull(ctx context.Context, p Project, ordered bool) error {
+	read := m.remote.planForPull
+	if ordered {
+		read = m.remote.Plan
+	}
+	plan, err := read(ctx, p)
 	if err != nil {
 		return err
 	}

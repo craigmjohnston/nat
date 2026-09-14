@@ -304,7 +304,7 @@ func (a *App) dropViewer() *agentViewer {
 // the planning agent works the whole plan, so the plan is reloaded.
 func (a *App) afterViewing(v *agentViewer) tea.Cmd {
 	if agent.IsPlanTag(v.sliceID) {
-		return a.startLoad()
+		return a.startLoad(false)
 	}
 	if a.project == nil || a.client == nil {
 		return nil

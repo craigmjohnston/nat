@@ -92,10 +92,14 @@ func (a *App) mergeChosen(pr gh.PR, choice int) tea.Cmd {
 	if choice != choiceMerge {
 		return nil
 	}
+	st, _, ok := a.activeStore()
+	if !ok {
+		return nil
+	}
 	name, ref, dir := a.prview.Target()
 	s := domain.Slice{ID: a.prview.SliceID(), Name: name}
 	a.busy, a.note = true, mergeNote
-	return mergePR(a.prMerger, a.client, s, pr.Number, ref, dir)
+	return mergePR(a.prMerger, st, s, pr.Number, ref, dir)
 }
 
 // mergePR runs gh in the slice's repository and reports what came of it. The
@@ -104,12 +108,12 @@ func (a *App) mergeChosen(pr gh.PR, choice int) tea.Cmd {
 // followed by the status write that says so — [actions.MarkDone] — and a
 // write that fails is reported as itself rather than as a merge that never
 // was, since the pull request is in whatever Notion heard about it.
-func mergePR(merger PRMerger, client NotionAPI, s domain.Slice, number int, ref, dir string) tea.Cmd {
+func mergePR(merger PRMerger, st store.Store, s domain.Slice, number int, ref, dir string) tea.Cmd {
 	return func() tea.Msg {
 		if err := merger.MergePR(dir, ref); err != nil {
 			return prMergedMsg{number: number, sliceID: s.ID, err: err}
 		}
-		if err := actions.MarkDone(context.Background(), store.Over(client), s); err != nil {
+		if err := actions.MarkDone(context.Background(), st, s); err != nil {
 			return prMergedMsg{number: number, sliceID: s.ID, markErr: err}
 		}
 		return prMergedMsg{number: number, sliceID: s.ID}

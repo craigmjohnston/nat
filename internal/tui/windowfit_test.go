@@ -30,8 +30,8 @@ func windowProject() domain.Project {
 }
 
 // sizedApp returns an app of a given window size showing windowProject.
-func sizedApp(width, height int) *App {
-	a := NewApp(testConfig(), newLoadingClient())
+func sizedApp(t *testing.T, width, height int) *App {
+	a := NewApp(testConfig(t), newLoadingClient())
 	a.Update(tea.WindowSizeMsg{Width: width, Height: height})
 	p := windowProject()
 	a.Update(projectLoadedMsg{project: p})
@@ -58,7 +58,7 @@ func checkFits(t *testing.T, view string, width, height int) {
 func TestAppFillsTheWindowAtEveryWidth(t *testing.T) {
 	for _, width := range windowWidths {
 		const height = 24
-		checkFits(t, sizedApp(width, height).View().Content, width, height)
+		checkFits(t, sizedApp(t, width, height).View().Content, width, height)
 	}
 }
 
@@ -67,7 +67,7 @@ func TestAppFillsTheWindowAtEveryWidth(t *testing.T) {
 func TestAppFillsTheWindowWithATerminalOnShow(t *testing.T) {
 	for _, width := range windowWidths {
 		const height = 24
-		a := sizedApp(width, height)
+		a := sizedApp(t, width, height)
 		a.launcher = &fakeLauncher{}
 		term := newFakeTerm()
 		term.frame = strings.Repeat(strings.Repeat("x", 200)+"\n", 40)
@@ -81,13 +81,13 @@ func TestAppFillsTheWindowWithATerminalOnShow(t *testing.T) {
 
 func TestAppGoldenAtEachWidth(t *testing.T) {
 	for _, width := range windowWidths {
-		a := sizedApp(width, 16)
+		a := sizedApp(t, width, 16)
 		golden(t, "app-narrow-"+strconv.Itoa(width), a.View().Content)
 	}
 }
 
 func TestAppHeaderBarHasADistinctAppSegment(t *testing.T) {
-	a := sizedApp(80, 24)
+	a := sizedApp(t, 80, 24)
 	header := a.headerView()
 	if want := a.styles.HeaderApp.Render(appName); !strings.Contains(header, want) {
 		t.Errorf("header = %q, want the app's name as a segment of its own %q", header, want)
@@ -98,7 +98,7 @@ func TestAppHeaderBarHasADistinctAppSegment(t *testing.T) {
 }
 
 func TestAppBoxesTheHeaderWithTheProgressBar(t *testing.T) {
-	lines := strings.Split(stripANSI(sizedApp(80, 24).View().Content), "\n")
+	lines := strings.Split(stripANSI(sizedApp(t, 80, 24).View().Content), "\n")
 	// The header is a bordered section of two lines: its top border, the heading
 	// — the names on the left and the plan's reading right-aligned on the same
 	// line — and the bar under it, which windowProject's one Todo slice leaves
@@ -127,7 +127,7 @@ func TestAppBoxesTheHeaderWithTheProgressBar(t *testing.T) {
 // The heading's reading sits at the line's right-hand end, however much room
 // the names beside it leave.
 func TestAppHeadingRightAlignsThePlansReading(t *testing.T) {
-	line := stripANSI(strings.Split(sizedApp(80, 24).View().Content, "\n")[1])
+	line := stripANSI(strings.Split(sizedApp(t, 80, 24).View().Content, "\n")[1])
 
 	if got, want := strings.TrimRight(line, " │"), "M7: Agent pane view · 0/1"; !strings.HasSuffix(got, want) {
 		t.Errorf("heading = %q, want it to end with %q", got, want)
@@ -146,7 +146,7 @@ func TestAppHeaderBoxShedsTheBarBeforeTheBoardShedsItsRows(t *testing.T) {
 	}{
 		{24, true}, {11, true}, {10, false},
 	} {
-		view := stripANSI(sizedApp(80, tt.height).View().Content)
+		view := stripANSI(sizedApp(t, 80, tt.height).View().Content)
 		if got := strings.Contains(view, strings.Repeat(barCell, 80-2*framePadX)); got != tt.wantBar {
 			t.Errorf("at %d lines the bar is drawn = %v, want %v:\n%s", tt.height, got, tt.wantBar, view)
 		}
@@ -168,7 +168,7 @@ func TestAppHeadingShedsTheMilestoneBeforeTheTally(t *testing.T) {
 	}{
 		{80, true, true}, {40, false, true}, {12, false, false},
 	} {
-		line := stripANSI(headingLineOf(sizedApp(tt.width, 24)))
+		line := stripANSI(headingLineOf(sizedApp(t, tt.width, 24)))
 		if got := strings.Contains(line, "M7"); got != tt.wantMilestone {
 			t.Errorf("at %d columns the milestone is named = %v, want %v: %q",
 				tt.width, got, tt.wantMilestone, line)
@@ -192,7 +192,7 @@ func headingLineOf(a *App) string {
 // A plan with nothing in it has no reading to take: a tally of nothing says
 // nothing, and the heading is the names alone.
 func TestAppHeadingHasNoReadingWithoutAPlanToSum(t *testing.T) {
-	a := NewApp(testConfig(), newLoadingClient())
+	a := NewApp(testConfig(t), newLoadingClient())
 	a.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	a.Update(projectLoadedMsg{project: domain.Project{ID: testProjectID, Name: "empty"}})
 
@@ -205,7 +205,7 @@ func TestAppHeaderKeepsTheBarOnEveryScreen(t *testing.T) {
 	// The header is a band of its own, so what it shows does not move as screens
 	// are pushed over the board: only the name beside the app's segment changes.
 	for _, tt := range []struct{ key, name string }{{"?", "Keys"}, {"i", "Info"}} {
-		a := sizedApp(80, 24)
+		a := sizedApp(t, 80, 24)
 		press(a, tt.key)
 
 		lines := strings.Split(stripANSI(a.View().Content), "\n")
@@ -220,7 +220,7 @@ func TestAppHeaderKeepsTheBarOnEveryScreen(t *testing.T) {
 
 func TestAppProgressBarResizesWithTheWindow(t *testing.T) {
 	for _, width := range windowWidths {
-		view := stripANSI(sizedApp(width, 24).View().Content)
+		view := stripANSI(sizedApp(t, width, 24).View().Content)
 		if !strings.Contains(view, strings.Repeat(barCell, width-2*framePadX)) {
 			t.Errorf("at %d columns the bar should span the body's width:\n%s", width, view)
 		}
@@ -229,7 +229,7 @@ func TestAppProgressBarResizesWithTheWindow(t *testing.T) {
 
 func TestAppBoxesTheHeaderAndTheBoard(t *testing.T) {
 	for _, width := range windowWidths {
-		a := sizedApp(width, 24)
+		a := sizedApp(t, width, 24)
 		lines := strings.Split(stripANSI(a.View().Content), "\n")
 		// The header takes the window's first four lines and the board's box
 		// follows it, closing over the hints — as many lines as they wrapped onto
@@ -254,7 +254,7 @@ func TestAppBoxesTheHeaderAndTheBoard(t *testing.T) {
 func TestAppTooNarrowForBordersDrawsBareBands(t *testing.T) {
 	// Below the framed threshold a border would crowd out the content, so the
 	// bands are drawn bare, the way a too-short window's are.
-	view := sizedApp(4, 24).View().Content
+	view := sizedApp(t, 4, 24).View().Content
 	checkFits(t, view, 4, 24)
 	if strings.Contains(view, "╭") {
 		t.Errorf("a 4-column window should have no borders:\n%s", view)
@@ -281,13 +281,13 @@ func TestClipLines(t *testing.T) {
 func TestAppWrapsKeyHintsThenDropsThemByRank(t *testing.T) {
 	// Wide enough for every hint on one line: the cursor starts on the
 	// milestone, and the row draws its whole set, help included.
-	if view := stripANSI(sizedApp(80, 24).View().Content); !strings.Contains(view, "? help") {
+	if view := stripANSI(sizedApp(t, 80, 24).View().Content); !strings.Contains(view, "? help") {
 		t.Errorf("a wide window should draw every hint:\n%s", view)
 	}
 
 	// Narrow enough that they no longer fit on one line: they wrap onto the
 	// next rather than going, so nothing is lost.
-	view := stripANSI(sizedApp(40, 24).View().Content)
+	view := stripANSI(sizedApp(t, 40, 24).View().Content)
 	for _, want := range []string{"a add slice", "enter expand/collapse", "z show done", "? help"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("at 40 columns the view is missing %q:\n%s", want, view)
@@ -296,7 +296,7 @@ func TestAppWrapsKeyHintsThenDropsThemByRank(t *testing.T) {
 
 	// Narrow and short together: with the body down to its last rows the hints
 	// have only the one line to wrap onto, and the ranks decide what goes.
-	view = stripANSI(sizedApp(40, 10).View().Content)
+	view = stripANSI(sizedApp(t, 40, 10).View().Content)
 	if strings.Contains(view, "? help") {
 		t.Errorf("in a 40x10 window help should have gone:\n%s", view)
 	}
@@ -309,7 +309,7 @@ func TestAppWrapsKeyHintsThenDropsThemByRank(t *testing.T) {
 // cursor: the milestone's actions on a milestone, the slice's on a slice, and
 // the global set where nothing is selected.
 func TestAppHintsRowIsContextual(t *testing.T) {
-	a := sizedApp(80, 24)
+	a := sizedApp(t, 80, 24)
 
 	// hintRows is the hints band as one string, however many lines it wrapped
 	// onto, taken from above the status band's box at the bottom of the window.
@@ -350,7 +350,7 @@ func TestAppHintsRowIsContextual(t *testing.T) {
 // hints, and names what the key would do next rather than the state the board
 // is already in.
 func TestAppHintsNameTheHideDoneToggle(t *testing.T) {
-	a := sizedApp(80, 24)
+	a := sizedApp(t, 80, 24)
 
 	for _, hints := range [][]hint{a.board.milestoneHints(), a.board.sliceHints()} {
 		// The board starts with them hidden, so the key shows them.
@@ -371,7 +371,7 @@ func TestAppHintsNameTheHideDoneToggle(t *testing.T) {
 // it acts on the whole board rather than on the row the rest are about, so it
 // goes ahead even of the way to the help screen.
 func TestAppHintsDropTheHideDoneToggleFirst(t *testing.T) {
-	a := sizedApp(80, 24)
+	a := sizedApp(t, 80, 24)
 
 	hints := append(a.board.milestoneHints(), hint{a.keys.Help, 2})
 	// One line only, and not wide enough for the set: the ranks decide what goes.
@@ -387,7 +387,7 @@ func TestAppHintsDropTheHideDoneToggleFirst(t *testing.T) {
 // Hints wrap before they drop: a window too narrow for them all on one line
 // stacks them onto the lines it has, and no hint is ever broken across two.
 func TestHintsWrapRatherThanDrop(t *testing.T) {
-	a := NewApp(testConfig(), nil)
+	a := NewApp(testConfig(t), nil)
 	hints := a.keys.statusHints()
 	whole := []string{"esc back", "i info", "? help", "r refresh", "q quit"}
 
@@ -418,7 +418,7 @@ func TestHintsWrapRatherThanDrop(t *testing.T) {
 // The hints band grows with the wrapping and the body gives up the lines,
 // rather than the hints being cut off at one line.
 func TestAppHintsBandGrowsAsTheyWrap(t *testing.T) {
-	wide, narrow := sizedApp(120, 24), sizedApp(44, 24)
+	wide, narrow := sizedApp(t, 120, 24), sizedApp(t, 44, 24)
 
 	if got := wide.hintBandHeight(); got != 1 {
 		t.Errorf("hint band = %d lines at 120 columns, want them all on one", got)
@@ -436,7 +436,7 @@ func TestAppHintsBandGrowsAsTheyWrap(t *testing.T) {
 // A window with no lines to spare keeps the hints to one and falls back to
 // dropping them by rank, so what is left is still whole.
 func TestHintsGoInRankOrder(t *testing.T) {
-	a := NewApp(testConfig(), nil)
+	a := NewApp(testConfig(t), nil)
 	// The global hints as they narrow onto a single line: each drop takes the
 	// whole hint, never half of one, and the order is the rank order.
 	dropped := []string{"esc back", "i info", "? help", "r refresh", "q quit"}
@@ -465,7 +465,7 @@ func TestHintsGoInRankOrder(t *testing.T) {
 func TestHintsAreTruncatedOnceThereIsNothingLeftToDrop(t *testing.T) {
 	// One column holds no whole hint, so what is left is cut to fit rather than
 	// overflowing — on however many lines it is allowed.
-	a := NewApp(testConfig(), nil)
+	a := NewApp(testConfig(t), nil)
 	for _, lines := range []int{1, hintsMaxHeight} {
 		for _, line := range a.wrapHints(a.keys.statusHints(), 1, lines) {
 			if got := lipgloss.Width(line); got > 1 {
@@ -478,7 +478,7 @@ func TestHintsAreTruncatedOnceThereIsNothingLeftToDrop(t *testing.T) {
 // A band with no room for the hints at all draws none, rather than one line it
 // has not got.
 func TestHintsWithNoRoomDrawNothing(t *testing.T) {
-	a := NewApp(testConfig(), nil)
+	a := NewApp(testConfig(t), nil)
 	if lines := a.wrapHints(a.keys.statusHints(), 40, 0); lines != nil {
 		t.Errorf("hints = %q, want none", lines)
 	}
@@ -489,7 +489,7 @@ func TestAppStatusLineStaysWithinTheWindowAsItNarrows(t *testing.T) {
 	// the window it sits in. Narrow enough and it is the chip alone, cut to fit;
 	// the loop takes that branch too.
 	for width := 1; width <= 80; width++ {
-		line := sizedApp(width, 24).windowTitle()
+		line := sizedApp(t, width, 24).windowTitle()
 		if got := lipgloss.Width(line); got > width {
 			t.Fatalf("at %d columns the status line is %d wide, want it cut to the window",
 				width, got)
@@ -503,7 +503,7 @@ func TestAppStatusLineStaysWithinTheWindowAsItNarrows(t *testing.T) {
 // The board carries no chip: the heading names the app already. A screen over
 // it leads with its own name instead.
 func TestAppStatusLineChipsOnlyTheScreensOverTheBoard(t *testing.T) {
-	a := sizedApp(80, 24)
+	a := sizedApp(t, 80, 24)
 	if line := a.windowTitle(); strings.Contains(line, "nat") {
 		t.Errorf("status line = %q, want no chip naming the app on the board", line)
 	}
@@ -523,7 +523,7 @@ func TestAppStatusLineChipsOnlyTheScreensOverTheBoard(t *testing.T) {
 // The title the terminal window takes is the band's own line as plain text: a
 // title is text, and a terminal shows escape codes rather than obeying them.
 func TestAppWindowTitleIsThePlainStatusLine(t *testing.T) {
-	a := sizedApp(80, 24)
+	a := sizedApp(t, 80, 24)
 	a.note = "Saved."
 
 	line := a.windowTitle()
@@ -547,7 +547,7 @@ func (a *App) statusBandLine() string {
 func TestAppStatusLineCarriesNoKeyHints(t *testing.T) {
 	// The hints have a row of their own in the window, so the line is the chip
 	// and the message alone.
-	a := sizedApp(80, 24)
+	a := sizedApp(t, 80, 24)
 	a.note = "Saved."
 
 	line := a.windowTitle()
@@ -561,7 +561,7 @@ func TestAppStatusLineCarriesNoKeyHints(t *testing.T) {
 
 func TestAppStatusLineKeepsALongNoteToOneLine(t *testing.T) {
 	// A long note is truncated to the window rather than wrapped or overflowed.
-	a := sizedApp(80, 24)
+	a := sizedApp(t, 80, 24)
 	a.note = strings.Repeat("very long ", 20)
 
 	line := a.windowTitle()
@@ -576,7 +576,7 @@ func TestAppStatusLineKeepsALongNoteToOneLine(t *testing.T) {
 // The window ends at nat's own bottom border, with the status band boxed above
 // it and no blank row under it.
 func TestAppDrawsItsOwnBoxedStatusBand(t *testing.T) {
-	a := sizedApp(80, 24)
+	a := sizedApp(t, 80, 24)
 	a.note = "Saved."
 
 	lines := strings.Split(stripANSI(a.View().Content), "\n")
@@ -608,7 +608,7 @@ func TestAppHintsRowIsEmptyForAnOpenForm(t *testing.T) {
 
 func TestAppKeepsALongErrorOnOneLine(t *testing.T) {
 	const width, height = 40, 24
-	a := sizedApp(width, height)
+	a := sizedApp(t, width, height)
 	a.Update(notionErrMsg{err: errors.New("load milestones: " + strings.Repeat("boom ", 40))})
 
 	checkFits(t, a.View().Content, width, height)
@@ -625,7 +625,7 @@ func TestAppKeepsALongErrorOnOneLine(t *testing.T) {
 
 func TestAppKeepsALongNoteOnOneLine(t *testing.T) {
 	const width, height = 40, 24
-	a := sizedApp(width, height)
+	a := sizedApp(t, width, height)
 	a.note = "Saved " + strings.Repeat("very ", 30) + "long."
 
 	checkFits(t, a.View().Content, width, height)
@@ -635,7 +635,7 @@ func TestAppKeepsAMultiLineMessageOnOneLine(t *testing.T) {
 	// Notion errors can carry a body with newlines in it; the status line is one
 	// line whatever it is given, and a title with a break in it would be two.
 	const width, height = 60, 24
-	a := sizedApp(width, height)
+	a := sizedApp(t, width, height)
 	a.Update(notionErrMsg{err: errors.New("save slice:\nbody\nlines")})
 
 	checkFits(t, a.View().Content, width, height)
@@ -657,7 +657,7 @@ func TestAppKeepsALongFormHeadingInTheWindow(t *testing.T) {
 
 func TestAppKeepsALongProjectNameInTheWindow(t *testing.T) {
 	const width, height = 40, 24
-	a := sizedApp(width, height)
+	a := sizedApp(t, width, height)
 
 	view := stripANSI(a.View().Content)
 	checkFits(t, a.View().Content, width, height)
@@ -674,7 +674,7 @@ func TestAppKeepsTheOtherBoardStatesInTheWindow(t *testing.T) {
 	}
 	for name, set := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := sizedApp(width, height)
+			a := sizedApp(t, width, height)
 			set(a)
 			checkFits(t, a.View().Content, width, height)
 		})
@@ -683,7 +683,7 @@ func TestAppKeepsTheOtherBoardStatesInTheWindow(t *testing.T) {
 
 func TestAppWithoutAWindowSizeDrawsEverything(t *testing.T) {
 	// Before the first resize there is nothing to fit to, so nothing is cut.
-	a := NewApp(testConfig(), newLoadingClient())
+	a := NewApp(testConfig(t), newLoadingClient())
 	p := windowProject()
 	a.Update(projectLoadedMsg{project: p})
 
@@ -700,7 +700,7 @@ func TestAppWithoutAWindowSizeDrawsEverything(t *testing.T) {
 
 func TestAppInnerWidthNeverGoesNegative(t *testing.T) {
 	// A window narrower than the frame's own padding leaves nothing inside it.
-	a := NewApp(testConfig(), nil)
+	a := NewApp(testConfig(t), nil)
 	a.Update(tea.WindowSizeMsg{Width: 2, Height: 10})
 
 	if got := a.innerWidth(); got != 0 {
@@ -736,8 +736,8 @@ func tallProject() domain.Project {
 }
 
 // tallApp returns an app of a given window size showing tallProject.
-func tallApp(width, height int) *App {
-	a := NewApp(testConfig(), newLoadingClient())
+func tallApp(t *testing.T, width, height int) *App {
+	a := NewApp(testConfig(t), newLoadingClient())
 	a.Update(tea.WindowSizeMsg{Width: width, Height: height})
 	p := tallProject()
 	a.Update(projectLoadedMsg{project: p})
@@ -755,7 +755,7 @@ func TestAppEveryScreenFitsASmallWindow(t *testing.T) {
 	}
 	for name, open := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := tallApp(width, height)
+			a := tallApp(t, width, height)
 			open(a)
 			checkFits(t, a.View().Content, width, height)
 		})
@@ -764,7 +764,7 @@ func TestAppEveryScreenFitsASmallWindow(t *testing.T) {
 
 func TestAppClipsAPlanTallerThanTheWindow(t *testing.T) {
 	const width, height = 80, 20
-	a := tallApp(width, height)
+	a := tallApp(t, width, height)
 
 	view := stripANSI(a.View().Content)
 	checkFits(t, view, width, height)
@@ -778,7 +778,7 @@ func TestAppClipsAPlanTallerThanTheWindow(t *testing.T) {
 
 func TestAppScrollsTheBoardToKeepTheCursorVisible(t *testing.T) {
 	const width, height = 80, 20
-	a := tallApp(width, height)
+	a := tallApp(t, width, height)
 
 	// Down to the last row: the board scrolls only as far as it must, so the
 	// cursor lands on the bottom line of the band rather than the top.
@@ -811,8 +811,8 @@ func TestAppScrollsTheBoardToKeepTheCursorVisible(t *testing.T) {
 
 // wrappedApp returns an app of a given window size whose slice rows are too
 // long for it, so every one of them wraps onto continuation lines.
-func wrappedApp(width, height int) *App {
-	a := NewApp(testConfig(), newLoadingClient())
+func wrappedApp(t *testing.T, width, height int) *App {
+	a := NewApp(testConfig(t), newLoadingClient())
 	a.Update(tea.WindowSizeMsg{Width: width, Height: height})
 	p := tallProject()
 	for i := range p.Slices {
@@ -826,7 +826,7 @@ func wrappedApp(width, height int) *App {
 // are more than one line: moving onto one brings all of it into the band, not
 // just the line the cursor marker is on.
 func TestAppScrollsAWrappedRowOnScreenWhole(t *testing.T) {
-	a := wrappedApp(40, 20)
+	a := wrappedApp(t, 40, 20)
 
 	for range len(a.board.rows) - 1 {
 		press(a, "j")
@@ -849,7 +849,7 @@ func TestAppScrollsAWrappedRowOnScreenWhole(t *testing.T) {
 // come on screen whole: its first line wins, since that is the one carrying the
 // cursor marker.
 func TestAppScrollsToTheTopOfARowTallerThanTheBand(t *testing.T) {
-	a := wrappedApp(24, 9)
+	a := wrappedApp(t, 24, 9)
 	band := a.boardVP.Height()
 
 	for range len(a.board.rows) - 1 {
@@ -866,7 +866,7 @@ func TestAppScrollsToTheTopOfARowTallerThanTheBand(t *testing.T) {
 }
 
 func TestAppScrollsTheHelpScreen(t *testing.T) {
-	a := tallApp(80, 20)
+	a := tallApp(t, 80, 20)
 	press(a, "?")
 
 	press(a, "j")
@@ -900,7 +900,7 @@ func TestAppSharesAShortWindowOutFromTheBottom(t *testing.T) {
 	for _, tt := range []struct{ height, header, body int }{
 		{20, 4, 10}, {12, 4, 2}, {11, 4, 1}, {10, 3, 1}, {9, 1, 6}, {6, 1, 3}, {2, 1, 0}, {1, 0, 0},
 	} {
-		a := tallApp(80, tt.height)
+		a := tallApp(t, 80, tt.height)
 		if got := a.headerBandHeight(); got != tt.header {
 			t.Errorf("at %d lines the header is %d, want %d", tt.height, got, tt.header)
 		}

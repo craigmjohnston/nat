@@ -12,6 +12,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // The rows of the board testProject flattens to, named so the tests read.
@@ -31,11 +32,16 @@ const (
 // plan is set straight rather than loaded, so the tests start on a board with a
 // slice of every status on it — the toggle that would hide the Done one off,
 // since the mutations have to be able to reach it.
-func newWriteApp(client NotionAPI) *App { return newWriteAppOn(client, testProject()) }
+func newWriteApp(t *testing.T, client NotionAPI) *App { return newWriteAppOn(t, client, testProject()) }
 
-// newWriteAppOn is the app both fixtures are built from.
-func newWriteAppOn(client NotionAPI, p domain.Project) *App {
-	a := NewApp(testConfig(), client)
+// newWriteAppOn is the app both fixtures are built from. The plan is also
+// seeded into the project's own file, through a connection of its own — a
+// write now goes through [App.storeFor]'s real store, which has to find every
+// slice this sets on the board directly, not only through a real load.
+func newWriteAppOn(t *testing.T, client NotionAPI, p domain.Project) *App {
+	cfg := testConfig(t)
+	seedLocalPlan(t, testProjectID, p)
+	a := NewApp(cfg, client)
 	a.project = &p
 	a.board.hideDone = false
 	a.board.SetProject(&p)
@@ -172,7 +178,7 @@ func paragraphTexts(t *testing.T, blocks []map[string]any) []string {
 func TestCreateSliceFilesANewTodoSlice(t *testing.T) {
 	client := &fakeNotion{}
 
-	msg := runMsg(t, createSlice(client, "sl-ds", domain.Milestone{
+	msg := runMsg(t, createSlice(store.Over(client), "sl-ds", domain.Milestone{
 		ID: "M2: Board", Name: "M2: Board", SelectType: notion.TypeSelect},
 		"  New slice  ", "First.\n\nSecond.", " /tmp/repo "))
 
@@ -205,7 +211,7 @@ func TestCreateSliceReportsAFailure(t *testing.T) {
 		return nil, errors.New("boom")
 	}}
 
-	msg := runMsg(t, createSlice(client, "sl-ds", domain.Milestone{ID: "M2: Board", Name: "M2: Board"}, "New slice", "", ""))
+	msg := runMsg(t, createSlice(store.Over(client), "sl-ds", domain.Milestone{ID: "M2: Board", Name: "M2: Board"}, "New slice", "", ""))
 
 	if got := msg.(sliceSavedMsg); got.err == nil || got.err.Error() != "create slice: boom" {
 		t.Errorf("err = %v, want the wrapped failure", got.err)
@@ -217,7 +223,7 @@ func TestEditSliceRewritesThePropertiesAndTheBody(t *testing.T) {
 		return []notion.Block{{ID: "b1"}, {ID: "b2"}}, nil
 	}}
 
-	msg := runMsg(t, editSlice(client, "s5", " Renamed ", "Rewritten.", " /tmp/other "))
+	msg := runMsg(t, editSlice(store.Over(client), "s5", " Renamed ", "Rewritten.", " /tmp/other "))
 
 	if got := msg.(sliceSavedMsg); got.err != nil || got.note != `Updated "Renamed".` {
 		t.Errorf("msg = %+v, want the updated note", got)
@@ -249,7 +255,7 @@ func TestEditSliceWithABlankBriefLeavesTheBodyEmpty(t *testing.T) {
 		return []notion.Block{{ID: "b1"}}, nil
 	}}
 
-	runMsg(t, editSlice(client, "s5", "Renamed", "   ", ""))
+	runMsg(t, editSlice(store.Over(client), "s5", "Renamed", "   ", ""))
 
 	if len(client.deleted) != 1 {
 		t.Errorf("deleted = %v, want the old body cleared", client.deleted)
@@ -282,7 +288,7 @@ func TestEditSliceReportsFailures(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			msg := runMsg(t, editSlice(tt.client, "s5", "Renamed", "Brief.", ""))
+			msg := runMsg(t, editSlice(store.Over(tt.client), "s5", "Renamed", "Brief.", ""))
 
 			got := msg.(sliceSavedMsg)
 			if got.err == nil || got.err.Error() != tt.want {
@@ -300,7 +306,7 @@ func TestLoadSliceBodyConvertsThePageToMarkdown(t *testing.T) {
 		return []notion.Block{block(t, "paragraph", "The brief.")}, nil
 	}}
 
-	msg := runMsg(t, loadSliceBody(client, domain.Slice{ID: "s5"})).(sliceBodyMsg)
+	msg := runMsg(t, loadSliceBody(store.Over(client), domain.Slice{ID: "s5"})).(sliceBodyMsg)
 
 	if msg.err != nil || msg.markdown != "The brief." {
 		t.Errorf("msg = %+v, want the body as markdown", msg)
@@ -310,7 +316,7 @@ func TestLoadSliceBodyConvertsThePageToMarkdown(t *testing.T) {
 func TestLoadSliceBodyReportsAFailure(t *testing.T) {
 	client := &fakeNotion{blocks: func(string) ([]notion.Block, error) { return nil, errors.New("boom") }}
 
-	msg := runMsg(t, loadSliceBody(client, domain.Slice{ID: "s5"})).(sliceBodyMsg)
+	msg := runMsg(t, loadSliceBody(store.Over(client), domain.Slice{ID: "s5"})).(sliceBodyMsg)
 
 	if msg.err == nil || msg.err.Error() != "load slice body: boom" {
 		t.Errorf("err = %v, want the wrapped failure", msg.err)
@@ -338,7 +344,7 @@ func block(t *testing.T, blockType, text string) notion.Block {
 }
 
 func TestAppAddOpensTheFormOnTheSelectedMilestone(t *testing.T) {
-	app := newWriteApp(&fakeNotion{})
+	app := newWriteApp(t, &fakeNotion{})
 	app.board.cursor = rowActiveMilestone
 
 	press(app, "a")
@@ -372,7 +378,7 @@ func TestAppAddNeedsAMilestoneToFileUnder(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := newWriteApp(&fakeNotion{})
+			app := newWriteApp(t, &fakeNotion{})
 			app.board.cursor = tt.cursor
 
 			press(app, "a")
@@ -389,7 +395,7 @@ func TestAppAddNeedsAMilestoneToFileUnder(t *testing.T) {
 
 func TestAppAddWritesTheCompletedForm(t *testing.T) {
 	client := &fakeNotion{}
-	app := newWriteApp(client)
+	app := newWriteApp(t, client)
 	app.board.cursor = rowActiveMilestone
 
 	feed(t, app, press(app, "a"))
@@ -423,7 +429,7 @@ func TestAppEditLoadsTheBodyThenOpensTheForm(t *testing.T) {
 	client := &fakeNotion{blocks: func(string) ([]notion.Block, error) {
 		return []notion.Block{block(t, "paragraph", "The brief.")}, nil
 	}}
-	app := newWriteApp(client)
+	app := newWriteApp(t, client)
 	app.board.cursor = rowTodoSlice
 
 	cmd := press(app, "e")
@@ -442,7 +448,7 @@ func TestAppEditLoadsTheBodyThenOpensTheForm(t *testing.T) {
 }
 
 func TestAppEditRefusesSlicesThatAreNotTodo(t *testing.T) {
-	app := newWriteApp(&fakeNotion{})
+	app := newWriteApp(t, &fakeNotion{})
 	app.board.cursor = rowClaimedSlice
 
 	press(app, "e")
@@ -456,7 +462,7 @@ func TestAppEditRefusesSlicesThatAreNotTodo(t *testing.T) {
 }
 
 func TestAppEditNeedsASliceUnderTheCursor(t *testing.T) {
-	app := newWriteApp(&fakeNotion{})
+	app := newWriteApp(t, &fakeNotion{})
 	app.board.cursor = rowActiveMilestone
 
 	press(app, "e")
@@ -466,18 +472,29 @@ func TestAppEditNeedsASliceUnderTheCursor(t *testing.T) {
 	}
 }
 
-func TestAppEditReportsAFailedLoad(t *testing.T) {
+// A slice's brief is read through the plan's own store now ([App.storeFor]),
+// which is store.Mirrored.Body's to answer, and that never fails a read
+// outright: the same "reads that fail conclude nothing" rule the rest of the
+// app follows (see root CLAUDE.md). Nothing cached and a workspace that will
+// not answer opens the form with an empty brief instead — visible to the
+// user before anything is saved over it — rather than refusing to open the
+// form at all.
+func TestAppEditOpensWithAnEmptyBriefWhenTheWorkspaceCannotBeRead(t *testing.T) {
 	client := &fakeNotion{blocks: func(string) ([]notion.Block, error) { return nil, errors.New("boom") }}
-	app := newWriteApp(client)
+	app := newWriteApp(t, client)
 	app.board.cursor = rowTodoSlice
 
 	app.Update(runMsg(t, press(app, "e")))
 
-	if app.busy || app.form != nil {
-		t.Error("a failed fetch should leave nothing in flight and no form")
+	if app.err != nil {
+		t.Errorf("err = %v, want no error banner over a read the store already fell back on", app.err)
 	}
-	if app.err == nil || app.err.Error() != "load slice body: boom" {
-		t.Errorf("err = %v, want the failure reported", app.err)
+	f, ok := app.form.(*SliceForm)
+	if !ok {
+		t.Fatalf("form = %T, want the slice form open with what could be read", app.form)
+	}
+	if f.description != "" {
+		t.Errorf("description = %q, want the empty fall back", f.description)
 	}
 }
 
@@ -485,7 +502,7 @@ func TestAppEditWritesTheCompletedForm(t *testing.T) {
 	client := &fakeNotion{blocks: func(string) ([]notion.Block, error) {
 		return []notion.Block{block(t, "paragraph", "The brief.")}, nil
 	}}
-	app := newWriteApp(client)
+	app := newWriteApp(t, client)
 	app.board.cursor = rowTodoSlice
 
 	_, opened := app.Update(runMsg(t, press(app, "e")))
@@ -513,7 +530,7 @@ func TestAppEditWritesTheCompletedForm(t *testing.T) {
 }
 
 func TestAppFormKeysDoNotReachTheBoard(t *testing.T) {
-	app := newWriteApp(&fakeNotion{})
+	app := newWriteApp(t, &fakeNotion{})
 	app.board.cursor = rowActiveMilestone
 	press(app, "a")
 
@@ -527,7 +544,7 @@ func TestAppFormKeysDoNotReachTheBoard(t *testing.T) {
 }
 
 func TestAppFormIsCancelledWithEsc(t *testing.T) {
-	app := newWriteApp(&fakeNotion{})
+	app := newWriteApp(t, &fakeNotion{})
 	app.board.cursor = rowActiveMilestone
 	press(app, "a")
 
@@ -542,7 +559,7 @@ func TestAppFormIsCancelledWithEsc(t *testing.T) {
 }
 
 func TestAppFormReceivesNonKeyMessages(t *testing.T) {
-	app := newWriteApp(&fakeNotion{})
+	app := newWriteApp(t, &fakeNotion{})
 	app.board.cursor = rowActiveMilestone
 	press(app, "a")
 
@@ -556,7 +573,7 @@ func TestAppFormReceivesNonKeyMessages(t *testing.T) {
 
 func TestAppReloadsThePlanAfterAWrite(t *testing.T) {
 	client := newLoadingClient()
-	app := NewApp(testConfig(), client)
+	app := NewApp(testConfig(t), client)
 
 	_, cmd := app.Update(sliceSavedMsg{note: "Added."})
 
@@ -575,7 +592,7 @@ func TestAppReloadsThePlanAfterAWrite(t *testing.T) {
 }
 
 func TestAppReportsAFailedWrite(t *testing.T) {
-	app := newWriteApp(&fakeNotion{})
+	app := newWriteApp(t, &fakeNotion{})
 
 	app.Update(sliceSavedMsg{err: errors.New("create slice: boom")})
 
@@ -592,9 +609,9 @@ func TestAppRefusesWritesItCannotMake(t *testing.T) {
 		name string
 		app  func() *App
 	}{
-		{"no client", func() *App { return newWriteApp(nil) }},
+		{"no client", func() *App { return newWriteApp(t, nil) }},
 		{"busy", func() *App {
-			a := newWriteApp(&fakeNotion{})
+			a := newWriteApp(t, &fakeNotion{})
 			a.busy = true
 			return a
 		}},
@@ -640,7 +657,7 @@ func TestCreateSliceNamesTheMilestoneOption(t *testing.T) {
 				ID: "M3: Mutations", Name: "M3: Mutations", SelectType: tt.propertyType,
 			}
 
-			runMsg(t, createSlice(client, "sl-ds", m, "New slice", "", ""))
+			runMsg(t, createSlice(store.Over(client), "sl-ds", m, "New slice", "", ""))
 
 			if len(client.created) != 1 {
 				t.Fatalf("created %d pages, want 1", len(client.created))

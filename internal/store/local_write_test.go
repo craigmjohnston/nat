@@ -809,8 +809,8 @@ func TestLocalNamesItsFileWhenAWritesOwnReadFails(t *testing.T) {
 		"a milestone appended to the plan": {
 			break_: func(t *testing.T, l *Local) {
 				write(t, l, `ALTER TABLE milestones RENAME TO milestones_data`)
-				write(t, l, `CREATE VIEW milestones (name, position)
-					AS SELECT name, position FROM milestones_data`)
+				write(t, l, `CREATE VIEW milestones (name, position, select_type)
+					AS SELECT name, position, select_type FROM milestones_data`)
 			},
 			write: func(l *Local) error {
 				_, err := l.AddMilestones(ctx, Project{}, Shape{}, []string{"M3"})

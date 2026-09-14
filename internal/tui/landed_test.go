@@ -54,7 +54,7 @@ func landedPlan() domain.Project {
 // says otherwise.
 func landedApp(t *testing.T) (*App, *fakePRReader, *fakeWorktrees) {
 	t.Helper()
-	cfg := testConfig()
+	cfg := testConfig(t)
 	project := cfg.Projects[testProjectID]
 	project.WorkingDir = natRepo
 	cfg.Projects[testProjectID] = project
@@ -86,7 +86,7 @@ func TestAMergedPullRequestTakesItsWorktree(t *testing.T) {
 	app, _, trees := landedApp(t)
 	p := landedPlan()
 
-	_, cmd := app.Update(projectLoadedMsg{project: p})
+	cmd := landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 
 	want := []worktreeCall{
@@ -107,7 +107,7 @@ func TestWorkStillInFlightKeepsItsWorktree(t *testing.T) {
 	app, _, trees := landedApp(t)
 	p := landedPlan()
 
-	_, cmd := app.Update(projectLoadedMsg{project: p})
+	cmd := landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 
 	for _, call := range trees.removes {
@@ -124,11 +124,11 @@ func TestAWorktreeGoesOnlyOnce(t *testing.T) {
 	app, _, trees := landedApp(t)
 	p := landedPlan()
 
-	_, cmd := app.Update(projectLoadedMsg{project: p})
+	cmd := landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 	was := len(trees.removes)
 
-	_, cmd = app.Update(projectLoadedMsg{project: p})
+	cmd = landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 
 	if len(trees.removes) != was {
@@ -144,7 +144,7 @@ func TestARefusedRemovalIsRetriedOnTheNextLoad(t *testing.T) {
 	trees.removeErr = &worktree.ExitError{Code: 1, Stderr: "worktree has uncommitted changes\n"}
 	p := landedPlan()
 
-	_, cmd := app.Update(projectLoadedMsg{project: p})
+	cmd := landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 
 	was := len(trees.removes)
@@ -158,7 +158,7 @@ func TestARefusedRemovalIsRetriedOnTheNextLoad(t *testing.T) {
 	// The dirty worktree has been dealt with outside nat, and the next plan to
 	// land tries the removal again.
 	trees.removeErr = nil
-	_, cmd = app.Update(projectLoadedMsg{project: p})
+	cmd = landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 
 	if len(trees.removes) != 2*was {
@@ -166,7 +166,7 @@ func TestARefusedRemovalIsRetriedOnTheNextLoad(t *testing.T) {
 	}
 
 	// And having succeeded, they are done with.
-	_, cmd = app.Update(projectLoadedMsg{project: p})
+	cmd = landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 	if len(trees.removes) != 2*was {
 		t.Errorf("git was asked to remove %v, want nothing left to remove", trees.removes)
@@ -181,7 +181,7 @@ func TestNoWorktreeToRemovePassesQuietly(t *testing.T) {
 	trees.existing = nil
 	p := landedPlan()
 
-	_, cmd := app.Update(projectLoadedMsg{project: p})
+	cmd := landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 	looks := len(trees.looks)
 
@@ -192,7 +192,7 @@ func TestNoWorktreeToRemovePassesQuietly(t *testing.T) {
 		t.Fatal("git was asked about no branch at all")
 	}
 
-	_, cmd = app.Update(projectLoadedMsg{project: p})
+	cmd = landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 	if len(trees.looks) != looks {
 		t.Errorf("git was asked about %v, want the settled branches left out", trees.looks)

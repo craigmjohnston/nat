@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // answerConfirm answers the open confirm — "y" or "n" — and feeds the write
@@ -17,7 +19,7 @@ func answerConfirm(t *testing.T, a *App, answer string) {
 func TestDeleteSliceTrashesThePage(t *testing.T) {
 	client := &fakeNotion{}
 
-	msg := runMsg(t, deleteSlice(client, "s5", "Info view"))
+	msg := runMsg(t, deleteSlice(store.Over(client), "s5", "Info view"))
 
 	if got := msg.(sliceSavedMsg); got.err != nil || got.note != `Deleted "Info view".` {
 		t.Errorf("msg = %+v, want the deleted note", got)
@@ -30,7 +32,7 @@ func TestDeleteSliceTrashesThePage(t *testing.T) {
 func TestDeleteSliceReportsAFailure(t *testing.T) {
 	client := &fakeNotion{trashPage: func(string) error { return errors.New("boom") }}
 
-	msg := runMsg(t, deleteSlice(client, "s5", "Info view"))
+	msg := runMsg(t, deleteSlice(store.Over(client), "s5", "Info view"))
 
 	if got := msg.(sliceSavedMsg); got.err == nil || got.err.Error() != "delete slice: boom" {
 		t.Errorf("err = %v, want the wrapped failure", got.err)
@@ -50,7 +52,7 @@ func TestAppDeleteOpensTheConfirmOnTheSelectedSlice(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := newWriteApp(&fakeNotion{})
+			app := newWriteApp(t, &fakeNotion{})
 			app.board.cursor = tt.cursor
 
 			feed(t, app, press(app, "d"))
@@ -71,7 +73,7 @@ func TestAppDeleteOpensTheConfirmOnTheSelectedSlice(t *testing.T) {
 
 func TestAppDeleteTrashesTheConfirmedSlice(t *testing.T) {
 	client := &fakeNotion{}
-	app := newWriteApp(client)
+	app := newWriteApp(t, client)
 	app.board.cursor = rowTodoSlice
 
 	feed(t, app, press(app, "d"))
@@ -90,7 +92,7 @@ func TestAppDeleteTrashesTheConfirmedSlice(t *testing.T) {
 
 func TestAppDeleteTrashesNothingWhenTheAnswerIsNo(t *testing.T) {
 	client := &fakeNotion{}
-	app := newWriteApp(client)
+	app := newWriteApp(t, client)
 	app.board.cursor = rowTodoSlice
 
 	feed(t, app, press(app, "d"))
@@ -108,7 +110,7 @@ func TestAppDeleteTrashesNothingWhenTheAnswerIsNo(t *testing.T) {
 }
 
 func TestAppDeleteRefusesAClaimedSlice(t *testing.T) {
-	app := newWriteApp(&fakeNotion{})
+	app := newWriteApp(t, &fakeNotion{})
 	app.board.cursor = rowClaimedSlice
 
 	press(app, "d")
@@ -122,7 +124,7 @@ func TestAppDeleteRefusesAClaimedSlice(t *testing.T) {
 }
 
 func TestAppDeleteNeedsASliceUnderTheCursor(t *testing.T) {
-	app := newWriteApp(&fakeNotion{})
+	app := newWriteApp(t, &fakeNotion{})
 	app.board.cursor = rowActiveMilestone
 
 	press(app, "d")

@@ -67,5 +67,5 @@ func (a *App) nudged(msg nudgeMsg) tea.Cmd {
 		return nil
 	}
 	a.nudgeSeen = msg.mtime
-	return a.startLoad()
+	return a.startLoad(false)
 }

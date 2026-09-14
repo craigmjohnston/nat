@@ -54,16 +54,16 @@ func failingConfig(t *testing.T, err error) {
 
 // newProjectApp returns an app whose config names a projects database, so the
 // new-project key has somewhere to create under.
-func newProjectApp(client NotionAPI) *App {
-	a := newWriteApp(client)
+func newProjectApp(t *testing.T, client NotionAPI) *App {
+	a := newWriteApp(t, client)
 	a.cfg.ProjectDBDataSourceID = testProjectsDSID
 	return a
 }
 
 // twoProjectConfig is a config holding a second project, so there is something
 // to switch between. It is named to sort before the active one.
-func twoProjectConfig() config.Config {
-	cfg := testConfig()
+func twoProjectConfig(t *testing.T) config.Config {
+	cfg := testConfig(t)
 	cfg.Projects["other"] = config.ProjectConfig{
 		Name: "another", SlicesDSID: "o-sl",
 	}
@@ -195,7 +195,7 @@ func TestAppNewProjectFlowWritesConfigAndReloads(t *testing.T) {
 	saved := capturedConfig(t)
 	client := creatingClient()
 	client.query = func(string, map[string]any, []notion.Sort) ([]notion.Page, error) { return nil, nil }
-	app := newProjectApp(client)
+	app := newProjectApp(t, client)
 	dir := t.TempDir()
 
 	feed(t, app, press(app, "N"))
@@ -239,7 +239,7 @@ func TestAppNewProjectFlowWritesConfigAndReloads(t *testing.T) {
 func TestAppNewProjectReloadsOntoWhatItMade(t *testing.T) {
 	capturedConfig(t)
 	client := newLoadingClient()
-	app := newProjectApp(client)
+	app := newProjectApp(t, client)
 	before := len(client.queriedDSIDs)
 
 	_, cmd := app.Update(projectCreatedMsg{structure: newStructure(), name: "tracker two", workdir: "/work"})
@@ -269,7 +269,7 @@ func TestAppNewProjectStartsAConfigWithNoProjectsYet(t *testing.T) {
 
 func TestAppNewProjectReportsAFailedCreation(t *testing.T) {
 	capturedConfig(t)
-	app := newProjectApp(&fakeNotion{})
+	app := newProjectApp(t, &fakeNotion{})
 	boom := errors.New("create project: boom")
 
 	app.Update(projectCreatedMsg{err: boom})
@@ -287,7 +287,7 @@ func TestAppNewProjectReportsAFailedCreation(t *testing.T) {
 
 func TestAppNewProjectReportsAFailedConfigWrite(t *testing.T) {
 	failingConfig(t, errors.New("read-only"))
-	app := newProjectApp(creatingClient())
+	app := newProjectApp(t, creatingClient())
 
 	app.Update(projectCreatedMsg{structure: newStructure(), name: "tracker two", workdir: "/work"})
 
@@ -304,7 +304,7 @@ func TestAppNewProjectReportsAFailedConfigWrite(t *testing.T) {
 }
 
 func TestAppNewProjectNeedsAProjectsDatabase(t *testing.T) {
-	app := newWriteApp(&fakeNotion{})
+	app := newWriteApp(t, &fakeNotion{})
 
 	press(app, "N")
 
@@ -321,9 +321,9 @@ func TestAppNewProjectIsRefusedWithNothingToCreateWith(t *testing.T) {
 		name string
 		app  func() *App
 	}{
-		{"no client", func() *App { return newProjectApp(nil) }},
+		{"no client", func() *App { return newProjectApp(t, nil) }},
 		{"a write already in flight", func() *App {
-			a := newProjectApp(&fakeNotion{})
+			a := newProjectApp(t, &fakeNotion{})
 			a.busy = true
 			return a
 		}},
@@ -365,7 +365,7 @@ func TestAppOnboardingHandsOverToTheNewProjectFlow(t *testing.T) {
 
 func TestAppSwitchProjectPicksAnotherPlan(t *testing.T) {
 	saved := capturedConfig(t)
-	app := NewApp(twoProjectConfig(), newLoadingClient())
+	app := NewApp(twoProjectConfig(t), newLoadingClient())
 
 	feed(t, app, press(app, "P"))
 	if _, ok := app.form.(*SwitchProjectForm); !ok {
@@ -392,7 +392,7 @@ func TestAppSwitchProjectPicksAnotherPlan(t *testing.T) {
 func TestAppSwitchProjectReloadsOntoTheOtherPlan(t *testing.T) {
 	capturedConfig(t)
 	client := newLoadingClient()
-	app := NewApp(twoProjectConfig(), client)
+	app := NewApp(twoProjectConfig(t), client)
 	p := testProject()
 	app.project = &p
 	app.board.SetProject(&p)
@@ -414,7 +414,7 @@ func TestAppSwitchProjectReloadsOntoTheOtherPlan(t *testing.T) {
 
 func TestAppSwitchProjectReportsAFailedConfigWrite(t *testing.T) {
 	failingConfig(t, errors.New("read-only"))
-	app := NewApp(twoProjectConfig(), newLoadingClient())
+	app := NewApp(twoProjectConfig(t), newLoadingClient())
 
 	app.Update(projectSwitchedMsg{id: "other", name: "another"})
 
@@ -430,7 +430,7 @@ func TestAppSwitchProjectReportsAFailedConfigWrite(t *testing.T) {
 }
 
 func TestAppSwitchProjectNeedsSomewhereToSwitchTo(t *testing.T) {
-	app := newWriteApp(&fakeNotion{})
+	app := newWriteApp(t, &fakeNotion{})
 
 	press(app, "P")
 
@@ -443,7 +443,7 @@ func TestAppSwitchProjectNeedsSomewhereToSwitchTo(t *testing.T) {
 }
 
 func TestAppSwitchProjectIsRefusedWhileAWriteIsInFlight(t *testing.T) {
-	app := NewApp(twoProjectConfig(), &fakeNotion{})
+	app := NewApp(twoProjectConfig(t), &fakeNotion{})
 	app.busy = true
 
 	if cmd := app.switchProjectFlow(); cmd != nil {
@@ -478,7 +478,7 @@ func TestSwitchProjectFormOrdersByNameAndFallsBackToTheID(t *testing.T) {
 }
 
 func TestSwitchProjectFormOpensOnTheActiveProject(t *testing.T) {
-	if f := newSwitchProjectForm(DefaultStyles().FormTheme, twoProjectConfig()); f.chosen != testProjectID {
+	if f := newSwitchProjectForm(DefaultStyles().FormTheme, twoProjectConfig(t)); f.chosen != testProjectID {
 		t.Errorf("chosen = %q, want the active project", f.chosen)
 	}
 }
@@ -487,7 +487,7 @@ func TestNewProjectFormAnnouncesItsWork(t *testing.T) {
 	if got := newNewProjectForm(DefaultStyles().FormTheme).busyNote(); got != "Creating the project…" {
 		t.Errorf("busy note = %q, want the creation note", got)
 	}
-	if got := newSwitchProjectForm(DefaultStyles().FormTheme, twoProjectConfig()).busyNote(); got != "" {
+	if got := newSwitchProjectForm(DefaultStyles().FormTheme, twoProjectConfig(t)).busyNote(); got != "" {
 		t.Errorf("busy note = %q, want nothing announced for a switch", got)
 	}
 }
@@ -520,8 +520,8 @@ func openingClient(pages ...notion.Page) *loadingClient {
 
 // openingApp is the board with somewhere to list projects from, which is what
 // makes the picker offer more than local config knows.
-func openingApp(client NotionAPI) *App {
-	a := NewApp(twoProjectConfig(), client)
+func openingApp(t *testing.T, client NotionAPI) *App {
+	a := NewApp(twoProjectConfig(t), client)
 	a.cfg.ProjectDBDataSourceID = testProjectsDSID
 	return a
 }
@@ -540,7 +540,7 @@ func switchFormOf(t *testing.T, a *App) *SwitchProjectForm {
 func TestAppSwitchProjectOffersTheWorkspacesOwnProjects(t *testing.T) {
 	capturedConfig(t)
 	client := openingClient(projectPage("p9", "notion-only"), projectPage(testProjectID, "tracker"))
-	app := openingApp(client)
+	app := openingApp(t, client)
 
 	feed(t, app, press(app, "P"))
 
@@ -560,7 +560,7 @@ func TestAppSwitchProjectOffersTheWorkspacesOwnProjects(t *testing.T) {
 func TestAppSwitchProjectOpensOneItHasNeverSeen(t *testing.T) {
 	saved := capturedConfig(t)
 	client := openingClient(projectPage("p9", "notion-only"))
-	app := openingApp(client)
+	app := openingApp(t, client)
 	feed(t, app, press(app, "P"))
 
 	// The picker opens on the active project, and the workspace's own list sits
@@ -592,7 +592,7 @@ func TestAppSwitchProjectReportsAPageThatIsNoProject(t *testing.T) {
 	client.resolve = func(string) (*notion.ResolvedProject, error) {
 		return nil, &notion.NoPlanError{PageID: "p9", Title: "notion-only", Reason: `it holds no "Slices" database`}
 	}
-	app := openingApp(client)
+	app := openingApp(t, client)
 	feed(t, app, press(app, "P"))
 
 	press(app, "j")
@@ -633,7 +633,7 @@ func TestAppProjectOpenedRecordsTheFirstProjectOfAll(t *testing.T) {
 // projects database to list the rest of the workspace from.
 func TestAppSwitchProjectOpensOverOneConfiguredProject(t *testing.T) {
 	client := openingClient(projectPage("p9", "notion-only"))
-	app := newWriteApp(client)
+	app := newWriteApp(t, client)
 	app.cfg.ProjectDBDataSourceID = testProjectsDSID
 
 	feed(t, app, press(app, "P"))
@@ -655,7 +655,7 @@ func TestAppSwitchProjectSurvivesAFailedListing(t *testing.T) {
 	client.query = func(string, map[string]any, []notion.Sort) ([]notion.Page, error) {
 		return nil, errors.New("no")
 	}
-	app := openingApp(client)
+	app := openingApp(t, client)
 
 	feed(t, app, press(app, "P"))
 
@@ -671,7 +671,7 @@ func TestAppSwitchProjectSurvivesAFailedListing(t *testing.T) {
 // An answer that arrives after the picker has been closed has nothing to fill
 // in, and must not be mistaken for another form's message.
 func TestAppWorkspaceProjectsAfterThePickerClosedAreDropped(t *testing.T) {
-	app := NewApp(twoProjectConfig(), newLoadingClient())
+	app := NewApp(twoProjectConfig(t), newLoadingClient())
 
 	app.Update(workspaceProjectsMsg{projects: []workspaceProject{{ID: "p9", Name: "notion-only"}}})
 
@@ -681,7 +681,7 @@ func TestAppWorkspaceProjectsAfterThePickerClosedAreDropped(t *testing.T) {
 }
 
 func TestSwitchProjectFormOffersWorkspaceProjectsUnderTheConfiguredOnes(t *testing.T) {
-	f := newSwitchProjectForm(DefaultStyles().FormTheme, twoProjectConfig())
+	f := newSwitchProjectForm(DefaultStyles().FormTheme, twoProjectConfig(t))
 
 	f.offer([]workspaceProject{
 		{ID: testProjectID, Name: "tracker"},
@@ -714,7 +714,7 @@ func TestSwitchProjectFormOpensEmpty(t *testing.T) {
 }
 
 func TestSwitchProjectFormAnnouncesAnOpen(t *testing.T) {
-	f := newSwitchProjectForm(DefaultStyles().FormTheme, twoProjectConfig())
+	f := newSwitchProjectForm(DefaultStyles().FormTheme, twoProjectConfig(t))
 	f.offer([]workspaceProject{{ID: "p9", Name: "notion-only"}})
 	f.chosen = "p9"
 
@@ -764,7 +764,7 @@ func TestAppNewProjectTracksAnAssigneeWhenAsked(t *testing.T) {
 	capturedConfig(t)
 	client := creatingClient()
 	client.query = func(string, map[string]any, []notion.Sort) ([]notion.Page, error) { return nil, nil }
-	app := newProjectApp(client)
+	app := newProjectApp(t, client)
 
 	feed(t, app, press(app, "N"))
 	fillProjectForm(t, app, "tracker two", "", t.TempDir(), true)

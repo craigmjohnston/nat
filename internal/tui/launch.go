@@ -262,9 +262,12 @@ func (f *LaunchForm) save(a *App) tea.Cmd {
 // and the project the flow was opened against — the flows only ever open on a
 // configured one, so this is that project.
 func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, attach bool) tea.Cmd {
-	project, _ := a.activeProject()
+	st, project, ok := a.activeStore()
+	if !ok {
+		return nil
+	}
 	milestone, siblings := milestoneContext(a.project, s)
-	return launchAgent(a.launcher, newWorktrees(), newRepo(), a.client, a.prViewer, a.cfg.AssigneeUserID, agent.PromptContext{
+	return launchAgent(a.launcher, newWorktrees(), newRepo(), st, a.prViewer, a.cfg.AssigneeUserID, agent.PromptContext{
 		Slice:           s,
 		Project:         project,
 		ProjectID:       a.cfg.ActiveProjectID,
@@ -317,7 +320,7 @@ func trimModel(m config.AgentModel) config.AgentModel { return actions.TrimModel
 // [prStillOpen]. It stays here rather than moving into [actions.Launch]
 // because the PRViewer is the board's own seam, and no headless launch sets
 // Fix at all.
-func launchAgent(l AgentLauncher, w Worktrees, r Repo, client NotionAPI, viewer PRViewer, assigneeID string,
+func launchAgent(l AgentLauncher, w Worktrees, r Repo, st store.Store, viewer PRViewer, assigneeID string,
 	c agent.PromptContext, m config.AgentModel, attach bool) tea.Cmd {
 	return func() tea.Msg {
 		if c.Fix {
@@ -325,7 +328,7 @@ func launchAgent(l AgentLauncher, w Worktrees, r Repo, client NotionAPI, viewer 
 				return agentLaunchedMsg{toast: toast, sev: sev}
 			}
 		}
-		res, err := actions.Launch(context.Background(), l, w, r, store.Over(client), assigneeID, c, m)
+		res, err := actions.Launch(context.Background(), l, w, r, st, assigneeID, c, m)
 		if err != nil {
 			return agentLaunchedMsg{err: err}
 		}
@@ -643,7 +646,7 @@ func (a *App) liveLoaded(msg liveSessionsMsg) tea.Cmd {
 	// re-reads it rather than showing what was there before the session.
 	_, planSessionNow := agent.LivePlan(a.live, a.cfg.ActiveProjectID)
 	if msg.err == nil && planSessionWas != "" && planSessionNow == "" {
-		cmds = append(cmds, a.startLoad())
+		cmds = append(cmds, a.startLoad(false))
 	}
 	return tea.Batch(cmds...)
 }

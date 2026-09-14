@@ -115,7 +115,7 @@ func TestFormThemeDrawsFromTheTokens(t *testing.T) {
 }
 
 func TestAppRestylesOnTheBackgroundAnswer(t *testing.T) {
-	a := NewApp(testConfig(), nil)
+	a := NewApp(testConfig(t), nil)
 	a.Update(tea.BackgroundColorMsg{Color: lipgloss.Color("#ffffff")})
 
 	want := NewTokens(false).Accent
@@ -136,7 +136,7 @@ func TestAppRestylesOnTheBackgroundAnswer(t *testing.T) {
 // The board's own reading of the terminal is what the embedded viewer's
 // emulator answers a query with — see [App.termBG]/[App.termFG].
 func TestAppRecordsTheTerminalColors(t *testing.T) {
-	a := NewApp(testConfig(), nil)
+	a := NewApp(testConfig(t), nil)
 	if a.termBG != nil {
 		t.Error("termBG set before any answer, want unknown")
 	}
@@ -153,9 +153,9 @@ func TestAppRecordsTheTerminalColors(t *testing.T) {
 }
 
 func TestAppRestylesTheWizardToo(t *testing.T) {
-	o := NewOnboarding(testConfig(), nil, nil)
+	o := NewOnboarding(testConfig(t), nil, nil)
 	o.search = newSearchPicker(o.styles, 60, 20)
-	a := NewAppWithOnboarding(testConfig(), nil, o)
+	a := NewAppWithOnboarding(testConfig(t), nil, o)
 	a.Update(tea.BackgroundColorMsg{Color: lipgloss.Color("#ffffff")})
 
 	want := NewTokens(false).Accent

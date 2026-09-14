@@ -55,8 +55,12 @@ func (a *App) releaseChosen(s domain.Slice, choice int) tea.Cmd {
 	if choice != choiceRelease {
 		return nil
 	}
+	st, _, ok := a.activeStore()
+	if !ok {
+		return nil
+	}
 	a.busy, a.note = true, releaseNote
-	return releaseSlice(a.client, s, a.cfg.AssigneeUserName)
+	return releaseSlice(st, s, a.cfg.AssigneeUserName)
 }
 
 // releaseNote is what the status bar says while the release is in flight.
@@ -77,10 +81,9 @@ const releaseNote = "Releasing the slice…"
 // writes in: a slice still in progress carrying the line can be released by
 // running the key again, whereas one already back at Todo would refuse to have
 // a line added to it.
-func releaseSlice(client NotionAPI, s domain.Slice, assignee string) tea.Cmd {
+func releaseSlice(st store.Store, s domain.Slice, assignee string) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
-		st := store.Over(client)
 		fail := func(err error) tea.Msg {
 			return sliceSavedMsg{err: fmt.Errorf("release %q: %w", s.Name, err)}
 		}

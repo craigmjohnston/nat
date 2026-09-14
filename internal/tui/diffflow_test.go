@@ -335,7 +335,7 @@ func TestDiffScreenHintsAreItsOwn(t *testing.T) {
 // TestHelpListsTheDiffKeys covers the help screen, which is where a key the
 // hints row has no room for is still findable.
 func TestHelpListsTheDiffKeys(t *testing.T) {
-	app := NewApp(testConfig(), &fakeNotion{})
+	app := NewApp(testConfig(t), &fakeNotion{})
 	body := app.helpBody()
 	for _, want := range []string{"review diff", "next file", "previous file"} {
 		if !strings.Contains(body, want) {
@@ -347,7 +347,7 @@ func TestHelpListsTheDiffKeys(t *testing.T) {
 // TestDiffHeadingBeforeABranch covers the header before the screen has been
 // pointed at anything, which is the state a fresh app is in.
 func TestDiffHeadingBeforeABranch(t *testing.T) {
-	app := NewApp(testConfig(), &fakeNotion{})
+	app := NewApp(testConfig(t), &fakeNotion{})
 	if got := app.diffHeading(); got != "Diff" {
 		t.Errorf("heading = %q, want the screen's own name", got)
 	}

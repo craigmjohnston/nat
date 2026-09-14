@@ -10,7 +10,6 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/logging"
-	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // PRReader is what the board needs of the GitHub CLI to tell a pull request
@@ -97,8 +96,12 @@ func (a *App) refreshPRStates() tea.Cmd {
 	if len(dirs) == 0 {
 		return nil
 	}
+	st, _, ok := a.activeStore()
+	if !ok {
+		return nil
+	}
 	a.prReading = true
-	reader, viewer, client := a.prReader, a.prViewer, a.client
+	reader, viewer := a.prReader, a.prViewer
 	return func() tea.Msg {
 		msg := prStateMsg{state: map[string]domain.PRReadiness{}}
 		for _, dir := range dirs {
@@ -122,7 +125,7 @@ func (a *App) refreshPRStates() tea.Cmd {
 					// A reading that failed settles nothing: the next pass asks
 					// again rather than watching an answer nobody has.
 					if s.Status == domain.SliceClaimed && viewer != nil {
-						done, err := actions.SettleMerged(context.Background(), store.Over(client), viewer, s, dir)
+						done, err := actions.SettleMerged(context.Background(), st, viewer, s, dir)
 						if err != nil {
 							logging.Action("left an absent pull request unsettled", "slice", s.ID, "error", err)
 							continue
@@ -143,7 +146,7 @@ func (a *App) refreshPRStates() tea.Cmd {
 					// is the un-done rule — the mirror of the settle branch
 					// above — and what lets every other reading of the page
 					// trust Done to mean merged from here on.
-					if err := actions.ReopenUnmerged(context.Background(), store.Over(client), s); err != nil {
+					if err := actions.ReopenUnmerged(context.Background(), st, s); err != nil {
 						logging.Action("left a Done slice with an open pull request unreopened", "slice", s.ID, "error", err)
 						continue
 					}
