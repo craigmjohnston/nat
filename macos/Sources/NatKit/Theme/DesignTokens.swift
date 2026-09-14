@@ -252,6 +252,20 @@ public enum DesignTokens {
         }
     }
 
+    /// The terminal's own foreground — the ink SwiftTerm's
+    /// `nativeForegroundColor` paints its default text with, named here too
+    /// so anything that mocks terminal content off a live `SwiftTerm` view
+    /// (a gallery story, say) draws it in the same colour.
+    public static func terminalText() -> Color {
+        derived { $0.terminalFg }
+    }
+
+    /// The wash a selected run of terminal text sits on — the same colour
+    /// `TerminalTheme.apply` gives a live view's `selectedTextBackgroundColor`.
+    public static func terminalSelectionWash() -> Color {
+        derived { $0.terminalSelection }
+    }
+
     // MARK: - A hue written on a ground
 
     // A hue used as a *fill* is the tint itself — the tokens below — since a

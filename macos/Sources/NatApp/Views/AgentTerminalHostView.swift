@@ -328,18 +328,131 @@ final class FirstLayoutTerminalView: LocalProcessTerminalView {
         NSWorkspace.shared.open(url)
     }
 
+    // MARK: - Selection: plain drags win over mouse reporting
+
+    /// Set the moment a plain (non-command) drag begins, cleared on mouseUp.
+    /// Distinguishes a drag from a click that never moved, since only a
+    /// mouseDragged event tells the two apart — a click alone leaves mouse
+    /// reporting exactly as it was.
+    private var isRunningLocalSelectionDrag = false
+
     /// Keeps a command-modified click out of mouse reporting, so tmux — and
-    /// the agent behind it — never sees the gesture this pane opens links on.
+    /// the agent behind it — never sees the gesture this pane opens links on;
+    /// and clears an existing selection on a plain click that does not drag.
     ///
-    /// Without this the press would reach tmux, whose `MouseDown1Pane`
-    /// binding opens the OSC 8 hyperlink under the mouse, and the release
-    /// would reach `requestOpenLink` above: one link, two opens, two browser
-    /// tabs. `TerminalMouse` carries the whole reasoning. A plain click is
-    /// untouched and goes where it always went, tmux's own hyperlink binding
-    /// included.
+    /// Without the command carve-out the press would reach tmux, whose
+    /// `MouseDown1Pane` binding opens the OSC 8 hyperlink under the mouse,
+    /// and the release would reach `requestOpenLink` above: one link, two
+    /// opens, two browser tabs. `TerminalMouse` carries the whole reasoning.
+    /// A plain click is untouched here and goes where it always went, tmux's
+    /// own hyperlink binding included — SwiftTerm's own click-clearing code
+    /// never runs for it, since mouse reporting is on for every agent
+    /// session and its `mouseDown` returns before reaching that code, so it
+    /// is done by hand here instead.
     override func mouseDown(with event: NSEvent) {
-        guard !TerminalMouse.isTerminalOwnClick(Self.modifiers(of: event)) else { return }
+        let modifiers = Self.modifiers(of: event)
+        guard !TerminalMouse.isTerminalOwnClick(modifiers) else { return }
+        if event.clickCount == 1, !modifiers.contains(.shift), selection.active {
+            selection.active = false
+            setNeedsDisplay(bounds)
+        }
         super.mouseDown(with: event)
+    }
+
+    /// Forces a plain drag to extend the local selection instead of
+    /// reporting motion to tmux, which otherwise always wins: an agent
+    /// session's tmux runs with its own `mouse` option on
+    /// (`internal/agent/tmux.go`'s `mouseOnArgs`), so SwiftTerm treats every
+    /// drag as mouse-tracking traffic for the pane and never reaches its own
+    /// selection code at all. Selection wins for a plain drag, full stop —
+    /// no modifier scheme, per the brief; a command-modified drag is left
+    /// alone since that gesture is the link click's, not selection's.
+    ///
+    /// Turning reporting off for the whole gesture rather than restoring it
+    /// between events is also what keeps streaming output from clearing the
+    /// selection mid-drag: SwiftTerm only preserves a manual selection
+    /// across a `linefeed` while `allowMouseReporting` reads false, and an
+    /// agent's pane never stops producing output for the length of a drag.
+    override func mouseDragged(with event: NSEvent) {
+        guard !TerminalMouse.isTerminalOwnClick(Self.modifiers(of: event)) else {
+            super.mouseDragged(with: event)
+            return
+        }
+        if !isRunningLocalSelectionDrag {
+            isRunningLocalSelectionDrag = true
+            allowMouseReporting = false
+        }
+        super.mouseDragged(with: event)
+    }
+
+    /// Restores mouse reporting once a forced selection drag ends, after
+    /// SwiftTerm's own mouseUp has run — so a drag that stayed local the
+    /// whole time never reports the stray release tmux would otherwise
+    /// receive with no matching motion before it.
+    override func mouseUp(with event: NSEvent) {
+        defer {
+            if isRunningLocalSelectionDrag {
+                isRunningLocalSelectionDrag = false
+                allowMouseReporting = true
+            }
+        }
+        super.mouseUp(with: event)
+    }
+
+    // MARK: - Copy and paste
+
+    /// Puts the active selection on the pasteboard as plain text, read
+    /// through `TerminalGridSelection` rather than SwiftTerm's own
+    /// `getSelectedText()` — that merges wrapped rows into one line with no
+    /// trim, where the brief wants one line per grid row with each line's
+    /// trailing whitespace trimmed.
+    override func copy(_ sender: Any) {
+        guard selection.active else { return }
+        let start = TerminalGridPosition(row: selection.start.row, col: selection.start.col)
+        let end = TerminalGridPosition(row: selection.end.row, col: selection.end.col)
+        let rows = (min(start.row, end.row)...max(start.row, end.row)).map(gridRowText)
+        let text = TerminalGridSelection.text(rows: rows, start: start, end: end)
+        guard !text.isEmpty else { return }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
+
+    /// Pasting files — a Finder copy, or anything else that puts file URLs on
+    /// the pasteboard — types their paths, exactly as dropping them does.
+    ///
+    /// Otherwise, sends the pasteboard's plain text to the session, bracketed
+    /// when the running program has asked for it — through
+    /// `TerminalPasteEncoding` rather than SwiftTerm's own `paste(_:)`, so
+    /// the encoding is the one piece tested against fixtures.
+    ///
+    /// An image held as raw data rather than as a file is nobody's business
+    /// here: a pseudo-terminal carries no bytes but text, and Claude Code's
+    /// own ctrl+v reads the Mac's clipboard directly — a key that reaches it
+    /// through this pane unchanged, since it is not a command-key gesture.
+    override func paste(_ sender: Any) {
+        if type(into: Self.filePaths(on: .general)) {
+            return
+        }
+        guard let text = NSPasteboard.general.string(forType: .string) else { return }
+        send(txt: TerminalPasteEncoding.send(text, bracketed: terminal.bracketedPasteMode))
+    }
+
+    /// One full-width row of the grid at `absoluteRow`, an absolute buffer
+    /// row exactly as `selection.start`/`end` count it — the same numbering
+    /// `calculateMouseHit` builds those from. `getCharacter(col:row:)` counts
+    /// rows from the top of the *visible* screen instead and adds the
+    /// scroll offset back in itself, so that offset is subtracted here first
+    /// to land on the same row either way.
+    private func gridRowText(absoluteRow: Int) -> String {
+        let viewportRow = absoluteRow - terminal.buffer.yDisp
+        var characters: [Character] = []
+        characters.reserveCapacity(terminal.cols)
+        for col in 0..<terminal.cols {
+            characters.append(terminal.getCharacter(col: col, row: viewportRow) ?? " ")
+        }
+        return String(characters)
     }
 
     // MARK: - Files dropped and pasted
@@ -350,22 +463,6 @@ final class FirstLayoutTerminalView: LocalProcessTerminalView {
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         type(into: Self.filePaths(on: sender.draggingPasteboard))
-    }
-
-    /// Pasting files — a Finder copy, or anything else that puts file URLs on
-    /// the pasteboard — types their paths, exactly as dropping them does. A
-    /// pasteboard holding no file falls through to SwiftTerm's own paste,
-    /// which is the text one.
-    ///
-    /// An image held as raw data rather than as a file is nobody's business
-    /// here: a pseudo-terminal carries no bytes but text, and Claude Code's
-    /// own ctrl+v reads the Mac's clipboard directly — a key that reaches it
-    /// through this pane unchanged, since it is not a command-key gesture.
-    override func paste(_ sender: Any) {
-        if type(into: Self.filePaths(on: .general)) {
-            return
-        }
-        super.paste(sender)
     }
 
     /// Types the paths, answering whether there was anything to type.
