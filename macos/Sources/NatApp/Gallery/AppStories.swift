@@ -477,6 +477,14 @@ enum AppStories {
         },
 
         Story(
+            name: "agent-terminal-selection",
+            summary: "The agent terminal with an active click-drag selection spanning two rows.",
+            size: pane
+        ) {
+            TerminalSelectionStubView()
+        },
+
+        Story(
             name: "diff-skeleton",
             summary: "The Diff tab on a branch still being read — file boxes and the file "
                 + "list as placeholders, with the commits menu and the disabled "

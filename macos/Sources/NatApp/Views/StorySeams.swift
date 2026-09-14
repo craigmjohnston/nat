@@ -69,3 +69,63 @@ struct TerminalStubView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
+
+/// What a story draws to show a click-drag selection in the agent terminal:
+/// a few fixed rows of mock output with a run of characters, spanning more
+/// than one row, washed in the same `terminalSelection` colour
+/// `TerminalTheme.apply` gives a live view's `selectedTextBackgroundColor` —
+/// there is no tmux session in a gallery run for a real drag to select
+/// against, so this stands in for one exactly as `TerminalStubView` stands in
+/// for the terminal itself.
+struct TerminalSelectionStubView: View {
+    /// The rows drawn, and the selection over them: `git status`'s own
+    /// output, dragged from partway through the branch line to partway
+    /// through the line after it — a selection that spans a row boundary,
+    /// which is the case worth a picture.
+    private static let rows = [
+        "$ git status",
+        "On branch slice/copy-and-paste-in-the-embedded-terminal",
+        "nothing to commit, working tree clean",
+    ]
+    private static let start = TerminalGridPosition(row: 1, col: 11)
+    private static let end = TerminalGridPosition(row: 2, col: 17)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(Self.rows.enumerated()), id: \.offset) { index, row in
+                line(row, index: index)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(DesignTokens.fill(.terminal))
+    }
+
+    @ViewBuilder
+    private func line(_ row: String, index: Int) -> some View {
+        let characters = Array(row)
+        let inSelection = index >= Self.start.row && index <= Self.end.row
+        let lowerBound = index == Self.start.row ? min(Self.start.col, characters.count) : 0
+        let upperBound = index == Self.end.row ? min(Self.end.col, characters.count) : characters.count
+
+        HStack(spacing: 0) {
+            if inSelection {
+                if lowerBound > 0 {
+                    Text(String(characters[0..<lowerBound]))
+                }
+                if lowerBound < upperBound {
+                    Text(String(characters[lowerBound..<upperBound]))
+                        .background(DesignTokens.terminalSelectionWash())
+                }
+                if upperBound < characters.count {
+                    Text(String(characters[upperBound...]))
+                }
+            } else {
+                Text(row)
+            }
+            Spacer(minLength: 0)
+        }
+        .font(Typo.mono(size: Typo.code, weight: .regular))
+        .foregroundStyle(DesignTokens.terminalText())
+    }
+}
