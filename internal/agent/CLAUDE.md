@@ -85,6 +85,27 @@ running agent's state.
   `supportsSessionEnv` (`tmux -V` read as ≥ 3.2) gates whether `-e` is even
   passed — an older tmux refuses the whole launch over an unsupported flag,
   and a version that can't be read is treated as "don't know," not "old."
+- `agentCommand` pins every launch's `--settings` to `{"theme":"auto"}`,
+  unconditionally — there is no lighter/darker choice threaded in from the
+  caller any more. `"auto"` is what makes Claude Code speak the *live*
+  re-theme protocol: `CSI ?2031h` (subscribe) and an OSC 11 probe once at
+  startup, then a fresh probe and re-theme whenever it later receives a `CSI
+  ?997;1n`/`?997;2n` report on its stdin. A pinned `"light"`/`"dark"` value
+  was tried first (the superseded slice this one replaced) and verified not
+  to re-theme a running session at all — Claude Code only reads a pinned
+  theme once. Answering the OSC 11 probe and sending the CSI reports is
+  entirely the attach-client PTY's job, not this package's: a session
+  launched detached, with nothing attached to its pane yet, gets no answer
+  until a viewer attaches — same as every launch before `"auto"` existed. The
+  Go embedded viewer (`internal/vterm.Session`) answers the probe from the
+  `bg`/`fg` it was started with, which is static for the process's lifetime —
+  the Go TUI has no live "the outer terminal's appearance just changed" event
+  of its own to push a `CSI ?997` report on, unlike gnat's explicit
+  light/dark/system switcher, so it sends none. `AttachCmd`'s full-screen
+  attach hands the fd straight to the user's real terminal and needs nothing
+  from nat either way — whatever speaks the protocol there is the real
+  terminal's own doing. See `macos/CLAUDE.md` for gnat's half: it pushes the
+  `CSI ?997` report itself, on every appearance change.
 - `Activity()` scans every tagged pane once (`capture-pane -p -J`) and
   classifies each as working / waiting / gone / unknown, matched by **shape**
   against Claude Code's own status line — a verb that trails off, then

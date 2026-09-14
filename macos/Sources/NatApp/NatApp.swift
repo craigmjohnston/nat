@@ -86,15 +86,6 @@ struct NatApp: App {
             // is a View modifier and so goes on the window's content, not on
             // the WindowGroup scene below.
             .task { CursorDebugWalker.startIfAsked() }
-            // The one place `storedTheme` reaches NatKit: `appModel.theme` is
-            // what every launch reads (`AppModel.effectiveTheme`), and this is
-            // the sync that keeps it current with the picker in Settings —
-            // `initial: true` so a launch before the picker is ever touched
-            // still sees the setting the window opened on, not `.system`'s
-            // Swift default by coincidence.
-            .onChange(of: storedTheme, initial: true) { _, newValue in
-                appModel.theme = Theme(stored: newValue)
-            }
             // The other half of init's `.regular` policy: brings the window
             // to the front the way launching a bundled app would, now that
             // there is a window to bring.

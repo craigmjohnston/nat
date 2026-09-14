@@ -1148,8 +1148,7 @@ struct RailView: View {
                 projectID: projectID,
                 sliceRef: slice.sliceID,
                 model: agent?.model,
-                effort: agent?.effort,
-                theme: appModel.effectiveTheme
+                effort: agent?.effort
             )
             appModel.selectedSliceID = slice.sliceID
             await appModel.refresh()

@@ -10,7 +10,7 @@ public protocol NatClientProtocol: Sendable {
     func sliceDiff(projectID: String, sliceRef: String, commit: String?) async throws -> SliceDiff
     func sliceCommits(projectID: String, sliceRef: String) async throws -> SliceCommitsDoc
     func sliceEdit(projectID: String, sliceRef: String, description: String) async throws -> SliceEditResult
-    func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?, theme: String?) async throws -> LaunchResult
+    func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult
     func agentSend(projectID: String, sliceRef: String, text: String) async throws -> Void
     func agentKill(projectID: String, sliceRef: String) async throws -> Void
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult
@@ -19,7 +19,7 @@ public protocol NatClientProtocol: Sendable {
     func prStatus(projectID: String) async throws -> PRStatusDoc
     func prMerge(projectID: String, sliceRef: String) async throws -> Void
     func prComment(projectID: String, sliceRef: String, body: String) async throws -> Void
-    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?, theme: String?) async throws -> WorkshopLaunchResult
+    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult
     func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult
     func configShow() async throws -> ConfigDoc
     func configSet(key: String, value: String) async throws -> Void

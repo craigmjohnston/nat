@@ -79,7 +79,7 @@ final class MockNatClient: NatClientProtocol, @unchecked Sendable {
         throw TestError()
     }
 
-    func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?, theme: String?) async throws -> LaunchResult {
+    func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult {
         throw TestError()
     }
 
@@ -96,7 +96,7 @@ final class MockNatClient: NatClientProtocol, @unchecked Sendable {
         throw TestError()
     }
 
-    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?, theme: String?) async throws -> WorkshopLaunchResult {
+    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult {
         throw TestError()
     }
 

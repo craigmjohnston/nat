@@ -32,7 +32,7 @@ private final class MockReviewStatsClient: NatClientProtocol, @unchecked Sendabl
     func agentKill(projectID: String, sliceRef: String) async throws { throw ReviewStatsTestError() }
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult { throw ReviewStatsTestError() }
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String { throw ReviewStatsTestError() }
-    func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?, theme: String?) async throws -> LaunchResult {
+    func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult {
         throw ReviewStatsTestError()
     }
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail { throw ReviewStatsTestError() }
@@ -46,7 +46,7 @@ private final class MockReviewStatsClient: NatClientProtocol, @unchecked Sendabl
     }
     func prMerge(projectID: String, sliceRef: String) async throws { throw ReviewStatsTestError() }
     func prComment(projectID: String, sliceRef: String, body: String) async throws { throw ReviewStatsTestError() }
-    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?, theme: String?) async throws -> WorkshopLaunchResult {
+    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult {
         throw ReviewStatsTestError()
     }
     func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult {

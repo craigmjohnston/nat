@@ -31,14 +31,10 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	model := flags.String("model", "", "Claude model for the agent, overriding the config's slice_agent")
 	effort := flags.String("effort", "", "effort level for the agent, overriding the config's slice_agent")
-	theme := flags.String("theme", "", "start Claude Code on this palette (light or dark); empty leaves it to decide, as every launch did before this existed")
 	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
-	}
-	if *theme != "" && *theme != agent.ThemeLight && *theme != agent.ThemeDark {
-		return usageErrorf("slice-launch: --theme must be %q or %q, given %q", agent.ThemeLight, agent.ThemeDark, *theme)
 	}
 	if len(rest) != 1 {
 		return usageErrorf("slice-launch: want exactly one slice, by URL or ID, given %d", len(rest))
@@ -108,7 +104,7 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 	}
 
 	result, err := actions.Launch(ctx, env.NewTmux(), env.NewWorktrees(), env.NewGit(), st,
-		cfg.AssigneeUserID, promptContext, agentModel, *theme)
+		cfg.AssigneeUserID, promptContext, agentModel)
 	if err != nil {
 		return err
 	}

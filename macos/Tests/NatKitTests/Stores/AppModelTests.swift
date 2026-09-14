@@ -41,12 +41,12 @@ final class MockConfigReader: ConfigReaderProtocol, @unchecked Sendable {
 /// a lock, since the launcher closure is `@Sendable`.
 final class WorkshopLaunchRecorder: @unchecked Sendable {
     private let lock = NSLock()
-    private(set) var calls: [(projectID: String, model: String?, effort: String?, request: String?, theme: String?)] = []
+    private(set) var calls: [(projectID: String, model: String?, effort: String?, request: String?)] = []
 
-    func record(projectID: String, model: String?, effort: String?, request: String?, theme: String?) {
+    func record(projectID: String, model: String?, effort: String?, request: String?) {
         lock.lock()
         defer { lock.unlock() }
-        calls.append((projectID, model, effort, request, theme))
+        calls.append((projectID, model, effort, request))
     }
 }
 
@@ -101,21 +101,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(appModel.config)
         XCTAssertNil(appModel.projectStore)
         XCTAssertNil(appModel.selectedSliceID)
-        XCTAssertEqual(appModel.theme, .system)
-    }
-
-    /// `effectiveTheme` is `theme.cliValue()` — `light`/`dark` answer for
-    /// themselves without touching a real appearance, which is what makes
-    /// this deterministic in a test.
-    @MainActor
-    func testEffectiveThemeForwardsThePinnedTheme() {
-        let appModel = AppModel()
-
-        appModel.theme = .dark
-        XCTAssertEqual(appModel.effectiveTheme, "dark")
-
-        appModel.theme = .light
-        XCTAssertEqual(appModel.effectiveTheme, "light")
     }
 
     @MainActor
@@ -572,7 +557,7 @@ final class AppModelTests: XCTestCase {
     private func workshopModel(
         planningAgentAppears: Bool = false,
         settleWait: @escaping @MainActor @Sendable () async -> Void = { await Task.yield() },
-        launcher: @escaping @Sendable (String, String?, String?, String?, String?) async throws -> WorkshopLaunchResult
+        launcher: @escaping @Sendable (String, String?, String?, String?) async throws -> WorkshopLaunchResult
     ) async -> AppModel {
         let testConfig = NatProjectConfig(
             projects: [
@@ -585,8 +570,8 @@ final class AppModelTests: XCTestCase {
         let client: NatClientProtocol = appearing ?? MockActivityClient(response: .agents([]))
         let appModel = AppModel(
             configReader: MockConfigReader(response: .success(testConfig)),
-            workshopLauncher: { projectID, model, effort, request, theme in
-                let result = try await launcher(projectID, model, effort, request, theme)
+            workshopLauncher: { projectID, model, effort, request in
+                let result = try await launcher(projectID, model, effort, request)
                 appearing?.launched()
                 return result
             },
@@ -699,8 +684,8 @@ final class AppModelTests: XCTestCase {
     @MainActor
     func testOpenWorkshop_selectsWithoutLaunching() async {
         let recorder = WorkshopLaunchRecorder()
-        let appModel = await workshopModel { projectID, model, effort, request, theme in
-            recorder.record(projectID: projectID, model: model, effort: effort, request: request, theme: theme)
+        let appModel = await workshopModel { projectID, model, effort, request in
+            recorder.record(projectID: projectID, model: model, effort: effort, request: request)
             return WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
         }
         appModel.selectedSliceID = "slice-1"
@@ -716,14 +701,10 @@ final class AppModelTests: XCTestCase {
     @MainActor
     func testLaunchWorkshop_launchesWithTheConfigPairAndTheTrimmedRequest() async {
         let recorder = WorkshopLaunchRecorder()
-        let appModel = await workshopModel(planningAgentAppears: true) { projectID, model, effort, request, theme in
-            recorder.record(projectID: projectID, model: model, effort: effort, request: request, theme: theme)
+        let appModel = await workshopModel(planningAgentAppears: true) { projectID, model, effort, request in
+            recorder.record(projectID: projectID, model: model, effort: effort, request: request)
             return WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
         }
-        // Pinned rather than left at the default `.system`, whose resolution
-        // depends on the Mac actually running the test — `dark`/`light`
-        // answer for themselves, which is what this assertion needs.
-        appModel.theme = .dark
 
         await appModel.launchWorkshop(request: "  Add dark mode.  \n")
 
@@ -732,7 +713,6 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(recorder.calls[0].model, "opus")
         XCTAssertEqual(recorder.calls[0].effort, "high")
         XCTAssertEqual(recorder.calls[0].request, "Add dark mode.")
-        XCTAssertEqual(recorder.calls[0].theme, "dark")
         XCTAssertTrue(appModel.workshopSelected)
         // Settled: the poll has reported the session, so the pane has the
         // terminal to draw and the launching state is over.
@@ -750,7 +730,7 @@ final class AppModelTests: XCTestCase {
                 probe.observe()
                 await Task.yield()
             }
-        ) { _, _, _, _, _ in
+        ) { _, _, _, _ in
             WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
         }
         probe.model = appModel
@@ -771,7 +751,7 @@ final class AppModelTests: XCTestCase {
     func testLaunchWorkshop_givesUpOnASessionThatNeverAppears() async {
         // The activity poll reports nothing, ever — a session that exited on
         // the spot, or a tmux the poll cannot read.
-        let appModel = await workshopModel { _, _, _, _, _ in
+        let appModel = await workshopModel { _, _, _, _ in
             WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
         }
 
@@ -787,7 +767,7 @@ final class AppModelTests: XCTestCase {
     @MainActor
     func testLaunchWorkshop_aFailedLaunchDoesNotWaitOnAnAgent() async {
         let probe = WorkshopLaunchProbe()
-        let appModel = await workshopModel(settleWait: { probe.observe() }) { _, _, _, _, _ in
+        let appModel = await workshopModel(settleWait: { probe.observe() }) { _, _, _, _ in
             throw NatError.commandFailed("boom")
         }
         probe.model = appModel
@@ -803,7 +783,7 @@ final class AppModelTests: XCTestCase {
 
     @MainActor
     func testLaunchWorkshop_commandFailureKeepsItsOwnMessage() async {
-        let appModel = await workshopModel { _, _, _, _, _ in
+        let appModel = await workshopModel { _, _, _, _ in
             throw NatError.commandFailed("a planning agent is already live: nat-plan")
         }
 
@@ -816,7 +796,7 @@ final class AppModelTests: XCTestCase {
 
     @MainActor
     func testLaunchWorkshop_otherNatErrorFallsBackToItsDescription() async {
-        let appModel = await workshopModel { _, _, _, _, _ in
+        let appModel = await workshopModel { _, _, _, _ in
             throw NatError.missingOutput
         }
 
@@ -827,7 +807,7 @@ final class AppModelTests: XCTestCase {
 
     @MainActor
     func testLaunchWorkshop_arbitraryErrorFallsBackToItsDescription() async {
-        let appModel = await workshopModel { _, _, _, _, _ in
+        let appModel = await workshopModel { _, _, _, _ in
             throw NSError(domain: "test", code: 7, userInfo: [NSLocalizedDescriptionKey: "boom"])
         }
 
@@ -841,8 +821,8 @@ final class AppModelTests: XCTestCase {
         let recorder = WorkshopLaunchRecorder()
         let appModel = AppModel(
             configReader: MockConfigReader(response: .failure),
-            workshopLauncher: { projectID, model, effort, request, theme in
-                recorder.record(projectID: projectID, model: model, effort: effort, request: request, theme: theme)
+            workshopLauncher: { projectID, model, effort, request in
+                recorder.record(projectID: projectID, model: model, effort: effort, request: request)
                 return WorkshopLaunchResult(session: "nat-plan", workdir: "/", wishlist: false)
             }
         )
@@ -856,7 +836,7 @@ final class AppModelTests: XCTestCase {
 
     @MainActor
     func testSelectingASliceDeselectsTheWorkshopAndDismissesItsError() async {
-        let appModel = await workshopModel { _, _, _, _, _ in
+        let appModel = await workshopModel { _, _, _, _ in
             throw NatError.commandFailed("boom")
         }
         await appModel.launchWorkshop(request: "")
@@ -872,7 +852,7 @@ final class AppModelTests: XCTestCase {
 
     @MainActor
     func testWorkshopSelected_isPerProject() async {
-        let appModel = await workshopModel { _, _, _, _, _ in
+        let appModel = await workshopModel { _, _, _, _ in
             WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
         }
 
@@ -888,7 +868,7 @@ final class AppModelTests: XCTestCase {
 
     @MainActor
     func testWorkshopSelected_setterCanDeselect() async {
-        let appModel = await workshopModel { _, _, _, _, _ in
+        let appModel = await workshopModel { _, _, _, _ in
             WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
         }
 

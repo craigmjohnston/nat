@@ -293,7 +293,7 @@ func TestLaunchWishlistAgentReportsAFailedPromptFile(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
 	launcher := &fakeLauncher{}
 
-	msg := runMsg(t, launchWishlistAgent(launcher, "project-1", "tracker", "/tmp", wishlistItems(1), config.AgentModel{}, "")).(agentLaunchedMsg)
+	msg := runMsg(t, launchWishlistAgent(launcher, "project-1", "tracker", "/tmp", wishlistItems(1), config.AgentModel{})).(agentLaunchedMsg)
 
 	if msg.err == nil || !strings.Contains(msg.err.Error(), "launch planning agent: create prompt dir") {
 		t.Errorf("err = %v, want the failed prompt file", msg.err)

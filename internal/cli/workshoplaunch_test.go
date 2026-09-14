@@ -212,31 +212,10 @@ func TestWorkshopLaunchModelFlagsOverrideConfig(t *testing.T) {
 	}
 }
 
-// A headless launch has no board of its own to read a background colour off,
-// so --theme is the only way it can tell Claude Code which palette to start
-// on — gnat, which knows its own appearance natively, is what drives it.
-func TestWorkshopLaunchThemeFlagReachesTheAgent(t *testing.T) {
-	env, _ := testEnv(testConfig(t), &fakeAPI{})
-	runner := &agentTestRunner{}
-	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
-
-	err := Run(context.Background(), []string{
-		"workshop-launch", "--theme", "dark", "--project", "project-1",
-	}, env)
-	if err != nil {
-		t.Fatalf("workshop-launch: %v", err)
-	}
-
-	argv := strings.Join(runner.launchArgs, " ")
-	if !strings.Contains(argv, `--settings '{"theme":"dark"}'`) {
-		t.Errorf("launch argv = %q, want the theme carried as a settings override", argv)
-	}
-}
-
-// A launch with no --theme at all is every launch before there was a theme to
-// carry: no override, and Claude Code decides for itself exactly as it always
-// has.
-func TestWorkshopLaunchWithNoThemeCarriesNoOverride(t *testing.T) {
+// A headless launch pins Claude Code's theme to "auto", same as every other
+// launch: there is no palette to guess ahead of time any more, only whether
+// to ask Claude Code to find out for itself once something attaches.
+func TestWorkshopLaunchCarriesTheAutoTheme(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	runner := &agentTestRunner{}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
@@ -246,19 +225,9 @@ func TestWorkshopLaunchWithNoThemeCarriesNoOverride(t *testing.T) {
 		t.Fatalf("workshop-launch: %v", err)
 	}
 
-	if argv := strings.Join(runner.launchArgs, " "); strings.Contains(argv, "--settings") {
-		t.Errorf("launch argv = %q, want no settings override with no --theme", argv)
-	}
-}
-
-func TestWorkshopLaunchRefusesAnInvalidTheme(t *testing.T) {
-	env, _ := testEnv(testConfig(t), &fakeAPI{})
-
-	err := Run(context.Background(), []string{
-		"workshop-launch", "--theme", "solarized", "--project", "project-1",
-	}, env)
-	if err == nil || !strings.Contains(err.Error(), "--theme") {
-		t.Errorf("err = %v, want the bad theme value named", err)
+	argv := strings.Join(runner.launchArgs, " ")
+	if !strings.Contains(argv, `--settings '{"theme":"auto"}'`) {
+		t.Errorf("launch argv = %q, want the theme pinned to auto", argv)
 	}
 }
 

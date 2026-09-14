@@ -32,28 +32,6 @@ public final class AppModel {
     /// The current configuration.
     public private(set) var config: NatProjectConfig?
 
-    /// The app's own theme setting, as the Settings window's picker writes it
-    /// (`Theme.storageKey`) — `system`, `light` or `dark`. It is a plain
-    /// stored property rather than read from `UserDefaults` here, the same
-    /// way `selectedSliceID` is: `NatApp`'s `@AppStorage` is the one place
-    /// that owns the persisted value, and it writes this property whenever
-    /// that value changes, the way a view binds to a store rather than a
-    /// store reaching into the view layer's own storage.
-    ///
-    /// This is gnat's equivalent of the Go board's own `App.theme` — a
-    /// reading carried on the model and threaded into every agent this app
-    /// launches, so a session starts on the palette gnat is actually drawn
-    /// in rather than guessing from a detached tmux session that never got
-    /// to ask.
-    public var theme: Theme = .system
-
-    /// `theme` resolved to the two values `nat`'s `--theme` flag takes
-    /// (`"light"`/`"dark"`), or nil to leave the palette to Claude Code —
-    /// `system` reads the Mac's actual current appearance fresh on every
-    /// call, since the picker can change the setting while a session is
-    /// about to launch.
-    public var effectiveTheme: String? { theme.cliValue() }
-
     /// True while a workshop launch is under way — the `nat workshop-launch`
     /// itself, and then the wait for the activity poll to report the session
     /// it started. It is held across both because the pane has nothing to
@@ -168,7 +146,7 @@ public final class AppModel {
     /// workshop-launch` through the client. Injectable for the same reason
     /// `pathsProvider` is.
     private let workshopLauncher: @Sendable (
-        _ projectID: String, _ model: String?, _ effort: String?, _ request: String?, _ theme: String?
+        _ projectID: String, _ model: String?, _ effort: String?, _ request: String?
     ) async throws -> WorkshopLaunchResult
 
     /// How every store this makes reaches nat. Injectable so a preview — or
@@ -213,8 +191,8 @@ public final class AppModel {
         planCache: PlanCaching = DiskPlanCache(),
         pollIntervalSeconds: UInt64 = 30,
         pathsProvider: @escaping @Sendable () async throws -> NatPaths = { try await NatClient().paths() },
-        workshopLauncher: @escaping @Sendable (String, String?, String?, String?, String?) async throws -> WorkshopLaunchResult = {
-            try await NatClient().workshopLaunch(projectID: $0, model: $1, effort: $2, request: $3, theme: $4)
+        workshopLauncher: @escaping @Sendable (String, String?, String?, String?) async throws -> WorkshopLaunchResult = {
+            try await NatClient().workshopLaunch(projectID: $0, model: $1, effort: $2, request: $3)
         },
         clientFactory: @escaping @Sendable () -> NatClientProtocol = { NatClient() },
         activityStoreFactory: @escaping @MainActor @Sendable () -> ActivityStore = { ActivityStore() },
@@ -606,8 +584,7 @@ public final class AppModel {
                 projectID,
                 config?.workshopAgent?.model,
                 config?.workshopAgent?.effort,
-                request.trimmingCharacters(in: .whitespacesAndNewlines),
-                effectiveTheme
+                request.trimmingCharacters(in: .whitespacesAndNewlines)
             )
         } catch let error as NatError {
             if case .commandFailed(let message) = error {

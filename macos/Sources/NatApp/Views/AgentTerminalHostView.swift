@@ -94,7 +94,16 @@ public struct AgentTerminalHostView: NSViewRepresentable {
         // on framing a dark terminal without this. Re-applying the palette
         // the view already has is a no-op that costs a redraw, which is
         // what every other update this method sees is.
+        //
+        // It is also what a Claude Code inside the pane reads an OSC 11
+        // query's answer from: SwiftTerm's `nativeBackgroundColor` setter
+        // writes straight through to `terminal.backgroundColor`, which is
+        // what `getColors(source:)`'s default implementation answers a
+        // query with — so the probe `theme: "auto"` sends at startup, and
+        // any later one this view's own `notifyAppearanceChange` prompts,
+        // always reads gnat's current chrome.
         TerminalTheme.apply(DesignTokens.palette(for: colorScheme), to: nsView)
+        context.coordinator.notifyAppearanceChange(colorScheme, on: nsView)
     }
 
     public static func dismantleNSView(_ nsView: LocalProcessTerminalView, coordinator: Coordinator) {
@@ -115,9 +124,38 @@ public struct AgentTerminalHostView: NSViewRepresentable {
         private let onExit: (TerminalExitReason) -> Void
         private weak var view: LocalProcessTerminalView?
 
+        /// The colour scheme this coordinator last saw, so a report is sent
+        /// only on an actual change — nil until the view's first
+        /// `updateNSView`, which is what keeps that first call from sending
+        /// one: `theme: "auto"` already probes for itself at startup
+        /// (`agent.agentCommand`), on the palette `makeNSView` already
+        /// applied before the attach process ever started, so a report
+        /// there would tell Claude Code nothing it had not already asked.
+        private var lastColorScheme: ColorScheme?
+
         init(sessionExists: @escaping () -> Bool, onExit: @escaping (TerminalExitReason) -> Void) {
             self.sessionExists = sessionExists
             self.onExit = onExit
+        }
+
+        /// Reports a colour-scheme change to whatever is attached to view's
+        /// pty, if colorScheme is not what this coordinator last saw and the
+        /// attach is actually live — a report typed at a session still
+        /// starting, or one already gone, has nowhere useful to land.
+        ///
+        /// The report goes straight to the pty (`send(txt:)`, the same
+        /// method a modified enter's CSI-u encoding goes through above) —
+        /// this is gnat's own appearance changing, not the user or the
+        /// agent doing anything to the pane, so it is not something
+        /// SwiftTerm's emulator should interpret, only relay: tmux forwards
+        /// it into the attached pane exactly like any other client input,
+        /// and Claude Code reads it off its stdin.
+        func notifyAppearanceChange(_ colorScheme: ColorScheme, on view: LocalProcessTerminalView) {
+            defer { lastColorScheme = colorScheme }
+            let attached = if case .attached = lifecycle.state { true } else { false }
+            if ColorSchemeReport.shouldReport(from: lastColorScheme, to: colorScheme, attached: attached) {
+                view.send(txt: ColorSchemeReport.escape(for: colorScheme))
+            }
         }
 
         /// Starts the attach process on view, using spec for its argv and

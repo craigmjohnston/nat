@@ -36,14 +36,10 @@ func workshopLaunch(ctx context.Context, args []string, env Env) error {
 	model := flags.String("model", "", "Claude model for the agent, overriding the config's workshop_agent")
 	effort := flags.String("effort", "", "effort level for the agent, overriding the config's workshop_agent")
 	requestFlag := flags.String("request", "", "what to workshop, folded into the agent's prompt; - reads it from stdin")
-	theme := flags.String("theme", "", "start Claude Code on this palette (light or dark); empty leaves it to decide, as every launch did before this existed")
 	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
-	}
-	if *theme != "" && *theme != agent.ThemeLight && *theme != agent.ThemeDark {
-		return usageErrorf("workshop-launch: --theme must be %q or %q, given %q", agent.ThemeLight, agent.ThemeDark, *theme)
 	}
 	if len(rest) != 0 {
 		return usageErrorf("workshop-launch: takes no arguments, given %d", len(rest))
@@ -96,7 +92,7 @@ func workshopLaunch(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return fmt.Errorf("launch planning agent: %w", err)
 	}
-	if err := env.NewTmux().Launch(session, workdir, file, agent.PlanTag(projectID), agentModel, *theme); err != nil {
+	if err := env.NewTmux().Launch(session, workdir, file, agent.PlanTag(projectID), agentModel); err != nil {
 		return err
 	}
 

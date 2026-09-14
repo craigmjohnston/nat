@@ -18,7 +18,6 @@ import (
 	"charm.land/lipgloss/v2"
 	xansi "github.com/charmbracelet/x/ansi"
 
-	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
@@ -347,18 +346,10 @@ type App struct {
 
 	width, height int
 
-	// theme is the board's own reading of the terminal's background, once the
-	// query in Init answers — [agent.ThemeLight] or [agent.ThemeDark] — carried
-	// into every agent this board launches so its Claude Code starts on the
-	// palette that matches rather than guessing from a detached tmux session
-	// that never got to ask. Empty until the answer arrives, which is what
-	// keeps a launch before then behaving exactly as one always did: no
-	// override at all.
-	theme string
 	// termBG and termFG are the terminal's own background and foreground, from
-	// the same query, carried into the embedded viewer's [vterm.Session] so its
-	// emulator answers a Claude Code inside it the same way the outer terminal
-	// would have. Nil until the answer arrives.
+	// the board's own query of it in Init, carried into the embedded viewer's
+	// [vterm.Session] so its emulator answers a Claude Code inside it the same
+	// way the outer terminal would have. Nil until the answer arrives.
 	termBG, termFG color.Color
 }
 
@@ -403,15 +394,6 @@ func (a *App) setStyles(s Styles) {
 	}
 }
 
-// themeName is the board's own reading of a background-colour answer, as a
-// launch carries it: [agent.ThemeDark] or [agent.ThemeLight].
-func themeName(isDark bool) string {
-	if isDark {
-		return agent.ThemeDark
-	}
-	return agent.ThemeLight
-}
-
 // Init starts the screen on show: the wizard's first call, or the first load of
 // the active project's plan, alongside the poll that marks the slices an agent
 // is already running on, the background poll that keeps the plan itself
@@ -450,7 +432,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.BackgroundColorMsg:
 		a.setStyles(NewStyles(msg.IsDark()))
 		a.termBG = msg.Color
-		a.theme = themeName(msg.IsDark())
 		return a, nil
 	case tea.ForegroundColorMsg:
 		a.termFG = msg.Color

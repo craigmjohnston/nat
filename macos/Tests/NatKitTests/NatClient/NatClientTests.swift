@@ -644,28 +644,6 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(fakeRunner.lastArguments, ["slice-launch", "--project", "proj-123", "--json", "slice-1"])
     }
 
-    // gnat's own light/dark reading, carried the same way `--model`/`--effort`
-    // already are — the CLI's own `--theme` flag.
-    func testSliceLaunchWithThemeAddsTheFlag() async throws {
-        let fakeRunner = FakeRunner(fixture: .sliceLaunchSuccess)
-        let client = NatClient(commandRunner: fakeRunner)
-
-        _ = try await client.sliceLaunch(projectID: "proj-123", sliceRef: "slice-1", model: nil, effort: nil, theme: "dark")
-
-        XCTAssertEqual(fakeRunner.lastArguments, ["slice-launch", "--project", "proj-123", "--json", "--theme", "dark", "slice-1"])
-    }
-
-    // Unknown — nil — is every call before there was a theme to carry: no
-    // flag at all, and `nat` decides exactly as it always did.
-    func testSliceLaunchWithNoThemeOmitsTheFlag() async throws {
-        let fakeRunner = FakeRunner(fixture: .sliceLaunchSuccess)
-        let client = NatClient(commandRunner: fakeRunner)
-
-        _ = try await client.sliceLaunch(projectID: "proj-123", sliceRef: "slice-1", model: nil, effort: nil, theme: nil)
-
-        XCTAssertEqual(fakeRunner.lastArguments, ["slice-launch", "--project", "proj-123", "--json", "slice-1"])
-    }
-
     func testSliceLaunchFailure() async throws {
         let fakeRunner = FakeRunner(fixture: .sliceLaunchFailure)
         let client = NatClient(commandRunner: fakeRunner)
@@ -730,31 +708,6 @@ final class NatClientTests: XCTestCase {
 
         XCTAssertEqual(fakeRunner.lastArguments, ["workshop-launch", "--project", "proj-123", "--json"])
         XCTAssertNil(fakeRunner.lastStandardInput)
-    }
-
-    // Same flag, same rule, as `sliceLaunch`'s own `--theme` — gnat's own
-    // light/dark reading, carried into the planning agent too.
-    func testWorkshopLaunchWithThemeAddsTheFlag() async throws {
-        let fakeRunner = FakeRunner(fixture: .workshopLaunchSuccess)
-        let client = NatClient(commandRunner: fakeRunner)
-
-        _ = try await client.workshopLaunch(projectID: "proj-123", model: nil, effort: nil, request: nil, theme: "light")
-
-        XCTAssertEqual(
-            fakeRunner.lastArguments,
-            ["workshop-launch", "--project", "proj-123", "--json", "--theme", "light"]
-        )
-    }
-
-    // Unknown — nil — omits the flag, exactly as every launch did before
-    // there was a theme to carry.
-    func testWorkshopLaunchWithNoThemeOmitsTheFlag() async throws {
-        let fakeRunner = FakeRunner(fixture: .workshopLaunchSuccess)
-        let client = NatClient(commandRunner: fakeRunner)
-
-        _ = try await client.workshopLaunch(projectID: "proj-123", model: nil, effort: nil, request: nil, theme: nil)
-
-        XCTAssertEqual(fakeRunner.lastArguments, ["workshop-launch", "--project", "proj-123", "--json"])
     }
 
     func testWorkshopLaunchAlreadyLiveFailure() async throws {
