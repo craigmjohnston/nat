@@ -1160,6 +1160,63 @@ func TestInterruptFailure(t *testing.T) {
 	}
 }
 
+// TestSendKeys covers typing literal text into a session and pressing a
+// named key after it — the seam the usage probe drives its local /usage
+// command with, never through SendPrompt.
+func TestSendKeys(t *testing.T) {
+	runner := &fakeRunner{}
+	session := "nat-usage-probe"
+	if err := NewTmuxWithRunner(runner).SendKeys(session, "/usage", "Enter"); err != nil {
+		t.Fatalf("SendKeys: %v", err)
+	}
+	want := [][]string{
+		{"-u", "send-keys", "-t", session, "--", "/usage"},
+		{"-u", "send-keys", "-t", session, "Enter"},
+	}
+	if len(runner.calls) != len(want) {
+		t.Fatalf("calls = %v, want %v", runner.calls, want)
+	}
+	for i, args := range want {
+		if runner.calls[i].name != TmuxBinary || !slices.Equal(runner.calls[i].args, args) {
+			t.Errorf("call %d = %v %v, want tmux %v", i, runner.calls[i].name, runner.calls[i].args, args)
+		}
+	}
+}
+
+// TestSendKeysTypeFailure covers the literal-text send-keys call failing.
+func TestSendKeysTypeFailure(t *testing.T) {
+	runner := &fakeRunner{errs: map[string]error{"send-keys": errors.New("boom")}}
+	err := NewTmuxWithRunner(runner).SendKeys("nat-1", "/usage", "Enter")
+	if err == nil || !strings.Contains(err.Error(), `type "/usage"`) || !strings.Contains(err.Error(), "nat-1") {
+		t.Fatalf("SendKeys error = %v, want it to name the typed text and the session", err)
+	}
+}
+
+// keyFailAfterRunner fails the Nth send-keys call it sees and succeeds on
+// every other, so SendKeys' second call (the named key) can be made to fail
+// on its own, distinct from the first (the literal text).
+type keyFailAfterRunner struct {
+	failOn int
+	seen   int
+}
+
+func (r *keyFailAfterRunner) Run(name string, args ...string) (string, error) {
+	r.seen++
+	if r.seen == r.failOn {
+		return "", errors.New("boom")
+	}
+	return "", nil
+}
+
+// TestSendKeysKeyFailure covers the named-key send-keys call failing after
+// the literal text was typed successfully.
+func TestSendKeysKeyFailure(t *testing.T) {
+	err := NewTmuxWithRunner(&keyFailAfterRunner{failOn: 2}).SendKeys("nat-1", "/usage", "Enter")
+	if err == nil || !strings.Contains(err.Error(), "send Enter") || !strings.Contains(err.Error(), "nat-1") {
+		t.Fatalf("SendKeys error = %v, want it to name the key and the session", err)
+	}
+}
+
 // TestKill covers ending an agent's session outright.
 func TestKill(t *testing.T) {
 	runner := &fakeRunner{}

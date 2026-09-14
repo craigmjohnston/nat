@@ -84,9 +84,12 @@ func WriteUsageProbeSettings(dir, sinkPath string) (string, error) {
 }
 
 // usageProbeCommand is the shell command the probe's tmux session runs:
-// Claude Code pinned to haiku — the cheapest model that still turns a reply —
-// with the throwaway settings file that is the only sanctioned, OAuth-free
-// way to read rate-limit state.
+// Claude Code, with the throwaway settings file that is the only
+// sanctioned, OAuth-free way to read rate-limit state. The probe never
+// sends this session a prompt and spends no model turn — it drives the
+// local /usage slash command instead (internal/cli's probeUsage), which
+// costs nothing — so --model haiku is pinned only as a precaution, not
+// because anything here is expected to turn a reply.
 func usageProbeCommand(settingsPath string) string {
 	return fmt.Sprintf("claude --model haiku --settings %s", shellQuote(settingsPath))
 }

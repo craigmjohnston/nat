@@ -677,6 +677,23 @@ func (t *Tmux) SendPrompt(session, text string) error {
 	return nil
 }
 
+// SendKeys types text into session's pane as literal keystrokes, then
+// presses key — e.g. "Enter" — as a separate, named one. Unlike SendPrompt,
+// which pastes text through Claude Code's composer and submits it as a chat
+// message, this drives the pane the way someone typing directly at it would
+// and spends no model turn: what the usage probe drives its local /usage
+// slash command with, in internal/cli, rather than ever sending a prompt.
+func (t *Tmux) SendKeys(session, text, key string) error {
+	if _, err := t.run("send-keys", "-t", session, "--", text); err != nil {
+		return fmt.Errorf("type %q into %s: %w", text, session, err)
+	}
+	if _, err := t.run("send-keys", "-t", session, key); err != nil {
+		return fmt.Errorf("send %s to %s: %w", key, session, err)
+	}
+	logging.Action("keys sent to an agent", "session", session, "text", text, "key", key)
+	return nil
+}
+
 // Interrupt sends an interrupt signal (Escape) to the session running the
 // agent, which is Claude Code's own interrupt key. This allows a caller to
 // interrupt a running agent's turn without terminating the session.
