@@ -106,10 +106,18 @@ private struct PlanProgressBar: View {
         .frame(height: Self.barHeight)
     }
 
+    /// A checkmark stroked in the bar's own background rather than a
+    /// contrasting ink, so it reads as cut through the pill — punched out of
+    /// it — instead of a glyph sitting on top.
     private var doneStub: some View {
         RoundedRectangle(cornerRadius: Self.barHeight / 2)
             .fill(DesignTokens.accentMuted(on: .header))
             .frame(width: Self.doneStubWidth)
+            .overlay {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(DesignTokens.fill(.header))
+            }
             .help(progress.doneTooltip)
     }
 
@@ -135,8 +143,9 @@ private struct PlanProgressBar: View {
     }
 }
 
-/// The right cell: a quiet, live count of running agents. The far right is
-/// left deliberately empty — a follow-up slice's Claude usage readout.
+/// The right cell: a quiet, live count of running agents, right-aligned to
+/// the bar's far edge — the left member of a cluster a follow-up slice
+/// appends the Claude usage readout to, as `N agents running | {usage}`.
 private struct AgentCountCell: View {
     let count: Int
 
@@ -148,10 +157,10 @@ private struct AgentCountCell: View {
 
     var body: some View {
         HStack {
+            Spacer(minLength: 0)
             Text(label)
                 .font(.system(size: Typo.caption, weight: .regular))
                 .ink(.tertiary)
-            Spacer(minLength: 0)
         }
         .padding(.horizontal, Self.horizontalPadding)
     }

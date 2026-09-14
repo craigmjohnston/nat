@@ -57,6 +57,31 @@ private final class FakeClaudeRunner: CommandRunning, @unchecked Sendable {
 
 final class AgentOptionsTests: XCTestCase {
 
+    // MARK: - fallback
+
+    /// The documented alias set from
+    /// https://code.claude.com/docs/en/model-config, including the
+    /// bracketed `[1m]` variants — there is no enumeration API, so this list
+    /// is what the fallback (and every picker's Custom escape hatch) is
+    /// built on.
+    func testFallbackModelsAreTheDocumentedAliasSet() {
+        XCTAssertEqual(
+            AgentOptions.fallback.models,
+            ["default", "fable", "opus", "sonnet", "haiku", "sonnet[1m]", "opus[1m]", "opusplan"]
+        )
+    }
+
+    /// The `--help` alias regex is alphanumeric-only and must not itself
+    /// match a bracketed alias — bracketed variants only ever reach a picker
+    /// through the fallback list, never through a live `--help` parse.
+    func testBracketedFallbackAliasesAreNotDroppedByTheLiveParse() {
+        let options = AgentOptionsSource.parse(helpText: realisticHelpText)
+        XCTAssertTrue(options.models.contains("sonnet[1m]"))
+        XCTAssertTrue(options.models.contains("opus[1m]"))
+        XCTAssertTrue(options.models.contains("opusplan"))
+        XCTAssertTrue(options.models.contains("default"))
+    }
+
     // MARK: - Parsing
 
     func testParsesEffortsFromTheirParenthesisedList() {
@@ -96,9 +121,11 @@ final class AgentOptionsTests: XCTestCase {
         """
         let options = AgentOptionsSource.parse(helpText: helpText)
         XCTAssertEqual(options.efforts, AgentOptions.fallback.efforts)
-        // "sonnet" is already in the fallback list, so folding it in changes
-        // nothing about the result.
-        XCTAssertEqual(options.models, AgentOptions.fallback.models)
+        // "sonnet" is already in the fallback list, so folding it in moves it
+        // to the front and changes nothing else about the result.
+        XCTAssertEqual(options.models.first, "sonnet")
+        XCTAssertEqual(Set(options.models), Set(AgentOptions.fallback.models))
+        XCTAssertEqual(options.models.count, AgentOptions.fallback.models.count)
     }
 
     // MARK: - resolve()
