@@ -59,7 +59,7 @@ func prViewApp(t *testing.T) (*App, *fakePRViewer, string) {
 	t.Helper()
 	workdir := t.TempDir()
 
-	cfg := testConfig()
+	cfg := testConfig(t)
 	project := cfg.Projects[testProjectID]
 	project.WorkingDir = workdir
 	cfg.Projects[testProjectID] = project
@@ -73,6 +73,7 @@ func prViewApp(t *testing.T) (*App, *fakePRViewer, string) {
 			{ID: noPRSlice, Name: "No pull request", Status: domain.SliceClaimed,
 				StatusName: "In progress", MilestoneID: "M1: PR viewer"},
 		})
+	seedLocalPlan(t, testProjectID, p)
 	app.project = &p
 	app.board.hideDone = false // the slice with a pull request is a Done one
 	app.board.SetProject(&p)

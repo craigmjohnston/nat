@@ -2,8 +2,6 @@ package tui
 
 import (
 	"context"
-	"database/sql"
-	"path/filepath"
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/store"
@@ -13,7 +11,15 @@ import (
 // Notion. Nothing above the store knows which it is reading — that is what the
 // seam is for — so the test is the two renders being the same bytes.
 func TestBoardRendersAFileBackedProject(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "plan.db")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_DATA_HOME", home)
+	seedLocalPlan(t, "local-1", testProject())
+
+	path, err := store.LocalPath("local-1")
+	if err != nil {
+		t.Fatalf("resolve the plan path: %v", err)
+	}
 	st, err := store.OpenLocal(path)
 	if err != nil {
 		t.Fatalf("open the plan: %v", err)
@@ -23,7 +29,6 @@ func TestBoardRendersAFileBackedProject(t *testing.T) {
 			t.Errorf("close the plan: %v", err)
 		}
 	}()
-	writeLocalPlan(t, path)
 
 	plan, err := st.Plan(context.Background(), store.Project{ID: "local-1", Name: "tracker"})
 	if err != nil {
@@ -40,40 +45,5 @@ func TestBoardRendersAFileBackedProject(t *testing.T) {
 	}
 	if got, want := local.View(), newTestBoard().View(); got != want {
 		t.Errorf("render =\n%s\nwant the render of the same plan read from Notion:\n%s", got, want)
-	}
-}
-
-// writeLocalPlan writes testProject into a plan of its own, through a
-// connection of its own: the write half of a local plan is the next slice's
-// work, and a second process writing the file while the store holds it open is
-// the access pattern the format was chosen for anyway.
-func writeLocalPlan(t *testing.T, path string) {
-	t.Helper()
-	db, err := sql.Open("sqlite3", "file:"+path)
-	if err != nil {
-		t.Fatalf("open the plan to write it: %v", err)
-	}
-	defer func() {
-		if err := db.Close(); err != nil {
-			t.Errorf("close the writer: %v", err)
-		}
-	}()
-
-	p := testProject()
-	for i, m := range p.Milestones {
-		if _, err := db.Exec(`INSERT INTO milestones (name, position) VALUES (?, ?)`, m.Name, i); err != nil {
-			t.Fatalf("write the milestone %q: %v", m.Name, err)
-		}
-	}
-	for i, s := range p.Slices {
-		status := s.StatusName
-		if status == "" {
-			status = string(s.Status)
-		}
-		if _, err := db.Exec(
-			`INSERT INTO slices (id, title, status, milestone, position, assignee, pr) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			s.ID, s.Name, status, s.MilestoneID, i, s.AssigneeName, s.PRURL); err != nil {
-			t.Fatalf("write the slice %q: %v", s.Name, err)
-		}
 	}
 }

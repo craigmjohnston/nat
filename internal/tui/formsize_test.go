@@ -15,7 +15,7 @@ import (
 // open over the board, started the way the runtime starts one.
 func sizedFormApp(t *testing.T, width, height int) *App {
 	t.Helper()
-	a := newWriteApp(&fakeNotion{})
+	a := newWriteApp(t, &fakeNotion{})
 	a.Update(tea.WindowSizeMsg{Width: width, Height: height})
 	a.board.cursor = rowActiveMilestone
 	feed(t, a, a.addSlice())
@@ -126,7 +126,7 @@ func TestAppResizesTheFormItIsShowing(t *testing.T) {
 func TestAppLeavesTheFormAloneWithoutAWindowSize(t *testing.T) {
 	// An app that has not been sized yet still opens forms — the resize that
 	// follows is what sizes them.
-	a := newWriteApp(&fakeNotion{})
+	a := newWriteApp(t, &fakeNotion{})
 	width, height := a.formSize()
 	if width > 0 || height > 0 {
 		t.Errorf("form size = %dx%d, want an unknown size before the first resize", width, height)

@@ -3,16 +3,18 @@ package cli
 import (
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // seedHydratedSlice writes a plan file directly, already marked as pulled
-// from a workspace (synced_at set) — so a command run against it finds
-// store.ForProject's own hydrate a no-op — with one slice in it. break, when
-// given, runs after the slice is seeded, so a test can corrupt exactly the
-// table or column its own write is meant to trip over, without that
-// corruption also breaking the hydrate check itself.
+// from a workspace (synced_at set, with the real clock) — so a command run
+// against it finds store.ForProject's own hydrate a no-op and store.Mirrored's
+// own staleness check nothing to pull for either — with one slice in it.
+// break, when given, runs after the slice is seeded, so a test can corrupt
+// exactly the table or column its own write is meant to trip over, without
+// that corruption also breaking the hydrate check itself.
 //
 // It exists because several commands' own local-write failure branches
 // cannot be reached through the fakeAPI at all: by the time such a write
@@ -42,8 +44,11 @@ func seedHydratedSlice(t *testing.T, projectID, sliceID, title, status string, b
 			t.Errorf("close the seeding connection: %v", err)
 		}
 	}()
+	// Stamped with the real clock, never a fixed or frozen one: a plan seeded
+	// stale would have store.Mirrored.Plan pull against the fakeAPI a test
+	// wires in for its own read, not for this.
 	if _, err := db.Exec(`INSERT INTO project (id, name, synced_at, has_assignee, has_branch) VALUES (?, ?, ?, 1, 1)`,
-		projectID, "nat", "2026-01-01T00:00:00Z"); err != nil {
+		projectID, "nat", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 		t.Fatalf("seed the project: %v", err)
 	}
 	if _, err := db.Exec(`INSERT INTO slices (id, title, status, position) VALUES (?, ?, ?, 0)`,

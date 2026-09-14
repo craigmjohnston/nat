@@ -134,10 +134,20 @@ func TestMergeRereadsThePullRequest(t *testing.T) {
 // reading settles the status on a later pass.
 func TestMergeReportsAFailedDoneWrite(t *testing.T) {
 	app, _, viewer, _ := mergeApp(t, mergeablePR())
-	client := app.client.(*fakeNotion)
-	client.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
-		return nil, errors.New("notion is down")
+	// A remote failure alone no longer fails MarkDone: the write lands in the
+	// file first and a failed push is logged and swallowed (see
+	// store.Mirrored's own doc comment) rather than returned. What can still
+	// fail it is the local half itself, forced here by dropping the slice's
+	// own row out from under the write — and, since a slice the file has lost
+	// is exactly one [store.Mirrored.Slice] would otherwise read through to
+	// the workspace and quietly re-take in, the workspace has to refuse that
+	// slice too, or MarkDone would never notice the row was ever gone.
+	dropLocalSlice(t, testProjectID, withPR)
+	client, ok := app.client.(*fakeNotion)
+	if !ok {
+		t.Fatalf("client = %T, want a *fakeNotion", app.client)
 	}
+	client.getPage = func(string) (*notion.Page, error) { return nil, errors.New("notion: no such page") }
 
 	press(app, "m")
 	msgs := run(press(app, "enter"))
@@ -390,7 +400,7 @@ func TestPRHintsNameTheMerge(t *testing.T) {
 // The help screen lists the key, which is where a key out of the hints row is
 // found.
 func TestHelpListsTheMergeKey(t *testing.T) {
-	app := NewApp(testConfig(), &fakeNotion{})
+	app := NewApp(testConfig(t), &fakeNotion{})
 	if body := app.helpBody(); !strings.Contains(body, "merge") {
 		t.Errorf("help = %q, want the merge key listed", body)
 	}

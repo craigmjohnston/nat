@@ -64,14 +64,15 @@ func approveApp(t *testing.T) (*App, *fakePRs, *fakeNotion, string) {
 	t.Helper()
 	workdir := t.TempDir()
 
-	cfg := testConfig()
+	cfg := testConfig(t)
 	project := cfg.Projects[testProjectID]
 	project.WorkingDir = workdir
 	cfg.Projects[testProjectID] = project
 
 	client := &fakeNotion{}
-	app := NewApp(cfg, client)
 	p := approvePlan()
+	seedLocalPlan(t, testProjectID, p)
+	app := NewApp(cfg, client)
 	app.project = &p
 	app.board.hideDone = false // the Done slice is a row the refusals need
 	app.board.SetProject(&p)
@@ -219,10 +220,15 @@ func TestApproveWithoutARecordedDescription(t *testing.T) {
 	}
 }
 
-// TestApproveWithAnUnreadableDescription covers the page body failing to load:
-// nothing is opened, because a pull request opened with the wrong title is not
-// one this key can open again. The reason is a toast — the branch is still
-// there and the slice is still handed back.
+// TestApproveWithAnUnreadableDescription covers the pull request description
+// failing to load: the page body is read through the plan's own store now
+// ([App.storeFor]), which is store.Mirrored.PRDescription's — [Mirrored.Body]
+// underneath — to answer, and that never fails a read outright (the same
+// "reads that fail conclude nothing" rule the rest of the app follows; see
+// root CLAUDE.md). A description that cannot be freshly read and was never
+// cached opens the pull request with none rather than refusing to open it at
+// all — a lesser title than the one on the page is not lost work the way an
+// overwritten brief would be.
 func TestApproveWithAnUnreadableDescription(t *testing.T) {
 	app, prs, client, _ := approveApp(t)
 	client.blocks = func(string) ([]notion.Block, error) { return nil, errors.New("notion is down") }
@@ -230,17 +236,11 @@ func TestApproveWithAnUnreadableDescription(t *testing.T) {
 
 	approve(t, app)
 
-	if len(prs.made) != 0 {
-		t.Errorf("gh was asked for %v with the description unread", prs.made)
+	if len(prs.made) != 1 {
+		t.Fatalf("gh was asked for %v, want the one pull request opened anyway", prs.made)
 	}
-	if len(client.updated) != 0 {
-		t.Errorf("wrote %v with the description unread", client.updated)
-	}
-	if !strings.Contains(app.toast, "pull request description") {
-		t.Errorf("toast = %q, want it to name what could not be read", app.toast)
-	}
-	if app.busy {
-		t.Error("the board is still busy after the read failed")
+	if title := prs.made[0].title; title != "" {
+		t.Errorf("title = %q, want none — gh fills one in for a description that could not be read", title)
 	}
 }
 
@@ -253,6 +253,7 @@ func TestApproveUsesTheSlicesOwnRepo(t *testing.T) {
 	slices := append([]domain.Slice(nil), app.project.Slices...)
 	slices[0].Repo = repo
 	p := domain.NewProject(app.project.ID, app.project.Name, app.project.Milestones, slices)
+	seedLocalPlan(t, testProjectID, p)
 	app.project = &p
 	app.board.SetProject(&p)
 	cursorOn(t, app, handedBack)
@@ -386,15 +387,19 @@ func TestApproveReportsAGhFailure(t *testing.T) {
 	}
 }
 
-// TestApproveReportsAFailedWrite covers the pull request being opened and
-// Notion refusing to record it. That is the one half-done state the action has,
-// so it is raised rather than passed over.
+// TestApproveReportsAFailedWrite covers the pull request being opened and the
+// record of it failing outright — the local half of the write, since the
+// write lands in the file first ([actions.RecordPR] goes straight to it, no
+// read first) and a failed push to the workspace alone is logged and
+// swallowed rather than returned (see store.Mirrored's own doc comment;
+// TestApproveSucceedsThoughTheWorkspaceCannotBeReached covers that half).
+// What can still fail it is forced here by breaking the one column the local
+// write touches, after the slice's own row is otherwise read to open the
+// pull request the way it always is.
 func TestApproveReportsAFailedWrite(t *testing.T) {
-	app, prs, client, _ := approveApp(t)
-	client.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
-		return nil, errors.New("notion is down")
-	}
+	app, prs, _, _ := approveApp(t)
 	cursorOn(t, app, handedBack)
+	breakLocalColumn(t, testProjectID, "slices", "pr")
 
 	approve(t, app)
 
@@ -406,6 +411,26 @@ func TestApproveReportsAFailedWrite(t *testing.T) {
 	}
 	if app.busy {
 		t.Error("the board is still busy after the write failed")
+	}
+}
+
+// A pull request's own record failing to reach the workspace does not fail
+// the approve any more: it lands in the file, which is the plan, and the
+// flag the write set is what the next sync sends.
+func TestApproveSucceedsThoughTheWorkspaceCannotBeReached(t *testing.T) {
+	app, prs, client, _ := approveApp(t)
+	client.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
+		return nil, errors.New("notion is down")
+	}
+	cursorOn(t, app, handedBack)
+
+	approve(t, app)
+
+	if len(prs.made) != 1 {
+		t.Fatalf("gh was asked for %v, want the one pull request", prs.made)
+	}
+	if app.err != nil {
+		t.Errorf("err = %v, want the approve to succeed against the file alone", app.err)
 	}
 }
 
@@ -470,7 +495,7 @@ func TestDefaultPRCreatorIsGh(t *testing.T) {
 	if _, ok := defaultPRCreator().(gh.CLI); !ok {
 		t.Errorf("defaultPRCreator() = %T, want the GitHub CLI", defaultPRCreator())
 	}
-	if NewApp(testConfig(), &fakeNotion{}).prs == nil {
+	if NewApp(testConfig(t), &fakeNotion{}).prs == nil {
 		t.Error("a new app has nothing to open pull requests with")
 	}
 }

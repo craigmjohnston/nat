@@ -1168,7 +1168,7 @@ func TestBoardUnknownSliceStatusStillDraws(t *testing.T) {
 }
 
 func TestAppHelpListsTheBoardKeys(t *testing.T) {
-	app := NewApp(testConfig(), nil)
+	app := NewApp(testConfig(t), nil)
 	press(app, "?")
 
 	view := app.View().Content
@@ -1180,7 +1180,7 @@ func TestAppHelpListsTheBoardKeys(t *testing.T) {
 }
 
 func TestAppShowsTheBoardAndRoutesKeysToIt(t *testing.T) {
-	app := NewApp(testConfig(), newLoadingClient())
+	app := NewApp(testConfig(t), newLoadingClient())
 	// Tall enough for the Active section and the whole plan under it.
 	app.Update(tea.WindowSizeMsg{Width: 60, Height: 30})
 	app.Update(projectLoadedMsg{project: testProject()})
@@ -1202,7 +1202,7 @@ func TestAppShowsTheBoardAndRoutesKeysToIt(t *testing.T) {
 }
 
 func TestAppDoesNotRouteKeysToTheBoardFromAnotherScreen(t *testing.T) {
-	app := NewApp(testConfig(), newLoadingClient())
+	app := NewApp(testConfig(t), newLoadingClient())
 	app.Update(projectLoadedMsg{project: testProject()})
 	press(app, "?")
 

@@ -75,7 +75,7 @@ func TestModalKeepsKeysFromTheBoard(t *testing.T) {
 func TestModalDrawsAloneBeforeTheFirstResize(t *testing.T) {
 	// An unsized window has no band to centre on or board to fade, so the box
 	// is simply drawn.
-	a := newWriteApp(&fakeNotion{})
+	a := newWriteApp(t, &fakeNotion{})
 	a.board.cursor = rowActiveMilestone
 	feed(t, a, a.addSlice())
 

@@ -44,8 +44,10 @@ func releaseApp(t *testing.T) (*App, *fakeNotion) {
 			}}, nil
 		},
 	}
-	app := NewApp(testConfig(), client)
+	cfg := testConfig(t)
 	p := releasePlan()
+	seedLocalPlan(t, testProjectID, p)
+	app := NewApp(cfg, client)
 	app.project = &p
 	app.board.hideDone = false // the Done slice is a row the refusals need
 	app.board.SetProject(&p)
@@ -126,6 +128,10 @@ func TestReleaseWritesTheStatusShapeItRead(t *testing.T) {
 // a write naming a column that is not there is one Notion refuses outright.
 func TestReleaseWithoutAnAssigneeColumn(t *testing.T) {
 	app, client := releaseApp(t)
+	// The shape a release writes in is read off the file first, so a project
+	// that tracks no ownership at all has to say so there — the same shape
+	// [seedLocalPlan] otherwise stamps as carrying both columns.
+	setLocalShape(t, testProjectID, false, true)
 	client.getPage = func(id string) (*notion.Page, error) {
 		return &notion.Page{ID: id, Properties: map[string]notion.PropertyValue{
 			notion.PropStatus: notion.NewSelect(notion.SliceInProgress),
@@ -247,28 +253,36 @@ func TestReleaseWhileBusy(t *testing.T) {
 // slice — the board's error banner is what shows it — and, for the two writes,
 // which of them it was, since a note written with no status behind it is a
 // different state to recover from than neither.
+// TestReleaseFailures covers what can still fail a release now that the
+// write lands in the file first and a failed push to the workspace is
+// logged and swallowed rather than returned (see store.Mirrored's own doc
+// comment) — the workspace alone, injected through the fakeNotion the way
+// this test used to fail every step with, no longer fails the command at
+// all; see TestReleaseSucceedsThoughTheWorkspaceCannotBeReached for that.
+// What is left is the local half: the read that opens the release, forced
+// here by dropping the slice's own row out from under it and refusing the
+// workspace's fallback read too, or Mirrored.Slice would just quietly take
+// it back in; and the write itself, forced by breaking the column it has to
+// read the slice's body through before it can append the release's line.
 func TestReleaseFailures(t *testing.T) {
-	boom := errors.New("boom")
 	tests := []struct {
-		name string
-		want string
-		set  func(*fakeNotion)
+		name  string
+		want  string
+		break_ func(t *testing.T, client *fakeNotion)
 	}{
-		{"the page", `release "Release action": boom`, func(f *fakeNotion) {
-			f.getPage = func(string) (*notion.Page, error) { return nil, boom }
+		{"the read", `release "Release action": notion: no such page`, func(t *testing.T, client *fakeNotion) {
+			dropLocalSlice(t, testProjectID, abandoned)
+			client.getPage = func(string) (*notion.Page, error) { return nil, errors.New("notion: no such page") }
 		}},
-		{"the note", `release "Release action": note the release on the slice: boom`, func(f *fakeNotion) {
-			f.appendBlock = func(string, []map[string]any) ([]notion.Block, error) { return nil, boom }
-		}},
-		{"the write", `release "Release action": release the slice: boom`, func(f *fakeNotion) {
-			f.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) { return nil, boom }
+		{"the write", `release "Release action": read the slice body`, func(t *testing.T, client *fakeNotion) {
+			breakLocalColumn(t, testProjectID, "slices", "body")
 		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			app, client := releaseApp(t)
-			tt.set(client)
 			cursorOn(t, app, abandoned)
+			tt.break_(t, client)
 
 			release(t, app)
 
@@ -279,6 +293,23 @@ func TestReleaseFailures(t *testing.T) {
 				t.Error("the board is still busy after the release failed")
 			}
 		})
+	}
+}
+
+// A release's write to the workspace failing does not fail the release any
+// more: the note and the status land in the file, which is the plan, and the
+// flag the write set is what the next sync sends.
+func TestReleaseSucceedsThoughTheWorkspaceCannotBeReached(t *testing.T) {
+	boom := errors.New("boom")
+	app, client := releaseApp(t)
+	client.getPage = func(string) (*notion.Page, error) { return nil, boom }
+	client.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) { return nil, boom }
+	cursorOn(t, app, abandoned)
+
+	release(t, app)
+
+	if app.err != nil {
+		t.Errorf("err = %v, want the release to succeed against the file alone", app.err)
 	}
 }
 

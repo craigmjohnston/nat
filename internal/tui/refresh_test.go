@@ -195,7 +195,7 @@ func TestAFailedReloadIsAToastRatherThanAStandingError(t *testing.T) {
 func TestAFailedFirstLoadStandsUntilARefreshLands(t *testing.T) {
 	client := newLoadingClient()
 	failAfterLoad(client, errors.New("boom"))
-	a := NewApp(testConfig(), client)
+	a := NewApp(testConfig(t), client)
 	a.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	for _, msg := range run(a.Init()) {
 		a.Update(msg)
@@ -222,7 +222,7 @@ func TestAFailedFirstLoadStandsUntilARefreshLands(t *testing.T) {
 }
 
 func TestHelpListsTheRefreshKey(t *testing.T) {
-	a := NewApp(testConfig(), newLoadingClient())
+	a := NewApp(testConfig(t), newLoadingClient())
 	a.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	press(a, "?")
 

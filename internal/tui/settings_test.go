@@ -47,8 +47,8 @@ func settingsFormOf(t *testing.T, a *App) *SettingsForm {
 
 // fullConfig is a config with every editable field set, so a test can tell a
 // field that was carried through from one that was defaulted.
-func fullConfig(dir string) config.Config {
-	cfg := testConfig()
+func fullConfig(t *testing.T, dir string) config.Config {
+	cfg := testConfig(t)
 	cfg.AgentSplitPercent = 70
 	cfg.PollSeconds = 45
 	cfg.WorkshopAgent = config.AgentModel{Model: "sonnet", Effort: "low"}
@@ -60,7 +60,7 @@ func fullConfig(dir string) config.Config {
 }
 
 func TestSettingsOfReadsTheConfigAsTyped(t *testing.T) {
-	got := settingsOf(fullConfig("/work"))
+	got := settingsOf(fullConfig(t, "/work"))
 
 	want := Settings{
 		WorkingDir:    "/work",
@@ -75,7 +75,7 @@ func TestSettingsOfReadsTheConfigAsTyped(t *testing.T) {
 }
 
 func TestSettingsOfShowsAnUnsetNumberAsNothing(t *testing.T) {
-	got := settingsOf(testConfig())
+	got := settingsOf(testConfig(t))
 
 	if got.SplitPercent != "" || got.PollSeconds != "" {
 		t.Errorf("numbers = %q/%q, want an unset number to read as empty rather than zero",
@@ -84,7 +84,7 @@ func TestSettingsOfShowsAnUnsetNumberAsNothing(t *testing.T) {
 }
 
 func TestSettingsApplyWritesEveryFieldBack(t *testing.T) {
-	cfg := settingsOf(fullConfig("/work")).apply(testConfig())
+	cfg := settingsOf(fullConfig(t, "/work")).apply(testConfig(t))
 
 	if cfg.AgentSplitPercent != 70 || cfg.PollSeconds != 45 {
 		t.Errorf("numbers = %d/%d, want 70/45", cfg.AgentSplitPercent, cfg.PollSeconds)
@@ -101,7 +101,7 @@ func TestSettingsApplyWritesEveryFieldBack(t *testing.T) {
 }
 
 func TestSettingsApplyReadsAnEmptyNumberAsUnset(t *testing.T) {
-	cfg := Settings{}.apply(fullConfig("/work"))
+	cfg := Settings{}.apply(fullConfig(t, "/work"))
 
 	if cfg.AgentSplitPercent != 0 || cfg.PollSeconds != 0 {
 		t.Errorf("numbers = %d/%d, want a cleared field to read as unset",
@@ -121,7 +121,7 @@ func TestSettingsApplyTrimsAndExpandsWhatWasTyped(t *testing.T) {
 		SliceAgent:   config.AgentModel{Model: "  opus  ", Effort: " high "},
 	}
 
-	cfg := s.apply(testConfig())
+	cfg := s.apply(testConfig(t))
 
 	if cfg.AgentSplitPercent != 40 {
 		t.Errorf("split = %d, want the padded number read as 40", cfg.AgentSplitPercent)
@@ -135,7 +135,7 @@ func TestSettingsApplyTrimsAndExpandsWhatWasTyped(t *testing.T) {
 }
 
 func TestSettingsApplyLeavesTheConfigItWasHandedAlone(t *testing.T) {
-	before := testConfig()
+	before := testConfig(t)
 	before.Projects[testProjectID] = config.ProjectConfig{Name: "tracker", WorkingDir: "/old"}
 
 	Settings{WorkingDir: "/new"}.apply(before)
@@ -183,7 +183,7 @@ func TestOptionalNumberFieldValidates(t *testing.T) {
 }
 
 func TestSettingsFormAsksForTheWorkingDirectoryOfTheActiveProject(t *testing.T) {
-	f := newSettingsForm(DefaultStyles().FormTheme, fullConfig("/work"))
+	f := newSettingsForm(DefaultStyles().FormTheme, fullConfig(t, "/work"))
 	f.Init()
 
 	if !f.hasProject {
@@ -216,7 +216,7 @@ func TestSettingsFormNamesAProjectWithoutAName(t *testing.T) {
 }
 
 func TestSettingsFormShowsTheNumbersItWasOpenedOn(t *testing.T) {
-	f := newSettingsForm(DefaultStyles().FormTheme, fullConfig("/work"))
+	f := newSettingsForm(DefaultStyles().FormTheme, fullConfig(t, "/work"))
 
 	if got := f.settings.SplitPercent; got != "70" {
 		t.Errorf("split field = %q, want the config's own 70", got)
@@ -230,7 +230,7 @@ func TestSettingsFormShowsTheNumbersItWasOpenedOn(t *testing.T) {
 }
 
 func TestSettingsFormSaveCarriesWhatWasTyped(t *testing.T) {
-	f := newSettingsForm(DefaultStyles().FormTheme, fullConfig("/work"))
+	f := newSettingsForm(DefaultStyles().FormTheme, fullConfig(t, "/work"))
 	f.settings.PollSeconds = "12"
 
 	msg := runMsg(t, f.save(nil)).(settingsSavedMsg)
@@ -241,7 +241,7 @@ func TestSettingsFormSaveCarriesWhatWasTyped(t *testing.T) {
 }
 
 func TestSettingsKeyOpensTheForm(t *testing.T) {
-	a := newWriteApp(&fakeNotion{})
+	a := newWriteApp(t, &fakeNotion{})
 
 	feed(t, a, press(a, "S"))
 
@@ -252,7 +252,7 @@ func TestSettingsKeyOpensTheForm(t *testing.T) {
 }
 
 func TestSettingsKeyIsIgnoredWhileAWriteIsInFlight(t *testing.T) {
-	a := newWriteApp(&fakeNotion{})
+	a := newWriteApp(t, &fakeNotion{})
 	a.busy = true
 
 	if cmd := a.settingsFlow(); cmd != nil || a.form != nil {
@@ -261,7 +261,7 @@ func TestSettingsKeyIsIgnoredWhileAWriteIsInFlight(t *testing.T) {
 }
 
 func TestSettingsSavedAppliesPersistsAndReports(t *testing.T) {
-	a := newWriteApp(&fakeNotion{})
+	a := newWriteApp(t, &fakeNotion{})
 	saved := capturedConfig(t)
 
 	_, cmd := a.settingsSaved(settingsSavedMsg{settings: Settings{
@@ -302,7 +302,7 @@ func TestSettingsSavedResharesTheWindowAtOnce(t *testing.T) {
 }
 
 func TestSettingsSavedReportsAConfigItCannotWrite(t *testing.T) {
-	a := newWriteApp(&fakeNotion{})
+	a := newWriteApp(t, &fakeNotion{})
 	failingConfig(t, errors.New("read-only"))
 
 	_, cmd := a.settingsSaved(settingsSavedMsg{settings: Settings{PollSeconds: "10"}})
@@ -318,7 +318,7 @@ func TestSettingsSavedReportsAConfigItCannotWrite(t *testing.T) {
 }
 
 func TestHelpListsTheSettingsKey(t *testing.T) {
-	a := newWriteApp(&fakeNotion{})
+	a := newWriteApp(t, &fakeNotion{})
 
 	if body := stripANSI(a.helpBody()); !strings.Contains(body, "settings") {
 		t.Errorf("the help should name the settings key:\n%s", body)
@@ -329,7 +329,7 @@ func TestHelpListsTheSettingsKey(t *testing.T) {
 // the last field submits reaches the config file.
 func TestSettingsFormEditedAndSubmittedReachesTheConfigFile(t *testing.T) {
 	dir := t.TempDir()
-	cfg := testConfig()
+	cfg := testConfig(t)
 	cfg.SliceAgent = config.AgentModel{Model: "opus"}
 	cfg.Projects[testProjectID] = config.ProjectConfig{Name: "tracker", WorkingDir: dir}
 	a := NewApp(cfg, &fakeNotion{})
@@ -363,7 +363,7 @@ func TestSettingsFormEditedAndSubmittedReachesTheConfigFile(t *testing.T) {
 // A number the config would not keep is refused while the form is still up,
 // rather than written and silently defaulted on the next read.
 func TestSettingsFormRefusesANumberOutOfBounds(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	cfg.Projects[testProjectID] = config.ProjectConfig{Name: "tracker", WorkingDir: t.TempDir()}
 	a := NewApp(cfg, &fakeNotion{})
 	failingConfig(t, errors.New("nothing should be written"))

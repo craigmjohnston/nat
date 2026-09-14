@@ -16,16 +16,21 @@ type sliceRefreshedMsg struct {
 	err   error
 }
 
-// refreshSlice refetches the one page a finished write touched, so the board
-// can patch its row rather than reload the whole plan.
-func (a *App) refreshSlice(pageID string) tea.Cmd {
-	client := a.client
+// refreshSlice re-reads the one slice a finished write touched, so the board
+// can patch its row rather than reload the whole plan. It reads the plan
+// file rather than refetching a page — the write landed in the file a
+// moment ago, so the file is where the current answer already is.
+func (a *App) refreshSlice(sliceID string) tea.Cmd {
+	st, _, ok := a.activeStore()
+	if !ok {
+		return nil
+	}
 	return func() tea.Msg {
-		page, err := client.GetPage(context.Background(), pageID)
+		s, _, err := st.Slice(context.Background(), sliceID)
 		if err != nil {
 			return sliceRefreshedMsg{err: fmt.Errorf("refresh slice: %w", err)}
 		}
-		return sliceRefreshedMsg{slice: domain.SliceFromPage(*page)}
+		return sliceRefreshedMsg{slice: s}
 	}
 }
 

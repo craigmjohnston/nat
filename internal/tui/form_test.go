@@ -62,7 +62,7 @@ func TestAppPlanPromptBreaksTheLineOnShiftEnter(t *testing.T) {
 // the same key breaks its line, and the break survives into the page body.
 func TestAppAddSliceBriefBreaksTheLineOnShiftEnter(t *testing.T) {
 	client := &fakeNotion{}
-	app := newWriteApp(client)
+	app := newWriteApp(t, client)
 	app.board.cursor = rowActiveMilestone
 
 	feed(t, app, press(app, "a"))
@@ -90,7 +90,7 @@ func TestAppAddSliceBriefBreaksTheLineOnShiftEnter(t *testing.T) {
 func TestAppNewProjectInfoBreaksTheLineOnShiftEnter(t *testing.T) {
 	capturedConfig(t)
 	client := creatingClient()
-	app := newProjectApp(client)
+	app := newProjectApp(t, client)
 
 	feed(t, app, press(app, "N"))
 	typeText(app, "tracker two")

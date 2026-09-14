@@ -28,7 +28,7 @@ func wishlistItems(n int) []notion.WishlistItem {
 // read answered with. The window is sized so the bar has a width to lay out to.
 func loadedApp(t *testing.T, client *loadingClient) *App {
 	t.Helper()
-	a := NewApp(testConfig(), client)
+	a := NewApp(testConfig(t), client)
 	for _, msg := range run(a.Init()) {
 		a.Update(msg)
 	}

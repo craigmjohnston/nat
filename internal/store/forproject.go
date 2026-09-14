@@ -26,15 +26,12 @@ func ForProject(ctx context.Context, p Project, remote *Notion) (Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	m := Mirror(local, remote)
-	hydrated, err := local.hydrated(ctx, p.ID)
-	if err != nil {
+	m := Mirror(local, remote, p)
+	// Unordered: a headless command has no board to read a view order for,
+	// and the board's own domain rule about it is [Mirrored.ensureHydrated]'s
+	// to apply, not this one's.
+	if err := m.ensureHydrated(ctx, false); err != nil {
 		return nil, err
-	}
-	if !hydrated {
-		if err := m.Pull(ctx, p); err != nil {
-			return nil, fmt.Errorf("hydrate the plan: %w", err)
-		}
 	}
 	return m, nil
 }

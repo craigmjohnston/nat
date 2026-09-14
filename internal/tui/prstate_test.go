@@ -32,6 +32,15 @@ const (
 	otherRepo = "/repos/other"
 )
 
+// syncPage is slicePage in the shape a query response takes: the title
+// carrying its plain_text, which is the field a read decodes — slicePage
+// builds the write shape, whose title reads back empty.
+func syncPage(id, name, status, milestone string) notion.Page {
+	p := slicePage(id, name, status, milestone)
+	p.Properties[notion.PropName] = notion.PropertyValue{Title: []notion.RichText{{PlainText: name}}}
+	return p
+}
+
 // fakePRReader stands in for the GitHub CLI, recording which repositories it
 // was asked to list and answering with whatever the test wants GitHub to have
 // open in each.
@@ -94,8 +103,8 @@ func sliceByID(t *testing.T, p domain.Project, id string) domain.Slice {
 // has four of the plan's five pull requests open — the first approved and
 // mergeable, the rest still waiting — and the fifth, the one on the Landed
 // slice, is not open at all.
-func prStateApp() (*App, *fakePRReader) {
-	cfg := testConfig()
+func prStateApp(t *testing.T) (*App, *fakePRReader) {
+	cfg := testConfig(t)
 	project := cfg.Projects[testProjectID]
 	project.WorkingDir = natRepo
 	cfg.Projects[testProjectID] = project
@@ -133,6 +142,17 @@ func runPRRead(t *testing.T, a *App, cmd tea.Cmd) {
 	}
 }
 
+// landPlan seeds the plan into the project's own file — a write the reading
+// triggers now goes through App.storeFor's real store, which has to find
+// every slice the test means to land — then feeds it through the app the way
+// a real load would.
+func landPlan(t *testing.T, app *App, p domain.Project) tea.Cmd {
+	t.Helper()
+	seedLocalPlan(t, testProjectID, p)
+	_, cmd := app.Update(projectLoadedMsg{project: p})
+	return cmd
+}
+
 // activeSection is the Active panel's own lines: the section is a panel beside
 // the plan rather than rows of it, so what it holds is read from here.
 func activeSection(a *App) string { return strings.Join(a.board.ActiveLines(), "\n") }
@@ -141,10 +161,10 @@ func activeSection(a *App) string { return strings.Join(a.board.ActiveLines(), "
 // what takes the reading — the board has no timer of its own for it — and it is
 // one listing per repository the plan spans rather than one reading per slice.
 func TestPRStatesReadOnEveryPlanThatLands(t *testing.T) {
-	app, reader := prStateApp()
+	app, reader := prStateApp(t)
 	p := prStatePlan()
 
-	_, cmd := app.Update(projectLoadedMsg{project: p})
+	cmd := landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 
 	// The project's default repository, then the one slice's own override —
@@ -176,7 +196,7 @@ func TestPRStatesReadOnEveryPlanThatLands(t *testing.T) {
 // such a slice in the Active section now rather than StateOf second-guessing
 // Notion's own word for it.
 func TestADoneSliceWithAnOpenPRIsReopenedToInProgress(t *testing.T) {
-	app, _ := prStateApp()
+	app, _ := prStateApp(t)
 	p := prStatePlan()
 	client := app.client.(*fakeNotion)
 	// The refetch the reading kicks off: the real Notion would answer with
@@ -192,7 +212,7 @@ func TestADoneSliceWithAnOpenPRIsReopenedToInProgress(t *testing.T) {
 		return &pg, nil
 	}
 
-	_, cmd := app.Update(projectLoadedMsg{project: p})
+	cmd := landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 
 	var wroteInProgress bool
@@ -221,10 +241,10 @@ func TestADoneSliceWithAnOpenPRIsReopenedToInProgress(t *testing.T) {
 // not naming it — never to be asked about again, since a merged pull request
 // does not unmerge.
 func TestADoneSliceDropsOutOnceItsPRHasLanded(t *testing.T) {
-	app, reader := prStateApp()
+	app, reader := prStateApp(t)
 	p := prStatePlan()
 
-	_, cmd := app.Update(projectLoadedMsg{project: p})
+	cmd := landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 
 	if got := app.board.state(sliceByID(t, p, mergedPR)); got != domain.SliceStateNone {
@@ -240,7 +260,7 @@ func TestADoneSliceDropsOutOnceItsPRHasLanded(t *testing.T) {
 	// The next plan to land asks about the repositories again, but no longer
 	// about that slice: its answer cannot change.
 	reader.open[natRepo]["https://github.test/pr/5"] = gh.PRStatus{}
-	_, cmd = app.Update(projectLoadedMsg{project: p})
+	cmd = landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 	if got := app.board.state(sliceByID(t, p, mergedPR)); got != domain.SliceStateNone {
 		t.Errorf("the settled slice is %v, want it left out for good", got)
@@ -261,12 +281,12 @@ func mergedElsewherePlan() domain.Project {
 // Done by the reading itself: nothing else witnessed the merge, and Done
 // means exactly what the merge made true.
 func TestTheReadingMarksAMergedInProgressSliceDone(t *testing.T) {
-	app, _ := prStateApp()
+	app, _ := prStateApp(t)
 	viewer := &fakePRViewer{pr: gh.PR{State: gh.PRStateMerged}}
 	app.prViewer = viewer
 	client := app.client.(*fakeNotion)
 
-	_, cmd := app.Update(projectLoadedMsg{project: mergedElsewherePlan()})
+	cmd := landPlan(t, app, mergedElsewherePlan())
 	runPRRead(t, app, cmd)
 
 	if len(viewer.made) != 1 || viewer.made[0] != (viewCall{natRepo, "https://github.test/pr/9"}) {
@@ -292,11 +312,11 @@ func TestTheReadingMarksAMergedInProgressSliceDone(t *testing.T) {
 // A pull request closed unmerged is work going round again: nothing is
 // written, and the slice still settles — its answer cannot change.
 func TestTheReadingLeavesAClosedInProgressSliceAlone(t *testing.T) {
-	app, _ := prStateApp()
+	app, _ := prStateApp(t)
 	app.prViewer = &fakePRViewer{pr: gh.PR{State: gh.PRStateClosed}}
 	client := app.client.(*fakeNotion)
 
-	_, cmd := app.Update(projectLoadedMsg{project: mergedElsewherePlan()})
+	cmd := landPlan(t, app, mergedElsewherePlan())
 	runPRRead(t, app, cmd)
 
 	for _, w := range client.updated {
@@ -312,13 +332,13 @@ func TestTheReadingLeavesAClosedInProgressSliceAlone(t *testing.T) {
 // A reading that fails settles nothing: nothing may be concluded from it, so
 // the next pass asks again rather than watching an answer nobody has.
 func TestAFailedSettleReadingIsAskedAgain(t *testing.T) {
-	app, _ := prStateApp()
+	app, _ := prStateApp(t)
 	viewer := &fakePRViewer{err: errors.New("gh is not signed in")}
 	app.prViewer = viewer
 	client := app.client.(*fakeNotion)
 	p := mergedElsewherePlan()
 
-	_, cmd := app.Update(projectLoadedMsg{project: p})
+	cmd := landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 
 	if len(client.updated) != 0 {
@@ -329,7 +349,7 @@ func TestAFailedSettleReadingIsAskedAgain(t *testing.T) {
 	}
 
 	// The next plan to land asks about the pull request again.
-	_, cmd = app.Update(projectLoadedMsg{project: p})
+	cmd = landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 	if len(viewer.made) != 2 {
 		t.Errorf("gh was asked for %d readings, want the failed one retried", len(viewer.made))
@@ -339,13 +359,13 @@ func TestAFailedSettleReadingIsAskedAgain(t *testing.T) {
 // With every pull request settled there is nothing left to ask, and the whole
 // reading is skipped — which is what a mature plan costs once its work is in.
 func TestNothingLeftToAskTakesNoReading(t *testing.T) {
-	app, reader := prStateApp()
+	app, reader := prStateApp(t)
 	p := domain.NewProject(testProjectID, "tracker",
 		domain.MilestonesFromOptions([]string{"M1: Review"}, notion.TypeSelect),
 		[]domain.Slice{{ID: mergedPR, Name: "Landed", Status: domain.SliceDone, StatusName: "Done",
 			MilestoneID: "M1: Review", PRURL: "https://github.test/pr/5"}})
 
-	_, cmd := app.Update(projectLoadedMsg{project: p})
+	cmd := landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 	if len(reader.asked) != 1 {
 		t.Fatalf("gh listed %v, want the one repository read once", reader.asked)
@@ -360,11 +380,11 @@ func TestNothingLeftToAskTakesNoReading(t *testing.T) {
 // log and nowhere else. Above all it settles nothing, since a listing that
 // never happened says nothing about what has landed.
 func TestPRStateFailureLeavesTheBoardAsItWas(t *testing.T) {
-	app, reader := prStateApp()
+	app, reader := prStateApp(t)
 	reader.err = errors.New("gh: not authenticated")
 	p := prStatePlan()
 
-	_, cmd := app.Update(projectLoadedMsg{project: p})
+	cmd := landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 
 	if got := app.board.state(sliceByID(t, p, approvedPR)); got != domain.SliceStateAwaitingReview {
@@ -387,7 +407,7 @@ func TestPRStateFailureLeavesTheBoardAsItWas(t *testing.T) {
 // A reading that comes back about a slice the plan has since taken off the
 // board says nothing about it: there is nothing on the board for it to refine.
 func TestPRStateOfASliceNoLongerOnThePlan(t *testing.T) {
-	app, _ := prStateApp()
+	app, _ := prStateApp(t)
 	p := prStatePlan()
 	app.Update(prStateMsg{state: map[string]domain.PRReadiness{"gone": domain.PRReadyToMerge}})
 	app.board.SetProject(&p)
@@ -401,14 +421,14 @@ func TestPRStateOfASliceNoLongerOnThePlan(t *testing.T) {
 // reading itself still lands, and the slice is asked about again on the next
 // pass rather than watched for an answer nobody has.
 func TestAFailedReopenIsAskedAgain(t *testing.T) {
-	app, _ := prStateApp()
+	app, _ := prStateApp(t)
 	p := prStatePlan()
 	client := app.client.(*fakeNotion)
 	client.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
 		return nil, errors.New("notion is down")
 	}
 
-	_, cmd := app.Update(projectLoadedMsg{project: p})
+	cmd := landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 
 	if got := app.board.state(sliceByID(t, p, donePR)); got != domain.SliceStateNone {
@@ -477,7 +497,7 @@ func TestPRStatesNotRead(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app, reader := prStateApp()
+			app, reader := prStateApp(t)
 			p := prStatePlan()
 			app.project = &p
 			tt.setUp(app)
@@ -495,10 +515,10 @@ func TestPRStatesNotRead(t *testing.T) {
 // One reading at a time, and the next plan to land after it takes another: the
 // bit that holds a second off is dropped by the reading coming back.
 func TestPRStateReadingRunsOneAtATime(t *testing.T) {
-	app, _ := prStateApp()
+	app, _ := prStateApp(t)
 	p := prStatePlan()
 
-	_, cmd := app.Update(projectLoadedMsg{project: p})
+	cmd := landPlan(t, app, p)
 	if !app.prReading {
 		t.Fatal("a reading is in flight, want it marked as such")
 	}
@@ -517,8 +537,10 @@ func TestPRStateReadingRunsOneAtATime(t *testing.T) {
 // A migrated project says so and reads its pull requests: the toast and the
 // reading are both what that one landing is worth.
 func TestPRStatesReadAlongsideAMigrationToast(t *testing.T) {
-	app, reader := prStateApp()
-	_, cmd := app.Update(projectLoadedMsg{project: prStatePlan(),
+	app, reader := prStateApp(t)
+	p := prStatePlan()
+	seedLocalPlan(t, testProjectID, p)
+	_, cmd := app.Update(projectLoadedMsg{project: p,
 		migrated: "the in-progress status was renamed"})
 	if cmd == nil {
 		t.Fatal("a migrated project took no reading")

@@ -15,7 +15,6 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
-	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/vterm"
 )
 
@@ -192,9 +191,7 @@ func TestAppOpensTheAgentTerminal(t *testing.T) {
 // t again takes it off the board, gives the pseudo-terminal back, and refetches
 // the one page the agent has been working on.
 func TestAppClosesTheAgentTerminal(t *testing.T) {
-	client := &fakeNotion{getPage: pageFor("s5", "Info view", notion.SliceInProgress, "M2: Board")}
 	app, _, term := viewerApp(t)
-	app.client = client
 
 	feed(t, app, press(app, "t"))
 
@@ -204,11 +201,11 @@ func TestAppClosesTheAgentTerminal(t *testing.T) {
 	if term.closes != 1 {
 		t.Errorf("closes = %d, want the session closed exactly once", term.closes)
 	}
-	if !equal(client.fetchedPages, []string{"s5"}) {
-		t.Errorf("fetched %v, want the agent's slice refetched", client.fetchedPages)
-	}
-	if client.queriedDSIDs != nil {
-		t.Errorf("queried %v, want no full reload", client.queriedDSIDs)
+	// The refetch reads the plan file (viewerApp seeds it via launchApp), not
+	// the client, which is why there is nothing to assert about the client
+	// here any more.
+	if app.err != nil {
+		t.Errorf("err = %v, want the refetch to have found the slice in the file", app.err)
 	}
 	if got := app.boardWidth(); got != app.innerWidth() {
 		t.Errorf("board width = %d, want the whole band of %d back", got, app.innerWidth())
@@ -221,6 +218,11 @@ func TestAppClosingThePlanningTerminalReloadsThePlan(t *testing.T) {
 	client := newLoadingClient()
 	app, _, _ := launchApp(t)
 	app.client = client
+	// A fresh seed reads as current and would not pull again on its own — see
+	// store.Mirrored.Plan — so it is backdated here to make the reload's own
+	// query observable, the way it would be against a plan genuinely gone
+	// stale.
+	makeLocalPlanStale(t, testProjectID)
 	fakeTermFor(t)
 	app.live = map[string]string{agent.PlanSentinel: agent.PlanSession}
 
@@ -629,9 +631,7 @@ func TestAppTerminalExitConverges(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &fakeNotion{getPage: pageFor("s5", "Info view", notion.SliceDone, "M2: Board")}
 			app, _, term := viewerApp(t)
-			app.client = client
 			term.frame = "the agent's last words"
 
 			for _, msg := range tt.order {
@@ -650,8 +650,11 @@ func TestAppTerminalExitConverges(t *testing.T) {
 			if app.viewerFocused() {
 				t.Error("there is nothing left to type at")
 			}
-			if !equal(client.fetchedPages, []string{"s5"}) {
-				t.Errorf("fetched %v, want the slice refetched exactly once", client.fetchedPages)
+			// The refetch reads the plan file, which either order of news
+			// only ever asks once — see term.closes above — rather than a
+			// client to count calls against.
+			if app.err != nil {
+				t.Errorf("err = %v, want the refetch to have found the slice in the file", app.err)
 			}
 		})
 	}
@@ -663,9 +666,7 @@ func TestAppTerminalExitConverges(t *testing.T) {
 // them — a caller that stops checking gets a no-op rather than a nil viewer to
 // dereference.
 func TestViewerExitedWithNothingOnShow(t *testing.T) {
-	client := &fakeNotion{getPage: pageFor("s5", "Info view", notion.SliceDone, "M2: Board")}
 	app, _, term := viewerApp(t)
-	app.client = client
 
 	feed(t, app, mustCmd(app.Update(termExitedMsg{session: term})))
 	if app.viewer != nil {
@@ -678,8 +679,8 @@ func TestViewerExitedWithNothingOnShow(t *testing.T) {
 	if term.closes != 1 {
 		t.Errorf("closes = %d, want the session closed exactly once", term.closes)
 	}
-	if !equal(client.fetchedPages, []string{"s5"}) {
-		t.Errorf("fetched %v, want the slice refetched exactly once", client.fetchedPages)
+	if app.err != nil {
+		t.Errorf("err = %v, want the refetch to have found the slice in the file", app.err)
 	}
 }
 
@@ -687,9 +688,7 @@ func TestViewerExitedWithNothingOnShow(t *testing.T) {
 // other, but the failure is reported rather than passed off as the agent
 // finishing — and the toast names the session, so the user can reattach.
 func TestAppReportsATerminalThatFailed(t *testing.T) {
-	client := &fakeNotion{getPage: pageFor("s5", "Info view", notion.SliceInProgress, "M2: Board")}
 	app, _, term := viewerApp(t)
-	app.client = client
 
 	feed(t, app, mustCmd(app.Update(termExitedMsg{session: term, err: errors.New("read pty")})))
 
@@ -704,9 +703,6 @@ func TestAppReportsATerminalThatFailed(t *testing.T) {
 	}
 	if term.closes != 1 {
 		t.Errorf("closes = %d, want the session closed exactly once", term.closes)
-	}
-	if client.fetchedPages != nil {
-		t.Errorf("fetched %v, want the failure reported in place of a refetch", client.fetchedPages)
 	}
 }
 
@@ -1194,7 +1190,7 @@ func TestAppFullAttachIsRefused(t *testing.T) {
 // How the whole window reads with an agent's terminal beside the board, and
 // how it changes when the keyboard is the agent's.
 func TestAppAgentViewerGolden(t *testing.T) {
-	a := sizedApp(80, 16)
+	a := sizedApp(t, 80, 16)
 	a.launcher = &fakeLauncher{}
 	term := newFakeTerm()
 	term.frame = "❯ claude\n  Working on the slice…\n  · thinking"

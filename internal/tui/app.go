@@ -68,6 +68,14 @@ type (
 		// one line, and is empty when nothing changed — which is every load
 		// after the first.
 		migrated string
+		// pullErr is a forced pull's own failure — the refresh key or the
+		// background poll asked the workspace and it would not answer. The
+		// plan itself still landed, read from the file as it stands, so this
+		// rides beside a normal success rather than through notionErrMsg: what
+		// is on screen stays up, reported as a warning rather than an error to
+		// dismiss. Empty on an ordinary load, which never forces a pull and so
+		// has nothing to report about one failing.
+		pullErr error
 	}
 	// notionErrMsg carries a failed Notion call, already described.
 	notionErrMsg struct{ err error }
@@ -206,8 +214,14 @@ func (k keyMap) helpBindings() []key.Binding {
 // The first-run wizard is held separately rather than as a screen: it runs
 // before there is a config to show a board for, and it hands over exactly once.
 type App struct {
-	cfg        config.Config
-	client     NotionAPI
+	cfg    config.Config
+	client NotionAPI
+	// stores is one store per project this process has read, opened on first
+	// use and held for the life of the app — a plan file holds something
+	// open, unlike the client this used to wrap afresh on every request; see
+	// [App.storeFor]. Keyed by project ID, since switching projects is a
+	// board away and each keeps its own file.
+	stores     map[string]store.Store
 	styles     Styles
 	keys       keyMap
 	promptKeys promptKeyMap
@@ -408,7 +422,7 @@ func (a *App) Init() tea.Cmd {
 		return tea.Batch(tea.RequestBackgroundColor, tea.RequestForegroundColor, a.onboarding.Init())
 	}
 	return tea.Batch(tea.RequestBackgroundColor, tea.RequestForegroundColor,
-		a.startLoad(), a.refreshLive(), liveTick(), nudgeTick(),
+		a.startLoad(false), a.refreshLive(), liveTick(), nudgeTick(),
 		pollTick(a.cfg.PollInterval()), a.reclaimStrays())
 }
 
@@ -443,7 +457,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// current again, so there is nothing left for the status line to warn
 		// about.
 		a.project, a.loading, a.err = &msg.project, false, nil
-		a.syncedAt = timeNow()
+		// The freshness stamp only moves when this load actually brought the
+		// file into line with the workspace — an ordinary load, or a forced one
+		// that pulled cleanly. A forced pull that failed leaves it exactly
+		// where it was: the stamp is about how current what is on screen is,
+		// and for a plan with a workspace behind it that is the workspace, not
+		// the moment the file happened to be read.
+		if msg.pullErr == nil {
+			a.syncedAt = timeNow()
+		}
 		// A prompt is a question about a row of the plan that was on show, which
 		// the reload may have moved or taken away entirely.
 		a.closeBoardPrompt()
@@ -461,7 +483,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// A project that had to be migrated to be shown says so: the plan on
 		// screen is not quite the one Notion held a moment ago.
 		if msg.migrated != "" {
-			return a, tea.Batch(cmd, a.showToast(msg.migrated, sevSuccess))
+			cmd = tea.Batch(cmd, a.showToast(msg.migrated, sevSuccess))
+		}
+		// A forced pull's own failure is a warning, not an error: the plan is
+		// still on screen, read from the file as it stands.
+		if msg.pullErr != nil {
+			cmd = tea.Batch(cmd, a.showToast(fmt.Sprintf("Refresh failed: %v", msg.pullErr), sevWarning))
 		}
 		return a, cmd
 	case notionErrMsg:
@@ -509,8 +536,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.saved(msg)
 	case sliceRefreshedMsg:
 		return a.sliceRefreshed(msg)
-	case slicesSyncedMsg:
-		return a.slicesSynced(msg)
 	case projectCreatedMsg:
 		return a.projectCreated(msg)
 	case projectSwitchedMsg:
@@ -647,7 +672,10 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// The project page is refreshed too — at once if the user is reading it,
 		// otherwise lazily, on the next visit to the info screen.
 		a.info.Reset()
-		cmd := tea.Batch(a.startLoad(), a.refreshLive())
+		// The refresh key is one of the two moments a caller knows better than
+		// the clock: the plan is pulled regardless of how current the file's
+		// own copy already reads.
+		cmd := tea.Batch(a.startLoad(true), a.refreshLive())
 		if a.screen == screenInfo {
 			cmd = tea.Batch(cmd, a.startInfoLoad())
 		}
@@ -842,6 +870,50 @@ func (a *App) canWrite() bool {
 	return ok
 }
 
+// storeFor returns the project's store, opening its local replica — the
+// file behind [Mirror], never the client this used to wrap afresh on every
+// request — on first use and holding it in [App.stores] for the life of the
+// app. Opening is local file I/O alone: the network pull an unpulled plan
+// still needs happens lazily, inside whichever read first finds its own copy
+// stale (see [store.Mirrored.Plan]), exactly so this never blocks Update.
+func (a *App) storeFor(id string, cfg config.ProjectConfig) (store.Store, error) {
+	if st, ok := a.stores[id]; ok {
+		return st, nil
+	}
+	path, err := store.LocalPath(id)
+	if err != nil {
+		return nil, fmt.Errorf("resolve the plan file: %w", err)
+	}
+	local, err := store.OpenLocal(path)
+	if err != nil {
+		return nil, err
+	}
+	proj := store.Project{ID: id, Name: cfg.Name, SlicesID: cfg.SlicesDSID}
+	st := store.Store(store.Mirror(local, store.Over(a.client), proj))
+	if a.stores == nil {
+		a.stores = map[string]store.Store{}
+	}
+	a.stores[id] = st
+	return st, nil
+}
+
+// activeStore is the active project's store and its config, or ok false when
+// there is nothing to build one against — no active project, no client, or
+// one that would not open, which is reported here as a.err the way every
+// other synchronous failure in this file is.
+func (a *App) activeStore() (store.Store, config.ProjectConfig, bool) {
+	cfg, ok := a.activeProject()
+	if !ok || a.client == nil {
+		return nil, config.ProjectConfig{}, false
+	}
+	st, err := a.storeFor(a.cfg.ActiveProjectID, cfg)
+	if err != nil {
+		a.err = err
+		return nil, config.ProjectConfig{}, false
+	}
+	return st, cfg, true
+}
+
 // addSlice opens the form for a new slice under the milestone the cursor is on.
 func (a *App) addSlice() tea.Cmd {
 	if !a.canWrite() {
@@ -868,8 +940,12 @@ func (a *App) editSlice() tea.Cmd {
 	if s.Status != domain.SliceTodo {
 		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices can be edited.", s.Name, statusWord(s)), sevWarning)
 	}
+	st, _, ok := a.activeStore()
+	if !ok {
+		return nil
+	}
 	a.busy, a.note = true, "Loading the slice…"
-	return loadSliceBody(a.client, s)
+	return loadSliceBody(st, s)
 }
 
 // sliceBodyLoaded opens the edit form over the body that came back.
@@ -986,7 +1062,7 @@ func (a *App) saved(msg sliceSavedMsg) (tea.Model, tea.Cmd) {
 	case msg.sliceID != "" && a.project != nil:
 		cmds = append(cmds, a.refreshSlice(msg.sliceID))
 	default:
-		cmds = append(cmds, a.startLoad())
+		cmds = append(cmds, a.startLoad(false))
 	}
 	cmds = append(cmds, a.refreshLive())
 	if msg.note != "" {
@@ -1014,23 +1090,23 @@ func (a *App) onboardingDone(msg OnboardingDoneMsg) (tea.Model, tea.Cmd) {
 		cmd := a.newProjectFlow()
 		return a, tea.Batch(cmd, a.showToast("Setup complete. No projects yet — let's make one.", sevSuccess))
 	}
-	return a, tea.Batch(a.startLoad(), a.showToast("Setup complete.", sevSuccess))
+	return a, tea.Batch(a.startLoad(false), a.showToast("Setup complete.", sevSuccess))
 }
 
 // startLoad kicks off a load of the active project's plan and of the wishlist
 // on its page, which the status line counts. It returns nil when there is
 // nothing to load: an unconfigured or unknown active project is a state the
 // board reports, not an error.
-func (a *App) startLoad() tea.Cmd {
-	project, ok := a.activeProject()
-	if !ok || a.client == nil {
+func (a *App) startLoad(force bool) tea.Cmd {
+	st, cfg, ok := a.activeStore()
+	if !ok {
 		return nil
 	}
 	// Whatever failed last time is left on the status line until this load says
 	// otherwise: a refresh in flight is not yet news, and clearing the warning
 	// on the way out would take it off a board still showing the stale plan.
 	a.loading = true
-	return tea.Batch(a.spinner.Tick, a.fetchProject(a.cfg.ActiveProjectID, project),
+	return tea.Batch(a.spinner.Tick, a.fetchProject(st, a.cfg.ActiveProjectID, cfg, force),
 		a.fetchWishlist(a.cfg.ActiveProjectID))
 }
 
@@ -1038,17 +1114,17 @@ func (a *App) startLoad() tea.Cmd {
 // nothing to fetch or it has been fetched already: the page is the project's
 // conventions, which do not change between keystrokes.
 func (a *App) startInfoLoad() tea.Cmd {
-	if _, ok := a.activeProject(); !ok || !a.info.NeedsLoad() || a.client == nil {
+	st, _, ok := a.activeStore()
+	if !ok || !a.info.NeedsLoad() {
 		return nil
 	}
 	a.info.Start()
-	return tea.Batch(a.spinner.Tick, a.fetchInfo(a.cfg.ActiveProjectID))
+	return tea.Batch(a.spinner.Tick, a.fetchInfo(st, a.cfg.ActiveProjectID))
 }
 
 // fetchInfo loads a page's body and converts it to markdown for the info
 // screen to render.
-func (a *App) fetchInfo(pageID string) tea.Cmd {
-	st := store.Over(a.client)
+func (a *App) fetchInfo(st store.Store, pageID string) tea.Cmd {
 	return func() tea.Msg {
 		markdown, err := st.Body(context.Background(), pageID)
 		if err != nil {
@@ -1080,15 +1156,27 @@ func (a *App) activeProject() (config.ProjectConfig, bool) {
 // A project still in the shape this app started with — milestones in a database
 // of their own — is migrated on the way past, before its schema is read for the
 // plan, so what comes back is a plan of the one shape however it was stored.
-func (a *App) fetchProject(id string, cfg config.ProjectConfig) tea.Cmd {
-	st := store.Over(a.client)
+//
+// force says whether the read is one of the two moments a caller knows
+// better than the clock — the refresh key and the background poll — and so
+// pulls the file into line with the workspace regardless of how current its
+// own copy already reads; every other load leaves that judgment to the read
+// itself. A forced pull that fails is carried back as its own field rather
+// than failing the load outright: the plan still comes from the file, which
+// is worth more on screen than an error over how it got there.
+func (a *App) fetchProject(st store.Store, id string, cfg config.ProjectConfig, force bool) tea.Cmd {
 	return func() tea.Msg {
-		plan, err := st.Plan(context.Background(),
-			store.Project{ID: id, Name: cfg.Name, SlicesID: cfg.SlicesDSID})
+		ctx := context.Background()
+		proj := store.Project{ID: id, Name: cfg.Name, SlicesID: cfg.SlicesDSID}
+		var pullErr error
+		if force {
+			pullErr = store.Pull(ctx, st, proj)
+		}
+		plan, err := st.Plan(ctx, proj)
 		if err != nil {
 			return notionErrMsg{err: err}
 		}
-		return projectLoadedMsg{project: plan.Project, migrated: plan.Migrated}
+		return projectLoadedMsg{project: plan.Project, migrated: plan.Migrated, pullErr: pullErr}
 	}
 }
 

@@ -362,7 +362,7 @@ func (l *Local) Shape(ctx context.Context, p Project) (Shape, error) {
 // but a name and a place, exactly as domain already says: its status is
 // computed from the slices under it, so there is nothing else to store.
 func (l *Local) milestones(ctx context.Context, q localQuerier) ([]domain.Milestone, error) {
-	rows, err := q.QueryContext(ctx, `SELECT name, position FROM milestones ORDER BY position, name`)
+	rows, err := q.QueryContext(ctx, `SELECT name, position, select_type FROM milestones ORDER BY position, name`)
 	if err != nil {
 		return nil, l.errorf(err, "read the milestones")
 	}
@@ -371,7 +371,7 @@ func (l *Local) milestones(ctx context.Context, q localQuerier) ([]domain.Milest
 	var ms []domain.Milestone
 	for rows.Next() {
 		var m domain.Milestone
-		if err := rows.Scan(&m.Name, &m.Order); err != nil {
+		if err := rows.Scan(&m.Name, &m.Order, &m.SelectType); err != nil {
 			return nil, l.errorf(err, "read a milestone")
 		}
 		m.ID = m.Name
@@ -442,6 +442,31 @@ func (l *Local) hydrated(ctx context.Context, id string) (bool, error) {
 		return false, l.errorf(err, "check whether the plan has been hydrated")
 	}
 	return synced.Valid, nil
+}
+
+// SyncedAt reads when the file was last brought fully into line with the
+// workspace — [Hydrate]'s own stamp on the project row — which is what
+// [Mirrored] compares against the clock to decide whether an ordinary read
+// pulls for itself before answering. The zero time is a plan never hydrated
+// at all, read back exactly as it went in rather than as an error: there is
+// nothing wrong with a plan that has simply never been pulled.
+func (l *Local) SyncedAt(ctx context.Context, id string) (time.Time, error) {
+	var synced sql.NullString
+	err := l.db.QueryRowContext(ctx, `SELECT synced_at FROM project WHERE id = ?`, id).Scan(&synced)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return time.Time{}, nil
+	case err != nil:
+		return time.Time{}, l.errorf(err, "read the plan's freshness")
+	}
+	if !synced.Valid || synced.String == "" {
+		return time.Time{}, nil
+	}
+	t, err := time.Parse(time.RFC3339Nano, synced.String)
+	if err != nil {
+		return time.Time{}, l.errorf(err, "parse the plan's freshness")
+	}
+	return t, nil
 }
 
 // localSliceColumns is the one list of columns every slice read selects, so the
@@ -533,13 +558,38 @@ func (l *Local) dependencies(ctx context.Context, q localQuerier) (map[string][]
 
 // Slice reads one slice, and with it the shape it can be written in — which for
 // a local plan is the project's shape, since the columns are the same columns
-// for every slice in the file.
+// for every slice in the file: a replica of a workspace with neither column
+// reads back false for both here exactly as [Local.Shape] answers it, rather
+// than assuming every plan carries them the way a plan of its own always does.
 func (l *Local) Slice(ctx context.Context, id string) (domain.Slice, Shape, error) {
 	s, err := l.slice(ctx, l.db, id)
 	if err != nil {
 		return domain.Slice{}, Shape{}, err
 	}
-	return s, Shape{HasAssignee: true, HasBranch: true}, nil
+	sh, err := l.sliceShape(ctx)
+	if err != nil {
+		return domain.Slice{}, Shape{}, err
+	}
+	return s, sh, nil
+}
+
+// sliceShape is the shape a write to any one slice takes, read off the file's
+// single project row rather than a caller's own ID — a local plan holds
+// exactly one project, so there is nothing else it could be — by the same
+// rule [Local.localShape] reads the whole plan's shape by: both columns only
+// where [Local.hydrated] says this is a replica of a workspace that has
+// actually answered for them, true otherwise, since a plan of its own has no
+// schema to be missing either from.
+func (l *Local) sliceShape(ctx context.Context) (Shape, error) {
+	var id string
+	err := l.db.QueryRowContext(ctx, `SELECT id FROM project LIMIT 1`).Scan(&id)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return Shape{HasAssignee: true, HasBranch: true}, nil
+	case err != nil:
+		return Shape{}, l.errorf(err, "read the project")
+	}
+	return l.localShape(ctx, Project{ID: id}, nil)
 }
 
 // slice reads one slice through whichever querier it is given, which is how a

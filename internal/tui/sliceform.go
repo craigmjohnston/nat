@@ -130,20 +130,23 @@ func (f *SliceForm) SetSize(width, height int) { f.form = f.form.WithWidth(width
 
 // save writes the completed form: a new slice, or the one it was opened on.
 func (f *SliceForm) save(a *App) tea.Cmd {
-	// The form only ever opens on a configured project, so this is the one it
-	// was opened against.
-	project, _ := a.activeProject()
-	if f.mode == sliceFormAdd {
-		return createSlice(a.client, project.SlicesDSID, f.milestone, f.title, f.description, f.repo)
+	// The form only ever opens on a configured project, so this is the store
+	// and project it was opened against.
+	st, project, ok := a.activeStore()
+	if !ok {
+		return nil
 	}
-	return editSlice(a.client, f.sliceID, f.title, f.description, f.repo)
+	if f.mode == sliceFormAdd {
+		return createSlice(st, project.SlicesDSID, f.milestone, f.title, f.description, f.repo)
+	}
+	return editSlice(st, f.sliceID, f.title, f.description, f.repo)
 }
 
 // loadSliceBody fetches the page body of the slice about to be edited, as the
 // markdown the form pre-fills its brief with.
-func loadSliceBody(client NotionAPI, s domain.Slice) tea.Cmd {
+func loadSliceBody(st store.Store, s domain.Slice) tea.Cmd {
 	return func() tea.Msg {
-		markdown, err := store.Over(client).Body(context.Background(), s.ID)
+		markdown, err := st.Body(context.Background(), s.ID)
 		if err != nil {
 			return sliceBodyMsg{slice: s, err: fmt.Errorf("load slice body: %w", err)}
 		}
@@ -155,10 +158,10 @@ func loadSliceBody(client NotionAPI, s domain.Slice) tea.Cmd {
 // does: a relation to a milestone page, or the option a derived milestone is.
 // The slice starts Todo and unassigned, which is what makes it something an
 // agent can pick up.
-func createSlice(client NotionAPI, slicesDSID string, m domain.Milestone, title, description, repo string) tea.Cmd {
+func createSlice(st store.Store, slicesDSID string, m domain.Milestone, title, description, repo string) tea.Cmd {
 	title, repo = strings.TrimSpace(title), strings.TrimSpace(repo)
 	return func() tea.Msg {
-		added, err := store.Over(client).AddSlice(context.Background(),
+		added, err := st.AddSlice(context.Background(),
 			store.Project{SlicesID: slicesDSID},
 			store.NewSlice{Title: title, Brief: description, Repo: repo, Milestone: m})
 		if err != nil {
@@ -171,10 +174,10 @@ func createSlice(client NotionAPI, slicesDSID string, m domain.Milestone, title,
 // editSlice rewrites a slice: its properties first, then its body. The
 // milestone is left alone — moving a slice is its own flow — and so is the
 // status, which only the workflow changes.
-func editSlice(client NotionAPI, sliceID, title, description, repo string) tea.Cmd {
+func editSlice(st store.Store, sliceID, title, description, repo string) tea.Cmd {
 	title, repo = strings.TrimSpace(title), strings.TrimSpace(repo)
 	return func() tea.Msg {
-		if err := store.Over(client).EditSlice(context.Background(), sliceID, title, repo, description); err != nil {
+		if err := st.EditSlice(context.Background(), sliceID, title, repo, description); err != nil {
 			return sliceSavedMsg{err: err}
 		}
 		return sliceSavedMsg{note: fmt.Sprintf("Updated %q.", title), sliceID: sliceID}

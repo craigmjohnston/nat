@@ -60,11 +60,23 @@ func mirroredPlan(t *testing.T, api *fakeAPI) (*Mirrored, *Local) {
 	t.Helper()
 	l, _ := openPlan(t)
 	fillPlan(t, l)
-	return Mirror(l, Over(api)), l
+	stampHydrated(t, l)
+	return Mirror(l, Over(api), Project{ID: "proj"}), l
+}
+
+// stampHydrated marks a fillPlan-seeded file as already hydrated, with the
+// real clock rather than a test's own frozen one: fillPlan's own row carries
+// no synced_at at all, which a Mirrored now reads as a file that has never
+// been pulled and hydrates for itself before any other read — a pull most of
+// this file's tests mean to leave untouched, against a fake API most of them
+// never configured for it.
+func stampHydrated(t *testing.T, l *Local) {
+	t.Helper()
+	write(t, l, `UPDATE project SET synced_at = ? WHERE id = ?`, timeStamp(time.Now()), "proj")
 }
 
 func TestMirroredIsAStore(t *testing.T) {
-	var _ Store = Mirror(nil, nil)
+	var _ Store = Mirror(nil, nil, Project{})
 }
 
 // Every read a Mirrored answers about a slice, or the plan, or a page's
@@ -74,14 +86,23 @@ func TestMirroredReadsAnswerFromTheFileWithNoRequest(t *testing.T) {
 	l, _ := openPlan(t)
 	fillPlan(t, l)
 	write(t, l, `UPDATE slices SET body_at = ? WHERE id = ?`, timeStamp(time.Now()), "reads")
+	// Stamped with the real clock, never a frozen one: a plan seeded stale
+	// would have Plan pull against the fake API this test means to leave
+	// untouched.
+	write(t, l, `UPDATE project SET synced_at = ? WHERE id = ?`, timeStamp(time.Now()), "proj")
 	api := &fakeAPI{}
-	m := Mirror(l, Over(api))
+	// The row fillPlan wrote is keyed "proj" — the project a read of it names
+	// has to match, or Mirrored.stale reads the row's own freshness for an ID
+	// it does not hold and pulls the fake API this test means to leave
+	// untouched.
+	localProj := Project{ID: "proj"}
+	m := Mirror(l, Over(api), localProj)
 	ctx := context.Background()
 
-	if _, err := m.Shape(ctx, project()); err != nil {
+	if _, err := m.Shape(ctx, localProj); err != nil {
 		t.Fatalf("Shape: %v", err)
 	}
-	if _, err := m.Plan(ctx, project()); err != nil {
+	if _, err := m.Plan(ctx, localProj); err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
 	s, _, err := m.Slice(ctx, "reads")
@@ -107,6 +128,100 @@ func TestMirroredReadsAnswerFromTheFileWithNoRequest(t *testing.T) {
 	}
 	if len(api.calls) != 0 {
 		t.Errorf("calls = %v, want none: every read here answers from the file", api.calls)
+	}
+}
+
+// A stale plan whose own re-pull fails is logged and swallowed rather than
+// returned: the file already has a plan in it, and what is on screen is
+// worth more than an error over how current it is.
+func TestMirroredPlanSwallowsAFailedStalePull(t *testing.T) {
+	l, _ := openPlan(t)
+	fillPlan(t, l)
+	stampHydrated(t, l)
+	write(t, l, `UPDATE project SET synced_at = ? WHERE id = ?`,
+		timeStamp(time.Now().Add(-time.Hour)), "proj")
+	api := &fakeAPI{dataSource: func(string) (*notion.DataSource, error) { return nil, errBoom }}
+	m := Mirror(l, Over(api), Project{ID: "proj"})
+
+	plan, err := m.Plan(context.Background(), Project{ID: "proj"})
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if len(plan.Project.Slices) == 0 {
+		t.Error("Plan = empty, want the stale file's own plan kept")
+	}
+}
+
+// A local read that fails once the plan is hydrated and current is Plan's own
+// failure to report, not something a stale re-pull could paper over.
+func TestMirroredPlanCarriesTheLocalReadFailureUpOnceHydrated(t *testing.T) {
+	l, _ := openPlan(t)
+	fillPlan(t, l)
+	stampHydrated(t, l)
+	write(t, l, `ALTER TABLE project DROP COLUMN has_assignee`)
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
+
+	if _, err := m.Plan(context.Background(), Project{ID: "proj"}); err == nil {
+		t.Error("Plan with a broken local column: want an error")
+	}
+}
+
+// A freshness check that fails once the plan is hydrated is Body's own
+// failure to report.
+func TestBodyCarriesAFreshnessCheckFailureUpOnceHydrated(t *testing.T) {
+	l, _ := openPlan(t)
+	fillPlan(t, l)
+	stampHydrated(t, l)
+	write(t, l, `ALTER TABLE slices DROP COLUMN body_at`)
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
+
+	if _, err := m.Body(context.Background(), "reads"); err == nil {
+		t.Error("Body with a broken freshness column: want an error")
+	}
+}
+
+// PRDescription carries up whatever failure the Body read it is built on hit.
+func TestPRDescriptionCarriesABodyFailureUp(t *testing.T) {
+	l, _ := openPlan(t)
+	fillPlan(t, l)
+	stampHydrated(t, l)
+	write(t, l, `ALTER TABLE slices DROP COLUMN body_at`)
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
+
+	if _, err := m.PRDescription(context.Background(), "reads"); err == nil {
+		t.Error("PRDescription with a broken freshness column: want an error")
+	}
+}
+
+// stale reads a freshness stamp it cannot parse as stale rather than as
+// current, which is the safer of the two to assume wrongly — a plan read as
+// current when it is not would never pull again on its own.
+func TestMirroredPlanPullsAgainOverAnUnparseableFreshnessStamp(t *testing.T) {
+	l, _ := openPlan(t)
+	fillPlan(t, l)
+	write(t, l, `UPDATE project SET synced_at = ? WHERE id = ?`, "not a time", "proj")
+	api := fullPlanAPI()
+	m := Mirror(l, Over(api), Project{ID: "proj"})
+
+	if _, err := m.Plan(context.Background(), project()); err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if len(api.calls) == 0 {
+		t.Error("calls = none, want the unparseable stamp read as stale and pulled again")
+	}
+}
+
+// Pull's own body — [Mirrored.pull] — carries up a failure to take a
+// successful read into the file.
+func TestMirroredPullCarriesAHydrateFailureUp(t *testing.T) {
+	l, _ := openPlan(t)
+	fillPlan(t, l)
+	stampHydrated(t, l)
+	write(t, l, `DROP TABLE milestones`)
+	m := Mirror(l, Over(fullPlanAPI()), Project{ID: "proj"})
+
+	if err := m.Pull(context.Background(), project()); err == nil {
+		t.Error("Pull with the milestones table gone: want an error")
 	}
 }
 
@@ -146,7 +261,7 @@ func TestSliceMissingFromTheFileReadsThroughToTheWorkspace(t *testing.T) {
 			return paragraphBlock(t, "Brief from the workspace."), nil
 		},
 	}
-	m := Mirror(l, Over(api))
+	m := Mirror(l, Over(api), Project{ID: "proj"})
 	ctx := context.Background()
 
 	s, sh, err := m.Slice(ctx, "remote-only")
@@ -198,7 +313,7 @@ func TestSliceMissingFromTheFileCarriesAnUnheldDependencysFailureUp(t *testing.T
 			return paragraphBlock(t, "Brief from the workspace."), nil
 		},
 	}
-	m := Mirror(l, Over(api))
+	m := Mirror(l, Over(api), Project{ID: "proj"})
 
 	if _, _, err := m.Slice(context.Background(), "remote-only"); !errors.Is(err, errBoom) {
 		t.Errorf("err = %v, want the unheld dependency's own failure", err)
@@ -208,7 +323,7 @@ func TestSliceMissingFromTheFileCarriesAnUnheldDependencysFailureUp(t *testing.T
 func TestSliceMissingFromTheFileCarriesThePagesReadFailureUp(t *testing.T) {
 	l, _ := openPlan(t)
 	api := &fakeAPI{page: func(string) (*notion.Page, error) { return nil, errBoom }}
-	m := Mirror(l, Over(api))
+	m := Mirror(l, Over(api), Project{ID: "proj"})
 	if _, _, err := m.Slice(context.Background(), "ghost"); !errors.Is(err, errBoom) {
 		t.Errorf("err = %v, want the page read's failure", err)
 	}
@@ -220,7 +335,7 @@ func TestSliceMissingFromTheFileCarriesTheBodysReadFailureUp(t *testing.T) {
 		page:   func(id string) (*notion.Page, error) { return slicePage(id, "x", notion.SliceTodo), nil },
 		blocks: func(string) ([]notion.Block, error) { return nil, errBoom },
 	}
-	m := Mirror(l, Over(api))
+	m := Mirror(l, Over(api), Project{ID: "proj"})
 	if _, _, err := m.Slice(context.Background(), "ghost"); !errors.Is(err, errBoom) {
 		t.Errorf("err = %v, want the body read's failure", err)
 	}
@@ -231,7 +346,7 @@ func TestMirroredSliceCarriesAnyOtherLocalFailureUp(t *testing.T) {
 	if err := l.Close(); err != nil {
 		t.Fatalf("close the plan early: %v", err)
 	}
-	m := Mirror(l, Over(&fakeAPI{}))
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
 	if _, _, err := m.Slice(context.Background(), "whatever"); err == nil {
 		t.Error("Slice on a closed file: want the failure, not a fall back to the workspace")
 	}
@@ -283,8 +398,9 @@ func TestBodyFetchedOnceAndReReadAfterAPull(t *testing.T) {
 func TestBodyFallsBackToTheStaleCopyWhenTheWorkspaceWillNotSay(t *testing.T) {
 	l, _ := openPlan(t)
 	fillPlan(t, l)
+	stampHydrated(t, l)
 	api := &fakeAPI{blocks: func(string) ([]notion.Block, error) { return nil, errBoom }}
-	m := Mirror(l, Over(api))
+	m := Mirror(l, Over(api), Project{ID: "proj"})
 	body, err := m.Body(context.Background(), "writes")
 	if err != nil {
 		t.Fatalf("Body: %v", err)
@@ -299,7 +415,7 @@ func TestBodyCarriesAFailureToReadFreshnessUp(t *testing.T) {
 	if err := l.Close(); err != nil {
 		t.Fatalf("close early: %v", err)
 	}
-	m := Mirror(l, Over(&fakeAPI{}))
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
 	if _, err := m.Body(context.Background(), "whatever"); err == nil {
 		t.Error("Body against a closed file: want an error")
 	}
@@ -308,10 +424,11 @@ func TestBodyCarriesAFailureToReadFreshnessUp(t *testing.T) {
 func TestBodyCarriesASetBodyFailureUp(t *testing.T) {
 	l, _ := openPlan(t)
 	fillPlan(t, l)
+	stampHydrated(t, l)
 	api := &fakeAPI{blocks: func(string) ([]notion.Block, error) {
 		return paragraphBlock(t, "new"), nil
 	}}
-	m := Mirror(l, Over(api))
+	m := Mirror(l, Over(api), Project{ID: "proj"})
 	// A page not in the plan at all cannot be cached back: SetBody refuses it.
 	if _, err := m.Body(context.Background(), "not-in-the-plan"); err == nil {
 		t.Error("Body caching an ID neither a slice nor the project answers to: want an error")
@@ -357,9 +474,55 @@ func TestDirtySliceSurvivesAPull(t *testing.T) {
 func TestPullCarriesTheReadsFailureUp(t *testing.T) {
 	l, _ := openPlan(t)
 	api := &fakeAPI{dataSource: func(string) (*notion.DataSource, error) { return nil, errBoom }}
-	m := Mirror(l, Over(api))
+	m := Mirror(l, Over(api), Project{ID: "proj"})
 	if err := m.Pull(context.Background(), project()); !errors.Is(err, errBoom) {
 		t.Errorf("err = %v, want the read's failure", err)
+	}
+}
+
+// Pull carries the query's own failure up too, distinct from the schema
+// read's: a schema that reads fine but a slices query that does not still
+// leaves the file untouched.
+// Plan's very first read against a Mirrored that has never been hydrated at
+// all pulls in the board's own view order, not left as the query gave it —
+// the ordered=true half of pull neither TestMirroredPullCarriesTheQueryFailureUp
+// nor any other direct call to Pull itself ever asks for, since Pull is
+// always the unordered half; only the lazy hydrate-on-first-use path is.
+func TestMirroredPlanHydratesInBoardOrderOnFirstEverRead(t *testing.T) {
+	l, _ := openPlan(t)
+	proj := Project{ID: "proj", SlicesID: slicesDS}
+	m := Mirror(l, Over(fullPlanAPI()), proj)
+	if _, err := m.Plan(context.Background(), proj); err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+}
+
+// The package-level Pull helper delegates to a Puller that has one, rather
+// than only recognising the store types that do not.
+func TestPullDelegatesToAPuller(t *testing.T) {
+	m, _ := mirroredPlan(t, fullPlanAPI())
+	if err := Pull(context.Background(), m, project()); err != nil {
+		t.Fatalf("Pull: %v", err)
+	}
+}
+
+func TestMirroredPullCarriesTheQueryFailureUp(t *testing.T) {
+	l, _ := openPlan(t)
+	api := &fakeAPI{query: func(string) ([]notion.Page, error) { return nil, errBoom }}
+	proj := Project{ID: "proj", SlicesID: slicesDS}
+	m := Mirror(l, Over(api), proj)
+	if err := m.Pull(context.Background(), proj); !errors.Is(err, errBoom) {
+		t.Errorf("err = %v, want the query's own failure", err)
+	}
+}
+
+// Pull against a store with nothing behind it to pull from — a [Local] plan
+// of its own — does nothing and fails nothing: there is no workspace this
+// could ever mean anything against.
+func TestPullAgainstAStoreWithNoWorkspaceDoesNothing(t *testing.T) {
+	l, _ := openPlan(t)
+	if err := Pull(context.Background(), l, project()); err != nil {
+		t.Errorf("Pull against a Local: %v, want nil", err)
 	}
 }
 
@@ -452,7 +615,7 @@ func TestClaimSlicePageShapeFailureLeavesTheFlagSet(t *testing.T) {
 // command outright, before anything is pushed.
 func TestClaimSliceCarriesTheLocalFailureUp(t *testing.T) {
 	l, _ := openPlan(t)
-	m := Mirror(l, Over(&fakeAPI{}))
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
 	if _, err := m.ClaimSlice(context.Background(), "ghost", Shape{}, "u1"); err == nil {
 		t.Error("ClaimSlice on a slice not in the plan: want an error")
 	}
@@ -498,7 +661,7 @@ func TestReleaseSlicePushFailureLeavesTheFlagSet(t *testing.T) {
 
 func TestReleaseSliceCarriesTheLocalFailureUp(t *testing.T) {
 	l, _ := openPlan(t)
-	m := Mirror(l, Over(&fakeAPI{}))
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
 	if _, err := m.ReleaseSlice(context.Background(), "ghost", Shape{}, "Craig"); err == nil {
 		t.Error("ReleaseSlice on a slice not in the plan: want an error")
 	}
@@ -578,7 +741,7 @@ func TestCompleteSlicePushFailureLeavesTheFlagSet(t *testing.T) {
 
 func TestCompleteSliceCarriesTheLocalFailureUp(t *testing.T) {
 	l, _ := openPlan(t)
-	m := Mirror(l, Over(&fakeAPI{}))
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
 	if _, err := m.CompleteSlice(context.Background(), "ghost", Shape{}, Outcome{Summary: "x"}); err == nil {
 		t.Error("CompleteSlice on a slice not in the plan: want an error")
 	}
@@ -623,7 +786,7 @@ func TestRecordPRPushFailureLeavesTheFlagSet(t *testing.T) {
 
 func TestRecordPRCarriesTheLocalFailureUp(t *testing.T) {
 	l, _ := openPlan(t)
-	m := Mirror(l, Over(&fakeAPI{}))
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
 	if err := m.RecordPR(context.Background(), "ghost", "url"); err == nil {
 		t.Error("RecordPR on a slice not in the plan: want an error")
 	}
@@ -670,7 +833,7 @@ func TestMarkDonePushFailureLeavesTheFlagSet(t *testing.T) {
 
 func TestMarkDoneCarriesTheLocalFailureUp(t *testing.T) {
 	l, _ := openPlan(t)
-	m := Mirror(l, Over(&fakeAPI{}))
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
 	if err := m.MarkDone(context.Background(), "ghost", Shape{}); err == nil {
 		t.Error("MarkDone on a slice not in the plan: want an error")
 	}
@@ -717,7 +880,7 @@ func TestReopenSlicePushFailureLeavesTheFlagSet(t *testing.T) {
 
 func TestReopenSliceCarriesTheLocalFailureUp(t *testing.T) {
 	l, _ := openPlan(t)
-	m := Mirror(l, Over(&fakeAPI{}))
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
 	if err := m.ReopenSlice(context.Background(), "ghost", Shape{}); err == nil {
 		t.Error("ReopenSlice on a slice not in the plan: want an error")
 	}
@@ -762,7 +925,7 @@ func TestEditSlicePushFailureLeavesTheFlagSet(t *testing.T) {
 
 func TestEditSliceCarriesTheLocalFailureUp(t *testing.T) {
 	l, _ := openPlan(t)
-	m := Mirror(l, Over(&fakeAPI{}))
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
 	if err := m.EditSlice(context.Background(), "ghost", "t", "r", "b"); err == nil {
 		t.Error("EditSlice on a slice not in the plan: want an error")
 	}
@@ -805,7 +968,7 @@ func TestSetSliceBriefPushFailureLeavesTheFlagSet(t *testing.T) {
 
 func TestSetSliceBriefCarriesTheLocalFailureUp(t *testing.T) {
 	l, _ := openPlan(t)
-	m := Mirror(l, Over(&fakeAPI{}))
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
 	if err := m.SetSliceBrief(context.Background(), "ghost", "b"); err == nil {
 		t.Error("SetSliceBrief on a slice not in the plan: want an error")
 	}
@@ -875,7 +1038,7 @@ func TestSetDependenciesPushFailureLeavesTheFlagSet(t *testing.T) {
 
 func TestSetDependenciesCarriesTheLocalFailureUp(t *testing.T) {
 	l, _ := openPlan(t)
-	m := Mirror(l, Over(&fakeAPI{}))
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
 	if _, err := m.SetDependencies(context.Background(), "ghost", nil); err == nil {
 		t.Error("SetDependencies on a slice not in the plan: want an error")
 	}
@@ -920,7 +1083,7 @@ func TestMoveSlicePushFailureLeavesTheFlagSet(t *testing.T) {
 
 func TestMoveSliceCarriesTheLocalFailureUp(t *testing.T) {
 	l, _ := openPlan(t)
-	m := Mirror(l, Over(&fakeAPI{}))
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
 	if err := m.MoveSlice(context.Background(), "ghost", domain.Milestone{}); err == nil {
 		t.Error("MoveSlice on a slice not in the plan: want an error")
 	}
@@ -959,7 +1122,7 @@ func TestDeleteSlicePushFailureStillSucceeds(t *testing.T) {
 
 func TestDeleteSliceCarriesTheLocalFailureUp(t *testing.T) {
 	l, _ := openPlan(t)
-	m := Mirror(l, Over(&fakeAPI{}))
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
 	if err := m.DeleteSlice(context.Background(), "ghost"); err == nil {
 		t.Error("DeleteSlice on a slice not in the plan: want an error")
 	}
@@ -1009,7 +1172,7 @@ func TestAddSliceCarriesTheWorkspacesFailureUp(t *testing.T) {
 	api := &fakeAPI{createPage: func(notion.Parent, map[string]notion.PropertyValue, []map[string]any) (*notion.Page, error) {
 		return nil, errBoom
 	}}
-	m := Mirror(l, Over(api))
+	m := Mirror(l, Over(api), Project{ID: "proj"})
 	if _, err := m.AddSlice(context.Background(), project(), NewSlice{Title: "x"}); !errors.Is(err, errBoom) {
 		t.Errorf("err = %v, want the workspace's own failure, file untouched", err)
 	}
@@ -1023,7 +1186,7 @@ func TestAddSliceCarriesTheEnsureHeldFailureUp(t *testing.T) {
 		page: func(string) (*notion.Page, error) { return nil, errBoom },
 	}
 	l, _ := openPlan(t)
-	m := Mirror(l, Over(api))
+	m := Mirror(l, Over(api), Project{ID: "proj"})
 	if _, err := m.AddSlice(context.Background(), project(),
 		NewSlice{Title: "x", DependsOn: []string{"missing"}}); !errors.Is(err, errBoom) {
 		t.Errorf("err = %v, want the dependency read's failure", err)
@@ -1065,7 +1228,7 @@ func TestAddMilestonesCarriesTheTakeMilestonesFailureUp(t *testing.T) {
 		}
 		return settledSchema(true, "M1: The format", "M2: Reads", "M3: New"), nil
 	}}
-	m := Mirror(l, Over(api))
+	m := Mirror(l, Over(api), Project{ID: "proj"})
 	sh, _ := m.local.Shape(context.Background(), project())
 	if _, err := m.AddMilestones(context.Background(), project(), sh, []string{"M3: New"}); err == nil {
 		t.Error("AddMilestones with the file closed before it could take the milestone in: want an error")
@@ -1158,7 +1321,7 @@ func TestRemoveMilestoneWritesToTheWorkspaceFirstThenRemovesLocally(t *testing.T
 	l, _ := openPlan(t)
 	write(t, l, `INSERT INTO project (id, name) VALUES (?, ?)`, "proj", "nat")
 	write(t, l, `INSERT INTO milestones (name, position) VALUES (?, ?)`, "Empty milestone", 0)
-	m := Mirror(l, Over(api))
+	m := Mirror(l, Over(api), Project{ID: "proj"})
 	ctx := context.Background()
 	sh, _ := m.Shape(ctx, project())
 
@@ -1182,7 +1345,7 @@ func TestRemoveMilestoneRefusalLeavesTheFileUntouched(t *testing.T) {
 	l, _ := openPlan(t)
 	write(t, l, `INSERT INTO project (id, name) VALUES (?, ?)`, "proj", "nat")
 	write(t, l, `INSERT INTO milestones (name, position) VALUES (?, ?)`, "Empty milestone", 0)
-	m := Mirror(l, Over(api))
+	m := Mirror(l, Over(api), Project{ID: "proj"})
 	ctx := context.Background()
 	sh, _ := m.Shape(ctx, project())
 
@@ -1243,7 +1406,7 @@ func TestMirroredPlanCarriesTheLocalFailureUp(t *testing.T) {
 	if err := l.Close(); err != nil {
 		t.Fatalf("close early: %v", err)
 	}
-	m := Mirror(l, Over(&fakeAPI{}))
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
 	if _, err := m.Plan(context.Background(), project()); err == nil {
 		t.Error("Plan against a closed file: want an error")
 	}
@@ -1262,7 +1425,7 @@ func TestSliceMissingFromTheFileCarriesTheTakeSliceFailureUp(t *testing.T) {
 			return nil, nil
 		},
 	}
-	m := Mirror(l, Over(api))
+	m := Mirror(l, Over(api), Project{ID: "proj"})
 	if _, _, err := m.Slice(context.Background(), "ghost"); err == nil {
 		t.Error("Slice with the file closed before it could be taken in: want an error")
 	}
@@ -1409,7 +1572,7 @@ func TestAddSliceCarriesTheTakeSliceFailureUp(t *testing.T) {
 		}
 		return slicePage("new-page-id", properties[notion.PropName].Title[0].Text.Content, notion.SliceTodo), nil
 	}}
-	m := Mirror(l, Over(api))
+	m := Mirror(l, Over(api), Project{ID: "proj"})
 	if _, err := m.AddSlice(context.Background(), project(), NewSlice{Title: "x"}); err == nil {
 		t.Error("AddSlice with the file closed before it could take the slice in: want an error")
 	}
@@ -1421,7 +1584,7 @@ func TestPullCarriesTheHydrateFailureUp(t *testing.T) {
 	if err := l.Close(); err != nil {
 		t.Fatalf("close early: %v", err)
 	}
-	m := Mirror(l, Over(api))
+	m := Mirror(l, Over(api), Project{ID: "proj"})
 	if err := m.Pull(context.Background(), project()); err == nil {
 		t.Error("Pull against a closed file: want an error")
 	}

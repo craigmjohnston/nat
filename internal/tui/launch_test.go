@@ -19,6 +19,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
@@ -225,13 +226,14 @@ func launchApp(t *testing.T) (*App, *fakeLauncher, string) {
 	// rest are about a board that has none.
 	t.Setenv(agent.PaneEnv, "")
 
-	cfg := testConfig()
+	cfg := testConfig(t)
 	project := cfg.Projects[testProjectID]
 	project.WorkingDir = workdir
 	cfg.Projects[testProjectID] = project
 
-	app := NewApp(cfg, &fakeNotion{})
 	p := testProject()
+	seedLocalPlan(t, testProjectID, p)
+	app := NewApp(cfg, &fakeNotion{})
 	app.project = &p
 	app.board.hideDone = false // every slice addressable by row, Done ones included
 	app.board.SetProject(&p)
@@ -791,6 +793,11 @@ func TestAppLaunchClaimsTheSliceBeforeTheSession(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			app, launcher, _ := launchApp(t)
 			app.cfg.AssigneeUserID = tt.userID
+			// The shape a claim writes in is read off the file first now
+			// ([App.storeFor]), so a project that tracks no ownership at all
+			// has to say so there, not only on the page the fakeNotion answers
+			// with.
+			setLocalShape(t, testProjectID, tt.assignee, true)
 			client := app.client.(*fakeNotion)
 			client.getPage = func(id string) (*notion.Page, error) { return todoPage(id, tt.assignee), nil }
 			// What tmux had been asked for by the time the claim was written,
@@ -857,25 +864,33 @@ func TestAppLaunchShowsTheClaimOnTheRow(t *testing.T) {
 // naming what it said. Nothing has gone wrong with the board, and the slice is
 // still there to launch — which is what a toast says and an error banner does
 // not.
+// A remote failure alone no longer refuses the launch: the claim lands in
+// the file first and a failed push is logged and swallowed rather than
+// returned (see store.Mirrored's own doc comment). What can still refuse it
+// is the local half itself: the read, forced by dropping the slice's own
+// row out from under it and refusing the workspace's fallback read too, or
+// Mirrored.Slice would just quietly take it back in; and the write, forced
+// by breaking the column it touches directly.
 func TestAppLaunchRefusesToStartWithoutTheClaim(t *testing.T) {
 	tests := []struct {
 		name string
-		fail func(*fakeNotion)
+		want string
+		fail func(t *testing.T, c *fakeNotion)
 	}{
-		{"the read", func(c *fakeNotion) {
-			c.getPage = func(string) (*notion.Page, error) { return nil, errors.New("notion: 500") }
-		}},
-		{"the write", func(c *fakeNotion) {
-			c.updatePage = func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
-				return nil, errors.New("notion: 500")
-			}
+		{"the read", `Could not claim "Info view": notion: 500 — no agent was launched.`,
+			func(t *testing.T, c *fakeNotion) {
+				dropLocalSlice(t, testProjectID, "s5") // Info view, at rowTodoSlice
+				c.getPage = func(string) (*notion.Page, error) { return nil, errors.New("notion: 500") }
+			}},
+		{"the write", `no agent was launched.`, func(t *testing.T, c *fakeNotion) {
+			breakLocalColumn(t, testProjectID, "slices", "status")
 		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			app, launcher, _ := launchApp(t)
-			tt.fail(app.client.(*fakeNotion))
 			app.board.cursor = rowTodoSlice
+			tt.fail(t, app.client.(*fakeNotion))
 
 			launch(t, app)
 
@@ -885,9 +900,8 @@ func TestAppLaunchRefusesToStartWithoutTheClaim(t *testing.T) {
 			if len(launcher.clients) != 0 {
 				t.Errorf("clients = %v, want no terminal for an agent that never started", launcher.clients)
 			}
-			want := `Could not claim "Info view": notion: 500 — no agent was launched.`
-			if app.toast != want {
-				t.Errorf("toast = %q, want %q", app.toast, want)
+			if !strings.Contains(app.toast, tt.want) {
+				t.Errorf("toast = %q, want it to contain %q", app.toast, tt.want)
 			}
 			if app.toastSev != sevError {
 				t.Errorf("severity = %v, want an error", app.toastSev)
@@ -1177,7 +1191,7 @@ func TestLaunchAgentReportsAFailedPromptFile(t *testing.T) {
 
 	client := &fakeNotion{}
 
-	msg := runMsg(t, launchAgent(launcher, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client,
+	msg := runMsg(t, launchAgent(launcher, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, store.Over(client),
 		&fakePRViewer{}, "u1",
 		agent.PromptContext{
 			Slice: domain.Slice{ID: "s5", Name: "Info view"},
@@ -1652,7 +1666,7 @@ func TestAppShowsALiveSessionWhateverTheSlicesStatus(t *testing.T) {
 // show, the choices anchored to the slice's own row, and the keys that answer
 // them where the row's hints were.
 func TestAppLaunchPromptGolden(t *testing.T) {
-	a := sizedApp(80, 16)
+	a := sizedApp(t, 80, 16)
 	a.launcher = &fakeLauncher{}
 	a.board.cursor = 1 // the plan's one slice
 
@@ -1725,14 +1739,22 @@ func TestAttachedReportsTheTerminalComingBack(t *testing.T) {
 	}
 }
 
+// The agent has had the terminal to itself, so the slice it was working on is
+// re-read rather than trusted — that one slice, not the whole plan, and read
+// from the plan file ([App.storeFor]) rather than refetched from a page: the
+// write an agent's own nat commands made landed in the same file a moment
+// ago, so the file is where the current answer already is.
 func TestAppRefreshesTheSliceAfterAttaching(t *testing.T) {
 	client := &fakeNotion{}
-	app := newWriteApp(client)
+	app := newWriteApp(t, client)
 	app.launcher = &fakeLauncher{}
 	app.busy = true
+	// What the agent's own session changed while it had the terminal, written
+	// straight to the file the way a headless nat command would.
+	setLocalSliceStatus(t, testProjectID, "s5", "In progress")
 
 	_, cmd := app.Update(agentAttachedMsg{note: "Detached from nat-5.", slice: "s5"})
-	run(cmd)
+	feed(t, app, cmd)
 
 	if app.busy {
 		t.Error("the terminal is back; nothing is in flight")
@@ -1740,10 +1762,12 @@ func TestAppRefreshesTheSliceAfterAttaching(t *testing.T) {
 	if app.board.confirmText != "Detached from nat-5." {
 		t.Errorf("confirm = %q, want the detached confirmation", app.board.confirmText)
 	}
-	// The agent has had the terminal to itself, so the slice it was working on
-	// is re-read rather than trusted — that one page, not the whole plan.
-	if !equal(client.fetchedPages, []string{"s5"}) {
-		t.Errorf("fetched %v, want the agent's slice refetched", client.fetchedPages)
+	byID := domain.SlicesByID(app.project.Slices)
+	if got := byID["s5"].Status; got != domain.SliceClaimed {
+		t.Errorf("status = %q, want the file's own change picked up", got)
+	}
+	if len(client.fetchedPages) != 0 {
+		t.Errorf("fetched %v, want no page refetched — the file already has the answer", client.fetchedPages)
 	}
 	if client.queriedDSIDs != nil {
 		t.Errorf("queried %v, want no full reload", client.queriedDSIDs)

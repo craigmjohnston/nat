@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/craigmjohnston/nat/internal/domain"
 )
@@ -200,6 +201,68 @@ func TestLocalShapeReportsAFailedColumnRead(t *testing.T) {
 	}
 }
 
+// SyncedAt answers the zero time for a plan that has never been hydrated —
+// not an error, since there is nothing wrong with one that simply never has
+// been — whether that is because the project row does not exist at all, or
+// because it exists but was never stamped.
+func TestLocalSyncedAtOfAPlanNeverHydrated(t *testing.T) {
+	l, _ := openPlan(t)
+
+	got, err := l.SyncedAt(context.Background(), "proj")
+	if err != nil {
+		t.Fatalf("SyncedAt with no project row: %v", err)
+	}
+	if !got.IsZero() {
+		t.Errorf("SyncedAt = %v, want the zero time", got)
+	}
+
+	write(t, l, `INSERT INTO project (id, name) VALUES (?, ?)`, "proj", "x")
+	got, err = l.SyncedAt(context.Background(), "proj")
+	if err != nil {
+		t.Fatalf("SyncedAt with an unstamped row: %v", err)
+	}
+	if !got.IsZero() {
+		t.Errorf("SyncedAt = %v, want the zero time", got)
+	}
+}
+
+// SyncedAt reads back exactly the stamp Hydrate wrote.
+func TestLocalSyncedAtOfAHydratedPlan(t *testing.T) {
+	l, _ := openPlan(t)
+	at := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	write(t, l, `INSERT INTO project (id, name, synced_at) VALUES (?, ?, ?)`, "proj", "x", timeStamp(at))
+
+	got, err := l.SyncedAt(context.Background(), "proj")
+	if err != nil {
+		t.Fatalf("SyncedAt: %v", err)
+	}
+	if !got.Equal(at) {
+		t.Errorf("SyncedAt = %v, want %v", got, at)
+	}
+}
+
+func TestLocalSyncedAtReportsAFailedRead(t *testing.T) {
+	l, path := openPlan(t)
+	write(t, l, `ALTER TABLE project DROP COLUMN synced_at`)
+
+	if _, err := l.SyncedAt(context.Background(), "proj"); err == nil || !strings.Contains(err.Error(), path) {
+		t.Errorf("SyncedAt err = %v, want the path named", err)
+	}
+}
+
+// A stamp that is not the RFC3339Nano Hydrate always writes fails the read
+// rather than reading back as never-hydrated: the row is there and the
+// column holds something, so silently treating it as blank would hide that
+// the file itself is not what this store expects.
+func TestLocalSyncedAtReportsAnUnparseableStamp(t *testing.T) {
+	l, _ := openPlan(t)
+	write(t, l, `INSERT INTO project (id, name, synced_at) VALUES (?, ?, ?)`, "proj", "x", "not a time")
+
+	if _, err := l.SyncedAt(context.Background(), "proj"); err == nil {
+		t.Error("SyncedAt with an unparseable stamp: want an error")
+	}
+}
+
 func TestLocalSliceReadsOneSliceAndItsShape(t *testing.T) {
 	l, _ := openPlan(t)
 	fillPlan(t, l)
@@ -216,6 +279,38 @@ func TestLocalSliceReadsOneSliceAndItsShape(t *testing.T) {
 	}
 	if !sh.HasAssignee || !sh.HasBranch {
 		t.Errorf("shape = %+v, want both columns", sh)
+	}
+}
+
+// A slice's own shape cannot be read without the project row it is read off
+// of, and that failure is Slice's own rather than an empty plan's own shape
+// guessed at — whether the project row itself cannot even be found, or its
+// own columns cannot once it has.
+func TestLocalSliceReportsAFailedShapeRead(t *testing.T) {
+	tests := []struct {
+		name  string
+		break_ func(t *testing.T, l *Local)
+	}{
+		{"the project row", func(t *testing.T, l *Local) {
+			write(t, l, `DROP TABLE project`)
+		}},
+		{"the project's own columns", func(t *testing.T, l *Local) {
+			write(t, l, `ALTER TABLE project DROP COLUMN has_assignee`)
+			// hydrated has to read true first, or sliceShape never gets far
+			// enough to need the column just dropped.
+			write(t, l, `UPDATE project SET synced_at = ?`, "2026-01-01T00:00:00Z")
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l, path := openPlan(t)
+			fillPlan(t, l)
+			tt.break_(t, l)
+
+			if _, _, err := l.Slice(context.Background(), "writes"); err == nil || !strings.Contains(err.Error(), path) {
+				t.Errorf("Slice err = %v, want the path named", err)
+			}
+		})
 	}
 }
 
@@ -500,9 +595,9 @@ func TestLocalNamesItsFileWhenARowWillNotScan(t *testing.T) {
 // SQLite's own error at the second row is a cheap way of asking.
 func TestLocalNamesItsFileWhenAReadFailsPartWayThrough(t *testing.T) {
 	l, path := openPlan(t)
-	overflow := `SELECT 'b', abs(-9223372036854775808)`
+	overflow := `SELECT 'b', abs(-9223372036854775808), ''`
 	write(t, l, `DROP TABLE milestones`)
-	write(t, l, `CREATE VIEW milestones (name, position) AS SELECT 'a', 0.0 UNION ALL `+overflow)
+	write(t, l, `CREATE VIEW milestones (name, position, select_type) AS SELECT 'a', 0.0, '' UNION ALL `+overflow)
 	write(t, l, `DROP TABLE slices`)
 	write(t, l, `CREATE VIEW slices (id, title, status, milestone, position, assignee, assignee_name, repo, branch, pr, url, body)
 		AS SELECT 'a', 'A', 'Todo', NULL, 0.0, '', '', '', '', '', '', ''

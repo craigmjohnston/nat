@@ -41,7 +41,7 @@ func TestPollTickedProdsThePoll(t *testing.T) {
 // the config asks for.
 func TestInitSchedulesTheBackgroundPoll(t *testing.T) {
 	asked := firingPollTick(t)
-	cfg := testConfig()
+	cfg := testConfig(t)
 	cfg.PollSeconds = 90
 	app := NewApp(cfg, newLoadingClient())
 
@@ -131,8 +131,11 @@ func TestAFailedPollKeepsThePlan(t *testing.T) {
 	if app.err != nil {
 		t.Errorf("err = %v, want the failure passed as a toast instead", app.err)
 	}
-	if app.toast == "" || app.toastSev != sevError {
-		t.Errorf("toast = %q (sev %v), want the failure reported", app.toast, app.toastSev)
+	// A warning, not an error: the poll forces a pull (store.Pull), and a
+	// forced pull that fails leaves the plan on screen — it is in the file —
+	// reported this way rather than as an error to dismiss.
+	if app.toast == "" || app.toastSev != sevWarning {
+		t.Errorf("toast = %q (sev %v), want the failure reported as a warning", app.toast, app.toastSev)
 	}
 }
 

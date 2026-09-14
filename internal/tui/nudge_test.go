@@ -142,7 +142,7 @@ func TestInitSchedulesTheNudgeWatcher(t *testing.T) {
 	prev := nudgeTick
 	nudgeTick = func() tea.Cmd { return func() tea.Msg { return nudgeTickMsg{} } }
 	t.Cleanup(func() { nudgeTick = prev })
-	app := NewApp(testConfig(), newLoadingClient())
+	app := NewApp(testConfig(t), newLoadingClient())
 
 	first[nudgeTickMsg](t, run(app.Init()))
 }

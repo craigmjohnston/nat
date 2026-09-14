@@ -268,7 +268,7 @@ func TestAppPutsAToastOnTheStatusLine(t *testing.T) {
 // The status line speaks in one voice at a time: an error beats the toast, and
 // so does progress in flight.
 func TestStatusLinePrefersTheErrorAndTheNoteToTheToast(t *testing.T) {
-	app := sizedApp(80, 24)
+	app := sizedApp(t, 80, 24)
 	app.toast, app.toastSev = "Switched.", sevSuccess
 
 	app.note = "Saving…"
@@ -285,7 +285,7 @@ func TestStatusLinePrefersTheErrorAndTheNoteToTheToast(t *testing.T) {
 // An open form owns the status line's message slot: its esc hint matters more
 // than a toast left over from before it opened.
 func TestStatusLinePrefersTheFormHintToTheToast(t *testing.T) {
-	app := sizedApp(80, 24)
+	app := sizedApp(t, 80, 24)
 	app.toast, app.toastSev = "Switched.", sevSuccess
 	app.openForm(newNewProjectForm(app.styles.FormTheme))
 

@@ -32,12 +32,23 @@ func submitForm(t *testing.T, a *App, title, brief, repo string) {
 	}
 }
 
-// pageFor is a slicePage as GetPage returns one: by pointer, which is what the
-// single-slice refresh maps its row from.
-func pageFor(id, name, status, milestone string) func(string) (*notion.Page, error) {
-	return func(string) (*notion.Page, error) {
-		p := slicePage(id, name, status, milestone)
-		return &p, nil
+// createdPage answers CreatePage with a page carrying the ID given and
+// echoing back the title and milestone it was asked to write, read-shape —
+// slicePage's own title is write-shape and reads back empty (see syncPage) —
+// which is what a real Notion CreatePage response looks like and what
+// [store.Mirrored.AddSlice] takes into the file: the slice a refresh reads
+// back afterwards is this page decoded, not a second fetch of it.
+func createdPage(id string) func(notion.Parent, map[string]notion.PropertyValue, []map[string]any) (*notion.Page, error) {
+	return func(_ notion.Parent, props map[string]notion.PropertyValue, _ []map[string]any) (*notion.Page, error) {
+		p := &notion.Page{ID: id, Properties: map[string]notion.PropertyValue{}}
+		for k, v := range props {
+			p.Properties[k] = v
+		}
+		if title, ok := props[notion.PropName]; ok && len(title.Title) > 0 {
+			p.Properties[notion.PropName] = notion.PropertyValue{
+				Title: []notion.RichText{{PlainText: title.Title[0].Text.Content}}}
+		}
+		return p, nil
 	}
 }
 
@@ -53,20 +64,29 @@ func milestoneStatus(t *testing.T, a *App, id string) domain.MilestoneStatus {
 	return ""
 }
 
+// A write lands in the file before it is ever pushed to the workspace (see
+// store.Mirrored's own doc comment), so the row redraw after one reads the
+// plan rather than refetching a page: the tests below assert exactly that —
+// no GetPage call at all — where the write itself (edit, move) already put
+// the new value in the file. AddSlice is the one write that goes to the
+// workspace first, since a slice's ID is its own page ID, so it is CreatePage
+// the patched row's fields come from, not a follow-up fetch either.
+
 func TestAppEditRefreshesJustTheSlice(t *testing.T) {
 	fixClock(t, refreshedAt)
-	client := &fakeNotion{getPage: pageFor("s5", "Info view, renamed", notion.SliceTodo, "M2: Board")}
-	app := newWriteApp(client)
+	client := &fakeNotion{}
+	app := newWriteApp(t, client)
 	app.board.cursor = rowTodoSlice
 
 	_, opened := app.Update(runMsg(t, press(app, "e")))
 	feed(t, app, opened)
 	submitForm(t, app, ", renamed", "", "")
 
-	// The row is redrawn from the one refetched page, with no full load: the
-	// plan query is never made and the board never goes back to loading.
-	if !equal(client.fetchedPages, []string{"s5"}) {
-		t.Errorf("fetched %v, want just the edited page", client.fetchedPages)
+	// The row is redrawn from the file the write already landed in — no
+	// GetPage at all — with no full load: the plan query is never made and
+	// the board never goes back to loading.
+	if client.fetchedPages != nil {
+		t.Errorf("fetched %v, want the row read from the file the write already landed in", client.fetchedPages)
 	}
 	if client.queriedDSIDs != nil {
 		t.Errorf("queried %v, want no full reload", client.queriedDSIDs)
@@ -91,17 +111,18 @@ func TestAppEditRefreshesJustTheSlice(t *testing.T) {
 
 func TestAppAddPatchesTheNewSliceIn(t *testing.T) {
 	fixClock(t, refreshedAt)
-	// CreatePage answers with the page "new-page", which is the one the patch
-	// refetches: a created slice has an ID only Notion knows.
-	client := &fakeNotion{getPage: pageFor("new-page", "Brand new", notion.SliceTodo, "M2: Board")}
-	app := newWriteApp(client)
+	// AddSlice files the slice in the workspace first, since a slice's ID is
+	// its own page ID — CreatePage's own answer, echoed back, is what the
+	// patched row reads.
+	client := &fakeNotion{createPage: createdPage("new-page")}
+	app := newWriteApp(t, client)
 	app.board.cursor = rowActiveMilestone
 
 	feed(t, app, press(app, "a"))
 	submitForm(t, app, "Brand new", "The brief.", "")
 
-	if !equal(client.fetchedPages, []string{"new-page"}) {
-		t.Errorf("fetched %v, want just the created page", client.fetchedPages)
+	if client.fetchedPages != nil {
+		t.Errorf("fetched %v, want no GetPage — CreatePage's own answer is what was taken in", client.fetchedPages)
 	}
 	if client.queriedDSIDs != nil {
 		t.Errorf("queried %v, want no full reload", client.queriedDSIDs)
@@ -110,8 +131,8 @@ func TestAppAddPatchesTheNewSliceIn(t *testing.T) {
 		t.Fatalf("plan holds %d slices, want the new one patched in", got)
 	}
 	added := app.project.Slices[6]
-	if added.ID != "new-page" || added.MilestoneID != "M2: Board" {
-		t.Errorf("added = %+v, want the refetched slice under its milestone", added)
+	if added.ID != "new-page" || added.Name != "Brand new" || added.MilestoneID != "M2: Board" {
+		t.Errorf("added = %+v, want the created slice under its milestone", added)
 	}
 	if view := stripANSI(app.View().Content); !strings.Contains(view, "Brand new") {
 		t.Errorf("the new row is not drawn:\n%s", view)
@@ -120,17 +141,17 @@ func TestAppAddPatchesTheNewSliceIn(t *testing.T) {
 
 func TestAppMoveRefilesTheRowWithoutAFullLoad(t *testing.T) {
 	fixClock(t, refreshedAt)
-	client := &fakeNotion{getPage: pageFor("s5", "Info view", notion.SliceTodo, "M1: Config")}
-	app := newWriteApp(client)
+	client := &fakeNotion{}
+	app := newWriteApp(t, client)
 	app.board.cursor = rowTodoSlice
 
 	feed(t, app, press(app, "m"))
-	// The picker opens on its first target, M1: Config, which the refetched
-	// page then names; drive lands the refetch the submitted move kicks off.
+	// The picker opens on its first target, M1: Config; drive lands the
+	// refetch the submitted move kicks off.
 	drive(t, app, press(app, "enter"))
 
-	if !equal(client.fetchedPages, []string{"s5"}) {
-		t.Errorf("fetched %v, want just the moved page", client.fetchedPages)
+	if client.fetchedPages != nil {
+		t.Errorf("fetched %v, want the row read from the file the write already landed in", client.fetchedPages)
 	}
 	if client.queriedDSIDs != nil {
 		t.Errorf("queried %v, want no full reload", client.queriedDSIDs)
@@ -149,7 +170,7 @@ func TestAppMoveRefilesTheRowWithoutAFullLoad(t *testing.T) {
 func TestAppDeleteRemovesTheRowOutright(t *testing.T) {
 	fixClock(t, refreshedAt)
 	client := &fakeNotion{}
-	app := newWriteApp(client)
+	app := newWriteApp(t, client)
 	app.board.cursor = rowTodoSlice
 
 	feed(t, app, press(app, "d"))
@@ -176,7 +197,7 @@ func TestAppDeleteRemovesTheRowOutright(t *testing.T) {
 }
 
 func TestAppDeleteOfARowThePlanDoesNotHold(t *testing.T) {
-	app := newWriteApp(&fakeNotion{})
+	app := newWriteApp(t, &fakeNotion{})
 
 	app.Update(sliceSavedMsg{note: "Deleted.", sliceID: "not-there", deleted: true})
 
@@ -189,7 +210,7 @@ func TestAppDeleteOfARowThePlanDoesNotHold(t *testing.T) {
 }
 
 func TestAppDeleteBeforeTheFirstPlanChangesNothing(t *testing.T) {
-	app := NewApp(testConfig(), &fakeNotion{})
+	app := NewApp(testConfig(t), &fakeNotion{})
 
 	app.Update(sliceSavedMsg{note: "Deleted.", sliceID: "s5", deleted: true})
 
@@ -202,7 +223,7 @@ func TestAppFallsBackToAFullLoadBeforeTheFirstPlan(t *testing.T) {
 	// A write can land before the first load has — there is no plan to patch,
 	// so the whole of it is fetched instead.
 	client := newLoadingClient()
-	app := NewApp(testConfig(), client)
+	app := NewApp(testConfig(t), client)
 
 	_, cmd := app.Update(sliceSavedMsg{note: "Updated.", sliceID: "s5"})
 	run(cmd)
@@ -215,11 +236,15 @@ func TestAppFallsBackToAFullLoadBeforeTheFirstPlan(t *testing.T) {
 	}
 }
 
+// TestAppReportsAFailedSliceRefresh names a slice the file has never heard
+// of, so App.refreshSlice's read falls all the way through to the workspace
+// (see store.Mirrored.Slice) — exactly the one path left where that read can
+// still fail the way a plain GetPage failure used to.
 func TestAppReportsAFailedSliceRefresh(t *testing.T) {
 	client := &fakeNotion{getPage: func(string) (*notion.Page, error) { return nil, errors.New("boom") }}
-	app := newWriteApp(client)
+	app := newWriteApp(t, client)
 
-	_, cmd := app.Update(sliceSavedMsg{note: "Updated.", sliceID: "s5"})
+	_, cmd := app.Update(sliceSavedMsg{note: "Updated.", sliceID: "nowhere-in-the-file"})
 	feed(t, app, cmd)
 
 	if app.err == nil || app.err.Error() != "refresh slice: boom" {
@@ -231,7 +256,7 @@ func TestAppReportsAFailedSliceRefresh(t *testing.T) {
 }
 
 func TestAppSliceRefreshWithoutAPlanChangesNothing(t *testing.T) {
-	app := NewApp(testConfig(), &fakeNotion{})
+	app := NewApp(testConfig(t), &fakeNotion{})
 
 	app.Update(sliceRefreshedMsg{slice: domain.Slice{ID: "s5"}})
 
@@ -241,7 +266,7 @@ func TestAppSliceRefreshWithoutAPlanChangesNothing(t *testing.T) {
 }
 
 func TestAppSliceRefreshClosesAnOpenPrompt(t *testing.T) {
-	app := newWriteApp(&fakeNotion{})
+	app := newWriteApp(t, &fakeNotion{})
 	app.board.cursor = rowTodoSlice
 	app.openPrompt([]string{"yes", "no"}, func(int) tea.Cmd { return nil })
 
@@ -256,17 +281,29 @@ func TestAppSliceRefreshClosesAnOpenPrompt(t *testing.T) {
 }
 
 func TestAppRefreshesTheSliceTheAgentPaneWasAbout(t *testing.T) {
-	// Hiding an agent's pane is the moment the user looks back at the board,
-	// and the agent has been working exactly one page: that one is refetched.
-	client := &fakeNotion{getPage: pageFor("s5", "Info view", notion.SliceInProgress, "M2: Board")}
-	app := newWriteApp(client)
+	// Hiding an agent's pane is the moment the user looks back at the board;
+	// the agent has been working exactly one page, so that one is refetched.
+	// What the agent did reached the file directly, the same shared plan a
+	// headless nat command writes through while it works — simulated here by
+	// seeding the file with the slice already claimed, the way a real claim
+	// would leave it, rather than by answering a GetPage that is no longer
+	// asked.
+	claimed := testProject()
+	for i := range claimed.Slices {
+		if claimed.Slices[i].ID == "s5" {
+			claimed.Slices[i].Status, claimed.Slices[i].StatusName = domain.SliceClaimed, "In progress"
+		}
+	}
+	client := &fakeNotion{}
+	app := newWriteApp(t, client)
+	seedLocalPlan(t, testProjectID, claimed)
 	app.busy = true
 
 	_, cmd := app.Update(agentAttachedMsg{note: "Sent the agent back.", slice: "s5"})
 	feed(t, app, cmd)
 
-	if !equal(client.fetchedPages, []string{"s5"}) {
-		t.Errorf("fetched %v, want the agent's slice", client.fetchedPages)
+	if client.fetchedPages != nil {
+		t.Errorf("fetched %v, want the agent's slice read from the file", client.fetchedPages)
 	}
 	if client.queriedDSIDs != nil {
 		t.Errorf("queried %v, want no full reload", client.queriedDSIDs)

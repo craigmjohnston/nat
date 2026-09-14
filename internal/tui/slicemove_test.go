@@ -8,6 +8,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // The slice rows the move and delete flows act on, beyond those sliceform_test
@@ -66,7 +67,7 @@ func TestMoveTargetsOfNoPlanAtAll(t *testing.T) {
 func TestMoveSliceWritesOnlyTheMilestone(t *testing.T) {
 	client := &fakeNotion{}
 
-	msg := runMsg(t, moveSlice(client, "s5", "Info view",
+	msg := runMsg(t, moveSlice(store.Over(client), "s5", "Info view",
 		domain.Milestone{ID: "M3: Mutations", Name: "M3: Mutations", SelectType: notion.TypeSelect}))
 
 	if got := msg.(sliceSavedMsg); got.err != nil || got.note != `Moved "Info view" to M3: Mutations.` {
@@ -89,7 +90,7 @@ func TestMoveSliceReportsAFailure(t *testing.T) {
 		},
 	}
 
-	msg := runMsg(t, moveSlice(client, "s5", "Info view",
+	msg := runMsg(t, moveSlice(store.Over(client), "s5", "Info view",
 		domain.Milestone{ID: "M3: Mutations", Name: "M3: Mutations", SelectType: notion.TypeSelect}))
 
 	if got := msg.(sliceSavedMsg); got.err == nil || got.err.Error() != "move slice: boom" {
@@ -109,7 +110,7 @@ func TestAppMoveOpensThePickerOnTheSelectedSlice(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := newWriteApp(&fakeNotion{})
+			app := newWriteApp(t, &fakeNotion{})
 			app.board.cursor = tt.cursor
 
 			feed(t, app, press(app, "m"))
@@ -133,7 +134,7 @@ func TestAppMoveOpensThePickerOnTheSelectedSlice(t *testing.T) {
 
 func TestAppMoveWritesThePickedMilestone(t *testing.T) {
 	client := &fakeNotion{}
-	app := newWriteApp(client)
+	app := newWriteApp(t, client)
 	app.board.cursor = rowTodoSlice
 
 	feed(t, app, press(app, "m"))
@@ -156,7 +157,7 @@ func TestAppMoveWritesThePickedMilestone(t *testing.T) {
 }
 
 func TestAppMoveRefusesAClaimedSlice(t *testing.T) {
-	app := newWriteApp(&fakeNotion{})
+	app := newWriteApp(t, &fakeNotion{})
 	app.board.cursor = rowClaimedSlice
 
 	press(app, "m")
@@ -170,7 +171,7 @@ func TestAppMoveRefusesAClaimedSlice(t *testing.T) {
 }
 
 func TestAppMoveNeedsASliceUnderTheCursor(t *testing.T) {
-	app := newWriteApp(&fakeNotion{})
+	app := newWriteApp(t, &fakeNotion{})
 	app.board.cursor = rowActiveMilestone
 
 	press(app, "m")
@@ -191,7 +192,7 @@ func TestAppMoveNeedsSomewhereToMoveTo(t *testing.T) {
 		Milestones: []domain.Milestone{{ID: "M1", Name: "M1", Status: domain.MilestoneActive}},
 		Slices:     []domain.Slice{{ID: "s1", Name: "Only", Status: domain.SliceTodo, MilestoneID: "M1"}},
 	}
-	app := NewApp(testConfig(), &fakeNotion{})
+	app := NewApp(testConfig(t), &fakeNotion{})
 	app.project = &p
 	app.board.SetProject(&p)
 	app.board.cursor = 1
@@ -234,7 +235,7 @@ func TestMoveSliceWritesTheMilestoneColumnsOwnType(t *testing.T) {
 	client := &fakeNotion{}
 	m := domain.Milestone{ID: "M3: Mutations", Name: "M3: Mutations", SelectType: notion.TypeStatus}
 
-	msg := runMsg(t, moveSlice(client, "s5", "Info view", m))
+	msg := runMsg(t, moveSlice(store.Over(client), "s5", "Info view", m))
 
 	if got := msg.(sliceSavedMsg); got.err != nil || got.note != `Moved "Info view" to M3: Mutations.` {
 		t.Errorf("msg = %+v, want the moved note", got)

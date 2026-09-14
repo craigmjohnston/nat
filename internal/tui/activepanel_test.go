@@ -12,8 +12,8 @@ import (
 
 // activePanelApp is an app of a given window size showing a plan with work in
 // flight, which is what the body band splits in two for.
-func activePanelApp(width, height int, p domain.Project) *App {
-	a := NewApp(testConfig(), newLoadingClient())
+func activePanelApp(t *testing.T, width, height int, p domain.Project) *App {
+	a := NewApp(testConfig(t), newLoadingClient())
 	a.Update(tea.WindowSizeMsg{Width: width, Height: height})
 	a.Update(projectLoadedMsg{project: p})
 	return a
@@ -32,7 +32,7 @@ func bodyLines(a *App) []string {
 // framed at the window's own edges so no border of the layout sits inside
 // another.
 func TestAppDrawsTheActiveSectionAsASiblingBox(t *testing.T) {
-	a := activePanelApp(80, 24, testProject())
+	a := activePanelApp(t, 80, 24, testProject())
 
 	golden(t, "app-active-panel", a.View().Content)
 
@@ -70,7 +70,7 @@ func TestAppDrawsTheActiveSectionAsASiblingBox(t *testing.T) {
 // A plan with nothing in flight has no section to lift out, so the body band is
 // one box — exactly the layout there was before there was a panel.
 func TestAppWithNothingInFlightDrawsOneBodyBox(t *testing.T) {
-	a := activePanelApp(80, 24, windowProject())
+	a := activePanelApp(t, 80, 24, windowProject())
 
 	if got := a.activeBandHeight(); got != 0 {
 		t.Errorf("the section took %d lines of the band, want none", got)
@@ -94,7 +94,7 @@ func TestAppWithNothingInFlightDrawsOneBodyBox(t *testing.T) {
 // bare: its heading on a line of its own, its entries under it, and no border
 // anywhere.
 func TestAppDrawsTheActiveSectionBareBelowTheFramedThreshold(t *testing.T) {
-	a := activePanelApp(80, 9, testProject())
+	a := activePanelApp(t, 80, 9, testProject())
 
 	if a.framed() {
 		t.Fatal("the window is framed, want one below the threshold")
@@ -116,7 +116,7 @@ func TestAppDrawsTheActiveSectionBareBelowTheFramedThreshold(t *testing.T) {
 // A band with no room for a second panel draws none, and the board's rows say
 // so too: the cursor is never left on an entry nothing draws.
 func TestAppDropsTheActiveSectionWithNoRoomForIt(t *testing.T) {
-	a := activePanelApp(80, 10, testProject())
+	a := activePanelApp(t, 80, 10, testProject())
 
 	if !a.framed() {
 		t.Fatal("the window is not framed, want the smallest framed one")
@@ -140,7 +140,7 @@ func TestAppDropsTheActiveSectionWithNoRoomForIt(t *testing.T) {
 // puts the cursor where it can be seen.
 func TestAppScrollsTheActivePanelToTheCursor(t *testing.T) {
 	p := activeProject()
-	a := activePanelApp(80, 20, p)
+	a := activePanelApp(t, 80, 20, p)
 	if a.activeHeight() >= a.board.ActiveHeight() {
 		t.Fatalf("the panel holds all %d lines, want one the entries overflow",
 			a.board.ActiveHeight())
@@ -224,7 +224,7 @@ func TestBoardWheelOverThePanelLeavesTheCursorAlone(t *testing.T) {
 // A screen over the board takes the whole band, panel and all — and putting the
 // board back puts the section back, with the cursor exactly where it was left.
 func TestAppKeepsTheActiveSectionAcrossAScreenOverTheBoard(t *testing.T) {
-	a := activePanelApp(80, 24, testProject())
+	a := activePanelApp(t, 80, 24, testProject())
 	was := a.board.Cursor()
 
 	press(a, "?")
@@ -272,7 +272,7 @@ func TestBoardWheelUpDragsTheCursorWithIt(t *testing.T) {
 // is a line of the band there rather than a title in a border, so a click that
 // does arrive is read past it.
 func TestBoardClickOnABareActiveSection(t *testing.T) {
-	a := activePanelApp(80, 9, testProject())
+	a := activePanelApp(t, 80, 9, testProject())
 	a.board.SelectRow(a.board.activeRowCount())
 	if a.framed() {
 		t.Fatal("the window is framed, want one below the threshold")

@@ -33,7 +33,7 @@ func (a *App) polled() tea.Cmd {
 	if a.pollSuspended() {
 		return nil
 	}
-	return a.startLoad()
+	return a.startLoad(true)
 }
 
 // pollSuspended reports whether this tick should pass without a refetch: while
