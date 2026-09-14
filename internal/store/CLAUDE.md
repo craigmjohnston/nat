@@ -10,6 +10,14 @@ Two implementations answer the same interface: `Notion` (`notion.go`) and
 `Local` (`local.go` + `local_write.go`, SQLite). A third backend has to
 answer every method or none.
 
+`Mirrored` (`mirrored.go`) is a third `Store`, but not a third backend: a
+`Local` replica in front of a `Notion` workspace, built and tested but wired
+to nothing above this package yet. See its own doc comment for the
+write-through rule — local first, dirty set in that write's own transaction,
+pushed after, `MarkSent` clearing the flag only on a successful push — and
+why milestone writes and `AddSlice` are the two exceptions that go to the
+workspace first instead.
+
 ## Shape
 
 - `Shape` is read, not assumed: exported `HasAssignee`/`HasBranch`/

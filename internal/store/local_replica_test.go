@@ -1065,3 +1065,62 @@ func TestLocalNamesItsFileWhenAReplicaWriteCannotBeMade(t *testing.T) {
 		}
 	}
 }
+
+// takeMilestones inserts a milestone the file has never seen, in the order
+// and select type handed back — exactly what [Mirrored.AddMilestones] calls
+// once the workspace's own write has already succeeded.
+func TestLocalTakeMilestonesInsertsAMilestoneTheFileHasNeverSeen(t *testing.T) {
+	l, _ := openPlan(t)
+	fillPlan(t, l)
+	ctx := context.Background()
+
+	if err := l.takeMilestones(ctx, []domain.Milestone{
+		{Name: "M3: New", Order: 2, SelectType: "select"},
+	}); err != nil {
+		t.Fatalf("takeMilestones: %v", err)
+	}
+	if st := readMilestoneSelectType(t, l, "M3: New"); st != "select" {
+		t.Errorf("select_type = %q, want the reading's own", st)
+	}
+}
+
+// A milestone the file already holds is left exactly as it is: it is not new
+// to the plan, whatever the workspace's own answer says.
+func TestLocalTakeMilestonesLeavesAMilestoneItAlreadyHolds(t *testing.T) {
+	l, _ := openPlan(t)
+	fillPlan(t, l)
+	ctx := context.Background()
+
+	if err := l.takeMilestones(ctx, []domain.Milestone{
+		{Name: "M1: The format", Order: 99, SelectType: "status"},
+	}); err != nil {
+		t.Fatalf("takeMilestones: %v", err)
+	}
+	if st := readMilestoneSelectType(t, l, "M1: The format"); st != "" {
+		t.Errorf("select_type = %q, want the file's own kept, not overwritten", st)
+	}
+}
+
+func TestLocalTakeMilestonesNamesItsFileWhenItsOwnReadsFail(t *testing.T) {
+	l, _ := openPlan(t)
+	ctx := context.Background()
+	if _, err := l.db.Exec(`DROP TABLE milestones`); err != nil {
+		t.Fatalf("drop the milestones table: %v", err)
+	}
+	err := l.takeMilestones(ctx, []domain.Milestone{{Name: "M1"}})
+	if err == nil || !strings.Contains(err.Error(), "read the milestones") {
+		t.Errorf("err = %v, want the read named", err)
+	}
+}
+
+func TestLocalTakeMilestonesNamesItsFileWhenTheInsertFails(t *testing.T) {
+	l, _ := openPlan(t)
+	ctx := context.Background()
+	if _, err := l.db.Exec(`ALTER TABLE milestones DROP COLUMN select_type`); err != nil {
+		t.Fatalf("drop the select_type column: %v", err)
+	}
+	err := l.takeMilestones(ctx, []domain.Milestone{{Name: "M1: New"}})
+	if err == nil || !strings.Contains(err.Error(), "take the milestones into the plan") {
+		t.Errorf("err = %v, want the write named", err)
+	}
+}
