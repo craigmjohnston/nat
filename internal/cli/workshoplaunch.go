@@ -36,6 +36,7 @@ func workshopLaunch(ctx context.Context, args []string, env Env) error {
 	model := flags.String("model", "", "Claude model for the agent, overriding the config's workshop_agent")
 	effort := flags.String("effort", "", "effort level for the agent, overriding the config's workshop_agent")
 	requestFlag := flags.String("request", "", "what to workshop, folded into the agent's prompt; - reads it from stdin")
+	frontendFlag := flags.String("frontend", "", `which surface launched this: "tui" or "gnat"; empty says nothing about where the user is`)
 	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
 	if err != nil {
@@ -47,6 +48,10 @@ func workshopLaunch(ctx context.Context, args []string, env Env) error {
 	request, err := briefText("workshop-launch", "--request", *requestFlag, env.In)
 	if err != nil {
 		return err
+	}
+	frontend, err := agent.ParseFrontend(*frontendFlag)
+	if err != nil {
+		return usageErrorf("workshop-launch: %v", err)
 	}
 
 	cfg, projectID, project, err := env.projectFor(*projectRef)
@@ -61,7 +66,7 @@ func workshopLaunch(ctx context.Context, args []string, env Env) error {
 	}
 
 	workdir := actions.ExpandHome(project.WorkingDir)
-	prompt := agent.PlanPrompt(projectID, project.Name, workdir, request)
+	prompt := agent.PlanPrompt(projectID, project.Name, workdir, request, frontend)
 	wishlist := false
 	// The wishlist is only read when there is no request to outrank it — a
 	// launch that carries its own question has no use for the page.
@@ -74,7 +79,7 @@ func workshopLaunch(ctx context.Context, args []string, env Env) error {
 		items := notion.WishlistOf(blocks)
 		if len(items) > 0 {
 			wishlist = true
-			prompt = agent.WishlistPrompt(projectID, project.Name, workdir, items)
+			prompt = agent.WishlistPrompt(projectID, project.Name, workdir, items, frontend)
 		}
 	}
 

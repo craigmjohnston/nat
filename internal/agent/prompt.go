@@ -49,6 +49,11 @@ import (
 // of the slice's own milestone, handed over so the agent does not have to go
 // and read it with `nat info` itself. Empty for a fix launch, and for a slice
 // filed under no milestone.
+//
+// Frontend says which surface launched the session — see [Frontend] — so the
+// prompt's user-facing guidance about picking up changes and approving or
+// merging work names the right one. The zero value is unspecified, which
+// reads exactly as every template did before this field existed.
 type PromptContext struct {
 	Slice           domain.Slice
 	Project         config.ProjectConfig
@@ -63,6 +68,7 @@ type PromptContext struct {
 	Milestone       domain.Milestone
 	MilestoneSlices []domain.Slice
 	MilestoneDigest string
+	Frontend        Frontend
 }
 
 // Prompt is the opening message for an agent session working one slice.
@@ -110,6 +116,7 @@ func Prompt(c PromptContext) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "You are a Claude Code agent working exactly one slice of the %q project.\n\n", c.Project.Name)
+	b.WriteString(frontendNote(c.Frontend))
 
 	b.WriteString("## The slice\n\n")
 	fmt.Fprintf(&b, "- Name: %s\n", c.Slice.Name)
@@ -205,8 +212,13 @@ func Prompt(c PromptContext) string {
 	b.WriteString("agent in its milestone's digest, not read by a person, so keep it a\n")
 	b.WriteString("handful of terse bullet points — what changed, key decisions, follow-ups\n")
 	b.WriteString("worth queueing — never a narrative of the session. It leaves the slice in\n")
-	b.WriteString("progress on purpose — approving it on the board is what opens the pull\n")
-	b.WriteString("request and marks it Done.\n\n")
+	if c.Frontend == FrontendGnat {
+		b.WriteString("progress on purpose — approving it in the app's Diff tab is what opens\n")
+		b.WriteString("the pull request and marks it Done.\n\n")
+	} else {
+		b.WriteString("progress on purpose — approving it on the board is what opens the pull\n")
+		b.WriteString("request and marks it Done.\n\n")
+	}
 	b.WriteString("`--pr-description` is what that pull request is opened with: its first\n")
 	b.WriteString("line is the title and the rest the body, so write it ready to publish —\n")
 	b.WriteString("what the change does and why, for whoever reviews it on GitHub, not a\n")
@@ -254,8 +266,10 @@ func Prompt(c PromptContext) string {
 // names with --project: a planning session outlives the board's idea of which
 // project is active, and a plan written into the project the user has since
 // switched to is the one mistake none of the drafting rules would catch.
-func PlanPrompt(projectID, projectName, workingDir, request string) string {
-	b := planBody(projectID, projectName, workingDir)
+//
+// frontend says which surface launched the session — see [Frontend].
+func PlanPrompt(projectID, projectName, workingDir, request string, frontend Frontend) string {
+	b := planBody(projectID, projectName, workingDir, frontend)
 
 	if request != "" {
 		b.WriteString("\n## The request\n\n")
@@ -278,11 +292,11 @@ func PlanPrompt(projectID, projectName, workingDir, request string) string {
 // The clear is deliberately spelled out as the last step rather than the first:
 // an item cleared before the plan lands is an idea lost, and an item the agent
 // never read is somebody's newer idea, typed while the session ran.
-func WishlistPrompt(projectID, projectName, workingDir string, items []notion.WishlistItem) string {
+func WishlistPrompt(projectID, projectName, workingDir string, items []notion.WishlistItem, frontend Frontend) string {
 	if len(items) == 0 {
-		return PlanPrompt(projectID, projectName, workingDir, "")
+		return PlanPrompt(projectID, projectName, workingDir, "", frontend)
 	}
-	b := planBody(projectID, projectName, workingDir)
+	b := planBody(projectID, projectName, workingDir, frontend)
 
 	b.WriteString("\n## The request\n\n")
 	b.WriteString("The user launched you on their wishlist — the ideas they have been\n")
@@ -319,10 +333,13 @@ func itemIDs(items []notion.WishlistItem) []string {
 // launched on: the job, the workflow, the commands, the guardrails. Both
 // planning prompts open with it, so a wishlist launch and a typed one differ
 // only in what they are pointed at.
-func planBody(projectID, projectName, workingDir string) *strings.Builder {
+//
+// frontend says which surface launched the session — see [Frontend].
+func planBody(projectID, projectName, workingDir string, frontend Frontend) *strings.Builder {
 	b := &strings.Builder{}
 
 	fmt.Fprintf(b, "You are a Claude Code planning agent for the %q project.\n\n", projectName)
+	b.WriteString(frontendNote(frontend))
 	b.WriteString("Your job is to workshop the plan itself with the user — reshape\n")
 	b.WriteString("milestones, draft new slices — not to execute any slice.\n")
 
@@ -358,8 +375,12 @@ func planBody(projectID, projectName, workingDir string) *strings.Builder {
 	b.WriteString("- The commands above are the only way to change the plan; write nothing\n")
 	b.WriteString("  until the user has approved the draft.\n")
 	fmt.Fprintf(b, "- Every one of them carries `--project %s`.\n", projectID)
-	fmt.Fprintf(b, "- This session starts in %s; the user's board picks up\n", workingDir)
-	b.WriteString("  your changes when you exit, or on its refresh key.\n")
+	fmt.Fprintf(b, "- This session starts in %s; ", workingDir)
+	if frontend == FrontendGnat {
+		b.WriteString("the macOS app picks up\n  your changes on its own — there is no refresh key to press.\n")
+	} else {
+		b.WriteString("the user's board picks up\n  your changes when you exit, or on its refresh key.\n")
+	}
 
 	return b
 }

@@ -78,6 +78,54 @@ func TestPromptWithoutOptionalContext(t *testing.T) {
 	golden(t, "prompt-minimal", Prompt(c))
 }
 
+func TestPromptOnTUI(t *testing.T) {
+	c := testContext()
+	c.Frontend = FrontendTUI
+	golden(t, "prompt-tui", Prompt(c))
+}
+
+func TestPromptOnGnat(t *testing.T) {
+	c := testContext()
+	c.Frontend = FrontendGnat
+	golden(t, "prompt-gnat", Prompt(c))
+}
+
+// The frontend note and the approve sentence are the only two places the
+// slice prompt says anything about which surface the user is on; an
+// unspecified launch says neither, and reads exactly as it did before
+// Frontend existed.
+func TestPromptNamesTheFrontend(t *testing.T) {
+	unset := Prompt(testContext())
+	for _, unwanted := range []string{"driving this from", "approving it in the app"} {
+		if strings.Contains(unset, unwanted) {
+			t.Errorf("an unspecified launch's prompt says %q:\n%s", unwanted, unset)
+		}
+	}
+
+	c := testContext()
+	c.Frontend = FrontendTUI
+	tui := Prompt(c)
+	if want := "The user is driving this from the TUI board.\n\n"; !strings.Contains(tui, want) {
+		t.Errorf("tui prompt does not say %q:\n%s", want, tui)
+	}
+	if want := "approving it on the board is what opens the pull"; !strings.Contains(tui, want) {
+		t.Errorf("tui prompt does not say %q:\n%s", want, tui)
+	}
+
+	c = testContext()
+	c.Frontend = FrontendGnat
+	gnat := Prompt(c)
+	if want := "The user is driving this from gnat, the macOS app.\n\n"; !strings.Contains(gnat, want) {
+		t.Errorf("gnat prompt does not say %q:\n%s", want, gnat)
+	}
+	if want := "approving it in the app's Diff tab is what opens\nthe pull request and marks it Done."; !strings.Contains(gnat, want) {
+		t.Errorf("gnat prompt does not say %q:\n%s", want, gnat)
+	}
+	if strings.Contains(gnat, "approving it on the board") {
+		t.Errorf("gnat prompt still carries the TUI's board wording:\n%s", gnat)
+	}
+}
+
 func TestPromptWithAMilestoneDigest(t *testing.T) {
 	c := testContext()
 	c.MilestoneDigest = MilestoneDigest(
@@ -215,12 +263,55 @@ func TestPromptCarriesTheBriefInline(t *testing.T) {
 }
 
 func TestPlanPrompt(t *testing.T) {
-	golden(t, "plan-prompt", PlanPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", ""))
+	golden(t, "plan-prompt", PlanPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", "", ""))
 }
 
 func TestPlanPromptWithRequest(t *testing.T) {
 	golden(t, "plan-prompt-request", PlanPrompt(testProjectID, "notion-agent-tracker",
-		"/Users/craig/Projects/notion-agent-tracker", "Split the reporting milestone into smaller slices."))
+		"/Users/craig/Projects/notion-agent-tracker", "Split the reporting milestone into smaller slices.", ""))
+}
+
+func TestPlanPromptOnTUI(t *testing.T) {
+	golden(t, "plan-prompt-tui", PlanPrompt(testProjectID, "notion-agent-tracker",
+		"/Users/craig/Projects/notion-agent-tracker", "", FrontendTUI))
+}
+
+func TestPlanPromptOnGnat(t *testing.T) {
+	golden(t, "plan-prompt-gnat", PlanPrompt(testProjectID, "notion-agent-tracker",
+		"/Users/craig/Projects/notion-agent-tracker", "", FrontendGnat))
+}
+
+// The frontend note and the pickup sentence are the only two places the
+// planning prompt says anything about which surface the user is on; an
+// unspecified launch says neither, and reads exactly as it did before
+// Frontend existed.
+func TestPlanPromptNamesTheFrontend(t *testing.T) {
+	const dir = "/Users/craig/Projects/notion-agent-tracker"
+	unset := PlanPrompt(testProjectID, "notion-agent-tracker", dir, "", "")
+	for _, unwanted := range []string{"driving this from", "picks up\n  your changes on its own"} {
+		if strings.Contains(unset, unwanted) {
+			t.Errorf("an unspecified launch's prompt says %q:\n%s", unwanted, unset)
+		}
+	}
+
+	tui := PlanPrompt(testProjectID, "notion-agent-tracker", dir, "", FrontendTUI)
+	if want := "The user is driving this from the TUI board.\n\n"; !strings.Contains(tui, want) {
+		t.Errorf("tui prompt does not say %q:\n%s", want, tui)
+	}
+	if want := "the user's board picks up\n  your changes when you exit, or on its refresh key."; !strings.Contains(tui, want) {
+		t.Errorf("tui prompt does not say %q:\n%s", want, tui)
+	}
+
+	gnat := PlanPrompt(testProjectID, "notion-agent-tracker", dir, "", FrontendGnat)
+	if want := "The user is driving this from gnat, the macOS app.\n\n"; !strings.Contains(gnat, want) {
+		t.Errorf("gnat prompt does not say %q:\n%s", want, gnat)
+	}
+	if want := "the macOS app picks up\n  your changes on its own — there is no refresh key to press."; !strings.Contains(gnat, want) {
+		t.Errorf("gnat prompt does not say %q:\n%s", want, gnat)
+	}
+	if strings.Contains(gnat, "the user's board picks up") {
+		t.Errorf("gnat prompt still carries the TUI's board wording:\n%s", gnat)
+	}
 }
 
 // The planning prompt points the agent at the planning workflow and nothing
@@ -229,7 +320,7 @@ func TestPlanPromptWithRequest(t *testing.T) {
 // from executing the plan instead of workshopping it — and so does Notion, for
 // the same reason the slice prompt keeps quiet about it.
 func TestPlanPromptRoutesEverythingThroughThePlanningCommands(t *testing.T) {
-	got := PlanPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", "")
+	got := PlanPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", "", "")
 	for _, want := range []string{
 		"notion-agent-tracker",
 		"/Users/craig/Projects/notion-agent-tracker",
@@ -411,14 +502,24 @@ func testWishlist() []notion.WishlistItem {
 
 func TestWishlistPrompt(t *testing.T) {
 	golden(t, "wishlist-prompt", WishlistPrompt(testProjectID, "notion-agent-tracker",
-		"/Users/craig/Projects/notion-agent-tracker", testWishlist()))
+		"/Users/craig/Projects/notion-agent-tracker", testWishlist(), ""))
+}
+
+func TestWishlistPromptOnTUI(t *testing.T) {
+	golden(t, "wishlist-prompt-tui", WishlistPrompt(testProjectID, "notion-agent-tracker",
+		"/Users/craig/Projects/notion-agent-tracker", testWishlist(), FrontendTUI))
+}
+
+func TestWishlistPromptOnGnat(t *testing.T) {
+	golden(t, "wishlist-prompt-gnat", WishlistPrompt(testProjectID, "notion-agent-tracker",
+		"/Users/craig/Projects/notion-agent-tracker", testWishlist(), FrontendGnat))
 }
 
 // The wishlist is the request, so the items ride in whole and the command that
 // clears them names every one of them — the IDs, not the text, because that is
 // what `nat wishlist-clear` addresses.
 func TestWishlistPromptCarriesTheItemsAndTheirIDs(t *testing.T) {
-	got := WishlistPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", testWishlist())
+	got := WishlistPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", testWishlist(), "")
 	for _, want := range []string{
 		"## The request",
 		"- Add a newline between the status bar and the key hints",
@@ -442,7 +543,7 @@ func TestWishlistPromptCarriesTheItemsAndTheirIDs(t *testing.T) {
 // cleared before the plan is written is an idea lost, and one typed while the
 // session ran belongs to nobody but the user.
 func TestWishlistPromptClearsOnlyAfterThePlanIsWritten(t *testing.T) {
-	got := WishlistPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", testWishlist())
+	got := WishlistPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", testWishlist(), "")
 	for _, want := range []string{
 		"once the plan is written, and not before",
 		"Name only the items above",
@@ -458,8 +559,8 @@ func TestWishlistPromptClearsOnlyAfterThePlanIsWritten(t *testing.T) {
 // nothing to clear afterwards.
 func TestWishlistPromptWithNoItemsIsThePlainPlanningPrompt(t *testing.T) {
 	const project, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
-	got := WishlistPrompt(testProjectID, project, dir, nil)
-	if want := PlanPrompt(testProjectID, project, dir, ""); got != want {
+	got := WishlistPrompt(testProjectID, project, dir, nil, "")
+	if want := PlanPrompt(testProjectID, project, dir, "", ""); got != want {
 		t.Errorf("prompt = %q, want the plain planning prompt %q", got, want)
 	}
 	if strings.Contains(got, "wishlist-clear") {
@@ -502,9 +603,9 @@ func TestEveryCommandInAPromptNamesTheProject(t *testing.T) {
 		"slice":          Prompt(testContext()),
 		"slice worktree": Prompt(worktreeContext()),
 		"fix":            Prompt(fixContext()),
-		"plan":           PlanPrompt(testProjectID, name, dir, ""),
-		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone."),
-		"wishlist":       WishlistPrompt(testProjectID, name, dir, testWishlist()),
+		"plan":           PlanPrompt(testProjectID, name, dir, "", ""),
+		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", ""),
+		"wishlist":       WishlistPrompt(testProjectID, name, dir, testWishlist(), ""),
 	} {
 		cmds := natCommands(text)
 		if len(cmds) == 0 {
@@ -526,7 +627,7 @@ func TestPromptsSayWhyTheProjectIsPinned(t *testing.T) {
 	for prompt, text := range map[string]string{
 		"slice": Prompt(testContext()),
 		"fix":   Prompt(fixContext()),
-		"plan":  PlanPrompt(testProjectID, name, dir, ""),
+		"plan":  PlanPrompt(testProjectID, name, dir, "", ""),
 	} {
 		for _, want := range []string{
 			"A command given no project is refused",

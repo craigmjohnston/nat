@@ -31,6 +31,7 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	model := flags.String("model", "", "Claude model for the agent, overriding the config's slice_agent")
 	effort := flags.String("effort", "", "effort level for the agent, overriding the config's slice_agent")
+	frontendFlag := flags.String("frontend", "", `which surface launched this: "tui" or "gnat"; empty says nothing about where the user is`)
 	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
 	if err != nil {
@@ -42,6 +43,10 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 	id, err := pageID("slice-launch", rest[0])
 	if err != nil {
 		return err
+	}
+	frontend, err := agent.ParseFrontend(*frontendFlag)
+	if err != nil {
+		return usageErrorf("slice-launch: %v", err)
 	}
 
 	cfg, projectID, project, err := env.projectFor(*projectRef)
@@ -101,6 +106,7 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 		AssigneeName:    cfg.AssigneeUserName,
 		Milestone:       milestone,
 		MilestoneSlices: siblings,
+		Frontend:        frontend,
 	}
 
 	result, err := actions.Launch(ctx, env.NewTmux(), env.NewWorktrees(), env.NewGit(), st,

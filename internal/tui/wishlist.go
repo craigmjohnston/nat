@@ -94,7 +94,7 @@ func (a *App) workshopFlow() tea.Cmd {
 func launchWishlistAgent(l AgentLauncher, projectID, projectName, workdir string, items []notion.WishlistItem, m config.AgentModel) tea.Cmd {
 	return func() tea.Msg {
 		session, tag := agent.PlanSessionName(projectID), agent.PlanTag(projectID)
-		file, err := agent.WritePromptFile(session, agent.WishlistPrompt(projectID, projectName, workdir, items))
+		file, err := agent.WritePromptFile(session, agent.WishlistPrompt(projectID, projectName, workdir, items, agent.FrontendTUI))
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch planning agent: %w", err)}
 		}

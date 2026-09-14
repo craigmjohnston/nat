@@ -200,6 +200,12 @@ public final class NatClient: Sendable {
 
     /// Launch an agent on a slice in a tmux session.
     ///
+    /// Always passes `--frontend gnat`, so the agent's prompt tells it the
+    /// user is driving this from the app rather than the TUI board — it
+    /// phrases pickup, approve and merge as gnat's own Diff/PR tabs rather
+    /// than the board's exit-and-refresh and its keys
+    /// (`internal/agent/prompt.go`, `internal/agent/fixprompt.go`).
+    ///
     /// - Parameters:
     ///   - projectID: The project's Notion page ID
     ///   - sliceRef: The slice's URL or Notion page ID
@@ -210,7 +216,7 @@ public final class NatClient: Sendable {
     public func sliceLaunch(
         projectID: String, sliceRef: String, model: String?, effort: String?
     ) async throws -> LaunchResult {
-        var arguments = ["slice-launch", "--project", projectID, "--json"]
+        var arguments = ["slice-launch", "--project", projectID, "--json", "--frontend", "gnat"]
         if let model = model {
             arguments.append(contentsOf: ["--model", model])
         }
@@ -323,10 +329,13 @@ public final class NatClient: Sendable {
     /// - Returns: The launched session, its working directory, and whether it
     ///   was launched on the project's pending wishlist
     /// - Throws: NatError if a planning agent is already live, or the command fails
+    ///
+    /// Always passes `--frontend gnat` — see [sliceLaunch]'s doc comment for
+    /// why.
     public func workshopLaunch(
         projectID: String, model: String?, effort: String?, request: String?
     ) async throws -> WorkshopLaunchResult {
-        var arguments = ["workshop-launch", "--project", projectID, "--json"]
+        var arguments = ["workshop-launch", "--project", projectID, "--json", "--frontend", "gnat"]
         if let model = model, !model.isEmpty {
             arguments.append(contentsOf: ["--model", model])
         }
