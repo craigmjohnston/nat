@@ -442,6 +442,14 @@ struct InspectorActionsBar<Content: View>: View {
 /// inspector instead of the window's own bottom edge: a hairline above it
 /// and its own faint fill mark it as a band of its own, same as the bar it
 /// replaces.
+///
+/// Draws no slot of its own when `content` has nothing in it: a caller whose
+/// notices are all conditional (the Brief tab's launch error/warning, held
+/// alongside a busy mark that only shows while refreshing) wraps this in its
+/// own `if` rather than mounting it unconditionally, so an idle sidebar
+/// shows no band, no rule and no reserved height at all. A caller with an
+/// unconditional line of its own (Diff and PR's file-count/PR-status
+/// heading) always has something to say and mounts this plainly.
 struct InspectorStatusFoot<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
@@ -453,6 +461,72 @@ struct InspectorStatusFoot<Content: View>: View {
         .padding(.vertical, 8)
         .overlay(alignment: .top) { Rule(.hairline) }
         .surface(.band)
+    }
+}
+
+// MARK: - Model picker
+
+/// A menu picker for a model field: `AgentOptions`' own alias set (see
+/// `AgentOptions.fallback`), plus "Default" for empty — the config's own
+/// spelling of "leave it to Claude Code" — and "Custom…", which reveals a
+/// free-text field for a full model ID (`claude-…`). A full ID is always a
+/// valid value and there is no API to enumerate every alias
+/// (`AgentOptions.fallback`'s own doc comment says why), so Custom is the
+/// escape hatch rather than an edge case. A configured value that is not one
+/// of the known aliases selects Custom and shows it in the field, so a full
+/// ID round-trips instead of landing on a blank selection.
+///
+/// The custom field is the caller's own view — Settings and the launch
+/// popover each draw their model `TextField` slightly differently (a
+/// commit-on-blur field with a fixed width in one, a plain bound field at
+/// the popover's own font in the other) — so this only decides when to show
+/// it, never how.
+struct ModelPicker<CustomField: View>: View {
+    @Binding var value: String
+    let options: [String]
+    var commit: () -> Void = {}
+    @ViewBuilder var customField: (Binding<String>) -> CustomField
+
+    /// Set the moment "Custom…" is picked, so the field shows even before
+    /// anything has been typed into it — `value` alone cannot tell "Custom,
+    /// empty so far" apart from "Default"; see `ModelPickerRules`.
+    @State private var forcedCustom = false
+
+    private var showsCustomField: Bool {
+        ModelPickerRules.showsCustomField(value: value, options: options, forcedCustom: forcedCustom)
+    }
+
+    private var selection: Binding<String> {
+        Binding(
+            get: { ModelPickerRules.selectionTag(value: value, options: options, forcedCustom: forcedCustom) },
+            set: { newTag in
+                if newTag == ModelPickerRules.customTag {
+                    forcedCustom = true
+                } else {
+                    forcedCustom = false
+                    value = newTag
+                }
+                commit()
+            }
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Picker("", selection: selection) {
+                Text("Default").tag("")
+                ForEach(options, id: \.self) { option in
+                    Text(option).tag(option)
+                }
+                Text("Custom…").tag(ModelPickerRules.customTag)
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+
+            if showsCustomField {
+                customField($value)
+            }
+        }
     }
 }
 

@@ -377,51 +377,7 @@ struct BriefTabView: View {
 
     @ViewBuilder
     private func launchPopoverContent() -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Model — free text rather than a fixed picker: the aliases
-            // `claude` accepts change faster than either binary does, and a
-            // full model ID is always valid besides. `agentOptions.models`
-            // is offered as a placeholder's worth of suggestion only.
-            HStack(spacing: 8) {
-                Text("Model")
-                    .font(.system(size: Typo.subhead, weight: .semibold))
-                    .frame(width: 50, alignment: .leading)
-
-                TextField(agentOptions.models.joined(separator: ", "), text: $selectedModel)
-                    .textFieldStyle(.roundedBorder)
-                    .font(Typo.mono(size: Typo.code))
-                    .frame(maxWidth: .infinity)
-            }
-
-            Divider()
-                .padding(.vertical, 4)
-
-            // Effort selector — a fixed set the CLI rejects anything outside
-            // of, read from the same source the model field's placeholder is.
-            HStack(spacing: 8) {
-                Text("Effort")
-                    .font(.system(size: Typo.subhead, weight: .semibold))
-                    .frame(width: 50, alignment: .leading)
-
-                Picker("Effort", selection: $selectedEffort) {
-                    Text("Default").tag("")
-                    ForEach(agentOptions.efforts, id: \.self) { level in
-                        Text(level).tag(level)
-                    }
-                }
-                .pickerStyle(.menu)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-
-            Divider()
-                .padding(.vertical, 4)
-
-            // Footnote
-            Text("Runs detached in tmux — closing nat won't stop it.")
-                .font(.system(size: Typo.caption, weight: .regular))
-                .ink(.tertiary)
-        }
-        .frame(width: 280)
+        LaunchOptionsForm(model: $selectedModel, effort: $selectedEffort, agentOptions: agentOptions)
     }
 
     private func loadDetail() async {
@@ -465,18 +421,21 @@ struct BriefTabView: View {
                 .inelastic()
             }
 
-            InspectorStatusFoot {
-                HStack(spacing: 8) {
-                    // A background re-read of the brief, admitted to in a
-                    // slot that is there whether one is running or not.
-                    RefreshingMark(isRefreshing: detailState.isLoading && detailState.detail != nil)
-                    Spacer()
-                }
+            let isRefreshing = detailState.isLoading && detailState.detail != nil
+            if isRefreshing || launchError != nil || launchWarning != nil {
+                InspectorStatusFoot {
+                    if isRefreshing {
+                        HStack(spacing: 8) {
+                            RefreshingMark(isRefreshing: true)
+                            Spacer()
+                        }
+                    }
 
-                if let error = launchError {
-                    InspectorNotice(text: error, systemImage: "exclamationmark.circle.fill", role: .danger)
-                } else if let warning = launchWarning {
-                    InspectorNotice(text: warning, systemImage: "exclamationmark.triangle.fill", role: .warning)
+                    if let error = launchError {
+                        InspectorNotice(text: error, systemImage: "exclamationmark.circle.fill", role: .danger)
+                    } else if let warning = launchWarning {
+                        InspectorNotice(text: warning, systemImage: "exclamationmark.triangle.fill", role: .warning)
+                    }
                 }
             }
         }
@@ -602,6 +561,67 @@ struct BriefTabView: View {
     private var milestoneName: String? {
         appModel.projectStore?.state.projectInfo?.milestones
             .first { $0.id == slice.milestoneID }?.name
+    }
+}
+
+/// The launch popover's own form: a model picker and an effort picker, the
+/// same shape, over `AgentOptions`. A view of its own rather than a method on
+/// `BriefTabView` so it can be drawn without the popover it normally opens
+/// in — a gallery story has no way to capture a real `NSPopover`'s own
+/// window, but the content itself is exactly this.
+struct LaunchOptionsForm: View {
+    @Binding var model: String
+    @Binding var effort: String
+    let agentOptions: AgentOptions
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Model — the effort field's own picker shape, plus Custom for a
+            // full model ID: there is no API to enumerate every alias, so
+            // `agentOptions.models` is a documented set rather than
+            // everything this field allows.
+            HStack(alignment: .top, spacing: 8) {
+                Text("Model")
+                    .font(.system(size: Typo.subhead, weight: .semibold))
+                    .frame(width: 50, alignment: .leading)
+
+                ModelPicker(value: $model, options: agentOptions.models) { text in
+                    TextField("claude-…", text: text)
+                        .textFieldStyle(.roundedBorder)
+                        .font(Typo.mono(size: Typo.code))
+                }
+                .frame(maxWidth: .infinity)
+            }
+
+            Divider()
+                .padding(.vertical, 4)
+
+            // Effort selector — a fixed set the CLI rejects anything outside
+            // of, read from the same source the model field's placeholder is.
+            HStack(spacing: 8) {
+                Text("Effort")
+                    .font(.system(size: Typo.subhead, weight: .semibold))
+                    .frame(width: 50, alignment: .leading)
+
+                Picker("Effort", selection: $effort) {
+                    Text("Default").tag("")
+                    ForEach(agentOptions.efforts, id: \.self) { level in
+                        Text(level).tag(level)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+
+            Divider()
+                .padding(.vertical, 4)
+
+            // Footnote
+            Text("Runs detached in tmux — closing nat won't stop it.")
+                .font(.system(size: Typo.caption, weight: .regular))
+                .ink(.tertiary)
+        }
+        .frame(width: 280)
     }
 }
 

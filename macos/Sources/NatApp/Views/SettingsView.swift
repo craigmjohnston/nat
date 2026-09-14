@@ -267,13 +267,12 @@ struct SettingsView: View {
         model: Binding<String>,
         effort: Binding<String>
     ) -> some View {
-        // Free text rather than a picker: the aliases `claude` accepts
-        // change faster than either binary does, and a full model ID is
-        // always valid besides — `agentOptions.models` is a placeholder's
-        // worth of suggestion, not a menu of everything this field allows.
         settingRow(title: "Model", key: modelKey) {
-            commitField(model, width: FieldWidth.model)
-                .help("An alias (\(agentOptions.models.joined(separator: ", "))) or a full model ID; empty leaves it to Claude Code.")
+            ModelPicker(value: model, options: agentOptions.models, commit: commit) { text in
+                commitField(text, width: FieldWidth.model)
+            }
+            .frame(width: FieldWidth.model)
+            .help("An alias (\(agentOptions.models.joined(separator: ", "))), Custom for a full model ID, or Default to leave it to Claude Code.")
         }
 
         settingRow(title: "Effort", key: effortKey) {

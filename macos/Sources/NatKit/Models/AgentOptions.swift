@@ -25,9 +25,13 @@ public struct AgentOptions: Equatable, Sendable {
 
     /// What every picker showed before there was a live source, and what one
     /// degrades to when `claude` cannot be found, its `--help` cannot be
-    /// parsed, or it fails outright.
+    /// parsed, or it fails outright. There is no API to enumerate models —
+    /// https://code.claude.com/docs/en/model-config says so outright, and
+    /// reusing Claude Code's OAuth against `/v1/models` is against
+    /// Anthropic's terms — so this is that doc's own alias set, spelled out
+    /// rather than discovered.
     public static let fallback = AgentOptions(
-        models: ["sonnet", "opus", "haiku"],
+        models: ["default", "fable", "opus", "sonnet", "haiku", "sonnet[1m]", "opus[1m]", "opusplan"],
         efforts: ["low", "medium", "high", "xhigh", "max"]
     )
 }

@@ -161,8 +161,10 @@ enum AppStories {
 
         Story(
             name: "status-bar-mixed",
-            summary: "The status bar with a done stub, a started milestone drawing "
-                + "partway full, and an untouched one collapsed to a circle.",
+            summary: "The status bar with a done stub — its checkmark cut through the "
+                + "pill in the bar's own background — a started milestone drawing "
+                + "partway full, and an untouched one collapsed to a circle. The agent "
+                + "count sits at the bar's far right.",
             size: CGSize(width: 1360, height: StatusBarView.height)
         ) {
             StatusBarView(
@@ -174,7 +176,8 @@ enum AppStories {
 
         Story(
             name: "status-bar-no-agents",
-            summary: "The same bar with nothing running: the agent count reads zero.",
+            summary: "The same bar with nothing running: the agent count reads zero, "
+                + "still right-aligned to the bar's far edge.",
             size: CGSize(width: 1360, height: StatusBarView.height)
         ) {
             StatusBarView(
@@ -332,12 +335,39 @@ enum AppStories {
         Story(
             name: "brief-handed-back",
             summary: "The Brief tab of a slice whose branch is waiting to be reviewed, the "
-                + "Launch Agent split button atop the inspector.",
+                + "Launch Agent split button atop the inspector — and, at its foot, no "
+                + "pinned notice band at all: nothing is refreshing and there is no "
+                + "error or warning to hold room for.",
             size: pane
         ) {
             let appModel = await Fixtures.startedAppModel()
             return BriefTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.mergeBoxSliceID))
                 .surface(.window)
+        },
+
+        Story(
+            name: "launch-options-model-picker",
+            summary: "The Brief tab's launch popover form: the model field is a menu "
+                + "picker now, offering Default and AgentOptions' own aliases.",
+            size: CGSize(width: 320, height: 220)
+        ) {
+            LaunchOptionsForm(model: .constant(""), effort: .constant(""), agentOptions: .fallback)
+                .padding(14)
+                .surface(.window)
+        },
+
+        Story(
+            name: "launch-options-model-picker-custom",
+            summary: "The same form with a full model ID configured: it selects Custom "
+                + "and shows the ID in the field, round-tripping rather than landing "
+                + "on a blank selection.",
+            size: CGSize(width: 320, height: 220)
+        ) {
+            LaunchOptionsForm(
+                model: .constant("claude-sonnet-5"), effort: .constant("high"), agentOptions: .fallback
+            )
+            .padding(14)
+            .surface(.window)
         },
 
         Story(
@@ -419,6 +449,24 @@ enum AppStories {
         },
 
         Story(
+            name: "diff-stale-notice",
+            summary: "The same diff after a refresh failed: the pinned foot grows "
+                + "upward to hold the stale-read warning, with no band or reserved "
+                + "height beneath it otherwise.",
+            size: pane
+        ) {
+            let client = FixtureNatClient()
+            let appModel = await Fixtures.startedAppModel(client: client)
+            let slice = Fixtures.slice(Fixtures.mergeBoxSliceID)
+            let store = appModel.diffStore(projectID: Fixtures.projectID)
+            await store.fetch(projectID: Fixtures.projectID, sliceRef: slice.id)
+            client.armDiffFailure(Fixtures.loadErrorMessage)
+            await store.refresh()
+            return DiffTabView(appModel: appModel, slice: slice)
+                .surface(.window)
+        },
+
+        Story(
             name: "pr-skeleton",
             summary: "The PR tab on a pull request still being read — the placeholder under "
                 + "the disabled Merge/Open-in-GitHub actions, section labels and composer "
@@ -488,13 +536,24 @@ enum AppStories {
 
         Story(
             name: "settings-agents",
-            summary: "The settings window's Agents tab: the model field is free text now, "
-                + "and the effort picker's options come from AgentOptions rather than a "
-                + "hardcoded list.",
+            summary: "The settings window's Agents tab: the model field is a menu picker "
+                + "now, over AgentOptions' own alias set, matching the effort picker's "
+                + "own shape.",
             size: CGSize(width: 520, height: 360),
             colorScheme: .light
         ) {
             SettingsView(appModel: await Fixtures.startedAppModel(), client: FixtureNatClient(), initialTab: .agents)
+        },
+
+        Story(
+            name: "settings-agents-custom-model",
+            summary: "The same tab with a full model ID already configured: the picker "
+                + "selects Custom on its own and shows the ID in the field beneath it.",
+            size: CGSize(width: 520, height: 360),
+            colorScheme: .light
+        ) {
+            let client = FixtureNatClient(config: Fixtures.configDocWithCustomModel)
+            return SettingsView(appModel: await Fixtures.startedAppModel(client: client), client: client, initialTab: .agents)
         },
     ])
 }

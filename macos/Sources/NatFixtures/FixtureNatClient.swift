@@ -28,27 +28,49 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     private let agents: [AgentStatus]
     private let diff: SliceDiff
     private let pr: PRDetail
+    private let config: ConfigDoc
 
     /// Every write this client was asked to make, in order — a preview never
     /// looks, and a test asserting that a button reached the client does.
     private let recorded = Recorder()
+
+    /// Set once a caller wants every `sliceDiff` read from here on to refuse
+    /// — armed rather than counted, since a story's own setup (`AppModel`
+    /// startup reads a handed-back slice's diff for its review stats before
+    /// a story ever touches its `DiffStore`) would throw off any count from
+    /// the client's own first call. `answering` until armed, whatever
+    /// `behaviour` says otherwise, which is the point: everything else about
+    /// the client stays as canned as it always was, and only the read a
+    /// story is stale-testing turns over.
+    private let diffFailureMessage = Box<String?>(nil)
 
     public init(
         behaviour: Behaviour = .answering,
         plan: ProjectInfo = Fixtures.projectInfo,
         agents: [AgentStatus] = Fixtures.agentStatuses,
         diff: SliceDiff = Fixtures.sliceDiff,
-        pr: PRDetail = Fixtures.prGreen
+        pr: PRDetail = Fixtures.prGreen,
+        config: ConfigDoc = Fixtures.configDoc
     ) {
         self.behaviour = behaviour
         self.plan = plan
         self.agents = agents
         self.diff = diff
         self.pr = pr
+        self.config = config
     }
 
     /// The writes this client was asked to make, oldest first.
     public var writes: [String] { recorded.all() }
+
+    /// Arms every `sliceDiff` read from now on to refuse with `message` —
+    /// see `diffFailureMessage`. Called after whatever has already read
+    /// successfully (an `AppModel`'s own startup included), so a story can
+    /// build a stale-read notice on top of a load that is known to have
+    /// landed.
+    public func armDiffFailure(_ message: String) {
+        diffFailureMessage.set(message)
+    }
 
     /// The one place a read decides whether to answer or refuse, so every
     /// method below reads the same way.
@@ -98,9 +120,12 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func sliceDiff(projectID: String, sliceRef: String, commit: String?) async throws -> SliceDiff {
+        if let message = diffFailureMessage.get() {
+            throw NatError.commandFailed(message)
+        }
         // One commit of the branch is a smaller reading than the whole of it,
         // which is the difference the dropdown exists to show.
-        try await answer(commit == nil ? diff : Fixtures.smallSliceDiff)
+        return try await answer(commit == nil ? diff : Fixtures.smallSliceDiff)
     }
 
     public func sliceCommits(projectID: String, sliceRef: String) async throws -> SliceCommitsDoc {
@@ -120,7 +145,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func configShow() async throws -> ConfigDoc {
-        try await answer(Fixtures.configDoc)
+        try await answer(config)
     }
 
     // MARK: - Writes
@@ -215,6 +240,29 @@ private final class Recorder: @unchecked Sendable {
     }
 }
 
+/// A single value behind a lock — `diffFailureMessage`'s own storage, set
+/// once and read on every `sliceDiff` call after.
+private final class Box<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: T
+
+    init(_ value: T) {
+        self.value = value
+    }
+
+    func get() -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func set(_ newValue: T) {
+        lock.lock()
+        defer { lock.unlock() }
+        value = newValue
+    }
+}
+
 extension Fixtures {
     /// `nat config show --json` for the fixture config.
     public static var configDoc: ConfigDoc {
@@ -229,6 +277,20 @@ extension Fixtures {
                     workingDir: "/Users/craig/Projects/notion-agent-tracker"
                 ),
             ]
+        )
+    }
+
+    /// The same config with the slice agent's model set to a full model ID
+    /// rather than one of `AgentOptions`' own aliases — what the Settings
+    /// Agents story shows the model picker's Custom state over.
+    public static var configDocWithCustomModel: ConfigDoc {
+        let doc = configDoc
+        return ConfigDoc(
+            agentSplitPercent: doc.agentSplitPercent,
+            pollSeconds: doc.pollSeconds,
+            workshopAgent: doc.workshopAgent,
+            sliceAgent: AgentModel(model: "claude-sonnet-5", effort: "high"),
+            projects: doc.projects
         )
     }
 }
