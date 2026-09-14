@@ -68,7 +68,7 @@ class MockActivityClient: NatClientProtocol, @unchecked Sendable {
         throw NSError(domain: "test", code: -1)
     }
 
-    func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?, theme: String?) async throws -> LaunchResult {
+    func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult {
         throw NSError(domain: "test", code: -1)
     }
 
@@ -87,7 +87,7 @@ class MockActivityClient: NatClientProtocol, @unchecked Sendable {
         throw NSError(domain: "test", code: -1)
     }
 
-    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?, theme: String?) async throws -> WorkshopLaunchResult {
+    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult {
         throw NSError(domain: "test", code: -1)
     }
 
@@ -139,12 +139,12 @@ final class SequencedActivityClient: NatClientProtocol, @unchecked Sendable {
     func agentKill(projectID: String, sliceRef: String) async throws { throw NSError(domain: "test", code: -1) }
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult { throw NSError(domain: "test", code: -1) }
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String { throw NSError(domain: "test", code: -1) }
-    func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?, theme: String?) async throws -> LaunchResult { throw NSError(domain: "test", code: -1) }
+    func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult { throw NSError(domain: "test", code: -1) }
     func prStatus(projectID: String) async throws -> PRStatusDoc { throw NSError(domain: "test", code: -1) }
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail { throw NSError(domain: "test", code: -1) }
     func prMerge(projectID: String, sliceRef: String) async throws { throw NSError(domain: "test", code: -1) }
     func prComment(projectID: String, sliceRef: String, body: String) async throws { throw NSError(domain: "test", code: -1) }
-    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?, theme: String?) async throws -> WorkshopLaunchResult { throw NSError(domain: "test", code: -1) }
+    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult { throw NSError(domain: "test", code: -1) }
     func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult { throw NSError(domain: "test", code: -1) }
     func configShow() async throws -> ConfigDoc { throw NSError(domain: "test", code: -1) }
     func configSet(key: String, value: String) async throws { throw NSError(domain: "test", code: -1) }

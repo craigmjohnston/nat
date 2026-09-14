@@ -420,17 +420,15 @@ func (t *Tmux) breakOutAll(panes []pane, want func(pane) bool) (int, error) {
 
 // Launch starts a detached tmux session named session, with workdir as its
 // working directory, running an agent seeded with the prompt in promptFile for
-// the slice with page ID sliceID, as the model and effort m asks for. theme is
-// [ThemeLight] or [ThemeDark] to start Claude Code on that palette, or ""
-// to say nothing and let it decide as it always has.
+// the slice with page ID sliceID, as the model and effort m asks for.
 //
 // The pane the session starts in is tagged with sliceID, which is what
 // [Tmux.LiveSlices] reads the running agents back out of. A session whose pane
 // could not be tagged is left running — its agent is already working — but the
 // failure is reported, because until it is tagged nothing will find it again.
-func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.AgentModel, theme string) error {
+func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.AgentModel) error {
 	carryEnv := os.Getenv("PATH") != "" && t.supportsSessionEnv()
-	out, err := t.run(LaunchArgs(session, workdir, promptFile, m, theme, carryEnv)...)
+	out, err := t.run(LaunchArgs(session, workdir, promptFile, m, carryEnv)...)
 	if err != nil {
 		return fmt.Errorf("launch tmux session %s: %w", session, err)
 	}
@@ -453,7 +451,7 @@ func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.Age
 // session prints its pane's ID, which is the handle the slice tag goes on:
 // pane IDs are unique for the life of the server, where a name is whatever it
 // has last been set to.
-func LaunchArgs(session, workdir, promptFile string, m config.AgentModel, theme string, carryEnv bool) []string {
+func LaunchArgs(session, workdir, promptFile string, m config.AgentModel, carryEnv bool) []string {
 	args := []string{
 		"new-session", "-d",
 		"-s", session,
@@ -464,7 +462,7 @@ func LaunchArgs(session, workdir, promptFile string, m config.AgentModel, theme 
 	}
 	args = append(args,
 		"-P", "-F", "#{pane_id}",
-		"sh", "-c", agentCommand(promptFile, m, theme),
+		"sh", "-c", agentCommand(promptFile, m),
 	)
 	args = append(args, statusOffArgs(session)...)
 	args = append(args, mouseOnArgs(session)...)
@@ -626,27 +624,25 @@ func inputFeatureArgs() []string {
 	}
 }
 
-// ThemeLight and ThemeDark are the values [Tmux.Launch] takes for theme: the
-// board's own reading of the terminal it is drawn on, carried into the
-// session's `claude --settings` so the agent starts on the palette that
-// matches rather than guessing. An agent launched detached in tmux can never
-// query its own background — there is nothing at the far end of the pane to
-// answer OSC 11 until a viewer attaches — so this is the only way it learns.
-const (
-	ThemeLight = "light"
-	ThemeDark  = "dark"
-)
-
 // agentCommand is the shell command the session runs: start Claude Code with
 // the contents of promptFile as its prompt, as the model the launch asked for,
-// on the theme it asked for.
+// with its theme set to `"auto"` — the one setting that makes Claude Code
+// speak the live re-theme protocol: it subscribes to colour-scheme-change
+// reports (`CSI ?2031h`) and probes the terminal's background (OSC 11) once
+// at startup, then re-probes and re-themes live whenever it later receives a
+// `CSI ?997;1n`/`?997;2n` report on its stdin. A pinned `"light"`/`"dark"`
+// settings value was tried first and verified not to do any of this — Claude
+// Code only reads a pinned theme once, at startup — so there is no longer a
+// choice of palette to carry here, only whether to ask Claude Code to find
+// out for itself. Whatever answers the OSC 11 probe and sends the CSI reports
+// is the attach-client PTY's problem, not this session's: an agent launched
+// detached in tmux, with nothing attached to its pane yet, gets no answer at
+// all until a viewer attaches, same as every launch before "auto" existed.
 //
 // Either half of the model may be unset, and an unset one contributes no flag
-// at all rather than an empty value: Claude Code then decides for itself, which
-// is what it did before there was anywhere to say otherwise. theme is the same
-// way: empty contributes no `--settings` at all, which is every launch before
-// there was a theme to carry.
-func agentCommand(promptFile string, m config.AgentModel, theme string) string {
+// at all rather than an empty value: Claude Code then decides for itself,
+// which is what it did before there was anywhere to say otherwise.
+func agentCommand(promptFile string, m config.AgentModel) string {
 	var flags string
 	if m.Model != "" {
 		flags += " --model " + shellQuote(m.Model)
@@ -654,9 +650,7 @@ func agentCommand(promptFile string, m config.AgentModel, theme string) string {
 	if m.Effort != "" {
 		flags += " --effort " + shellQuote(m.Effort)
 	}
-	if theme != "" {
-		flags += " --settings " + shellQuote(`{"theme":"`+theme+`"}`)
-	}
+	flags += ` --settings ` + shellQuote(`{"theme":"auto"}`)
 	return fmt.Sprintf(`claude%s "$(cat %s)"`, flags, shellQuote(promptFile))
 }
 

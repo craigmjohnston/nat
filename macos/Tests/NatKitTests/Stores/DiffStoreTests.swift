@@ -126,7 +126,7 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
         return try approveResult.get()
     }
 
-    func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?, theme: String?) async throws -> LaunchResult {
+    func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult {
         throw DiffTestError()
     }
 
@@ -143,7 +143,7 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
         throw DiffTestError()
     }
 
-    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?, theme: String?) async throws -> WorkshopLaunchResult {
+    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult {
         throw DiffTestError()
     }
 

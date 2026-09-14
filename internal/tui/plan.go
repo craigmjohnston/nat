@@ -193,21 +193,21 @@ func (f *PlanForm) save(a *App) tea.Cmd {
 	// was opened against.
 	project, _ := a.activeProject()
 	return launchPlanAgent(a.launcher, a.cfg.ActiveProjectID, project.Name, expandHome(project.WorkingDir),
-		strings.TrimSpace(f.request), trimModel(f.model), a.theme)
+		strings.TrimSpace(f.request), trimModel(f.model))
 }
 
 // launchPlanAgent writes the planning prompt out — the user's request folded
 // in — and starts the detached session that reads it, tagged with the project's
 // planning tag rather than a slice ID. It comes back as the same message a
 // slice launch does, so the failure reporting is shared.
-func launchPlanAgent(l AgentLauncher, projectID, projectName, workdir, request string, m config.AgentModel, theme string) tea.Cmd {
+func launchPlanAgent(l AgentLauncher, projectID, projectName, workdir, request string, m config.AgentModel) tea.Cmd {
 	return func() tea.Msg {
 		session, tag := agent.PlanSessionName(projectID), agent.PlanTag(projectID)
 		file, err := agent.WritePromptFile(session, agent.PlanPrompt(projectID, projectName, workdir, request))
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch planning agent: %w", err)}
 		}
-		if err := l.Launch(session, workdir, file, tag, m, theme); err != nil {
+		if err := l.Launch(session, workdir, file, tag, m); err != nil {
 			return agentLaunchedMsg{err: err}
 		}
 		// A planning launch always attaches: the user has just said what they

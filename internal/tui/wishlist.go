@@ -84,21 +84,21 @@ func (a *App) workshopFlow() tea.Cmd {
 		return nil
 	}
 	return launchWishlistAgent(a.launcher, a.cfg.ActiveProjectID, project.Name, expandHome(project.WorkingDir),
-		a.wishlist, trimModel(a.cfg.WorkshopAgent), a.theme)
+		a.wishlist, trimModel(a.cfg.WorkshopAgent))
 }
 
 // launchWishlistAgent writes the planning prompt out with the wishlist folded
 // into it and starts the detached session that reads it. It is the wishlist's
 // half of launchPlanAgent, and comes back as the same message, so the pane and
 // the failure reporting are handled in one place.
-func launchWishlistAgent(l AgentLauncher, projectID, projectName, workdir string, items []notion.WishlistItem, m config.AgentModel, theme string) tea.Cmd {
+func launchWishlistAgent(l AgentLauncher, projectID, projectName, workdir string, items []notion.WishlistItem, m config.AgentModel) tea.Cmd {
 	return func() tea.Msg {
 		session, tag := agent.PlanSessionName(projectID), agent.PlanTag(projectID)
 		file, err := agent.WritePromptFile(session, agent.WishlistPrompt(projectID, projectName, workdir, items))
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch planning agent: %w", err)}
 		}
-		if err := l.Launch(session, workdir, file, tag, m, theme); err != nil {
+		if err := l.Launch(session, workdir, file, tag, m); err != nil {
 			return agentLaunchedMsg{err: err}
 		}
 		return agentLaunchedMsg{slice: planSlice(tag), session: session, attach: true}

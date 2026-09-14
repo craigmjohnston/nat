@@ -30,7 +30,7 @@ import (
 type AgentLauncher interface {
 	LiveSlices() (map[string]string, error)
 	Activity() (map[string]agent.Activity, error)
-	Launch(session, workdir, promptFile, sliceID string, model config.AgentModel, theme string) error
+	Launch(session, workdir, promptFile, sliceID string, model config.AgentModel) error
 	SendPrompt(session, text string) error
 	AttachClientCmd(session string) *exec.Cmd
 	AttachCmd(session string) *exec.Cmd
@@ -273,7 +273,7 @@ func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, at
 		Fix:             fixLaunch(s),
 		Milestone:       milestone,
 		MilestoneSlices: siblings,
-	}, trimModel(m), a.theme, attach)
+	}, trimModel(m), attach)
 }
 
 // milestoneContext is a slice's own milestone and its siblings under it, read
@@ -318,14 +318,14 @@ func trimModel(m config.AgentModel) config.AgentModel { return actions.TrimModel
 // because the PRViewer is the board's own seam, and no headless launch sets
 // Fix at all.
 func launchAgent(l AgentLauncher, w Worktrees, r Repo, client NotionAPI, viewer PRViewer, assigneeID string,
-	c agent.PromptContext, m config.AgentModel, theme string, attach bool) tea.Cmd {
+	c agent.PromptContext, m config.AgentModel, attach bool) tea.Cmd {
 	return func() tea.Msg {
 		if c.Fix {
 			if toast, sev, ok := prStillOpen(viewer, c); !ok {
 				return agentLaunchedMsg{toast: toast, sev: sev}
 			}
 		}
-		res, err := actions.Launch(context.Background(), l, w, r, store.Over(client), assigneeID, c, m, theme)
+		res, err := actions.Launch(context.Background(), l, w, r, store.Over(client), assigneeID, c, m)
 		if err != nil {
 			return agentLaunchedMsg{err: err}
 		}

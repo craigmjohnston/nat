@@ -168,7 +168,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func sliceLaunch(
-        projectID: String, sliceRef: String, model: String?, effort: String?, theme: String? = nil
+        projectID: String, sliceRef: String, model: String?, effort: String?
     ) async throws -> LaunchResult {
         try await record("slice-launch \(sliceRef)")
         return LaunchResult(
@@ -201,7 +201,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func workshopLaunch(
-        projectID: String, model: String?, effort: String?, request: String?, theme: String? = nil
+        projectID: String, model: String?, effort: String?, request: String?
     ) async throws -> WorkshopLaunchResult {
         try await record("workshop-launch \(projectID)")
         return WorkshopLaunchResult(

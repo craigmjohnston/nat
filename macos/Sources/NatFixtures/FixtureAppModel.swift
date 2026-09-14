@@ -54,9 +54,9 @@ extension Fixtures {
             // only be work nobody reads.
             pollIntervalSeconds: 3600,
             pathsProvider: { Fixtures.paths },
-            workshopLauncher: { projectID, model, effort, request, theme in
+            workshopLauncher: { projectID, model, effort, request in
                 try await client.workshopLaunch(
-                    projectID: projectID, model: model, effort: effort, request: request, theme: theme)
+                    projectID: projectID, model: model, effort: effort, request: request)
             },
             clientFactory: { client },
             // The live clock rather than the pinned one, alone among the
