@@ -46,7 +46,8 @@ comment, never shared by refactoring into a common import:
 
 Reads only, no `--project` needed: `setup` (installs skills, talks to
 neither Notion nor config), `paths` (prints config/log/nudge paths),
-`status` (live tmux sessions + activity, no Notion at all).
+`status` (live tmux sessions + activity, no Notion at all), `usage` (see
+below — a property of the logged-in Claude account, not of any project).
 
 Project-scoped reads: `info`, `slice-show` (full slice incl. computed
 `State` — **computed with `domain.AgentNone`/`domain.PRUnread`, never a live
@@ -100,6 +101,22 @@ never show a phantom state from a stale cached plan; built for the macOS
 app's session reaper, see `SessionReaping.swift`).
 
 Planning: `workshop-launch` (planning agent, `agent.PlanPrompt`).
+
+## `usage`
+
+Probes Claude Code's own statusline for the account's Pro/Max rate-limit
+state — the only OAuth-free source of what `/usage` shows. One synchronous
+run: lay a throwaway `--settings` file, launch a detached tmux session
+(`agent.LaunchUsageProbe`), send one minimal prompt (`rate_limits` appears
+only after the session's first API response), poll for the sink file up to
+`usageProbeTimeout`, then kill the session and delete the sink and the
+probe's own transcript — success or not. Every failure mode (no tmux, a
+timeout, an unparseable payload) reads the same to the caller: both windows
+absent, printed as `{}` under `--json` or "usage unavailable" otherwise —
+`nat usage` never fails loudly over an account with nothing to report. The
+disk-cache-then-refresh pattern ("show last-known, then probe") is gnat's
+own job (`UsageStore`/`DiskUsageCache` in `macos/Sources/NatKit`), not this
+command's: each `nat usage` call is a fresh, synchronous probe.
 
 ## `slice-diff`
 

@@ -200,6 +200,66 @@ enum AppStories {
             )
         },
 
+        Story(
+            name: "status-bar-usage-at-rest",
+            summary: "The Claude usage readout at the bar's far right, both windows "
+                + "well under the warning threshold: a gauge glyph, then each window's "
+                + "percent and reset in the bar's own tertiary tint.",
+            size: CGSize(width: 1360, height: StatusBarView.height)
+        ) {
+            StatusBarView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(
+                        plan: statusBarPlan, agents: Fixtures.agentStatuses, usage: Fixtures.usageReading)),
+                railWidth: 372
+            )
+        },
+
+        Story(
+            name: "status-bar-usage-one-warning",
+            summary: "One window past the warning threshold: its whole clause — "
+                + "percent and reset together — switches to the warning tint (system "
+                + "orange), the other window stays tertiary.",
+            size: CGSize(width: 1360, height: StatusBarView.height)
+        ) {
+            StatusBarView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(
+                        plan: statusBarPlan, agents: Fixtures.agentStatuses,
+                        usage: Fixtures.usageReadingOneWarning)),
+                railWidth: 372
+            )
+        },
+
+        Story(
+            name: "status-bar-usage-both-warning",
+            summary: "Both windows past the warning threshold: both clauses draw in "
+                + "the warning tint.",
+            size: CGSize(width: 1360, height: StatusBarView.height)
+        ) {
+            StatusBarView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(
+                        plan: statusBarPlan, agents: Fixtures.agentStatuses,
+                        usage: Fixtures.usageReadingBothWarning)),
+                railWidth: 372
+            )
+        },
+
+        Story(
+            name: "status-bar-usage-unavailable",
+            summary: "No usage reading available at all — the readout draws nothing, "
+                + "leaving only the agent count at the bar's far right.",
+            size: CGSize(width: 1360, height: StatusBarView.height)
+        ) {
+            StatusBarView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(
+                        plan: statusBarPlan, agents: Fixtures.agentStatuses, usage: .empty)),
+                railWidth: 372
+            )
+        },
+
         // MARK: - The header
 
         Story(

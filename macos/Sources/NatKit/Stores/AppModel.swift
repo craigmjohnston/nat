@@ -62,6 +62,11 @@ public final class AppModel {
     /// Live agent activity (app-wide, spans all projects).
     public private(set) var activityStore: ActivityStore?
 
+    /// The Claude account's own usage readout (app-wide, spans all projects
+    /// like `activityStore` — it is a property of the logged-in account, not
+    /// of any one tracked project).
+    public private(set) var usageStore: UsageStore?
+
     /// Each handed-back slice's branch diff totals, for the review
     /// rail's "+N −N" (app-wide, spans all projects, keyed by slice id —
     /// mirrors how `activityStore` is one store rather than one per project).
@@ -156,6 +161,12 @@ public final class AppModel {
     /// here.
     private let activityStoreFactory: @MainActor @Sendable () -> ActivityStore
 
+    /// How the app-wide usage store is made. Injectable for the same reason
+    /// `activityStoreFactory` is: the default probes and caches for real,
+    /// and a test or the gallery hands a client (and, for a test, a cache)
+    /// of its own here.
+    private let usageStoreFactory: @MainActor @Sendable () -> UsageStore
+
     /// How `launchWorkshop(request:)` waits between askings, while a launched
     /// session has yet to show up in the activity poll's reading. Injectable
     /// so a test never waits a quarter of a second for anything.
@@ -185,6 +196,7 @@ public final class AppModel {
         },
         clientFactory: @escaping @Sendable () -> NatClientProtocol = { NatClient() },
         activityStoreFactory: @escaping @MainActor @Sendable () -> ActivityStore = { ActivityStore() },
+        usageStoreFactory: @escaping @MainActor @Sendable () -> UsageStore = { UsageStore() },
         launchSettleWait: @escaping @MainActor @Sendable () async -> Void = {
             try? await Task.sleep(nanoseconds: 250_000_000)
         },
@@ -198,6 +210,7 @@ public final class AppModel {
         self.clientFactory = clientFactory
         self.workshopLauncher = workshopLauncher
         self.activityStoreFactory = activityStoreFactory
+        self.usageStoreFactory = usageStoreFactory
         self.launchSettleWait = launchSettleWait
         self.now = now
         self.visitHold = visitHold
@@ -243,6 +256,7 @@ public final class AppModel {
             let activityStore = activityStoreFactory()
             self.activityStore = activityStore
             self.reviewStatsStore = ReviewStatsStore(client: clientFactory())
+            startUsageStore()
 
             // Activate the first project (if any)
             if let firstProjectID = sortedProjects.first?.key {
@@ -367,6 +381,9 @@ public final class AppModel {
         if activityStore == nil {
             activityStore = activityStoreFactory()
             reviewStatsStore = ReviewStatsStore(client: clientFactory())
+        }
+        if usageStore == nil {
+            startUsageStore()
         }
 
         if !projectTabs.contains(where: { $0.id == id }) {
@@ -734,6 +751,18 @@ public final class AppModel {
         }
     }
 
+    /// Makes and starts the app-wide usage store: the cache's last-known
+    /// reading at once, then a fresh probe, then its own recurring timer.
+    /// The probe runs detached from the caller — `start(configPath:nudgePath:)`
+    /// and `addProject(id:name:)` both reach this while still setting up the
+    /// rest of the app, and neither should wait out one probe's own timeout
+    /// to finish doing so.
+    private func startUsageStore() {
+        let store = usageStoreFactory()
+        self.usageStore = store
+        Task { await store.start() }
+    }
+
     // MARK: - Private Helpers
 
     /// Feeds the active project's currently handed-back slices to
@@ -808,6 +837,8 @@ public final class AppModel {
         nudgeWatcher = nil
         activityStore?.stop()
         activityStore = nil
+        usageStore?.stop()
+        usageStore = nil
         reviewStatsStore = nil
         sliceDetailStores = [:]
         diffStores = [:]

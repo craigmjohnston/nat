@@ -49,6 +49,24 @@ running agent's state.
   by an agent, not compiled, so it can't import Go code; both copies must
   independently say the same thing.
 
+## Usage probing (`usage.go`)
+
+- `nat usage` reads Claude Code's own statusline JSON — the only OAuth-free
+  way to see `/usage`'s numbers — through a throwaway session tagged with no
+  `SlicePaneOption` at all (`LaunchUsageProbe`): it is not an agent working a
+  slice, so nothing that scans panes for one should ever find it.
+- `UsageProbeDir` is fixed (under `logging.Dir()`, alongside the log file and
+  nudge marker), not per-probe: there is only ever one probe in flight, so a
+  session or sink a killed prior run left behind is always found at the same
+  path. `WriteUsageProbeSettings` writes a `--settings` file whose
+  `statusLine` command is a bare `cat > sink` redirect — `--settings` is
+  per-session and outranks user/project settings, so the user's own
+  statusline configuration is never read, written or shadowed.
+- `ParseUsageSink` reads the payload's `rate_limits.five_hour`/`seven_day`,
+  each independently `nil` when absent — unknown, never 0%. `internal/cli`'s
+  `usage` command is what actually drives the probe end to end (launch,
+  prompt, poll, clean up); this file is only the mechanics it drives.
+
 ## Sessions (`tmux.go`)
 
 - Every tmux call runs with `-u`, forcing a UTF-8 client regardless of the

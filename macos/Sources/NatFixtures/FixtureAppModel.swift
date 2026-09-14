@@ -10,6 +10,15 @@ public struct NullPlanCache: PlanCaching {
     public func write(_ info: ProjectInfo, projectID: String) async {}
 }
 
+/// A `UsageCaching` that remembers nothing — so a fixture board never reads a
+/// real last-known usage reading off Application Support, and never writes
+/// the fixture reading over one.
+public struct NullUsageCache: UsageCaching {
+    public init() {}
+    public func read() async -> UsageReading? { nil }
+    public func write(_ reading: UsageReading) async {}
+}
+
 /// The fixture config, handed back without touching the disk.
 public struct FixtureConfigReader: ConfigReaderProtocol {
     private let config: NatProjectConfig
@@ -57,7 +66,8 @@ extension Fixtures {
             // "5764h 7m" — the distance to the fixtures' own January — where
             // the live clock has every fixture agent read as just started,
             // which is a state the board really has.
-            activityStoreFactory: { ActivityStore(client: client) }
+            activityStoreFactory: { ActivityStore(client: client) },
+            usageStoreFactory: { UsageStore(client: client, cache: NullUsageCache()) }
         )
     }
 

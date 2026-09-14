@@ -156,6 +156,10 @@ usage:
   nat setup [--json]  install the agent skills into ~/.claude/skills
   nat paths [--json]  print the paths to config, log dir and nudge marker file
   nat status [--json] read live tmux sessions and agent activity
+  nat usage [--json]  probe Claude Code's own statusline for the account's
+                      current Pro/Max rate-limit usage, via a throwaway
+                      detached session; prints nothing read where no window
+                      is available
   nat info [--json] --project ID
                       print the project's conventions, milestones and slices
   nat next-slice [--json] --project ID
@@ -329,6 +333,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return paths(args[1:], env)
 	case "status":
 		return status(args[1:], env)
+	case "usage":
+		return usage(args[1:], env)
 	case "info":
 		return info(ctx, args[1:], env)
 	case "next-slice":

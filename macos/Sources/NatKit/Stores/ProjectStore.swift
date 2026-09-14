@@ -5,6 +5,7 @@ import SwiftUI
 public protocol NatClientProtocol: Sendable {
     func info(projectID: String) async throws -> ProjectInfo
     func status() async throws -> [AgentStatus]
+    func usage() async throws -> UsageReading
     func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail
     func sliceDiff(projectID: String, sliceRef: String, commit: String?) async throws -> SliceDiff
     func sliceCommits(projectID: String, sliceRef: String) async throws -> SliceCommitsDoc

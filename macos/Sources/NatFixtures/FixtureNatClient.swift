@@ -29,6 +29,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     private let diff: SliceDiff
     private let pr: PRDetail
     private let config: ConfigDoc
+    private let usageReading: UsageReading
 
     /// Every write this client was asked to make, in order — a preview never
     /// looks, and a test asserting that a button reached the client does.
@@ -50,7 +51,8 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         agents: [AgentStatus] = Fixtures.agentStatuses,
         diff: SliceDiff = Fixtures.sliceDiff,
         pr: PRDetail = Fixtures.prGreen,
-        config: ConfigDoc = Fixtures.configDoc
+        config: ConfigDoc = Fixtures.configDoc,
+        usage: UsageReading = Fixtures.usageReading
     ) {
         self.behaviour = behaviour
         self.plan = plan
@@ -58,6 +60,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         self.diff = diff
         self.pr = pr
         self.config = config
+        self.usageReading = usage
     }
 
     /// The writes this client was asked to make, oldest first.
@@ -113,6 +116,10 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
 
     public func status() async throws -> [AgentStatus] {
         try await answer(agents)
+    }
+
+    public func usage() async throws -> UsageReading {
+        try await answer(usageReading)
     }
 
     public func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail {

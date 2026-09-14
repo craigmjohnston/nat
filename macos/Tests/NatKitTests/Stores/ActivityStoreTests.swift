@@ -32,6 +32,10 @@ class MockActivityClient: NatClientProtocol, @unchecked Sendable {
         }
     }
 
+    func usage() async throws -> UsageReading {
+        .empty
+    }
+
     func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail {
         throw NSError(domain: "test", code: -1)
     }
@@ -126,6 +130,7 @@ final class SequencedActivityClient: NatClientProtocol, @unchecked Sendable {
         }
     }
 
+    func usage() async throws -> UsageReading { .empty }
     func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail { throw NSError(domain: "test", code: -1) }
     func sliceDiff(projectID: String, sliceRef: String, commit: String?) async throws -> SliceDiff { throw NSError(domain: "test", code: -1) }
     func sliceCommits(projectID: String, sliceRef: String) async throws -> SliceCommitsDoc { throw NSError(domain: "test", code: -1) }
