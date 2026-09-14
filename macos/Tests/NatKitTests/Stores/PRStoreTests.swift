@@ -46,7 +46,7 @@ private final class MockPRClient: NatClientProtocol, @unchecked Sendable {
     func agentKill(projectID: String, sliceRef: String) async throws { throw PRTestError() }
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult { throw PRTestError() }
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String { throw PRTestError() }
-    func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult {
+    func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?, theme: String?) async throws -> LaunchResult {
         throw PRTestError()
     }
 
@@ -73,7 +73,7 @@ private final class MockPRClient: NatClientProtocol, @unchecked Sendable {
         if let commentError { throw commentError }
     }
 
-    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult {
+    func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?, theme: String?) async throws -> WorkshopLaunchResult {
         throw PRTestError()
     }
 

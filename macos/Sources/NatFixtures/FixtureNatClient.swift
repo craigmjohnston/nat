@@ -167,7 +167,9 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         )
     }
 
-    public func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult {
+    public func sliceLaunch(
+        projectID: String, sliceRef: String, model: String?, effort: String?, theme: String? = nil
+    ) async throws -> LaunchResult {
         try await record("slice-launch \(sliceRef)")
         return LaunchResult(
             session: TmuxSession.name(forSlicePageID: sliceRef),
@@ -199,7 +201,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func workshopLaunch(
-        projectID: String, model: String?, effort: String?, request: String?
+        projectID: String, model: String?, effort: String?, request: String?, theme: String? = nil
     ) async throws -> WorkshopLaunchResult {
         try await record("workshop-launch \(projectID)")
         return WorkshopLaunchResult(

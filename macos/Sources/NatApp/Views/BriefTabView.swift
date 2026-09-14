@@ -344,7 +344,8 @@ struct BriefTabView: View {
                     projectID: projectID,
                     sliceRef: slice.id,
                     model: model,
-                    effort: effort
+                    effort: effort,
+                    theme: appModel.effectiveTheme
                 )
 
                 // Store warning if present

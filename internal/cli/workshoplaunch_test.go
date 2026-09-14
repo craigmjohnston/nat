@@ -212,6 +212,56 @@ func TestWorkshopLaunchModelFlagsOverrideConfig(t *testing.T) {
 	}
 }
 
+// A headless launch has no board of its own to read a background colour off,
+// so --theme is the only way it can tell Claude Code which palette to start
+// on — gnat, which knows its own appearance natively, is what drives it.
+func TestWorkshopLaunchThemeFlagReachesTheAgent(t *testing.T) {
+	env, _ := testEnv(testConfig(), &fakeAPI{})
+	runner := &agentTestRunner{}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+
+	err := Run(context.Background(), []string{
+		"workshop-launch", "--theme", "dark", "--project", "project-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("workshop-launch: %v", err)
+	}
+
+	argv := strings.Join(runner.launchArgs, " ")
+	if !strings.Contains(argv, `--settings '{"theme":"dark"}'`) {
+		t.Errorf("launch argv = %q, want the theme carried as a settings override", argv)
+	}
+}
+
+// A launch with no --theme at all is every launch before there was a theme to
+// carry: no override, and Claude Code decides for itself exactly as it always
+// has.
+func TestWorkshopLaunchWithNoThemeCarriesNoOverride(t *testing.T) {
+	env, _ := testEnv(testConfig(), &fakeAPI{})
+	runner := &agentTestRunner{}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+
+	err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env)
+	if err != nil {
+		t.Fatalf("workshop-launch: %v", err)
+	}
+
+	if argv := strings.Join(runner.launchArgs, " "); strings.Contains(argv, "--settings") {
+		t.Errorf("launch argv = %q, want no settings override with no --theme", argv)
+	}
+}
+
+func TestWorkshopLaunchRefusesAnInvalidTheme(t *testing.T) {
+	env, _ := testEnv(testConfig(), &fakeAPI{})
+
+	err := Run(context.Background(), []string{
+		"workshop-launch", "--theme", "solarized", "--project", "project-1",
+	}, env)
+	if err == nil || !strings.Contains(err.Error(), "--theme") {
+		t.Errorf("err = %v, want the bad theme value named", err)
+	}
+}
+
 func TestWorkshopLaunchJSON(t *testing.T) {
 	env, out := testEnv(testConfig(), &fakeAPI{})
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
