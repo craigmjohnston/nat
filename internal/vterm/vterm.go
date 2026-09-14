@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image/color"
 	"io"
 	"os"
 	"os/exec"
@@ -121,7 +122,15 @@ type Session struct {
 // Start runs cmd on a new pseudo-terminal of cols by rows cells and returns a
 // Session mirroring its screen. The caller owns the returned Session and must
 // [Session.Close] it.
-func Start(cmd *exec.Cmd, cols, rows int) (*Session, error) {
+//
+// bg and fg are the emulator's default background and foreground colours —
+// the outer terminal's own, where the caller knows them — which is what the
+// emulator answers a child's OSC 10/11 query with. A detached child that never
+// gets to ask the real terminal at all, such as one launched into tmux before
+// any viewer attaches, otherwise gets the emulator's own hardwired default
+// (white on black) whichever terminal it is eventually drawn on. Either may be
+// nil, left at that hardwired default.
+func Start(cmd *exec.Cmd, cols, rows int, bg, fg color.Color) (*Session, error) {
 	cols, rows = clampSize(cols, rows)
 
 	pty, err := newPty(cols, rows)
@@ -140,6 +149,8 @@ func Start(cmd *exec.Cmd, cols, rows int) (*Session, error) {
 	s.emu.SetCallbacks(vt.Callbacks{
 		CursorVisibility: s.cursorVisible.Store,
 	})
+	s.emu.SetDefaultBackgroundColor(bg)
+	s.emu.SetDefaultForegroundColor(fg)
 
 	if err := pty.Start(cmd); err != nil {
 		_ = pty.Close()

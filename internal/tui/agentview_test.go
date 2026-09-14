@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"image/color"
 	"os/exec"
 	"reflect"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/craigmjohnston/nat/internal/agent"
@@ -43,6 +45,9 @@ type fakeTerm struct {
 	cmd  *exec.Cmd
 	cols int
 	rows int
+	// bg and fg are the colours the session was started with — the board's
+	// own reading of the terminal, carried into the emulator's defaults.
+	bg, fg color.Color
 
 	output chan struct{}
 	done   chan struct{}
@@ -98,8 +103,9 @@ func fakeTermFor(t *testing.T) *fakeTerm {
 	t.Helper()
 	term := newFakeTerm()
 	old := startTerm
-	startTerm = func(cmd *exec.Cmd, cols, rows int) (termSession, error) {
+	startTerm = func(cmd *exec.Cmd, cols, rows int, bg, fg color.Color) (termSession, error) {
 		term.cmd, term.cols, term.rows = cmd, cols, rows
+		term.bg, term.fg = bg, fg
 		return term, nil
 	}
 	t.Cleanup(func() { startTerm = old })
@@ -136,6 +142,28 @@ func focus(t *testing.T, a *App) {
 func pressKey(a *App, k tea.Key) tea.Cmd {
 	_, cmd := a.Update(tea.KeyPressMsg(k))
 	return cmd
+}
+
+// The terminal's own colours, once the board's background/foreground queries
+// have answered, are carried into every viewer it opens — see [App.termBG]/
+// [App.termFG] and [vterm.Start]'s bg/fg parameters. A viewer opened before
+// either answer arrives gets nil for that half, which the emulator reads as
+// its own hardwired default rather than stalling on an unanswered query.
+func TestAppCarriesTheTerminalsColorsIntoTheViewer(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	app.Update(tea.BackgroundColorMsg{Color: lipgloss.Color("#ffffff")})
+	app.Update(tea.ForegroundColorMsg{Color: lipgloss.Color("#000000")})
+	term := fakeTermFor(t)
+	app.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	id, session := sliceAt(t, app, rowTodoSlice)
+	app.live = map[string]string{id: session}
+	launcher.live = app.live
+
+	feed(t, app, press(app, "t"))
+
+	if term.bg == nil || term.fg == nil {
+		t.Errorf("bg/fg = %v/%v, want the board's known colours carried through", term.bg, term.fg)
+	}
 }
 
 // t opens the agent's terminal on the hidden client, and takes the board's
@@ -233,9 +261,11 @@ func TestAppSwapsOneAgentTerminalForAnother(t *testing.T) {
 
 func TestAppReportsATerminalThatWillNotStart(t *testing.T) {
 	app, _, _ := launchApp(t)
-	startTerm = func(*exec.Cmd, int, int) (termSession, error) { return nil, errors.New("no pty") }
+	startTerm = func(*exec.Cmd, int, int, color.Color, color.Color) (termSession, error) {
+		return nil, errors.New("no pty")
+	}
 	t.Cleanup(func() {
-		startTerm = func(*exec.Cmd, int, int) (termSession, error) { return newFakeTerm(), nil }
+		startTerm = func(*exec.Cmd, int, int, color.Color, color.Color) (termSession, error) { return newFakeTerm(), nil }
 	})
 	id, session := sliceAt(t, app, rowTodoSlice)
 	app.live = map[string]string{id: session}
@@ -825,7 +855,7 @@ func TestTheSpinningBoardIsNotKept(t *testing.T) {
 // The real start is what the app runs with when nothing is standing in for it.
 // It is not run here: it would open a pseudo-terminal and a tmux client on it.
 func TestTheRealTerminalEdgesAreThere(t *testing.T) {
-	if _, err := defaultStartTerm(exec.Command("does-not-exist-nat"), 80, 24); err == nil {
+	if _, err := defaultStartTerm(exec.Command("does-not-exist-nat"), 80, 24, nil, nil); err == nil {
 		t.Error("starting a command that is not there should fail")
 	}
 }
@@ -1200,7 +1230,7 @@ func TestViewerUsesTheConfiguredSplitDefault(t *testing.T) {
 // The real start does open a pseudo-terminal, which is worth running once: it
 // is what every viewer runs on, and the fake proves nothing about it.
 func TestDefaultStartTermRunsAChild(t *testing.T) {
-	s, err := defaultStartTerm(exec.Command("true"), 20, 5)
+	s, err := defaultStartTerm(exec.Command("true"), 20, 5, color.White, color.Black)
 	if err != nil {
 		t.Fatalf("defaultStartTerm: %v", err)
 	}

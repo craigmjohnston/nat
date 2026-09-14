@@ -3,6 +3,7 @@ package vterm
 import (
 	"context"
 	"errors"
+	"image/color"
 	"io"
 	"os"
 	"os/exec"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
@@ -157,7 +159,7 @@ func stubPty(t *testing.T, f *fakePty) {
 func startFake(t *testing.T, f *fakePty, cols, rows int) *Session {
 	t.Helper()
 	stubPty(t, f)
-	s, err := Start(exec.Command("unused"), cols, rows)
+	s, err := Start(exec.Command("unused"), cols, rows, nil, nil)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -220,6 +222,39 @@ func TestSessionDrainsDeviceAttributesReply(t *testing.T) {
 	f.feed(t, "\x1b[c")
 
 	waitOut(t, f, "\x1b[?62")
+}
+
+// The colours Start is given are what a query the child sends is answered
+// with, which is what lets Claude Code inside the session learn the actual
+// terminal's background rather than the emulator's own hardwired default.
+func TestDefaultColorsAnswerBackgroundAndForegroundQueries(t *testing.T) {
+	f := newFakePty()
+	stubPty(t, f)
+	bg := color.RGBA{R: 0x11, G: 0x22, B: 0x33, A: 0xff}
+	fg := color.RGBA{R: 0xaa, G: 0xbb, B: 0xcc, A: 0xff}
+	s, err := Start(exec.Command("unused"), 20, 4, bg, fg)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(s.Close)
+
+	f.feed(t, "\x1b]11;?\x07")
+	waitOut(t, f, ansi.SetBackgroundColor(ansi.XRGBColor{Color: bg}.String()))
+
+	f.resetOut()
+	f.feed(t, "\x1b]10;?\x07")
+	waitOut(t, f, ansi.SetForegroundColor(ansi.XRGBColor{Color: fg}.String()))
+}
+
+// Either colour left nil is the emulator's own hardwired default (white on
+// black) rather than an unanswered query: a detached agent that never gets to
+// ask the real terminal at all still gets some answer instead of stalling.
+func TestNilDefaultColorsFallBackToTheEmulatorsOwn(t *testing.T) {
+	f := newFakePty()
+	startFake(t, f, 20, 4)
+
+	f.feed(t, "\x1b]11;?\x07")
+	waitOut(t, f, ansi.SetBackgroundColor(ansi.XRGBColor{Color: color.Black}.String()))
 }
 
 func TestSendKeySendsText(t *testing.T) {
@@ -512,7 +547,7 @@ func TestReapWaitsForTheChild(t *testing.T) {
 	f.realStart = true
 	stubPty(t, f)
 
-	s, err := Start(shortCmd(), 20, 4)
+	s, err := Start(shortCmd(), 20, 4, nil, nil)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -542,7 +577,7 @@ func TestReapKillsAChildThatWillNotBeWaitedFor(t *testing.T) {
 	stubPty(t, f)
 
 	cmd := exec.Command("sleep", "60")
-	s, err := Start(cmd, 20, 4)
+	s, err := Start(cmd, 20, 4, nil, nil)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -622,7 +657,7 @@ func TestStartReportsAPtyThatWillNotOpen(t *testing.T) {
 	newPty = func(int, int) (Pty, error) { return nil, want }
 	t.Cleanup(func() { newPty = old })
 
-	s, err := Start(exec.Command("unused"), 20, 4)
+	s, err := Start(exec.Command("unused"), 20, 4, nil, nil)
 	if s != nil {
 		t.Fatal("Start returned a session")
 	}
@@ -637,7 +672,7 @@ func TestStartClosesThePtyWhenTheCommandWillNotStart(t *testing.T) {
 	f.startErr = want
 	stubPty(t, f)
 
-	s, err := Start(exec.Command("unused"), 20, 4)
+	s, err := Start(exec.Command("unused"), 20, 4, nil, nil)
 	if s != nil {
 		t.Fatal("Start returned a session")
 	}
@@ -651,7 +686,7 @@ func TestStartClosesThePtyWhenTheCommandWillNotStart(t *testing.T) {
 
 // TestStartOnARealPty exercises the real xpty-backed seam end to end.
 func TestStartOnARealPty(t *testing.T) {
-	s, err := Start(exec.Command("echo", "real-pty"), 40, 6)
+	s, err := Start(exec.Command("echo", "real-pty"), 40, 6, nil, nil)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -678,7 +713,7 @@ func TestHangupOnPassesAFailureToOpenStraightBack(t *testing.T) {
 }
 
 func TestStartOnARealPtyReportsACommandThatWillNotRun(t *testing.T) {
-	s, err := Start(exec.Command("./no-such-command-for-vterm-tests"), 40, 6)
+	s, err := Start(exec.Command("./no-such-command-for-vterm-tests"), 40, 6, nil, nil)
 	if s != nil {
 		t.Fatal("Start returned a session")
 	}

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
 	"os/exec"
 	"strings"
 	"time"
@@ -48,9 +49,13 @@ var (
 // rendered to a string that nothing ever puts on the terminal.
 const frameInterval = time.Second / 60
 
-// defaultStartTerm runs cmd on a real pseudo-terminal.
-func defaultStartTerm(cmd *exec.Cmd, cols, rows int) (termSession, error) {
-	s, err := vterm.Start(cmd, cols, rows)
+// defaultStartTerm runs cmd on a real pseudo-terminal, with bg and fg as the
+// emulator's default colours — the outer terminal's own, so a query the child
+// sends is answered with the terminal it is actually drawn on rather than the
+// emulator's own hardwired black. Either may be nil, where the query still
+// answers, with the emulator's own default for that half.
+func defaultStartTerm(cmd *exec.Cmd, cols, rows int, bg, fg color.Color) (termSession, error) {
+	s, err := vterm.Start(cmd, cols, rows, bg, fg)
 	if err != nil {
 		// Returning s directly would hand back a non-nil interface holding a nil
 		// pointer, which every caller would read as a session.
@@ -182,8 +187,9 @@ func (a *App) openAgentViewer(sliceID, name, session string) tea.Cmd {
 func (a *App) startViewer(sliceID, name, session string) tea.Cmd {
 	cols, rows := a.termSize()
 	l := a.launcher
+	bg, fg := a.termBG, a.termFG
 	return func() tea.Msg {
-		s, err := startTerm(l.AttachClientCmd(session), cols, rows)
+		s, err := startTerm(l.AttachClientCmd(session), cols, rows, bg, fg)
 		if err != nil {
 			return termStartedMsg{err: fmt.Errorf("show the agent for %q: %w", name, err)}
 		}

@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"image/color"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
@@ -99,7 +101,7 @@ func TestMain(m *testing.M) {
 	// the same way: nothing is started, and nothing waits on a channel that
 	// would never fire. Tests about the viewer put a fake in with
 	// fakeTermFor, and the one test of the real wait arms its own channels.
-	startTerm = func(*exec.Cmd, int, int) (termSession, error) { return newFakeTerm(), nil }
+	startTerm = func(*exec.Cmd, int, int, color.Color, color.Color) (termSession, error) { return newFakeTerm(), nil }
 	awaitTerm = func(termSession) tea.Cmd { return nil }
 	// The throttled re-arm goes the same way, so no test pays a frame's sleep
 	// for a redraw it drove by hand.
@@ -131,6 +133,7 @@ func TestMain(m *testing.M) {
 type launchCall struct {
 	session, workdir, promptFile, sliceID string
 	model                                 config.AgentModel
+	theme                                 string
 }
 
 // sendCall is one prompt the launcher was asked to type at a session.
@@ -183,8 +186,8 @@ func (f *fakeLauncher) Activity() (map[string]agent.Activity, error) {
 	return f.activity, nil
 }
 
-func (f *fakeLauncher) Launch(session, workdir, promptFile, sliceID string, model config.AgentModel) error {
-	f.launches = append(f.launches, launchCall{session, workdir, promptFile, sliceID, model})
+func (f *fakeLauncher) Launch(session, workdir, promptFile, sliceID string, model config.AgentModel, theme string) error {
+	f.launches = append(f.launches, launchCall{session, workdir, promptFile, sliceID, model, theme})
 	return f.launchErr
 }
 
@@ -506,6 +509,41 @@ func TestAppLaunchWithoutAConfiguredModelSaysNothing(t *testing.T) {
 	}
 	if got := launcher.launches[0].model; got != (config.AgentModel{}) {
 		t.Errorf("model = %+v, want it unset", got)
+	}
+}
+
+// A launch before the terminal has answered the background-colour query
+// behaves exactly as one always did: no theme override at all.
+func TestAppLaunchWithNoKnownThemeSaysNothing(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	app.board.cursor = rowTodoSlice
+
+	launch(t, app)
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
+	if got := launcher.launches[0].theme; got != "" {
+		t.Errorf("theme = %q, want it unset with no answer yet", got)
+	}
+}
+
+// The board's own reading of the terminal — once the background query in
+// Init answers — rides into every agent it launches, so Claude Code starts on
+// the palette that matches rather than guessing from a detached session that
+// never gets to ask.
+func TestAppLaunchCarriesTheBoardsKnownTheme(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	app.Update(tea.BackgroundColorMsg{Color: lipgloss.Color("#ffffff")})
+	app.board.cursor = rowTodoSlice
+
+	launch(t, app)
+
+	if len(launcher.launches) != 1 {
+		t.Fatalf("launches = %+v, want exactly one", launcher.launches)
+	}
+	if got := launcher.launches[0].theme; got != agent.ThemeLight {
+		t.Errorf("theme = %q, want %q for a light background", got, agent.ThemeLight)
 	}
 }
 
@@ -1180,7 +1218,7 @@ func TestLaunchAgentReportsAFailedPromptFile(t *testing.T) {
 		&fakePRViewer{}, "u1",
 		agent.PromptContext{
 			Slice: domain.Slice{ID: "s5", Name: "Info view"},
-		}, config.AgentModel{}, true)).(agentLaunchedMsg)
+		}, config.AgentModel{}, "", true)).(agentLaunchedMsg)
 
 	if msg.err == nil || !strings.Contains(msg.err.Error(), "launch agent: create prompt dir") {
 		t.Errorf("err = %v, want the failed prompt file", msg.err)
