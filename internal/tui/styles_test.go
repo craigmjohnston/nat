@@ -5,6 +5,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/craigmjohnston/nat/internal/agent"
 )
 
 func TestTokensSwitchWithTheBackground(t *testing.T) {
@@ -130,6 +132,34 @@ func TestAppRestylesOnTheBackgroundAnswer(t *testing.T) {
 	}
 	if got := a.spinner.Style.GetForeground(); got != want {
 		t.Errorf("spinner foreground = %v, want the light accent %v", got, want)
+	}
+}
+
+// The board's own reading of the terminal is what a launch carries into an
+// agent, and what the embedded viewer's emulator answers a query with — see
+// [App.theme] and [App.termBG]/[App.termFG].
+func TestAppRecordsTheThemeAndTerminalColors(t *testing.T) {
+	a := NewApp(testConfig(), nil)
+	if a.theme != "" {
+		t.Errorf("theme = %q before any answer, want unknown", a.theme)
+	}
+
+	a.Update(tea.BackgroundColorMsg{Color: lipgloss.Color("#ffffff")})
+	if a.theme != agent.ThemeLight {
+		t.Errorf("theme = %q, want %q for a light background", a.theme, agent.ThemeLight)
+	}
+	if a.termBG == nil {
+		t.Error("termBG = nil, want the answered colour kept")
+	}
+
+	a.Update(tea.BackgroundColorMsg{Color: lipgloss.Color("#000000")})
+	if a.theme != agent.ThemeDark {
+		t.Errorf("theme = %q, want %q for a dark background", a.theme, agent.ThemeDark)
+	}
+
+	a.Update(tea.ForegroundColorMsg{Color: lipgloss.Color("#123456")})
+	if a.termFG == nil {
+		t.Error("termFG = nil, want the answered colour kept")
 	}
 }
 

@@ -21,7 +21,7 @@ import (
 // something to one, and reports which are running — because none of that is
 // anything a launch itself does.
 type Launcher interface {
-	Launch(session, workdir, promptFile, sliceID string, model config.AgentModel) error
+	Launch(session, workdir, promptFile, sliceID string, model config.AgentModel, theme string) error
 }
 
 // LaunchResult is what Launch produced: the prompt context as actually
@@ -64,7 +64,7 @@ type LaunchResult struct {
 // prompt is written with and the session is started in, so the two never
 // disagree about where the agent is.
 func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, assigneeID string,
-	c agent.PromptContext, m config.AgentModel) (LaunchResult, error) {
+	c agent.PromptContext, m config.AgentModel, theme string) (LaunchResult, error) {
 	p := PlaceAgent(w, r, c.WorkingDir, c.Slice)
 	if !p.OK {
 		return LaunchResult{Toast: p.Toast, Sev: p.Sev}, nil
@@ -96,7 +96,7 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, assi
 	if err != nil {
 		return LaunchResult{}, fmt.Errorf("launch agent: %w", err)
 	}
-	if err := l.Launch(session, c.WorkingDir, file, c.Slice.ID, m); err != nil {
+	if err := l.Launch(session, c.WorkingDir, file, c.Slice.ID, m, theme); err != nil {
 		return LaunchResult{}, err
 	}
 	return LaunchResult{Context: c, Session: session, Toast: p.Toast, Sev: p.Sev}, nil

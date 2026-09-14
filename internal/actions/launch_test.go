@@ -19,6 +19,7 @@ import (
 type launchCall struct {
 	session, workdir, promptFile, sliceID string
 	model                                 config.AgentModel
+	theme                                 string
 }
 
 // fakeLauncher stands in for tmux: only the one method Launch itself calls.
@@ -29,8 +30,8 @@ type fakeLauncher struct {
 
 var _ Launcher = (*fakeLauncher)(nil)
 
-func (f *fakeLauncher) Launch(session, workdir, promptFile, sliceID string, model config.AgentModel) error {
-	f.launches = append(f.launches, launchCall{session, workdir, promptFile, sliceID, model})
+func (f *fakeLauncher) Launch(session, workdir, promptFile, sliceID string, model config.AgentModel, theme string) error {
+	f.launches = append(f.launches, launchCall{session, workdir, promptFile, sliceID, model, theme})
 	return f.launchErr
 }
 
@@ -47,7 +48,7 @@ func TestLaunchStartsTheAgentInAWorktree(t *testing.T) {
 
 	res, err := Launch(context.Background(), l, w, r, client.store(), "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: dir},
-		config.AgentModel{Model: "opus", Effort: "high"})
+		config.AgentModel{Model: "opus", Effort: "high"}, agent.ThemeLight)
 
 	if err != nil {
 		t.Fatalf("Launch() = %v, want it to go through", err)
@@ -72,6 +73,9 @@ func TestLaunchStartsTheAgentInAWorktree(t *testing.T) {
 	if got.session != res.Session || got.workdir != want || got.sliceID != "s5" {
 		t.Errorf("launch = %+v, want it started in the worktree", got)
 	}
+	if got.theme != agent.ThemeLight {
+		t.Errorf("theme = %q, want the caller's own reading carried through", got.theme)
+	}
 	if prompt, err := os.ReadFile(got.promptFile); err != nil || !strings.Contains(string(prompt), "Info view") {
 		t.Errorf("prompt file = %q (err %v), want the slice's own prompt", prompt, err)
 	}
@@ -90,7 +94,7 @@ func TestLaunchFallsBackToTheSharedCheckout(t *testing.T) {
 
 	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: dir},
-		config.AgentModel{})
+		config.AgentModel{}, "")
 
 	if err != nil {
 		t.Fatalf("Launch() = %v, want it to go through", err)
@@ -117,7 +121,7 @@ func TestLaunchRefusesAWorktreeThatCannotBeMade(t *testing.T) {
 
 	res, err := Launch(context.Background(), l, w, &fakeRepo{base: "origin/main"}, client.store(), "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: dir},
-		config.AgentModel{})
+		config.AgentModel{}, "")
 
 	if err != nil {
 		t.Fatalf("Launch() = %v, want a toast rather than a Go error", err)
@@ -149,7 +153,7 @@ func TestLaunchReportsAFailedBriefRead(t *testing.T) {
 
 	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: t.TempDir()},
-		config.AgentModel{})
+		config.AgentModel{}, "")
 
 	if err == nil || !strings.Contains(err.Error(), `claimed "Info view" but could not read its brief: notion: 500`) {
 		t.Errorf("err = %v, want the brief's read failure named", err)
@@ -177,7 +181,7 @@ func TestLaunchReportsAFailedConventionsRead(t *testing.T) {
 	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), "u1",
 		agent.PromptContext{
 			Slice: domain.Slice{ID: "s5", Name: "Info view"}, ProjectID: "p1", WorkingDir: t.TempDir(),
-		}, config.AgentModel{})
+		}, config.AgentModel{}, "")
 
 	if err == nil || !strings.Contains(err.Error(), `claimed "Info view" but could not read the project conventions: notion: 500`) {
 		t.Errorf("err = %v, want the conventions' read failure named", err)
@@ -216,7 +220,7 @@ func TestLaunchIncludesAMilestoneDigest(t *testing.T) {
 				{ID: "s4", Name: "Style the board", Status: domain.SliceTodo, StatusName: "Todo"},
 			},
 		},
-		config.AgentModel{})
+		config.AgentModel{}, "")
 
 	if err != nil {
 		t.Fatalf("Launch() = %v, want it to go through", err)
@@ -260,7 +264,7 @@ func TestLaunchLogsAFailedMilestoneSummaryRead(t *testing.T) {
 				{ID: "s2", Name: "Board scaffolding", Status: domain.SliceDone, StatusName: "Done"},
 			},
 		},
-		config.AgentModel{})
+		config.AgentModel{}, "")
 
 	if err != nil {
 		t.Fatalf("Launch() = %v, want it to go through despite the failed read", err)
@@ -284,7 +288,7 @@ func TestLaunchReportsAFailedPromptFile(t *testing.T) {
 
 	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}},
-		config.AgentModel{})
+		config.AgentModel{}, "")
 
 	if err == nil || !strings.Contains(err.Error(), "launch agent: create prompt dir") {
 		t.Errorf("err = %v, want the failed prompt file", err)
@@ -323,7 +327,7 @@ func TestLaunchRefusesWithoutTheClaim(t *testing.T) {
 
 			res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), "u1",
 				agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}},
-				config.AgentModel{})
+				config.AgentModel{}, "")
 
 			if err != nil {
 				t.Fatalf("Launch() = %v, want the refusal said as a toast", err)
@@ -354,7 +358,7 @@ func TestLaunchReportsAFailedStart(t *testing.T) {
 
 	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: t.TempDir()},
-		config.AgentModel{})
+		config.AgentModel{}, "")
 
 	if err == nil || !strings.Contains(err.Error(), "duplicate session") {
 		t.Errorf("err = %v, want the failed launch", err)

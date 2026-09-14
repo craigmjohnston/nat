@@ -420,15 +420,17 @@ func (t *Tmux) breakOutAll(panes []pane, want func(pane) bool) (int, error) {
 
 // Launch starts a detached tmux session named session, with workdir as its
 // working directory, running an agent seeded with the prompt in promptFile for
-// the slice with page ID sliceID, as the model and effort m asks for.
+// the slice with page ID sliceID, as the model and effort m asks for. theme is
+// [ThemeLight] or [ThemeDark] to start Claude Code on that palette, or ""
+// to say nothing and let it decide as it always has.
 //
 // The pane the session starts in is tagged with sliceID, which is what
 // [Tmux.LiveSlices] reads the running agents back out of. A session whose pane
 // could not be tagged is left running — its agent is already working — but the
 // failure is reported, because until it is tagged nothing will find it again.
-func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.AgentModel) error {
+func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.AgentModel, theme string) error {
 	carryEnv := os.Getenv("PATH") != "" && t.supportsSessionEnv()
-	out, err := t.run(LaunchArgs(session, workdir, promptFile, m, carryEnv)...)
+	out, err := t.run(LaunchArgs(session, workdir, promptFile, m, theme, carryEnv)...)
 	if err != nil {
 		return fmt.Errorf("launch tmux session %s: %w", session, err)
 	}
@@ -451,7 +453,7 @@ func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.Age
 // session prints its pane's ID, which is the handle the slice tag goes on:
 // pane IDs are unique for the life of the server, where a name is whatever it
 // has last been set to.
-func LaunchArgs(session, workdir, promptFile string, m config.AgentModel, carryEnv bool) []string {
+func LaunchArgs(session, workdir, promptFile string, m config.AgentModel, theme string, carryEnv bool) []string {
 	args := []string{
 		"new-session", "-d",
 		"-s", session,
@@ -462,7 +464,7 @@ func LaunchArgs(session, workdir, promptFile string, m config.AgentModel, carryE
 	}
 	args = append(args,
 		"-P", "-F", "#{pane_id}",
-		"sh", "-c", agentCommand(promptFile, m),
+		"sh", "-c", agentCommand(promptFile, m, theme),
 	)
 	args = append(args, statusOffArgs(session)...)
 	args = append(args, mouseOnArgs(session)...)
@@ -624,19 +626,36 @@ func inputFeatureArgs() []string {
 	}
 }
 
+// ThemeLight and ThemeDark are the values [Tmux.Launch] takes for theme: the
+// board's own reading of the terminal it is drawn on, carried into the
+// session's `claude --settings` so the agent starts on the palette that
+// matches rather than guessing. An agent launched detached in tmux can never
+// query its own background — there is nothing at the far end of the pane to
+// answer OSC 11 until a viewer attaches — so this is the only way it learns.
+const (
+	ThemeLight = "light"
+	ThemeDark  = "dark"
+)
+
 // agentCommand is the shell command the session runs: start Claude Code with
-// the contents of promptFile as its prompt, as the model the launch asked for.
+// the contents of promptFile as its prompt, as the model the launch asked for,
+// on the theme it asked for.
 //
 // Either half of the model may be unset, and an unset one contributes no flag
 // at all rather than an empty value: Claude Code then decides for itself, which
-// is what it did before there was anywhere to say otherwise.
-func agentCommand(promptFile string, m config.AgentModel) string {
+// is what it did before there was anywhere to say otherwise. theme is the same
+// way: empty contributes no `--settings` at all, which is every launch before
+// there was a theme to carry.
+func agentCommand(promptFile string, m config.AgentModel, theme string) string {
 	var flags string
 	if m.Model != "" {
 		flags += " --model " + shellQuote(m.Model)
 	}
 	if m.Effort != "" {
 		flags += " --effort " + shellQuote(m.Effort)
+	}
+	if theme != "" {
+		flags += " --settings " + shellQuote(`{"theme":"`+theme+`"}`)
 	}
 	return fmt.Sprintf(`claude%s "$(cat %s)"`, flags, shellQuote(promptFile))
 }
