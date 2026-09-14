@@ -242,6 +242,15 @@ usage:
   nat plan-apply [FILE] [--json] --project ID
                       create a whole plan of milestones and slices from a JSON
                       document, read from FILE or stdin
+  nat plan-propose [FILE] --workspace ID --name NAME [--json]
+                      validate a drafted plan and write it to a proposal file
+                      for the app's new-project workshop, instead of to
+                      Notion — there is no project yet, so no --project.
+                      FILE or stdin, like plan-apply, but a milestone or a
+                      depends_on may only name what the document itself
+                      creates, and a top-level dependencies list is refused.
+                      Running it again for the same workspace replaces the
+                      proposal
   nat complete-slice <slice> [--branch NAME] [--pr URL] [--summary TEXT]
                       [--pr-description TEXT|-] [--blocked] --project ID
                       close out a slice you claimed: with --branch, handed back
@@ -377,6 +386,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return wishlistClear(ctx, args[1:], env)
 	case "plan-apply":
 		return planApply(ctx, args[1:], env)
+	case "plan-propose":
+		return planPropose(ctx, args[1:], env)
 	case "complete-slice":
 		return completeSlice(ctx, args[1:], env)
 	case "release-slice":
