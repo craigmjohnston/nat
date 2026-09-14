@@ -31,7 +31,7 @@ public final class UsageStore {
     public init(
         client: NatClientProtocol = NatClient(),
         cache: UsageCaching = DiskUsageCache(),
-        refreshIntervalSeconds: UInt64 = 15 * 60
+        refreshIntervalSeconds: UInt64 = 2 * 60
     ) {
         self.client = client
         self.cache = cache
