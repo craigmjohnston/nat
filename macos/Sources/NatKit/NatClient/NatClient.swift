@@ -84,6 +84,20 @@ public final class NatClient: Sendable {
         return envelope.agents
     }
 
+    /// Probe Claude Code's own statusline for the account's current Pro/Max
+    /// rate-limit usage — `nat usage --json`, a throwaway detached session
+    /// under the hood. Takes no `--project`: the reading is a property of
+    /// the logged-in account, not of any tracked project.
+    ///
+    /// - Returns: The reading; a window absent from it is unknown, never 0%
+    /// - Throws: NatError if `nat` itself fails to run at all (a probe that
+    ///   ran but found no usable window is not an error — it answers with
+    ///   both windows absent instead)
+    public func usage() async throws -> UsageReading {
+        let output = try await runNat(arguments: ["usage", "--json"])
+        return try decodeJSON(UsageReading.self, from: output)
+    }
+
     /// Get full details of a slice including its brief.
     ///
     /// - Parameters:

@@ -22,12 +22,16 @@ struct StatusBarView: View {
         appModel.activityStore?.agents.count ?? 0
     }
 
+    private var usageDisplay: UsageDisplay {
+        buildUsageDisplay(from: appModel.usageStore?.reading)
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             PlanProgressCell(progress: progress)
                 .frame(width: railWidth)
 
-            AgentCountCell(count: agentCount)
+            AgentCountCell(count: agentCount, usage: usageDisplay)
                 .frame(maxWidth: .infinity)
         }
         .frame(height: Self.height)
@@ -143,26 +147,81 @@ private struct PlanProgressBar: View {
     }
 }
 
-/// The right cell: a quiet, live count of running agents, right-aligned to
-/// the bar's far edge — the left member of a cluster a follow-up slice
-/// appends the Claude usage readout to, as `N agents running | {usage}`.
+/// The right cell: a quiet, live count of running agents, and — at the
+/// bar's own far right edge — the Claude usage readout, as
+/// `N agents running | {usage}`.
 private struct AgentCountCell: View {
     let count: Int
+    let usage: UsageDisplay
 
     private static let horizontalPadding: CGFloat = 20
+    private static let separatorGap: CGFloat = 10
 
     private var label: String {
         "\(count) agent\(count == 1 ? "" : "s") running"
     }
 
     var body: some View {
-        HStack {
+        HStack(spacing: Self.separatorGap) {
             Spacer(minLength: 0)
             Text(label)
                 .font(.system(size: Typo.caption, weight: .regular))
                 .ink(.tertiary)
+            if !usage.isEmpty {
+                Text("|")
+                    .font(.system(size: Typo.caption, weight: .regular))
+                    .ink(.tertiary)
+                UsageReadoutView(usage: usage)
+            }
         }
         .padding(.horizontal, Self.horizontalPadding)
+    }
+}
+
+/// The Claude usage readout itself: a small gauge glyph, then the windows
+/// still worth showing, joined by `·`. Draws nothing at all when `usage` is
+/// empty — the caller checks that, but the view is safe called on an empty
+/// one regardless.
+private struct UsageReadoutView: View {
+    let usage: UsageDisplay
+
+    private static let iconGap: CGFloat = 6
+    private static let clauseGap: CGFloat = 4
+
+    var body: some View {
+        if !usage.isEmpty {
+            HStack(spacing: Self.iconGap) {
+                Image(systemName: "gauge.with.dots.needle.50percent")
+                    .font(.system(size: 10, weight: .regular))
+                    .ink(.tertiary)
+                HStack(spacing: Self.clauseGap) {
+                    ForEach(Array(usage.windows.enumerated()), id: \.offset) { index, window in
+                        if index > 0 {
+                            Text("·").ink(.tertiary)
+                        }
+                        UsageClauseText(window: window)
+                    }
+                }
+            }
+            .font(.system(size: Typo.caption, weight: .regular))
+            .monospacedDigit()
+        }
+    }
+}
+
+/// One window's clause, in the warning tint (system orange) once it has
+/// crossed the threshold, tertiary otherwise — the tint the plain `.ink`
+/// vocabulary has no role for, so this reads the ground directly the same
+/// way `InkModifier` does.
+private struct UsageClauseText: View {
+    let window: UsageWindowDisplay
+    @Environment(\.ground) private var ground
+
+    var body: some View {
+        Text(window.text)
+            .foregroundStyle(
+                window.warning ? DesignTokens.systemOrangeInk(on: ground) : DesignTokens.ink(.tertiary, on: ground)
+            )
     }
 }
 

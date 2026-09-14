@@ -10,6 +10,9 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case commandError
         case nonJSON
         case status
+        case usageBothWindows
+        case usageOneWindow
+        case usageUnavailable
         case sliceShow
         case sliceDiff
         case sliceCommits
@@ -97,6 +100,12 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return ("This is not JSON".data(using: .utf8)!, Data(), 0)
         case .status:
             return (fixtureStatus.data(using: .utf8)!, Data(), 0)
+        case .usageBothWindows:
+            return (fixtureUsageBothWindows.data(using: .utf8)!, Data(), 0)
+        case .usageOneWindow:
+            return (fixtureUsageOneWindow.data(using: .utf8)!, Data(), 0)
+        case .usageUnavailable:
+            return ("{}\n".data(using: .utf8)!, Data(), 0)
         case .sliceShow:
             return (fixtureSliceShow.data(using: .utf8)!, Data(), 0)
         case .sliceDiff:
@@ -307,6 +316,19 @@ let fixtureStatus = """
       "activity": "waiting"
     }
   ]
+}
+"""
+
+let fixtureUsageBothWindows = """
+{
+  "five_hour": {"used_percentage": 38, "resets_at": 1700000000},
+  "seven_day": {"used_percentage": 81, "resets_at": 1700600000}
+}
+"""
+
+let fixtureUsageOneWindow = """
+{
+  "five_hour": {"used_percentage": 12, "resets_at": 1700000000}
 }
 """
 

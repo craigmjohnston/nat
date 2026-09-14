@@ -22,4 +22,36 @@ public enum Fixtures {
     public static func minutesAgo(_ minutes: Double) -> Date {
         now.addingTimeInterval(-minutes * 60)
     }
+
+    // MARK: - Usage
+
+    /// The live clock plus the given number of hours, rather than `now` plus
+    /// it — a usage reading's `resetsAt` has to be in the *real* future for
+    /// `buildUsageDisplay`'s own expiry rule not to drop it on sight, the
+    /// same reason `activityStoreFactory`'s own comment gives for reading the
+    /// live clock instead of the pinned one: a fixture measured back from a
+    /// pinned instant in the past would read as already expired the moment
+    /// real time has moved past it, which it always has by now.
+    public static func hoursFromNow(_ hours: Double) -> Date {
+        Date().addingTimeInterval(hours * 3600)
+    }
+
+    /// The at-rest reading: both windows well under the warning threshold.
+    public static let usageReading = UsageReading(
+        fiveHour: UsageRateLimit(usedPercentage: 38, resetsAt: hoursFromNow(6)),
+        sevenDay: UsageRateLimit(usedPercentage: 45, resetsAt: hoursFromNow(30))
+    )
+
+    /// One window past the warning threshold, the other at rest — the mixed
+    /// reading the brief's own example draws.
+    public static let usageReadingOneWarning = UsageReading(
+        fiveHour: UsageRateLimit(usedPercentage: 38, resetsAt: hoursFromNow(6)),
+        sevenDay: UsageRateLimit(usedPercentage: 81, resetsAt: hoursFromNow(54))
+    )
+
+    /// Both windows past the warning threshold.
+    public static let usageReadingBothWarning = UsageReading(
+        fiveHour: UsageRateLimit(usedPercentage: 92, resetsAt: hoursFromNow(2)),
+        sevenDay: UsageRateLimit(usedPercentage: 88, resetsAt: hoursFromNow(54))
+    )
 }

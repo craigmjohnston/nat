@@ -14,6 +14,7 @@ private final class MockReviewStatsClient: NatClientProtocol, @unchecked Sendabl
 
     func info(projectID: String) async throws -> ProjectInfo { throw ReviewStatsTestError() }
     func status() async throws -> [AgentStatus] { [] }
+    func usage() async throws -> UsageReading { .empty }
     func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail { throw ReviewStatsTestError() }
 
     func sliceDiff(projectID: String, sliceRef: String, commit: String?) async throws -> SliceDiff {

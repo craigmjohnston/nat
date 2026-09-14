@@ -67,6 +67,10 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
         []
     }
 
+    func usage() async throws -> UsageReading {
+        .empty
+    }
+
     func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail {
         throw DiffTestError()
     }

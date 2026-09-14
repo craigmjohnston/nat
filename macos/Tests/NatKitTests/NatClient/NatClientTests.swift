@@ -97,6 +97,38 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(statuses[1].activity, .waiting)
     }
 
+    func testUsageBothWindows() async throws {
+        let fakeRunner = FakeRunner(fixture: .usageBothWindows)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let reading = try await client.usage()
+
+        XCTAssertEqual(reading.fiveHour?.usedPercentage, 38)
+        XCTAssertEqual(reading.fiveHour?.resetsAt, Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertEqual(reading.sevenDay?.usedPercentage, 81)
+        XCTAssertEqual(reading.sevenDay?.resetsAt, Date(timeIntervalSince1970: 1_700_600_000))
+        XCTAssertEqual(fakeRunner.lastArguments, ["usage", "--json"])
+    }
+
+    func testUsageOneWindowAbsent() async throws {
+        let fakeRunner = FakeRunner(fixture: .usageOneWindow)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let reading = try await client.usage()
+
+        XCTAssertEqual(reading.fiveHour?.usedPercentage, 12)
+        XCTAssertNil(reading.sevenDay)
+    }
+
+    func testUsageUnavailableReadsAsEmpty() async throws {
+        let fakeRunner = FakeRunner(fixture: .usageUnavailable)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let reading = try await client.usage()
+
+        XCTAssertTrue(reading.isEmpty)
+    }
+
     func testSliceShow() async throws {
         let fakeRunner = FakeRunner(fixture: .sliceShow)
         let client = NatClient(commandRunner: fakeRunner)

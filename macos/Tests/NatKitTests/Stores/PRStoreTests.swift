@@ -35,6 +35,7 @@ private final class MockPRClient: NatClientProtocol, @unchecked Sendable {
 
     func info(projectID: String) async throws -> ProjectInfo { throw PRTestError() }
     func status() async throws -> [AgentStatus] { [] }
+    func usage() async throws -> UsageReading { .empty }
     func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail { throw PRTestError() }
     func sliceDiff(projectID: String, sliceRef: String, commit: String?) async throws -> SliceDiff { throw PRTestError() }
     func sliceCommits(projectID: String, sliceRef: String) async throws -> SliceCommitsDoc { throw PRTestError() }
