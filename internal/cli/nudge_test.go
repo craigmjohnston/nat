@@ -27,7 +27,7 @@ func TestMutatingCommandsNudgeTheBoardOnce(t *testing.T) {
 			name: "next-slice",
 			args: []string{"next-slice", "--project", "project-1"},
 			env: func(t *testing.T) Env {
-				env, _ := testEnv(testClaimConfig(), claimableAPI(t))
+				env, _ := testEnv(testClaimConfig(t), claimableAPI(t))
 				return env
 			},
 		},
@@ -35,7 +35,7 @@ func TestMutatingCommandsNudgeTheBoardOnce(t *testing.T) {
 			name: "start-slice",
 			args: []string{"start-slice", startSliceID, "--project", "project-1"},
 			env: func(t *testing.T) Env {
-				env, _ := testEnv(testClaimConfig(), startableAPI(t))
+				env, _ := testEnv(testClaimConfig(t), startableAPI(t))
 				return env
 			},
 		},
@@ -43,7 +43,7 @@ func TestMutatingCommandsNudgeTheBoardOnce(t *testing.T) {
 			name: "complete-slice",
 			args: []string{"complete-slice", sliceID, "--summary", "Rendered the board.", "--project", "project-1"},
 			env: func(t *testing.T) Env {
-				env, _ := completeEnv(completableAPI())
+				env, _ := completeEnv(t, completableAPI())
 				return env
 			},
 		},
@@ -51,7 +51,7 @@ func TestMutatingCommandsNudgeTheBoardOnce(t *testing.T) {
 			name: "milestone-add",
 			args: []string{"milestone-add", "M4: Polish", "--project", "project-1"},
 			env: func(t *testing.T) Env {
-				env, _ := testEnv(testConfig(), plannedAPI(addedMilestoneID))
+				env, _ := testEnv(testConfig(t), plannedAPI(addedMilestoneID))
 				return env
 			},
 		},
@@ -59,7 +59,7 @@ func TestMutatingCommandsNudgeTheBoardOnce(t *testing.T) {
 			name: "milestone-rename",
 			args: []string{"milestone-rename", "M2: Board", "M2: The board", "--project", "project-1"},
 			env: func(t *testing.T) Env {
-				env, _ := testEnv(testConfig(), renamableAPI())
+				env, _ := testEnv(testConfig(t), renamableAPI())
 				return env
 			},
 		},
@@ -67,7 +67,7 @@ func TestMutatingCommandsNudgeTheBoardOnce(t *testing.T) {
 			name: "slice-add",
 			args: []string{"slice-add", "Frame the board", "--milestone", "M2: Board", "--project", "project-1"},
 			env: func(t *testing.T) Env {
-				env, _ := testEnv(testConfig(), plannedAPI(addedSliceID))
+				env, _ := testEnv(testConfig(t), plannedAPI(addedSliceID))
 				return env
 			},
 		},
@@ -75,7 +75,7 @@ func TestMutatingCommandsNudgeTheBoardOnce(t *testing.T) {
 			name: "plan-apply",
 			args: []string{"plan-apply", "--project", "project-1"},
 			env: func(t *testing.T) Env {
-				env, _ := testEnv(testConfig(), planAPI(3))
+				env, _ := testEnv(testConfig(t), planAPI(3))
 				env.In = strings.NewReader(samplePlan)
 				return env
 			},
@@ -100,7 +100,7 @@ func TestMutatingCommandsNudgeTheBoardOnce(t *testing.T) {
 // for a board to refetch.
 func TestARefusedCommandDoesNotNudge(t *testing.T) {
 	api := startableAPI(t)
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	nudges := nudgeCounter(&env)
 
 	err := Run(context.Background(), []string{"milestone-add", "M1: Client", "--project", "project-1"}, env)
@@ -114,20 +114,25 @@ func TestARefusedCommandDoesNotNudge(t *testing.T) {
 }
 
 // The nudge follows the write, not the command: a claim that lands is on the
-// board's plan even when reading the brief afterwards fails.
+// board's plan whether or not the brief can still be freshly read afterward.
+// store.Mirrored.Body no longer fails a read the workspace cannot answer — it
+// falls back to the file's own stale copy, empty for a slice just taken into
+// a plan that has never fetched its body — so a claim like this one no longer
+// fails the command at all: it succeeds, with an empty brief, and still
+// nudges exactly once for the write that landed.
 func TestAClaimThatLandsNudgesThoughTheBriefFails(t *testing.T) {
 	api := startableAPI(t)
 	api.blocksErrByID = map[string]error{startSliceID: errors.New("boom")}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	nudges := nudgeCounter(&env)
 
 	err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env)
 
-	if err == nil {
-		t.Fatal("start-slice should report the brief it could not read")
+	if err != nil {
+		t.Fatalf("start-slice: %v", err)
 	}
 	if *nudges != 1 {
-		t.Errorf("nudges = %d, want 1: the claim was written before the read failed", *nudges)
+		t.Errorf("nudges = %d, want 1: the claim was written before the brief was read", *nudges)
 	}
 }
 
@@ -137,7 +142,7 @@ func TestAHalfAppliedPlanStillNudges(t *testing.T) {
 	api := planAPI(3)
 	api.createErr = errors.New("boom")
 	api.failCreateAfter = 1
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.In = strings.NewReader(samplePlan)
 	nudges := nudgeCounter(&env)
 
@@ -155,7 +160,7 @@ func TestAHalfAppliedPlanStillNudges(t *testing.T) {
 func TestAPlanThatWroteNothingDoesNotNudge(t *testing.T) {
 	api := planAPI(3)
 	api.schemaUpdateErr = errors.New("boom")
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.In = strings.NewReader(samplePlan)
 	nudges := nudgeCounter(&env)
 

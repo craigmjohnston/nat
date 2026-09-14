@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // milestoneMove moves one milestone in the plan, to sit directly before or after
@@ -46,7 +45,10 @@ func milestoneMove(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	st := store.Over(env.NewClient(env.Tokens.Token))
+	st, err := env.storeFor(ctx, projectID, project)
+	if err != nil {
+		return err
+	}
 	sp := storeProject(projectID, project)
 
 	shape, err := st.Shape(ctx, sp)

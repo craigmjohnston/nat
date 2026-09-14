@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // fakeGHRunner is a fake gh runner for testing.
@@ -29,7 +31,7 @@ func TestSliceApproveRefusesNotHandedBack(t *testing.T) {
 			"slices-ds": {slicePage(testSliceID, "Write the UI", notion.SliceTodo, "m1", "", "")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.NewGH = func() GH { return gh.NewWithRunner(&fakeGHRunner{}) }
 	var out strings.Builder
 	env.Out = &out
@@ -51,7 +53,7 @@ func TestSliceApproveRefusesDone(t *testing.T) {
 			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceDone, "m1", "main")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	var out strings.Builder
 	env.Out = &out
 
@@ -72,7 +74,7 @@ func TestSliceApproveOpensAndRecordsPR(t *testing.T) {
 			testSliceID: {}, // Empty blocks for PR description lookup
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.NewGH = func() GH {
 		return gh.NewWithRunner(&fakeGHRunner{out: "https://github.test/craig/nat/pull/42\n"})
 	}
@@ -110,7 +112,7 @@ func TestSliceApproveGHFailure(t *testing.T) {
 			testSliceID: {},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.NewGH = func() GH {
 		return gh.NewWithRunner(&fakeGHRunner{
 			err: &gh.ExitError{Code: 1, Stderr: "already exists"},
@@ -130,7 +132,13 @@ func TestSliceApproveGHFailure(t *testing.T) {
 	}
 }
 
-func TestSliceApproveReportsAFailedRecord(t *testing.T) {
+// A record that cannot be pushed to the workspace no longer fails the
+// command: the pull request lands in the local plan first, and that write is
+// what the command answers for. The push failing is real, but it is not this
+// run's to report — the slice is left dirty for a later sync to send instead
+// of losing the record of a pull request that really did open on GitHub.
+func TestSliceApproveRecordsLocallyEvenWhenThePushFails(t *testing.T) {
+	cfg := testClaimConfig(t)
 	api := &fakeAPI{
 		pages: map[string][]notion.Page{
 			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "main")},
@@ -140,7 +148,7 @@ func TestSliceApproveReportsAFailedRecord(t *testing.T) {
 		},
 		updateErr: errors.New("notion is down"),
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(cfg, api)
 	env.NewGH = func() GH {
 		return gh.NewWithRunner(&fakeGHRunner{out: "https://github.test/craig/nat/pull/42\n"})
 	}
@@ -150,13 +158,38 @@ func TestSliceApproveReportsAFailedRecord(t *testing.T) {
 	err := Run(context.Background(), []string{
 		"slice-approve", testSliceID, "--project", "project-1",
 	}, env)
-	if err == nil || !strings.Contains(err.Error(), `record the pull request for "Write the UI"`) {
-		t.Errorf("slice-approve error = %v, want the write's failure named", err)
+	if err != nil {
+		t.Fatalf("slice-approve: %v, want it to succeed: the record landed in the plan file "+
+			"even though the push to the workspace failed", err)
+	}
+	if !strings.Contains(out.String(), "https://github.test/craig/nat/pull/42") {
+		t.Errorf("output = %q, want the pull request URL reported", out.String())
+	}
+
+	path, err := store.LocalPath("project-1")
+	if err != nil {
+		t.Fatalf("resolve the plan path: %v", err)
+	}
+	local, err := store.OpenLocal(path)
+	if err != nil {
+		t.Fatalf("open the plan: %v", err)
+	}
+	defer func() {
+		if err := local.Close(); err != nil {
+			t.Errorf("close the plan: %v", err)
+		}
+	}()
+	dirty, err := local.Dirty(context.Background(), testSliceID)
+	if err != nil {
+		t.Fatalf("read whether the slice is dirty: %v", err)
+	}
+	if !dirty {
+		t.Error("slice not marked dirty, want the failed push left for a later sync to send")
 	}
 }
 
 func TestSliceApproveRefusesWrongArgumentCount(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	var out strings.Builder
 	env.Out = &out
 
@@ -172,7 +205,7 @@ func TestSliceApproveRefusesWrongArgumentCount(t *testing.T) {
 }
 
 func TestSliceApproveRefusesAnUnknownFlag(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"slice-approve", testSliceID, "--bogus", "--project", "project-1"}, env)
 
@@ -183,7 +216,7 @@ func TestSliceApproveRefusesAnUnknownFlag(t *testing.T) {
 }
 
 func TestSliceApproveRefusesAnInvalidSliceID(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"slice-approve", "not-a-uuid", "--project", "project-1"}, env)
 
@@ -193,7 +226,7 @@ func TestSliceApproveRefusesAnInvalidSliceID(t *testing.T) {
 }
 
 func TestSliceApproveRefusesAnUnknownProject(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"slice-approve", testSliceID, "--project", "nope"}, env)
 
@@ -202,9 +235,50 @@ func TestSliceApproveRefusesAnUnknownProject(t *testing.T) {
 	}
 }
 
+// A plan file never pulled from the workspace is hydrated on the way to
+// reading anything at all, and a workspace that will not answer that pull
+// fails the whole command before the slice itself is ever read.
+func TestSliceApproveReportsAFailedHydrate(t *testing.T) {
+	boom := errors.New("notion is down")
+	api := &fakeAPI{dataSourceErr: boom}
+	env, _ := testEnv(testClaimConfig(t), api)
+
+	err := Run(context.Background(), []string{"slice-approve", testSliceID, "--project", "project-1"}, env)
+
+	if !errors.Is(err, boom) {
+		t.Errorf("err = %v, want %v", err, boom)
+	}
+}
+
+// Recording the pull request is a write to the local plan first, inside one
+// transaction with marking the slice sent for a later sync — and a plan
+// whose sync bookkeeping cannot be written fails the command outright, since
+// nothing was actually recorded for the push to send at all.
+func TestSliceApproveReportsAFailedLocalRecord(t *testing.T) {
+	cfg := testClaimConfig(t)
+	seedHydratedSlice(t, "project-1", testSliceID, "Write the UI", "In progress", func(db *sql.DB) {
+		if _, err := db.Exec(`UPDATE slices SET branch = 'main' WHERE id = ?`, testSliceID); err != nil {
+			t.Fatalf("seed the branch: %v", err)
+		}
+		if _, err := db.Exec(`DROP TABLE sync`); err != nil {
+			t.Fatalf("break the plan's sync table: %v", err)
+		}
+	})
+	env, _ := testEnv(cfg, &fakeAPI{})
+	env.NewGH = func() GH {
+		return gh.NewWithRunner(&fakeGHRunner{out: "https://github.test/craig/nat/pull/42\n"})
+	}
+
+	err := Run(context.Background(), []string{"slice-approve", testSliceID, "--project", "project-1"}, env)
+
+	if err == nil {
+		t.Error("slice-approve over a plan that cannot record the slice sent: want an error")
+	}
+}
+
 func TestSliceApproveReportsAFailedRead(t *testing.T) {
 	api := &fakeAPI{getErr: errors.New("notion is down")}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-approve", testSliceID, "--project", "project-1"}, env)
 
@@ -222,7 +296,7 @@ func TestSliceApproveJSON(t *testing.T) {
 			testSliceID: {},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.NewGH = func() GH {
 		return gh.NewWithRunner(&fakeGHRunner{out: "https://github.test/craig/nat/pull/42\n"})
 	}

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,7 +17,9 @@ import (
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // createdSeq is what successive creations answer with: pages whose IDs say
@@ -42,7 +45,7 @@ func planAPI(creations int) *fakeAPI {
 // is the project every test below is about bar the handful that name another.
 func runPlan(t *testing.T, api *fakeAPI, doc string, args ...string) (string, error) {
 	t.Helper()
-	return runPlanWith(t, testConfig(), api, doc, append([]string{"--project", "project-1"}, args...)...)
+	return runPlanWith(t, testConfig(t), api, doc, append([]string{"--project", "project-1"}, args...)...)
 }
 
 // runPlanWith is the same against a config of the test's own, for the plans
@@ -58,8 +61,8 @@ func runPlanWith(t *testing.T, cfg config.Config, api *fakeAPI, doc string, args
 // twoProjectConfig is the config file with a second project in it, which is
 // what --project is for: two projects the same machine tracks, and a command
 // that must say which of them it means.
-func twoProjectConfig(id string) config.Config {
-	cfg := testConfig()
+func twoProjectConfig(t testing.TB, id string) config.Config {
+	cfg := testConfig(t)
 	cfg.Projects[id] = config.ProjectConfig{
 		Name:       "other",
 		SlicesDSID: "other-ds",
@@ -102,18 +105,16 @@ func TestPlanApplyCreatesTheMilestonesThenTheSlices(t *testing.T) {
 
 Added 1 milestone and 3 slices to nat.
 
-` + orderNote + `
-
 ## M4: Polish
 
 New milestone 4, Queued — ` + optionNote + `
 
-- Frame the board — https://notion.so/new-3
+- Frame the board — https://notion.so/new-1
 - Colour the chips — https://notion.so/new-2
 
 ## M2: Board
 
-- Poll in the background — https://notion.so/new-1
+- Poll in the background — https://notion.so/new-3
 `
 	if out != want {
 		t.Errorf("output =\n%s\nwant:\n%s", out, want)
@@ -122,17 +123,18 @@ New milestone 4, Queued — ` + optionNote + `
 	if len(api.creates) != 3 {
 		t.Fatalf("creates = %+v, want one page per slice", api.creates)
 	}
-	// The document is written back to front, so the last slice of it is the
-	// first page created — see orderNote.
-	if got := writtenText(api.creates[0].props[notion.PropName]); got != "Poll in the background" {
-		t.Errorf("first creation = %q, want the last slice of the document", got)
+	// The document is written front to back, so the first slice of it is the
+	// first page created — the plan is now read back in the order it was
+	// written, and that order is the local plan file's own, not Notion's.
+	if got := writtenText(api.creates[0].props[notion.PropName]); got != "Frame the board" {
+		t.Errorf("first creation = %q, want the first slice of the document", got)
 	}
 	if got := writtenMilestoneOptions(t, api); !reflect.DeepEqual(got,
 		[]string{"M1: Client", "M2: Board", "M3: Agents", "M4: Polish"}) {
 		t.Errorf("options = %v, want the new milestone appended", got)
 	}
 
-	first := api.creates[2]
+	first := api.creates[0]
 	if first.parent != notion.DataSourceParent("slices-ds") {
 		t.Errorf("slice parent = %+v, want the slices data source", first.parent)
 	}
@@ -154,7 +156,7 @@ New milestone 4, Queued — ` + optionNote + `
 		t.Errorf("children = %+v, want one paragraph per chunk of the description", first.children)
 	}
 
-	last := api.creates[0]
+	last := api.creates[2]
 	if got := last.props[notion.PropMilestone]; !reflect.DeepEqual(got, notion.NewSelect("M2: Board")) {
 		t.Errorf("milestone = %+v, want the milestone the project already had", got)
 	}
@@ -195,8 +197,6 @@ func TestPlanApplyReportsAMilestoneWithNoSlices(t *testing.T) {
 
 Added 1 milestone and 0 slices to nat.
 
-` + orderNote + `
-
 ## M4: Polish
 
 New milestone 4, Queued — ` + optionNote + `
@@ -226,9 +226,9 @@ func TestPlanApplyPrintsJSON(t *testing.T) {
 		}},
 		Slices: []addedSliceJSON{
 			{
-				ID: "new-3", Name: "Frame the board", Status: notion.SliceTodo,
+				ID: "new-1", Name: "Frame the board", Status: notion.SliceTodo,
 				MilestoneID: "M4: Polish", MilestoneName: "M4: Polish",
-				Repo: "/tmp/nat", URL: "https://notion.so/new-3",
+				Repo: "/tmp/nat", URL: "https://notion.so/new-1",
 			},
 			{
 				ID: "new-2", Name: "Colour the chips", Status: notion.SliceTodo,
@@ -236,13 +236,12 @@ func TestPlanApplyPrintsJSON(t *testing.T) {
 				Repo: "/tmp/nat", URL: "https://notion.so/new-2",
 			},
 			{
-				ID: "new-1", Name: "Poll in the background", Status: notion.SliceTodo,
+				ID: "new-3", Name: "Poll in the background", Status: notion.SliceTodo,
 				MilestoneID: "M2: Board", MilestoneName: "M2: Board",
-				Repo: "/tmp/other", URL: "https://notion.so/new-1",
+				Repo: "/tmp/other", URL: "https://notion.so/new-3",
 			},
 		},
 		Dependencies: []addedDependencyJSON{},
-		Ordering:     orderingWord,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("json =\n%+v\nwant:\n%+v", got, want)
@@ -272,7 +271,7 @@ func TestPlanApplyReadsAPlanFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	api := planAPI(1)
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"plan-apply", path, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("plan-apply: %v", err)
@@ -377,7 +376,7 @@ func TestPlanApplyRejectsAMisusedCommandLine(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := planAPI(1)
-			env, _ := testEnv(testConfig(), api)
+			env, _ := testEnv(testConfig(t), api)
 			env.In = strings.NewReader(`{}`)
 
 			err := Run(context.Background(), tt.args, env)
@@ -396,7 +395,7 @@ func TestPlanApplyRejectsAMisusedCommandLine(t *testing.T) {
 
 // Nothing is piped in and no file was named, so there is no plan to apply.
 func TestPlanApplyRejectsHavingNothingToRead(t *testing.T) {
-	env, _ := testEnv(testConfig(), planAPI(1))
+	env, _ := testEnv(testConfig(t), planAPI(1))
 
 	err := Run(context.Background(), []string{"plan-apply", "--project", "project-1"}, env)
 
@@ -407,7 +406,7 @@ func TestPlanApplyRejectsHavingNothingToRead(t *testing.T) {
 }
 
 func TestPlanApplyReportsAnUnreadableFile(t *testing.T) {
-	env, _ := testEnv(testConfig(), planAPI(1))
+	env, _ := testEnv(testConfig(t), planAPI(1))
 
 	err := Run(context.Background(), []string{"plan-apply", filepath.Join(t.TempDir(), "gone.json"), "--project", "project-1"}, env)
 
@@ -420,7 +419,7 @@ func TestPlanApplyReportsAnUnreadableFile(t *testing.T) {
 // what a plan-apply run on a machine with no config is told about.
 func TestPlanApplyReportsUnfinishedSetup(t *testing.T) {
 	api := planAPI(1)
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.In = strings.NewReader(samplePlan)
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 
@@ -441,13 +440,13 @@ func TestPlanApplyReportsAFailedCreate(t *testing.T) {
 		after int
 		want  string
 		// landed is the slices of the document that exist afterwards, in the
-		// order the document put them: the run writes backwards, so a failure
-		// leaves the tail of the plan rather than its head.
+		// order the document put them: the run writes front to back, so a
+		// failure leaves the head of the plan rather than its tail.
 		landed []string
 	}{
 		{name: "the first slice, after the milestone landed", after: 0, want: "1 milestone and 0 slices were created"},
-		{name: "the last slice", after: 2, want: "1 milestone and 2 slices were created",
-			landed: []string{"Colour the chips", "Poll in the background"}},
+		{name: "the third slice", after: 2, want: "1 milestone and 2 slices were created",
+			landed: []string{"Colour the chips", "Frame the board"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -487,7 +486,7 @@ func textSpan(content string) map[string]any {
 func TestPlanApplyReportsAFailedWrite(t *testing.T) {
 	for _, args := range [][]string{{"plan-apply", "--project", "project-1"}, {"plan-apply", "--json", "--project", "project-1"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			env, _ := testEnv(testConfig(), planAPI(1))
+			env, _ := testEnv(testConfig(t), planAPI(1))
 			env.In = strings.NewReader(`{"milestones": [{"name": "M4"}]}`)
 			env.Out = failingWriter{}
 
@@ -522,13 +521,11 @@ func TestPlanApplyAppendsEveryNewMilestoneInOneSchemaWrite(t *testing.T) {
 
 Added 2 milestones and 3 slices to nat.
 
-` + orderNote + `
-
 ## M4: Polish
 
 New milestone 4, ` + notion.MilestoneQueued + ` — ` + optionNote + `
 
-- Frame the board — https://notion.so/new-3
+- Frame the board — https://notion.so/new-1
 
 ## M5: Ship
 
@@ -538,13 +535,10 @@ New milestone 5, ` + notion.MilestoneQueued + ` — ` + optionNote + `
 
 ## M2: Board
 
-- Poll in the background — https://notion.so/new-1
+- Poll in the background — https://notion.so/new-3
 `
 	if out != want {
 		t.Errorf("output =\n%s\nwant:\n%s", out, want)
-	}
-	if len(api.queries) != 0 {
-		t.Errorf("queries = %+v, want none: there is no Milestones data source to read", api.queries)
 	}
 	wantOptions := []string{"M1: Client", "M2: Board", "M3: Agents", "M4: Polish", "M5: Ship"}
 	if got := writtenMilestoneOptions(t, api); !reflect.DeepEqual(got, wantOptions) {
@@ -554,8 +548,8 @@ New milestone 5, ` + notion.MilestoneQueued + ` — ` + optionNote + `
 	if len(api.creates) != 3 {
 		t.Fatalf("creates = %+v, want one page per slice", api.creates)
 	}
-	// Back to front, so the creations run up the document rather than down it.
-	for i, want := range []string{"M2: Board", "M5: Ship", "M4: Polish"} {
+	// Front to back, in the document's own order.
+	for i, want := range []string{"M4: Polish", "M5: Ship", "M2: Board"} {
 		c := api.creates[i]
 		if c.parent != notion.DataSourceParent("slices-ds") {
 			t.Errorf("slice %d parent = %+v, want the slices data source", i, c.parent)
@@ -639,6 +633,55 @@ func TestPlanApplyRefusesAnOptionThePlanAlreadyHas(t *testing.T) {
 
 // The plan is read against the shape the project keeps it in, so a schema that
 // cannot be read stops the run before anything is written.
+// The project's shape is read from the local file once the plan has been
+// pulled — no request of its own — and a file that cannot even answer that
+// fails the run before anything is validated or written, the same as a
+// failed schema read from a plan never pulled at all.
+func TestPlanApplyReportsAFailedLocalShapeRead(t *testing.T) {
+	cfg := testConfig(t)
+	seedHydratedSlice(t, "project-1", testSliceID, "Render the board", "Todo", func(db *sql.DB) {
+		if _, err := db.Exec(`DROP TABLE milestones`); err != nil {
+			t.Fatalf("break the plan's milestones table: %v", err)
+		}
+	})
+
+	out, err := runPlanWith(t, cfg, planAPI(1), samplePlan, "--project", "project-1")
+
+	if err == nil || strings.Contains(err.Error(), "no project given") {
+		t.Fatalf("plan-apply over a plan that cannot read its own shape: want the shape read reported, got %v", err)
+	}
+	if out != "" {
+		t.Errorf("output = %q, want nothing", out)
+	}
+}
+
+// A plan that names a dependency reads the project's own slices to resolve
+// it against, straight from the local file once it has been pulled — and a
+// file that cannot answer that fails the run before anything is written,
+// the dependency resolution never even reached.
+func TestPlanApplyReportsAFailedLocalSlicesRead(t *testing.T) {
+	cfg := testConfig(t)
+	seedHydratedSlice(t, "project-1", testSliceID, "Render the board", "Todo", func(db *sql.DB) {
+		if _, err := db.Exec(`DROP TABLE slices`); err != nil {
+			t.Fatalf("break the plan's slices table: %v", err)
+		}
+		if _, err := db.Exec(`DROP TABLE slice_deps`); err != nil {
+			t.Fatalf("break the plan's slice_deps table: %v", err)
+		}
+	})
+
+	out, err := runPlanWith(t, cfg, planAPI(1),
+		`{"slices": [{"title": "Do it", "milestone": "M2: Board", "depends_on": ["Render the board"]}]}`,
+		"--project", "project-1")
+
+	if err == nil || !strings.Contains(err.Error(), "load slices") {
+		t.Errorf("err = %v, want the failed local read named", err)
+	}
+	if out != "" {
+		t.Errorf("output = %q, want nothing", out)
+	}
+}
+
 func TestPlanApplyReportsAFailedSchemaRead(t *testing.T) {
 	boom := errors.New("notion: 500")
 	api := planAPI(1)
@@ -691,26 +734,36 @@ func recordingNotion(t *testing.T, responses []string) (*httptest.Server, *[]not
 // with the wrong constructor is caught here rather than in production. The
 // options already there are sent back with their IDs and colours, since the
 // write replaces the list rather than adding to it.
+//
+// The plan is read from the local file now, and the file is empty the first
+// time any command asks for it — so this run opens with a schema read and an
+// empty slices query, [store.ForProject]'s own hydrate, before it gets to
+// plan-apply's own work: another schema read for the live option list
+// [store.Mirrored.AddMilestones] writes against, the schema write itself, and
+// the page.
 func TestPlanApplyWritesTheRequestsNotionExpects(t *testing.T) {
+	schema := `{"id":"slices-ds","properties":{
+		"Status":{"id":"s","name":"Status","type":"select","select":{"options":[{"id":"t","name":"Todo","color":"gray"}]}},
+		"Milestone":{"id":"m","name":"Milestone","type":"select","select":{"options":[
+			{"id":"o1","name":"M1: Client","color":"blue"},{"id":"o2","name":"M2: Board","color":"green"}]}},
+		"Depends on":{"id":"d","name":"Depends on","type":"relation","relation":{
+			"data_source_id":"slices-ds","type":"dual_property",
+			"dual_property":{"synced_property_name":"Blocks","synced_property_id":"bl"}}},
+		"Blocks":{"id":"bl","name":"Blocks","type":"relation","relation":{
+			"data_source_id":"slices-ds","type":"dual_property",
+			"dual_property":{"synced_property_name":"Depends on","synced_property_id":"d"}}},
+		"Branch":{"id":"b","name":"Branch","type":"rich_text","rich_text":{}}}}`
 	responses := []string{
-		`{"id":"slices-ds","properties":{
-			"Status":{"id":"s","name":"Status","type":"select","select":{"options":[{"id":"t","name":"Todo","color":"gray"}]}},
-			"Milestone":{"id":"m","name":"Milestone","type":"select","select":{"options":[
-				{"id":"o1","name":"M1: Client","color":"blue"},{"id":"o2","name":"M2: Board","color":"green"}]}},
-			"Depends on":{"id":"d","name":"Depends on","type":"relation","relation":{
-				"data_source_id":"slices-ds","type":"dual_property",
-				"dual_property":{"synced_property_name":"Blocks","synced_property_id":"bl"}}},
-			"Blocks":{"id":"bl","name":"Blocks","type":"relation","relation":{
-				"data_source_id":"slices-ds","type":"dual_property",
-				"dual_property":{"synced_property_name":"Depends on","synced_property_id":"d"}}},
-			"Branch":{"id":"b","name":"Branch","type":"rich_text","rich_text":{}}}}`,
+		schema,
+		`{"results":[]}`,
+		schema,
 		`{"id":"slices-ds","properties":{"Milestone":{"type":"select","select":{"options":[
 			{"id":"o1","name":"M1: Client"},{"id":"o2","name":"M2: Board"},{"id":"o3","name":"M3: Agents"}]}}}}`,
 		`{"id":"new-1","url":"https://notion.so/new-1"}`,
 	}
 	srv, got := recordingNotion(t, responses)
 
-	env, _ := testEnv(testConfig(), nil)
+	env, _ := testEnv(testConfig(t), nil)
 	env.NewClient = func(token notion.TokenFunc) API {
 		return notion.NewWithToken(token, notion.WithBaseURL(srv.URL))
 	}
@@ -724,6 +777,14 @@ func TestPlanApplyWritesTheRequestsNotionExpects(t *testing.T) {
 	}
 
 	want := []notionRequest{
+		{method: http.MethodGet, path: "/data_sources/slices-ds"},
+		{
+			method: http.MethodPost,
+			path:   "/data_sources/slices-ds/query",
+			body: map[string]any{
+				"sorts": []any{map[string]any{"timestamp": "created_time", "direction": "ascending"}},
+			},
+		},
 		{method: http.MethodGet, path: "/data_sources/slices-ds"},
 		{
 			method: http.MethodPatch,
@@ -786,7 +847,7 @@ func TestPlanApplyFilesThePlanInTheNamedProject(t *testing.T) {
 		"other-ds": {slicePage("filed-1", "Land the schema", notion.SliceTodo, "N1: Groundwork", "", "")},
 	}
 
-	out, err := runPlanWith(t, twoProjectConfig("project-2"), api, `{
+	out, err := runPlanWith(t, twoProjectConfig(t, "project-2"), api, `{
   "milestones": [{"name": "N2: Board"}],
   "slices": [
     {"title": "Draw it", "milestone": "N2: Board", "depends_on": ["Land the schema"]},
@@ -812,8 +873,9 @@ func TestPlanApplyFilesThePlanInTheNamedProject(t *testing.T) {
 		t.Errorf("queries = %+v, want the named project's slices read", api.queries)
 	}
 	// The dependency resolved against that project's own slices, and landed on
-	// the page this run created there.
-	if len(api.updates) != 1 || api.updates[0].id != "new-2" {
+	// the page this run created there — "Draw it", the document's first slice,
+	// since the run now writes front to back.
+	if len(api.updates) != 1 || api.updates[0].id != "new-1" {
 		t.Fatalf("updates = %+v, want the created slice made to wait", api.updates)
 	}
 	if got := api.updates[0].props[notion.PropDependsOn]; !reflect.DeepEqual(got, notion.NewRelation("filed-1")) {
@@ -828,7 +890,7 @@ func TestPlanApplyFindsTheNamedProjectByAnUndashedID(t *testing.T) {
 	const dashed = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 	api := twoProjectAPI(1)
 
-	out, err := runPlanWith(t, twoProjectConfig(dashed), api,
+	out, err := runPlanWith(t, twoProjectConfig(t, dashed), api,
 		`{"slices": [{"title": "Draw it", "milestone": "N1: Groundwork"}]}`,
 		"--project", "AAAAAAAABBBBCCCCDDDDEEEEEEEEEEEE")
 	if err != nil {
@@ -848,7 +910,7 @@ func TestPlanApplyFindsTheNamedProjectByAnUndashedID(t *testing.T) {
 func TestPlanApplyRefusesAProjectTheConfigDoesNotKnow(t *testing.T) {
 	api := twoProjectAPI(1)
 
-	_, err := runPlanWith(t, twoProjectConfig("project-2"), api, samplePlan, "--project", "project-9")
+	_, err := runPlanWith(t, twoProjectConfig(t, "project-2"), api, samplePlan, "--project", "project-9")
 	if err == nil {
 		t.Fatal("plan-apply: want an error naming the project")
 	}
@@ -892,7 +954,7 @@ func TestPlanApplyReportsAConfigItCannotRead(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			env, _ := testEnv(testConfig(), planAPI(0))
+			env, _ := testEnv(testConfig(t), planAPI(0))
 			env.Load = tt.load
 			env.In = strings.NewReader(samplePlan)
 
@@ -904,40 +966,14 @@ func TestPlanApplyReportsAConfigItCannotRead(t *testing.T) {
 	}
 }
 
-// notionAfterPlan is the workspace as it stands the moment a plan has been
-// applied: the pages the run created, as the two reads `nat info` makes hand
-// them back.
-//
-// The second of those is the whole point. A row a view's manual order does not
-// name — which is every row the API creates, since nothing in the API adds one
-// to that order — comes back newest first. That is Notion's own behaviour,
-// recorded from the live API against a scratch database whose four rows were
-// written A, B, C, D and whose view query answered D, C, B, A; editing a row
-// afterwards did not move it, so it is the order they were created in and
-// nothing else. Hence the reversal here.
-func notionAfterPlan(api *fakeAPI, dsID string) {
-	pages := make([]notion.Page, len(api.creates))
-	order := make([]string, len(api.creates))
-	for i, c := range api.creates {
-		page := api.createdPages[i]
-		page.Properties = map[string]notion.PropertyValue{}
-		for name, v := range c.props {
-			page.Properties[name] = readable(v)
-		}
-		pages[i] = page
-		order[len(api.creates)-1-i] = page.ID
-	}
-	api.pages = map[string][]notion.Page{dsID: pages}
-	api.order = map[string][]string{dsID: order}
-}
-
-// The plan's own order is what the board and next-slice hand work out in, and
-// until this it was lost the moment a plan was applied: every slice of a run
-// landed in one minute, and the view read them back newest first, which is the
-// document backwards. So the run writes them backwards, and this is that read
-// back — plan-apply and then `nat info`, against what Notion actually answers.
+// The plan's own order is what the board and next-slice hand work out in.
+// Every plan is now read back from the local file plan-apply wrote it to, in
+// the order the document put them — no view of Notion's own is read to get
+// it, so this is plan-apply and then `nat info`, both against the same plan
+// file, with nothing about the workspace read in between.
 func TestPlanApplyLandsSlicesInDocumentOrder(t *testing.T) {
 	api := planAPI(5)
+	cfg := testConfig(t)
 	doc := `{
 	  "slices": [
 	    {"title": "First", "milestone": "M2: Board"},
@@ -948,12 +984,11 @@ func TestPlanApplyLandsSlicesInDocumentOrder(t *testing.T) {
 	  ]
 	}`
 
-	if _, err := runPlan(t, api, doc); err != nil {
+	if _, err := runPlanWith(t, cfg, api, doc, "--project", "project-1"); err != nil {
 		t.Fatalf("plan-apply: %v", err)
 	}
-	notionAfterPlan(api, "slices-ds")
 
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(cfg, api)
 	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("info: %v", err)
 	}
@@ -971,5 +1006,120 @@ func TestPlanApplyLandsSlicesInDocumentOrder(t *testing.T) {
 `
 	if got := out.String(); !strings.Contains(got, want) {
 		t.Errorf("info =\n%s\nwant it to list the slices in document order:\n%s", got, want)
+	}
+}
+
+// applyDependencies and applyAdditions both take a store.Store directly,
+// independent of whatever built it, so the one write either can make —
+// SetDependencies — failing is exactly checkable here without needing a
+// whole plan-apply run to reach a workspace that refuses it.
+func TestApplyDependenciesReportsAFailedWrite(t *testing.T) {
+	boom := errors.New("notion is down")
+	st := stubStore{setDependencies: func(string, []string) (domain.Slice, error) { return domain.Slice{}, boom }}
+	targets := []sliceTarget{{newIndex: -1, dependsOn: []planDep{{newIndex: -1, id: "dep"}}}}
+	created := []appliedSlice{{Slice: domain.Slice{ID: "new-1", Name: "Frame the board"}}}
+
+	err := applyDependencies(context.Background(), st, targets, created)
+
+	if err == nil || !errors.Is(err, boom) || !strings.Contains(err.Error(), `record what "Frame the board" waits on`) {
+		t.Errorf("err = %v, want the write's failure named", err)
+	}
+}
+
+func TestApplyAdditionsReportsAFailedWrite(t *testing.T) {
+	boom := errors.New("notion is down")
+	st := stubStore{setDependencies: func(string, []string) (domain.Slice, error) { return domain.Slice{}, boom }}
+	filed := []filedDeps{{
+		slice: domain.Slice{ID: "existing", Name: "Style the board"},
+		add:   []planDep{{newIndex: -1, id: "dep"}},
+	}}
+
+	_, err := applyAdditions(context.Background(), st, filed, nil)
+
+	if err == nil || !errors.Is(err, boom) || !strings.Contains(err.Error(), `record what "Style the board" waits on`) {
+		t.Errorf("err = %v, want the write's failure named", err)
+	}
+}
+
+// appliedErr reads slightly differently once a run has already made another
+// project's slice wait on more — the one thing plan-apply changes rather
+// than creates — before failing on the write after it.
+func TestAppliedErrNamesDependenciesAlreadyRecorded(t *testing.T) {
+	boom := errors.New("notion is down")
+	applied := appliedPlan{Dependencies: []appliedDependency{{Slice: domain.Slice{Name: "Style the board"}, Added: []string{"x"}}}}
+
+	err := appliedErr(applied, boom)
+
+	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "1 slice already on the board") ||
+		!strings.Contains(err.Error(), "made to wait on more") {
+		t.Errorf("err = %v, want the recorded dependency counted", err)
+	}
+}
+
+// applyPlanStub is a store.Store that creates milestones and slices with
+// predictable IDs and fails SetDependencies always, for the two tests below
+// that need applyPlan itself to reach its own dependency-writing phases
+// rather than one of their failures being checked in isolation.
+type applyPlanStub struct {
+	store.Store
+	nextID    int
+	setDepErr error
+}
+
+func (s *applyPlanStub) AddMilestones(_ context.Context, _ store.Project, _ store.Shape, names []string) ([]domain.Milestone, error) {
+	ms := make([]domain.Milestone, len(names))
+	for i, n := range names {
+		ms[i] = domain.Milestone{ID: n, Name: n, Order: float64(i)}
+	}
+	return ms, nil
+}
+
+func (s *applyPlanStub) AddSlice(_ context.Context, _ store.Project, n store.NewSlice) (domain.Slice, error) {
+	s.nextID++
+	return domain.Slice{ID: fmt.Sprintf("new-%d", s.nextID), Name: n.Title, MilestoneID: n.Milestone.ID}, nil
+}
+
+func (s *applyPlanStub) SetDependencies(context.Context, string, []string) (domain.Slice, error) {
+	return domain.Slice{}, s.setDepErr
+}
+
+// applyPlan reports a failed dependency write between slices the run just
+// created the same way it reports every other failed write: what already
+// landed, before this.
+func TestApplyPlanReportsAFailedDependencyWrite(t *testing.T) {
+	boom := errors.New("notion is down")
+	st := &applyPlanStub{setDepErr: boom}
+	doc := plan{Slices: []planSlice{{Title: "Frame the board"}}}
+	targets := planTargets{slices: []sliceTarget{{
+		newIndex: -1, existing: domain.Milestone{ID: "M2: Board", Name: "M2: Board"},
+		dependsOn: []planDep{{newIndex: -1, id: "dep"}},
+	}}}
+
+	_, err := applyPlan(context.Background(), st, store.Project{}, store.Shape{}, doc, targets, nil)
+
+	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "record what") {
+		t.Errorf("err = %v, want the dependency write's failure reported", err)
+	}
+}
+
+// The same, for the write onto a slice the project already had — the phase
+// that runs after every new slice and every new-to-new dependency is
+// already recorded.
+func TestApplyPlanReportsAFailedAdditionWrite(t *testing.T) {
+	boom := errors.New("notion is down")
+	st := &applyPlanStub{setDepErr: boom}
+	doc := plan{Slices: []planSlice{{Title: "Frame the board"}}}
+	targets := planTargets{
+		slices: []sliceTarget{{newIndex: -1, existing: domain.Milestone{ID: "M2: Board", Name: "M2: Board"}}},
+		filed: []filedDeps{{
+			slice: domain.Slice{ID: "existing", Name: "Style the board"},
+			add:   []planDep{{newIndex: -1, id: "dep"}},
+		}},
+	}
+
+	_, err := applyPlan(context.Background(), st, store.Project{}, store.Shape{}, doc, targets, nil)
+
+	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "record what") {
+		t.Errorf("err = %v, want the addition write's failure reported", err)
 	}
 }

@@ -17,7 +17,7 @@ import (
 // A bare pre-upgrade planning session belongs to no project, so it is the one
 // any project would attach — and the one that refuses every project.
 func TestWorkshopLaunchRefusesAlreadyLive(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	runner := &agentTestRunner{liveSessions: map[string]string{agent.PlanSentinel: agent.PlanSession}}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
@@ -31,7 +31,7 @@ func TestWorkshopLaunchRefusesAlreadyLive(t *testing.T) {
 // A planning agent on another project is no reason to refuse this one: they
 // are scoped per project now, so two can be workshopped at once.
 func TestWorkshopLaunchIgnoresAnotherProjectsPlanningAgent(t *testing.T) {
-	env, out := testEnv(testConfig(), &fakeAPI{})
+	env, out := testEnv(testConfig(t), &fakeAPI{})
 	runner := &agentTestRunner{liveSessions: map[string]string{
 		agent.PlanTag("project-2"): agent.PlanSessionName("project-2"),
 	}}
@@ -47,7 +47,7 @@ func TestWorkshopLaunchIgnoresAnotherProjectsPlanningAgent(t *testing.T) {
 
 // This project's own planning agent is what refuses.
 func TestWorkshopLaunchRefusesThisProjectsPlanningAgent(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	runner := &agentTestRunner{liveSessions: map[string]string{
 		agent.PlanTag("project-1"): agent.PlanSessionName("project-1"),
 	}}
@@ -61,7 +61,7 @@ func TestWorkshopLaunchRefusesThisProjectsPlanningAgent(t *testing.T) {
 
 func TestWorkshopLaunchesAPlainSession(t *testing.T) {
 	api := &fakeAPI{}
-	cfg := testConfig()
+	cfg := testConfig(t)
 	cfg.WorkshopAgent = config.AgentModel{Model: "sonnet", Effort: "low"}
 	env, out := testEnv(cfg, api)
 	runner := &agentTestRunner{}
@@ -86,7 +86,7 @@ func TestWorkshopLaunchesAPlainSession(t *testing.T) {
 
 func TestWorkshopLaunchesOnTheWishlist(t *testing.T) {
 	api := &fakeAPI{blocks: wishlistBlocks(t)}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
 	err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env)
@@ -116,7 +116,7 @@ func launchedPlanPrompt(t *testing.T, dir string) string {
 func TestWorkshopLaunchFoldsTheRequestIntoThePrompt(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
 	err := Run(context.Background(), []string{
@@ -135,7 +135,7 @@ func TestWorkshopLaunchRequestOutranksThePendingWishlist(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
 	api := &fakeAPI{blocks: wishlistBlocks(t)}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
 	err := Run(context.Background(), []string{
@@ -156,7 +156,7 @@ func TestWorkshopLaunchRequestOutranksThePendingWishlist(t *testing.T) {
 func TestWorkshopLaunchReadsTheRequestFromStdin(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	env.In = strings.NewReader("  A request too long for an argument.  \n")
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
@@ -170,7 +170,7 @@ func TestWorkshopLaunchReadsTheRequestFromStdin(t *testing.T) {
 }
 
 func TestWorkshopLaunchRefusesStdinRequestWithNothingToRead(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"workshop-launch", "--request", "-", "--project", "project-1"}, env)
 
@@ -194,7 +194,7 @@ func wishlistBlocks(t *testing.T) []notion.Block {
 }
 
 func TestWorkshopLaunchModelFlagsOverrideConfig(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	cfg.WorkshopAgent = config.AgentModel{Model: "sonnet", Effort: "low"}
 	env, _ := testEnv(cfg, &fakeAPI{})
 	runner := &agentTestRunner{}
@@ -216,7 +216,7 @@ func TestWorkshopLaunchModelFlagsOverrideConfig(t *testing.T) {
 // so --theme is the only way it can tell Claude Code which palette to start
 // on — gnat, which knows its own appearance natively, is what drives it.
 func TestWorkshopLaunchThemeFlagReachesTheAgent(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	runner := &agentTestRunner{}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
@@ -237,7 +237,7 @@ func TestWorkshopLaunchThemeFlagReachesTheAgent(t *testing.T) {
 // carry: no override, and Claude Code decides for itself exactly as it always
 // has.
 func TestWorkshopLaunchWithNoThemeCarriesNoOverride(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	runner := &agentTestRunner{}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
@@ -252,7 +252,7 @@ func TestWorkshopLaunchWithNoThemeCarriesNoOverride(t *testing.T) {
 }
 
 func TestWorkshopLaunchRefusesAnInvalidTheme(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{
 		"workshop-launch", "--theme", "solarized", "--project", "project-1",
@@ -263,7 +263,7 @@ func TestWorkshopLaunchRefusesAnInvalidTheme(t *testing.T) {
 }
 
 func TestWorkshopLaunchJSON(t *testing.T) {
-	env, out := testEnv(testConfig(), &fakeAPI{})
+	env, out := testEnv(testConfig(t), &fakeAPI{})
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
 	err := Run(context.Background(), []string{"workshop-launch", "--json", "--project", "project-1"}, env)
@@ -281,7 +281,7 @@ func TestWorkshopLaunchJSON(t *testing.T) {
 }
 
 func TestWorkshopLaunchRefusesWrongArgumentCount(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"workshop-launch", "extra", "--project", "project-1"}, env)
 
@@ -291,7 +291,7 @@ func TestWorkshopLaunchRefusesWrongArgumentCount(t *testing.T) {
 }
 
 func TestWorkshopLaunchRefusesAnUnknownFlag(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"workshop-launch", "--bogus", "--project", "project-1"}, env)
 
@@ -302,7 +302,7 @@ func TestWorkshopLaunchRefusesAnUnknownFlag(t *testing.T) {
 }
 
 func TestWorkshopLaunchRefusesAnUnknownProject(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"workshop-launch", "--project", "nope"}, env)
 
@@ -313,7 +313,7 @@ func TestWorkshopLaunchRefusesAnUnknownProject(t *testing.T) {
 
 func TestWorkshopLaunchReportsAFailedPageRead(t *testing.T) {
 	api := &fakeAPI{blocksErr: errors.New("notion is down")}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	// A fake tmux with nothing live, so the liveness check ahead of the read
 	// answers for this test rather than for whatever the machine running it
 	// happens to have launched.
@@ -328,7 +328,7 @@ func TestWorkshopLaunchReportsAFailedPageRead(t *testing.T) {
 
 func TestWorkshopLaunchReportsAFailedPromptFile(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	// The fake tmux for the reason TestWorkshopLaunchReportsAFailedPageRead
 	// carries one.
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
@@ -341,7 +341,7 @@ func TestWorkshopLaunchReportsAFailedPromptFile(t *testing.T) {
 }
 
 func TestWorkshopLaunchReportsATmuxFailure(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	runner := &agentTestRunner{launchErr: "duplicate session"}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 

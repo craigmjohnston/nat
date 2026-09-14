@@ -18,7 +18,7 @@ func TestSliceStatusPrintsTheStatus(t *testing.T) {
 			sliceID: {slicePageWithBranch(sliceID, "Test slice", notion.SliceInProgress, "M1: First", "")},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-status", sliceID, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-status: %v", err)
@@ -36,7 +36,7 @@ func TestSliceStatusPrintsJSON(t *testing.T) {
 			sliceID: {slicePageWithBranch(sliceID, "Test slice", notion.SliceDone, "M1: First", "")},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-status", sliceID, "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-status --json: %v", err)
@@ -63,7 +63,7 @@ func TestSliceStatusOfASliceInAnotherProject(t *testing.T) {
 			sliceID: {slicePageWithBranch(sliceID, "Elsewhere", notion.SliceTodo, "M9: Other", "")},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-status", sliceID, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-status: %v", err)
@@ -79,7 +79,7 @@ func TestSliceStatusReportsATrashedPage(t *testing.T) {
 	page := slicePageWithBranch(sliceID, "Trashed slice", notion.SliceInProgress, "M1: First", "")
 	page.InTrash = true
 	api := &fakeAPI{pages: map[string][]notion.Page{sliceID: {page}}}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-status", sliceID, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-status: %v", err)
@@ -95,7 +95,7 @@ func TestSliceStatusReportsATrashedPageAsJSON(t *testing.T) {
 	page := slicePageWithBranch(sliceID, "Trashed slice", notion.SliceInProgress, "M1: First", "")
 	page.Archived = true
 	api := &fakeAPI{pages: map[string][]notion.Page{sliceID: {page}}}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-status", sliceID, "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-status --json: %v", err)
@@ -113,7 +113,7 @@ func TestSliceStatusReportsATrashedPageAsJSON(t *testing.T) {
 func TestSliceStatusOfAnEmptyStatus(t *testing.T) {
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
 	api := &fakeAPI{pages: map[string][]notion.Page{sliceID: {{ID: sliceID}}}}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-status", sliceID, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-status: %v", err)
@@ -127,7 +127,7 @@ func TestSliceStatusOfAnEmptyStatus(t *testing.T) {
 func TestSliceStatusOfAGonePage(t *testing.T) {
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
 	api := &fakeAPI{getErr: &notion.APIError{StatusCode: http.StatusNotFound}}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-status", sliceID, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-status: %v", err)
@@ -141,7 +141,7 @@ func TestSliceStatusOfAGonePage(t *testing.T) {
 func TestSliceStatusOfAGonePageAsJSON(t *testing.T) {
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
 	api := &fakeAPI{getErr: &notion.APIError{StatusCode: http.StatusNotFound}}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-status", sliceID, "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-status --json: %v", err)
@@ -161,7 +161,7 @@ func TestSliceStatusOfAGonePageAsJSON(t *testing.T) {
 func TestSliceStatusReportsAnOtherwiseFailedRead(t *testing.T) {
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
 	api := &fakeAPI{getErr: errors.New("notion is down")}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-status", sliceID, "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "read the slice") {
@@ -171,7 +171,7 @@ func TestSliceStatusReportsAnOtherwiseFailedRead(t *testing.T) {
 
 func TestSliceStatusInvalidSliceRef(t *testing.T) {
 	api := &fakeAPI{}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-status", "not-a-url-or-id", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "not a slice") {
@@ -182,7 +182,7 @@ func TestSliceStatusInvalidSliceRef(t *testing.T) {
 func TestSliceStatusMissingProject(t *testing.T) {
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
 	api := &fakeAPI{}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-status", sliceID}, env)
 	if err == nil || !strings.Contains(err.Error(), "no project given") {
@@ -192,7 +192,7 @@ func TestSliceStatusMissingProject(t *testing.T) {
 
 func TestSliceStatusNoArgument(t *testing.T) {
 	api := &fakeAPI{}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-status", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "want exactly one slice") {
@@ -203,7 +203,7 @@ func TestSliceStatusNoArgument(t *testing.T) {
 func TestSliceStatusTooManyArguments(t *testing.T) {
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
 	api := &fakeAPI{}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-status", sliceID, "extra", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "want exactly one slice") {
@@ -231,7 +231,7 @@ func TestSliceStatusJSONWriteError(t *testing.T) {
 			sliceID: {slicePageWithBranch(sliceID, "Test slice", notion.SliceTodo, "M1: First", "")},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.Out = failingWriter{}
 
 	err := Run(context.Background(), []string{"slice-status", sliceID, "--json", "--project", "project-1"}, env)
@@ -247,7 +247,7 @@ func TestSliceStatusMarkdownWriteError(t *testing.T) {
 			sliceID: {slicePageWithBranch(sliceID, "Test slice", notion.SliceTodo, "M1: First", "")},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.Out = failingWriter{}
 
 	err := Run(context.Background(), []string{"slice-status", sliceID, "--project", "project-1"}, env)
@@ -259,7 +259,7 @@ func TestSliceStatusMarkdownWriteError(t *testing.T) {
 func TestSliceStatusGoneMarkdownWriteError(t *testing.T) {
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
 	api := &fakeAPI{getErr: &notion.APIError{StatusCode: http.StatusNotFound}}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.Out = failingWriter{}
 
 	err := Run(context.Background(), []string{"slice-status", sliceID, "--project", "project-1"}, env)
@@ -271,7 +271,7 @@ func TestSliceStatusGoneMarkdownWriteError(t *testing.T) {
 func TestSliceStatusGoneJSONWriteError(t *testing.T) {
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
 	api := &fakeAPI{getErr: &notion.APIError{StatusCode: http.StatusNotFound}}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.Out = failingWriter{}
 
 	err := Run(context.Background(), []string{"slice-status", sliceID, "--json", "--project", "project-1"}, env)

@@ -180,7 +180,7 @@ func (l *Local) Path() string { return l.path }
 // SQLite's own user_version, so opening a plan written by this build is one
 // read and no writes, and a plan written by a later one can be refused rather
 // than half understood.
-const localSchemaVersion = 2
+const localSchemaVersion = 3
 
 // localSchemaV1 is the plan as tables, exactly as the first build of this store
 // created it. Every column maps one-to-one onto [domain.Slice] or
@@ -262,6 +262,15 @@ ALTER TABLE milestones ADD COLUMN select_type TEXT NOT NULL DEFAULT '';
 UPDATE slices SET assignee_name = assignee WHERE assignee != '';
 `
 
+// localSchemaV3 adds the one column a replica needs that a plan of its own
+// never did: a slice's own page URL, which a plan kept in a file of its own
+// has no Notion page to have — and so is "" for every such slice, exactly
+// the default a plan already at this schema would want for one written
+// before this column existed too.
+const localSchemaV3 = `
+ALTER TABLE slices ADD COLUMN url TEXT NOT NULL DEFAULT '';
+`
+
 // localMigrations is what [Local.migrate] walks version+1..[localSchemaVersion]
 // through, so a plan lands on today's schema whichever version it started at —
 // an empty file walking every migration there is, and a plan already at v1
@@ -269,6 +278,7 @@ UPDATE slices SET assignee_name = assignee WHERE assignee != '';
 var localMigrations = map[int]string{
 	1: localSchemaV1,
 	2: localSchemaV2,
+	3: localSchemaV3,
 }
 
 // migrate brings the file up to the schema this build speaks, and is what every
@@ -314,22 +324,38 @@ func (l *Local) errorf(err error, doing string) error {
 	return fmt.Errorf("%s at %s: %w", doing, l.path, err)
 }
 
-// localShape is what a local plan can record about a slice, which is
-// everything: the columns are this store's own and there is no project old
-// enough to be missing one, so the two questions a Notion shape exists to
-// answer are both yes here.
-func (l *Local) localShape(ms []domain.Milestone) Shape {
-	return Shape{HasAssignee: true, HasBranch: true, Milestones: ms}
+// localShape is what a local plan can record about a slice and the
+// milestones there are to file one under. Whether it can record ownership or
+// a branch is read off the project row — [Local.Hydrate]'s own copy of what
+// the workspace it replicates actually offers — for a plan [Local.hydrated]
+// once from one; a plan with no workspace behind it, or not yet pulled from
+// one, answers both yes, because the columns are this store's own and there
+// is no project old enough to be missing one.
+func (l *Local) localShape(ctx context.Context, p Project, ms []domain.Milestone) (Shape, error) {
+	hasAssignee, hasBranch := true, true
+	hydrated, err := l.hydrated(ctx, p.ID)
+	if err != nil {
+		return Shape{}, err
+	}
+	if hydrated {
+		var ha, hb int
+		if err := l.db.QueryRowContext(ctx,
+			`SELECT has_assignee, has_branch FROM project WHERE id = ?`, p.ID).Scan(&ha, &hb); err != nil {
+			return Shape{}, l.errorf(err, "read the project")
+		}
+		hasAssignee, hasBranch = ha != 0, hb != 0
+	}
+	return Shape{HasAssignee: hasAssignee, HasBranch: hasBranch, Milestones: ms}, nil
 }
 
 // Shape reads what can be recorded about a project's slices and the milestones
 // there are to file one under, without reading the slices themselves.
-func (l *Local) Shape(ctx context.Context, _ Project) (Shape, error) {
+func (l *Local) Shape(ctx context.Context, p Project) (Shape, error) {
 	ms, err := l.milestones(ctx, l.db)
 	if err != nil {
 		return Shape{}, err
 	}
-	return l.localShape(ms), nil
+	return l.localShape(ctx, p, ms)
 }
 
 // milestones reads the plan's milestones in plan order. A milestone is nothing
@@ -374,9 +400,13 @@ func (l *Local) Plan(ctx context.Context, p Project) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
+	sh, err := l.localShape(ctx, p, ms)
+	if err != nil {
+		return Plan{}, err
+	}
 	return Plan{
 		Project: domain.NewProject(p.ID, name, ms, slices),
-		Shape:   l.localShape(ms),
+		Shape:   sh,
 	}, nil
 }
 
@@ -398,25 +428,46 @@ func (l *Local) projectName(ctx context.Context, p Project) (string, error) {
 	return name, nil
 }
 
+// hydrated reports whether the file holds a project row at all — which is
+// exactly what a [Hydrate] pull writes and nothing else does, so its absence
+// is what tells [ForProject] a plan has never been pulled from the workspace
+// it mirrors.
+func (l *Local) hydrated(ctx context.Context, id string) (bool, error) {
+	var synced sql.NullString
+	err := l.db.QueryRowContext(ctx, `SELECT synced_at FROM project WHERE id = ?`, id).Scan(&synced)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, l.errorf(err, "check whether the plan has been hydrated")
+	}
+	return synced.Valid, nil
+}
+
 // localSliceColumns is the one list of columns every slice read selects, so the
 // scan below can be one function rather than one per query.
-const localSliceColumns = `id, title, status, COALESCE(milestone, ''), assignee, repo, branch, pr`
+const localSliceColumns = `id, title, status, COALESCE(milestone, ''), assignee, assignee_name, repo, branch, pr, url`
 
 // scanLocalSlice reads one row of [localSliceColumns] into the app's own words.
 // A local plan writes exactly the statuses domain names, so the status is both
-// the workflow status and what the project calls it; the assignee is a name and
-// an identity at once, since there is no directory of users behind a plan kept
-// in a file and the string a claim wrote is the string an ownership check
-// compares against.
+// the workflow status and what the project calls it. assignee is the identity
+// an ownership check compares against — a Notion person ID for a replica, or,
+// for a plan of its own with no such directory, the same string as the name —
+// and assignee_name is what is shown for it, back-filled from assignee by the
+// v2 migration for exactly the plans that predate the two being different.
 func scanLocalSlice(scan func(...any) error) (domain.Slice, error) {
 	var s domain.Slice
-	var status, assignee string
-	if err := scan(&s.ID, &s.Name, &status, &s.MilestoneID, &assignee, &s.Repo, &s.Branch, &s.PRURL); err != nil {
+	var status, assignee, assigneeName string
+	if err := scan(&s.ID, &s.Name, &status, &s.MilestoneID, &assignee, &assigneeName, &s.Repo, &s.Branch, &s.PRURL, &s.URL); err != nil {
 		return domain.Slice{}, err
 	}
 	s.Status, s.StatusName = domain.SliceStatus(status), status
 	if assignee != "" {
-		s.AssigneeName, s.AssigneeIDs = assignee, []string{assignee}
+		s.AssigneeIDs = []string{assignee}
+		s.AssigneeName = assigneeName
+		if s.AssigneeName == "" {
+			s.AssigneeName = assignee
+		}
 	}
 	return s, nil
 }

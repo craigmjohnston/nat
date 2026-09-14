@@ -31,8 +31,10 @@ func nextSlice(ctx context.Context, args []string, env Env) error {
 	if cfg.AssigneeUserID == "" {
 		return fmt.Errorf("no assignee in the config: open the board with `nat` and finish setting it up")
 	}
-	client := env.NewClient(env.Tokens.Token)
-	st := store.Over(client)
+	st, err := env.storeFor(ctx, projectID, project)
+	if err != nil {
+		return err
+	}
 
 	plan, err := st.Plan(ctx, storeProject(projectID, project))
 	if err != nil {

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 const readyToMergePRJSON = `{
@@ -68,7 +70,7 @@ func TestPRMergeRefusesNoPullRequest(t *testing.T) {
 			"slices-ds": {slicePageWithPR(testSliceID, "Write the UI", notion.SliceInProgress, "")},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
 
@@ -84,7 +86,7 @@ func TestPRMergeMerges(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	runner := &multiRunner{viewOut: readyToMergePRJSON}
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
@@ -117,7 +119,13 @@ func TestPRMergeMerges(t *testing.T) {
 // A merge that landed but whose status write was refused is still a merge:
 // the failure says which half needs anything more, and running the command
 // again is not the recovery — the board's reading settles the slice instead.
-func TestPRMergeReportsAFailedDoneWrite(t *testing.T) {
+// The merge already happened on GitHub by the time MarkDone runs, and MarkDone
+// writes the local plan first — so a push to the workspace that fails no
+// longer takes the whole command down with it: the local write is what
+// succeeds or fails now, and it succeeds. The slice is left dirty for a later
+// sync to send what the push could not.
+func TestPRMergeMarksDoneLocallyEvenWhenThePushFails(t *testing.T) {
+	cfg := testConfig(t)
 	api := &fakeAPI{
 		updateErr: errors.New("notion is down"),
 		pages: map[string][]notion.Page{
@@ -125,18 +133,43 @@ func TestPRMergeReportsAFailedDoneWrite(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, out := testEnv(cfg, api)
 	var nudges int
 	env.Nudge = func() { nudges++ }
 	env.NewGH = func() GH { return gh.NewWithRunner(&multiRunner{viewOut: readyToMergePRJSON}) }
 
 	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
 
-	if err == nil || !strings.Contains(err.Error(), `merged #7, but could not mark "Write the UI" Done`) {
-		t.Errorf("err = %v, want the merge reported landed and the write failed", err)
+	if err != nil {
+		t.Fatalf("pr-merge: %v, want it to succeed: the merge landed and MarkDone's local write "+
+			"succeeded even though the push to the workspace failed", err)
 	}
-	if nudges != 0 {
-		t.Errorf("nudges = %d, want none for a write that never landed", nudges)
+	if !strings.Contains(out.String(), `Merged #7 and marked "Write the UI" Done`) {
+		t.Errorf("output = %q, want the merge reported", out.String())
+	}
+	if nudges != 1 {
+		t.Errorf("nudges = %d, want exactly one for the write that landed locally", nudges)
+	}
+
+	path, err := store.LocalPath("project-1")
+	if err != nil {
+		t.Fatalf("resolve the plan path: %v", err)
+	}
+	local, err := store.OpenLocal(path)
+	if err != nil {
+		t.Fatalf("open the plan: %v", err)
+	}
+	defer func() {
+		if err := local.Close(); err != nil {
+			t.Errorf("close the plan: %v", err)
+		}
+	}()
+	dirty, err := local.Dirty(context.Background(), testSliceID)
+	if err != nil {
+		t.Fatalf("read whether the slice is dirty: %v", err)
+	}
+	if !dirty {
+		t.Error("slice not marked dirty, want the failed push left for a later sync to send")
 	}
 }
 
@@ -147,7 +180,7 @@ func TestPRMergeJSON(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	env.NewGH = func() GH { return gh.NewWithRunner(&multiRunner{viewOut: readyToMergePRJSON}) }
 
 	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--json", "--project", "project-1"}, env)
@@ -170,7 +203,7 @@ func TestPRMergeRefusesAFailingVerdict(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	runner := &multiRunner{viewOut: changesRequestedPRJSON}
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
@@ -191,7 +224,7 @@ func TestPRMergeRefusesAlreadyMerged(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	runner := &multiRunner{viewOut: alreadyMergedPRJSON}
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
@@ -212,7 +245,7 @@ func TestPRMergeReportsAViewFailure(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.NewGH = func() GH {
 		return gh.NewWithRunner(&multiRunner{viewErr: &gh.ExitError{Code: 1, Stderr: "no such pull request"}})
 	}
@@ -231,7 +264,7 @@ func TestPRMergeReportsAMergeFailure(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.NewGH = func() GH {
 		return gh.NewWithRunner(&multiRunner{
 			viewOut:  readyToMergePRJSON,
@@ -247,7 +280,7 @@ func TestPRMergeReportsAMergeFailure(t *testing.T) {
 }
 
 func TestPRMergeRefusesWrongArgumentCount(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"pr-merge", "--project", "project-1"}, env)
 
@@ -257,7 +290,7 @@ func TestPRMergeRefusesWrongArgumentCount(t *testing.T) {
 }
 
 func TestPRMergeRefusesAnUnknownFlag(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--bogus", "--project", "project-1"}, env)
 
@@ -268,7 +301,7 @@ func TestPRMergeRefusesAnUnknownFlag(t *testing.T) {
 }
 
 func TestPRMergeRefusesAnInvalidSliceID(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"pr-merge", "not-a-uuid", "--project", "project-1"}, env)
 
@@ -278,7 +311,7 @@ func TestPRMergeRefusesAnInvalidSliceID(t *testing.T) {
 }
 
 func TestPRMergeRefusesAnUnknownProject(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "nope"}, env)
 
@@ -289,11 +322,50 @@ func TestPRMergeRefusesAnUnknownProject(t *testing.T) {
 
 func TestPRMergeReportsAFailedRead(t *testing.T) {
 	api := &fakeAPI{getErr: errors.New("notion is down")}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load the slice") {
 		t.Errorf("err = %v, want the failed read named", err)
+	}
+}
+
+// The plan file is hydrated from the workspace before anything else, and a
+// workspace that will not answer that first read fails the command before
+// it ever gets to the slice itself.
+func TestPRMergeReportsAFailedHydrate(t *testing.T) {
+	api := &fakeAPI{dataSourceErr: errors.New("notion is down")}
+	env, _ := testEnv(testConfig(t), api)
+
+	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "hydrate the plan") {
+		t.Errorf("err = %v, want the failed hydrate named", err)
+	}
+}
+
+// The merge landed on GitHub whatever happens next, but the local write that
+// marks the slice Done is still a write to the plan file — and a plan whose
+// sync bookkeeping cannot be written fails that write, and the command says
+// so rather than pretending the merge was never recorded.
+func TestPRMergeReportsAFailedLocalMarkDone(t *testing.T) {
+	cfg := testConfig(t)
+	seedHydratedSlice(t, "project-1", testSliceID, "Write the UI", "In progress", func(db *sql.DB) {
+		if _, err := db.Exec(`UPDATE slices SET pr = ? WHERE id = ?`,
+			"https://github.test/craig/nat/pull/7", testSliceID); err != nil {
+			t.Fatalf("seed the PR: %v", err)
+		}
+		if _, err := db.Exec(`DROP TABLE sync`); err != nil {
+			t.Fatalf("break the plan's sync table: %v", err)
+		}
+	})
+	env, _ := testEnv(cfg, &fakeAPI{})
+	env.NewGH = func() GH { return gh.NewWithRunner(&multiRunner{viewOut: readyToMergePRJSON}) }
+
+	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "could not mark") {
+		t.Errorf("err = %v, want the failed local MarkDone write named", err)
 	}
 }

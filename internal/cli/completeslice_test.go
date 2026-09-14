@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,7 +10,34 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
+
+// hydratedCompleteEnv runs complete-slice --blocked once, against the given
+// config and API, so a plan file exists and is hydrated with sliceID still
+// held and in progress — and hands back a raw connection to that same file
+// so a test can break some table a second, already-hydrated call still has
+// to read or write.
+func hydratedCompleteEnv(t *testing.T, cfg config.Config, api *fakeAPI) *sql.DB {
+	t.Helper()
+	env, _ := testEnv(cfg, api)
+	env.In = strings.NewReader("")
+	if err := Run(context.Background(),
+		[]string{"complete-slice", sliceID, "--blocked", "--summary", "Waiting on something.", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("complete-slice (hydrate): %v", err)
+	}
+
+	path, err := store.LocalPath("project-1")
+	if err != nil {
+		t.Fatalf("LocalPath: %v", err)
+	}
+	db, err := sql.Open("sqlite3", "file:"+path)
+	if err != nil {
+		t.Fatalf("open the plan: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
 
 // sliceID is a Notion page ID, which is what the command insists a slice is
 // named by — enough of one to tell a mistyped argument from a real page.
@@ -40,8 +68,8 @@ func completableAPI() *fakeAPI {
 
 // completeEnv builds an Env for the command with nothing piped in, which is how
 // it is run when the summary comes from the flag.
-func completeEnv(api *fakeAPI) (Env, *strings.Builder) {
-	env, _ := testEnv(testClaimConfig(), api)
+func completeEnv(t testing.TB, api *fakeAPI) (Env, *strings.Builder) {
+	env, _ := testEnv(testClaimConfig(t), api)
 	var out strings.Builder
 	env.Out = &out
 	env.In = strings.NewReader("")
@@ -78,7 +106,7 @@ func blockTexts(t *testing.T, children []map[string]any) []string {
 
 func TestCompleteSliceFinishesTheSlice(t *testing.T) {
 	api := completableAPI()
-	env, out := completeEnv(api)
+	env, out := completeEnv(t, api)
 
 	err := Run(context.Background(), []string{
 		"complete-slice", sliceID, "--pr", "https://github.com/x/y/pull/1",
@@ -88,9 +116,6 @@ func TestCompleteSliceFinishesTheSlice(t *testing.T) {
 		t.Fatalf("complete-slice: %v", err)
 	}
 
-	if len(api.gets) != 1 || api.gets[0] != sliceID {
-		t.Errorf("fetched %v, want [%s]", api.gets, sliceID)
-	}
 	if len(api.appends) != 1 {
 		t.Fatalf("appends = %+v, want exactly one", api.appends)
 	}
@@ -138,7 +163,7 @@ Pull request recorded, still held by Craig Johnston. The slice goes Done when it
 // straight to Done: work with no pull request has no merge coming to mark it.
 func TestCompleteSliceWithNoEndingFlagsGoesStraightToDone(t *testing.T) {
 	api := completableAPI()
-	env, out := completeEnv(api)
+	env, out := completeEnv(t, api)
 
 	err := Run(context.Background(), []string{
 		"complete-slice", sliceID, "--summary", "Wrote the docs.", "--project", "project-1",
@@ -175,7 +200,7 @@ func equalLines(got, want []string) bool {
 // with the blank runs between them dropped rather than written as empty blocks.
 func TestCompleteSliceAppendsAParagraphPerChunk(t *testing.T) {
 	api := completableAPI()
-	env, _ := completeEnv(api)
+	env, _ := completeEnv(t, api)
 
 	err := Run(context.Background(), []string{
 		"complete-slice", sliceID, "--summary", "Wrote the renderer.\r\n\r\n\r\n\r\nFollow-up: style it.\n", "--project", "project-1",
@@ -194,7 +219,7 @@ func TestCompleteSliceAppendsAParagraphPerChunk(t *testing.T) {
 // shell argument gets in.
 func TestCompleteSliceReadsTheSummaryFromStdin(t *testing.T) {
 	api := completableAPI()
-	env, _ := completeEnv(api)
+	env, _ := completeEnv(t, api)
 	env.In = strings.NewReader("  Wrote the renderer.\n")
 
 	if err := Run(context.Background(), []string{"complete-slice", sliceID, "--project", "project-1"}, env); err != nil {
@@ -211,7 +236,7 @@ func TestCompleteSliceReadsTheSummaryFromStdin(t *testing.T) {
 // not move, and the slice stays with the agent that could not finish it.
 func TestCompleteSliceBlockedLeavesTheSliceInProgress(t *testing.T) {
 	api := completableAPI()
-	env, out := completeEnv(api)
+	env, out := completeEnv(t, api)
 
 	err := Run(context.Background(), []string{
 		"complete-slice", sliceID, "--blocked", "--summary", "The API has no endpoint for it.", "--project", "project-1",
@@ -244,7 +269,7 @@ Still in progress, held by Craig Johnston. The note is on the slice page.
 // branch either way, and the status is the only thing --blocked holds back.
 func TestCompleteSliceBlockedStillRecordsThePR(t *testing.T) {
 	api := completableAPI()
-	env, out := completeEnv(api)
+	env, out := completeEnv(t, api)
 
 	err := Run(context.Background(), []string{
 		"complete-slice", sliceID, "--blocked", "--pr", "https://github.com/x/y/pull/1",
@@ -276,7 +301,7 @@ func TestCompleteSliceWritesTheStatusShapeItRead(t *testing.T) {
 	api.pages["slices-ds"][0].Properties[notion.PropStatus] = notion.PropertyValue{
 		Type: notion.TypeStatus, Status: &notion.SelectOption{Name: notion.SliceInProgress},
 	}
-	env, _ := completeEnv(api)
+	env, _ := completeEnv(t, api)
 
 	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
 	if err != nil {
@@ -310,15 +335,15 @@ func TestCompleteSliceAcceptsEveryWayOfNamingTheSlice(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			api := completableAPI()
 			api.pages["slices-ds"][0].ID = tt.want
-			env, _ := completeEnv(api)
+			env, _ := completeEnv(t, api)
 
 			err := Run(context.Background(), []string{"complete-slice", tt.ref, "--summary", "Done.", "--project", "project-1"}, env)
 
 			if err != nil {
 				t.Fatalf("complete-slice %s: %v", tt.ref, err)
 			}
-			if len(api.gets) != 1 || api.gets[0] != tt.want {
-				t.Errorf("fetched %v, want [%s]", api.gets, tt.want)
+			if len(api.appends) != 1 || api.appends[0].id != tt.want {
+				t.Errorf("appended to %v, want [%s]", api.appends, tt.want)
 			}
 		})
 	}
@@ -334,7 +359,7 @@ func TestCompleteSliceTakesFlagsEitherSideOfTheSlice(t *testing.T) {
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			api := completableAPI()
-			env, _ := completeEnv(api)
+			env, _ := completeEnv(t, api)
 
 			if err := Run(context.Background(), args, env); err != nil {
 				t.Fatalf("complete-slice: %v", err)
@@ -383,7 +408,7 @@ func TestCompleteSliceRefusesASliceItDoesNotHold(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {tt.page}}}
-			env, out := completeEnv(api)
+			env, out := completeEnv(t, api)
 
 			err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
 
@@ -421,7 +446,7 @@ func TestCompleteSliceNeedsASummary(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := completableAPI()
-			env, out := completeEnv(api)
+			env, out := completeEnv(t, api)
 			env.In = strings.NewReader(tt.in)
 
 			err := Run(context.Background(), tt.args, env)
@@ -447,7 +472,7 @@ func TestCompleteSliceNeedsASummary(t *testing.T) {
 // still reported rather than read off a nil reader.
 func TestCompleteSliceWithoutAnInput(t *testing.T) {
 	api := completableAPI()
-	env, _ := completeEnv(api)
+	env, _ := completeEnv(t, api)
 	env.In = nil
 
 	err := Run(context.Background(), []string{"complete-slice", sliceID, "--project", "project-1"}, env)
@@ -457,58 +482,139 @@ func TestCompleteSliceWithoutAnInput(t *testing.T) {
 	}
 }
 
+// The one Notion read complete-slice can still fail on is the plan file's own
+// initial hydrate — every other read is local by the time the command runs.
 func TestCompleteSliceReportsAFailedCall(t *testing.T) {
+	boom := errors.New("notion: 500")
+	api := completableAPI()
+	api.dataSourceErr = boom
+	env, out := completeEnv(t, api)
+
+	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
+
+	if !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want %v", err, boom)
+	}
+	if !strings.Contains(err.Error(), "hydrate the plan") {
+		t.Errorf("err = %q, want it to say the plan could not be hydrated", err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("output = %q, want nothing", out.String())
+	}
+}
+
+// A push to the workspace that fails does not fail the command: the write
+// already landed in the local plan file, so complete-slice reports success
+// and leaves the slice dirty for the next sync to resend.
+func TestCompleteSliceLeavesTheSliceDirtyOnAFailedPush(t *testing.T) {
 	boom := errors.New("notion: 500")
 	tests := []struct {
 		name string
 		api  func() *fakeAPI
-		want string
 	}{
-		{
-			name: "the slice",
-			api: func() *fakeAPI {
-				api := completableAPI()
-				api.getErr = boom
-				return api
-			},
-			want: "load the slice",
-		},
-		{
-			name: "the note",
-			api: func() *fakeAPI {
-				api := completableAPI()
-				api.appendErr = boom
-				return api
-			},
-			want: "append the note to the slice",
-		},
-		{
-			name: "the status",
-			api: func() *fakeAPI {
-				api := completableAPI()
-				api.updateErr = boom
-				return api
-			},
-			want: "close out the slice",
-		},
+		{name: "the note", api: func() *fakeAPI {
+			api := completableAPI()
+			api.appendErr = boom
+			return api
+		}},
+		{name: "the status", api: func() *fakeAPI {
+			api := completableAPI()
+			api.updateErr = boom
+			return api
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := tt.api()
-			env, out := completeEnv(api)
+			env, out := completeEnv(t, api)
 
 			err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
+			if err != nil {
+				t.Fatalf("complete-slice: %v", err)
+			}
+			if out.Len() == 0 {
+				t.Errorf("output = %q, want the outcome reported despite the failed push", out.String())
+			}
 
-			if !errors.Is(err, boom) {
-				t.Fatalf("err = %v, want %v", err, boom)
+			path, err := store.LocalPath("project-1")
+			if err != nil {
+				t.Fatal(err)
 			}
-			if !strings.Contains(err.Error(), tt.want) {
-				t.Errorf("err = %q, want it to mention %q", err, tt.want)
+			local, err := store.OpenLocal(path)
+			if err != nil {
+				t.Fatal(err)
 			}
-			if out.Len() != 0 {
-				t.Errorf("output = %q, want nothing", out.String())
+			defer func() { _ = local.Close() }()
+			dirty, err := local.Dirty(context.Background(), sliceID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !dirty {
+				t.Error("dirty = false, want the slice left dirty for the next sync")
 			}
 		})
+	}
+}
+
+// A plan already hydrated reads its shape from the file, not the workspace —
+// so a failure there is a failure of the file, not anything a fakeAPI can
+// still stage.
+func TestCompleteSliceReportsAFailedShapeReadOnAnAlreadyHydratedPlan(t *testing.T) {
+	cfg := testClaimConfig(t)
+	db := hydratedCompleteEnv(t, cfg, completableAPI())
+	if _, err := db.Exec(`DROP TABLE milestones`); err != nil {
+		t.Fatal(err)
+	}
+
+	env, _ := testEnv(cfg, completableAPI())
+	env.In = strings.NewReader("")
+	err := Run(context.Background(),
+		[]string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "milestones") {
+		t.Errorf("err = %v, want the broken read reported", err)
+	}
+}
+
+// Once the plan is hydrated, the slice itself is read from the file — so a
+// failure there is a failure of the file too.
+func TestCompleteSliceReportsAFailedSliceReadOnAnAlreadyHydratedPlan(t *testing.T) {
+	cfg := testClaimConfig(t)
+	db := hydratedCompleteEnv(t, cfg, completableAPI())
+	for _, stmt := range []string{`DROP TABLE slice_deps`, `DROP TABLE sync`, `DROP TABLE slices`} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	env, _ := testEnv(cfg, completableAPI())
+	env.In = strings.NewReader("")
+	err := Run(context.Background(),
+		[]string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
+
+	if err == nil {
+		t.Error("err = nil, want the broken read reported")
+	}
+}
+
+// Every slice write lands in the file first — [store.Mirrored]'s
+// write-through rule — so a file that cannot even record that write fails
+// the command, unlike a push to the workspace afterward, whose own failure
+// is only logged.
+func TestCompleteSliceReportsAFailedLocalWrite(t *testing.T) {
+	cfg := testClaimConfig(t)
+	db := hydratedCompleteEnv(t, cfg, completableAPI())
+	if _, err := db.Exec(`DROP TABLE sync`); err != nil {
+		t.Fatal(err)
+	}
+
+	env, _ := testEnv(cfg, completableAPI())
+	env.In = strings.NewReader("")
+	err := Run(context.Background(),
+		[]string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
+
+	if err == nil {
+		t.Error("err = nil, want the failed local write reported")
 	}
 }
 
@@ -517,7 +623,7 @@ func TestCompleteSliceReportsAFailedCall(t *testing.T) {
 func TestCompleteSliceLeavesTheStatusAloneWhenTheNoteFails(t *testing.T) {
 	api := completableAPI()
 	api.appendErr = errors.New("notion: 500")
-	env, _ := completeEnv(api)
+	env, _ := completeEnv(t, api)
 
 	_ = Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
 
@@ -528,7 +634,7 @@ func TestCompleteSliceLeavesTheStatusAloneWhenTheNoteFails(t *testing.T) {
 
 func TestCompleteSliceReportsAnUnreadableSummary(t *testing.T) {
 	api := completableAPI()
-	env, _ := completeEnv(api)
+	env, _ := completeEnv(t, api)
 	env.In = failingReader{}
 
 	err := Run(context.Background(), []string{"complete-slice", sliceID, "--project", "project-1"}, env)
@@ -552,7 +658,7 @@ func (failingReader) Read([]byte) (int, error) { return 0, errRead }
 // config the board wrote. Without it nothing is read and nothing is written.
 func TestCompleteSliceNeedsAnAssignee(t *testing.T) {
 	api := completableAPI()
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.In = strings.NewReader("")
 
 	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
@@ -568,7 +674,7 @@ func TestCompleteSliceNeedsAnAssignee(t *testing.T) {
 // Setup that has not happened yet is reported before the slice is touched.
 func TestCompleteSliceReportsUnfinishedSetup(t *testing.T) {
 	api := completableAPI()
-	env, _ := completeEnv(api)
+	env, _ := completeEnv(t, api)
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 
 	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
@@ -582,7 +688,7 @@ func TestCompleteSliceReportsUnfinishedSetup(t *testing.T) {
 }
 
 func TestCompleteSliceReportsAFailedWrite(t *testing.T) {
-	env, _ := completeEnv(completableAPI())
+	env, _ := completeEnv(t, completableAPI())
 	env.Out = failingWriter{}
 
 	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
@@ -610,7 +716,7 @@ func TestCompleteSliceRejectsAMisusedCommandLine(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := completableAPI()
-			env, out := completeEnv(api)
+			env, out := completeEnv(t, api)
 
 			err := Run(context.Background(), tt.args, env)
 
@@ -644,7 +750,7 @@ func TestCompleteSliceClosesOutAProjectWithNoAssigneeColumn(t *testing.T) {
 		},
 		dataSources: map[string]notion.DataSource{"slices-ds": soloSlicesDS()},
 	}
-	env, out := completeEnv(api)
+	env, out := completeEnv(t, api)
 
 	if err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("complete-slice: %v", err)
@@ -670,7 +776,7 @@ func TestCompleteSliceRefusesATodoSliceOfAProjectWithNoAssigneeColumn(t *testing
 		},
 		dataSources: map[string]notion.DataSource{"slices-ds": soloSlicesDS()},
 	}
-	env, _ := completeEnv(api)
+	env, _ := completeEnv(t, api)
 
 	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "is Todo, not In progress") {
@@ -687,7 +793,7 @@ func TestCompleteSliceClosesOutASliceOfAOnePagePlan(t *testing.T) {
 		pages:       map[string][]notion.Page{"slices-ds": {slice}},
 		dataSources: map[string]notion.DataSource{"slices-ds": selectMilestoneSlicesDS("M1: Client", "M2: Board")},
 	}
-	env, out := completeEnv(api)
+	env, out := completeEnv(t, api)
 
 	if err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("complete-slice: %v", err)
@@ -710,7 +816,7 @@ func TestCompleteSliceClosesOutASliceOfAOnePagePlan(t *testing.T) {
 func TestCompleteSliceReportsAFailedSchemaRead(t *testing.T) {
 	api := completableAPI()
 	api.dataSourceErr = errors.New("boom")
-	env, _ := completeEnv(api)
+	env, _ := completeEnv(t, api)
 
 	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "load the slices schema") {
@@ -726,7 +832,7 @@ func TestCompleteSliceReportsAFailedSchemaRead(t *testing.T) {
 // rather than as the last word on the slice.
 func TestCompleteSliceHandsBackABranch(t *testing.T) {
 	api := completableAPI()
-	env, out := completeEnv(api)
+	env, out := completeEnv(t, api)
 
 	err := Run(context.Background(), []string{
 		"complete-slice", sliceID, "--branch", " slice/render-the-board ",
@@ -780,7 +886,7 @@ Handed back for review, still held by Craig Johnston. The summary is on the slic
 // approving the branch.
 func TestCompleteSliceRecordsAPRDescription(t *testing.T) {
 	api := completableAPI()
-	env, _ := completeEnv(api)
+	env, _ := completeEnv(t, api)
 
 	err := Run(context.Background(), []string{
 		"complete-slice", sliceID, "--branch", "slice/render-the-board",
@@ -811,7 +917,7 @@ func TestCompleteSliceRecordsAPRDescription(t *testing.T) {
 // and since there is one stdin, the summary has to be the flag then.
 func TestCompleteSliceReadsThePRDescriptionFromStdin(t *testing.T) {
 	api := completableAPI()
-	env, _ := completeEnv(api)
+	env, _ := completeEnv(t, api)
 	env.In = strings.NewReader("Render the board\n\nDraws the plan.\n")
 
 	err := Run(context.Background(), []string{
@@ -838,7 +944,7 @@ func TestCompleteSliceReadsThePRDescriptionFromStdin(t *testing.T) {
 // beside it is a misuse rather than a summary read from the same stream.
 func TestCompleteSlicePRDescriptionFromStdinNeedsASummaryFlag(t *testing.T) {
 	api := completableAPI()
-	env, out := completeEnv(api)
+	env, out := completeEnv(t, api)
 	env.In = strings.NewReader("Render the board\n")
 
 	err := Run(context.Background(), []string{
@@ -861,7 +967,7 @@ func TestCompleteSlicePRDescriptionFromStdinNeedsASummaryFlag(t *testing.T) {
 // it stops the command before anything is written.
 func TestCompleteSliceReportsAnUnreadablePRDescription(t *testing.T) {
 	api := completableAPI()
-	env, _ := completeEnv(api)
+	env, _ := completeEnv(t, api)
 	env.In = failingReader{}
 
 	err := Run(context.Background(), []string{
@@ -892,7 +998,7 @@ func TestCompleteSlicePRDescriptionWithNothingOnStdin(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			api := completableAPI()
-			env, _ := completeEnv(api)
+			env, _ := completeEnv(t, api)
 			tt.in(&env)
 
 			err := Run(context.Background(), []string{
@@ -929,7 +1035,7 @@ func TestCompleteSliceRefusesAPRDescriptionWithoutABranch(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			api := completableAPI()
-			env, out := completeEnv(api)
+			env, out := completeEnv(t, api)
 
 			args := append([]string{"complete-slice", sliceID, "--summary", "Done.",
 				"--pr-description", "Render the board", "--project", "project-1"}, tt.args...)
@@ -974,7 +1080,7 @@ func TestCompleteSliceRefusesTwoEndingsAtOnce(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := completableAPI()
-			env, out := completeEnv(api)
+			env, out := completeEnv(t, api)
 
 			args := append([]string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, tt.args...)
 			err := Run(context.Background(), args, env)
@@ -1005,7 +1111,7 @@ func TestCompleteSliceRefusesABranchWithNoColumnToHoldIt(t *testing.T) {
 	ds := assigneeSlicesDS()
 	ds.Properties[notion.PropBranch] = notion.PropertySchema{Type: "url"}
 	api.dataSources = map[string]notion.DataSource{"slices-ds": ds}
-	env, out := completeEnv(api)
+	env, out := completeEnv(t, api)
 
 	err := Run(context.Background(), []string{
 		"complete-slice", sliceID, "--branch", "slice/x", "--summary", "Done.", "--project", "project-1",

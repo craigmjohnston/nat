@@ -41,7 +41,10 @@ func milestoneAdd(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	st := store.Over(env.NewClient(env.Tokens.Token))
+	st, err := env.storeFor(ctx, projectID, project)
+	if err != nil {
+		return err
+	}
 	sp := storeProject(projectID, project)
 
 	shape, err := st.Shape(ctx, sp)
@@ -110,7 +113,10 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	st := store.Over(env.NewClient(env.Tokens.Token))
+	st, err := env.storeFor(ctx, projectID, project)
+	if err != nil {
+		return err
+	}
 	sp := storeProject(projectID, project)
 
 	shape, err := st.Shape(ctx, sp)

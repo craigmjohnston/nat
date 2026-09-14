@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 func TestSliceLaunchRefusesDone(t *testing.T) {
@@ -23,7 +25,7 @@ func TestSliceLaunchRefusesDone(t *testing.T) {
 			"slices-ds": {slicePage(testSliceID, "Write the UI", notion.SliceDone, "m1", "", "")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	var out strings.Builder
 	env.Out = &out
 
@@ -39,7 +41,7 @@ func TestSliceLaunchRefusesDone(t *testing.T) {
 }
 
 func TestSliceLaunchRefusesWrongArgumentCount(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	var out strings.Builder
 	env.Out = &out
 
@@ -66,7 +68,7 @@ func TestSliceLaunchRefusesBlocked(t *testing.T) {
 			},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	var out strings.Builder
 	env.Out = &out
 
@@ -87,7 +89,7 @@ func TestSliceLaunchRefusesAlreadyRunning(t *testing.T) {
 			"slices-ds": {slicePage(testSliceID, "Write the UI", notion.SliceTodo, "m1", "", "")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &agentTestRunner{
 		liveSessions: map[string]string{testSliceID: "nat-abcd1234"},
 	}
@@ -112,7 +114,7 @@ func TestSliceLaunchRefusesNoAssignee(t *testing.T) {
 			"slices-ds": {slicePage(testSliceID, "Write the UI", notion.SliceTodo, "m1", "", "")},
 		},
 	}
-	cfg := testClaimConfig()
+	cfg := testClaimConfig(t)
 	cfg.AssigneeUserID = ""
 	env, _ := testEnv(cfg, api)
 	var out strings.Builder
@@ -130,7 +132,7 @@ func TestSliceLaunchRefusesNoAssignee(t *testing.T) {
 }
 
 func TestSliceLaunchRefusesAnUnknownFlag(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--bogus", "--project", "project-1"}, env)
 
@@ -141,7 +143,7 @@ func TestSliceLaunchRefusesAnUnknownFlag(t *testing.T) {
 }
 
 func TestSliceLaunchRefusesAnInvalidSliceID(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"slice-launch", "not-a-uuid", "--project", "project-1"}, env)
 
@@ -151,7 +153,7 @@ func TestSliceLaunchRefusesAnInvalidSliceID(t *testing.T) {
 }
 
 func TestSliceLaunchRefusesAnUnknownProject(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "nope"}, env)
 
@@ -162,7 +164,7 @@ func TestSliceLaunchRefusesAnUnknownProject(t *testing.T) {
 
 func TestSliceLaunchReportsAFailedRead(t *testing.T) {
 	api := &fakeAPI{getErr: errors.New("notion is down")}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
 
@@ -174,13 +176,17 @@ func TestSliceLaunchReportsAFailedRead(t *testing.T) {
 // A plan that will not read costs the launch its milestone digest rather
 // than the launch itself: the agent still starts, with no digest section
 // filled in.
-func TestSliceLaunchGoesAheadWithoutAMilestoneDigestWhenThePlanFails(t *testing.T) {
+// The plan read this used to survive — falling back to no milestone digest —
+// is now the same read [store.ForProject] makes to hydrate the local plan in
+// the first place, before slice-launch reads the slice at all: a workspace
+// that will not answer it fails the whole command, not just the digest.
+func TestSliceLaunchFailsWhenThePlanCannotBeHydrated(t *testing.T) {
 	dir := t.TempDir()
 	api := &fakeAPI{
 		pages:    map[string][]notion.Page{"slices-ds": {slicePageForLaunch(dir)}},
 		queryErr: map[string]error{"slices-ds": errors.New("notion: 500")},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &agentTestRunner{}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 	env.NewGit = func() GitCLI { return nil }
@@ -189,11 +195,77 @@ func TestSliceLaunchGoesAheadWithoutAMilestoneDigestWhenThePlanFails(t *testing.
 	env.Out = &out
 
 	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
+	if err == nil || !strings.Contains(err.Error(), "notion: 500") {
+		t.Fatalf("err = %v, want the failed hydrate reported", err)
+	}
+	if len(runner.launchArgs) != 0 {
+		t.Error("want no agent launched: the plan could not even be read")
+	}
+}
+
+// The plan is read a second time, after the slice itself, purely for the
+// milestone digest — a local read with nothing to do with the hydrate above.
+// A plan that cannot answer that second read costs the launch only its
+// digest, not the launch itself: the agent still starts, with no digest
+// section filled in.
+func TestSliceLaunchGoesAheadWithoutADigestWhenThatSecondPlanReadFails(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testClaimConfig(t)
+	seedHydratedSlice(t, "project-1", testSliceID, "Write the UI", "Todo", func(db *sql.DB) {
+		if _, err := db.Exec(`UPDATE slices SET repo = ? WHERE id = ?`, dir, testSliceID); err != nil {
+			t.Fatalf("seed the repo: %v", err)
+		}
+		if _, err := db.Exec(`DROP TABLE milestones`); err != nil {
+			t.Fatalf("break the plan's milestones table: %v", err)
+		}
+	})
+	env, _ := testEnv(cfg, &fakeAPI{})
+	runner := &agentTestRunner{launchPane: "%9"}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+	env.NewGit = func() GitCLI { return nil }
+	env.NewWorktrees = func() actions.Worktrees { return nil }
+	var out strings.Builder
+	env.Out = &out
+
+	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("slice-launch: %v", err)
+		t.Fatalf("slice-launch: %v, want it to launch anyway with no digest", err)
 	}
 	if len(runner.launchArgs) == 0 {
-		t.Error("want the agent launched despite the failed plan read")
+		t.Error("want the agent launched despite the failed digest read")
+	}
+}
+
+// A launch that claims nothing and starts nothing — here, a claim whose
+// local write itself fails — reports itself as the toast [actions.Launch]
+// already built, the same way the board would show it, rather than a bare
+// "no error" success.
+func TestSliceLaunchReportsALaunchThatClaimedNothing(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testClaimConfig(t)
+	seedHydratedSlice(t, "project-1", testSliceID, "Write the UI", "Todo", func(db *sql.DB) {
+		if _, err := db.Exec(`UPDATE slices SET repo = ? WHERE id = ?`, dir, testSliceID); err != nil {
+			t.Fatalf("seed the repo: %v", err)
+		}
+		if _, err := db.Exec(`DROP TABLE sync`); err != nil {
+			t.Fatalf("break the plan's sync table: %v", err)
+		}
+	})
+	env, _ := testEnv(cfg, &fakeAPI{})
+	runner := &agentTestRunner{launchPane: "%9"}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+	env.NewGit = func() GitCLI { return nil }
+	env.NewWorktrees = func() actions.Worktrees { return nil }
+	var out strings.Builder
+	env.Out = &out
+
+	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
+
+	if err == nil {
+		t.Fatal("slice-launch over a plan that cannot claim the slice: want an error")
+	}
+	if len(runner.launchArgs) != 0 {
+		t.Error("want no agent launched: the claim never landed")
 	}
 }
 
@@ -208,7 +280,7 @@ func slicePageForLaunch(dir string) notion.Page {
 func TestSliceLaunchClaimsAndLaunches(t *testing.T) {
 	dir := t.TempDir()
 	api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {slicePageForLaunch(dir)}}}
-	cfg := testClaimConfig()
+	cfg := testClaimConfig(t)
 	cfg.SliceAgent = config.AgentModel{Model: "sonnet", Effort: "high"}
 	env, _ := testEnv(cfg, api)
 	runner := &agentTestRunner{launchPane: "%9"}
@@ -261,7 +333,7 @@ func TestSliceLaunchWritesTheFullPromptContext(t *testing.T) {
 	dir := t.TempDir()
 	page := slicePageForLaunch(dir)
 	api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {page}}}
-	cfg := testClaimConfig()
+	cfg := testClaimConfig(t)
 	env, _ := testEnv(cfg, api)
 	runner := &agentTestRunner{}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
@@ -300,7 +372,7 @@ func TestSliceLaunchWritesTheFullPromptContext(t *testing.T) {
 func TestSliceLaunchModelFlagsOverrideConfig(t *testing.T) {
 	dir := t.TempDir()
 	api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {slicePageForLaunch(dir)}}}
-	cfg := testClaimConfig()
+	cfg := testClaimConfig(t)
 	cfg.SliceAgent = config.AgentModel{Model: "sonnet", Effort: "low"}
 	env, _ := testEnv(cfg, api)
 	runner := &agentTestRunner{}
@@ -332,7 +404,7 @@ func TestSliceLaunchModelFlagsOverrideConfig(t *testing.T) {
 func TestSliceLaunchThemeFlagReachesTheAgent(t *testing.T) {
 	dir := t.TempDir()
 	api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {slicePageForLaunch(dir)}}}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &agentTestRunner{}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 	env.NewGit = func() GitCLI { return nil }
@@ -359,7 +431,7 @@ func TestSliceLaunchThemeFlagReachesTheAgent(t *testing.T) {
 func TestSliceLaunchWithNoThemeCarriesNoOverride(t *testing.T) {
 	dir := t.TempDir()
 	api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {slicePageForLaunch(dir)}}}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &agentTestRunner{}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 	env.NewGit = func() GitCLI { return nil }
@@ -380,7 +452,7 @@ func TestSliceLaunchWithNoThemeCarriesNoOverride(t *testing.T) {
 func TestSliceLaunchRefusesAnInvalidTheme(t *testing.T) {
 	dir := t.TempDir()
 	api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {slicePageForLaunch(dir)}}}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	err := Run(context.Background(), []string{
 		"slice-launch", testSliceID, "--theme", "solarized", "--project", "project-1",
@@ -393,7 +465,7 @@ func TestSliceLaunchRefusesAnInvalidTheme(t *testing.T) {
 func TestSliceLaunchJSON(t *testing.T) {
 	dir := t.TempDir()
 	api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {slicePageForLaunch(dir)}}}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 	env.NewGit = func() GitCLI { return nil }
 	env.NewWorktrees = func() actions.Worktrees { return nil }
@@ -419,29 +491,59 @@ func TestSliceLaunchJSON(t *testing.T) {
 	}
 }
 
-func TestSliceLaunchReportsAClaimFailure(t *testing.T) {
+// A claim's push to the workspace failing no longer stops a launch: the claim
+// lands in the local plan first, and that write is what claiming answers for
+// now. The slice is left dirty for a later sync to send what the push could
+// not.
+func TestSliceLaunchClaimsLocallyAndLaunchesEvenWhenThePushFails(t *testing.T) {
 	dir := t.TempDir()
+	cfg := testClaimConfig(t)
 	api := &fakeAPI{
 		pages:     map[string][]notion.Page{"slices-ds": {slicePageForLaunch(dir)}},
 		updateErr: errors.New("notion is down"),
 	}
-	env, _ := testEnv(testClaimConfig(), api)
-	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
+	env, _ := testEnv(cfg, api)
+	runner := &agentTestRunner{}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 	env.NewGit = func() GitCLI { return nil }
 	env.NewWorktrees = func() actions.Worktrees { return nil }
 
 	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
 
-	want := `Could not claim "Write the UI": notion is down — no agent was launched.`
-	if err == nil || err.Error() != want {
-		t.Errorf("err = %v, want %q", err, want)
+	if err != nil {
+		t.Fatalf("slice-launch: %v, want it to succeed: the claim landed locally even though "+
+			"the push to the workspace failed", err)
+	}
+	if len(runner.launchArgs) == 0 {
+		t.Error("want the agent launched: the claim landed locally")
+	}
+
+	path, err := store.LocalPath("project-1")
+	if err != nil {
+		t.Fatalf("resolve the plan path: %v", err)
+	}
+	local, err := store.OpenLocal(path)
+	if err != nil {
+		t.Fatalf("open the plan: %v", err)
+	}
+	defer func() {
+		if err := local.Close(); err != nil {
+			t.Errorf("close the plan: %v", err)
+		}
+	}()
+	dirty, err := local.Dirty(context.Background(), testSliceID)
+	if err != nil {
+		t.Fatalf("read whether the slice is dirty: %v", err)
+	}
+	if !dirty {
+		t.Error("slice not marked dirty, want the failed push left for a later sync to send")
 	}
 }
 
 func TestSliceLaunchReportsATmuxFailure(t *testing.T) {
 	dir := t.TempDir()
 	api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {slicePageForLaunch(dir)}}}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &agentTestRunner{launchErr: "duplicate session"}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 	env.NewGit = func() GitCLI { return nil }

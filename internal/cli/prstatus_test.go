@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -11,6 +12,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // fakePRReader stands in for gh's own PR listing, answered by directory —
@@ -78,7 +80,7 @@ func TestPRStatusReportsReadiness(t *testing.T) {
 			},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
 		"/tmp/nat": {
 			"https://github.test/craig/nat/pull/1": {Approved: false, Mergeable: true},
@@ -118,7 +120,7 @@ func TestPRStatusJSON(t *testing.T) {
 			},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
 		"/tmp/nat": {"https://github.test/craig/nat/pull/1": {Approved: false, Mergeable: false}},
 	}}
@@ -146,7 +148,7 @@ func TestPRStatusNoSlicesWorthReading(t *testing.T) {
 			"slices-ds": {slicePageForStatus("s1", "Not out yet", notion.SliceTodo, "", "")},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	reader := &fakePRReader{}
 	env.NewGH = func() GH { return reader }
 
@@ -169,7 +171,7 @@ func TestPRStatusLeavesAnUnreadableRepositoryOut(t *testing.T) {
 				"https://github.test/craig/nat/pull/1")},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	reader := &fakePRReader{err: map[string]error{"/tmp/nat": errors.New("gh: not authenticated")}}
 	env.NewGH = func() GH { return reader }
 
@@ -192,7 +194,7 @@ func TestPRStatusMarksAMergedAbsentPRDone(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	var nudges int
 	env.Nudge = func() { nudges++ }
 	reader := &fakePRReader{
@@ -232,7 +234,7 @@ func TestPRStatusReopensADoneSliceWithAnOpenPR(t *testing.T) {
 				"https://github.test/craig/nat/pull/2")},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	var nudges int
 	env.Nudge = func() { nudges++ }
 	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
@@ -259,9 +261,13 @@ func TestPRStatusReopensADoneSliceWithAnOpenPR(t *testing.T) {
 	}
 }
 
-// A reopen that fails is logged and changes nothing else: the readiness
-// reading still reports and the next run tries the write again.
-func TestPRStatusLeavesAnUnreopenableDoneSliceAlone(t *testing.T) {
+// ReopenUnmerged writes the local plan first, exactly as every other single-
+// slice write does now: a push to the workspace that fails no longer leaves
+// the slice unreopened, only unsent — the local write lands, the readiness
+// reading still reports, and the slice is left dirty for a later sync to send
+// what the push could not.
+func TestPRStatusReopensLocallyEvenWhenThePushFails(t *testing.T) {
+	cfg := testConfig(t)
 	api := &fakeAPI{
 		pages: map[string][]notion.Page{
 			"slices-ds": {slicePageForStatus("s2", "Awaiting merge", notion.SliceDone, "",
@@ -269,7 +275,7 @@ func TestPRStatusLeavesAnUnreopenableDoneSliceAlone(t *testing.T) {
 		},
 		updateErr: errors.New("notion is down"),
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(cfg, api)
 	var nudges int
 	env.Nudge = func() { nudges++ }
 	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
@@ -281,11 +287,32 @@ func TestPRStatusLeavesAnUnreopenableDoneSliceAlone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pr-status: %v", err)
 	}
-	if nudges != 0 {
-		t.Errorf("nudges = %d, want none for a write that failed", nudges)
+	if nudges != 1 {
+		t.Errorf("nudges = %d, want one for the local write that landed", nudges)
 	}
 	if !strings.Contains(out.String(), "Awaiting merge — ready to merge — ") {
-		t.Errorf("output = %q, want the readiness reported despite the failed write", out.String())
+		t.Errorf("output = %q, want the readiness reported", out.String())
+	}
+
+	path, err := store.LocalPath("project-1")
+	if err != nil {
+		t.Fatalf("resolve the plan path: %v", err)
+	}
+	local, err := store.OpenLocal(path)
+	if err != nil {
+		t.Fatalf("open the plan: %v", err)
+	}
+	defer func() {
+		if err := local.Close(); err != nil {
+			t.Errorf("close the plan: %v", err)
+		}
+	}()
+	dirty, err := local.Dirty(context.Background(), "s2")
+	if err != nil {
+		t.Fatalf("read whether the slice is dirty: %v", err)
+	}
+	if !dirty {
+		t.Error("slice not marked dirty, want the failed push left for a later sync to send")
 	}
 }
 
@@ -298,7 +325,7 @@ func TestPRStatusLeavesAClosedAbsentPRAlone(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	var nudges int
 	env.Nudge = func() { nudges++ }
 	reader := &fakePRReader{
@@ -324,7 +351,7 @@ func TestPRStatusLeavesAnUnviewableAbsentPRAlone(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	reader := &fakePRReader{
 		open:    map[string]map[string]gh.PRStatus{"/tmp/nat": {}},
 		viewErr: errors.New("gh: not authenticated"),
@@ -351,7 +378,7 @@ func TestPRStatusGroupsRepositoriesBySliceRepo(t *testing.T) {
 			},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
 		"/repo/one": {"https://github.test/craig/nat/pull/1": {Approved: true, Mergeable: true}},
 		"/repo/two": {"https://github.test/craig/nat/pull/2": {Approved: true, Mergeable: true}},
@@ -367,7 +394,7 @@ func TestPRStatusGroupsRepositoriesBySliceRepo(t *testing.T) {
 }
 
 func TestPRStatusRefusesAnUnknownFlag(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"pr-status", "--bogus", "--project", "project-1"}, env)
 
@@ -378,7 +405,7 @@ func TestPRStatusRefusesAnUnknownFlag(t *testing.T) {
 }
 
 func TestPRStatusRefusesAnUnknownProject(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"pr-status", "--project", "nope"}, env)
 
@@ -389,12 +416,68 @@ func TestPRStatusRefusesAnUnknownProject(t *testing.T) {
 
 func TestPRStatusReportsAFailedQuery(t *testing.T) {
 	api := &fakeAPI{queryErr: map[string]error{"slices-ds": errors.New("notion is down")}}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load slices") {
 		t.Errorf("err = %v, want the failed read named", err)
+	}
+}
+
+// A Done slice whose reopen cannot even be written locally — not merely a
+// push that failed, which is left dirty and retried, but the local write
+// itself refusing — is logged and left alone: the readiness reading still
+// reports it, nothing is nudged, and the run itself still succeeds, since
+// nothing else it read depends on this one slice's own state.
+func TestPRStatusLeavesADoneSliceAloneWhenItCannotBeReopenedLocally(t *testing.T) {
+	cfg := testConfig(t)
+	seedHydratedSlice(t, "project-1", testSliceID, "Awaiting merge", "Done", func(db *sql.DB) {
+		if _, err := db.Exec(`UPDATE slices SET pr = ? WHERE id = ?`,
+			"https://github.test/craig/nat/pull/2", testSliceID); err != nil {
+			t.Fatalf("seed the PR: %v", err)
+		}
+		if _, err := db.Exec(`DROP TABLE sync`); err != nil {
+			t.Fatalf("break the plan's sync table: %v", err)
+		}
+	})
+	env, out := testEnv(cfg, &fakeAPI{})
+	var nudges int
+	env.Nudge = func() { nudges++ }
+	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
+		"/tmp/nat": {"https://github.test/craig/nat/pull/2": {Approved: true, Mergeable: true}},
+	}}
+	env.NewGH = func() GH { return reader }
+
+	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
+
+	if err != nil {
+		t.Fatalf("pr-status: %v, want it to succeed despite the one slice it could not reopen", err)
+	}
+	if nudges != 0 {
+		t.Errorf("nudges = %d, want none: nothing was actually written", nudges)
+	}
+	if !strings.Contains(out.String(), "Awaiting merge — ready to merge — ") {
+		t.Errorf("output = %q, want the readiness reported despite the failed reopen", out.String())
+	}
+}
+
+// The plan is read from the local file once it has been hydrated, and a
+// file that cannot even answer that fails the command outright — there is
+// nothing to read pull requests for without a plan.
+func TestPRStatusReportsAFailedLocalPlanRead(t *testing.T) {
+	cfg := testConfig(t)
+	seedHydratedSlice(t, "project-1", testSliceID, "Write the UI", "In progress", func(db *sql.DB) {
+		if _, err := db.Exec(`DROP TABLE milestones`); err != nil {
+			t.Fatalf("break the plan's milestones table: %v", err)
+		}
+	})
+	env, _ := testEnv(cfg, &fakeAPI{})
+
+	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "load slices") {
+		t.Errorf("err = %v, want the failed local read named", err)
 	}
 }
 

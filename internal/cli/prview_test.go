@@ -70,7 +70,7 @@ func TestPRViewRefusesNoPullRequest(t *testing.T) {
 			"slices-ds": {slicePageWithPR(testSliceID, "Write the UI", notion.SliceInProgress, "")},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"pr-view", testSliceID, "--project", "project-1"}, env)
 
@@ -86,7 +86,7 @@ func TestPRViewReadsThePullRequest(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	runner := &fakeGHRunner{out: fullPROpenJSON}
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
@@ -115,7 +115,7 @@ func TestPRViewOfABarePullRequest(t *testing.T) {
 				"https://github.test/craig/nat/pull/9")},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	env.NewGH = func() GH { return gh.NewWithRunner(&fakeGHRunner{out: barePROpenJSON}) }
 
 	err := Run(context.Background(), []string{"pr-view", testSliceID, "--project", "project-1"}, env)
@@ -139,7 +139,7 @@ func TestPRViewJSON(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	env.NewGH = func() GH { return gh.NewWithRunner(&fakeGHRunner{out: fullPROpenJSON}) }
 
 	err := Run(context.Background(), []string{"pr-view", testSliceID, "--json", "--project", "project-1"}, env)
@@ -176,7 +176,7 @@ func TestPRViewReportsAGHFailure(t *testing.T) {
 				"https://github.test/craig/nat/pull/7")},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.NewGH = func() GH {
 		return gh.NewWithRunner(&fakeGHRunner{err: &gh.ExitError{Code: 1, Stderr: "no such pull request"}})
 	}
@@ -189,7 +189,7 @@ func TestPRViewReportsAGHFailure(t *testing.T) {
 }
 
 func TestPRViewRefusesWrongArgumentCount(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"pr-view", "--project", "project-1"}, env)
 
@@ -199,7 +199,7 @@ func TestPRViewRefusesWrongArgumentCount(t *testing.T) {
 }
 
 func TestPRViewRefusesAnUnknownFlag(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"pr-view", testSliceID, "--bogus", "--project", "project-1"}, env)
 
@@ -210,7 +210,7 @@ func TestPRViewRefusesAnUnknownFlag(t *testing.T) {
 }
 
 func TestPRViewRefusesAnInvalidSliceID(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"pr-view", "not-a-uuid", "--project", "project-1"}, env)
 
@@ -220,7 +220,7 @@ func TestPRViewRefusesAnInvalidSliceID(t *testing.T) {
 }
 
 func TestPRViewRefusesAnUnknownProject(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"pr-view", testSliceID, "--project", "nope"}, env)
 
@@ -231,7 +231,7 @@ func TestPRViewRefusesAnUnknownProject(t *testing.T) {
 
 func TestPRViewReportsAFailedRead(t *testing.T) {
 	api := &fakeAPI{getErr: errors.New("notion is down")}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"pr-view", testSliceID, "--project", "project-1"}, env)
 
@@ -254,5 +254,19 @@ func TestPRStateWord(t *testing.T) {
 		if got := prStateWord(tt.pr); got != tt.want {
 			t.Errorf("prStateWord(%+v) = %q, want %q", tt.pr, got, tt.want)
 		}
+	}
+}
+
+// The plan file is hydrated from the workspace before anything else, and a
+// workspace that will not answer that first read fails the command before
+// it ever gets to the slice itself.
+func TestPRViewReportsAFailedHydrate(t *testing.T) {
+	api := &fakeAPI{dataSourceErr: errors.New("notion is down")}
+	env, _ := testEnv(testConfig(t), api)
+
+	err := Run(context.Background(), []string{"pr-view", testSliceID, "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "hydrate the plan") {
+		t.Errorf("err = %v, want the failed hydrate named", err)
 	}
 }

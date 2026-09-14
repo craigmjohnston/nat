@@ -172,6 +172,34 @@ func TestLocalShapeRecordsEverything(t *testing.T) {
 	}
 }
 
+// A plan whose hydrated check cannot even be made — no synced_at column to
+// ask — fails Shape and Plan alike, since localShape is the one place both
+// read it.
+func TestLocalShapeReportsAFailedHydratedCheck(t *testing.T) {
+	l, path := openPlan(t)
+	write(t, l, `ALTER TABLE project DROP COLUMN synced_at`)
+
+	if _, err := l.Shape(context.Background(), Project{ID: "proj"}); err == nil || !strings.Contains(err.Error(), path) {
+		t.Errorf("Shape err = %v, want the path named", err)
+	}
+	if _, err := l.Plan(context.Background(), Project{ID: "proj", Name: "fallback"}); err == nil || !strings.Contains(err.Error(), path) {
+		t.Errorf("Plan err = %v, want the path named", err)
+	}
+}
+
+// A plan hydrated from a workspace, but whose record of what that workspace
+// offers cannot be read, fails rather than guessing at HasAssignee/HasBranch.
+func TestLocalShapeReportsAFailedColumnRead(t *testing.T) {
+	l, path := openPlan(t)
+	write(t, l, `INSERT INTO project (id, name, synced_at) VALUES (?, ?, ?)`, "proj", "x", "2026-01-01T00:00:00Z")
+	write(t, l, `ALTER TABLE project DROP COLUMN has_assignee`)
+
+	_, err := l.Shape(context.Background(), Project{ID: "proj"})
+	if err == nil || !strings.Contains(err.Error(), path) {
+		t.Errorf("Shape err = %v, want the path named", err)
+	}
+}
+
 func TestLocalSliceReadsOneSliceAndItsShape(t *testing.T) {
 	l, _ := openPlan(t)
 	fillPlan(t, l)
@@ -443,7 +471,7 @@ func TestLocalNamesItsFileWhenARowWillNotScan(t *testing.T) {
 	// there and what is in them is not what they are for.
 	write(t, l, `DROP TABLE slices`)
 	write(t, l, `CREATE TABLE slices (id TEXT, title TEXT, status TEXT, milestone TEXT,
-		position REAL, assignee TEXT, repo TEXT, branch TEXT, pr TEXT, body TEXT)`)
+		position REAL, assignee TEXT, assignee_name TEXT, repo TEXT, branch TEXT, pr TEXT, url TEXT, body TEXT)`)
 	write(t, l, `INSERT INTO slices (id, position) VALUES ('one', 0)`)
 	write(t, l, `DROP TABLE slice_deps`)
 	write(t, l, `CREATE TABLE slice_deps (slice_id TEXT, depends_on TEXT, position INTEGER)`)
@@ -476,9 +504,9 @@ func TestLocalNamesItsFileWhenAReadFailsPartWayThrough(t *testing.T) {
 	write(t, l, `DROP TABLE milestones`)
 	write(t, l, `CREATE VIEW milestones (name, position) AS SELECT 'a', 0.0 UNION ALL `+overflow)
 	write(t, l, `DROP TABLE slices`)
-	write(t, l, `CREATE VIEW slices (id, title, status, milestone, position, assignee, repo, branch, pr, body)
-		AS SELECT 'a', 'A', 'Todo', NULL, 0.0, '', '', '', '', ''
-		UNION ALL SELECT 'b', 'B', 'Todo', NULL, abs(-9223372036854775808), '', '', '', '', ''`)
+	write(t, l, `CREATE VIEW slices (id, title, status, milestone, position, assignee, assignee_name, repo, branch, pr, url, body)
+		AS SELECT 'a', 'A', 'Todo', NULL, 0.0, '', '', '', '', '', '', ''
+		UNION ALL SELECT 'b', 'B', 'Todo', NULL, abs(-9223372036854775808), '', '', '', '', '', '', ''`)
 	write(t, l, `DROP TABLE slice_deps`)
 	write(t, l, `CREATE VIEW slice_deps (slice_id, depends_on, position) AS
 		SELECT 'a', 'b', 0 UNION ALL SELECT 'b', 'a', abs(-9223372036854775808)`)

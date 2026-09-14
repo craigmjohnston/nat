@@ -123,7 +123,7 @@ func TestConfigSetModelFields(t *testing.T) {
 }
 
 func TestConfigSetProjectWorkingDir(t *testing.T) {
-	env, saved := savingEnv(testConfig())
+	env, saved := savingEnv(testConfig(t))
 
 	err := Run(context.Background(), []string{"config-set", "project.project-1.working_dir", "/new/dir"}, env)
 	if err != nil {
@@ -159,7 +159,7 @@ func TestConfigSetProjectWorkingDirMatchesANormalisedID(t *testing.T) {
 }
 
 func TestConfigSetProjectWorkingDirRefusesAnUnknownProject(t *testing.T) {
-	env, _ := savingEnv(testConfig())
+	env, _ := savingEnv(testConfig(t))
 
 	err := Run(context.Background(), []string{"config-set", "project.nope.working_dir", "/new/dir"}, env)
 

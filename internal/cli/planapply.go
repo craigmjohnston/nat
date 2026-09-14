@@ -14,7 +14,6 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
-	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
@@ -64,8 +63,10 @@ func planApply(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
-	st := store.Over(client)
+	st, err := env.storeFor(ctx, projectID, project)
+	if err != nil {
+		return err
+	}
 	sp := storeProject(projectID, project)
 
 	shape, err := st.Shape(ctx, sp)
@@ -78,12 +79,11 @@ func planApply(ctx context.Context, args []string, env Env) error {
 	// no dependency has nothing to resolve.
 	var filed []domain.Slice
 	if p.dependsOnAnything() {
-		pages, err := client.QueryDataSource(ctx, project.SlicesDSID, nil,
-			[]notion.Sort{{Timestamp: notion.TimestampCreated, Direction: notion.SortAscending}})
+		plan, err := st.Plan(ctx, sp)
 		if err != nil {
 			return fmt.Errorf("load slices: %w", err)
 		}
-		filed = domain.SlicesFromPages(pages)
+		filed = plan.Project.Slices
 	}
 	targets, err := validatePlan(p, existing, filed)
 	if err != nil {
@@ -479,46 +479,35 @@ type appliedDependency struct {
 	Added []string
 }
 
-// orderNote says how the run put the slices in the order the document wrote
-// them, since it is not the way anyone would guess and the plan's own order is
-// what the board and next-slice hand work out in.
+// Slices used to be written back to front, newest first, because a plan's
+// order was read off the Slices data source's own view (notion.PlanOrder),
+// and Notion's API has no way to write a view's row order at all: PATCH
+// /views takes a name, a filter, sorts, quick filters and a configuration and
+// nothing else, and a row order sent at the top level, inside the
+// configuration, or beside a sorts write is answered with a 200 whose echo
+// does not carry it and a view whose rows have not moved; /views/{id}/rows,
+// /row_order and /order are not endpoints at all. An unordered row reads back
+// newest first, which was the only way to land a plan's own order on such a
+// view.
 //
-// The board reads that order from the Slices data source's first view
-// (notion.PlanOrder), and a row the view's manual order does not name — which
-// is every row the API creates, since nothing in the API adds one to that
-// order — falls back to newest created first. There is no writing that order:
-// PATCH /views takes a name, a filter, sorts, quick filters and a
-// configuration and nothing else, and a row order sent at the top level,
-// inside the configuration, or beside a sorts write is answered with a 200
-// whose echo does not carry it and a view whose rows have not moved;
-// /views/{id}/rows, /row_order and /order are not endpoints at all.
+// That is no longer what any command reads a plan's order from: the plan
+// lives in a local file whose slices carry their own position, written and
+// read back in the order this run wrote them. The Notion board's own view of
+// a project may still show a pushed plan newest first — nothing here writes
+// that view's order any more than it ever could — and that is fine, since
+// nothing this app reads takes a plan's order from it.
 //
-// So the plan is written back to front, and newest-first reads back as the
-// order the document wrote. That is the whole of what a run can do about
-// position: a row created now sorts above every row already on the board, and
-// it is the view's own sorts — a project's plan is sorted by Milestone — that
-// put new work under the milestone it belongs to.
-const orderNote = "Notion's API cannot write a view's row order, so the slices were created " +
-	"back to front: an unordered row reads back newest first, which is what puts them " +
-	"on the board in the order the plan wrote them."
-
-// orderingWord is orderNote for something parsing the output rather than
-// reading it: one stable word for how the run arrived at the plan's order.
-const orderingWord = "reverse-creation"
-
 // applyPlan writes the plan: milestones first, because the slices are filed
-// under them, then the slices — last one first, for the reason orderNote
-// gives — and last the dependencies between them, which have to come last since
-// a slice may wait on one the plan creates further down and there is no page to
-// point at until every slice exists.
+// under them, then the slices in the document's own order, and last the
+// dependencies between them, which have to come last since a slice may wait
+// on one the plan creates further down and there is no page to point at
+// until every slice exists.
 //
 // A write that fails stops the run, and whatever was created stays created —
 // there is no transaction to roll back, and deleting pages to tidy up would be
 // a worse thing to get wrong. The error says how far it got, so the plan can be
-// trimmed and run again. Because the slices are written backwards, what such a
-// run got as far as is the tail of the document rather than its head, and that
-// is what it reports: the slices that exist, in the order the document put
-// them.
+// trimmed and run again: what such a run got as far as is the head of the
+// document, in the order it was written.
 func applyPlan(ctx context.Context, st store.Store, sp store.Project, shape store.Shape, p plan, resolved planTargets, existing []domain.Milestone) (appliedPlan, error) {
 	targets := resolved.slices
 	var applied appliedPlan
@@ -531,9 +520,8 @@ func applyPlan(ctx context.Context, st store.Store, sp store.Project, shape stor
 	if err != nil {
 		return applied, appliedErr(applied, err)
 	}
-	made := make([]appliedSlice, len(p.Slices))
-	for i := len(p.Slices) - 1; i >= 0; i-- {
-		ps := p.Slices[i]
+	made := make([]appliedSlice, 0, len(p.Slices))
+	for i, ps := range p.Slices {
 		m := targets[i].existing
 		if targets[i].newIndex >= 0 {
 			m = applied.Milestones[targets[i].newIndex]
@@ -546,13 +534,13 @@ func applyPlan(ctx context.Context, st store.Store, sp store.Project, shape stor
 		})
 		if err != nil {
 			err = fmt.Errorf("create the slice: %w", err)
-			// Everything below this line of the document is written; nothing
-			// above it is. The tail is what exists, and it is already in the
-			// order the document put it.
-			applied.Slices = made[i+1:]
+			// Everything above this line of the document is written; nothing
+			// below it is. The head is what exists, in the order it was
+			// written.
+			applied.Slices = made
 			return applied, appliedErr(applied, err)
 		}
-		made[i] = appliedSlice{Slice: s, Milestone: m}
+		made = append(made, appliedSlice{Slice: s, Milestone: m})
 	}
 	applied.Slices = made
 	if err := applyDependencies(ctx, st, targets, applied.Slices); err != nil {
@@ -659,9 +647,6 @@ type planAppliedJSON struct {
 	Milestones   []milestoneJSON       `json:"milestones"`
 	Slices       []addedSliceJSON      `json:"slices"`
 	Dependencies []addedDependencyJSON `json:"dependencies"`
-	// Ordering is how the run got the slices into the plan's order — see
-	// orderNote, which is the same thing said out loud.
-	Ordering string `json:"ordering"`
 }
 
 // addedDependencyJSON is one slice already on the board the run made to wait on
@@ -680,7 +665,6 @@ func (a appliedPlan) jsonDoc(project config.ProjectConfig) planAppliedJSON {
 		Milestones:   make([]milestoneJSON, 0, len(a.Milestones)),
 		Slices:       make([]addedSliceJSON, 0, len(a.Slices)),
 		Dependencies: make([]addedDependencyJSON, 0, len(a.Dependencies)),
-		Ordering:     orderingWord,
 	}
 	for _, d := range a.Dependencies {
 		doc.Dependencies = append(doc.Dependencies, addedDependencyJSON{
@@ -713,7 +697,6 @@ func (a appliedPlan) markdown(project config.ProjectConfig) string {
 	var b strings.Builder
 	b.WriteString("# Plan applied\n\n")
 	fmt.Fprintf(&b, "Added %s to %s.\n", counts(len(a.Milestones), len(a.Slices)), project.Name)
-	fmt.Fprintf(&b, "\n%s\n", orderNote)
 
 	for _, m := range a.Milestones {
 		fmt.Fprintf(&b, "\n## %s\n\n", m.Name)

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -22,7 +23,7 @@ func deletableAPI(status string) *fakeAPI {
 
 func TestSliceDeleteTrashesTheSlice(t *testing.T) {
 	api := deletableAPI(notion.SliceTodo)
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	var nudges int
 	env.Nudge = func() { nudges++ }
 
@@ -48,7 +49,7 @@ func TestSliceDeleteTrashesTheSlice(t *testing.T) {
 // finished work is the caller's confirm, and the page is still recoverable.
 func TestSliceDeleteAllowsDone(t *testing.T) {
 	api := deletableAPI(notion.SliceDone)
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
 		"slice-delete", testSliceID, "--project", "project-1",
@@ -63,7 +64,7 @@ func TestSliceDeleteAllowsDone(t *testing.T) {
 
 func TestSliceDeleteJSON(t *testing.T) {
 	api := deletableAPI(notion.SliceTodo)
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
 		"slice-delete", testSliceID, "--json", "--project", "project-1",
@@ -82,7 +83,7 @@ func TestSliceDeleteJSON(t *testing.T) {
 
 func TestSliceDeleteRefusesInProgress(t *testing.T) {
 	api := deletableAPI(notion.SliceInProgress)
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
 		"slice-delete", testSliceID, "--project", "project-1",
@@ -96,7 +97,7 @@ func TestSliceDeleteRefusesInProgress(t *testing.T) {
 }
 
 func TestSliceDeleteRefusesWrongArgumentCount(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"slice-delete", "--project", "project-1"}, env)
 
@@ -106,7 +107,7 @@ func TestSliceDeleteRefusesWrongArgumentCount(t *testing.T) {
 }
 
 func TestSliceDeleteRefusesAnUnknownFlag(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{
 		"slice-delete", testSliceID, "--bogus", "--project", "project-1",
@@ -119,7 +120,7 @@ func TestSliceDeleteRefusesAnUnknownFlag(t *testing.T) {
 }
 
 func TestSliceDeleteRefusesAnInvalidSliceID(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"slice-delete", "not-a-uuid", "--project", "project-1"}, env)
 
@@ -129,7 +130,7 @@ func TestSliceDeleteRefusesAnInvalidSliceID(t *testing.T) {
 }
 
 func TestSliceDeleteRefusesAnUnknownProject(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"slice-delete", testSliceID, "--project", "nope"}, env)
 
@@ -138,15 +139,20 @@ func TestSliceDeleteRefusesAnUnknownProject(t *testing.T) {
 	}
 }
 
+// A slice already hydrated into the local plan (which every project's first
+// command does, and this test's fixture is part of) is read from the file,
+// not the workspace — so a read that fails now is the plan's own first pull,
+// not a page fetch by ID. That is what api.getErr used to stand in for and no
+// longer can; api.queryErr fails the hydrate's own slices query instead.
 func TestSliceDeleteReportsAFailedRead(t *testing.T) {
 	api := deletableAPI(notion.SliceTodo)
-	api.getErr = errors.New("notion is down")
-	env, _ := testEnv(testConfig(), api)
+	api.queryErr = map[string]error{"slices-ds": errors.New("notion is down")}
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
 		"slice-delete", testSliceID, "--project", "project-1",
 	}, env)
-	if err == nil || !strings.Contains(err.Error(), "load the slice") {
+	if err == nil || !strings.Contains(err.Error(), "load slices") {
 		t.Errorf("err = %v, want the failed read named", err)
 	}
 	if len(api.trashes) != 0 {
@@ -154,20 +160,65 @@ func TestSliceDeleteReportsAFailedRead(t *testing.T) {
 	}
 }
 
-func TestSliceDeleteReportsAFailedTrash(t *testing.T) {
+// A slice named that the file has never met, and that the workspace cannot
+// answer for either, fails the load — a different guard from the one a
+// failed hydrate trips, since the plan itself was read just fine.
+func TestSliceDeleteReportsAFailedLoad(t *testing.T) {
+	cfg := testConfig(t)
+	seedHydratedSlice(t, "project-1", "other-slice", "Somebody else", "Todo", nil)
+	api := &fakeAPI{getErr: errors.New("notion is down")}
+	env, _ := testEnv(cfg, api)
+
+	err := Run(context.Background(), []string{"slice-delete", testSliceID, "--project", "project-1"}, env)
+
+	if err == nil {
+		t.Error("slice-delete over a slice neither the file nor the workspace has: want an error")
+	}
+}
+
+// The delete itself is a local write before anything is asked of the
+// workspace, and a plan that cannot make that write fails the command
+// outright — there is nothing to push if nothing was actually deleted.
+func TestSliceDeleteReportsAFailedLocalDelete(t *testing.T) {
+	cfg := testConfig(t)
+	// sync, not slice_deps: the slice is read (via loadSlice) before it is
+	// deleted, and that read joins against slice_deps too — dropping it would
+	// fail the read this test means to get past, not the delete itself.
+	seedHydratedSlice(t, "project-1", testSliceID, "Render the board", "Todo", func(db *sql.DB) {
+		if _, err := db.Exec(`DROP TABLE sync`); err != nil {
+			t.Fatalf("break the plan's sync table: %v", err)
+		}
+	})
+	env, _ := testEnv(cfg, &fakeAPI{})
+
+	err := Run(context.Background(), []string{"slice-delete", testSliceID, "--project", "project-1"}, env)
+
+	if err == nil {
+		t.Error("slice-delete over a plan that cannot delete the slice: want an error")
+	}
+}
+
+// store.Mirrored.DeleteSlice drops the slice from the local file first and
+// only then asks the workspace to do the same — and, unlike every other
+// write, a failed push here is not something a later sync can retry (the row
+// the dirty flag would have lived on is already gone), so it is only logged,
+// never returned. The command succeeds, and still nudges: the file changed.
+func TestSliceDeleteSucceedsThoughTheWorkspaceTrashFails(t *testing.T) {
 	api := deletableAPI(notion.SliceTodo)
 	api.trashErr = errors.New("notion refused")
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	var nudges int
 	env.Nudge = func() { nudges++ }
 
-	err := Run(context.Background(), []string{
+	if err := Run(context.Background(), []string{
 		"slice-delete", testSliceID, "--project", "project-1",
-	}, env)
-	if err == nil || !strings.Contains(err.Error(), "delete the slice") {
-		t.Errorf("err = %v, want the failed trash named", err)
+	}, env); err != nil {
+		t.Fatalf("slice-delete: %v", err)
 	}
-	if nudges != 0 {
-		t.Errorf("nudges = %d, want none for a failed delete", nudges)
+	if nudges != 1 {
+		t.Errorf("nudges = %d, want 1: the file's own delete landed", nudges)
+	}
+	if len(api.trashes) != 1 {
+		t.Errorf("trashes attempted = %+v, want one attempt even though it failed", api.trashes)
 	}
 }

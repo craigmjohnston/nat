@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -39,7 +40,7 @@ func renamableAPI() *fakeAPI {
 // slices filed under it.
 func TestMilestoneRenameRenamesInPlace(t *testing.T) {
 	api := renamableAPI()
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(),
 		[]string{"milestone-rename", "M2: Board", "M2: The board", "--project", "project-1"}, env); err != nil {
@@ -82,7 +83,7 @@ Renamed from M2: Board in nat, still milestone 2, Queued.
 }
 
 func TestMilestoneRenamePrintsJSON(t *testing.T) {
-	env, out := testEnv(testConfig(), renamableAPI())
+	env, out := testEnv(testConfig(t), renamableAPI())
 
 	if err := Run(context.Background(),
 		[]string{"milestone-rename", "m2: board", "M2: The board", "--json", "--project", "project-1"}, env); err != nil {
@@ -133,7 +134,7 @@ func TestMilestoneRenameRefusals(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := renamableAPI()
-			env, out := testEnv(testConfig(), api)
+			env, out := testEnv(testConfig(t), api)
 			nudges := nudgeCounter(&env)
 
 			err := Run(context.Background(), append(tt.args, "--project", "project-1"), env)
@@ -159,7 +160,7 @@ func TestMilestoneRenameRefusals(t *testing.T) {
 func TestMilestoneRenameNamesTheMilestonesThePlanHas(t *testing.T) {
 	api := plannedAPI(addedMilestoneID)
 	api.dataSources["slices-ds"] = selectMilestoneSlicesDS()
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(),
 		[]string{"milestone-rename", "M1: Client", "M1: The client", "--project", "project-1"}, env)
@@ -201,7 +202,7 @@ func TestMilestoneRenameRejectsAMisusedCommandLine(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := renamableAPI()
-			env, out := testEnv(testConfig(), api)
+			env, out := testEnv(testConfig(t), api)
 
 			err := Run(context.Background(), tt.args, env)
 
@@ -255,7 +256,7 @@ func TestMilestoneRenameReportsAFailedCall(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			api := renamableAPI()
 			tt.fail(api)
-			env, out := testEnv(testConfig(), api)
+			env, out := testEnv(testConfig(t), api)
 			nudges := nudgeCounter(&env)
 
 			err := Run(context.Background(),
@@ -279,7 +280,7 @@ func TestMilestoneRenameReportsAFailedCall(t *testing.T) {
 
 func TestMilestoneRenameNeedsAConfiguredProject(t *testing.T) {
 	api := renamableAPI()
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 
 	err := Run(context.Background(),
@@ -291,10 +292,30 @@ func TestMilestoneRenameNeedsAConfiguredProject(t *testing.T) {
 	noWritesBut(t, api, 0)
 }
 
+// The project's shape is read from the local file once the plan has been
+// pulled — no request of its own — and a file that cannot even answer that
+// fails the command before the rename is ever attempted.
+func TestMilestoneRenameReportsAFailedLocalShapeRead(t *testing.T) {
+	cfg := testConfig(t)
+	seedHydratedSlice(t, "project-1", testSliceID, "Render the board", "Todo", func(db *sql.DB) {
+		if _, err := db.Exec(`ALTER TABLE project DROP COLUMN has_assignee`); err != nil {
+			t.Fatalf("break the plan's has_assignee column: %v", err)
+		}
+	})
+	env, _ := testEnv(cfg, &fakeAPI{})
+
+	err := Run(context.Background(),
+		[]string{"milestone-rename", "M2: Board", "M2: The board", "--project", "project-1"}, env)
+
+	if err == nil {
+		t.Error("milestone-rename over a plan that cannot read its own shape: want an error")
+	}
+}
+
 func TestMilestoneRenameReportsAFailedWrite(t *testing.T) {
 	for _, extra := range [][]string{nil, {"--json"}} {
 		t.Run(strings.Join(append([]string{"milestone-rename"}, extra...), " "), func(t *testing.T) {
-			env, _ := testEnv(testConfig(), renamableAPI())
+			env, _ := testEnv(testConfig(t), renamableAPI())
 			env.Out = failingWriter{}
 
 			args := append([]string{"milestone-rename", "M2: Board", "M2: The board"}, extra...)

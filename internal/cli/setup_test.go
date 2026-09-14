@@ -10,6 +10,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/skills"
 )
 
@@ -22,10 +23,13 @@ func homeSkills(t *testing.T) string {
 	return filepath.Join(home, ".claude", "skills")
 }
 
-// runSetup runs the command and fails the test if it does not.
+// runSetup runs the command and fails the test if it does not. setup touches
+// no project's plan, so this reaches for no config of testConfig's — HOME is
+// homeSkills' own, and testConfig's own override would only fight it for
+// where the skills actually land.
 func runSetup(t *testing.T, args ...string) string {
 	t.Helper()
-	env, out := testEnv(testConfig(), &fakeAPI{})
+	env, out := testEnv(config.Config{}, &fakeAPI{})
 	if err := Run(context.Background(), append([]string{"setup"}, args...), env); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
@@ -276,7 +280,7 @@ func TestSetupRefusesAFileWhereASkillBelongs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(config.Config{}, &fakeAPI{})
 	err := Run(context.Background(), []string{"setup"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "is not a directory") {
@@ -287,7 +291,7 @@ func TestSetupRefusesAFileWhereASkillBelongs(t *testing.T) {
 func TestSetupReportsAHomeDirectoryItCannotResolve(t *testing.T) {
 	t.Setenv("HOME", "")
 
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(config.Config{}, &fakeAPI{})
 	err := Run(context.Background(), []string{"setup"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "resolve home dir") {
@@ -302,7 +306,7 @@ func TestSetupReportsADirectoryItCannotCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(config.Config{}, &fakeAPI{})
 	err := Run(context.Background(), []string{"setup"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "create ") {
@@ -312,7 +316,7 @@ func TestSetupReportsADirectoryItCannotCreate(t *testing.T) {
 
 func TestSetupRejectsMisuse(t *testing.T) {
 	for _, args := range [][]string{{"setup", "please"}, {"setup", "--nope"}} {
-		env, _ := testEnv(testConfig(), &fakeAPI{})
+		env, _ := testEnv(config.Config{}, &fakeAPI{})
 		err := Run(context.Background(), args, env)
 		if _, ok := err.(*UsageError); !ok {
 			t.Errorf("%v: err = %v, want a UsageError", args, err)

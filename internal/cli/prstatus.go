@@ -44,19 +44,22 @@ func prStatus(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	_, _, project, err := env.projectFor(projectRef)
+	_, projectID, project, err := env.projectFor(projectRef)
 	if err != nil {
 		return err
 	}
-	client := env.NewClient(env.Tokens.Token)
+	st, err := env.storeFor(ctx, projectID, project)
+	if err != nil {
+		return err
+	}
 
-	pages, err := client.QueryDataSource(ctx, project.SlicesDSID, nil, nil)
+	plan, err := st.Plan(ctx, storeProject(projectID, project))
 	if err != nil {
 		return fmt.Errorf("load slices: %w", err)
 	}
-	slices := domain.SlicesFromPages(pages)
+	slices := plan.Project.Slices
 
-	readings, marked := prReadings(ctx, client, env.NewGH(), slices, project)
+	readings, marked := prReadings(ctx, st, env.NewGH(), slices, project)
 	if marked {
 		env.nudged()
 	}
@@ -120,7 +123,7 @@ func readinessOf(status gh.PRStatus) domain.PRReadiness {
 // un-done rule, [actions.ReopenUnmerged], written back to In progress so
 // Done goes on meaning what the merge made true everywhere else the app reads
 // a slice's status from.
-func prReadings(ctx context.Context, client API, ghClient GH, slices []domain.Slice, project config.ProjectConfig) ([]prReading, bool) {
+func prReadings(ctx context.Context, st store.Store, ghClient GH, slices []domain.Slice, project config.ProjectConfig) ([]prReading, bool) {
 	var dirs []string
 	reads := map[string][]domain.Slice{}
 	for _, s := range slices {
@@ -146,7 +149,7 @@ func prReadings(ctx context.Context, client API, ghClient GH, slices []domain.Sl
 			if status, still := open[gh.NormaliseURL(s.PRURL)]; still {
 				state[s.ID] = readinessOf(status)
 				if s.Status == domain.SliceDone {
-					if err := actions.ReopenUnmerged(ctx, store.Over(client), s); err != nil {
+					if err := actions.ReopenUnmerged(ctx, st, s); err != nil {
 						logging.Action("left a Done slice with an open pull request unreopened", "slice", s.ID, "error", err)
 						continue
 					}
@@ -157,7 +160,7 @@ func prReadings(ctx context.Context, client API, ghClient GH, slices []domain.Sl
 			if s.Status != domain.SliceClaimed {
 				continue
 			}
-			done, err := actions.SettleMerged(ctx, store.Over(client), ghClient, s, dir)
+			done, err := actions.SettleMerged(ctx, st, ghClient, s, dir)
 			if err != nil {
 				logging.Action("left an absent pull request unsettled", "slice", s.ID, "error", err)
 				continue

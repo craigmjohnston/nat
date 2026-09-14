@@ -54,8 +54,10 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	if cfg.AssigneeUserID == "" {
 		return fmt.Errorf("no assignee in the config: open the board with `nat` and finish setting it up")
 	}
-	client := env.NewClient(env.Tokens.Token)
-	st := store.Over(client)
+	st, err := env.storeFor(ctx, projectID, project)
+	if err != nil {
+		return err
+	}
 
 	plan, err := st.Plan(ctx, storeProject(projectID, project))
 	if err != nil {
@@ -75,7 +77,7 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 	// just loaded: a slice waits on few enough slices for that to still be the
 	// cheaper read, and the plan itself is loaded only for the milestone digest
 	// below.
-	if blockers, _ := domain.Blockers(waiting, dependencyIndex(ctx, client, waiting)); len(blockers) > 0 {
+	if blockers, _ := domain.Blockers(waiting, dependencyIndex(ctx, st, waiting)); len(blockers) > 0 {
 		return blockedError(waiting, blockers)
 	}
 	// A re-opened slice is already exactly what a claim would make it, so there

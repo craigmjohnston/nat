@@ -43,7 +43,7 @@ Moved in nat to milestone 2, directly after M1: Client.
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := plannedAPI(addedMilestoneID)
-			env, out := testEnv(testConfig(), api)
+			env, out := testEnv(testConfig(t), api)
 			nudges := nudgeCounter(&env)
 
 			args := append(append([]string{"milestone-move"}, tt.args...), "--project", "project-1")
@@ -71,7 +71,7 @@ Moved in nat to milestone 2, directly after M1: Client.
 }
 
 func TestMilestoneMovePrintsJSON(t *testing.T) {
-	env, out := testEnv(testConfig(), plannedAPI(addedMilestoneID))
+	env, out := testEnv(testConfig(t), plannedAPI(addedMilestoneID))
 
 	if err := Run(context.Background(), []string{
 		"milestone-move", "M1: Client", "--after", "M3: Agents", "--json", "--project", "project-1",
@@ -124,7 +124,7 @@ func TestMilestoneMoveRefusals(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := plannedAPI(addedMilestoneID)
-			env, out := testEnv(testConfig(), api)
+			env, out := testEnv(testConfig(t), api)
 			nudges := nudgeCounter(&env)
 
 			err := Run(context.Background(), append(tt.args, "--project", "project-1"), env)
@@ -152,7 +152,7 @@ func TestMilestoneMoveRefusals(t *testing.T) {
 func TestMilestoneMoveNamesTheMilestonesThePlanHas(t *testing.T) {
 	api := plannedAPI(addedMilestoneID)
 	api.dataSources["slices-ds"] = selectMilestoneSlicesDS()
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(),
 		[]string{"milestone-move", "M1: Client", "--before", "M2: Board", "--project", "project-1"}, env)
@@ -199,7 +199,7 @@ func TestMilestoneMoveRejectsAMisusedCommandLine(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := plannedAPI(addedMilestoneID)
-			env, out := testEnv(testConfig(), api)
+			env, out := testEnv(testConfig(t), api)
 
 			err := Run(context.Background(), append(tt.args, "--project", "project-1"), env)
 
@@ -243,7 +243,7 @@ func TestMilestoneMoveReportsAFailedCall(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			api := plannedAPI(addedMilestoneID)
 			tt.fail(api)
-			env, out := testEnv(testConfig(), api)
+			env, out := testEnv(testConfig(t), api)
 			nudges := nudgeCounter(&env)
 
 			err := Run(context.Background(),
@@ -265,9 +265,27 @@ func TestMilestoneMoveReportsAFailedCall(t *testing.T) {
 	}
 }
 
+// A plan already hydrated reads its shape from the file, not the workspace —
+// so a failure there is a failure of the file, not anything a fakeAPI can
+// still stage.
+func TestMilestoneMoveReportsAFailedShapeReadOnAnAlreadyHydratedPlan(t *testing.T) {
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
+	db := hydratedPlanDB(t, "project-1")
+	if _, err := db.Exec(`DROP TABLE milestones`); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Run(context.Background(),
+		[]string{"milestone-move", "M3: Agents", "--before", "M1: Client", "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "milestones") {
+		t.Errorf("err = %v, want the broken read reported", err)
+	}
+}
+
 func TestMilestoneMoveNeedsAConfiguredProject(t *testing.T) {
 	api := plannedAPI(addedMilestoneID)
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 
 	err := Run(context.Background(),
@@ -282,7 +300,7 @@ func TestMilestoneMoveNeedsAConfiguredProject(t *testing.T) {
 func TestMilestoneMoveReportsAFailedWrite(t *testing.T) {
 	for _, extra := range [][]string{nil, {"--json"}} {
 		t.Run(strings.Join(append([]string{"milestone-move"}, extra...), " "), func(t *testing.T) {
-			env, _ := testEnv(testConfig(), plannedAPI(addedMilestoneID))
+			env, _ := testEnv(testConfig(t), plannedAPI(addedMilestoneID))
 			env.Out = failingWriter{}
 
 			args := append([]string{"milestone-move", "M3: Agents", "--before", "M1: Client"}, extra...)

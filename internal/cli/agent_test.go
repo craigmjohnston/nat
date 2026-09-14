@@ -143,7 +143,7 @@ func (r *agentTestRunner) formatPanes() string {
 }
 
 func TestAgentSendRefusesEmptyPrompt(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	env.In = strings.NewReader("")
 	var out strings.Builder
 	env.Out = &out
@@ -160,7 +160,7 @@ func TestAgentSendRefusesEmptyPrompt(t *testing.T) {
 }
 
 func TestAgentSendRefusesWrongArgumentCount(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	var out strings.Builder
 	env.Out = &out
 
@@ -181,7 +181,7 @@ func TestAgentSendWithLiveSession(t *testing.T) {
 			"slices-ds": {slicePage(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "Craig Johnston", "")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &agentTestRunner{
 		liveSessions: map[string]string{testSliceID: "nat-abcd1234"},
 	}
@@ -212,7 +212,7 @@ func TestAgentSendRefusesNoLiveSession(t *testing.T) {
 			"slices-ds": {slicePage(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "Craig Johnston", "")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &agentTestRunner{
 		liveSessions: map[string]string{},
 	}
@@ -237,7 +237,7 @@ func TestAgentSendFromStdin(t *testing.T) {
 			"slices-ds": {slicePage(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "Craig Johnston", "")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &agentTestRunner{
 		liveSessions: map[string]string{testSliceID: "nat-abcd1234"},
 	}
@@ -266,7 +266,7 @@ func TestAgentSendFailure(t *testing.T) {
 			"slices-ds": {slicePage(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "Craig Johnston", "")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &agentTestRunner{
 		liveSessions: map[string]string{testSliceID: "nat-abcd1234"},
 		sendErr:      "tmux failed",
@@ -284,7 +284,7 @@ func TestAgentSendFailure(t *testing.T) {
 }
 
 func TestAgentInterruptRefusesWrongArgumentCount(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	var out strings.Builder
 	env.Out = &out
 
@@ -305,7 +305,7 @@ func TestAgentInterruptWithLiveSession(t *testing.T) {
 			"slices-ds": {slicePage(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "Craig Johnston", "")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &agentTestRunner{
 		liveSessions: map[string]string{testSliceID: "nat-abcd1234"},
 	}
@@ -333,7 +333,7 @@ func TestAgentInterruptRefusesNoLiveSession(t *testing.T) {
 			"slices-ds": {slicePage(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "Craig Johnston", "")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &agentTestRunner{
 		liveSessions: map[string]string{},
 	}
@@ -358,7 +358,7 @@ func TestAgentInterruptFailure(t *testing.T) {
 			"slices-ds": {slicePage(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "Craig Johnston", "")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &agentTestRunner{
 		liveSessions: map[string]string{testSliceID: "nat-abcd1234"},
 		interruptErr: "tmux failed",
@@ -376,7 +376,7 @@ func TestAgentInterruptFailure(t *testing.T) {
 }
 
 func TestAgentSendInvalidSliceID(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	var out strings.Builder
 	env.Out = &out
 
@@ -392,7 +392,7 @@ func TestAgentSendInvalidSliceID(t *testing.T) {
 }
 
 func TestAgentInterruptInvalidSliceID(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	var out strings.Builder
 	env.Out = &out
 
@@ -414,7 +414,7 @@ type errReader struct{ err error }
 func (r errReader) Read([]byte) (int, error) { return 0, r.err }
 
 func TestAgentSendRefusesAnUnknownFlag(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"agent-send", testSliceID, "--bogus", "--project", "project-1"}, env)
 
@@ -425,7 +425,7 @@ func TestAgentSendRefusesAnUnknownFlag(t *testing.T) {
 }
 
 func TestAgentSendRefusesAnUnknownProject(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"agent-send", testSliceID, "--text", "x", "--project", "nope"}, env)
 
@@ -435,7 +435,7 @@ func TestAgentSendRefusesAnUnknownProject(t *testing.T) {
 }
 
 func TestAgentSendRefusesNoStdin(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	env.In = nil
 
 	err := Run(context.Background(), []string{"agent-send", testSliceID, "--project", "project-1"}, env)
@@ -446,7 +446,7 @@ func TestAgentSendRefusesNoStdin(t *testing.T) {
 }
 
 func TestAgentSendReportsAFailedStdinRead(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	env.In = errReader{err: errors.New("pipe closed")}
 
 	err := Run(context.Background(), []string{"agent-send", testSliceID, "--project", "project-1"}, env)
@@ -462,7 +462,7 @@ func TestAgentSendReportsAFailedLiveRead(t *testing.T) {
 			"slices-ds": {slicePage(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "Craig Johnston", "")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &agentTestRunner{liveFatalErr: "no server running"}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
@@ -476,7 +476,7 @@ func TestAgentSendReportsAFailedLiveRead(t *testing.T) {
 }
 
 func TestAgentInterruptRefusesAnUnknownFlag(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"agent-interrupt", testSliceID, "--bogus", "--project", "project-1"}, env)
 
@@ -487,7 +487,7 @@ func TestAgentInterruptRefusesAnUnknownFlag(t *testing.T) {
 }
 
 func TestAgentInterruptRefusesAnUnknownProject(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"agent-interrupt", testSliceID, "--project", "nope"}, env)
 
@@ -502,7 +502,7 @@ func TestAgentInterruptReportsAFailedLiveRead(t *testing.T) {
 			"slices-ds": {slicePage(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "Craig Johnston", "")},
 		},
 	}
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &agentTestRunner{liveFatalErr: "no server running"}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
@@ -514,7 +514,7 @@ func TestAgentInterruptReportsAFailedLiveRead(t *testing.T) {
 }
 
 func TestAgentKillRefusesWrongArgumentCount(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"agent-kill", "--project", "project-1"}, env)
 
@@ -524,7 +524,7 @@ func TestAgentKillRefusesWrongArgumentCount(t *testing.T) {
 }
 
 func TestAgentKillInvalidSliceID(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"agent-kill", "not-a-uuid", "--project", "project-1"}, env)
 
@@ -534,7 +534,7 @@ func TestAgentKillInvalidSliceID(t *testing.T) {
 }
 
 func TestAgentKillRefusesAnUnknownFlag(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"agent-kill", testSliceID, "--bogus", "--project", "project-1"}, env)
 
@@ -545,7 +545,7 @@ func TestAgentKillRefusesAnUnknownFlag(t *testing.T) {
 }
 
 func TestAgentKillRefusesAnUnknownProject(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"agent-kill", testSliceID, "--project", "nope"}, env)
 
@@ -555,7 +555,7 @@ func TestAgentKillRefusesAnUnknownProject(t *testing.T) {
 }
 
 func TestAgentKillWithLiveSession(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	runner := &agentTestRunner{liveSessions: map[string]string{testSliceID: "nat-abcd1234"}}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
@@ -570,7 +570,7 @@ func TestAgentKillWithLiveSession(t *testing.T) {
 }
 
 func TestAgentKillRefusesNoLiveSession(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	runner := &agentTestRunner{liveSessions: map[string]string{}}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
@@ -582,7 +582,7 @@ func TestAgentKillRefusesNoLiveSession(t *testing.T) {
 }
 
 func TestAgentKillReportsAFailedLiveRead(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	runner := &agentTestRunner{liveFatalErr: "no server running"}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
@@ -594,7 +594,7 @@ func TestAgentKillReportsAFailedLiveRead(t *testing.T) {
 }
 
 func TestAgentKillFailure(t *testing.T) {
-	env, _ := testEnv(testClaimConfig(), &fakeAPI{})
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	runner := &agentTestRunner{
 		liveSessions: map[string]string{testSliceID: "nat-abcd1234"},
 		killErr:      "tmux failed",

@@ -15,7 +15,7 @@ import (
 // handed out.
 func TestSliceDependsRefusesADirectCycle(t *testing.T) {
 	api := dependsAPI(t)
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-depends", depBlocker, "--on", depWaiting, "--project", "project-1"}, env)
 
@@ -33,7 +33,7 @@ func TestSliceDependsRefusesADirectCycle(t *testing.T) {
 func TestSliceDependsRefusesATransitiveCycle(t *testing.T) {
 	api := dependsAPI(t)
 	dependsOn(api, depBlocker, depSpare)
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-depends", depSpare, "--on", depWaiting, "--project", "project-1"}, env)
 
@@ -52,7 +52,7 @@ func TestSliceDependsRefusesATransitiveCycle(t *testing.T) {
 func TestSliceDependsAllowsAClearThatBreaksTheCycle(t *testing.T) {
 	api := dependsAPI(t)
 	dependsOn(api, depBlocker, depWaiting)
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(),
 		[]string{"slice-depends", depWaiting, "--clear", "--on", depSpare, "--project", "project-1"}, env); err != nil {
@@ -67,21 +67,28 @@ func TestSliceDependsAllowsAClearThatBreaksTheCycle(t *testing.T) {
 	}
 }
 
-// Dropping dependencies cannot close a cycle, so the plan is not read to prove
-// it: a Notion that will not answer the query is no obstacle to a --clear.
+// Dropping dependencies cannot close a cycle, so slice-depends's own code
+// never reads the plan again to prove it — every command opens a store that
+// hydrates the local file from the workspace once, on the first command ever
+// run against a fresh plan, and every read after that is local. So it is
+// only once the plan is already on disk that a Notion outage stops mattering
+// to a --clear: the first command below pays for the one hydrate this test
+// is not about, and the second — the one under test — runs entirely off the
+// file it left behind, reading nothing from a Notion that is now down.
 func TestSliceDependsClearAloneReadsNoPlan(t *testing.T) {
 	api := dependsAPI(t)
+	cfg := testConfig(t)
+	env, _ := testEnv(cfg, api)
+	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("info: %v", err)
+	}
+
 	api.queryErr = map[string]error{"slices-ds": errors.New("notion is down")}
-	env, _ := testEnv(testConfig(), api)
+	env2, _ := testEnv(cfg, api)
 
 	if err := Run(context.Background(),
-		[]string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env); err != nil {
+		[]string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env2); err != nil {
 		t.Fatalf("slice-depends: %v", err)
-	}
-	for _, q := range api.queries {
-		if q.id == "slices-ds" {
-			t.Errorf("queries = %+v, want the plan left unread", api.queries)
-		}
 	}
 }
 
@@ -90,7 +97,7 @@ func TestSliceDependsClearAloneReadsNoPlan(t *testing.T) {
 func TestSliceDependsRefusesWhenThePlanCannotBeRead(t *testing.T) {
 	api := dependsAPI(t)
 	api.queryErr = map[string]error{"slices-ds": errors.New("notion is down")}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--on", depSpare, "--project", "project-1"}, env)
 
@@ -103,23 +110,38 @@ func TestSliceDependsRefusesWhenThePlanCannotBeRead(t *testing.T) {
 }
 
 // A slice the project's query does not return — one filed outside the project
-// the flag named — still has the dependencies it is being given, and they still
-// lead wherever they lead.
-func TestSliceDependsRefusesACycleFromOutsideThePlan(t *testing.T) {
+// the flag named — can still be depended on: reading it by ID takes it into
+// the local plan on the spot ([Mirrored.Slice]'s remote fallback), the same
+// way any dependency the file has never seen is. What it cannot do any more
+// is carry into the file an edge Notion's own page holds *to* such a slice
+// from *before* this run: a real Depends on relation is typed to its own
+// project's data source and could never actually hold one, but a stale or
+// unreadable one might, and [Local.Hydrate] drops it at read time rather
+// than write an edge slice_deps' own foreign keys would refuse outright — the
+// same "an unreadable dependency is never counted" rule every other reader of
+// a plan's dependencies already follows. So a cycle that would only close
+// through such an edge is no longer caught here: this run succeeds, and
+// records the one edge it was actually asked to add.
+func TestSliceDependsWritesADependencyOnASliceOutsideThePlan(t *testing.T) {
 	const outside = "3b838308f654816da085f46dd135adf0"
 	api := dependsAPI(t)
 	api.pages["other-ds"] = []notion.Page{slicePage(outside, "Elsewhere", notion.SliceTodo, "", "", "")}
+	// Notion could never actually hold this edge — Depends on is typed to
+	// slices-ds alone — but simulating it here is how the drop is exercised:
+	// the file must not choke on an edge that could not really exist.
 	dependsOn(api, depWaiting, outside)
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-depends", outside, "--on", depWaiting, "--project", "project-1"}, env)
 
-	if err == nil || !strings.Contains(err.Error(),
-		`"Elsewhere" would then wait on itself: "Elsewhere" → "Render the board" → "Elsewhere"`) {
-		t.Fatalf("err = %v, want the cycle named", err)
+	if err != nil {
+		t.Fatalf("slice-depends: %v", err)
 	}
-	if len(api.updates) != 0 {
-		t.Errorf("updates = %+v, want nothing written", api.updates)
+	if len(api.updates) != 1 || api.updates[0].id != outside {
+		t.Fatalf("updates = %+v, want the one relation written on %s", api.updates, outside)
+	}
+	if got := dependencyIDsOf(t, api.updates[0]); len(got) != 1 || got[0] != depWaiting {
+		t.Errorf("depends_on = %v, want just %s", got, depWaiting)
 	}
 }
 
@@ -263,7 +285,7 @@ func TestNextSliceHandsOutASliceWhoseCycleIsFinished(t *testing.T) {
 	// nothing is stuck, because a Done dependency is no dependency at all.
 	dependsOn(api, depWaiting, depDone)
 	dependsOn(api, depDone, depWaiting)
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
@@ -279,7 +301,7 @@ func TestNextSliceReportsACycleAsOne(t *testing.T) {
 	api := dependsAPI(t)
 	dependsOn(api, depBlocker, depWaiting)
 	dependsOn(api, depSpare, depWaiting)
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
 
@@ -318,13 +340,24 @@ func TestPlanApplyPassesOverAnUnreadableDependency(t *testing.T) {
 	}
 }
 
-// A milestone-only plan names no dependency, so the project's slices are never
-// read and there is no graph to check.
+// A milestone-only plan names no dependency, so plan-apply's own dependency
+// resolution never asks the store to read the project's slices a second
+// time — the one read that happens regardless is the store's own hydrate,
+// paid for once by the first command ever run against a fresh plan, which
+// the run below is not about. Once that has happened, a Notion outage does
+// not stop a milestone-only plan from applying: nothing plan-apply itself
+// does for such a plan reads a slice at all.
 func TestPlanApplyWithNoDependenciesChecksNothing(t *testing.T) {
-	api := planAPI(0)
-	api.queryErr = map[string]error{"slices-ds": errors.New("notion is down")}
+	api := planAPI(1)
+	cfg := testConfig(t)
+	if _, err := runPlanWith(t, cfg, api, `{"slices": [{"title": "Seed", "milestone": "M2: Board"}]}`,
+		"--project", "project-1"); err != nil {
+		t.Fatalf("seed plan-apply: %v", err)
+	}
 
-	if _, err := runPlan(t, api, `{"milestones": [{"name": "M9: Later"}]}`); err != nil {
+	api.queryErr = map[string]error{"slices-ds": errors.New("notion is down")}
+	if _, err := runPlanWith(t, cfg, api, `{"milestones": [{"name": "M9: Later"}]}`,
+		"--project", "project-1"); err != nil {
 		t.Fatalf("plan-apply: %v", err)
 	}
 	if len(api.schemaUpdates) != 1 {

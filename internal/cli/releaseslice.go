@@ -52,7 +52,10 @@ func releaseSlice(ctx context.Context, args []string, env Env) error {
 	if cfg.AssigneeUserID == "" {
 		return fmt.Errorf("no assignee in the config: open the board with `nat` and finish setting it up")
 	}
-	st := store.Over(env.NewClient(env.Tokens.Token))
+	st, err := env.storeFor(ctx, projectID, project)
+	if err != nil {
+		return err
+	}
 
 	shape, err := sliceShape(ctx, st, projectID, project)
 	if err != nil {

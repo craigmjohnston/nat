@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // editableAPI answers with one Todo slice carrying an existing brief of two
@@ -26,7 +28,7 @@ func editableAPI() *fakeAPI {
 
 func TestSliceEditReplacesTheBrief(t *testing.T) {
 	api := editableAPI()
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 	var nudges int
 	env.Nudge = func() { nudges++ }
 
@@ -59,7 +61,7 @@ func TestSliceEditReplacesTheBrief(t *testing.T) {
 
 func TestSliceEditReadsTheDescriptionFromStdin(t *testing.T) {
 	api := editableAPI()
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.In = strings.NewReader("Piped in brief.")
 
 	err := Run(context.Background(), []string{
@@ -75,7 +77,7 @@ func TestSliceEditReadsTheDescriptionFromStdin(t *testing.T) {
 
 func TestSliceEditJSON(t *testing.T) {
 	api := editableAPI()
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
 		"slice-edit", testSliceID, "--description", "The new brief.", "--json", "--project", "project-1",
@@ -102,7 +104,7 @@ func TestSliceEditReportsTheSlicesOwnRepo(t *testing.T) {
 		},
 		blocksByID: map[string][]notion.Block{testSliceID: nil},
 	}
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
 		"slice-edit", testSliceID, "--description", "New text.", "--project", "project-1",
@@ -116,7 +118,7 @@ func TestSliceEditReportsTheSlicesOwnRepo(t *testing.T) {
 }
 
 func TestSliceEditRefusesNoDescription(t *testing.T) {
-	env, _ := testEnv(testConfig(), editableAPI())
+	env, _ := testEnv(testConfig(t), editableAPI())
 
 	err := Run(context.Background(), []string{"slice-edit", testSliceID, "--project", "project-1"}, env)
 
@@ -131,7 +133,7 @@ func TestSliceEditRefusesInProgress(t *testing.T) {
 			"slices-ds": {slicePage(testSliceID, "Render the board", notion.SliceInProgress, "m1", "", "")},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
 		"slice-edit", testSliceID, "--description", "New text.", "--project", "project-1",
@@ -151,7 +153,7 @@ func TestSliceEditRefusesDone(t *testing.T) {
 			"slices-ds": {slicePage(testSliceID, "Render the board", notion.SliceDone, "m1", "", "")},
 		},
 	}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
 		"slice-edit", testSliceID, "--description", "New text.", "--project", "project-1",
@@ -161,47 +163,58 @@ func TestSliceEditRefusesDone(t *testing.T) {
 	}
 }
 
-func TestSliceEditReportsAFailedBlockRead(t *testing.T) {
-	api := editableAPI()
-	api.blocksErrByID = map[string]error{testSliceID: errors.New("notion is down")}
-	env, _ := testEnv(testConfig(), api)
-
-	err := Run(context.Background(), []string{
-		"slice-edit", testSliceID, "--description", "New text.", "--project", "project-1",
-	}, env)
-	if err == nil || !strings.Contains(err.Error(), "read slice body") {
-		t.Errorf("err = %v, want the failed read named", err)
+// A push to the workspace that fails does not fail slice-edit: the brief
+// already landed in the local plan file, so the command reports success and
+// leaves the slice dirty for the next sync to resend.
+func TestSliceEditLeavesTheSliceDirtyOnAFailedPush(t *testing.T) {
+	tests := []struct {
+		name string
+		set  func(*fakeAPI)
+	}{
+		{name: "the read", set: func(a *fakeAPI) {
+			a.blocksErrByID = map[string]error{testSliceID: errors.New("notion is down")}
+		}},
+		{name: "the clear", set: func(a *fakeAPI) { a.deleteErr = errors.New("notion refused") }},
+		{name: "the write", set: func(a *fakeAPI) { a.appendErr = errors.New("notion refused") }},
 	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			api := editableAPI()
+			tt.set(api)
+			env, out := testEnv(testConfig(t), api)
 
-func TestSliceEditReportsAFailedDelete(t *testing.T) {
-	api := editableAPI()
-	api.deleteErr = errors.New("notion refused")
-	env, _ := testEnv(testConfig(), api)
+			err := Run(context.Background(), []string{
+				"slice-edit", testSliceID, "--description", "New text.", "--project", "project-1",
+			}, env)
+			if err != nil {
+				t.Fatalf("slice-edit: %v", err)
+			}
+			if out.Len() == 0 {
+				t.Errorf("output = %q, want the edit reported despite the failed push", out.String())
+			}
 
-	err := Run(context.Background(), []string{
-		"slice-edit", testSliceID, "--description", "New text.", "--project", "project-1",
-	}, env)
-	if err == nil || !strings.Contains(err.Error(), "clear slice body") {
-		t.Errorf("err = %v, want the failed trash named", err)
-	}
-}
-
-func TestSliceEditReportsAFailedAppend(t *testing.T) {
-	api := editableAPI()
-	api.appendErr = errors.New("notion refused")
-	env, _ := testEnv(testConfig(), api)
-
-	err := Run(context.Background(), []string{
-		"slice-edit", testSliceID, "--description", "New text.", "--project", "project-1",
-	}, env)
-	if err == nil || !strings.Contains(err.Error(), "write slice body") {
-		t.Errorf("err = %v, want the failed write named", err)
+			path, err := store.LocalPath("project-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			local, err := store.OpenLocal(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = local.Close() }()
+			dirty, err := local.Dirty(context.Background(), testSliceID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !dirty {
+				t.Error("dirty = false, want the slice left dirty for the next sync")
+			}
+		})
 	}
 }
 
 func TestSliceEditRefusesWrongArgumentCount(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"slice-edit", "--description", "x", "--project", "project-1"}, env)
 
@@ -211,7 +224,7 @@ func TestSliceEditRefusesWrongArgumentCount(t *testing.T) {
 }
 
 func TestSliceEditRefusesAnUnknownFlag(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{
 		"slice-edit", testSliceID, "--description", "x", "--bogus", "--project", "project-1",
@@ -224,7 +237,7 @@ func TestSliceEditRefusesAnUnknownFlag(t *testing.T) {
 }
 
 func TestSliceEditRefusesAnInvalidSliceID(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{"slice-edit", "not-a-uuid", "--description", "x", "--project", "project-1"}, env)
 
@@ -234,7 +247,7 @@ func TestSliceEditRefusesAnInvalidSliceID(t *testing.T) {
 }
 
 func TestSliceEditRefusesAnUnknownProject(t *testing.T) {
-	env, _ := testEnv(testConfig(), &fakeAPI{})
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{
 		"slice-edit", testSliceID, "--description", "x", "--project", "nope",
@@ -245,9 +258,46 @@ func TestSliceEditRefusesAnUnknownProject(t *testing.T) {
 	}
 }
 
+// A plan never pulled from the workspace is hydrated on the way to reading
+// anything at all, and a workspace that will not answer that pull fails the
+// whole command before the slice itself is ever read.
+func TestSliceEditReportsAFailedHydrate(t *testing.T) {
+	boom := errors.New("notion is down")
+	api := &fakeAPI{dataSourceErr: boom}
+	env, _ := testEnv(testConfig(t), api)
+
+	err := Run(context.Background(), []string{
+		"slice-edit", testSliceID, "--description", "x", "--project", "project-1",
+	}, env)
+
+	if !errors.Is(err, boom) {
+		t.Errorf("err = %v, want %v", err, boom)
+	}
+}
+
+// The new brief is a local write before anything is pushed, and a plan that
+// cannot make that write fails the command outright.
+func TestSliceEditReportsAFailedLocalWrite(t *testing.T) {
+	cfg := testConfig(t)
+	seedHydratedSlice(t, "project-1", testSliceID, "Render the board", "Todo", func(db *sql.DB) {
+		if _, err := db.Exec(`ALTER TABLE slices DROP COLUMN body`); err != nil {
+			t.Fatalf("break the plan's body column: %v", err)
+		}
+	})
+	env, _ := testEnv(cfg, &fakeAPI{})
+
+	err := Run(context.Background(), []string{
+		"slice-edit", testSliceID, "--description", "x", "--project", "project-1",
+	}, env)
+
+	if err == nil {
+		t.Error("slice-edit over a plan that cannot write the brief: want an error")
+	}
+}
+
 func TestSliceEditReportsAFailedRead(t *testing.T) {
 	api := &fakeAPI{getErr: errors.New("notion is down")}
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
 		"slice-edit", testSliceID, "--description", "x", "--project", "project-1",
@@ -260,7 +310,7 @@ func TestSliceEditReportsAFailedRead(t *testing.T) {
 
 // A stdin that cannot be read fails before Notion is touched at all.
 func TestSliceEditRefusesAnUnreadableStdin(t *testing.T) {
-	env, _ := testEnv(testConfig(), editableAPI())
+	env, _ := testEnv(testConfig(t), editableAPI())
 	env.In = errReader{err: fmt.Errorf("boom")}
 
 	err := Run(context.Background(), []string{

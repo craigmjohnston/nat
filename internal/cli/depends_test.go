@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -9,7 +10,9 @@ import (
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // dependentSlicePage is a slice waiting on the named ones, the relation written
@@ -82,7 +85,7 @@ func dependsOn(api *fakeAPI, id string, on ...string) {
 // would hand out nothing until somebody noticed.
 func TestNextSliceSkipsABlockedSlice(t *testing.T) {
 	api := dependsAPI(t)
-	env, out := testEnv(testClaimConfig(), api)
+	env, out := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
@@ -101,7 +104,7 @@ func TestNextSliceSkipsABlockedSlice(t *testing.T) {
 func TestNextSliceHandsOutASliceWhoseDependenciesAreDone(t *testing.T) {
 	api := dependsAPI(t)
 	dependsOn(api, depWaiting, depDone)
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
@@ -124,7 +127,7 @@ func TestNextSliceRefusesWhenEveryCandidateIsBlocked(t *testing.T) {
 		slicePage(depStuck, "Half-done work", notion.SliceInProgress, "M3: Later", "Craig Johnston", ""))
 	dependsOn(api, depBlocker, depSpare)
 	dependsOn(api, depSpare, depStuck)
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
 
@@ -151,7 +154,7 @@ func TestNextSliceRefusesWhenEveryCandidateIsBlocked(t *testing.T) {
 func TestNextSliceIgnoresADependencyThePlanDoesNotHold(t *testing.T) {
 	api := dependsAPI(t)
 	dependsOn(api, depWaiting, depGone)
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("next-slice: %v", err)
@@ -166,7 +169,7 @@ func TestNextSliceIgnoresADependencyThePlanDoesNotHold(t *testing.T) {
 // names what the slice waits on, and writes nothing.
 func TestStartSliceRefusesABlockedSlice(t *testing.T) {
 	api := dependsAPI(t)
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	err := Run(context.Background(), []string{"start-slice", depWaiting, "--project", "project-1"}, env)
 
@@ -184,7 +187,7 @@ func TestStartSliceRefusesABlockedSlice(t *testing.T) {
 func TestStartSliceClaimsASliceWhoseDependenciesAreDone(t *testing.T) {
 	api := dependsAPI(t)
 	dependsOn(api, depWaiting, depDone)
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"start-slice", depWaiting, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("start-slice: %v", err)
@@ -200,7 +203,7 @@ func TestStartSliceClaimsASliceWhoseDependenciesAreDone(t *testing.T) {
 func TestStartSliceIgnoresAnUnreadableDependency(t *testing.T) {
 	api := dependsAPI(t)
 	dependsOn(api, depWaiting, depGone)
-	env, _ := testEnv(testClaimConfig(), api)
+	env, _ := testEnv(testClaimConfig(t), api)
 
 	if err := Run(context.Background(), []string{"start-slice", depWaiting, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("start-slice: %v", err)
@@ -213,7 +216,7 @@ func TestStartSliceIgnoresAnUnreadableDependency(t *testing.T) {
 
 func TestSliceDependsRecordsWhatASliceWaitsOn(t *testing.T) {
 	api := dependsAPI(t)
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-depends", depWaiting, "--on", depSpare, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-depends: %v", err)
@@ -238,7 +241,7 @@ func TestSliceDependsRecordsWhatASliceWaitsOn(t *testing.T) {
 // the relation is a set, and Notion would keep whatever it was sent.
 func TestSliceDependsRecordsEachSliceOnce(t *testing.T) {
 	api := dependsAPI(t)
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--on", depBlocker, "--on", depSpare, "--on", depSpare, "--project", "project-1"}, env)
 	if err != nil {
@@ -252,7 +255,7 @@ func TestSliceDependsRecordsEachSliceOnce(t *testing.T) {
 
 func TestSliceDependsClears(t *testing.T) {
 	api := dependsAPI(t)
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-depends: %v", err)
@@ -270,7 +273,7 @@ func TestSliceDependsClears(t *testing.T) {
 // one dependency and keep another.
 func TestSliceDependsClearsBeforeAdding(t *testing.T) {
 	api := dependsAPI(t)
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--clear", "--on", depSpare, "--project", "project-1"}, env)
 	if err != nil {
@@ -286,7 +289,7 @@ func TestSliceDependsClearsBeforeAdding(t *testing.T) {
 // waiting on them and is not blocked by any of it.
 func TestSliceDependsSaysWhenNothingIsOutstanding(t *testing.T) {
 	api := dependsAPI(t)
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--clear", "--on", depDone, "--project", "project-1"}, env)
 	if err != nil {
@@ -298,26 +301,77 @@ func TestSliceDependsSaysWhenNothingIsOutstanding(t *testing.T) {
 	}
 }
 
-// A dependency that could not be read is still on the slice in Notion, so it is
-// shown as being there rather than quietly dropped from the output.
-func TestSliceDependsShowsADependencyItCannotRead(t *testing.T) {
+// A dependency that could not be read at all — a relation Notion still holds
+// to a page nothing can fetch, most often one since trashed — cannot survive
+// into the local replica: slice_deps' own foreign keys make an edge to a
+// slice the file has never heard of impossible to store, so [Local.Hydrate]
+// drops it, logged, the same as an edge to a slice genuinely outside the
+// reading (see TestSliceDependsWritesADependencyOnASliceOutsideThePlan). That
+// is a real narrowing from the Notion-only store, which could still show such
+// an edge as "could not be read" because it never had to give the ID
+// anywhere to live; the replica does, and has nowhere for an ID it cannot
+// resolve at all.
+func TestSliceDependsDropsADependencyItCannotRead(t *testing.T) {
 	api := dependsAPI(t)
 	dependsOn(api, depWaiting, depGone)
-	env, out := testEnv(testConfig(), api)
+	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{"slice-depends", depWaiting, "--on", depSpare, "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-depends: %v", err)
 	}
 
-	// The unreadable one is kept rather than quietly dropped — only --on's own
-	// arguments are checked — so the output has to account for it.
-	if !strings.Contains(out.String(), "- "+depGone+" — could not be read\n") {
-		t.Errorf("output =\n%s\nwant the unreadable dependency shown", out.String())
+	if strings.Contains(out.String(), depGone) {
+		t.Errorf("output =\n%s\nwant the unreadable dependency dropped, not carried through", out.String())
+	}
+	if !strings.Contains(out.String(), "- "+depSpare+" —") && !strings.Contains(out.String(), "Queued work") {
+		t.Errorf("output =\n%s\nwant the dependency actually asked for", out.String())
+	}
+}
+
+// dependencyIndex, dependencyList and dependsMarkdown are exercised through
+// sliceDepends's own command surface everywhere else in this file, but a
+// dependency that reads fine at write time and only fails later — the file
+// corrupted, say, between one command and the next — can't be reached that
+// way: any write naming --on re-validates every new edge before it is ever
+// written (dependencyIDs), and checkDependsCycle's own whole-plan read would
+// trip over a broken row before dependencyIndex ever got to it. So these
+// three are tested directly, the same read they would be asked to make from
+// any command that shows a slice's dependencies, sliceDepends included.
+func TestDependencyIndexDropsAFailedRead(t *testing.T) {
+	api := &fakeAPI{getErr: errors.New("notion is down")}
+	st := store.Over(api)
+	s := domain.Slice{ID: "s", Name: "S", DependsOn: []string{"gone"}}
+
+	byID := dependencyIndex(context.Background(), st, s)
+
+	if len(byID) != 0 {
+		t.Errorf("byID = %+v, want the unreadable dependency left out", byID)
+	}
+}
+
+func TestDependencyListNamesAnUnresolvedDependencyByIDAlone(t *testing.T) {
+	s := domain.Slice{ID: "s", DependsOn: []string{"gone"}}
+
+	got := dependencyList(s, map[string]domain.Slice{})
+
+	want := []dependencyJSON{{ID: "gone"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("dependencyList = %+v, want %+v", got, want)
+	}
+}
+
+func TestDependsMarkdownReportsAnUnresolvedDependency(t *testing.T) {
+	s := domain.Slice{ID: "s", Name: "S", DependsOn: []string{"gone"}}
+
+	got := dependsMarkdown(s, map[string]domain.Slice{})
+
+	if !strings.Contains(got, "- gone — could not be read\n") {
+		t.Errorf("markdown =\n%s\nwant the unreadable dependency reported by ID", got)
 	}
 }
 
 func TestSliceDependsJSON(t *testing.T) {
-	env, out := testEnv(testConfig(), dependsAPI(t))
+	env, out := testEnv(testConfig(t), dependsAPI(t))
 
 	if err := Run(context.Background(), []string{"slice-depends", depWaiting, "--on", depSpare, "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-depends: %v", err)
@@ -343,7 +397,7 @@ func TestSliceDependsJSON(t *testing.T) {
 // it happily — so it is refused here, before anything is written.
 func TestSliceDependsRefusesSelfDependency(t *testing.T) {
 	api := dependsAPI(t)
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--on", depWaiting, "--project", "project-1"}, env)
 
@@ -359,7 +413,7 @@ func TestSliceDependsRefusesSelfDependency(t *testing.T) {
 // refused rather than recorded.
 func TestSliceDependsRefusesAnUnreadableSlice(t *testing.T) {
 	api := dependsAPI(t)
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--on", depGone, "--project", "project-1"}, env)
 
@@ -368,6 +422,90 @@ func TestSliceDependsRefusesAnUnreadableSlice(t *testing.T) {
 	}
 	if len(api.updates) != 0 {
 		t.Errorf("updates = %+v, want nothing written", api.updates)
+	}
+}
+
+// The slice named is read the same way any other command reads one — the
+// local file once hydrated, the workspace's own GetPage when it is not —
+// and a slice nobody can fetch fails the whole command before anything about
+// its dependencies is even looked at.
+func TestSliceDependsReportsAFailedSliceRead(t *testing.T) {
+	api := dependsAPI(t)
+	env, _ := testEnv(testConfig(t), api)
+
+	err := Run(context.Background(), []string{"slice-depends", depGone, "--clear", "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "load the slice") {
+		t.Fatalf("err = %v, want the unreadable slice named", err)
+	}
+}
+
+// checkDependsCycle reads the whole plan to check for one, and a plan
+// already hydrated reads that from the file — so a failure there, once the
+// hydrate itself has already succeeded, is a failure of the file rather than
+// anything a fakeAPI can still stage.
+func TestSliceDependsReportsAFailedCycleCheck(t *testing.T) {
+	api := dependsAPI(t)
+	cfg := testConfig(t)
+	env, _ := testEnv(cfg, api)
+	if err := Run(context.Background(),
+		[]string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-depends (hydrate): %v", err)
+	}
+
+	path, err := store.LocalPath("project-1")
+	if err != nil {
+		t.Fatalf("LocalPath: %v", err)
+	}
+	db, err := sql.Open("sqlite3", "file:"+path)
+	if err != nil {
+		t.Fatalf("open the plan: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.Exec(`DROP TABLE milestones`); err != nil {
+		t.Fatalf("drop milestones: %v", err)
+	}
+
+	env2, _ := testEnv(cfg, api)
+	err = Run(context.Background(),
+		[]string{"slice-depends", depWaiting, "--on", depSpare, "--project", "project-1"}, env2)
+
+	if err == nil || !strings.Contains(err.Error(), "load slices") {
+		t.Fatalf("err = %v, want the broken read reported", err)
+	}
+}
+
+// Every slice write lands in the file first — [store.Mirrored]'s write-through
+// rule — so a file that cannot even record that write fails the command,
+// unlike a push to the workspace afterward, whose own failure is only logged.
+func TestSliceDependsReportsAFailedLocalWrite(t *testing.T) {
+	api := dependsAPI(t)
+	cfg := testConfig(t)
+	env, _ := testEnv(cfg, api)
+	if err := Run(context.Background(),
+		[]string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-depends (hydrate): %v", err)
+	}
+
+	path, err := store.LocalPath("project-1")
+	if err != nil {
+		t.Fatalf("LocalPath: %v", err)
+	}
+	db, err := sql.Open("sqlite3", "file:"+path)
+	if err != nil {
+		t.Fatalf("open the plan: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.Exec(`DROP TABLE sync`); err != nil {
+		t.Fatalf("drop sync: %v", err)
+	}
+
+	env2, _ := testEnv(cfg, api)
+	err = Run(context.Background(),
+		[]string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env2)
+
+	if err == nil || !strings.Contains(err.Error(), "record the dependencies") {
+		t.Fatalf("err = %v, want the failed write reported", err)
 	}
 }
 
@@ -387,7 +525,7 @@ func TestSliceDependsMisuse(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			api := dependsAPI(t)
-			env, _ := testEnv(testConfig(), api)
+			env, _ := testEnv(testConfig(t), api)
 
 			err := Run(context.Background(), tt.args, env)
 
@@ -405,24 +543,48 @@ func TestSliceDependsMisuse(t *testing.T) {
 	}
 }
 
-func TestSliceDependsReportsAFailedWrite(t *testing.T) {
+// A slice already in the hydrated plan is written to locally first; a
+// workspace that will not take the push is logged and the slice left dirty
+// for a later sync, not a reason the command itself fails — see
+// [store.Mirrored]'s own doc comment on write-through.
+func TestSliceDependsSucceedsLocallyDespiteAFailedPush(t *testing.T) {
 	api := dependsAPI(t)
 	api.updateErr = errors.New("notion is down")
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env)
+	if err := Run(context.Background(),
+		[]string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-depends: %v", err)
+	}
 
-	if err == nil || !strings.Contains(err.Error(), "record the dependencies") {
-		t.Errorf("err = %v, want the failing step named", err)
+	path, err := store.LocalPath("project-1")
+	if err != nil {
+		t.Fatalf("resolve the local plan: %v", err)
+	}
+	local, err := store.OpenLocal(path)
+	if err != nil {
+		t.Fatalf("re-open the local plan: %v", err)
+	}
+	t.Cleanup(func() { _ = local.Close() })
+	s, _, err := local.Slice(context.Background(), depWaiting)
+	if err != nil {
+		t.Fatalf("read the local plan: %v", err)
+	}
+	if len(s.DependsOn) != 0 {
+		t.Errorf("depends_on = %v, want it cleared locally despite the failed push", s.DependsOn)
 	}
 }
 
+// A dependency named on the command line but not already in the hydrated
+// plan is read fresh, through [store.Mirrored]'s remote fallback — and a
+// Notion that will not answer that read stops the write, the one case a
+// failed read still can.
 func TestSliceDependsReportsAFailedRead(t *testing.T) {
 	api := dependsAPI(t)
 	api.getErr = errors.New("notion is down")
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--on", depGone, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load the slice") {
 		t.Errorf("err = %v, want the failing step named", err)
@@ -433,7 +595,7 @@ func TestSliceDependsReportsAFailedRead(t *testing.T) {
 // another never exists unblocked even for a moment.
 func TestSliceAddRecordsDependencies(t *testing.T) {
 	api := dependsAPI(t)
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-add", "Polish the board",
 		"--milestone", "M2: Board", "--depends-on", depWaiting, "--depends-on", "https://notion.so/Style-the-board", "--project", "project-1"}, env)
@@ -441,10 +603,17 @@ func TestSliceAddRecordsDependencies(t *testing.T) {
 		t.Fatalf("err = %v, want the slug-only URL refused", err)
 	}
 
+	// store.Mirrored.AddSlice takes every dependency it names into the local
+	// file (ensureHeld) once the workspace has created the page — the file
+	// keeps edges between rows it holds, so the row has to be there first —
+	// which means a dependency has to be a page the workspace can actually
+	// answer for, unlike before this slice, when nothing checked.
+	const outsideDepID = "3be38308-f654-81dc-962c-c60836e92992"
 	api = dependsAPI(t)
-	env, _ = testEnv(testConfig(), api)
+	api.pages[outsideDepID] = []notion.Page{slicePage(outsideDepID, "Elsewhere", notion.SliceTodo, "", "", "")}
+	env, _ = testEnv(testConfig(t), api)
 	err = Run(context.Background(), []string{"slice-add", "Polish the board",
-		"--milestone", "M2: Board", "--depends-on", "3be38308-f654-81dc-962c-c60836e92992", "--project", "project-1"}, env)
+		"--milestone", "M2: Board", "--depends-on", outsideDepID, "--project", "project-1"}, env)
 	if err != nil {
 		t.Fatalf("slice-add: %v", err)
 	}
@@ -453,7 +622,7 @@ func TestSliceAddRecordsDependencies(t *testing.T) {
 		t.Fatalf("creates = %+v, want one", api.creates)
 	}
 	got := api.creates[0].props[notion.PropDependsOn].RelationIDs()
-	if !reflect.DeepEqual(got, []string{"3be38308-f654-81dc-962c-c60836e92992"}) {
+	if !reflect.DeepEqual(got, []string{outsideDepID}) {
 		t.Errorf("dependencies = %v, want the one named", got)
 	}
 }
@@ -462,7 +631,7 @@ func TestSliceAddRecordsDependencies(t *testing.T) {
 // whose table has no such column takes slices exactly as it always did.
 func TestSliceAddWithoutDependenciesWritesNoRelation(t *testing.T) {
 	api := dependsAPI(t)
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{"slice-add", "Polish the board", "--milestone", "M2: Board", "--project", "project-1"}, env)
 	if err != nil {
@@ -496,12 +665,12 @@ func TestPlanApplyRecordsDependenciesBetweenNewSlices(t *testing.T) {
 			t.Errorf("creation %d wrote a relation: %+v", i, c.props)
 		}
 	}
-	// The plan is written back to front, so the waiting slice — the first of the
-	// document — is the last page created.
-	if len(api.updates) != 1 || api.updates[0].id != "new-2" {
+	// The plan is written front to back, so the waiting slice — the first of
+	// the document — is the first page created.
+	if len(api.updates) != 1 || api.updates[0].id != "new-1" {
 		t.Fatalf("updates = %+v, want the waiting slice written once", api.updates)
 	}
-	if got := dependencyIDsOf(t, api.updates[0]); !reflect.DeepEqual(got, []string{"new-1"}) {
+	if got := dependencyIDsOf(t, api.updates[0]); !reflect.DeepEqual(got, []string{"new-2"}) {
 		t.Errorf("dependencies = %v, want the slice written below it in the document", got)
 	}
 }
@@ -525,8 +694,13 @@ func TestPlanApplyRecordsADependencyOnAnExistingSlice(t *testing.T) {
 	}
 }
 
-// A plan declaring no dependency reads no slices at all: nothing has to be
-// resolved, and a project whose table has no such column applies it as ever.
+// A plan declaring no dependency reads no slices beyond the one read every
+// command pays for opening its store: [store.ForProject] hydrates a fresh
+// plan from the workspace once, regardless of what the command does with it,
+// and that read — not plan-apply's own dependency resolution — is the one
+// query below. plan-apply's own code adds no second one: nothing has to be
+// resolved, and a project whose table has no depends-on column applies it as
+// ever.
 func TestPlanApplyReadsNoSlicesWithoutDependencies(t *testing.T) {
 	api := planAPI(3)
 
@@ -534,8 +708,8 @@ func TestPlanApplyReadsNoSlicesWithoutDependencies(t *testing.T) {
 		t.Fatalf("plan-apply: %v", err)
 	}
 
-	if len(api.queries) != 0 {
-		t.Errorf("queries = %+v, want the slices left unread", api.queries)
+	if len(api.queries) != 1 {
+		t.Errorf("queries = %+v, want exactly the store's own hydrate and nothing plan-apply added", api.queries)
 	}
 	if len(api.updates) != 0 {
 		t.Errorf("updates = %+v, want no relation written", api.updates)
@@ -617,7 +791,12 @@ func TestPlanApplyRefusesAnAmbiguousExistingDependency(t *testing.T) {
 	}
 }
 
-func TestPlanApplyReportsAFailedDependencyWrite(t *testing.T) {
+// A dependency a new slice was given lands in the local plan first, exactly
+// as any other slice write does — so a workspace that refuses the relation
+// is logged and leaves the slice dirty for a later sync, not a reason the
+// run fails: the slice was created, and now waits on what the document said,
+// whatever the push managed.
+func TestPlanApplyRecordsADependencyLocallyDespiteAFailedPush(t *testing.T) {
 	api := planAPI(2)
 	api.pages = map[string][]notion.Page{
 		"slices-ds": {slicePage(depBlocker, "Style the board", notion.SliceTodo, "M2: Board", "", "")},
@@ -626,14 +805,13 @@ func TestPlanApplyReportsAFailedDependencyWrite(t *testing.T) {
 	doc := `{"slices": [{"title": "Frame the board", "milestone": "M2: Board",
 		"depends_on": ["Style the board"]}]}`
 
-	_, err := runPlan(t, api, doc)
+	out, err := runPlan(t, api, doc)
 
-	if err == nil || !strings.Contains(err.Error(), `record what "Frame the board" waits on`) {
-		t.Fatalf("err = %v, want the failing step named", err)
+	if err != nil {
+		t.Fatalf("plan-apply: %v", err)
 	}
-	// The slice itself was created, and the error has to say so.
-	if !strings.Contains(err.Error(), "still in Notion") {
-		t.Errorf("err = %v, want it to say what was already written", err)
+	if !strings.Contains(out, "Frame the board") {
+		t.Errorf("output =\n%s\nwant the slice reported as created", out)
 	}
 }
 
@@ -654,7 +832,7 @@ func TestPlanApplyReportsAFailedSliceRead(t *testing.T) {
 // been set up says so rather than failing on a page fetch.
 func TestSliceDependsNeedsAConfiguredProject(t *testing.T) {
 	api := dependsAPI(t)
-	env, _ := testEnv(testConfig(), api)
+	env, _ := testEnv(testConfig(t), api)
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 
 	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env)
@@ -683,6 +861,13 @@ func boardSlices(api *fakeAPI) {
 func TestPlanApplyAddsDependenciesToAnExistingSlice(t *testing.T) {
 	api := planAPI(1)
 	boardSlices(api)
+	// depDone has to be a readable page of its own, not just an ID in a
+	// relation: the local replica cannot hold an edge to a slice it has never
+	// seen (slice_deps' own foreign keys), so an already-recorded dependency
+	// this test means to prove survives an addition has to be one the
+	// project's own query actually returns.
+	api.pages["slices-ds"] = append(api.pages["slices-ds"],
+		slicePage(depDone, "Notion client", notion.SliceDone, "M1: Client", "", ""))
 	doc := `{
 	  "slices": [{"title": "Frame the board", "milestone": "M2: Board"}],
 	  "dependencies": [{"slice": "style the board", "on": ["Frame the board", "Queued work"]}]
@@ -747,10 +932,10 @@ func TestPlanApplyFoldsADependenciesEntryIntoASliceItCreates(t *testing.T) {
 		t.Fatalf("plan-apply: %v", err)
 	}
 
-	if len(api.updates) != 1 || api.updates[0].id != "new-2" {
+	if len(api.updates) != 1 || api.updates[0].id != "new-1" {
 		t.Fatalf("updates = %+v, want the created slice written once", api.updates)
 	}
-	want := []string{depSpare, "new-1"}
+	want := []string{depSpare, "new-2"}
 	if got := dependencyIDsOf(t, api.updates[0]); !reflect.DeepEqual(got, want) {
 		t.Errorf("dependencies = %v, want %v", got, want)
 	}
@@ -761,6 +946,10 @@ func TestPlanApplyFoldsADependenciesEntryIntoASliceItCreates(t *testing.T) {
 func TestPlanApplyMergesTwoDependenciesEntriesForOneSlice(t *testing.T) {
 	api := planAPI(1)
 	boardSlices(api)
+	// depDone has to be a readable page of its own, not just an ID in a
+	// relation — see TestPlanApplyAddsDependenciesToAnExistingSlice.
+	api.pages["slices-ds"] = append(api.pages["slices-ds"],
+		slicePage(depDone, "Notion client", notion.SliceDone, "M1: Client", "", ""))
 	doc := `{
 	  "slices": [{"title": "Frame the board", "milestone": "M2: Board"}],
 	  "dependencies": [
@@ -888,62 +1077,87 @@ func TestPlanApplyRefusesAnAmbiguousDependenciesEntry(t *testing.T) {
 	}
 }
 
-func TestPlanApplyReportsAFailedDependencyAddition(t *testing.T) {
+// An addition onto a slice the project already has lands locally the same
+// way a new slice's own dependency does: the write is the plan file's, and a
+// workspace refusal is logged and left dirty rather than failing the run.
+func TestPlanApplyRecordsAnAdditionLocallyDespiteAFailedPush(t *testing.T) {
 	api := planAPI(0)
 	boardSlices(api)
 	api.updateErr = errors.New("notion is down")
 	doc := `{"dependencies": [{"slice": "Style the board", "on": ["Queued work"]}]}`
 
-	_, err := runPlan(t, api, doc)
+	out, err := runPlan(t, api, doc)
 
-	if err == nil || !strings.Contains(err.Error(), `record what "Style the board" waits on`) {
-		t.Fatalf("err = %v, want the failing step named", err)
+	if err != nil {
+		t.Fatalf("plan-apply: %v", err)
 	}
-	// Nothing was written before it failed, so there is nothing to warn about.
-	if strings.Contains(err.Error(), "still in Notion") {
-		t.Errorf("err = %v, want no warning: the run wrote nothing", err)
+	if !strings.Contains(out, "## Dependencies added\n\n- Style the board — now waits on 1 more slice\n") {
+		t.Errorf("output =\n%s\nwant the addition reported", out)
 	}
 }
 
-// failAfter writes as the fake does until it has written enough, so a run can
-// fail with dependencies already recorded.
-type failAfter struct {
-	*fakeAPI
-	writes int
-	err    error
-}
-
-func (f *failAfter) UpdatePageProperties(ctx context.Context, id string, props map[string]notion.PropertyValue) (*notion.Page, error) {
-	if len(f.updates) >= f.writes {
-		return nil, f.err
-	}
-	return f.fakeAPI.UpdatePageProperties(ctx, id, props)
-}
-
-// A run that failed partway through the additions says what it already recorded,
-// so nobody re-runs the document wondering which half landed.
-func TestPlanApplySaysWhatItAddedBeforeAFailure(t *testing.T) {
+// Every addition in a document is written the same way, so a run naming more
+// than one records all of them regardless of whether the workspace can be
+// told about any: there is no longer a "failed partway" state for a push
+// this cushioned — see TestPlanApplyRecordsAnAdditionLocallyDespiteAFailedPush
+// and store.Mirrored's own doc comment on write-through.
+func TestPlanApplyRecordsEveryAdditionDespiteAFailedPush(t *testing.T) {
 	api := planAPI(1)
 	boardSlices(api)
-	failing := &failAfter{fakeAPI: api, writes: 1, err: errors.New("notion is down")}
-	env, _ := testEnv(testConfig(), api)
-	env.NewClient = func(notion.TokenFunc) API { return failing }
-	// Two slices already on the board made to wait on the one the plan creates:
-	// two additive writes, and the second is the one that fails.
-	env.In = strings.NewReader(`{
+	api.updateErr = errors.New("notion is down")
+	doc := `{
 	  "slices": [{"title": "Frame the board", "milestone": "M2: Board"}],
 	  "dependencies": [
 	    {"slice": "Style the board", "on": ["Frame the board"]},
 	    {"slice": "Queued work", "on": ["Frame the board"]}
 	  ]
-	}`)
+	}`
 
-	err := Run(context.Background(), []string{"plan-apply", "--project", "project-1"}, env)
+	out, err := runPlan(t, api, doc)
 
-	if err == nil || !strings.Contains(err.Error(), "1 slice already on the board") {
-		t.Fatalf("err = %v, want what was recorded named", err)
+	if err != nil {
+		t.Fatalf("plan-apply: %v", err)
 	}
-	if !strings.Contains(err.Error(), "still in Notion") {
-		t.Errorf("err = %v, want it to say the addition stands", err)
+	if !strings.Contains(out, "- Style the board — now waits on 1 more slice\n") ||
+		!strings.Contains(out, "- Queued work — now waits on 1 more slice\n") {
+		t.Errorf("output =\n%s\nwant both additions reported", out)
+	}
+}
+
+// stubStore is a store.Store that answers Plan alone and panics on anything
+// else, for the one test below that has to hand checkDependsCycle a plan of
+// its own choosing rather than one built by hydrating an actual store —
+// checkDependsCycle takes a store.Store precisely so it can be driven this
+// way, independent of whichever backend a caller's slice actually came from.
+type stubStore struct {
+	store.Store
+	plan store.Plan
+	err  error
+	// setDependencies answers store.Store.SetDependencies where given, for a
+	// test that needs that one write to fail without a whole store behind it.
+	setDependencies func(id string, on []string) (domain.Slice, error)
+}
+
+func (s stubStore) Plan(context.Context, store.Project) (store.Plan, error) { return s.plan, s.err }
+
+func (s stubStore) SetDependencies(_ context.Context, id string, on []string) (domain.Slice, error) {
+	return s.setDependencies(id, on)
+}
+
+// A slice checkDependsCycle is asked about may not be one the plan read
+// names at all — filed under a different project than the one --project
+// pointed at — and such a slice still leads wherever its own dependencies
+// lead, checked as if it were appended to the graph rather than dropped from
+// it.
+func TestCheckDependsCycleChecksASliceOutsideThePlanItself(t *testing.T) {
+	other := domain.Slice{ID: "outside", Name: "Outside the plan"}
+	st := stubStore{plan: store.Plan{Project: domain.Project{
+		Slices: []domain.Slice{{ID: "a", Name: "A", DependsOn: []string{"outside"}}},
+	}}}
+
+	err := checkDependsCycle(context.Background(), st, store.Project{}, other, []string{"a"})
+
+	if err == nil || !strings.Contains(err.Error(), "would then wait on itself") {
+		t.Errorf("err = %v, want the cycle through the outside slice refused", err)
 	}
 }
