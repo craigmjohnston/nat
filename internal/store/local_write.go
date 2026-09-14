@@ -1030,3 +1030,47 @@ func (l *Local) ApplyAssignee(ctx context.Context, id, name string) error {
 			`UPDATE slices SET assignee_name = ? WHERE id = ?`, name, id)
 	})
 }
+
+// takeMilestones puts milestones the workspace has just created into the
+// plan, in the order handed back — the local half of a milestone write, which
+// [Mirrored.AddMilestones] calls only once the workspace's own write has
+// already succeeded. Unlike a slice's, a milestone write never rides the
+// dirty flag (see the design's own reasoning, restated in root CLAUDE.md), so
+// there is nothing here for a sync to send later and nothing to mark.
+//
+// A name the file already holds is left exactly as it is: it is not new to
+// the plan, whatever the workspace's own answer says, the same rule
+// [Local.TakeSlice] applies to a slice.
+func (l *Local) takeMilestones(ctx context.Context, ms []domain.Milestone) error {
+	return l.withTx(ctx, "take the milestones into the plan", func(tx *sql.Tx) error {
+		for _, m := range ms {
+			held, err := l.milestoneExists(ctx, tx, m.Name)
+			if err != nil {
+				return err
+			}
+			if held {
+				continue
+			}
+			if err := l.exec(ctx, tx, "take the milestones into the plan",
+				`INSERT INTO milestones (name, position, select_type) VALUES (?, ?, ?)`,
+				m.Name, m.Order, m.SelectType); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// milestoneExists reports whether a milestone is already in the plan, which
+// is what [Local.takeMilestones] asks before filing one.
+func (l *Local) milestoneExists(ctx context.Context, q localQuerier, name string) (bool, error) {
+	var found string
+	err := q.QueryRowContext(ctx, `SELECT name FROM milestones WHERE name = ?`, name).Scan(&found)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, l.errorf(err, "read the milestones")
+	}
+	return true, nil
+}

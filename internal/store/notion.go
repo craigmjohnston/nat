@@ -80,6 +80,22 @@ func shapeOf(ds *notion.DataSource) Shape {
 // is no substitute — Notion records it to the minute, so a plan written in one
 // go has no order at all — which is why the view's own row order is read.
 func (n *Notion) Plan(ctx context.Context, p Project) (Plan, error) {
+	return n.plan(ctx, p, true)
+}
+
+// planForPull is [Notion.Plan] without the view's own row order: exactly what
+// [Mirrored.Pull] reads, since [Local.Hydrate] only uses a reading's order to
+// seat a slice the file has never met — every slice it already holds keeps
+// the position it has — so the order notion.PlanOrder asks a request of its
+// own for is never even looked at on this path. A plan of hundreds of pages
+// is read this way constantly, and the request saved is a real one.
+func (n *Notion) planForPull(ctx context.Context, p Project) (Plan, error) {
+	return n.plan(ctx, p, false)
+}
+
+// plan is [Notion.Plan] and [Notion.planForPull] both: the same read, ordered
+// by the board's own view or left as the query gave it.
+func (n *Notion) plan(ctx context.Context, p Project, ordered bool) (Plan, error) {
 	ds, migration, err := notion.MigrateProject(ctx, n.api, p.SlicesID)
 	if err != nil {
 		return Plan{}, err
@@ -90,10 +106,13 @@ func (n *Notion) Plan(ctx context.Context, p Project) (Plan, error) {
 	if err != nil {
 		return Plan{}, fmt.Errorf("load slices: %w", err)
 	}
+	slices := domain.SlicesFromPages(pages)
+	if ordered {
+		slices = domain.InViewOrder(slices, notion.PlanOrder(ctx, n.api, p.SlicesID))
+	}
 	plan := Plan{
-		Project: domain.NewProject(p.ID, p.Name, sh.Milestones,
-			domain.InViewOrder(domain.SlicesFromPages(pages), notion.PlanOrder(ctx, n.api, p.SlicesID))),
-		Shape: sh,
+		Project: domain.NewProject(p.ID, p.Name, sh.Milestones, slices),
+		Shape:   sh,
 	}
 	if !migration.Empty() {
 		plan.Migrated = migration.Summary()

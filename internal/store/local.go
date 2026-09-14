@@ -39,6 +39,14 @@ type Local struct {
 // Local is a Store.
 var _ Store = (*Local)(nil)
 
+// ErrSliceNotFound is what a read of one slice by ID wraps when the plan
+// holds no such slice — the file's own "not found," wrapped rather than
+// returned bare so the message still names the slice and the path, and
+// matched with errors.Is by a caller that has to tell a slice the file has
+// never seen from any other failure reading one, [Mirrored.Slice] chief among
+// them.
+var ErrSliceNotFound = errors.New("no such slice in the plan")
+
 // LocalDir is the directory nat keeps its plans in: one database per project,
 // under nat's own data directory — ~/Library/Application Support on macOS, and
 // $XDG_DATA_HOME (or ~/.local/share) everywhere else. Plans are data rather
@@ -490,7 +498,7 @@ func (l *Local) slice(ctx context.Context, q localQuerier, id string) (domain.Sl
 	s, err := scanLocalSlice(row.Scan)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		return domain.Slice{}, fmt.Errorf("no slice %s in the plan at %s", id, l.path)
+		return domain.Slice{}, fmt.Errorf("no slice %s in the plan at %s: %w", id, l.path, ErrSliceNotFound)
 	case err != nil:
 		return domain.Slice{}, l.errorf(err, "read the slice")
 	}
