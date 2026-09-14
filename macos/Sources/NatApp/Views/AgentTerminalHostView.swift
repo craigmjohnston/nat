@@ -223,35 +223,75 @@ final class FirstLayoutTerminalView: LocalProcessTerminalView {
     /// answer does not depend on the keyboard layout.
     private static let returnKeyCodes: Set<UInt16> = [36, 76]
 
+    /// The local monitor that answers a modified enter while this pane holds
+    /// the keyboard, installed for as long as this view has a window.
+    ///
+    /// `performKeyEquivalent` was tried first and does not work: AppKit only
+    /// offers that hook a *modified* key equivalent — one carrying command —
+    /// so a bare shift+return never reaches it at all and goes straight to
+    /// SwiftTerm's own `keyDown`, which cannot be overridden from outside
+    /// that module since SwiftTerm declares it `public` rather than `open`.
+    /// A local `NSEvent` monitor is offered every key-down in the app before
+    /// any responder sees it, `keyDown` included, which is what catching an
+    /// unmodified-equivalent key like shift+return actually needs.
+    ///
+    /// `nonisolated(unsafe)`: `deinit` runs off the main actor even for a
+    /// main-actor-isolated class, and removing the monitor there is the only
+    /// way to guarantee it on every teardown path rather than just the ones
+    /// that go through `viewDidMoveToWindow`. Safe here because nothing but
+    /// this view — always on the main thread — ever touches the property.
+    private nonisolated(unsafe) var keyDownMonitor: Any?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        removeKeyDownMonitor()
+        guard window != nil else { return }
+        keyDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.interceptModifiedEnter(event) ?? event
+        }
+    }
+
+    deinit {
+        if let keyDownMonitor {
+            NSEvent.removeMonitor(keyDownMonitor)
+        }
+    }
+
+    private func removeKeyDownMonitor() {
+        if let keyDownMonitor {
+            NSEvent.removeMonitor(keyDownMonitor)
+        }
+        keyDownMonitor = nil
+    }
+
     /// Sends a modified enter as its CSI-u encoding, since the emulator would
     /// send an ordinary carriage return for all three enters and Claude Code
     /// reads that as "submit" — which is exactly what shift+enter must not do.
     ///
     /// Only the two combinations `TerminalKeyEncoding` names are taken; every
-    /// other key press, a plain enter included, falls through to SwiftTerm's
-    /// own `keyDown`.
+    /// other key press, a plain enter included, is returned unchanged so it
+    /// falls through to SwiftTerm's own `keyDown`.
     ///
-    /// `performKeyEquivalent` rather than `keyDown`: SwiftTerm declares its
-    /// `keyDown` `public` rather than `open`, so it cannot be overridden from
-    /// outside that module at all. The key-equivalent hook is the one AppKit
-    /// offers the view hierarchy *before* the key reaches the first
-    /// responder's `keyDown` — it is how a default button answers a plain
-    /// return — which is exactly the interception this needs, and it is
-    /// `open`. Consuming the event is what `true` says.
+    /// Answers only while this pane itself has the keyboard: the monitor is
+    /// offered every key-down in the app regardless of which view — or
+    /// window — has focus, so a shift+enter typed into a sheet's text field,
+    /// or into another window entirely, is not the agent's and is returned
+    /// unchanged.
     ///
-    /// It is offered to the whole hierarchy regardless of who has the
-    /// keyboard, so this only answers while the pane itself does: a
-    /// shift+enter typed into a sheet's text field elsewhere in the window is
-    /// not the agent's.
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        guard hasKeyboardFocus,
+    /// `event.window` is checked against this view's own window before
+    /// `hasKeyboardFocus` — a window's `firstResponder` is not cleared when
+    /// it resigns key, so a stale one left over from before another window
+    /// took focus would otherwise read as this pane still having it.
+    private func interceptModifiedEnter(_ event: NSEvent) -> NSEvent? {
+        guard event.window === window,
+              hasKeyboardFocus,
               Self.returnKeyCodes.contains(event.keyCode),
               let bytes = TerminalKeyEncoding.returnKey(Self.modifiers(of: event))
         else {
-            return super.performKeyEquivalent(with: event)
+            return event
         }
         send(txt: bytes)
-        return true
+        return nil
     }
 
     /// Whether this pane is where typing currently goes — itself, or any view
