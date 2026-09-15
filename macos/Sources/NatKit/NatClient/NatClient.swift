@@ -178,6 +178,17 @@ public final class NatClient: Sendable {
         _ = try await runNatRaw(arguments: ["agent-kill", "--project", projectID, sliceRef])
     }
 
+    /// End a project's planning agent outright — `nat agent-kill --workshop`,
+    /// the workshop tab's own close button. A project with no live planning
+    /// session is refused by the CLI, which passes straight through as
+    /// `NatError.commandFailed`.
+    ///
+    /// - Parameter projectID: The project's Notion page ID
+    /// - Throws: NatError if the command fails or no live session exists
+    public func agentKillWorkshop(projectID: String) async throws {
+        _ = try await runNatRaw(arguments: ["agent-kill", "--workshop", "--project", projectID])
+    }
+
     /// Read one slice's status fresh, straight off its page — `nat
     /// slice-status`, the reaper's last word before a kill. `projectID` only
     /// pins the credentials the read is made with; the slice need not be in

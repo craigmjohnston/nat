@@ -220,6 +220,9 @@ usage:
                       end a live agent session, taking its agent with it — for
                       a slice that is finished with, whose session would
                       otherwise sit on the tmux server forever
+  nat agent-kill --workshop --project ID
+                      end the project's live planning agent instead of a
+                      slice's; mutually exclusive with the positional slice
   nat project-create <name> [--repo DIR] [--description TEXT|-] [--json]
                       create a project and its Slices database, register it in
                       local config and write the description as its page body;

@@ -117,6 +117,10 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
         throw DiffTestError()
     }
 
+    func agentKillWorkshop(projectID: String) async throws {
+        throw DiffTestError()
+    }
+
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult {
         throw DiffTestError()
     }

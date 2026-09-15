@@ -53,6 +53,16 @@ public final class AppModel {
     /// selection: the rail draws one selected row.
     private var workshopSelectedProjects: Set<String> = []
 
+    /// The composer's typed-but-not-yet-launched request, per project — kept
+    /// here rather than as `WorkshopPaneView`'s own `@State` so switching to a
+    /// slice and back does not tear the composer down with it (`PaneView`
+    /// mounts the workshop pane in a plain conditional). Cleared only by a
+    /// successful launch (`launchWorkshop(request:)`) or the ✕ closing the
+    /// tab outright — never by navigating away, which is the one thing this
+    /// exists to survive. In-memory only, like every other per-project piece
+    /// of view state here; there is no draft to restore across app launches.
+    private var workshopDrafts: [String: String] = [:]
+
     /// Ordered list of project tabs: (id, name).
     public private(set) var projectTabs: [(id: String, name: String)] = []
 
@@ -531,6 +541,22 @@ public final class AppModel {
         return activityStore?.agents[key]
     }
 
+    /// The active project's workshop draft — what `WorkshopPaneView`'s
+    /// composer binds to instead of its own local state, so the text
+    /// survives the view being torn down and remounted by a tab switch.
+    /// Empty (never nil) with no active project, mirroring how the composer
+    /// itself has nothing to bind to then either.
+    public var workshopDraft: String {
+        get {
+            guard let activeID = activeProjectID else { return "" }
+            return workshopDrafts[activeID] ?? ""
+        }
+        set {
+            guard let activeID = activeProjectID else { return }
+            workshopDrafts[activeID] = newValue
+        }
+    }
+
     /// Whether the active project's rail has the workshop row selected.
     /// Setting it true clears the slice selection — see `selectedSliceID`.
     public var workshopSelected: Bool {
@@ -604,6 +630,10 @@ public final class AppModel {
         // poll reports the session, so the launching state is held across
         // that wait rather than flickering the composer back over it.
         if workshopLaunchError == nil {
+            // The one thing that discards the draft besides the ✕: a launch
+            // that took is the request actually being used, so there is
+            // nothing left in it worth keeping for the next visit.
+            workshopDrafts[projectID] = nil
             await settleOnPlanningAgent()
         }
         workshopLaunching = false
@@ -694,6 +724,52 @@ public final class AppModel {
             return error.localizedDescription
         }
         activityStore?.kick()
+        return nil
+    }
+
+    /// Ends the project's planning agent outright — `nat agent-kill
+    /// --workshop`, alongside `killAgent(sliceID:)` above. Unlike that one,
+    /// this is asked for by hand: the rail's ✕ on the workshop row is the
+    /// only caller, closing a tab a session is still live on.
+    ///
+    /// Answers with the refusal's own first line where nat refused, and nil
+    /// once the session is gone.
+    @discardableResult
+    public func killWorkshopAgent() async -> String? {
+        guard let projectID = activeProjectID else { return "No project loaded" }
+        do {
+            try await clientFactory().agentKillWorkshop(projectID: projectID)
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error { return message }
+            return error.localizedDescription
+        } catch {
+            return error.localizedDescription
+        }
+        activityStore?.kick()
+        return nil
+    }
+
+    /// The workshop row's ✕: with no live planning agent this is the whole
+    /// of it — the draft is discarded and the row deselected, and
+    /// `buildWorkshopEntry` then draws nothing at all. With one live, the
+    /// caller is expected to have confirmed first (the app's usual pattern —
+    /// this method does not ask), and the session is killed before the same
+    /// draft-and-deselect happens; a refusal there is reported back rather
+    /// than papered over; the row and draft are left exactly as they were so
+    /// a session that would not die is not shown gone in the meantime.
+    ///
+    /// The deliberate asymmetry with `selectedSliceID`/`workshopSelected`
+    /// deselecting alone: navigating *away* from the workshop keeps the
+    /// draft (see `workshopDraft`), and this is the one explicit act that
+    /// discards it.
+    @discardableResult
+    public func closeWorkshopTab() async -> String? {
+        guard let projectID = activeProjectID else { return "No project loaded" }
+        if planningAgent != nil {
+            if let refusal = await killWorkshopAgent() { return refusal }
+        }
+        workshopDrafts[projectID] = nil
+        workshopSelected = false
         return nil
     }
 

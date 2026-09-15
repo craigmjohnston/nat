@@ -78,6 +78,26 @@ final class PlanningAgentAppearsClient: MockActivityClient, @unchecked Sendable 
     }
 }
 
+/// A status client that reports a live planning agent (or none) and records
+/// every `agentKillWorkshop` call — what `closeWorkshopTab()`/
+/// `killWorkshopAgent()`'s own tests read back.
+final class WorkshopKillClient: MockActivityClient, @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var workshopKills = 0
+    /// The refusal `agentKillWorkshop` throws as `NatError.commandFailed`,
+    /// or nil to succeed.
+    var refusal: String?
+    /// An arbitrary (non-`NatError`) failure to throw instead, for the
+    /// fallback-to-description path — takes priority over `refusal` when set.
+    var arbitraryFailure: Error?
+
+    override func agentKillWorkshop(projectID: String) async throws {
+        lock.withLock { workshopKills += 1 }
+        if let arbitraryFailure { throw arbitraryFailure }
+        if let refusal { throw NatError.commandFailed(refusal) }
+    }
+}
+
 /// Somewhere for a settle-wait closure to reach the model it is waiting
 /// inside — the closure is made before the model it is given to.
 @MainActor
@@ -582,6 +602,40 @@ final class AppModelTests: XCTestCase {
         return appModel
     }
 
+    /// A single-project model wired to a `WorkshopKillClient`, for
+    /// `closeWorkshopTab()`/`killWorkshopAgent()`'s own tests — the client
+    /// doubles as both the activity reading (a live planning agent, or none)
+    /// and the kill call's own recorder, since both live behind the same
+    /// injected `clientFactory`.
+    @MainActor
+    private func workshopCloseModel(
+        planningAgentLive: Bool,
+        killRefusal: String? = nil
+    ) async -> (AppModel, WorkshopKillClient) {
+        let testConfig = NatProjectConfig(
+            projects: ["proj-a": ProjectConfig(name: "A Project", slicesDSID: "ds-a", workingDir: "/path/a")]
+        )
+        let agents: [AgentStatus] = planningAgentLive
+            ? [AgentStatus(
+                sliceID: TmuxSession.planTag(projectID: "proj-a"),
+                session: TmuxSession.planSessionName(projectID: "proj-a"),
+                activity: .working
+            )]
+            : []
+        let client = WorkshopKillClient(response: .agents(agents))
+        client.refusal = killRefusal
+        let appModel = AppModel(
+            configReader: MockConfigReader(response: .success(testConfig)),
+            clientFactory: { client },
+            activityStoreFactory: { ActivityStore(client: client) }
+        )
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+        if planningAgentLive {
+            while appModel.activityStore?.agents.isEmpty ?? true { await Task.yield() }
+        }
+        return (appModel, client)
+    }
+
     /// A model whose activity poll always reports the given agents, for the
     /// rules about which of them is *this* project's planning agent.
     @MainActor
@@ -885,6 +939,128 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(appModel.workshopSelected)
         appModel.workshopSelected = true
         XCTAssertFalse(appModel.workshopSelected)
+    }
+
+    // MARK: - Workshop draft
+
+    @MainActor
+    func testWorkshopDraft_isKeptAcrossActivateProject() async {
+        let appModel = await workshopModel { _, _, _, _ in
+            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
+        }
+
+        appModel.workshopDraft = "Add dark mode."
+        await appModel.activateProject("proj-b")
+        // A fresh project's draft is its own, not the one just typed.
+        XCTAssertEqual(appModel.workshopDraft, "")
+
+        await appModel.activateProject("proj-a")
+        XCTAssertEqual(appModel.workshopDraft, "Add dark mode.")
+    }
+
+    @MainActor
+    func testWorkshopDraft_withoutAnActiveProjectIsEmptyAndUnsettable() {
+        let appModel = AppModel()
+
+        XCTAssertEqual(appModel.workshopDraft, "")
+        appModel.workshopDraft = "anything"
+        XCTAssertEqual(appModel.workshopDraft, "")
+    }
+
+    @MainActor
+    func testLaunchWorkshop_clearsTheDraftOnSuccess() async {
+        let appModel = await workshopModel(planningAgentAppears: true) { _, _, _, _ in
+            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
+        }
+        appModel.workshopDraft = "Add dark mode."
+
+        await appModel.launchWorkshop(request: appModel.workshopDraft)
+
+        XCTAssertEqual(appModel.workshopDraft, "")
+    }
+
+    @MainActor
+    func testLaunchWorkshop_aFailedLaunchKeepsTheDraft() async {
+        let appModel = await workshopModel { _, _, _, _ in
+            throw NatError.commandFailed("boom")
+        }
+        appModel.workshopDraft = "Add dark mode."
+
+        await appModel.launchWorkshop(request: appModel.workshopDraft)
+
+        XCTAssertEqual(appModel.workshopDraft, "Add dark mode.")
+    }
+
+    // MARK: - Workshop close (✕)
+
+    @MainActor
+    func testCloseWorkshopTab_withNoLiveAgentClearsTheDraftAndDeselects() async {
+        let (appModel, client) = await workshopCloseModel(planningAgentLive: false)
+        appModel.workshopDraft = "Add dark mode."
+        appModel.workshopSelected = true
+
+        let refusal = await appModel.closeWorkshopTab()
+
+        XCTAssertNil(refusal)
+        XCTAssertEqual(appModel.workshopDraft, "")
+        XCTAssertFalse(appModel.workshopSelected)
+        XCTAssertEqual(client.workshopKills, 0, "no agent to kill")
+    }
+
+    @MainActor
+    func testCloseWorkshopTab_withALiveAgentKillsItThenClearsAndDeselects() async {
+        let (appModel, client) = await workshopCloseModel(planningAgentLive: true)
+        appModel.workshopDraft = "Add dark mode."
+        appModel.workshopSelected = true
+
+        let refusal = await appModel.closeWorkshopTab()
+
+        XCTAssertNil(refusal)
+        XCTAssertEqual(client.workshopKills, 1)
+        XCTAssertEqual(appModel.workshopDraft, "")
+        XCTAssertFalse(appModel.workshopSelected)
+    }
+
+    @MainActor
+    func testCloseWorkshopTab_aRefusedKillLeavesTheDraftAndSelectionAlone() async {
+        let (appModel, _) = await workshopCloseModel(planningAgentLive: true, killRefusal: "tmux is not responding")
+        appModel.workshopDraft = "Add dark mode."
+        appModel.workshopSelected = true
+
+        let refusal = await appModel.closeWorkshopTab()
+
+        XCTAssertEqual(refusal, "tmux is not responding")
+        XCTAssertEqual(appModel.workshopDraft, "Add dark mode.")
+        XCTAssertTrue(appModel.workshopSelected)
+    }
+
+    @MainActor
+    func testCloseWorkshopTab_withoutAnActiveProjectRefuses() async {
+        let appModel = AppModel()
+
+        let refusal = await appModel.closeWorkshopTab()
+
+        XCTAssertEqual(refusal, "No project loaded")
+    }
+
+    @MainActor
+    func testKillWorkshopAgent_withoutAnActiveProjectRefuses() async {
+        let appModel = AppModel()
+
+        let refusal = await appModel.killWorkshopAgent()
+
+        XCTAssertEqual(refusal, "No project loaded")
+    }
+
+    @MainActor
+    func testKillWorkshopAgent_otherNatErrorFallsBackToItsDescription() async {
+        let (appModel, client) = await workshopCloseModel(planningAgentLive: true)
+        client.refusal = nil
+        client.arbitraryFailure = NSError(domain: "test", code: 7, userInfo: [NSLocalizedDescriptionKey: "boom"])
+
+        let refusal = await appModel.killWorkshopAgent()
+
+        XCTAssertEqual(refusal, "boom")
     }
 
     @MainActor

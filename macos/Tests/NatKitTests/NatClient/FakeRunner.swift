@@ -27,6 +27,8 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case agentSendNoSession
         case agentKillSuccess
         case agentKillNoSession
+        case agentKillWorkshopSuccess
+        case agentKillWorkshopNoSession
         case sliceApproveSuccess
         case sliceApproveFailure
         case prViewFull
@@ -136,6 +138,11 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return (Data(), Data(), 0)
         case .agentKillNoSession:
             return (Data(), "no live session for slice-id".data(using: .utf8)!, 1)
+        case .agentKillWorkshopSuccess:
+            // agent-kill --workshop, like agent-kill, says nothing on success.
+            return (Data(), Data(), 0)
+        case .agentKillWorkshopNoSession:
+            return (Data(), "no live planning session for this project".data(using: .utf8)!, 1)
         case .sliceApproveSuccess:
             return (fixtureSliceApprove.data(using: .utf8)!, Data(), 0)
         case .sliceApproveFailure:

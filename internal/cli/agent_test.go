@@ -593,6 +593,83 @@ func TestAgentKillReportsAFailedLiveRead(t *testing.T) {
 	}
 }
 
+func TestAgentKillWorkshopRefusesASliceArgument(t *testing.T) {
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
+
+	err := Run(context.Background(), []string{"agent-kill", "--workshop", testSliceID, "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "takes no slice argument") {
+		t.Errorf("agent-kill error: %v, want 'takes no slice argument'", err)
+	}
+}
+
+func TestAgentKillWorkshopWithLiveSession(t *testing.T) {
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
+	runner := &agentTestRunner{liveSessions: map[string]string{agent.PlanTag("project-1"): "nat-plan-abcd1234"}}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+
+	err := Run(context.Background(), []string{"agent-kill", "--workshop", "--project", "project-1"}, env)
+
+	if err != nil {
+		t.Errorf("agent-kill --workshop: unexpected error: %v", err)
+	}
+	if len(runner.kills) != 1 || runner.kills[0] != "nat-plan-abcd1234" {
+		t.Errorf("kills = %v, want the planning session killed once", runner.kills)
+	}
+}
+
+func TestAgentKillWorkshopFallsBackToTheLegacySentinel(t *testing.T) {
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
+	runner := &agentTestRunner{liveSessions: map[string]string{agent.PlanSentinel: "nat-plan"}}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+
+	err := Run(context.Background(), []string{"agent-kill", "--workshop", "--project", "project-1"}, env)
+
+	if err != nil {
+		t.Errorf("agent-kill --workshop: unexpected error: %v", err)
+	}
+	if len(runner.kills) != 1 || runner.kills[0] != "nat-plan" {
+		t.Errorf("kills = %v, want the legacy sentinel session killed once", runner.kills)
+	}
+}
+
+func TestAgentKillWorkshopRefusesNoLiveSession(t *testing.T) {
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
+	runner := &agentTestRunner{liveSessions: map[string]string{}}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+
+	err := Run(context.Background(), []string{"agent-kill", "--workshop", "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "no live planning session") {
+		t.Errorf("agent-kill --workshop error: %v, want 'no live planning session'", err)
+	}
+}
+
+func TestAgentKillWorkshopFailure(t *testing.T) {
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
+	runner := &agentTestRunner{
+		liveSessions: map[string]string{agent.PlanTag("project-1"): "nat-plan-abcd1234"},
+		killErr:      "tmux failed",
+	}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+
+	err := Run(context.Background(), []string{"agent-kill", "--workshop", "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "kill the session") {
+		t.Errorf("err = %v, want the kill's failure named", err)
+	}
+}
+
+func TestAgentKillWorkshopRefusesAnUnknownProject(t *testing.T) {
+	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
+
+	err := Run(context.Background(), []string{"agent-kill", "--workshop", "--project", "nope"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "no project nope") {
+		t.Errorf("err = %v, want the unknown project named", err)
+	}
+}
+
 func TestAgentKillFailure(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	runner := &agentTestRunner{

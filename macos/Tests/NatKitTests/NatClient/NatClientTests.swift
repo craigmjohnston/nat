@@ -480,6 +480,31 @@ final class NatClientTests: XCTestCase {
         }
     }
 
+    func testAgentKillWorkshopNamesTheProjectOnly() async throws {
+        let fakeRunner = FakeRunner(fixture: .agentKillWorkshopSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.agentKillWorkshop(projectID: "proj-123")
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["agent-kill", "--workshop", "--project", "proj-123"])
+    }
+
+    func testAgentKillWorkshopNoSession() async throws {
+        let fakeRunner = FakeRunner(fixture: .agentKillWorkshopNoSession)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            try await client.agentKillWorkshop(projectID: "proj-123")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "no live planning session for this project")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
+
     func testSliceApproveReturnsTheURL() async throws {
         let fakeRunner = FakeRunner(fixture: .sliceApproveSuccess)
         let client = NatClient(commandRunner: fakeRunner)
