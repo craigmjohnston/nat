@@ -114,6 +114,16 @@ struct RailView: View {
     /// The slice "Edit Description…" was picked on, held while the brief
     /// sheet is up.
     @State private var sliceForEdit: MilestoneSliceRow?
+    /// The ACTIVE entry the mouse is over, for the workshop row's ✕ — kept
+    /// here rather than in `HoverWash`, whose own hover state a row's other
+    /// modifiers cannot read. Any entry may be hovered, but only the
+    /// workshop row ever draws a ✕ off it.
+    @State private var hoveredActiveEntryID: String?
+    /// True while the workshop close's confirm is up — asked only when a
+    /// planning agent is actually live, mirroring the delete alert's own
+    /// shape (`sliceForDeletion`) rather than sharing it, since what is being
+    /// confirmed about is a live session and not a page.
+    @State private var confirmingWorkshopClose = false
 
     /// `collapsedSections` is the gallery's seam and nothing else's: a fold
     /// is the user's own state, so the app takes the default — DONE away,
@@ -265,6 +275,17 @@ struct RailView: View {
             )
         }
         .alert(
+            "End the workshop session?",
+            isPresented: $confirmingWorkshopClose
+        ) {
+            Button("End Session", role: .destructive) {
+                Task { await closeWorkshop() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The planning agent is still running. Closing the tab ends its session; the draft goes with it.")
+        }
+        .alert(
             "That didn't work",
             isPresented: Binding(
                 get: { actionError != nil },
@@ -339,9 +360,16 @@ struct RailView: View {
                             activeEmptyNote
                         } else {
                             ForEach(railModel.active) { entry in
-                                activeRow(for: entry)
+                                activeRow(for: entry, isHovered: hoveredActiveEntryID == entry.id)
                                     .contentShape(Rectangle())
                                     .onTapGesture { select(entry) }
+                                    .onHover { inside in
+                                        if inside {
+                                            hoveredActiveEntryID = entry.id
+                                        } else if hoveredActiveEntryID == entry.id {
+                                            hoveredActiveEntryID = nil
+                                        }
+                                    }
                             }
                         }
                     }
@@ -707,7 +735,8 @@ struct RailView: View {
         name: String,
         meta: String?,
         metaColor: InkRole,
-        detail: [(String, InkRole)]
+        detail: [(String, InkRole)],
+        @ViewBuilder trailing: () -> some View = { EmptyView() }
     ) -> some View {
         HStack(alignment: .top, spacing: RailSlot.spacing) {
             dotView(color: dotColor, pulsing: pulsing && !selected)
@@ -743,6 +772,8 @@ struct RailView: View {
                 }
                 .font(.system(size: Typo.subhead, weight: .regular))
             }
+
+            trailing()
         }
         .padding(.vertical, 8)
         .padding(.leading, RailSlot.leading)
@@ -766,7 +797,7 @@ struct RailView: View {
     /// model has already resolved the status word, the tint and the rest of
     /// the second line, so a workshop entry, a branch awaiting review and a
     /// slice with an agent on it are all drawn by this.
-    private func activeRow(for entry: ActiveEntry) -> some View {
+    private func activeRow(for entry: ActiveEntry, isHovered: Bool) -> some View {
         let tint = tintColor(for: entry.tintRole)
         // Only a working row pulses — the rule itself is the model's, so the
         // rail and the project tab cannot drift apart on it.
@@ -783,7 +814,50 @@ struct RailView: View {
             meta: entry.meta,
             metaColor: metaColor(for: entry.metaRole),
             detail: detail
-        )
+        ) {
+            if entry.kind == .workshop {
+                workshopCloseButton(isSelected: isSelected(entry), isHovered: isHovered)
+            }
+        }
+    }
+
+    /// The workshop row's own ✕ — no other ACTIVE entry ever carries one.
+    /// Styled after the project tab's (`ProjectTabsView`), visible under the
+    /// same rule (`ProjectTabRules.closeIsVisible`): selected or hovered, and
+    /// hidden-but-present otherwise so the row's layout never shifts as the
+    /// mouse crosses it.
+    private func workshopCloseButton(isSelected: Bool, isHovered: Bool) -> some View {
+        let visible = ProjectTabRules.closeIsVisible(isActive: isSelected, isHovered: isHovered)
+        return Button(action: requestCloseWorkshop) {
+            Image(systemName: "xmark")
+                .font(.system(size: 9, weight: .semibold))
+                .ink(.tertiary)
+                .frame(width: 16, height: 16)
+        }
+        .buttonStyle(.plain)
+        .hoverWash(cornerRadius: 4)
+        .opacity(visible ? 1 : 0)
+        .allowsHitTesting(visible)
+        .help("Close Workshop")
+    }
+
+    /// What the ✕ does: with no planning agent live, close outright; with
+    /// one, ask first — `confirmingWorkshopClose`'s alert is what actually
+    /// calls `closeWorkshop()`.
+    private func requestCloseWorkshop() {
+        if appModel.planningAgent != nil {
+            confirmingWorkshopClose = true
+        } else {
+            Task { await closeWorkshop() }
+        }
+    }
+
+    /// Ends the workshop tab — `AppModel.closeWorkshopTab()` — surfacing a
+    /// refusal the same way every other rail action does.
+    private func closeWorkshop() async {
+        if let refusal = await appModel.closeWorkshopTab() {
+            actionError = refusal
+        }
     }
 
     /// What an entry selects when it is tapped: the workshop pane for the

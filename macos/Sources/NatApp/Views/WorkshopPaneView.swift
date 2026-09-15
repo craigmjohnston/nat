@@ -17,7 +17,6 @@ import NatKit
 /// to attach to, the launching indicator that says so.
 struct WorkshopPaneView: View {
     @Bindable var appModel: AppModel
-    @State private var request = ""
     /// A story draws the region rather than attaching to it — see
     /// `StorySeams`.
     @Environment(\.terminalStubbed) private var terminalStubbed
@@ -100,7 +99,7 @@ struct WorkshopPaneView: View {
                 .font(.system(size: Typo.subhead, weight: .regular))
                 .ink(.secondary)
 
-            TextEditor(text: $request)
+            TextEditor(text: $appModel.workshopDraft)
                 .disabled(appModel.workshopLaunching)
                 .font(Typo.mono(size: Typo.body))
                 .ink(.primary)
@@ -122,7 +121,7 @@ struct WorkshopPaneView: View {
             HStack {
                 Spacer()
 
-                Button(action: { Task { await appModel.launchWorkshop(request: request) } }) {
+                Button(action: { Task { await appModel.launchWorkshop(request: appModel.workshopDraft) } }) {
                     AsyncActionLabel(isBusy: appModel.workshopLaunching) {
                         Text("Launch")
                     }

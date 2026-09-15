@@ -36,6 +36,7 @@ final class SequencedUsageClient: NatClientProtocol, @unchecked Sendable {
     func sliceEdit(projectID: String, sliceRef: String, description: String) async throws -> SliceEditResult { throw NSError(domain: "test", code: -1) }
     func agentSend(projectID: String, sliceRef: String, text: String) async throws { throw NSError(domain: "test", code: -1) }
     func agentKill(projectID: String, sliceRef: String) async throws { throw NSError(domain: "test", code: -1) }
+    func agentKillWorkshop(projectID: String) async throws { throw NSError(domain: "test", code: -1) }
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult { throw NSError(domain: "test", code: -1) }
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String { throw NSError(domain: "test", code: -1) }
     func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult { throw NSError(domain: "test", code: -1) }
@@ -195,6 +196,7 @@ private final class GatedUsageClient: NatClientProtocol, @unchecked Sendable {
     func sliceEdit(projectID: String, sliceRef: String, description: String) async throws -> SliceEditResult { throw NSError(domain: "test", code: -1) }
     func agentSend(projectID: String, sliceRef: String, text: String) async throws { throw NSError(domain: "test", code: -1) }
     func agentKill(projectID: String, sliceRef: String) async throws { throw NSError(domain: "test", code: -1) }
+    func agentKillWorkshop(projectID: String) async throws { throw NSError(domain: "test", code: -1) }
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult { throw NSError(domain: "test", code: -1) }
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String { throw NSError(domain: "test", code: -1) }
     func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult { throw NSError(domain: "test", code: -1) }

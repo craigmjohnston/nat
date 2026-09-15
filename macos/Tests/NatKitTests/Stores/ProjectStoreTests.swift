@@ -71,6 +71,10 @@ final class MockNatClient: NatClientProtocol, @unchecked Sendable {
         throw TestError()
     }
 
+    func agentKillWorkshop(projectID: String) async throws {
+        throw TestError()
+    }
+
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult {
         throw TestError()
     }
