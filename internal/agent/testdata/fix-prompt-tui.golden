@@ -23,9 +23,9 @@ and it stands.
 ## Your job
 
 Get that pull request to a state where it can be merged: answer the
-comments left on the review, and fix whatever checks are failing. Read
-what they say from GitHub itself rather than assuming — both have moved
-since anyone last looked:
+comments left on the review, and fix whatever checks are failing.
+
+Re-check before you push, since either can have moved since launch:
 
     gh pr view https://github.test/craig/nat/pull/12 --comments
     gh pr checks https://github.test/craig/nat/pull/12
@@ -38,13 +38,16 @@ Read files with the Read tool, not `cat`/`sed`/`head`, and edit with Edit
 or Write, not a shell heredoc — the shell is for running things, not for
 reading or editing files.
 
+## Already in your context
+
+`CLAUDE.md` in the working directory — architecture and the verification
+gate a review fix has to pass exactly as the original change did — is
+auto-loaded by Claude Code; there is no need to read it again.
+
 ## Then read
 
-1. `CLAUDE.md` in the working directory — architecture and the
-   verification gate, which a review fix has to pass exactly as the
-   original change did.
-2. The project's conventions, which is what the rest of the review will
-   be measured against:
+The project's conventions, which is what the rest of the review will
+be measured against:
 
     nat info --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
 

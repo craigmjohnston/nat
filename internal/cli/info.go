@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 
 	"github.com/craigmjohnston/nat/internal/domain"
 )
@@ -141,61 +140,11 @@ func writeInfoJSON(out io.Writer, p domain.Project, conventions string) error {
 	return enc.Encode(doc)
 }
 
-// infoMarkdown renders the project as markdown: the conventions as written,
-// then the milestones in plan order, then the slices under the milestone each
-// belongs to. Slices with no milestone land in a trailing Unassigned section,
-// the same as they do on the board.
+// infoMarkdown renders the project as markdown — see [domain.PlanMarkdown],
+// which a planning launch's inline prompt renders the same document through,
+// so an agent reads the same document however it was handed one.
 func infoMarkdown(p domain.Project, conventions string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n", p.Name)
-	if conventions != "" {
-		fmt.Fprintf(&b, "\n%s\n", conventions)
-	}
-
-	b.WriteString("\n## Milestones\n\n")
-	if len(p.Milestones) == 0 {
-		b.WriteString("_none_\n")
-	}
-	for _, g := range p.Groups() {
-		if g.Milestone == nil {
-			continue
-		}
-		fmt.Fprintf(&b, "- %s. %s — %s\n", formatOrder(g.Milestone.Order), g.Milestone.Name, blank(string(g.Milestone.Status)))
-	}
-
-	b.WriteString("\n## Slices\n\n")
-	if len(p.Slices) == 0 {
-		b.WriteString("_none_\n")
-	}
-	first := true
-	for _, g := range p.Groups() {
-		if len(g.Slices) == 0 {
-			continue
-		}
-		if !first {
-			b.WriteString("\n")
-		}
-		first = false
-		fmt.Fprintf(&b, "### %s\n\n", g.Name())
-		for _, s := range g.Slices {
-			fmt.Fprintf(&b, "- %s — %s\n", s.Name, strings.Join(sliceFacts(s), " · "))
-		}
-	}
-	return b.String()
-}
-
-// sliceFacts is what is worth saying about a slice beside its name: its status
-// as the project's own board names it, then whoever holds it and whatever PR came out of it, each left out
-// when there is none rather than printed as an empty field.
-func sliceFacts(s domain.Slice) []string {
-	facts := []string{blank(s.StatusName)}
-	if s.AssigneeName != "" {
-		facts = append(facts, s.AssigneeName)
-	}
-	if s.PRURL != "" {
-		facts = append(facts, "PR "+s.PRURL)
-	}
-	return facts
+	return domain.PlanMarkdown(p, conventions)
 }
 
 // formatOrder prints a milestone's order without a trailing ".0": the orders

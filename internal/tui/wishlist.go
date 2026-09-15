@@ -6,10 +6,12 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // wishlistLoadedMsg carries the pending wishlist of the active project's page,
@@ -83,18 +85,22 @@ func (a *App) workshopFlow() tea.Cmd {
 	if _, session := agent.LivePlan(a.live, a.cfg.ActiveProjectID); session != "" {
 		return nil
 	}
-	return launchWishlistAgent(a.launcher, a.cfg.ActiveProjectID, project.Name, expandHome(project.WorkingDir),
+	st, _, _ := a.activeStore()
+	sp := store.Project{ID: a.cfg.ActiveProjectID, Name: project.Name, SlicesID: project.SlicesDSID}
+	return launchWishlistAgent(a.launcher, st, sp, a.cfg.ActiveProjectID, project.Name, expandHome(project.WorkingDir),
 		a.wishlist, trimModel(a.cfg.WorkshopAgent))
 }
 
 // launchWishlistAgent writes the planning prompt out with the wishlist folded
-// into it and starts the detached session that reads it. It is the wishlist's
-// half of launchPlanAgent, and comes back as the same message, so the pane and
-// the failure reporting are handled in one place.
-func launchWishlistAgent(l AgentLauncher, projectID, projectName, workdir string, items []notion.WishlistItem, m config.AgentModel) tea.Cmd {
+// into it — and the plan itself rendered inline where the read of it
+// succeeds, the same as [launchPlanAgent] — and starts the detached session
+// that reads it. It comes back as the same message, so the pane and the
+// failure reporting are handled in one place.
+func launchWishlistAgent(l AgentLauncher, st actions.PlanReader, sp store.Project, projectID, projectName, workdir string, items []notion.WishlistItem, m config.AgentModel) tea.Cmd {
 	return func() tea.Msg {
 		session, tag := agent.PlanSessionName(projectID), agent.PlanTag(projectID)
-		file, err := agent.WritePromptFile(session, agent.WishlistPrompt(projectID, projectName, workdir, items, agent.FrontendTUI))
+		plan := renderedPlan(st, sp)
+		file, err := agent.WritePromptFile(session, agent.WishlistPrompt(projectID, projectName, workdir, items, plan, agent.FrontendTUI))
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch planning agent: %w", err)}
 		}

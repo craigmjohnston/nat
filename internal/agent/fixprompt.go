@@ -18,11 +18,17 @@ import (
 // push to it is the whole of the ending, and the board's merge key is what the
 // work lands with.
 //
-// The brief is the review rather than the slice page, and the review moves while
-// the session runs, so the agent is told to read it from GitHub itself rather
-// than handed a copy taken at launch. That is the one place the ordinary
-// prohibition on `gh` is relaxed, and only for the two read-only commands:
-// opening, merging and closing a pull request are still the user's alone.
+// The brief is the review rather than the slice page: `gh pr view --comments`
+// and `gh pr checks`, read once at launch and carried straight into the
+// prompt, the same as the slice's own brief is for an ordinary launch. This
+// used to read the two live instead, on the theory that the review moves
+// while the session runs and a launch-time copy would already be stale — but
+// a snapshot taken seconds before the agent's own first read of the same two
+// commands is exactly as fresh, and the prompt still tells the agent to run
+// them again itself before it pushes, so nothing that moved in those few
+// seconds goes uncaught. Those two reads are the one place the ordinary
+// prohibition on `gh` is relaxed: opening, merging and closing a pull
+// request are still the user's alone.
 //
 // Everything the two prompts do share is shared for the same reasons as ever:
 // the working directory and the branch, so the session and the board never
@@ -59,9 +65,17 @@ func fixPrompt(c PromptContext) string {
 
 	b.WriteString("\n## Your job\n\n")
 	b.WriteString("Get that pull request to a state where it can be merged: answer the\n")
-	b.WriteString("comments left on the review, and fix whatever checks are failing. Read\n")
-	b.WriteString("what they say from GitHub itself rather than assuming — both have moved\n")
-	b.WriteString("since anyone last looked:\n\n")
+	b.WriteString("comments left on the review, and fix whatever checks are failing.\n\n")
+	if c.ReviewComments != "" || c.ReviewChecks != "" {
+		b.WriteString("Captured at launch — no need to re-run this to see where it stood then:\n\n")
+		if c.ReviewComments != "" {
+			fmt.Fprintf(&b, "`gh pr view %s --comments`:\n\n```\n%s\n```\n\n", c.Slice.PRURL, c.ReviewComments)
+		}
+		if c.ReviewChecks != "" {
+			fmt.Fprintf(&b, "`gh pr checks %s`:\n\n```\n%s\n```\n\n", c.Slice.PRURL, c.ReviewChecks)
+		}
+	}
+	b.WriteString("Re-check before you push, since either can have moved since launch:\n\n")
 	fmt.Fprintf(&b, "    gh pr view %s --comments\n", c.Slice.PRURL)
 	fmt.Fprintf(&b, "    gh pr checks %s\n\n", c.Slice.PRURL)
 	b.WriteString("Those two reads are the only `gh` you may run. Never open, merge, close\n")
@@ -75,13 +89,16 @@ func fixPrompt(c PromptContext) string {
 	b.WriteString("Read files with the Read tool, not `cat`/`sed`/`head`, and edit with Edit\n")
 	b.WriteString("or Write, not a shell heredoc — the shell is for running things, not for\n")
 	b.WriteString("reading or editing files.\n")
+	b.WriteString(gitSnapshotSection(c))
+
+	b.WriteString("\n## Already in your context\n\n")
+	b.WriteString("`CLAUDE.md` in the working directory — architecture and the verification\n")
+	b.WriteString("gate a review fix has to pass exactly as the original change did — is\n")
+	b.WriteString("auto-loaded by Claude Code; there is no need to read it again.\n")
 
 	b.WriteString("\n## Then read\n\n")
-	b.WriteString("1. `CLAUDE.md` in the working directory — architecture and the\n")
-	b.WriteString("   verification gate, which a review fix has to pass exactly as the\n")
-	b.WriteString("   original change did.\n")
-	b.WriteString("2. The project's conventions, which is what the rest of the review will\n")
-	b.WriteString("   be measured against:\n\n")
+	b.WriteString("The project's conventions, which is what the rest of the review will\n")
+	b.WriteString("be measured against:\n\n")
 	fmt.Fprintf(&b, "    nat info --project %s\n\n", c.ProjectID)
 	b.WriteString("That is the only `nat` command this session has any business running, and\n")
 	b.WriteString("it names the project the way every other one does:\n\n")

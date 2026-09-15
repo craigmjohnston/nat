@@ -24,12 +24,17 @@ type Worktrees interface {
 }
 
 // Repo is what a launch needs of git that the worktree package does not ask:
-// the remote's news, and the branch the remote calls its default. Together
-// they are the ref a fresh worktree is cut from — the tip origin is at now,
-// rather than wherever the shared checkout's own main was last left.
+// the remote's news, and the branch the remote calls its default — together
+// the ref a fresh worktree is cut from, the tip origin is at now rather than
+// wherever the shared checkout's own main was last left — plus the two reads
+// [Launch] gathers for a resume or fix launch's prompt once the worktree is
+// placed: the one-line commit log and the diff stat of what is already on
+// the branch.
 type Repo interface {
 	Fetch(dir string)
 	Base(dir string) string
+	LogOneline(dir, base, branch string) (string, error)
+	DiffStat(dir, base, branch string) (string, error)
 }
 
 // branchPrefix is what every slice's branch is named under, matching the

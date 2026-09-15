@@ -135,6 +135,59 @@ func TestBaseFallsBackOnAnEmptyAnswer(t *testing.T) {
 	}
 }
 
+// TestLogOnelineRunsGit pins the one-line log range: base..branch, raw
+// output trimmed of its trailing newline.
+func TestLogOnelineRunsGit(t *testing.T) {
+	runner := &fakeRunner{outs: []string{"abc1234 did the thing\ndef5678 and this too\n"}}
+	got, err := NewWithRunner(runner).LogOneline("/repos/nat", "origin/main", "slice/viewer")
+	if err != nil {
+		t.Fatalf("LogOneline() = %v, want it to go through", err)
+	}
+	if want := "abc1234 did the thing\ndef5678 and this too"; got != want {
+		t.Errorf("log = %q, want %q", got, want)
+	}
+	if len(runner.calls) != 1 {
+		t.Fatalf("made %d calls, want the log alone", len(runner.calls))
+	}
+	if want := []string{"log", "--oneline", "origin/main..slice/viewer"}; !reflect.DeepEqual(runner.calls[0].args, want) {
+		t.Errorf("args = %v, want %v", runner.calls[0].args, want)
+	}
+}
+
+// TestLogOnelineFailure covers git running and refusing: the failure comes
+// back rather than being swallowed, since the caller's own posture (log and
+// leave the snapshot empty) is a decision made above this package.
+func TestLogOnelineFailure(t *testing.T) {
+	runner := &fakeRunner{errs: []error{&ExitError{Code: 128, Stderr: "fatal: bad revision\n"}}}
+	if _, err := NewWithRunner(runner).LogOneline("/repos/nat", "origin/main", "slice/viewer"); err == nil {
+		t.Error("LogOneline() = nil, want git's refusal")
+	}
+}
+
+// TestDiffStatRunsGit pins the three-dot range against the merge base, the
+// same comparison Diff makes.
+func TestDiffStatRunsGit(t *testing.T) {
+	runner := &fakeRunner{outs: []string{" a.go | 2 ++\n 1 file changed, 2 insertions(+)\n"}}
+	got, err := NewWithRunner(runner).DiffStat("/repos/nat", "origin/main", "slice/viewer")
+	if err != nil {
+		t.Fatalf("DiffStat() = %v, want it to go through", err)
+	}
+	if want := " a.go | 2 ++\n 1 file changed, 2 insertions(+)"; got != want {
+		t.Errorf("stat = %q, want %q", got, want)
+	}
+	if want := []string{"diff", "--stat", "origin/main...slice/viewer"}; !reflect.DeepEqual(runner.calls[0].args, want) {
+		t.Errorf("args = %v, want %v", runner.calls[0].args, want)
+	}
+}
+
+// TestDiffStatFailure is DiffStat's mirror of TestLogOnelineFailure.
+func TestDiffStatFailure(t *testing.T) {
+	runner := &fakeRunner{errs: []error{&ExitError{Code: 128, Stderr: "fatal: bad revision\n"}}}
+	if _, err := NewWithRunner(runner).DiffStat("/repos/nat", "origin/main", "slice/viewer"); err == nil {
+		t.Error("DiffStat() = nil, want git's refusal")
+	}
+}
+
 // TestFetchRunsGit pins the invocation: origin fetched in the slice's
 // repository, which is what makes the base a fresh worktree is cut from the tip
 // rather than whatever the checkout last heard about.

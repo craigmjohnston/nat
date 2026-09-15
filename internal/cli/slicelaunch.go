@@ -109,7 +109,9 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 		Frontend:        frontend,
 	}
 
-	result, err := actions.Launch(ctx, env.NewTmux(), env.NewWorktrees(), env.NewGit(), st,
+	// slice-launch never drives a fix session — a Done slice is refused above
+	// — so there is no review to gather and nothing to pass here.
+	result, err := actions.Launch(ctx, env.NewTmux(), env.NewWorktrees(), env.NewGit(), st, nil,
 		cfg.AssigneeUserID, promptContext, agentModel)
 	if err != nil {
 		return err

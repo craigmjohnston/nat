@@ -1192,7 +1192,7 @@ func TestLaunchAgentReportsAFailedPromptFile(t *testing.T) {
 	client := &fakeNotion{}
 
 	msg := runMsg(t, launchAgent(launcher, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, store.Over(client),
-		&fakePRViewer{}, "u1",
+		&fakePRViewer{}, nil, "u1",
 		agent.PromptContext{
 			Slice: domain.Slice{ID: "s5", Name: "Info view"},
 		}, config.AgentModel{}, true)).(agentLaunchedMsg)

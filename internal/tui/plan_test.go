@@ -13,6 +13,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // planLaunch presses w, types the request into the form it opens, and submits
@@ -355,7 +356,7 @@ func TestLaunchPlanAgentReportsAFailedPromptFile(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
 	launcher := &fakeLauncher{}
 
-	msg := runMsg(t, launchPlanAgent(launcher, "project-1", "tracker", "/tmp", "", config.AgentModel{})).(agentLaunchedMsg)
+	msg := runMsg(t, launchPlanAgent(launcher, nil, store.Project{}, "project-1", "tracker", "/tmp", "", config.AgentModel{})).(agentLaunchedMsg)
 
 	if msg.err == nil || !strings.Contains(msg.err.Error(), "launch planning agent: create prompt dir") {
 		t.Errorf("err = %v, want the failed prompt file", msg.err)

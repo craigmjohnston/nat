@@ -92,6 +92,35 @@ func TestFixPromptSendsTheAgentAtTheReview(t *testing.T) {
 	}
 }
 
+// A fix launch whose gh gather succeeded carries the review's comments and
+// checks inline, framed as captured at launch — and still tells the agent to
+// re-check both before it pushes.
+func TestFixPromptCarriesTheGatheredReview(t *testing.T) {
+	c := fixContext()
+	c.ReviewComments = "craig: looks close, one nit on the error message"
+	c.ReviewChecks = "X  build  1m3s"
+	got := Prompt(c)
+	for _, want := range []string{
+		"Captured at launch — no need to re-run this",
+		"craig: looks close, one nit on the error message",
+		"X  build  1m3s",
+		"Re-check before you push",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt does not carry the gathered review — missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// A gh gather that came back empty leaves the section out: the agent is
+// still told the two commands, and runs them itself.
+func TestFixPromptOmitsTheReviewSnapshotWhenNothingWasGathered(t *testing.T) {
+	got := Prompt(fixContext())
+	if strings.Contains(got, "Captured at launch — no need to re-run this") {
+		t.Errorf("prompt carries a review snapshot with nothing gathered:\n%s", got)
+	}
+}
+
 // Nothing about the slice is this session's to move: it is Done, the account of
 // what was done is written, and the state the approve key left it in is what
 // the merge box is read against. The prompt names none of the commands that

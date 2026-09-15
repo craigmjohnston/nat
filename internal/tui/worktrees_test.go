@@ -54,17 +54,24 @@ func (f *fakeWorktrees) Remove(dir, branch string) error {
 	return f.removeErr
 }
 
-// fakeRepo stands in for git: what the fetch was asked of, and what origin's
-// HEAD is read as afterwards. The real one never fails at either — a fetch that
-// could not reach the remote is swallowed, and an unreadable HEAD falls back to
-// main — so there is nothing here for a test to make go wrong.
+// fakeRepo stands in for git: what the fetch was asked of, what origin's HEAD
+// is read as afterwards, and the log/diff-stat gather a resume or fix launch
+// makes once the worktree is placed. The real one never fails a fetch or a
+// Base read, so there is nothing here for a test to make go wrong on those
+// two.
 type fakeRepo struct {
 	base    string
 	fetches []string
+	log     string
+	stat    string
 }
 
 var _ Repo = (*fakeRepo)(nil)
 
 func (f *fakeRepo) Fetch(dir string) { f.fetches = append(f.fetches, dir) }
+
+func (f *fakeRepo) LogOneline(dir, base, branch string) (string, error) { return f.log, nil }
+
+func (f *fakeRepo) DiffStat(dir, base, branch string) (string, error) { return f.stat, nil }
 
 func (f *fakeRepo) Base(string) string { return f.base }

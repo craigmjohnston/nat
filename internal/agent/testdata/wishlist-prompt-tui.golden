@@ -5,15 +5,18 @@ The user is driving this from the TUI board.
 Your job is to workshop the plan itself with the user — reshape
 milestones, draft new slices — not to execute any slice.
 
-## How to work
+## The plan
 
-Follow the /queue-work skill: it is the planning workflow for this
-tracker. Start by running:
+Could not be read at launch; run this to see it — the project's
+conventions, its milestones in plan order, and the slices under them
+(`--json` to parse it instead):
 
     nat info --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
 
-That prints the current plan: the project's conventions, its milestones
-in plan order, and the slices under them (`--json` to parse it instead).
+## How to work
+
+Follow the /queue-work skill: it is the planning workflow for this
+tracker.
 
 Every `nat` command you run names the project you are planning:
 

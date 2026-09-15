@@ -263,22 +263,22 @@ func TestPromptCarriesTheBriefInline(t *testing.T) {
 }
 
 func TestPlanPrompt(t *testing.T) {
-	golden(t, "plan-prompt", PlanPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", "", ""))
+	golden(t, "plan-prompt", PlanPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", "", "", ""))
 }
 
 func TestPlanPromptWithRequest(t *testing.T) {
 	golden(t, "plan-prompt-request", PlanPrompt(testProjectID, "notion-agent-tracker",
-		"/Users/craig/Projects/notion-agent-tracker", "Split the reporting milestone into smaller slices.", ""))
+		"/Users/craig/Projects/notion-agent-tracker", "Split the reporting milestone into smaller slices.", "", ""))
 }
 
 func TestPlanPromptOnTUI(t *testing.T) {
 	golden(t, "plan-prompt-tui", PlanPrompt(testProjectID, "notion-agent-tracker",
-		"/Users/craig/Projects/notion-agent-tracker", "", FrontendTUI))
+		"/Users/craig/Projects/notion-agent-tracker", "", "", FrontendTUI))
 }
 
 func TestPlanPromptOnGnat(t *testing.T) {
 	golden(t, "plan-prompt-gnat", PlanPrompt(testProjectID, "notion-agent-tracker",
-		"/Users/craig/Projects/notion-agent-tracker", "", FrontendGnat))
+		"/Users/craig/Projects/notion-agent-tracker", "", "", FrontendGnat))
 }
 
 // The frontend note and the pickup sentence are the only two places the
@@ -287,14 +287,14 @@ func TestPlanPromptOnGnat(t *testing.T) {
 // Frontend existed.
 func TestPlanPromptNamesTheFrontend(t *testing.T) {
 	const dir = "/Users/craig/Projects/notion-agent-tracker"
-	unset := PlanPrompt(testProjectID, "notion-agent-tracker", dir, "", "")
+	unset := PlanPrompt(testProjectID, "notion-agent-tracker", dir, "", "", "")
 	for _, unwanted := range []string{"driving this from", "picks up\n  your changes on its own"} {
 		if strings.Contains(unset, unwanted) {
 			t.Errorf("an unspecified launch's prompt says %q:\n%s", unwanted, unset)
 		}
 	}
 
-	tui := PlanPrompt(testProjectID, "notion-agent-tracker", dir, "", FrontendTUI)
+	tui := PlanPrompt(testProjectID, "notion-agent-tracker", dir, "", "", FrontendTUI)
 	if want := "The user is driving this from the TUI board.\n\n"; !strings.Contains(tui, want) {
 		t.Errorf("tui prompt does not say %q:\n%s", want, tui)
 	}
@@ -302,7 +302,7 @@ func TestPlanPromptNamesTheFrontend(t *testing.T) {
 		t.Errorf("tui prompt does not say %q:\n%s", want, tui)
 	}
 
-	gnat := PlanPrompt(testProjectID, "notion-agent-tracker", dir, "", FrontendGnat)
+	gnat := PlanPrompt(testProjectID, "notion-agent-tracker", dir, "", "", FrontendGnat)
 	if want := "The user is driving this from gnat, the macOS app.\n\n"; !strings.Contains(gnat, want) {
 		t.Errorf("gnat prompt does not say %q:\n%s", want, gnat)
 	}
@@ -320,7 +320,7 @@ func TestPlanPromptNamesTheFrontend(t *testing.T) {
 // from executing the plan instead of workshopping it — and so does Notion, for
 // the same reason the slice prompt keeps quiet about it.
 func TestPlanPromptRoutesEverythingThroughThePlanningCommands(t *testing.T) {
-	got := PlanPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", "", "")
+	got := PlanPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", "", "", "")
 	for _, want := range []string{
 		"notion-agent-tracker",
 		"/Users/craig/Projects/notion-agent-tracker",
@@ -338,6 +338,55 @@ func TestPlanPromptRoutesEverythingThroughThePlanningCommands(t *testing.T) {
 		if strings.Contains(got, unwanted) {
 			t.Errorf("plan prompt should not mention %q", unwanted)
 		}
+	}
+}
+
+// A planning launch whose read of the current plan succeeded carries it
+// inline, in place of an instruction to go and run nat info first.
+func TestPlanPromptCarriesTheRenderedPlanInline(t *testing.T) {
+	const dir = "/Users/craig/Projects/notion-agent-tracker"
+	plan := "# notion-agent-tracker\n\n## Milestones\n\n- 1. M1 — Active\n"
+	got := PlanPrompt(testProjectID, "notion-agent-tracker", dir, "", plan, "")
+	if !strings.Contains(got, plan) {
+		t.Errorf("plan prompt does not carry the rendered plan inline:\n%s", got)
+	}
+	if strings.Contains(got, "Start by running") {
+		t.Errorf("plan prompt still tells the agent to start by running nat info:\n%s", got)
+	}
+	if want := "nat info --project " + testProjectID + "` (`--json` to parse it) re-reads it"; !strings.Contains(got, want) {
+		t.Errorf("plan prompt does not say %q:\n%s", want, got)
+	}
+}
+
+// A plan rendered without a trailing newline still gets one before the
+// re-read line that follows it, rather than running the two together.
+func TestPlanPromptAddsATrailingNewlineWhenThePlanIsMissingOne(t *testing.T) {
+	const dir = "/Users/craig/Projects/notion-agent-tracker"
+	plan := "# notion-agent-tracker\n\n## Milestones\n\n- 1. M1 — Active"
+	got := PlanPrompt(testProjectID, "notion-agent-tracker", dir, "", plan, "")
+	if want := "- 1. M1 — Active\n\n`nat info"; !strings.Contains(got, want) {
+		t.Errorf("prompt does not add a newline after a plan missing one:\n%s", got)
+	}
+}
+
+// A plan that could not be read at launch falls back to naming the command
+// instead — a launch never fails over missing context.
+func TestPlanPromptFallsBackToNatInfoWhenThePlanCouldNotBeRead(t *testing.T) {
+	const dir = "/Users/craig/Projects/notion-agent-tracker"
+	got := PlanPrompt(testProjectID, "notion-agent-tracker", dir, "", "", "")
+	if want := "nat info --project " + testProjectID; !strings.Contains(got, want) {
+		t.Errorf("plan prompt does not fall back to naming nat info:\n%s", got)
+	}
+}
+
+// The wishlist prompt carries the plan the same way the plain planning
+// prompt does.
+func TestWishlistPromptCarriesTheRenderedPlanInline(t *testing.T) {
+	const dir = "/Users/craig/Projects/notion-agent-tracker"
+	plan := "# notion-agent-tracker\n\n## Milestones\n\n- 1. M1 — Active\n"
+	got := WishlistPrompt(testProjectID, "notion-agent-tracker", dir, testWishlist(), plan, "")
+	if !strings.Contains(got, plan) {
+		t.Errorf("wishlist prompt does not carry the rendered plan inline:\n%s", got)
 	}
 }
 
@@ -456,6 +505,81 @@ func TestPromptTellsAResumingAgentTheWorkIsAlreadyThere(t *testing.T) {
 	}
 }
 
+// A fresh, first-time launch never gathers git at all: Claude Code's own
+// injected snapshot is what the agent is told to rely on instead of running
+// `git status` itself.
+func TestPromptTellsAFreshAgentGitStatusIsAlreadyLoaded(t *testing.T) {
+	got := Prompt(testContext())
+	if want := "Claude Code has already loaded git status into this session's context"; !strings.Contains(got, want) {
+		t.Errorf("prompt does not say %q:\n%s", want, got)
+	}
+	if want := "there is no need to run\n`git status` yourself."; !strings.Contains(got, want) {
+		t.Errorf("prompt does not say %q:\n%s", want, got)
+	}
+}
+
+// A resuming agent is told the opposite: it is not starting fresh, so the
+// generic don't-re-run-git-status line is left out in favour of the actual
+// gathered snapshot.
+func TestPromptDoesNotTellAResumingAgentGitStatusIsFresh(t *testing.T) {
+	got := Prompt(resumeContext())
+	if want := "Claude Code has already loaded git status"; strings.Contains(got, want) {
+		t.Errorf("resuming prompt still carries the fresh-launch git status line:\n%s", got)
+	}
+}
+
+// A resume or fix launch whose git gather succeeded carries the commit log
+// and diff stat inline, framed so the agent knows not to re-run either.
+func TestPromptCarriesTheGatheredGitSnapshot(t *testing.T) {
+	c := resumeContext()
+	c.GitBase, c.GitLog, c.GitDiffStat = "origin/main", "abc1234 wire up the prompt template", "prompt.go | 12 +++++++++---"
+	got := Prompt(c)
+	for _, want := range []string{
+		"## What is already on the branch",
+		"Captured at launch — no need to re-run this",
+		"abc1234 wire up the prompt template",
+		"prompt.go | 12 +++++++++---",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt does not carry the gathered git snapshot — missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// A gather that got the log but not the diff stat (or the reverse) still
+// prints the section, with a placeholder for the half that failed.
+func TestPromptFlagsHalfAGatheredGitSnapshot(t *testing.T) {
+	logOnly := resumeContext()
+	logOnly.GitBase, logOnly.GitLog = "origin/main", "abc1234 wire up the prompt template"
+	got := Prompt(logOnly)
+	if !strings.Contains(got, "abc1234 wire up the prompt template") {
+		t.Errorf("prompt does not carry the log that was read:\n%s", got)
+	}
+	if !strings.Contains(got, "Files changed:\n\n_(could not be read at launch)_") {
+		t.Errorf("prompt does not flag the diff stat that failed to read:\n%s", got)
+	}
+
+	statOnly := resumeContext()
+	statOnly.GitBase, statOnly.GitDiffStat = "origin/main", "prompt.go | 12 +++++++++---"
+	got = Prompt(statOnly)
+	if !strings.Contains(got, "prompt.go | 12 +++++++++---") {
+		t.Errorf("prompt does not carry the diff stat that was read:\n%s", got)
+	}
+	if !strings.Contains(got, "since origin/main:\n\n_(could not be read at launch)_") {
+		t.Errorf("prompt does not flag the log that failed to read:\n%s", got)
+	}
+}
+
+// A gather that came back empty — nothing read at launch — leaves the whole
+// section out rather than printing an empty one: the agent falls back to
+// running the commands itself.
+func TestPromptOmitsTheGitSnapshotSectionWhenNothingWasGathered(t *testing.T) {
+	got := Prompt(resumeContext())
+	if strings.Contains(got, "## What is already on the branch") {
+		t.Errorf("prompt carries a git snapshot section with nothing gathered:\n%s", got)
+	}
+}
+
 // A released slice is back at Todo with its branch — and its work — still
 // recorded, so it resumes like any other relaunch. A worktree the launch fell
 // back out of does not: there is no branch to have found the work on.
@@ -502,24 +626,24 @@ func testWishlist() []notion.WishlistItem {
 
 func TestWishlistPrompt(t *testing.T) {
 	golden(t, "wishlist-prompt", WishlistPrompt(testProjectID, "notion-agent-tracker",
-		"/Users/craig/Projects/notion-agent-tracker", testWishlist(), ""))
+		"/Users/craig/Projects/notion-agent-tracker", testWishlist(), "", ""))
 }
 
 func TestWishlistPromptOnTUI(t *testing.T) {
 	golden(t, "wishlist-prompt-tui", WishlistPrompt(testProjectID, "notion-agent-tracker",
-		"/Users/craig/Projects/notion-agent-tracker", testWishlist(), FrontendTUI))
+		"/Users/craig/Projects/notion-agent-tracker", testWishlist(), "", FrontendTUI))
 }
 
 func TestWishlistPromptOnGnat(t *testing.T) {
 	golden(t, "wishlist-prompt-gnat", WishlistPrompt(testProjectID, "notion-agent-tracker",
-		"/Users/craig/Projects/notion-agent-tracker", testWishlist(), FrontendGnat))
+		"/Users/craig/Projects/notion-agent-tracker", testWishlist(), "", FrontendGnat))
 }
 
 // The wishlist is the request, so the items ride in whole and the command that
 // clears them names every one of them — the IDs, not the text, because that is
 // what `nat wishlist-clear` addresses.
 func TestWishlistPromptCarriesTheItemsAndTheirIDs(t *testing.T) {
-	got := WishlistPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", testWishlist(), "")
+	got := WishlistPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", testWishlist(), "", "")
 	for _, want := range []string{
 		"## The request",
 		"- Add a newline between the status bar and the key hints",
@@ -543,7 +667,7 @@ func TestWishlistPromptCarriesTheItemsAndTheirIDs(t *testing.T) {
 // cleared before the plan is written is an idea lost, and one typed while the
 // session ran belongs to nobody but the user.
 func TestWishlistPromptClearsOnlyAfterThePlanIsWritten(t *testing.T) {
-	got := WishlistPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", testWishlist(), "")
+	got := WishlistPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", testWishlist(), "", "")
 	for _, want := range []string{
 		"once the plan is written, and not before",
 		"Name only the items above",
@@ -559,8 +683,8 @@ func TestWishlistPromptClearsOnlyAfterThePlanIsWritten(t *testing.T) {
 // nothing to clear afterwards.
 func TestWishlistPromptWithNoItemsIsThePlainPlanningPrompt(t *testing.T) {
 	const project, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
-	got := WishlistPrompt(testProjectID, project, dir, nil, "")
-	if want := PlanPrompt(testProjectID, project, dir, "", ""); got != want {
+	got := WishlistPrompt(testProjectID, project, dir, nil, "", "")
+	if want := PlanPrompt(testProjectID, project, dir, "", "", ""); got != want {
 		t.Errorf("prompt = %q, want the plain planning prompt %q", got, want)
 	}
 	if strings.Contains(got, "wishlist-clear") {
@@ -603,9 +727,9 @@ func TestEveryCommandInAPromptNamesTheProject(t *testing.T) {
 		"slice":          Prompt(testContext()),
 		"slice worktree": Prompt(worktreeContext()),
 		"fix":            Prompt(fixContext()),
-		"plan":           PlanPrompt(testProjectID, name, dir, "", ""),
-		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", ""),
-		"wishlist":       WishlistPrompt(testProjectID, name, dir, testWishlist(), ""),
+		"plan":           PlanPrompt(testProjectID, name, dir, "", "", ""),
+		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", "", ""),
+		"wishlist":       WishlistPrompt(testProjectID, name, dir, testWishlist(), "", ""),
 	} {
 		cmds := natCommands(text)
 		if len(cmds) == 0 {
@@ -627,7 +751,7 @@ func TestPromptsSayWhyTheProjectIsPinned(t *testing.T) {
 	for prompt, text := range map[string]string{
 		"slice": Prompt(testContext()),
 		"fix":   Prompt(fixContext()),
-		"plan":  PlanPrompt(testProjectID, name, dir, "", ""),
+		"plan":  PlanPrompt(testProjectID, name, dir, "", "", ""),
 	} {
 		for _, want := range []string{
 			"A command given no project is refused",

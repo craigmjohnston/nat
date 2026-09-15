@@ -267,7 +267,7 @@ func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, at
 		return nil
 	}
 	milestone, siblings := milestoneContext(a.project, s)
-	return launchAgent(a.launcher, newWorktrees(), newRepo(), st, a.prViewer, a.cfg.AssigneeUserID, agent.PromptContext{
+	return launchAgent(a.launcher, newWorktrees(), newRepo(), st, a.prViewer, a.reviewReader, a.cfg.AssigneeUserID, agent.PromptContext{
 		Slice:           s,
 		Project:         project,
 		ProjectID:       a.cfg.ActiveProjectID,
@@ -321,15 +321,15 @@ func trimModel(m config.AgentModel) config.AgentModel { return actions.TrimModel
 // [prStillOpen]. It stays here rather than moving into [actions.Launch]
 // because the PRViewer is the board's own seam, and no headless launch sets
 // Fix at all.
-func launchAgent(l AgentLauncher, w Worktrees, r Repo, st store.Store, viewer PRViewer, assigneeID string,
-	c agent.PromptContext, m config.AgentModel, attach bool) tea.Cmd {
+func launchAgent(l AgentLauncher, w Worktrees, r Repo, st store.Store, viewer PRViewer, reviewer actions.PRReviewReader,
+	assigneeID string, c agent.PromptContext, m config.AgentModel, attach bool) tea.Cmd {
 	return func() tea.Msg {
 		if c.Fix {
 			if toast, sev, ok := prStillOpen(viewer, c); !ok {
 				return agentLaunchedMsg{toast: toast, sev: sev}
 			}
 		}
-		res, err := actions.Launch(context.Background(), l, w, r, st, assigneeID, c, m)
+		res, err := actions.Launch(context.Background(), l, w, r, st, reviewer, assigneeID, c, m)
 		if err != nil {
 			return agentLaunchedMsg{err: err}
 		}

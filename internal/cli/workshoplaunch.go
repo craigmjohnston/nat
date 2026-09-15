@@ -66,7 +66,15 @@ func workshopLaunch(ctx context.Context, args []string, env Env) error {
 	}
 
 	workdir := actions.ExpandHome(project.WorkingDir)
-	prompt := agent.PlanPrompt(projectID, project.Name, workdir, request, frontend)
+	// A store that failed to open is not this command's own failure to
+	// return: [actions.RenderedPlan] only ever needs one to read the plan
+	// inline, and a launch with none simply falls its prompt back to naming
+	// `nat info` instead.
+	plan := ""
+	if st, err := env.storeFor(ctx, projectID, project); err == nil {
+		plan = actions.RenderedPlan(ctx, st, storeProject(projectID, project))
+	}
+	prompt := agent.PlanPrompt(projectID, project.Name, workdir, request, plan, frontend)
 	wishlist := false
 	// The wishlist is only read when there is no request to outrank it — a
 	// launch that carries its own question has no use for the page.
@@ -79,7 +87,7 @@ func workshopLaunch(ctx context.Context, args []string, env Env) error {
 		items := notion.WishlistOf(blocks)
 		if len(items) > 0 {
 			wishlist = true
-			prompt = agent.WishlistPrompt(projectID, project.Name, workdir, items, frontend)
+			prompt = agent.WishlistPrompt(projectID, project.Name, workdir, items, plan, frontend)
 		}
 	}
 

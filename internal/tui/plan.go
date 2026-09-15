@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -9,9 +10,11 @@ import (
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // planSlice is the planning agent as the launch plumbing sees it: the tag of
@@ -192,18 +195,26 @@ func (f *PlanForm) save(a *App) tea.Cmd {
 	// The form only ever opens on a configured project, so this is the one it
 	// was opened against.
 	project, _ := a.activeProject()
-	return launchPlanAgent(a.launcher, a.cfg.ActiveProjectID, project.Name, expandHome(project.WorkingDir),
+	st, _, _ := a.activeStore()
+	sp := store.Project{ID: a.cfg.ActiveProjectID, Name: project.Name, SlicesID: project.SlicesDSID}
+	return launchPlanAgent(a.launcher, st, sp, a.cfg.ActiveProjectID, project.Name, expandHome(project.WorkingDir),
 		strings.TrimSpace(f.request), trimModel(f.model))
 }
 
 // launchPlanAgent writes the planning prompt out — the user's request folded
-// in — and starts the detached session that reads it, tagged with the project's
+// in, and the plan itself rendered inline where the read of it succeeds —
+// and starts the detached session that reads it, tagged with the project's
 // planning tag rather than a slice ID. It comes back as the same message a
 // slice launch does, so the failure reporting is shared.
-func launchPlanAgent(l AgentLauncher, projectID, projectName, workdir, request string, m config.AgentModel) tea.Cmd {
+//
+// st is nil where there is no store to read the plan through at all — no
+// active project, no client — which [renderedPlan] treats the same as a read
+// that failed: the prompt simply falls back to naming `nat info` itself.
+func launchPlanAgent(l AgentLauncher, st actions.PlanReader, sp store.Project, projectID, projectName, workdir, request string, m config.AgentModel) tea.Cmd {
 	return func() tea.Msg {
 		session, tag := agent.PlanSessionName(projectID), agent.PlanTag(projectID)
-		file, err := agent.WritePromptFile(session, agent.PlanPrompt(projectID, projectName, workdir, request, agent.FrontendTUI))
+		plan := renderedPlan(st, sp)
+		file, err := agent.WritePromptFile(session, agent.PlanPrompt(projectID, projectName, workdir, request, plan, agent.FrontendTUI))
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch planning agent: %w", err)}
 		}
@@ -214,6 +225,15 @@ func launchPlanAgent(l AgentLauncher, projectID, projectName, workdir, request s
 		// want to workshop, so the pane is shown straight away.
 		return agentLaunchedMsg{slice: planSlice(tag), session: session, attach: true}
 	}
+}
+
+// renderedPlan is [actions.RenderedPlan], skipped for a nil store — see
+// [launchPlanAgent].
+func renderedPlan(st actions.PlanReader, sp store.Project) string {
+	if st == nil {
+		return ""
+	}
+	return actions.RenderedPlan(context.Background(), st, sp)
 }
 
 // planAgentFlow is what w does: launches a planning agent when none is
