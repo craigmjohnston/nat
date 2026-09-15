@@ -54,6 +54,24 @@ import (
 // prompt's user-facing guidance about picking up changes and approving or
 // merging work names the right one. The zero value is unspecified, which
 // reads exactly as every template did before this field existed.
+//
+// GitBase, GitLog and GitDiffStat are a resume or fix launch's read of the
+// worktree, taken by [actions.Launch] right after PlaceAgent resolves it:
+// the base the branch is measured against, `git log --oneline <base>..HEAD`
+// and `git diff --stat <base>...HEAD` — separating an earlier session's
+// commits from whatever the base has moved on by since, and naming the files
+// already touched, neither of which Claude Code's own injected git status
+// snapshot carries. A first-time launch never gathers them — there is
+// nothing yet on the branch worth reading — and a gather that fails leaves
+// whichever of GitLog/GitDiffStat failed empty, which is what tells [Prompt]
+// and [fixPrompt] to leave the section out rather than print half of it.
+//
+// ReviewComments and ReviewChecks are a fix launch's read of the pull
+// request's review, taken the same way: `gh pr view <url> --comments` and
+// `gh pr checks <url>`, the exact two reads [fixPrompt] tells the agent it
+// may run again itself. Each is independently left empty on a failed read,
+// the project's usual reads-conclude-nothing posture — a launch never fails
+// over missing context.
 type PromptContext struct {
 	Slice           domain.Slice
 	Project         config.ProjectConfig
@@ -69,6 +87,37 @@ type PromptContext struct {
 	MilestoneSlices []domain.Slice
 	MilestoneDigest string
 	Frontend        Frontend
+	GitBase         string
+	GitLog          string
+	GitDiffStat     string
+	ReviewComments  string
+	ReviewChecks    string
+}
+
+// gitSnapshotSection is the "captured at launch" rendering [Prompt] (for a
+// resume) and [fixPrompt] share: the branch's commits since base and its diff
+// stat, framed so the agent knows both were already read and need not be
+// re-run. Left out entirely when neither read came back — a gather that
+// failed, or a first-time launch that never attempted one.
+func gitSnapshotSection(c PromptContext) string {
+	if c.GitLog == "" && c.GitDiffStat == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n## What is already on the branch\n\n")
+	fmt.Fprintf(&b, "Captured at launch — no need to re-run this. Commits on %s since %s:\n\n", c.Branch, c.GitBase)
+	if c.GitLog != "" {
+		fmt.Fprintf(&b, "```\n%s\n```\n\n", c.GitLog)
+	} else {
+		b.WriteString("_(could not be read at launch)_\n\n")
+	}
+	b.WriteString("Files changed:\n\n")
+	if c.GitDiffStat != "" {
+		fmt.Fprintf(&b, "```\n%s\n```\n", c.GitDiffStat)
+	} else {
+		b.WriteString("_(could not be read at launch)_\n")
+	}
+	return b.String()
 }
 
 // Prompt is the opening message for an agent session working one slice.
@@ -131,7 +180,7 @@ func Prompt(c PromptContext) string {
 	if c.Branch != "" {
 		fmt.Fprintf(&b, "- Branch: %s (the working directory is a worktree already on it)\n", c.Branch)
 	}
-	if resuming(c) {
+	if Resuming(c) {
 		b.WriteString("- There is work on that branch already: an earlier session pushed it and\n")
 		b.WriteString("  handed it back. You are continuing that work, not starting again.\n")
 	}
@@ -140,7 +189,13 @@ func Prompt(c PromptContext) string {
 	b.WriteString("it launches the agent for it, so there is nothing to run before starting\n")
 	b.WriteString("work. What follows is your brief: the slice's own body and acceptance\n")
 	b.WriteString("criteria, then the conventions that apply to every slice of the project.\n\n")
+	if !Resuming(c) {
+		b.WriteString("Claude Code has already loaded git status into this session's context —\n")
+		b.WriteString("branch, working-tree state, recent commits — so there is no need to run\n")
+		b.WriteString("`git status` yourself.\n\n")
+	}
 	b.WriteString(BriefSections(c.Brief, c.MilestoneDigest, c.Conventions))
+	b.WriteString(gitSnapshotSection(c))
 
 	b.WriteString("\nEvery `nat` command below names the project this slice is in:\n\n")
 	fmt.Fprintf(&b, "    --project %s\n\n", c.ProjectID)
@@ -149,9 +204,9 @@ func Prompt(c PromptContext) string {
 	b.WriteString("back to, and in particular not the project the user's board is on,\n")
 	b.WriteString("which they can switch while you work.\n")
 
-	b.WriteString("\n## Then read\n\n")
+	b.WriteString("\n## Already in your context\n\n")
 	b.WriteString("`CLAUDE.md` in the working directory — architecture and the verification\n")
-	b.WriteString("gate.\n")
+	b.WriteString("gate — is auto-loaded by Claude Code; there is no need to read it again.\n")
 
 	b.WriteString("\n## Before you write code\n\n")
 	b.WriteString("If this slice turns on an architecture question — a decision neither the\n")
@@ -174,7 +229,7 @@ func Prompt(c PromptContext) string {
 	b.WriteString("things — tests, git, the verification gate — not for reading or editing\n")
 	b.WriteString("files.\n\n")
 	switch {
-	case resuming(c):
+	case Resuming(c):
 		b.WriteString("That directory is a git worktree cut for this slice alone, already on\n")
 		fmt.Fprintf(&b, "the branch %s and shared with nobody, and the work an earlier\n", c.Branch)
 		b.WriteString("session pushed is already on it. Read what is there before adding to\n")
@@ -267,9 +322,15 @@ func Prompt(c PromptContext) string {
 // project is active, and a plan written into the project the user has since
 // switched to is the one mistake none of the drafting rules would catch.
 //
+// plan is the launch's own read of the current plan, rendered the same way
+// `nat info` prints it — see [actions.RenderedPlan] — and carried inline so
+// the agent starts with it already in hand rather than being told to run
+// that command itself. Empty when the read failed at launch, which falls
+// the prompt back to naming the command instead.
+//
 // frontend says which surface launched the session — see [Frontend].
-func PlanPrompt(projectID, projectName, workingDir, request string, frontend Frontend) string {
-	b := planBody(projectID, projectName, workingDir, frontend)
+func PlanPrompt(projectID, projectName, workingDir, request, plan string, frontend Frontend) string {
+	b := planBody(projectID, projectName, workingDir, plan, frontend)
 
 	if request != "" {
 		b.WriteString("\n## The request\n\n")
@@ -292,11 +353,11 @@ func PlanPrompt(projectID, projectName, workingDir, request string, frontend Fro
 // The clear is deliberately spelled out as the last step rather than the first:
 // an item cleared before the plan lands is an idea lost, and an item the agent
 // never read is somebody's newer idea, typed while the session ran.
-func WishlistPrompt(projectID, projectName, workingDir string, items []notion.WishlistItem, frontend Frontend) string {
+func WishlistPrompt(projectID, projectName, workingDir string, items []notion.WishlistItem, plan string, frontend Frontend) string {
 	if len(items) == 0 {
-		return PlanPrompt(projectID, projectName, workingDir, "", frontend)
+		return PlanPrompt(projectID, projectName, workingDir, "", plan, frontend)
 	}
-	b := planBody(projectID, projectName, workingDir, frontend)
+	b := planBody(projectID, projectName, workingDir, plan, frontend)
 
 	b.WriteString("\n## The request\n\n")
 	b.WriteString("The user launched you on their wishlist — the ideas they have been\n")
@@ -330,12 +391,17 @@ func itemIDs(items []notion.WishlistItem) []string {
 }
 
 // planBody is everything a planning session is told before the request it was
-// launched on: the job, the workflow, the commands, the guardrails. Both
-// planning prompts open with it, so a wishlist launch and a typed one differ
-// only in what they are pointed at.
+// launched on: the job, the plan itself, the workflow, the commands, the
+// guardrails. Both planning prompts open with it, so a wishlist launch and a
+// typed one differ only in what they are pointed at.
+//
+// plan is the launch's own read of the current plan, already rendered — see
+// [PlanPrompt] — carried inline in place of an instruction to go and read it.
+// Empty falls back to naming the command instead, which is what a gather
+// that failed at launch leaves it as.
 //
 // frontend says which surface launched the session — see [Frontend].
-func planBody(projectID, projectName, workingDir string, frontend Frontend) *strings.Builder {
+func planBody(projectID, projectName, workingDir, plan string, frontend Frontend) *strings.Builder {
 	b := &strings.Builder{}
 
 	fmt.Fprintf(b, "You are a Claude Code planning agent for the %q project.\n\n", projectName)
@@ -343,12 +409,27 @@ func planBody(projectID, projectName, workingDir string, frontend Frontend) *str
 	b.WriteString("Your job is to workshop the plan itself with the user — reshape\n")
 	b.WriteString("milestones, draft new slices — not to execute any slice.\n")
 
+	b.WriteString("\n## The plan\n\n")
+	if plan != "" {
+		b.WriteString("This was read fresh at launch — the project's conventions, its\n")
+		b.WriteString("milestones in plan order, and the slices under them:\n\n")
+		b.WriteString(plan)
+		if !strings.HasSuffix(plan, "\n") {
+			b.WriteString("\n")
+		}
+		fmt.Fprintf(b, "\n`nat info --project %s` (`--json` to parse it) re-reads it, for when\n", projectID)
+		b.WriteString("fresh state matters mid-session — the plan above is a snapshot from\n")
+		b.WriteString("launch, and the user may add to it or change it while you work.\n")
+	} else {
+		b.WriteString("Could not be read at launch; run this to see it — the project's\n")
+		b.WriteString("conventions, its milestones in plan order, and the slices under them\n")
+		b.WriteString("(`--json` to parse it instead):\n\n")
+		fmt.Fprintf(b, "    nat info --project %s\n", projectID)
+	}
+
 	b.WriteString("\n## How to work\n\n")
 	b.WriteString("Follow the /queue-work skill: it is the planning workflow for this\n")
-	b.WriteString("tracker. Start by running:\n\n")
-	fmt.Fprintf(b, "    nat info --project %s\n\n", projectID)
-	b.WriteString("That prints the current plan: the project's conventions, its milestones\n")
-	b.WriteString("in plan order, and the slices under them (`--json` to parse it instead).\n\n")
+	b.WriteString("tracker.\n\n")
 	b.WriteString("Every `nat` command you run names the project you are planning:\n\n")
 	fmt.Fprintf(b, "    --project %s\n\n", projectID)
 	b.WriteString("A command given no project is refused: there is nothing for it to fall\n")
@@ -385,15 +466,19 @@ func planBody(projectID, projectName, workingDir string, frontend Frontend) *str
 	return b
 }
 
-// resuming reports whether the session is picking work up rather than starting
-// it: the worktree it is placed in is on the very branch the slice records, so
-// there are commits there already and an earlier session put them there.
+// Resuming reports whether the session is picking work up rather than
+// starting it: the worktree it is placed in is on the very branch the slice
+// records, so there are commits there already and an earlier session put
+// them there.
 //
 // It is the branch matching that says so rather than the slice's status alone,
 // because a released slice is back at Todo with its branch still recorded and
 // its work still exactly what the next session wants, and because a launch that
 // fell back to the shared checkout has no worktree to have found the work in.
-func resuming(c PromptContext) bool {
+//
+// Exported for [actions.Launch]'s own use: whether a resume launch's git
+// snapshot is worth gathering is the same question this prompt already asks.
+func Resuming(c PromptContext) bool {
 	return c.Branch != "" && c.Branch == strings.TrimSpace(c.Slice.Branch)
 }
 

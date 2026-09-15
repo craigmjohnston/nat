@@ -24,6 +24,17 @@ type Launcher interface {
 	Launch(session, workdir, promptFile, sliceID string, model config.AgentModel) error
 }
 
+// PRReviewReader is what a fix launch needs of gh to gather the review's
+// state at launch time: the exact two reads its own prompt already permits
+// the agent to run again itself. Narrower than gh.CLI, the way every other
+// seam here is. A caller that never launches a fix session — headless
+// slice-launch, which refuses a Done slice outright — has nothing to drive
+// it with and passes nil; [Launch] never calls it outside c.Fix.
+type PRReviewReader interface {
+	ReviewComments(dir, ref string) (string, error)
+	Checks(dir, ref string) (string, error)
+}
+
 // LaunchResult is what Launch produced: the prompt context as actually
 // placed — its working directory, branch and repo filled in by the worktree
 // the agent was given — and the session it was started under. Session is
@@ -63,19 +74,25 @@ type LaunchResult struct {
 // the goroutine it is slow in. Its answer is the working directory the
 // prompt is written with and the session is started in, so the two never
 // disagree about where the agent is.
-func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, assigneeID string,
+func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, viewer PRReviewReader, assigneeID string,
 	c agent.PromptContext, m config.AgentModel) (LaunchResult, error) {
 	p := PlaceAgent(w, r, c.WorkingDir, c.Slice)
 	if !p.OK {
 		return LaunchResult{Toast: p.Toast, Sev: p.Sev}, nil
 	}
 	c.WorkingDir, c.Branch, c.Repo = p.Dir, p.Branch, p.Repo
+	// A resume or a fix launch has commits already on the branch worth
+	// reading; a first-time launch has nothing yet to gather.
+	if c.Branch != "" && (c.Fix || agent.Resuming(c)) {
+		c.GitBase, c.GitLog, c.GitDiffStat = gitSnapshot(r, c.WorkingDir, c.Branch)
+	}
 	// A fix session claims nothing and reads no brief: the slice is Done, its
 	// record of what happened is written, and the work in flight is the pull
 	// request rather than the slice. Moving it back into progress would take
 	// it out of the state the approve flow left it in for a session that
 	// changes none of what that flow recorded, and [agent.Prompt] sends such a
-	// session at the fix prompt instead, which reads the review from GitHub.
+	// session at the fix prompt instead, which is handed the review gathered
+	// below rather than told to read it live.
 	if !c.Fix {
 		if err := ClaimSlice(ctx, st, c.Slice, assigneeID); err != nil {
 			return LaunchResult{Toast: fmt.Sprintf("Could not %v — no agent was launched.", err), Sev: SevError}, nil
@@ -90,6 +107,8 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, assi
 		}
 		c.Brief, c.Conventions = brief, conventions
 		c.MilestoneDigest = milestoneDigest(ctx, st, c.Milestone, c.MilestoneSlices)
+	} else {
+		c.ReviewComments, c.ReviewChecks = reviewSnapshot(viewer, c.WorkingDir, c.Slice.PRURL)
 	}
 	session := agent.SessionName(c.Slice.ID)
 	file, err := agent.WritePromptFile(session, agent.Prompt(c))
@@ -123,6 +142,49 @@ func milestoneDigest(ctx context.Context, st Store, milestone domain.Milestone, 
 		summaries[s.ID] = store.HandbackSummaryOf(body)
 	}
 	return agent.MilestoneDigest(milestone, siblings, summaries)
+}
+
+// gitSnapshot is a resume or fix launch's read of the worktree, once
+// [PlaceAgent] has resolved it: the commit log and diff stat [agent.Prompt]
+// and [fixPrompt] render inline. Each read fails on its own — a diff stat
+// read is not skipped because the log one failed — and a failed read is
+// logged and left empty, which is what tells the prompt to leave the whole
+// section out: the project's usual reads-conclude-nothing posture, so a
+// launch never fails over this.
+func gitSnapshot(r Repo, dir, branch string) (base, log, diffStat string) {
+	base = r.Base(dir)
+	if out, err := r.LogOneline(dir, base, branch); err == nil {
+		log = out
+	} else {
+		logging.Action("could not read a branch's commit log for a launch prompt", "dir", dir, "branch", branch, "err", err)
+	}
+	if out, err := r.DiffStat(dir, base, branch); err == nil {
+		diffStat = out
+	} else {
+		logging.Action("could not read a branch's diff stat for a launch prompt", "dir", dir, "branch", branch, "err", err)
+	}
+	return base, log, diffStat
+}
+
+// reviewSnapshot is a fix launch's read of the pull request's review: the
+// exact two commands [fixPrompt] tells the agent it may run itself. A nil
+// viewer (nothing headless ever launches a fix session with one) or a read
+// that fails is logged and left empty, the same posture [gitSnapshot] keeps.
+func reviewSnapshot(viewer PRReviewReader, dir, prURL string) (comments, checks string) {
+	if viewer == nil {
+		return "", ""
+	}
+	if out, err := viewer.ReviewComments(dir, prURL); err == nil {
+		comments = out
+	} else {
+		logging.Action("could not read a pull request's comments for a launch prompt", "dir", dir, "pr", prURL, "err", err)
+	}
+	if out, err := viewer.Checks(dir, prURL); err == nil {
+		checks = out
+	} else {
+		logging.Action("could not read a pull request's checks for a launch prompt", "dir", dir, "pr", prURL, "err", err)
+	}
+	return comments, checks
 }
 
 // WorkdirFor is the directory a slice's agent starts in: its own repo

@@ -3,6 +3,7 @@ package gh
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/craigmjohnston/nat/internal/logging"
@@ -135,6 +136,44 @@ func (c CLI) ViewPR(dir, ref string) (PR, error) {
 		return PR{}, fmt.Errorf("%s pr view printed no readable JSON: %w", Binary, err)
 	}
 	return view.pr(), nil
+}
+
+// ReviewComments is the raw text gh prints for `gh pr view <ref> --comments`
+// — the conversation on the pull request, exactly as a fix session's own
+// prompt tells the agent it may read it. Read once at launch and inlined
+// rather than decoded through [CLI.ViewPR]'s JSON, so what the agent is
+// handed is the same text the command itself would have printed.
+func (c CLI) ReviewComments(dir, ref string) (string, error) {
+	if ref == "" {
+		return "", fmt.Errorf("%s pr view needs a pull request to read", Binary)
+	}
+	out, err := c.runner.Run(dir, Binary, "pr", "view", ref, "--comments")
+	if err != nil {
+		logging.Error("could not read a pull request's comments", "dir", dir, "ref", ref, "error", err)
+		return "", err
+	}
+	return strings.TrimRight(out, "\n"), nil
+}
+
+// Checks is the raw text gh prints for `gh pr checks <ref>` — the same second
+// read a fix session's prompt names.
+//
+// gh exits non-zero whenever any check is failing or still running, with the
+// check table printed regardless — and a check failing is exactly why a fix
+// session exists, so that table is not a failed read: only an error with
+// nothing printed at all (no checks reported, an unauthenticated gh) is
+// treated as one.
+func (c CLI) Checks(dir, ref string) (string, error) {
+	if ref == "" {
+		return "", fmt.Errorf("%s pr checks needs a pull request to read", Binary)
+	}
+	out, err := c.runner.Run(dir, Binary, "pr", "checks", ref)
+	trimmed := strings.TrimRight(out, "\n")
+	if err != nil && trimmed == "" {
+		logging.Error("could not read a pull request's checks", "dir", dir, "ref", ref, "error", err)
+		return "", err
+	}
+	return trimmed, nil
 }
 
 // prView is gh's JSON as gh writes it, kept apart from [PR] so the nesting

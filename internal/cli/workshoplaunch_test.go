@@ -199,9 +199,16 @@ func TestWorkshopLaunchRequestOutranksThePendingWishlist(t *testing.T) {
 	if strings.Contains(out.String(), "pending wishlist") {
 		t.Errorf("output = %q, a request should not launch on the wishlist", out.String())
 	}
+	// The request is what the agent starts on, not the wishlist items as their
+	// own request — the plan inlined ahead of it carries the project's own
+	// page content whole, wishlist heading included, the same as `nat info`
+	// already would.
 	prompt := launchedPlanPrompt(t, dir)
-	if !strings.Contains(prompt, "Something else entirely.") || strings.Contains(prompt, "Add dark mode.") {
-		t.Errorf("prompt = %q, want the request and not the wishlist", prompt)
+	if !strings.Contains(prompt, "Something else entirely.") {
+		t.Errorf("prompt = %q, want the request", prompt)
+	}
+	if strings.Contains(prompt, "nat wishlist-clear") {
+		t.Errorf("prompt = %q, want the request rather than the wishlist launch", prompt)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/gh"
 )
 
@@ -23,6 +24,15 @@ var newPRViewer = defaultPRViewer
 
 // defaultPRViewer is the real gh on PATH.
 func defaultPRViewer() PRViewer { return gh.New() }
+
+// newReviewReader is a fix launch's own edge onto gh — see
+// [actions.PRReviewReader] — held apart from newPRViewer even though both
+// drive the real gh, so a fake standing in for the PR screen's own reads is
+// never asked to answer these two as well.
+var newReviewReader = defaultReviewReader
+
+// defaultReviewReader is the real gh on PATH.
+func defaultReviewReader() actions.PRReviewReader { return gh.New() }
 
 // prViewLoadedMsg carries the pull request that was read, or the failure that
 // came instead. The screen reports its own failures, so they do not go through

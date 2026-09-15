@@ -36,10 +36,10 @@ A command given no project is refused: there is nothing for it to fall
 back to, and in particular not the project the user's board is on,
 which they can switch while you work.
 
-## Then read
+## Already in your context
 
 `CLAUDE.md` in the working directory — architecture and the verification
-gate.
+gate — is auto-loaded by Claude Code; there is no need to read it again.
 
 ## Before you write code
 

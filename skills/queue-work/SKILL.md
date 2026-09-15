@@ -24,7 +24,9 @@ filed the whole plan wherever it had got to.
   Pick the one the user means; ask them if more than one could be it.
 
 Then run `nat info --project <project>` to see what you are planning into: its
-conventions, its milestones in plan order, and its slices grouped under them.
+conventions, its milestones in plan order, and its slices grouped under them —
+unless your launch prompt already carries the plan, in which case it is
+already in front of you and this read is only for when it later goes stale.
 (`--json` if you would rather parse it.) `<project>` below is that ID.
 
 ## Drafting rules

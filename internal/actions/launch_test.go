@@ -45,7 +45,7 @@ func TestLaunchStartsTheAgentInAWorktree(t *testing.T) {
 	l := &fakeLauncher{}
 	client := &fakeClient{getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil }}
 
-	res, err := Launch(context.Background(), l, w, r, client.store(), "u1",
+	res, err := Launch(context.Background(), l, w, r, client.store(), nil, "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: dir},
 		config.AgentModel{Model: "opus", Effort: "high"})
 
@@ -88,7 +88,7 @@ func TestLaunchFallsBackToTheSharedCheckout(t *testing.T) {
 	l := &fakeLauncher{}
 	client := &fakeClient{}
 
-	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), "u1",
+	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), nil, "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: dir},
 		config.AgentModel{})
 
@@ -115,7 +115,7 @@ func TestLaunchRefusesAWorktreeThatCannotBeMade(t *testing.T) {
 	l := &fakeLauncher{}
 	client := &fakeClient{}
 
-	res, err := Launch(context.Background(), l, w, &fakeRepo{base: "origin/main"}, client.store(), "u1",
+	res, err := Launch(context.Background(), l, w, &fakeRepo{base: "origin/main"}, client.store(), nil, "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: dir},
 		config.AgentModel{})
 
@@ -147,7 +147,7 @@ func TestLaunchReportsAFailedBriefRead(t *testing.T) {
 		blocks:  func(string) ([]notion.Block, error) { return nil, errors.New("notion: 500") },
 	}
 
-	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), "u1",
+	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), nil, "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: t.TempDir()},
 		config.AgentModel{})
 
@@ -174,7 +174,7 @@ func TestLaunchReportsAFailedConventionsRead(t *testing.T) {
 		},
 	}
 
-	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), "u1",
+	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), nil, "u1",
 		agent.PromptContext{
 			Slice: domain.Slice{ID: "s5", Name: "Info view"}, ProjectID: "p1", WorkingDir: t.TempDir(),
 		}, config.AgentModel{})
@@ -206,7 +206,7 @@ func TestLaunchIncludesAMilestoneDigest(t *testing.T) {
 		},
 	}
 
-	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), "u1",
+	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), nil, "u1",
 		agent.PromptContext{
 			Slice:      domain.Slice{ID: "s5", Name: "Info view"},
 			WorkingDir: t.TempDir(),
@@ -251,7 +251,7 @@ func TestLaunchLogsAFailedMilestoneSummaryRead(t *testing.T) {
 		},
 	}
 
-	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), "u1",
+	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), nil, "u1",
 		agent.PromptContext{
 			Slice:      domain.Slice{ID: "s5", Name: "Info view"},
 			WorkingDir: t.TempDir(),
@@ -282,7 +282,7 @@ func TestLaunchReportsAFailedPromptFile(t *testing.T) {
 	l := &fakeLauncher{}
 	client := &fakeClient{}
 
-	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), "u1",
+	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), nil, "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}},
 		config.AgentModel{})
 
@@ -321,7 +321,7 @@ func TestLaunchRefusesWithoutTheClaim(t *testing.T) {
 			tt.fail(client)
 			l := &fakeLauncher{}
 
-			res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), "u1",
+			res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), nil, "u1",
 				agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}},
 				config.AgentModel{})
 
@@ -352,7 +352,7 @@ func TestLaunchReportsAFailedStart(t *testing.T) {
 	l := &fakeLauncher{launchErr: errors.New("duplicate session")}
 	client := &fakeClient{}
 
-	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), "u1",
+	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), nil, "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: t.TempDir()},
 		config.AgentModel{})
 
@@ -409,6 +409,223 @@ func TestExpandHome(t *testing.T) {
 				t.Errorf("ExpandHome(%q) = %q, want %q", tt.path, got, tt.want)
 			}
 		})
+	}
+}
+
+// fakeReviewer stands in for gh's two fix-launch reads.
+type fakeReviewer struct {
+	comments, checks       string
+	commentsErr, checksErr error
+}
+
+var _ PRReviewReader = (*fakeReviewer)(nil)
+
+func (f *fakeReviewer) ReviewComments(dir, ref string) (string, error) {
+	return f.comments, f.commentsErr
+}
+func (f *fakeReviewer) Checks(dir, ref string) (string, error) { return f.checks, f.checksErr }
+
+// TestLaunchGathersTheGitSnapshotForAResumingLaunch covers a relaunch onto a
+// branch the slice already records: the worktree is placed on it, so the
+// commit log and diff stat are worth reading, and both come back on the
+// context the prompt renders from.
+func TestLaunchGathersTheGitSnapshotForAResumingLaunch(t *testing.T) {
+	dir := repoDir(t)
+	worktreeDir := dir + "-worktrees/slice/info-view"
+	w := &fakeWorktrees{existing: map[string]string{"slice/info-view": worktreeDir}}
+	r := &fakeRepo{base: "origin/main", log: "abc1234 did the thing", stat: "a.go | 2 ++"}
+	l := &fakeLauncher{}
+	client := &fakeClient{}
+
+	res, err := Launch(context.Background(), l, w, r, client.store(), nil, "u1",
+		agent.PromptContext{
+			Slice:      domain.Slice{ID: "s5", Name: "Info view", Branch: "slice/info-view", Status: domain.SliceClaimed},
+			WorkingDir: dir,
+		}, config.AgentModel{})
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through", err)
+	}
+	if res.Context.GitBase != "origin/main" || res.Context.GitLog != "abc1234 did the thing" || res.Context.GitDiffStat != "a.go | 2 ++" {
+		t.Errorf("context = %+v, want the gathered git snapshot", res.Context)
+	}
+}
+
+// A first-time launch — nothing yet on the branch — never gathers git at
+// all: there is nothing there worth reading, and the prompt is told so
+// separately (Claude Code's own injected snapshot).
+func TestLaunchNeverGathersGitForAFirstTimeLaunch(t *testing.T) {
+	dir := repoDir(t)
+	w := &fakeWorktrees{}
+	r := &fakeRepo{base: "origin/main", log: "should not appear", stat: "should not appear"}
+	l := &fakeLauncher{}
+	client := &fakeClient{getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil }}
+
+	res, err := Launch(context.Background(), l, w, r, client.store(), nil, "u1",
+		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: dir},
+		config.AgentModel{})
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through", err)
+	}
+	if res.Context.GitLog != "" || res.Context.GitDiffStat != "" {
+		t.Errorf("context = %+v, want no git gathered for a first-time launch", res.Context)
+	}
+}
+
+// A gather that fails on one read still tries the other, and leaves only the
+// failed one empty — the project's usual reads-conclude-nothing posture.
+func TestLaunchLeavesTheGitSnapshotEmptyOnAFailedRead(t *testing.T) {
+	dir := repoDir(t)
+	worktreeDir := dir + "-worktrees/slice/info-view"
+	w := &fakeWorktrees{existing: map[string]string{"slice/info-view": worktreeDir}}
+	r := &fakeRepo{base: "origin/main", stat: "a.go | 2 ++"}
+	r.log = "" // exercised via the LogOneline error path below
+	client := &fakeClient{}
+
+	res, err := Launch(context.Background(), &fakeLauncher{}, w, &loggingErrRepo{fakeRepo: r}, client.store(), nil, "u1",
+		agent.PromptContext{
+			Slice:      domain.Slice{ID: "s5", Name: "Info view", Branch: "slice/info-view", Status: domain.SliceClaimed},
+			WorkingDir: dir,
+		}, config.AgentModel{})
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through", err)
+	}
+	if res.Context.GitLog != "" {
+		t.Errorf("log = %q, want it empty after a failed read", res.Context.GitLog)
+	}
+	if res.Context.GitDiffStat != "a.go | 2 ++" {
+		t.Errorf("diff stat = %q, want the other read to still succeed", res.Context.GitDiffStat)
+	}
+}
+
+// loggingErrRepo fails LogOneline alone, so a test can drive one half of
+// gitSnapshot's failure without the other.
+type loggingErrRepo struct{ *fakeRepo }
+
+func (r *loggingErrRepo) LogOneline(dir, base, branch string) (string, error) {
+	return "", errors.New("git: unknown revision")
+}
+
+// diffStatErrRepo fails DiffStat alone, the mirror of loggingErrRepo.
+type diffStatErrRepo struct{ *fakeRepo }
+
+func (r *diffStatErrRepo) DiffStat(dir, base, branch string) (string, error) {
+	return "", errors.New("git: unknown revision")
+}
+
+// The diff stat read failing leaves it empty while the commit log still
+// comes back, the other half of TestLaunchLeavesTheGitSnapshotEmptyOnAFailedRead.
+func TestLaunchLeavesTheDiffStatEmptyOnAFailedRead(t *testing.T) {
+	dir := repoDir(t)
+	worktreeDir := dir + "-worktrees/slice/info-view"
+	w := &fakeWorktrees{existing: map[string]string{"slice/info-view": worktreeDir}}
+	r := &fakeRepo{base: "origin/main", log: "abc1234 did the thing"}
+	client := &fakeClient{}
+
+	res, err := Launch(context.Background(), &fakeLauncher{}, w, &diffStatErrRepo{fakeRepo: r}, client.store(), nil, "u1",
+		agent.PromptContext{
+			Slice:      domain.Slice{ID: "s5", Name: "Info view", Branch: "slice/info-view", Status: domain.SliceClaimed},
+			WorkingDir: dir,
+		}, config.AgentModel{})
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through", err)
+	}
+	if res.Context.GitLog != "abc1234 did the thing" {
+		t.Errorf("log = %q, want the other read to still succeed", res.Context.GitLog)
+	}
+	if res.Context.GitDiffStat != "" {
+		t.Errorf("diff stat = %q, want it empty after a failed read", res.Context.GitDiffStat)
+	}
+}
+
+// A fix launch claims nothing and gathers the review instead: the gh reads
+// come back on the context, and no claim is written.
+func TestLaunchGathersTheReviewForAFixLaunch(t *testing.T) {
+	dir := repoDir(t)
+	l := &fakeLauncher{}
+	client := &fakeClient{}
+	reviewer := &fakeReviewer{comments: "craig: nit on naming", checks: "X build 1m"}
+
+	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(),
+		reviewer, "u1",
+		agent.PromptContext{
+			Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceDone, PRURL: "https://example/pr/1"},
+			WorkingDir: dir, Fix: true,
+		}, config.AgentModel{})
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through", err)
+	}
+	if res.Context.ReviewComments != "craig: nit on naming" || res.Context.ReviewChecks != "X build 1m" {
+		t.Errorf("context = %+v, want the gathered review", res.Context)
+	}
+	if len(client.updated) != 0 {
+		t.Errorf("wrote %+v, want a fix launch to claim nothing", client.updated)
+	}
+}
+
+// A nil viewer — nothing headless ever drives a fix launch with one — gathers
+// nothing rather than panicking.
+func TestLaunchReviewGatherToleratesANilViewer(t *testing.T) {
+	dir := repoDir(t)
+	client := &fakeClient{}
+
+	res, err := Launch(context.Background(), &fakeLauncher{}, &fakeWorktrees{}, &fakeRepo{base: "origin/main"},
+		client.store(), nil, "u1",
+		agent.PromptContext{
+			Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceDone, PRURL: "https://example/pr/1"},
+			WorkingDir: dir, Fix: true,
+		}, config.AgentModel{})
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through", err)
+	}
+	if res.Context.ReviewComments != "" || res.Context.ReviewChecks != "" {
+		t.Errorf("context = %+v, want nothing gathered with no viewer", res.Context)
+	}
+}
+
+// A gh read that fails leaves just that half of the review empty.
+func TestLaunchLeavesTheReviewEmptyOnAFailedRead(t *testing.T) {
+	dir := repoDir(t)
+	client := &fakeClient{}
+	reviewer := &fakeReviewer{checks: "X build 1m", commentsErr: errors.New("gh: not authenticated")}
+
+	res, err := Launch(context.Background(), &fakeLauncher{}, &fakeWorktrees{}, &fakeRepo{base: "origin/main"},
+		client.store(), reviewer, "u1",
+		agent.PromptContext{
+			Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceDone, PRURL: "https://example/pr/1"},
+			WorkingDir: dir, Fix: true,
+		}, config.AgentModel{})
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through", err)
+	}
+	if res.Context.ReviewComments != "" {
+		t.Errorf("comments = %q, want empty after a failed read", res.Context.ReviewComments)
+	}
+	if res.Context.ReviewChecks != "X build 1m" {
+		t.Errorf("checks = %q, want the other read to still succeed", res.Context.ReviewChecks)
+	}
+}
+
+// The other half of TestLaunchLeavesTheReviewEmptyOnAFailedRead: a failed
+// checks read leaves it empty while the comments still come back.
+func TestLaunchLeavesTheChecksEmptyOnAFailedRead(t *testing.T) {
+	dir := repoDir(t)
+	client := &fakeClient{}
+	reviewer := &fakeReviewer{comments: "craig: nit on naming", checksErr: errors.New("gh: not authenticated")}
+
+	res, err := Launch(context.Background(), &fakeLauncher{}, &fakeWorktrees{}, &fakeRepo{base: "origin/main"},
+		client.store(), reviewer, "u1",
+		agent.PromptContext{
+			Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceDone, PRURL: "https://example/pr/1"},
+			WorkingDir: dir, Fix: true,
+		}, config.AgentModel{})
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through", err)
+	}
+	if res.Context.ReviewComments != "craig: nit on naming" {
+		t.Errorf("comments = %q, want the other read to still succeed", res.Context.ReviewComments)
+	}
+	if res.Context.ReviewChecks != "" {
+		t.Errorf("checks = %q, want it empty after a failed read", res.Context.ReviewChecks)
 	}
 }
 

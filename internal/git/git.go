@@ -252,6 +252,36 @@ func (c CLI) fallbackBase(dir string) string {
 	return RemoteDefaultBase
 }
 
+// LogOneline is a one-line-per-commit summary of what branch has done since
+// base: `git log --oneline base..branch`. Raw text rather than [CLI.Commits]'s
+// parsed form, because it is meant to be handed straight to an agent's
+// prompt at launch — a resume or fix session's own read of what an earlier
+// session already pushed, separated from whatever base has moved on by
+// since.
+func (c CLI) LogOneline(dir, base, branch string) (string, error) {
+	out, err := c.runner.Run(dir, Binary, "log", "--oneline", base+".."+branch)
+	if err != nil {
+		logging.Error("could not read a branch's one-line log", "dir", dir, "branch", branch, "base", base, "error", err)
+		return "", err
+	}
+	return strings.TrimRight(out, "\n"), nil
+}
+
+// DiffStat is which files branch changed and by how much since base: `git
+// diff --stat base...branch` — the three-dot form, against the merge base
+// rather than base's tip, the same comparison [CLI.Diff] makes. Raw text for
+// the same reason [CLI.LogOneline] is: a launch prompt's file map, not a
+// structure this package would otherwise have to keep in step with git's own
+// stat format.
+func (c CLI) DiffStat(dir, base, branch string) (string, error) {
+	out, err := c.runner.Run(dir, Binary, "diff", "--stat", base+"..."+branch)
+	if err != nil {
+		logging.Error("could not read a branch's diff stat", "dir", dir, "branch", branch, "base", base, "error", err)
+		return "", err
+	}
+	return strings.TrimRight(out, "\n"), nil
+}
+
 // Fetch brings origin's refs up to date, so [CLI.Base] names a tip that is
 // current rather than whatever the checkout last happened to hear about. It is
 // what a worktree is cut after: a branch based on a stale origin/main starts

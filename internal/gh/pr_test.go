@@ -257,3 +257,84 @@ func TestViewPRUnreadableJSON(t *testing.T) {
 		t.Errorf("ViewPR() = %v, want it to report the unreadable output", err)
 	}
 }
+
+// TestReviewCommentsRunsGh pins the raw text form a fix launch's prompt is
+// handed, trimmed of its trailing newline.
+func TestReviewCommentsRunsGh(t *testing.T) {
+	runner := &fakeRunner{out: "craig: nit on naming\n\ncraig2: looks good\n"}
+	got, err := NewWithRunner(runner).ReviewComments("/repos/nat", "https://github.test/o/r/pull/1")
+	if err != nil {
+		t.Fatalf("ReviewComments() = %v, want it to go through", err)
+	}
+	if want := "craig: nit on naming\n\ncraig2: looks good"; got != want {
+		t.Errorf("comments = %q, want %q", got, want)
+	}
+	if want := []string{"pr", "view", "https://github.test/o/r/pull/1", "--comments"}; !reflect.DeepEqual(runner.args, want) {
+		t.Errorf("args = %v, want %v", runner.args, want)
+	}
+}
+
+func TestReviewCommentsNeedsARef(t *testing.T) {
+	runner := &fakeRunner{}
+	if _, err := NewWithRunner(runner).ReviewComments("/repos/nat", ""); err == nil {
+		t.Error("ReviewComments() = nil, want it to refuse an unnamed pull request")
+	}
+	if runner.runs != 0 {
+		t.Errorf("ran gh %d times, want it not run at all", runner.runs)
+	}
+}
+
+func TestReviewCommentsFailure(t *testing.T) {
+	runner := &fakeRunner{err: &ExitError{Code: 1, Stderr: "no pull requests found\n"}}
+	if _, err := NewWithRunner(runner).ReviewComments("/repos/nat", "1"); err == nil {
+		t.Error("ReviewComments() = nil, want gh's own refusal")
+	}
+}
+
+// TestChecksRunsGh pins the raw check table a fix launch's prompt is handed.
+func TestChecksRunsGh(t *testing.T) {
+	runner := &fakeRunner{out: "X  build  1m3s\n✓  lint  12s\n"}
+	got, err := NewWithRunner(runner).Checks("/repos/nat", "https://github.test/o/r/pull/1")
+	if err != nil {
+		t.Fatalf("Checks() = %v, want it to go through", err)
+	}
+	if want := "X  build  1m3s\n✓  lint  12s"; got != want {
+		t.Errorf("checks = %q, want %q", got, want)
+	}
+	if want := []string{"pr", "checks", "https://github.test/o/r/pull/1"}; !reflect.DeepEqual(runner.args, want) {
+		t.Errorf("args = %v, want %v", runner.args, want)
+	}
+}
+
+func TestChecksNeedsARef(t *testing.T) {
+	runner := &fakeRunner{}
+	if _, err := NewWithRunner(runner).Checks("/repos/nat", ""); err == nil {
+		t.Error("Checks() = nil, want it to refuse an unnamed pull request")
+	}
+	if runner.runs != 0 {
+		t.Errorf("ran gh %d times, want it not run at all", runner.runs)
+	}
+}
+
+// A failing check is not a failed read: gh exits non-zero whenever a check is
+// failing or still running, with the table printed regardless, and a check
+// failing is exactly why a fix session exists.
+func TestChecksToleratesGhsNonZeroExitWhenChecksAreFailing(t *testing.T) {
+	runner := &fakeRunner{out: "X  build  1m3s\n", err: &ExitError{Code: 1, Stderr: "some checks were not successful\n"}}
+	got, err := NewWithRunner(runner).Checks("/repos/nat", "1")
+	if err != nil {
+		t.Fatalf("Checks() = %v, want a failing check to still read as a table", err)
+	}
+	if want := "X  build  1m3s"; got != want {
+		t.Errorf("checks = %q, want %q", got, want)
+	}
+}
+
+// A refusal with nothing printed at all — no checks reported, an
+// unauthenticated gh — is a failed read.
+func TestChecksFailureWithNothingPrinted(t *testing.T) {
+	runner := &fakeRunner{err: &ExitError{Code: 1, Stderr: "no checks reported\n"}}
+	if _, err := NewWithRunner(runner).Checks("/repos/nat", "1"); err == nil {
+		t.Error("Checks() = nil, want a refusal with nothing printed to read as a failed read")
+	}
+}

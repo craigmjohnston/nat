@@ -62,13 +62,20 @@ func (f *fakeWorktrees) Remove(dir, branch string) error {
 	return f.removeErr
 }
 
-// fakeRepo stands in for git: what the fetch was asked of, and what origin's
-// HEAD is read as afterwards. The real one never fails at either — a fetch
-// that could not reach the remote is swallowed, and an unreadable HEAD falls
-// back to main — so there is nothing here for a test to make go wrong.
+// fakeRepo stands in for git: what the fetch was asked of, what origin's HEAD
+// is read as afterwards, and the log/diff-stat gather a resume or fix launch
+// makes once the worktree is placed. The real one never fails a fetch or a
+// Base read — a fetch that could not reach the remote is swallowed, and an
+// unreadable HEAD falls back to main — so there is nothing here for a test
+// to make go wrong on those two; logErr/statErr are what a test drives the
+// gather's own failure through.
 type fakeRepo struct {
 	base    string
 	fetches []string
+
+	log, stat         string
+	logErr, statErr   error
+	loggedFor, stated string // last (dir, base, branch) triple joined, for tests to assert against
 }
 
 var _ Repo = (*fakeRepo)(nil)
@@ -76,6 +83,16 @@ var _ Repo = (*fakeRepo)(nil)
 func (f *fakeRepo) Fetch(dir string) { f.fetches = append(f.fetches, dir) }
 
 func (f *fakeRepo) Base(string) string { return f.base }
+
+func (f *fakeRepo) LogOneline(dir, base, branch string) (string, error) {
+	f.loggedFor = dir + "|" + base + "|" + branch
+	return f.log, f.logErr
+}
+
+func (f *fakeRepo) DiffStat(dir, base, branch string) (string, error) {
+	f.stated = dir + "|" + base + "|" + branch
+	return f.stat, f.statErr
+}
 
 // repoDir is a directory that looks enough like a git checkout for the
 // launch flow's own test: what it reads is whether there is a .git in it.

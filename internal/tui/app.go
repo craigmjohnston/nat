@@ -18,6 +18,7 @@ import (
 	"charm.land/lipgloss/v2"
 	xansi "github.com/charmbracelet/x/ansi"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
@@ -301,8 +302,15 @@ type App struct {
 	//
 	// prMerger is the one thing this app does to a pull request rather than
 	// reads of one: the merge key on that screen — see [App.mergePRFlow].
+	//
+	// reviewReader is a fix launch's own gh reads — see [actions.Launch] —
+	// gathered once at launch time rather than left for the agent to read
+	// live. A separate accessor from prViewer even though both drive the same
+	// real gh, so a fake standing in for the PR screen's own reads is never
+	// asked to answer these two as well.
 	prReader     PRReader
 	prViewer     PRViewer
+	reviewReader actions.PRReviewReader
 	prMerger     PRMerger
 	prState      map[string]domain.PRReadiness
 	prSettled    map[string]bool
@@ -378,7 +386,7 @@ func NewApp(cfg config.Config, client NotionAPI) *App {
 		promptKeys: defaultPromptKeyMap(), prKeys: defaultPRKeyMap(), spinner: sp,
 		board: NewBoard(s), info: NewInfo(s), diff: NewDiff(s), prview: NewPRView(s),
 		launcher: newLauncher(), prs: newPRCreator(), differ: newDiffer(),
-		prReader: newPRReader(), prViewer: newPRViewer(), prMerger: newPRMerger(),
+		prReader: newPRReader(), prViewer: newPRViewer(), reviewReader: newReviewReader(), prMerger: newPRMerger(),
 		boardVP: viewport.New(), helpVP: viewport.New()}
 	a.helpVP.SetContent(a.helpBody())
 	return a
