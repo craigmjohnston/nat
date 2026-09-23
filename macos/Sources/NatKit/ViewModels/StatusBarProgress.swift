@@ -53,9 +53,6 @@ public struct StatusBarProgress: Equatable {
 
     /// What the done stub's tooltip reads, e.g. "Done — 175".
     public var doneTooltip: String { "Done — \(doneStub)" }
-
-    /// The `done/total` count drawn beside the bar, e.g. "187/233".
-    public var countLabel: String { "\(done)/\(total)" }
 }
 
 /// Builds the status bar's progress from a project's milestones.
