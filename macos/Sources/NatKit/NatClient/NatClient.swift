@@ -266,6 +266,21 @@ public final class NatClient: Sendable {
         return try decodeJSON(PRDetail.self, from: output)
     }
 
+    /// Read one of an ad hoc session's pull requests in full — `nat pr-view
+    /// --session`, which reads it from the session's own directory since a
+    /// session has no slice to record a pull request on.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sessionID: The session's own local ID
+    ///   - prURL: The pull request's URL, as `session-status` reports it
+    /// - Returns: PRDetail with gh's own fields
+    /// - Throws: NatError if the session is unknown, or gh fails
+    public func sessionPRView(projectID: String, sessionID: String, prURL: String) async throws -> PRDetail {
+        let output = try await runNat(arguments: ["pr-view", "--project", projectID, "--session", sessionID, "--json", prURL])
+        return try decodeJSON(PRDetail.self, from: output)
+    }
+
     /// The board's PR-readiness reading, taken headlessly
     /// (`internal/cli/prstatus.go`): every slice whose pull request anything
     /// might still be waiting on, and how close each is to landing — one gh

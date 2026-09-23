@@ -32,10 +32,22 @@ public struct WorkflowTabState: Equatable {
     /// The default tab to show (the furthest reachable, with precedent: Agent > Diff > PR > Brief).
     public let defaultTab: WorkflowTab
 
-    public init(tabs: [WorkflowTab], reachable: Set<WorkflowTab>, defaultTab: WorkflowTab) {
+    /// A count drawn beside a stage's label, for the stages that have one.
+    public let badges: [WorkflowTab: Int]
+
+    /// Stages whose completion is a fact of their own rather than of the
+    /// stages after them — `isComplete`'s default reading, which they replace.
+    public let completion: [WorkflowTab: Bool]
+
+    public init(
+        tabs: [WorkflowTab], reachable: Set<WorkflowTab>, defaultTab: WorkflowTab,
+        badges: [WorkflowTab: Int] = [:], completion: [WorkflowTab: Bool] = [:]
+    ) {
         self.tabs = tabs
         self.reachable = reachable
         self.defaultTab = defaultTab
+        self.badges = badges
+        self.completion = completion
     }
 
     /// Whether a tab is reachable.
@@ -50,6 +62,7 @@ public struct WorkflowTabState: Equatable {
     /// it back to Agent on a slice whose Diff is already unlocked — which
     /// must not untick the stages the slice has been through.
     public func isComplete(_ tab: WorkflowTab) -> Bool {
+        if let own = completion[tab] { return own }
         guard let tabIndex = tabs.firstIndex(of: tab) else { return false }
         return tabs[(tabIndex + 1)...].contains { reachable.contains($0) }
     }
@@ -132,7 +145,16 @@ public func buildWorkflowTabState(
 /// name, unlike a slice's own stages, which unlock one at a time as the work
 /// progresses. Agent is the default: it is where a session is watched while
 /// its agent works, the same reason a slice with a live agent defaults there.
-public func buildSessionTabState() -> WorkflowTabState {
+///
+/// The PR stage reads the session's own pull requests rather than the stages
+/// after it: its badge is how many are still open, and it is complete only
+/// once every one has merged. The Diff stage keeps the default reading.
+public func buildSessionTabState(prs: [SessionPR] = []) -> WorkflowTabState {
     let tabs: [WorkflowTab] = [.agent, .diff, .pr]
-    return WorkflowTabState(tabs: tabs, reachable: Set(tabs), defaultTab: .agent)
+    let stage = SessionPRStage(prs: prs)
+    return WorkflowTabState(
+        tabs: tabs, reachable: Set(tabs), defaultTab: .agent,
+        badges: stage.openCount > 0 ? [.pr: stage.openCount] : [:],
+        completion: [.pr: stage.isComplete]
+    )
 }

@@ -484,7 +484,7 @@ public func buildRailModel(
                 name: "Ad hoc session",
                 displayState: "Ended",
                 tintRole: .done,
-                detail: [session.label, sessionStartedLabel(session.startedAt, now: now)]
+                detail: [session.label, sessionStartedLabel(session.startedAt, now: now)] + prSummary(session)
             )
         }
 
@@ -597,7 +597,7 @@ private func sessionActiveEntry(
             name: "Ad hoc session",
             displayState: state,
             tintRole: tint,
-            detail: [session.label],
+            detail: [session.label] + prSummary(session),
             meta: elapsed,
             metaRole: .elapsed
         )
@@ -609,10 +609,16 @@ private func sessionActiveEntry(
         name: "Ad hoc session",
         displayState: "Needs review",
         tintRole: .needsReview,
-        detail: [session.label, sessionStartedLabel(session.startedAt, now: now)],
+        detail: [session.label, sessionStartedLabel(session.startedAt, now: now)] + prSummary(session),
         meta: "\(count) open",
         metaRole: .stat
     )
+}
+
+/// The count a session's row names on its second line once it has more than
+/// one pull request — nothing before then.
+private func prSummary(_ session: Session) -> [String] {
+    sessionPRSummary(session.prs).map { [$0] } ?? []
 }
 
 /// The session's start, said the same coarse way `elapsedLabel` measures a

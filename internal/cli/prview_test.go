@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -237,6 +238,88 @@ func TestPRViewReportsAFailedRead(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "load the slice") {
 		t.Errorf("err = %v, want the failed read named", err)
+	}
+}
+
+// A session has no slice to record a pull request on, so --session names the
+// pull request directly and gh reads it from the session's own directory.
+func TestPRViewOfASessionsPullRequest(t *testing.T) {
+	env, out := sessionTestEnv(t)
+	dir := t.TempDir()
+	id := seedSession(t, env, dir, "session/one")
+	runner := &fakeGHRunner{out: fullPROpenJSON}
+	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
+	ref := "https://github.test/craig/nat/pull/7"
+
+	if err := Run(context.Background(), []string{"pr-view", "--session", id, "--json", "--project", "project-1", ref}, env); err != nil {
+		t.Fatalf("pr-view --session: %v", err)
+	}
+	if runner.dir != dir {
+		t.Errorf("ran gh in %q, want the session's directory %q", runner.dir, dir)
+	}
+	var got prDoc
+	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
+	}
+	if got.Number != 7 || got.Title != "Read a pull request" {
+		t.Errorf("json = %+v", got)
+	}
+}
+
+func TestPRViewOfASessionsPullRequestAsMarkdown(t *testing.T) {
+	env, out := sessionTestEnv(t)
+	id := seedSession(t, env, t.TempDir(), "session/one")
+	env.NewGH = func() GH { return gh.NewWithRunner(&fakeGHRunner{out: fullPROpenJSON}) }
+
+	if err := Run(context.Background(), []string{"pr-view", "--session", id, "--project", "project-1", "7"}, env); err != nil {
+		t.Fatalf("pr-view --session: %v", err)
+	}
+	if !strings.Contains(out.String(), "# #7 Read a pull request") {
+		t.Errorf("output = %s, want the pull request", out.String())
+	}
+}
+
+func TestPRViewOfASessionRefusals(t *testing.T) {
+	env, _ := sessionTestEnv(t)
+	id := seedSession(t, env, t.TempDir(), "session/one")
+	env.NewGH = func() GH {
+		return gh.NewWithRunner(&fakeGHRunner{err: &gh.ExitError{Code: 1, Stderr: "no such pull request"}})
+	}
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"no pull request named", []string{"pr-view", "--session", id, "--project", "project-1"}, "want exactly one pull request"},
+		{"invalid session", []string{"pr-view", "--session", "not-a-uuid", "--project", "project-1", "7"}, "not a slice"},
+		{"unknown session", []string{"pr-view", "--session", testSessionUUID, "--project", "project-1", "7"}, "no session"},
+		{"unknown project", []string{"pr-view", "--session", id, "--project", "nope", "7"}, "no project nope"},
+		{"gh refuses", []string{"pr-view", "--session", id, "--project", "project-1", "7"}, "no such pull request"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := Run(context.Background(), tt.args, env); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("err = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestPRViewOfASessionReportsAFailedStoreRead(t *testing.T) {
+	api := &fakeAPI{queryErr: map[string]error{"slices-ds": errors.New("notion: 500")}}
+	env, _ := testEnv(testClaimConfig(t), api)
+	err := Run(context.Background(), []string{"pr-view", "--session", testSessionUUID, "--project", "project-1", "7"}, env)
+	if err == nil || !strings.Contains(err.Error(), "notion: 500") {
+		t.Errorf("err = %v, want the failed hydrate reported", err)
+	}
+}
+
+func TestPRViewOfASessionReportsAFailedSessionsRead(t *testing.T) {
+	env, _ := sessionTestEnv(t)
+	seedHydratedProject(t, "project-1", func(db *sql.DB) { dropSessionsTable(t, db) })
+	err := Run(context.Background(), []string{"pr-view", "--session", testSessionUUID, "--project", "project-1", "7"}, env)
+	if err == nil || !strings.Contains(err.Error(), "read the sessions") {
+		t.Errorf("err = %v, want 'read the sessions'", err)
 	}
 }
 

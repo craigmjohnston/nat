@@ -112,8 +112,9 @@ final class RailModelSessionTests: XCTestCase {
         XCTAssertEqual(entry.tintRole, .needsReview)
         XCTAssertEqual(entry.meta, "2 open")
         XCTAssertEqual(entry.metaRole, .stat)
-        XCTAssertEqual(entry.detail.count, 2, "the label and when it started")
+        XCTAssertEqual(entry.detail.count, 3, "the label, when it started, and the count of several PRs")
         XCTAssertTrue(entry.detail[1].hasPrefix("started "))
+        XCTAssertEqual(entry.detail[2], "2 PRs · 2 open")
     }
 
     func testBuildRailModel_sessionsOrderedNewestFirst() {

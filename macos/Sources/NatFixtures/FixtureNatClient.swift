@@ -264,8 +264,42 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
             ended: session.ended,
             dir: session.dir,
             branch: session.branch,
-            branches: [SessionBranchStatus(branch: session.branch, stale: false, prs: session.prs)]
+            branches: Fixtures.sessionBranchNames(for: session).enumerated().map { index, branch in
+                // One pull request to a branch, in order; a session with
+                // fewer branches than pull requests keeps the rest on its last.
+                let names = Fixtures.sessionBranchNames(for: session)
+                let prs = session.prs.enumerated().filter { min($0.offset, names.count - 1) == index }.map(\.element)
+                return SessionBranchStatus(branch: branch, stale: false, prs: prs)
+            }
         )
+    }
+
+    /// The fixture pull request, made over as the one asked for: the same
+    /// checks, reviews and conversation under the number, title, state and URL
+    /// the session's own listing gave it.
+    public func sessionPRView(projectID: String, sessionID: String, prURL: String) async throws -> PRDetail {
+        let listed = sessionsList.flatMap(\.prs).first { $0.url == prURL }
+        return try await answer(PRDetail(
+            number: listed?.number ?? pr.number,
+            title: listed?.title ?? pr.title,
+            body: pr.body,
+            state: listed?.state ?? pr.state,
+            isDraft: false,
+            author: pr.author,
+            baseRefName: pr.baseRefName,
+            headRefName: pr.headRefName,
+            url: prURL,
+            checks: pr.checks,
+            reviews: pr.reviews,
+            comments: pr.comments,
+            reviewDecision: pr.reviewDecision,
+            mergeable: pr.mergeable,
+            mergeStateStatus: pr.mergeStateStatus,
+            additions: pr.additions,
+            deletions: pr.deletions,
+            changedFiles: pr.changedFiles,
+            commits: pr.commits
+        ))
     }
 
     public func sessionDiff(projectID: String, sessionID: String, branch: String?) async throws -> SliceDiff {

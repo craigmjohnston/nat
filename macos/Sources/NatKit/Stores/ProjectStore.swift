@@ -28,6 +28,7 @@ public protocol NatClientProtocol: Sendable {
     func sessionList(projectID: String) async throws -> [Session]
     func sessionStatus(projectID: String, sessionID: String, discard: Bool) async throws -> SessionStatusDoc
     func sessionDiff(projectID: String, sessionID: String, branch: String?) async throws -> SliceDiff
+    func sessionPRView(projectID: String, sessionID: String, prURL: String) async throws -> PRDetail
 }
 
 extension NatClientProtocol {
@@ -56,6 +57,10 @@ extension NatClientProtocol {
 
     public func sessionDiff(projectID: String, sessionID: String, branch: String?) async throws -> SliceDiff {
         throw NatError.commandFailed("session-diff: not stubbed by this test client")
+    }
+
+    public func sessionPRView(projectID: String, sessionID: String, prURL: String) async throws -> PRDetail {
+        throw NatError.commandFailed("pr-view --session: not stubbed by this test client")
     }
 }
 

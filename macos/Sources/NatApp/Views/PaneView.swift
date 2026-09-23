@@ -127,12 +127,12 @@ struct PaneView: View {
     // MARK: - Ad hoc session pane
 
     /// A session's pane: the same header/stepper chrome a slice's pane
-    /// draws, over `buildSessionTabState()`'s own three tabs — Agent, Diff
+    /// draws, over `buildSessionTabState(prs:)`'s own three tabs — Agent, Diff
     /// and PR, no Brief. Title reads "Ad hoc session"; the breadcrumb is its
     /// branch or folder, the same label the rail row's second line draws.
     @ViewBuilder
     private func sessionPane(for session: Session) -> some View {
-        let tabState = buildSessionTabState()
+        let tabState = buildSessionTabState(prs: session.prs)
 
         PaneHeader(breadcrumb: session.label, title: "Ad hoc session") {
             HStack(spacing: 10) {
@@ -144,7 +144,8 @@ struct PaneView: View {
                         tab,
                         isCurrentTab: currentTab == tab,
                         isReachable: tabState.isReachable(tab),
-                        isComplete: tabState.isComplete(tab)
+                        isComplete: tabState.isComplete(tab),
+                        badge: tabState.badges[tab]
                     )
                 }
             }
@@ -195,7 +196,8 @@ struct PaneView: View {
         _ tab: WorkflowTab,
         isCurrentTab: Bool,
         isReachable: Bool,
-        isComplete: Bool
+        isComplete: Bool,
+        badge: Int? = nil
     ) -> some View {
         // Priority is complete, then current, then plain-reachable, then
         // locked — except the overlap the design calls out by name: a stage
@@ -251,6 +253,13 @@ struct PaneView: View {
                 .font(.system(size: Typo.subhead, weight: labelWeight))
                 .ink(labelColor)
                 .lineLimit(1)
+
+            if let badge {
+                Text("\(badge)")
+                    .font(.system(size: Typo.subhead, weight: .semibold))
+                    .monospacedDigit()
+                    .ink(.success)
+            }
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 4)

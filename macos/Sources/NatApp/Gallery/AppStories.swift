@@ -662,6 +662,43 @@ enum AppStories {
         },
 
         Story(
+            name: "session-pr-tab-three-prs",
+            summary: "An ad hoc session's PR tab with three pull requests in three states: the "
+                + "picker row of chips above the selected one's reading.",
+            size: pane
+        ) {
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(sessions: [Fixtures.multiPRSession]))
+            return SessionPRTabView(appModel: appModel, session: Fixtures.multiPRSession)
+                .surface(.window)
+        },
+
+        Story(
+            name: "session-diff-tab-two-branches",
+            summary: "An ad hoc session's Diff tab over two branches: the picker row marks the "
+                + "checked-out one as the default.",
+            size: pane
+        ) {
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(sessions: [Fixtures.twoBranchSession]))
+            return SessionDiffTabView(appModel: appModel, session: Fixtures.twoBranchSession)
+                .surface(.window)
+        },
+
+        Story(
+            name: "session-pane-stepper-three-prs",
+            summary: "The session pane over a session with three pull requests, one open: the "
+                + "stepper's PR stage badged with the open count and not yet green.",
+            size: pane
+        ) {
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(sessions: [Fixtures.multiPRSession]))
+            appModel.selectedSessionID = Fixtures.multiPRSessionID
+            return PaneView(appModel: appModel)
+                .surface(.window)
+        },
+
+        Story(
             name: "session-pr-tab-empty",
             summary: "An ad hoc session's PR tab with no pull request yet — naming the branch.",
             size: pane

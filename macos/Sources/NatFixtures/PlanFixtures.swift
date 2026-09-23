@@ -299,6 +299,8 @@ extension Fixtures {
     public static let liveSessionID = "f1x75e55-0000-4000-8000-000000000001"
     public static let reviewSessionID = "f1x75e55-0000-4000-8000-000000000002"
     public static let doneSessionID = "f1x75e55-0000-4000-8000-000000000003"
+    public static let multiPRSessionID = "f1x75e55-0000-4000-8000-000000000004"
+    public static let twoBranchSessionID = "f1x75e55-0000-4000-8000-000000000005"
 
     /// A session whose agent is still running — the ACTIVE row that pulses.
     public static let liveSession = Session(
@@ -338,6 +340,49 @@ extension Fixtures {
             SessionPR(number: 205, title: "Ad hoc fixture, merged", url: prURL, state: "MERGED", mergedAt: minutesAgo(200)),
         ]
     )
+
+    /// A session that opened three pull requests from three branches, one in
+    /// each of the states a chip can say: open, merged, closed. Not in
+    /// `sessions`, so the rail fixtures keep their three rows; a story that
+    /// wants it hands it to `FixtureNatClient` itself.
+    public static let multiPRSession = Session(
+        id: multiPRSessionID,
+        tag: "session:\(projectID):\(multiPRSessionID)",
+        live: false,
+        startedAt: liveMinutesAgo(150),
+        dir: "/Users/craig/Projects/notion-agent-tracker",
+        branch: "session/picker-model",
+        prs: [
+            SessionPR(number: 301, title: "Add the chip picker's selection model", url: pullURL(301), state: "OPEN"),
+            SessionPR(number: 300, title: "Read a session's diff branch by branch", url: pullURL(300), state: "MERGED", mergedAt: minutesAgo(60)),
+            SessionPR(number: 299, title: "Try a wider chip row", url: pullURL(299), state: "CLOSED"),
+        ]
+    )
+
+    /// A session that has been on two branches and opened a pull request from
+    /// neither — what the Diff tab's picker is drawn over.
+    public static let twoBranchSession = Session(
+        id: twoBranchSessionID,
+        tag: "session:\(projectID):\(twoBranchSessionID)",
+        live: false,
+        startedAt: liveMinutesAgo(75),
+        dir: "/Users/craig/Projects/notion-agent-tracker",
+        branch: "session/first-pass"
+    )
+
+    /// The branches `session-status` reports for a fixture session, the
+    /// checked-out one first — the recorded branch alone for any other.
+    public static func sessionBranchNames(for session: Session) -> [String] {
+        switch session.id {
+        case multiPRSessionID: return ["session/picker-model", "session/diff-branches", "session/wide-chips"]
+        case twoBranchSessionID: return ["session/second-pass", "session/first-pass"]
+        default: return [session.branch]
+        }
+    }
+
+    static func pullURL(_ number: Int) -> String {
+        "https://github.com/craigmjohnston/notion-agent-tracker/pull/\(number)"
+    }
 
     /// `nat session-list --json`'s reading — one of each state a session's
     /// rail row can be in.

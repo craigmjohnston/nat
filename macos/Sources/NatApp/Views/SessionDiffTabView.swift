@@ -2,8 +2,10 @@ import SwiftUI
 import NatKit
 import NatFixtures
 
-/// An ad hoc session's Diff tab: `nat session-diff`'s reading of its current
-/// branch, drawn with the same file-box-and-sidebar machinery the slice Diff
+/// An ad hoc session's Diff tab: `nat session-diff`'s reading of one of its
+/// branches — the checked-out one until another is picked from the
+/// `ChipPickerView` above it, which is hidden while the session has only the
+/// one — drawn with the same file-box-and-sidebar machinery the slice Diff
 /// tab uses — but with no approve action and no comment composer, since a
 /// session has no hand-back to approve and no review this diff is itself the
 /// subject of.
@@ -17,8 +19,35 @@ struct SessionDiffTabView: View {
 
     @State private var fileScroll = ScrollPosition(idType: String.self)
 
+    /// Every branch the session has been on, as `session-status` last read
+    /// them, and the session that reading was of — the checked-out one first.
+    @State private var branches: [String] = []
+    @State private var branchesSessionID: String?
+
+    /// The branch checked out in the session's worktree now: the default
+    /// choice, and the one `session-status` lists first.
+    private var checkedOut: String? { branches.first }
+
+    private var selectedBranch: String? {
+        appModel.selectedPickerID(.branch, sessionID: session.id, among: branches, defaultID: checkedOut)
+    }
+
+    /// What `session-diff --branch` is asked for: nothing for the default,
+    /// which `session-diff` resolves itself to the worktree's own branch.
+    private var requestedBranch: String? {
+        selectedBranch == checkedOut ? nil : selectedBranch
+    }
+
+    private var picker: ChipPickerModel {
+        ChipPickerModel(chips: branchChips(branches, checkedOut: checkedOut), selectedID: selectedBranch)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
+            ChipPickerView(model: picker) { branch in
+                appModel.selectPicker(.branch, sessionID: session.id, id: branch)
+            }
+
             if let diff = store.loadState.diff {
                 content(for: diff)
             } else if case .failed = store.loadState {
@@ -28,11 +57,8 @@ struct SessionDiffTabView: View {
             }
         }
         .surface(.window)
-        .task {
+        .task(id: "\(session.id)|\(requestedBranch ?? "")") {
             await fetch()
-        }
-        .onChange(of: session.id) { _, _ in
-            Task { await fetch() }
         }
     }
 
@@ -154,13 +180,28 @@ struct SessionDiffTabView: View {
         .rule(.separator, edges: [.leading], width: 0.5)
     }
 
+    /// Read the session's branches once per session — a read that fails
+    /// leaves none, and so no picker and the default branch's diff — then the
+    /// diff of the branch selected. The selection is read after the branches
+    /// land, since a remembered one only means something among them.
     private func fetch() async {
         guard let projectID = appModel.projectStore?.projectID else { return }
-        await store.fetch(projectID: projectID, sessionID: session.id)
+        if branchesSessionID != session.id {
+            await loadBranches(projectID: projectID)
+        }
+        await store.fetch(projectID: projectID, sessionID: session.id, branch: requestedBranch)
+    }
+
+    private func loadBranches(projectID: String) async {
+        let sessionID = session.id
+        let doc = try? await appModel.sessionStatus(projectID: projectID, sessionID: sessionID)
+        branches = doc?.branches.map(\.branch) ?? []
+        branchesSessionID = sessionID
     }
 
     private func refresh() async {
         guard let projectID = appModel.projectStore?.projectID else { return }
+        await loadBranches(projectID: projectID)
         await store.refresh(projectID: projectID)
     }
 }
