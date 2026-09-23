@@ -300,6 +300,36 @@ enum AppStories {
         },
 
         Story(
+            name: "project-tabs-scratch",
+            summary: "The strip with the scratch tab pinned first and a project active: "
+                + "the scratch tab is a lone glyph, inactive, with no name and no close button.",
+            size: CGSize(width: 640, height: 40)
+        ) {
+            ProjectTabsView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(agents: Fixtures.agentStatuses),
+                    config: Fixtures.scratchConfig
+                ),
+                onNewProject: {}
+            )
+        },
+
+        Story(
+            name: "project-tabs-scratch-active",
+            summary: "The same strip with the scratch tab active: the glyph inked as the "
+                + "active tab's label, and the project tab beside it the last tab standing "
+                + "with no close button of its own.",
+            size: CGSize(width: 640, height: 40)
+        ) {
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(agents: Fixtures.agentStatuses),
+                config: Fixtures.scratchConfig
+            )
+            await appModel.activateProject(Fixtures.scratchProjectID)
+            return ProjectTabsView(appModel: appModel, onNewProject: {})
+        },
+
+        Story(
             name: "project-tabs-background-attention",
             summary: "A second project's tab carries the attention dot for a live agent "
                 + "even though this run has never opened it — loaded from its own cache "

@@ -11,6 +11,9 @@ public struct ConfigDoc: Codable, Equatable, Sendable {
     public let workshopAgent: AgentModel
     public let sliceAgent: AgentModel
     public let projects: [String: ConfigDocProject]
+    /// The reserved scratch project's ID, so the app finds it without a second
+    /// call. Nil until `nat scratch-open` has run, and from an older `nat`.
+    public let scratchProject: String?
 
     enum CodingKeys: String, CodingKey {
         case agentSplitPercent = "agent_split_percent"
@@ -18,6 +21,7 @@ public struct ConfigDoc: Codable, Equatable, Sendable {
         case workshopAgent = "workshop_agent"
         case sliceAgent = "slice_agent"
         case projects
+        case scratchProject = "scratch_project"
     }
 
     public init(
@@ -25,8 +29,10 @@ public struct ConfigDoc: Codable, Equatable, Sendable {
         pollSeconds: Int,
         workshopAgent: AgentModel,
         sliceAgent: AgentModel,
-        projects: [String: ConfigDocProject]
+        projects: [String: ConfigDocProject],
+        scratchProject: String? = nil
     ) {
+        self.scratchProject = scratchProject
         self.agentSplitPercent = agentSplitPercent
         self.pollSeconds = pollSeconds
         self.workshopAgent = workshopAgent

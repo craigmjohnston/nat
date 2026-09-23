@@ -73,6 +73,9 @@ type configDoc struct {
 	WorkshopAgent     agentModelJSON               `json:"workshop_agent"`
 	SliceAgent        agentModelJSON               `json:"slice_agent"`
 	Projects          map[string]configProjectJSON `json:"projects"`
+	// ScratchProject names the reserved scratch project, so the app finds it
+	// without a second call. Empty until scratch-open has run.
+	ScratchProject string `json:"scratch_project,omitempty"`
 }
 
 // configShowJSON maps the config onto the structured form: the raw stored
@@ -87,6 +90,7 @@ func configShowJSON(cfg config.Config) configDoc {
 		WorkshopAgent:     agentModelJSON{Model: cfg.WorkshopAgent.Model, Effort: cfg.WorkshopAgent.Effort},
 		SliceAgent:        agentModelJSON{Model: cfg.SliceAgent.Model, Effort: cfg.SliceAgent.Effort},
 		Projects:          make(map[string]configProjectJSON, len(cfg.Projects)),
+		ScratchProject:    cfg.ScratchProject,
 	}
 	for id, p := range cfg.Projects {
 		doc.Projects[id] = configProjectJSON{Name: p.Name, WorkingDir: p.WorkingDir, Backend: p.BackendName(), PlanDir: p.PlanDir}
@@ -102,6 +106,10 @@ func configShowMarkdown(cfg config.Config) string {
 	out += fmt.Sprintf("- Poll seconds: %d (0 = default)\n", cfg.PollSeconds)
 	out += fmt.Sprintf("- Workshop agent: model=%q effort=%q\n", cfg.WorkshopAgent.Model, cfg.WorkshopAgent.Effort)
 	out += fmt.Sprintf("- Slice agent: model=%q effort=%q\n", cfg.SliceAgent.Model, cfg.SliceAgent.Effort)
+
+	if cfg.ScratchProject != "" {
+		out += fmt.Sprintf("- Scratch project: %s\n", cfg.ScratchProject)
+	}
 
 	out += "\n## Projects\n\n"
 	if len(cfg.Projects) == 0 {

@@ -66,6 +66,23 @@ public final class AppModel {
     /// Ordered list of project tabs: (id, name).
     public private(set) var projectTabs: [(id: String, name: String)] = []
 
+    /// The reserved scratch project, when config names one that is also among
+    /// its projects: pinned first in `projectTabs`, drawn icon-only and never
+    /// closable. A local project like any other underneath.
+    public private(set) var scratchProjectID: String?
+
+    /// How many tabs count toward the last-tab rule: every one but the scratch
+    /// tab, which is always there and never closable, so it is neither a tab
+    /// the user can close nor one that makes another safe to.
+    public var closableTabCount: Int {
+        projectTabs.filter { $0.id != scratchProjectID }.count
+    }
+
+    /// Whether a tab is the scratch tab.
+    public func isScratchTab(_ projectID: String) -> Bool {
+        projectID == scratchProjectID
+    }
+
     /// The ID of the currently active project.
     public private(set) var activeProjectID: String?
 
@@ -93,6 +110,21 @@ public final class AppModel {
     /// Busy while a New Session launch is under way, and whatever it refused
     /// with — the rail button's own state, cleared by the next launch and by
     /// selecting anything else.
+    /// The folder the last scratch-tab session was launched in, which the
+    /// folder panel opens on next time. In memory only, like the rest of the
+    /// per-session view state here: a relaunch starts the panel at its default.
+    public private(set) var lastSessionFolder: String?
+
+    /// Whether the New Session button must ask for a folder first: on the
+    /// scratch tab, which has no fixed working directory worth launching in.
+    /// Every other tab launches straight away in its own.
+    public var newSessionNeedsFolder: Bool { activeTabIsScratch }
+
+    /// Whether the tab the user is on is the scratch tab.
+    public var activeTabIsScratch: Bool {
+        activeProjectID.map(isScratchTab) ?? false
+    }
+
     public private(set) var newSessionLaunching = false
     public private(set) var newSessionError: String?
 
@@ -255,6 +287,7 @@ public final class AppModel {
     /// to answer (or missing): the paths are derivable, and a board that
     /// cannot ask still has a config to read.
     public func start() async {
+        await prepareScratchProject()
         var configPath = NSHomeDirectory() + "/.config/notion-agent-tracker/config.json"
         var nudgePath = NSHomeDirectory() + "/Library/Logs/notion-agent-tracker/nudge"
         if let paths = try? await pathsProvider() {
@@ -262,6 +295,36 @@ public final class AppModel {
             nudgePath = paths.nudge
         }
         await start(configPath: configPath, nudgePath: nudgePath)
+    }
+
+    /// Whether this launch has already opened and cleared the scratch project.
+    /// `start()` runs again when onboarding finishes, and the clear is once per
+    /// launch: a slice marked Done on the scratch tab stays there until the
+    /// next launch rather than vanishing under the user.
+    private var scratchPrepared = false
+
+    /// `nat scratch-open`, then `nat done-clear` on what it named — both before
+    /// the scratch project's first read, so the rail never draws a plan that is
+    /// about to be emptied. Neither failure stops the launch: without the
+    /// scratch project there is simply no scratch tab, and a failed clear leaves
+    /// the rail drawing whatever is there. A binary too old to know either
+    /// command lands in the first case.
+    private func prepareScratchProject() async {
+        guard !scratchPrepared else { return }
+        let client = clientFactory()
+        let scratch: ScratchOpenResult
+        do {
+            scratch = try await client.scratchOpen()
+        } catch {
+            NSLog("AppModel: could not open the scratch project: %@", error.localizedDescription)
+            return
+        }
+        scratchPrepared = true
+        do {
+            _ = try await client.doneClear(projectID: scratch.id)
+        } catch {
+            NSLog("AppModel: could not clear the scratch project's Done work: %@", error.localizedDescription)
+        }
     }
 
     /// Start the app: load config, create project store, start timers.
@@ -282,8 +345,16 @@ public final class AppModel {
             }
             needsOnboarding = false
 
-            // Build project tabs from config, sorted by project name
-            let sortedProjects = loadedConfig.projects.sorted { $0.key < $1.key }
+            // Build project tabs from config, sorted by project ID, with the
+            // scratch project (when config names one it also tracks) pinned
+            // ahead of that sort.
+            var sortedProjects = loadedConfig.projects.sorted { $0.key < $1.key }
+            self.scratchProjectID = loadedConfig.scratchProject.flatMap {
+                loadedConfig.projects[$0] == nil ? nil : $0
+            }
+            if let scratch = scratchProjectID, let at = sortedProjects.firstIndex(where: { $0.key == scratch }) {
+                sortedProjects.insert(sortedProjects.remove(at: at), at: 0)
+            }
             self.projectTabs = sortedProjects.map { (id: $0.key, name: $0.value.name) }
 
             // Create activity store (app-wide)
@@ -293,8 +364,12 @@ public final class AppModel {
             self.sessionStore = SessionStore(client: clientFactory())
             startUsageStore()
 
-            // Activate the first project (if any)
-            if let firstProjectID = sortedProjects.first?.key {
+            // Activate the first project (if any): the first real one, since
+            // the scratch tab is somewhere to go rather than where to start —
+            // unless it is all there is.
+            let firstProjectID = sortedProjects.first { $0.key != scratchProjectID }?.key
+                ?? sortedProjects.first?.key
+            if let firstProjectID {
                 await activateProject(firstProjectID, nudgePath: nudgePath, config: loadedConfig)
             }
 
@@ -303,7 +378,7 @@ public final class AppModel {
             // on its tab (`attention(projectID:)` has nothing to attribute
             // without one) — loaded from each project's own cache and then
             // refreshed in the background, never blocking startup on it.
-            for tab in projectTabs where tab.id != sortedProjects.first?.key {
+            for tab in projectTabs where tab.id != firstProjectID {
                 loadBackgroundProject(tab.id)
             }
         } catch {
@@ -398,7 +473,8 @@ public final class AppModel {
     /// the ordinary sweep sees it: a session belonging to one of them is not
     /// mistaken for this tab's own dangling one.
     public func closeProject(_ projectID: String) async {
-        guard projectTabs.count > 1,
+        guard projectID != scratchProjectID,
+              closableTabCount > 1,
               let index = projectTabs.firstIndex(where: { $0.id == projectID }) else { return }
         let closing = Set((stores[projectID]?.state.projectInfo?.slices ?? []).map(\.id))
         await reapFinishedAgents(ignoringHoldsFor: closing)
@@ -852,6 +928,7 @@ public final class AppModel {
     /// activity poll and refreshing the session list is enough for its row
     /// to appear.
     public func launchSession(dir: String? = nil) async {
+        let onScratch = newSessionNeedsFolder
         guard let projectID = activeProjectID else { return }
         newSessionLaunching = true
         newSessionError = nil
@@ -861,6 +938,9 @@ public final class AppModel {
                 projectID: projectID, dir: dir, model: agent?.model, effort: agent?.effort
             )
             selectedSessionID = result.id
+            if onScratch, let dir, !dir.isEmpty {
+                lastSessionFolder = dir
+            }
             await sessionStore?.update(projectID: projectID)
             activityStore?.kick()
         } catch let error as NatError {

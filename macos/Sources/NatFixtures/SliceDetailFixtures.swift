@@ -123,6 +123,50 @@ extension Fixtures {
     /// close button at all (`ProjectTabRules.showsClose`), so this is what a
     /// story needs to show the tab strip as the user usually has it: a ✕ on
     /// the active tab, with the count pill seated against it.
+    /// The scratch project's ID in `scratchConfig`. Sorted after the fixture
+    /// project's ID on purpose: pinning it first is the strip's doing, not the
+    /// sort's.
+    public static let scratchProjectID = "f1x7ffff-0000-4000-8000-0000000000aa"
+
+    /// The fixture project plus the reserved scratch project — a local one,
+    /// as it is in real config — so the strip draws the scratch tab first.
+    public static var scratchConfig: NatProjectConfig {
+        NatProjectConfig(
+            projects: [
+                projectID: ProjectConfig(
+                    name: "notion-agent-tracker",
+                    slicesDSID: "f1x70000-0000-4000-8000-0000000000d5",
+                    workingDir: "/Users/craig/Projects/notion-agent-tracker"
+                ),
+                scratchProjectID: ProjectConfig(
+                    name: "Scratch",
+                    slicesDSID: "",
+                    workingDir: "/Users/craig"
+                ),
+            ],
+            agentSplitPercent: 45,
+            pollSeconds: 3600,
+            workshopAgent: AgentModel(model: "sonnet", effort: nil),
+            sliceAgent: AgentModel(model: "opus", effort: "high"),
+            assigneeUserName: "Craig Johnston",
+            scratchProject: scratchProjectID
+        )
+    }
+
+    /// `scratchConfig` with the second fixture project as well, so there are two
+    /// tabs besides the scratch one and one of them can be closed.
+    public static var scratchConfigWithSecondProject: NatProjectConfig {
+        var projects = twoProjectConfig.projects
+        projects[scratchProjectID] = scratchConfig.projects[scratchProjectID]
+        return NatProjectConfig(
+            projects: projects,
+            agentSplitPercent: 45,
+            pollSeconds: 3600,
+            assigneeUserName: "Craig Johnston",
+            scratchProject: scratchProjectID
+        )
+    }
+
     public static var twoProjectConfig: NatProjectConfig {
         NatProjectConfig(
             projects: [

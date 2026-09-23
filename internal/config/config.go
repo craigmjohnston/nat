@@ -141,6 +141,10 @@ type Config struct {
 	WorkshopAgent AgentModel               `json:"workshop_agent,omitzero"`
 	SliceAgent    AgentModel               `json:"slice_agent,omitzero"`
 	Projects      map[string]ProjectConfig `json:"projects"`
+	// ScratchProject is the ID of the reserved local project ad hoc work lives
+	// in, recorded by `nat scratch-open` the first time it runs. It is one of
+	// Projects like any other; this only says which. Omitted until then.
+	ScratchProject string `json:"scratch_project,omitempty"`
 }
 
 // The share of the window an agent's pane takes beside the board. The default
