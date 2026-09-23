@@ -53,6 +53,7 @@ func (f *fakePRReader) ViewPR(dir, ref string) (gh.PR, error) {
 func (f *fakePRReader) CreatePR(dir, branch, title, body string) (string, error) { return "", nil }
 func (f *fakePRReader) MergePR(dir, ref string) error                            { return nil }
 func (f *fakePRReader) CommentPR(dir, ref, body string) (string, error)          { return "", nil }
+func (f *fakePRReader) ListPRsForHead(dir, branch string) ([]gh.HeadPR, error)   { return nil, nil }
 
 func slicePageForStatus(id, name, status, milestone, pr string) notion.Page {
 	props := map[string]notion.PropertyValue{

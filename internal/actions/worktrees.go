@@ -56,6 +56,20 @@ func SliceBranch(s domain.Slice) string {
 	return branchPrefix + agent.SessionName(s.ID)
 }
 
+// sessionBranchPrefix is what every ad hoc session's branch is named under —
+// its own prefix, distinct from a slice's, so the two are never confused in
+// a `git branch` listing shared between them.
+const sessionBranchPrefix = "session/"
+
+// SessionBranch is the branch an ad hoc session's worktree is cut on: the
+// session/ prefix and [agent.SessionIDPrefix] of the session's own ID —
+// short, and derived rather than chosen, so a later read of the session
+// always names the same branch without having to have recorded it anywhere
+// first.
+func SessionBranch(sessionID string) string {
+	return sessionBranchPrefix + agent.SessionIDPrefix(sessionID)
+}
+
 // AgentBranch is the branch a slice's worktree is on: the one recorded at
 // hand-back where there is one, since what an agent actually pushed is what
 // its worktree is checked out on, whatever the launch that cut it derived —
@@ -139,23 +153,40 @@ type Placement struct {
 // no case of its own: git is what the board reads a diff with too, so there
 // is nothing here for such a machine to fall back to.
 func PlaceAgent(w Worktrees, r Repo, dir string, s domain.Slice) Placement {
-	shared := func(why string) Placement {
-		return Placement{Dir: dir, Toast: why + " — the agent runs in the shared checkout.", Sev: SevWarning, OK: true}
-	}
+	return placeOnBranch(w, r, dir, AgentBranch(s),
+		fmt.Sprintf("Could not make a worktree for %q", s.Name), "the agent runs in the shared checkout.")
+}
+
+// PlaceSession is [PlaceAgent]'s own placement rule with no slice to derive
+// its branch from: an ad hoc session's agent gets a worktree of its own on
+// branch, cut off the remote's default the same way a slice's is, or runs
+// directly in dir where that is not a git repository at all — there is no
+// other agent for it to share a checkout with, but the rule not to refuse a
+// bare directory outright is the same one [PlaceAgent] follows.
+func PlaceSession(w Worktrees, r Repo, dir, branch string) Placement {
+	return placeOnBranch(w, r, dir, branch,
+		fmt.Sprintf("Could not make a worktree for %q", branch), "the session runs directly in the directory.")
+}
+
+// placeOnBranch is [PlaceAgent] and [PlaceSession]'s shared mechanics: reuse
+// an existing worktree for branch, or fetch and cut a fresh one from the
+// remote's current default — see [PlaceAgent]'s own doc comment for why each
+// step is ordered the way it is. errPrefix and outsideRepoNote are the two
+// callers' own wording for a worktree failure and a bare-directory fallback.
+func placeOnBranch(w Worktrees, r Repo, dir, branch, errPrefix, outsideRepoNote string) Placement {
 	if !InRepo(dir) {
-		return shared(dir + " is not a git repository")
+		return Placement{Dir: dir, Toast: dir + " is not a git repository — " + outsideRepoNote, Sev: SevWarning, OK: true}
 	}
-	branch := AgentBranch(s)
-	// A branch git has no worktree for is the ordinary case — a slice
-	// nobody has worked yet — so a failure here is not read at all: it is
-	// the cut below that says whether the agent can be placed.
+	// A branch git has no worktree for is the ordinary case — nobody has
+	// worked it yet — so a failure here is not read at all: it is the cut
+	// below that says whether the agent can be placed.
 	if path, err := w.Path(dir, branch); err == nil {
 		return Placement{Dir: path, Branch: branch, Repo: dir, OK: true}
 	}
 	r.Fetch(dir)
 	path, err := w.Create(dir, branch, r.Base(dir))
 	if err != nil {
-		return Placement{Toast: fmt.Sprintf("Could not make a worktree for %q: %v.", s.Name, err), Sev: SevError}
+		return Placement{Toast: fmt.Sprintf("%s: %v.", errPrefix, err), Sev: SevError}
 	}
 	return Placement{Dir: path, Branch: branch, Repo: dir, OK: true}
 }

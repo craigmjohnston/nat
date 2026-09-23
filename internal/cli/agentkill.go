@@ -62,7 +62,7 @@ func agentKill(ctx context.Context, args []string, env Env) error {
 		return nil
 	}
 
-	id, err := pageID("agent-kill", rest[0])
+	id, err := tagOrPageID("agent-kill", rest[0])
 	if err != nil {
 		return err
 	}

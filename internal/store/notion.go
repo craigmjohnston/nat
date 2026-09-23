@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -782,6 +783,31 @@ func (n *Notion) DeleteSlice(ctx context.Context, id string) error {
 	}
 	logging.Action("slice deleted", "slice", id)
 	return nil
+}
+
+// errSessionsLocalOnly is what every session method on [Notion] refuses
+// with: a session belongs to this machine, never to a Notion workspace, so
+// there is nothing here for one of these calls to do.
+var errSessionsLocalOnly = errors.New("ad hoc sessions are local-only: a Notion-backed project keeps no session rows of its own")
+
+// AddSession refuses by name: see [errSessionsLocalOnly].
+func (n *Notion) AddSession(ctx context.Context, p Project, s NewSession) (domain.Session, error) {
+	return domain.Session{}, errSessionsLocalOnly
+}
+
+// Sessions refuses by name: see [errSessionsLocalOnly].
+func (n *Notion) Sessions(ctx context.Context, p Project) ([]domain.Session, error) {
+	return nil, errSessionsLocalOnly
+}
+
+// EndSession refuses by name: see [errSessionsLocalOnly].
+func (n *Notion) EndSession(ctx context.Context, id string) error {
+	return errSessionsLocalOnly
+}
+
+// DeleteSession refuses by name: see [errSessionsLocalOnly].
+func (n *Notion) DeleteSession(ctx context.Context, id string) error {
+	return errSessionsLocalOnly
 }
 
 // noteBlocks turns a note into the blocks appended to a slice page: a heading,
