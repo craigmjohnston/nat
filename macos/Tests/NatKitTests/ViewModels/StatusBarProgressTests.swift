@@ -17,7 +17,6 @@ final class StatusBarProgressTests: XCTestCase {
         XCTAssertEqual(progress.total, 0)
         XCTAssertEqual(progress.doneStub, 0)
         XCTAssertTrue(progress.milestones.isEmpty)
-        XCTAssertEqual(progress.countLabel, "0/0")
     }
 
     func testBuildStatusBarProgress_allDone() {

@@ -49,20 +49,14 @@ struct StatusBarView: View {
     }
 }
 
-/// The left cell: the plan progress bar and its `done/total` count.
+/// The left cell: the plan progress bar.
 private struct PlanProgressCell: View {
     let progress: StatusBarProgress
 
     private static let horizontalPadding: CGFloat = 20
 
     var body: some View {
-        HStack(spacing: 10) {
-            PlanProgressBar(progress: progress)
-            Text(progress.countLabel)
-                .font(.system(size: Typo.caption, weight: .regular))
-                .monospacedDigit()
-                .ink(.tertiary)
-        }
+        PlanProgressBar(progress: progress)
         .padding(.horizontal, Self.horizontalPadding)
     }
 }
@@ -77,6 +71,9 @@ private struct PlanProgressBar: View {
     static let doneStubWidth: CGFloat = 40
     static let circleDiameter: CGFloat = 5
     static let gap: CGFloat = 6
+    static let checkSize = CGSize(width: 11, height: 8)
+    static let checkWidth: CGFloat = 2.5
+    static let checkOutline: CGFloat = 4
 
     private var started: [MilestoneStatus] { progress.milestones.filter(\.started) }
     private var unstarted: [MilestoneStatus] { progress.milestones.filter { !$0.started } }
@@ -110,46 +107,63 @@ private struct PlanProgressBar: View {
         .frame(height: Self.barHeight)
     }
 
-    /// A checkmark stroked in the bar's own background rather than a
-    /// contrasting ink, so it reads as cut through the pill — punched out of
-    /// it — instead of a glyph sitting on top.
+    /// A bold, text-coloured checkmark over the stub, ringed by an outer
+    /// stroke in the header's fill: the same path stroked wider underneath, so
+    /// the ring sits outside the glyph's own edge rather than eating into it.
     private var doneStub: some View {
         RoundedRectangle(cornerRadius: Self.barHeight / 2)
             .fill(DesignTokens.accentMuted(on: .header))
             .frame(width: Self.doneStubWidth)
             .overlay {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(DesignTokens.fill(.header))
+                ZStack {
+                    CheckmarkShape()
+                        .stroke(
+                            DesignTokens.fill(.header),
+                            style: StrokeStyle(
+                                lineWidth: Self.checkWidth + 2 * Self.checkOutline,
+                                lineCap: .round, lineJoin: .round
+                            )
+                        )
+                    CheckmarkShape()
+                        .stroke(
+                            DesignTokens.ink(.primary, on: .header),
+                            style: StrokeStyle(lineWidth: Self.checkWidth, lineCap: .round, lineJoin: .round)
+                        )
+                }
+                .frame(width: Self.checkSize.width, height: Self.checkSize.height)
             }
             .help(progress.doneTooltip)
     }
 
     private func startedSegment(_ milestone: MilestoneStatus, width: CGFloat) -> some View {
-        ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: Self.barHeight / 2)
-                .fill(DesignTokens.rule(.border, on: .header))
-            GeometryReader { geometry in
-                RoundedRectangle(cornerRadius: Self.barHeight / 2)
-                    .fill(DesignTokens.accent)
-                    .frame(width: geometry.size.width * milestone.fraction)
-            }
-        }
-        .frame(width: width)
-        .help(milestone.tooltip)
+        RoundedRectangle(cornerRadius: Self.barHeight / 2)
+            .fill(DesignTokens.accent)
+            .frame(width: width)
+            .help(milestone.tooltip)
     }
 
     private func unstartedCircle(_ milestone: MilestoneStatus) -> some View {
         Circle()
-            .fill(DesignTokens.rule(.border, on: .header))
+            .fill(DesignTokens.accent)
             .frame(width: Self.circleDiameter, height: Self.circleDiameter)
             .help(milestone.tooltip)
     }
 }
 
+/// A checkmark path filling its rect, for stroking twice (see `doneStub`).
+private struct CheckmarkShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY + rect.height * 0.1))
+        path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.36, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        return path
+    }
+}
+
 /// The right cell: a quiet, live count of running agents, and — at the
 /// bar's own far right edge — the Claude usage readout, as
-/// `N agents running | {usage}`.
+/// `{usage} | N agents running`.
 private struct AgentCountCell: View {
     let count: Int
     let usage: UsageDisplay
@@ -164,15 +178,15 @@ private struct AgentCountCell: View {
     var body: some View {
         HStack(spacing: Self.separatorGap) {
             Spacer(minLength: 0)
-            Text(label)
-                .font(.system(size: Typo.caption, weight: .regular))
-                .ink(.tertiary)
             if !usage.isEmpty {
+                UsageReadoutView(usage: usage)
                 Text("|")
                     .font(.system(size: Typo.caption, weight: .regular))
                     .ink(.tertiary)
-                UsageReadoutView(usage: usage)
             }
+            Text(label)
+                .font(.system(size: Typo.caption, weight: .regular))
+                .ink(.tertiary)
         }
         .padding(.horizontal, Self.horizontalPadding)
     }

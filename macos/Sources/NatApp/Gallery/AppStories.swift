@@ -171,9 +171,9 @@ enum AppStories {
 
         Story(
             name: "status-bar-mixed",
-            summary: "The status bar with a done stub — its checkmark cut through the "
-                + "pill in the bar's own background — a started milestone drawing "
-                + "partway full, and an untouched one collapsed to a circle. The agent "
+            summary: "The status bar with a done stub — a bold text-coloured checkmark "
+                + "with an outer stroke — a started milestone drawn solid, "
+                + "and an untouched one as a filled circle. The agent "
                 + "count sits at the bar's far right.",
             size: CGSize(width: 1360, height: StatusBarView.height)
         ) {

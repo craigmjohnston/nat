@@ -9,7 +9,7 @@ struct WindowShellView: View {
 
     /// The header row's height — and, through TrafficLightAlignerView, the
     /// band the traffic lights are centred in.
-    private static let headerHeight: CGFloat = 40
+    private static let headerHeight: CGFloat = 34
 
     /// The rail's width, draggable at its divider and remembered across
     /// launches. The default is the `maxWidth` the rail was fixed at before
