@@ -29,6 +29,8 @@ public protocol NatClientProtocol: Sendable {
     func sessionStatus(projectID: String, sessionID: String, discard: Bool) async throws -> SessionStatusDoc
     func sessionDiff(projectID: String, sessionID: String, branch: String?) async throws -> SliceDiff
     func sessionPRView(projectID: String, sessionID: String, prURL: String) async throws -> PRDetail
+    func scratchOpen() async throws -> ScratchOpenResult
+    func doneClear(projectID: String) async throws -> DoneClearResult
 }
 
 extension NatClientProtocol {
@@ -61,6 +63,17 @@ extension NatClientProtocol {
 
     public func sessionPRView(projectID: String, sessionID: String, prURL: String) async throws -> PRDetail {
         throw NatError.commandFailed("pr-view --session: not stubbed by this test client")
+    }
+
+    /// Defaults for the scratch project's two commands, for the same reason:
+    /// only `AppModel.start()` calls them, and a mock written for any other
+    /// store has nothing to say to either.
+    public func scratchOpen() async throws -> ScratchOpenResult {
+        throw NatError.commandFailed("scratch-open: not stubbed by this test client")
+    }
+
+    public func doneClear(projectID: String) async throws -> DoneClearResult {
+        throw NatError.commandFailed("done-clear: not stubbed by this test client")
     }
 }
 

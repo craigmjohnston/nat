@@ -90,7 +90,7 @@ struct PaneView: View {
                 // tab has none, and what it needs said is what to do next.
                 VStack {
                     VStack(spacing: 8) {
-                        Image(systemName: "doc.text")
+                        Image(systemName: appModel.activeTabIsScratch ? DesignTokens.scratchSymbol : "doc.text")
                             .font(.system(size: 32, weight: .regular))
                             .ink(.secondary)
 

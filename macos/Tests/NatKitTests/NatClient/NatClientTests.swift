@@ -863,7 +863,36 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(doc.sliceAgent.effort, "high")
         XCTAssertEqual(doc.projects["proj-1"]?.name, "Example Project")
         XCTAssertEqual(doc.projects["proj-1"]?.workingDir, "/path/to/repo")
+        XCTAssertEqual(doc.scratchProject, "proj-1")
         XCTAssertEqual(fakeRunner.lastArguments, ["config-show", "--json"])
+    }
+
+    func testScratchOpen() async throws {
+        let fakeRunner = FakeRunner(fixture: .scratchOpenCreated)
+        let result = try await NatClient(commandRunner: fakeRunner).scratchOpen()
+
+        XCTAssertEqual(result, ScratchOpenResult(id: "scratch-1", created: true))
+        XCTAssertEqual(fakeRunner.lastArguments, ["scratch-open", "--json"])
+    }
+
+    func testDoneClear() async throws {
+        let fakeRunner = FakeRunner(fixture: .doneClearSuccess)
+        let result = try await NatClient(commandRunner: fakeRunner).doneClear(projectID: "scratch-1")
+
+        XCTAssertEqual(result, DoneClearResult(slices: ["a", "b"], sessions: ["s1"], milestones: []))
+        XCTAssertEqual(fakeRunner.lastArguments, ["done-clear", "--project", "scratch-1", "--json"])
+    }
+
+    func testDoneClearRefusalPassesThrough() async {
+        let client = NatClient(commandRunner: FakeRunner(fixture: .doneClearRefused))
+        do {
+            _ = try await client.doneClear(projectID: "real")
+            XCTFail("a refused clear should throw")
+        } catch NatError.commandFailed(let message) {
+            XCTAssertTrue(message.contains("workspace"))
+        } catch {
+            XCTFail("unexpected error \(error)")
+        }
     }
 
     func testConfigSetSuccess() async throws {

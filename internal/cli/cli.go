@@ -266,6 +266,15 @@ usage:
                       the same, with no Notion workspace behind it: the plan
                       is a file of nat's own, in DIR or nat's data directory.
                       Touches Notion nowhere and needs no credential
+  nat scratch-open [--dir DIR] [--json]
+                      make sure the reserved local "Scratch" project exists and
+                      print its ID: created on the first call (DIR, else the
+                      home directory, its working directory) and recorded in
+                      config as scratch_project, only read back after that
+  nat done-clear [--json] --project ID
+                      delete a local project's Done slices and ended sessions,
+                      then its milestones left with no slices. Refuses a
+                      project with a Notion workspace behind it
   nat milestone-add <name> [--json] --project ID
                       add a Queued milestone at the end of the plan
   nat milestone-rename <old> <new> [--json] --project ID
@@ -432,6 +441,10 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return agentKill(ctx, args[1:], env)
 	case "project-create":
 		return projectCreate(ctx, args[1:], env)
+	case "scratch-open":
+		return scratchOpen(ctx, args[1:], env)
+	case "done-clear":
+		return doneClear(ctx, args[1:], env)
 	case "milestone-add":
 		return milestoneAdd(ctx, args[1:], env)
 	case "milestone-rename":

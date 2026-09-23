@@ -45,6 +45,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// the client stays as canned as it always was, and only the read a
     /// story is stale-testing turns over.
     private let diffFailureMessage = Box<String?>(nil)
+    private let doneClearFailureMessage = Box<String?>(nil)
 
     public init(
         behaviour: Behaviour = .answering,
@@ -233,6 +234,27 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
 
     public func configSet(key: String, value: String) async throws {
         try await record("config-set \(key)")
+    }
+
+    // MARK: - Scratch project
+
+    public func scratchOpen() async throws -> ScratchOpenResult {
+        try await record("scratch-open")
+        return ScratchOpenResult(id: Fixtures.scratchProjectID, created: false)
+    }
+
+    public func doneClear(projectID: String) async throws -> DoneClearResult {
+        try await record("done-clear \(projectID)")
+        if let message = doneClearFailureMessage.get() {
+            throw NatError.commandFailed(message)
+        }
+        return DoneClearResult()
+    }
+
+    /// Arms every `doneClear` from here on to refuse, for a test that checks
+    /// the launch survives a failed clear.
+    public func armDoneClearFailure(_ message: String) {
+        doneClearFailureMessage.set(message)
     }
 
     // MARK: - Ad hoc sessions

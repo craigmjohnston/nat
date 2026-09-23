@@ -107,6 +107,14 @@ for credentials — no plan is read at all, so it is the one read that can
 never show a phantom state from a stale cached plan; built for the macOS
 app's session reaper, see `SessionReaping.swift`).
 
+Scratch project: `scratch-open` (no `--project`; creates the reserved local
+"Scratch" project through `createLocalProject` — the same path as
+`project-create --local` — and records it as config's `scratch_project`,
+then only reads it back) and `done-clear` (local projects only: deletes Done
+slices and ended sessions, then milestones left empty; refuses a project with
+a workspace behind it by name, so it can never trash Notion pages). gnat runs
+both once per launch, before the scratch project's first read.
+
 Planning: `workshop-launch` (planning agent, `agent.PlanPrompt`).
 
 ## `usage`

@@ -708,10 +708,11 @@ struct RailView: View {
     }
 
     /// ACTIVE's own control, beside its fold chevron like TODO's own two:
-    /// starts a bare Claude Code with `nat session-launch`, straight away —
-    /// on a project tab there is nowhere else this needs asking first, since
-    /// the project's own working directory is where it runs. Busy while the
-    /// launch is in flight; a failure surfaces through the rail's own toast.
+    /// starts a bare Claude Code with `nat session-launch`. On a project tab
+    /// it goes straight away, the project's own working directory being where
+    /// it runs; on the scratch tab, which has no such directory, it first asks
+    /// for a folder. Busy while the launch is in flight; a failure surfaces
+    /// through the rail's own toast.
     private var newSessionButton: some View {
         Button(action: { Task { await startNewSession() } }) {
             HStack(spacing: 4) {
@@ -733,14 +734,41 @@ struct RailView: View {
         .buttonStyle(.plain)
         .disabled(appModel.newSessionLaunching || appModel.activeProjectID == nil)
         .hoverWash(cornerRadius: 5, enabled: !appModel.newSessionLaunching)
-        .help("Start an ad hoc session in this project's working directory")
+        .help(appModel.newSessionNeedsFolder
+            ? "Start an ad hoc session in a folder you choose"
+            : "Start an ad hoc session in this project's working directory")
     }
 
     private func startNewSession() async {
-        await appModel.launchSession()
+        guard appModel.newSessionNeedsFolder else {
+            await appModel.launchSession()
+            if let error = appModel.newSessionError {
+                actionError = error
+            }
+            return
+        }
+        // Nothing chosen is nothing launched: cancelling the panel is not an error.
+        guard let folder = chooseSessionFolder() else { return }
+        await appModel.launchSession(dir: folder)
         if let error = appModel.newSessionError {
             actionError = error
         }
+    }
+
+    /// The standard open panel for the scratch tab's New Session, opened on the
+    /// folder the last such session used. Nil when the user cancels.
+    private func chooseSessionFolder() -> String? {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Start Session"
+        panel.message = "Choose the folder the session runs in"
+        if let last = appModel.lastSessionFolder {
+            panel.directoryURL = URL(fileURLWithPath: last)
+        }
+        return panel.runModal() == .OK ? panel.url?.path : nil
     }
 
     /// What the ad hoc session's row is about, for the context menu's own

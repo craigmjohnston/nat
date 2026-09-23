@@ -74,6 +74,7 @@ struct ProjectTabsView: View {
         isActive: Bool,
         index: Int
     ) -> some View {
+        let isScratch = appModel.isScratchTab(tab.id)
         HStack(spacing: 7) {
             // The state dot: what, of everything in flight on the project,
             // is most worth the eye. It pulses only while agents are working
@@ -92,6 +93,13 @@ struct ProjectTabsView: View {
                     .frame(width: 8, height: 8)
             }
 
+            // The scratch tab carries no name: its glyph is all of its label.
+            if isScratch {
+                Image(systemName: DesignTokens.scratchSymbol)
+                    .font(.system(size: 14, weight: .medium))
+                    .ink(isActive ? .primary : .secondary)
+                    .help("Scratch")
+            } else {
             // Project name. The width is reserved at semibold whichever
             // weight is drawn — activating a tab bolds its label, and a
             // label measured at its own weight resized the whole tab with
@@ -106,6 +114,7 @@ struct ProjectTabsView: View {
                         .ink(isActive ? .primary : .secondary)
                         .lineLimit(1)
                 }
+            }
 
             // Everything above is the tab's identity and reads from its
             // leading edge; the close button belongs to the trailing one,
@@ -119,7 +128,9 @@ struct ProjectTabsView: View {
             // A Spacer rather than a reserved slot: the label is leading-
             // aligned whatever follows it, so nothing moves as the ✕ fades in
             // under the mouse.
-            Spacer(minLength: 0)
+            if !isScratch {
+                Spacer(minLength: 0)
+            }
 
             // Count badge — tight, caption-scale, tabular digits rather than
             // a switch to monospaced design (there's no code here to align).
@@ -142,7 +153,7 @@ struct ProjectTabsView: View {
                     .cornerRadius(8)
             }
 
-            if ProjectTabRules.showsClose(tabCount: appModel.projectTabs.count) {
+            if ProjectTabRules.showsClose(tabCount: appModel.closableTabCount, isScratch: isScratch) {
                 let showClose = ProjectTabRules.closeIsVisible(
                     isActive: isActive,
                     isHovered: hoveredTabID == tab.id
@@ -165,7 +176,7 @@ struct ProjectTabsView: View {
                 .help("Close Tab")
             }
         }
-        .padding(.horizontal, 22)
+        .padding(.horizontal, isScratch ? 14 : 22)
         // The tab fills the band outright rather than being seated on its
         // foot: no bottom padding to lift it and no shortfall to center its
         // contents in — the 40pt cell's own center is the band's center line,
@@ -173,7 +184,9 @@ struct ProjectTabsView: View {
         .frame(height: 40)
         // Tab bounds: no narrower than 130 whatever its name, no wider than
         // 220 however long — padding included, as the mock's border-box is.
-        .frame(minWidth: 130, maxWidth: 220, alignment: .leading)
+        //
+        // The scratch tab is a lone icon and takes only what that needs.
+        .frame(minWidth: isScratch ? 0 : 130, maxWidth: isScratch ? nil : 220, alignment: .leading)
         .background(
             // A flat cell, not browser chrome: square corners, full height
             // and hard against its neighbours, so the strip reads as a row
@@ -216,7 +229,9 @@ struct ProjectTabsView: View {
     /// none until Settings is given one.
     @ViewBuilder
     private func tabMenu(tab: (id: String, name: String)) -> some View {
-        if ProjectTabRules.showsClose(tabCount: appModel.projectTabs.count) {
+        if ProjectTabRules.showsClose(
+            tabCount: appModel.closableTabCount, isScratch: appModel.isScratchTab(tab.id)
+        ) {
             Button("Close Tab") {
                 Task { await appModel.closeProject(tab.id) }
             }
@@ -224,7 +239,8 @@ struct ProjectTabsView: View {
             Divider()
         }
 
-        if let url = NotionPageURL.forPage(tab.id) {
+        // The scratch project is a local plan: there is no page to open.
+        if !appModel.isScratchTab(tab.id), let url = NotionPageURL.forPage(tab.id) {
             Button("Open in Notion") {
                 NSWorkspace.shared.open(url)
             }

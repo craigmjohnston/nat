@@ -612,6 +612,32 @@ public final class NatClient: Sendable {
         return try decodeJSON(ProjectEnvelope<CreatedProject>.self, from: output).project
     }
 
+    // MARK: - Scratch project
+
+    /// Make sure the reserved scratch project exists and read its ID — `nat
+    /// scratch-open`, run on every launch: the first call creates it, every
+    /// later one only reads it back.
+    ///
+    /// - Returns: The scratch project's ID, and whether this call made it
+    /// - Throws: NatError if the command fails
+    public func scratchOpen() async throws -> ScratchOpenResult {
+        let output = try await runNat(arguments: ["scratch-open", "--json"])
+        return try decodeJSON(ScratchOpenResult.self, from: output)
+    }
+
+    /// Delete a local project's Done slices, its ended sessions and the
+    /// milestones that leaves empty — `nat done-clear`. The CLI refuses a
+    /// project with a Notion workspace behind it, which passes through as
+    /// `NatError.commandFailed`.
+    ///
+    /// - Parameter projectID: The scratch project's ID
+    /// - Returns: What was removed
+    /// - Throws: NatError if the command fails
+    public func doneClear(projectID: String) async throws -> DoneClearResult {
+        let output = try await runNat(arguments: ["done-clear", "--project", projectID, "--json"])
+        return try decodeJSON(DoneClearResult.self, from: output)
+    }
+
     // MARK: - Ad hoc sessions
 
     /// Start a bare Claude Code with no slice and no prompt — `nat

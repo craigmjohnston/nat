@@ -153,6 +153,10 @@ public struct NatProjectConfig: Codable, Equatable, Sendable {
     /// comment's avatar is drawn with, since a comment left from nat is
     /// always this user's own.
     public let assigneeUserName: String?
+    /// The reserved local project ad hoc work lives in — one of `projects`,
+    /// which the strip pins first and draws icon-only. Nil until `nat
+    /// scratch-open` has run.
+    public let scratchProject: String?
 
     enum CodingKeys: String, CodingKey {
         case projects
@@ -161,6 +165,7 @@ public struct NatProjectConfig: Codable, Equatable, Sendable {
         case workshopAgent = "workshop_agent"
         case sliceAgent = "slice_agent"
         case assigneeUserName = "assignee_user_name"
+        case scratchProject = "scratch_project"
     }
 
     public init(
@@ -169,8 +174,10 @@ public struct NatProjectConfig: Codable, Equatable, Sendable {
         pollSeconds: Int? = nil,
         workshopAgent: AgentModel? = nil,
         sliceAgent: AgentModel? = nil,
-        assigneeUserName: String? = nil
+        assigneeUserName: String? = nil,
+        scratchProject: String? = nil
     ) {
+        self.scratchProject = scratchProject
         self.projects = projects
         self.agentSplitPercent = agentSplitPercent
         self.pollSeconds = pollSeconds

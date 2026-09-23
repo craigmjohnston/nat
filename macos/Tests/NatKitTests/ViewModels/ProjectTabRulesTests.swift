@@ -20,6 +20,18 @@ final class ProjectTabRulesTests: XCTestCase {
         XCTAssertFalse(ProjectTabRules.showsClose(tabCount: 0))
     }
 
+    /// The scratch tab is always there and never closable, whatever the strip.
+    func testShowsClose_theScratchTabCarriesNone() {
+        XCTAssertFalse(ProjectTabRules.showsClose(tabCount: 5, isScratch: true))
+    }
+
+    /// The caller counts every tab but the scratch one, so a strip of scratch
+    /// plus one project reads as one tab: the last standing, with no ✕.
+    func testShowsClose_aLoneProjectBesideScratchCarriesNone() {
+        XCTAssertFalse(ProjectTabRules.showsClose(tabCount: 1, isScratch: false))
+        XCTAssertTrue(ProjectTabRules.showsClose(tabCount: 2, isScratch: false))
+    }
+
     // MARK: - closeIsVisible
 
     /// Browser-fashion: the active tab always offers it.

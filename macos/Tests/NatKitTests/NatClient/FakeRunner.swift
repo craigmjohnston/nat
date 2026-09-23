@@ -62,6 +62,9 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case projectOpenFailure
         case projectCreateSuccess
         case projectCreateFailure
+        case scratchOpenCreated
+        case doneClearSuccess
+        case doneClearRefused
     }
 
     private var fixture: Fixture
@@ -190,6 +193,12 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return (fixtureMilestoneRemove.data(using: .utf8)!, Data(), 0)
         case .milestoneRemoveFailure:
             return (Data(), "\"Phase 1\" still holds 2 slices: Write the UI, Ship it".data(using: .utf8)!, 1)
+        case .scratchOpenCreated:
+            return ("{\"id\": \"scratch-1\", \"created\": true}\n".data(using: .utf8)!, Data(), 0)
+        case .doneClearSuccess:
+            return ("{\"slices\": [\"a\", \"b\"], \"sessions\": [\"s1\"], \"milestones\": []}\n".data(using: .utf8)!, Data(), 0)
+        case .doneClearRefused:
+            return (Data(), "done-clear: \"Real\" has a workspace behind it".data(using: .utf8)!, 1)
         case .configShowSuccess:
             return (fixtureConfigShow.data(using: .utf8)!, Data(), 0)
         case .configSetSuccess:
@@ -704,7 +713,8 @@ let fixtureConfigShow = """
   "slice_agent": {"model": "opus", "effort": "high"},
   "projects": {
     "proj-1": {"name": "Example Project", "working_dir": "/path/to/repo"}
-  }
+  },
+  "scratch_project": "proj-1"
 }
 """
 

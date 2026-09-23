@@ -87,6 +87,14 @@ public enum DesignTokens {
     /// disabled glyph and the empty-slot rule, never words to read.
     public static let labelQuaternary = token(\.labelQuaternary)
 
+    // MARK: - Symbols
+
+    /// The scratch tab's glyph — a pencil and a scribble — for the tab itself
+    /// and anywhere the scratch project has an empty state to draw. The app
+    /// has no icon set of its own, so the one symbol it has picked lives here
+    /// beside the colours rather than being spelled at each call site.
+    public static let scratchSymbol = "pencil.and.scribble"
+
     // MARK: - Accent Colors
 
     /// Primary accent color.

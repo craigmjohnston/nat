@@ -120,30 +120,10 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 // written at all if the file could not be laid down: a config naming a project
 // whose plan is not there is one every later command fails on.
 func projectCreateLocal(ctx context.Context, env Env, name, conventions, workdir, planDir string, asJSON bool) error {
-	dir, err := absPlanDir(planDir)
+	id, dir, err := createLocalProject(ctx, env, name, conventions, workdir, planDir)
 	if err != nil {
 		return err
 	}
-	// No configuration yet is not an obstacle here: the first thing a machine
-	// with no Notion workspace does is make a project, and that is what starts one.
-	cfg, _, err := env.Load()
-	if err != nil {
-		return err
-	}
-	id := store.NewProjectID()
-	entry := config.ProjectConfig{Name: name, WorkingDir: workdir, Backend: config.BackendLocal, PlanDir: dir}
-	if err := store.CreateLocalProject(ctx, store.ProjectOf(id, entry), conventions); err != nil {
-		return fmt.Errorf("create the plan: %w", err)
-	}
-	logging.Action("project created", "project", id, "name", name, "backend", config.BackendLocal)
-	if cfg.Projects == nil {
-		cfg.Projects = map[string]config.ProjectConfig{}
-	}
-	cfg.Projects[id] = entry
-	if err := env.Save(cfg); err != nil {
-		return fmt.Errorf("save config: %w", err)
-	}
-	env.nudged()
 
 	if asJSON {
 		return writeJSON(env.Out, projectCreatedJSON{Project: createdProjectJSON{
@@ -152,6 +132,37 @@ func projectCreateLocal(ctx context.Context, env Env, name, conventions, workdir
 	}
 	_, err = io.WriteString(env.Out, localProjectCreatedMarkdown(id, name, workdir, dir))
 	return err
+}
+
+// createLocalProject is the one way a local project comes to exist: shared by
+// project-create --local and scratch-open, so there is no second way to be
+// local. It returns the new ID and the plan directory as config now keeps it.
+func createLocalProject(ctx context.Context, env Env, name, conventions, workdir, planDir string) (string, string, error) {
+	dir, err := absPlanDir(planDir)
+	if err != nil {
+		return "", "", err
+	}
+	// No configuration yet is not an obstacle here: the first thing a machine
+	// with no Notion workspace does is make a project, and that is what starts one.
+	cfg, _, err := env.Load()
+	if err != nil {
+		return "", "", err
+	}
+	id := store.NewProjectID()
+	entry := config.ProjectConfig{Name: name, WorkingDir: workdir, Backend: config.BackendLocal, PlanDir: dir}
+	if err := store.CreateLocalProject(ctx, store.ProjectOf(id, entry), conventions); err != nil {
+		return "", "", fmt.Errorf("create the plan: %w", err)
+	}
+	logging.Action("project created", "project", id, "name", name, "backend", config.BackendLocal)
+	if cfg.Projects == nil {
+		cfg.Projects = map[string]config.ProjectConfig{}
+	}
+	cfg.Projects[id] = entry
+	if err := env.Save(cfg); err != nil {
+		return "", "", fmt.Errorf("save config: %w", err)
+	}
+	env.nudged()
+	return id, dir, nil
 }
 
 // absPlanDir is the plan directory as config keeps it: home expanded and made

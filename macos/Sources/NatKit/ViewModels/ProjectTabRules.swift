@@ -17,8 +17,13 @@ public enum ProjectTabRules {
     /// with one tab is what a machine tracking one project looks like all the
     /// time, and a permanently greyed ✕ would be a standing apology for a
     /// state that is not an error.
-    public static func showsClose(tabCount: Int) -> Bool {
-        tabCount > 1
+    ///
+    /// Nor does the scratch tab, which is always there. `tabCount` counts the
+    /// tabs the rule applies to — every one but the scratch tab — so a strip
+    /// of the scratch tab and one project is a strip whose one project is the
+    /// last tab standing.
+    public static func showsClose(tabCount: Int, isScratch: Bool = false) -> Bool {
+        !isScratch && tabCount > 1
     }
 
     /// Whether that button is drawn — and, because the two must agree,
