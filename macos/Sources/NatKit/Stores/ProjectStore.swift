@@ -24,6 +24,10 @@ public protocol NatClientProtocol: Sendable {
     func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult
     func configShow() async throws -> ConfigDoc
     func configSet(key: String, value: String) async throws -> Void
+    func sessionLaunch(projectID: String, dir: String?, model: String?, effort: String?) async throws -> SessionLaunchResult
+    func sessionList(projectID: String) async throws -> [Session]
+    func sessionStatus(projectID: String, sessionID: String, discard: Bool) async throws -> SessionStatusDoc
+    func sessionDiff(projectID: String, sessionID: String, branch: String?) async throws -> SliceDiff
 }
 
 extension NatClientProtocol {
@@ -32,6 +36,26 @@ extension NatClientProtocol {
     /// asking for "the diff" (rather than one commit of it) already uses.
     public func sliceDiff(projectID: String, sliceRef: String) async throws -> SliceDiff {
         try await sliceDiff(projectID: projectID, sliceRef: sliceRef, commit: nil)
+    }
+
+    /// Default ad hoc session methods, so a mock client written for a store
+    /// that never touches sessions (most of the pre-existing ones) does not
+    /// have to stub four methods it will never be asked to answer — the same
+    /// reason the two-argument `sliceDiff` above is a default rather than a
+    /// second protocol requirement. `SessionStore`'s own tests, and
+    /// `FixtureNatClient`, override every one of these for real.
+    public func sessionLaunch(projectID: String, dir: String?, model: String?, effort: String?) async throws -> SessionLaunchResult {
+        throw NatError.commandFailed("session-launch: not stubbed by this test client")
+    }
+
+    public func sessionList(projectID: String) async throws -> [Session] { [] }
+
+    public func sessionStatus(projectID: String, sessionID: String, discard: Bool) async throws -> SessionStatusDoc {
+        throw NatError.commandFailed("session-status: not stubbed by this test client")
+    }
+
+    public func sessionDiff(projectID: String, sessionID: String, branch: String?) async throws -> SliceDiff {
+        throw NatError.commandFailed("session-diff: not stubbed by this test client")
     }
 }
 

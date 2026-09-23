@@ -602,6 +602,75 @@ enum AppStories {
                 .surface(.window)
         },
 
+        // MARK: - Ad hoc sessions
+
+        Story(
+            name: "rail-session-live",
+            summary: "ACTIVE with an ad hoc session's agent still running: its row pulses "
+                + "beside the slices, listed after the workshop and before them.",
+            size: rail
+        ) {
+            RailView(appModel: await Fixtures.startedAppModel(
+                client: FixtureNatClient(
+                    agents: Fixtures.agentStatuses + [Fixtures.sessionAgentStatus],
+                    sessions: [Fixtures.liveSession]
+                )))
+        },
+
+        Story(
+            name: "rail-session-needs-review",
+            summary: "An ad hoc session whose agent has exited with a pull request still "
+                + "open — Needs review, the same green the branch rows use.",
+            size: rail
+        ) {
+            RailView(appModel: await Fixtures.startedAppModel(
+                client: FixtureNatClient(sessions: [Fixtures.reviewSession, Fixtures.doneSession])))
+        },
+
+        Story(
+            name: "session-agent-tab",
+            summary: "An ad hoc session's Agent tab: the embedded terminal on its own tmux "
+                + "session.",
+            size: pane
+        ) {
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(agents: [Fixtures.sessionAgentStatus], sessions: [Fixtures.liveSession]))
+            return SessionAgentTabView(appModel: appModel, session: Fixtures.liveSession)
+                .environment(\.terminalStubbed, true)
+        },
+
+        Story(
+            name: "session-diff-tab",
+            summary: "An ad hoc session's Diff tab: `nat session-diff`'s reading, with no "
+                + "approve action and no comment composer.",
+            size: pane
+        ) {
+            let appModel = await Fixtures.startedAppModel(client: FixtureNatClient(sessions: [Fixtures.reviewSession]))
+            return SessionDiffTabView(appModel: appModel, session: Fixtures.reviewSession)
+                .surface(.window)
+        },
+
+        Story(
+            name: "session-pr-tab",
+            summary: "An ad hoc session's PR tab: the first pull request `nat session-status` "
+                + "reports.",
+            size: pane
+        ) {
+            let appModel = await Fixtures.startedAppModel(client: FixtureNatClient(sessions: [Fixtures.reviewSession]))
+            return SessionPRTabView(appModel: appModel, session: Fixtures.reviewSession)
+                .surface(.window)
+        },
+
+        Story(
+            name: "session-pr-tab-empty",
+            summary: "An ad hoc session's PR tab with no pull request yet — naming the branch.",
+            size: pane
+        ) {
+            let appModel = await Fixtures.startedAppModel(client: FixtureNatClient(sessions: [Fixtures.liveSession]))
+            return SessionPRTabView(appModel: appModel, session: Fixtures.liveSession)
+                .surface(.window)
+        },
+
         // MARK: - The screens that are neither
 
         Story(

@@ -35,6 +35,10 @@ public enum ActiveTintRole: Equatable {
     /// composer open with nothing started yet.
     case launching
     case new
+    /// An ad hoc session ended with nothing left open — the DONE section's
+    /// own muted row, told apart from `.blocked`'s tertiary only by where it
+    /// is drawn.
+    case done
 
     /// Whether the row's dot moves. Only work actually in progress does:
     /// movement is what says "busy, nothing needs you", so a row that has
@@ -47,11 +51,12 @@ public enum ActiveTintRole: Equatable {
 }
 
 /// What an ACTIVE entry stands for. A slice entry selects its slice; the
-/// workshop entry selects the planning pane, which is the only thing the
-/// view has to tell them apart for.
+/// workshop entry selects the planning pane; a session entry selects an ad
+/// hoc session — which of the three the view has to tell them apart for.
 public enum ActiveEntryKind: Equatable {
     case slice
     case workshop
+    case session
 }
 
 /// What an entry's right-aligned meta is, so the view need not guess which
@@ -71,7 +76,10 @@ public let workshopEntryID = "workshop"
 public struct ActiveEntry: Equatable, Identifiable {
     public let kind: ActiveEntryKind
     /// The slice the entry is about, and "" for the workshop entry, which is
-    /// about no slice at all.
+    /// about no slice at all. Doubles as the session's own local ID for a
+    /// `.session` entry — one string naming "the thing this entry is about"
+    /// rather than a field per kind, since no entry is ever about two of
+    /// them at once.
     public let sliceID: String
     public let name: String
     /// The row's own status word — "Working", "Waiting for input",
@@ -257,17 +265,51 @@ public struct RailModel: Equatable {
     /// the section is not drawn at all.
     public let doneSummary: DoneSummary?
 
+    /// Ad hoc sessions that ended with nothing left open — flat rows in the
+    /// DONE section, newest first, alongside its milestone folders. A
+    /// session never earns a folder of its own: it belongs to no milestone,
+    /// so there is nothing to file it under.
+    public let doneSessions: [ActiveEntry]
+
     public init(
         active: [ActiveEntry],
         todoFolders: [MilestoneFolder],
         doneFolders: [MilestoneFolder] = [],
-        doneSummary: DoneSummary? = nil
+        doneSummary: DoneSummary? = nil,
+        doneSessions: [ActiveEntry] = []
     ) {
         self.active = active
         self.todoFolders = todoFolders
         self.doneFolders = doneFolders
         self.doneSummary = doneSummary
+        self.doneSessions = doneSessions
     }
+}
+
+// MARK: - Session Membership
+
+/// Whether an ad hoc session's ACTIVE row belongs to the section's working
+/// half: its agent still live, whatever its pull requests read — mirrors
+/// `isActiveSlice`'s own live-first precedence.
+public func sessionIsActive(_ session: Session, liveAgents: [String: AgentActivity]) -> Bool {
+    liveAgents[session.tag] != nil
+}
+
+/// Whether an ad hoc session's ACTIVE row belongs to the section's review
+/// half: its agent gone and a pull request still open — mirrors
+/// `isReviewSlice`.
+public func sessionNeedsReview(_ session: Session, liveAgents: [String: AgentActivity]) -> Bool {
+    liveAgents[session.tag] == nil && !session.openPRs.isEmpty
+}
+
+/// Whether an ad hoc session belongs in DONE: its agent gone and nothing
+/// left open. Read off the live facts rather than the session's own
+/// `ended` flag — which only `session-status` (not the rail's own
+/// `session-list` read) ever sets — so a session whose last pull request
+/// merged moves to DONE the moment that reads true, not only once something
+/// has gone back and told the session's own record so.
+public func sessionIsDone(_ session: Session, liveAgents: [String: AgentActivity]) -> Bool {
+    liveAgents[session.tag] == nil && session.openPRs.isEmpty
 }
 
 // MARK: - ACTIVE Membership
@@ -335,6 +377,7 @@ public func buildRailModel(
     prReadiness: [String: String] = [:],
     agentStarts: [String: Date] = [:],
     workshop: ActiveEntry? = nil,
+    sessions: [Session] = [],
     now: Date = Date()
 ) -> RailModel {
     let slices = projectInfo.slices
@@ -413,9 +456,37 @@ public func buildRailModel(
             )
         }
 
-    // The one section, in the order the three that came before it were read
-    // in: the workshop, then what is waiting on a review, then the rest.
-    let active = (workshop.map { [$0] } ?? []) + needsReview + working
+    // Ad hoc sessions' own ACTIVE rows: an agent still live, or gone with a
+    // pull request still open — mirrors the slice rows' own two halves, one
+    // entry per session rather than per fact. A session with neither is
+    // `sessionIsDone`'s, drawn in DONE below instead. Newest-started first,
+    // since there is no milestone order to fall back on the way a slice row
+    // has.
+    let sessionEntries: [ActiveEntry] = sessions
+        .filter { sessionIsActive($0, liveAgents: liveAgents) || sessionNeedsReview($0, liveAgents: liveAgents) }
+        .sorted { $0.startedAt > $1.startedAt }
+        .map { sessionActiveEntry($0, liveAgents: liveAgents, agentStarts: agentStarts, now: now) }
+
+    // The one section, in the order the four that came before it were read
+    // in: the workshop, then ad hoc sessions, then what is waiting on a
+    // review, then the rest.
+    let active = (workshop.map { [$0] } ?? []) + sessionEntries + needsReview + working
+
+    // Ended sessions with nothing left open — DONE's own flat rows,
+    // newest-started first, alongside its milestone folders.
+    let doneSessions: [ActiveEntry] = sessions
+        .filter { sessionIsDone($0, liveAgents: liveAgents) }
+        .sorted { $0.startedAt > $1.startedAt }
+        .map { session in
+            ActiveEntry(
+                kind: .session,
+                sliceID: session.id,
+                name: "Ad hoc session",
+                displayState: "Ended",
+                tintRole: .done,
+                detail: [session.label, sessionStartedLabel(session.startedAt, now: now)]
+            )
+        }
 
     // The slices already drawn in a session section — never repeated inside
     // a TODO folder, so a slice is one row of the rail and not two.
@@ -500,8 +571,56 @@ public func buildRailModel(
         active: active,
         todoFolders: todoFolders,
         doneFolders: doneFolders,
-        doneSummary: doneSummary
+        doneSummary: doneSummary,
+        doneSessions: doneSessions
     )
+}
+
+/// One ad hoc session's ACTIVE row: title "Ad hoc session" with the branch
+/// or folder for its secondary line, tinted and elapsed the way a live
+/// agent's own reading dictates when it is live, or "Needs review" with its
+/// open pull-request count when it is not.
+private func sessionActiveEntry(
+    _ session: Session,
+    liveAgents: [String: AgentActivity],
+    agentStarts: [String: Date],
+    now: Date
+) -> ActiveEntry {
+    if let activity = liveAgents[session.tag] {
+        let (state, tint): (String, ActiveTintRole) = activity == .waiting
+            ? ("Waiting for input", .waiting)
+            : ("Working", .working)
+        let elapsed = agentStarts[session.tag].map { elapsedLabel(from: $0, to: now) }
+        return ActiveEntry(
+            kind: .session,
+            sliceID: session.id,
+            name: "Ad hoc session",
+            displayState: state,
+            tintRole: tint,
+            detail: [session.label],
+            meta: elapsed,
+            metaRole: .elapsed
+        )
+    }
+    let count = session.openPRs.count
+    return ActiveEntry(
+        kind: .session,
+        sliceID: session.id,
+        name: "Ad hoc session",
+        displayState: "Needs review",
+        tintRole: .needsReview,
+        detail: [session.label, sessionStartedLabel(session.startedAt, now: now)],
+        meta: "\(count) open",
+        metaRole: .stat
+    )
+}
+
+/// The session's start, said the same coarse way `elapsedLabel` measures a
+/// live agent's own runtime — "started 12m" — since a session's second line
+/// has nowhere else to say when it began once it is no longer live enough
+/// for its meta to be the elapsed time itself.
+private func sessionStartedLabel(_ startedAt: Date, now: Date) -> String {
+    "started \(elapsedLabel(from: startedAt, to: now))"
 }
 
 /// The ACTIVE row's elapsed label: minutes until an hour, then "Nh Mm" — the

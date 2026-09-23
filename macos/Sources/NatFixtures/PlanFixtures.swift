@@ -293,6 +293,66 @@ extension Fixtures {
     ])
 }
 
+// MARK: - Ad hoc sessions
+
+extension Fixtures {
+    public static let liveSessionID = "f1x75e55-0000-4000-8000-000000000001"
+    public static let reviewSessionID = "f1x75e55-0000-4000-8000-000000000002"
+    public static let doneSessionID = "f1x75e55-0000-4000-8000-000000000003"
+
+    /// A session whose agent is still running — the ACTIVE row that pulses.
+    public static let liveSession = Session(
+        id: liveSessionID,
+        tag: "session:\(projectID):\(liveSessionID)",
+        live: true,
+        session: "nat-session-f1x75e55",
+        startedAt: liveMinutesAgo(12),
+        dir: "/Users/craig/Projects/scratch",
+        branch: "session/f1x75e55"
+    )
+
+    /// A session whose agent has exited with a pull request still open — the
+    /// ACTIVE row that reads Needs review.
+    public static let reviewSession = Session(
+        id: reviewSessionID,
+        tag: "session:\(projectID):\(reviewSessionID)",
+        live: false,
+        startedAt: liveMinutesAgo(90),
+        dir: "/Users/craig/Projects/notion-agent-tracker",
+        branch: "session/review-fixture",
+        prs: [
+            SessionPR(number: 210, title: "Ad hoc fixture change", url: prURL, state: "OPEN"),
+        ]
+    )
+
+    /// A session that ended with nothing left open — the DONE row.
+    public static let doneSession = Session(
+        id: doneSessionID,
+        tag: "session:\(projectID):\(doneSessionID)",
+        live: false,
+        startedAt: liveMinutesAgo(240),
+        dir: "/Users/craig/Projects/notion-agent-tracker",
+        branch: "session/done-fixture",
+        ended: true,
+        prs: [
+            SessionPR(number: 205, title: "Ad hoc fixture, merged", url: prURL, state: "MERGED", mergedAt: minutesAgo(200)),
+        ]
+    )
+
+    /// `nat session-list --json`'s reading — one of each state a session's
+    /// rail row can be in.
+    public static let sessions: [Session] = [liveSession, reviewSession, doneSession]
+
+    /// The live session's own entry in the activity poll's reading, folded
+    /// into `agentStatuses`/`liveAgents` wherever a story wants a session
+    /// pulsing alongside the rest of the board.
+    public static let sessionAgentStatus = AgentStatus(
+        sliceID: liveSession.tag,
+        session: liveSession.session,
+        activity: .working
+    )
+}
+
 // MARK: - Rail models
 
 extension Fixtures {

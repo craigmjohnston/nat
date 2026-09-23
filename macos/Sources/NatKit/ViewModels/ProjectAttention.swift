@@ -73,11 +73,17 @@ public struct ProjectAttention: Equatable, Sendable {
 /// A pull request merely awaiting its review is not counted and not drawn:
 /// the slice it belongs to is already counted while it is handed back, and
 /// once approved what the review owes is somebody else's turn.
+/// `sessions` is the active project's own ad hoc sessions, read the same way
+/// `RailModel`'s session rows are: a live agent counts a session as working
+/// or waiting, and a gone one with a pull request still open counts it once
+/// as review — mirroring `sessionIsActive`/`sessionNeedsReview` exactly, so
+/// the dot and the rail's session rows can never disagree either.
 public func projectAttention(
     slices: [Slice],
     liveAgents: [String: AgentActivity],
     planningAgent: AgentActivity? = nil,
-    prReadiness: [String: String] = [:]
+    prReadiness: [String: String] = [:],
+    sessions: [Session] = []
 ) -> ProjectAttention {
     // Only a slice the ACTIVE section would draw may contribute an agent:
     // a tmux session can outlive the slice it was launched on — an idle
@@ -88,6 +94,14 @@ public func projectAttention(
     let agents = liveAgents.filter { inFlight.contains($0.key) }
     let waiting = agents.filter { $0.value == .waiting }.keys
     let planningWaiting = planningAgent == .waiting
+
+    // The sessions with a live agent, and which of those are waiting — kept
+    // apart from `agents` above since a session's tag is never one of
+    // `inFlightSliceIDs`'s own slice IDs.
+    let sessionTags = Set(sessions.map(\.tag))
+    let sessionAgents = liveAgents.filter { sessionTags.contains($0.key) }
+    let sessionWaiting = sessionAgents.filter { $0.value == .waiting }.keys
+    let sessionsNeedingReview = sessions.filter { sessionNeedsReview($0, liveAgents: liveAgents) }.map(\.tag)
 
     // The slices with something for the user to do about them. Ready to
     // merge is gated on In progress for the reason `isReviewSlice`'s own
@@ -102,15 +116,17 @@ public func projectAttention(
             .map(\.id)
     )
     pending.formUnion(waiting)
+    pending.formUnion(sessionWaiting)
+    pending.formUnion(sessionsNeedingReview)
 
     let count = pending.count + (planningWaiting ? 1 : 0)
 
     let role: ProjectAttentionRole
-    if planningWaiting || !waiting.isEmpty {
+    if planningWaiting || !waiting.isEmpty || !sessionWaiting.isEmpty {
         role = .waiting
     } else if !pending.isEmpty {
         role = .review
-    } else if !agents.isEmpty || planningAgent != nil {
+    } else if !agents.isEmpty || !sessionAgents.isEmpty || planningAgent != nil {
         role = .working
     } else {
         role = .idle
