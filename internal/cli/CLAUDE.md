@@ -25,6 +25,13 @@ where the caller meant.
   match (`projectKeyFor`) against the config already in memory, rather than
   calling `namedProject` and re-reading the file it is about to write back.
 
+`Env.projectFor` returns the config with its assignee fields already resolved
+for the project (`Config.AssigneeFor`), and `Env.storeFor` builds no Notion
+client for a local project — so `project-create --local`, and everything run
+against such a project (`slice-status` included, which reads the plan file
+instead of a page), works with no credential. `wishlist`/`wishlist-clear`
+refuse a local project (`refuseLocal`).
+
 ## Deliberate duplication — ports, not calls
 
 `internal/cli` must not import `internal/tui` (bubbletea/huh/lipgloss/glamour

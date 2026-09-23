@@ -78,7 +78,10 @@ func workshopLaunch(ctx context.Context, args []string, env Env) error {
 	wishlist := false
 	// The wishlist is only read when there is no request to outrank it — a
 	// launch that carries its own question has no use for the page.
-	if request == "" {
+	//
+	// A project of nat's own has no page to read one off, and launches the plain
+	// session a project with an empty wishlist already gets.
+	if request == "" && !project.IsLocal() {
 		client := env.NewClient(env.Tokens.Token)
 		blocks, err := client.GetBlockChildren(ctx, projectID)
 		if err != nil {

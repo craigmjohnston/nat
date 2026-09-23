@@ -196,7 +196,7 @@ func (f *PlanForm) save(a *App) tea.Cmd {
 	// was opened against.
 	project, _ := a.activeProject()
 	st, _, _ := a.activeStore()
-	sp := store.Project{ID: a.cfg.ActiveProjectID, Name: project.Name, SlicesID: project.SlicesDSID}
+	sp := store.ProjectOf(a.cfg.ActiveProjectID, project)
 	return launchPlanAgent(a.launcher, st, sp, a.cfg.ActiveProjectID, project.Name, expandHome(project.WorkingDir),
 		strings.TrimSpace(f.request), trimModel(f.model))
 }

@@ -146,7 +146,7 @@ func selectNextSlice(plan domain.Project) (domain.Milestone, domain.Slice, error
 // this machine's idea of a project — a config entry, working directory and
 // all — is narrowed to what a store has any business reading.
 func storeProject(projectID string, project config.ProjectConfig) store.Project {
-	return store.Project{ID: projectID, Name: project.Name, SlicesID: project.SlicesDSID}
+	return store.ProjectOf(projectID, project)
 }
 
 // sliceShape reads how the project's Slices table is put together: whether it

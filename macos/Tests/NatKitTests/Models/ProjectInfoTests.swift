@@ -194,6 +194,55 @@ final class ProjectInfoTests: XCTestCase {
         XCTAssertEqual(config.workingDir, "/Users/alice/projects/my-project")
     }
 
+    // A config written before there was a choice of backend has no backend key
+    // at all: it reads as Notion, and saves back without growing one.
+    func testProjectConfigWithNoBackendIsNotionAndRoundTripsUnchanged() throws {
+        let json = #"{"name":"Old","slices_ds_id":"ds-1","working_dir":"/w"}"#
+        let config = try JSONDecoder().decode(ProjectConfig.self, from: Data(json.utf8))
+
+        XCTAssertEqual(config.backend, .notion)
+        XCTAssertNil(config.planDir)
+        let encoded = try JSONEncoder().encode(config)
+        let keys = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any]).keys
+        XCTAssertEqual(Set(keys), ["name", "slices_ds_id", "working_dir"])
+    }
+
+    // Anything but the local word is Notion: the empty string, a backend a
+    // later nat invented, even a value of the wrong type.
+    func testProjectConfigReadsAnyNonLocalBackendAsNotion() throws {
+        for value in [#""""#, #""notion""#, #""postgres""#, #""Local""#, "7", "null"] {
+            let json = #"{"name":"P","slices_ds_id":"d","working_dir":"/w","backend":\#(value)}"#
+            let config = try JSONDecoder().decode(ProjectConfig.self, from: Data(json.utf8))
+            XCTAssertEqual(config.backend, .notion, "backend \(value)")
+        }
+    }
+
+    // A project of nat's own has no slices_ds_id, and the missing key must not
+    // take the whole config down.
+    func testLocalProjectDecodesWithoutASlicesDataSource() throws {
+        let json = """
+        {
+          "projects": {
+            "old": {"name": "Notion one", "slices_ds_id": "ds-1", "working_dir": "/a"},
+            "mine": {"name": "Local one", "working_dir": "/b", "backend": "local", "plan_dir": "/plans"},
+            "bare": {"name": "Local two", "working_dir": "/c", "backend": "local"}
+          }
+        }
+        """
+        let config = try JSONDecoder().decode(NatProjectConfig.self, from: Data(json.utf8))
+
+        XCTAssertEqual(config.projects["old"]?.backend, .notion)
+        XCTAssertEqual(config.projects["old"]?.slicesDSID, "ds-1")
+        XCTAssertEqual(config.projects["mine"]?.backend, .local)
+        XCTAssertNil(config.projects["mine"]?.slicesDSID)
+        XCTAssertEqual(config.projects["mine"]?.planDir, "/plans")
+        XCTAssertEqual(config.projects["bare"]?.backend, .local)
+        XCTAssertNil(config.projects["bare"]?.planDir)
+
+        let again = try JSONDecoder().decode(NatProjectConfig.self, from: JSONEncoder().encode(config))
+        XCTAssertEqual(again, config)
+    }
+
     func testProjectInfoEquality() {
         let project1 = Project(id: "p1", name: "Test", conventions: "")
         let project2 = Project(id: "p1", name: "Test", conventions: "")

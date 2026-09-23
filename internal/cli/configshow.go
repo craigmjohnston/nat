@@ -54,9 +54,16 @@ type agentModelJSON struct {
 // configProjectJSON is one tracked project's share of the config file: its
 // name, for reading the listing without a second lookup, and its working
 // directory, the one field config-set can change on it.
+//
+// The backend is always said, even for a Notion project whose config entry
+// leaves it unwritten: what a project's plan is kept in is a fact about it,
+// not about how the file happens to spell it. PlanDir is only a local
+// project's, and only when it chose one.
 type configProjectJSON struct {
 	Name       string `json:"name"`
 	WorkingDir string `json:"working_dir"`
+	Backend    string `json:"backend"`
+	PlanDir    string `json:"plan_dir,omitempty"`
 }
 
 // configDoc is the structured form of local config.
@@ -82,7 +89,7 @@ func configShowJSON(cfg config.Config) configDoc {
 		Projects:          make(map[string]configProjectJSON, len(cfg.Projects)),
 	}
 	for id, p := range cfg.Projects {
-		doc.Projects[id] = configProjectJSON{Name: p.Name, WorkingDir: p.WorkingDir}
+		doc.Projects[id] = configProjectJSON{Name: p.Name, WorkingDir: p.WorkingDir, Backend: p.BackendName(), PlanDir: p.PlanDir}
 	}
 	return doc
 }
@@ -107,7 +114,11 @@ func configShowMarkdown(cfg config.Config) string {
 	sort.Strings(ids)
 	for _, id := range ids {
 		p := cfg.Projects[id]
-		out += fmt.Sprintf("- %s (%s): working_dir=%q\n", id, p.Name, p.WorkingDir)
+		out += fmt.Sprintf("- %s (%s): backend=%s working_dir=%q", id, p.Name, p.BackendName(), p.WorkingDir)
+		if p.PlanDir != "" {
+			out += fmt.Sprintf(" plan_dir=%q", p.PlanDir)
+		}
+		out += "\n"
 	}
 	return out
 }

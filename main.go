@@ -165,8 +165,13 @@ func buildApp(tokens config.TokenSource) (*tui.App, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := tokens.Token(); err != nil {
-		return nil, authHint(err)
+	// Only asked for where something is actually kept in Notion — onboarding,
+	// which sets a workspace up, included. A machine tracking nothing but plans
+	// of nat's own has no credential to check and none to be told to fetch.
+	if !found || cfg.UsesNotion() {
+		if _, err := tokens.Token(); err != nil {
+			return nil, authHint(err)
+		}
 	}
 	client := newClient(tokens.Token)
 	if !found {

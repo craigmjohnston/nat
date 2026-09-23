@@ -653,7 +653,7 @@ func TestAppTakesOverWhenOnboardingFinishes(t *testing.T) {
 		wantLoads int
 	}{
 		{"with a project", OnboardingDoneMsg{Config: testConfig(t)}, "Setup complete.", 1},
-		{"without a project", OnboardingDoneMsg{Config: config.Config{}, NeedsProject: true}, "No projects yet", 0},
+		{"without a project", OnboardingDoneMsg{Config: config.Config{}, NeedsProject: true}, "New project", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
@@ -22,8 +23,11 @@ func wishlist(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	_, projectID, _, err := env.projectFor(projectRef)
+	_, projectID, project, err := env.projectFor(projectRef)
 	if err != nil {
+		return err
+	}
+	if err := refuseLocal("wishlist", project); err != nil {
 		return err
 	}
 	client := env.NewClient(env.Tokens.Token)
@@ -93,8 +97,11 @@ func wishlistClear(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	_, projectID, _, err := env.projectFor(projectRef)
+	_, projectID, project, err := env.projectFor(projectRef)
 	if err != nil {
+		return err
+	}
+	if err := refuseLocal("wishlist-clear", project); err != nil {
 		return err
 	}
 	client := env.NewClient(env.Tokens.Token)
@@ -189,4 +196,16 @@ func clearMarkdown(trashed, unknown []string, seeded bool) string {
 		fmt.Fprintf(&b, "- not a wishlist item: %s\n", id)
 	}
 	return b.String()
+}
+
+// refuseLocal is the refusal of a command that reads something only a workspace
+// keeps — the wishlist is a section of a Notion page — given a project whose
+// plan is a file of nat's own, by name so the caller knows which project has no
+// such thing rather than seeing a page read fail.
+func refuseLocal(command string, project config.ProjectConfig) error {
+	if project.IsLocal() {
+		return fmt.Errorf("%s: %q keeps its plan in a local file, and has no wishlist — that lives on a Notion project page",
+			command, project.Name)
+	}
+	return nil
 }

@@ -93,6 +93,8 @@ func TestAppNewProjectInfoBreaksTheLineOnShiftEnter(t *testing.T) {
 	app := newProjectApp(t, client)
 
 	feed(t, app, press(app, "N"))
+	// The plan's home is asked first; the default, Notion, is taken.
+	answerWhere(t, app)
 	typeText(app, "tracker two")
 	feed(t, app, press(app, "enter"))
 	typeText(app, "The conventions.")
@@ -103,7 +105,7 @@ func TestAppNewProjectInfoBreaksTheLineOnShiftEnter(t *testing.T) {
 	typeText(app, "And the rest.")
 	feed(t, app, press(app, "tab"))
 	typeText(app, t.TempDir())
-	feed(t, app, press(app, "enter"))
+	nextGroup(t, app)
 	feed(t, app, press(app, "n"))
 	finishForm(t, app, press(app, "enter"))
 

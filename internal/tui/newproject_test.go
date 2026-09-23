@@ -2,12 +2,44 @@ package tui
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
+
+// answerWhere takes the default of the form's first question — Notion.
+func answerWhere(t *testing.T, a *App) { t.Helper(); nextGroup(t, a) }
+
+// nextGroup presses enter and follows the messages that moving on to the next
+// group sets off, which [feed] alone stops short of: the focus of the group
+// after is its own round trip.
+func nextGroup(t *testing.T, a *App) {
+	t.Helper()
+	cmd := press(a, "enter")
+	for i := 0; i < 5 && cmd != nil; i++ {
+		var next []tea.Cmd
+		for _, msg := range run(cmd) {
+			_, c := a.Update(msg)
+			next = append(next, c)
+		}
+		cmd = tea.Batch(next...)
+	}
+}
+
+// isolatedPlans points the plan directory at one of this test's own, so a
+// project made by a test never lands among this machine's real plans.
+func isolatedPlans(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_DATA_HOME", home)
+}
 
 // testProjectsDSID is the projects data source onboarding leaves behind, which
 // is what a new project is created under.
@@ -177,12 +209,21 @@ func TestCreateProjectReportsAFailedPageBody(t *testing.T) {
 // fields, then the assignee question the slices schema hangs on.
 func fillProjectForm(t *testing.T, a *App, name, info, workdir string, assignee bool) {
 	t.Helper()
+	// Where the plan lives comes first, and the default — Notion — is taken.
+	answerWhere(t, a)
+	fillProjectFields(t, a, name, info, workdir, assignee)
+}
+
+// fillProjectFields is the rest of the form, once the plan's home has been
+// answered.
+func fillProjectFields(t *testing.T, a *App, name, info, workdir string, assignee bool) {
+	t.Helper()
 	typeText(a, name)
 	feed(t, a, press(a, "enter"))
 	typeText(a, info)
 	feed(t, a, press(a, "tab"))
 	typeText(a, workdir)
-	feed(t, a, press(a, "enter"))
+	nextGroup(t, a)
 	answer := "n"
 	if assignee {
 		answer = "y"
@@ -203,12 +244,17 @@ func TestAppNewProjectFlowWritesConfigAndReloads(t *testing.T) {
 		t.Fatalf("screen = %v, form = %v, want the new-project form", app.screen, app.form)
 	}
 	view := stripANSI(app.View().Content)
+	if !strings.Contains(view, "Where will the plan live?") {
+		t.Errorf("view is missing the question of where the plan lives:\n%s", view)
+	}
+	answerWhere(t, app)
+	view = stripANSI(app.View().Content)
 	for _, want := range []string{"New project", "Name", "Info", "Working directory"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view is missing %q:\n%s", want, view)
 		}
 	}
-	fillProjectForm(t, app, "tracker two", "The conventions.", dir, false)
+	fillProjectFields(t, app, "tracker two", "The conventions.", dir, false)
 
 	// The question defaults to no, and the answer is what decides whether the
 	// Slices table gets an Assignee column at all.
@@ -303,41 +349,104 @@ func TestAppNewProjectReportsAFailedConfigWrite(t *testing.T) {
 	}
 }
 
-func TestAppNewProjectNeedsAProjectsDatabase(t *testing.T) {
+// With no projects database there is no choice to make: N opens a form for a
+// plan of nat's own rather than refusing, and does not ask where it lives.
+func TestAppNewProjectWithoutAProjectsDatabaseMakesALocalProject(t *testing.T) {
 	app := newWriteApp(t, &fakeNotion{})
 
 	press(app, "N")
 
-	if app.form != nil {
-		t.Error("a form was opened with nowhere to create under")
+	f, ok := app.form.(*NewProjectForm)
+	if !ok {
+		t.Fatalf("form = %T, want the new-project form", app.form)
 	}
-	if !strings.Contains(app.toast, "No projects database is configured") {
-		t.Errorf("toast = %q, want the missing-database toast", app.toast)
+	if !f.local {
+		t.Error("with nowhere else to put it, the plan must be local")
+	}
+	if strings.Contains(f.View(), "Where will the plan live?") {
+		t.Errorf("asked where the plan lives with no choice to make:\n%s", f.View())
 	}
 }
 
-func TestAppNewProjectIsRefusedWithNothingToCreateWith(t *testing.T) {
-	tests := []struct {
-		name string
-		app  func() *App
-	}{
-		{"no client", func() *App { return newProjectApp(t, nil) }},
-		{"a write already in flight", func() *App {
-			a := newProjectApp(t, &fakeNotion{})
-			a.busy = true
-			return a
-		}},
+// Where Notion is there to be chosen, the form asks, and defaults to it.
+func TestAppNewProjectAsksWhereThePlanLivesWhenThereIsAChoice(t *testing.T) {
+	app := newProjectApp(t, &fakeNotion{})
+
+	press(app, "N")
+
+	f, ok := app.form.(*NewProjectForm)
+	if !ok {
+		t.Fatalf("form = %T, want the new-project form", app.form)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			app := tt.app()
-			if cmd := app.newProjectFlow(); cmd != nil {
-				t.Error("there is nothing to create with")
-			}
-			if app.form != nil {
-				t.Error("no form should have opened")
-			}
-		})
+	if f.local {
+		t.Error("Notion is the default where there is a choice")
+	}
+	if !strings.Contains(f.View(), "Where will the plan live?") {
+		t.Errorf("the choice was not asked:\n%s", f.View())
+	}
+}
+
+func TestAppNewProjectIsRefusedWhileBusy(t *testing.T) {
+	app := newProjectApp(t, &fakeNotion{})
+	app.busy = true
+	if cmd := app.newProjectFlow(); cmd != nil {
+		t.Error("a write is already in flight")
+	}
+	if app.form != nil {
+		t.Error("no form should have opened")
+	}
+}
+
+// A local project is made without the client: the plan file is laid down first,
+// and only then does the message that records it in config go back.
+func TestCreateLocalProjectLaysDownThePlanBeforeAnythingIsRecorded(t *testing.T) {
+	isolatedPlans(t)
+	msg := runMsg(t, createLocalProject("mine", "Be small.", "/work")).(projectCreatedMsg)
+	if msg.err != nil || msg.localID == "" || msg.structure != nil {
+		t.Fatalf("msg = %+v", msg)
+	}
+	if msg.name != "mine" || msg.workdir != "/work" {
+		t.Errorf("answers not carried through: %+v", msg)
+	}
+	path, err := store.LocalPath(msg.localID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("the plan file is not there: %v", err)
+	}
+}
+
+func TestCreateLocalProjectReportsAPlanThatCannotBeLaid(t *testing.T) {
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_DATA_HOME", "")
+	msg := runMsg(t, createLocalProject("mine", "", "/work")).(projectCreatedMsg)
+	if msg.err == nil || msg.localID != "" {
+		t.Errorf("msg = %+v, want a failure with nothing to record", msg)
+	}
+}
+
+func TestLocalFormSaveCreatesALocalProject(t *testing.T) {
+	isolatedPlans(t)
+	f := newNewProjectForm(DefaultStyles().FormTheme, true)
+	f.local, f.name, f.workdir = true, " mine ", t.TempDir()
+	msg := runMsg(t, f.save(newProjectApp(t, &fakeNotion{}))).(projectCreatedMsg)
+	if msg.localID == "" || msg.name != "mine" {
+		t.Errorf("msg = %+v", msg)
+	}
+}
+
+func TestAppRecordsALocalProjectAsLocal(t *testing.T) {
+	saved := capturedConfig(t)
+	app := newWriteApp(t, &fakeNotion{})
+	app.busy = true
+	app.projectCreated(projectCreatedMsg{localID: "loc-1", name: "mine", workdir: "/work"})
+	want := config.ProjectConfig{Name: "mine", WorkingDir: "/work", Backend: config.BackendLocal}
+	if got := saved.Projects["loc-1"]; got != want {
+		t.Errorf("entry = %+v, want %+v", got, want)
+	}
+	if saved.ActiveProjectID != "loc-1" || app.busy {
+		t.Errorf("active = %q, busy = %v", saved.ActiveProjectID, app.busy)
 	}
 }
 
@@ -484,7 +593,7 @@ func TestSwitchProjectFormOpensOnTheActiveProject(t *testing.T) {
 }
 
 func TestNewProjectFormAnnouncesItsWork(t *testing.T) {
-	if got := newNewProjectForm(DefaultStyles().FormTheme).busyNote(); got != "Creating the project…" {
+	if got := newNewProjectForm(DefaultStyles().FormTheme, true).busyNote(); got != "Creating the project…" {
 		t.Errorf("busy note = %q, want the creation note", got)
 	}
 	if got := newSwitchProjectForm(DefaultStyles().FormTheme, twoProjectConfig(t)).busyNote(); got != "" {
@@ -771,5 +880,74 @@ func TestAppNewProjectTracksAnAssigneeWhenAsked(t *testing.T) {
 
 	if len(client.createdProjects) != 1 || !client.createdProjects[0].assignee {
 		t.Errorf("created %+v, want one project with an assignee column", client.createdProjects)
+	}
+}
+
+// Choosing a local file takes the form straight past the assignee question — a
+// plan with no directory of users has no Assignee column to ask about — and
+// records a project that touched Notion nowhere.
+func TestAppNewProjectChosenLocalSkipsTheAssigneeQuestion(t *testing.T) {
+	isolatedPlans(t)
+	saved := capturedConfig(t)
+	client := &fakeNotion{}
+	app := newProjectApp(t, client)
+
+	feed(t, app, press(app, "N"))
+	feed(t, app, press(app, "down"))
+	answerWhere(t, app)
+	typeText(app, "mine")
+	feed(t, app, press(app, "enter"))
+	typeText(app, "Be small.")
+	feed(t, app, press(app, "tab"))
+	dir := t.TempDir()
+	typeText(app, dir)
+	finishForm(t, app, press(app, "enter"))
+
+	if len(client.createdProjects) != 0 || len(client.appended) != 0 {
+		t.Errorf("Notion was written to: %+v %+v", client.createdProjects, client.appended)
+	}
+	var id string
+	for k, p := range saved.Projects {
+		if p.Name == "mine" {
+			id = k
+			if !p.IsLocal() || p.WorkingDir != dir || p.SlicesDSID != "" {
+				t.Errorf("entry = %+v", p)
+			}
+		}
+	}
+	if id == "" || saved.ActiveProjectID != id {
+		t.Errorf("the new project was not recorded and made active: %+v", saved)
+	}
+}
+
+// A project kept in a file loads through that file alone: no wishlist is read
+// off a page it does not have, and no workspace is mirrored.
+func TestAppLoadsALocalProjectFromItsFileAlone(t *testing.T) {
+	isolatedPlans(t)
+	local := config.ProjectConfig{Name: "mine", Backend: config.BackendLocal}
+	if err := store.CreateLocalProject(t.Context(), store.ProjectOf("loc-1", local), ""); err != nil {
+		t.Fatal(err)
+	}
+	client := &fakeNotion{}
+	app := NewApp(config.Config{
+		ActiveProjectID: "loc-1",
+		Projects:        map[string]config.ProjectConfig{"loc-1": local},
+	}, client)
+	app.wishlist = []notion.WishlistItem{{}}
+
+	for _, msg := range run(app.startLoad(false)) {
+		if _, ok := msg.(wishlistLoadedMsg); ok {
+			t.Error("a wishlist was read for a project with no page")
+		}
+		app.Update(msg)
+	}
+	if _, ok := app.stores["loc-1"].(*store.Local); !ok {
+		t.Errorf("store = %T, want the plan file itself", app.stores["loc-1"])
+	}
+	if app.wishlist != nil {
+		t.Errorf("wishlist = %v, want none carried over", app.wishlist)
+	}
+	if app.project == nil || app.project.Name != "mine" {
+		t.Errorf("project = %+v", app.project)
 	}
 }

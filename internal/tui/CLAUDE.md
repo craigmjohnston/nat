@@ -140,6 +140,14 @@ directly; check each file, don't assume every one routes through `actions`.
   untouched. What's blocking a selected row is the status band's job
   (`Board.BlockedBy`), not the row's own.
 
+## Local projects
+
+`N` (`NewProjectForm`) asks where the plan lives only when a projects
+database gives a choice; without one the plan is local and nothing is asked,
+and the assignee group is hidden for local. `App.storeFor` opens a local
+project's `Local` directly (no `Mirror`), `startLoad` skips the wishlist read
+for one, and assignee identity comes from `Config.AssigneeFor(project)`.
+
 ## Smaller subsystems
 
 `presence.go`/`activity.go`: the pulsing star is the live-session map refined

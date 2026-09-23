@@ -267,12 +267,15 @@ func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, at
 		return nil
 	}
 	milestone, siblings := milestoneContext(a.project, s)
-	return launchAgent(a.launcher, newWorktrees(), newRepo(), st, a.prViewer, a.reviewReader, a.cfg.AssigneeUserID, agent.PromptContext{
+	// Who works the slice is the project's own answer: a workspace user for a plan
+	// in Notion, a bare name for one of nat's own.
+	assigneeID, assigneeName := a.cfg.AssigneeFor(project)
+	return launchAgent(a.launcher, newWorktrees(), newRepo(), st, a.prViewer, a.reviewReader, assigneeID, agent.PromptContext{
 		Slice:           s,
 		Project:         project,
 		ProjectID:       a.cfg.ActiveProjectID,
 		WorkingDir:      expandHome(strings.TrimSpace(workdir)),
-		AssigneeName:    a.cfg.AssigneeUserName,
+		AssigneeName:    assigneeName,
 		Fix:             fixLaunch(s),
 		Milestone:       milestone,
 		MilestoneSlices: siblings,
