@@ -62,6 +62,7 @@ type GH interface {
 	PRMerger
 	PRReader
 	PRCommenter
+	PRHeadLister
 }
 
 // NewGHFunc builds the GitHub CLI driver the pull request commands run
@@ -80,8 +81,11 @@ func DefaultNewGH() GH { return gh.New() }
 type GitCLI interface {
 	actions.Repo
 	DiffFrom(dir, baseName, branch string) (base, diff string, err error)
+	DiffWorkingTreeFrom(dir, baseName string) (base, diff string, err error)
 	CommitsFrom(dir, baseName, branch string) (string, []git.Commit, error)
 	CommitDiff(dir, sha string) (string, error)
+	CurrentBranch(dir string) (string, error)
+	ReflogBranches(dir string) ([]string, error)
 }
 
 // NewGitFunc builds the git driver.
@@ -211,15 +215,37 @@ usage:
   nat slice-delete <slice> [--json] --project ID
                       move a slice's page to Notion's trash, where it is still
                       recoverable. Refused on a slice in progress
-  nat agent-send <slice> [--text TEXT|-] --project ID
-                      send a prompt to a live agent session; - or absent reads
-                      from stdin
+  nat session-launch --project ID [--dir DIR] [--model M] [--effort E] [--json]
+                      start a bare agent on a repo with no slice and no
+                      prompt: a worktree on session/<id> off the remote's
+                      default branch where --dir (or the project's own
+                      working directory) is a git repository, or the
+                      directory itself where it is not
+  nat session-list --project ID [--json]
+                      list every ad hoc session on the project: whether tmux
+                      still has it, its branch, and its pull requests
+  nat session-status <session> --project ID [--discard] [--json]
+                      read every branch a session has been on and the pull
+                      requests each has opened; once every one has merged —
+                      or, with --discard, the session has ended with none
+                      open — its worktree is removed and it is marked ended
+  nat session-diff <session> --project ID [--branch NAME] [--json]
+                      diff a session's named branch (default: its worktree's
+                      current one) against its merge base with the default
+                      branch, working tree included when the branch is the
+                      one checked out
+  nat agent-send <slice|session-tag> [--text TEXT|-] --project ID
+                      send a prompt to a live agent session, named by a
+                      slice's URL/ID or an ad hoc session's own pane tag
+                      (session:<project>:<id>, as session-list prints it);
+                      - or absent reads from stdin
   nat agent-interrupt <slice> --project ID
                       send an interrupt signal to a live agent session
-  nat agent-kill <slice> --project ID
-                      end a live agent session, taking its agent with it — for
-                      a slice that is finished with, whose session would
-                      otherwise sit on the tmux server forever
+  nat agent-kill <slice|session-tag> --project ID
+                      end a live agent session, taking its agent with it —
+                      for a slice or an ad hoc session that is finished
+                      with, whose session would otherwise sit on the tmux
+                      server forever
   nat agent-kill --workshop --project ID
                       end the project's live planning agent instead of a
                       slice's; mutually exclusive with the positional slice
@@ -368,6 +394,14 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return sliceStatus(ctx, args[1:], env)
 	case "slice-launch":
 		return sliceLaunch(ctx, args[1:], env)
+	case "session-launch":
+		return sessionLaunch(ctx, args[1:], env)
+	case "session-list":
+		return sessionList(ctx, args[1:], env)
+	case "session-status":
+		return sessionStatus(ctx, args[1:], env)
+	case "session-diff":
+		return sessionDiff(ctx, args[1:], env)
 	case "slice-approve":
 		return sliceApprove(ctx, args[1:], env)
 	case "slice-diff":

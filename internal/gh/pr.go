@@ -176,6 +176,60 @@ func (c CLI) Checks(dir, ref string) (string, error) {
 	return trimmed, nil
 }
 
+// headPRFields is everything [CLI.ListPRsForHead] reads about each pull
+// request of a branch: what it is, its URL, whether it is open, closed or
+// merged, and when it merged.
+const headPRFields = "number,title,url,state,mergedAt"
+
+// HeadPR is one pull request [CLI.ListPRsForHead] lists for a branch. State
+// is GitHub's own word — OPEN, CLOSED or MERGED — kept as GitHub writes it
+// for the reason [PR.State] is: deciding what it means is the caller's.
+type HeadPR struct {
+	Number   int
+	Title    string
+	URL      string
+	State    string
+	MergedAt time.Time
+}
+
+// ListPRsForHead is every pull request the repository at dir has ever had
+// for branch as its head, open or not — an ad hoc session's own branches may
+// each have opened one, and a session that made three branches and three
+// pull requests has to be told about all three, not only whichever is still
+// open.
+//
+// An empty branch is refused before gh ever runs, for the same reason
+// [CLI.ViewPR] refuses an empty ref: gh given nothing named would answer for
+// whatever branch the directory happens to be on, which is not the question
+// being asked.
+func (c CLI) ListPRsForHead(dir, branch string) ([]HeadPR, error) {
+	if branch == "" {
+		return nil, fmt.Errorf("%s pr list needs a branch to read", Binary)
+	}
+	out, err := c.runner.Run(dir, Binary,
+		"pr", "list", "--head", branch, "--state", "all", "--json", headPRFields)
+	if err != nil {
+		logging.Error("could not list a branch's pull requests", "dir", dir, "branch", branch, "error", err)
+		return nil, err
+	}
+	var list []struct {
+		Number   int       `json:"number"`
+		Title    string    `json:"title"`
+		URL      string    `json:"url"`
+		State    string    `json:"state"`
+		MergedAt time.Time `json:"mergedAt"`
+	}
+	if err := json.Unmarshal([]byte(out), &list); err != nil {
+		logging.Error("could not read what gh said about a branch's pull requests", "dir", dir, "branch", branch, "error", err)
+		return nil, fmt.Errorf("%s pr list printed no readable JSON: %w", Binary, err)
+	}
+	prs := make([]HeadPR, len(list))
+	for i, pr := range list {
+		prs[i] = HeadPR{Number: pr.Number, Title: pr.Title, URL: pr.URL, State: pr.State, MergedAt: pr.MergedAt}
+	}
+	return prs, nil
+}
+
 // prView is gh's JSON as gh writes it, kept apart from [PR] so the nesting
 // GitHub puts an author in — and the two shapes a check arrives in — are
 // undone in one place rather than left for every reader of a PR to know about.

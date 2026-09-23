@@ -1103,3 +1103,63 @@ func (l *Local) milestoneExists(ctx context.Context, q localQuerier, name string
 	}
 	return true, nil
 }
+
+// NewSessionID mints an ad hoc session's ID, in the same shape [newLocalID]
+// mints a slice's own: whoever launches a session needs the ID before it
+// ever reaches a store write — a worktree's branch, its tmux tag and its
+// tmux session name are all derived from it first.
+func NewSessionID() string { return newLocalID() }
+
+// AddSession files an ad hoc session, exactly as it was launched: the ID is
+// the caller's own ([NewSessionID]), not minted here, since the caller
+// already had to derive the session's branch and tag from it before this
+// write could even happen.
+func (l *Local) AddSession(ctx context.Context, _ Project, n NewSession) (domain.Session, error) {
+	started := time.Now()
+	err := l.withTx(ctx, "add the session", func(tx *sql.Tx) error {
+		return l.exec(ctx, tx, "add the session",
+			`INSERT INTO sessions (id, started_at, dir, branch) VALUES (?, ?, ?, ?)`,
+			n.ID, timeStamp(started), n.Dir, n.Branch)
+	})
+	if err != nil {
+		return domain.Session{}, err
+	}
+	logging.Action("session added", "session", n.ID, "dir", n.Dir, "branch", n.Branch)
+	return domain.Session{ID: n.ID, StartedAt: started.UTC(), Dir: n.Dir, Branch: n.Branch}, nil
+}
+
+// EndSession records that nat has seen the session gone: every pull request
+// it opened landed, or it was ended with none left open. A session already
+// ended, or one the file has never seen, is refused by the rows-affected
+// check below rather than silently doing nothing.
+func (l *Local) EndSession(ctx context.Context, id string) error {
+	return l.withTx(ctx, "end the session", func(tx *sql.Tx) error {
+		n, err := l.tryExec(ctx, tx, "end the session",
+			`UPDATE sessions SET ended_at = ? WHERE id = ?`, timeStamp(time.Now()), id)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return fmt.Errorf("no session %s in the plan at %s", id, l.path)
+		}
+		logging.Action("session ended", "session", id)
+		return nil
+	})
+}
+
+// DeleteSession drops a session's row outright — the local-only, no-trash
+// mirror of [Local.DeleteSlice]: there is no workspace copy anywhere else
+// for the row to be a replica of.
+func (l *Local) DeleteSession(ctx context.Context, id string) error {
+	return l.withTx(ctx, "delete the session", func(tx *sql.Tx) error {
+		n, err := l.tryExec(ctx, tx, "delete the session", `DELETE FROM sessions WHERE id = ?`, id)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return fmt.Errorf("no session %s in the plan at %s", id, l.path)
+		}
+		logging.Action("session deleted", "session", id)
+		return nil
+	})
+}

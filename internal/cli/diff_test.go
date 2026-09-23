@@ -91,6 +91,7 @@ func (f *fakePRBase) CreatePR(dir, branch, title, body string) (string, error) {
 func (f *fakePRBase) MergePR(dir, ref string) error                            { return nil }
 func (f *fakePRBase) CommentPR(dir, ref, body string) (string, error)          { return "", nil }
 func (f *fakePRBase) OpenPRs(dir string) (map[string]gh.PRStatus, error)       { return nil, nil }
+func (f *fakePRBase) ListPRsForHead(dir, branch string) ([]gh.HeadPR, error)   { return nil, nil }
 
 func TestSliceDiffRefusesNotHandedBack(t *testing.T) {
 	api := &fakeAPI{

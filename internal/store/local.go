@@ -180,7 +180,7 @@ func (l *Local) Path() string { return l.path }
 // SQLite's own user_version, so opening a plan written by this build is one
 // read and no writes, and a plan written by a later one can be refused rather
 // than half understood.
-const localSchemaVersion = 3
+const localSchemaVersion = 4
 
 // localSchemaV1 is the plan as tables, exactly as the first build of this store
 // created it. Every column maps one-to-one onto [domain.Slice] or
@@ -271,6 +271,28 @@ const localSchemaV3 = `
 ALTER TABLE slices ADD COLUMN url TEXT NOT NULL DEFAULT '';
 `
 
+// localSchemaV4 adds the one table a plan of its own never needed until ad
+// hoc sessions existed: a session belongs to this machine, never to the
+// workspace a project's plan is otherwise kept in, so it is a table of its
+// own rather than a slices row — nothing here maps onto [domain.Slice] or
+// [domain.Milestone] at all.
+//
+// dir is where the session runs — a repository or a plain directory, in the
+// same words a slice's own repo column names its project rather than a
+// worktree path — and branch is the one it was cut on, empty for a session
+// launched outside any git repository. ended_at is NULL until nat has seen
+// the session gone, the same "never set" rule [timeStamp] already gives
+// every other stamp in this file.
+const localSchemaV4 = `
+CREATE TABLE sessions (
+  id          TEXT PRIMARY KEY,
+  started_at  TEXT NOT NULL,
+  dir         TEXT NOT NULL DEFAULT '',
+  branch      TEXT NOT NULL DEFAULT '',
+  ended_at    TEXT
+);
+`
+
 // localMigrations is what [Local.migrate] walks version+1..[localSchemaVersion]
 // through, so a plan lands on today's schema whichever version it started at —
 // an empty file walking every migration there is, and a plan already at v1
@@ -279,6 +301,7 @@ var localMigrations = map[int]string{
 	1: localSchemaV1,
 	2: localSchemaV2,
 	3: localSchemaV3,
+	4: localSchemaV4,
 }
 
 // migrate brings the file up to the schema this build speaks, and is what every
@@ -775,6 +798,46 @@ func boolColumn(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// Sessions reads every ad hoc session filed against a project, in the order
+// they were started — the project argument is unread, exactly as it is for
+// [Local.slices]: a local file holds one project's sessions and there is
+// nothing else they could belong to.
+func (l *Local) Sessions(ctx context.Context, _ Project) ([]domain.Session, error) {
+	rows, err := l.db.QueryContext(ctx,
+		`SELECT id, started_at, dir, branch, ended_at FROM sessions ORDER BY started_at, id`)
+	if err != nil {
+		return nil, l.errorf(err, "read the sessions")
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.Session
+	for rows.Next() {
+		var s domain.Session
+		var started string
+		var ended sql.NullString
+		if err := rows.Scan(&s.ID, &started, &s.Dir, &s.Branch, &ended); err != nil {
+			return nil, l.errorf(err, "read a session")
+		}
+		startedAt, _, err := parseTimeStamp(sql.NullString{String: started, Valid: started != ""})
+		if err != nil {
+			return nil, l.errorf(err, "read a session's start time")
+		}
+		s.StartedAt = startedAt
+		endedAt, ok, err := parseTimeStamp(ended)
+		if err != nil {
+			return nil, l.errorf(err, "read a session's end time")
+		}
+		if ok {
+			s.EndedAt = endedAt
+		}
+		out = append(out, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, l.errorf(err, "read the sessions")
+	}
+	return out, nil
 }
 
 // Dirty reports whether a slice's file copy is ahead of the workspace: written

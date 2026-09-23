@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -175,6 +176,22 @@ func (c CLI) baseNamed(dir, name string) string {
 	return c.Base(dir)
 }
 
+// DiffWorkingTreeFrom is [CLI.DiffFrom] with no branch to name at all: dir's
+// working tree compared against base, uncommitted changes included — what a
+// diff wants when the branch it is asked for is the one actually checked
+// out in dir right now, where naming it as [CLI.DiffFrom] does would read
+// only its last commit.
+func (c CLI) DiffWorkingTreeFrom(dir, baseName string) (base, diff string, err error) {
+	base = c.baseNamed(dir, baseName)
+	out, err := c.runner.Run(dir, Binary, "diff", "--no-color", "--no-ext-diff",
+		"--src-prefix=a/", "--dst-prefix=b/", "--merge-base", base)
+	if err != nil {
+		logging.Error("could not read a working tree's diff", "dir", dir, "base", base, "error", err)
+		return base, "", err
+	}
+	return base, out, nil
+}
+
 // Show is a file's own lines as the branch leaves it, which is what fills the
 // gaps a unified diff leaves between its hunks: git shows a few lines of context
 // around each change and the rest of the file is simply absent, so the only
@@ -280,6 +297,59 @@ func (c CLI) DiffStat(dir, base, branch string) (string, error) {
 		return "", err
 	}
 	return strings.TrimRight(out, "\n"), nil
+}
+
+// CurrentBranch is the branch dir's worktree has checked out right now, and
+// "" for one with no branch checked out at all — a detached HEAD, which
+// `symbolic-ref` refuses over rather than answers, and which is not a
+// failure worth logging: it is an ordinary state for a worktree to be in,
+// just not one an ad hoc session's branch history has anything to add for.
+func (c CLI) CurrentBranch(dir string) (string, error) {
+	out, err := c.runner.Run(dir, Binary, "symbolic-ref", "--short", "-q", "HEAD")
+	if err != nil {
+		var exitErr *ExitError
+		if errors.As(err, &exitErr) {
+			return "", nil
+		}
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// checkoutReflog matches one `checkout: moving from X to Y` entry of
+// `git reflog show --format=%gs HEAD` — the one message git always writes
+// for a checkout, whether it moved to a branch or to a bare commit.
+var checkoutReflog = regexp.MustCompile(`^checkout: moving from (\S+) to (\S+)$`)
+
+// ReflogBranches is every branch dir's HEAD reflog records a checkout to or
+// from, deduplicated in the order first seen — an ad hoc session's own
+// history of what it has worked on, since a checkout is the one thing every
+// branch switch always leaves behind in the reflog. A ref reflog names that
+// is not a branch at all — a bare commit a detached checkout moved to — is
+// not told apart from one here: the caller's own read of each name (a pull
+// request listing that finds nothing for it) is what settles that.
+func (c CLI) ReflogBranches(dir string) ([]string, error) {
+	out, err := c.runner.Run(dir, Binary, "reflog", "show", "--format=%gs", "HEAD")
+	if err != nil {
+		logging.Action("could not read a worktree's reflog", "dir", dir, "error", err)
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var branches []string
+	for _, line := range strings.Split(out, "\n") {
+		m := checkoutReflog.FindStringSubmatch(strings.TrimSpace(line))
+		if m == nil {
+			continue
+		}
+		for _, b := range m[1:] {
+			if b == "" || seen[b] {
+				continue
+			}
+			seen[b] = true
+			branches = append(branches, b)
+		}
+	}
+	return branches, nil
 }
 
 // Fetch brings origin's refs up to date, so [CLI.Base] names a tip that is

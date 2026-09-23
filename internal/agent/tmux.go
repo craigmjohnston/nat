@@ -111,6 +111,38 @@ func LivePlan(live map[string]string, projectID string) (tag, session string) {
 	return "", ""
 }
 
+// SessionTagPrefix is what an ad hoc session's pane tag starts with — the
+// third kind of value [SlicePaneOption] carries, alongside a slice's own page
+// ID and a planning agent's [PlanTagPrefix]. The colon keeps it apart from a
+// slice's, whose page ID is hex throughout, the same way PlanTagPrefix does.
+const SessionTagPrefix = "session:"
+
+// SessionTag is the value [SlicePaneOption] carries on an ad hoc session's
+// pane: the sentinel, the project it was launched on, and the session's own
+// local ID — layered the same way [PlanTag] carries a planning agent's
+// project, so a session is found by project and by its own ID together.
+func SessionTag(projectID, sessionID string) string {
+	return SessionTagPrefix + projectID + ":" + sessionID
+}
+
+// IsSessionTag reports whether a tag names an ad hoc session rather than a
+// slice or a planning agent.
+func IsSessionTag(tag string) bool { return strings.HasPrefix(tag, SessionTagPrefix) }
+
+// SessionIDPrefix is the last eight hex digits of an ad hoc session's own
+// local ID — [hexTail] made public, since [AdHocSessionName] and
+// [actions.SessionBranch] both need the same short, stable tail derived
+// from a session's ID: one for its tmux session name, the other for the
+// branch its worktree is cut on.
+func SessionIDPrefix(sessionID string) string { return hexTail(sessionID) }
+
+// AdHocSessionName is the tmux session an ad hoc session launches in: its own
+// prefix, distinct from a slice's [SessionName], and [SessionIDPrefix] of
+// the session's own local ID.
+func AdHocSessionName(sessionID string) string {
+	return SessionPrefix + "session-" + SessionIDPrefix(sessionID)
+}
+
 // PaneEnv is set by tmux in every pane it runs, to the pane's own ID. It is how
 // the TUI finds the pane it is drawing in, which is the window the strays are
 // swept from.
@@ -624,6 +656,62 @@ func inputFeatureArgs() []string {
 	}
 }
 
+// LaunchBare starts a detached tmux session named session, with workdir as
+// its working directory, running a bare Claude Code with no prompt at all —
+// an ad hoc session, which unlike [Tmux.Launch] is never seeded with a
+// prompt file: there is no brief to open it with. The pane it starts in is
+// tagged with tag ([SessionTag]) rather than a slice's page ID, the same
+// tagging [Tmux.Launch] does and for the same reason: it is what
+// [Tmux.LiveSlices] finds the running session back by.
+func (t *Tmux) LaunchBare(session, workdir, tag string, m config.AgentModel) error {
+	carryEnv := os.Getenv("PATH") != "" && t.supportsSessionEnv()
+	out, err := t.run(bareLaunchArgs(session, workdir, m, carryEnv)...)
+	if err != nil {
+		return fmt.Errorf("launch tmux session %s: %w", session, err)
+	}
+	pane := strings.TrimSpace(out)
+	if _, err := t.run("set-option", "-p", "-t", pane, SlicePaneOption, tag); err != nil {
+		return fmt.Errorf("tag tmux pane %s for %s: %w", pane, tag, err)
+	}
+	logging.Action("ad hoc session launched", "session", session, "tag", tag, "workdir", workdir, "pane", pane)
+	return nil
+}
+
+// bareLaunchArgs is [LaunchArgs] with no prompt file to read the agent's
+// opening turn from — an ad hoc session's whole point is that there is none.
+func bareLaunchArgs(session, workdir string, m config.AgentModel, carryEnv bool) []string {
+	args := []string{
+		"new-session", "-d",
+		"-s", session,
+		"-c", workdir,
+	}
+	if carryEnv {
+		args = append(args, "-e", "PATH="+os.Getenv("PATH"))
+	}
+	args = append(args,
+		"-P", "-F", "#{pane_id}",
+		"sh", "-c", "claude"+modelFlags(m),
+	)
+	args = append(args, statusOffArgs(session)...)
+	args = append(args, mouseOnArgs(session)...)
+	args = append(args, inputFeatureArgs()...)
+	return append(args, hyperlinkClickArgs()...)
+}
+
+// modelFlags is the --model/--effort/--settings flags [agentCommand] and
+// [bareLaunchArgs] both pass to claude, shared so the one rule — an unset
+// half of the model pair contributes no flag at all — is written once.
+func modelFlags(m config.AgentModel) string {
+	var flags string
+	if m.Model != "" {
+		flags += " --model " + shellQuote(m.Model)
+	}
+	if m.Effort != "" {
+		flags += " --effort " + shellQuote(m.Effort)
+	}
+	return flags + ` --settings ` + shellQuote(`{"theme":"auto"}`)
+}
+
 // agentCommand is the shell command the session runs: start Claude Code with
 // the contents of promptFile as its prompt, as the model the launch asked for,
 // with its theme set to `"auto"` — the one setting that makes Claude Code
@@ -643,15 +731,7 @@ func inputFeatureArgs() []string {
 // at all rather than an empty value: Claude Code then decides for itself,
 // which is what it did before there was anywhere to say otherwise.
 func agentCommand(promptFile string, m config.AgentModel) string {
-	var flags string
-	if m.Model != "" {
-		flags += " --model " + shellQuote(m.Model)
-	}
-	if m.Effort != "" {
-		flags += " --effort " + shellQuote(m.Effort)
-	}
-	flags += ` --settings ` + shellQuote(`{"theme":"auto"}`)
-	return fmt.Sprintf(`claude%s "$(cat %s)"`, flags, shellQuote(promptFile))
+	return fmt.Sprintf(`claude%s "$(cat %s)"`, modelFlags(m), shellQuote(promptFile))
 }
 
 // promptBuffer is the tmux paste buffer a prompt goes through on its way into

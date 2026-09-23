@@ -106,6 +106,23 @@ type NewSlice struct {
 	DependsOn []string
 }
 
+// NewSession is an ad hoc session to file, minted by whoever launched it
+// rather than by the store: unlike a slice's page-create-minted ID, a
+// session's worktree branch, tmux tag and tmux session name are all derived
+// from its ID before any store write ever happens, so the ID has to exist
+// first. [NewSessionID] is what mints one.
+type NewSession struct {
+	// ID is the session's own ID.
+	ID string
+	// Dir is where the session runs: the repository (or plain directory) it
+	// was launched against, in the same words a slice's own Repo names its
+	// project rather than a worktree path.
+	Dir string
+	// Branch is the branch the session's worktree was cut on, empty for one
+	// launched outside any git repository.
+	Branch string
+}
+
 // Outcome is how a session working a slice ended, as [Store.CompleteSlice]
 // takes it. The endings are exclusive and it is the caller that settles which
 // one this is: a store writes what it is told.
@@ -227,6 +244,22 @@ type Store interface {
 	// DeleteSlice drops a slice from the plan, as recoverably as the backing
 	// store allows.
 	DeleteSlice(ctx context.Context, id string) error
+
+	// AddSession files an ad hoc session, local-only: [Notion] refuses this
+	// and every other session method by name, and [Mirrored] answers all of
+	// them from its own local replica alone, never pushing a session to the
+	// workspace it mirrors — a session belongs to this machine, not to any
+	// project's plan.
+	AddSession(ctx context.Context, p Project, n NewSession) (domain.Session, error)
+	// Sessions reads every ad hoc session filed against a project, in the
+	// order they were started.
+	Sessions(ctx context.Context, p Project) ([]domain.Session, error)
+	// EndSession records that nat has seen a session gone: every pull
+	// request it opened landed, or it was ended with none left open.
+	EndSession(ctx context.Context, id string) error
+	// DeleteSession drops a session's row outright, rather than merely
+	// ending it — the local-only, no-trash mirror of [Store.DeleteSlice].
+	DeleteSession(ctx context.Context, id string) error
 }
 
 // Holds reports whether a slice is in progress and held by the given user,

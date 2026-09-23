@@ -562,6 +562,29 @@ func (m *Mirrored) DeleteSlice(ctx context.Context, id string) error {
 	return nil
 }
 
+// AddSession files an ad hoc session in the file alone: a session belongs to
+// this machine, never to the workspace this Mirrored otherwise pushes every
+// slice write to, so there is nothing here for [Mirrored.push] to do.
+func (m *Mirrored) AddSession(ctx context.Context, p Project, n NewSession) (domain.Session, error) {
+	return m.local.AddSession(ctx, p, n)
+}
+
+// Sessions reads every ad hoc session from the file — never the workspace,
+// which knows nothing of them.
+func (m *Mirrored) Sessions(ctx context.Context, p Project) ([]domain.Session, error) {
+	return m.local.Sessions(ctx, p)
+}
+
+// EndSession records a session's end in the file alone.
+func (m *Mirrored) EndSession(ctx context.Context, id string) error {
+	return m.local.EndSession(ctx, id)
+}
+
+// DeleteSession drops a session's row from the file alone.
+func (m *Mirrored) DeleteSession(ctx context.Context, id string) error {
+	return m.local.DeleteSession(ctx, id)
+}
+
 // Pull reads the whole plan from the workspace and hydrates the file with it
 // ([Local.Hydrate]) — the whole plan rather than what changed, because "what
 // changed" says nothing about what was deleted. It fetches no bodies, for the

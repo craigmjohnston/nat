@@ -23,7 +23,7 @@ func agentSend(ctx context.Context, args []string, env Env) error {
 	if len(rest) != 1 {
 		return usageErrorf("agent-send: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("agent-send", rest[0])
+	id, err := tagOrPageID("agent-send", rest[0])
 	if err != nil {
 		return err
 	}
