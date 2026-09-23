@@ -145,6 +145,11 @@ public final class AppModel {
     /// owning a `SessionDiffStore` of its own.
     private var sessionDiffStores: [String: SessionDiffStore] = [:]
 
+    /// Which pull request and which branch each ad hoc session's pickers last
+    /// had selected, for the app session — read and written only through
+    /// `selectedPickerID`/`selectPicker`.
+    private var pickerMemory = PickerSelectionMemory()
+
     /// One pull-request cache per project (lazily created), for the same
     /// reason — `PRTabView` reads through this rather than owning a
     /// `PRStore` of its own.
@@ -503,6 +508,17 @@ public final class AppModel {
         let store = PRStore(client: clientFactory())
         prStores[projectID] = store
         return store
+    }
+
+    /// What a session's `picker` shows selected among `ids`: the choice made
+    /// earlier this app session while it is still there, else `defaultID`.
+    public func selectedPickerID(_ picker: SessionPicker, sessionID: String, among ids: [String], defaultID: String? = nil) -> String? {
+        pickerMemory.resolved(for: picker.key(sessionID: sessionID), among: ids, defaultID: defaultID)
+    }
+
+    /// Remember `id` as what a session's `picker` shows selected.
+    public func selectPicker(_ picker: SessionPicker, sessionID: String, id: String) {
+        pickerMemory.select(id, for: picker.key(sessionID: sessionID))
     }
 
     /// The ad hoc session diff cache for one project, created on first use —
@@ -1091,5 +1107,6 @@ public final class AppModel {
         diffStores = [:]
         prStores = [:]
         sessionDiffStores = [:]
+        pickerMemory = PickerSelectionMemory()
     }
 }

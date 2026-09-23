@@ -52,6 +52,14 @@ private final class MockPRClient: NatClientProtocol, @unchecked Sendable {
     }
 
     func prStatus(projectID: String) async throws -> PRStatusDoc { throw PRTestError() }
+    private(set) var sessionViewCalls: [(sessionID: String, url: String)] = []
+    func sessionPRView(projectID: String, sessionID: String, prURL: String) async throws -> PRDetail {
+        sessionViewCalls.append((sessionID, prURL))
+        switch response {
+        case .success(let pr): return pr
+        case .failure: throw PRTestError()
+        }
+    }
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail {
         viewCallCount += 1
         lastSliceRef = sliceRef
@@ -125,6 +133,37 @@ final class PRStoreTests: XCTestCase {
         XCTAssertEqual(client.viewCallCount, 1)
         XCTAssertEqual(client.lastSliceRef, "slice-1")
         XCTAssertEqual(store.loadState.pr?.number, 12)
+    }
+
+    @MainActor
+    func testFetchOfASessionsPullRequestReadsItThroughTheSession() async {
+        let client = MockPRClient(response: .success(openPR()))
+        let store = PRStore(client: client)
+
+        await store.fetch(projectID: "proj-1", sliceRef: "https://x/pull/12", sessionID: "sess-1")
+
+        XCTAssertEqual(client.viewCallCount, 0, "not read as a slice")
+        XCTAssertEqual(client.sessionViewCalls.count, 1)
+        XCTAssertEqual(client.sessionViewCalls.first?.sessionID, "sess-1")
+        XCTAssertEqual(client.sessionViewCalls.first?.url, "https://x/pull/12")
+        XCTAssertEqual(store.loadState.pr?.number, 12)
+
+        await store.fetch(projectID: "proj-1", sliceRef: "https://x/pull/12", sessionID: "sess-1")
+        XCTAssertEqual(client.sessionViewCalls.count, 1, "already loaded")
+
+        await store.refresh()
+        XCTAssertEqual(client.sessionViewCalls.count, 2, "a refresh keeps reading through the session")
+
+        store.clear()
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        XCTAssertEqual(client.viewCallCount, 1, "clear forgets the session")
+    }
+
+    @MainActor
+    func testFetchOfASessionsPullRequestFailureIsFailed() async {
+        let store = PRStore(client: MockPRClient(response: .failure))
+        await store.fetch(projectID: "proj-1", sliceRef: "https://x/pull/12", sessionID: "sess-1")
+        XCTAssertNotNil(store.loadState.errorMessage)
     }
 
     @MainActor

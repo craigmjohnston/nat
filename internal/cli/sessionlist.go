@@ -17,10 +17,11 @@ import (
 
 // sessionList prints every ad hoc session on the project: whether tmux still
 // has it, its branch, and its pull request summary. The pull request read
-// is the one thing here that is not free — a session with a branch recorded
-// gets exactly one `gh pr list`, which is cheap enough to run for every
-// session in the list; a session with none recorded is skipped rather than
-// asked about, since there is nothing yet for gh to answer.
+// is the one thing here that is not free — one `gh pr list` for each branch
+// the session has been on (see [sessionBranches]), which is cheap enough to
+// run for every session in the list; a session with no branch at all is
+// skipped rather than asked about, since there is nothing yet for gh to
+// answer.
 func sessionList(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("session-list", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -53,19 +54,13 @@ func sessionList(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("could not read live sessions: %w", err)
 	}
 
+	gitCLI := env.NewGit()
 	rows := make([]sessionRow, len(sessions))
 	for i, s := range sessions {
 		tag := agent.SessionTag(projectID, s.ID)
 		tmuxSession, isLive := live[tag]
 		row := sessionRow{Session: s, Tag: tag, Tmux: tmuxSession, Live: isLive}
-		if s.Branch != "" {
-			if prs, err := env.NewGH().ListPRsForHead(s.Dir, s.Branch); err == nil {
-				row.PRs = prs
-			} else {
-				logging.Action("could not read a session's pull requests", "session", s.ID, "branch", s.Branch, "err", err)
-				row.PRsStale = true
-			}
-		}
+		row.PRs, row.PRsStale = sessionPRs(env.NewGH(), gitCLI, s)
 		rows[i] = row
 	}
 
@@ -74,6 +69,24 @@ func sessionList(ctx context.Context, args []string, env Env) error {
 	}
 	_, err = io.WriteString(env.Out, sessionListMarkdown(rows))
 	return err
+}
+
+// sessionPRs is every pull request any branch of a session's has opened, as
+// [sessionStatus] reads them — one `gh pr list` per branch, so a session
+// that opened three pull requests from three branches reports all three
+// here rather than only the one its launch branch has. A branch whose read
+// failed marks the whole reading stale and keeps whatever the others gave.
+func sessionPRs(ghCLI PRHeadLister, gitCLI GitCLI, s domain.Session) (prs []gh.HeadPR, stale bool) {
+	for _, b := range sessionBranches(gitCLI, s) {
+		got, err := ghCLI.ListPRsForHead(s.Dir, b)
+		if err != nil {
+			logging.Action("could not read a session's pull requests", "session", s.ID, "branch", b, "err", err)
+			stale = true
+			continue
+		}
+		prs = append(prs, got...)
+	}
+	return prs, stale
 }
 
 // sessionRow is one session as [sessionList] reports it, with the live tmux

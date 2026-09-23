@@ -561,6 +561,18 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(pr.commits, 3)
     }
 
+    func testSessionPRViewNamesTheSessionAndTheURL() async throws {
+        let fakeRunner = FakeRunner(fixture: .prViewFull)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let pr = try await client.sessionPRView(projectID: "proj-123", sessionID: "sess-1", prURL: "https://x/pull/42")
+
+        XCTAssertEqual(
+            fakeRunner.lastArguments,
+            ["pr-view", "--project", "proj-123", "--session", "sess-1", "--json", "https://x/pull/42"])
+        XCTAssertEqual(pr.number, 42)
+    }
+
     func testPRViewMinimalOmitsTheOptionalTally() async throws {
         let fakeRunner = FakeRunner(fixture: .prViewMinimal)
         let client = NatClient(commandRunner: fakeRunner)

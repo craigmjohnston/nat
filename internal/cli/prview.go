@@ -29,10 +29,15 @@ func prView(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("pr-view", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
+	sessionID := flags.String("session", "",
+		"read one of this ad hoc session's pull requests, named by URL or number, instead of a slice's")
 	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
+	}
+	if *sessionID != "" {
+		return prViewSession(ctx, *sessionID, *projectRef, rest, *asJSON, env)
 	}
 	if len(rest) != 1 {
 		return usageErrorf("pr-view: want exactly one slice, by URL or ID, given %d", len(rest))
@@ -65,10 +70,50 @@ func prView(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("read the pull request %s: %w", s.PRURL, err)
 	}
 
-	if *asJSON {
+	return writePRView(env, pr, *asJSON)
+}
+
+// prViewSession is pr-view for an ad hoc session's pull request: a session
+// has no slice to record one on, so the pull request is named directly and
+// gh reads it from the session's own directory — the repository every branch
+// of the session's was cut in.
+func prViewSession(ctx context.Context, sessionID, projectRef string, rest []string, asJSON bool, env Env) error {
+	if len(rest) != 1 {
+		return usageErrorf("pr-view: want exactly one pull request, by URL or number, given %d", len(rest))
+	}
+	id, err := pageID("pr-view", sessionID)
+	if err != nil {
+		return err
+	}
+	_, projectID, project, err := env.projectFor(projectRef)
+	if err != nil {
+		return err
+	}
+	st, err := env.storeFor(ctx, projectID, project)
+	if err != nil {
+		return err
+	}
+	sessions, err := st.Sessions(ctx, storeProject(projectID, project))
+	if err != nil {
+		return fmt.Errorf("read the sessions: %w", err)
+	}
+	sess, found := findSession(sessions, id)
+	if !found {
+		return noSessionError(id)
+	}
+	pr, err := env.NewGH().ViewPR(sess.Dir, rest[0])
+	if err != nil {
+		return fmt.Errorf("read the pull request %s: %w", rest[0], err)
+	}
+	return writePRView(env, pr, asJSON)
+}
+
+// writePRView prints one pull request as pr-view's JSON or its markdown.
+func writePRView(env Env, pr gh.PR, asJSON bool) error {
+	if asJSON {
 		return writeJSON(env.Out, prJSON(pr))
 	}
-	_, err = io.WriteString(env.Out, prMarkdown(pr))
+	_, err := io.WriteString(env.Out, prMarkdown(pr))
 	return err
 }
 

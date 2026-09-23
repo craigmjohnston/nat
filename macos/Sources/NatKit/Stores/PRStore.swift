@@ -66,6 +66,9 @@ public final class PRStore {
     private var pollTask: Task<Void, Never>?
     private var projectID: String?
     private var sliceRef: String?
+    /// The ad hoc session `sliceRef` is a pull request URL of, when it is one
+    /// rather than a slice — what `load()` reads it through.
+    private var sessionID: String?
 
     /// Pull requests already read this session, by slice ref — what makes
     /// switching back to a slice already viewed show its pull request
@@ -94,9 +97,14 @@ public final class PRStore {
     /// this store already runs (started by the caller right after `fetch`
     /// returns, same as any other first show) is what keeps it fresh from
     /// here, so this does not also re-read it.
-    public func fetch(projectID: String, sliceRef: String) async {
+    ///
+    /// With `sessionID`, `sliceRef` is instead the URL of one of that ad hoc
+    /// session's pull requests, read with `nat pr-view --session` — the
+    /// session has no slice to name it by. A URL never collides with a
+    /// slice's ID in the cache, so the two share one store.
+    public func fetch(projectID: String, sliceRef: String, sessionID: String? = nil) async {
         guard !isFetching else { return }
-        if self.projectID == projectID, self.sliceRef == sliceRef, case .loaded = loadState {
+        if self.projectID == projectID, self.sliceRef == sliceRef, self.sessionID == sessionID, case .loaded = loadState {
             return
         }
         if let previous = self.sliceRef, previous != sliceRef {
@@ -104,6 +112,7 @@ public final class PRStore {
         }
         self.projectID = projectID
         self.sliceRef = sliceRef
+        self.sessionID = sessionID
 
         if let cached = prCache[sliceRef] {
             loadState = .loaded(cached)
@@ -156,6 +165,7 @@ public final class PRStore {
         loadState = .idle
         projectID = nil
         sliceRef = nil
+        sessionID = nil
         prCache = [:]
     }
 
@@ -215,7 +225,12 @@ public final class PRStore {
         }
         defer { isRefreshing = false }
         do {
-            let pr = try await client.prView(projectID: projectID, sliceRef: sliceRef)
+            let pr: PRDetail
+            if let sessionID {
+                pr = try await client.sessionPRView(projectID: projectID, sessionID: sessionID, prURL: sliceRef)
+            } else {
+                pr = try await client.prView(projectID: projectID, sliceRef: sliceRef)
+            }
             prCache[sliceRef] = pr
             loadState = .loaded(pr)
         } catch {

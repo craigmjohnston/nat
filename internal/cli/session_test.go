@@ -129,6 +129,7 @@ func sessionTestEnv(t *testing.T) (Env, *strings.Builder) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	var out strings.Builder
 	env.Out = &out
+	env.NewGit = func() GitCLI { return &fakeSessionRepo{} }
 	return env, &out
 }
 
@@ -588,6 +589,43 @@ func TestSessionListReportsAStaleReadRatherThanNone(t *testing.T) {
 	}
 	if !strings.Contains(out2.String(), "could not refresh") {
 		t.Errorf("markdown output = %q, want a note that the read failed", out2.String())
+	}
+}
+
+// A session that opened pull requests from two branches lists both, the one
+// its launch branch has and the one it checked out since — and a branch
+// whose read fails marks the reading stale without dropping the other's.
+func TestSessionListReportsPullRequestsFromEveryBranch(t *testing.T) {
+	env, _ := sessionTestEnv(t)
+	seedSession(t, env, t.TempDir(), "session/one")
+	env.NewGit = func() GitCLI {
+		return &fakeSessionRepo{currentBranch: "session/two", reflog: []string{"session/one", "session/two", "session/three"}}
+	}
+	env.NewGH = func() GH {
+		return &fakeSessionGH{
+			byBranch: map[string][]gh.HeadPR{
+				"session/one": {{Number: 1, Title: "First", State: "MERGED", URL: "https://github.test/x/y/pull/1"}},
+				"session/two": {{Number: 2, Title: "Second", State: "OPEN", URL: "https://github.test/x/y/pull/2"}},
+			},
+			err: map[string]error{"session/three": errListFailed},
+		}
+	}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
+	var out strings.Builder
+	env.Out = &out
+
+	if err := Run(context.Background(), []string{"session-list", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("session-list: %v", err)
+	}
+	var docs []sessionListJSON
+	if err := json.Unmarshal([]byte(out.String()), &docs); err != nil {
+		t.Fatalf("unmarshal: %v (%s)", err, out.String())
+	}
+	if len(docs) != 1 || len(docs[0].PRs) != 2 {
+		t.Fatalf("session-list = %+v, want one session with both branches' pull requests", docs)
+	}
+	if !docs[0].PRsStale {
+		t.Errorf("PRsStale = false, want true: one branch's read failed")
 	}
 }
 
