@@ -82,6 +82,20 @@ public final class AppModel {
     /// mirrors how `activityStore` is one store rather than one per project).
     public private(set) var reviewStatsStore: ReviewStatsStore?
 
+    /// The active project's ad hoc sessions (app-wide store, active-project
+    /// reading — mirrors `reviewStatsStore`'s own shape).
+    public private(set) var sessionStore: SessionStore?
+
+    /// Per-project selected session IDs, alongside `selectedSliceIDs` and
+    /// `workshopSelectedProjects` — the rail draws exactly one selected row.
+    private var selectedSessionIDs: [String: String?] = [:]
+
+    /// Busy while a New Session launch is under way, and whatever it refused
+    /// with — the rail button's own state, cleared by the next launch and by
+    /// selecting anything else.
+    public private(set) var newSessionLaunching = false
+    public private(set) var newSessionError: String?
+
     /// Whether the app has anywhere to show the board at all: no config file
     /// was found, or one was found naming no projects. The window shows a
     /// welcome pane in its place, which offers the same two ways onto the
@@ -125,6 +139,11 @@ public final class AppModel {
     /// `DiffTabView` reads through this rather than owning a `DiffStore` of
     /// its own.
     private var diffStores: [String: DiffStore] = [:]
+
+    /// One ad hoc session diff cache per project (lazily created), for the
+    /// same reason — `SessionDiffTabView` reads through this rather than
+    /// owning a `SessionDiffStore` of its own.
+    private var sessionDiffStores: [String: SessionDiffStore] = [:]
 
     /// One pull-request cache per project (lazily created), for the same
     /// reason — `PRTabView` reads through this rather than owning a
@@ -266,6 +285,7 @@ public final class AppModel {
             let activityStore = activityStoreFactory()
             self.activityStore = activityStore
             self.reviewStatsStore = ReviewStatsStore(client: clientFactory())
+            self.sessionStore = SessionStore(client: clientFactory())
             startUsageStore()
 
             // Activate the first project (if any)
@@ -414,6 +434,7 @@ public final class AppModel {
         if activityStore == nil {
             activityStore = activityStoreFactory()
             reviewStatsStore = ReviewStatsStore(client: clientFactory())
+            sessionStore = SessionStore(client: clientFactory())
         }
         if usageStore == nil {
             startUsageStore()
@@ -484,6 +505,15 @@ public final class AppModel {
         return store
     }
 
+    /// The ad hoc session diff cache for one project, created on first use —
+    /// see `sliceDetailStore(projectID:)`.
+    public func sessionDiffStore(projectID: String) -> SessionDiffStore {
+        if let existing = sessionDiffStores[projectID] { return existing }
+        let store = SessionDiffStore(client: clientFactory())
+        sessionDiffStores[projectID] = store
+        return store
+    }
+
     /// The currently selected slice ID (per-project). Selecting a slice
     /// deselects the workshop row — the rail draws one selected row — and
     /// dismisses any workshop launch failure, since looking away is how an
@@ -498,6 +528,26 @@ public final class AppModel {
             selectedSliceIDs[activeID] = newValue
             noteVisited(newValue)
             if newValue != nil {
+                workshopSelectedProjects.remove(activeID)
+                workshopLaunchError = nil
+                selectedSessionIDs[activeID] = nil
+            }
+        }
+    }
+
+    /// The currently selected ad hoc session ID (per-project), alongside
+    /// `selectedSliceID` and `workshopSelected` — the rail draws exactly one
+    /// selected row, so selecting a session deselects the other two.
+    public var selectedSessionID: String? {
+        get {
+            guard let activeID = activeProjectID else { return nil }
+            return selectedSessionIDs[activeID] ?? nil
+        }
+        set {
+            guard let activeID = activeProjectID else { return }
+            selectedSessionIDs[activeID] = newValue
+            if newValue != nil {
+                selectedSliceIDs[activeID] = nil
                 workshopSelectedProjects.remove(activeID)
                 workshopLaunchError = nil
             }
@@ -569,6 +619,7 @@ public final class AppModel {
             if newValue {
                 workshopSelectedProjects.insert(activeID)
                 selectedSliceIDs[activeID] = nil
+                selectedSessionIDs[activeID] = nil
             } else {
                 workshopSelectedProjects.remove(activeID)
             }
@@ -677,7 +728,8 @@ public final class AppModel {
             slices: projectInfo.slices,
             liveAgents: liveAgents,
             planningAgent: planning,
-            prReadiness: projectID == activeProjectID ? (reviewStatsStore?.prReadiness ?? [:]) : [:]
+            prReadiness: projectID == activeProjectID ? (reviewStatsStore?.prReadiness ?? [:]) : [:],
+            sessions: projectID == activeProjectID ? (sessionStore?.sessions ?? []) : []
         )
     }
 
@@ -770,6 +822,98 @@ public final class AppModel {
         }
         workshopDrafts[projectID] = nil
         workshopSelected = false
+        return nil
+    }
+
+    // MARK: - Ad hoc sessions
+
+    /// The New Session button: launch a bare Claude Code on the active
+    /// project — `nat session-launch`. `dir` is where it runs, or nil for
+    /// the project's own working directory. Busy while the launch is in
+    /// flight, mirroring `launchWorkshop(request:)`'s own shape; unlike a
+    /// workshop launch there is no live-reading to wait out afterwards — the
+    /// session is minted before `session-launch` returns, so kicking the
+    /// activity poll and refreshing the session list is enough for its row
+    /// to appear.
+    public func launchSession(dir: String? = nil) async {
+        guard let projectID = activeProjectID else { return }
+        newSessionLaunching = true
+        newSessionError = nil
+        do {
+            let agent = config?.sliceAgent
+            let result = try await clientFactory().sessionLaunch(
+                projectID: projectID, dir: dir, model: agent?.model, effort: agent?.effort
+            )
+            selectedSessionID = result.id
+            await sessionStore?.update(projectID: projectID)
+            activityStore?.kick()
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                newSessionError = message
+            } else {
+                newSessionError = error.localizedDescription
+            }
+        } catch {
+            newSessionError = error.localizedDescription
+        }
+        newSessionLaunching = false
+    }
+
+    /// Read a session's branches and pull requests fresh — `nat
+    /// session-status`, the PR tab's own reading. A plain read, unlike
+    /// `endSession`/`discardSession`: it never ends the session (`discard`
+    /// is always false), leaving whether the strongest fact — the merged/open
+    /// state itself — has already ended it to the CLI's own next read.
+    public func sessionStatus(projectID: String, sessionID: String) async throws -> SessionStatusDoc {
+        try await clientFactory().sessionStatus(projectID: projectID, sessionID: sessionID, discard: false)
+    }
+
+    /// End an ad hoc session's agent outright — `nat agent-kill` on its own
+    /// pane tag, the rail's own "End session" — and refresh the session list
+    /// so the row settles into Needs review or DONE on its next reading
+    /// rather than waiting for the poll.
+    ///
+    /// Answers with the refusal's own first line where nat refused, and nil
+    /// once the session is gone.
+    @discardableResult
+    public func endSession(tag: String) async -> String? {
+        guard let projectID = activeProjectID else { return "No project loaded" }
+        do {
+            try await clientFactory().agentKill(projectID: projectID, sliceRef: tag)
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error { return message }
+            return error.localizedDescription
+        } catch {
+            return error.localizedDescription
+        }
+        activityStore?.kick()
+        await sessionStore?.update(projectID: projectID)
+        return nil
+    }
+
+    /// Discard an ad hoc session — `nat session-status --discard`, the
+    /// rail's confirmed "Discard": ends the session (and removes its
+    /// worktree) even with a pull request still unmerged, so long as none is
+    /// still open. A session still live, or with a pull request still open,
+    /// is refused by the CLI, which passes straight through.
+    ///
+    /// Answers with the refusal's own first line where nat refused, and nil
+    /// once discarded.
+    @discardableResult
+    public func discardSession(id: String) async -> String? {
+        guard let projectID = activeProjectID else { return "No project loaded" }
+        do {
+            _ = try await clientFactory().sessionStatus(projectID: projectID, sessionID: id, discard: true)
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error { return message }
+            return error.localizedDescription
+        } catch {
+            return error.localizedDescription
+        }
+        if selectedSessionID == id {
+            selectedSessionID = nil
+        }
+        await sessionStore?.update(projectID: projectID)
         return nil
     }
 
@@ -881,6 +1025,9 @@ public final class AppModel {
         if info.slices.contains(where: { !$0.pr.isEmpty }) {
             await reviewStatsStore?.updatePRStatus(projectID: projectID)
         }
+        // Ad hoc sessions ride the same cadence: every plan reload and the
+        // poll's own tick, alongside the PR-readiness reading above.
+        await sessionStore?.update(projectID: projectID)
     }
 
     private func startNudgeWatcher(for projectStore: ProjectStore, nudgePath: String) {
@@ -939,8 +1086,10 @@ public final class AppModel {
         usageStore?.stop()
         usageStore = nil
         reviewStatsStore = nil
+        sessionStore = nil
         sliceDetailStores = [:]
         diffStores = [:]
         prStores = [:]
+        sessionDiffStores = [:]
     }
 }

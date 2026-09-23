@@ -78,6 +78,10 @@ struct RailView: View {
     /// from here (the page goes to Notion's trash), so it asks first, the way
     /// the board's own d does.
     @State private var sliceForDeletion: MilestoneSliceRow?
+    /// The ad hoc session Discard was picked on, held while its confirm
+    /// dialog is up — discarding removes the worktree, the one rail action
+    /// on a session that cannot be undone, mirroring `sliceForDeletion`.
+    @State private var sessionForDiscard: ActiveEntry?
     /// The three numbers `RailSectionLayout` shares the rail out on: how
     /// tall the rail's container is, how much of it each section's own
     /// chrome — its rule and its pinned heading — has already taken, and how
@@ -144,7 +148,8 @@ struct RailView: View {
                 reviewFileCounts: appModel.reviewStatsStore?.fileCounts ?? [:],
                 prReadiness: appModel.reviewStatsStore?.prReadiness ?? [:],
                 agentStarts: appModel.activityStore?.firstSeen ?? [:],
-                workshop: workshopEntry
+                workshop: workshopEntry,
+                sessions: appModel.sessionStore?.sessions ?? []
             )
         }
         // With no plan read, the workshop is still the one thing that can be
@@ -286,6 +291,18 @@ struct RailView: View {
             Text("The planning agent is still running. Closing the tab ends its session; the draft goes with it.")
         }
         .alert(
+            "Discard this session?",
+            isPresented: presenting($sessionForDiscard),
+            presenting: sessionForDiscard
+        ) { entry in
+            Button("Discard", role: .destructive) {
+                Task { await discardSession(entry) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Its worktree is removed. This cannot be undone.")
+        }
+        .alert(
             "That didn't work",
             isPresented: Binding(
                 get: { actionError != nil },
@@ -332,8 +349,8 @@ struct RailView: View {
         return VStack(alignment: .leading, spacing: 0) {
             activeSection(height: heights[.active])
             todoSection(height: heights[.todo])
-            if let summary = railModel.doneSummary {
-                doneSection(summary, height: heights[.done])
+            if railModel.doneSummary != nil || !railModel.doneSessions.isEmpty {
+                doneSection(railModel.doneSummary, height: heights[.done])
             }
             // The air under the last section, and what takes up the rail's
             // slack when the three of them want less than there is.
@@ -349,7 +366,7 @@ struct RailView: View {
     /// headings of their own, in that order.
     private func activeSection(height: CGFloat?) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeading(.active)
+            sectionHeading(.active, showNewSessionAction: true)
                 .padding(.top, 12)
                 .measuringHeight { chromeHeights[.active] = $0 }
 
@@ -370,6 +387,7 @@ struct RailView: View {
                                             hoveredActiveEntryID = nil
                                         }
                                     }
+                                    .contextMenu { sessionMenuItems(for: entry) }
                             }
                         }
                     }
@@ -421,17 +439,34 @@ struct RailView: View {
     /// DONE — the finished slices' home at the foot of the rail: every
     /// milestone with work done lists under it as a folder of its own, one
     /// level deeper than the tree.
-    private func doneSection(_ summary: DoneSummary, height: CGFloat?) -> some View {
+    private func doneSection(_ summary: DoneSummary?, height: CGFloat?) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 sectionRule
-                sectionHeading(.done, trailing: "\(summary.doneCount)/\(summary.totalCount)")
+                sectionHeading(.done, trailing: summary.map { "\($0.doneCount)/\($0.totalCount)" })
             }
             .measuringHeight { chromeHeights[.done] = $0 }
 
             if let height {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
+                        // Ended ad hoc sessions first, newest-started: they
+                        // belong to no milestone, so there is no folder to
+                        // file them under.
+                        ForEach(railModel.doneSessions) { entry in
+                            activeRow(for: entry, isHovered: hoveredActiveEntryID == entry.id)
+                                .contentShape(Rectangle())
+                                .onTapGesture { select(entry) }
+                                .onHover { inside in
+                                    if inside {
+                                        hoveredActiveEntryID = entry.id
+                                    } else if hoveredActiveEntryID == entry.id {
+                                        hoveredActiveEntryID = nil
+                                    }
+                                }
+                                .contextMenu { sessionMenuItems(for: entry) }
+                        }
+
                         ForEach(railModel.doneFolders, id: \.milestoneID) { folder in
                             folderRows(
                                 folder,
@@ -522,7 +557,9 @@ struct RailView: View {
     /// The sections this rail draws at all: DONE only once there is finished
     /// work to list, the other two always.
     private var drawnSections: [RailSection] {
-        RailSection.allCases.filter { $0 != .done || railModel.doneSummary != nil }
+        RailSection.allCases.filter {
+            $0 != .done || railModel.doneSummary != nil || !railModel.doneSessions.isEmpty
+        }
     }
 
     /// The open ones, in the order they are stacked — what the rail's height
@@ -591,7 +628,7 @@ struct RailView: View {
     /// before they moved here — seated beside its fold chevron rather than
     /// floating over the whole window, since both are actions on the plan
     /// this section is the queue of.
-    private func sectionHeading(_ section: RailSection, trailing: String? = nil, showTodoActions: Bool = false) -> some View {
+    private func sectionHeading(_ section: RailSection, trailing: String? = nil, showTodoActions: Bool = false, showNewSessionAction: Bool = false) -> some View {
         let open = !collapsed.contains(section)
         return HStack(spacing: RailSlot.spacing) {
             Image(systemName: section.icon)
@@ -614,6 +651,10 @@ struct RailView: View {
 
             if showTodoActions {
                 todoHeaderActions
+            }
+
+            if showNewSessionAction {
+                newSessionButton
             }
 
             Image(systemName: open ? "chevron.down" : "chevron.right")
@@ -663,6 +704,66 @@ struct RailView: View {
             .opacity(appModel.projectStore == nil ? 0.5 : 1)
             .hoverWash(cornerRadius: 5, enabled: appModel.projectStore != nil)
             .help("Workshop the Plan")
+        }
+    }
+
+    /// ACTIVE's own control, beside its fold chevron like TODO's own two:
+    /// starts a bare Claude Code with `nat session-launch`, straight away —
+    /// on a project tab there is nowhere else this needs asking first, since
+    /// the project's own working directory is where it runs. Busy while the
+    /// launch is in flight; a failure surfaces through the rail's own toast.
+    private var newSessionButton: some View {
+        Button(action: { Task { await startNewSession() } }) {
+            HStack(spacing: 4) {
+                if appModel.newSessionLaunching {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .frame(width: 12, height: 12)
+                } else {
+                    Image(systemName: "terminal")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                Text("New session")
+                    .font(.system(size: Typo.subhead, weight: .medium))
+            }
+            .ink(.tertiary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+        }
+        .buttonStyle(.plain)
+        .disabled(appModel.newSessionLaunching || appModel.activeProjectID == nil)
+        .hoverWash(cornerRadius: 5, enabled: !appModel.newSessionLaunching)
+        .help("Start an ad hoc session in this project's working directory")
+    }
+
+    private func startNewSession() async {
+        await appModel.launchSession()
+        if let error = appModel.newSessionError {
+            actionError = error
+        }
+    }
+
+    /// What the ad hoc session's row is about, for the context menu's own
+    /// actions — nil for a session `sessionStore` has not (or no longer)
+    /// got a reading for.
+    private func session(for entry: ActiveEntry) -> Session? {
+        appModel.sessionStore?.sessions.first { $0.id == entry.sliceID }
+    }
+
+    /// The session row's own context menu: End session kills its agent
+    /// outright, and Discard (confirmed first, since it removes the
+    /// worktree) ends it regardless of what is still open. Every other
+    /// ACTIVE/DONE row offers none — an empty menu is what a right-click on
+    /// one of those already draws.
+    @ViewBuilder
+    private func sessionMenuItems(for entry: ActiveEntry) -> some View {
+        if entry.kind == .session, let session = session(for: entry) {
+            Button("End Session") {
+                Task { await appModel.endSession(tag: session.tag) }
+            }
+            Button("Discard\u{2026}", role: .destructive) {
+                sessionForDiscard = entry
+            }
         }
     }
 
@@ -861,11 +962,14 @@ struct RailView: View {
     }
 
     /// What an entry selects when it is tapped: the workshop pane for the
-    /// planning agent's entry, and the slice for every other.
+    /// planning agent's entry, the slice for a slice row, and the session
+    /// for an ad hoc session row — `sliceID` doubles as the session's own ID
+    /// there, same as everywhere else `ActiveEntry` reads it.
     private func select(_ entry: ActiveEntry) {
         switch entry.kind {
         case .workshop: appModel.workshopSelected = true
         case .slice: appModel.selectedSliceID = entry.sliceID
+        case .session: appModel.selectedSessionID = entry.sliceID
         }
     }
 
@@ -873,6 +977,7 @@ struct RailView: View {
         switch entry.kind {
         case .workshop: return appModel.workshopSelected
         case .slice: return appModel.selectedSliceID == entry.sliceID
+        case .session: return appModel.selectedSessionID == entry.sliceID
         }
     }
 
@@ -912,7 +1017,7 @@ struct RailView: View {
         // states that are about work that is out.
         case .readyToPush: return .success
         case .needsReview: return .success
-        case .launching, .new: return .tertiary
+        case .launching, .new, .done: return .tertiary
         }
     }
 
@@ -1307,6 +1412,12 @@ struct RailView: View {
             await appModel.refresh()
         } catch {
             actionError = commandMessage(of: error)
+        }
+    }
+
+    private func discardSession(_ entry: ActiveEntry) async {
+        if let refusal = await appModel.discardSession(id: entry.sliceID) {
+            actionError = refusal
         }
     }
 

@@ -276,4 +276,60 @@ final class ProjectAttentionTests: XCTestCase {
         XCTAssertEqual(AgentActivity(.waiting), .waiting)
         XCTAssertEqual(AgentActivity(.unknown), .working)
     }
+
+    // MARK: - Ad hoc sessions
+
+    private func session(_ id: String, tag: String, prs: [SessionPR] = []) -> Session {
+        Session(id: id, tag: tag, live: false, startedAt: Date(), dir: "/tmp", branch: "session/\(id)", prs: prs)
+    }
+
+    func testWaitingSessionAgent_isWaitingAndCounted() {
+        let attention = projectAttention(
+            slices: [],
+            liveAgents: ["session:p:1": .waiting],
+            sessions: [session("1", tag: "session:p:1")]
+        )
+
+        XCTAssertEqual(attention.role, .waiting)
+        XCTAssertEqual(attention.badge, 1)
+    }
+
+    func testWorkingSessionAgent_isWorkingWithNoSliceWork() {
+        let attention = projectAttention(
+            slices: [],
+            liveAgents: ["session:p:1": .working],
+            sessions: [session("1", tag: "session:p:1")]
+        )
+
+        XCTAssertEqual(attention.role, .working)
+        XCTAssertTrue(attention.pulses)
+        XCTAssertNil(attention.badge, "working alone counts nothing that needs the user")
+    }
+
+    func testSessionWithOpenPR_isReviewAndCountedOnce() {
+        let attention = projectAttention(
+            slices: [],
+            liveAgents: [:],
+            sessions: [session("1", tag: "session:p:1", prs: [
+                SessionPR(number: 1, title: "x", url: "https://x", state: "OPEN"),
+                SessionPR(number: 2, title: "y", url: "https://y", state: "OPEN"),
+            ])]
+        )
+
+        XCTAssertEqual(attention.role, .review)
+        XCTAssertEqual(attention.badge, 1, "one session with two open PRs still counts once")
+    }
+
+    func testDoneSession_countsNothing() {
+        let attention = projectAttention(
+            slices: [],
+            liveAgents: [:],
+            sessions: [session("1", tag: "session:p:1", prs: [
+                SessionPR(number: 1, title: "x", url: "https://x", state: "MERGED"),
+            ])]
+        )
+
+        XCTAssertEqual(attention.role, .idle)
+        XCTAssertNil(attention.badge)
+    }
 }

@@ -124,3 +124,15 @@ public func buildWorkflowTabState(
 
     return WorkflowTabState(tabs: allTabs, reachable: reachable, defaultTab: defaultTab)
 }
+
+/// The workflow tab state for an ad hoc session's pane: Agent, Diff and PR,
+/// no Brief and no Brief stage in the stepper — a session has no brief to
+/// write one for. All three are always reachable: a session always has a
+/// worktree and a branch to diff and a first pull request (or none yet) to
+/// name, unlike a slice's own stages, which unlock one at a time as the work
+/// progresses. Agent is the default: it is where a session is watched while
+/// its agent works, the same reason a slice with a live agent defaults there.
+public func buildSessionTabState() -> WorkflowTabState {
+    let tabs: [WorkflowTab] = [.agent, .diff, .pr]
+    return WorkflowTabState(tabs: tabs, reachable: Set(tabs), defaultTab: .agent)
+}

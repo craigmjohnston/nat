@@ -36,6 +36,18 @@ public enum Fixtures {
         Date().addingTimeInterval(hours * 3600)
     }
 
+    /// The live clock less the given number of minutes, for the same reason
+    /// `hoursFromNow` reads the live clock instead of the pinned one: an ad
+    /// hoc session's rail row measures its own elapsed/started time against
+    /// `Date()` (see `RailView.railModel`'s own `buildRailModel` call, which
+    /// takes no pinned `now`), so a session fixture measured back from
+    /// `Fixtures.now` would read as having started tens of thousands of
+    /// hours ago the moment real time has moved past January 2026, which it
+    /// always has by now.
+    public static func liveMinutesAgo(_ minutes: Double) -> Date {
+        Date().addingTimeInterval(-minutes * 60)
+    }
+
     /// The at-rest reading: both windows well under the warning threshold.
     public static let usageReading = UsageReading(
         fiveHour: UsageRateLimit(usedPercentage: 38, resetsAt: hoursFromNow(6)),

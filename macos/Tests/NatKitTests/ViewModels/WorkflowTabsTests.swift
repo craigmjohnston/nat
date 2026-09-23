@@ -279,4 +279,17 @@ final class WorkflowTabsTests: XCTestCase {
 
         XCTAssertFalse(state.isSeparatorLit(before: .diff))
     }
+
+    // MARK: - An ad hoc session's own tab state
+
+    func testBuildSessionTabState_agentDiffPRNoBrief() {
+        let state = buildSessionTabState()
+
+        XCTAssertEqual(state.tabs, [.agent, .diff, .pr])
+        XCTAssertEqual(state.defaultTab, .agent)
+        for tab in state.tabs {
+            XCTAssertTrue(state.isReachable(tab), "\(tab) should always be reachable on a session's pane")
+        }
+        XCTAssertFalse(state.isReachable(.brief), "a session's pane has no Brief stage")
+    }
 }

@@ -597,6 +597,94 @@ public final class NatClient: Sendable {
         return try decodeJSON(ProjectEnvelope<CreatedProject>.self, from: output).project
     }
 
+    // MARK: - Ad hoc sessions
+
+    /// Start a bare Claude Code with no slice and no prompt — `nat
+    /// session-launch`, the rail's New Session button. `dir` is the
+    /// directory to run it in; nil takes the project's own working
+    /// directory, `session-launch`'s own default.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - dir: Where the session runs, or nil for the project's working directory
+    ///   - model: Optional model name, overriding the config's slice_agent
+    ///   - effort: Optional effort level, overriding the config's slice_agent
+    /// - Returns: The launched session's ID, tag, directory and branch
+    /// - Throws: NatError if the command fails
+    public func sessionLaunch(
+        projectID: String, dir: String?, model: String?, effort: String?
+    ) async throws -> SessionLaunchResult {
+        var arguments = ["session-launch", "--project", projectID, "--json"]
+        if let dir, !dir.isEmpty {
+            arguments.append(contentsOf: ["--dir", dir])
+        }
+        if let model, !model.isEmpty {
+            arguments.append(contentsOf: ["--model", model])
+        }
+        if let effort, !effort.isEmpty {
+            arguments.append(contentsOf: ["--effort", effort])
+        }
+        let output = try await runNat(arguments: arguments)
+        return try decodeJSON(SessionLaunchResult.self, from: output)
+    }
+
+    /// Every ad hoc session on the project, tmux and pull-request readings
+    /// folded in — `nat session-list`, the rail's own reading of what to
+    /// draw in ACTIVE and DONE.
+    ///
+    /// - Parameter projectID: The project's Notion page ID
+    /// - Returns: One entry per session recorded, live or not
+    /// - Throws: NatError if the command fails
+    public func sessionList(projectID: String) async throws -> [Session] {
+        let output = try await runNat(arguments: ["session-list", "--project", projectID, "--json"])
+        return try decodeJSON([Session].self, from: output)
+    }
+
+    /// Read every branch a session has been on and the pull requests each
+    /// has opened — `nat session-status`, the PR tab's own reading. With
+    /// `discard: true`, a session with no live tmux and no pull request
+    /// still open is ended even without every one merged, mirroring
+    /// `session-status --discard`.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sessionID: The session's own local ID
+    ///   - discard: Whether to end the session on no PR still open, not only
+    ///     on every one merged
+    /// - Returns: The session's live/ended state and every branch it read
+    /// - Throws: NatError if the command fails, or the session is unknown
+    public func sessionStatus(projectID: String, sessionID: String, discard: Bool = false) async throws -> SessionStatusDoc {
+        var arguments = ["session-status", "--project", projectID, "--json"]
+        if discard {
+            arguments.append("--discard")
+        }
+        arguments.append(sessionID)
+        let output = try await runNat(arguments: arguments)
+        return try decodeJSON(SessionStatusDoc.self, from: output)
+    }
+
+    /// The diff of one of a session's branches against its merge base — `nat
+    /// session-diff`, the Diff tab's own reading. `branch` names which one;
+    /// nil takes the worktree's own current branch, `session-diff`'s own
+    /// default.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sessionID: The session's own local ID
+    ///   - branch: The branch to diff, or nil for the worktree's current one
+    /// - Returns: SliceDiff with the base, branch, and per-file diff sections
+    ///   — the same shape `slice-diff` reports, since both share one renderer
+    /// - Throws: NatError if the command fails
+    public func sessionDiff(projectID: String, sessionID: String, branch: String?) async throws -> SliceDiff {
+        var arguments = ["session-diff", "--project", projectID, "--json"]
+        if let branch, !branch.isEmpty {
+            arguments.append(contentsOf: ["--branch", branch])
+        }
+        arguments.append(sessionID)
+        let output = try await runNat(arguments: arguments)
+        return try decodeJSON(SliceDiff.self, from: output)
+    }
+
     // MARK: - Private Helpers
 
     private func runNat(arguments: [String], standardInput: Data? = nil) async throws -> String {

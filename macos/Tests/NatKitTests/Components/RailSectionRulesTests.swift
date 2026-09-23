@@ -49,7 +49,7 @@ final class RailSectionRulesTests: XCTestCase {
     /// point of the section being always on the rail.
     func testTheActiveHeadingIsNotConditional() throws {
         let s = try source()
-        guard let heading = s.range(of: "sectionHeading(.active)") else {
+        guard let heading = s.range(of: "sectionHeading(.active,") else {
             return XCTFail("the rail should draw an ACTIVE heading")
         }
         // The line the heading is on, and the one above it: an `if` there is
@@ -173,7 +173,7 @@ final class RailSectionRulesTests: XCTestCase {
         guard let column = s.range(of: "private var railColumn: some View {"),
               let active = s.range(of: "activeSection(height:", range: column.upperBound..<s.endIndex),
               let todo = s.range(of: "todoSection(height:", range: active.upperBound..<s.endIndex),
-              let done = s.range(of: "doneSection(summary, height:", range: todo.upperBound..<s.endIndex)
+              let done = s.range(of: "doneSection(railModel.doneSummary, height:", range: todo.upperBound..<s.endIndex)
         else {
             return XCTFail("the rail should stack its three sections in one column")
         }
@@ -186,9 +186,9 @@ final class RailSectionRulesTests: XCTestCase {
     func testEveryHeadingIsOutsideItsSectionsScroll() throws {
         let s = try source()
         for (builder, heading) in [
-            ("private func activeSection(height: CGFloat?) -> some View {", "sectionHeading(.active)"),
+            ("private func activeSection(height: CGFloat?) -> some View {", "sectionHeading(.active,"),
             ("private func todoSection(height: CGFloat?) -> some View {", "sectionHeading(.todo,"),
-            ("private func doneSection(_ summary: DoneSummary, height: CGFloat?) -> some View {",
+            ("private func doneSection(_ summary: DoneSummary?, height: CGFloat?) -> some View {",
              "sectionHeading(.done,")
         ] {
             guard let start = s.range(of: builder) else {
@@ -246,7 +246,7 @@ final class RailSectionRulesTests: XCTestCase {
         let s = try source()
         for builder in [
             "private func todoSection(height: CGFloat?) -> some View {",
-            "private func doneSection(_ summary: DoneSummary, height: CGFloat?) -> some View {"
+            "private func doneSection(_ summary: DoneSummary?, height: CGFloat?) -> some View {"
         ] {
             guard let start = s.range(of: builder),
                   let rule = s.range(of: "sectionRule", range: start.upperBound..<s.endIndex),
@@ -282,7 +282,7 @@ final class RailSectionRulesTests: XCTestCase {
         XCTAssertTrue(
             s.contains(
                 "private func sectionHeading(_ section: RailSection, trailing: String? = nil, "
-                    + "showTodoActions: Bool = false)"),
+                    + "showTodoActions: Bool = false, showNewSessionAction: Bool = false)"),
             "the three headings should be one builder"
         )
         XCTAssertTrue(s.contains("Image(systemName: section.icon)"), "every heading wears its own icon")

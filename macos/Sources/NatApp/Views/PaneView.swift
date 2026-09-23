@@ -11,6 +11,15 @@ struct PaneView: View {
         return appModel.projectStore?.state.projectInfo?.slices.first { $0.id == sliceID }
     }
 
+    /// The selected ad hoc session, off `sessionStore`'s own reading — nil
+    /// once a session no longer appears there (ended and swept, say),
+    /// exactly as `selectedSlice` reads nil off a plan that no longer names
+    /// its slice.
+    var selectedSession: Session? {
+        guard let sessionID = appModel.selectedSessionID else { return nil }
+        return appModel.sessionStore?.sessions.first { $0.id == sessionID }
+    }
+
     var workflowState: WorkflowTabState? {
         guard let slice = selectedSlice else { return nil }
         let hasLiveAgent = appModel.selectedSliceID.flatMap { sliceID in
@@ -32,6 +41,8 @@ struct PaneView: View {
             // agent — see WorkshopPaneView.
             if appModel.workshopSelected {
                 WorkshopPaneView(appModel: appModel)
+            } else if let session = selectedSession {
+                sessionPane(for: session)
             } else if let slice = selectedSlice, let tabState = workflowState {
                 // Header: the shared pane chrome — the identity block
                 // (breadcrumb + title, which wraps rather than truncating)
@@ -107,6 +118,50 @@ struct PaneView: View {
         .onChange(of: appModel.selectedSliceID) { _, _ in
             // Reset tab when slice changes
             currentTab = workflowState?.defaultTab ?? .brief
+        }
+        .onChange(of: appModel.selectedSessionID) { _, _ in
+            currentTab = .agent
+        }
+    }
+
+    // MARK: - Ad hoc session pane
+
+    /// A session's pane: the same header/stepper chrome a slice's pane
+    /// draws, over `buildSessionTabState()`'s own three tabs — Agent, Diff
+    /// and PR, no Brief. Title reads "Ad hoc session"; the breadcrumb is its
+    /// branch or folder, the same label the rail row's second line draws.
+    @ViewBuilder
+    private func sessionPane(for session: Session) -> some View {
+        let tabState = buildSessionTabState()
+
+        PaneHeader(breadcrumb: session.label, title: "Ad hoc session") {
+            HStack(spacing: 10) {
+                ForEach(Array(tabState.tabs.enumerated()), id: \.offset) { index, tab in
+                    if index > 0 {
+                        stepperSeparator(lit: tabState.isSeparatorLit(before: tab))
+                    }
+                    stepperStage(
+                        tab,
+                        isCurrentTab: currentTab == tab,
+                        isReachable: tabState.isReachable(tab),
+                        isComplete: tabState.isComplete(tab)
+                    )
+                }
+            }
+        }
+
+        switch currentTab {
+        case .agent:
+            SessionAgentTabView(appModel: appModel, session: session)
+        case .diff:
+            SessionDiffTabView(appModel: appModel, session: session)
+        case .pr:
+            SessionPRTabView(appModel: appModel, session: session)
+        case .brief:
+            // Unreachable: a session's tab state never names Brief, and
+            // `onChange(of: appModel.selectedSessionID)` resets to Agent the
+            // moment one is selected.
+            EmptyView()
         }
     }
 

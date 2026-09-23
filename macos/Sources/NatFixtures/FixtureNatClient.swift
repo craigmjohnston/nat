@@ -30,6 +30,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     private let pr: PRDetail
     private let config: ConfigDoc
     private let usageReading: UsageReading
+    private let sessionsList: [Session]
 
     /// Every write this client was asked to make, in order — a preview never
     /// looks, and a test asserting that a button reached the client does.
@@ -52,7 +53,8 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         diff: SliceDiff = Fixtures.sliceDiff,
         pr: PRDetail = Fixtures.prGreen,
         config: ConfigDoc = Fixtures.configDoc,
-        usage: UsageReading = Fixtures.usageReading
+        usage: UsageReading = Fixtures.usageReading,
+        sessions: [Session] = Fixtures.sessions
     ) {
         self.behaviour = behaviour
         self.plan = plan
@@ -61,6 +63,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         self.pr = pr
         self.config = config
         self.usageReading = usage
+        self.sessionsList = sessions
     }
 
     /// The writes this client was asked to make, oldest first.
@@ -230,6 +233,43 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
 
     public func configSet(key: String, value: String) async throws {
         try await record("config-set \(key)")
+    }
+
+    // MARK: - Ad hoc sessions
+
+    public func sessionLaunch(
+        projectID: String, dir: String?, model: String?, effort: String?
+    ) async throws -> SessionLaunchResult {
+        try await record("session-launch \(dir ?? "")")
+        let id = "f1x75e55-0000-4000-8000-000000000001"
+        return SessionLaunchResult(
+            session: "nat-session-f1x75e55",
+            tag: "session:\(projectID):\(id)",
+            id: id,
+            dir: dir ?? Fixtures.configDoc.projects[projectID]?.workingDir ?? "",
+            branch: "session/f1x75e55"
+        )
+    }
+
+    public func sessionList(projectID: String) async throws -> [Session] {
+        try await answer(sessionsList)
+    }
+
+    public func sessionStatus(projectID: String, sessionID: String, discard: Bool) async throws -> SessionStatusDoc {
+        let session = sessionsList.first { $0.id == sessionID } ?? Fixtures.liveSession
+        try await record("session-status \(sessionID)")
+        return SessionStatusDoc(
+            id: session.id,
+            live: session.live,
+            ended: session.ended,
+            dir: session.dir,
+            branch: session.branch,
+            branches: [SessionBranchStatus(branch: session.branch, stale: false, prs: session.prs)]
+        )
+    }
+
+    public func sessionDiff(projectID: String, sessionID: String, branch: String?) async throws -> SliceDiff {
+        try await answer(Fixtures.sliceDiff)
     }
 }
 
