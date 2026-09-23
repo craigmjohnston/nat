@@ -32,11 +32,48 @@ func TestConfigShowMarkdown(t *testing.T) {
 		"Agent split percent: 70", "Poll seconds: 45",
 		`Workshop agent: model="sonnet" effort="low"`,
 		`Slice agent: model="opus" effort="high"`,
-		`project-1 (nat): working_dir="/tmp/nat"`,
+		`project-1 (nat): backend=notion working_dir="/tmp/nat"`,
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output missing %q:\n%s", want, out.String())
 		}
+	}
+}
+
+// A mixed config says each project's backend out loud, the Notion one whose
+// entry leaves it unwritten included, and a local one's plan directory too.
+func TestConfigShowSaysEachBackend(t *testing.T) {
+	cfg := fullConfig()
+	cfg.Projects["local-1"] = config.ProjectConfig{Name: "mine", WorkingDir: "/w", Backend: "local", PlanDir: "/plans"}
+	cfg.Projects["local-2"] = config.ProjectConfig{Name: "bare", WorkingDir: "/b", Backend: "local"}
+	env, out := testEnv(cfg, &fakeAPI{})
+	if err := Run(context.Background(), []string{"config-show"}, env); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`project-1 (nat): backend=notion working_dir="/tmp/nat"`,
+		`local-1 (mine): backend=local working_dir="/w" plan_dir="/plans"`,
+		`local-2 (bare): backend=local working_dir="/b"` + "\n",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing %q:\n%s", want, out.String())
+		}
+	}
+
+	env, out = testEnv(cfg, &fakeAPI{})
+	if err := Run(context.Background(), []string{"config-show", "--json"}, env); err != nil {
+		t.Fatal(err)
+	}
+	var got configDoc
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Projects["local-1"] != (configProjectJSON{Name: "mine", WorkingDir: "/w", Backend: "local", PlanDir: "/plans"}) ||
+		got.Projects["project-1"].Backend != "notion" {
+		t.Errorf("json = %+v", got.Projects)
+	}
+	if strings.Contains(out.String(), `"plan_dir": ""`) {
+		t.Errorf("an empty plan_dir was written:\n%s", out.String())
 	}
 }
 
@@ -67,7 +104,7 @@ func TestConfigShowJSON(t *testing.T) {
 		WorkshopAgent:     agentModelJSON{Model: "sonnet", Effort: "low"},
 		SliceAgent:        agentModelJSON{Model: "opus", Effort: "high"},
 		Projects: map[string]configProjectJSON{
-			"project-1": {Name: "nat", WorkingDir: "/tmp/nat"},
+			"project-1": {Name: "nat", WorkingDir: "/tmp/nat", Backend: "notion"},
 		},
 	}
 	if got.AgentSplitPercent != want.AgentSplitPercent || got.PollSeconds != want.PollSeconds ||

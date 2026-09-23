@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -510,5 +511,123 @@ func TestValidPollSeconds(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A config written before a plan could live anywhere but Notion has no backend
+// key at all: it must load meaning Notion, and save back without growing one.
+func TestBackendMigration(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(handWritten), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := cfg.Projects["3b738308-f654-811c-948d-e1fb36f71df3"]
+	if p.IsLocal() || p.BackendName() != BackendNotion {
+		t.Fatalf("an old entry must mean Notion, got %q", p.BackendName())
+	}
+	if err := Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	if strings.Contains(string(data), "backend") || strings.Contains(string(data), "plan_dir") {
+		t.Fatalf("an old config grew a key on save:\n%s", data)
+	}
+}
+
+func TestBackendReading(t *testing.T) {
+	for backend, local := range map[string]bool{
+		"local": true, "": false, "notion": false, "Local": false, "postgres": false,
+	} {
+		p := ProjectConfig{Backend: backend}
+		if p.IsLocal() != local {
+			t.Errorf("backend %q: IsLocal = %v, want %v", backend, p.IsLocal(), local)
+		}
+		want := BackendNotion
+		if local {
+			want = BackendLocal
+		}
+		if p.BackendName() != want {
+			t.Errorf("backend %q: BackendName = %q, want %q", backend, p.BackendName(), want)
+		}
+	}
+}
+
+func TestLocalProjectRoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	in := Config{Projects: map[string]ProjectConfig{
+		"a": {Name: "mine", WorkingDir: "/w", Backend: BackendLocal, PlanDir: "/plans"},
+	}}
+	if err := Save(in); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := Path()
+	data, _ := os.ReadFile(path)
+	if strings.Contains(string(data), "slices_ds_id") {
+		t.Fatalf("a local project wrote a slices_ds_id:\n%s", data)
+	}
+	out, _, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := out.Projects["a"]; got != in.Projects["a"] {
+		t.Fatalf("round trip: %+v", got)
+	}
+}
+
+func TestUsesNotion(t *testing.T) {
+	local := ProjectConfig{Backend: BackendLocal}
+	cases := []struct {
+		name string
+		cfg  Config
+		want bool
+	}{
+		{"nothing at all", Config{}, false},
+		{"a projects database and no project", Config{ProjectDBDataSourceID: "ds"}, true},
+		{"only local projects", Config{ProjectDBDataSourceID: "ds", Projects: map[string]ProjectConfig{"a": local}}, false},
+		{"a mixed config", Config{Projects: map[string]ProjectConfig{"a": local, "b": {}}}, true},
+		{"an old config", Config{Projects: map[string]ProjectConfig{"b": {SlicesDSID: "x"}}}, true},
+	}
+	for _, c := range cases {
+		if got := c.cfg.UsesNotion(); got != c.want {
+			t.Errorf("%s: UsesNotion = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestAssigneeFor(t *testing.T) {
+	cfg := Config{AssigneeUserID: "uid", AssigneeUserName: "Craig"}
+	if id, name := cfg.AssigneeFor(ProjectConfig{}); id != "uid" || name != "Craig" {
+		t.Errorf("notion: %q %q", id, name)
+	}
+	local := ProjectConfig{Backend: BackendLocal}
+	if id, name := cfg.AssigneeFor(local); id != "Craig" || name != "Craig" {
+		t.Errorf("local with a configured name: %q %q", id, name)
+	}
+
+	orig := currentUser
+	t.Cleanup(func() { currentUser = orig })
+	none := Config{}
+	currentUser = func() (*user.User, error) { return &user.User{Name: "Full Name", Username: "login"}, nil }
+	if id, name := none.AssigneeFor(local); id != "Full Name" || name != "Full Name" {
+		t.Errorf("logged-in name: %q %q", id, name)
+	}
+	currentUser = func() (*user.User, error) { return &user.User{Username: "login"}, nil }
+	if id, _ := none.AssigneeFor(local); id != "login" {
+		t.Errorf("login fallback: %q", id)
+	}
+	currentUser = func() (*user.User, error) { return nil, errors.New("no") }
+	if id, name := none.AssigneeFor(local); id != "" || name != "" {
+		t.Errorf("unreadable: %q %q", id, name)
 	}
 }

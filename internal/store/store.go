@@ -16,6 +16,7 @@ package store
 import (
 	"context"
 
+	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
@@ -32,6 +33,17 @@ type Project struct {
 	Name string
 	// SlicesID names the collection of slices the plan is kept in.
 	SlicesID string
+	// Local says the plan is a file of nat's own with no workspace behind it:
+	// there is nothing to mirror, and no credential to read.
+	Local bool
+	// PlanDir is where a local plan's file is kept, when not in nat's own data
+	// directory. Meaningless where Local is false.
+	PlanDir string
+}
+
+// ProjectOf narrows a config entry to what a store has any business reading.
+func ProjectOf(id string, c config.ProjectConfig) Project {
+	return Project{ID: id, Name: c.Name, SlicesID: c.SlicesDSID, Local: c.IsLocal(), PlanDir: c.PlanDir}
 }
 
 // Shape is what a store can record about one project's slices, and the

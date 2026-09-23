@@ -18,6 +18,13 @@ pushed after, `MarkSent` clearing the flag only on a successful push — and
 why milestone writes and `AddSlice` are the two exceptions that go to the
 workspace first instead.
 
+`Project.Local` / `Project.PlanDir` (built by `store.ProjectOf` from a config
+entry) say a plan is a file with no workspace behind it: `ForProject` returns
+the `Local` itself (remote may be nil), `PlanPath` honours the config's
+`plan_dir`, and `CreateLocalProject` lays the file down (`Local.InitProject`
+writes an *unstamped* project row, so `Shape` keeps answering yes to both
+columns and the plan never reads as hydrated).
+
 ## Shape
 
 - `Shape` is read, not assumed: exported `HasAssignee`/`HasBranch`/

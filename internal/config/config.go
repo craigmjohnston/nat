@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/user"
 	"path/filepath"
 	"time"
 )
@@ -22,9 +23,88 @@ var marshalIndent = json.MarshalIndent
 
 // ProjectConfig describes one tracked project.
 type ProjectConfig struct {
-	Name       string `json:"name"`
-	SlicesDSID string `json:"slices_ds_id"`
+	Name string `json:"name"`
+	// SlicesDSID is the Notion data source the plan is kept in. A project of
+	// nat's own has none, so it is omitted rather than written empty.
+	SlicesDSID string `json:"slices_ds_id,omitempty"`
 	WorkingDir string `json:"working_dir"`
+	// Backend is where the plan lives: [BackendLocal] or, for anything else,
+	// Notion. Omitted until it means something, so a config written before there
+	// was a choice round-trips unchanged and goes on meaning what it meant.
+	Backend string `json:"backend,omitempty"`
+	// PlanDir is the directory a local project's plan file is kept in, where the
+	// user chose one; empty is nat's own data directory. Meaningless for Notion.
+	PlanDir string `json:"plan_dir,omitempty"`
+}
+
+// The two places a plan can live.
+const (
+	BackendNotion = "notion"
+	BackendLocal  = "local"
+)
+
+// IsLocal reports whether the plan is a file of nat's own with no workspace
+// behind it. Only the local word says so: a backend a later nat invented is
+// one this build cannot open a file for, and anything else — the empty string
+// included — reads as Notion.
+func (p ProjectConfig) IsLocal() bool { return p.Backend == BackendLocal }
+
+// BackendName is the backend as it is said out loud: always one of the two
+// words, even for a project whose entry leaves it unwritten.
+func (p ProjectConfig) BackendName() string {
+	if p.IsLocal() {
+		return BackendLocal
+	}
+	return BackendNotion
+}
+
+// UsesNotion reports whether anything this machine tracks is kept in Notion,
+// which is what decides whether a Notion credential is needed at all: a
+// project whose plan is in Notion, or — with no project yet — the projects
+// database that projects would be made in. A config of local projects alone
+// needs none.
+func (c Config) UsesNotion() bool {
+	if len(c.Projects) == 0 {
+		return c.ProjectDBDataSourceID != ""
+	}
+	for _, p := range c.Projects {
+		if !p.IsLocal() {
+			return true
+		}
+	}
+	return false
+}
+
+// AssigneeFor is who works a project's slices: the workspace user onboarding
+// resolved for a project in Notion. A plan of its own has no directory of
+// users, so there the name is the identity — the configured name where one is
+// set, else whoever is logged in where the config names nobody. Both are
+// empty only where neither exists, which the callers already refuse.
+func (c Config) AssigneeFor(p ProjectConfig) (id, name string) {
+	if !p.IsLocal() {
+		return c.AssigneeUserID, c.AssigneeUserName
+	}
+	name = c.AssigneeUserName
+	if name == "" {
+		name = loggedIn()
+	}
+	return name, name
+}
+
+// currentUser is held as a variable so a test can stand in for the OS.
+var currentUser = user.Current
+
+// loggedIn is the name of whoever is logged in on this machine: their full
+// name where the OS keeps one, else their login. Empty where it cannot be read.
+func loggedIn() string {
+	u, err := currentUser()
+	if err != nil {
+		return ""
+	}
+	if u.Name != "" {
+		return u.Name
+	}
+	return u.Username
 }
 
 // AgentModel is which Claude Code an agent is launched as: the model and the

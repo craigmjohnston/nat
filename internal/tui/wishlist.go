@@ -86,7 +86,7 @@ func (a *App) workshopFlow() tea.Cmd {
 		return nil
 	}
 	st, _, _ := a.activeStore()
-	sp := store.Project{ID: a.cfg.ActiveProjectID, Name: project.Name, SlicesID: project.SlicesDSID}
+	sp := store.ProjectOf(a.cfg.ActiveProjectID, project)
 	return launchWishlistAgent(a.launcher, st, sp, a.cfg.ActiveProjectID, project.Name, expandHome(project.WorkingDir),
 		a.wishlist, trimModel(a.cfg.WorkshopAgent))
 }

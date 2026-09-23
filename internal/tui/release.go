@@ -55,12 +55,13 @@ func (a *App) releaseChosen(s domain.Slice, choice int) tea.Cmd {
 	if choice != choiceRelease {
 		return nil
 	}
-	st, _, ok := a.activeStore()
+	st, project, ok := a.activeStore()
 	if !ok {
 		return nil
 	}
 	a.busy, a.note = true, releaseNote
-	return releaseSlice(st, s, a.cfg.AssigneeUserName)
+	_, name := a.cfg.AssigneeFor(project)
+	return releaseSlice(st, s, name)
 }
 
 // releaseNote is what the status bar says while the release is in flight.

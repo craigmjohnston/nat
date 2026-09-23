@@ -387,7 +387,7 @@ func TestBuildAppReportsAnUnreadableConfig(t *testing.T) {
 }
 
 func TestBuildAppExplainsHowToInstallTheCLI(t *testing.T) {
-	writeConfig(t, `{}`)
+	writeConfig(t, `{"projects":{"p":{"name":"n","slices_ds_id":"s","working_dir":"/w"}}}`)
 
 	_, err := buildApp(failingTokens{err: config.ErrNtnNotInstalled})
 	if !errors.Is(err, config.ErrNtnNotInstalled) {
@@ -399,7 +399,7 @@ func TestBuildAppExplainsHowToInstallTheCLI(t *testing.T) {
 }
 
 func TestBuildAppExplainsHowToLogIn(t *testing.T) {
-	writeConfig(t, `{}`)
+	writeConfig(t, `{"projects":{"p":{"name":"n","slices_ds_id":"s","working_dir":"/w"}}}`)
 
 	_, err := buildApp(failingTokens{err: config.ErrNtnNotLoggedIn})
 	if !errors.Is(err, config.ErrNtnNotLoggedIn) {
@@ -411,7 +411,7 @@ func TestBuildAppExplainsHowToLogIn(t *testing.T) {
 }
 
 func TestBuildAppPassesThroughAnUnrecognisedTokenFailure(t *testing.T) {
-	writeConfig(t, `{}`)
+	writeConfig(t, `{"projects":{"p":{"name":"n","slices_ds_id":"s","working_dir":"/w"}}}`)
 	sentinel := errors.New("keychain locked")
 
 	_, err := buildApp(failingTokens{err: sentinel})
@@ -425,6 +425,16 @@ func TestBuildAppPassesThroughAnUnrecognisedTokenFailure(t *testing.T) {
 
 // Guard against the hint text drifting away from the constant main builds it
 // from, which is the only thing tying the message to the real binary name.
+// Nothing kept in Notion means nothing to check a credential for: a machine
+// tracking only plans of nat's own starts with no ntn on it at all.
+func TestBuildAppAsksForNoTokenWhereNothingIsInNotion(t *testing.T) {
+	writeConfig(t, `{"projects":{"p":{"name":"n","working_dir":"/w","backend":"local"}}}`)
+
+	if _, err := buildApp(failingTokens{err: config.ErrNtnNotInstalled}); err != nil {
+		t.Fatalf("a config of local projects alone must start without a token: %v", err)
+	}
+}
+
 func TestAuthHintNamesTheBinary(t *testing.T) {
 	err := authHint(config.ErrNtnNotLoggedIn)
 	if want := fmt.Sprintf("%s login", config.NtnBinary); !strings.Contains(err.Error(), want) {

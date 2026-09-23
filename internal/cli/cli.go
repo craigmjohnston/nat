@@ -150,8 +150,15 @@ func (e Env) nudged() {
 // from this Env's own token source. Every command that used to build its own
 // [store.Over] calls this instead, so a plan is opened and hydrated the same
 // way wherever a command reaches for one.
+//
+// A project of nat's own is opened with no Notion client at all, so no path
+// through here reads a token for it.
 func (e Env) storeFor(ctx context.Context, projectID string, project config.ProjectConfig) (store.Store, error) {
-	return store.ForProject(ctx, storeProject(projectID, project), store.Over(e.NewClient(e.Tokens.Token)))
+	var remote *store.Notion
+	if !project.IsLocal() {
+		remote = store.Over(e.NewClient(e.Tokens.Token))
+	}
+	return store.ForProject(ctx, storeProject(projectID, project), remote)
 }
 
 // Usage is the help text, listing every way the binary can be run.
@@ -254,6 +261,11 @@ usage:
                       local config and write the description as its page body;
                       --description - reads it from stdin. The board is left on
                       whatever project it was on
+  nat project-create <name> --local [--plan-dir DIR] [--repo DIR]
+                        [--description TEXT|-] [--json]
+                      the same, with no Notion workspace behind it: the plan
+                      is a file of nat's own, in DIR or nat's data directory.
+                      Touches Notion nowhere and needs no credential
   nat milestone-add <name> [--json] --project ID
                       add a Queued milestone at the end of the plan
   nat milestone-rename <old> <new> [--json] --project ID
@@ -485,11 +497,20 @@ func projectFlag(flags *flag.FlagSet) *string {
 // The project's page ID comes back beside its config entry, since a command
 // that reads the project page itself — its conventions, its wishlist — has no
 // other source for it.
+//
+// The config's assignee fields come back already resolved for this project
+// ([config.Config.AssigneeFor]): the workspace user onboarding picked for a plan
+// in Notion, the name of whoever works it for one of nat's own. Nothing that
+// reads them has to know which kind of project it is on.
 func (e Env) projectFor(id string) (config.Config, string, config.ProjectConfig, error) {
 	if strings.TrimSpace(id) == "" {
 		return e.noProject()
 	}
-	return e.namedProject(strings.TrimSpace(id))
+	cfg, key, project, err := e.namedProject(strings.TrimSpace(id))
+	if err == nil {
+		cfg.AssigneeUserID, cfg.AssigneeUserName = cfg.AssigneeFor(project)
+	}
+	return cfg, key, project, err
 }
 
 // noProject is the refusal a project-scoped command gives when it was told no

@@ -93,6 +93,15 @@ func LocalPath(projectID string) (string, error) {
 	return filepath.Join(dir, localSlug(projectID)+".db"), nil
 }
 
+// PlanPath is where a project's plan file is: LocalPath, or the same name in
+// the directory the project's config chose for it.
+func PlanPath(p Project) (string, error) {
+	if p.PlanDir == "" {
+		return LocalPath(p.ID)
+	}
+	return filepath.Join(p.PlanDir, localSlug(p.ID)+".db"), nil
+}
+
 // localSlug is a project ID as a filename: every run of anything but a letter,
 // a digit, a dot, a hyphen or an underscore collapsed to one hyphen, the same
 // rule internal/worktree slugs a branch into a path with. An ID that slugs away

@@ -888,16 +888,17 @@ func (a *App) storeFor(id string, cfg config.ProjectConfig) (store.Store, error)
 	if st, ok := a.stores[id]; ok {
 		return st, nil
 	}
-	path, err := store.LocalPath(id)
-	if err != nil {
-		return nil, fmt.Errorf("resolve the plan file: %w", err)
-	}
-	local, err := store.OpenLocal(path)
+	proj := store.ProjectOf(id, cfg)
+	local, err := store.OpenProject(proj)
 	if err != nil {
 		return nil, err
 	}
-	proj := store.Project{ID: id, Name: cfg.Name, SlicesID: cfg.SlicesDSID}
-	st := store.Store(store.Mirror(local, store.Over(a.client), proj))
+	// A project of nat's own is the file and nothing else: there is no workspace
+	// to mirror, and so nothing here that could want a credential.
+	st := store.Store(local)
+	if !proj.Local {
+		st = store.Mirror(local, store.Over(a.client), proj)
+	}
 	if a.stores == nil {
 		a.stores = map[string]store.Store{}
 	}
@@ -1114,6 +1115,11 @@ func (a *App) startLoad(force bool) tea.Cmd {
 	// otherwise: a refresh in flight is not yet news, and clearing the warning
 	// on the way out would take it off a board still showing the stale plan.
 	a.loading = true
+	// A project of nat's own has no page for a wishlist to be written on.
+	if cfg.IsLocal() {
+		a.wishlist = nil
+		return tea.Batch(a.spinner.Tick, a.fetchProject(st, a.cfg.ActiveProjectID, cfg, force))
+	}
 	return tea.Batch(a.spinner.Tick, a.fetchProject(st, a.cfg.ActiveProjectID, cfg, force),
 		a.fetchWishlist(a.cfg.ActiveProjectID))
 }
@@ -1175,7 +1181,7 @@ func (a *App) activeProject() (config.ProjectConfig, bool) {
 func (a *App) fetchProject(st store.Store, id string, cfg config.ProjectConfig, force bool) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
-		proj := store.Project{ID: id, Name: cfg.Name, SlicesID: cfg.SlicesDSID}
+		proj := store.ProjectOf(id, cfg)
 		var pullErr error
 		if force {
 			pullErr = store.Pull(ctx, st, proj)

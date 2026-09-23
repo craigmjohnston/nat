@@ -13,6 +13,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // saveConfig persists local config. It is held as a variable so tests can keep
@@ -30,6 +31,10 @@ type (
 		name      string
 		workdir   string
 		err       error
+		// localID is the ID of a project of nat's own, whose plan file was laid
+		// down before this message was sent. Set instead of structure: there is
+		// no Notion structure behind such a project.
+		localID string
 	}
 	// projectSwitchedMsg reports the project the board should show instead.
 	projectSwitchedMsg struct {
@@ -75,32 +80,55 @@ type NewProjectForm struct {
 	info     string
 	workdir  string
 	assignee bool
+	// local is where the plan will live: a file of nat's own rather than a
+	// Notion database. It is asked only where there is a choice, and is simply
+	// true where there is not — a board with no projects database has nowhere
+	// else to put one.
+	local bool
 }
 
-// newNewProjectForm returns the empty form for a new project.
-func newNewProjectForm(theme huh.Theme) *NewProjectForm {
-	f := &NewProjectForm{heading: "New project"}
-	f.form = newForm(theme, huh.NewGroup(
+// newNewProjectForm returns the empty form for a new project. choice says
+// whether Notion is there to be chosen: with it the form begins by asking where
+// the plan will live, and without it the plan is a local file and nothing is
+// asked.
+func newNewProjectForm(theme huh.Theme, choice bool) *NewProjectForm {
+	f := &NewProjectForm{heading: "New project", local: !choice}
+	var groups []*huh.Group
+	if choice {
+		groups = append(groups, huh.NewGroup(
+			huh.NewSelect[bool]().
+				Title("Where will the plan live?").
+				Description("In a Notion database, or in a file of nat's own with no workspace behind it.").
+				Options(
+					huh.NewOption("In Notion", false),
+					huh.NewOption("In a local file", true),
+				).
+				Value(&f.local),
+		))
+	}
+	groups = append(groups, huh.NewGroup(
 		huh.NewInput().
 			Title("Name").
 			Value(&f.name).
 			Validate(required("a name")),
 		huh.NewText().
 			Title("Info").
-			Description("Becomes the project page body — the conventions every agent reads.").
+			Description("The project's conventions — what every agent reads.").
 			Value(&f.info),
 		huh.NewInput().
 			Title("Working directory").
 			Description("Where this project's agents start; kept in local config, not Notion.").
 			Value(&f.workdir).
 			Validate(existingDir),
+	), huh.NewGroup(
 		huh.NewConfirm().
 			Title("Track an assignee?").
 			Description("Adds an Assignee column to the Slices table. A single-player project needs none — status says whose turn it is.").
 			Affirmative("Yes").
 			Negative("No").
 			Value(&f.assignee),
-	))
+	).WithHideFunc(func() bool { return f.local }))
+	f.form = newForm(theme, groups...)
 	return f
 }
 
@@ -134,6 +162,9 @@ func (f *NewProjectForm) busyNote() string { return "Creating the project…" }
 
 // save builds the project the completed form describes.
 func (f *NewProjectForm) save(a *App) tea.Cmd {
+	if f.local {
+		return createLocalProject(strings.TrimSpace(f.name), f.info, expandHome(strings.TrimSpace(f.workdir)))
+	}
 	return createProject(a.client, a.cfg.ProjectDBDataSourceID,
 		strings.TrimSpace(f.name), f.info, expandHome(strings.TrimSpace(f.workdir)), f.assignee)
 }
@@ -159,6 +190,22 @@ func createProject(client NotionAPI, projectsDSID, name, info, workdir string, a
 			}
 		}
 		return projectCreatedMsg{structure: s, name: name, workdir: workdir, err: err}
+	}
+}
+
+// createLocalProject lays down the plan of a project with no workspace behind
+// it: an ID of nat's own, shaped like a page ID, and the plan file with its
+// conventions. Nothing here reaches Notion. The file is written before the
+// message goes back, and the config entry is written only when the message
+// arrives — so a plan that could not be laid down is never named by a config.
+func createLocalProject(name, info, workdir string) tea.Cmd {
+	return func() tea.Msg {
+		id := store.NewProjectID()
+		p := store.Project{ID: id, Name: name, Local: true}
+		if err := store.CreateLocalProject(context.Background(), p, strings.TrimSpace(info)); err != nil {
+			return projectCreatedMsg{err: fmt.Errorf("create project: %w", err)}
+		}
+		return projectCreatedMsg{localID: id, name: name, workdir: workdir}
 	}
 }
 
@@ -361,16 +408,16 @@ func openProject(client NotionAPI, id, name string) tea.Cmd {
 }
 
 // newProjectFlow opens the new-project form. It needs no active project — it is
-// how the first one comes to exist — only the projects database onboarding
-// picked, and a client to create under it.
+// how the first one comes to exist. Where the projects database onboarding
+// picked is there, the form asks where the plan will live; where it is not, the
+// plan is a local file and there is nothing to ask, which is what lets a board
+// with no workspace behind it make a project rather than refuse.
 func (a *App) newProjectFlow() tea.Cmd {
-	if a.client == nil || a.busy {
+	if a.busy {
 		return nil
 	}
-	if a.cfg.ProjectDBDataSourceID == "" {
-		return a.showToast("No projects database is configured, so there is nowhere to create a project.", sevWarning)
-	}
-	return a.openForm(newNewProjectForm(a.styles.FormTheme))
+	choice := a.client != nil && a.cfg.ProjectDBDataSourceID != ""
+	return a.openForm(newNewProjectForm(a.styles.FormTheme, choice))
 }
 
 // switchProjectFlow opens the project picker over the configured projects and
@@ -416,19 +463,21 @@ func (a *App) workspaceProjectsListed(msg workspaceProjectsMsg) tea.Cmd {
 // and reloads the board onto it.
 func (a *App) projectCreated(msg projectCreatedMsg) (tea.Model, tea.Cmd) {
 	a.busy = false
-	if msg.structure == nil {
+	if msg.structure == nil && msg.localID == "" {
 		a.note, a.err = "", msg.err
 		return a, nil
 	}
 	if a.cfg.Projects == nil {
 		a.cfg.Projects = map[string]config.ProjectConfig{}
 	}
-	a.cfg.Projects[msg.structure.PageID] = config.ProjectConfig{
-		Name:       msg.name,
-		SlicesDSID: msg.structure.SlicesDSID,
-		WorkingDir: msg.workdir,
+	id := msg.localID
+	entry := config.ProjectConfig{Name: msg.name, WorkingDir: msg.workdir, Backend: config.BackendLocal}
+	if msg.structure != nil {
+		id = msg.structure.PageID
+		entry = config.ProjectConfig{Name: msg.name, SlicesDSID: msg.structure.SlicesDSID, WorkingDir: msg.workdir}
 	}
-	a.cfg.ActiveProjectID = msg.structure.PageID
+	a.cfg.Projects[id] = entry
+	a.cfg.ActiveProjectID = id
 	err := errors.Join(msg.err, a.persist())
 	// The reload is started first: it clears the error banner, and anything that
 	// went wrong on the way here is worth more than an empty one.

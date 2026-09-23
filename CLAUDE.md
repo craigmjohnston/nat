@@ -164,6 +164,24 @@ see `internal/notion/CLAUDE.md`); removing one refuses while any slice is
 still filed under it; moving one changes only its place among the options,
 reading and writing no slice at all.
 
+**Projects with no workspace.** A project's config entry carries an optional
+`backend` (`local`, else Notion — the empty string and any word a later nat
+invented read as Notion, since only `local` is one this build can open a file
+for) and, for a local one, a `plan_dir`. Both are omitted until they mean
+something, so an old config round-trips unchanged. A local project's ID is
+nat's own (`store.NewProjectID`, page-ID-shaped so nothing carrying one can
+tell the two apart), its plan is the SQLite file alone (`store.ForProject`
+returns the `Local` with no `Mirrored` and no client), and it needs no Notion
+token on any path: startup fetches one only where `Config.UsesNotion`, and
+who works its slices is `Config.AssigneeFor` — the name *is* the identity,
+falling back to whoever is logged in. Creating one writes the plan file
+**before** the config entry (`nat project-create --local [--plan-dir]`; the
+board's `N`, which asks where the plan lives only when a projects database
+gives a choice). `wishlist` / `wishlist-clear` refuse a local project by name
+(a wishlist is a Notion page section); `workshop-launch` skips the read.
+`config-show` says every project's backend. gnat's `ProjectConfig` /
+`ConfigDocProject` decode all of it and tolerate a missing `slices_ds_id`.
+
 **Plan order.** Read from the Slices data source's first view's own row
 order (`notion.PlanOrder`), never from `created_time` — Notion records that
 only to the minute, which is no order at all for a plan written in one

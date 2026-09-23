@@ -1163,3 +1163,17 @@ func (l *Local) DeleteSession(ctx context.Context, id string) error {
 		return nil
 	})
 }
+
+// InitProject writes a plan of nat's own its project row: the ID and name, and
+// the conventions its agents read. It leaves the row unstamped — no synced_at —
+// which is what keeps [Local.Shape] answering yes to both columns and the plan
+// reading as what it is, one that was never pulled from anywhere. Re-running it
+// renames the project and replaces the conventions, and touches nothing else.
+func (l *Local) InitProject(ctx context.Context, p Project, conventions string) error {
+	return l.withTx(ctx, "create the project", func(tx *sql.Tx) error {
+		return l.exec(ctx, tx, "create the project",
+			`INSERT INTO project (id, name, conventions) VALUES (?, ?, ?)
+			 ON CONFLICT(id) DO UPDATE SET name = excluded.name, conventions = excluded.conventions`,
+			p.ID, p.Name, conventions)
+	})
+}

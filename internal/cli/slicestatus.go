@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // sliceStatus reads one slice's status fresh, straight off its page rather
@@ -44,8 +46,12 @@ func sliceStatus(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	if _, _, _, err := env.projectFor(*projectRef); err != nil {
+	_, projectID, project, err := env.projectFor(*projectRef)
+	if err != nil {
 		return err
+	}
+	if project.IsLocal() {
+		return localSliceStatus(ctx, env, projectID, project, id, *asJSON)
 	}
 
 	client := env.NewClient(env.Tokens.Token)
@@ -65,6 +71,29 @@ func sliceStatus(ctx context.Context, args []string, env Env) error {
 		return writeJSON(env.Out, sliceStatusJSON{Status: status, Trashed: trashed})
 	}
 	_, err = io.WriteString(env.Out, sliceStatusMarkdown(status, trashed))
+	return err
+}
+
+// localSliceStatus is slice-status for a plan of nat's own, which has no page to
+// read: the slice is read out of the plan file, and one the file has never
+// held is gone, exactly as a page Notion has no record of is. A slice in a
+// plan file is never trashed — deleting one removes the row.
+func localSliceStatus(ctx context.Context, env Env, projectID string, project config.ProjectConfig, id string, asJSON bool) error {
+	st, err := env.storeFor(ctx, projectID, project)
+	if err != nil {
+		return err
+	}
+	s, _, err := st.Slice(ctx, id)
+	if errors.Is(err, store.ErrSliceNotFound) {
+		return writeSliceStatusGone(env.Out, asJSON)
+	}
+	if err != nil {
+		return fmt.Errorf("read the slice: %w", err)
+	}
+	if asJSON {
+		return writeJSON(env.Out, sliceStatusJSON{Status: string(s.Status)})
+	}
+	_, err = io.WriteString(env.Out, sliceStatusMarkdown(string(s.Status), false))
 	return err
 }
 

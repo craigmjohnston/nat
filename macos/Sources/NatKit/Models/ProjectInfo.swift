@@ -180,22 +180,81 @@ public struct NatProjectConfig: Codable, Equatable, Sendable {
     }
 }
 
+/// Where a project's plan lives: a Notion database, or a file of nat's own with
+/// no workspace behind it.
+///
+/// Only the word `local` says the second; anything else — an absent key, the
+/// empty string, a backend a later nat invented — reads as Notion, which is
+/// what every project meant before there was a choice. It is decoded from a
+/// string rather than as an enum so an unknown one can never fail the read: a
+/// config that will not parse is an app showing onboarding to somebody who has
+/// already onboarded.
+public enum PlanBackend: String, Equatable, Sendable {
+    case notion
+    case local
+
+    /// The backend a config file's (or `config-show`'s) word for it means.
+    public init(word: String?) {
+        self = word == PlanBackend.local.rawValue ? .local : .notion
+    }
+}
+
 /// Configuration for a single tracked project.
 public struct ProjectConfig: Codable, Equatable, Sendable {
     public let name: String
-    public let slicesDSID: String
+    /// The Notion data source the plan is kept in. A project of nat's own has
+    /// none, so the key is absent from its entry and this is nil.
+    public let slicesDSID: String?
     public let workingDir: String
+    /// Where the plan lives; Notion wherever the entry says nothing.
+    public let backend: PlanBackend
+    /// The directory a local project's plan file is kept in, where its entry
+    /// names one; nil is nat's own data directory.
+    public let planDir: String?
 
     enum CodingKeys: String, CodingKey {
         case name
         case slicesDSID = "slices_ds_id"
         case workingDir = "working_dir"
+        case backend
+        case planDir = "plan_dir"
     }
 
-    public init(name: String, slicesDSID: String, workingDir: String) {
+    public init(
+        name: String,
+        slicesDSID: String? = nil,
+        workingDir: String,
+        backend: PlanBackend = .notion,
+        planDir: String? = nil
+    ) {
         self.name = name
         self.slicesDSID = slicesDSID
         self.workingDir = workingDir
+        self.backend = backend
+        self.planDir = planDir
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        slicesDSID = try c.decodeIfPresent(String.self, forKey: .slicesDSID)
+        workingDir = try c.decode(String.self, forKey: .workingDir)
+        // A backend of the wrong type is no more a reason to lose the config
+        // than one this build does not know: both read as Notion.
+        backend = PlanBackend(word: try? c.decodeIfPresent(String.self, forKey: .backend))
+        planDir = try c.decodeIfPresent(String.self, forKey: .planDir)
+    }
+
+    /// Written the way nat writes it: the backend and plan directory only
+    /// where they mean something, so an entry for a Notion project round-trips
+    /// unchanged.
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(name, forKey: .name)
+        try c.encodeIfPresent(slicesDSID, forKey: .slicesDSID)
+        try c.encode(workingDir, forKey: .workingDir)
+        if backend == .local { try c.encode(backend.rawValue, forKey: .backend) }
+        try c.encodeIfPresent(planDir, forKey: .planDir)
     }
 }
 

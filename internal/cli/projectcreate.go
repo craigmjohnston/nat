@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // getwd is where a project-create given no --repo puts the project's agents:
@@ -37,6 +40,8 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 	repo := flags.String("repo", "", "where this project's agents work; defaults to the current directory")
 	description := flags.String("description", "", "the conventions to write on the project page; `-` reads them from stdin")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
+	local := flags.Bool("local", false, "keep the plan in a file of nat's own, with no Notion workspace behind it")
+	planDir := flags.String("plan-dir", "", "with --local: the directory to keep the plan file in; defaults to nat's own data directory")
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
@@ -48,6 +53,9 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 	if name == "" {
 		return usageErrorf("project-create: the project name is empty")
 	}
+	if *planDir != "" && !*local {
+		return usageErrorf("project-create: --plan-dir only means something with --local: a plan in Notion is kept there")
+	}
 	// Both are settled before Notion is touched, so a project-create whose stdin
 	// cannot be read, or which has no directory to name, fails having created
 	// nothing.
@@ -58,6 +66,10 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 	workdir, err := workingDir(*repo)
 	if err != nil {
 		return err
+	}
+
+	if *local {
+		return projectCreateLocal(ctx, env, name, info, workdir, *planDir, *asJSON)
 	}
 
 	cfg, err := env.workspace()
@@ -97,6 +109,82 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 		return errors.Join(err, werr)
 	}
 	return err
+}
+
+// projectCreateLocal is project-create for a project with no workspace behind
+// it, which touches Notion nowhere: no page, no projects database, no token. Its
+// ID is nat's own, shaped like a page ID so that everything which carries one
+// around cannot tell the two apart.
+//
+// The plan file is written before the config entry, and the entry is not
+// written at all if the file could not be laid down: a config naming a project
+// whose plan is not there is one every later command fails on.
+func projectCreateLocal(ctx context.Context, env Env, name, conventions, workdir, planDir string, asJSON bool) error {
+	dir, err := absPlanDir(planDir)
+	if err != nil {
+		return err
+	}
+	// No configuration yet is not an obstacle here: the first thing a machine
+	// with no Notion workspace does is make a project, and that is what starts one.
+	cfg, _, err := env.Load()
+	if err != nil {
+		return err
+	}
+	id := store.NewProjectID()
+	entry := config.ProjectConfig{Name: name, WorkingDir: workdir, Backend: config.BackendLocal, PlanDir: dir}
+	if err := store.CreateLocalProject(ctx, store.ProjectOf(id, entry), conventions); err != nil {
+		return fmt.Errorf("create the plan: %w", err)
+	}
+	logging.Action("project created", "project", id, "name", name, "backend", config.BackendLocal)
+	if cfg.Projects == nil {
+		cfg.Projects = map[string]config.ProjectConfig{}
+	}
+	cfg.Projects[id] = entry
+	if err := env.Save(cfg); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+	env.nudged()
+
+	if asJSON {
+		return writeJSON(env.Out, projectCreatedJSON{Project: createdProjectJSON{
+			ID: id, Name: name, WorkingDir: workdir, Backend: config.BackendLocal, PlanDir: dir,
+		}})
+	}
+	_, err = io.WriteString(env.Out, localProjectCreatedMarkdown(id, name, workdir, dir))
+	return err
+}
+
+// absPlanDir is the plan directory as config keeps it: home expanded and made
+// absolute, so the entry means the same wherever a later command is run from.
+// Empty stays empty — nat's own data directory is not written down.
+func absPlanDir(dir string) (string, error) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return "", nil
+	}
+	dir = actions.ExpandHome(dir)
+	if filepath.IsAbs(dir) {
+		return filepath.Clean(dir), nil
+	}
+	cwd, err := getwd()
+	if err != nil {
+		return "", fmt.Errorf("resolve --plan-dir: %w", err)
+	}
+	return filepath.Join(cwd, dir), nil
+}
+
+// localProjectCreatedMarkdown reports a project of nat's own as created.
+func localProjectCreatedMarkdown(id, name, workdir, planDir string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# %s\n\n", name)
+	b.WriteString("Created, with an empty plan kept in a file of nat's own — no Notion workspace behind it.\n\n")
+	fmt.Fprintf(&b, "- Project ID: %s\n", id)
+	if planDir != "" {
+		fmt.Fprintf(&b, "- Plan directory: %s\n", planDir)
+	}
+	fmt.Fprintf(&b, "- Working directory: %s\n", workdir)
+	fmt.Fprintf(&b, "- %s\n", switchNote)
+	return b.String()
 }
 
 // appendPageBody writes the project's conventions onto its page. It is the page
@@ -177,6 +265,10 @@ type createdProjectJSON struct {
 	SlicesDSID string `json:"slices_ds_id"`
 	WorkingDir string `json:"working_dir"`
 	Assignee   bool   `json:"assignee"`
+	// Backend and PlanDir are set only for a project of nat's own, which has no
+	// page, database or data source to report.
+	Backend string `json:"backend,omitempty"`
+	PlanDir string `json:"plan_dir,omitempty"`
 }
 
 // projectCreatedMarkdown reports the project as created, saying the two things
