@@ -51,9 +51,6 @@ columns and the plan never reads as hydrated).
   vs. its properties).
 - Every backend refuses **in its own words** — never invent a shared error
   vocabulary here.
-- The wishlist is still read outside this package (`nat wishlist`,
-  `wishlist-clear`, the workshop launch) — it's a section with its own
-  editing rules rather than prose, and belongs to no `Shape`.
 
 ## Notion backend (`notion.go`)
 

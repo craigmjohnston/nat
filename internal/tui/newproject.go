@@ -544,7 +544,6 @@ func (a *App) persist() error {
 // the active one in its place.
 func (a *App) showActiveProject() tea.Cmd {
 	a.project = nil
-	a.wishlist = nil
 	a.board.SetProject(nil)
 	a.info.Reset()
 	// The diff on the review screen is of a branch in the project being left,

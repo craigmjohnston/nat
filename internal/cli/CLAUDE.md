@@ -29,8 +29,7 @@ where the caller meant.
 for the project (`Config.AssigneeFor`), and `Env.storeFor` builds no Notion
 client for a local project — so `project-create --local`, and everything run
 against such a project (`slice-status` included, which reads the plan file
-instead of a page), works with no credential. `wishlist`/`wishlist-clear`
-refuse a local project (`refuseLocal`).
+instead of a page), works with no credential.
 
 ## Deliberate duplication — ports, not calls
 
@@ -69,8 +68,7 @@ CLAUDE.md's Domain rules, this package only parses flags and calls
 `store.Store`), `release-slice`, `slice-add`, `milestone-add`/`-rename`/
 `-remove`/`-move`, `slice-depends` (cycle refusal — reads the *whole* plan
 graph before writing, so `--clear` alone never needs to and always
-succeeds), `plan-apply`, `project-create`, `config-set`, `wishlist`/
-`wishlist-clear`.
+succeeds), `plan-apply`, `project-create`, `config-set`.
 
 - `slice-edit` — **Todo-only**, same rule as the board's edit key: In
   progress refuses with "work in flight cannot be edited under its agent",

@@ -106,9 +106,8 @@ headless command:
 ## PR descriptions (`prdescription.go`)
 
 - `PRDescriptionOf(blocks)` reads the blocks between a `## PR description`
-  heading (matched case-insensitively, any heading level — same rule as the
-  wishlist heading) and the next heading of the same-or-higher level,
-  rendered back to markdown.
+  heading (matched case-insensitively, any heading level) and the next heading of the
+  same-or-higher level, rendered back to markdown.
 - The **last** matching section wins, not the first — a slice handed back
   twice (reviewed, commented on, pushed again) carries one section per
   hand-back, and the current description is the one written last.

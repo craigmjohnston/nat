@@ -11,7 +11,6 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
-	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // A bare pre-upgrade planning session belongs to no project, so it is the one
@@ -84,17 +83,37 @@ func TestWorkshopLaunchesAPlainSession(t *testing.T) {
 	}
 }
 
-func TestWorkshopLaunchesOnTheWishlist(t *testing.T) {
-	api := &fakeAPI{blocks: wishlistBlocks(t)}
+// With no request the launch is a plain planning session, and no longer reads
+// the project page to decide that: a page that cannot be read (the plan's
+// inlined conventions are the one read left, and it fails soft) does not fail
+// the launch, and the output carries only the session and its directory.
+func TestWorkshopLaunchWithNoRequestIsAPlainSessionWhateverThePageSays(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("TMPDIR", dir)
+	api := &fakeAPI{blocksErr: errors.New("notion is down")}
 	env, out := testEnv(testConfig(t), api)
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
-	err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"workshop-launch", "--json", "--project", "project-1"}, env)
 	if err != nil {
 		t.Fatalf("workshop-launch: %v", err)
 	}
-	if !strings.Contains(out.String(), "pending wishlist") {
-		t.Errorf("output = %q, want it to say it launched on the wishlist", out.String())
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("output %q is not JSON: %v", out.String(), err)
+	}
+	if len(got) != 2 || got["session"] == nil || got["workdir"] == nil {
+		t.Errorf("output = %v, want only session and workdir", got)
+	}
+	if prompt := launchedPlanPrompt(t, dir); !strings.Contains(prompt, "/queue-work") || strings.Contains(prompt, "## The request") {
+		t.Errorf("prompt = %q, want a plain planning prompt with no request", prompt)
+	}
+}
+
+func TestWorkshopLaunchMarkdownNamesOnlyTheSessionAndDirectory(t *testing.T) {
+	got := workshopLaunchMarkdown("plan-x", "/w")
+	if want := "# Planning agent launched\n\n- Session: plan-x\n- Working directory: /w\n"; got != want {
+		t.Errorf("markdown = %q, want %q", got, want)
 	}
 }
 
@@ -183,35 +202,6 @@ func TestWorkshopLaunchRefusesAnInvalidFrontend(t *testing.T) {
 	}
 }
 
-func TestWorkshopLaunchRequestOutranksThePendingWishlist(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("TMPDIR", dir)
-	api := &fakeAPI{blocks: wishlistBlocks(t)}
-	env, out := testEnv(testConfig(t), api)
-	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
-
-	err := Run(context.Background(), []string{
-		"workshop-launch", "--request", "Something else entirely.", "--project", "project-1",
-	}, env)
-	if err != nil {
-		t.Fatalf("workshop-launch: %v", err)
-	}
-	if strings.Contains(out.String(), "pending wishlist") {
-		t.Errorf("output = %q, a request should not launch on the wishlist", out.String())
-	}
-	// The request is what the agent starts on, not the wishlist items as their
-	// own request — the plan inlined ahead of it carries the project's own
-	// page content whole, wishlist heading included, the same as `nat info`
-	// already would.
-	prompt := launchedPlanPrompt(t, dir)
-	if !strings.Contains(prompt, "Something else entirely.") {
-		t.Errorf("prompt = %q, want the request", prompt)
-	}
-	if strings.Contains(prompt, "nat wishlist-clear") {
-		t.Errorf("prompt = %q, want the request rather than the wishlist launch", prompt)
-	}
-}
-
 func TestWorkshopLaunchReadsTheRequestFromStdin(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("TMPDIR", dir)
@@ -236,20 +226,6 @@ func TestWorkshopLaunchRefusesStdinRequestWithNothingToRead(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "--request - was given but there is nothing to read") {
 		t.Errorf("err = %v, want the empty stdin named", err)
 	}
-}
-
-// wishlistBlocks is a project page body carrying one pending wishlist item.
-func wishlistBlocks(t *testing.T) []notion.Block {
-	t.Helper()
-	const raw = `[
-		{"id":"h1","type":"heading_2","heading_2":{"rich_text":[{"plain_text":"Wishlist"}]}},
-		{"id":"b1","type":"bulleted_list_item","bulleted_list_item":{"rich_text":[{"plain_text":"Add dark mode."}]}}
-	]`
-	var blocks []notion.Block
-	if err := json.Unmarshal([]byte(raw), &blocks); err != nil {
-		t.Fatal(err)
-	}
-	return blocks
 }
 
 func TestWorkshopLaunchModelFlagsOverrideConfig(t *testing.T) {
@@ -339,26 +315,11 @@ func TestWorkshopLaunchRefusesAnUnknownProject(t *testing.T) {
 	}
 }
 
-func TestWorkshopLaunchReportsAFailedPageRead(t *testing.T) {
-	api := &fakeAPI{blocksErr: errors.New("notion is down")}
-	env, _ := testEnv(testConfig(t), api)
-	// A fake tmux with nothing live, so the liveness check ahead of the read
-	// answers for this test rather than for whatever the machine running it
-	// happens to have launched.
-	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
-
-	err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env)
-
-	if err == nil || !strings.Contains(err.Error(), "load project page") {
-		t.Errorf("err = %v, want the failed read named", err)
-	}
-}
-
 func TestWorkshopLaunchReportsAFailedPromptFile(t *testing.T) {
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
-	// The fake tmux for the reason TestWorkshopLaunchReportsAFailedPageRead
-	// carries one.
+	// A fake tmux with nothing live, so the liveness check answers for this test
+	// rather than for whatever the machine running it happens to have launched.
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
 	err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env)

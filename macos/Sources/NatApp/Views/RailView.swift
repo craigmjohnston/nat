@@ -316,7 +316,7 @@ struct RailView: View {
         }
         // The first plan to land opens the milestones already moving — the
         // current one and any with work done or in flight — and leaves the
-        // untouched ones closed, the way the mock draws Wishlist; everything
+        // untouched ones closed, the way the mock draws the rail; everything
         // after that is the user's folding.
         .onChange(of: railModel.todoFolders.isEmpty, initial: true) { _, isEmpty in
             guard !expandedSeeded, !isEmpty else { return }

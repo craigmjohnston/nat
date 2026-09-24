@@ -740,7 +740,7 @@ final class AppModelTests: XCTestCase {
         let recorder = WorkshopLaunchRecorder()
         let appModel = await workshopModel { projectID, model, effort, request in
             recorder.record(projectID: projectID, model: model, effort: effort, request: request)
-            return WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
+            return WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a")
         }
         appModel.selectedSliceID = "slice-1"
 
@@ -757,7 +757,7 @@ final class AppModelTests: XCTestCase {
         let recorder = WorkshopLaunchRecorder()
         let appModel = await workshopModel(planningAgentAppears: true) { projectID, model, effort, request in
             recorder.record(projectID: projectID, model: model, effort: effort, request: request)
-            return WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
+            return WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a")
         }
 
         await appModel.launchWorkshop(request: "  Add dark mode.  \n")
@@ -785,7 +785,7 @@ final class AppModelTests: XCTestCase {
                 await Task.yield()
             }
         ) { _, _, _, _ in
-            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
+            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a")
         }
         probe.model = appModel
 
@@ -806,7 +806,7 @@ final class AppModelTests: XCTestCase {
         // The activity poll reports nothing, ever — a session that exited on
         // the spot, or a tmux the poll cannot read.
         let appModel = await workshopModel { _, _, _, _ in
-            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
+            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a")
         }
 
         await appModel.launchWorkshop(request: "")
@@ -877,7 +877,7 @@ final class AppModelTests: XCTestCase {
             configReader: MockConfigReader(response: .failure),
             workshopLauncher: { projectID, model, effort, request in
                 recorder.record(projectID: projectID, model: model, effort: effort, request: request)
-                return WorkshopLaunchResult(session: "nat-plan", workdir: "/", wishlist: false)
+                return WorkshopLaunchResult(session: "nat-plan", workdir: "/")
             }
         )
 
@@ -924,7 +924,7 @@ final class AppModelTests: XCTestCase {
     @MainActor
     func testWorkshopSelected_isPerProject() async {
         let appModel = await workshopModel { _, _, _, _ in
-            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
+            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a")
         }
 
         appModel.workshopSelected = true
@@ -940,7 +940,7 @@ final class AppModelTests: XCTestCase {
     @MainActor
     func testWorkshopSelected_setterCanDeselect() async {
         let appModel = await workshopModel { _, _, _, _ in
-            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
+            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a")
         }
 
         appModel.workshopSelected = true
@@ -963,7 +963,7 @@ final class AppModelTests: XCTestCase {
     @MainActor
     func testWorkshopDraft_isKeptAcrossActivateProject() async {
         let appModel = await workshopModel { _, _, _, _ in
-            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
+            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a")
         }
 
         appModel.workshopDraft = "Add dark mode."
@@ -987,7 +987,7 @@ final class AppModelTests: XCTestCase {
     @MainActor
     func testLaunchWorkshop_clearsTheDraftOnSuccess() async {
         let appModel = await workshopModel(planningAgentAppears: true) { _, _, _, _ in
-            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)
+            WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a")
         }
         appModel.workshopDraft = "Add dark mode."
 

@@ -22,6 +22,12 @@ func paragraph(id, text string) string {
 		`"paragraph":{"rich_text":[{"plain_text":"` + text + `"}]}}`
 }
 
+func heading(id string, level int, text string) string {
+	typ := "heading_" + string(rune('0'+level))
+	return `{"id":"` + id + `","type":"` + typ + `","has_children":false,"` + typ +
+		`":{"rich_text":[{"plain_text":"` + text + `"}]}}`
+}
+
 // TestPRDescriptionOf reads the section the way the approve action does: the
 // blocks under the heading, and nothing of the page around it.
 func TestPRDescriptionOf(t *testing.T) {
@@ -57,7 +63,7 @@ func TestPRDescriptionOfTakesTheLastSection(t *testing.T) {
 }
 
 // A heading deeper than the section's own is part of it: the section ends at
-// the next heading of the same or higher level, exactly as the wishlist's does.
+// the next heading of the same or higher level.
 func TestPRDescriptionOfKeepsDeeperHeadings(t *testing.T) {
 	body := blocksOf(t,
 		heading("h1", 2, "PR description"),

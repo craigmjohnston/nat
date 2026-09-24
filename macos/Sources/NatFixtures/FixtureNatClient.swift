@@ -214,8 +214,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         try await record("workshop-launch \(projectID)")
         return WorkshopLaunchResult(
             session: TmuxSession.planSessionName(projectID: projectID),
-            workdir: "/Users/craig/Projects/notion-agent-tracker",
-            wishlist: false
+            workdir: "/Users/craig/Projects/notion-agent-tracker"
         )
     }
 

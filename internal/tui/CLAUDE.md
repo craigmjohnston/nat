@@ -145,8 +145,8 @@ directly; check each file, don't assume every one routes through `actions`.
 `N` (`NewProjectForm`) asks where the plan lives only when a projects
 database gives a choice; without one the plan is local and nothing is asked,
 and the assignee group is hidden for local. `App.storeFor` opens a local
-project's `Local` directly (no `Mirror`), `startLoad` skips the wishlist read
-for one, and assignee identity comes from `Config.AssigneeFor(project)`.
+project's `Local` directly (no `Mirror`), and assignee identity comes from
+`Config.AssigneeFor(project)`.
 
 ## Smaller subsystems
 

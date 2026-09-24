@@ -31,7 +31,7 @@ func everyCommandAPI(t *testing.T) *fakeAPI {
 	return &fakeAPI{
 		blocksByID: map[string][]notion.Block{
 			"project-1":    conventionBlocks(t),
-			otherProjectID: wishlistPage(t),
+			otherProjectID: conventionBlocks(t),
 		},
 		dataSources: map[string]notion.DataSource{
 			"slices-ds": assigneeSlicesDS("M1: Client"),
@@ -80,8 +80,6 @@ func TestEveryProjectScopedCommandTakesAProjectFlag(t *testing.T) {
 			touched: "other-ds",
 		},
 		{name: "slice-depends", args: []string{"slice-depends", otherTodoID, "--on", otherWorkingID}},
-		{name: "wishlist", args: []string{"wishlist"}, touched: otherProjectID},
-		{name: "wishlist-clear", args: []string{"wishlist-clear", "w1"}, touched: otherProjectID},
 		{
 			name:    "complete-slice",
 			args:    []string{"complete-slice", otherWorkingID, "--branch", "slice/ship-it", "--summary", "shipped"},
@@ -190,8 +188,6 @@ func TestWithoutTheFlagEveryProjectScopedCommandIsRefused(t *testing.T) {
 		{"milestone-add", "M2: Other"},
 		{"slice-add", "Wire it up", "--milestone", "M1: Other"},
 		{"slice-depends", otherTodoID, "--on", otherWorkingID},
-		{"wishlist"},
-		{"wishlist-clear", "w1"},
 		{"complete-slice", otherWorkingID, "--branch", "slice/ship-it"},
 		{"release-slice", otherWorkingID},
 		{"plan-apply"},

@@ -10,7 +10,6 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files")
@@ -379,17 +378,6 @@ func TestPlanPromptFallsBackToNatInfoWhenThePlanCouldNotBeRead(t *testing.T) {
 	}
 }
 
-// The wishlist prompt carries the plan the same way the plain planning
-// prompt does.
-func TestWishlistPromptCarriesTheRenderedPlanInline(t *testing.T) {
-	const dir = "/Users/craig/Projects/notion-agent-tracker"
-	plan := "# notion-agent-tracker\n\n## Milestones\n\n- 1. M1 — Active\n"
-	got := WishlistPrompt(testProjectID, "notion-agent-tracker", dir, testWishlist(), plan, "")
-	if !strings.Contains(got, plan) {
-		t.Errorf("wishlist prompt does not carry the rendered plan inline:\n%s", got)
-	}
-}
-
 func TestPromptFlagsARepoOverrideOnlyWhenItDiffers(t *testing.T) {
 	const note = "overrides the project default"
 
@@ -615,87 +603,9 @@ func TestPromptFlagsAWorktreesOverrideByItsCheckout(t *testing.T) {
 	}
 }
 
-// testWishlist is a wishlist as the client reads it off the project page: the
-// second item carries a sub-bullet, because the items go into the prompt whole.
-func testWishlist() []notion.WishlistItem {
-	return []notion.WishlistItem{
-		{ID: "3bd38308-f654-8100-9b7a-c1f8e2d4a001", Markdown: "- Add a newline between the status bar and the key hints"},
-		{ID: "3bd38308-f654-8100-9b7a-c1f8e2d4a002", Markdown: "- Selective refresh\n    - only the milestones that moved"},
-	}
-}
-
-func TestWishlistPrompt(t *testing.T) {
-	golden(t, "wishlist-prompt", WishlistPrompt(testProjectID, "notion-agent-tracker",
-		"/Users/craig/Projects/notion-agent-tracker", testWishlist(), "", ""))
-}
-
-func TestWishlistPromptOnTUI(t *testing.T) {
-	golden(t, "wishlist-prompt-tui", WishlistPrompt(testProjectID, "notion-agent-tracker",
-		"/Users/craig/Projects/notion-agent-tracker", testWishlist(), "", FrontendTUI))
-}
-
-func TestWishlistPromptOnGnat(t *testing.T) {
-	golden(t, "wishlist-prompt-gnat", WishlistPrompt(testProjectID, "notion-agent-tracker",
-		"/Users/craig/Projects/notion-agent-tracker", testWishlist(), "", FrontendGnat))
-}
-
-// The wishlist is the request, so the items ride in whole and the command that
-// clears them names every one of them — the IDs, not the text, because that is
-// what `nat wishlist-clear` addresses.
-func TestWishlistPromptCarriesTheItemsAndTheirIDs(t *testing.T) {
-	got := WishlistPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", testWishlist(), "", "")
-	for _, want := range []string{
-		"## The request",
-		"- Add a newline between the status bar and the key hints",
-		"    - only the milestones that moved",
-		"nat wishlist-clear 3bd38308-f654-8100-9b7a-c1f8e2d4a001 3bd38308-f654-8100-9b7a-c1f8e2d4a002",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("wishlist prompt does not mention %q", want)
-		}
-	}
-	// The planning session is the same one: the wishlist decides what it works
-	// on, not what it is allowed to do.
-	for _, want := range []string{"/queue-work", "nat info", "nat plan-apply"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("wishlist prompt does not mention %q", want)
-		}
-	}
-}
-
-// Clearing is the last step and only ever the agent's own items: an item
-// cleared before the plan is written is an idea lost, and one typed while the
-// session ran belongs to nobody but the user.
-func TestWishlistPromptClearsOnlyAfterThePlanIsWritten(t *testing.T) {
-	got := WishlistPrompt(testProjectID, "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker", testWishlist(), "", "")
-	for _, want := range []string{
-		"once the plan is written, and not before",
-		"Name only the items above",
-		"typed while\nthis session ran",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("wishlist prompt does not say %q", want)
-		}
-	}
-}
-
-// An empty wishlist is a plain planning session: nothing to start on, and
-// nothing to clear afterwards.
-func TestWishlistPromptWithNoItemsIsThePlainPlanningPrompt(t *testing.T) {
-	const project, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
-	got := WishlistPrompt(testProjectID, project, dir, nil, "", "")
-	if want := PlanPrompt(testProjectID, project, dir, "", "", ""); got != want {
-		t.Errorf("prompt = %q, want the plain planning prompt %q", got, want)
-	}
-	if strings.Contains(got, "wishlist-clear") {
-		t.Errorf("prompt tells the agent to clear a wishlist it was not given:\n%s", got)
-	}
-}
-
 // natCommand matches a `nat` invocation by its subcommand, so the prose that
-// merely says "the `nat` commands" is not read as one. wishlist-clear comes
-// before wishlist, since the alternation is tried in order.
-var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|release-slice|milestone-add|slice-add|slice-depends|wishlist-clear|wishlist|plan-apply|project-create)\b`)
+// merely says "the `nat` commands" is not read as one.
+var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|release-slice|milestone-add|slice-add|slice-depends|plan-apply|project-create)\b`)
 
 // natCommands are the invocations a prompt names: each from the command word to
 // the end of its line, and on through the lines a trailing backslash continues
@@ -729,7 +639,6 @@ func TestEveryCommandInAPromptNamesTheProject(t *testing.T) {
 		"fix":            Prompt(fixContext()),
 		"plan":           PlanPrompt(testProjectID, name, dir, "", "", ""),
 		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", "", ""),
-		"wishlist":       WishlistPrompt(testProjectID, name, dir, testWishlist(), "", ""),
 	} {
 		cmds := natCommands(text)
 		if len(cmds) == 0 {

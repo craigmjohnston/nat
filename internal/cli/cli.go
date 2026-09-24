@@ -24,8 +24,8 @@ import (
 )
 
 // API is the part of the Notion client the commands still use directly: what
-// a project is set up with, what its pages say, and its wishlist — the reads
-// and writes that are not plan work. Everything a command does to a plan goes
+// a project is set up with, and what its pages say — the reads and writes
+// that are not plan work. Everything a command does to a plan goes
 // through [store.Store] instead, built over this same client with
 // [store.Over]. It is an interface so a command can be driven by a fake in
 // tests.
@@ -300,12 +300,6 @@ usage:
                       record the slices a slice waits on, by URL or ID; --clear
                       drops what is there first, so on its own it frees the
                       slice
-  nat wishlist [--json] --project ID
-                      print the project's pending wishlist items, with their
-                      block IDs under --json
-  nat wishlist-clear <block-id>... --project ID
-                      trash exactly the named wishlist items, leaving the
-                      section with one empty bullet for the next idea
   nat plan-apply [FILE] [--json] --project ID
                       create a whole plan of milestones and slices from a JSON
                       document, read from FILE or stdin
@@ -356,8 +350,7 @@ usage:
   nat workshop-launch [--model M] [--effort E] [--request TEXT|-] [--json] --project ID
                       launch a planning agent detached in tmux on the
                       project's working dir, on the request when one is
-                      given, else its pending wishlist when it has one and
-                      a plain session otherwise
+                      given, else a plain planning session
   nat config-show [--json]
                       print local config: the agent split, the poll interval,
                       the two model pairs and each project's working directory
@@ -463,10 +456,6 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return sliceAdd(ctx, args[1:], env)
 	case "slice-depends":
 		return sliceDepends(ctx, args[1:], env)
-	case "wishlist":
-		return wishlist(ctx, args[1:], env)
-	case "wishlist-clear":
-		return wishlistClear(ctx, args[1:], env)
 	case "plan-apply":
 		return planApply(ctx, args[1:], env)
 	case "plan-propose":
@@ -514,7 +503,7 @@ func projectFlag(flags *flag.FlagSet) *string {
 // to rather than the one the session was launched on.
 //
 // The project's page ID comes back beside its config entry, since a command
-// that reads the project page itself — its conventions, its wishlist — has no
+// that reads the project page itself — its conventions — has no
 // other source for it.
 //
 // The config's assignee fields come back already resolved for this project

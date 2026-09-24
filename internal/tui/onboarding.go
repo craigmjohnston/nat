@@ -23,8 +23,8 @@ const ProjectsDBTitle = "Agent Projects"
 const createNewChoice = "<new>"
 
 // NotionAPI is the part of the Notion client the board still uses directly:
-// setting a project up, searching the workspace, reading page bodies and the
-// wishlist — what is not plan work. Everything the board does to a plan goes
+// setting a project up, searching the workspace, and reading page bodies — what
+// is not plan work. Everything the board does to a plan goes
 // through [store.Store] instead, built over this same client with
 // [store.Over]. It is an interface so the screens can be driven by a fake in
 // tests.
@@ -38,7 +38,6 @@ type NotionAPI interface {
 	CreateProjectsDatabase(ctx context.Context, parentPageID, title string) (*notion.Database, error)
 	CreateProject(ctx context.Context, projectsDSID, name string, assignee bool) (*notion.ProjectStructure, error)
 	ResolveProject(ctx context.Context, pageID string) (*notion.ResolvedProject, error)
-	Wishlist(ctx context.Context, pageID string) ([]notion.WishlistItem, error)
 }
 
 // NewClientFunc builds a NotionAPI from a source of bearer tokens.

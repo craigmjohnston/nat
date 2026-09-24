@@ -920,8 +920,8 @@ func TestAppNewProjectChosenLocalSkipsTheAssigneeQuestion(t *testing.T) {
 	}
 }
 
-// A project kept in a file loads through that file alone: no wishlist is read
-// off a page it does not have, and no workspace is mirrored.
+// A project kept in a file loads through that file alone: no workspace is
+// mirrored.
 func TestAppLoadsALocalProjectFromItsFileAlone(t *testing.T) {
 	isolatedPlans(t)
 	local := config.ProjectConfig{Name: "mine", Backend: config.BackendLocal}
@@ -933,19 +933,12 @@ func TestAppLoadsALocalProjectFromItsFileAlone(t *testing.T) {
 		ActiveProjectID: "loc-1",
 		Projects:        map[string]config.ProjectConfig{"loc-1": local},
 	}, client)
-	app.wishlist = []notion.WishlistItem{{}}
 
 	for _, msg := range run(app.startLoad(false)) {
-		if _, ok := msg.(wishlistLoadedMsg); ok {
-			t.Error("a wishlist was read for a project with no page")
-		}
 		app.Update(msg)
 	}
 	if _, ok := app.stores["loc-1"].(*store.Local); !ok {
 		t.Errorf("store = %T, want the plan file itself", app.stores["loc-1"])
-	}
-	if app.wishlist != nil {
-		t.Errorf("wishlist = %v, want none carried over", app.wishlist)
 	}
 	if app.project == nil || app.project.Name != "mine" {
 		t.Errorf("project = %+v", app.project)

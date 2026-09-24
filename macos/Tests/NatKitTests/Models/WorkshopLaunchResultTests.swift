@@ -6,8 +6,7 @@ final class WorkshopLaunchResultTests: XCTestCase {
         let json = """
         {
             "session": "nat-plan",
-            "workdir": "/path/to/repo",
-            "wishlist": false
+            "workdir": "/path/to/repo"
         }
         """
 
@@ -16,13 +15,12 @@ final class WorkshopLaunchResultTests: XCTestCase {
 
         XCTAssertEqual(result.session, "nat-plan")
         XCTAssertEqual(result.workdir, "/path/to/repo")
-        XCTAssertFalse(result.wishlist)
     }
 
     func testEquality() {
-        let a = WorkshopLaunchResult(session: "nat-plan", workdir: "/path", wishlist: true)
-        let b = WorkshopLaunchResult(session: "nat-plan", workdir: "/path", wishlist: true)
-        let c = WorkshopLaunchResult(session: "nat-plan", workdir: "/path", wishlist: false)
+        let a = WorkshopLaunchResult(session: "nat-plan", workdir: "/path")
+        let b = WorkshopLaunchResult(session: "nat-plan", workdir: "/path")
+        let c = WorkshopLaunchResult(session: "nat-plan", workdir: "/other")
 
         XCTAssertEqual(a, b)
         XCTAssertNotEqual(a, c)

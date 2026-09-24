@@ -6,7 +6,6 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // PromptContext is everything a fresh agent session needs to be told about the
@@ -342,58 +341,9 @@ func PlanPrompt(projectID, projectName, workingDir, request, plan string, fronte
 	return b.String()
 }
 
-// WishlistPrompt is the opening message for a planning agent launched on the
-// project's wishlist: the same planning session PlanPrompt describes, with the
-// items themselves in place of the question the user would otherwise have been
-// asked. They are the request.
-//
-// The items are carried whole — sub-bullets and all, as the page holds them —
-// and their block IDs come with them, because tidying up after the plan is
-// written is part of the job and `nat wishlist-clear` addresses items by ID.
-// The clear is deliberately spelled out as the last step rather than the first:
-// an item cleared before the plan lands is an idea lost, and an item the agent
-// never read is somebody's newer idea, typed while the session ran.
-func WishlistPrompt(projectID, projectName, workingDir string, items []notion.WishlistItem, plan string, frontend Frontend) string {
-	if len(items) == 0 {
-		return PlanPrompt(projectID, projectName, workingDir, "", plan, frontend)
-	}
-	b := planBody(projectID, projectName, workingDir, plan, frontend)
-
-	b.WriteString("\n## The request\n\n")
-	b.WriteString("The user launched you on their wishlist — the ideas they have been\n")
-	b.WriteString("jotting on the project page. These are the request: start on them\n")
-	b.WriteString("straight away, rather than asking what they want to work on.\n\n")
-	for _, item := range items {
-		b.WriteString(item.Markdown + "\n")
-	}
-
-	b.WriteString("\n## Clearing them\n\n")
-	b.WriteString("An item that the approved plan now covers has been captured, so take it\n")
-	b.WriteString("off the wishlist — once the plan is written, and not before:\n\n")
-	fmt.Fprintf(b, "    nat wishlist-clear %s \\\n        --project %s\n\n",
-		strings.Join(itemIDs(items), " "), projectID)
-	b.WriteString("Name only the items above, and only the ones the plan covers: an idea\n")
-	b.WriteString("the user set aside stays on the wishlist, and so does one typed while\n")
-	b.WriteString("this session ran — which is why the command names items rather than\n")
-	b.WriteString("emptying the section.\n")
-
-	return b.String()
-}
-
-// itemIDs are the wishlist items' block IDs, in the order they were read: what
-// the clear command names.
-func itemIDs(items []notion.WishlistItem) []string {
-	ids := make([]string, len(items))
-	for i, item := range items {
-		ids[i] = item.ID
-	}
-	return ids
-}
-
 // planBody is everything a planning session is told before the request it was
 // launched on: the job, the plan itself, the workflow, the commands, the
-// guardrails. Both planning prompts open with it, so a wishlist launch and a
-// typed one differ only in what they are pointed at.
+// guardrails. PlanPrompt opens with it and adds only the request.
 //
 // plan is the launch's own read of the current plan, already rendered — see
 // [PlanPrompt] — carried inline in place of an instruction to go and read it.

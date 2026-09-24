@@ -209,26 +209,8 @@ func TestAbsPlanDirExpandsAndResolves(t *testing.T) {
 	}
 }
 
-// A project of nat's own has no wishlist: the two commands that read one off a
-// Notion page refuse it by name rather than fail a page read.
-func TestWishlistCommandsRefuseALocalProject(t *testing.T) {
-	cfg := config.Config{Projects: map[string]config.ProjectConfig{
-		"p-1": {Name: "Mine", WorkingDir: "/w", Backend: "local"},
-	}}
-	env, _, _ := noNotionEnv(t, cfg, true)
-	for _, args := range [][]string{
-		{"wishlist", "--project", "p-1"},
-		{"wishlist-clear", "block-1", "--project", "p-1"},
-	} {
-		err := Run(context.Background(), args, env)
-		if err == nil || !strings.Contains(err.Error(), `"Mine"`) || !strings.Contains(err.Error(), "no wishlist") {
-			t.Errorf("%v: err = %v", args, err)
-		}
-	}
-}
-
-// workshop-launch reads no wishlist off a project of nat's own: it launches
-// the plain session, and never builds a Notion client to try.
+// workshop-launch on a project of nat's own launches the plain session, and
+// never builds a Notion client to try.
 func TestWorkshopLaunchOnALocalProjectIsAPlainSession(t *testing.T) {
 	cfg := config.Config{Projects: map[string]config.ProjectConfig{
 		"p-1": {Name: "Mine", WorkingDir: "/tmp/mine", Backend: "local"},
@@ -239,7 +221,7 @@ func TestWorkshopLaunchOnALocalProjectIsAPlainSession(t *testing.T) {
 	if err := Run(context.Background(), []string{"workshop-launch", "--project", "p-1"}, env); err != nil {
 		t.Fatalf("workshop-launch: %v", err)
 	}
-	if !strings.Contains(out.String(), agent.PlanSessionName("p-1")) || strings.Contains(out.String(), "wishlist") {
+	if !strings.Contains(out.String(), agent.PlanSessionName("p-1")) {
 		t.Errorf("output = %q", out.String())
 	}
 }
