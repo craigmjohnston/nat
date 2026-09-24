@@ -2,6 +2,19 @@ import AppKit
 import SwiftUI
 import NatKit
 
+/// The visible rows' vertical extents in the diff scroll view's own space,
+/// gathered up to `DiffTabView` to feed `DiffScrollAnchor`.
+struct DiffRowFramesKey: PreferenceKey {
+    static let space = "diffScroll"
+    static let defaultValue: [DiffScrollAnchor.Key: ClosedRange<CGFloat>] = [:]
+    static func reduce(
+        value: inout [DiffScrollAnchor.Key: ClosedRange<CGFloat>],
+        nextValue: () -> [DiffScrollAnchor.Key: ClosedRange<CGFloat>]
+    ) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
 /// One file's diff, drawn GitHub-fashion: a rounded, hairline-bordered box
 /// with a header row (chevron, path, ± tally, viewed toggle) and the file's
 /// body rows beneath it. A collapsed file is the header row alone, ticked —
@@ -71,6 +84,19 @@ struct DiffFileBoxView: View {
                             onSelect: { shift in onRowClick(row, shift) },
                             onComment: onOpenCommentEditor
                         )
+                        // Each realised row reports where it sits in the
+                        // scroll view, and is a scroll target under a
+                        // path-qualified id — what `DiffScrollAnchor` keeps
+                        // through a width change (lazy, so only what is near
+                        // the viewport reports).
+                        .id(DiffScrollAnchor.Key(path: file.path, rowID: row.id).scrollID)
+                        .background(GeometryReader { proxy in
+                            let frame = proxy.frame(in: .named(DiffRowFramesKey.space))
+                            Color.clear.preference(
+                                key: DiffRowFramesKey.self,
+                                value: [DiffScrollAnchor.Key(path: file.path, rowID: row.id): frame.minY...frame.maxY]
+                            )
+                        })
 
                         if let draft, draft.anchorRowIDs.last == row.id {
                             CommentEditorView(
@@ -99,6 +125,7 @@ struct DiffFileBoxView: View {
                         }
                     }
                 }
+                .scrollTargetLayout()
             }
         }
         .card(radius: 10)
