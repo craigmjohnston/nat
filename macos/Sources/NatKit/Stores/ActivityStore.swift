@@ -3,7 +3,9 @@ import SwiftUI
 
 /// Manages live agent presence by polling the tmux server periodically.
 ///
-/// This store maintains a map of running agents keyed by slice ID, polling every 2 seconds.
+/// This store maintains a map of running agents keyed by slice ID, polling every 2 seconds. Each
+/// agent's status carries its model, effort and context percent, so the
+/// status bar's live readout rides this same poll.
 /// The poll loop stops itself when no agents are found and is re-armed by calling `kick()`.
 /// Failed readings keep the previous state (following the TUI convention).
 @MainActor

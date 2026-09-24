@@ -26,12 +26,16 @@ struct StatusBarView: View {
         buildUsageDisplay(from: appModel.usageStore?.reading)
     }
 
+    private var readout: AgentReadout? {
+        buildAgentReadout(from: appModel.attachedAgent)
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             PlanProgressCell(progress: progress)
                 .frame(width: railWidth)
 
-            AgentCountCell(count: agentCount, usage: usageDisplay)
+            AgentCountCell(count: agentCount, usage: usageDisplay, readout: readout)
                 .frame(maxWidth: .infinity)
         }
         .frame(height: Self.height)
@@ -167,6 +171,7 @@ private struct CheckmarkShape: Shape {
 private struct AgentCountCell: View {
     let count: Int
     let usage: UsageDisplay
+    let readout: AgentReadout?
 
     private static let horizontalPadding: CGFloat = 20
     private static let separatorGap: CGFloat = 10
@@ -177,6 +182,9 @@ private struct AgentCountCell: View {
 
     var body: some View {
         HStack(spacing: Self.separatorGap) {
+            if let readout {
+                AgentReadoutView(readout: readout)
+            }
             Spacer(minLength: 0)
             if !usage.isEmpty {
                 UsageReadoutView(usage: usage)
@@ -189,6 +197,32 @@ private struct AgentCountCell: View {
                 .ink(.tertiary)
         }
         .padding(.horizontal, Self.horizontalPadding)
+    }
+}
+
+/// The attached agent's readout, at the left of the content side: "Sonnet 5 ·
+/// high · 42%", the context percent in the warning tint once it runs high.
+private struct AgentReadoutView: View {
+    let readout: AgentReadout
+    @Environment(\.ground) private var ground
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if let label = readout.label {
+                Text(label).ink(.tertiary)
+            }
+            if let context = readout.context {
+                if readout.label != nil { Text("·").ink(.tertiary) }
+                Text(context.text)
+                    .foregroundStyle(
+                        context.warning
+                            ? DesignTokens.systemOrangeInk(on: ground)
+                            : DesignTokens.ink(.tertiary, on: ground)
+                    )
+            }
+        }
+        .font(.system(size: Typo.caption, weight: .regular))
+        .monospacedDigit()
     }
 }
 

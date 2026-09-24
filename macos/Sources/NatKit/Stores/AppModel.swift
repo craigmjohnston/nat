@@ -688,6 +688,21 @@ public final class AppModel {
         return activityStore?.agents[key]
     }
 
+    /// The live agent the pane is attached to — the selected slice's, the
+    /// selected ad hoc session's, or the workshop's planning agent — as the
+    /// activity poll last saw it. Nil with none live, which is what the
+    /// status bar's model/effort/context readout draws nothing for.
+    public var attachedAgent: AgentStatus? {
+        let agents = activityStore?.agents ?? [:]
+        if workshopSelected { return planningAgent }
+        if let sliceID = selectedSliceID { return agents[sliceID] }
+        if let sessionID = selectedSessionID,
+           let session = sessionStore?.sessions.first(where: { $0.id == sessionID }) {
+            return agents[session.tag]
+        }
+        return nil
+    }
+
     /// The active project's workshop draft — what `WorkshopPaneView`'s
     /// composer binds to instead of its own local state, so the text
     /// survives the view being torn down and remounted by a tab switch.
