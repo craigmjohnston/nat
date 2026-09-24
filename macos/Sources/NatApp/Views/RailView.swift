@@ -872,21 +872,10 @@ struct RailView: View {
                 .frame(width: RailSlot.slot, height: 19)
 
             VStack(alignment: .leading, spacing: 1) {
-                HStack(alignment: .firstTextBaseline, spacing: RailSlot.spacing) {
-                    Text(name)
-                        .font(.system(size: Typo.body, weight: .regular))
-                        .ink(.primary)
-                        .lineLimit(1)
-
-                    Spacer(minLength: 0)
-
-                    if let meta {
-                        Text(meta)
-                            .font(.system(size: Typo.subhead, weight: .regular))
-                            .monospacedDigit()
-                            .ink(metaColor)
-                    }
-                }
+                Text(name)
+                    .font(.system(size: Typo.body, weight: .regular))
+                    .ink(.primary)
+                    .lineLimit(1)
 
                 HStack(spacing: 5) {
                     ForEach(Array(detail.enumerated()), id: \.offset) { index, piece in
@@ -902,7 +891,24 @@ struct RailView: View {
                 .font(.system(size: Typo.subhead, weight: .regular))
             }
 
-            trailing()
+            Spacer(minLength: 0)
+
+            // The meta and the trailing slot centre on the row as a whole —
+            // on a two-line row a first-baseline meta and a top-slot ✕ both
+            // ride high. Expanding to the HStack's height (set by the text
+            // column) and centring inside it leaves dot, title and detail
+            // exactly where they were.
+            HStack(spacing: RailSlot.spacing) {
+                if let meta {
+                    Text(meta)
+                        .font(.system(size: Typo.subhead, weight: .regular))
+                        .monospacedDigit()
+                        .ink(metaColor)
+                }
+
+                trailing()
+            }
+            .frame(maxHeight: .infinity)
         }
         .padding(.vertical, 8)
         .padding(.leading, RailSlot.leading)
@@ -1106,7 +1112,7 @@ struct RailView: View {
         if open {
             FolderGlyphShape(open: true).fill(color)
         } else {
-            FolderGlyphShape(open: false).stroke(color, lineWidth: 1.1)
+            FolderGlyphShape(open: false).stroke(color, lineWidth: FolderGlyphShape.strokeWidth)
         }
     }
 
@@ -1471,38 +1477,55 @@ struct RailView: View {
 }
 
 /// The tree's folder pictograms, drawn because SF Symbols has no open-folder
-/// glyph to pair with `folder`. Closed is the familiar tabbed body; open is
-/// the same body with its front flap swung out — the flap's top edge
-/// overhanging the body's right side and its foot leaning left, which is
-/// what reads as "open" at 13 points. Filled silhouettes, so they take a
-/// row's colour the way the SF folder did.
+/// glyph to pair with `folder`. Both states are one folder: the same tabbed
+/// body, the same corner radius, the same bounds. Closed is that body as an
+/// outline (inset by half the stroke so it lands on the same bounds the
+/// fill does); open is it filled, with the body's lower part swapped for a
+/// front flap swung out to the right and a hairline gap between flap and
+/// back panel — the closed folder with its flap opened and the body filled.
 struct FolderGlyphShape: Shape {
     let open: Bool
+
+    /// The closed outline's line width, which the shape insets by half of.
+    static let strokeWidth: CGFloat = 1.1
+
+    /// Where the flap's top edge sits, as a fraction of the height, and the
+    /// gap the back panel stops short of it by.
+    private static let flapTop: CGFloat = 0.50
+    private static let gap: CGFloat = 0.06
 
     func path(in rect: CGRect) -> Path {
         open ? openPath(in: rect) : closedPath(in: rect)
     }
 
     private func closedPath(in rect: CGRect) -> Path {
-        body(in: rect, rightEdge: rect.width)
+        let inset = Self.strokeWidth / 2
+        return body(in: rect.insetBy(dx: inset, dy: inset), bottom: nil)
     }
 
     private func openPath(in rect: CGRect) -> Path {
         let w = rect.width
         let h = rect.height
-        // The body stops short of the rect so the flap's wing can overhang.
-        var p = body(in: rect, rightEdge: 0.78 * w)
-        p.move(to: CGPoint(x: rect.minX + 0.20 * w, y: rect.minY + 0.44 * h))
-        p.addLine(to: CGPoint(x: rect.minX + w, y: rect.minY + 0.44 * h))
-        p.addLine(to: CGPoint(x: rect.minX + 0.80 * w, y: rect.minY + h))
-        p.addLine(to: CGPoint(x: rect.minX + 0.06 * w, y: rect.minY + h))
-        p.closeSubpath()
+        let r = 0.14 * h
+        var p = body(in: rect, bottom: rect.minY + (Self.flapTop - Self.gap) * h)
+        // The flap: a parallelogram leaning left at the foot, its top edge
+        // running out to the body's right bound.
+        let lean = 0.14 * w
+        let top = rect.minY + Self.flapTop * h
+        let pts = [
+            CGPoint(x: rect.minX + lean, y: top),
+            CGPoint(x: rect.maxX, y: top),
+            CGPoint(x: rect.maxX - lean, y: rect.maxY),
+            CGPoint(x: rect.minX, y: rect.maxY),
+        ]
+        p.addPath(rounded(pts, radius: r))
         return p
     }
 
     /// The tabbed folder body: rounded corners, the tab across the top left,
-    /// a short slant joining tab to top edge.
-    private func body(in rect: CGRect, rightEdge: CGFloat) -> Path {
+    /// a short slant joining tab to top edge. `bottom` lifts the lower edge
+    /// (still rounded) for the open folder's back panel.
+    private func body(in rect: CGRect, bottom: CGFloat?) -> Path {
         let h = rect.height
         let r = 0.14 * h
         let tabW = 0.36 * rect.width
@@ -1510,7 +1533,11 @@ struct FolderGlyphShape: Shape {
         let tabH = 0.22 * h
         let x0 = rect.minX
         let y0 = rect.minY
-        let right = x0 + rightEdge
+        let right = rect.maxX
+        let foot = bottom ?? rect.maxY
+        // The open folder's back panel is a short strip, so its cut edge
+        // takes a tighter corner than the full body's.
+        let rb = bottom == nil ? r : 0.07 * h
 
         var p = Path()
         p.move(to: CGPoint(x: x0, y: y0 + r))
@@ -1521,38 +1548,25 @@ struct FolderGlyphShape: Shape {
         p.addLine(to: CGPoint(x: right - r, y: y0 + tabH))
         p.addArc(center: CGPoint(x: right - r, y: y0 + tabH + r), radius: r,
                  startAngle: .degrees(270), endAngle: .degrees(0), clockwise: false)
-        p.addLine(to: CGPoint(x: right, y: y0 + h - r))
-        p.addArc(center: CGPoint(x: right - r, y: y0 + h - r), radius: r,
+        p.addLine(to: CGPoint(x: right, y: foot - rb))
+        p.addArc(center: CGPoint(x: right - rb, y: foot - rb), radius: rb,
                  startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
-        p.addLine(to: CGPoint(x: x0 + r, y: y0 + h))
-        p.addArc(center: CGPoint(x: x0 + r, y: y0 + h - r), radius: r,
+        p.addLine(to: CGPoint(x: x0 + rb, y: foot))
+        p.addArc(center: CGPoint(x: x0 + rb, y: foot - rb), radius: rb,
                  startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
         p.closeSubpath()
         return p
     }
-}
 
-#Preview("Loaded plan") {
-    @Previewable @State var appModel = Fixtures.appModel()
-    WindowShellView(appModel: appModel)
-        .frame(width: 1360, height: 840)
-        .task { await Fixtures.start(appModel) }
-}
-
-#Preview("Empty plan") {
-    @Previewable @State var appModel = Fixtures.appModel(
-        client: FixtureNatClient(plan: Fixtures.emptyProjectInfo, agents: [])
-    )
-    WindowShellView(appModel: appModel)
-        .frame(width: 1360, height: 840)
-        .task { await Fixtures.start(appModel) }
-}
-
-#Preview("Failed read") {
-    @Previewable @State var appModel = Fixtures.appModel(
-        client: FixtureNatClient(behaviour: .refusing(Fixtures.loadErrorMessage))
-    )
-    WindowShellView(appModel: appModel)
-        .frame(width: 1360, height: 840)
-        .task { await Fixtures.start(appModel) }
+    /// A closed polygon with every corner rounded to `radius`.
+    private func rounded(_ pts: [CGPoint], radius: CGFloat) -> Path {
+        var p = Path()
+        let n = pts.count
+        p.move(to: CGPoint(x: (pts[0].x + pts[n - 1].x) / 2, y: (pts[0].y + pts[n - 1].y) / 2))
+        for i in 0..<n {
+            p.addArc(tangent1End: pts[i], tangent2End: pts[(i + 1) % n], radius: radius)
+        }
+        p.closeSubpath()
+        return p
+    }
 }
