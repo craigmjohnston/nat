@@ -498,7 +498,7 @@ struct RailView: View {
         // what will be here, wrapped and set under the entries' text column
         // (the heading's slot and its gap in from the rail's edge).
         if appModel.activeTabIsUntitled {
-            Text(StarterCard.railExplainer)
+            Text(appModel.untitledWorkshopVisible ? StarterCard.railWorkshopExplainer : StarterCard.railExplainer)
                 .font(.system(size: Typo.subhead, weight: .regular))
                 .ink(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)

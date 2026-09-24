@@ -125,7 +125,13 @@ slices and ended sessions, then milestones left empty; refuses a project with
 a workspace behind it by name, so it can never trash Notion pages). gnat runs
 both once per launch, before the scratch project's first read.
 
-Planning: `workshop-launch` (planning agent, `agent.PlanPrompt`).
+Planning: `workshop-launch` (planning agent, `agent.PlanPrompt`). With
+`--workspace <id>` (exclusive with `--project`, `--request` required) it is the
+starter card's launch instead: `agent.NewProjectPrompt`, keyed by the app's
+Untitled-tab workspace id (`plan:<id>`), run in a scratch dir nat makes at
+`<state>/workspaces/<id>`; a live one refuses, and the app attaches.
+`agent-kill --workshop --workspace <id>` ends only that tab's own session —
+never the legacy bare one.
 
 ## `usage`
 

@@ -26,6 +26,10 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     public let behaviour: Behaviour
     private let plan: ProjectInfo
     private let agents: [AgentStatus]
+    /// The planning agents Untitled tabs have launched here, on top of the
+    /// fixed `agents` — a launch puts one in the next reading and a kill
+    /// takes it out, as tmux would.
+    private let workspaceAgents = Box<[AgentStatus]>([])
     private let diff: SliceDiff
     private let pr: PRDetail
     private let config: ConfigDoc
@@ -119,7 +123,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func status() async throws -> [AgentStatus] {
-        try await answer(agents)
+        try await answer(agents + workspaceAgents.get())
     }
 
     public func usage() async throws -> UsageReading {
@@ -220,6 +224,27 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
             session: TmuxSession.planSessionName(projectID: projectID),
             workdir: "/Users/craig/Projects/notion-agent-tracker"
         )
+    }
+
+    public func workspaceLaunch(
+        workspaceID: String, model: String?, effort: String?, request: String
+    ) async throws -> WorkshopLaunchResult {
+        try await record("workshop-launch --workspace \(workspaceID)")
+        workspaceAgents.set(workspaceAgents.get() + [AgentStatus(
+            sliceID: TmuxSession.planTag(projectID: workspaceID),
+            session: TmuxSession.planSessionName(projectID: workspaceID),
+            activity: .working
+        )])
+        return WorkshopLaunchResult(
+            session: TmuxSession.planSessionName(projectID: workspaceID),
+            workdir: "/Users/craig/.local/state/notion-agent-tracker/workspaces/\(workspaceID)"
+        )
+    }
+
+    public func agentKillWorkspace(workspaceID: String) async throws {
+        try await record("agent-kill --workshop --workspace \(workspaceID)")
+        let tag = TmuxSession.planTag(projectID: workspaceID)
+        workspaceAgents.set(workspaceAgents.get().filter { $0.sliceID != tag })
     }
 
     public func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult {

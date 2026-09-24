@@ -185,6 +185,21 @@ enum AppStories {
         },
 
         Story(
+            name: "window-untitled-workshop",
+            summary: "An Untitled tab after Workshop the plan: the planning agent's terminal "
+                + "fills the pane, the rail has the workshop ACTIVE entry and the TODO explainer's "
+                + "workshop wording.",
+            size: window
+        ) {
+            let appModel = await Fixtures.startedAppModel(
+                config: Fixtures.emptyConfig, toolsReady: true)
+            appModel.workshopDraft = "A habit tracker with streaks."
+            await appModel.launchWorkshop(request: appModel.workshopDraft)
+            return WindowShellView(appModel: appModel)
+                .environment(\.terminalStubbed, true)
+        },
+
+        Story(
             name: "project-tabs-untitled",
             summary: "The strip with an Untitled tab active beside a project: the italic name, "
                 + "the neutral dot, and a close button on each.",

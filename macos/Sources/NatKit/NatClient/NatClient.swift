@@ -189,6 +189,14 @@ public final class NatClient: Sendable {
         _ = try await runNatRaw(arguments: ["agent-kill", "--workshop", "--project", projectID])
     }
 
+    /// End the planning agent of an Untitled tab — `nat agent-kill --workshop
+    /// --workspace`. Keyed by the tab's workspace id rather than a project;
+    /// the CLI refuses a workspace with no live session, which passes
+    /// through as `NatError.commandFailed`.
+    public func agentKillWorkspace(workspaceID: String) async throws {
+        _ = try await runNatRaw(arguments: ["agent-kill", "--workshop", "--workspace", workspaceID])
+    }
+
     /// Read one slice's status fresh, straight off its page — `nat
     /// slice-status`, the reaper's last word before a kill. `projectID` only
     /// pins the credentials the read is made with; the slice need not be in
@@ -383,6 +391,32 @@ public final class NatClient: Sendable {
             standardInput = request.data(using: .utf8)
         }
         let output = try await runNat(arguments: arguments, standardInput: standardInput)
+        return try decodeJSON(WorkshopLaunchResult.self, from: output)
+    }
+
+    /// Launch the new-project planning agent for an Untitled tab — `nat
+    /// workshop-launch --workspace`, the starter card's "Workshop the plan".
+    /// The workspace id stands where a project's would: it keys the session,
+    /// and is what the agent's `plan-propose` carries so a proposal routes
+    /// back to the tab. nat makes the session's scratch directory.
+    ///
+    /// The request goes over stdin like `workshopLaunch`'s, and is required:
+    /// the agent is told to start on it. It is never logged.
+    ///
+    /// - Throws: NatError if a planning agent is already live on this
+    ///   workspace, or the command fails
+    public func workspaceLaunch(
+        workspaceID: String, model: String?, effort: String?, request: String
+    ) async throws -> WorkshopLaunchResult {
+        var arguments = ["workshop-launch", "--workspace", workspaceID, "--json", "--frontend", "gnat"]
+        if let model = model, !model.isEmpty {
+            arguments.append(contentsOf: ["--model", model])
+        }
+        if let effort = effort, !effort.isEmpty {
+            arguments.append(contentsOf: ["--effort", effort])
+        }
+        arguments.append(contentsOf: ["--request", "-"])
+        let output = try await runNat(arguments: arguments, standardInput: request.data(using: .utf8))
         return try decodeJSON(WorkshopLaunchResult.self, from: output)
     }
 

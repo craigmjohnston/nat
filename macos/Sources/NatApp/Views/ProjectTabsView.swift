@@ -10,6 +10,35 @@ struct ProjectTabsView: View {
     /// has no `@State` of its own to keep.
     @State private var hoveredTabID: String?
 
+    /// The Untitled tab a close was asked of while its planning agent is
+    /// live, held while the confirm is up — the session does not outlive the
+    /// tab, so ending it is asked about first, in the rail's own alert style.
+    @State private var tabPendingClose: String?
+    /// Why a session would not end and the tab therefore stayed open.
+    @State private var closeRefusal: String?
+
+    /// Closes a tab, asking first where that ends a live planning session.
+    private func requestClose(_ tabID: String) {
+        if appModel.tabHasLiveWorkshop(tabID) {
+            tabPendingClose = tabID
+        } else {
+            Task { await appModel.closeProject(tabID) }
+        }
+    }
+
+    /// True while an optional holds something, nilled on dismissal — the
+    /// rail's own alert helper, for the same reason.
+    private func presenting<Value>(_ value: Binding<Value?>) -> Binding<Bool> {
+        Binding(
+            get: { value.wrappedValue != nil },
+            set: { if !$0 { value.wrappedValue = nil } }
+        )
+    }
+
+    private func endSessionAndClose(_ tabID: String) async {
+        closeRefusal = await appModel.closeProject(tabID)
+    }
+
     var body: some View {
         HStack(alignment: .bottom, spacing: 0) {
             ForEach(Array(appModel.projectTabs.enumerated()), id: \.element.id) { index, tab in
@@ -55,6 +84,27 @@ struct ProjectTabsView: View {
         // browser chrome raised off its foot, so there is no headroom above
         // a tab for an alignment to decide.
         .frame(height: 40, alignment: .bottom)
+        .alert(
+            "End the workshop session?",
+            isPresented: presenting($tabPendingClose),
+            presenting: tabPendingClose
+        ) { tabID in
+            Button("End Session", role: .destructive) {
+                Task { await endSessionAndClose(tabID) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("The planning agent is still running. Closing the tab ends its session; the draft goes with it.")
+        }
+        .alert(
+            "The session could not be ended",
+            isPresented: presenting($closeRefusal),
+            presenting: closeRefusal
+        ) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { message in
+            Text(message)
+        }
     }
 
     @ViewBuilder
@@ -171,9 +221,7 @@ struct ProjectTabsView: View {
                     isActive: isActive,
                     isHovered: hoveredTabID == tab.id
                 )
-                Button(action: {
-                    Task { await appModel.closeProject(tab.id) }
-                }) {
+                Button(action: { requestClose(tab.id) }) {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .semibold))
                         .ink(.tertiary)
@@ -245,9 +293,7 @@ struct ProjectTabsView: View {
         if ProjectTabRules.showsClose(
             tabCount: appModel.closableTabCount, isScratch: appModel.isScratchTab(tab.id)
         ) {
-            Button("Close Tab") {
-                Task { await appModel.closeProject(tab.id) }
-            }
+            Button("Close Tab") { requestClose(tab.id) }
 
             Divider()
         }

@@ -149,9 +149,10 @@ final class UntitledTabTests: XCTestCase {
     // MARK: - Copy
 
     func testTheStagedControlsNameTheirSlices() {
-        XCTAssertEqual(StarterCard.workshopStaging, "Launch the planning agent from the starter card")
         XCTAssertEqual(StarterCard.openPlanStaging, "Open existing plans from the starter")
         XCTAssertEqual(StarterCard.filesystemStaging, "Open existing plans from the starter")
+        XCTAssertEqual(StarterCard.railWorkshopExplainer,
+                       "Milestones and slices land here as the workshop settles on a plan.")
         XCTAssertEqual(StarterCard.railExplainer,
                        "Milestones and slices appear here once the project has a plan.")
     }

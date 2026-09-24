@@ -5,14 +5,26 @@ import NatKit
 /// in the design (`docs/design/nat-new-project/ui-newproject.jsx`). A
 /// description to workshop into a plan, or an existing project to open.
 ///
-/// Only From Notion is wired here — it is the app's add-project flow, and the
-/// project it opens takes the tab over. The rest is drawn whole and disabled,
-/// each with a `.help` naming the slice that wires it.
+/// From Notion is the app's add-project flow, and the project it opens takes
+/// the tab over. "Workshop the plan" (and ⌘↩) launches the planning agent on
+/// the description — the window then shows its terminal in place of this card.
+/// The rest is drawn whole and disabled, each with a `.help` naming the slice
+/// that wires it.
 struct StarterView: View {
+    @Bindable var appModel: AppModel
     /// Runs the add-project-from-Notion flow, which the window presents.
     let onFromNotion: () -> Void
 
-    @State private var draft = ""
+    /// The description is the model's own draft for the tab, so it survives a
+    /// switch to another tab and back.
+    private var draft: Binding<String> {
+        Binding(get: { appModel.workshopDraft }, set: { appModel.workshopDraft = $0 })
+    }
+
+    private var canWorkshop: Bool {
+        !appModel.workshopDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !appModel.workshopLaunching
+    }
 
     var body: some View {
         ScrollView {
@@ -81,7 +93,7 @@ struct StarterView: View {
             }
             .padding(.bottom, 10)
 
-            TextEditor(text: $draft)
+            TextEditor(text: draft)
                 .font(Typo.mono(size: Typo.body))
                 .ink(.primary)
                 .scrollContentBackground(.hidden)
@@ -89,7 +101,7 @@ struct StarterView: View {
                 .padding(.vertical, 5)
                 .frame(minHeight: 76)
                 .overlay(alignment: .topLeading) {
-                    if draft.isEmpty {
+                    if appModel.workshopDraft.isEmpty {
                         Text(StarterCard.describePlaceholder)
                             .font(Typo.mono(size: Typo.body))
                             .ink(.tertiary)
@@ -99,6 +111,13 @@ struct StarterView: View {
                     }
                 }
                 .field(radius: 6)
+
+            if let error = appModel.workshopLaunchError {
+                Text(error)
+                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .ink(.danger)
+                    .padding(.top, 8)
+            }
 
             HStack(spacing: 12) {
                 Button(action: {}) {
@@ -122,13 +141,14 @@ struct StarterView: View {
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .ink(.tertiary)
 
-                Button(action: {}) {
+                Button(action: {
+                    Task { await appModel.launchWorkshop(request: appModel.workshopDraft) }
+                }) {
                     Text(StarterCard.workshopLabel)
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .keyboardShortcut(.return, modifiers: .command)
-                .disabled(true)
-                .help(StarterCard.workshopStaging)
+                .disabled(!canWorkshop)
             }
             .padding(.top, 12)
         }
@@ -196,6 +216,6 @@ private struct StarterTileButtonStyle: ButtonStyle {
 }
 
 #Preview {
-    StarterView(onFromNotion: {})
+    StarterView(appModel: AppModel(), onFromNotion: {})
         .frame(width: 1000, height: 780)
 }

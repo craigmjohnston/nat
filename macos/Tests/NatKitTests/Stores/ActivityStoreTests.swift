@@ -64,6 +64,16 @@ class MockActivityClient: NatClientProtocol, @unchecked Sendable {
         throw NSError(domain: "test", code: -1)
     }
 
+    /// Declared on the class, not left to the protocol's defaults, so a
+    /// subclass's override is the one a `NatClientProtocol` caller reaches.
+    func workspaceLaunch(workspaceID: String, model: String?, effort: String?, request: String) async throws -> WorkshopLaunchResult {
+        throw NSError(domain: "test", code: -1)
+    }
+
+    func agentKillWorkspace(workspaceID: String) async throws {
+        throw NSError(domain: "test", code: -1)
+    }
+
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult {
         throw NSError(domain: "test", code: -1)
     }
