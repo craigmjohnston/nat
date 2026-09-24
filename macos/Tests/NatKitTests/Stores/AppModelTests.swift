@@ -502,10 +502,10 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testAppModel_needsOnboardingWhenProjectsMapIsEmpty() async {
+    func testAppModel_needsOnboardingWhenProjectsMapIsEmptyAndToolsAreMissing() async {
         let testConfig = NatProjectConfig(projects: [:])
         let mockReader = MockConfigReader(response: .success(testConfig))
-        let appModel = AppModel(configReader: mockReader)
+        let appModel = AppModel(configReader: mockReader, toolsReady: { false })
 
         await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
 

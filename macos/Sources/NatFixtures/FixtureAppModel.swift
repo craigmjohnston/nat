@@ -44,7 +44,8 @@ extension Fixtures {
     @MainActor
     public static func appModel(
         client: FixtureNatClient = FixtureNatClient(),
-        config: NatProjectConfig = Fixtures.config
+        config: NatProjectConfig = Fixtures.config,
+        toolsReady: Bool = false
     ) -> AppModel {
         AppModel(
             configReader: FixtureConfigReader(config: config),
@@ -67,7 +68,11 @@ extension Fixtures {
             // the live clock has every fixture agent read as just started,
             // which is a state the board really has.
             activityStoreFactory: { ActivityStore(client: client) },
-            usageStoreFactory: { UsageStore(client: client, cache: NullUsageCache()) }
+            usageStoreFactory: { UsageStore(client: client, cache: NullUsageCache()) },
+            // Pinned rather than looked up, like the pane's own checklist
+            // statuses: a config with no projects reads as onboarding unless
+            // the toolchain is said to be there, on every machine alike.
+            toolsReady: { toolsReady }
         )
     }
 
@@ -95,9 +100,10 @@ extension Fixtures {
     @MainActor
     public static func startedAppModel(
         client: FixtureNatClient = FixtureNatClient(),
-        config: NatProjectConfig = Fixtures.config
+        config: NatProjectConfig = Fixtures.config,
+        toolsReady: Bool = false
     ) async -> AppModel {
-        let model = appModel(client: client, config: config)
+        let model = appModel(client: client, config: config, toolsReady: toolsReady)
         await start(model)
         return model
     }

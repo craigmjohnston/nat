@@ -83,6 +83,41 @@ public final class AppModel {
         projectID == scratchProjectID
     }
 
+    /// The prefix of an Untitled tab's ID. Not a page ID or a plan's own —
+    /// nothing else carries it, which is all `isUntitledTab` reads.
+    static let untitledPrefix = "untitled-"
+
+    /// What an Untitled tab is labelled with.
+    public static let untitledName = "Untitled"
+
+    /// How many Untitled tabs this run has opened, so each gets an ID of its
+    /// own: more than one may exist, and a closed one's ID is not reused.
+    private var untitledOpened = 0
+
+    /// Whether a tab is an Untitled one — a tab backed by no project, which
+    /// shows the starter card until a project is opened into it.
+    public func isUntitledTab(_ projectID: String) -> Bool {
+        projectID.hasPrefix(Self.untitledPrefix)
+    }
+
+    /// Whether the tab the user is on is an Untitled one — the rail's empty
+    /// shape and the pane's starter card, and no store behind either.
+    public var activeTabIsUntitled: Bool {
+        activeProjectID.map(isUntitledTab) ?? false
+    }
+
+    /// Open a new Untitled tab at the end of the strip and switch to it. The
+    /// "+" beside the strip and a launch with no projects both come here.
+    /// Nothing is read or started: there is no project for a store to be of.
+    @discardableResult
+    public func openUntitledTab() -> String {
+        untitledOpened += 1
+        let id = Self.untitledPrefix + String(untitledOpened)
+        projectTabs.append((id: id, name: Self.untitledName))
+        activeProjectID = id
+        return id
+    }
+
     /// The ID of the currently active project.
     public private(set) var activeProjectID: String?
 
@@ -248,6 +283,12 @@ public final class AppModel {
     /// minutes.
     private let now: @Sendable () -> Date
 
+    /// Whether every binary onboarding checks for is on the machine — what
+    /// separates a launch with no projects that opens the starter card from
+    /// one that shows the checklist. Injectable so a test says which without
+    /// looking at the machine it runs on.
+    private let toolsReady: @Sendable () -> Bool
+
     /// How long a visited slice's session is held from being reaped —
     /// `agentVisitHold` unless a test says otherwise.
     private let visitHold: TimeInterval
@@ -272,8 +313,12 @@ public final class AppModel {
             try? await Task.sleep(nanoseconds: 250_000_000)
         },
         now: @escaping @Sendable () -> Date = { Date() },
-        visitHold: TimeInterval = agentVisitHold
+        visitHold: TimeInterval = agentVisitHold,
+        toolsReady: @escaping @Sendable () -> Bool = {
+            ["nat", "tmux", "gh", "ntn"].allSatisfy { BinaryLocator.status(of: $0).isFound }
+        }
     ) {
+        self.toolsReady = toolsReady
         self.configReader = configReader
         self.planCache = planCache
         self.pollInterval = pollIntervalSeconds
@@ -345,7 +390,15 @@ public final class AppModel {
             self.loadedConfigPath = configPath
 
             guard !loadedConfig.projects.isEmpty else {
-                needsOnboarding = true
+                // A config naming no projects, on a machine with the whole
+                // toolchain, is somewhere to start rather than something to
+                // install: one Untitled tab, with the starter card. Without
+                // the tools it is the onboarding pane's checklist, as before.
+                if toolsReady() {
+                    startWithUntitledTab()
+                } else {
+                    needsOnboarding = true
+                }
                 return
             }
             needsOnboarding = false
@@ -391,6 +444,24 @@ public final class AppModel {
             // crash-worthy one: it is exactly what a first run looks like.
             needsOnboarding = true
             NSLog("Failed to load config: %@", error.localizedDescription)
+        }
+    }
+
+    /// The board for a launch with no projects: the app-wide stores a first
+    /// project would need (`addProject` finds them made), and one Untitled
+    /// tab — not another when `start()` runs again with one already open.
+    private func startWithUntitledTab() {
+        needsOnboarding = false
+        if activityStore == nil {
+            activityStore = activityStoreFactory()
+            reviewStatsStore = ReviewStatsStore(client: clientFactory())
+            sessionStore = SessionStore(client: clientFactory())
+        }
+        if usageStore == nil {
+            startUsageStore()
+        }
+        if !projectTabs.contains(where: { isUntitledTab($0.id) }) {
+            openUntitledTab()
         }
     }
 
@@ -451,6 +522,12 @@ public final class AppModel {
 
     /// Activate a project by ID (public convenience).
     public func activateProject(_ projectID: String) async {
+        // An Untitled tab has no store to make or load, no poll of its own to
+        // arm: the tab being on it is the whole of the activation.
+        if isUntitledTab(projectID) {
+            activeProjectID = projectID
+            return
+        }
         guard let config = config else { return }
 
         var nudgePath = NSHomeDirectory() + "/Library/Logs/notion-agent-tracker/nudge"
@@ -506,7 +583,12 @@ public final class AppModel {
     /// that still cannot read one leaves the board exactly as it was, since a
     /// board with no config behind it is the onboarding pane and not an empty
     /// plan.
-    public func addProject(id: String, name: String) async {
+    ///
+    /// `replacing` names the Untitled tab the project was opened from: it
+    /// becomes the project's tab, in the place it held, rather than one more
+    /// tab beside it. A project that already has a tab of its own leaves the
+    /// Untitled one simply closed.
+    public func addProject(id: String, name: String, replacing untitledID: String? = nil) async {
         if config == nil || loadedConfigPath == nil {
             await start()
         } else {
@@ -526,10 +608,20 @@ public final class AppModel {
             startUsageStore()
         }
 
+        let replaced = untitledID.flatMap { untitled in
+            isUntitledTab(untitled) ? projectTabs.firstIndex(where: { $0.id == untitled }) : nil
+        }
         if !projectTabs.contains(where: { $0.id == id }) {
             // The config's own name where it has one — it is what every other
             // tab is labelled with — and what the command reported otherwise.
-            projectTabs.append((id: id, name: config.projects[id]?.name ?? name))
+            let tab = (id: id, name: config.projects[id]?.name ?? name)
+            if let replaced {
+                projectTabs[replaced] = tab
+            } else {
+                projectTabs.append(tab)
+            }
+        } else if let replaced {
+            projectTabs.remove(at: replaced)
         }
         await activateProject(id)
     }

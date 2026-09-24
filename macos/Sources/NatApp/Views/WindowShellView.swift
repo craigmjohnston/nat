@@ -41,15 +41,18 @@ struct WindowShellView: View {
         // out for the standard title bar's height, which in a 40pt header
         // sits them high and tight to the left edge.
         .background(TrafficLightAlignerView(headerHeight: Self.headerHeight))
-        // The "+" tab's sheet, and the welcome pane's own buttons: both ways
-        // a project comes to be on the board, presented from the window
-        // rather than from the 40pt band the "+" sits in.
+        // The add-a-project sheet: the welcome pane's button and the starter
+        // card's From Notion tile both open it, presented from the window
+        // rather than from whatever view asked.
         .sheet(isPresented: $showNewProjectSheet) {
             NewProjectSheetView(
                 onClose: { showNewProjectSheet = false },
                 onAdded: { id, name in
                     showNewProjectSheet = false
-                    Task { await appModel.addProject(id: id, name: name) }
+                    // From an Untitled tab the project takes that tab over;
+                    // from the welcome pane there is none to take.
+                    let untitled = appModel.activeTabIsUntitled ? appModel.activeProjectID : nil
+                    Task { await appModel.addProject(id: id, name: name, replacing: untitled) }
                 }
             )
         }
@@ -65,7 +68,7 @@ struct WindowShellView: View {
             // is where macOS draws the traffic lights over it, and the whole
             // row is window-draggable the way a title bar always was.
             VStack(spacing: 0) {
-                ProjectTabsView(appModel: appModel, onNewProject: { showNewProjectSheet = true })
+                ProjectTabsView(appModel: appModel)
                     .padding(.leading, 78)
                 .background(
                     // The mock's `color-mix(in srgb, accent 9%, header)` as
@@ -99,7 +102,14 @@ struct WindowShellView: View {
                 RailView(appModel: appModel)
                     .frame(width: liveRailWidth ?? railWidth)
 
-                PaneView(appModel: appModel)
+                Group {
+                    // An Untitled tab has no project for a pane to be of.
+                    if appModel.activeTabIsUntitled {
+                        StarterView(onFromNotion: { showNewProjectSheet = true })
+                    } else {
+                        PaneView(appModel: appModel)
+                    }
+                }
                     .frame(maxWidth: .infinity)
                     // The rail's resize handle, straddling the divider the
                     // rail draws as its trailing border. It hangs off the
