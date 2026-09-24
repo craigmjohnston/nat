@@ -26,7 +26,7 @@ struct WorkshopPaneView: View {
             // The same header every pane opens with — see `PaneHeader`.
             // No breadcrumb and nothing on the right: a workshop session is
             // filed under no milestone and runs through no pipeline.
-            PaneHeader(title: "Workshop")
+            PaneHeader(title: "What do you want to build?", icon: "wand.and.stars")
 
             content
         }
@@ -91,11 +91,25 @@ struct WorkshopPaneView: View {
     /// on it, and an empty one launches a plain session — the CLI's own rule.
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("What do you want to workshop?")
-                .font(.system(size: Typo.body, weight: .semibold))
-                .ink(.primary)
+            // Launch shares the heading's row, top-right of the composer.
+            HStack(alignment: .center) {
+                Text("Describe the changes you want to make")
+                    .font(.system(size: Typo.body, weight: .semibold))
+                    .ink(.primary)
 
-            Text("Goes into the agent's prompt; empty starts a plain session.")
+                Spacer()
+
+                Button(action: { Task { await appModel.launchWorkshop(request: appModel.workshopDraft) } }) {
+                    AsyncActionLabel(isBusy: appModel.workshopLaunching) {
+                        Text("Launch")
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(appModel.workshopLaunching)
+            }
+
+            Text("You can list multiple changes and the workshop agent will create several milestones and slices in one go")
                 .font(.system(size: Typo.subhead, weight: .regular))
                 .ink(.secondary)
 
@@ -116,19 +130,6 @@ struct WorkshopPaneView: View {
                 Text(error)
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .ink(.danger)
-            }
-
-            HStack {
-                Spacer()
-
-                Button(action: { Task { await appModel.launchWorkshop(request: appModel.workshopDraft) } }) {
-                    AsyncActionLabel(isBusy: appModel.workshopLaunching) {
-                        Text("Launch")
-                    }
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .keyboardShortcut(.return, modifiers: .command)
-                .disabled(appModel.workshopLaunching)
             }
         }
         // The editor takes whatever the pane has left: workshopping a plan is
