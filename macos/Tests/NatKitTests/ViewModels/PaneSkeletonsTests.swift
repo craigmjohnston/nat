@@ -46,6 +46,11 @@ final class PaneSkeletonsTests: XCTestCase {
     /// The properties rail is only drawn once there is a detail to read it
     /// off, so a skeleton with no rail would have the reading column narrow
     /// the moment the brief landed — which is the shift this slice is about.
+    func testTheAgentSkeletonIsFractionsOfItsColumn() {
+        assertFractions(AgentSkeleton.lines, "the agent skeleton")
+        XCTAssertFalse(AgentSkeleton.accessibilityLabel.isEmpty)
+    }
+
     func testTheBriefSkeletonHasARailBesideIt() {
         assertRail(BriefSkeleton.sidebarSections, "the brief's properties rail")
         XCTAssertEqual(

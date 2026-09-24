@@ -69,20 +69,31 @@ struct PaneView: View {
                     }
                 }
 
-                // Content area
+                // Content area. A stage the pane has advanced to ahead of the
+                // action that leads there landing draws its skeleton rather
+                // than the real tab, whose data is not there to read yet.
+                let advancing = appModel.sliceActions.advance(for: slice.id)?.to == currentTab
                 switch currentTab {
                 case .brief:
                     BriefTabView(appModel: appModel, slice: slice, onTabChange: { tab in
                         currentTab = tab
                     })
                 case .agent:
-                    AgentTabView(appModel: appModel, slice: slice)
+                    if advancing {
+                        AgentSkeletonView()
+                    } else {
+                        AgentTabView(appModel: appModel, slice: slice)
+                    }
                 case .diff:
-                    DiffTabView(appModel: appModel, slice: slice, onApproved: {
-                        currentTab = .pr
+                    DiffTabView(appModel: appModel, slice: slice, onSelectTab: { tab in
+                        currentTab = tab
                     })
                 case .pr:
-                    PRTabView(appModel: appModel, slice: slice)
+                    if advancing {
+                        PRSkeletonView()
+                    } else {
+                        PRTabView(appModel: appModel, slice: slice)
+                    }
                 }
             } else {
                 // Empty state — "select a slice" only where there are slices

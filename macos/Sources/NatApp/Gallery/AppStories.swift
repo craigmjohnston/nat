@@ -470,6 +470,47 @@ enum AppStories {
         },
 
         Story(
+            name: "brief-launch-disabled",
+            summary: "The Brief tab straight after Launch Agent succeeded: the split control dimmed as a whole, so a second press cannot land before the state refresh catches up.",
+            size: pane
+        ) {
+            let appModel = await Fixtures.startedAppModel()
+            await appModel.sliceActions.run(.launch, sliceID: Fixtures.mergeBoxSliceID, select: { _ in }) {}
+            return BriefTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.mergeBoxSliceID))
+                .surface(.window)
+        },
+
+        Story(
+            name: "diff-approve-disabled",
+            summary: "The Diff tab straight after Approve succeeded: the button dimmed, one-shot, until it fails or becomes available again.",
+            size: pane
+        ) {
+            let appModel = await Fixtures.startedAppModel()
+            await appModel.sliceActions.run(.approve, sliceID: Fixtures.mergeBoxSliceID, select: { _ in }) {}
+            return DiffTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.mergeBoxSliceID))
+                .surface(.window)
+        },
+
+        Story(
+            name: "pr-merge-disabled",
+            summary: "The PR tab straight after Merge succeeded: the button dimmed until the reading catches up.",
+            size: pane
+        ) {
+            let appModel = await Fixtures.startedAppModel()
+            await appModel.sliceActions.run(.merge, sliceID: Fixtures.approveSliceID, select: { _ in }) {}
+            return PRTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.approveSliceID))
+                .surface(.window)
+        },
+
+        Story(
+            name: "agent-skeleton",
+            summary: "The Agent stage the pane advances to the moment Launch Agent is pressed, before the session appears.",
+            size: pane
+        ) {
+            AgentSkeletonView()
+        },
+
+        Story(
             name: "brief-handed-back",
             summary: "The Brief tab of a slice whose branch is waiting to be reviewed, the "
                 + "Launch Agent split button atop the inspector — and, at its foot, no "

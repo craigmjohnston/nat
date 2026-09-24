@@ -63,9 +63,14 @@ struct BriefTabView: View {
     @State private var showLaunchPopover = false
     @State private var selectedModel: String = ""
     @State private var selectedEffort: String = ""
-    @State private var isLaunching = false
-    @State private var launchError: String?
     @State private var launchWarning: String?
+
+    /// Launching is held by the app's `SliceActionTracker`, not by this view:
+    /// it advances the pane to the Agent stage at once, unmounting this tab,
+    /// and a failure returns to a fresh one that must still find the error —
+    /// and the one-shot rule — where the action left them.
+    private var isLaunching: Bool { appModel.sliceActions.isRunning(.launch, sliceID: slice.id) }
+    private var launchError: String? { appModel.sliceActions.error(.launch, sliceID: slice.id) }
 
     /// The models and effort levels the popover offers — see
     /// `SettingsView`'s own use of the same cache.
@@ -294,23 +299,25 @@ struct BriefTabView: View {
 
     // MARK: - Helpers
 
-    private func launchIsEnabled() -> Bool {
-        if isLaunching { return false }
+    /// Whether a launch is on offer at all, before the one-shot rule — a
+    /// detail to launch off, and a plan that says it can.
+    private var launchIsAvailable: Bool {
         guard detailState.detail != nil else { return false }
 
         let hasLiveAgent = appModel.selectedSliceID.flatMap { sliceID in
             appModel.activityStore?.agents[sliceID] != nil
         } ?? false
 
-        let plan = LaunchPlan(for: slice, hasLiveAgent: hasLiveAgent)
-        return plan.canLaunch
+        return LaunchPlan(for: slice, hasLiveAgent: hasLiveAgent).canLaunch
+    }
+
+    private func launchIsEnabled() -> Bool {
+        appModel.sliceActions.isEnabled(.launch, sliceID: slice.id, available: launchIsAvailable)
     }
 
     private func resetLaunchState() {
         showLaunchPopover = false
-        launchError = nil
         launchWarning = nil
-        isLaunching = false
 
         // Prefill from config
         if let agent = appModel.config?.sliceAgent {
@@ -323,55 +330,32 @@ struct BriefTabView: View {
     }
 
     private func performLaunch() {
+        guard let projectID = appModel.projectStore?.projectID else { return }
+        let sliceRef = slice.id
+        let appModel = appModel
+
+        // Build model and effort (nil if left blank, which is
+        // "leave it to Claude Code")
+        let model = selectedModel.isEmpty ? nil : selectedModel
+        let effort = selectedEffort.isEmpty ? nil : selectedEffort
+
+        launchWarning = nil
+        showLaunchPopover = false
         Task {
-            isLaunching = true
-            launchError = nil
-            launchWarning = nil
-
-            do {
-                guard let projectID = appModel.projectStore?.projectID else {
-                    launchError = "No project loaded"
-                    isLaunching = false
-                    return
-                }
-
-                // Build model and effort (nil if left blank, which is
-                // "leave it to Claude Code")
-                let model = selectedModel.isEmpty ? nil : selectedModel
-                let effort = selectedEffort.isEmpty ? nil : selectedEffort
-
+            // Advances to the Agent stage at once (a content swap, so
+            // instant rather than animated), and back here if it fails.
+            await appModel.sliceActions.run(.launch, sliceID: sliceRef, select: onTabChange) {
                 let result = try await NatClient().sliceLaunch(
                     projectID: projectID,
-                    sliceRef: slice.id,
+                    sliceRef: sliceRef,
                     model: model,
                     effort: effort
                 )
-
-                // Store warning if present
-                if let warning = result.warning {
-                    launchWarning = warning
-                }
+                launchWarning = result.warning
 
                 // Refresh the project to pick up the new agent
                 await appModel.refresh()
-
-                // Switch to Agent tab — a content swap, not a state change,
-                // so it happens instantly rather than animating.
-                onTabChange(.agent)
-
-                // Close the popover
-                showLaunchPopover = false
-            } catch let error as NatError {
-                if case .commandFailed(let message) = error {
-                    launchError = message
-                } else {
-                    launchError = error.localizedDescription
-                }
-            } catch {
-                launchError = error.localizedDescription
             }
-
-            isLaunching = false
         }
     }
 
@@ -405,6 +389,9 @@ struct BriefTabView: View {
                     showMenu: $showLaunchPopover,
                     menu: launchPopoverContent
                 )
+                .onChange(of: launchIsAvailable, initial: true) { _, available in
+                    appModel.sliceActions.observe(.launch, sliceID: slice.id, available: available)
+                }
             }
 
             ScrollView {

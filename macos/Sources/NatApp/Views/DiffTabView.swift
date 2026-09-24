@@ -31,7 +31,7 @@ struct CommentDraft: Equatable {
 struct DiffTabView: View {
     @Bindable var appModel: AppModel
     let slice: Slice
-    var onApproved: () -> Void = {}
+    var onSelectTab: (WorkflowTab) -> Void = { _ in }
 
     /// The project's shared diff cache, rather than a `DiffStore` local to
     /// this view — reading through the same instance across tab switches
@@ -48,9 +48,14 @@ struct DiffTabView: View {
     @State private var sendError: String?
     @State private var dropNotice: String?
 
-    @State private var isApproving = false
-    @State private var approveError: String?
     @State private var showApproveConfirm = false
+
+    /// Approving is held by the app's `SliceActionTracker`, not by this view:
+    /// approving advances the pane to the PR stage at once, unmounting this
+    /// tab, and a failure returns to a fresh one that must still find the
+    /// error — and the one-shot rule — where the action left them.
+    private var isApproving: Bool { appModel.sliceActions.isRunning(.approve, sliceID: slice.id) }
+    private var approveError: String? { appModel.sliceActions.error(.approve, sliceID: slice.id) }
 
     /// The file sidebar's width, draggable at its divider and remembered
     /// across launches — the default is the width it was fixed at before it
@@ -191,6 +196,7 @@ struct DiffTabView: View {
         let viewedCount = diff.files.filter { store.isViewed($0.path) }.count
         let pendingCount = store.pendingCommentCount
         let commentsEditable = store.commentsEditable
+        let canApprove = slice.handedBack && pendingCount == 0 && commentsEditable
 
         return VStack(spacing: 0) {
             InspectorActionsBar {
@@ -206,10 +212,13 @@ struct DiffTabView: View {
                         }
                     }
                     .buttonStyle(InspectorPrimaryButtonStyle())
-                    .disabled(pendingCount > 0 || isApproving || !commentsEditable)
+                    .disabled(!appModel.sliceActions.isEnabled(.approve, sliceID: slice.id, available: canApprove))
                     .help(commentsEditable
                         ? Self.approveHelp(pendingCount: pendingCount)
                         : "Approving is only available while viewing All commits")
+                    .onChange(of: canApprove, initial: true) { _, available in
+                        appModel.sliceActions.observe(.approve, sliceID: slice.id, available: available)
+                    }
                 }
 
                 // Secondary rather than primary: what this rail confirms is
@@ -372,16 +381,12 @@ struct DiffTabView: View {
 
     private func approve() async {
         guard let projectID = appModel.projectStore?.projectID else { return }
-        isApproving = true
-        approveError = nil
-        do {
-            _ = try await store.approve(projectID: projectID, sliceRef: slice.id)
-            isApproving = false
+        let sliceRef = slice.id
+        let store = store
+        let appModel = appModel
+        await appModel.sliceActions.run(.approve, sliceID: sliceRef, select: onSelectTab) {
+            _ = try await store.approve(projectID: projectID, sliceRef: sliceRef)
             await appModel.refresh()
-            onApproved()
-        } catch {
-            isApproving = false
-            approveError = error.localizedDescription
         }
     }
 

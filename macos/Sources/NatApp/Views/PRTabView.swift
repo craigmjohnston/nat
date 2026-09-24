@@ -23,9 +23,13 @@ struct PRTabView: View {
         appModel.prStore(projectID: appModel.projectStore?.projectID ?? "")
     }
 
-    @State private var isMerging = false
-    @State private var mergeError: String?
     @State private var showMergeConfirm = false
+
+    /// Merging is held by the app's `SliceActionTracker`, so the one-shot
+    /// rule (disabled once the merge has gone through, until it fails or the
+    /// merge genuinely becomes available again) outlives this view.
+    private var isMerging: Bool { appModel.sliceActions.isRunning(.merge, sliceID: slice.id) }
+    private var mergeError: String? { appModel.sliceActions.error(.merge, sliceID: slice.id) }
 
     @State private var commentText = ""
     @State private var isSendingComment = false
@@ -267,7 +271,10 @@ struct PRTabView: View {
                     }
                 }
                 .buttonStyle(InspectorPrimaryButtonStyle())
-                .disabled(!mergeIsEnabled(for: pr) || isMerging)
+                .disabled(!appModel.sliceActions.isEnabled(.merge, sliceID: slice.id, available: mergeIsEnabled(for: pr)))
+                .onChange(of: mergeIsEnabled(for: pr), initial: true) { _, available in
+                    appModel.sliceActions.observe(.merge, sliceID: slice.id, available: available)
+                }
 
                 Button(action: openInGitHub) {
                     HStack(spacing: 5) {
@@ -381,25 +388,16 @@ struct PRTabView: View {
     }
 
     private func performMerge() async {
-        isMerging = true
-        mergeError = nil
-        do {
+        let store = store
+        let appModel = appModel
+        await appModel.sliceActions.run(.merge, sliceID: slice.id, select: { _ in }) {
             try await store.merge()
             // The rail still lists this slice as awaiting review off the
             // PR-readiness reading, and a merge writes nothing to Notion, so
             // no nudge will refresh it — take the reading now rather than
             // leaving "awaiting review" standing until the next poll.
             await appModel.refresh()
-        } catch let error as NatError {
-            if case .commandFailed(let message) = error {
-                mergeError = message
-            } else {
-                mergeError = error.localizedDescription
-            }
-        } catch {
-            mergeError = error.localizedDescription
         }
-        isMerging = false
         // The pull request may have just settled (merged) or may now have
         // nothing left pending — either way this is a no-op if polling
         // should not continue.

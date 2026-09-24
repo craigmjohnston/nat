@@ -615,6 +615,34 @@ struct PRSkeletonView: View {
     }
 }
 
+// MARK: - Agent
+
+/// The Agent stage between pressing Launch Agent and the session appearing:
+/// the terminal's own surface and inset, with placeholder output lines.
+struct AgentSkeletonView: View {
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            DesignTokens.fill(.terminal)
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(AgentSkeleton.lines.enumerated()), id: \.offset) { _, width in
+                    SkeletonTextLine(width: width, type: .mono(Typo.code))
+                }
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 18)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(AgentSkeleton.accessibilityLabel)
+    }
+}
+
+#Preview("Agent") {
+    AgentSkeletonView()
+        .frame(width: 900, height: 560)
+}
+
 #Preview("Brief") {
     BriefSkeletonView()
         .frame(width: 900, height: 560)
