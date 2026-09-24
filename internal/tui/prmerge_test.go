@@ -265,3 +265,38 @@ func TestMergeSectionFitsTheWidth(t *testing.T) {
 		}
 	}
 }
+
+// TestMergeRefusalMergeStateGate mirrors GitHub's merge button: only CLEAN,
+// HAS_HOOKS and UNSTABLE go through; everything else refuses with a named
+// reason. internal/actions/mergerefusal_test.go and macos's PRPresentationTests
+// carry the same table.
+func TestMergeRefusalMergeStateGate(t *testing.T) {
+	pendingChecks := []gh.Check{{Name: "build", State: "IN_PROGRESS"}}
+	tests := []struct {
+		name string
+		pr   gh.PR
+		want string // empty: allowed
+	}{
+		{"clean", gh.PR{MergeStateStatus: "CLEAN", Mergeable: "MERGEABLE"}, ""},
+		{"has hooks", gh.PR{MergeStateStatus: "HAS_HOOKS"}, ""},
+		{"unstable", gh.PR{MergeStateStatus: "UNSTABLE", Checks: pendingChecks}, ""},
+		{"lower case clean", gh.PR{MergeStateStatus: " clean "}, ""},
+		{"blocked by pending checks", gh.PR{MergeStateStatus: "BLOCKED", Mergeable: "MERGEABLE", Checks: pendingChecks}, "blocked by checks: 1 pending"},
+		{"blocked by review", gh.PR{MergeStateStatus: "BLOCKED", Mergeable: "MERGEABLE", ReviewDecision: "REVIEW_REQUIRED"}, "blocked by review: review required"},
+		{"blocked with nothing pending", gh.PR{MergeStateStatus: "BLOCKED", Mergeable: "MERGEABLE"}, "blocked: required checks or reviews are not yet satisfied"},
+		{"behind", gh.PR{MergeStateStatus: "BEHIND", BaseRefName: "main"}, "mergeable: behind main"},
+		{"dirty", gh.PR{MergeStateStatus: "DIRTY", BaseRefName: "main"}, "mergeable: conflicting with main"},
+		{"draft state", gh.PR{MergeStateStatus: "DRAFT"}, "draft: mark the pull request ready for review"},
+		{"draft flag", gh.PR{MergeStateStatus: "CLEAN", IsDraft: true}, "draft: mark the pull request ready for review"},
+		{"empty", gh.PR{}, "mergeable: mergeability unknown"},
+		{"unknown", gh.PR{MergeStateStatus: "UNKNOWN"}, "mergeable: mergeability unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reason, refused := mergeRefusal(tt.pr)
+			if refused != (tt.want != "") || reason != tt.want {
+				t.Errorf("mergeRefusal() = (%q, %v), want %q", reason, refused, tt.want)
+			}
+		})
+	}
+}

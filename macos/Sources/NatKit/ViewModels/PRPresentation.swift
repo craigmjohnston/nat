@@ -439,15 +439,33 @@ public func mergeBoxState(for pr: PRDetail) -> MergeBoxState {
 /// CLI's own copy of this rule: the button should not offer what the CLI (and
 /// the Go TUI) would already refuse.
 ///
-/// Only a failing verdict refuses. A verdict still to come — a review not
-/// yet left, checks still running, a mergeability GitHub has not computed —
-/// is not a no, and GitHub is the one to say whether it will take the merge
-/// anyway.
+/// A failing verdict refuses first, in its own words. Past those the gate
+/// mirrors GitHub's own merge button: only a merge state status of CLEAN,
+/// HAS_HOOKS or UNSTABLE goes through, and BLOCKED, BEHIND, DRAFT and an empty
+/// or unknown status (GitHub still computing) each refuse naming what is still
+/// outstanding. Kept level by hand with the Go copies' `mergeStateRefusal`.
 public func mergeRefusal(_ pr: PRDetail) -> String? {
-    for verdict in mergeVerdicts(pr) where verdict.outcome == .failing {
+    let verdicts = mergeVerdicts(pr)
+    for verdict in verdicts where verdict.outcome == .failing {
         return "\(verdict.label): \(verdict.word)"
     }
-    return nil
+    let state = pr.mergeStateStatus.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    if pr.isDraft || state == "DRAFT" {
+        return "draft: mark the pull request ready for review"
+    }
+    switch state {
+    case "CLEAN", "HAS_HOOKS", "UNSTABLE":
+        return nil
+    case "BEHIND":
+        return "mergeable: behind \(baseOf(pr.baseRefName))"
+    case "BLOCKED":
+        if let pending = verdicts.first(where: { $0.outcome == .pending }) {
+            return "blocked by \(pending.label): \(pending.word)"
+        }
+        return "blocked: required checks or reviews are not yet satisfied"
+    default:
+        return "mergeable: mergeability unknown"
+    }
 }
 
 // MARK: - Relative time

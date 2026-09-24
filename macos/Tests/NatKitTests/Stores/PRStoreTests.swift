@@ -105,10 +105,10 @@ final class PRStoreTests: XCTestCase {
             checks: checks, reviewDecision: "APPROVED", mergeable: "MERGEABLE", mergeStateStatus: "CLEAN")
     }
 
-    private func mergedPR() -> PRDetail {
+    private func mergedPR(state: String = PRLifecycleState.merged) -> PRDetail {
         var pr = openPR()
         pr = PRDetail(
-            number: pr.number, title: pr.title, body: pr.body, state: PRLifecycleState.merged, isDraft: false,
+            number: pr.number, title: pr.title, body: pr.body, state: state, isDraft: false,
             author: pr.author, baseRefName: pr.baseRefName, headRefName: pr.headRefName, url: pr.url,
             reviewDecision: pr.reviewDecision, mergeable: pr.mergeable, mergeStateStatus: pr.mergeStateStatus)
         return pr
@@ -396,8 +396,26 @@ final class PRStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testShouldPollIsFalseWithNoChecksPending() async {
+    func testShouldPollIsTrueForAnOpenPullRequestWithNoChecksYet() async {
+        // GitHub may not have started its first check when the PR is first
+        // read: an empty list is no sign of a settled pull request.
+        let client = MockPRClient(response: .success(openPR()))
+        let store = PRStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        XCTAssertTrue(store.shouldPoll)
+    }
+
+    @MainActor
+    func testShouldPollIsTrueForAnOpenPullRequestWithEverythingPassing() async {
         let client = MockPRClient(response: .success(openPR(checks: [PRCheck(name: "build", state: "SUCCESS", link: "")])))
+        let store = PRStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        XCTAssertTrue(store.shouldPoll)
+    }
+
+    @MainActor
+    func testShouldPollIsFalseOnceClosed() async {
+        let client = MockPRClient(response: .success(mergedPR(state: PRLifecycleState.closed)))
         let store = PRStore(client: client)
         await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
         XCTAssertFalse(store.shouldPoll)
@@ -420,8 +438,8 @@ final class PRStoreTests: XCTestCase {
         await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
         XCTAssertEqual(client.viewCallCount, 1)
 
-        // The check finishes between the first read and the poll's next one.
-        client.setResponse(.success(openPR(checks: [PRCheck(name: "lint", state: "SUCCESS", link: "")])))
+        // The pull request is merged between the first read and the poll's next one.
+        client.setResponse(.success(mergedPR()))
         store.startPolling()
 
         // Give the poll loop a few intervals to run and settle.
@@ -433,17 +451,50 @@ final class PRStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testStartPollingDoesNothingWhenNothingIsPending() async {
-        let client = MockPRClient(response: .success(openPR(checks: [PRCheck(name: "build", state: "SUCCESS", link: "")])))
+    func testStartPollingDoesNothingOnceMerged() async {
+        let client = MockPRClient(response: .success(mergedPR()))
         let store = PRStore(client: client, pollIntervalNanoseconds: 5_000_000)
         await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
 
         store.startPolling()
         try? await Task.sleep(nanoseconds: 50_000_000)
 
-        // No pending check, so the loop should never have started reading again.
+        // Merged, so the loop should never have started reading again.
         XCTAssertEqual(client.viewCallCount, 1)
         store.stopPolling()
+    }
+
+    @MainActor
+    func testPollingPicksUpChecksThatAppearAfterAnEmptyFirstReading() async {
+        let client = MockPRClient(response: .success(openPR()))
+        let store = PRStore(client: client, pollIntervalNanoseconds: 5_000_000)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        XCTAssertEqual(store.loadState.pr?.checks.count, 0)
+
+        client.setResponse(.success(openPR(checks: [PRCheck(name: "lint", state: "IN_PROGRESS", link: "")])))
+        store.startPolling()
+        try? await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertEqual(store.loadState.pr?.checks.count, 1)
+        XCTAssertTrue(store.shouldPoll, "still open, so still worth watching")
+        store.stopPolling()
+    }
+
+    @MainActor
+    func testACacheHitStillRefreshesInTheBackground() async {
+        let client = MockPRClient(response: .success(openPR()))
+        let store = PRStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-2")
+        XCTAssertEqual(client.viewCallCount, 2)
+
+        client.setResponse(.success(openPR(checks: [PRCheck(name: "lint", state: "IN_PROGRESS", link: "")])))
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        XCTAssertEqual(store.loadState.pr?.checks.count, 0, "the cached reading shows instantly")
+
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(client.viewCallCount, 3)
+        XCTAssertEqual(store.loadState.pr?.checks.count, 1, "the background read replaces the stale one")
     }
 
     @MainActor

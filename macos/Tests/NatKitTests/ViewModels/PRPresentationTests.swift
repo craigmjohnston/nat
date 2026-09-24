@@ -386,8 +386,33 @@ final class PRPresentationTests: XCTestCase {
         let clean = samplePR(reviewDecision: "APPROVED", mergeable: "MERGEABLE", mergeStateStatus: "CLEAN")
         XCTAssertNil(mergeRefusal(clean))
 
-        // Still to come, not a refusal.
-        XCTAssertNil(mergeRefusal(samplePR()))
+    }
+
+    /// Mirrors `TestMergeRefusalMergeStateGate` in the Go copies: GitHub's
+    /// merge button, so only CLEAN / HAS_HOOKS / UNSTABLE go through.
+    func testMergeRefusalMergeStateGate() {
+        let pending = [PRCheck(name: "build", state: "IN_PROGRESS", link: "")]
+        let cases: [(String, PRDetail, String?)] = [
+            ("clean", samplePR(mergeable: "MERGEABLE", mergeStateStatus: "CLEAN"), nil),
+            ("has hooks", samplePR(mergeStateStatus: "HAS_HOOKS"), nil),
+            ("unstable", samplePR(checks: pending, mergeStateStatus: "UNSTABLE"), nil),
+            ("lower case clean", samplePR(mergeStateStatus: " clean "), nil),
+            ("blocked by pending checks", samplePR(checks: pending, mergeable: "MERGEABLE", mergeStateStatus: "BLOCKED"),
+                "blocked by checks: 1 pending"),
+            ("blocked by review", samplePR(reviewDecision: "REVIEW_REQUIRED", mergeable: "MERGEABLE", mergeStateStatus: "BLOCKED"),
+                "blocked by review: review required"),
+            ("blocked with nothing pending", samplePR(mergeable: "MERGEABLE", mergeStateStatus: "BLOCKED"),
+                "blocked: required checks or reviews are not yet satisfied"),
+            ("behind", samplePR(mergeStateStatus: "BEHIND"), "mergeable: behind main"),
+            ("dirty", samplePR(mergeStateStatus: "DIRTY"), "mergeable: conflicting with main"),
+            ("draft state", samplePR(mergeStateStatus: "DRAFT"), "draft: mark the pull request ready for review"),
+            ("draft flag", samplePR(isDraft: true, mergeStateStatus: "CLEAN"), "draft: mark the pull request ready for review"),
+            ("empty", samplePR(), "mergeable: mergeability unknown"),
+            ("unknown", samplePR(mergeStateStatus: "UNKNOWN"), "mergeable: mergeability unknown"),
+        ]
+        for (name, pr, want) in cases {
+            XCTAssertEqual(mergeRefusal(pr), want, name)
+        }
     }
 
     // MARK: - mergeBoxState (mirrors TestMergeSectionEndings)

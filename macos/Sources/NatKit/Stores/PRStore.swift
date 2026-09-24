@@ -41,7 +41,7 @@ public enum PRLoadState: Equatable, Sendable {
 }
 
 /// Manages a slice's pull request: fetching it on demand, polling it while
-/// the tab showing it is open and there is still something to watch, and
+/// the tab showing it is open and the pull request is, and
 /// merging it.
 ///
 /// Nothing here is written to Notion — the slice was marked Done as its pull
@@ -93,10 +93,8 @@ public final class PRStore {
     /// request stops any poll left running for the one before — a poll that
     /// kept going would end up reading the new slice under the old one's
     /// name. A slice whose pull request was already read this session shows
-    /// that reading instantly rather than behind a spinner again; the poll
-    /// this store already runs (started by the caller right after `fetch`
-    /// returns, same as any other first show) is what keeps it fresh from
-    /// here, so this does not also re-read it.
+    /// that reading instantly rather than behind a spinner again, and re-reads it
+    /// in the background so a stale reading is never pinned.
     ///
     /// With `sessionID`, `sliceRef` is instead the URL of one of that ad hoc
     /// session's pull requests, read with `nat pr-view --session` — the
@@ -116,6 +114,9 @@ public final class PRStore {
 
         if let cached = prCache[sliceRef] {
             loadState = .loaded(cached)
+            // Shown instantly, but never trusted: a reading cached before the
+            // first check started would otherwise be pinned for the whole run.
+            Task { await self.refresh() }
             return
         }
 
@@ -171,15 +172,14 @@ public final class PRStore {
 
     // MARK: - Polling
 
-    /// Whether polling is still worth doing: an open pull request with a
-    /// check still pending. Merged, closed, or nothing left pending stops
-    /// it — a poll over a settled conversation would only ever read the same
-    /// answer again, the same rule the Go TUI's own `prSettled` follows for
-    /// the board's background reading.
+    /// Whether polling is still worth doing: the pull request is open. Checks
+    /// starting late, review decisions, mergeability and a merge made on
+    /// GitHub directly all keep arriving until it settles as merged or closed
+    /// — an empty check list is no sign of a settled one, only of one GitHub
+    /// has not started on yet.
     public var shouldPoll: Bool {
         guard let pr = loadState.pr else { return false }
-        guard pr.state != PRLifecycleState.merged, pr.state != PRLifecycleState.closed else { return false }
-        return checkRollup(pr.checks).outcome == .pending
+        return pr.state != PRLifecycleState.merged && pr.state != PRLifecycleState.closed
     }
 
     /// Starts the poll loop if it is not already running and there is still
