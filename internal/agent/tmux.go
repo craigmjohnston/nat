@@ -505,7 +505,8 @@ func launchArgs(session, workdir, promptFile string, m config.AgentModel, carryE
 	args = append(args, statusOffArgs(session)...)
 	args = append(args, mouseOnArgs(session)...)
 	args = append(args, inputFeatureArgs()...)
-	return append(args, hyperlinkClickArgs()...)
+	args = append(args, hyperlinkClickArgs()...)
+	return append(args, copyModeDragEndArgs()...)
 }
 
 // supportsSessionEnv reports whether this tmux takes new-session's -e flag,
@@ -638,6 +639,34 @@ func hyperlinkClickArgs() []string {
 	}
 }
 
+// natSessionCondition is the tmux format condition true in a session nat made
+// (its names all start `nat-`), the scope the selection binding is limited to.
+const natSessionCondition = "#{m:nat-*,#{session_name}}"
+
+// copyModeDragEndArgs rebinds MouseDragEnd1Pane in both copy-mode tables so a
+// drag's selection stays visible after release. Claude Code does not ask for
+// mouse reporting and nat sets tmux's `mouse` on, so a plain drag enters
+// copy-mode, and tmux's stock release binding is copy-pipe-and-cancel — copy,
+// then leave copy-mode, which erases the highlight the instant the button
+// comes up. The -no-clear variant copies (set-clipboard external turns that
+// into an OSC 52 for the client) and keeps the selection until a click or the
+// end of copy-mode.
+//
+// Bindings are server-wide, so the new behaviour is conditioned on the session
+// being nat's, with the stock command as the fall-through: the user's own
+// sessions drag exactly as before. Idempotent, like [hyperlinkClickArgs].
+func copyModeDragEndArgs() []string {
+	var args []string
+	for _, table := range []string{"copy-mode", "copy-mode-vi"} {
+		args = append(args,
+			";", "bind-key", "-T", table, "MouseDragEnd1Pane",
+			"if-shell", "-F", "-t", "=", natSessionCondition,
+			"send-keys -X copy-pipe-no-clear", "send-keys -X copy-pipe-and-cancel",
+		)
+	}
+	return args
+}
+
 // terminalFeatures is the terminal-features entry chained onto our session
 // creation: every outer terminal ("*") is told to support extended keys, so
 // tmux asks it for them and shift+enter arrives distinguishable from enter,
@@ -701,7 +730,8 @@ func bareLaunchArgs(session, workdir string, m config.AgentModel, carryEnv bool,
 	args = append(args, statusOffArgs(session)...)
 	args = append(args, mouseOnArgs(session)...)
 	args = append(args, inputFeatureArgs()...)
-	return append(args, hyperlinkClickArgs()...)
+	args = append(args, hyperlinkClickArgs()...)
+	return append(args, copyModeDragEndArgs()...)
 }
 
 // modelFlags is the --model/--effort/--settings flags [agentCommand] and
