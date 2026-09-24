@@ -154,7 +154,7 @@ struct DiffTabView: View {
                                     numberWidth: diff.numberWidth,
                                     isViewed: store.isViewed(file.path),
                                     isCollapsed: store.isCollapsed(file.path),
-                                    comments: store.comments.filter { $0.path == file.path },
+                                    comments: store.commentsByPath[file.path] ?? [],
                                     selection: selection?.path == file.path ? selection : nil,
                                     draft: draft?.path == file.path ? draft : nil,
                                     commentsEnabled: store.commentsEditable,
@@ -230,7 +230,7 @@ struct DiffTabView: View {
             DiffFileSidebarView(
                 files: diff.files,
                 isViewed: { store.isViewed($0) },
-                commentCount: { path in store.comments.filter { $0.path == path }.count },
+                commentCount: { path in store.commentsByPath[path]?.count ?? 0 },
                 commits: store.commits,
                 selectedCommit: store.selectedCommit,
                 onSelectCommit: { sha in Task { await store.selectCommit(sha) } },

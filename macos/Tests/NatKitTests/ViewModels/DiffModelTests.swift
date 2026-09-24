@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import NatKit
 
 final class DiffModelTests: XCTestCase {
@@ -441,5 +442,49 @@ final class DiffModelTests: XCTestCase {
         let binary = model.files[3]
         XCTAssertTrue(binary.described)
         XCTAssertTrue(binary.rows.allSatisfy { $0.kind == .described })
+    }
+
+    // MARK: - styledText
+
+    /// A dynamic colour is a fresh closure per call, so two are never `==`;
+    /// what is comparable is the text and where each coloured run begins and
+    /// ends, with every run carrying a colour.
+    private func shape(_ s: AttributedString) -> [String] {
+        s.runs.map { run in
+            "\(String(s[run.range].characters))|\(run.foregroundColor != nil)"
+        }
+    }
+
+    func testStyledTextIsPrecomputedFromTokens() {
+        let row = DiffRow(
+            id: "a#_#1", kind: .added, oldNumber: nil, newNumber: 1, prefix: "+", text: "func f",
+            tokens: [TokenRun(kind: .keyword, length: 4), TokenRun(kind: .text, length: 2)]
+        )
+        XCTAssertEqual(shape(row.styledText), ["func|true", " f|true"])
+    }
+
+    func testStyledTextForEmptyLineIsAColouredSpace() {
+        let row = DiffRow(id: "a#1#1", kind: .context, oldNumber: 1, newNumber: 1, prefix: " ", text: "")
+        XCTAssertEqual(shape(row.styledText), [" |true"])
+    }
+
+    func testStyledTextForDescribedRowIsOneColouredRun() {
+        let row = DiffRow(id: "a#row0", kind: .described, oldNumber: nil, newNumber: nil, prefix: nil, text: "Binary")
+        XCTAssertEqual(shape(row.styledText), ["Binary|true"])
+    }
+
+    func testStyledTextFallsBackWhenRunsDisagreeWithBytes() {
+        let row = DiffRow(
+            id: "a#_#1", kind: .added, oldNumber: nil, newNumber: 1, prefix: "+", text: "hi",
+            tokens: [TokenRun(kind: .keyword, length: 9)]
+        )
+        XCTAssertEqual(shape(row.styledText), ["hi|true"])
+    }
+
+    func testRowEqualityIgnoresTheDerivedStyledText() {
+        let a = DiffRow(id: "x", kind: .context, oldNumber: 1, newNumber: 1, prefix: " ", text: "t")
+        let b = DiffRow(id: "x", kind: .context, oldNumber: 1, newNumber: 1, prefix: " ", text: "t")
+        XCTAssertEqual(a, b)
+        XCTAssertNotEqual(a, DiffRow(id: "y", kind: .context, oldNumber: 1, newNumber: 1, prefix: " ", text: "t"))
     }
 }

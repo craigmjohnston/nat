@@ -59,6 +59,7 @@ struct DiffFileBoxView: View {
             if !isCollapsed {
                 Divider().frame(height: 0.5)
 
+                let commentsByAnchor = Dictionary(grouping: comments) { $0.anchorRowIDs.last }
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(file.rows) { row in
                         DiffRowView(
@@ -83,7 +84,7 @@ struct DiffFileBoxView: View {
                             .surface(.rowAlt)
                         }
 
-                        ForEach(comments.filter { $0.anchorRowIDs.last == row.id }) { comment in
+                        ForEach(commentsByAnchor[row.id] ?? []) { comment in
                             PendingCommentCardView(
                                 comment: comment,
                                 authorName: authorName,
@@ -283,7 +284,7 @@ struct DiffRowView: View {
                 .frame(width: 13)
                 .padding(.leading, 12)
 
-            Text(rowText)
+            Text(row.styledText)
                 .font(Typo.mono(size: Typo.code, weight: .regular))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -312,21 +313,6 @@ struct DiffRowView: View {
         .onTapGesture {
             onSelect(NSEvent.modifierFlags.contains(.shift))
         }
-    }
-
-    /// The row's text, coloured per its syntax runs where the file has any
-    /// (`DiffRow.tokens`) — always drawn on top of the row's own +/- wash,
-    /// never instead of it. A row with no tokens (no matched language, or the
-    /// blank placeholder for an empty line) renders exactly as it always did:
-    /// one plain colour, the dimmer label for a described file's message.
-    private var rowText: AttributedString {
-        let defaultColor = DesignTokens.ink(row.kind == .described ? .secondary : .primary, on: ground)
-        guard !row.text.isEmpty else {
-            var s = AttributedString(" ")
-            s.foregroundColor = defaultColor
-            return s
-        }
-        return DiffSyntax.attributedLine(row.text, tokens: row.tokens, defaultColor: defaultColor)
     }
 
     private var glyph: String {

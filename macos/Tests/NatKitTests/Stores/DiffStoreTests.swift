@@ -467,6 +467,21 @@ final class DiffStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testCommentsByPathTracksTheCommentList() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        let rowID = store.loadState.diff!.files[0].rows[0].id
+
+        XCTAssertTrue(store.commentsByPath.isEmpty)
+        store.setComment(path: "a.go", anchorRowIDs: [rowID], text: "one")
+        XCTAssertEqual(store.commentsByPath["a.go"]?.map(\.text), ["one"])
+        XCTAssertNil(store.commentsByPath["b.go"])
+        store.setComment(path: "a.go", anchorRowIDs: [rowID], text: "")
+        XCTAssertTrue(store.commentsByPath.isEmpty)
+    }
+
+    @MainActor
     func testSetCommentOnTheSameRunEditsRatherThanDuplicates() async {
         let client = MockDiffClient(response: .success(makeDiff()))
         let store = DiffStore(client: client)

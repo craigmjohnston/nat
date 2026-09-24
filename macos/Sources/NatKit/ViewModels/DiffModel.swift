@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// One row of a file's diff, ready to render.
 ///
@@ -56,6 +57,20 @@ public struct DiffRow: Identifiable, Equatable, Sendable {
     /// happen on this side: the Go side already lexed it once when the branch
     /// was read.
     public let tokens: [TokenRun]?
+    /// `text` styled for drawing, built once here so a render pass — and a
+    /// live resize re-renders every visible row every frame — never slices
+    /// bytes or concatenates pieces again. Coloured per `tokens` where the row
+    /// has any, on the `.card` ground the file box draws its rows on; the
+    /// default colour is the dimmer label for a described file's message, and
+    /// an empty line is one space so the row keeps its height. Derived from
+    /// the other fields alone, so it takes no part in `==`.
+    public let styledText: AttributedString
+
+    public static func == (lhs: DiffRow, rhs: DiffRow) -> Bool {
+        lhs.id == rhs.id && lhs.kind == rhs.kind && lhs.oldNumber == rhs.oldNumber
+            && lhs.newNumber == rhs.newNumber && lhs.prefix == rhs.prefix
+            && lhs.text == rhs.text && lhs.tokens == rhs.tokens
+    }
 
     public init(
         id: String,
@@ -73,6 +88,15 @@ public struct DiffRow: Identifiable, Equatable, Sendable {
         self.prefix = prefix
         self.text = text
         self.tokens = tokens
+
+        let defaultColor = DesignTokens.ink(kind == .described ? .secondary : .primary, on: .card)
+        if text.isEmpty {
+            var blank = AttributedString(" ")
+            blank.foregroundColor = defaultColor
+            self.styledText = blank
+        } else {
+            self.styledText = DiffSyntax.attributedLine(text, tokens: tokens, defaultColor: defaultColor)
+        }
     }
 }
 
