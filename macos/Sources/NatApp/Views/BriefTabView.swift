@@ -80,6 +80,7 @@ struct BriefTabView: View {
     /// launches — the same `PaneResizeHandle` bargain the PR tab's sidebar
     /// makes, kept under its own key since the two rails size independently.
     @AppStorage("briefSidebarWidth") private var sidebarWidth = 216.0
+    @State private var liveSidebarWidth: Double?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -426,10 +427,10 @@ struct BriefTabView: View {
                 }
             }
         }
-        .frame(width: sidebarWidth)
+        .frame(width: liveSidebarWidth ?? sidebarWidth)
         .rule(.separator, edges: [.leading], width: 0.5)
         .overlay(alignment: .leading) {
-            PaneResizeHandle(width: $sidebarWidth, minWidth: 170, maxWidth: 400, edge: .leading)
+            PaneResizeHandle(width: sidebarWidth, liveWidth: $liveSidebarWidth, onCommit: { sidebarWidth = $0 }, minWidth: 170, maxWidth: 400, edge: .leading)
                 .offset(x: -4.5)
         }
     }

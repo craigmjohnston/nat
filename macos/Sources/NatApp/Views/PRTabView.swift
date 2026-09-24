@@ -44,6 +44,7 @@ struct PRTabView: View {
     /// resizable, and the same key `PRSidebarView` used to hold it under
     /// before its own frame/rule/resize became this tab's to wrap it in.
     @AppStorage("prSidebarWidth") private var sidebarWidth = 216.0
+    @State private var liveSidebarWidth: Double?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -317,10 +318,10 @@ struct PRTabView: View {
                 }
             }
         }
-        .frame(width: sidebarWidth)
+        .frame(width: liveSidebarWidth ?? sidebarWidth)
         .rule(.separator, edges: [.leading], width: 0.5)
         .overlay(alignment: .leading) {
-            PaneResizeHandle(width: $sidebarWidth, minWidth: 170, maxWidth: 400, edge: .leading)
+            PaneResizeHandle(width: sidebarWidth, liveWidth: $liveSidebarWidth, onCommit: { sidebarWidth = $0 }, minWidth: 170, maxWidth: 400, edge: .leading)
                 .offset(x: -4.5)
         }
         .confirmationDialog(
