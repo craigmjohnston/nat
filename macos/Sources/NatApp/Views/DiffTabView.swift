@@ -406,6 +406,7 @@ struct DiffTabView: View {
         sendError = nil
         do {
             _ = try await store.sendComments(projectID: projectID, sliceRef: slice.id)
+            await appModel.refresh()
         } catch {
             sendError = error.localizedDescription
         }

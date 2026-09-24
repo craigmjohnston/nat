@@ -769,7 +769,7 @@ final class DiffStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testSendCommentsWithoutApprovingLeavesTheSliceInReview() async throws {
+    func testSendCommentsWithoutApprovingStillReworksAndAsksForTheHandBack() async throws {
         let client = MockDiffClient(response: .success(makeDiff()))
         let store = DiffStore(client: client)
         await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
@@ -778,8 +778,12 @@ final class DiffStoreTests: XCTestCase {
 
         try await store.sendComments(projectID: "proj-1", sliceRef: "slice-1")
 
-        XCTAssertEqual(client.reworkCalls, [])
-        XCTAssertFalse(client.sentPrompts[0].text.contains("complete-slice"))
+        XCTAssertEqual(client.reworkCalls, ["slice-1"])
+        let prompt = client.sentPrompts[0].text
+        XCTAssertTrue(prompt.hasSuffix(
+            "nat complete-slice slice-1 --project proj-1 --branch nat/example --summary '<what you changed for these comments>'\n"))
+        XCTAssertFalse(prompt.contains("opens the pull request"))
+        XCTAssertEqual(store.pendingCommentCount, 0)
     }
 
     @MainActor
@@ -798,6 +802,25 @@ final class DiffStoreTests: XCTestCase {
         XCTAssertEqual(store.pendingCommentCount, 0)
         let prompt = client.sentPrompts[0].text
         XCTAssertTrue(prompt.contains("nat complete-slice slice-1 --project proj-1 --branch nat/example"))
+        XCTAssertTrue(prompt.contains("opens the pull request"))
+    }
+
+    @MainActor
+    func testAFailedSendWithoutApprovingReworksNothing() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        client.sendError = DiffTestError()
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        let rowID = store.loadState.diff!.files[0].rows[0].id
+        store.setComment(path: "a.go", anchorRowIDs: [rowID], text: "clamp this")
+
+        do {
+            try await store.sendComments(projectID: "proj-1", sliceRef: "slice-1")
+            XCTFail("expected the send to throw")
+        } catch {}
+
+        XCTAssertEqual(client.reworkCalls, [])
+        XCTAssertEqual(store.pendingCommentCount, 1)
     }
 
     @MainActor

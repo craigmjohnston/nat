@@ -101,7 +101,7 @@ final class DiffCommentsTests: XCTestCase {
         XCTAssertEqual(commentTitle(path: "other.go", ref: "", span: 3), "other.go, 3 lines")
     }
 
-    func testCommentPromptAsksForTheHandBackOnlyWhenApproving() {
+    func testCommentPromptAsksForTheHandBackAndSaysWhenItOpensThePR() {
         let row = DiffRow(id: "main.go#_#12", kind: .added, oldNumber: nil, newNumber: 12, prefix: "+", text: "foo()")
         let file = DiffFileModel(path: "main.go", oldPath: "main.go", adds: 1, dels: 0, described: false, rows: [row])
         let diff = DiffModel(base: "main", branch: "slice/review", files: [file])
@@ -110,6 +110,10 @@ final class DiffCommentsTests: XCTestCase {
         XCTAssertFalse(commentsPrompt(comments, diff: diff).contains("complete-slice"))
         let got = commentsPrompt(comments, diff: diff, handBack: HandBackInstruction(projectID: "p-1", sliceRef: "s-1"))
         XCTAssertTrue(got.contains("nat complete-slice s-1 --project p-1 --branch slice/review --summary"))
+        XCTAssertFalse(got.contains("opens the pull request"))
+        let approving = commentsPrompt(
+            comments, diff: diff, handBack: HandBackInstruction(projectID: "p-1", sliceRef: "s-1", opensPullRequest: true))
+        XCTAssertTrue(approving.contains("That hand-back opens the pull request"))
     }
 
     // MARK: - commentsPrompt, ported from TestCommentPrompt
