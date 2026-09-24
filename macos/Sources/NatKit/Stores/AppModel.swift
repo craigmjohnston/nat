@@ -187,6 +187,11 @@ public final class AppModel {
     /// `PRStore` of its own.
     private var prStores: [String: PRStore] = [:]
 
+    /// Every one-shot slice action's state (launch, approve, merge) and the
+    /// stage move in flight, held here rather than in the tab a button lives
+    /// on: an optimistic advance unmounts that tab mid-action.
+    public let sliceActions = SliceActionTracker()
+
     private let configReader: ConfigReaderProtocol
 
     /// Where each project's last-good plan is kept between launches, handed

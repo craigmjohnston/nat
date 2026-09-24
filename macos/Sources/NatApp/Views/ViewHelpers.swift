@@ -266,13 +266,23 @@ private struct RuleBorderModifier: ViewModifier {
     }
 }
 
+extension View {
+    /// The text every primary control's label is set in — the one place its
+    /// font, size, weight and ink are named, so the hand-drawn split control
+    /// (which cannot be a single `PrimaryButtonStyle`) cannot drift from it.
+    func primaryButtonLabel() -> some View {
+        self
+            .font(.system(size: Typo.subhead, weight: .semibold))
+            .ink(.onAccent)
+    }
+}
+
 struct PrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: Typo.subhead, weight: .semibold))
-            .ink(.onAccent)
+            .primaryButtonLabel()
             .padding(.horizontal, ButtonMetrics.horizontalPadding)
             .frame(height: ButtonMetrics.height)
             .background(
@@ -336,8 +346,7 @@ struct InspectorPrimaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: Typo.subhead, weight: .semibold))
-            .ink(.onAccent)
+            .primaryButtonLabel()
             .frame(maxWidth: .infinity)
             .frame(height: InspectorActionMetrics.height)
             .background(
@@ -387,8 +396,7 @@ struct InspectorSplitButton<Menu: View>: View {
                 AsyncActionLabel(isBusy: isBusy) {
                     Text(title)
                 }
-                .font(.system(size: Typo.subhead, weight: .semibold))
-                .ink(.onAccent)
+                .primaryButtonLabel()
                 .frame(maxWidth: .infinity)
                 .frame(height: InspectorActionMetrics.height)
             }

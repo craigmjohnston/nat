@@ -126,3 +126,12 @@ public enum PRSkeleton {
 
     public static let accessibilityLabel = "Reading the pull request…"
 }
+
+/// The Agent stage while a launch is in flight and no session has appeared
+/// yet: a few lines of terminal output being read in, on the terminal's own
+/// surface.
+public enum AgentSkeleton {
+    public static let lines: SkeletonLines = [0.42, 0.68, 0.55, 0.31, 0.74, 0.48]
+
+    public static let accessibilityLabel = "Starting the agent…"
+}
