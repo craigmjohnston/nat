@@ -210,8 +210,8 @@ enum AppStories {
         Story(
             name: "status-bar-mixed",
             summary: "The status bar with a done stub — a bold text-coloured checkmark "
-                + "with an outer stroke — a started milestone drawn solid, "
-                + "and an untouched one as a filled circle. The agent "
+                + "with an outer stroke — a started milestone as a track with a partial accent fill, "
+                + "and an untouched one as a muted circle. The agent "
                 + "count sits at the bar's far right.",
             size: CGSize(width: 1360, height: StatusBarView.height)
         ) {
@@ -302,7 +302,7 @@ enum AppStories {
         Story(
             name: "status-bar-usage-at-rest",
             summary: "The Claude usage readout at the bar's far right, both windows "
-                + "well under the warning threshold: a gauge glyph, then each window's "
+                + "well under the warning threshold: each window's "
                 + "percent and reset in the bar's own tertiary tint.",
             size: CGSize(width: 1360, height: StatusBarView.height)
         ) {

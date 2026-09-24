@@ -156,6 +156,12 @@ public enum DesignTokens {
         derived { $0.wash(.muted, of: $0.accent, on: ground) }
     }
 
+    /// The empty track of a progress bar: the label ink at a faint share over
+    /// the ground, the design mock's `label 13%`.
+    public static func progressTrack(on ground: Ground) -> Color {
+        derived { Tint($0.label.hex).wash(on: ground.surface(in: $0), 0.13) }
+    }
+
     /// The disc an avatar's initials sit on.
     public static func avatarWash(on ground: Ground) -> Color {
         derived { $0.wash(.avatar, of: $0.accent, on: ground) }
