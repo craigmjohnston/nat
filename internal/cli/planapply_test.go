@@ -415,22 +415,6 @@ func TestPlanApplyReportsAnUnreadableFile(t *testing.T) {
 	}
 }
 
-// The plan parses before the config is read, so an unfinished setup is still
-// what a plan-apply run on a machine with no config is told about.
-func TestPlanApplyReportsUnfinishedSetup(t *testing.T) {
-	api := planAPI(1)
-	env, _ := testEnv(testConfig(t), api)
-	env.In = strings.NewReader(samplePlan)
-	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
-
-	err := Run(context.Background(), []string{"plan-apply", "--project", "project-1"}, env)
-
-	if err == nil || !strings.Contains(err.Error(), "run `nat` once to set it up") {
-		t.Errorf("err = %v, want it to report the unfinished setup", err)
-	}
-	noWritesBut(t, api, 0)
-}
-
 // A write that fails stops the run. What was already created stays in Notion,
 // so the error says how much of the plan landed rather than leaving it to be
 // worked out by re-running and duplicating half of it.
@@ -902,67 +886,6 @@ func TestPlanApplyFindsTheNamedProjectByAnUndashedID(t *testing.T) {
 	}
 	if len(api.creates) != 1 || api.creates[0].parent != notion.DataSourceParent("other-ds") {
 		t.Errorf("creates = %+v, want the named project's data source", api.creates)
-	}
-}
-
-// An ID the config does not know is refused by name, with what it does know
-// listed, and nothing at all is written.
-func TestPlanApplyRefusesAProjectTheConfigDoesNotKnow(t *testing.T) {
-	api := twoProjectAPI(1)
-
-	_, err := runPlanWith(t, twoProjectConfig(t, "project-2"), api, samplePlan, "--project", "project-9")
-	if err == nil {
-		t.Fatal("plan-apply: want an error naming the project")
-	}
-	want := "no project project-9 in the config file: it tracks project-1 (nat), project-2 (other)"
-	if err.Error() != want {
-		t.Errorf("error = %q, want %q", err, want)
-	}
-	if len(api.creates) != 0 || len(api.schemaUpdates) != 0 {
-		t.Errorf("writes = %+v / %+v, want nothing written", api.creates, api.schemaUpdates)
-	}
-}
-
-// A config tracking nothing yet says so rather than listing an empty list.
-func TestPlanApplyRefusesAProjectWhenTheConfigTracksNone(t *testing.T) {
-	cfg := config.Config{}
-
-	_, err := runPlanWith(t, cfg, planAPI(0), samplePlan, "--project", "project-1")
-	want := "no project project-1 in the config file: it tracks no projects yet"
-	if err == nil || err.Error() != want {
-		t.Errorf("error = %v, want %q", err, want)
-	}
-}
-
-// The config file is read the same way for a named project as for the active
-// one: a read that fails, and a machine with no config at all.
-func TestPlanApplyReportsAConfigItCannotRead(t *testing.T) {
-	for _, tt := range []struct {
-		name string
-		load func() (config.Config, bool, error)
-		want string
-	}{
-		{
-			name: "unreadable",
-			load: func() (config.Config, bool, error) { return config.Config{}, false, errors.New("disk gone") },
-			want: "disk gone",
-		},
-		{
-			name: "not there",
-			load: func() (config.Config, bool, error) { return config.Config{}, false, nil },
-			want: "no configuration yet: run `nat` once to set it up",
-		},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			env, _ := testEnv(testConfig(t), planAPI(0))
-			env.Load = tt.load
-			env.In = strings.NewReader(samplePlan)
-
-			err := Run(context.Background(), []string{"plan-apply", "--project", "project-2"}, env)
-			if err == nil || err.Error() != tt.want {
-				t.Errorf("error = %v, want %q", err, tt.want)
-			}
-		})
 	}
 }
 

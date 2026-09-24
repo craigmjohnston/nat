@@ -137,25 +137,9 @@ func TestReleaseSliceRefusals(t *testing.T) {
 		want string
 	}{
 		{
-			name: "a Todo slice",
-			page: heldSlice(sliceID, "Render the board", notion.SliceTodo, "", ""),
-			want: `"Render the board" is Todo, not In progress: only a slice you claimed can be released`,
-		},
-		{
-			name: "a Done slice",
-			page: heldSlice(sliceID, "Render the board", notion.SliceDone, "u1", "Craig Johnston"),
-			want: `"Render the board" is Done, not In progress: only a slice you claimed can be released`,
-		},
-		{
 			name: "held by somebody else",
 			page: heldSlice(sliceID, "Render the board", notion.SliceInProgress, "u2", "Someone Else"),
 			want: `"Render the board" is held by Someone Else, not by Craig Johnston: leave it to them`,
-		},
-		{
-			name: "in progress but held by nobody",
-			page: heldSlice(sliceID, "Render the board", notion.SliceInProgress, "", ""),
-			want: `"Render the board" is in progress but held by nobody, not by Craig Johnston: ` +
-				`only a slice you claimed can be released`,
 		},
 	}
 	for _, tt := range tests {

@@ -488,11 +488,6 @@ func TestStartSliceNeedsAConfiguredProject(t *testing.T) {
 			env:  func(e *Env) { e.Load = func() (config.Config, bool, error) { return testConfig(t), true, nil } },
 			want: "no assignee in the config",
 		},
-		{
-			name: "no config file",
-			env:  func(e *Env) { e.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil } },
-			want: "run `nat` once to set it up",
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

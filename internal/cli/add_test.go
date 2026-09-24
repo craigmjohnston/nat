@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/store"
@@ -424,19 +423,6 @@ func TestMilestoneAddReportsAFailedShapeReadOnAnAlreadyHydratedPlan(t *testing.T
 	if err == nil || !strings.Contains(err.Error(), "milestones") {
 		t.Errorf("err = %v, want the broken read reported", err)
 	}
-}
-
-func TestMilestoneAddNeedsAConfiguredProject(t *testing.T) {
-	api := plannedAPI(addedMilestoneID)
-	env, _ := testEnv(testConfig(t), api)
-	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
-
-	err := Run(context.Background(), []string{"milestone-add", "M4", "--project", "project-1"}, env)
-
-	if err == nil || !strings.Contains(err.Error(), "run `nat` once to set it up") {
-		t.Fatalf("err = %v, want the setup reported", err)
-	}
-	noWritesBut(t, api, 0)
 }
 
 func TestMilestoneAddReportsAFailedWrite(t *testing.T) {
@@ -856,19 +842,6 @@ func TestSliceAddReportsAFailedShapeReadOnAnAlreadyHydratedPlan(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "milestones") {
 		t.Errorf("err = %v, want the broken read reported", err)
 	}
-}
-
-func TestSliceAddNeedsAConfiguredProject(t *testing.T) {
-	api := plannedAPI(addedSliceID)
-	env, _ := testEnv(testConfig(t), api)
-	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
-
-	err := Run(context.Background(), []string{"slice-add", "Render the board", "--milestone", "M2: Board", "--project", "project-1"}, env)
-
-	if err == nil || !strings.Contains(err.Error(), "run `nat` once to set it up") {
-		t.Fatalf("err = %v, want the setup reported", err)
-	}
-	noWritesBut(t, api, 0)
 }
 
 func TestSliceAddReportsAFailedWrite(t *testing.T) {

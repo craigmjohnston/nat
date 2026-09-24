@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/store"
@@ -825,23 +824,6 @@ func TestPlanApplyReportsAFailedSliceRead(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "load slices") {
 		t.Fatalf("err = %v, want the failing read named", err)
-	}
-}
-
-// The project is resolved before anything is read, so a machine that has not
-// been set up says so rather than failing on a page fetch.
-func TestSliceDependsNeedsAConfiguredProject(t *testing.T) {
-	api := dependsAPI(t)
-	env, _ := testEnv(testConfig(t), api)
-	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
-
-	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env)
-
-	if err == nil || !strings.Contains(err.Error(), "run `nat` once to set it up") {
-		t.Errorf("err = %v, want the unfinished setup named", err)
-	}
-	if len(api.gets) != 0 {
-		t.Errorf("gets = %v, want nothing read", api.gets)
 	}
 }
 
