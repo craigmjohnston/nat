@@ -10,7 +10,7 @@ struct NatApp: App {
 
     /// The chosen theme, as the settings window writes it. Reading it here
     /// is what makes the switch live: the scene re-renders when the stored
-    /// value changes, `preferredColorScheme` moves with it, and every token
+    /// value changes, `NSApp.appearance` moves with it, and every token
     /// in `DesignTokens` re-resolves under the new appearance.
     @AppStorage(Theme.storageKey) private var storedTheme = Theme.system.rawValue
 
@@ -91,10 +91,13 @@ struct NatApp: App {
             // there is a window to bring.
             .onAppear { NSApplication.shared.activate() }
             // Both palettes are carried by the tokens themselves, so all
-            // this does is say which one the window asks for — and, for
-            // `system`, nil, which is the window following the Mac's own
-            // appearance and going on following it as that changes.
-            .preferredColorScheme(theme.colorScheme)
+            // this does is say which one the app asks for, at AppKit level
+            // (`preferredColorScheme(nil)` never un-pins) — nil for `system`,
+            // which follows the Mac and goes on following it. Runs once at
+            // startup and on every change, for every window at once.
+            .onChange(of: storedTheme, initial: true) {
+                NSApp.appearance = theme.nsAppearanceName.flatMap(NSAppearance.init(named:))
+            }
         }
         // The header row IS the title bar (WindowShellView reserves room for
         // the traffic lights and makes itself draggable) — hiding the system
@@ -109,11 +112,8 @@ struct NatApp: App {
             }
         }
 
-        // No `preferredColorScheme` here on purpose: a settings window
-        // follows the Mac's own appearance, whatever the app draws itself
-        // in — Xcode is the precedent, its settings light over a dark
-        // editor. The theme picker inside goes on restyling the main
-        // window, which is the window the preference is about.
+        // The settings window takes the app's appearance (`NSApp.appearance`,
+        // set above) like every other window, so it cannot disagree with main.
         Settings {
             SettingsView(appModel: appModel)
         }

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Which of the two palettes the app draws with, as the user has chosen it:
@@ -27,14 +28,16 @@ public enum Theme: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// The scheme to pin the window to, or nil to leave it to macOS — which
-    /// is the whole of what `system` means, since an unpinned window follows
+    /// The appearance to pin `NSApp` to, or nil to leave it to macOS — which
+    /// is the whole of what `system` means, since an unpinned app follows
     /// the Mac's appearance by itself and goes on following it as it changes.
-    public var colorScheme: ColorScheme? {
+    /// Driven at AppKit level because SwiftUI's `preferredColorScheme(nil)`
+    /// does not un-pin a window once a scheme has been applied in the run.
+    public var nsAppearanceName: NSAppearance.Name? {
         switch self {
         case .system: return nil
-        case .dark: return .dark
-        case .light: return .light
+        case .dark: return .darkAqua
+        case .light: return .aqua
         }
     }
 

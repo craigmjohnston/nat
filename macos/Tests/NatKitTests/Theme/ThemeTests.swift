@@ -21,10 +21,12 @@ final class ThemeTests: XCTestCase {
     /// `system` pins nothing, which is the whole of what it means: an
     /// unpinned window follows the Mac's appearance and goes on following it
     /// as that changes. The other two say which.
-    func testColorSchemePinsOnlyTheChosenThemes() {
-        XCTAssertNil(Theme.system.colorScheme)
-        XCTAssertEqual(Theme.dark.colorScheme, .dark)
-        XCTAssertEqual(Theme.light.colorScheme, .light)
+    func testAppearancePinsOnlyTheChosenThemes() {
+        XCTAssertNil(Theme.system.nsAppearanceName)
+        XCTAssertEqual(Theme.dark.nsAppearanceName, .darkAqua)
+        XCTAssertEqual(Theme.light.nsAppearanceName, .aqua)
+        // An unrecognised stored value falls back to system, so pins nothing.
+        XCTAssertNil(Theme(stored: "sepia").nsAppearanceName)
     }
 
     /// Each option is named differently, since the switcher is three labels
