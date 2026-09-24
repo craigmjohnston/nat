@@ -23,22 +23,17 @@ struct ProjectTabsView: View {
 
                 projectTabView(tab: tab, attention: attention, isActive: isActive, index: index)
 
-                // Hairline separator after an inactive tab, unless the next
-                // one is active (a filled tab is its own edge). The last
-                // tab has no next, so an inactive one carries the divider —
-                // the mock's rule, and what puts a divider between the strip
+                // Hairline separator after every tab, the active one
+                // included: a filled tab keeps its divider against each
+                // neighbour, and the last carries the one between the strip
                 // and the "+" beside it.
-                let nextIsActive = index + 1 < appModel.projectTabs.count
-                    && appModel.activeProjectID == appModel.projectTabs[index + 1].id
-                if !isActive && !nextIsActive {
-                    Rectangle()
-                        .fill(DesignTokens.rule(.border, on: .header))
-                        // Full height, like the tabs either side of it: the
-                        // strip is a row of abutting cells now, and a rule
-                        // that stopped short would read as a gap between
-                        // them rather than as the edge where they meet.
-                        .frame(width: 1, height: 40)
-                }
+                Rectangle()
+                    .fill(DesignTokens.rule(.border, on: .header))
+                    // Full height, like the tabs either side of it: the
+                    // strip is a row of abutting cells now, and a rule
+                    // that stopped short would read as a gap between
+                    // them rather than as the edge where they meet.
+                    .frame(width: 1, height: 40)
             }
 
             // "+" — the two ways a project comes to be on the board, both
