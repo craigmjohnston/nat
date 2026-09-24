@@ -158,6 +158,26 @@ enum AppStories {
         },
 
         Story(
+            name: "window-untitled",
+            summary: "A launch with no projects: one Untitled tab, its empty rail and the starter card.",
+            size: window
+        ) {
+            WindowShellView(appModel: await Fixtures.startedAppModel(
+                config: Fixtures.emptyConfig, toolsReady: true))
+        },
+
+        Story(
+            name: "project-tabs-untitled",
+            summary: "The strip with an Untitled tab active beside a project: the italic name, "
+                + "the neutral dot, and a close button on each.",
+            size: CGSize(width: 640, height: 40)
+        ) {
+            let appModel = await Fixtures.startedAppModel()
+            appModel.openUntitledTab()
+            return ProjectTabsView(appModel: appModel)
+        },
+
+        Story(
             name: "window-onboarding-missing-tools",
             summary: "First run with nat and gh missing: the checklist's other shape.",
             size: window
@@ -330,8 +350,7 @@ enum AppStories {
         ) {
             ProjectTabsView(
                 appModel: await Fixtures.startedAppModel(
-                    client: FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner)),
-                onNewProject: {}
+                    client: FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner))
             )
         },
 
@@ -345,8 +364,7 @@ enum AppStories {
                 appModel: await Fixtures.startedAppModel(
                     client: FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner),
                     config: Fixtures.twoProjectConfig
-                ),
-                onNewProject: {}
+                )
             )
         },
 
@@ -360,8 +378,7 @@ enum AppStories {
                 appModel: await Fixtures.startedAppModel(
                     client: FixtureNatClient(agents: Fixtures.agentStatuses),
                     config: Fixtures.scratchConfig
-                ),
-                onNewProject: {}
+                )
             )
         },
 
@@ -377,7 +394,7 @@ enum AppStories {
                 config: Fixtures.scratchConfig
             )
             await appModel.activateProject(Fixtures.scratchProjectID)
-            return ProjectTabsView(appModel: appModel, onNewProject: {})
+            return ProjectTabsView(appModel: appModel)
         },
 
         Story(
@@ -392,7 +409,7 @@ enum AppStories {
                 config: Fixtures.twoProjectConfig
             )
             await waitForBackgroundAttention(appModel, projectID: Fixtures.secondProjectID)
-            return ProjectTabsView(appModel: appModel, onNewProject: {})
+            return ProjectTabsView(appModel: appModel)
         },
 
         // MARK: - The rail

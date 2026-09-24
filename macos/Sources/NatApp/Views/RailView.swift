@@ -366,7 +366,7 @@ struct RailView: View {
     /// headings of their own, in that order.
     private func activeSection(height: CGFloat?) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeading(.active, showNewSessionAction: true)
+            sectionHeading(.active, showNewSessionAction: !appModel.activeTabIsUntitled)
                 .padding(.top, 12)
                 .measuringHeight { chromeHeights[.active] = $0 }
 
@@ -409,7 +409,7 @@ struct RailView: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 sectionRule
-                sectionHeading(.todo, showTodoActions: true)
+                sectionHeading(.todo, showTodoActions: !appModel.activeTabIsUntitled)
             }
             .measuringHeight { chromeHeights[.todo] = $0 }
 
@@ -493,6 +493,18 @@ struct RailView: View {
     /// convention: a failure leaves the board as it was).
     @ViewBuilder
     private var planLoadStates: some View {
+        // An Untitled tab has no plan to be loading, empty or failed: it says
+        // what will be here, wrapped and set under the entries' text column
+        // (the heading's slot and its gap in from the rail's edge).
+        if appModel.activeTabIsUntitled {
+            Text(StarterCard.railExplainer)
+                .font(.system(size: Typo.subhead, weight: .regular))
+                .ink(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, RailSlot.leading + RailSlot.slot + RailSlot.spacing)
+                .padding(.trailing, RailSlot.trailing)
+        }
+
         if let state = appModel.projectStore?.state {
             if state.isLoading && state.projectInfo == nil {
                 // A cold load draws the plan's own shape rather than a

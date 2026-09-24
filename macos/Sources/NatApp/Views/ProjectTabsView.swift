@@ -5,11 +5,6 @@ import NatKit
 struct ProjectTabsView: View {
     @Bindable var appModel: AppModel
 
-    /// What the "+" beside the strip does: open the sheet offering the two
-    /// ways a project comes to be on the board. The sheet is the shell's, not
-    /// this row's — a sheet presented from inside the header band would be
-    /// anchored to a 40pt strip.
-    let onNewProject: () -> Void
     /// The tab the mouse is over, for the hover wash — parent state rather
     /// than per-tab, because the tabs are built by a function and a function
     /// has no `@State` of its own to keep.
@@ -36,9 +31,9 @@ struct ProjectTabsView: View {
                     .frame(width: 1, height: 40)
             }
 
-            // "+" — the two ways a project comes to be on the board, both
-            // behind one sheet.
-            Button(action: onNewProject) {
+            // "+" — an Untitled tab, the starter card's home: the ways a
+            // project comes to be on the board are offered there.
+            Button(action: { appModel.openUntitledTab() }) {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .medium))
                     .ink(.secondary)
@@ -46,7 +41,7 @@ struct ProjectTabsView: View {
             }
             .buttonStyle(.plain)
             .hoverWash(cornerRadius: 7)
-            .help("Open or Create a Project…")
+            .help("New Tab")
             // The box is 32 in a 40pt band, so 4 off the foot is what puts
             // its icon on the same content line the full-height tabs' labels
             // and the toolbar cluster sit on.
@@ -70,6 +65,7 @@ struct ProjectTabsView: View {
         index: Int
     ) -> some View {
         let isScratch = appModel.isScratchTab(tab.id)
+        let isUntitled = appModel.isUntitledTab(tab.id)
         HStack(spacing: 7) {
             // The state dot: what, of everything in flight on the project,
             // is most worth the eye. It pulses only while agents are working
@@ -77,7 +73,13 @@ struct ProjectTabsView: View {
             // "busy", a still coloured one as "something waits on you" — and
             // only on an inactive tab, the tab the user is already looking
             // at having no news to break.
-            if attention.pulses && !isActive {
+            if isUntitled {
+                // No project to have news about: the neutral dot, where a
+                // project's tab takes the colour of its state.
+                Circle()
+                    .fill(DesignTokens.labelQuaternary)
+                    .frame(width: 8, height: 8)
+            } else if attention.pulses && !isActive {
                 Circle()
                     .fill(dotColor(attention.role))
                     .frame(width: 8, height: 8)
@@ -94,6 +96,22 @@ struct ProjectTabsView: View {
                     .font(.system(size: 14, weight: .medium))
                     .ink(isActive ? .primary : .secondary)
                     .help("Scratch")
+            } else if isUntitled {
+                // Italic marks a name that is a placeholder. The width is
+                // reserved at semibold like a project's, so the tab does not
+                // resize as it is switched to.
+                Text(tab.name)
+                    .font(.system(size: Typo.subhead, weight: .semibold))
+                    .italic()
+                    .lineLimit(1)
+                    .opacity(0)
+                    .overlay(alignment: .leading) {
+                        Text(tab.name)
+                            .font(.system(size: Typo.subhead, weight: isActive ? .semibold : .regular))
+                            .italic()
+                            .ink(isActive ? .primary : .secondary)
+                            .lineLimit(1)
+                    }
             } else {
             // Project name. The width is reserved at semibold whichever
             // weight is drawn — activating a tab bolds its label, and a
@@ -234,8 +252,9 @@ struct ProjectTabsView: View {
             Divider()
         }
 
-        // The scratch project is a local plan: there is no page to open.
-        if !appModel.isScratchTab(tab.id), let url = NotionPageURL.forPage(tab.id) {
+        // The scratch project is a local plan, and an Untitled tab is no
+        // project: there is no page to open.
+        if !appModel.isScratchTab(tab.id), !appModel.isUntitledTab(tab.id), let url = NotionPageURL.forPage(tab.id) {
             Button("Open in Notion") {
                 NSWorkspace.shared.open(url)
             }
@@ -298,6 +317,6 @@ struct PulseModifier: ViewModifier {
 
 #Preview {
     let appModel = AppModel()
-    ProjectTabsView(appModel: appModel, onNewProject: {})
+    ProjectTabsView(appModel: appModel)
         .frame(height: 40)
 }
