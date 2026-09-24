@@ -249,6 +249,26 @@ func TestCreateProject(t *testing.T) {
 	})
 }
 
+func TestCreateProjectIn(t *testing.T) {
+	t.Run("a page parent keeps the title in title", func(t *testing.T) {
+		srv, bodies := projectServer(t, healthyDataSources())
+		c, _ := testClient(t, srv)
+
+		got, err := c.CreateProjectIn(context.Background(), PageParent("page-parent"), "rust-importer", false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.PageID != "page-1" || got.SlicesDSID != "ds-slices" {
+			t.Errorf("structure = %+v", got)
+		}
+		want := `POST /pages {"parent":{"type":"page_id","page_id":"page-parent"},` +
+			`"properties":{"title":{"title":[{"type":"text","text":{"content":"rust-importer"}}]}}}`
+		if (*bodies)[0] != want {
+			t.Errorf("first request =\n%s\nwant\n%s", (*bodies)[0], want)
+		}
+	})
+}
+
 func TestCreateProjectsDatabase(t *testing.T) {
 	var gotBody string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

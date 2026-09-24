@@ -61,6 +61,17 @@ rows. Accept is `nat plan-accept` (project + plan are nat's doing), then the
 workshop session is killed and `addProject(replacing:)` hands the tab over.
 Stories: `window-untitled-proposal`, `window-plan-accepted`.
 
+## The Notion mirror nudge
+
+After an accepted plan, `AppModel.acceptProposal` arms `MirrorNudgeMemory`
+(UserDefaults, per project; `.inMemory()` for tests and stories) and the rail
+foot draws `MirrorNudgeCardView` while `mirrorNudgeShown` (armed **and** local).
+✕ disarms for good. "Choose page…" opens `NotionPickerSheetView` over
+`NotionPickerModel` (`nat notion-search`); "Create page" is
+`mirrorActiveProject` → `nat project-mirror`, which changes the project's ID, so
+`projectMirrored` hands the tab over in place. A refusal shows in the sheet and
+changes nothing. Stories: `window-plan-accepted`, `notion-page-picker`.
+
 ## Release build quirks
 
 - Bundled `nat` and `gnat` itself are both **universal**: built per-arch

@@ -485,9 +485,23 @@ extension Fixtures {
     /// project it made, as `plan-accept` leaves it (no working directory).
     public static var acceptedConfig: NatProjectConfig {
         NatProjectConfig(projects: [
-            acceptedProjectID: ProjectConfig(name: "rust-importer", slicesDSID: "", workingDir: ""),
+            acceptedProjectID: ProjectConfig(
+                name: "rust-importer", slicesDSID: "", workingDir: "", backend: .local),
         ])
     }
+
+    /// The project the accepted one becomes once mirrored into Notion: a page's
+    /// own ID, where a local project's is nat's.
+    public static let mirroredProjectID = "f1x75111-0000-4000-8000-0000000000bb"
+
+    /// The places the workspace search lists — `NF_PAGES` in the design's
+    /// `ui-npflow.jsx`, in its order.
+    public static let notionPlaces: [NotionPlace] = [
+        NotionPlace(id: "f1x75111-0000-4000-8000-0000000000c1", kind: .database, title: "Engineering / Projects"),
+        NotionPlace(id: "f1x75111-0000-4000-8000-0000000000c2", kind: .page, title: "Engineering / Plans"),
+        NotionPlace(id: "f1x75111-0000-4000-8000-0000000000c3", kind: .database, title: "Personal / Side projects"),
+        NotionPlace(id: "f1x75111-0000-4000-8000-0000000000c4", kind: .page, title: "Archive / 2025 plans"),
+    ]
 
     /// The plan a workshop proposed — `NF_PROPOSAL` in the design's
     /// `ui-npflow.jsx`, 4 milestones and 14 slices.

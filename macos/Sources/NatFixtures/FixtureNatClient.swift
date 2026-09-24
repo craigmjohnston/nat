@@ -270,6 +270,19 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         )
     }
 
+    public func notionSearch(query: String) async throws -> [NotionPlace] {
+        try await record("notion-search \(query)")
+        let needle = query.lowercased()
+        return Fixtures.notionPlaces.filter { needle.isEmpty || $0.title.lowercased().contains(needle) }
+    }
+
+    public func projectMirror(projectID: String, parent: NotionPlace) async throws -> ProjectMirrored {
+        try await record("project-mirror \(projectID) --parent \(parent.id)")
+        return ProjectMirrored(
+            project: ProjectEntry(id: Fixtures.mirroredProjectID, name: "rust-importer", slicesDSID: "f1x75111-ds"),
+            replaced: projectID, milestones: 4, slices: 14)
+    }
+
     public func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult {
         try await record("slice-add \(title)")
         return SliceAddResult(

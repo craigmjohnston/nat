@@ -233,8 +233,9 @@ enum AppStories {
 
         Story(
             name: "window-plan-accepted",
-            summary: "The proposal just accepted (\"Accepted\" in the design): the tab is the project's, "
-                + "the rail is its ordinary TODO tree, and the pane says Plan accepted.",
+            summary: "The proposal just accepted (\"Accepted\" in the design, with its Notion nudge): the tab "
+                + "is the project's, the rail is its ordinary TODO tree with the one-time \"Mirror this "
+                + "plan to Notion?\" card pinned at its foot, and the pane says Plan accepted.",
             size: window
         ) {
             let client = FixtureNatClient()
@@ -249,6 +250,20 @@ enum AppStories {
             await appModel.refreshProposals()
             await appModel.acceptProposal()
             return WindowShellView(appModel: appModel)
+        },
+
+        Story(
+            name: "notion-page-picker",
+            summary: "The sheet \"Choose page\u{2026}\" opens (\"Notion page picker\" in the design): the "
+                + "Notion mark and title, the search field, the workspace's pages and databases with a "
+                + "database chip and the first one chosen, Cancel beside Create page.",
+            size: CGSize(width: 440, height: 380)
+        ) {
+            let model = NotionPickerModel(client: FixtureNatClient())
+            await model.search()
+            model.selectedID = Fixtures.notionPlaces.first?.id
+            return NotionPickerSheetView(
+                model: model, onCancel: {}, onCreate: { _ in nil }, onCreated: {})
         },
 
         Story(

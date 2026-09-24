@@ -37,6 +37,8 @@ public protocol NatClientProtocol: Sendable {
     func projectOpenFolder(path: String) async throws -> ProjectEntry
     func planProposal(workspaceID: String) async throws -> PlanProposal?
     func planAccept(workspaceID: String, name: String) async throws -> PlanAccepted
+    func notionSearch(query: String) async throws -> [NotionPlace]
+    func projectMirror(projectID: String, parent: NotionPlace) async throws -> ProjectMirrored
 }
 
 extension NatClientProtocol {
@@ -66,6 +68,16 @@ extension NatClientProtocol {
 
     public func planAccept(workspaceID: String, name: String) async throws -> PlanAccepted {
         throw NatError.commandFailed("plan-accept: not supported by this client")
+    }
+
+    /// Mirroring a local project into Notion: same reasoning, only `NatClient`
+    /// and the fixture client implement them.
+    public func notionSearch(query: String) async throws -> [NotionPlace] {
+        throw NatError.commandFailed("notion-search: not supported by this client")
+    }
+
+    public func projectMirror(projectID: String, parent: NotionPlace) async throws -> ProjectMirrored {
+        throw NatError.commandFailed("project-mirror: not supported by this client")
     }
 
     /// A conformer that never reworks a slice — every test double but the

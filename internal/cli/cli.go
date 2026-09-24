@@ -33,6 +33,8 @@ type API interface {
 	store.API
 	AppendBlockChildrenAfter(ctx context.Context, id, after string, children []map[string]any) ([]notion.Block, error)
 	CreateProject(ctx context.Context, projectsDSID, name string, assignee bool) (*notion.ProjectStructure, error)
+	CreateProjectIn(ctx context.Context, parent notion.Parent, name string, assignee bool) (*notion.ProjectStructure, error)
+	SearchPaged(ctx context.Context, query, filterType, startCursor string) ([]notion.SearchResult, string, error)
 }
 
 // NewClientFunc builds an API from a source of bearer tokens.
@@ -304,6 +306,15 @@ usage:
                       record the slices a slice waits on, by URL or ID; --clear
                       drops what is there first, so on its own it frees the
                       slice
+  nat project-mirror --parent ID --parent-kind page|database [--json] --project ID
+                      put a project of nat's own into Notion: create its
+                      project page under the chosen page, or in the chosen
+                      database, file the plan beneath it, and re-register the
+                      project as one tracked in Notion (under a new ID, which
+                      this prints). Refused once any slice has been started
+  nat notion-search [--query TEXT] [--json]
+                      list the pages and databases a project page could go
+                      under, for project-mirror --parent
   nat plan-apply [FILE] [--json] --project ID
                       create a whole plan of milestones and slices from a JSON
                       document, read from FILE or stdin
@@ -459,6 +470,10 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return projectCreate(ctx, args[1:], env)
 	case "project-open-folder":
 		return projectOpenFolder(ctx, args[1:], env)
+	case "project-mirror":
+		return projectMirror(ctx, args[1:], env)
+	case "notion-search":
+		return notionSearch(ctx, args[1:], env)
 	case "scratch-open":
 		return scratchOpen(ctx, args[1:], env)
 	case "done-clear":

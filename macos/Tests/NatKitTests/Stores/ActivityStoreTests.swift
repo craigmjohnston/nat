@@ -86,6 +86,14 @@ class MockActivityClient: NatClientProtocol, @unchecked Sendable {
         throw NSError(domain: "test", code: -1)
     }
 
+    func notionSearch(query: String) async throws -> [NotionPlace] {
+        throw NSError(domain: "test", code: -1)
+    }
+
+    func projectMirror(projectID: String, parent: NotionPlace) async throws -> ProjectMirrored {
+        throw NSError(domain: "test", code: -1)
+    }
+
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult {
         throw NSError(domain: "test", code: -1)
     }

@@ -129,6 +129,16 @@ type fakeAPI struct {
 	// projectNothing is Notion answering with neither a project nor a reason.
 	projectNothing bool
 
+	// inParents records the parent of every project created in a place of the
+	// user's choosing, and searches every query the workspace was searched for.
+	inParents []notion.Parent
+	searches  []string
+	// onUpdate runs as a property write arrives, before it is answered.
+	onUpdate func()
+	// searchHits is what a search answers with, searchErr what fails it.
+	searchHits []notion.SearchResult
+	searchErr  error
+
 	// mangle is Notion being less obliging than asked: it is handed the page a
 	// write would have produced, and whatever it does to it is what comes back.
 	mangle func(*notion.Page)
@@ -159,6 +169,19 @@ type createdProject struct {
 	dsID     string
 	name     string
 	assignee bool
+}
+
+// CreateProjectIn is CreateProject for a project put under any parent: it
+// records the parent and otherwise answers as CreateProject does.
+func (f *fakeAPI) CreateProjectIn(ctx context.Context, parent notion.Parent, name string, assignee bool) (*notion.ProjectStructure, error) {
+	f.inParents = append(f.inParents, parent)
+	return f.CreateProject(ctx, parent.PageID+parent.DataSourceID, name, assignee)
+}
+
+// SearchPaged answers a search with the hits staged for it, recording the query.
+func (f *fakeAPI) SearchPaged(_ context.Context, query, _, _ string) ([]notion.SearchResult, string, error) {
+	f.searches = append(f.searches, query)
+	return f.searchHits, "", f.searchErr
 }
 
 type query struct {
@@ -311,6 +334,9 @@ func (f *fakeAPI) GetBlockChildren(_ context.Context, id string) ([]notion.Block
 // written properties merged over the ones it already had.
 func (f *fakeAPI) UpdatePageProperties(_ context.Context, id string, props map[string]notion.PropertyValue) (*notion.Page, error) {
 	f.updates = append(f.updates, update{id: id, props: props})
+	if f.onUpdate != nil {
+		f.onUpdate()
+	}
 	if f.updateErr != nil {
 		return nil, f.updateErr
 	}

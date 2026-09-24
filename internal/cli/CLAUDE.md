@@ -133,6 +133,18 @@ that is not a plan; a folder with none is refused saying what was looked for,
 one with several is refused, a project already in config answers with its
 existing entry.
 
+`project-mirror --project <local id> --parent <id> --parent-kind page|database`
+puts a local project into Notion: `CreateProjectIn` makes the page (a row of a
+database's data source, or a child of a page), the local plan is filed through
+the new project's ordinary `Mirrored` store, and config gets a Notion entry
+under the **page's ID** (the project's ID changes; the local entry goes only
+once the plan is entirely in, the plan file is never deleted). Refused before
+Notion is touched: a project already in Notion, or any slice past Todo (its
+branch/PR/worktree names an ID that would not follow it). Dependencies are
+written to the workspace directly first, because `Mirrored`'s own write-through
+swallows a failed push. `notion-search [--query]` (no `--project`) lists the
+pages and databases a page could go under, for `--parent`.
+
 Planning: `workshop-launch` (planning agent, `agent.PlanPrompt`). With
 `--workspace <id>` (exclusive with `--project`, `--request` required) it is the
 starter card's launch instead: `agent.NewProjectPrompt`, keyed by the app's
