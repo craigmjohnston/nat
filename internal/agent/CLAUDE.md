@@ -67,6 +67,24 @@ running agent's state.
   `usage` command is what actually drives the probe end to end (launch,
   prompt, poll, clean up); this file is only the mechanics it drives.
 
+## Agent statusline (`agentstatus.go`)
+
+- Every `Launch`/`LaunchBare` session's `--settings` carries a `statusLine`
+  command (`statuslineSettings`) that tees each payload to
+  `<state dir>/agent-status/<session>.json` (temp file + `mv`, so a reader
+  never sees half a payload). It fires on every turn at no token cost; the
+  real payload carries `model`, `effort.level` and
+  `context_window.used_percentage` (null until the first response).
+  `prepareStatusSink` also writes `<session>.launch.json` (the launch's
+  model/effort — the fallback for what the payload leaves out) and clears any
+  earlier payload of the same name. Failing to prepare it launches without a
+  statusline; it never fails a launch.
+- `ReadStatuses(live)` is file reads only, keyed by session name; every field
+  absent (empty/nil) when unknown, never zero. It also sweeps files of
+  sessions not live, but only once older than `sweepGrace`: a launch writes
+  its record before tmux has tagged the pane. `nat status --json` surfaces it.
+- Tests in this package run with `HOME`/`XDG_STATE_HOME` pinned (`TestMain`).
+
 ## Sessions (`tmux.go`)
 
 - Every tmux call runs with `-u`, forcing a UTF-8 client regardless of the

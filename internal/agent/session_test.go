@@ -43,7 +43,7 @@ func TestLaunchBareTagsThePaneAndRunsNoPrompt(t *testing.T) {
 	var sawClaude, sawTag bool
 	for _, c := range r.calls {
 		for i, a := range c.args {
-			if a == "claude --model 'opus' --settings '{\"theme\":\"auto\"}'" {
+			if strings.HasPrefix(a, `claude --model 'opus' --settings '{"theme":"auto","statusLine":`) {
 				sawClaude = true
 			}
 			if a == "@nat_slice" && i+1 < len(c.args) && c.args[i+1] == "session:proj:sess" {

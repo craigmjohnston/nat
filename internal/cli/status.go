@@ -38,7 +38,7 @@ func status(args []string, env Env) error {
 	}
 
 	if *asJSON {
-		return writeStatusJSON(env.Out, live, activity)
+		return writeStatusJSON(env.Out, live, activity, agent.ReadStatuses(live))
 	}
 	return writeStatusMarkdown(env.Out, live, activity)
 }
@@ -52,12 +52,22 @@ type agentStatusJSON struct {
 	SliceID  string `json:"slice_id"`
 	Session  string `json:"session"`
 	Activity string `json:"activity"`
+	// Model, Effort and ContextPercent come from the agent's own statusline,
+	// teed to a file at launch (agent.ReadStatuses): each is omitted when
+	// unknown — no payload yet — never reported as zero.
+	Model          string   `json:"model,omitempty"`
+	Effort         string   `json:"effort,omitempty"`
+	ContextPercent *float64 `json:"context_percent,omitempty"`
 }
 
 // writeStatusJSON encodes the agent statuses as JSON.
-func writeStatusJSON(out io.Writer, live map[string]string, activity map[string]agent.Activity) error {
+func writeStatusJSON(out io.Writer, live map[string]string, activity map[string]agent.Activity, statuses map[string]agent.AgentStatus) error {
 	// Build list of agents not gone, sorted by slice ID.
 	agents := buildAgentList(live, activity)
+	for i, a := range agents {
+		st := statuses[a.Session]
+		agents[i].Model, agents[i].Effort, agents[i].ContextPercent = st.Model, st.Effort, st.Context
+	}
 
 	doc := statusJSON{Agents: agents}
 	enc := json.NewEncoder(out)

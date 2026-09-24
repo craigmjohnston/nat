@@ -285,7 +285,7 @@ func TestWorkshopLaunchCarriesTheAutoTheme(t *testing.T) {
 	}
 
 	argv := strings.Join(runner.launchArgs, " ")
-	if !strings.Contains(argv, `--settings '{"theme":"auto"}'`) {
+	if !strings.Contains(argv, `--settings '{"theme":"auto","statusLine":{"type":"command"`) {
 		t.Errorf("launch argv = %q, want the theme pinned to auto", argv)
 	}
 }

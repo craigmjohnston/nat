@@ -53,7 +53,7 @@ comment, never shared by refactoring into a common import:
 
 Reads only, no `--project` needed: `setup` (installs skills, talks to
 neither Notion nor config), `paths` (prints config/log/nudge paths),
-`status` (live tmux sessions + activity, no Notion at all), `usage` (see
+`status` (live tmux sessions + activity, no Notion at all; `--json` also gives each agent's `model`, `effort` and `context_percent` from its teed statusline — see `internal/agent/CLAUDE.md` — each omitted when unknown), `usage` (see
 below — a property of the logged-in Claude account, not of any project).
 
 Project-scoped reads: `info`, `slice-show` (full slice incl. computed
