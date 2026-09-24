@@ -193,17 +193,42 @@ func mergeVerdicts(pr gh.PR) []mergeVerdict {
 // hand — see the doc comment there — and a change to either's wording belongs
 // in both.
 //
-// Only a failing verdict refuses. A verdict still to come — a review not yet
-// left, checks still running, a mergeability GitHub has not computed — is not a
-// no, and GitHub is the one to say whether it will take the merge anyway; what
-// is refused here is what would already be refused looking at the pull request
-// screen, since running gh over it could only produce the same answer more
-// slowly and less clearly.
+// A failing verdict refuses first, in its own words. Past those the gate
+// mirrors GitHub's own merge button: only a merge state status of CLEAN,
+// HAS_HOOKS or UNSTABLE goes through, and BLOCKED, BEHIND, DRAFT and an empty or
+// unknown status (GitHub still computing) each refuse naming what is still
+// outstanding — so a merge is never attempted before GitHub's button would be
+// there to press.
 func MergeRefusal(pr gh.PR) (string, bool) {
 	for _, v := range mergeVerdicts(pr) {
 		if v.outcome == mergeFailing {
 			return v.label + ": " + v.word, true
 		}
 	}
-	return "", false
+	return mergeStateRefusal(pr)
+}
+
+// mergeStateRefusal is the half of the gate that reads merge state status: what
+// still stands between the pull request and GitHub's merge button, when it is
+// not yet there. DIRTY never reaches it — the mergeable verdict has already
+// refused it as conflicting.
+func mergeStateRefusal(pr gh.PR) (string, bool) {
+	state := strings.ToUpper(strings.TrimSpace(pr.MergeStateStatus))
+	switch {
+	case pr.IsDraft || state == "DRAFT":
+		return "draft: mark the pull request ready for review", true
+	case state == "CLEAN" || state == "HAS_HOOKS" || state == "UNSTABLE":
+		return "", false
+	case state == mergeStateBehind:
+		return "mergeable: behind " + baseOf(pr), true
+	case state == "BLOCKED":
+		for _, v := range mergeVerdicts(pr) {
+			if v.outcome == mergePending {
+				return "blocked by " + v.label + ": " + v.word, true
+			}
+		}
+		return "blocked: required checks or reviews are not yet satisfied", true
+	default:
+		return "mergeable: mergeability unknown", true
+	}
 }

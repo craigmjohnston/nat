@@ -364,6 +364,12 @@ struct PRTabView: View {
                 }
                 return "Not ready to merge"
             default:
+                // Green verdicts but a merge state GitHub's button would not
+                // yet offer (BLOCKED, BEHIND, still computing): say why the
+                // button is off rather than "ready".
+                if let refusal = mergeRefusal(pr) {
+                    return "Not ready to merge — \(refusal)"
+                }
                 return "Ready to merge"
             }
         }

@@ -7,7 +7,7 @@ import (
 )
 
 func TestMergeRefusalNothingFailing(t *testing.T) {
-	pr := gh.PR{ReviewDecision: "APPROVED", Mergeable: "MERGEABLE"}
+	pr := gh.PR{ReviewDecision: "APPROVED", Mergeable: "MERGEABLE", MergeStateStatus: "CLEAN"}
 
 	reason, refused := MergeRefusal(pr)
 
@@ -26,32 +26,6 @@ func TestMergeRefusalReviewFailing(t *testing.T) {
 
 	if !refused || reason != "review: changes requested" {
 		t.Errorf("MergeRefusal() = (%q, %v), want (%q, true)", reason, refused, "review: changes requested")
-	}
-}
-
-func TestMergeRefusalReviewRequiredIsNotRefused(t *testing.T) {
-	// A review not yet left is a verdict still to come, not a no: GitHub is the
-	// one to say whether it takes the merge anyway.
-	pr := gh.PR{ReviewDecision: "REVIEW_REQUIRED", Mergeable: "MERGEABLE"}
-
-	if _, refused := MergeRefusal(pr); refused {
-		t.Error("MergeRefusal() refused a review still pending, want not refused")
-	}
-}
-
-func TestMergeRefusalUnknownReviewDecisionIsNotRefused(t *testing.T) {
-	pr := gh.PR{ReviewDecision: "SOMETHING_NEW", Mergeable: "MERGEABLE"}
-
-	if _, refused := MergeRefusal(pr); refused {
-		t.Error("MergeRefusal() refused an unknown review decision, want not refused")
-	}
-}
-
-func TestMergeRefusalNoReviewRequiredIsNotRefused(t *testing.T) {
-	pr := gh.PR{ReviewDecision: "", Mergeable: "MERGEABLE"}
-
-	if _, refused := MergeRefusal(pr); refused {
-		t.Error("MergeRefusal() refused a repository that requires no review, want not refused")
 	}
 }
 
@@ -74,26 +48,6 @@ func TestMergeRefusalChecksFailing(t *testing.T) {
 	}
 }
 
-func TestMergeRefusalChecksPendingIsNotRefused(t *testing.T) {
-	pr := gh.PR{
-		ReviewDecision: "APPROVED",
-		Mergeable:      "MERGEABLE",
-		Checks:         []gh.Check{{Name: "build", State: "IN_PROGRESS"}},
-	}
-
-	if _, refused := MergeRefusal(pr); refused {
-		t.Error("MergeRefusal() refused checks still running, want not refused")
-	}
-}
-
-func TestMergeRefusalNoChecksIsNotRefused(t *testing.T) {
-	pr := gh.PR{ReviewDecision: "APPROVED", Mergeable: "MERGEABLE"}
-
-	if _, refused := MergeRefusal(pr); refused {
-		t.Error("MergeRefusal() refused a pull request with no checks, want not refused")
-	}
-}
-
 func TestMergeRefusalConflicting(t *testing.T) {
 	pr := gh.PR{ReviewDecision: "APPROVED", Mergeable: "CONFLICTING", BaseRefName: "main"}
 
@@ -111,22 +65,6 @@ func TestMergeRefusalDirtyIsConflicting(t *testing.T) {
 
 	if !refused || reason != "mergeable: conflicting with its base" {
 		t.Errorf("MergeRefusal() = (%q, %v), want %q with its base named", reason, refused, "mergeable: conflicting")
-	}
-}
-
-func TestMergeRefusalBehindIsNotRefused(t *testing.T) {
-	pr := gh.PR{ReviewDecision: "APPROVED", MergeStateStatus: "BEHIND"}
-
-	if _, refused := MergeRefusal(pr); refused {
-		t.Error("MergeRefusal() refused a branch merely behind its base, want not refused")
-	}
-}
-
-func TestMergeRefusalUnknownMergeabilityIsNotRefused(t *testing.T) {
-	pr := gh.PR{ReviewDecision: "APPROVED", Mergeable: "UNKNOWN"}
-
-	if _, refused := MergeRefusal(pr); refused {
-		t.Error("MergeRefusal() refused an unsettled mergeability, want not refused")
 	}
 }
 
@@ -173,5 +111,47 @@ func TestChecksSummaryOfNoChecksIsEmpty(t *testing.T) {
 func TestBaseOfEmptyBranch(t *testing.T) {
 	if base := baseOf(gh.PR{}); base != "its base" {
 		t.Errorf("baseOf({}) = %q, want %q", base, "its base")
+	}
+}
+
+// TestMergeRefusalMergeStateGate mirrors GitHub's merge button: only CLEAN,
+// HAS_HOOKS and UNSTABLE go through; everything else refuses with a named
+// reason. internal/tui/prmerge_test.go and macos's PRPresentationTests carry
+// the same table.
+func TestMergeRefusalMergeStateGate(t *testing.T) {
+	pendingChecks := []gh.Check{{Name: "build", State: "IN_PROGRESS"}}
+	tests := []struct {
+		name string
+		pr   gh.PR
+		want string // empty: allowed
+	}{
+		{"clean", gh.PR{MergeStateStatus: "CLEAN", Mergeable: "MERGEABLE"}, ""},
+		{"has hooks", gh.PR{MergeStateStatus: "HAS_HOOKS"}, ""},
+		{"unstable", gh.PR{MergeStateStatus: "UNSTABLE", Checks: pendingChecks}, ""},
+		{"lower case clean", gh.PR{MergeStateStatus: " clean "}, ""},
+		{"blocked by pending checks", gh.PR{MergeStateStatus: "BLOCKED", Mergeable: "MERGEABLE", Checks: pendingChecks}, "blocked by checks: 1 pending"},
+		{"blocked by review", gh.PR{MergeStateStatus: "BLOCKED", Mergeable: "MERGEABLE", ReviewDecision: "REVIEW_REQUIRED"}, "blocked by review: review required"},
+		{"blocked with nothing pending", gh.PR{MergeStateStatus: "BLOCKED", Mergeable: "MERGEABLE"}, "blocked: required checks or reviews are not yet satisfied"},
+		{"behind", gh.PR{MergeStateStatus: "BEHIND", BaseRefName: "main"}, "mergeable: behind main"},
+		{"dirty", gh.PR{MergeStateStatus: "DIRTY", BaseRefName: "main"}, "mergeable: conflicting with main"},
+		{"draft state", gh.PR{MergeStateStatus: "DRAFT"}, "draft: mark the pull request ready for review"},
+		{"draft flag", gh.PR{MergeStateStatus: "CLEAN", IsDraft: true}, "draft: mark the pull request ready for review"},
+		{"empty", gh.PR{}, "mergeable: mergeability unknown"},
+		{"unknown", gh.PR{MergeStateStatus: "UNKNOWN"}, "mergeable: mergeability unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reason, refused := MergeRefusal(tt.pr)
+			if refused != (tt.want != "") || reason != tt.want {
+				t.Errorf("MergeRefusal() = (%q, %v), want %q", reason, refused, tt.want)
+			}
+		})
+	}
+}
+
+func TestReviewVerdictUnknownDecisionIsPendingInItsOwnWords(t *testing.T) {
+	v := reviewVerdict(gh.PR{ReviewDecision: "SOMETHING_NEW"})
+	if v.word != "something new" || v.outcome != mergePending {
+		t.Errorf("reviewVerdict = %+v, want pending %q", v, "something new")
 	}
 }
