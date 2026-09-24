@@ -1,11 +1,13 @@
 # notion-agent-tracker
 
-A Go TUI over Notion for tracking project work executed by Claude Code
-agents. Craig manages the plan and launches agents from the TUI; agents run
-as fresh `claude` sessions in tmux and reach the tracker only through the
-headless `nat` commands — they need no Notion access of their own. The TUI
-talks to the Notion REST API directly (`Notion-Version: 2026-03-11`,
-data-source model).
+A tracker for project work executed by Claude Code agents, in Notion (or a
+local SQLite plan). It ships as three faces over one Go core: `gnat`, the
+native macOS app Craig mostly drives it from; the `nat` headless commands,
+which agents and the app both use; and the `nat` TUI board, still maintained
+and kept in step with the CLI. Agents run as fresh `claude` sessions in tmux
+and reach the tracker only through the headless `nat` commands — they need no
+Notion access of their own. `nat` talks to the Notion REST API directly
+(`Notion-Version: 2026-03-11`, data-source model); the app talks only to `nat`.
 
 Package detail — implementation, seams, hard-won gotchas — lives in nested
 `CLAUDE.md` files, one per package, loaded only when you're working in that
@@ -32,13 +34,18 @@ any one package does it.
   See `internal/vterm/CLAUDE.md` (the three hard-won gotchas — read before
   touching it).
 - `internal/cli/` — the headless `nat` subcommands; the macOS app's whole
-  backend contract. See `internal/cli/CLAUDE.md`.
+  backend contract, served by the `--json` command set (`info`, `status`,
+  `slice-*`, `session-*`, `pr-*`, `milestone-*`, `plan-apply`, `config-*`,
+  `usage`, …; `nat help` lists them). See `internal/cli/CLAUDE.md`.
 - `internal/tui/` — the board. See `internal/tui/CLAUDE.md`.
 - `internal/logging/`, `internal/nudge/` — the log file and the
   write-marker file the board polls every second for near-instant refresh.
 - `skills/` — `/queue-work`, `/queue-project`, `/next-slice`, embedded via
   `go:embed`, installed by `nat setup`.
-- `macos/` — `gnat`, the native macOS app wrapping `nat`. See `macos/CLAUDE.md`.
+- `macos/` — `gnat`, the native macOS app (SwiftPM; `NatKit` logic, `NatApp`
+  views), released as a signed dmg with Sparkle updates. `NatClient` is its
+  one seam onto the CLI: it shells out to `nat <command> --json` and nothing
+  in Swift reimplements tracker logic. See `macos/CLAUDE.md`.
 
 **Never log or commit the Notion token or a request body.** The token
 belongs to the `ntn` CLI (`ntn auth token`) and is held in memory only for
@@ -48,7 +55,7 @@ call that bypasses it.
 
 ## Domain rules
 
-These hold everywhere in the app — TUI, every headless command, and the
+These hold everywhere in the app — the TUI, every headless command, and the
 macOS app via `NatClient`. Package-local mechanics for each are in the
 nested `CLAUDE.md` named alongside each rule; don't restate the mechanics
 here when you're just applying the rule.

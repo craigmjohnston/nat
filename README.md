@@ -2,30 +2,59 @@
   <img src="docs/assets/gnat-icon.png" width="128" alt="the nat icon: the gnat's looping flight, written as a script g">
 </p>
 
-<h1 align="center">nat — notion-agent-tracker</h1>
+<h1 align="center">gnat — notion-agent-tracker</h1>
 
-<p align="center">A TUI for tracking project work in Notion, executed by Claude Code agents.</p>
+<p align="center">A macOS app for tracking project work in Notion, executed by Claude Code agents.</p>
 
-- **You** manage milestones and slices (small units of work) from the TUI and
-  launch agents on them.
-- **Agents** run locally as fresh `claude` sessions in tmux, claim their slice
-  with `nat start-slice`, do the work, and close it out with
-  `nat complete-slice`. The CLI is their only way into the tracker.
-- **Notion** is the source of truth: a Project DB contains project pages; each
-  project page holds its own Slices DB — milestones are an option list on the
-  Slices DB's own Milestone column, not a database of their own — plus
-  free-form project info in the page body.
+**gnat** is the native macOS app. You plan a project as milestones and slices
+(small units of work), launch Claude Code agents on them, review what they hand
+back in a diff, and open and merge the pull request — all from one window. It
+is a thin app over the `nat` command line: gnat carries no Notion, tmux or
+GitHub logic of its own and shells out to `nat <command> --json` for every read
+and write, so what you see is always what `nat` sees.
 
-## Requirements
+Three pieces share one tracker:
 
-- macOS, Go 1.25.x, tmux, the `claude` CLI
+- **gnat** — the macOS app; the way most people use this.
+- **`nat` CLI** — the headless commands. Agents run as fresh `claude` sessions
+  in tmux and reach the tracker only through them (`nat start-slice`,
+  `nat complete-slice`), and gnat drives the same commands. `nat help` is the
+  reference for every command and flag.
+- **`nat` TUI** — running `nat` with no subcommand opens the terminal board.
+  It is still maintained and keeps up with the CLI, for when you live in a
+  terminal.
+
+**Notion** is the source of truth: a Project DB contains project pages; each
+project page holds its own Slices DB — milestones are an option list on the
+Slices DB's own Milestone column, not a database of their own — plus free-form
+project info in the page body. A project can also be *local*, with its plan in
+a SQLite file and no Notion workspace behind it.
+
+## Install gnat
+
+Download the latest `gnat-<version>.dmg` from the
+[GitHub Releases](https://github.com/craigmjohnston/nat/releases) page, open it
+and drag gnat to Applications. Every merge to `main` publishes a signed,
+notarized release, and gnat updates itself through Sparkle: it checks for new
+releases in the background and offers to install them, so the dmg is only
+needed once. The app bundles a universal `nat`; the CLI and TUI below are
+optional extras.
+
+gnat needs, on the machine's own install (none are bundled):
+
+- `tmux` and the `claude` CLI — agents run in detached tmux sessions
+- `gh`, logged in — for pull requests
 - Notion's official CLI, `ntn` (`curl -fsSL https://ntn.dev | bash`), logged in
-  with `ntn login`. The tracker reads its Notion token from the CLI rather than
-  storing one of its own, so no integration or personal access token is needed —
-  and because the token is workspace-scoped, there is no per-page
-  ••• → Connections step.
+  with `ntn login`, for Notion-backed projects. The tracker reads its Notion
+  token from that CLI rather than storing one of its own, so no integration or
+  personal access token is needed — and because the token is workspace-scoped,
+  there is no per-page ••• → Connections step. Local projects need none of it.
 
-## Setup
+macOS 15 or later. To build the app from source, see `macos/README.md`.
+
+## Install the CLI and TUI
+
+Go 1.25.x is required:
 
 ```sh
 ntn login                # once, to authorise the CLI against your workspace
@@ -43,9 +72,36 @@ git config --global url."git@github.com:".insteadOf "https://github.com/"
 
 To build from a clone instead: `make build && ./nat`.
 
-## Running
+## The CLI
 
-`nat` runs in the terminal you start it in, and hosts itself in nothing: the
+Given a subcommand, `nat` runs it and exits rather than opening the board,
+printing to the terminal it was typed in. Run `nat help` for the full command
+list and flags — it is the source of truth, and this file does not duplicate
+it. Most commands take `--json` for structured output, which is what gnat and
+agents parse. In outline:
+
+- **Plan and read:** `info`, `slice-show`, `slice-status`, `slice-add`,
+  `slice-edit`, `slice-move`, `slice-depends`, `milestone-*`, `plan-apply`.
+- **Agent lifecycle:** `next-slice`, `start-slice`, `complete-slice`,
+  `release-slice`, `slice-launch`, `agent-send`, `agent-interrupt`,
+  `agent-kill`, `status`.
+- **Review and merge:** `slice-diff`, `slice-approve`, `pr-view`, `pr-comment`,
+  `pr-merge`, `pr-status`.
+- **Projects, sessions and setup:** `project-create`, `session-*`,
+  `workshop-launch`, `config-show`, `config-set`, `setup`, `paths`, `usage`.
+
+Every project-scoped command requires `--project <page ID>`; there is no active
+project fallback, since the board's own project can change while an agent works.
+Run one without it to be told the projects this machine tracks.
+
+```sh
+nat info --project <ID>          # conventions, milestones and slices as markdown
+nat info --project <ID> --json   # the same, structured
+```
+
+## The terminal board
+
+The TUI runs in the terminal you start it in, and hosts itself in nothing: the
 board draws its own status band and shows an agent in a box of its own beside
 it. Started from inside a tmux session of your own it behaves exactly the same.
 
@@ -53,21 +109,6 @@ tmux is still needed for the agents — each one runs in a detached session, whi
 is what lets it outlive the board and be shown again later — so `nat` checks for
 it on startup and says how to install it if it is missing. The headless commands
 launch nothing and need none of it.
-
-### Headless commands
-
-Given a subcommand, `nat` runs it and exits rather than opening the board,
-printing to the terminal it was typed in. `nat help` lists them.
-
-`nat info` prints the active project as markdown: its conventions (the project
-page body), its milestones in plan order, and its slices grouped under them with
-their status, assignee and PR. `nat info --json` prints the same thing
-structured, for an agent to parse:
-
-```sh
-nat info
-nat info --json
-```
 
 ### Keeping the board current
 
@@ -157,4 +198,4 @@ checkout of this repo works on the skills in place, is left alone and said so.
 
 ## Status
 
-Early development — being dogfooded on its own Notion tracker.
+Being dogfooded on its own Notion tracker.
