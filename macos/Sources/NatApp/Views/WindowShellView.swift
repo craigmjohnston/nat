@@ -104,8 +104,13 @@ struct WindowShellView: View {
 
                 Group {
                     // An Untitled tab has no project for a pane to be of.
-                    if appModel.activeTabIsUntitled {
-                        StarterView(onFromNotion: { showNewProjectSheet = true })
+                    if appModel.untitledWorkshopVisible {
+                        // The planning agent's terminal fills the pane the
+                        // starter card was in — the same one a project's
+                        // workshop entry opens.
+                        WorkshopPaneView(appModel: appModel)
+                    } else if appModel.activeTabIsUntitled {
+                        StarterView(appModel: appModel, onFromNotion: { showNewProjectSheet = true })
                     } else {
                         PaneView(appModel: appModel)
                     }

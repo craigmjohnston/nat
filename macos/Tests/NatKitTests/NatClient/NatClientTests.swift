@@ -510,6 +510,58 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(fakeRunner.lastArguments, ["agent-kill", "--workshop", "--project", "proj-123"])
     }
 
+    func testAgentKillWorkspaceNamesTheWorkspaceAndNoProject() async throws {
+        let fakeRunner = FakeRunner(fixture: .agentKillWorkshopSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.agentKillWorkspace(workspaceID: "ws-1")
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["agent-kill", "--workshop", "--workspace", "ws-1"])
+    }
+
+    func testWorkspaceLaunchNamesTheWorkspaceAndSendsTheRequestOverStdin() async throws {
+        let fakeRunner = FakeRunner(fixture: .workshopLaunchSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let result = try await client.workspaceLaunch(
+            workspaceID: "ws-1", model: "opus", effort: "high", request: "A habit tracker.\nWith streaks."
+        )
+
+        XCTAssertEqual(result.session, "nat-plan")
+        XCTAssertEqual(
+            fakeRunner.lastArguments,
+            ["workshop-launch", "--workspace", "ws-1", "--json", "--frontend", "gnat",
+             "--model", "opus", "--effort", "high", "--request", "-"]
+        )
+        XCTAssertFalse(fakeRunner.lastArguments?.contains("--project") ?? true)
+        XCTAssertEqual(fakeRunner.lastStandardInput, "A habit tracker.\nWith streaks.".data(using: .utf8))
+    }
+
+    func testWorkspaceLaunchWithNoOverrideOmitsTheModelFlags() async throws {
+        let fakeRunner = FakeRunner(fixture: .workshopLaunchSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        _ = try await client.workspaceLaunch(workspaceID: "ws-1", model: "", effort: nil, request: "x")
+
+        XCTAssertEqual(
+            fakeRunner.lastArguments,
+            ["workshop-launch", "--workspace", "ws-1", "--json", "--frontend", "gnat", "--request", "-"]
+        )
+    }
+
+    func testWorkspaceLaunchAlreadyLiveFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .workshopLaunchAlreadyLive)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            _ = try await client.workspaceLaunch(workspaceID: "ws-1", model: nil, effort: nil, request: "x")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            guard case .commandFailed(let message) = error else { return XCTFail("Expected commandFailed") }
+            XCTAssertEqual(message, "a planning agent is already live: nat-plan")
+        }
+    }
+
     func testAgentKillWorkshopNoSession() async throws {
         let fakeRunner = FakeRunner(fixture: .agentKillWorkshopNoSession)
         let client = NatClient(commandRunner: fakeRunner)

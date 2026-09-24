@@ -53,6 +53,10 @@ final class FixtureClientTests: XCTestCase {
         let workshop = try await client.workshopLaunch(
             projectID: Fixtures.projectID, model: nil, effort: nil, request: nil)
         XCTAssertEqual(workshop.session, TmuxSession.planSessionName(projectID: Fixtures.projectID))
+        let untitled = try await client.workspaceLaunch(
+            workspaceID: "ws-1", model: nil, effort: nil, request: "A plan")
+        XCTAssertEqual(untitled.session, TmuxSession.planSessionName(projectID: "ws-1"))
+        try await client.agentKillWorkspace(workspaceID: "ws-1")
         let added = try await client.sliceAdd(
             projectID: Fixtures.projectID, title: "A new slice", milestone: "M3: View gallery", description: nil)
         XCTAssertEqual(added.name, "A new slice")
@@ -66,6 +70,8 @@ final class FixtureClientTests: XCTestCase {
             "pr-merge \(Fixtures.approveSliceID)",
             "pr-comment \(Fixtures.approveSliceID)",
             "workshop-launch \(Fixtures.projectID)",
+            "workshop-launch --workspace ws-1",
+            "agent-kill --workshop --workspace ws-1",
             "slice-add A new slice",
             "config-set poll_seconds",
         ])
@@ -88,6 +94,8 @@ final class FixtureClientTests: XCTestCase {
         await assertRefuses { try await client.prMerge(projectID: "p", sliceRef: "s") }
         await assertRefuses { try await client.prComment(projectID: "p", sliceRef: "s", body: "b") }
         await assertRefuses { _ = try await client.workshopLaunch(projectID: "p", model: nil, effort: nil, request: nil) }
+        await assertRefuses { _ = try await client.workspaceLaunch(workspaceID: "w", model: nil, effort: nil, request: "r") }
+        await assertRefuses { try await client.agentKillWorkspace(workspaceID: "w") }
         await assertRefuses { _ = try await client.sliceAdd(projectID: "p", title: "t", milestone: "m", description: nil) }
         await assertRefuses { try await client.configSet(key: "k", value: "v") }
         XCTAssertTrue(client.writes.isEmpty)

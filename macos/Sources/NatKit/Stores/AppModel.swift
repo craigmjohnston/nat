@@ -114,8 +114,36 @@ public final class AppModel {
         untitledOpened += 1
         let id = Self.untitledPrefix + String(untitledOpened)
         projectTabs.append((id: id, name: Self.untitledName))
+        workspaceIDs[id] = UUID().uuidString.lowercased()
         activeProjectID = id
         return id
+    }
+
+    /// Each Untitled tab's workspace id, minted with the tab: what a planning
+    /// agent launched from it is keyed by, where a project's is keyed by the
+    /// project, and what its `plan-propose` carries so a proposal routes back
+    /// here. A fresh UUID rather than the tab's own `untitled-N`, which the
+    /// next run reuses — a stale proposal file or session of an earlier run
+    /// must never be mistaken for this tab's.
+    @ObservationIgnored private var workspaceIDs: [String: String] = [:]
+
+    /// A tab's workspace id — nil for a tab that is a project.
+    public func workspaceID(forTab tabID: String) -> String? {
+        workspaceIDs[tabID]
+    }
+
+    /// Whether an Untitled tab has a planning agent live: what closing it
+    /// must ask about first, since the session does not outlive its tab.
+    public func tabHasLiveWorkshop(_ tabID: String) -> Bool {
+        guard let workspace = workspaceIDs[tabID] else { return false }
+        return activityStore?.agents[TmuxSession.planTag(projectID: workspace)] != nil
+    }
+
+    /// Whether the Untitled tab on screen is showing its planning session —
+    /// running, or launching — where it would otherwise show the starter
+    /// card. The pane, and the rail's TODO explainer, both read it.
+    public var untitledWorkshopVisible: Bool {
+        activeTabIsUntitled && (planningAgent != nil || workshopLaunching)
     }
 
     /// The ID of the currently active project.
@@ -611,10 +639,23 @@ public final class AppModel {
     /// removed so every other open tab's plan is still in the mix, exactly as
     /// the ordinary sweep sees it: a session belonging to one of them is not
     /// mistaken for this tab's own dangling one.
-    public func closeProject(_ projectID: String) async {
+    ///
+    /// An Untitled tab's planning session does not outlive it — nothing else
+    /// could ever reach it again — so it is killed before the tab goes, and
+    /// a session that will not die keeps the tab open and answers with why.
+    /// Asking first is the caller's (`tabHasLiveWorkshop`), as the rail's ✕
+    /// on the workshop row does.
+    @discardableResult
+    public func closeProject(_ projectID: String) async -> String? {
         guard projectID != scratchProjectID,
               closableTabCount > 1,
-              let index = projectTabs.firstIndex(where: { $0.id == projectID }) else { return }
+              let index = projectTabs.firstIndex(where: { $0.id == projectID }) else { return nil }
+        if tabHasLiveWorkshop(projectID), let refusal = await killWorkshop(ofTab: projectID) {
+            return refusal
+        }
+        workspaceIDs[projectID] = nil
+        workshopDrafts[projectID] = nil
+        workshopSelectedProjects.remove(projectID)
         let closing = Set((stores[projectID]?.state.projectInfo?.slices ?? []).map(\.id))
         await reapFinishedAgents(ignoringHoldsFor: closing)
         projectTabs.remove(at: index)
@@ -622,6 +663,7 @@ public final class AppModel {
             let neighbour = projectTabs[min(index, projectTabs.count - 1)]
             await activateProject(neighbour.id)
         }
+        return nil
     }
 
     /// Take a project just opened or created into the board: re-read config
@@ -820,6 +862,12 @@ public final class AppModel {
     /// project may attach it. Nil when no project is active or none is live.
     public var planningAgentKey: String? {
         guard let activeID = activeProjectID, let agents = activityStore?.agents else { return nil }
+        // An Untitled tab's is keyed by its workspace, and takes nothing else:
+        // the legacy bare session is a project's to attach.
+        if let workspace = workspaceIDs[activeID] {
+            let tag = TmuxSession.planTag(projectID: workspace)
+            return agents[tag] != nil ? tag : nil
+        }
         let scoped = TmuxSession.planTag(projectID: activeID)
         if agents[scoped] != nil { return scoped }
         if agents[Self.planSentinel] != nil { return Self.planSentinel }
@@ -911,18 +959,33 @@ public final class AppModel {
     /// comes back only where the launch came to nothing.
     public func launchWorkshop(request: String) async {
         guard let projectID = activeProjectID else { return }
+        let trimmed = request.trimmingCharacters(in: .whitespacesAndNewlines)
+        // An Untitled tab has no project to workshop on, only what the
+        // starter card was asked: the agent is told to start on it, so there
+        // is nothing to launch without it.
+        let workspace = workspaceIDs[projectID]
+        if workspace != nil, trimmed.isEmpty { return }
         workshopSelected = true
         guard planningAgent == nil, !workshopLaunching else { return }
 
         workshopLaunching = true
         workshopLaunchError = nil
         do {
-            _ = try await workshopLauncher(
-                projectID,
-                config?.workshopAgent?.model,
-                config?.workshopAgent?.effort,
-                request.trimmingCharacters(in: .whitespacesAndNewlines)
-            )
+            if let workspace {
+                _ = try await clientFactory().workspaceLaunch(
+                    workspaceID: workspace,
+                    model: config?.workshopAgent?.model,
+                    effort: config?.workshopAgent?.effort,
+                    request: trimmed
+                )
+            } else {
+                _ = try await workshopLauncher(
+                    projectID,
+                    config?.workshopAgent?.model,
+                    config?.workshopAgent?.effort,
+                    trimmed
+                )
+            }
         } catch let error as NatError {
             if case .commandFailed(let message) = error {
                 workshopLaunchError = message
@@ -1080,8 +1143,18 @@ public final class AppModel {
     @discardableResult
     public func killWorkshopAgent() async -> String? {
         guard let projectID = activeProjectID else { return "No project loaded" }
+        return await killWorkshop(ofTab: projectID)
+    }
+
+    /// `killWorkshopAgent` for any tab, not only the one on screen — an
+    /// Untitled tab is killed by its workspace id, a project's by the project.
+    private func killWorkshop(ofTab projectID: String) async -> String? {
         do {
-            try await clientFactory().agentKillWorkshop(projectID: projectID)
+            if let workspace = workspaceIDs[projectID] {
+                try await clientFactory().agentKillWorkspace(workspaceID: workspace)
+            } else {
+                try await clientFactory().agentKillWorkshop(projectID: projectID)
+            }
         } catch let error as NatError {
             if case .commandFailed(let message) = error { return message }
             return error.localizedDescription

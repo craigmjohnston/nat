@@ -32,9 +32,23 @@ public protocol NatClientProtocol: Sendable {
     func sessionPRView(projectID: String, sessionID: String, prURL: String) async throws -> PRDetail
     func scratchOpen() async throws -> ScratchOpenResult
     func doneClear(projectID: String) async throws -> DoneClearResult
+    func workspaceLaunch(workspaceID: String, model: String?, effort: String?, request: String) async throws -> WorkshopLaunchResult
+    func agentKillWorkspace(workspaceID: String) async throws -> Void
 }
 
 extension NatClientProtocol {
+    /// The Untitled tab's planning agent: only `NatClient` and the fixture
+    /// client implement these, so a test double for a store that never
+    /// launches one need not say so — the same reason `sliceRework` is a
+    /// default.
+    public func workspaceLaunch(workspaceID: String, model: String?, effort: String?, request: String) async throws -> WorkshopLaunchResult {
+        throw NatError.commandFailed("workshop-launch --workspace: not supported by this client")
+    }
+
+    public func agentKillWorkspace(workspaceID: String) async throws {
+        throw NatError.commandFailed("agent-kill --workspace: not supported by this client")
+    }
+
     /// A conformer that never reworks a slice — every test double but the
     /// ones exercising the approve-over-comments flow — need not say so:
     /// `NatClient` and the fixture client are the two that implement it.

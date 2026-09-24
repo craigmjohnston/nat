@@ -25,11 +25,16 @@ public enum StarterCard {
     /// The Untitled tab's TODO section, in place of a plan it has none of.
     public static let railExplainer = "Milestones and slices appear here once the project has a plan."
 
+    /// The TODO explainer once the workshop session is running, in place of
+    /// `railExplainer` (`NFRail`'s non-proposal branch in
+    /// `docs/design/nat-new-project/ui-npflow.jsx`).
+    public static let railWorkshopExplainer =
+        "Milestones and slices land here as the workshop settles on a plan."
+
     /// What each control drawn ahead of its wiring says when hovered: the
     /// slice that wires it. Staged deliberately — the card is drawn whole so
     /// the mock can be checked against it, and each of these lands disabled
     /// until its own slice does.
-    public static let workshopStaging = "Launch the planning agent from the starter card"
     public static let openPlanStaging = "Open existing plans from the starter"
     public static let filesystemStaging = "Open existing plans from the starter"
 }

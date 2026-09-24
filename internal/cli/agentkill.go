@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/craigmjohnston/nat/internal/agent"
 )
@@ -29,6 +30,7 @@ func agentKill(ctx context.Context, args []string, env Env) error {
 	flags.SetOutput(io.Discard)
 	projectRef := projectFlag(flags)
 	workshop := flags.Bool("workshop", false, "kill the project's planning agent instead of a slice")
+	workspace := flags.String("workspace", "", "with --workshop, end the planning agent of the app's untitled tab with this id instead of a project's")
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
@@ -39,10 +41,22 @@ func agentKill(ctx context.Context, args []string, env Env) error {
 	if !*workshop && len(rest) != 1 {
 		return usageErrorf("agent-kill: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
+	ws := strings.TrimSpace(*workspace)
+	if ws != "" && !*workshop {
+		return usageErrorf("agent-kill: --workspace only names a planning agent, with --workshop")
+	}
+	if ws != "" && strings.TrimSpace(*projectRef) != "" {
+		return usageErrorf("agent-kill: --workspace and --project name different sessions, not both")
+	}
 
-	_, projectID, _, err := env.projectFor(*projectRef)
-	if err != nil {
-		return err
+	// A workspace's planning agent is keyed by the tab's own id and belongs to
+	// no project, so there is no project to resolve — or to be pinned to.
+	projectID := ws
+	if ws == "" {
+		_, projectID, _, err = env.projectFor(*projectRef)
+		if err != nil {
+			return err
+		}
 	}
 
 	tmux := env.NewTmux()
@@ -52,7 +66,13 @@ func agentKill(ctx context.Context, args []string, env Env) error {
 	}
 
 	if *workshop {
+		// A workspace takes only its own tag: the legacy bare sentinel is a
+		// project's to attach, and ending it from a tab that never launched
+		// it would kill a session that is nothing to do with this one.
 		_, session := agent.LivePlan(live, projectID)
+		if ws != "" {
+			session = live[agent.PlanTag(ws)]
+		}
 		if session == "" {
 			return fmt.Errorf("no live planning session for this project")
 		}
