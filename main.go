@@ -18,6 +18,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/nudge"
 	"github.com/craigmjohnston/nat/internal/tui"
+	"github.com/craigmjohnston/nat/internal/version"
 )
 
 // The process's edges, held as variables so tests can stand in for them: main
@@ -45,6 +46,12 @@ func ntnCLI() config.TokenSource { return config.NewNtnCLI() }
 func processArgs() []string { return os.Args[1:] }
 
 func main() {
+	// Before the log, the config and the token: the answer is a fact about the
+	// binary, so asking for it touches none of them.
+	if a := args(); len(a) == 1 && (a[0] == "--version" || a[0] == "-version") {
+		_, _ = fmt.Fprintln(stdout, version.Version())
+		return
+	}
 	logPath := openLog()
 	defer func() { _ = logging.Close() }()
 
