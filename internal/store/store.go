@@ -95,11 +95,6 @@ type Plan struct {
 	Project domain.Project
 	// Shape is what can be recorded about the project's slices.
 	Shape Shape
-	// Migrated says what reading the plan changed about how it is stored, in
-	// one line, and is empty when nothing changed — which is every read after
-	// the first. It is a sentence rather than a structure because the only two
-	// callers log it and toast it.
-	Migrated string
 }
 
 // NewSlice is a slice to file: everything decided by whoever files it. Status

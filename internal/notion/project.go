@@ -46,13 +46,9 @@ const (
 	MilestoneDone   = "Done"
 )
 
-// Slice status options, in workflow order. Claimed is the name the middle one
-// had in projects created before this app asked the question; it is not a status
-// anything reads or writes any more, only the old name [MigrateProject] looks
-// for and renames to In progress.
+// Slice status options, in workflow order.
 const (
 	SliceTodo       = "Todo"
-	SliceClaimed    = "Claimed"
 	SliceInProgress = "In progress"
 	SliceDone       = "Done"
 )

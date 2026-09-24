@@ -60,15 +60,9 @@ type modal interface {
 // The messages the root model's own Notion calls come back as. Every call is a
 // tea.Cmd returning one of these, so nothing in Update blocks on the network.
 type (
-	// projectLoadedMsg carries a freshly loaded plan, and what migrating the
-	// project on the way to it changed — nothing at all, for every project
-	// already in the one shape.
+	// projectLoadedMsg carries a freshly loaded plan.
 	projectLoadedMsg struct {
 		project domain.Project
-		// migrated is what loading the plan changed about how it is stored, in
-		// one line, and is empty when nothing changed — which is every load
-		// after the first.
-		migrated string
 		// pullErr is a forced pull's own failure — the refresh key or the
 		// background poll asked the workspace and it would not answer. The
 		// plan itself still landed, read from the file as it stands, so this
@@ -488,11 +482,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the retry for a removal git refused at the transition — see
 		// [App.removeLanded].
 		cmd := tea.Batch(a.refreshPRStates(), a.removeLanded(a.settledSlices()))
-		// A project that had to be migrated to be shown says so: the plan on
-		// screen is not quite the one Notion held a moment ago.
-		if msg.migrated != "" {
-			cmd = tea.Batch(cmd, a.showToast(msg.migrated, sevSuccess))
-		}
 		// A forced pull's own failure is a warning, not an error: the plan is
 		// still on screen, read from the file as it stands.
 		if msg.pullErr != nil {
@@ -1167,10 +1156,6 @@ func (a *App) activeProject() (config.ProjectConfig, bool) {
 // go has no order at all. The order comes from where the slices sit in the
 // project's own board instead, read from the view.
 //
-// A project still in the shape this app started with — milestones in a database
-// of their own — is migrated on the way past, before its schema is read for the
-// plan, so what comes back is a plan of the one shape however it was stored.
-//
 // force says whether the read is one of the two moments a caller knows
 // better than the clock — the refresh key and the background poll — and so
 // pulls the file into line with the workspace regardless of how current its
@@ -1190,7 +1175,7 @@ func (a *App) fetchProject(st store.Store, id string, cfg config.ProjectConfig, 
 		if err != nil {
 			return notionErrMsg{err: err}
 		}
-		return projectLoadedMsg{project: plan.Project, migrated: plan.Migrated, pullErr: pullErr}
+		return projectLoadedMsg{project: plan.Project, pullErr: pullErr}
 	}
 }
 

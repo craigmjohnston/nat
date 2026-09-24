@@ -386,23 +386,6 @@ func TestProjectSchemas(t *testing.T) {
 	}
 }
 
-func TestNormalisedID(t *testing.T) {
-	tests := []struct {
-		a, b string
-		want bool
-	}{
-		{"3b738308-f654-8111-966b-e79b7d626133", "3b738308f6548111966be79b7d626133", true},
-		{"ABC-DEF", "abcdef", true},
-		{"ds-1", "ds-2", false},
-		{"", "", true},
-	}
-	for _, tt := range tests {
-		if got := normalisedID(tt.a) == normalisedID(tt.b); got != tt.want {
-			t.Errorf("normalisedID(%q) == normalisedID(%q) = %v, want %v", tt.a, tt.b, got, tt.want)
-		}
-	}
-}
-
 func TestShapeOf(t *testing.T) {
 	tests := []struct {
 		name string

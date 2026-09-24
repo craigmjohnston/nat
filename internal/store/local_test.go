@@ -87,9 +87,6 @@ func TestOpenLocalReadsAPlanItHasWritten(t *testing.T) {
 	if plan.Project.Name != "notion-agent-tracker" {
 		t.Errorf("project name = %q, want the plan's own", plan.Project.Name)
 	}
-	if plan.Migrated != "" {
-		t.Errorf("Migrated = %q, want nothing changed", plan.Migrated)
-	}
 
 	wantMilestones := []domain.Milestone{
 		{ID: "M1: The format", Name: "M1: The format", Order: 0, Status: domain.MilestoneDone},

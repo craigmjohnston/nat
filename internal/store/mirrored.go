@@ -43,12 +43,6 @@ type Mirrored struct {
 	// hydrates eagerly itself before handing one back.
 	project Project
 
-	// migrated is what the last [Mirrored.Pull]'s own migration note said. The
-	// file has nowhere of its own to keep a sentence, so the news that a
-	// project was migrated lives only here, for the life of the process that
-	// pulled it — lost, otherwise, between the workspace where it happened and
-	// the file a later read answers from.
-	migrated string
 	// lastPull is when the file was last brought fully into line with the
 	// workspace, which is what [Mirrored.Body] compares a page's own stamp
 	// against to decide whether its copy is still worth trusting.
@@ -157,10 +151,6 @@ func (m *Mirrored) Shape(ctx context.Context, p Project) (Shape, error) {
 // here. A staleness pull that fails is logged and swallowed rather than
 // returned: the file already has a plan in it, reads that fail conclude
 // nothing, and what is on screen is worth more than an error over it.
-//
-// It carries through whatever the last pull's own migration note said — the
-// file has no column for a sentence, so this process's own memory of its
-// last pull is the only place that news survives to be read back.
 func (m *Mirrored) Plan(ctx context.Context, p Project) (Plan, error) {
 	if err := m.ensureHydrated(ctx, true); err != nil {
 		return Plan{}, err
@@ -171,12 +161,7 @@ func (m *Mirrored) Plan(ctx context.Context, p Project) (Plan, error) {
 				"project", p.ID, "err", err)
 		}
 	}
-	plan, err := m.local.Plan(ctx, p)
-	if err != nil {
-		return Plan{}, err
-	}
-	plan.Migrated = m.migrated
-	return plan, nil
+	return m.local.Plan(ctx, p)
 }
 
 // Slice reads one slice from the file, and falls back to the workspace for an
@@ -634,7 +619,6 @@ func (m *Mirrored) pull(ctx context.Context, p Project, ordered bool) error {
 	if err := m.local.Hydrate(ctx, p, plan, nil, at); err != nil {
 		return err
 	}
-	m.migrated = plan.Migrated
 	m.lastPull = at
 	return nil
 }

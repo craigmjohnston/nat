@@ -57,12 +57,12 @@ columns and the plan never reads as hydrated).
 
 ## Notion backend (`notion.go`)
 
-- Built over `API`, a narrow interface (`notion.MigrationAPI` + six calls:
+- Built over `API`, a narrow interface (the data-source and page reads/writes + six calls:
   `DataSourceOrder`, `GetPage`, `CreatePage`, `GetBlockChildren`,
   `AppendBlockChildren`, `TrashPage`) so request cost stays visible in one
   place and a fake can drive it.
-- Every read runs `notion.MigrateProject` on the way in — a stale-shape
-  project is migrated silently but logged/toasted, never left half-read.
+- Every read starts with `GetDataSource` on the Slices data source; there is
+  no load-time migration, so a project is expected to be in the one shape.
 - Milestone rename/remove/move mechanics **live here**, not in `internal/cli`
   — the CLI commands are thin wrappers. See root CLAUDE.md's Domain rules
   for the reasoning (rename-goes-the-long-way, remove-refuses-while-filed,

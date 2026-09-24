@@ -94,25 +94,13 @@ func SchemaRelation(dataSourceID string) PropertySchema {
 	}}
 }
 
-// The two relation kinds: RelationSingle puts a column on one side only, which
-// is what every dependency column written before [SchemaRelation] asked for a
-// reciprocal is, and RelationDual puts one on each. Only the first is read for
-// — a migration converts it — and only the second is ever written.
+// The two relation kinds: RelationSingle puts a column on one side only and
+// RelationDual puts one on each. Only the second is ever written — see
+// [SchemaRelation].
 const (
 	RelationSingle = "single_property"
 	RelationDual   = "dual_property"
 )
-
-// SingleSelfRelation reports a property that is this app's dependency column in
-// the shape it had before it had a reciprocal: a relation from the Slices data
-// source to itself, kept by Notion on one side alone. It is what the migration
-// converts, and it is deliberately narrow — a relation pointing anywhere else
-// is somebody's own column that happens to share a name, and re-targeting it at
-// the slices would throw away what it holds.
-func SingleSelfRelation(p PropertySchema, dataSourceID string) bool {
-	return p.Relation != nil && p.Relation.Kind == RelationSingle &&
-		normalisedID(p.Relation.DataSourceID) == normalisedID(dataSourceID)
-}
 
 // SchemaPeople builds a people property definition.
 func SchemaPeople() PropertySchema {

@@ -16,7 +16,11 @@ import (
 // for. It is an interface so the store can be driven by a fake, and narrow so
 // that what a plan actually costs in requests is readable in one place.
 type API interface {
-	notion.MigrationAPI
+	GetDataSource(ctx context.Context, id string) (*notion.DataSource, error)
+	QueryDataSource(ctx context.Context, id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
+	UpdateDataSourceProperties(ctx context.Context, id string, properties map[string]notion.PropertySchema) (*notion.DataSource, error)
+	UpdatePageProperties(ctx context.Context, pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
+	DeleteBlock(ctx context.Context, id string) error
 	DataSourceOrder(ctx context.Context, dataSourceID string) ([]string, error)
 	GetPage(ctx context.Context, id string) (*notion.Page, error)
 	CreatePage(ctx context.Context, parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)
@@ -45,17 +49,11 @@ func Over(api API) *Notion { return &Notion{api: api} }
 // Notion is a Store.
 var _ Store = (*Notion)(nil)
 
-// Shape reads how a project's Slices data source is put together, migrating a
-// project still in the shape this app started with on the way — which is how
-// every read of a plan, by the board or by a command, arrives at a plan of the
-// one shape.
+// Shape reads how a project's Slices data source is put together.
 func (n *Notion) Shape(ctx context.Context, p Project) (Shape, error) {
-	ds, migration, err := notion.MigrateProject(ctx, n.api, p.SlicesID)
+	ds, err := n.api.GetDataSource(ctx, p.SlicesID)
 	if err != nil {
-		return Shape{}, err
-	}
-	if !migration.Empty() {
-		logging.Action("project migrated on the way to reading its plan", "summary", migration.Summary())
+		return Shape{}, fmt.Errorf("load the slices schema: %w", err)
 	}
 	return shapeOf(ds), nil
 }
@@ -97,9 +95,9 @@ func (n *Notion) planForPull(ctx context.Context, p Project) (Plan, error) {
 // plan is [Notion.Plan] and [Notion.planForPull] both: the same read, ordered
 // by the board's own view or left as the query gave it.
 func (n *Notion) plan(ctx context.Context, p Project, ordered bool) (Plan, error) {
-	ds, migration, err := notion.MigrateProject(ctx, n.api, p.SlicesID)
+	ds, err := n.api.GetDataSource(ctx, p.SlicesID)
 	if err != nil {
-		return Plan{}, err
+		return Plan{}, fmt.Errorf("load the slices schema: %w", err)
 	}
 	sh := shapeOf(ds)
 	pages, err := n.api.QueryDataSource(ctx, p.SlicesID, nil,
@@ -111,14 +109,10 @@ func (n *Notion) plan(ctx context.Context, p Project, ordered bool) (Plan, error
 	if ordered {
 		slices = domain.InViewOrder(slices, notion.PlanOrder(ctx, n.api, p.SlicesID))
 	}
-	plan := Plan{
+	return Plan{
 		Project: domain.NewProject(p.ID, p.Name, sh.Milestones, slices),
 		Shape:   sh,
-	}
-	if !migration.Empty() {
-		plan.Migrated = migration.Summary()
-	}
-	return plan, nil
+	}, nil
 }
 
 // Slice reads one slice, and with it the shape that slice can be written in.
