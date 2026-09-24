@@ -63,6 +63,11 @@ public final class AppModel {
     /// of view state here; there is no draft to restore across app launches.
     private var workshopDrafts: [String: String] = [:]
 
+    /// The plan document chosen or dropped on an Untitled tab's starter card,
+    /// per tab, held with the draft and cleared as it is: by a launch that
+    /// took, or the tab closing.
+    private var workshopPlanFiles: [String: PlanFile] = [:]
+
     /// Ordered list of project tabs: (id, name).
     public private(set) var projectTabs: [(id: String, name: String)] = []
 
@@ -655,6 +660,7 @@ public final class AppModel {
         }
         workspaceIDs[projectID] = nil
         workshopDrafts[projectID] = nil
+        workshopPlanFiles[projectID] = nil
         workshopSelectedProjects.remove(projectID)
         let closing = Set((stores[projectID]?.state.projectInfo?.slices ?? []).map(\.id))
         await reapFinishedAgents(ignoringHoldsFor: closing)
@@ -916,6 +922,55 @@ public final class AppModel {
         }
     }
 
+    /// The plan document attached to the Untitled tab on screen, if any.
+    public var workshopPlanFile: PlanFile? {
+        activeProjectID.flatMap { workshopPlanFiles[$0] }
+    }
+
+    /// Attach a plan document to the Untitled tab on screen: picked with the
+    /// starter's "Open plan from filesystem…" or dropped on the composer. Its
+    /// content is handed to the planning agent with the launch, alongside the
+    /// description. A file that is too large or not text is refused on the
+    /// card's own error line and leaves whatever was attached as it was.
+    public func attachPlanFile(_ url: URL) {
+        guard let projectID = activeProjectID, isUntitledTab(projectID) else { return }
+        do {
+            workshopPlanFiles[projectID] = try PlanFile.read(url)
+            workshopLaunchError = nil
+        } catch let error as PlanFileError {
+            workshopLaunchError = error.message
+        } catch {
+            workshopLaunchError = error.localizedDescription
+        }
+    }
+
+    /// Take the attached plan document off the Untitled tab on screen.
+    public func detachPlanFile() {
+        guard let projectID = activeProjectID else { return }
+        workshopPlanFiles[projectID] = nil
+    }
+
+    /// The starter's "From filesystem" tile: open the local plan a folder
+    /// holds as a project, taking the Untitled tab over exactly as From Notion
+    /// does. A folder with no plan is refused with what was looked for, on the
+    /// card's error line, and the tab is left as it was.
+    public func openPlanFolder(_ url: URL) async {
+        guard let tabID = activeProjectID, isUntitledTab(tabID) else { return }
+        workshopLaunchError = nil
+        do {
+            let entry = try await clientFactory().projectOpenFolder(path: url.path)
+            await addProject(id: entry.id, name: entry.name, replacing: tabID)
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                workshopLaunchError = message
+            } else {
+                workshopLaunchError = error.localizedDescription
+            }
+        } catch {
+            workshopLaunchError = error.localizedDescription
+        }
+    }
+
     /// Whether the active project's rail has the workshop row selected.
     /// Setting it true clears the slice selection — see `selectedSliceID`.
     public var workshopSelected: Bool {
@@ -964,7 +1019,8 @@ public final class AppModel {
         // starter card was asked: the agent is told to start on it, so there
         // is nothing to launch without it.
         let workspace = workspaceIDs[projectID]
-        if workspace != nil, trimmed.isEmpty { return }
+        let planFile = workspace != nil ? workshopPlanFiles[projectID] : nil
+        if workspace != nil, trimmed.isEmpty, planFile == nil { return }
         workshopSelected = true
         guard planningAgent == nil, !workshopLaunching else { return }
 
@@ -976,7 +1032,7 @@ public final class AppModel {
                     workspaceID: workspace,
                     model: config?.workshopAgent?.model,
                     effort: config?.workshopAgent?.effort,
-                    request: trimmed
+                    request: planFile?.request(description: trimmed) ?? trimmed
                 )
             } else {
                 _ = try await workshopLauncher(
@@ -1008,6 +1064,7 @@ public final class AppModel {
             // that took is the request actually being used, so there is
             // nothing left in it worth keeping for the next visit.
             workshopDrafts[projectID] = nil
+            workshopPlanFiles[projectID] = nil
             await settleOnPlanningAgent()
         }
         workshopLaunching = false

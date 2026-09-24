@@ -185,6 +185,20 @@ enum AppStories {
         },
 
         Story(
+            name: "window-untitled-plan-file",
+            summary: "The starter card with a plan file attached: its name beside the picker "
+                + "link, a ✕ to take it off, and Workshop the plan live with no description typed.",
+            size: window
+        ) {
+            let appModel = await Fixtures.startedAppModel(
+                config: Fixtures.emptyConfig, toolsReady: true)
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("habit-tracker-plan.md")
+            try? "# Habit tracker\n".write(to: url, atomically: true, encoding: .utf8)
+            appModel.attachPlanFile(url)
+            return WindowShellView(appModel: appModel)
+        },
+
+        Story(
             name: "window-untitled-workshop",
             summary: "An Untitled tab after Workshop the plan: the planning agent's terminal "
                 + "fills the pane, the rail has the workshop ACTIVE entry and the TODO explainer's "

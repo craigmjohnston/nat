@@ -74,6 +74,10 @@ class MockActivityClient: NatClientProtocol, @unchecked Sendable {
         throw NSError(domain: "test", code: -1)
     }
 
+    func projectOpenFolder(path: String) async throws -> ProjectEntry {
+        throw NSError(domain: "test", code: -1)
+    }
+
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult {
         throw NSError(domain: "test", code: -1)
     }

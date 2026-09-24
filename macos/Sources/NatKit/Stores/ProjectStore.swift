@@ -34,6 +34,7 @@ public protocol NatClientProtocol: Sendable {
     func doneClear(projectID: String) async throws -> DoneClearResult
     func workspaceLaunch(workspaceID: String, model: String?, effort: String?, request: String) async throws -> WorkshopLaunchResult
     func agentKillWorkspace(workspaceID: String) async throws -> Void
+    func projectOpenFolder(path: String) async throws -> ProjectEntry
 }
 
 extension NatClientProtocol {
@@ -47,6 +48,12 @@ extension NatClientProtocol {
 
     public func agentKillWorkspace(workspaceID: String) async throws {
         throw NatError.commandFailed("agent-kill --workspace: not supported by this client")
+    }
+
+    /// Opening a plan folder as a project: same reasoning, only `NatClient`
+    /// implements it.
+    public func projectOpenFolder(path: String) async throws -> ProjectEntry {
+        throw NatError.commandFailed("project-open-folder: not supported by this client")
     }
 
     /// A conformer that never reworks a slice — every test double but the
