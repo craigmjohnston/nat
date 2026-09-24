@@ -69,6 +69,15 @@ final class PaneResizeTests: XCTestCase {
         ))
     }
 
+    func testACommitIsTheLiveWidthOnceItDiffersFromThePersistedOne() {
+        XCTAssertEqual(paneCommittedWidth(live: 320, persisted: 300), 320)
+    }
+
+    func testNothingIsCommittedWithoutADragOrAtTheSameWidth() {
+        XCTAssertNil(paneCommittedWidth(live: nil, persisted: 300))
+        XCTAssertNil(paneCommittedWidth(live: 300, persisted: 300))
+    }
+
     /// The frame before any geometry has been read: nothing is over it.
     func testAnUnmeasuredHandleIsNeverUnderThePointer() {
         XCTAssertFalse(paneDragEndedOverHandle(handleFrame: .zero, endLocation: .zero))

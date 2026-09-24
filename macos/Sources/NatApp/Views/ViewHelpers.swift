@@ -108,9 +108,14 @@ struct BusySlot: View {
 /// points wide, wearing the horizontal-resize cursor and dragging the bound
 /// width between its bounds. Overlaid on the divider edge of the view beside
 /// the line and offset to straddle it — the width itself is the caller's
-/// state, which is what lets each pane persist its own.
+/// state, which is what lets each pane persist its own. The drag moves
+/// `liveWidth` (plain `@State` in the caller, which draws `liveWidth ?? stored`)
+/// and nothing is persisted until it ends, when `onCommit` fires once.
 struct PaneResizeHandle: View {
-    @Binding var width: Double
+    /// The persisted width — where a drag starts from.
+    let width: Double
+    @Binding var liveWidth: Double?
+    let onCommit: (Double) -> Void
     let minWidth: Double
     let maxWidth: Double
     /// Which edge of the *resized* pane this handle sits on — see
@@ -157,7 +162,7 @@ struct PaneResizeHandle: View {
                     .onChanged { value in
                         let base = startWidth ?? width
                         startWidth = base
-                        width = paneResizedWidth(
+                        liveWidth = paneResizedWidth(
                             startWidth: base,
                             translation: value.translation.width,
                             edge: edge,
@@ -171,6 +176,10 @@ struct PaneResizeHandle: View {
                     }
                     .onEnded { value in
                         startWidth = nil
+                        if let final = paneCommittedWidth(live: liveWidth, persisted: width) {
+                            onCommit(final)
+                        }
+                        liveWidth = nil
                         // The cursor the drag kept setting stays up until the
                         // pointer crosses into a cursor rect again, so a drag
                         // that ended away from the strip has to hand the arrow

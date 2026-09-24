@@ -27,6 +27,15 @@ public func paneResizedWidth(
     return min(maxWidth, max(minWidth, startWidth + delta))
 }
 
+/// The width to persist when a resize drag ends: the live drag width, or nil
+/// when there is nothing to write — no drag ever moved the pane, or it came
+/// back to exactly the persisted width. The live width lives in plain view
+/// state for the length of the drag; this is the one gate to the defaults.
+public func paneCommittedWidth(live: Double?, persisted: Double) -> Double? {
+    guard let live, live != persisted else { return nil }
+    return live
+}
+
 /// Whether a resize drag finished with the pointer still over its handle.
 /// Cursor updates are suppressed for the length of a drag and AppKit
 /// re-asserts a cursor rect only as the pointer crosses into it, so the

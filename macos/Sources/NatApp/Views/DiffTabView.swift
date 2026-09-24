@@ -61,6 +61,7 @@ struct DiffTabView: View {
     /// across launches — the default is the width it was fixed at before it
     /// was resizable.
     @AppStorage("diffSidebarWidth") private var sidebarWidth = 232.0
+    @State private var liveSidebarWidth: Double?
 
     /// Where the file column is scrolled to, by file path. The
     /// `scrollPosition`/`scrollTargetLayout` pair rather than a
@@ -285,10 +286,10 @@ struct DiffTabView: View {
                 }
             }
         }
-        .frame(width: sidebarWidth)
+        .frame(width: liveSidebarWidth ?? sidebarWidth)
         .rule(.separator, edges: [.leading], width: 0.5)
         .overlay(alignment: .leading) {
-            PaneResizeHandle(width: $sidebarWidth, minWidth: 180, maxWidth: 420, edge: .leading)
+            PaneResizeHandle(width: sidebarWidth, liveWidth: $liveSidebarWidth, onCommit: { sidebarWidth = $0 }, minWidth: 180, maxWidth: 420, edge: .leading)
                 .offset(x: -4.5)
         }
         .confirmationDialog(

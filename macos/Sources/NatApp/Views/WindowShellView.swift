@@ -15,6 +15,7 @@ struct WindowShellView: View {
     /// launches. The default is the `maxWidth` the rail was fixed at before
     /// it was resizable.
     @AppStorage("railWidth") private var railWidth = 372.0
+    @State private var liveRailWidth: Double?
 
     var body: some View {
         ZStack {
@@ -96,7 +97,7 @@ struct WindowShellView: View {
             // Main content: Rail | Pane
             HStack(spacing: 0) {
                 RailView(appModel: appModel)
-                    .frame(width: railWidth)
+                    .frame(width: liveRailWidth ?? railWidth)
 
                 PaneView(appModel: appModel)
                     .frame(maxWidth: .infinity)
@@ -106,7 +107,7 @@ struct WindowShellView: View {
                     // the pane's quiet left margin, not the tail of the
                     // rail's clickable rows.
                     .overlay(alignment: .leading) {
-                        PaneResizeHandle(width: $railWidth, minWidth: 240, maxWidth: 560, edge: .trailing)
+                        PaneResizeHandle(width: railWidth, liveWidth: $liveRailWidth, onCommit: { railWidth = $0 }, minWidth: 240, maxWidth: 560, edge: .trailing)
                             .offset(x: -4.5)
                     }
             }
@@ -114,7 +115,7 @@ struct WindowShellView: View {
 
             // Status bar — full window width, split at the same x-position
             // as the rail/pane divider above it.
-            StatusBarView(appModel: appModel, railWidth: railWidth)
+            StatusBarView(appModel: appModel, railWidth: liveRailWidth ?? railWidth)
         }
     }
 
