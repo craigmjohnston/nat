@@ -77,7 +77,14 @@ public final class DiffStore {
     /// `Comments()`), and by path alone once there is no diff left to order
     /// them by at all — a comment outlives a read that failed after it was
     /// left.
-    public private(set) var comments: [PendingComment] = []
+    public private(set) var comments: [PendingComment] = [] {
+        didSet { commentsByPath = Dictionary(grouping: comments, by: \.path) }
+    }
+
+    /// `comments` grouped by file path, rebuilt whenever the list changes so
+    /// the view looks a file's comments up rather than filtering the whole
+    /// list per file per render. Each file's comments keep `comments`' order.
+    public private(set) var commentsByPath: [String: [PendingComment]] = [:]
 
     /// How many pending comments the last successful read of the branch
     /// dropped, because their anchored lines no longer exist as a whole run —
