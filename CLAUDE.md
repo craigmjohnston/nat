@@ -224,7 +224,9 @@ about the right PR).
   `tea.ExecProcess` for tmux attach.
 - Tests: aim for 100% coverage of new code. httptest for the Notion client
   (assert exact request JSON), interfaces + fakes for the ntn CLI/tmux,
-  teatest for TUI flows, golden snapshots for renders.
+  teatest for TUI flows, golden snapshots for renders. Shared plumbing is
+  tested once, where it lives — a command's tests cover only its own
+  statements and refusals.
 - Gate before claiming done: `go vet ./... && go test -race
   -coverprofile=coverage.out ./... && ./scripts/no-uncovered.sh &&
   golangci-lint run`. Use the profile, not `-cover`'s rounded percentage —

@@ -671,22 +671,6 @@ func TestCompleteSliceNeedsAnAssignee(t *testing.T) {
 	}
 }
 
-// Setup that has not happened yet is reported before the slice is touched.
-func TestCompleteSliceReportsUnfinishedSetup(t *testing.T) {
-	api := completableAPI()
-	env, _ := completeEnv(t, api)
-	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
-
-	err := Run(context.Background(), []string{"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1"}, env)
-
-	if err == nil || !strings.Contains(err.Error(), "run `nat` once to set it up") {
-		t.Fatalf("err = %v, want it to point at setup", err)
-	}
-	if len(api.appends) != 0 || len(api.updates) != 0 {
-		t.Errorf("writes = %+v %+v, want none", api.appends, api.updates)
-	}
-}
-
 func TestCompleteSliceReportsAFailedWrite(t *testing.T) {
 	env, _ := completeEnv(t, completableAPI())
 	env.Out = failingWriter{}

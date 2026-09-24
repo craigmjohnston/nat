@@ -561,22 +561,6 @@ func TestNextSliceNeedsAnAssignee(t *testing.T) {
 	}
 }
 
-// Setup that has not happened yet is reported before anything is claimed.
-func TestNextSliceReportsUnfinishedSetup(t *testing.T) {
-	api := claimableAPI(t)
-	env, _ := testEnv(testClaimConfig(t), api)
-	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
-
-	err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
-
-	if err == nil || !strings.Contains(err.Error(), "run `nat` once to set it up") {
-		t.Fatalf("err = %v, want it to point at setup", err)
-	}
-	if len(api.updates) != 0 {
-		t.Errorf("updates = %+v, want none", api.updates)
-	}
-}
-
 func TestNextSliceReportsAFailedWrite(t *testing.T) {
 	for _, args := range [][]string{{"next-slice", "--project", "project-1"}, {"next-slice", "--json", "--project", "project-1"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
