@@ -82,9 +82,8 @@ final class WorkflowTabsTests: XCTestCase {
         XCTAssertFalse(state.isComplete(.pr))
     }
 
-    /// A live agent moves the default tab back to Agent — where to look, not
-    /// how far the slice got. The branch is still handed back, Diff is still
-    /// unlocked, and the stages behind that stay ticked.
+    /// A live agent no longer moves the default tab: the session outlives the
+    /// hand-back, so the slice lands on Diff, and the stages behind stay ticked.
     func testIsComplete_liveAgentOnAHandedBackSliceKeepsAgentTicked() {
         let slice = Slice(
             id: "s-1", name: "Task", status: "In progress", milestoneID: "m-1",
@@ -93,7 +92,7 @@ final class WorkflowTabsTests: XCTestCase {
 
         let state = buildWorkflowTabState(for: slice, hasLiveAgent: true)
 
-        XCTAssertEqual(state.defaultTab, .agent)
+        XCTAssertEqual(state.defaultTab, .diff)
         XCTAssert(state.isReachable(.diff))
         XCTAssert(state.isComplete(.brief))
         XCTAssert(state.isComplete(.agent))
@@ -190,7 +189,7 @@ final class WorkflowTabsTests: XCTestCase {
         XCTAssert(state.isReachable(.agent))
         XCTAssert(state.isReachable(.diff))
         XCTAssert(state.isReachable(.pr))
-        XCTAssertEqual(state.defaultTab, .agent)
+        XCTAssertEqual(state.defaultTab, .pr)
     }
 
     func testBuildWorkflowTabState_handedBackWithoutLiveAgent() {

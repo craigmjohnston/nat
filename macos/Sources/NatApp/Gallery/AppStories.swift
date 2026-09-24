@@ -96,6 +96,24 @@ enum AppStories {
         }
     )
 
+    /// The pane on one slice with a live session attached, whatever its stage
+    /// — the state the landing tab used to get wrong. `fixing` sets the fix
+    /// mark, the one way a slice reaches that stage.
+    @MainActor
+    private static func stagePane(_ sliceID: String, fixing: Bool) async -> some View {
+        let session = AgentStatus(
+            sliceID: sliceID, session: TmuxSession.name(forSlicePageID: sliceID), activity: .working)
+        let appModel = await Fixtures.startedAppModel(client: FixtureNatClient(agents: [session]))
+        if fixing { appModel.markFixLaunched(sliceID: sliceID) }
+        appModel.selectedSliceID = sliceID
+        // The pane lands on selection; wait for the first activity reading so
+        // the session really is attached when it is drawn.
+        for _ in 0..<50 where appModel.activityStore?.agents[sliceID] == nil {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return PaneView(appModel: appModel).surface(.window)
+    }
+
     static let catalog = StoryCatalog([
 
         // MARK: - The window
@@ -844,6 +862,54 @@ enum AppStories {
                 client: FixtureNatClient(sessions: [Fixtures.twoBranchSession]))
             return SessionDiffTabView(appModel: appModel, session: Fixtures.twoBranchSession)
                 .surface(.window)
+        },
+
+        Story(
+            name: "stage-todo",
+            summary: "A Todo slice with a live session attached: the pane lands on Brief.",
+            size: pane
+        ) {
+            await stagePane(Fixtures.cacheSliceID, fixing: false)
+        },
+
+        Story(
+            name: "stage-working",
+            summary: "A working slice with its session live: the pane lands on Agent.",
+            size: pane
+        ) {
+            await stagePane(Fixtures.diffPaneSliceID, fixing: false)
+        },
+
+        Story(
+            name: "stage-review",
+            summary: "A handed-back slice whose session is still alive: the pane lands on Diff, not Agent.",
+            size: pane
+        ) {
+            await stagePane(Fixtures.mergeBoxSliceID, fixing: false)
+        },
+
+        Story(
+            name: "stage-pr",
+            summary: "An approved slice whose session is still alive: the pane lands on PR, not Agent.",
+            size: pane
+        ) {
+            await stagePane(Fixtures.approveSliceID, fixing: false)
+        },
+
+        Story(
+            name: "stage-fixing",
+            summary: "An approved slice with its fix mark set and a live session: the pane lands on Agent.",
+            size: pane
+        ) {
+            await stagePane(Fixtures.approveSliceID, fixing: true)
+        },
+
+        Story(
+            name: "stage-done",
+            summary: "A Done slice with a session left alive: the pane lands on Brief or PR by its recorded pull request, never Agent.",
+            size: pane
+        ) {
+            await stagePane(Fixtures.shellSliceID, fixing: false)
         },
 
         Story(

@@ -25,7 +25,20 @@ struct PaneView: View {
         let hasLiveAgent = appModel.selectedSliceID.flatMap { sliceID in
             appModel.activityStore?.agents[sliceID] != nil
         } ?? false
-        return buildWorkflowTabState(for: slice, hasLiveAgent: hasLiveAgent)
+        return buildWorkflowTabState(
+            for: slice, hasLiveAgent: hasLiveAgent, fixLaunched: appModel.fixLaunched[slice.id] != nil
+        )
+    }
+
+    /// The selected slice's stage — what the landing tab follows. Nil with no
+    /// slice selected.
+    var selectedStage: WorkflowStage? {
+        guard let slice = selectedSlice else { return nil }
+        return stage(
+            for: slice,
+            agent: appModel.activityStore?.agents[slice.id].map { AgentActivity($0.activity) },
+            fixLaunched: appModel.fixLaunched[slice.id] != nil
+        )
     }
 
     /// The slice's milestone name, for the breadcrumb above the title — nil
@@ -85,9 +98,7 @@ struct PaneView: View {
                         AgentTabView(appModel: appModel, slice: slice)
                     }
                 case .diff:
-                    DiffTabView(appModel: appModel, slice: slice, onSelectTab: { tab in
-                        currentTab = tab
-                    })
+                    DiffTabView(appModel: appModel, slice: slice)
                 case .pr:
                     if advancing {
                         PRSkeletonView()
@@ -129,6 +140,16 @@ struct PaneView: View {
         .onChange(of: appModel.selectedSliceID) { _, _ in
             // Reset tab when slice changes
             currentTab = workflowState?.defaultTab ?? .brief
+        }
+        .onAppear {
+            // A pane mounted with a slice already selected has no change to
+            // land on.
+            if let tab = workflowState?.defaultTab { currentTab = tab }
+        }
+        .onChange(of: selectedStage) { _, _ in
+            // A stage change moves the tab; a manual pick holds until then,
+            // and a refresh that leaves the stage alone never lands here.
+            if let tab = workflowState?.defaultTab { currentTab = tab }
         }
         .onChange(of: appModel.selectedSessionID) { _, _ in
             currentTab = .agent

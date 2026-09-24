@@ -32,7 +32,6 @@ struct CommentDraft: Equatable {
 struct DiffTabView: View {
     @Bindable var appModel: AppModel
     let slice: Slice
-    var onSelectTab: (WorkflowTab) -> Void = { _ in }
 
     /// The project's shared diff cache, rather than a `DiffStore` local to
     /// this view — reading through the same instance across tab switches
@@ -422,7 +421,7 @@ struct DiffTabView: View {
         let sliceRef = slice.id
         let store = store
         let appModel = appModel
-        await appModel.sliceActions.run(.approve, sliceID: sliceRef, select: onSelectTab) {
+        await appModel.sliceActions.run(.approve, sliceID: sliceRef, select: { _ in }) {
             _ = try await store.approve(projectID: projectID, sliceRef: sliceRef)
             await appModel.refresh()
         }

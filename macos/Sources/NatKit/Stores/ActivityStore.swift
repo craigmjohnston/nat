@@ -20,6 +20,11 @@ public final class ActivityStore {
     /// starts the clock again.
     public private(set) var firstSeen: [String: Date] = [:]
 
+    /// Called after every successful reading with the IDs of the agents it
+    /// found — an empty set included — so a holder of app-local marks about a
+    /// session (`AppModel.fixLaunched`) can drop one whose session has gone.
+    public var onReading: (@MainActor (Set<String>) -> Void)?
+
     private let client: NatClientProtocol
     private let now: () -> Date
     private var pollTask: Task<Void, Never>?
@@ -71,6 +76,7 @@ public final class ActivityStore {
                         newAgents[status.sliceID] = status
                     }
                     self.agents = newAgents
+                    self.onReading?(Set(newAgents.keys))
                     self.firstSeen = Self.mergeFirstSeen(
                         existing: self.firstSeen, sliceIDs: newAgents.keys, now: self.now()
                     )

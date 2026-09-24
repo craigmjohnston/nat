@@ -83,14 +83,15 @@ public func projectAttention(
     liveAgents: [String: AgentActivity],
     planningAgent: AgentActivity? = nil,
     prReadiness: [String: String] = [:],
-    sessions: [Session] = []
+    sessions: [Session] = [],
+    fixLaunched: Set<String> = []
 ) -> ProjectAttention {
     // Only a slice the ACTIVE section would draw may contribute an agent:
     // a tmux session can outlive the slice it was launched on — an idle
     // Claude Code left in the pane of a Done slice whose pull request has
     // merged — and the rail refuses exactly that. One rule for both, so the
     // dot and the section can never disagree about what is in flight.
-    let inFlight = inFlightSliceIDs(slices: slices, openPRSliceIDs: Set(prReadiness.keys))
+    let inFlight = inFlightSliceIDs(slices: slices, fixLaunched: fixLaunched)
     let agents = liveAgents.filter { inFlight.contains($0.key) }
     let waiting = agents.filter { $0.value == .waiting }.keys
     let planningWaiting = planningAgent == .waiting
@@ -112,7 +113,10 @@ public func projectAttention(
     // already status-gated at the source (`domain.Slice.HandedBack`).
     var pending = Set(
         slices
-            .filter { $0.handedBack || ($0.status == "In progress" && prReadiness[$0.id] == PRStatusSlice.readyToMerge) }
+            .filter {
+                let stage = stage(for: $0, agent: nil, fixLaunched: fixLaunched.contains($0.id))
+                return stage == .review || (stage == .pr && prReadiness[$0.id] == PRStatusSlice.readyToMerge)
+            }
             .map(\.id)
     )
     pending.formUnion(waiting)

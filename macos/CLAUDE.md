@@ -42,11 +42,14 @@ fuller structure and theme system.
 
 `SettingsView` (⌘,) matches System Settings/Safari's shape (toolbar tabs,
 grouped stock forms), not the app's own chrome — reads `nat config-show`,
-writes one `nat config-set <key> <value>` per changed key. `RailModel.
-isReviewSlice`/`isActiveSlice` mirror Go's `domain.StateOf` precedence
-(Notion's status is the one source of lifecycle truth, so a Done slice is
-never in-flight even with `nat pr-status` still reporting its PR open) —
-change `internal/domain/state.go` and these two together.
+writes one `nat config-set <key> <value>` per changed key. `WorkflowStage`
+(`stage(for:)`) is the one source of where a slice stands: the pane's landing
+tab and `RailModel.isReviewSlice`/`isActiveSlice` both read it, and it mirrors
+Go's `domain.StateOf` (Notion's status is the one source of lifecycle truth,
+so a Done slice is never in-flight even with `nat pr-status` still reporting
+its PR open) — change `internal/domain/state.go` and the stage together. A
+live session never moves the stage; `fixing` comes only from
+`AppModel.fixLaunched`.
 
 ## Release build quirks
 

@@ -93,8 +93,9 @@ final class RailModelTests: XCTestCase {
         let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
 
         let unread = buildRailModel(from: projectInfo, liveAgents: [:])
-        XCTAssertFalse(reviews(unread).contains { $0.sliceID == "s-pr" },
-                       "with no reading taken the slice stays out")
+        XCTAssertTrue(reviews(unread).contains { $0.sliceID == "s-pr" },
+                      "the pr stage is the slice's own, whether or not gh has been read")
+        XCTAssertNil(reviews(unread).first { $0.sliceID == "s-pr" }?.meta)
 
         let model = buildRailModel(
             from: projectInfo, liveAgents: [:],
@@ -246,8 +247,8 @@ final class RailModelTests: XCTestCase {
     }
 
     func testBuildRailModel_activeSection_prRecordedIsExcluded() {
-        // A slice with a pull request recorded is work already out, however
-        // its status reads — not ACTIVE's to draw.
+        // A slice with a pull request recorded is work already out (its pr
+        // stage) — drawn as needs review, never as working.
         var slices = testSlices!
         slices[2] = Slice(
             id: "s-3", name: "Feature B", status: "In progress", milestoneID: "m-2",
@@ -256,7 +257,7 @@ final class RailModelTests: XCTestCase {
         let projectInfo = ProjectInfo(project: testProject, milestones: testMilestones, slices: slices)
         let model = buildRailModel(from: projectInfo, liveAgents: [:])
 
-        XCTAssertFalse(model.active.contains { $0.sliceID == "s-3" })
+        XCTAssertEqual(model.active.first { $0.sliceID == "s-3" }?.tintRole, .needsReview)
     }
 
     func testBuildRailModel_activeSection_liveAgentWorkingWins() {
