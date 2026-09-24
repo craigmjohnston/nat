@@ -530,6 +530,14 @@ func (s stubAPI) CreateProject(context.Context, string, string, bool) (*notion.P
 	return &notion.ProjectStructure{}, s.err
 }
 
+func (s stubAPI) CreateProjectIn(context.Context, notion.Parent, string, bool) (*notion.ProjectStructure, error) {
+	return &notion.ProjectStructure{}, s.err
+}
+
+func (s stubAPI) SearchPaged(context.Context, string, string, string) ([]notion.SearchResult, string, error) {
+	return nil, "", s.err
+}
+
 // A subcommand runs headless and exits: no board, and no tmux check either —
 // none of them launches an agent, so a machine without tmux runs them all.
 func TestMainRunsACommandInsteadOfTheBoard(t *testing.T) {

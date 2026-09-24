@@ -86,6 +86,16 @@ public final class AppModel {
     /// accepted" state, shown until something is selected.
     public private(set) var acceptedPlans: [String: PlanAccepted] = [:]
 
+    /// The projects still owed the "Mirror this plan to Notion?" card, read
+    /// off `MirrorNudgeMemory` at launch and kept in step with it: armed by an
+    /// accepted plan, disarmed by the card's ✕ and by the project mirroring.
+    public private(set) var mirrorNudgePending: Set<String>
+
+    /// Whether the picker sheet the card's "Choose page…" opens is up.
+    public var mirrorPickerPresented = false
+
+    @ObservationIgnored private let mirrorNudgeMemory: MirrorNudgeMemory
+
     /// Bumped by "Keep workshopping"; the workshop terminal takes keyboard
     /// focus on each change.
     public private(set) var terminalFocusRequest = 0
@@ -434,8 +444,11 @@ public final class AppModel {
         visitHold: TimeInterval = agentVisitHold,
         toolsReady: @escaping @Sendable () -> Bool = {
             ["nat", "tmux", "gh", "ntn"].allSatisfy { BinaryLocator.status(of: $0).isFound }
-        }
+        },
+        mirrorNudgeMemory: MirrorNudgeMemory = .inMemory()
     ) {
+        self.mirrorNudgeMemory = mirrorNudgeMemory
+        self.mirrorNudgePending = mirrorNudgeMemory.pending
         self.toolsReady = toolsReady
         self.configReader = configReader
         self.planCache = planCache
@@ -1099,6 +1112,9 @@ public final class AppModel {
                 NSLog("AppModel: the workshop session outlived its accepted plan: %@", refusal)
             }
             acceptedPlans[accepted.project.id] = accepted
+            // The card is owed from here until it is dismissed or answered.
+            mirrorNudgeMemory.arm(accepted.project.id)
+            mirrorNudgePending.insert(accepted.project.id)
             await addProject(id: accepted.project.id, name: accepted.project.name, replacing: tabID)
             activityStore?.kick()
         } catch let error as NatError {
@@ -1110,6 +1126,79 @@ public final class AppModel {
         } catch {
             proposalError = error.localizedDescription
         }
+    }
+
+    // MARK: - Mirroring to Notion
+
+    /// Whether the rail draws the "Mirror this plan to Notion?" card: on the
+    /// project of an accepted plan that still owes it, and only while the
+    /// project is local — one that already mirrors is never asked, whatever
+    /// the memory says.
+    public var mirrorNudgeShown: Bool {
+        guard let id = activeProjectID, !isUntitledTab(id),
+              mirrorNudgePending.contains(id),
+              config?.projects[id]?.backend == .local else { return false }
+        return true
+    }
+
+    /// The card's ✕: the project is never asked again, on this Mac, ever.
+    public func dismissMirrorNudge() {
+        guard let id = activeProjectID else { return }
+        mirrorNudgeMemory.disarm(id)
+        mirrorNudgePending.remove(id)
+    }
+
+    /// The picker's own state, over the same client the rest of the app talks
+    /// to nat through.
+    public func makeNotionPicker() -> NotionPickerModel {
+        NotionPickerModel(client: clientFactory())
+    }
+
+    /// The picker's "Create page": put the active local project into Notion
+    /// under `place` (`nat project-mirror`). Answers nil once it has, and
+    /// otherwise what nat refused with — for the picker to show, with the card
+    /// left where it was: a failed mirror changes nothing here.
+    ///
+    /// The project's ID changes when it mirrors — a project in Notion is known
+    /// by its page — so its tab is handed over to the new ID in the place it
+    /// held, and what the app kept against the old one is dropped.
+    public func mirrorActiveProject(into place: NotionPlace) async -> String? {
+        guard let oldID = activeProjectID, !isUntitledTab(oldID) else {
+            return "There is no project open to mirror."
+        }
+        do {
+            let mirrored = try await clientFactory().projectMirror(projectID: oldID, parent: place)
+            await projectMirrored(from: oldID, to: mirrored.project)
+            return nil
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error { return message }
+            return error.localizedDescription
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    private func projectMirrored(from oldID: String, to project: ProjectEntry) async {
+        mirrorNudgeMemory.disarm(oldID)
+        mirrorNudgePending.remove(oldID)
+        await reloadConfig()
+        stores[oldID] = nil
+        selectedSliceIDs[oldID] = nil
+        selectedSessionIDs[oldID] = nil
+        workshopSelectedProjects.remove(oldID)
+        workshopDrafts[oldID] = nil
+        acceptedPlans[oldID] = nil
+        let tab = (id: project.id, name: config?.projects[project.id]?.name ?? project.name)
+        if let index = projectTabs.firstIndex(where: { $0.id == oldID }) {
+            if projectTabs.contains(where: { $0.id == project.id }) {
+                projectTabs.remove(at: index)
+            } else {
+                projectTabs[index] = tab
+            }
+        } else if !projectTabs.contains(where: { $0.id == project.id }) {
+            projectTabs.append(tab)
+        }
+        await activateProject(project.id)
     }
 
     /// The accepted plan the pane is showing for the active project: while the

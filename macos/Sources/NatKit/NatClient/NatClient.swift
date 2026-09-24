@@ -656,6 +656,37 @@ public final class NatClient: Sendable {
         return try decodeJSON(PlanAccepted.self, from: output)
     }
 
+    /// List the pages and databases of the Notion workspace a project page
+    /// could be put under (`nat notion-search`), narrowed by `query` the way
+    /// the workspace's own search is; an empty query lists what was edited
+    /// last.
+    ///
+    /// - Throws: NatError.commandFailed carrying Notion's refusal — no token,
+    ///   no network
+    public func notionSearch(query: String) async throws -> [NotionPlace] {
+        var arguments = ["notion-search", "--json"]
+        if !query.isEmpty {
+            arguments.append(contentsOf: ["--query", query])
+        }
+        let output = try await runNat(arguments: arguments)
+        return try decodeJSON(NotionSearchDoc.self, from: output).places
+    }
+
+    /// Put a local project into Notion (`nat project-mirror`): the project
+    /// page is made under `parent`, the plan filed beneath it, and the project
+    /// re-registered as one tracked in Notion — under a new ID, which the
+    /// result carries.
+    ///
+    /// - Throws: NatError.commandFailed carrying the refusal (a plan already
+    ///   started, Notion refusing the write)
+    public func projectMirror(projectID: String, parent: NotionPlace) async throws -> ProjectMirrored {
+        let output = try await runNat(arguments: [
+            "project-mirror", "--project", projectID, "--json",
+            "--parent", parent.id, "--parent-kind", parent.kind.rawValue,
+        ])
+        return try decodeJSON(ProjectMirrored.self, from: output)
+    }
+
     /// Create a whole tracked project — the project row, its Slices database,
     /// the conventions on its page and the entry in local config — mirroring
     /// `internal/cli/projectcreate.go`. It leaves the board on whatever

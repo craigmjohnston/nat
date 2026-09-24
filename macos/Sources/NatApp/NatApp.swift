@@ -31,7 +31,7 @@ struct NatApp: App {
         // frame is a frame drawn in the fallback. It is idempotent and
         // `Typo.mono` calls it too, so this is only about when it happens.
         MonoFont.register()
-        _appModel = State(initialValue: AppModel())
+        _appModel = State(initialValue: AppModel(mirrorNudgeMemory: MirrorNudgeMemory()))
         // A bare executable launched from a terminal (swift run, or
         // .build/debug/gnat directly) has no bundle, and AppKit leaves such
         // a process at the `.prohibited` activation policy: its window draws,

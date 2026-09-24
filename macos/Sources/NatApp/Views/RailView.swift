@@ -95,6 +95,10 @@ struct RailView: View {
     /// the lists are read off the views themselves, which is what they come
     /// to; `railHeight` is read off the container alone — see `body`.
     @State private var railHeight: CGFloat = 0
+    /// How tall the mirror nudge card comes to, with the gap above it: it sits
+    /// under the sections, so what they share is the rail less this. Zero
+    /// while the card is not drawn.
+    @State private var nudgeHeight: CGFloat = 0
     @State private var chromeHeights: [RailSection: CGFloat] = [:]
     @State private var contentHeights: [RailSection: CGFloat] = [:]
     /// What the last move or delete refused with — a slice in progress, gh
@@ -260,6 +264,14 @@ struct RailView: View {
                 }
             )
         }
+        .sheet(isPresented: $appModel.mirrorPickerPresented) {
+            NotionPickerSheetView(
+                model: appModel.makeNotionPicker(),
+                onCancel: { appModel.mirrorPickerPresented = false },
+                onCreate: { place in await appModel.mirrorActiveProject(into: place) },
+                onCreated: { appModel.mirrorPickerPresented = false }
+            )
+        }
         .sheet(isPresented: $showTodoNewSliceSheet) {
             NewSliceSheetView(
                 projectID: appModel.activeProjectID ?? "",
@@ -364,6 +376,18 @@ struct RailView: View {
                 // The air under the last section, and what takes up the rail's
                 // slack when the three of them want less than there is.
                 Spacer(minLength: CGFloat(RailSectionLayout.footRoom))
+                if appModel.mirrorNudgeShown {
+                    // Pinned to the rail's foot, under whatever the sections
+                    // leave: the card asks once, and is not part of the plan.
+                    MirrorNudgeCardView(
+                        onChoose: { appModel.mirrorPickerPresented = true },
+                        onDismiss: { appModel.dismissMirrorNudge() }
+                    )
+                    .padding(.horizontal, 18)
+                    .padding(.top, 12)
+                    .padding(.bottom, CGFloat(RailSectionLayout.footRoom))
+                    .measuringHeight { nudgeHeight = $0 - CGFloat(RailSectionLayout.footRoom) }
+                }
             }
         }
     }
@@ -732,7 +756,7 @@ struct RailView: View {
         let shares = RailSectionLayout.heights(
             open: open.map { Double(contentHeights[$0] ?? 0) },
             available: RailSectionLayout.available(
-                rail: Double(railHeight), chrome: Double(chrome)
+                rail: Double(railHeight), chrome: Double(chrome + (appModel.mirrorNudgeShown ? nudgeHeight : 0))
             )
         )
         return Dictionary(uniqueKeysWithValues: zip(open, shares.map { CGFloat($0) }))

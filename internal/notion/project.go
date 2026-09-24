@@ -149,8 +149,21 @@ func (c *Client) CreateProjectsDatabase(ctx context.Context, parentPageID, title
 // verification failed: the caller can report the mismatch and still record
 // what exists rather than orphaning it.
 func (c *Client) CreateProject(ctx context.Context, projectsDSID, name string, assignee bool) (*ProjectStructure, error) {
-	page, err := c.CreatePage(ctx, DataSourceParent(projectsDSID), map[string]PropertyValue{
-		PropName: NewTitle(name),
+	return c.CreateProjectIn(ctx, DataSourceParent(projectsDSID), name, assignee)
+}
+
+// CreateProjectIn is [Client.CreateProject] for a project page put anywhere
+// the user chooses: as a row of a database's data source, or as a child of a
+// page. The only difference the parent makes is the title's property name — a
+// page under a page keeps its title in "title", a row of a database in that
+// database's own title column, which every data source here calls "Name".
+func (c *Client) CreateProjectIn(ctx context.Context, parent Parent, name string, assignee bool) (*ProjectStructure, error) {
+	titleProp := PropName
+	if parent.Type == ParentPage {
+		titleProp = "title"
+	}
+	page, err := c.CreatePage(ctx, parent, map[string]PropertyValue{
+		titleProp: NewTitle(name),
 	}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create project page: %w", err)
