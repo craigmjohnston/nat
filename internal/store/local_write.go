@@ -657,6 +657,91 @@ func (l *Local) MoveSlice(ctx context.Context, id string, m domain.Milestone) er
 	return nil
 }
 
+// errReorderSelf refuses a slice placed beside itself, which names no place.
+var errReorderSelf = errors.New("a slice cannot be placed beside itself")
+
+// ReorderSlice places a slice directly before or after another within the
+// target's milestone, at the midpoint between the target and its neighbour on
+// that side — sparse, so nothing else in the plan is rewritten. A slice moved
+// next to one filed under another milestone is refiled in the same write, and
+// that refile is the only part a workspace could hold, so it alone marks the
+// slice dirty: a reorder within a milestone leaves nothing for a sync to send.
+func (l *Local) ReorderSlice(ctx context.Context, _ Shape, id, target string, before bool) (domain.Slice, domain.Slice, error) {
+	if id == target {
+		return domain.Slice{}, domain.Slice{}, errReorderSelf
+	}
+	var moved, to domain.Slice
+	err := l.withTx(ctx, "reorder the slice", func(tx *sql.Tx) error {
+		s, err := l.slice(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		t, err := l.slice(ctx, tx, target)
+		if err != nil {
+			return err
+		}
+		position, err := l.positionBeside(ctx, tx, id, t.ID, t.MilestoneID, before)
+		if err != nil {
+			return err
+		}
+		if err := l.exec(ctx, tx, "reorder the slice",
+			`UPDATE slices SET position = ?, milestone = ? WHERE id = ?`,
+			position, nullable(t.MilestoneID), id); err != nil {
+			return err
+		}
+		if s.MilestoneID != t.MilestoneID {
+			if err := l.markDirty(ctx, tx, id); err != nil {
+				return err
+			}
+		}
+		// Nothing but the milestone of either slice is carried by a reorder, and
+		// the target's is the one the slice now holds — so both are answered from
+		// what was read inside this transaction rather than read again.
+		moved, to = s, t
+		moved.MilestoneID = t.MilestoneID
+		return nil
+	})
+	if err != nil {
+		return domain.Slice{}, domain.Slice{}, err
+	}
+	logging.Action("slice reordered", "slice", id, "beside", target, "before", before)
+	return moved, to, nil
+}
+
+// positionBeside is the position that puts a slice directly before or after the
+// target within the target's milestone: the midpoint between the target and
+// the neighbour on that side, the slice itself not counted as a neighbour, or
+// one step past the target where there is none. Order is (position, id), so a
+// neighbour tied with the target leaves no room between them and is refused
+// rather than placed somewhere the ID tiebreak would undo.
+func (l *Local) positionBeside(ctx context.Context, tx *sql.Tx, id, target, milestone string, before bool) (float64, error) {
+	var tpos float64
+	if err := tx.QueryRowContext(ctx, `SELECT position FROM slices WHERE id = ?`, target).Scan(&tpos); err != nil {
+		return 0, l.errorf(err, "read the plan order")
+	}
+	cmp, order, step := "<", "DESC", -1.0
+	if !before {
+		cmp, order, step = ">", "ASC", 1.0
+	}
+	var neighbour float64
+	err := tx.QueryRowContext(ctx,
+		`SELECT position FROM slices
+		 WHERE COALESCE(milestone, '') = ? AND id <> ? AND (position `+cmp+` ? OR (position = ? AND id `+cmp+` ?))
+		 ORDER BY position `+order+`, id `+order+` LIMIT 1`,
+		milestone, id, tpos, tpos, target).Scan(&neighbour)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return tpos + step, nil
+	case err != nil:
+		return 0, l.errorf(err, "read the plan order")
+	}
+	mid := (tpos + neighbour) / 2
+	if mid == tpos || mid == neighbour {
+		return 0, fmt.Errorf("the plan at %s has no room between two slices at position %v: they are tied", l.path, tpos)
+	}
+	return mid, nil
+}
+
 // DeleteSlice drops a slice from the plan, and with it every wait either side
 // of it records: a dependency on a slice that is gone is a wait with no end,
 // and one of the deleted slice's own is a row the foreign keys would not let

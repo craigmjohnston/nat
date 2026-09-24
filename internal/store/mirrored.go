@@ -547,6 +547,28 @@ func (m *Mirrored) MoveSlice(ctx context.Context, id string, ms domain.Milestone
 	return nil
 }
 
+// ReorderSlice places the slice in the file, and pushes only what the workspace
+// can hold: the refile, where the target is under another milestone. A reorder
+// within a milestone is the file's alone — [Local.ReorderSlice] sets no dirty
+// flag for it, and nothing is sent.
+func (m *Mirrored) ReorderSlice(ctx context.Context, sh Shape, id, target string, before bool) (domain.Slice, domain.Slice, error) {
+	was, _, err := m.local.Slice(ctx, id)
+	if err != nil {
+		return domain.Slice{}, domain.Slice{}, err
+	}
+	moved, to, err := m.local.ReorderSlice(ctx, sh, id, target, before)
+	if err != nil {
+		return domain.Slice{}, domain.Slice{}, err
+	}
+	if was.MilestoneID != moved.MilestoneID {
+		m.push(ctx, id, func() error {
+			_, _, err := m.remote.ReorderSlice(ctx, sh, id, target, before)
+			return err
+		})
+	}
+	return moved, to, nil
+}
+
 // DeleteSlice drops the slice from the file first, then asks the workspace to
 // do the same. Unlike every other write, a failed push here is not something
 // a later sync can retry: the row the dirty flag would have lived on is

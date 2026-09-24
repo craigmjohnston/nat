@@ -78,6 +78,12 @@ succeeds), `plan-apply`, `project-create`, `config-set`, `wishlist`/
   (`editable`). Replaces the whole body; does not append.
 - `slice-move` — refuses only **In progress** (not Done — moving milestones
   is plan bookkeeping, not touching the work).
+- `slice-reorder <slice> (--before|--after <slice>)` — places one slice beside
+  another (`Store.ReorderSlice`); a target under another milestone refiles
+  the slice to it in the same write, so the in-progress refusal applies to
+  that case only — a reorder within a milestone is always allowed. Position
+  is the plan file's alone: a Notion-backed project sends a request only for
+  the refile, and a same-milestone reorder sets no dirty flag.
 - `slice-delete` — refuses only **In progress**; Done is allowed through
   (Notion's trash is the recovery, not a CLI refusal) — the same asymmetry
   the board's `d` confirm draws with its warning-vs-refusal split.
