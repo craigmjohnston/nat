@@ -87,15 +87,14 @@ struct WorkshopPaneView: View {
 
     /// The question the board's `w` form asks, as the pane's own content: the
     /// request typed here goes into the agent's prompt so the session starts
-    /// on it, and an empty one launches on the project's pending wishlist
-    /// when it has one, else a plain session — the CLI's own rule.
+    /// on it, and an empty one launches a plain session — the CLI's own rule.
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("What do you want to workshop?")
                 .font(.system(size: Typo.body, weight: .semibold))
                 .ink(.primary)
 
-            Text("Goes into the agent's prompt; empty starts on the pending wishlist, or a plain session.")
+            Text("Goes into the agent's prompt; empty starts a plain session.")
                 .font(.system(size: Typo.subhead, weight: .regular))
                 .ink(.secondary)
 

@@ -5,7 +5,7 @@ import "strings"
 // PRDescriptionHeading is the heading a slice page's pull request description
 // is filed under, written by `complete-slice --pr-description` when an agent
 // hands its branch back. It is matched case-insensitively, at any heading
-// level, exactly as WishlistHeading is.
+// level.
 const PRDescriptionHeading = "PR description"
 
 // PRDescriptionOf is the pull request description an agent left on a slice

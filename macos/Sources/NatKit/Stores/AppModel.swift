@@ -750,8 +750,7 @@ public final class AppModel {
 
     /// The composer's launch: start a planning agent on the active project
     /// with the config's workshop pair, the request folded into its prompt —
-    /// trimmed, and empty meaning a plain session (or the wishlist, which is
-    /// the CLI's own rule). Skipped when one is already live (there is only
+    /// trimmed, and empty meaning a plain session. Skipped when one is already live (there is only
     /// ever one — the CLI refuses a second). The activity poll is what turns
     /// a successful launch into a live row and an attached terminal, so it is
     /// kicked rather than the result being held here as a second source of

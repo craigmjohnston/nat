@@ -33,7 +33,6 @@ type fakeNotion struct {
 	query       func(id string, filter map[string]any, sorts []notion.Sort) ([]notion.Page, error)
 	order       func(id string) ([]string, error)
 	blocks      func(id string) ([]notion.Block, error)
-	wishlist    func(pageID string) ([]notion.WishlistItem, error)
 	createPage  func(parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error)
 	getPage     func(id string) (*notion.Page, error)
 	updatePage  func(pageID string, properties map[string]notion.PropertyValue) (*notion.Page, error)
@@ -51,7 +50,6 @@ type fakeNotion struct {
 	orderedDSIDs  []string
 	crumbParents  []notion.Parent
 	blockParents  []string
-	wishlistPages []string
 	fetchedPages  []string
 	resolvedPages []string
 	createdUnder  string
@@ -221,14 +219,6 @@ func (f *fakeNotion) GetBlockChildren(_ context.Context, id string) ([]notion.Bl
 		return nil, nil
 	}
 	return f.blocks(id)
-}
-
-func (f *fakeNotion) Wishlist(_ context.Context, pageID string) ([]notion.WishlistItem, error) {
-	f.wishlistPages = append(f.wishlistPages, pageID)
-	if f.wishlist == nil {
-		return nil, nil
-	}
-	return f.wishlist(pageID)
 }
 
 func (f *fakeNotion) CreatePage(_ context.Context, parent notion.Parent, properties map[string]notion.PropertyValue, children []map[string]any) (*notion.Page, error) {
@@ -1240,4 +1230,3 @@ func TestOnboardingSearchIgnoresNonKeyMessages(t *testing.T) {
 		t.Errorf("a stray message should leave the search alone (err: %v)", h.m.err)
 	}
 }
-

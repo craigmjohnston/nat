@@ -210,9 +210,8 @@ func TestQueueProjectSendsTheUserToTheSwitchPicker(t *testing.T) {
 }
 
 // natCommand matches a `nat` invocation by its subcommand, so the prose that
-// describes what a command does is not read as a call to it. wishlist-clear
-// comes before wishlist, since the alternation is tried in order.
-var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|release-slice|milestone-add|slice-add|slice-depends|wishlist-clear|wishlist|plan-apply|project-create)\b`)
+// describes what a command does is not read as a call to it.
+var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|release-slice|milestone-add|slice-add|slice-depends|plan-apply|project-create)\b`)
 
 // fencedNatCommands are the `nat` invocations inside a skill's fenced code
 // blocks: the lines an agent copies and runs, as against the backticked prose
@@ -276,8 +275,6 @@ func TestSkillsPinTheProjectTheyWereGiven(t *testing.T) {
 		"queue-work": {
 			"nat info --project <project>",
 			"nat plan-apply --project <project>",
-			"nat wishlist --project <project>",
-			"nat wishlist-clear <block-id>... --project <project>",
 			"no project the tracker falls back to",
 		},
 		"queue-project": {

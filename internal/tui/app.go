@@ -21,7 +21,6 @@ import (
 	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
@@ -100,12 +99,6 @@ type keyMap struct {
 	// tells apart, which go as CSI-u.
 	ShiftEnter key.Binding
 	CtrlEnter  key.Binding
-	// Workshop launches a planning agent on the project's wishlist. It is out
-	// of the hints row on purpose: the wishlist indicator names it whenever
-	// there is something to workshop, which is the only time the key does
-	// anything, and a standing hint for it would take room from keys that
-	// always work.
-	Workshop key.Binding
 	// Settings opens the config as a form. It is out of the hints row for the
 	// same reason as the workshop key — it is a key pressed rarely and once —
 	// and it is global rather than the board's because the config is the app's
@@ -123,7 +116,6 @@ func defaultKeyMap() keyMap {
 		Info:      key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "info")),
 		Back:      key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		Dismiss:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "dismiss")),
-		Workshop:  key.NewBinding(key.WithKeys("W"), key.WithHelp("W", "workshop")),
 		Settings:  key.NewBinding(key.WithKeys("S"), key.WithHelp("S", "settings")),
 
 		Unfocus:    key.NewBinding(key.WithKeys(`ctrl+\`), key.WithHelp(`ctrl+\`, "back to the board")),
@@ -200,7 +192,7 @@ func (k keyMap) helpBindings() []key.Binding {
 	for _, h := range hints {
 		bindings = append(bindings, h.binding)
 	}
-	return append(bindings, k.Workshop, k.Settings, k.Unfocus)
+	return append(bindings, k.Settings, k.Unfocus)
 }
 
 // App is the root model. It owns the config, the Notion client, the loaded
@@ -332,13 +324,7 @@ type App struct {
 	pulsing bool
 
 	project *domain.Project
-	// wishlist is the pending items the project page's wishlist held when it
-	// was last read: what the status line's indicator counts, and what the
-	// workshop key launches a planning agent on. Empty is both an empty
-	// wishlist and one that could not be read — neither is worth an indicator,
-	// and neither is worth launching an agent on.
-	wishlist []notion.WishlistItem
-	loading  bool
+	loading bool
 	// syncedAt is when the plan on screen came back from Notion, which the
 	// status line's freshness indicator counts from. Zero until the first load
 	// lands, and left where it is by a load that fails: what is on the board is
@@ -509,9 +495,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.prStateRead(msg)
 	case worktreesRemovedMsg:
 		a.worktreesRemoved(msg)
-		return a, nil
-	case wishlistLoadedMsg:
-		a.wishlistLoaded(msg)
 		return a, nil
 	case infoLoadedMsg:
 		a.info.SetMarkdown(msg.markdown)
@@ -697,8 +680,6 @@ func (a *App) keyPressed(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			cmd = tea.Batch(cmd, a.startPRLoad())
 		}
 		return a, cmd
-	case key.Matches(msg, a.keys.Workshop):
-		return a, a.workshopFlow()
 	case key.Matches(msg, a.keys.Settings):
 		return a, a.settingsFlow()
 	case key.Matches(msg, a.keys.Help):
@@ -1100,9 +1081,8 @@ func (a *App) onboardingDone(msg OnboardingDoneMsg) (tea.Model, tea.Cmd) {
 	return a, tea.Batch(a.startLoad(false), a.showToast("Setup complete.", sevSuccess))
 }
 
-// startLoad kicks off a load of the active project's plan and of the wishlist
-// on its page, which the status line counts. It returns nil when there is
-// nothing to load: an unconfigured or unknown active project is a state the
+// startLoad kicks off a load of the active project's plan. It returns nil when
+// there is nothing to load: an unconfigured or unknown active project is a state the
 // board reports, not an error.
 func (a *App) startLoad(force bool) tea.Cmd {
 	st, cfg, ok := a.activeStore()
@@ -1113,13 +1093,7 @@ func (a *App) startLoad(force bool) tea.Cmd {
 	// otherwise: a refresh in flight is not yet news, and clearing the warning
 	// on the way out would take it off a board still showing the stale plan.
 	a.loading = true
-	// A project of nat's own has no page for a wishlist to be written on.
-	if cfg.IsLocal() {
-		a.wishlist = nil
-		return tea.Batch(a.spinner.Tick, a.fetchProject(st, a.cfg.ActiveProjectID, cfg, force))
-	}
-	return tea.Batch(a.spinner.Tick, a.fetchProject(st, a.cfg.ActiveProjectID, cfg, force),
-		a.fetchWishlist(a.cfg.ActiveProjectID))
+	return tea.Batch(a.spinner.Tick, a.fetchProject(st, a.cfg.ActiveProjectID, cfg, force))
 }
 
 // startInfoLoad kicks off a fetch of the project page body, unless there is
@@ -1904,8 +1878,8 @@ func (a *App) statusBar() string {
 
 // statusLeft is the status line's content: the mode chip, beside it the error
 // waiting to be dismissed, a transient note, or an open form's prompt, and last
-// the standing indicators — how fresh the board is, and the wishlist count when
-// the project has items pending. It is one line, cut to the width the band has
+// the standing indicators — what the selected row is waiting on, and how fresh
+// the board is. It is one line, cut to the width the band has
 // for it.
 //
 // The board has no chip at all: naming the app there is what the heading
@@ -1927,8 +1901,7 @@ func (a *App) statusLeft(width int) string {
 	// the message leaves rather than the other way round. What the selected row
 	// is waiting on goes first of them: it is the only one about the row the
 	// user is on, so it is the one worth the room when there is not enough for
-	// them all. Freshness goes next: how current the board is says something on
-	// every board, where the wishlist count only says something on some.
+	// them all.
 	content := chip
 	if message := a.statusMessage(room); message != "" {
 		if content != "" {
@@ -1937,8 +1910,7 @@ func (a *App) statusLeft(width int) string {
 		content += message
 	}
 	content, joined := a.withIndicator(content, a.blockedIndicator(), width, false)
-	content, joined = a.withIndicator(content, a.freshnessIndicator(), width, joined)
-	content, _ = a.withIndicator(content, a.wishlistIndicator(), width, joined)
+	content, _ = a.withIndicator(content, a.freshnessIndicator(), width, joined)
 	return content
 }
 

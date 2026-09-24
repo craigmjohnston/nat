@@ -35,7 +35,7 @@ running agent's state.
   domain rule). `resuming(c)` says whether the prompt should tell the agent
   it's continuing rather than starting.
 - **Every** `nat` command in every template — slice, fix, planning
-  (`PlanPrompt`), wishlist (`WishlistPrompt`) — pins `--project <ID>`
+  (`PlanPrompt`) — pins `--project <ID>`
   (`PromptContext.ProjectID`). A `ProjectConfig` cannot supply this itself —
   it's the *value* of the config's `Projects` map, not the key. There is no
   active-project fallback; an unpinned command is refused outright by the

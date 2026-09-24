@@ -343,8 +343,7 @@ public final class NatClient: Sendable {
     /// The request goes over stdin (`--request -`) when given, exactly as
     /// `prComment`'s body does: what the user wants to workshop may run to
     /// several lines. A nil or empty request omits the flag entirely, which
-    /// is `workshop-launch`'s own spelling of "launch on the wishlist when
-    /// there is one, and a plain session otherwise".
+    /// is `workshop-launch`'s own spelling of "a plain session".
     ///
     /// - Parameters:
     ///   - projectID: The project's Notion page ID
@@ -352,8 +351,7 @@ public final class NatClient: Sendable {
     ///   - effort: Optional effort level, overriding the config's workshop_agent
     ///   - request: What the user wants to workshop, folded into the agent's
     ///     prompt so the session starts on it
-    /// - Returns: The launched session, its working directory, and whether it
-    ///   was launched on the project's pending wishlist
+    /// - Returns: The launched session and its working directory
     /// - Throws: NatError if a planning agent is already live, or the command fails
     ///
     /// Always passes `--frontend gnat` — see [sliceLaunch]'s doc comment for

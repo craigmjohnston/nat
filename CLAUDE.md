@@ -154,8 +154,7 @@ of the Active panel rather than flooding it with a project's entire history.
 
 **`--project` pinning.** Every project-scoped `nat` command requires
 `--project <page ID>`, no active-project fallback — every template (slice,
-fix, planning, wishlist prompts) and every skill spells this out explicitly,
-and one test walks every template for an unpinned invocation. The
+fix, planning prompts) and every skill spells this out explicitly, and one test walks every template for an unpinned invocation. The
 `SliceBranch`/`pathSlug`/`Base` naming triad (how a branch name and its
 worktree path are derived — implemented once, in `internal/actions`,
 `internal/worktree` and `internal/git`) is **re-spelled in prose twice**:
@@ -184,10 +183,8 @@ who works its slices is `Config.AssigneeFor` — the name *is* the identity,
 falling back to whoever is logged in. Creating one writes the plan file
 **before** the config entry (`nat project-create --local [--plan-dir]`; the
 board's `N`, which asks where the plan lives only when a projects database
-gives a choice). `wishlist` / `wishlist-clear` refuse a local project by name
-(a wishlist is a Notion page section); `workshop-launch` skips the read.
-`config-show` says every project's backend. gnat's `ProjectConfig` /
-`ConfigDocProject` decode all of it and tolerate a missing `slices_ds_id`.
+gives a choice). `config-show` says every project's backend. gnat's
+`ProjectConfig` / `ConfigDocProject` decode all of it and tolerate a missing `slices_ds_id`.
 
 **Plan order.** Read from the Slices data source's first view's own row
 order (`notion.PlanOrder`), never from `created_time` — Notion records that

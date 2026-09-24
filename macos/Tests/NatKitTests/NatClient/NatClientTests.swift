@@ -724,7 +724,6 @@ final class NatClientTests: XCTestCase {
 
         XCTAssertEqual(result.session, "nat-plan")
         XCTAssertEqual(result.workdir, "/path/to/repo")
-        XCTAssertTrue(result.wishlist)
         XCTAssertEqual(
             fakeRunner.lastArguments,
             ["workshop-launch", "--project", "proj-123", "--json", "--frontend", "gnat", "--model", "opus", "--effort", "high"]

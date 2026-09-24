@@ -683,8 +683,7 @@ let fixtureMilestoneRemove = """
 let fixtureWorkshopLaunch = """
 {
   "session": "nat-plan",
-  "workdir": "/path/to/repo",
-  "wishlist": true
+  "workdir": "/path/to/repo"
 }
 """
 

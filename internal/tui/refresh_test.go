@@ -231,17 +231,43 @@ func TestHelpListsTheRefreshKey(t *testing.T) {
 	}
 }
 
-func TestANarrowBarDropsTheWishlistCountBeforeTheFreshnessReading(t *testing.T) {
-	fixClock(t, time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC))
-	a := loadedApp(t, wishlistClient(wishlistItems(3), nil))
-
-	// Room for the chip and one indicator, but not for both.
-	got := stripANSI(a.statusLeft(len(stripANSI(a.statusLeft(0))) - 10))
-	if !strings.Contains(got, "synced") {
-		t.Errorf("status line = %q, want the freshness reading kept", got)
+// loadedApp is the app after a full load. The window is sized so the bar has a
+// width to lay out to.
+func loadedApp(t *testing.T, client *loadingClient) *App {
+	t.Helper()
+	a := NewApp(testConfig(t), client)
+	for _, msg := range run(a.Init()) {
+		a.Update(msg)
 	}
-	if strings.Contains(got, "wishlist") {
-		t.Errorf("status line = %q, want the wishlist count dropped", got)
+	a.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	return a
+}
+
+// W once launched a planning agent from a page section that is gone: it is
+// bound to nothing now, and the board looks exactly as it did.
+func TestTheRetiredWorkshopKeyDoesNothing(t *testing.T) {
+	a := loadedApp(t, newLoadingClient())
+	before := a.View().Content
+
+	if _, cmd := a.Update(tea.KeyPressMsg{Code: 'W', Text: "W"}); cmd != nil {
+		t.Errorf("W returned a command: %v", cmd())
+	}
+	if a.View().Content != before {
+		t.Error("W changed what is on screen")
+	}
+}
+
+// Two standing readings on one line are told apart by the hints' dot, not a
+// space; the second is dropped whole when it will not fit beside the first.
+func TestWithIndicatorSeparatesTwoReadingsAndDropsOneThatDoesNotFit(t *testing.T) {
+	a := loadedApp(t, newLoadingClient())
+
+	got, joined := a.withIndicator("chip blocked by x", "synced 1m ago", 0, true)
+	if want := "chip blocked by x" + a.styles.HintSep.Render(" · ") + "synced 1m ago"; got != want || !joined {
+		t.Errorf("withIndicator = %q, %v; want %q, true", got, joined, want)
+	}
+	if got, joined := a.withIndicator("chip blocked by x", "synced 1m ago", 20, true); got != "chip blocked by x" || !joined {
+		t.Errorf("withIndicator = %q, %v; want the indicator dropped and joined kept", got, joined)
 	}
 }
 
