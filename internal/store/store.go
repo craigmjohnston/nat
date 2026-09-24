@@ -253,6 +253,16 @@ type Store interface {
 	// MoveSlice refiles a slice under another milestone. The work itself is
 	// untouched.
 	MoveSlice(ctx context.Context, id string, m domain.Milestone) error
+	// ReorderSlice places a slice directly before or after another, filing it
+	// under the target's milestone where that is another one — "directly before"
+	// has no other honest meaning. Both slices are read before anything is
+	// written, and a slice as its own target is refused. It answers with the
+	// slice as it now stands and the target it was placed beside.
+	//
+	// Where a slice sits within a milestone is the plan file's alone: a
+	// workspace has nowhere to hold it, so [Notion] writes the refile and
+	// nothing else, and [Mirrored] marks a slice dirty only for the refile.
+	ReorderSlice(ctx context.Context, sh Shape, id, target string, before bool) (moved, to domain.Slice, err error)
 	// DeleteSlice drops a slice from the plan, as recoverably as the backing
 	// store allows.
 	DeleteSlice(ctx context.Context, id string) error

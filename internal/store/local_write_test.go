@@ -710,6 +710,10 @@ func TestLocalNamesItsFileWhenAWriteIsRefused(t *testing.T) {
 		"EditSlice":     func() error { return l.EditSlice(ctx, "writes", "t", "r", "b") },
 		"SetSliceBrief": func() error { return l.SetSliceBrief(ctx, "writes", "b") },
 		"MoveSlice":     func() error { return l.MoveSlice(ctx, "writes", domain.Milestone{}) },
+		"ReorderSlice": func() error {
+			_, _, err := l.ReorderSlice(ctx, wholeShape, "writes", "reads", true)
+			return err
+		},
 		"AddSlice":      func() error { _, err := l.AddSlice(ctx, Project{}, NewSlice{Title: "x"}); return err },
 		"DeleteSlice":   func() error { return l.DeleteSlice(ctx, "writes") },
 	}

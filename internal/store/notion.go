@@ -775,6 +775,41 @@ func (n *Notion) MoveSlice(ctx context.Context, id string, m domain.Milestone) e
 	return nil
 }
 
+// ReorderSlice is the milestone refile alone: a view's row order cannot be
+// written, so where the slice sits within its milestone is not something
+// Notion holds, and no request is spent on it. Both pages are read first, and a
+// target already under the slice's own milestone writes nothing at all.
+func (n *Notion) ReorderSlice(ctx context.Context, sh Shape, id, target string, before bool) (domain.Slice, domain.Slice, error) {
+	if id == target {
+		return domain.Slice{}, domain.Slice{}, errReorderSelf
+	}
+	s, _, err := n.Slice(ctx, id)
+	if err != nil {
+		return domain.Slice{}, domain.Slice{}, err
+	}
+	t, _, err := n.Slice(ctx, target)
+	if err != nil {
+		return domain.Slice{}, domain.Slice{}, err
+	}
+	if s.MilestoneID == t.MilestoneID {
+		return s, t, nil
+	}
+	if t.MilestoneID == "" {
+		return domain.Slice{}, domain.Slice{}, fmt.Errorf("%q is under no milestone, which a Notion page cannot be refiled to", t.Name)
+	}
+	ms := domain.Milestone{ID: t.MilestoneID, Name: t.MilestoneID}
+	for _, m := range sh.Milestones {
+		if m.ID == t.MilestoneID {
+			ms = m
+		}
+	}
+	if err := n.MoveSlice(ctx, id, ms); err != nil {
+		return domain.Slice{}, domain.Slice{}, err
+	}
+	s.MilestoneID = t.MilestoneID
+	return s, t, nil
+}
+
 // DeleteSlice moves a slice's page to Notion's trash. Notion has no hard
 // delete, so a slice deleted by mistake is still recoverable in the Notion UI.
 func (n *Notion) DeleteSlice(ctx context.Context, id string) error {

@@ -219,6 +219,10 @@ usage:
   nat slice-move <slice> --milestone <name> [--json] --project ID
                       refile a slice under another milestone, by name; the
                       work itself is untouched. Refused on a slice in progress
+  nat slice-reorder <slice> (--before <slice> | --after <slice>) [--json] --project ID
+                      place a slice directly before or after another; one
+                      under another milestone is refiled to it in the same
+                      write (refused for a slice in progress)
   nat slice-delete <slice> [--json] --project ID
                       move a slice's page to Notion's trash, where it is still
                       recoverable. Refused on a slice in progress
@@ -431,6 +435,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return sliceEdit(ctx, args[1:], env)
 	case "slice-move":
 		return sliceMove(ctx, args[1:], env)
+	case "slice-reorder":
+		return sliceReorder(ctx, args[1:], env)
 	case "slice-delete":
 		return sliceDelete(ctx, args[1:], env)
 	case "agent-send":

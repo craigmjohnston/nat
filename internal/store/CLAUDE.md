@@ -114,6 +114,11 @@ columns and the plan never reads as hydrated).
   view read, no second round trip. Slice ties break on `id`, so two writers
   landing on the same position get a stable order rather than a flapping
   board.
+- `ReorderSlice` writes the midpoint between the target and its neighbour
+  *within the target's milestone* (positions are only ordered within one —
+  `Hydrate` numbers per milestone, so they tie across milestones), one step
+  past the target at an end; a tie with the neighbour is refused. Only a
+  refile marks dirty; `Notion.ReorderSlice` is the refile alone.
 - Foreign keys make an impossible dependency literally impossible:
   `slice_deps` references `slices(id)` both ways, so a dependency on a slice
   not in the plan is refused by SQLite itself. `DeleteSlice` clears
