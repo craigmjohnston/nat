@@ -18,6 +18,11 @@ public struct AgentStatus: Codable, Equatable, Sendable, Identifiable {
     public let sliceID: String
     public let session: String
     public let activity: AgentActivityState
+    /// Off the agent's own statusline (`nat status --json`): each is absent
+    /// — never zero — until the agent's first payload lands.
+    public let model: String?
+    public let effort: String?
+    public let contextPercent: Double?
 
     public var id: String { sliceID }
 
@@ -25,11 +30,20 @@ public struct AgentStatus: Codable, Equatable, Sendable, Identifiable {
         case sliceID = "slice_id"
         case session
         case activity
+        case model
+        case effort
+        case contextPercent = "context_percent"
     }
 
-    public init(sliceID: String, session: String, activity: AgentActivityState) {
+    public init(
+        sliceID: String, session: String, activity: AgentActivityState,
+        model: String? = nil, effort: String? = nil, contextPercent: Double? = nil
+    ) {
         self.sliceID = sliceID
         self.session = session
         self.activity = activity
+        self.model = model
+        self.effort = effort
+        self.contextPercent = contextPercent
     }
 }

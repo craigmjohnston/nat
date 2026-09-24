@@ -905,6 +905,23 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
+    func testAttachedAgent_followsSelectionAndIsNilWithNoLiveAgent() async {
+        let planTag = TmuxSession.planTag(projectID: "proj-a")
+        let sliceAgent = AgentStatus(sliceID: "slice-1", session: "nat-1", activity: .working, model: "Sonnet 5")
+        let planAgent = AgentStatus(sliceID: planTag, session: "nat-plan", activity: .working, effort: "high")
+        let appModel = await planningAgentModel([sliceAgent, planAgent])
+        await appModel.activateProject("proj-a")
+
+        XCTAssertNil(appModel.attachedAgent)
+        appModel.selectedSliceID = "slice-1"
+        XCTAssertEqual(appModel.attachedAgent, sliceAgent)
+        appModel.selectedSliceID = "slice-without-agent"
+        XCTAssertNil(appModel.attachedAgent)
+        appModel.workshopSelected = true
+        XCTAssertEqual(appModel.attachedAgent, planAgent)
+    }
+
+    @MainActor
     func testWorkshopSelected_isPerProject() async {
         let appModel = await workshopModel { _, _, _, _ in
             WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a", wishlist: false)

@@ -185,6 +185,57 @@ enum AppStories {
         },
 
         Story(
+            name: "status-bar-readout",
+            summary: "The attached live agent\u{2019}s model, effort and context percent at the left of the content side, in the bar\u{2019}s tertiary tint.",
+            size: CGSize(width: 1360, height: StatusBarView.height)
+        ) {
+            let agents = [
+                AgentStatus(
+                    sliceID: Fixtures.diffPaneSliceID,
+                    session: TmuxSession.name(forSlicePageID: Fixtures.diffPaneSliceID),
+                    activity: .working, model: "Sonnet 5", effort: "high", contextPercent: 42)
+            ]
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(plan: statusBarPlan, agents: agents))
+            appModel.selectedSliceID = Fixtures.diffPaneSliceID
+            return StatusBarView(appModel: appModel, railWidth: 372)
+        },
+
+        Story(
+            name: "status-bar-readout-high-context",
+            summary: "Context at 91%: the percent switches to the warning tint.",
+            size: CGSize(width: 1360, height: StatusBarView.height)
+        ) {
+            let agents = [
+                AgentStatus(
+                    sliceID: Fixtures.diffPaneSliceID,
+                    session: TmuxSession.name(forSlicePageID: Fixtures.diffPaneSliceID),
+                    activity: .working, model: "Sonnet 5", effort: "high", contextPercent: 91)
+            ]
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(plan: statusBarPlan, agents: agents))
+            appModel.selectedSliceID = Fixtures.diffPaneSliceID
+            return StatusBarView(appModel: appModel, railWidth: 372)
+        },
+
+        Story(
+            name: "status-bar-readout-absent",
+            summary: "A live agent with no statusline reading yet: nothing is drawn, no placeholder and no zeros.",
+            size: CGSize(width: 1360, height: StatusBarView.height)
+        ) {
+            let agents = [
+                AgentStatus(
+                    sliceID: Fixtures.diffPaneSliceID,
+                    session: TmuxSession.name(forSlicePageID: Fixtures.diffPaneSliceID),
+                    activity: .working)
+            ]
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(plan: statusBarPlan, agents: agents))
+            appModel.selectedSliceID = Fixtures.diffPaneSliceID
+            return StatusBarView(appModel: appModel, railWidth: 372)
+        },
+
+        Story(
             name: "status-bar-no-agents",
             summary: "The same bar with nothing running: the agent count reads zero, "
                 + "still right-aligned to the bar's far edge.",
