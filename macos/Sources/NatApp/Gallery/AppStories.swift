@@ -359,6 +359,28 @@ enum AppStories {
         },
 
         Story(
+            name: "rail-folder-glyphs",
+            summary: "The milestone folder pictogram closed (outline) and open (filled), "
+                + "at rail size and enlarged, side by side.",
+            size: CGSize(width: 320, height: 140)
+        ) {
+            VStack(spacing: 16) {
+                ForEach([1.0, 5.0], id: \.self) { scale in
+                    HStack(spacing: 24) {
+                        FolderGlyphShape(open: false)
+                            .stroke(DesignTokens.ink(.secondary, on: .field), lineWidth: FolderGlyphShape.strokeWidth)
+                            .frame(width: 13 * scale, height: RailView.folderGlyphHeight * scale)
+                        FolderGlyphShape(open: true)
+                            .fill(DesignTokens.ink(.secondary, on: .field))
+                            .frame(width: 13 * scale, height: RailView.folderGlyphHeight * scale)
+                    }
+                }
+            }
+            .padding(20)
+            .background(DesignTokens.fill(.field))
+        },
+
+        Story(
             name: "rail-loaded",
             summary: "The rail on the fixture plan: the ACTIVE section, milestones, done.",
             size: rail
