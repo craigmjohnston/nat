@@ -192,6 +192,28 @@ public final class AppModel {
     /// on: an optimistic advance unmounts that tab mid-action.
     public let sliceActions = SliceActionTracker()
 
+    /// Slices approved over pending review comments: the comments went to
+    /// the agent and the slice was taken out of review (`slice-rework`), and
+    /// the approve is owed once its next hand-back lands. The value says
+    /// whether that rework has been *seen* — a refresh reading the slice as
+    /// no longer handed back — because a plan read taken before the rework
+    /// landed still shows the old hand-back, and approving on that would open
+    /// the pull request over the unfixed work. Held in memory only: a
+    /// restart forgets it, and the next hand-back is then reviewed as normal,
+    /// which is the safe direction to lose it in.
+    public private(set) var approvalsPending: [String: Bool] = [:]
+
+    /// Remember a slice as approved-pending-fixes — called once its comments
+    /// have been sent and it has been taken out of review.
+    public func markApprovePending(sliceID: String) {
+        approvalsPending[sliceID] = false
+    }
+
+    /// Whether a slice is waiting on its next hand-back to be approved.
+    public func isApprovePending(sliceID: String) -> Bool {
+        approvalsPending[sliceID] != nil
+    }
+
     private let configReader: ConfigReaderProtocol
 
     /// Where each project's last-good plan is kept between launches, handed
@@ -851,6 +873,7 @@ public final class AppModel {
     public func refresh() async {
         guard let projectStore = projectStore else { return }
         await projectStore.refresh()
+        await settlePendingApprovals(projectStore: projectStore)
         await updateReviewStats(projectID: projectStore.projectID, projectStore: projectStore)
         await reapFinishedAgents()
         activityStore?.kick()
@@ -861,6 +884,35 @@ public final class AppModel {
         // forever; the one on screen is left alone; blanking it here would
         // only cost the user their brief with nothing about to refetch it.
         sliceDetailStores[projectStore.projectID]?.invalidateCache(keeping: selectedSliceID)
+    }
+
+    /// Runs the approve a slice is owed when the plan just read shows it
+    /// handed back again — `slice-approve` exactly as the Approve button runs
+    /// it, its refusal (gh's) surfacing the same way on the Diff tab. The
+    /// mark is dropped *before* the approve starts, so the nudge and the poll
+    /// landing together cannot open it twice, and a slice that failed here is
+    /// back to being reviewed by hand rather than retried behind the user's
+    /// back. A slice found Done or with a pull request already open has
+    /// nothing left to approve, and its mark goes too.
+    private func settlePendingApprovals(projectStore: ProjectStore) async {
+        guard !approvalsPending.isEmpty, let info = projectStore.state.projectInfo else { return }
+        let projectID = projectStore.projectID
+        for slice in info.slices {
+            guard let reworkSeen = approvalsPending[slice.id] else { continue }
+            if slice.status == "Done" || !slice.pr.isEmpty {
+                approvalsPending[slice.id] = nil
+            } else if !slice.handedBack {
+                approvalsPending[slice.id] = true
+            } else if reworkSeen {
+                approvalsPending[slice.id] = nil
+                let client = clientFactory()
+                let sliceID = slice.id
+                await sliceActions.run(.approve, sliceID: sliceID, select: { _ in }) {
+                    _ = try await client.sliceApprove(projectID: projectID, sliceRef: sliceID)
+                    await projectStore.refresh()
+                }
+            }
+        }
     }
 
     // MARK: - Agent sessions

@@ -41,7 +41,7 @@ columns and the plan never reads as hydrated).
 
 ## Errors
 
-- Single-write ops (`RecordPR`, `MarkDone`, `ReopenSlice`, `MoveSlice`,
+- Single-write ops (`RecordPR`, `MarkDone`, `ReopenSlice`, `ClearBranch`, `MoveSlice`,
   `DeleteSlice`) return the raw backend error — the caller's own sentence
   ("delete the slice") is the context, not the store's.
 - Multi-write ops (`ReleaseSlice`, `CompleteSlice`, `AddMilestones`,

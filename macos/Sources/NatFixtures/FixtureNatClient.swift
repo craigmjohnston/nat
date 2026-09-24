@@ -200,6 +200,10 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         return Fixtures.prURL
     }
 
+    public func sliceRework(projectID: String, sliceRef: String) async throws {
+        try await record("slice-rework \(sliceRef)")
+    }
+
     public func prMerge(projectID: String, sliceRef: String) async throws {
         try await record("pr-merge \(sliceRef)")
     }

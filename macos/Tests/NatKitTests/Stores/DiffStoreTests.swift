@@ -51,6 +51,15 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
     private(set) var approveCalls: [(projectID: String, sliceRef: String)] = []
     var approveResult: Result<String, Error> = .success("https://github.test/craig/nat/pull/1")
 
+    /// Every `slice-rework` call this client received, in order.
+    private(set) var reworkCalls: [String] = []
+    var reworkError: Error?
+
+    func sliceRework(projectID: String, sliceRef: String) async throws {
+        reworkCalls.append(sliceRef)
+        if let reworkError { throw reworkError }
+    }
+
     init(response: Response) {
         self.response = response
     }
@@ -757,6 +766,73 @@ final class DiffStoreTests: XCTestCase {
 
         XCTAssertEqual(count, 0)
         XCTAssertEqual(client.sentPrompts.count, 0)
+    }
+
+    @MainActor
+    func testSendCommentsWithoutApprovingLeavesTheSliceInReview() async throws {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        let rowID = store.loadState.diff!.files[0].rows[0].id
+        store.setComment(path: "a.go", anchorRowIDs: [rowID], text: "clamp this")
+
+        try await store.sendComments(projectID: "proj-1", sliceRef: "slice-1")
+
+        XCTAssertEqual(client.reworkCalls, [])
+        XCTAssertFalse(client.sentPrompts[0].text.contains("complete-slice"))
+    }
+
+    @MainActor
+    func testSendCommentsApprovingAsksForTheHandBackAndReworksTheSlice() async throws {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        let rowID = store.loadState.diff!.files[0].rows[0].id
+        store.setComment(path: "a.go", anchorRowIDs: [rowID], text: "clamp this")
+
+        let count = try await store.sendComments(projectID: "proj-1", sliceRef: "slice-1", approving: true)
+
+        XCTAssertEqual(count, 1)
+        XCTAssertEqual(client.reworkCalls, ["slice-1"])
+        XCTAssertEqual(client.approveCalls.count, 0, "no pull request is opened over comments")
+        XCTAssertEqual(store.pendingCommentCount, 0)
+        let prompt = client.sentPrompts[0].text
+        XCTAssertTrue(prompt.contains("nat complete-slice slice-1 --project proj-1 --branch nat/example"))
+    }
+
+    @MainActor
+    func testAFailedSendApprovingReworksNothing() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        client.sendError = DiffTestError()
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        let rowID = store.loadState.diff!.files[0].rows[0].id
+        store.setComment(path: "a.go", anchorRowIDs: [rowID], text: "clamp this")
+
+        do {
+            try await store.sendComments(projectID: "proj-1", sliceRef: "slice-1", approving: true)
+            XCTFail("expected the send to throw")
+        } catch {}
+
+        XCTAssertEqual(client.reworkCalls, [])
+        XCTAssertEqual(store.pendingCommentCount, 1)
+    }
+
+    @MainActor
+    func testAFailedReworkAfterTheSendThrows() async {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        client.reworkError = DiffTestError()
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        let rowID = store.loadState.diff!.files[0].rows[0].id
+        store.setComment(path: "a.go", anchorRowIDs: [rowID], text: "clamp this")
+
+        do {
+            try await store.sendComments(projectID: "proj-1", sliceRef: "slice-1", approving: true)
+            XCTFail("expected the rework to throw")
+        } catch {}
+
+        XCTAssertEqual(client.sentPrompts.count, 1, "the agent already has its instructions")
     }
 
     // MARK: - Approving

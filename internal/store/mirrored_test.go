@@ -886,6 +886,44 @@ func TestReopenSliceCarriesTheLocalFailureUp(t *testing.T) {
 	}
 }
 
+func TestClearBranchWritesLocallyThenPushes(t *testing.T) {
+	api := &fakeAPI{}
+	m, l := mirroredPlan(t, api)
+	ctx := context.Background()
+
+	if err := m.ClearBranch(ctx, "writes"); err != nil {
+		t.Fatalf("ClearBranch: %v", err)
+	}
+	if len(api.updates) != 1 {
+		t.Fatalf("updates = %+v, want the clear pushed", api.updates)
+	}
+	if dirty, _ := l.Dirty(ctx, "writes"); dirty {
+		t.Error("dirty = true, want the push to have cleared it")
+	}
+}
+
+func TestClearBranchPushFailureLeavesTheFlagSet(t *testing.T) {
+	api := &fakeAPI{updatePage: func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
+		return nil, errBoom
+	}}
+	m, l := mirroredPlan(t, api)
+	ctx := context.Background()
+	if err := m.ClearBranch(ctx, "writes"); err != nil {
+		t.Fatalf("ClearBranch: %v", err)
+	}
+	if dirty, _ := l.Dirty(ctx, "writes"); !dirty {
+		t.Error("dirty = false, want it still set")
+	}
+}
+
+func TestClearBranchCarriesTheLocalFailureUp(t *testing.T) {
+	l, _ := openPlan(t)
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
+	if err := m.ClearBranch(context.Background(), "ghost"); err == nil {
+		t.Error("ClearBranch on a slice not in the plan: want an error")
+	}
+}
+
 func TestEditSliceWritesLocallyThenPushes(t *testing.T) {
 	api := &fakeAPI{}
 	m, l := mirroredPlan(t, api)

@@ -323,6 +323,28 @@ func TestReopenSliceCarriesTheWritesFailureUp(t *testing.T) {
 	}
 }
 
+func TestClearBranchWritesAnEmptyBranchAndNothingElse(t *testing.T) {
+	api := &fakeAPI{}
+	if err := Over(api).ClearBranch(context.Background(), "s5"); err != nil {
+		t.Fatalf("ClearBranch() error = %v", err)
+	}
+	if len(api.updates) != 1 || len(api.updates[0]) != 1 {
+		t.Fatalf("updates = %+v, want exactly the branch", api.updates)
+	}
+	if _, ok := api.updates[0][notion.PropBranch]; !ok {
+		t.Errorf("updates = %+v, want the Branch property", api.updates[0])
+	}
+}
+
+func TestClearBranchCarriesTheWritesFailureUp(t *testing.T) {
+	api := &fakeAPI{updatePage: func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
+		return nil, errBoom
+	}}
+	if err := Over(api).ClearBranch(context.Background(), "s5"); !errors.Is(err, errBoom) {
+		t.Errorf("err = %v, want the write's failure", err)
+	}
+}
+
 // Adding milestones appends options to the Milestone column, after the ones
 // already there, in one write.
 func TestAddMilestonesAppendsToThePlan(t *testing.T) {

@@ -281,6 +281,18 @@ func (l *Local) ReopenSlice(ctx context.Context, id string, _ Shape) error {
 	return nil
 }
 
+// ClearBranch empties the slice's branch and writes nothing else.
+func (l *Local) ClearBranch(ctx context.Context, id string) error {
+	if _, err := l.updateSlice(ctx, id, "clear the slice's branch", func(tx *sql.Tx, _ domain.Slice) error {
+		return l.exec(ctx, tx, "clear the slice's branch",
+			`UPDATE slices SET branch = '' WHERE id = ?`, id)
+	}); err != nil {
+		return err
+	}
+	logging.Action("slice branch cleared", "slice", id)
+	return nil
+}
+
 // AddMilestones files milestones at the end of the plan, all of them or none.
 //
 // The names they are refused for clashing with are the plan's own as the

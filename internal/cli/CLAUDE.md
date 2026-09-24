@@ -99,6 +99,12 @@ success, not failure), `agent-send` (paste-buffer delivery, `--text` or
 stdin — same mechanism `internal/agent.SendPrompt` uses for review
 comments).
 
+`slice-rework` (handed-back slices only): clears the slice's `Branch` and
+nothing else (`Store.ClearBranch`), so it reads as in progress until the agent's
+next `complete-slice --branch` re-records it — the deterministic signal gnat's
+approve-over-comments flow waits on. The recorded PR description stays on the
+page for the eventual `slice-approve`.
+
 PR actions: `slice-approve` (`actions.OpenPR` + `actions.RecordPR`, the
 approve key's two-step write, headless), `pr-comment` (`gh pr comment
 --body-file -`, `--body` or stdin), `pr-merge` (re-reads the PR, applies

@@ -394,6 +394,18 @@ func (m *Mirrored) ReopenSlice(ctx context.Context, id string, sh Shape) error {
 	return nil
 }
 
+// ClearBranch empties the slice's branch locally, then pushes it to the
+// workspace.
+func (m *Mirrored) ClearBranch(ctx context.Context, id string) error {
+	if err := m.local.ClearBranch(ctx, id); err != nil {
+		return err
+	}
+	m.push(ctx, id, func() error {
+		return m.remote.ClearBranch(ctx, id)
+	})
+	return nil
+}
+
 // remoteShape reads the project's actual schema from the workspace — what
 // every milestone write needs to build its own request (the Milestone
 // column's property type and its existing options), and which the caller's

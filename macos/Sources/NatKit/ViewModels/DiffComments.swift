@@ -40,7 +40,13 @@ public struct PendingComment: Identifiable, Equatable, Sendable {
 /// cannot resolve — its file gone, or its lines no longer there — quotes
 /// nothing and falls back to naming how many lines it was left on, exactly as
 /// the Go side does for a comment its own read has failed to place).
-public func commentsPrompt(_ comments: [PendingComment], diff: DiffModel) -> String {
+///
+/// `handBack` is set only when the review is being approved over these
+/// comments: it adds the instruction that ends the agent's fixes with the
+/// `complete-slice --branch` hand-back, since that command's write is the
+/// one event the approval waits on — without it the agent would stop at
+/// "tell me it is ready" and nothing would ever say so.
+public func commentsPrompt(_ comments: [PendingComment], diff: DiffModel, handBack: HandBackInstruction? = nil) -> String {
     var rowsByPath: [String: [DiffRow]] = [:]
     for file in diff.files {
         rowsByPath[file.path] = file.rows
@@ -60,7 +66,26 @@ public func commentsPrompt(_ comments: [PendingComment], diff: DiffModel) -> Str
         }
         out += "\n\(comment.text)\n"
     }
+    if let handBack {
+        out += "\nI am approving this work once these are fixed, so when every comment is addressed " +
+            "and the branch is pushed, hand the slice back by running exactly:\n\n" +
+            "nat complete-slice \(handBack.sliceRef) --project \(handBack.projectID) " +
+            "--branch \(diff.branch) --summary '<what you changed for these comments>'\n\n" +
+            "That hand-back opens the pull request — do not stop before you have run it.\n"
+    }
     return out
+}
+
+/// What an approve-over-comments asks the agent to finish with: the slice and
+/// project its `nat complete-slice` hand-back names.
+public struct HandBackInstruction: Equatable, Sendable {
+    public let projectID: String
+    public let sliceRef: String
+
+    public init(projectID: String, sliceRef: String) {
+        self.projectID = projectID
+        self.sliceRef = sliceRef
+    }
 }
 
 /// commentTitle names the lines a comment is about: where in the file they

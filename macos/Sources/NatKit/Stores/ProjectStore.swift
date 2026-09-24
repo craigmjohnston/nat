@@ -16,6 +16,7 @@ public protocol NatClientProtocol: Sendable {
     func agentKillWorkshop(projectID: String) async throws -> Void
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String
+    func sliceRework(projectID: String, sliceRef: String) async throws -> Void
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail
     func prStatus(projectID: String) async throws -> PRStatusDoc
     func prMerge(projectID: String, sliceRef: String) async throws -> Void
@@ -34,6 +35,13 @@ public protocol NatClientProtocol: Sendable {
 }
 
 extension NatClientProtocol {
+    /// A conformer that never reworks a slice — every test double but the
+    /// ones exercising the approve-over-comments flow — need not say so:
+    /// `NatClient` and the fixture client are the two that implement it.
+    public func sliceRework(projectID: String, sliceRef: String) async throws {
+        throw NatError.commandFailed("slice-rework: not supported by this client")
+    }
+
     /// The whole-branch diff, without naming a commit — `sliceDiff(projectID:sliceRef:commit:)`
     /// with `commit: nil`, kept as the two-argument spelling every caller
     /// asking for "the diff" (rather than one commit of it) already uses.
