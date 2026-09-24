@@ -4,7 +4,7 @@ import XCTest
 /// A double that reports the planning agents it has been told about and
 /// records every workspace launch and kill, so the Untitled tab's session can
 /// be launched, attached and ended without a tmux.
-final class WorkspaceWorkshopClient: MockActivityClient, @unchecked Sendable {
+class WorkspaceWorkshopClient: MockActivityClient, @unchecked Sendable {
     struct Launch: Equatable {
         let workspaceID: String
         let model: String?

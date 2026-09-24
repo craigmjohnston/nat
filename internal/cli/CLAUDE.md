@@ -125,6 +125,14 @@ slices and ended sessions, then milestones left empty; refuses a project with
 a workspace behind it by name, so it can never trash Notion pages). gnat runs
 both once per launch, before the scratch project's first read.
 
+`project-open-folder <dir>` (no `--project`; the starter card's "From
+filesystem" tile) records the local plan a folder already holds. It finds
+`<slug of project id>.db` via `store.ReadLocalPlan`, which opens **read-only**
+(`OpenLocal` would migrate a stray SQLite file into a plan) and refuses a file
+that is not a plan; a folder with none is refused saying what was looked for,
+one with several is refused, a project already in config answers with its
+existing entry.
+
 Planning: `workshop-launch` (planning agent, `agent.PlanPrompt`). With
 `--workspace <id>` (exclusive with `--project`, `--request` required) it is the
 starter card's launch instead: `agent.NewProjectPrompt`, keyed by the app's

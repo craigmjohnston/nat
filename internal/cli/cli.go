@@ -270,6 +270,10 @@ usage:
                       the same, with no Notion workspace behind it: the plan
                       is a file of nat's own, in DIR or nat's data directory.
                       Touches Notion nowhere and needs no credential
+  nat project-open-folder <DIR> [--json]
+                      open the local plan already kept in DIR as a project:
+                      records it in local config, writes nothing to the plan.
+                      Refused, saying what was looked for, where DIR holds none
   nat scratch-open [--dir DIR] [--json]
                       make sure the reserved local "Scratch" project exists and
                       print its ID: created on the first call (DIR, else the
@@ -446,6 +450,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return agentKill(ctx, args[1:], env)
 	case "project-create":
 		return projectCreate(ctx, args[1:], env)
+	case "project-open-folder":
+		return projectOpenFolder(ctx, args[1:], env)
 	case "scratch-open":
 		return scratchOpen(ctx, args[1:], env)
 	case "done-clear":

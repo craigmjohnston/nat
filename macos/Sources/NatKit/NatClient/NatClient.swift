@@ -619,6 +619,19 @@ public final class NatClient: Sendable {
         return try decodeJSON(ProjectEnvelope<ProjectEntry>.self, from: output).project
     }
 
+    /// Record the local plan a folder already holds as a project — the
+    /// starter card's "From filesystem" tile (`nat project-open-folder`). The
+    /// plan is only read; a folder with none is refused with what was looked
+    /// for, and nothing is written to config.
+    ///
+    /// - Parameter path: The folder the user chose
+    /// - Returns: The config entry, including the ID `--project` takes
+    /// - Throws: NatError.commandFailed carrying the refusal
+    public func projectOpenFolder(path: String) async throws -> ProjectEntry {
+        let output = try await runNat(arguments: ["project-open-folder", "--json", path])
+        return try decodeJSON(ProjectEnvelope<ProjectEntry>.self, from: output).project
+    }
+
     /// Create a whole tracked project — the project row, its Slices database,
     /// the conventions on its page and the entry in local config — mirroring
     /// `internal/cli/projectcreate.go`. It leaves the board on whatever
