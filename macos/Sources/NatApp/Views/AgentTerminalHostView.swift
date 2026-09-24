@@ -437,6 +437,13 @@ final class FirstLayoutTerminalView: LocalProcessTerminalView {
         super.mouseUp(with: event)
     }
 
+    /// Keeps a selection across streaming output. SwiftTerm's own `linefeed`
+    /// clears the selection on every line of output whenever
+    /// `allowMouseReporting` is true — which it is again the moment a drag
+    /// ends — so an agent's pane wiped a shift+drag selection moments after
+    /// release. A click (`mouseDown`) or a new drag is what dismisses it here.
+    override func linefeed(source: Terminal) {}
+
     // MARK: - Copy and paste
 
     /// Puts the active selection on the pasteboard as plain text, read

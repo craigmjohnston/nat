@@ -342,7 +342,7 @@ func TestLaunch(t *testing.T) {
 			// and the URLs it prints stay clickable links.
 			";", "set-option", "-s", "extended-keys", "on",
 			";", "set-option", "-s", "-a", "terminal-features", "*:extkeys:hyperlinks",
-		}, clickBindingArgs()...)},
+		}, append(clickBindingArgs(), copyModeDragEndArgs()...)...)},
 		// The tag the agent is found by.
 		{name: "tmux", args: []string{"-u", "set-option", "-p", "-t", "%7", "@nat_slice", id}},
 	}
@@ -786,6 +786,7 @@ func TestAgentSessionsChainStatusOff(t *testing.T) {
 	chained := append(statusOffArgs("nat-1"), mouseOnArgs("nat-1")...)
 	chained = append(chained, inputFeatureArgs()...)
 	chained = append(chained, hyperlinkClickArgs()...)
+	chained = append(chained, copyModeDragEndArgs()...)
 	if !reflect.DeepEqual(launch[len(launch)-len(chained):], chained) {
 		t.Errorf("LaunchArgs = %v, want it to end with %v", launch, chained)
 	}
@@ -817,6 +818,7 @@ func TestSessionsNatCreatesEnableExtendedKeysAndHyperlinks(t *testing.T) {
 		}
 	}
 	suffix = append(suffix, hyperlinkClickArgs()...)
+	suffix = append(suffix, copyModeDragEndArgs()...)
 	args := LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md", config.AgentModel{}, false)
 	if !reflect.DeepEqual(args[len(args)-len(suffix):], suffix) {
 		t.Errorf("args = %v, want them to end with %v", args, suffix)
@@ -1281,5 +1283,28 @@ func TestKillFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "kill nat-test-session") {
 		t.Errorf("error = %v, want the session named", err)
+	}
+}
+
+// A drag's selection must survive the release in nat's sessions only: both
+// copy-mode tables get the -no-clear copy, conditioned on the session name,
+// with the stock copy-and-cancel as the fall-through.
+func TestCopyModeDragEndArgs(t *testing.T) {
+	got := copyModeDragEndArgs()
+	for _, table := range []string{"copy-mode", "copy-mode-vi"} {
+		want := []string{
+			";", "bind-key", "-T", table, "MouseDragEnd1Pane",
+			"if-shell", "-F", "-t", "=", "#{m:nat-*,#{session_name}}",
+			"send-keys -X copy-pipe-no-clear", "send-keys -X copy-pipe-and-cancel",
+		}
+		if !strings.Contains(" ; "+strings.Join(got, "\x00"), strings.Join(want, "\x00")) {
+			t.Errorf("copyModeDragEndArgs = %q, want it to hold %q", got, want)
+		}
+	}
+	if got[0] != ";" {
+		t.Error("the bindings must be chained, not a command of their own")
+	}
+	if !reflect.DeepEqual(got, copyModeDragEndArgs()) {
+		t.Error("copyModeDragEndArgs is not stable across calls")
 	}
 }
