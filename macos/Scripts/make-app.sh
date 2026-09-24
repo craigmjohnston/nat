@@ -58,8 +58,11 @@ echo "Building nat (universal) into the bundle..."
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 NAT_STAGING="$BUILD_DIR/nat-universal"
 mkdir -p "$NAT_STAGING"
-(cd "$REPO_ROOT" && GOOS=darwin GOARCH=arm64 go build -o "$NAT_STAGING/nat-arm64" .)
-(cd "$REPO_ROOT" && GOOS=darwin GOARCH=amd64 go build -o "$NAT_STAGING/nat-amd64" .)
+# The same APP_VERSION the Info.plist carries is stamped into nat, so the app
+# and the binary it shells out to report one version.
+NAT_LDFLAGS="-X github.com/craigmjohnston/nat/internal/version.stamped=$APP_VERSION"
+(cd "$REPO_ROOT" && GOOS=darwin GOARCH=arm64 go build -ldflags "$NAT_LDFLAGS" -o "$NAT_STAGING/nat-arm64" .)
+(cd "$REPO_ROOT" && GOOS=darwin GOARCH=amd64 go build -ldflags "$NAT_LDFLAGS" -o "$NAT_STAGING/nat-amd64" .)
 lipo -create -output "$APP_BUNDLE/Contents/MacOS/nat" \
     "$NAT_STAGING/nat-arm64" "$NAT_STAGING/nat-amd64"
 

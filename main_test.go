@@ -18,6 +18,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/version"
 	"github.com/craigmjohnston/nat/internal/tui"
 )
 
@@ -85,6 +86,31 @@ func TestMainQuits(t *testing.T) {
 
 	main()
 
+	if errOut.Len() != 0 {
+		t.Errorf("stderr = %q, want nothing", errOut.String())
+	}
+	if code, exited := exitCode(t); exited {
+		t.Errorf("exited with %d, want a clean return", code)
+	}
+}
+
+// --version answers before the config or Notion is touched: the config here is
+// unparseable and the token source fails the test if asked.
+func TestMainPrintsTheVersion(t *testing.T) {
+	writeConfig(t, "{not json")
+	var out, errOut bytes.Buffer
+	stubProcess(t, config.StaticToken(testToken), strings.NewReader(""), &out, &errOut)
+	newTokens = func() config.TokenSource {
+		t.Fatal("--version asked for a token")
+		return nil
+	}
+	args = func() []string { return []string{"--version"} }
+
+	main()
+
+	if got, want := out.String(), version.Version()+"\n"; got != want || got == "\n" {
+		t.Errorf("stdout = %q, want %q", got, want)
+	}
 	if errOut.Len() != 0 {
 		t.Errorf("stderr = %q, want nothing", errOut.String())
 	}
