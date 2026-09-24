@@ -25,20 +25,30 @@ struct PaneHeader<Trailing: View>: View {
     /// there. A nil drops the line rather than drawing a blank one.
     var breadcrumb: String?
     let title: String
+    /// An SF Symbol drawn before the identity block, or nil for none.
+    var icon: String?
     @ViewBuilder let trailing: () -> Trailing
 
     init(
         breadcrumb: String? = nil,
         title: String,
+        icon: String? = nil,
         @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }
     ) {
         self.breadcrumb = breadcrumb
         self.title = title
+        self.icon = icon
         self.trailing = trailing
     }
 
     var body: some View {
         HStack(alignment: .center, spacing: PaneHeaderMetrics.spacing) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: Typo.headline, weight: .semibold))
+                    .ink(.secondary)
+            }
+
             VStack(alignment: .leading, spacing: PaneHeaderMetrics.identitySpacing) {
                 if let breadcrumb {
                     Text(breadcrumb)
