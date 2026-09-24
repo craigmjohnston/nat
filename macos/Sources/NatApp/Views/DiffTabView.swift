@@ -70,6 +70,9 @@ struct DiffTabView: View {
     /// the sidebar's clicks somewhere near rather than at the file.
     @State private var fileScroll = ScrollPosition(idType: String.self)
 
+    /// The row at the top of the column, restored after a width change.
+    @State private var anchor = DiffScrollAnchor()
+
     private var authorName: String { appModel.config?.assigneeUserName ?? "You" }
     private var authorInitials: String { initialsFor(appModel.config?.assigneeUserName) }
 
@@ -182,6 +185,31 @@ struct DiffTabView: View {
                         .inelastic()
                     }
                     .scrollPosition($fileScroll, anchor: .top)
+                    .coordinateSpace(name: DiffRowFramesKey.space)
+                    .onPreferenceChange(DiffRowFramesKey.self) { frames in
+                        anchor.update(rows: frames.map { (key: $0.key, minY: $0.value.lowerBound, maxY: $0.value.upperBound) })
+                    }
+                    .onScrollGeometryChange(for: Bool.self) { geometry in
+                        geometry.contentSize.height > geometry.containerSize.height
+                    } action: { _, canScroll in
+                        anchor.canScroll = canScroll
+                    }
+                    // The column's width moves with the sidebar's divider, the
+                    // rail's and the window: rows re-wrap and the old offset
+                    // lands on other code, so the top line is put back.
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { old, new in
+                        guard old != new, let key = anchor.beginRestore() else { return }
+                        Task { @MainActor in
+                            // After the re-wrap has laid out, not before.
+                            await Task.yield()
+                            var transaction = Transaction()
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) {
+                                fileScroll.scrollTo(id: key.scrollID, anchor: .top)
+                            }
+                            anchor.endRestore()
+                        }
+                    }
 
                     diffSidebar(for: diff)
                 }
