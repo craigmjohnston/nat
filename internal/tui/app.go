@@ -308,8 +308,12 @@ type App struct {
 	// live. A separate accessor from prViewer even though both drive the same
 	// real gh, so a fake standing in for the PR screen's own reads is never
 	// asked to answer these two as well.
-	prReader     PRReader
-	prViewer     PRViewer
+	prReader PRReader
+	prViewer PRViewer
+	// prPollGen numbers each opening of the PR screen so a timer left over from
+	// an earlier one dies; prPollBusy is a background read in flight.
+	prPollGen    int
+	prPollBusy   bool
 	reviewReader actions.PRReviewReader
 	prMerger     PRMerger
 	prState      map[string]domain.PRReadiness
@@ -530,6 +534,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.diffLoaded(msg)
 	case prViewLoadedMsg:
 		return a.prViewLoaded(msg)
+	case prPollTickMsg:
+		return a, a.prPolled(msg)
+	case prBackgroundMsg:
+		a.prBackgroundLoaded(msg)
+		return a, nil
 	case commentSavedMsg:
 		return a.commentSaved(msg)
 	case commentsSentMsg:
