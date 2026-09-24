@@ -78,6 +78,14 @@ class MockActivityClient: NatClientProtocol, @unchecked Sendable {
         throw NSError(domain: "test", code: -1)
     }
 
+    func planProposal(workspaceID: String) async throws -> PlanProposal? {
+        throw NSError(domain: "test", code: -1)
+    }
+
+    func planAccept(workspaceID: String, name: String) async throws -> PlanAccepted {
+        throw NSError(domain: "test", code: -1)
+    }
+
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult {
         throw NSError(domain: "test", code: -1)
     }

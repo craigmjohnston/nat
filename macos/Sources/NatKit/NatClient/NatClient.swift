@@ -42,6 +42,11 @@ private struct ProjectEnvelope<Project: Codable>: Codable {
     let project: Project
 }
 
+/// `nat plan-proposal --json`'s answer: the proposal, or null with none yet.
+private struct ProposalEnvelope: Decodable {
+    let proposal: PlanProposal?
+}
+
 /// A typed client for running nat commands and decoding their JSON output.
 public final class NatClient: Sendable {
     private nonisolated let commandRunner: CommandRunning
@@ -630,6 +635,25 @@ public final class NatClient: Sendable {
     public func projectOpenFolder(path: String) async throws -> ProjectEntry {
         let output = try await runNat(arguments: ["project-open-folder", "--json", path])
         return try decodeJSON(ProjectEnvelope<ProjectEntry>.self, from: output).project
+    }
+
+    /// Read the plan a workshop session proposed for an Untitled tab's
+    /// workspace (`nat plan-proposal`) — nil until one has been proposed.
+    ///
+    /// - Throws: NatError if the proposal file will not parse, or nat fails
+    public func planProposal(workspaceID: String) async throws -> PlanProposal? {
+        let output = try await runNat(arguments: ["plan-proposal", "--workspace", workspaceID, "--json"])
+        return try decodeJSON(ProposalEnvelope.self, from: output).proposal
+    }
+
+    /// Accept a workspace's proposal as a new local project named `name`
+    /// (`nat plan-accept`): the project, its config entry and its plan are all
+    /// nat's doing, and the proposal file is dropped once the plan is in.
+    ///
+    /// - Throws: NatError.commandFailed carrying the refusal
+    public func planAccept(workspaceID: String, name: String) async throws -> PlanAccepted {
+        let output = try await runNat(arguments: ["plan-accept", "--workspace", workspaceID, "--name", name, "--json"])
+        return try decodeJSON(PlanAccepted.self, from: output)
     }
 
     /// Create a whole tracked project — the project row, its Slices database,

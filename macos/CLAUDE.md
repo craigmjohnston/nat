@@ -51,6 +51,16 @@ its PR open) — change `internal/domain/state.go` and the stage together. A
 live session never moves the stage; `fixing` comes only from
 `AppModel.fixLaunched`.
 
+## The new-project proposal
+
+An Untitled tab's workshop proposes with `nat plan-propose`; the app never
+reads the proposal file itself. `AppModel` watches the nudge marker (its own
+`NudgeWatcher`, alive while any Untitled tab is) and reads `nat plan-proposal`
+per tab; the rail draws `PlanProposal.folders` with the ordinary folder/slice
+rows. Accept is `nat plan-accept` (project + plan are nat's doing), then the
+workshop session is killed and `addProject(replacing:)` hands the tab over.
+Stories: `window-untitled-proposal`, `window-plan-accepted`.
+
 ## Release build quirks
 
 - Bundled `nat` and `gnat` itself are both **universal**: built per-arch

@@ -475,3 +475,44 @@ extension Fixtures {
     public static let loadErrorMessage =
         "nat info: Notion API: 502 Bad Gateway (request 0c3f1f2a-7b21-4a5e-9a0d-2f6b8c1d4e77)"
 }
+
+
+extension Fixtures {
+    /// The project an accepted proposal becomes in the fixtures.
+    public static let acceptedProjectID = "f1x75111-0000-4000-8000-0000000000aa"
+
+    /// The config a machine has once the proposal is accepted: the one local
+    /// project it made, as `plan-accept` leaves it (no working directory).
+    public static var acceptedConfig: NatProjectConfig {
+        NatProjectConfig(projects: [
+            acceptedProjectID: ProjectConfig(name: "rust-importer", slicesDSID: "", workingDir: ""),
+        ])
+    }
+
+    /// The plan a workshop proposed — `NF_PROPOSAL` in the design's
+    /// `ui-npflow.jsx`, 4 milestones and 14 slices.
+    public static let proposal = PlanProposal(name: "rust-importer", milestones: [
+        .init(name: "M1: Parser core", slices: [
+            "Tokenize the export format",
+            "Parse rows into typed records",
+            "Surface malformed rows with line context",
+            "Fuzz the parser against captured exports",
+        ]),
+        .init(name: "M2: Ledger model", slices: [
+            "Define accounts, postings and balances",
+            "Reconcile imported rows against balances",
+            "Handle rounding and currency minor units",
+        ]),
+        .init(name: "M3: CLI parity", slices: [
+            "Mirror the import flags exactly",
+            "Match the exit codes and messages",
+            "Port the dry-run report",
+            "Port the progress output",
+        ]),
+        .init(name: "M4: Cutover", slices: [
+            "Run both importers over the archive",
+            "Diff the ledgers they produce",
+            "Retire the old importer",
+        ]),
+    ])
+}

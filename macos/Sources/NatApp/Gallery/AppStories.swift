@@ -214,6 +214,44 @@ enum AppStories {
         },
 
         Story(
+            name: "window-untitled-proposal",
+            summary: "An Untitled tab whose workshop has proposed a plan (\"Proposal ready\" in the "
+                + "design): the PROPOSED tree in the rail below ACTIVE, the name field prefilled, "
+                + "Accept plan beside Keep workshopping pinned at the foot.",
+            size: window
+        ) {
+            let client = FixtureNatClient()
+            client.setProposal(Fixtures.proposal)
+            let appModel = await Fixtures.startedAppModel(
+                client: client, config: Fixtures.emptyConfig, toolsReady: true)
+            appModel.workshopDraft = "A Rust rewrite of the importer."
+            await appModel.launchWorkshop(request: appModel.workshopDraft)
+            await appModel.refreshProposals()
+            return WindowShellView(appModel: appModel)
+                .environment(\.terminalStubbed, true)
+        },
+
+        Story(
+            name: "window-plan-accepted",
+            summary: "The proposal just accepted (\"Accepted\" in the design): the tab is the project's, "
+                + "the rail is its ordinary TODO tree, and the pane says Plan accepted.",
+            size: window
+        ) {
+            let client = FixtureNatClient()
+            client.setProposal(Fixtures.proposal)
+            // The config is the one accepting leaves behind, so the window's
+            // own start() finds the project a real one would.
+            let appModel = await Fixtures.startedAppModel(
+                client: client, config: Fixtures.acceptedConfig, toolsReady: true)
+            appModel.openUntitledTab()
+            appModel.workshopDraft = "A Rust rewrite of the importer."
+            await appModel.launchWorkshop(request: appModel.workshopDraft)
+            await appModel.refreshProposals()
+            await appModel.acceptProposal()
+            return WindowShellView(appModel: appModel)
+        },
+
+        Story(
             name: "project-tabs-untitled",
             summary: "The strip with an Untitled tab active beside a project: the italic name, "
                 + "the neutral dot, and a close button on each.",

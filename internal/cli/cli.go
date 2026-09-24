@@ -316,6 +316,13 @@ usage:
                       creates, and a top-level dependencies list is refused.
                       Running it again for the same workspace replaces the
                       proposal
+  nat plan-proposal --workspace ID --json
+                      read back the proposal plan-propose wrote for a
+                      workspace, as {"proposal": ...} — null with none yet
+  nat plan-accept --workspace ID --name NAME [--json]
+                      accept that proposal: create a local project named NAME
+                      (no Notion), file the proposal's plan into it, and drop
+                      the proposal file
   nat complete-slice <slice> [--branch NAME] [--pr URL] [--summary TEXT]
                       [--pr-description TEXT|-] [--blocked] --project ID
                       close out a slice you claimed: with --branch, handed back
@@ -472,6 +479,10 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return planApply(ctx, args[1:], env)
 	case "plan-propose":
 		return planPropose(ctx, args[1:], env)
+	case "plan-proposal":
+		return planProposal(ctx, args[1:], env)
+	case "plan-accept":
+		return planAccept(ctx, args[1:], env)
 	case "complete-slice":
 		return completeSlice(ctx, args[1:], env)
 	case "release-slice":

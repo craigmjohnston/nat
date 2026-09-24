@@ -106,6 +106,24 @@ struct PaneView: View {
                         PRTabView(appModel: appModel, slice: slice)
                     }
                 }
+            } else if let accepted = appModel.acceptedPlanShown {
+                // The plan a workshop proposed has just been accepted into
+                // this project (`NFShell`'s accepted stage).
+                VStack(spacing: 0) {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 30, weight: .regular))
+                        .ink(.success)
+                    Text(ProposalText.acceptedTitle)
+                        .font(.system(size: 15, weight: .semibold))
+                        .ink(.primary)
+                        .padding(.top, 12)
+                    Text(ProposalText.acceptedSubtitle(milestones: accepted.milestones, slices: accepted.slices))
+                        .font(.system(size: Typo.body, weight: .regular))
+                        .ink(.tertiary)
+                        .padding(.top, 4)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .surface(.card)
             } else {
                 // Empty state — "select a slice" only where there are slices
                 // to select. A project just opened or created from the "+"

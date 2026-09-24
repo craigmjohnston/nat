@@ -47,7 +47,8 @@ struct WorkshopPaneView: View {
                         AgentTerminalHostView(
                             attachSpec: AttachSpec(session: agent.session),
                             sessionExists: { appModel.planningAgent != nil },
-                            onExit: { _ in }
+                            onExit: { _ in },
+                            focusRequest: appModel.terminalFocusRequest
                         )
                         .id(agent.session)
                     }
