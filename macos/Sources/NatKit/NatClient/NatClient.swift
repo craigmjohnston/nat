@@ -253,6 +253,17 @@ public final class NatClient: Sendable {
         return try decodeJSON(ApproveEnvelope.self, from: output).url
     }
 
+    /// Take a handed-back slice back out of review — `nat slice-rework`: its
+    /// branch is cleared and nothing else, so it reads as in progress (its
+    /// agent at work on the comments just sent) until the agent's own
+    /// `complete-slice --branch` hands it back again. That re-hand-back is
+    /// what an approve-over-comments waits on.
+    ///
+    /// - Throws: NatError if the slice is not handed back
+    public func sliceRework(projectID: String, sliceRef: String) async throws {
+        _ = try await runNatRaw(arguments: ["slice-rework", "--project", projectID, sliceRef])
+    }
+
     /// Read one pull request in full — the PR tab's own reading, mirroring
     /// the board's `v` key (`internal/cli/prview.go`).
     ///

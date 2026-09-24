@@ -206,6 +206,11 @@ type Store interface {
 	// mirror of MarkDone rather than ClaimSlice: nothing about ownership
 	// changes, only the one property that says whether the work is on main.
 	ReopenSlice(ctx context.Context, id string, sh Shape) error
+	// ClearBranch takes a slice back out of the handed-back state: its Branch
+	// emptied and nothing else touched, so it reads as in progress with an
+	// agent at work until that agent hands back again. The branch is
+	// re-recorded by that hand-back, which is what makes it the signal.
+	ClearBranch(ctx context.Context, id string) error
 	// AddMilestones files milestones at the end of the plan, all of them or
 	// none, and returns them in the order they were given.
 	AddMilestones(ctx context.Context, p Project, sh Shape, names []string) ([]domain.Milestone, error)

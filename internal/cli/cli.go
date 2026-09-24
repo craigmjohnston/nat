@@ -326,6 +326,10 @@ usage:
                       and --pr-description records beside it the text the board
                       opens the pull request with: its first line the title,
                       the rest the body
+  nat slice-rework <slice> --project ID
+                      take a handed-back slice back out of review: its branch is
+                      cleared and nothing else, so it reads as in progress until
+                      its agent hands back again
   nat release-slice <slice> --project ID
                       hand a slice you claimed back to the plan: Todo and
                       unassigned, its brief and any branch left as they are, for
@@ -422,6 +426,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return sessionDiff(ctx, args[1:], env)
 	case "slice-approve":
 		return sliceApprove(ctx, args[1:], env)
+	case "slice-rework":
+		return sliceRework(ctx, args[1:], env)
 	case "slice-diff":
 		return sliceDiff(ctx, args[1:], env)
 	case "slice-edit":

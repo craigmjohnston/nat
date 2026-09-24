@@ -117,6 +117,14 @@ progress. The macOS app mirrors this exact gate in Swift
 (`RailModel.isReviewSlice`/`isActiveSlice` — see `macos/CLAUDE.md`); change
 one side, change the other.
 
+**Approving over comments** (gnat's diff tab, `nat slice-rework`): with
+comments pending, approve sends them (`agent-send`, prompt ending in the
+`complete-slice --branch` instruction) and takes the slice out of review by
+clearing its `Branch` — no PR opens. The agent's re-hand-back re-records the
+branch, and `AppModel.settlePendingApprovals` (in-memory mark, armed only once
+a refresh has *seen* the slice un-handed-back) then runs `slice-approve`. A
+lost mark degrades to a normal review.
+
 **Worktree lifecycle.** A slice's worktree is removed **only** on merge,
 witnessed once at the transition and swept again (idempotently) on every
 plan load as a retry. Both the launch's placement and the merge's removal

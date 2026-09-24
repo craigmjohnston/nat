@@ -439,6 +439,27 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(fakeRunner.lastStandardInput, "clamp this".data(using: .utf8))
     }
 
+    func testSliceReworkRunsTheCommand() async throws {
+        let fakeRunner = FakeRunner(fixture: .agentSendSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.sliceRework(projectID: "proj-123", sliceRef: "slice-1")
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["slice-rework", "--project", "proj-123", "slice-1"])
+    }
+
+    /// A client that does not implement the rework — every test double but
+    /// the ones that exercise it — refuses rather than pretending it landed.
+    func testAClientWithoutReworkRefuses() async {
+        let client = MockActivityClient(response: .agents([]))
+        do {
+            try await client.sliceRework(projectID: "p", sliceRef: "s")
+            XCTFail("expected a refusal")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("slice-rework"))
+        }
+    }
+
     func testAgentSendNoSession() async throws {
         let fakeRunner = FakeRunner(fixture: .agentSendNoSession)
         let client = NatClient(commandRunner: fakeRunner)

@@ -218,6 +218,26 @@ func TestLocalRecordPRMarkDoneAndReopenSlice(t *testing.T) {
 	}
 }
 
+func TestLocalClearBranchEmptiesTheBranchAndNothingElse(t *testing.T) {
+	l, _ := openPlan(t)
+	fillPlan(t, l)
+	ctx := context.Background()
+	if _, err := l.CompleteSlice(ctx, "reads", wholeShape, Outcome{Summary: "s", Branch: "slice/reads"}); err != nil {
+		t.Fatalf("seed hand-back: %v", err)
+	}
+
+	if err := l.ClearBranch(ctx, "reads"); err != nil {
+		t.Fatalf("ClearBranch: %v", err)
+	}
+	got := readBack(t, l, "reads")
+	if got.Branch != "" {
+		t.Errorf("branch = %q, want it cleared", got.Branch)
+	}
+	if got.Status != domain.SliceClaimed {
+		t.Errorf("status = %q, want the slice left in progress", got.Status)
+	}
+}
+
 func TestLocalAddMilestones(t *testing.T) {
 	l, _ := openPlan(t)
 	fillPlan(t, l)
@@ -475,6 +495,7 @@ func TestLocalWritesRefuseASliceThatIsNotThere(t *testing.T) {
 		"RecordPR":        func() error { return l.RecordPR(ctx, "ghost", "url") },
 		"MarkDone":        func() error { return l.MarkDone(ctx, "ghost", wholeShape) },
 		"ReopenSlice":     func() error { return l.ReopenSlice(ctx, "ghost", wholeShape) },
+		"ClearBranch":     func() error { return l.ClearBranch(ctx, "ghost") },
 		"EditSlice":       func() error { return l.EditSlice(ctx, "ghost", "t", "r", "b") },
 		"SetSliceBrief":   func() error { return l.SetSliceBrief(ctx, "ghost", "b") },
 		"SetDependencies": func() error { _, err := l.SetDependencies(ctx, "ghost", nil); return err },
@@ -707,6 +728,7 @@ func TestLocalNamesItsFileWhenAWriteIsRefused(t *testing.T) {
 		"RecordPR":      func() error { return l.RecordPR(ctx, "writes", "url") },
 		"MarkDone":      func() error { return l.MarkDone(ctx, "writes", wholeShape) },
 		"ReopenSlice":   func() error { return l.ReopenSlice(ctx, "writes", wholeShape) },
+		"ClearBranch":   func() error { return l.ClearBranch(ctx, "writes") },
 		"EditSlice":     func() error { return l.EditSlice(ctx, "writes", "t", "r", "b") },
 		"SetSliceBrief": func() error { return l.SetSliceBrief(ctx, "writes", "b") },
 		"MoveSlice":     func() error { return l.MoveSlice(ctx, "writes", domain.Milestone{}) },

@@ -303,6 +303,17 @@ func (n *Notion) ReopenSlice(ctx context.Context, id string, sh Shape) error {
 	return nil
 }
 
+// ClearBranch empties the slice's Branch and writes nothing else.
+func (n *Notion) ClearBranch(ctx context.Context, id string) error {
+	if _, err := n.api.UpdatePageProperties(ctx, id, map[string]notion.PropertyValue{
+		notion.PropBranch: notion.NewRichText(""),
+	}); err != nil {
+		return err
+	}
+	logging.Action("slice branch cleared", "slice", id)
+	return nil
+}
+
 // AddMilestones files milestones at the end of the plan, which is the options
 // of the slices' own Milestone column, in one schema write: either they all
 // arrive or none do, since their order in the column is the order of the plan.

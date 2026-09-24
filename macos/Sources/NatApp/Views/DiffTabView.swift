@@ -25,9 +25,10 @@ struct CommentDraft: Equatable {
 /// file-list sidebar. Clicking a line (or shift-clicking to extend a range
 /// within the same file) marks it as a comment's anchor; the review left
 /// there is ephemeral — held only in `DiffStore.comments` — until "Send N
-/// Comments" hands all of it to the agent as one prompt. Approving is
-/// blocked while anything is still pending: a review with something left to
-/// say is not one that approves the work.
+/// Comments" hands all of it to the agent as one prompt. Approving with
+/// comments pending sends them the same way and owes the approve to the
+/// slice's next hand-back, rather than opening a pull request over work
+/// the review has just said needs fixing.
 struct DiffTabView: View {
     @Bindable var appModel: AppModel
     let slice: Slice
@@ -225,7 +226,7 @@ struct DiffTabView: View {
         let viewedCount = diff.files.filter { store.isViewed($0.path) }.count
         let pendingCount = store.pendingCommentCount
         let commentsEditable = store.commentsEditable
-        let canApprove = slice.handedBack && pendingCount == 0 && commentsEditable
+        let canApprove = slice.handedBack && commentsEditable && !isSending
 
         return VStack(spacing: 0) {
             InspectorActionsBar {
@@ -235,7 +236,7 @@ struct DiffTabView: View {
                 // would offer exactly what the CLI refuses.
                 if slice.handedBack {
                     Button(action: { showApproveConfirm = true }) {
-                        AsyncActionLabel(isBusy: isApproving) {
+                        AsyncActionLabel(isBusy: isApproving || isSending) {
                             Text("Approve & Open PR…")
                                 .font(.system(size: Typo.subhead, weight: .semibold))
                         }
@@ -321,11 +322,15 @@ struct DiffTabView: View {
                 .offset(x: -4.5)
         }
         .confirmationDialog(
-            "Approve and open a pull request for \(diff.branch)?",
+            pendingCount > 0
+                ? "Send \(pendingCount) \(plural(pendingCount, "comment", "comments")) to the agent, and open a pull request for \(diff.branch) once it hands back?"
+                : "Approve and open a pull request for \(diff.branch)?",
             isPresented: $showApproveConfirm,
             titleVisibility: .visible
         ) {
-            Button("Approve & Open PR") { Task { await approve() } }
+            Button(pendingCount > 0 ? "Send & Approve on Hand-back" : "Approve & Open PR") {
+                Task { await approve() }
+            }
             Button("Cancel", role: .cancel) {}
         }
         // Without an icon of its own the dialog wears the app's, which for
@@ -336,8 +341,8 @@ struct DiffTabView: View {
 
     private static func approveHelp(pendingCount: Int) -> String {
         guard pendingCount > 0 else { return "" }
-        return "Send or clear the \(pendingCount) pending \(plural(pendingCount, "comment", "comments")) first — " +
-            "a review with something left to say is not one that approves the work."
+        return "Sends the \(pendingCount) pending \(plural(pendingCount, "comment", "comments")) to the agent; " +
+            "the pull request opens on its next hand-back, without another review."
     }
 
     private func footerLeftText(pendingCount: Int, viewedCount: Int, total: Int, commentsEditable: Bool) -> String {
@@ -410,6 +415,10 @@ struct DiffTabView: View {
 
     private func approve() async {
         guard let projectID = appModel.projectStore?.projectID else { return }
+        if store.pendingCommentCount > 0 {
+            await approveOverComments(projectID: projectID)
+            return
+        }
         let sliceRef = slice.id
         let store = store
         let appModel = appModel
@@ -417,6 +426,26 @@ struct DiffTabView: View {
             _ = try await store.approve(projectID: projectID, sliceRef: sliceRef)
             await appModel.refresh()
         }
+    }
+
+    /// Approving with comments pending opens no pull request now: the
+    /// comments go to the agent, the slice is taken out of review, and the
+    /// approve is left owed to the slice's next hand-back (`AppModel`'s
+    /// `approvalsPending`). Marked pending only once both writes have
+    /// landed — a failed send leaves the comments and the review as they
+    /// were, and a rework that failed after the send says so, since the agent
+    /// has its instructions but nothing will approve what it hands back.
+    private func approveOverComments(projectID: String) async {
+        isSending = true
+        sendError = nil
+        do {
+            try await store.sendComments(projectID: projectID, sliceRef: slice.id, approving: true)
+            appModel.markApprovePending(sliceID: slice.id)
+            await appModel.refresh()
+        } catch {
+            sendError = error.localizedDescription
+        }
+        isSending = false
     }
 
     // MARK: - Fetching

@@ -331,13 +331,24 @@ public final class DiffStore {
     /// reached the pane: a send that failed leaves every one of them
     /// pending, because they are held nowhere else and retyping a review is
     /// not a thing to ask of anybody.
+    ///
+    /// With `approving`, the prompt also tells the agent to finish with its
+    /// `complete-slice` hand-back, and once it has been delivered the slice
+    /// is taken out of review (`nat slice-rework`) so that hand-back is
+    /// visible as the slice coming back. The comments are gone by then either
+    /// way: a rework that failed still leaves the agent with its instructions,
+    /// and the throw says what the caller still has to tell the user.
     @discardableResult
-    public func sendComments(projectID: String, sliceRef: String) async throws -> Int {
+    public func sendComments(projectID: String, sliceRef: String, approving: Bool = false) async throws -> Int {
         guard let diff = loadState.diff, !comments.isEmpty else { return 0 }
-        let prompt = commentsPrompt(comments, diff: diff)
+        let handBack = approving ? HandBackInstruction(projectID: projectID, sliceRef: sliceRef) : nil
+        let prompt = commentsPrompt(comments, diff: diff, handBack: handBack)
         let count = comments.count
         try await client.agentSend(projectID: projectID, sliceRef: sliceRef, text: prompt)
         comments = []
+        if approving {
+            try await client.sliceRework(projectID: projectID, sliceRef: sliceRef)
+        }
         return count
     }
 
