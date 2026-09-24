@@ -232,13 +232,13 @@ final class ProjectAttentionTests: XCTestCase {
             slice("approved-no-reading", pr: "https://pr/3")
         ]
 
-        // "done-with-open-pr" is left out even though its own pull request is
-        // in the readiness set named: Notion's status is read straight, and a
-        // Done slice is never a review entry until the un-done rule writes it
-        // back to In progress.
+        // "done-with-open-pr" is left out: Notion's status is read straight, and
+        // a Done slice is never a review entry until the un-done rule writes it
+        // back to In progress. An approved slice is in flight (its `pr` stage)
+        // whether or not gh has been read for it.
         XCTAssertEqual(
-            inFlightSliceIDs(slices: slices, openPRSliceIDs: ["open-pr", "done-with-open-pr"]),
-            ["active", "handed-back", "open-pr"]
+            inFlightSliceIDs(slices: slices),
+            ["active", "handed-back", "open-pr", "approved-no-reading"]
         )
     }
 

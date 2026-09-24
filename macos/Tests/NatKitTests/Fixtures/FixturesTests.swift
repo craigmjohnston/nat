@@ -83,10 +83,11 @@ final class FixturesTests: XCTestCase {
         XCTAssertNil(rail.doneSummary)
     }
 
-    func testUnreadRailKeepsTheMergedSliceOutOfReview() {
+    func testUnreadRailDrawsEveryApprovedSliceInReviewByItsStage() {
         let rail = Fixtures.unreadRailModel
         XCTAssertEqual(
-            rail.active.filter { $0.tintRole == .needsReview }.map(\.sliceID), [Fixtures.mergeBoxSliceID])
+            Set(rail.active.filter { $0.tintRole == .needsReview }.map(\.sliceID)),
+            [Fixtures.mergeBoxSliceID, Fixtures.approveSliceID])
         // With no live reading, no worked row is working or waiting.
         XCTAssertTrue(rail.active.allSatisfy {
             $0.tintRole == .blocked || $0.tintRole == .readyToPush || $0.tintRole == .needsReview

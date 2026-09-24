@@ -249,6 +249,41 @@ public final class AppModel {
         approvalsPending[sliceID] != nil
     }
 
+    /// Slices a fix session was launched on, keyed by slice ID — what puts an
+    /// approved slice in the `fixing` stage rather than `pr`. App-local: never
+    /// written to nat or Notion, and a restart loses it, which leaves the
+    /// slice at `pr`, the safe direction. The value says whether the activity
+    /// poll has yet *seen* the session, since the mark is set at launch,
+    /// before tmux has one to show; it clears once a poll that has seen the
+    /// session finds none. Its writer is the fix-launch action.
+    public private(set) var fixLaunched: [String: Bool] = [:]
+
+    /// The slices carrying the fix mark, in the shape the stage readers take.
+    public var fixLaunchedSliceIDs: Set<String> { Set(fixLaunched.keys) }
+
+    /// Mark a slice as having a fix session launched on it.
+    public func markFixLaunched(sliceID: String) {
+        fixLaunched[sliceID] = false
+    }
+
+    /// Fold one activity reading into the fix marks.
+    func settleFixLaunched(liveSliceIDs: Set<String>) {
+        for (sliceID, seen) in fixLaunched {
+            if liveSliceIDs.contains(sliceID) {
+                fixLaunched[sliceID] = true
+            } else if seen {
+                fixLaunched[sliceID] = nil
+            }
+        }
+    }
+
+    /// The activity store, wired so each reading settles the fix marks.
+    private func makeActivityStore() -> ActivityStore {
+        let store = activityStoreFactory()
+        store.onReading = { [weak self] live in self?.settleFixLaunched(liveSliceIDs: live) }
+        return store
+    }
+
     private let configReader: ConfigReaderProtocol
 
     /// Where each project's last-good plan is kept between launches, handed
@@ -438,7 +473,7 @@ public final class AppModel {
             self.projectTabs = sortedProjects.map { (id: $0.key, name: $0.value.name) }
 
             // Create activity store (app-wide)
-            let activityStore = activityStoreFactory()
+            let activityStore = makeActivityStore()
             self.activityStore = activityStore
             self.reviewStatsStore = ReviewStatsStore(client: clientFactory())
             self.sessionStore = SessionStore(client: clientFactory())
@@ -475,7 +510,7 @@ public final class AppModel {
     private func startWithUntitledTab() {
         needsOnboarding = false
         if activityStore == nil {
-            activityStore = activityStoreFactory()
+            activityStore = makeActivityStore()
             reviewStatsStore = ReviewStatsStore(client: clientFactory())
             sessionStore = SessionStore(client: clientFactory())
         }
@@ -622,7 +657,7 @@ public final class AppModel {
         // start() builds these for a config that named projects; a first
         // project on a machine that had none arrives here with neither.
         if activityStore == nil {
-            activityStore = activityStoreFactory()
+            activityStore = makeActivityStore()
             reviewStatsStore = ReviewStatsStore(client: clientFactory())
             sessionStore = SessionStore(client: clientFactory())
         }
@@ -954,7 +989,8 @@ public final class AppModel {
             liveAgents: liveAgents,
             planningAgent: planning,
             prReadiness: projectID == activeProjectID ? (reviewStatsStore?.prReadiness ?? [:]) : [:],
-            sessions: projectID == activeProjectID ? (sessionStore?.sessions ?? []) : []
+            sessions: projectID == activeProjectID ? (sessionStore?.sessions ?? []) : [],
+            fixLaunched: fixLaunchedSliceIDs
         )
     }
 

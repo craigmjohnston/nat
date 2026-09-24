@@ -29,7 +29,7 @@ public struct WorkflowTabState: Equatable {
     /// Tabs that can be navigated to.
     public let reachable: Set<WorkflowTab>
 
-    /// The default tab to show (the furthest reachable, with precedent: Agent > Diff > PR > Brief).
+    /// The tab to land on — the slice's `WorkflowStage`'s tab.
     public let defaultTab: WorkflowTab
 
     /// A count drawn beside a stage's label, for the stages that have one.
@@ -89,14 +89,14 @@ public struct WorkflowTabState: Equatable {
 ///   request, it did not end the review, and the branch reads until it lands.
 /// - PR is reachable if the slice has a non-empty PR URL.
 ///
-/// Default tab precedence: a Done slice with a pull request lands on PR — its
-/// state IS the pull request, and a lingering agent session must not steal
-/// the landing, since a session can outlive the slice it was launched on.
-/// After that, furthest reachable: live agent → Agent; handed back → Diff;
-/// in progress → Agent; PR recorded → PR; else Brief.
+/// The default tab is the slice's `WorkflowStage`'s own (`stage(for:)`), not a
+/// precedence over raw facts: a live session outlives hand-back and approve,
+/// so "a session exists" says nothing about where the slice stands. Only the
+/// landing tab comes from the stage; reachability keeps its fact-based rules.
 public func buildWorkflowTabState(
     for slice: Slice,
-    hasLiveAgent: Bool
+    hasLiveAgent: Bool,
+    fixLaunched: Bool = false
 ) -> WorkflowTabState {
     let allTabs = WorkflowTab.allCases
 
@@ -118,22 +118,8 @@ public func buildWorkflowTabState(
         reachable.insert(.pr)
     }
 
-    let defaultTab: WorkflowTab
-    if slice.status == "Done", !slice.pr.isEmpty {
-        defaultTab = .pr
-    } else if hasLiveAgent {
-        defaultTab = .agent
-    } else if slice.handedBack {
-        // Handed back means there's a branch awaiting review
-        defaultTab = .diff
-    } else if reachable.contains(.agent) {
-        // In progress but no live agent yet
-        defaultTab = .agent
-    } else if !slice.pr.isEmpty {
-        defaultTab = .pr
-    } else {
-        defaultTab = .brief
-    }
+    let workflowStage = stage(for: slice, agent: nil, fixLaunched: fixLaunched)
+    let defaultTab = workflowStage.tab(for: slice)
 
     return WorkflowTabState(tabs: allTabs, reachable: reachable, defaultTab: defaultTab)
 }

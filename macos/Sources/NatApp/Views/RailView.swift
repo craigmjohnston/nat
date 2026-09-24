@@ -149,7 +149,8 @@ struct RailView: View {
                 prReadiness: appModel.reviewStatsStore?.prReadiness ?? [:],
                 agentStarts: appModel.activityStore?.firstSeen ?? [:],
                 workshop: workshopEntry,
-                sessions: appModel.sessionStore?.sessions ?? []
+                sessions: appModel.sessionStore?.sessions ?? [],
+                fixLaunched: appModel.fixLaunchedSliceIDs
             )
         }
         // With no plan read, the workshop is still the one thing that can be
