@@ -41,37 +41,14 @@ the fields used. Nothing outside `internal/store` constructs one:
     all for a plan written in one shot, which is exactly why `PlanOrder`
     exists instead of sorting by creation time.
 
-## Migration (`migrate.go`) — read before touching an old-shape project
+## Renaming a select option
 
-`MigrateProject(ctx, api, slicesDSID)` converts a project still in the old
-shape (a Milestones database + a `Milestone` relation, and/or a `Claimed`
-status option) in place, on **every** load, by both the board and every
-headless command:
-
-- Milestone pages → options of a `Milestone` select, in plan order; every
-  slice refiled onto the option its relation named; the Milestones database
-  trashed (recoverable) **only after everything else succeeds**.
-- `Claimed` → `In progress` the **long way**: append the new option, refile
-  every slice holding the old one, then drop it. **Renaming a select option
-  in place is silently ignored by the API** — a 200 whose body still echoes
-  the old name. This is a general Notion API gotcha, not specific to this
-  one rename: check the echoed value, never the status code, for any select
-  option write.
-- The **whole plan is read before any schema change** — converting a column
-  discards the relation it was read from, so reading after would lose data.
-- Idempotent: an already-migrated project is read and left untouched on
-  every later load.
-- A `Status` column converted to Notion's own status type **in the Notion
-  UI** cannot have its options rewritten by the API at all — such a project
-  is refused outright, with the one manual edit to make, rather than
-  half-migrated.
-- One step runs for every project regardless of old/new shape: a missing
-  `Depends on` or `Branch` column is added, and a `Depends on` still held one
-  -sided is given its `Blocks` reciprocal (`addColumns`) — `CreateProject`
-  only writes these for projects it creates.
-- `milestone-rename` uses the identical long-way pattern (`OptionInsertedAfter`
-  next to the old option, not appended, so order is preserved; refile;
-  `WithoutOption` last) for the same silently-ignored-rename reason.
+- **Renaming a select option in place is silently ignored by the API** — a
+  200 whose body still echoes the old name. Check the echoed value, never the
+  status code, for any select option write.
+- `milestone-rename` therefore goes the long way (`OptionInsertedAfter` next
+  to the old option, not appended, so order is preserved; refile;
+  `WithoutOption` last).
 
 ## Self-relations mirror — why `Depends on` needs a `Blocks` half (`schema.go`)
 
@@ -85,10 +62,6 @@ headless command:
   `Depends on`. `Blocks` is never read by anything — it exists purely to give
   the API's own mirroring somewhere else to write, so `Depends on` stays
   genuinely one-directional.
-- `notion.SingleSelfRelation` converts a project whose `Depends on` predates
-  this fix. It only converts a relation that points at the **slices
-  themselves** — one pointing anywhere else is a same-named column that
-  happens to share the name, and re-targeting it would discard what it holds.
 
 ## Other API-shape gotchas (verified live against the API)
 

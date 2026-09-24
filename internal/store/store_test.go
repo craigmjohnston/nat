@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/domain"
@@ -221,32 +220,13 @@ func TestShapeWithoutAnAssigneeColumn(t *testing.T) {
 	}
 }
 
-func TestShapeCarriesTheMigrationsFailureUp(t *testing.T) {
+func TestShapeCarriesTheReadsFailureUp(t *testing.T) {
 	api := &fakeAPI{dataSource: func(string) (*notion.DataSource, error) { return nil, errBoom }}
 	if _, err := Over(api).Shape(context.Background(), project()); !errors.Is(err, errBoom) {
 		t.Errorf("err = %v, want the read's failure", err)
 	}
 }
 
-// A project still in the old shape is migrated on the way past, and the shape
-// that comes back is the migrated one.
-func TestShapeMigratesAProjectOnTheWayPast(t *testing.T) {
-	api := &fakeAPI{dataSource: func(string) (*notion.DataSource, error) {
-		ds := settledSchema(true)
-		delete(ds.Properties, notion.PropBranch)
-		return ds, nil
-	}}
-	sh, err := Over(api).Shape(context.Background(), project())
-	if err != nil {
-		t.Fatalf("Shape() error = %v", err)
-	}
-	if !sh.HasBranch {
-		t.Error("the back-filled Branch column was not read back")
-	}
-	if len(api.schemas) != 1 {
-		t.Errorf("schema writes = %d, want the one back-fill", len(api.schemas))
-	}
-}
 
 func TestPlanReadsTheWholePlanInTheBoardsOrder(t *testing.T) {
 	api := &fakeAPI{
@@ -260,9 +240,6 @@ func TestPlanReadsTheWholePlanInTheBoardsOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan() error = %v", err)
 	}
-	if plan.Migrated != "" {
-		t.Errorf("migrated = %q, want nothing changed", plan.Migrated)
-	}
 	if plan.Project.ID != "p1" || plan.Project.Name != "nat" {
 		t.Errorf("project = %+v, want the one asked for", plan.Project)
 	}
@@ -274,20 +251,6 @@ func TestPlanReadsTheWholePlanInTheBoardsOrder(t *testing.T) {
 	}
 }
 
-func TestPlanSaysWhatLoadingItChanged(t *testing.T) {
-	api := &fakeAPI{dataSource: func(string) (*notion.DataSource, error) {
-		ds := settledSchema(true)
-		delete(ds.Properties, notion.PropBranch)
-		return ds, nil
-	}}
-	plan, err := Over(api).Plan(context.Background(), project())
-	if err != nil {
-		t.Fatalf("Plan() error = %v", err)
-	}
-	if !strings.Contains(plan.Migrated, notion.PropBranch) {
-		t.Errorf("migrated = %q, want the added column named", plan.Migrated)
-	}
-}
 
 func TestPlanFailures(t *testing.T) {
 	tests := []struct {

@@ -64,8 +64,8 @@ here when you're just applying the rule.
 of an in-progress slice; never edit a Done one either (`internal/tui/CLAUDE.md`,
 `internal/cli/CLAUDE.md` — the exact per-action refusal differs: edit is
 Todo-only, move/delete refuse only In progress). In-progress is called `In
-progress`; a project still saying `Claimed` is migrated at load
-(`internal/notion/CLAUDE.md`).
+progress`. There is one project shape: nat does not convert older ones at
+load.
 
 **Claiming.** Status → In progress, + Assignee where the project has that
 column (status alone otherwise). The *board* claims before tmux is touched —

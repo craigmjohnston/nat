@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -802,92 +801,6 @@ func TestNextSliceReportsAFailedSchemaRead(t *testing.T) {
 	if len(api.updates) != 0 {
 		t.Errorf("updates = %+v, want nothing written", api.updates)
 	}
-}
-
-// A project still in the shape this app started with is migrated on the way to
-// the command that reads it, so an agent works a plan of the one shape whatever
-// the project was stored as.
-func TestNextSliceMigratesAnOldProject(t *testing.T) {
-	old := notion.DataSource{ID: "slices-ds", Properties: map[string]notion.PropertySchema{
-		notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceClaimed, notion.SliceDone),
-		notion.PropDependsOn: dependsOnColumn("slices-ds"),
-		notion.PropBranch:    branchColumn(),
-		notion.PropMilestone: {
-			Type:     "relation",
-			Relation: &notion.RelationConfig{DataSourceID: "milestones-ds"},
-		},
-		notion.PropAssignee: {Type: notion.TypePeople},
-	}}
-	api := &fakeAPI{
-		blocksByID: map[string][]notion.Block{
-			"project-1": conventionBlocks(t),
-			"s2":        briefBlocks(t, "Render the board, then stop."),
-		},
-		dataSources: map[string]notion.DataSource{
-			"slices-ds": old,
-			"milestones-ds": {ID: "milestones-ds",
-				Parent: notion.Parent{Type: notion.ParentDatabase, DatabaseID: "milestones-db"}},
-		},
-		pages: map[string][]notion.Page{
-			"milestones-ds": {
-				{ID: "m1", Properties: map[string]notion.PropertyValue{notion.PropName: title("M1: Client")}},
-				{ID: "m2", Properties: map[string]notion.PropertyValue{notion.PropName: title("M2: Board")}},
-			},
-			"slices-ds": {
-				relatedSlicePage("s1", "Notion client", notion.SliceDone, "m1"),
-				relatedSlicePage("s2", "Render the board", notion.SliceTodo, "m2"),
-			},
-		},
-	}
-	env, out := testEnv(testClaimConfig(t), api)
-
-	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("next-slice: %v", err)
-	}
-
-	// The milestones moved onto the slices' own column, the slices were refiled
-	// under them, and the claim went to the slice under M2 — all of which needs
-	// the plan to have been read in its new shape.
-	if len(api.schemaUpdates) != 2 {
-		t.Fatalf("schema writes = %+v, want the migration's two", api.schemaUpdates)
-	}
-	written := api.schemaUpdates[0].props
-	if got := written[notion.PropMilestone].OptionNames(); !reflect.DeepEqual(got, []string{"M1: Client", "M2: Board"}) {
-		t.Errorf("options = %v, want the milestones moved onto the column", got)
-	}
-	// In progress arrives alongside Claimed first — the API will not rename an
-	// option in place — and Claimed is retired by the second write.
-	if got := written[notion.PropStatus].OptionNames(); !reflect.DeepEqual(got,
-		[]string{notion.SliceTodo, notion.SliceClaimed, notion.SliceDone, notion.SliceInProgress}) {
-		t.Errorf("status options = %v, want the new name appended", got)
-	}
-	if got := api.schemaUpdates[1].props[notion.PropStatus].OptionNames(); !reflect.DeepEqual(got,
-		[]string{notion.SliceTodo, notion.SliceDone, notion.SliceInProgress}) {
-		t.Errorf("status options = %v, want the old name retired", got)
-	}
-	if want := []string{"milestones-db"}; !reflect.DeepEqual(api.deletes, want) {
-		t.Errorf("deletes = %v, want the Milestones database trashed", api.deletes)
-	}
-	var claimed string
-	for _, u := range api.updates {
-		if _, ok := u.props[notion.PropStatus]; ok {
-			claimed = u.id
-		}
-	}
-	if claimed != "s2" {
-		t.Errorf("claimed %q, want s2", claimed)
-	}
-	if !strings.Contains(out.String(), "- Milestone: M2: Board\n") {
-		t.Errorf("output =\n%s\nwant the migrated milestone named", out.String())
-	}
-}
-
-// relatedSlicePage is a slice of a project in the old shape: its milestone a
-// relation to a page of a Milestones data source.
-func relatedSlicePage(id, name, status, milestoneID string) notion.Page {
-	p := slicePage(id, name, status, "", "", "")
-	p.Properties[notion.PropMilestone] = notion.PropertyValue{Relation: &[]notion.Relation{{ID: milestoneID}}}
-	return p
 }
 
 // selectNextSlice is handed a domain.Project directly, so a dependency

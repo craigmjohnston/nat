@@ -924,53 +924,6 @@ func TestAppDrawsAOnePagePlanWhenTheOrderCannotBeRead(t *testing.T) {
 	}
 }
 
-// A project still in the shape this app started with is migrated on the way to
-// being drawn, and the board says what changed: the plan on screen is not quite
-// the one Notion held a moment ago.
-func TestAppMigratesAnOldProjectAndSaysSo(t *testing.T) {
-	client := newLoadingClient()
-	client.getDS = func(id string) (*notion.DataSource, error) {
-		if id == "ms-ds" {
-			return &notion.DataSource{ID: id,
-				Parent: notion.Parent{Type: notion.ParentDatabase, DatabaseID: "ms-db"}}, nil
-		}
-		return &notion.DataSource{ID: id, Properties: map[string]notion.PropertySchema{
-			notion.PropStatus:    notion.SchemaSelect(notion.SliceTodo, notion.SliceClaimed, notion.SliceDone),
-			notion.PropDependsOn: dependsOnColumn(id),
-			notion.PropBranch:    branchColumn(),
-			notion.PropMilestone: {
-				Type:     "relation",
-				Relation: &notion.RelationConfig{DataSourceID: "ms-ds"},
-			},
-		}}, nil
-	}
-	client.query = func(id string, _ map[string]any, _ []notion.Sort) ([]notion.Page, error) {
-		if id != "ms-ds" {
-			return nil, nil
-		}
-		return []notion.Page{{ID: "m1", Properties: map[string]notion.PropertyValue{
-			notion.PropName: {Type: "title", Title: []notion.RichText{{PlainText: "M1: Config"}}},
-		}}}, nil
-	}
-	app := NewApp(testConfig(t), client)
-
-	msgs := run(app.Init())
-	loaded := first[projectLoadedMsg](t, msgs)
-	_, cmd := app.Update(loaded)
-	run(cmd)
-
-	// Two writes: the plan and In progress onto the column, then Claimed
-	// retired once nothing sits on it.
-	if len(client.schemaWrites) != 2 || client.schemaWrites[0].dataSourceID != "sl-ds" {
-		t.Fatalf("schema writes = %+v, want the slices data source migrated", client.schemaWrites)
-	}
-	if want := []string{"ms-db"}; !reflect.DeepEqual(client.deleted, want) {
-		t.Errorf("deleted %v, want the Milestones database trashed", client.deleted)
-	}
-	if got := app.toast; !strings.Contains(got, "Migrated this project") {
-		t.Errorf("toast = %q, want the migration reported", got)
-	}
-}
 
 // While the cursor is on a slice waiting on unfinished work, the status line
 // names each slice it waits on and where on the board that slice is filed: the

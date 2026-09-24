@@ -225,29 +225,6 @@ func TestMirroredPullCarriesAHydrateFailureUp(t *testing.T) {
 	}
 }
 
-// Plan carries through the last pull's migration note, since the file has
-// nowhere of its own to keep the sentence.
-func TestMirroredPlanCarriesTheLastPullsMigrationNote(t *testing.T) {
-	api := fullPlanAPI()
-	api.dataSource = func(string) (*notion.DataSource, error) {
-		ds := settledSchema(true, "M1: The format", "M2: Reads")
-		delete(ds.Properties, notion.PropBranch)
-		return ds, nil
-	}
-	m, _ := mirroredPlan(t, api)
-	ctx := context.Background()
-
-	if err := m.Pull(ctx, project()); err != nil {
-		t.Fatalf("Pull: %v", err)
-	}
-	plan, err := m.Plan(ctx, project())
-	if err != nil {
-		t.Fatalf("Plan: %v", err)
-	}
-	if !strings.Contains(plan.Migrated, notion.PropBranch) {
-		t.Errorf("migrated = %q, want the pull's own note", plan.Migrated)
-	}
-}
 
 // A slice the file has never seen is read through to the workspace, and
 // taken into the file so a second read is a file read like any other.

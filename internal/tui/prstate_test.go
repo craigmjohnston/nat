@@ -534,22 +534,6 @@ func TestPRStateReadingRunsOneAtATime(t *testing.T) {
 	}
 }
 
-// A migrated project says so and reads its pull requests: the toast and the
-// reading are both what that one landing is worth.
-func TestPRStatesReadAlongsideAMigrationToast(t *testing.T) {
-	app, reader := prStateApp(t)
-	p := prStatePlan()
-	seedLocalPlan(t, testProjectID, p)
-	_, cmd := app.Update(projectLoadedMsg{project: p,
-		migrated: "the in-progress status was renamed"})
-	if cmd == nil {
-		t.Fatal("a migrated project took no reading")
-	}
-	cmd()
-	if len(reader.asked) == 0 {
-		t.Error("gh listed nothing for a migrated project")
-	}
-}
 
 // worthReading is which slices have a pull request anything might still be
 // waiting on.

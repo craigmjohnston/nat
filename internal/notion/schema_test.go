@@ -155,34 +155,6 @@ func TestSchemaRelation(t *testing.T) {
 	}
 }
 
-// A relation Notion keeps on one side alone, pointing at the slices themselves,
-// is the shape the dependency column had before it had a reciprocal — and the
-// only shape the migration converts. Anything else keeps whatever it holds.
-func TestSingleSelfRelation(t *testing.T) {
-	single := func(dsID string) PropertySchema {
-		return PropertySchema{Type: "relation", Relation: &RelationConfig{
-			DataSourceID: dsID, Kind: RelationSingle, SingleProperty: &EmptyConfig{}}}
-	}
-	tests := []struct {
-		name string
-		prop PropertySchema
-		want bool
-	}{
-		{"the old dependency column", single("ds-slices"), true},
-		{"written without dashes", single("dsslices"), true},
-		{"a relation to somewhere else", single("ds-other"), false},
-		{"already dual", SchemaRelation("ds-slices"), false},
-		{"not a relation at all", SchemaRichText(), false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := SingleSelfRelation(tt.prop, "ds-slices"); got != tt.want {
-				t.Errorf("SingleSelfRelation() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 // An option inserted after a named one keeps every option already there exactly
 // as it was read, and lands where the old one is rather than at the end: that is
 // what lets a milestone be renamed without moving in the plan.
