@@ -141,14 +141,20 @@ private struct PlanProgressBar: View {
 
     private func startedSegment(_ milestone: MilestoneStatus, width: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: Self.barHeight / 2)
-            .fill(DesignTokens.accent)
+            .fill(DesignTokens.progressTrack(on: .header))
             .frame(width: width)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(DesignTokens.accent)
+                    .frame(width: milestone.fillWidth(inTrack: width))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: Self.barHeight / 2))
             .help(milestone.tooltip)
     }
 
     private func unstartedCircle(_ milestone: MilestoneStatus) -> some View {
         Circle()
-            .fill(DesignTokens.accent)
+            .fill(DesignTokens.progressTrack(on: .header))
             .frame(width: Self.circleDiameter, height: Self.circleDiameter)
             .help(milestone.tooltip)
     }
@@ -226,29 +232,22 @@ private struct AgentReadoutView: View {
     }
 }
 
-/// The Claude usage readout itself: a small gauge glyph, then the windows
-/// still worth showing, joined by `·`. Draws nothing at all when `usage` is
+/// The Claude usage readout itself: the windows still worth showing, joined by `·`. Draws nothing at all when `usage` is
 /// empty — the caller checks that, but the view is safe called on an empty
 /// one regardless.
 private struct UsageReadoutView: View {
     let usage: UsageDisplay
 
-    private static let iconGap: CGFloat = 6
     private static let clauseGap: CGFloat = 4
 
     var body: some View {
         if !usage.isEmpty {
-            HStack(spacing: Self.iconGap) {
-                Image(systemName: "gauge.with.dots.needle.50percent")
-                    .font(.system(size: 10, weight: .regular))
-                    .ink(.tertiary)
-                HStack(spacing: Self.clauseGap) {
-                    ForEach(Array(usage.windows.enumerated()), id: \.offset) { index, window in
-                        if index > 0 {
-                            Text("·").ink(.tertiary)
-                        }
-                        UsageClauseText(window: window)
+            HStack(spacing: Self.clauseGap) {
+                ForEach(Array(usage.windows.enumerated()), id: \.offset) { index, window in
+                    if index > 0 {
+                        Text("·").ink(.tertiary)
                     }
+                    UsageClauseText(window: window)
                 }
             }
             .font(.system(size: Typo.caption, weight: .regular))

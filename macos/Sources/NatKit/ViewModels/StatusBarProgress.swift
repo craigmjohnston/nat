@@ -25,6 +25,12 @@ public struct MilestoneStatus: Equatable {
     /// slices at all.
     public var fraction: Double { total == 0 ? 0.0 : Double(done) / Double(total) }
 
+    /// The width of the accent fill inside a track `trackWidth` wide: the
+    /// fraction of it, clamped so it never spills out of or below the track.
+    public func fillWidth(inTrack trackWidth: Double) -> Double {
+        max(0, min(1, fraction)) * max(0, trackWidth)
+    }
+
     /// What the segment's tooltip reads, e.g. "M33 — 4/15".
     public var tooltip: String { "\(title) — \(done)/\(total)" }
 }

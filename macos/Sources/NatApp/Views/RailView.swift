@@ -693,31 +693,29 @@ struct RailView: View {
     /// to any one milestone, and Workshop the Plan opens the planning agent —
     /// unchanged actions, only where they are drawn.
     private var todoHeaderActions: some View {
-        HStack(spacing: 2) {
-            Button(action: { showTodoNewSliceSheet = true }) {
-                Image(systemName: "plus.rectangle.on.rectangle")
-                    .font(.system(size: 12, weight: .medium))
-                    .ink(.tertiary)
-                    .frame(width: 22, height: 22)
-            }
-            .buttonStyle(.plain)
-            .disabled(appModel.activeProjectID == nil)
-            .opacity(appModel.activeProjectID == nil ? 0.5 : 1)
-            .hoverWash(cornerRadius: 5, enabled: appModel.activeProjectID != nil)
-            .help("New Slice…")
-
-            Button(action: { appModel.openWorkshop() }) {
-                Image(systemName: "wand.and.stars")
-                    .font(.system(size: 12, weight: .medium))
-                    .ink(.tertiary)
-                    .frame(width: 22, height: 22)
-            }
-            .buttonStyle(.plain)
-            .disabled(appModel.projectStore == nil)
-            .opacity(appModel.projectStore == nil ? 0.5 : 1)
-            .hoverWash(cornerRadius: 5, enabled: appModel.projectStore != nil)
-            .help("Workshop the Plan")
+        let canNewSlice = appModel.activeProjectID != nil
+        let canWorkshop = appModel.projectStore != nil
+        let enabled = canNewSlice || canWorkshop
+        return Menu {
+            Button("New Slice\u{2026}") { showTodoNewSliceSheet = true }
+                .disabled(!canNewSlice)
+            Button("Workshop the Plan") { appModel.openWorkshop() }
+                .disabled(!canWorkshop)
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 12, weight: .medium))
+                .ink(.tertiary)
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
         }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.5)
+        .hoverWash(cornerRadius: 5, enabled: enabled)
+        .help("Add to the plan")
+        .accessibilityLabel("Add to the plan")
     }
 
     /// ACTIVE's own control, beside its fold chevron like TODO's own two:
@@ -728,21 +726,18 @@ struct RailView: View {
     /// through the rail's own toast.
     private var newSessionButton: some View {
         Button(action: { Task { await startNewSession() } }) {
-            HStack(spacing: 4) {
+            Group {
                 if appModel.newSessionLaunching {
                     ProgressView()
                         .controlSize(.mini)
                         .frame(width: 12, height: 12)
                 } else {
-                    Image(systemName: "terminal")
-                        .font(.system(size: 11, weight: .medium))
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .medium))
                 }
-                Text("New session")
-                    .font(.system(size: Typo.subhead, weight: .medium))
             }
             .ink(.tertiary)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
+            .frame(width: 22, height: 22)
         }
         .buttonStyle(.plain)
         .disabled(appModel.newSessionLaunching || appModel.activeProjectID == nil)
@@ -750,6 +745,7 @@ struct RailView: View {
         .help(appModel.newSessionNeedsFolder
             ? "Start an ad hoc session in a folder you choose"
             : "Start an ad hoc session in this project's working directory")
+        .accessibilityLabel("New session")
     }
 
     private func startNewSession() async {

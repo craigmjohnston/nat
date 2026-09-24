@@ -202,4 +202,12 @@ final class StatusBarProgressTests: XCTestCase {
         let status = MilestoneStatus(title: "Test", done: 0, total: 0, started: false)
         XCTAssertEqual(status.fraction, 0.0)
     }
+
+    func testMilestoneStatus_fillWidth() {
+        XCTAssertEqual(MilestoneStatus(title: "M", done: 0, total: 7, started: false).fillWidth(inTrack: 100), 0)
+        XCTAssertEqual(MilestoneStatus(title: "M", done: 3, total: 7, started: true).fillWidth(inTrack: 100), 300.0 / 7, accuracy: 0.0001)
+        XCTAssertEqual(MilestoneStatus(title: "M", done: 7, total: 7, started: true).fillWidth(inTrack: 100), 100)
+        XCTAssertEqual(MilestoneStatus(title: "M", done: 9, total: 7, started: true).fillWidth(inTrack: 100), 100)
+        XCTAssertEqual(MilestoneStatus(title: "M", done: 1, total: 2, started: true).fillWidth(inTrack: -5), 0)
+    }
 }
