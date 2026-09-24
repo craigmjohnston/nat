@@ -195,6 +195,21 @@ func (p *PRView) SetPR(pr gh.PR) {
 	p.vp.GotoTop()
 }
 
+// Refresh swaps in a pull request read in the background: the same as
+// [PRView.SetPR] except the scroll position stays where the reader left it
+// (clamped by the viewport if the content got shorter), since nobody asked for
+// this reading and moving the page under them would be the surprise.
+func (p *PRView) Refresh(pr gh.PR) {
+	offset := p.vp.YOffset()
+	p.pr, p.state, p.err = pr, prViewReady, nil
+	p.render()
+	p.vp.SetYOffset(offset)
+}
+
+// Ready reports whether a reading is on screen, which is what a failed
+// background read has to keep.
+func (p PRView) Ready() bool { return p.state == prViewReady }
+
 // Fail reports a read that did not come back. What was on screen goes with it,
 // the way the diff's does rather than the info screen's: a pull request is one
 // reading at one moment, and leaving the last one up under a failure would be

@@ -89,6 +89,8 @@ func TestMain(m *testing.M) {
 	nudgeStat = func() (time.Time, bool) { return time.Time{}, false }
 	// So is the background poll: its own tests put a firing version in.
 	pollTick = func(time.Duration) tea.Cmd { return nil }
+	// And the pull request screen's own re-read timer.
+	prPollTick = func(int) tea.Cmd { return nil }
 	// And so is the star animation, which would otherwise keep every app with
 	// a live agent in it redrawing twice a second. Its own tests put a firing
 	// version in.

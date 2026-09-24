@@ -3,11 +3,13 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/gh"
+	"github.com/craigmjohnston/nat/internal/logging"
 )
 
 // PRViewer is what the pull request screen needs of the GitHub CLI: one pull
@@ -68,7 +70,75 @@ func (a *App) viewPRFlow() tea.Cmd {
 	}
 	a.prview.Start(s.ID, s.Name, s.PRURL, dir)
 	a.setScreen(screenPR)
-	return tea.Batch(a.spinner.Tick, readPR(a.prViewer, s.PRURL, dir))
+	// A new generation retires any timer still running from an earlier opening.
+	a.prPollGen++
+	return tea.Batch(a.spinner.Tick, readPR(a.prViewer, s.PRURL, dir), prPollTick(a.prPollGen))
+}
+
+// prPollInterval is how often the open screen reads the pull request again:
+// often enough that checks finishing show up unprompted, rarely enough not to
+// hammer gh.
+var prPollInterval = 12 * time.Second
+
+// prPollTick is the timer's edge, a variable so the tests can stand in for the
+// real wait.
+var prPollTick = defaultPRPollTick
+
+func defaultPRPollTick(gen int) tea.Cmd {
+	return tea.Tick(prPollInterval, func(time.Time) tea.Msg { return prPollTicked(gen) })
+}
+
+// prPollTicked turns the timer going off into the message for its opening.
+func prPollTicked(gen int) tea.Msg { return prPollTickMsg{gen: gen} }
+
+// prPollTickMsg is the timer going off; gen is the opening it belongs to.
+type prPollTickMsg struct{ gen int }
+
+// prBackgroundMsg is a timer-driven reading coming back. ref says which pull
+// request it was of, so one landing after the screen moved on is dropped.
+type prBackgroundMsg struct {
+	ref string
+	pr  gh.PR
+	err error
+}
+
+// prPolled is one tick. The timer stops (is not rescheduled) once the screen
+// is left or a later opening has taken over. While it runs the read is passed
+// over — but the timer kept — when the merge prompt is up, a read is already in
+// flight (manual or background), or the screen has nothing loaded to refresh.
+func (a *App) prPolled(msg prPollTickMsg) tea.Cmd {
+	if msg.gen != a.prPollGen || a.screen != screenPR {
+		return nil
+	}
+	next := prPollTick(a.prPollGen)
+	if a.prPollBusy || a.prview.Prompting() || a.prview.Busy() || a.prViewer == nil || !a.prview.Loadable() {
+		return next
+	}
+	_, ref, dir := a.prview.Target()
+	a.prPollBusy = true
+	viewer := a.prViewer
+	read := func() tea.Msg {
+		pr, err := viewer.ViewPR(dir, ref)
+		return prBackgroundMsg{ref: ref, pr: pr, err: err}
+	}
+	return tea.Batch(next, read)
+}
+
+// prBackgroundLoaded lands a timer-driven reading. A failure is logged and the
+// last good reading stays (unlike the manual read, which drops it on an
+// explicit ask). A result for another pull request, a screen since left, or a
+// manual read now in flight is dropped.
+func (a *App) prBackgroundLoaded(msg prBackgroundMsg) {
+	a.prPollBusy = false
+	_, ref, _ := a.prview.Target()
+	if msg.ref != ref || a.screen != screenPR || a.prview.Busy() {
+		return
+	}
+	if msg.err != nil {
+		logging.Error("background pull request read failed", "ref", msg.ref, "error", msg.err)
+		return
+	}
+	a.prview.Refresh(msg.pr)
 }
 
 // startPRLoad reads the pull request the screen is already showing again, which

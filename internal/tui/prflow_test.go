@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -314,5 +315,150 @@ func TestPRKeyIsInTheHelp(t *testing.T) {
 	app, _, _ := prViewApp(t)
 	if !strings.Contains(app.helpBody(), "view pull request") {
 		t.Error("the help screen should name the pull request key")
+	}
+}
+
+// pollingApp is the pull request screen up and loaded, with the re-read timer
+// stubbed to a message the test feeds itself.
+func pollingApp(t *testing.T) (*App, *fakePRViewer) {
+	t.Helper()
+	app, viewer, _ := prViewApp(t)
+	cursorOn(t, app, withPR)
+	cmd := press(app, "V")
+	app.Update(first[prViewLoadedMsg](t, run(cmd)))
+	viewer.made = nil
+	return app, viewer
+}
+
+func TestPRPollTickIsScheduledOnOpen(t *testing.T) {
+	prev := prPollTick
+	t.Cleanup(func() { prPollTick = prev })
+	var gens []int
+	prPollTick = func(gen int) tea.Cmd { gens = append(gens, gen); return nil }
+	app, _, _ := prViewApp(t)
+	cursorOn(t, app, withPR)
+	press(app, "V")
+	if len(gens) != 1 || gens[0] != app.prPollGen {
+		t.Errorf("scheduled %v, want one tick for generation %d", gens, app.prPollGen)
+	}
+	prevInterval := prPollInterval
+	t.Cleanup(func() { prPollInterval = prevInterval })
+	prPollInterval = time.Millisecond
+	if got := defaultPRPollTick(3)(); got != (prPollTickMsg{gen: 3}) {
+		t.Errorf("tick = %v, want one for generation 3", got)
+	}
+}
+
+func TestPRPollTickRereadsAndKeepsScroll(t *testing.T) {
+	app, viewer := pollingApp(t)
+	long := samplePR()
+	long.Body = strings.Repeat("line\n\n", 80)
+	app.prview.SetPR(long)
+	app.prview.vp.SetYOffset(5)
+
+	updated := samplePR()
+	updated.Body = long.Body
+	updated.Title = "Retitled"
+	viewer.pr = updated
+
+	_, cmd := app.Update(prPollTickMsg{gen: app.prPollGen})
+	if !app.prPollBusy {
+		t.Fatal("a read should be in flight")
+	}
+	msgs := run(cmd)
+	// One read at a time: a tick while one is in flight is passed over.
+	if got := app.prPolled(prPollTickMsg{gen: app.prPollGen}); run(got) != nil && len(viewer.made) != 1 {
+		t.Error("a second read started while one was in flight")
+	}
+	app.Update(first[prBackgroundMsg](t, msgs))
+	if app.prPollBusy {
+		t.Error("read should be finished")
+	}
+	if !strings.Contains(app.body(), "Retitled") {
+		t.Error("the new reading should be on screen")
+	}
+	if got := app.prview.vp.YOffset(); got != 5 {
+		t.Errorf("scroll = %d, want it kept at 5", got)
+	}
+	if !app.prview.Ready() {
+		t.Error("screen should stay ready")
+	}
+}
+
+func TestPRPollFailureKeepsReading(t *testing.T) {
+	app, viewer := pollingApp(t)
+	viewer.err = errors.New("gh down")
+	_, cmd := app.Update(prPollTickMsg{gen: app.prPollGen})
+	app.Update(first[prBackgroundMsg](t, run(cmd)))
+	if !app.prview.Ready() || app.prview.Number() != 12 {
+		t.Error("the last good reading should stay on screen")
+	}
+	if app.prPollBusy {
+		t.Error("busy should clear after a failure")
+	}
+}
+
+func TestPRPollPassedOver(t *testing.T) {
+	app, viewer := pollingApp(t)
+	gen := app.prPollGen
+
+	// Merge prompt up.
+	app.prview.SetPrompt([]string{"yes", "no"})
+	app.Update(prPollTickMsg{gen: gen})
+	app.prview.ClearPrompt()
+	// A manual read in flight.
+	app.prview.Start("s", "n", "ref", "dir")
+	app.Update(prPollTickMsg{gen: gen})
+	// No viewer.
+	app.prview.SetPR(samplePR())
+	pv := app.prViewer
+	app.prViewer = nil
+	app.Update(prPollTickMsg{gen: gen})
+	app.prViewer = pv
+	if len(viewer.made) != 0 || app.prPollBusy {
+		t.Errorf("reads made %v, want every tick passed over", viewer.made)
+	}
+}
+
+func TestPRPollStopsWithTheScreenAndGeneration(t *testing.T) {
+	prev := prPollTick
+	t.Cleanup(func() { prPollTick = prev })
+	n := 0
+	prPollTick = func(int) tea.Cmd { n++; return nil }
+	app, viewer := pollingApp(t)
+	n = 0
+	// A stale generation is dropped.
+	if cmd := app.prPolled(prPollTickMsg{gen: app.prPollGen - 1}); cmd != nil {
+		t.Error("stale generation should stop")
+	}
+	// Leaving the screen stops it.
+	press(app, "esc")
+	if app.screen == screenPR {
+		t.Fatal("esc should leave the screen")
+	}
+	if cmd := app.prPolled(prPollTickMsg{gen: app.prPollGen}); cmd != nil || n != 0 || len(viewer.made) != 0 {
+		t.Error("the timer should stop once the screen is left")
+	}
+}
+
+func TestPRBackgroundResultDropped(t *testing.T) {
+	app, _ := pollingApp(t)
+	other := samplePR()
+	other.Title = "Other"
+	// Different ref.
+	app.prPollBusy = true
+	app.Update(prBackgroundMsg{ref: "elsewhere", pr: other})
+	// Manual read in flight.
+	app.prview.Start("s", "n", app.prview.ref, app.prview.dir)
+	app.Update(prBackgroundMsg{ref: app.prview.ref, pr: other})
+	if app.prPollBusy || strings.Contains(app.body(), "Other") {
+		t.Error("stale results should be dropped")
+	}
+	// Screen left.
+	app.prview.SetPR(samplePR())
+	press(app, "esc")
+	app.Update(prBackgroundMsg{ref: app.prview.ref, pr: other})
+	if app.prview.pr.Title == "Other" {
+		t.Error("a result after leaving should be dropped")
 	}
 }
