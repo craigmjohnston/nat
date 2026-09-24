@@ -205,12 +205,14 @@ final class RailSectionRulesTests: XCTestCase {
 
     /// Three scrolls, one per section, and each is given its share as a
     /// frame and scrolls within it — never the one shared scroll the plan
-    /// used to be.
+    /// used to be. The fourth is the PROPOSED tree's, which stands in for
+    /// TODO and DONE on an Untitled tab and fills the rail below ACTIVE on its
+    /// own rather than taking a share.
     func testEachSectionScrollsWithinItsOwnShare() throws {
         let s = try source()
         XCTAssertEqual(
-            s.components(separatedBy: "ScrollView {").count - 1, 3,
-            "one scroll per section and no more"
+            s.components(separatedBy: "ScrollView {").count - 1, 4,
+            "one scroll per section, plus the proposed tree's, and no more"
         )
         for section in RailSection.allCases {
             XCTAssertTrue(

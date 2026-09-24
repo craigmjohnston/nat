@@ -141,6 +141,15 @@ Untitled-tab workspace id (`plan:<id>`), run in a scratch dir nat makes at
 `agent-kill --workshop --workspace <id>` ends only that tab's own session —
 never the legacy bare one.
 
+`plan-proposal --workspace <id> --json` reads back what `plan-propose` wrote
+(`{"proposal": null}` with none yet — the app polls it on every nudge; a file
+that won't parse is an error, which the app logs and ignores). `plan-accept
+--workspace <id> --name <name>` is the user's Accept: `createLocalProject` (no
+working dir — Settings gives it later, as for an opened folder), then the
+proposal's plan through `applyPlan`, then the proposal file removed. Refusals
+(no proposal, empty name, an invalid plan) all land before the project is made;
+a failure while filing leaves the project, what was filed and the proposal.
+
 ## `usage`
 
 Probes Claude Code's own statusline for the account's Pro/Max rate-limit

@@ -64,6 +64,9 @@ struct RailView: View {
     @Environment(\.ground) private var ground
     @State private var expandedMilestones: Set<String> = []
     @State private var expandedSeeded = false
+    /// The PROPOSED tree's folders folded away — every one starts open, since
+    /// the point of the tree is reading all of it.
+    @State private var collapsedProposed: Set<String> = []
     /// Milestone IDs whose DONE-section folder is expanded. Its own set
     /// rather than `expandedMilestones`, since a part-done milestone is a
     /// folder in both sections and the two fold independently.
@@ -349,13 +352,19 @@ struct RailView: View {
         let heights = sectionHeights
         return VStack(alignment: .leading, spacing: 0) {
             activeSection(height: heights[.active])
-            todoSection(height: heights[.todo])
-            if railModel.doneSummary != nil || !railModel.doneSessions.isEmpty {
-                doneSection(railModel.doneSummary, height: heights[.done])
+            if let proposal = appModel.activeProposal {
+                // A workshop's proposed plan takes the rail below ACTIVE:
+                // there is no plan of its own yet for TODO or DONE to hold.
+                proposedSection(proposal)
+            } else {
+                todoSection(height: heights[.todo])
+                if railModel.doneSummary != nil || !railModel.doneSessions.isEmpty {
+                    doneSection(railModel.doneSummary, height: heights[.done])
+                }
+                // The air under the last section, and what takes up the rail's
+                // slack when the three of them want less than there is.
+                Spacer(minLength: CGFloat(RailSectionLayout.footRoom))
             }
-            // The air under the last section, and what takes up the rail's
-            // slack when the three of them want less than there is.
-            Spacer(minLength: CGFloat(RailSectionLayout.footRoom))
         }
     }
 
@@ -435,6 +444,138 @@ struct RailView: View {
                 .frame(height: height)
             }
         }
+    }
+
+    /// PROPOSED — the plan the workshop's agent drafted, per `NFRail`'s
+    /// proposal stage: a heading with the counts, the project name to accept it
+    /// under, the tree (the ordinary folder and slice rows, all Todo), and the
+    /// decision pinned at the foot above a hairline.
+    private func proposedSection(_ proposal: PlanProposal) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionRule
+
+            HStack(spacing: RailSlot.spacing) {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: Typo.caption, weight: .semibold))
+                    .frame(width: RailSlot.slot)
+                    .ink(.accent)
+
+                Text(ProposalText.heading)
+                    .font(.system(size: Typo.caption, weight: .semibold))
+                    .tracking(0.4)
+                    .ink(.accent)
+
+                Spacer()
+
+                Text(ProposalText.counts(milestones: proposal.milestoneCount, slices: proposal.sliceCount))
+                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .monospacedDigit()
+                    .ink(.tertiary)
+            }
+            .padding(.leading, RailSlot.leading)
+            .padding(.trailing, RailSlot.trailing)
+            .frame(height: RailSlot.rowHeight)
+
+            proposalNameField
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
+                .padding(.bottom, 12)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(proposal.folders, id: \.milestoneID) { folder in
+                        let expanded = !collapsedProposed.contains(folder.milestoneID)
+                        folderRow(folder, inDone: false, expanded: expanded) {
+                            toggle(folder.milestoneID, in: &collapsedProposed)
+                        }
+                        if expanded {
+                            VStack(spacing: 0) {
+                                ForEach(folder.slices, id: \.sliceID) { slice in
+                                    sliceRow(slice, depth: 1)
+                                }
+                            }
+                            .background(alignment: .leading) {
+                                Rectangle()
+                                    .fill(DesignTokens.rule(.border, on: .window))
+                                    .frame(width: 1)
+                                    .padding(.leading, guideInset(inDone: false))
+                            }
+                        }
+                    }
+                }
+                .inelastic()
+            }
+            .frame(maxHeight: .infinity)
+
+            proposalFoot
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    /// The editable project name, prefilled with the agent's suggestion.
+    private var proposalNameField: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
+                TextField("Project name", text: Binding(
+                    get: { appModel.proposalName },
+                    set: { appModel.proposalName = $0 }
+                ))
+                .textFieldStyle(.plain)
+                .font(Typo.mono(size: Typo.body, weight: .semibold))
+                .ink(.primary)
+                .onSubmit { Task { await appModel.acceptProposal() } }
+
+                Image(systemName: "pencil")
+                    .font(.system(size: 11, weight: .regular))
+                    .ink(.tertiary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .field(radius: 6)
+
+            if let error = appModel.proposalError {
+                Text(error)
+                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .ink(.danger)
+                    .padding(.horizontal, 2)
+            } else {
+                Text(ProposalText.nameCaption)
+                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .ink(.tertiary)
+                    .padding(.horizontal, 2)
+            }
+        }
+    }
+
+    /// Accept beside Keep workshopping, and what accepting will do, pinned at
+    /// the rail's foot above a hairline.
+    private var proposalFoot: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                Button(action: { Task { await appModel.acceptProposal() } }) {
+                    Text(ProposalText.acceptLabel)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(appModel.proposalAccepting)
+
+                Button(action: { appModel.keepWorkshopping() }) {
+                    Text(ProposalText.keepLabel)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(SecondaryButtonStyle())
+            }
+
+            Text(ProposalText.acceptCaption(name: appModel.proposalName))
+                .font(.system(size: Typo.subhead, weight: .regular))
+                .ink(.tertiary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 14)
+        .padding(.bottom, 16)
+        .overlay(alignment: .top) { Rule().padding(.horizontal, 12) }
     }
 
     /// DONE — the finished slices' home at the foot of the rail: every

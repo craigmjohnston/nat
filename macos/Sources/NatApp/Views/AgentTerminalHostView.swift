@@ -32,14 +32,21 @@ public struct AgentTerminalHostView: NSViewRepresentable {
     /// termination turned out to be.
     private let onExit: (TerminalExitReason) -> Void
 
+    /// A counter a caller bumps to ask for keyboard focus: each new value
+    /// makes the terminal the window's first responder once. The value it
+    /// arrives with asks for nothing — only a change does.
+    private let focusRequest: Int
+
     public init(
         attachSpec: AttachSpec,
         sessionExists: @escaping () -> Bool,
-        onExit: @escaping (TerminalExitReason) -> Void
+        onExit: @escaping (TerminalExitReason) -> Void,
+        focusRequest: Int = 0
     ) {
         self.attachSpec = attachSpec
         self.sessionExists = sessionExists
         self.onExit = onExit
+        self.focusRequest = focusRequest
     }
 
     public func makeCoordinator() -> Coordinator {
@@ -104,6 +111,9 @@ public struct AgentTerminalHostView: NSViewRepresentable {
         // always reads gnat's current chrome.
         TerminalTheme.apply(DesignTokens.palette(for: colorScheme), to: nsView)
         context.coordinator.notifyAppearanceChange(colorScheme, on: nsView)
+        if context.coordinator.takeFocusRequest(focusRequest) {
+            nsView.window?.makeFirstResponder(nsView)
+        }
     }
 
     public static func dismantleNSView(_ nsView: LocalProcessTerminalView, coordinator: Coordinator) {
@@ -132,6 +142,17 @@ public struct AgentTerminalHostView: NSViewRepresentable {
         /// applied before the attach process ever started, so a report
         /// there would tell Claude Code nothing it had not already asked.
         private var lastColorScheme: ColorScheme?
+
+        /// The focus request this coordinator last saw, starting at the one
+        /// the view was made with so that mounting asks for nothing.
+        private var lastFocusRequest: Int?
+
+        /// Whether `request` is a new one — true once per change.
+        func takeFocusRequest(_ request: Int) -> Bool {
+            defer { lastFocusRequest = request }
+            guard let last = lastFocusRequest else { return false }
+            return last != request
+        }
 
         init(sessionExists: @escaping () -> Bool, onExit: @escaping (TerminalExitReason) -> Void) {
             self.sessionExists = sessionExists

@@ -30,6 +30,9 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// fixed `agents` — a launch puts one in the next reading and a kill
     /// takes it out, as tmux would.
     private let workspaceAgents = Box<[AgentStatus]>([])
+    /// The plan a workshop has proposed, as `plan-proposal` reads it back —
+    /// nil until something sets one, as a workshop that has not drafted yet.
+    private let proposalBox = Box<PlanProposal?>(nil)
     private let diff: SliceDiff
     private let pr: PRDetail
     private let config: ConfigDoc
@@ -69,6 +72,11 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         self.config = config
         self.usageReading = usage
         self.sessionsList = sessions
+    }
+
+    /// Say what the workshop has proposed, as `plan-propose` would have.
+    public func setProposal(_ proposal: PlanProposal?) {
+        proposalBox.set(proposal)
     }
 
     /// The writes this client was asked to make, oldest first.
@@ -245,6 +253,21 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         try await record("agent-kill --workshop --workspace \(workspaceID)")
         let tag = TmuxSession.planTag(projectID: workspaceID)
         workspaceAgents.set(workspaceAgents.get().filter { $0.sliceID != tag })
+    }
+
+    public func planProposal(workspaceID: String) async throws -> PlanProposal? {
+        try await answer(proposalBox.get())
+    }
+
+    public func planAccept(workspaceID: String, name: String) async throws -> PlanAccepted {
+        try await record("plan-accept --workspace \(workspaceID) --name \(name)")
+        let proposal = proposalBox.get()
+        proposalBox.set(nil)
+        return PlanAccepted(
+            project: ProjectEntry(id: Fixtures.acceptedProjectID, name: name),
+            milestones: proposal?.milestoneCount ?? 0,
+            slices: proposal?.sliceCount ?? 0
+        )
     }
 
     public func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult {

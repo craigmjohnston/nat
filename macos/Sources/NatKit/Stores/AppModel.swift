@@ -68,6 +68,33 @@ public final class AppModel {
     /// took, or the tab closing.
     private var workshopPlanFiles: [String: PlanFile] = [:]
 
+    /// The plan each Untitled tab's workshop has proposed, by tab — what the
+    /// rail draws as the PROPOSED tree. Replaced in place by a revised one.
+    public private(set) var proposals: [String: PlanProposal] = [:]
+
+    /// The project name the user has typed over the agent's suggestion, per
+    /// tab: absent while the field still shows the suggestion, so a revised
+    /// proposal's own name follows it until the user has said otherwise.
+    private var proposalNameEdits: [String: String] = [:]
+
+    /// True while an Accept is under way, and what the last one refused with —
+    /// drawn at the name field.
+    public private(set) var proposalAccepting = false
+    public private(set) var proposalError: String?
+
+    /// What each accepted plan went in as, by project: the pane's "Plan
+    /// accepted" state, shown until something is selected.
+    public private(set) var acceptedPlans: [String: PlanAccepted] = [:]
+
+    /// Bumped by "Keep workshopping"; the workshop terminal takes keyboard
+    /// focus on each change.
+    public private(set) var terminalFocusRequest = 0
+
+    /// Where the nudge marker is, once `start` has been told: what the
+    /// proposal watch polls. Nil before then, and no watch is started.
+    @ObservationIgnored private var nudgePath: String?
+    @ObservationIgnored private var proposalWatcher: NudgeWatcher?
+
     /// Ordered list of project tabs: (id, name).
     public private(set) var projectTabs: [(id: String, name: String)] = []
 
@@ -121,6 +148,7 @@ public final class AppModel {
         projectTabs.append((id: id, name: Self.untitledName))
         workspaceIDs[id] = UUID().uuidString.lowercased()
         activeProjectID = id
+        startProposalWatch()
         return id
     }
 
@@ -474,6 +502,7 @@ public final class AppModel {
     /// to show and no project to activate until one is opened or created,
     /// which comes back through `addProject(id:name:)`.
     public func start(configPath: String, nudgePath: String) async {
+        self.nudgePath = nudgePath
         do {
             let loadedConfig = try await configReader.readConfig(from: configPath)
             self.config = loadedConfig
@@ -658,9 +687,7 @@ public final class AppModel {
         if tabHasLiveWorkshop(projectID), let refusal = await killWorkshop(ofTab: projectID) {
             return refusal
         }
-        workspaceIDs[projectID] = nil
-        workshopDrafts[projectID] = nil
-        workshopPlanFiles[projectID] = nil
+        forgetUntitledTab(projectID)
         workshopSelectedProjects.remove(projectID)
         let closing = Set((stores[projectID]?.state.projectInfo?.slices ?? []).map(\.id))
         await reapFinishedAgents(ignoringHoldsFor: closing)
@@ -728,6 +755,7 @@ public final class AppModel {
         } else if let replaced {
             projectTabs.remove(at: replaced)
         }
+        if let untitledID, replaced != nil { forgetUntitledTab(untitledID) }
         await activateProject(id)
     }
 
@@ -969,6 +997,127 @@ public final class AppModel {
         } catch {
             workshopLaunchError = error.localizedDescription
         }
+    }
+
+    // MARK: - Proposal
+
+    /// What a closed or handed-over Untitled tab leaves behind: its workspace
+    /// id, draft, attached file and proposal. The watch on the nudge marker
+    /// stops with the last Untitled tab.
+    private func forgetUntitledTab(_ tabID: String) {
+        workspaceIDs[tabID] = nil
+        workshopDrafts[tabID] = nil
+        workshopPlanFiles[tabID] = nil
+        proposals[tabID] = nil
+        proposalNameEdits[tabID] = nil
+        if !projectTabs.contains(where: { isUntitledTab($0.id) }) {
+            proposalWatcher?.stop()
+            proposalWatcher = nil
+        }
+    }
+
+    /// Watch the nudge marker for `plan-propose`, which touches it: the same
+    /// mtime watch the project's own refresh rides on, so a proposal reaches
+    /// the rail within its one-second poll.
+    private func startProposalWatch() {
+        guard proposalWatcher == nil, let nudgePath else { return }
+        let watcher = NudgeWatcher()
+        watcher.start(path: nudgePath) { [weak self] in
+            Task { @MainActor in
+                await self?.refreshProposals()
+            }
+        }
+        proposalWatcher = watcher
+    }
+
+    /// Read every Untitled tab's proposal. One that will not read or parse is
+    /// logged and leaves the tab exactly as it was — the agent will propose
+    /// again — and none yet is the ordinary state, not news.
+    public func refreshProposals() async {
+        for (tabID, workspace) in workspaceIDs {
+            let proposal: PlanProposal?
+            do {
+                proposal = try await clientFactory().planProposal(workspaceID: workspace)
+            } catch {
+                NSLog("AppModel: could not read the proposal for %@: %@", workspace, error.localizedDescription)
+                continue
+            }
+            // The tab may have been closed or handed over during the read.
+            guard let proposal, workspaceIDs[tabID] == workspace, proposals[tabID] != proposal else { continue }
+            proposals[tabID] = proposal
+            proposalError = nil
+        }
+    }
+
+    /// The proposal the Untitled tab on screen holds, if any.
+    public var activeProposal: PlanProposal? {
+        activeProjectID.flatMap { proposals[$0] }
+    }
+
+    /// The name field: the user's own text, or the agent's suggestion until
+    /// they type one.
+    public var proposalName: String {
+        get {
+            guard let tabID = activeProjectID else { return "" }
+            return proposalNameEdits[tabID] ?? proposals[tabID]?.name ?? ""
+        }
+        set {
+            guard let tabID = activeProjectID, proposals[tabID] != nil else { return }
+            proposalNameEdits[tabID] = newValue
+            proposalError = nil
+        }
+    }
+
+    /// "Keep workshopping": back to the terminal, the tree left as it is — a
+    /// revised proposal replaces it in place.
+    public func keepWorkshopping() {
+        terminalFocusRequest += 1
+    }
+
+    /// "Accept plan": make the proposal a local project named from the field,
+    /// end the workshop session — accepting is the goodbye — and hand the tab
+    /// over to the project. An empty name refuses at the field; a refusal from
+    /// nat leaves the tab and its proposal as they were, with the reason at the
+    /// field.
+    public func acceptProposal() async {
+        guard let tabID = activeProjectID, isUntitledTab(tabID),
+              let workspace = workspaceIDs[tabID], proposals[tabID] != nil,
+              !proposalAccepting else { return }
+        let name = proposalName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            proposalError = ProposalText.emptyNameError
+            return
+        }
+        proposalAccepting = true
+        proposalError = nil
+        defer { proposalAccepting = false }
+        do {
+            let accepted = try await clientFactory().planAccept(workspaceID: workspace, name: name)
+            // The plan is in and the project exists; a session that will not
+            // die is logged rather than undoing that.
+            if tabHasLiveWorkshop(tabID), let refusal = await killWorkshop(ofTab: tabID) {
+                NSLog("AppModel: the workshop session outlived its accepted plan: %@", refusal)
+            }
+            acceptedPlans[accepted.project.id] = accepted
+            await addProject(id: accepted.project.id, name: accepted.project.name, replacing: tabID)
+            activityStore?.kick()
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                proposalError = message
+            } else {
+                proposalError = error.localizedDescription
+            }
+        } catch {
+            proposalError = error.localizedDescription
+        }
+    }
+
+    /// The accepted plan the pane is showing for the active project: while the
+    /// project's tab is as accepting left it, before anything is selected.
+    public var acceptedPlanShown: PlanAccepted? {
+        guard let id = activeProjectID, let accepted = acceptedPlans[id],
+              selectedSliceID == nil, selectedSessionID == nil, !workshopSelected else { return nil }
+        return accepted
     }
 
     /// Whether the active project's rail has the workshop row selected.
