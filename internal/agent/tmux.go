@@ -460,7 +460,7 @@ func (t *Tmux) breakOutAll(panes []pane, want func(pane) bool) (int, error) {
 // failure is reported, because until it is tagged nothing will find it again.
 func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.AgentModel) error {
 	carryEnv := os.Getenv("PATH") != "" && t.supportsSessionEnv()
-	out, err := t.run(LaunchArgs(session, workdir, promptFile, m, carryEnv)...)
+	out, err := t.run(launchArgs(session, workdir, promptFile, m, carryEnv, prepareStatusSink(session, m))...)
 	if err != nil {
 		return fmt.Errorf("launch tmux session %s: %w", session, err)
 	}
@@ -484,6 +484,12 @@ func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.Age
 // pane IDs are unique for the life of the server, where a name is whatever it
 // has last been set to.
 func LaunchArgs(session, workdir, promptFile string, m config.AgentModel, carryEnv bool) []string {
+	return launchArgs(session, workdir, promptFile, m, carryEnv, "")
+}
+
+// launchArgs is [LaunchArgs] with the file the session's statusline is teed
+// into (see [prepareStatusSink]); "" launches without a statusline.
+func launchArgs(session, workdir, promptFile string, m config.AgentModel, carryEnv bool, sink string) []string {
 	args := []string{
 		"new-session", "-d",
 		"-s", session,
@@ -494,7 +500,7 @@ func LaunchArgs(session, workdir, promptFile string, m config.AgentModel, carryE
 	}
 	args = append(args,
 		"-P", "-F", "#{pane_id}",
-		"sh", "-c", agentCommand(promptFile, m),
+		"sh", "-c", agentCommand(promptFile, m, sink),
 	)
 	args = append(args, statusOffArgs(session)...)
 	args = append(args, mouseOnArgs(session)...)
@@ -665,7 +671,7 @@ func inputFeatureArgs() []string {
 // [Tmux.LiveSlices] finds the running session back by.
 func (t *Tmux) LaunchBare(session, workdir, tag string, m config.AgentModel) error {
 	carryEnv := os.Getenv("PATH") != "" && t.supportsSessionEnv()
-	out, err := t.run(bareLaunchArgs(session, workdir, m, carryEnv)...)
+	out, err := t.run(bareLaunchArgs(session, workdir, m, carryEnv, prepareStatusSink(session, m))...)
 	if err != nil {
 		return fmt.Errorf("launch tmux session %s: %w", session, err)
 	}
@@ -679,7 +685,7 @@ func (t *Tmux) LaunchBare(session, workdir, tag string, m config.AgentModel) err
 
 // bareLaunchArgs is [LaunchArgs] with no prompt file to read the agent's
 // opening turn from — an ad hoc session's whole point is that there is none.
-func bareLaunchArgs(session, workdir string, m config.AgentModel, carryEnv bool) []string {
+func bareLaunchArgs(session, workdir string, m config.AgentModel, carryEnv bool, sink string) []string {
 	args := []string{
 		"new-session", "-d",
 		"-s", session,
@@ -690,7 +696,7 @@ func bareLaunchArgs(session, workdir string, m config.AgentModel, carryEnv bool)
 	}
 	args = append(args,
 		"-P", "-F", "#{pane_id}",
-		"sh", "-c", "claude"+modelFlags(m),
+		"sh", "-c", "claude"+modelFlags(m, sink),
 	)
 	args = append(args, statusOffArgs(session)...)
 	args = append(args, mouseOnArgs(session)...)
@@ -701,7 +707,7 @@ func bareLaunchArgs(session, workdir string, m config.AgentModel, carryEnv bool)
 // modelFlags is the --model/--effort/--settings flags [agentCommand] and
 // [bareLaunchArgs] both pass to claude, shared so the one rule — an unset
 // half of the model pair contributes no flag at all — is written once.
-func modelFlags(m config.AgentModel) string {
+func modelFlags(m config.AgentModel, sink string) string {
 	var flags string
 	if m.Model != "" {
 		flags += " --model " + shellQuote(m.Model)
@@ -709,7 +715,7 @@ func modelFlags(m config.AgentModel) string {
 	if m.Effort != "" {
 		flags += " --effort " + shellQuote(m.Effort)
 	}
-	return flags + ` --settings ` + shellQuote(`{"theme":"auto"}`)
+	return flags + ` --settings ` + shellQuote(statuslineSettings(sink))
 }
 
 // agentCommand is the shell command the session runs: start Claude Code with
@@ -730,8 +736,8 @@ func modelFlags(m config.AgentModel) string {
 // Either half of the model may be unset, and an unset one contributes no flag
 // at all rather than an empty value: Claude Code then decides for itself,
 // which is what it did before there was anywhere to say otherwise.
-func agentCommand(promptFile string, m config.AgentModel) string {
-	return fmt.Sprintf(`claude%s "$(cat %s)"`, modelFlags(m), shellQuote(promptFile))
+func agentCommand(promptFile string, m config.AgentModel, sink string) string {
+	return fmt.Sprintf(`claude%s "$(cat %s)"`, modelFlags(m, sink), shellQuote(promptFile))
 }
 
 // promptBuffer is the tmux paste buffer a prompt goes through on its way into

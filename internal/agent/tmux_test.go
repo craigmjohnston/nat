@@ -304,6 +304,11 @@ func TestLiveSlicesError(t *testing.T) {
 }
 
 func TestLaunch(t *testing.T) {
+	statusDir, err := AgentStatusDir()
+	if err != nil {
+		t.Fatalf("AgentStatusDir: %v", err)
+	}
+	sink := filepath.Join(statusDir, "nat-b4463d8f.json")
 	t.Setenv("PATH", "/Applications/gnat.app/Contents/MacOS:/opt/homebrew/bin:/usr/bin")
 	r := &fakeRunner{outs: map[string]string{
 		"-V":          "tmux 3.5a\n",
@@ -326,7 +331,7 @@ func TestLaunch(t *testing.T) {
 			// own nat commands resolve against it whoever started the server.
 			"-e", "PATH=/Applications/gnat.app/Contents/MacOS:/opt/homebrew/bin:/usr/bin",
 			"-P", "-F", "#{pane_id}",
-			"sh", "-c", `claude --settings '{"theme":"auto"}' "$(cat '/tmp/prompt.md')"`,
+			"sh", "-c", `claude --settings ` + shellQuote(statuslineSettings(sink)) + ` "$(cat '/tmp/prompt.md')"`,
 			// Chained onto the creation, so the session never shows a status
 			// bar — not even to someone attaching straight away.
 			";", "set-option", "-t", "nat-b4463d8f", "status", "off",

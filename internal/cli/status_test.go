@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -431,5 +433,56 @@ func TestStatusMarkdownWriteError(t *testing.T) {
 	err := Run(context.Background(), []string{"status"}, env)
 	if err == nil {
 		t.Fatal("status markdown with write error: want error, got nil")
+	}
+}
+
+// `status --json` carries each live agent's model, effort and context use from
+// its teed statusline payload; a session with none yet reports the fields
+// absent — omitted, never zero.
+func TestStatusJSONCarriesAgentStatusline(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	dir, err := agent.AgentStatusDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	payload := `{"model":{"id":"claude-sonnet-5","display_name":"Sonnet 5"},"effort":{"level":"high"},"context_window":{"used_percentage":12.5}}`
+	if err := os.WriteFile(filepath.Join(dir, "nat-11111111.json"), []byte(payload), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	env := Env{
+		NewTmux: func() *agent.Tmux {
+			return agent.NewTmuxWithRunner(buildStatusFakeRunner(
+				map[string]string{"slice-1": "nat-11111111", "slice-2": "nat-22222222"},
+				map[string]string{}))
+		},
+		Out: &out,
+	}
+	if err := Run(context.Background(), []string{"status", "--json"}, env); err != nil {
+		t.Fatalf("status --json: %v", err)
+	}
+
+	var doc struct {
+		Agents []map[string]any `json:"agents"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &doc); err != nil {
+		t.Fatalf("output is not JSON: %v", err)
+	}
+	if len(doc.Agents) != 2 {
+		t.Fatalf("agents = %v", doc.Agents)
+	}
+	first, second := doc.Agents[0], doc.Agents[1]
+	if first["model"] != "Sonnet 5" || first["effort"] != "high" || first["context_percent"] != 12.5 {
+		t.Errorf("slice-1 = %v, want the payload's model, effort and context", first)
+	}
+	for _, k := range []string{"model", "effort", "context_percent"} {
+		if _, present := second[k]; present {
+			t.Errorf("slice-2 has %q = %v, want it absent with no payload", k, second[k])
+		}
 	}
 }
