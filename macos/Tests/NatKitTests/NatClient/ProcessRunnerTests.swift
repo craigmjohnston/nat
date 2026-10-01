@@ -29,6 +29,17 @@ final class ProcessRunnerTests: XCTestCase {
         XCTAssertEqual(String(decoding: result.stdout), "override\n")
     }
 
+    func testStandardInputReachesTheCommandByteForByte() async throws {
+        // The composer's comment goes to nat on stdin: an emoji in it must
+        // arrive as the same UTF-8 bytes it left as.
+        let body = Data("Ship it 🎉 👩‍💻 ❤️".utf8)
+        let runner = ProcessRunner(natResolution: { .override("/bin/cat") })
+        let result = try await runner.run(
+            executable: "nat", arguments: [], workingDirectory: nil, standardInput: body)
+
+        XCTAssertEqual(result.stdout, body)
+    }
+
     func testADamagedInstallRefusesToRunAnotherNat() async {
         // The refusal is the point: a nat on PATH is exactly what must not be
         // reached from a bundle that lost its own.

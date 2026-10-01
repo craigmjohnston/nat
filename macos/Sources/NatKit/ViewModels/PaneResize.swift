@@ -31,6 +31,7 @@ public func paneResizedWidth(
 /// when there is nothing to write — no drag ever moved the pane, or it came
 /// back to exactly the persisted width. The live width lives in plain view
 /// state for the length of the drag; this is the one gate to the defaults.
+/// A height drag (`PaneRowResizeHandle`) commits through the same gate.
 public func paneCommittedWidth(live: Double?, persisted: Double) -> Double? {
     guard let live, live != persisted else { return nil }
     return live
@@ -46,4 +47,43 @@ public func paneCommittedWidth(live: Double?, persisted: Double) -> Double? {
 /// coordinate space, so this is the one question the caller has to ask.
 public func paneDragEndedOverHandle(handleFrame: CGRect, endLocation: CGPoint) -> Bool {
     handleFrame.contains(endLocation)
+}
+
+/// Which edge of a vertically resizable pane its drag handle sits on — the
+/// height counterpart of `PaneResizeEdge`.
+public enum PaneResizeVerticalEdge: Sendable {
+    /// The handle is on the pane's bottom edge (the upper pane of a split):
+    /// dragging down grows the pane.
+    case bottom
+    /// The handle is on the pane's top edge (the lower pane of a split):
+    /// dragging down shrinks the pane.
+    case top
+}
+
+/// The height a resize drag resolves to — `paneResizedWidth` read down the
+/// other axis: the height at the drag's start plus the translation in the
+/// pane's own direction, clamped to its bounds.
+public func paneResizedHeight(
+    startHeight: Double,
+    translation: Double,
+    edge: PaneResizeVerticalEdge,
+    minHeight: Double,
+    maxHeight: Double
+) -> Double {
+    let delta = edge == .bottom ? translation : -translation
+    return min(maxHeight, max(minHeight, startHeight + delta))
+}
+
+/// The upper pane's height in a two-pane split, given the persisted height
+/// and the height the split has to share: never below the upper pane's own
+/// floor, and never so tall that the lower pane falls below its floor. A
+/// split too short for both floors favours the upper one, which is what the
+/// divider hangs off — the lower pane then scrolls in whatever is left.
+public func paneSplitHeight(
+    stored: Double,
+    available: Double,
+    minUpper: Double,
+    minLower: Double
+) -> Double {
+    max(minUpper, min(stored, available - minLower))
 }

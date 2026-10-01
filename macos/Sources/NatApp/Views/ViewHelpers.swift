@@ -194,6 +194,67 @@ struct PaneResizeHandle: View {
     }
 }
 
+/// `PaneResizeHandle` turned on its side: the strip along a horizontal
+/// divider between two stacked panes, wearing the row-resize cursor and
+/// dragging the bound *height* of the pane on the `edge` side of it. The
+/// same bargain otherwise — `liveHeight` moves with the drag, `onCommit`
+/// persists once at its end — and the same cursor handling, for the same
+/// reasons; see the original.
+struct PaneRowResizeHandle: View {
+    /// The persisted height — where a drag starts from.
+    let height: Double
+    @Binding var liveHeight: Double?
+    let onCommit: (Double) -> Void
+    let minHeight: Double
+    let maxHeight: Double
+    let edge: PaneResizeVerticalEdge
+
+    @State private var startHeight: Double?
+    @State private var frame: CGRect = .zero
+
+    var body: some View {
+        Color.clear
+            .frame(height: 9)
+            .contentShape(Rectangle())
+            .pointerStyle(.rowResize)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onChange(of: proxy.frame(in: .global), initial: true) { _, rect in
+                            frame = rect
+                        }
+                }
+            )
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in
+                        let base = startHeight ?? height
+                        startHeight = base
+                        liveHeight = paneResizedHeight(
+                            startHeight: base,
+                            translation: value.translation.height,
+                            edge: edge,
+                            minHeight: minHeight,
+                            maxHeight: maxHeight
+                        )
+                        NSCursor.resizeUpDown.set()
+                    }
+                    .onEnded { value in
+                        startHeight = nil
+                        if let final = paneCommittedWidth(live: liveHeight, persisted: height) {
+                            onCommit(final)
+                        }
+                        liveHeight = nil
+                        if paneDragEndedOverHandle(handleFrame: frame, endLocation: value.location) {
+                            NSCursor.resizeUpDown.set()
+                        } else {
+                            NSCursor.arrow.set()
+                        }
+                    }
+            )
+    }
+}
+
 // MARK: - Rect Edge Set
 
 struct RectEdgeSet: OptionSet {

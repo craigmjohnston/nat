@@ -2,6 +2,8 @@ package gh
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -111,5 +113,35 @@ func TestCommentPRWithoutAURL(t *testing.T) {
 	}
 	if url != "" {
 		t.Errorf("CommentPR() = %q, want no URL recognised", url)
+	}
+}
+
+// TestCommentPRCarriesAMultibyteBodyToGh posts a comment with emoji in it —
+// a literal one, one built of a ZWJ sequence, and a variation selector —
+// through the real subprocess runner to a stand-in gh on PATH, and reads back
+// exactly what gh got on its stdin: every byte, none re-encoded or dropped.
+func TestCommentPRCarriesAMultibyteBodyToGh(t *testing.T) {
+	bin := t.TempDir()
+	got := filepath.Join(t.TempDir(), "body")
+	script := "#!/bin/sh\ncat > '" + got + "'\necho https://github.test/craig/nat/pull/7#issuecomment-9\n"
+	if err := os.WriteFile(filepath.Join(bin, Binary), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	body := "Ship it 🎉 — 👩‍💻 says ❤️ and 日本語"
+	url, err := New().CommentPR(t.TempDir(), "7", body)
+	if err != nil {
+		t.Fatalf("CommentPR() = %v, want a comment posted", err)
+	}
+	if url != "https://github.test/craig/nat/pull/7#issuecomment-9" {
+		t.Errorf("CommentPR() = %q, want the comment's URL", url)
+	}
+	posted, err := os.ReadFile(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(posted) != body {
+		t.Errorf("gh read %q, want %q", posted, body)
 	}
 }

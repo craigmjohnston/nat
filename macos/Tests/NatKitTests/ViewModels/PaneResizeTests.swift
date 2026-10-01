@@ -44,6 +44,49 @@ final class PaneResizeTests: XCTestCase {
         )
     }
 
+    // MARK: - Heights
+
+    func testBottomEdgeGrowsWithADownwardDrag() {
+        XCTAssertEqual(
+            paneResizedHeight(startHeight: 200, translation: 30, edge: .bottom, minHeight: 80, maxHeight: 400),
+            230
+        )
+    }
+
+    func testTopEdgeShrinksWithADownwardDrag() {
+        XCTAssertEqual(
+            paneResizedHeight(startHeight: 200, translation: 30, edge: .top, minHeight: 80, maxHeight: 400),
+            170
+        )
+    }
+
+    func testHeightClampsAtBothBounds() {
+        XCTAssertEqual(
+            paneResizedHeight(startHeight: 200, translation: -5000, edge: .bottom, minHeight: 80, maxHeight: 400),
+            80
+        )
+        XCTAssertEqual(
+            paneResizedHeight(startHeight: 200, translation: 5000, edge: .bottom, minHeight: 80, maxHeight: 400),
+            400
+        )
+    }
+
+    // MARK: - A split's upper pane
+
+    func testSplitKeepsAStoredHeightThatFits() {
+        XCTAssertEqual(paneSplitHeight(stored: 200, available: 600, minUpper: 80, minLower: 160), 200)
+    }
+
+    func testSplitLeavesTheLowerPaneItsFloor() {
+        XCTAssertEqual(paneSplitHeight(stored: 500, available: 600, minUpper: 80, minLower: 160), 440)
+    }
+
+    func testSplitNeverDropsBelowTheUpperFloor() {
+        XCTAssertEqual(paneSplitHeight(stored: 20, available: 600, minUpper: 80, minLower: 160), 80)
+        // Too short for both: the upper pane keeps its floor.
+        XCTAssertEqual(paneSplitHeight(stored: 200, available: 200, minUpper: 80, minLower: 160), 80)
+    }
+
     // MARK: - Where a drag ended
 
     func testADragEndedOverTheHandle() {

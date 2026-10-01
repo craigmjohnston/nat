@@ -823,8 +823,8 @@ enum AppStories {
         Story(
             name: "pr-skeleton",
             summary: "The PR tab on a pull request still being read — the placeholder under "
-                + "the disabled Merge/Open-in-GitHub actions, section labels and composer "
-                + "the loaded pane draws.",
+                + "the disabled Merge/Open-in-GitHub actions, split at the loaded pane's divider, "
+                + "with the comment box's band at the conversation's foot.",
             size: pane
         ) {
             PRTabView(appModel: Fixtures.loadingAppModel(), slice: Fixtures.slice(Fixtures.approveSliceID))
@@ -833,7 +833,8 @@ enum AppStories {
 
         Story(
             name: "pr-ready-to-merge",
-            summary: "The PR tab on a green pull request — the merge box says yes.",
+            summary: "The PR tab on a green pull request — the merge box says yes; the "
+                + "description over the divider, the conversation ending in the comment box under it.",
             size: pane
         ) {
             let appModel = await Fixtures.startedAppModel()
@@ -843,7 +844,8 @@ enum AppStories {
 
         Story(
             name: "pr-failing-checks",
-            summary: "The PR tab with checks red: the rollup and the verdict that refuses the merge.",
+            summary: "The PR tab with checks red: the rollup and the verdict that refuses the merge, "
+                + "the review's request for changes in the conversation pane.",
             size: pane
         ) {
             let appModel = await Fixtures.startedAppModel(
@@ -854,13 +856,41 @@ enum AppStories {
 
         Story(
             name: "pr-conflicting",
-            summary: "The PR tab on a branch that conflicts with its base.",
+            summary: "The PR tab on a branch that conflicts with its base — a conversation with "
+                + "nothing said in it, the comment box straight under its line.",
             size: pane
         ) {
             let appModel = await Fixtures.startedAppModel(
                 client: FixtureNatClient(pr: Fixtures.prConflicting))
             return PRTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.approveSliceID))
                 .surface(.window)
+        },
+
+        Story(
+            name: "pr-split-dragged-emoji",
+            summary: "The PR tab with its divider dragged up off the default, the conversation "
+                + "pane taking the room: a comment typed with an emoji and one written in "
+                + ":shortcode:s, both drawn as emoji (a code span's shortcode left as written).",
+            size: pane
+        ) {
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(pr: Fixtures.prWithEmoji))
+            // A suite of the gallery's own, so a story's divider never moves
+            // the one the app itself remembers.
+            let defaults = UserDefaults(suiteName: "gnat.gallery.pr-split-dragged")!
+            defaults.set(PRSplitMetrics.minUpper + 30, forKey: PRSplitMetrics.storageKey)
+            return PRTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.approveSliceID))
+                .surface(.window)
+                .defaultAppStorage(defaults)
+        },
+
+        Story(
+            name: "pr-composer-typed",
+            summary: "The comment box with an emoji comment typed into it: the editor grown to "
+                + "its two lines, under its 60pt ceiling, rather than sitting at either bound.",
+            size: CGSize(width: 560, height: 140)
+        ) {
+            PRComposerTypedStory()
         },
 
         // MARK: - Ad hoc sessions
@@ -1064,4 +1094,23 @@ enum AppStories {
             return SettingsView(appModel: await Fixtures.startedAppModel(client: client), client: client, initialTab: .agents)
         },
     ])
+}
+
+/// `PRComposerView` holding a typed comment, which its binding needs a home
+/// of its own for.
+private struct PRComposerTypedStory: View {
+    @State private var text = "Ship it 🎉 — the worst verdict reads right 👍\nOne nit: the heading wraps 🙈"
+
+    var body: some View {
+        PRComposerView(
+            placeholder: "Leave a comment on the pull request…",
+            text: $text,
+            isSending: false,
+            error: nil,
+            onSend: {}
+        )
+        .padding(22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .surface(.window)
+    }
 }

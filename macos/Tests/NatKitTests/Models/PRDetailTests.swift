@@ -67,6 +67,16 @@ final class PRDetailTests: XCTestCase {
         """))
     }
 
+    func testCommentBodyKeepsEmojiLiteralAndEscaped() throws {
+        // nat writes emoji as literal UTF-8, but a JSON writer may spell one
+        // as a surrogate-pair escape; both must read back as the emoji, with
+        // a shortcode left exactly as written for the renderer to convert.
+        let comment = try decode(PRCommentEntry.self, #"""
+        {"author": "craig", "body": "🎉 \ud83d\ude80 :tada:", "created_at": "2026-03-01T10:00:00Z", "url": "https://x"}
+        """#)
+        XCTAssertEqual(comment.body, "🎉 🚀 :tada:")
+    }
+
     // MARK: - PRDetail's optional change tally
 
     func testPRDetailDecodesWithoutTheOptionalTally() throws {

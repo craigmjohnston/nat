@@ -113,6 +113,44 @@ extension Fixtures {
         commits: commits.count
     )
 
+    /// The green pull request with a celebratory thread: one comment typed
+    /// with a literal emoji, one written in GitHub's `:shortcode:`s — which
+    /// GitHub draws as emoji, and so must the PR tab.
+    public static let prWithEmoji = PRDetail(
+        number: 214,
+        title: "Draw the merge box on the PR tab",
+        body: prBody,
+        state: "OPEN",
+        isDraft: false,
+        author: "craigmjohnston",
+        baseRefName: "main",
+        headRefName: diffBranch,
+        url: prURL,
+        checks: passingChecks,
+        reviews: approvingReviews,
+        comments: prComments + [
+            PRCommentEntry(
+                author: "octocat",
+                body: "Worst verdict, and it reads right 🎉 — ship it 🚀",
+                createdAt: minutesAgo(20),
+                url: prURL + "#issuecomment-3"
+            ),
+            PRCommentEntry(
+                author: "craigmjohnston",
+                body: ":tada: :+1: merging once `:shipit:` stops being a joke :sparkles:",
+                createdAt: minutesAgo(10),
+                url: prURL + "#issuecomment-4"
+            ),
+        ],
+        reviewDecision: "APPROVED",
+        mergeable: "MERGEABLE",
+        mergeStateStatus: "CLEAN",
+        additions: diffAdds,
+        deletions: diffDels,
+        changedFiles: sliceDiff.files.count,
+        commits: commits.count
+    )
+
     /// The branch conflicts with its base: the review has not been left and
     /// the checks have not been run, so the mergeability is the one verdict
     /// that has anything to say.
