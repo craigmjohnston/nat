@@ -8,6 +8,15 @@ import "strings"
 // level.
 const PRDescriptionHeading = "PR description"
 
+// FollowUpsHeading is the heading `slice-followups` files an agent's proposed
+// follow-ups under, one numbered item per proposal; FollowUpsTriagedHeading is
+// the one `slice-triage` records the user's decision on them under. Both are
+// matched as PRDescriptionHeading is, and both are read by store.PendingFollowUps.
+const (
+	FollowUpsHeading        = "Follow-ups"
+	FollowUpsTriagedHeading = "Follow-ups triaged"
+)
+
 // PRDescriptionOf is the pull request description an agent left on a slice
 // page: the blocks between its PR description heading and the next heading of
 // the same or higher level, rendered as markdown. A page with no such heading —

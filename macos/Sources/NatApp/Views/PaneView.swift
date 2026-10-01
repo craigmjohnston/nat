@@ -48,6 +48,13 @@ struct PaneView: View {
         appModel.projectStore?.state.projectInfo?.milestones.first { $0.id == slice.milestoneID }?.name
     }
 
+    /// The slice's detail as `slice-show` last read it, through the
+    /// project's shared cache.
+    func selectedDetail(_ slice: Slice) -> SliceDetail? {
+        guard let projectID = appModel.projectStore?.projectID else { return nil }
+        return appModel.sliceDetailStore(projectID: projectID).state(for: slice.id).detail
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // The workshop row's pane: no workflow strip, just the planning
@@ -86,25 +93,46 @@ struct PaneView: View {
                 // action that leads there landing draws its skeleton rather
                 // than the real tab, whose data is not there to read yet.
                 let advancing = appModel.sliceActions.advance(for: slice.id)?.to == currentTab
-                switch currentTab {
-                case .brief:
-                    BriefTabView(appModel: appModel, slice: slice, onTabChange: { tab in
-                        currentTab = tab
-                    })
-                case .agent:
-                    if advancing {
-                        AgentSkeletonView()
-                    } else {
-                        AgentTabView(appModel: appModel, slice: slice)
+                HStack(spacing: 0) {
+                    switch currentTab {
+                    case .brief:
+                        BriefTabView(appModel: appModel, slice: slice, onTabChange: { tab in
+                            currentTab = tab
+                        })
+                    case .agent:
+                        if advancing {
+                            AgentSkeletonView()
+                        } else {
+                            AgentTabView(appModel: appModel, slice: slice)
+                        }
+                    case .diff:
+                        DiffTabView(appModel: appModel, slice: slice)
+                    case .pr:
+                        if advancing {
+                            PRSkeletonView()
+                        } else {
+                            PRTabView(appModel: appModel, slice: slice)
+                        }
                     }
-                case .diff:
-                    DiffTabView(appModel: appModel, slice: slice)
-                case .pr:
-                    if advancing {
-                        PRSkeletonView()
-                    } else {
-                        PRTabView(appModel: appModel, slice: slice)
+                    // The Follow-ups sidebar is the pane's, not a tab's: up on
+                    // every tab while the agent's proposals await a decision,
+                    // and absent otherwise.
+                    if let detail = selectedDetail(slice), !detail.followUps.isEmpty {
+                        FollowUpsSidebarView(
+                            appModel: appModel,
+                            slice: slice,
+                            followUps: detail.followUps,
+                            milestone: milestoneName(for: slice) ?? "",
+                            hasLiveAgent: appModel.activityStore?.agents[slice.id] != nil
+                        )
                     }
+                }
+                .task(id: slice.id) {
+                    // Read on selection whatever tab the pane lands on: the
+                    // Brief tab reads it too, but the pane of a working slice
+                    // lands on Agent, where the sidebar matters most.
+                    guard let projectID = appModel.projectStore?.projectID else { return }
+                    await appModel.sliceDetailStore(projectID: projectID).fetch(sliceRef: slice.id)
                 }
             } else if let accepted = appModel.acceptedPlanShown {
                 // The plan a workshop proposed has just been accepted into

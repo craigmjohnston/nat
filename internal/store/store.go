@@ -194,6 +194,13 @@ type Store interface {
 	// CompleteSlice closes a slice out: the summary written on it first, then
 	// whichever properties the ending calls for.
 	CompleteSlice(ctx context.Context, id string, sh Shape, o Outcome) (domain.Slice, error)
+	// ProposeFollowUps files follow-ups an agent handed in on its slice, under a
+	// Follow-ups heading in the body, where [PendingFollowUps] reads them back.
+	ProposeFollowUps(ctx context.Context, id string, items []FollowUp) error
+	// RecordTriage files the user's decision on a slice's follow-ups, under a
+	// Follow-ups triaged heading in the body, which is what takes them out of
+	// [PendingFollowUps].
+	RecordTriage(ctx context.Context, id string, items []Triaged) error
 	// RecordPR writes a pull request's URL onto a slice and nothing else. The
 	// slice stays in progress: the merge is what marks work landed.
 	RecordPR(ctx context.Context, id, url string) error

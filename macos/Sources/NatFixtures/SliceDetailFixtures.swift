@@ -72,6 +72,52 @@ extension Fixtures {
         brief: ""
     )
 
+    /// The three follow-ups the activity slice's agent proposed before
+    /// handing back — the mock's own: one to queue, one to fold in, one to
+    /// drop.
+    public static let proposedFollowUps: [FollowUp] = [
+        FollowUp(
+            index: 1,
+            title: "Persist the conversation split width per project",
+            brief: "The split's width lives under one AppStorage key, so every project shares it. "
+                + "The PR sidebar has the same problem. Store both per project the way pane widths already are."
+        ),
+        FollowUp(
+            index: 2,
+            title: "Render the emoji picker open in a gallery story",
+            brief: "The picker is open-state only and no story draws it, so StoryNamesTests can't guard it. "
+                + "Add pr-composer-emoji with the picker open over the composer."
+        ),
+        FollowUp(
+            index: 3,
+            title: "Remove the dead reply-threading code in PRConversationView",
+            brief: "replyTargets and its two helpers haven't been read since the inline composer landed. "
+                + "Delete them and the fake in FakeRunner that feeds them."
+        ),
+    ]
+
+    /// The activity slice with its agent waiting on a decision about those
+    /// follow-ups — not in `sliceDetails`, so only a client built with
+    /// `followUpsSliceDetails` draws the sidebar.
+    public static let followUpsSliceDetail = SliceDetail(
+        id: activitySliceID,
+        name: "Poll tmux for agent activity",
+        url: "https://notion.so/\(activitySliceID)",
+        status: "In progress",
+        milestone: "M2: Review flow",
+        assignee: "Craig Johnston",
+        blocked: false,
+        handedBack: false,
+        state: "in progress",
+        brief: "Poll tmux every second for each agent's activity.",
+        followUps: proposedFollowUps
+    )
+
+    /// `sliceDetails` with the activity slice's follow-ups added.
+    public static var followUpsSliceDetails: [String: SliceDetail] {
+        sliceDetails.merging([activitySliceID: followUpsSliceDetail]) { _, new in new }
+    }
+
     /// Every slice a fixture has a detail for, keyed the way
     /// `SliceDetailStore` asks for one.
     public static var sliceDetails: [String: SliceDetail] {

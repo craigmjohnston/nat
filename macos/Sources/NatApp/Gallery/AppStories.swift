@@ -114,6 +114,48 @@ enum AppStories {
         return PaneView(appModel: appModel).surface(.window)
     }
 
+    /// The sidebar on its own: its default width, over the mock's height.
+    private static let followUpsSidebar = CGSize(width: 232, height: 600)
+
+    /// An app model on the activity slice with its three follow-ups pending
+    /// — its agent live (and waiting) unless `live` is false — and the
+    /// choices given already made in the sidebar.
+    @MainActor
+    private static func followUpsModel(live: Bool, choices: [Int: FollowUpChoice]) async -> AppModel {
+        let sliceID = Fixtures.activitySliceID
+        let agents = live ? Fixtures.agentStatuses : Fixtures.agentStatuses.filter { $0.sliceID != sliceID }
+        let appModel = await Fixtures.startedAppModel(
+            client: FixtureNatClient(agents: agents, details: Fixtures.followUpsSliceDetails))
+        appModel.selectedSliceID = sliceID
+        if let projectID = appModel.projectStore?.projectID {
+            await appModel.sliceDetailStore(projectID: projectID).fetch(sliceRef: sliceID)
+        }
+        for _ in 0..<50 where live && appModel.activityStore?.agents[sliceID] == nil {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        for (index, choice) in choices {
+            appModel.followUpStore.setChoice(choice, sliceID: sliceID, index: index)
+        }
+        return appModel
+    }
+
+    /// The Follow-ups sidebar alone over `followUpsModel`.
+    @MainActor
+    private static func followUpsSidebarStory(live: Bool, choices: [Int: FollowUpChoice], applying: Bool = false) async -> some View {
+        let appModel = await followUpsModel(live: live, choices: choices)
+        if applying { appModel.followUpStore.markApplying(sliceID: Fixtures.activitySliceID) }
+        let slice = appModel.projectStore?.state.projectInfo?.slices.first { $0.id == Fixtures.activitySliceID }
+        return Group {
+            if let slice {
+                FollowUpsSidebarView(
+                    appModel: appModel, slice: slice, followUps: Fixtures.proposedFollowUps,
+                    milestone: "M2: Review flow", hasLiveAgent: live)
+            }
+        }
+        .frame(maxHeight: .infinity)
+        .surface(.card)
+    }
+
     static let catalog = StoryCatalog([
 
         // MARK: - The window
@@ -891,6 +933,47 @@ enum AppStories {
             size: CGSize(width: 560, height: 140)
         ) {
             PRComposerTypedStory()
+        },
+
+        // MARK: - Follow-ups
+
+        Story(
+            name: "followups-pending",
+            summary: "The whole window on a slice whose agent proposed three follow-ups and "
+                + "waits: the Follow-ups sidebar up beside the Agent tab, one row queued, one "
+                + "folded in, one dropped, and the rail row reading 3 follow-ups.",
+            size: window
+        ) {
+            let appModel = await followUpsModel(live: true, choices: [1: .queue, 2: .fold, 3: .drop])
+            return WindowShellView(appModel: appModel)
+                .environment(\.terminalStubbed, true)
+        },
+
+        Story(
+            name: "followups-undecided",
+            summary: "The Follow-ups sidebar with nothing decided: Apply dimmed, the foot "
+                + "asking for every follow-up to be decided or all discarded.",
+            size: followUpsSidebar
+        ) {
+            await followUpsSidebarStory(live: true, choices: [:])
+        },
+
+        Story(
+            name: "followups-no-agent",
+            summary: "The Follow-ups sidebar with no live agent: Fold in unavailable on every "
+                + "row and the foot warning that nothing can be folded in.",
+            size: followUpsSidebar
+        ) {
+            await followUpsSidebarStory(live: false, choices: [1: .queue])
+        },
+
+        Story(
+            name: "followups-applying",
+            summary: "The Follow-ups sidebar mid-apply: Apply spinning and reading Applying, "
+                + "every control disabled, the foot saying what is being sent.",
+            size: followUpsSidebar
+        ) {
+            await followUpsSidebarStory(live: true, choices: [1: .queue, 2: .fold, 3: .drop], applying: true)
         },
 
         // MARK: - Ad hoc sessions

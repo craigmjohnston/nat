@@ -38,6 +38,9 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     private let config: ConfigDoc
     private let usageReading: UsageReading
     private let sessionsList: [Session]
+    /// What `slice-show` answers, by slice — `Fixtures.sliceDetails` unless a
+    /// story wants another reading of one (a slice with follow-ups pending).
+    private let details: [String: SliceDetail]
 
     /// Every write this client was asked to make, in order — a preview never
     /// looks, and a test asserting that a button reached the client does.
@@ -62,7 +65,8 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         pr: PRDetail = Fixtures.prGreen,
         config: ConfigDoc = Fixtures.configDoc,
         usage: UsageReading = Fixtures.usageReading,
-        sessions: [Session] = Fixtures.sessions
+        sessions: [Session] = Fixtures.sessions,
+        details: [String: SliceDetail] = Fixtures.sliceDetails
     ) {
         self.behaviour = behaviour
         self.plan = plan
@@ -72,6 +76,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         self.config = config
         self.usageReading = usage
         self.sessionsList = sessions
+        self.details = details
     }
 
     /// Say what the workshop has proposed, as `plan-propose` would have.
@@ -139,7 +144,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail {
-        try await answer(Fixtures.sliceDetails[sliceRef] ?? Fixtures.sliceDetail)
+        try await answer(details[sliceRef] ?? Fixtures.sliceDetail)
     }
 
     public func sliceDiff(projectID: String, sliceRef: String, commit: String?) async throws -> SliceDiff {
@@ -214,6 +219,23 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
 
     public func sliceRework(projectID: String, sliceRef: String) async throws {
         try await record("slice-rework \(sliceRef)")
+    }
+
+    public func sliceTriage(projectID: String, sliceRef: String, queue: [Int], fold: [Int], drop: [Int]) async throws -> TriageResult {
+        try await record("slice-triage \(sliceRef) queue=\(queue) fold=\(fold) drop=\(drop)")
+        let followUps = details[sliceRef]?.followUps ?? []
+        let titles = { (indexes: [Int]) in followUps.filter { indexes.contains($0.index) }.map(\.title) }
+        return TriageResult(
+            queued: titles(queue).map { .init(title: $0, id: "queued-\($0.count)", url: "") },
+            folded: titles(fold),
+            dropped: titles(drop)
+        )
+    }
+
+    public func sliceDiscardFollowUps(projectID: String, sliceRef: String) async throws -> TriageResult {
+        try await record("slice-triage \(sliceRef) --drop-all")
+        let followUps = details[sliceRef]?.followUps ?? []
+        return TriageResult(queued: [], folded: [], dropped: followUps.map(\.title))
     }
 
     public func prMerge(projectID: String, sliceRef: String) async throws {

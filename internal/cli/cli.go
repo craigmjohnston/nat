@@ -348,6 +348,18 @@ usage:
                       and --pr-description records beside it the text the board
                       opens the pull request with: its first line the title,
                       the rest the body
+  nat slice-followups <slice> --follow-up TEXT [--follow-up TEXT]... --project ID
+                      before handing back, file follow-ups noticed but not done
+                      on a slice you claimed, for the user to triage: each
+                      value's first line the title, the rest its brief. Then
+                      stop: complete-slice refuses until the decision arrives
+  nat slice-triage <slice> [--queue N]... [--fold N]... [--drop N]...
+                        [--drop-all] [--json] --project ID
+                      decide every pending follow-up, by the index slice-show
+                      prints: queue it as a Todo slice blocked on this one,
+                      fold it into this slice, or drop it. Records the
+                      decision on the slice, then tells its agent in one
+                      message; --fold needs a live agent
   nat slice-rework <slice> --project ID
                       take a handed-back slice back out of review: its branch is
                       cleared and nothing else, so it reads as in progress until
@@ -500,6 +512,10 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return planAccept(ctx, args[1:], env)
 	case "complete-slice":
 		return completeSlice(ctx, args[1:], env)
+	case "slice-followups":
+		return sliceFollowUps(ctx, args[1:], env)
+	case "slice-triage":
+		return sliceTriage(ctx, args[1:], env)
 	case "release-slice":
 		return releaseSlice(ctx, args[1:], env)
 	case "pr-view":

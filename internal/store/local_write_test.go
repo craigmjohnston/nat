@@ -527,6 +527,9 @@ func TestLocalReleaseAndCompleteReportAFailedBodyRead(t *testing.T) {
 	writes := map[string]func() error{
 		"ReleaseSlice":  func() error { _, err := l.ReleaseSlice(ctx, "writes", wholeShape, "u"); return err },
 		"CompleteSlice": func() error { _, err := l.CompleteSlice(ctx, "writes", wholeShape, Outcome{Summary: "done"}); return err },
+		"ProposeFollowUps": func() error {
+			return l.ProposeFollowUps(ctx, "writes", []FollowUp{{Title: "A", Brief: "B"}})
+		},
 	}
 	for name, w := range writes {
 		if err := w(); err == nil || !strings.Contains(err.Error(), path) {

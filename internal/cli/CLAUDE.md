@@ -97,6 +97,14 @@ success, not failure), `agent-send` (paste-buffer delivery, `--text` or
 stdin — same mechanism `internal/agent.SendPrompt` uses for review
 comments).
 
+`slice-followups` (held slices only; `--follow-up` repeatable, first line
+title, rest brief; refuses none, an empty title/brief, or a duplicate title)
+and `slice-triage` (`--queue/--fold/--drop N`, every pending index exactly
+once, or `--drop-all` alone; refuses a Todo slice, nothing pending, and any
+`--fold` with no live session; queues, records via `Store.RecordTriage`,
+nudges, then sends one message — a failed send exits non-zero with the
+record standing). See root CLAUDE.md's Follow-ups rule.
+
 `slice-rework` (handed-back slices only): clears the slice's `Branch` and
 nothing else (`Store.ClearBranch`), so it reads as in progress until the agent's
 next `complete-slice --branch` re-records it — the deterministic signal gnat's
