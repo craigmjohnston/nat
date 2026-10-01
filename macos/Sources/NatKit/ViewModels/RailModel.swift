@@ -65,6 +65,10 @@ public enum ActiveEntryKind: Equatable {
 public enum ActiveMetaRole: Equatable {
     case elapsed
     case stat
+    /// How many follow-ups the agent proposed and the user has yet to
+    /// decide — "3 follow-ups" — drawn in the waiting ink, since that is
+    /// what the agent is doing.
+    case followUps
 }
 
 /// The id the workshop entry is keyed by in the one ACTIVE list — it has no
@@ -379,6 +383,7 @@ public func buildRailModel(
     workshop: ActiveEntry? = nil,
     sessions: [Session] = [],
     fixLaunched: Set<String> = [],
+    followUpCounts: [String: Int] = [:],
     now: Date = Date()
 ) -> RailModel {
     let slices = projectInfo.slices
@@ -438,6 +443,19 @@ public func buildRailModel(
                 ? nil
                 : agentStarts[slice.id].map { elapsedLabel(from: $0, to: now) }
             let milestone = milestoneNames[slice.milestoneID] ?? ""
+            // Follow-ups awaiting a decision outrank the elapsed time: they
+            // are what the agent is waiting on.
+            if let pending = followUpCounts[slice.id], pending > 0 {
+                return ActiveEntry(
+                    sliceID: slice.id,
+                    name: slice.name,
+                    displayState: displayState,
+                    tintRole: tintRole,
+                    detail: milestone.isEmpty ? [] : [milestone],
+                    meta: "\(pending) follow-up\(pending == 1 ? "" : "s")",
+                    metaRole: .followUps
+                )
+            }
             return ActiveEntry(
                 sliceID: slice.id,
                 name: slice.name,

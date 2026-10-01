@@ -17,6 +17,8 @@ public protocol NatClientProtocol: Sendable {
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String
     func sliceRework(projectID: String, sliceRef: String) async throws -> Void
+    func sliceTriage(projectID: String, sliceRef: String, queue: [Int], fold: [Int], drop: [Int]) async throws -> TriageResult
+    func sliceDiscardFollowUps(projectID: String, sliceRef: String) async throws -> TriageResult
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail
     func prStatus(projectID: String) async throws -> PRStatusDoc
     func prMerge(projectID: String, sliceRef: String) async throws -> Void
@@ -42,6 +44,16 @@ public protocol NatClientProtocol: Sendable {
 }
 
 extension NatClientProtocol {
+    /// Triaging follow-ups: only `NatClient` and the fixture client
+    /// implement these, the same reasoning as `workspaceLaunch`.
+    public func sliceTriage(projectID: String, sliceRef: String, queue: [Int], fold: [Int], drop: [Int]) async throws -> TriageResult {
+        throw NatError.commandFailed("slice-triage: not supported by this client")
+    }
+
+    public func sliceDiscardFollowUps(projectID: String, sliceRef: String) async throws -> TriageResult {
+        throw NatError.commandFailed("slice-triage --drop-all: not supported by this client")
+    }
+
     /// The Untitled tab's planning agent: only `NatClient` and the fixture
     /// client implement these, so a test double for a store that never
     /// launches one need not say so — the same reason `sliceRework` is a

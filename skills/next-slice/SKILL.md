@@ -158,6 +158,25 @@ might not be.
 
 ## 5. Finish
 
+Work you noticed but did not do — a bug beside your change, a test gap in code
+you didn't touch, a refactor the brief didn't ask for — is not yours to do and
+not yours to lose. When the gate is green, before `complete-slice`, hand each
+one in and **stop**:
+
+```
+nat slice-followups <slice> --project <project> \
+    --follow-up '<title line>
+
+<two or three sentences: what, where, why it matters>'
+```
+
+`--follow-up` repeats, one per follow-up. The user decides on the board — queue
+it as a slice, fold it into this one, or drop it — and the decision arrives here
+as a message naming what to fold in. Do that, then hand back as below.
+`complete-slice` refuses while the decision is outstanding. Never widen your
+branch to include a follow-up on your own, and never write them into the
+summary or the brief instead. No follow-ups: hand back straight away.
+
 Record the outcome with the slice's page ID or URL, as printed in the brief:
 
 ```
@@ -172,10 +191,10 @@ nat complete-slice <slice> --project <project> --branch <branch> \
 That records the branch you pushed and hands the slice back for review, writing
 the summary onto the slice page. `--summary` is quoted back to a future agent
 in its milestone's digest, not read by a person, so keep it a handful of terse
-bullet points — what changed, key decisions, follow-ups worth queueing — never
-a narrative of the session. It leaves the slice in progress deliberately —
-approving it on the board is what opens the pull request, and the merge of
-that pull request is what marks the slice Done.
+bullet points — what changed and key decisions — never a narrative of the
+session. It leaves the slice in progress deliberately — approving it on the
+board is what opens the pull request, and the merge of that pull request is
+what marks the slice Done.
 
 `--pr-description` is what that pull request is opened with — its first line
 becomes the title and the rest the body — so write it ready to publish: what

@@ -257,6 +257,24 @@ func Prompt(c PromptContext) string {
 	b.WriteString("the deliverable the brief asks for and link it in the summary below.\n")
 
 	b.WriteString("\n## Finish\n\n")
+	// Only the app has anywhere to triage follow-ups, so only an agent it
+	// launched is told to hand them in and wait; one launched from the board
+	// would wait on a decision nothing there can make.
+	if c.Frontend == FrontendGnat {
+		b.WriteString("Work you noticed but did not do — a bug beside your change, a test gap\n")
+		b.WriteString("in code you didn't touch, a refactor the brief didn't ask for — is not\n")
+		b.WriteString("yours to do and not yours to lose. When the gate is green, before\n")
+		b.WriteString("`complete-slice`, hand each one in and **stop**:\n\n")
+		fmt.Fprintf(&b, "    nat slice-followups %s --project %s \\\n", c.Slice.ID, c.ProjectID)
+		b.WriteString("        --follow-up '<title line>\n\n<two or three sentences: what, where, why it matters>'\n\n")
+		b.WriteString("`--follow-up` repeats, one per follow-up. The user decides in the app —\n")
+		b.WriteString("queue it as a slice, fold it into this one, or drop it — and the decision\n")
+		b.WriteString("arrives here as a message naming what to fold in. Do that, then hand back\n")
+		b.WriteString("as below. `complete-slice` refuses while the decision is outstanding.\n")
+		b.WriteString("Never widen your branch to include a follow-up on your own, and never\n")
+		b.WriteString("write them into the summary or the brief instead. No follow-ups: hand\n")
+		b.WriteString("back straight away.\n\n")
+	}
 	b.WriteString("On completion, record the outcome:\n\n")
 	fmt.Fprintf(&b, "    nat complete-slice %s --project %s \\\n", c.Slice.ID, c.ProjectID)
 	fmt.Fprintf(&b, "        --branch %s --summary '- <what changed>\\n- <key decision>' \\\n", branchArg(c))
@@ -264,12 +282,14 @@ func Prompt(c PromptContext) string {
 	b.WriteString("That records the branch you pushed and hands the slice back for review,\n")
 	b.WriteString("writing the summary onto its page. `--summary` is quoted back to a future\n")
 	b.WriteString("agent in its milestone's digest, not read by a person, so keep it a\n")
-	b.WriteString("handful of terse bullet points — what changed, key decisions, follow-ups\n")
-	b.WriteString("worth queueing — never a narrative of the session. It leaves the slice in\n")
 	if c.Frontend == FrontendGnat {
-		b.WriteString("progress on purpose — approving it in the app's Diff tab is what opens\n")
-		b.WriteString("the pull request and marks it Done.\n\n")
+		b.WriteString("handful of terse bullet points — what changed and key decisions — never\n")
+		b.WriteString("a narrative of the session. It leaves the slice in progress on purpose —\n")
+		b.WriteString("approving it in the app's Diff tab is what opens the pull request and\n")
+		b.WriteString("marks it Done.\n\n")
 	} else {
+		b.WriteString("handful of terse bullet points — what changed, key decisions, follow-ups\n")
+		b.WriteString("worth queueing — never a narrative of the session. It leaves the slice in\n")
 		b.WriteString("progress on purpose — approving it on the board is what opens the pull\n")
 		b.WriteString("request and marks it Done.\n\n")
 	}

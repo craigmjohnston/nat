@@ -298,6 +298,10 @@ public final class AppModel {
     /// on: an optimistic advance unmounts that tab mid-action.
     public let sliceActions = SliceActionTracker()
 
+    /// The Follow-ups sidebar's per-slice choices and the apply in flight —
+    /// see `FollowUpStore`.
+    public let followUpStore = FollowUpStore()
+
     /// Slices approved over pending review comments: the comments went to
     /// the agent and the slice was taken out of review (`slice-rework`), and
     /// the approve is owed once its next hand-back lands. The value says
@@ -1369,6 +1373,32 @@ public final class AppModel {
         // forever; the one on screen is left alone; blanking it here would
         // only cost the user their brief with nothing about to refetch it.
         sliceDetailStores[projectStore.projectID]?.invalidateCache(keeping: selectedSliceID)
+        // The one on screen is read again instead, behind what it shows: an
+        // agent proposing follow-ups writes nothing a plan read carries, so
+        // this is what brings the Follow-ups sidebar up — and takes it down
+        // once they are triaged.
+        if let selectedSliceID {
+            await sliceDetailStore(projectID: projectStore.projectID).fetch(sliceRef: selectedSliceID)
+        }
+    }
+
+    /// Applies the user's choices for a slice's follow-ups (`slice-triage`),
+    /// then refreshes, so the queued slices land in the plan and the slice's
+    /// detail reads with nothing pending.
+    public func applyFollowUps(sliceID: String, followUps: [FollowUp]) async {
+        guard let projectID = projectStore?.projectID else { return }
+        let result = await followUpStore.apply(
+            projectID: projectID, sliceID: sliceID, followUps: followUps, client: clientFactory()
+        )
+        if result != nil { await refresh() }
+    }
+
+    /// Drops every pending follow-up of a slice (`slice-triage --drop-all`),
+    /// then refreshes.
+    public func discardFollowUps(sliceID: String) async {
+        guard let projectID = projectStore?.projectID else { return }
+        let result = await followUpStore.discardAll(projectID: projectID, sliceID: sliceID, client: clientFactory())
+        if result != nil { await refresh() }
     }
 
     /// Runs the approve a slice is owed when the plan just read shows it

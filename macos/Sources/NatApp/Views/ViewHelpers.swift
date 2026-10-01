@@ -615,6 +615,8 @@ struct InspectorNotice: View {
     let text: String
     var systemImage: String?
     var role: InkRole = .warning
+    /// How many lines the message may run to before it is cut short.
+    var lines: Int = 2
 
     var body: some View {
         HStack(spacing: 8) {
@@ -626,7 +628,7 @@ struct InspectorNotice: View {
             Text(text)
                 .font(.system(size: Typo.subhead, weight: .regular))
                 .ink(role)
-                .lineLimit(2)
+                .lineLimit(lines)
             Spacer()
         }
     }

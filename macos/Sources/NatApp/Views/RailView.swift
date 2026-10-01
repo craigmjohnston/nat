@@ -144,6 +144,17 @@ struct RailView: View {
         _collapsed = State(initialValue: collapsedSections)
     }
 
+    /// The selected slice's pending follow-ups, off the detail `slice-show`
+    /// read for it — the one slice the app reads that for, so the count is
+    /// there for the slice on screen and absent for the rest.
+    private var selectedFollowUpCount: [String: Int] {
+        guard let sliceID = appModel.selectedSliceID, let projectID = appModel.projectStore?.projectID,
+              let pending = appModel.sliceDetailStore(projectID: projectID).state(for: sliceID).detail?.followUps,
+              !pending.isEmpty
+        else { return [:] }
+        return [sliceID: pending.count]
+    }
+
     var railModel: RailModel {
         if let projectInfo = appModel.projectStore?.state.projectInfo {
             // Map ActivityStore agents to the rail model's format
@@ -157,7 +168,8 @@ struct RailView: View {
                 agentStarts: appModel.activityStore?.firstSeen ?? [:],
                 workshop: workshopEntry,
                 sessions: appModel.sessionStore?.sessions ?? [],
-                fixLaunched: appModel.fixLaunchedSliceIDs
+                fixLaunched: appModel.fixLaunchedSliceIDs,
+                followUpCounts: selectedFollowUpCount
             )
         }
         // With no plan read, the workshop is still the one thing that can be
@@ -1195,6 +1207,7 @@ struct RailView: View {
         switch role {
         case .elapsed: return .tertiary
         case .stat: return .success
+        case .followUps: return .warning
         }
     }
 

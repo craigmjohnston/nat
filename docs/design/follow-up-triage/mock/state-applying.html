@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sidebar: applying</title>
+</head>
+<body>
+<style>html,body{background:#11111b}body{padding:24px}
+body{margin:0}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.nat{
+--window-bg:#1e1e2e;--control-bg:#181825;--row-alt-bg:#24243a;--field-bg:#11111b;--surface0:#313244;--surface1:#45475a;
+--separator:rgba(205,214,244,.13);--control-border:rgba(205,214,244,.18);--control-face:#313244;--control-face-pressed:#45475a;
+--label:#cdd6f4;--label-secondary:rgba(205,214,244,.66);--label-tertiary:rgba(205,214,244,.43);--label-quaternary:rgba(205,214,244,.14);
+--accent-text:#11111b;
+--system-orange:#fab387;--system-yellow:#f9e2af;--system-green:#a6e3a1;--system-red:#f38ba8;--system-blue:#89b4fa;--system-mauve:#cba6f7;--system-gray:#9399b2;
+--font-system:-apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",sans-serif;
+--font-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+--font-body:400 13px/16px var(--font-system);--font-body-emphasized:600 13px/16px var(--font-system);
+--font-callout:400 12px/16px var(--font-system);--font-subheadline:400 11px/14px var(--font-system);
+--font-caption2:500 10px/13px var(--font-system);--font-section:600 11px/14px var(--font-system);
+--font-code:400 12px/18px var(--font-mono);
+--radius-control:6px;--radius-highlight:5px;--radius-panel:10px;
+--shadow-control:0 .5px 1.5px rgba(0,0,0,.3),0 0 0 .5px rgba(205,214,244,.08);
+--shadow-window:0 0 0 .5px rgba(205,214,244,.16),0 22px 60px rgba(0,0,0,.45);
+color-scheme:dark;font:var(--font-body);color:var(--label);
+}
+.win{border-radius:10px;overflow:hidden;box-shadow:var(--shadow-window);background:var(--window-bg);display:flex;flex-direction:column;position:relative}
+.hair-b{border-bottom:.5px solid var(--separator)}
+.hair-l{border-left:.5px solid var(--separator)}
+.hair-r{border-right:.5px solid var(--separator)}
+.sec{font:var(--font-section);color:var(--label-tertiary);letter-spacing:.2px}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.num{font-variant-numeric:tabular-nums}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:22px;padding:0 10px;border-radius:var(--radius-control);font:var(--font-body);border:0;cursor:default;white-space:nowrap}
+.btn-primary{background:var(--accent);color:var(--accent-text);font-weight:600}
+.btn-secondary{background:var(--control-face);color:var(--label);box-shadow:var(--shadow-control)}
+.btn-danger{color:var(--system-red)}
+.btn[disabled]{opacity:.38}
+.seg{display:flex;height:22px;padding:2px;border-radius:7px;background:rgba(205,214,244,.07);box-sizing:border-box}
+.seg button{flex:1;border:0;border-radius:5px;background:transparent;color:var(--label-secondary);font:var(--font-subheadline);padding:0;cursor:default}
+.seg button.on{background:var(--control-face);color:var(--label);box-shadow:var(--shadow-control);font-weight:600}
+.seg button.on.queue{color:var(--system-green)}
+.seg button.on.fold{color:var(--system-orange)}
+.seg button.on.drop{color:var(--label)}
+.seg button[disabled]{color:var(--label-quaternary)}
+.seg.off button{color:var(--label-tertiary)}
+.frow{display:flex;align-items:center;gap:5px;height:28px;padding:0 8px;border-radius:var(--radius-highlight);font:var(--font-subheadline)}
+.term{font:var(--font-code);white-space:pre-wrap;word-break:break-word}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.pulse{animation:pulse 1.6s ease-in-out infinite;display:inline-block}
+</style>
+<div class="nat" style="--accent:#b4befe;width:232px;height:600px"><div style="width:232px;height:600px;border-radius:10px;overflow:hidden;box-shadow:var(--shadow-window);display:flex"><div class="" style="width:232px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;background:var(--window-bg)"><div class="hair-b" style="display:flex;flex-direction:column;gap:6px;padding:10px 10px 10px;flex-shrink:0"><button class="btn btn-primary" disabled style="width:100%"><span style="width:10px;height:10px;border-radius:50%;border:1.5px solid currentColor;border-right-color:transparent;margin-right:6px;display:inline-block"></span>Applying…</button><button class="btn btn-secondary btn-danger" disabled style="width:100%">Discard All</button></div><div style="flex:1;overflow-y:auto;min-height:0"><div style="display:flex;align-items:center;gap:8px;padding:12px 12px 2px"><span class="sec" style="flex:1">FOLLOW-UPS · 3</span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--system-green);flex-shrink:0"></span></div><div style="padding:0 12px 6px;font:var(--font-subheadline);color:var(--label-tertiary)">Proposed by the agent before hand-back</div><div style="padding:10px 12px 12px;display:flex;flex-direction:column;gap:6px"><div style="font:var(--font-body-emphasized);line-height:17px">Persist the conversation split width per project</div><div style="font:var(--font-callout);color:var(--label-secondary)">The split's width lives under one AppStorage key, so every project shares it. The PR sidebar has the same problem. Store both per project the way pane widths already are.</div><div style="margin-top:2px"><div class="seg off" role="radiogroup" aria-label="Decision"><button class="queue on" disabled>Queue</button><button class="fold" disabled>Fold in</button><button class="drop" disabled>Drop</button></div></div></div><div style="padding:10px 12px 12px;border-top:.5px solid var(--separator);display:flex;flex-direction:column;gap:6px"><div style="font:var(--font-body-emphasized);line-height:17px">Render the emoji picker open in a gallery story</div><div style="font:var(--font-callout);color:var(--label-secondary)">The picker is open-state only and no story draws it, so StoryNamesTests can't guard it. Add pr-composer-emoji with the picker open over the composer.</div><div style="margin-top:2px"><div class="seg off" role="radiogroup" aria-label="Decision"><button class="queue" disabled>Queue</button><button class="fold on" disabled>Fold in</button><button class="drop" disabled>Drop</button></div></div></div><div style="padding:10px 12px 12px;border-top:.5px solid var(--separator);display:flex;flex-direction:column;gap:6px"><div style="font:var(--font-body-emphasized);line-height:17px">Remove the dead reply-threading code in PRConversationView</div><div style="font:var(--font-callout);color:var(--label-secondary)">replyTargets and its two helpers haven't been read since the inline composer landed. Delete them and the fake in FakeRunner that feeds them.</div><div style="margin-top:2px"><div class="seg off" role="radiogroup" aria-label="Decision"><button class="queue" disabled>Queue</button><button class="fold" disabled>Fold in</button><button class="drop on" disabled>Drop</button></div></div></div></div><div style="display:flex;gap:6px;align-items:flex-start;padding:8px 12px 10px;border-top:.5px solid var(--separator);font:var(--font-subheadline);color:var(--label-tertiary);flex-shrink:0"><span>Queued 1 · sending 1 to the agent…</span></div></div></div></div>
+</body>
+</html>

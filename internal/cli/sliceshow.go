@@ -10,6 +10,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // sliceShow reads and prints one slice in full, without claiming it. It is
@@ -81,6 +82,16 @@ type sliceShowJSON struct {
 	HandedBack bool     `json:"handed_back"`
 	State      string   `json:"state,omitempty"`
 	Brief      string   `json:"brief"`
+	// FollowUps are the follow-ups the slice's agent handed in that still
+	// await the user's decision, each by the index slice-triage takes.
+	FollowUps []followUpJSON `json:"followUps,omitempty"`
+}
+
+// followUpJSON is one pending follow-up.
+type followUpJSON struct {
+	Index int    `json:"index"`
+	Title string `json:"title"`
+	Brief string `json:"brief"`
 }
 
 // writeSliceShowJSON encodes the slice as JSON.
@@ -111,6 +122,9 @@ func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, proje
 	}
 	if state != domain.SliceStateNone {
 		sj.State = state.String()
+	}
+	for _, f := range store.PendingFollowUps(brief) {
+		sj.FollowUps = append(sj.FollowUps, followUpJSON{Index: f.Index, Title: f.Title, Brief: f.Brief})
 	}
 
 	enc := json.NewEncoder(out)

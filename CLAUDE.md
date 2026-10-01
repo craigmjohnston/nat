@@ -105,6 +105,19 @@ with no `Branch` column, before the note goes on. The hand-back note and any
 `PR description` headings; `notion.PRDescriptionOf` reads the *last* such
 section, since a slice handed back twice has one per hand-back.
 
+**Follow-ups.** Before hand-back, a gnat-launched agent hands in work it
+noticed but didn't do with `nat slice-followups` and stops; the proposals are
+a `Follow-ups` section of the slice body (numbered items), and the user's
+decision a later `Follow-ups triaged` section (bullets) — no column, both
+stores write the same markdown. `store.PendingFollowUps` reads what's still
+undecided; `complete-slice` refuses while any is (`--blocked` exempt).
+`nat slice-triage` decides every pending index at once (queue → Todo slice
+under the parent's milestone, blocked on it; fold in → needs a live agent;
+drop), writes the record **before** its one `agent-send`. Only the gnat
+prompt and `/next-slice` carry the passage — the TUI has no triage surface.
+gnat's `FollowUpsSidebarView` is pane-level, shown while `slice-show`'s
+`followUps` is non-empty. Design: `docs/design/follow-up-triage/`.
+
 **Approving** (`a` on the diff screen, or `nat slice-approve`) opens the PR
 and records only its URL — status stays In progress. **Done means the work
 is on main**, and only the merge writes it: `m` / `nat pr-merge`, or

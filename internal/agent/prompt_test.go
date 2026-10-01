@@ -83,6 +83,13 @@ func TestPromptOnTUI(t *testing.T) {
 	golden(t, "prompt-tui", Prompt(c))
 }
 
+// gnatContext is the test slice launched from the app.
+func gnatContext() PromptContext {
+	c := testContext()
+	c.Frontend = FrontendGnat
+	return c
+}
+
 func TestPromptOnGnat(t *testing.T) {
 	c := testContext()
 	c.Frontend = FrontendGnat
@@ -117,7 +124,7 @@ func TestPromptNamesTheFrontend(t *testing.T) {
 	if want := "The user is driving this from gnat, the macOS app.\n\n"; !strings.Contains(gnat, want) {
 		t.Errorf("gnat prompt does not say %q:\n%s", want, gnat)
 	}
-	if want := "approving it in the app's Diff tab is what opens\nthe pull request and marks it Done."; !strings.Contains(gnat, want) {
+	if want := "approving it in the app's Diff tab is what opens the pull request and\nmarks it Done."; !strings.Contains(gnat, want) {
 		t.Errorf("gnat prompt does not say %q:\n%s", want, gnat)
 	}
 	if strings.Contains(gnat, "approving it on the board") {
@@ -605,7 +612,7 @@ func TestPromptFlagsAWorktreesOverrideByItsCheckout(t *testing.T) {
 
 // natCommand matches a `nat` invocation by its subcommand, so the prose that
 // merely says "the `nat` commands" is not read as one.
-var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|release-slice|milestone-add|slice-add|slice-depends|plan-apply|project-create)\b`)
+var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-followups|release-slice|milestone-add|slice-add|slice-depends|plan-apply|project-create)\b`)
 
 // natCommands are the invocations a prompt names: each from the command word to
 // the end of its line, and on through the lines a trailing backslash continues
@@ -627,6 +634,31 @@ func natCommands(text string) []string {
 	return cmds
 }
 
+// Only the app can triage follow-ups, so only a slice agent it launched is
+// told to hand them in and wait; every other launch keeps them in the summary.
+func TestOnlyAGnatPromptProposesFollowUps(t *testing.T) {
+	c := testContext()
+	c.Frontend = FrontendGnat
+	gnat := Prompt(c)
+	for _, want := range []string{
+		"    nat slice-followups " + c.Slice.ID + " --project " + testProjectID + " \\\n        --follow-up '<title line>",
+		"`complete-slice` refuses while the decision is outstanding.",
+	} {
+		if !strings.Contains(gnat, want) {
+			t.Errorf("gnat prompt does not say %q", want)
+		}
+	}
+	if strings.Contains(gnat, "follow-ups\nworth queueing") {
+		t.Error("gnat prompt still asks for follow-ups in the summary")
+	}
+	for _, f := range []Frontend{FrontendTUI, ""} {
+		c.Frontend = f
+		if got := Prompt(c); strings.Contains(got, "slice-followups") || !strings.Contains(got, "follow-ups\nworth queueing") {
+			t.Errorf("the %q prompt should keep follow-ups in the summary", f)
+		}
+	}
+}
+
 // A command with no --project is refused outright, so a bare one in a prompt is
 // a call an agent would copy and get nowhere with. Every command a prompt names
 // is pinned to the project of the launch, which is the project the session is
@@ -636,6 +668,7 @@ func TestEveryCommandInAPromptNamesTheProject(t *testing.T) {
 	for prompt, text := range map[string]string{
 		"slice":          Prompt(testContext()),
 		"slice worktree": Prompt(worktreeContext()),
+		"slice gnat":     Prompt(gnatContext()),
 		"fix":            Prompt(fixContext()),
 		"plan":           PlanPrompt(testProjectID, name, dir, "", "", ""),
 		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", "", ""),

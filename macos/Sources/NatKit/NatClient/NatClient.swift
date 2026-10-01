@@ -277,6 +277,36 @@ public final class NatClient: Sendable {
         _ = try await runNatRaw(arguments: ["slice-rework", "--project", projectID, sliceRef])
     }
 
+    /// Decide every follow-up a slice's agent proposed — `nat slice-triage`:
+    /// each index queued as a slice, folded into this one or dropped, the
+    /// decision recorded on the slice and sent to its agent in one message.
+    ///
+    /// - Throws: NatError if any pending index is left undecided, a fold has
+    ///   no live agent to go to, or the message to the agent failed (the
+    ///   decision is recorded either way)
+    public func sliceTriage(projectID: String, sliceRef: String, queue: [Int], fold: [Int], drop: [Int]) async throws -> TriageResult {
+        let output = try await runNat(arguments: Self.triageArguments(
+            projectID: projectID, sliceRef: sliceRef, queue: queue, fold: fold, drop: drop
+        ))
+        return try decodeJSON(TriageResult.self, from: output)
+    }
+
+    /// Drop every pending follow-up — `nat slice-triage --drop-all`.
+    public func sliceDiscardFollowUps(projectID: String, sliceRef: String) async throws -> TriageResult {
+        let output = try await runNat(arguments: ["slice-triage", "--project", projectID, "--json", "--drop-all", sliceRef])
+        return try decodeJSON(TriageResult.self, from: output)
+    }
+
+    /// `slice-triage`'s command line for a mix of decisions, each index
+    /// under its own repeated flag.
+    static func triageArguments(projectID: String, sliceRef: String, queue: [Int], fold: [Int], drop: [Int]) -> [String] {
+        var args = ["slice-triage", "--project", projectID, "--json"]
+        for n in queue { args += ["--queue", String(n)] }
+        for n in fold { args += ["--fold", String(n)] }
+        for n in drop { args += ["--drop", String(n)] }
+        return args + [sliceRef]
+    }
+
     /// Read one pull request in full — the PR tab's own reading, mirroring
     /// the board's `v` key (`internal/cli/prview.go`).
     ///
