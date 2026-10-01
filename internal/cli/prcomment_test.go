@@ -257,3 +257,26 @@ func TestPRCommentReportsAFailedHydrate(t *testing.T) {
 		t.Errorf("err = %v, want the failed hydrate named", err)
 	}
 }
+
+// TestPRCommentKeepsAnEmojiBodyIntact pipes in a comment with emoji in it, the
+// way gnat's composer sends one, and checks gh is handed every byte of it.
+func TestPRCommentKeepsAnEmojiBodyIntact(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithPR(testSliceID, "Write the UI", notion.SliceInProgress,
+				"https://github.test/craig/nat/pull/7")},
+		},
+	}
+	env, _ := testEnv(testConfig(t), api)
+	env.In = strings.NewReader("Ship it 🎉 👩‍💻 ❤️\n")
+	runner := &fakeCommentRunner{}
+	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
+
+	err := Run(context.Background(), []string{"pr-comment", testSliceID, "--project", "project-1"}, env)
+	if err != nil {
+		t.Fatalf("pr-comment: %v", err)
+	}
+	if runner.stdin != "Ship it 🎉 👩‍💻 ❤️" {
+		t.Errorf("stdin = %q, want the emoji comment intact", runner.stdin)
+	}
+}

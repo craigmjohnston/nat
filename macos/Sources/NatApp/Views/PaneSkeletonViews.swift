@@ -460,46 +460,39 @@ struct DiffSkeletonView: View {
 
 // MARK: - PR
 
-/// The PR tab's first load: the state chip and title, the branch line, the
-/// description and a conversation, beside the checks/review/changes rail and
-/// over the composer and footer the loaded pane draws.
+/// The PR tab's first load: the state chip and title, the branch line and
+/// the description over the divider, a conversation ending in its comment box
+/// under it — split by `PRSplitView` at the very height the loaded pane is —
+/// beside the checks/review/changes rail.
 ///
 /// The column's own section labels are the real ones: `DESCRIPTION` and
 /// `CONVERSATION` head those sections whatever GitHub comes back with.
 struct PRSkeletonView: View {
     @AppStorage("prSidebarWidth") private var sidebarWidth = 216.0
+    @AppStorage(PRSplitMetrics.storageKey) private var descriptionHeight = PRSplitMetrics.defaultUpper
+    /// Never moved: the skeleton's divider is drawn where the loaded pane's
+    /// will be, but a drag on it waits for the reading.
+    @State private var liveDescriptionHeight: Double?
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        header
+            PRSplitView(
+                upperHeight: descriptionHeight,
+                liveUpperHeight: $liveDescriptionHeight,
+                onCommit: { _ in }
+            ) {
+                VStack(alignment: .leading, spacing: 16) {
+                    header
 
-                        // `head → base`, in the code face the real line
-                        // is set in.
-                        SkeletonTextLine(width: PRSkeleton.branchLineWidth, type: .mono(Typo.code))
+                    // `head → base`, in the code face the real line
+                    // is set in.
+                    SkeletonTextLine(width: PRSkeleton.branchLineWidth, type: .mono(Typo.code))
 
-                        description
-
-                        conversation
-
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 18)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .inelastic()
+                    description
                 }
-
-                Divider().frame(height: 0.5)
-
-                // The composer pinned at the tab's foot.
-                composer(compact: false)
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 12)
+            } lower: {
+                conversation
             }
-            .frame(maxWidth: .infinity)
 
             VStack(spacing: 0) {
                 sidebarActions
@@ -575,25 +568,21 @@ struct PRSkeletonView: View {
                     entryRow(entry)
                 }
 
-                // The thread's own composer, which the loaded card ends with.
-                composer(compact: true)
+                // The comment box, which the loaded card ends with.
+                composer
             }
             .padding(12)
             .card(radius: 10)
         }
     }
 
-    /// The composer's band, reserved as the real box lays out rather than at
-    /// a number of its own: its editor is flexible between a floor and a
-    /// ceiling, and the one at the tab's foot opens at that ceiling wherever
-    /// the pane has the room — a block at the floor alone would hand the
-    /// reading column rows the composer then took back.
-    private func composer(compact: Bool) -> some View {
+    /// The comment box's band, reserved at the height the real box opens at
+    /// rather than at a number of its own: empty, which is how every pull
+    /// request opens, its editor sits at its floor — it grows only with
+    /// typed text, and nothing has been typed into a box still loading.
+    private var composer: some View {
         SkeletonBlock(cornerRadius: PRComposerMetrics.cornerRadius)
-            .frame(
-                minHeight: PRComposerMetrics.height(compact: compact),
-                maxHeight: PRComposerMetrics.maxHeight(compact: compact)
-            )
+            .frame(height: PRComposerMetrics.height)
     }
 
     /// One entry of it, at `PRConversationEntryView`'s own avatar, gap and

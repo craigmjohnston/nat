@@ -108,6 +108,45 @@ final class MarkdownTests: XCTestCase {
         XCTAssertEqual(rendered("- has *emphasis*"), "• has emphasis")
     }
 
+    // MARK: - Emoji
+
+    func testShortcodesRenderAsEmoji() {
+        XCTAssertEqual(rendered("Shipped :tada: :+1: :rocket:"), "Shipped 🎉 👍 🚀")
+    }
+
+    func testLiteralEmojiPassThrough() {
+        XCTAssertEqual(rendered("Ship it 🎉 👩‍💻 ❤️"), "Ship it 🎉 👩‍💻 ❤️")
+    }
+
+    func testAnUnknownShortcodeStaysAsWritten() {
+        XCTAssertEqual(rendered("at 10:30:45 :not_an_emoji:"), "at 10:30:45 :not_an_emoji:")
+    }
+
+    func testAShortcodeBehindAColonThatOpensNothingStillRenders() {
+        XCTAssertEqual(rendered("10:30:tada:"), "10:30🎉")
+    }
+
+    func testShortcodesInCodeStayLiteral() {
+        XCTAssertEqual(rendered("`:tada:` and :tada:"), ":tada: and 🎉")
+        XCTAssertEqual(rendered("```\n:tada:\n```"), ":tada:")
+    }
+
+    func testAShortcodeKeepsItsRunsFormatting() throws {
+        let attr = markdownAttributed("**done :tada:** then", size: 14)
+        XCTAssertEqual(String(attr.characters), "done 🎉 then")
+        let bold = try XCTUnwrap(attr.runs.first)
+        XCTAssertEqual(String(attr[bold.range].characters), "done 🎉")
+        XCTAssertEqual(bold.inlinePresentationIntent, .stronglyEmphasized)
+    }
+
+    func testShortcodeReplacementOnPlainStrings() {
+        XCTAssertEqual(replacingEmojiShortcodes("no colons here"), "no colons here")
+        XCTAssertEqual(replacingEmojiShortcodes("trailing :"), "trailing :")
+        XCTAssertEqual(replacingEmojiShortcodes("::"), "::")
+        XCTAssertEqual(replacingEmojiShortcodes(":Tada:"), ":Tada:")
+        XCTAssertEqual(replacingEmojiShortcodes(":t-rex::sauropod:"), "🦖🦕")
+    }
+
     func testEmptyInputRendersEmpty() {
         XCTAssertEqual(rendered(""), "")
     }

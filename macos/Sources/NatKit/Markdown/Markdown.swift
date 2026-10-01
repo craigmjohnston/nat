@@ -107,18 +107,33 @@ private func bulletLine(_ line: String) -> (indent: String, text: String)? {
 /// font for it, which is the face this app ships its own to replace. A fenced
 /// block already takes `Typo.mono` in `codeLine`, and a span is the same
 /// thing inside a sentence, so it takes the same face at the same size.
+///
+/// A `:shortcode:` becomes its emoji everywhere but a code span — GitHub
+/// leaves one written inside backticks as written, as it does a fenced block,
+/// which `codeLine` never converts. Runs are rewritten last to first, so the
+/// ranges still to come are not moved by the ones already replaced.
 private func inline(_ text: String, size: CGFloat) -> AttributedString {
     guard var parsed = try? AttributedString(
         markdown: text,
         options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
     ) else {
-        return AttributedString(text)
+        return AttributedString(replacingEmojiShortcodes(text))
     }
     let spans = parsed.runs
         .filter { $0.inlinePresentationIntent?.contains(.code) == true }
         .map(\.range)
     for span in spans {
         parsed[span].font = Typo.mono(size: size - 1)
+    }
+    let prose = parsed.runs
+        .filter { $0.inlinePresentationIntent?.contains(.code) != true }
+        .map { ($0.range, $0.attributes) }
+    for (range, attributes) in prose.reversed() {
+        let written = String(parsed[range].characters)
+        let rendered = replacingEmojiShortcodes(written)
+        if rendered != written {
+            parsed.replaceSubrange(range, with: AttributedString(rendered, attributes: attributes))
+        }
     }
     return parsed
 }

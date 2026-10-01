@@ -8,11 +8,11 @@ import NatFixtures
 /// counterpart of the Go TUI's own PR screen (`internal/tui/prview.go`).
 ///
 /// Two actions reach outside Notion here: the merge button, mirroring the
-/// board's `m` key (`internal/tui/prmergeflow.go`), and the two comment
-/// composers, which post a new top-level comment on the pull request through
-/// `nat pr-comment` — GitHub's per-line review threads have a reply API of
-/// their own that `nat` does not wrap, so neither composer is a threaded
-/// reply whatever its placeholder says.
+/// board's `m` key (`internal/tui/prmergeflow.go`), and the comment composer
+/// at the conversation's foot, which posts a new top-level comment on the
+/// pull request through `nat pr-comment` — GitHub's per-line review threads
+/// have a reply API of their own that `nat` does not wrap, so it is never a
+/// threaded reply to whatever sits above it.
 struct PRTabView: View {
     @Bindable var appModel: AppModel
     let slice: Slice
@@ -35,16 +35,18 @@ struct PRTabView: View {
     @State private var isSendingComment = false
     @State private var commentError: String?
 
-    @State private var replyText = ""
-    @State private var isSendingReply = false
-    @State private var replyError: String?
-
     /// The sidebar's width, draggable at its divider and remembered across
     /// launches — the default is the width it was fixed at before it was
     /// resizable, and the same key `PRSidebarView` used to hold it under
     /// before its own frame/rule/resize became this tab's to wrap it in.
     @AppStorage("prSidebarWidth") private var sidebarWidth = 216.0
     @State private var liveSidebarWidth: Double?
+
+    /// The description pane's height over the conversation, draggable at the
+    /// divider between them and remembered across launches, as the sidebar's
+    /// width is. Clamped where it is drawn — see `PRSplitMetrics`.
+    @AppStorage(PRSplitMetrics.storageKey) private var descriptionHeight = PRSplitMetrics.defaultUpper
+    @State private var liveDescriptionHeight: Double?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -119,39 +121,24 @@ struct PRTabView: View {
         }
     }
 
+    /// Two stacked panes, each scrolling on its own: what the pull request
+    /// *is* (header, branch, description) over what has been *said* on it
+    /// (the conversation, ending in the comment box), with a draggable
+    /// divider between them.
     private func mainColumn(for pr: PRDetail) -> some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    header(for: pr)
-                    branchLine(for: pr)
-                    descriptionSection(for: pr)
-                    conversationSection(for: pr)
-                }
-                .padding(.horizontal, 22)
-                .padding(.vertical, 18)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .inelastic()
+        PRSplitView(
+            upperHeight: descriptionHeight,
+            liveUpperHeight: $liveDescriptionHeight,
+            onCommit: { descriptionHeight = $0 }
+        ) {
+            VStack(alignment: .leading, spacing: 16) {
+                header(for: pr)
+                branchLine(for: pr)
+                descriptionSection(for: pr)
             }
-
-            Divider().frame(height: 0.5)
-
-            // The composer pinned at the tab's own foot — GitHub's own
-            // bottom-of-thread box. It posts through `pr-comment` exactly as
-            // the compact one inside the conversation does; see the note
-            // there for why neither is a threaded reply.
-            PRComposerView(
-                placeholder: "Leave a comment on the pull request…",
-                compact: false,
-                text: $commentText,
-                isSending: isSendingComment,
-                error: commentError,
-                onSend: { Task { await sendComment() } }
-            )
-            .padding(.horizontal, 22)
-            .padding(.vertical, 12)
+        } lower: {
+            conversationSection(for: pr)
         }
-        .frame(maxWidth: .infinity)
     }
 
     private func header(for pr: PRDetail) -> some View {
@@ -229,30 +216,33 @@ struct PRTabView: View {
                 Text("Nothing has been said on this pull request.")
                     .font(.system(size: Typo.body, weight: .regular))
                     .ink(.secondary)
+                composer
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
                         PRConversationEntryView(entry: entry)
                     }
-
-                    // GitHub's per-line review threads have a reply API of
-                    // their own, which `nat` does not wrap — this composer
-                    // posts a new top-level comment on the pull request, the
-                    // same as the one pinned at the tab's own foot, rather
-                    // than a reply threaded onto whatever is above it.
-                    PRComposerView(
-                        placeholder: "Reply to this thread…",
-                        compact: true,
-                        text: $replyText,
-                        isSending: isSendingReply,
-                        error: replyError,
-                        onSend: { Task { await sendReply() } }
-                    )
+                    composer
                 }
                 .padding(12)
                 .card(radius: 10)
             }
         }
+    }
+
+    /// The one comment box, GitHub's own bottom-of-thread one, at the end of
+    /// the conversation and scrolling with it. GitHub's per-line review
+    /// threads have a reply API of their own, which `nat` does not wrap, so
+    /// this posts a new top-level comment rather than a reply threaded onto
+    /// whatever is above it.
+    private var composer: some View {
+        PRComposerView(
+            placeholder: "Leave a comment on the pull request…",
+            text: $commentText,
+            isSending: isSendingComment,
+            error: commentError,
+            onSend: { Task { await sendComment() } }
+        )
     }
 
     // MARK: - Sidebar (checks/review/changes rail, and the merge box's actions)
@@ -431,24 +421,6 @@ struct PRTabView: View {
         isSendingComment = false
     }
 
-    private func sendReply() async {
-        isSendingReply = true
-        replyError = nil
-        do {
-            try await store.comment(text: replyText)
-            replyText = ""
-        } catch let error as NatError {
-            if case .commandFailed(let message) = error {
-                replyError = message
-            } else {
-                replyError = error.localizedDescription
-            }
-        } catch {
-            replyError = error.localizedDescription
-        }
-        isSendingReply = false
-    }
-
     // MARK: - Fetching / polling
 
     private func fetchAndPoll() async {
@@ -513,17 +485,93 @@ struct PRConversationEntryView: View {
     }
 }
 
+/// The main column's split: where its divider starts, and the floors that
+/// keep either pane from collapsing under a drag or a short window. Named
+/// rather than inline so `PRSkeletonView` splits at the very same height.
+enum PRSplitMetrics {
+    /// The `@AppStorage` key the description pane's height persists under.
+    static let storageKey = "prDescriptionHeight"
+    /// Room for the header, branch line and a few lines of description.
+    static let defaultUpper: Double = 200
+    /// The header and branch line, and a line of description under them.
+    static let minUpper: Double = 90
+    /// The section label and the comment box at its floor, with a line of
+    /// conversation over them.
+    static let minLower: Double = 150
+    /// Each pane's insets — the reading column's own, as one scroll had them.
+    static let horizontalPadding: CGFloat = 22
+    static let verticalPadding: CGFloat = 18
+}
+
+/// The PR tab's main column, split: `upper` over `lower`, each in its own
+/// scroll, with a draggable divider between them. The upper pane's height is
+/// the caller's to persist; this only clamps it to the room there is and
+/// moves it under a drag. Shared with `PRSkeletonView`, so a first load
+/// splits exactly where the loaded pane will.
+struct PRSplitView<Upper: View, Lower: View>: View {
+    let upperHeight: Double
+    @Binding var liveUpperHeight: Double?
+    let onCommit: (Double) -> Void
+    @ViewBuilder let upper: Upper
+    @ViewBuilder let lower: Lower
+
+    var body: some View {
+        GeometryReader { proxy in
+            let available = proxy.size.height
+            let height = paneSplitHeight(
+                stored: liveUpperHeight ?? upperHeight,
+                available: available,
+                minUpper: PRSplitMetrics.minUpper,
+                minLower: PRSplitMetrics.minLower
+            )
+            VStack(spacing: 0) {
+                pane { upper }
+                    .frame(height: height)
+                // The rule hangs off the lower pane's top rather than the
+                // upper's bottom: `rectBorder` stacks a bottom edge under a
+                // row with no height of its own, so it lands at the top.
+                pane { lower }
+                    .frame(maxHeight: .infinity)
+                    .rule(.separator, edges: [.top], width: 0.5)
+            }
+            .overlay(alignment: .top) {
+                PaneRowResizeHandle(
+                    height: upperHeight,
+                    liveHeight: $liveUpperHeight,
+                    onCommit: onCommit,
+                    minHeight: PRSplitMetrics.minUpper,
+                    maxHeight: max(PRSplitMetrics.minUpper, available - PRSplitMetrics.minLower),
+                    edge: .bottom
+                )
+                .offset(y: height - 4.5)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func pane<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView {
+            content()
+                .padding(.horizontal, PRSplitMetrics.horizontalPadding)
+                .padding(.vertical, PRSplitMetrics.verticalPadding)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .inelastic()
+        }
+    }
+}
+
 /// The composer's own metrics. Named rather than inline for the reason
 /// `ButtonMetrics` is, and for one more: `PRSkeletonView` reserves the band
-/// this opens at, and a skeleton that guessed it would hand the reading
-/// column rows the composer then took back.
+/// the box lays out in, and a skeleton that guessed it would hand the
+/// conversation rows the composer then took back.
 enum PRComposerMetrics {
-    /// What the editor is at least, and at most, in each of its two sizes.
-    static func editorMinHeight(compact: Bool) -> CGFloat { compact ? 22 : 36 }
-    static func editorMaxHeight(compact: Bool) -> CGFloat { compact ? 70 : 120 }
-    /// The inset over the editor, which is the only one that differs between
-    /// them.
-    static func editorTopPadding(compact: Bool) -> CGFloat { compact ? 5 : 7 }
+    /// What the editor is at least — one line — and at most. Inside the
+    /// conversation's scroll the editor grows with its text between the two,
+    /// and only scrolls itself once a comment is taller than the ceiling.
+    static let editorMinHeight: CGFloat = 36
+    static let editorMaxHeight: CGFloat = 60
+    /// The inset over the editor.
+    static let editorTopPadding: CGFloat = 7
     /// The send row under it: the button's own height and the insets around
     /// the row.
     static let sendRowHeight: CGFloat = 22
@@ -532,34 +580,20 @@ enum PRComposerMetrics {
     /// The field's corner.
     static let cornerRadius: CGFloat = 8
 
-    /// What the box comes to at its floor: the editor at its own minimum,
-    /// the send row under it, and the insets around both.
-    static func height(compact: Bool) -> CGFloat {
-        chrome + editorMinHeight(compact: compact)
-    }
-
-    /// And at its ceiling, which is what the one at the tab's foot actually
-    /// opens at: the editor is flexible, so a `VStack` with room to spare
-    /// gives it every point up to its maximum.
-    static func maxHeight(compact: Bool) -> CGFloat {
-        chrome + editorMaxHeight(compact: compact)
-    }
-
-    /// Everything the box is but its editor.
-    private static var chrome: CGFloat {
-        editorTopPadding(compact: false) + sendRowTopPadding + sendRowHeight + sendRowBottomPadding
+    /// What the box comes to empty, which is how a pull request opens: the
+    /// editor at its floor, the send row under it, and the insets around both.
+    static var height: CGFloat {
+        editorTopPadding + editorMinHeight + sendRowTopPadding + sendRowHeight + sendRowBottomPadding
     }
 }
 
 /// The pull request's own comment box, matching the mock's `PRComposer`
 /// chrome (a rounded field with a toolbar row under it, the send button in
 /// accent) but functional: it posts through `pr-comment` rather than sitting
-/// there as decoration. Used twice — full-size at the tab's own foot, compact
-/// at the conversation's — with the same mechanics either way; see the call
-/// sites for why neither is a threaded reply.
+/// there as decoration. It sits at the end of the conversation, inside its
+/// scroll; see the call site for why it is not a threaded reply.
 struct PRComposerView: View {
     let placeholder: String
-    var compact: Bool = false
     @Binding var text: String
     let isSending: Bool
     let error: String?
@@ -569,36 +603,37 @@ struct PRComposerView: View {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
     }
 
+    /// What the hidden sizer lays out: the text as typed, with a space after
+    /// a trailing newline (or in place of nothing) so the line the caret has
+    /// just opened is counted too.
+    private var sizingText: String {
+        text.isEmpty || text.hasSuffix("\n") ? text + " " : text
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             VStack(alignment: .leading, spacing: 0) {
-                ZStack(alignment: .topLeading) {
-                    if text.isEmpty {
-                        // Laid where the editor's own first line starts —
-                        // its 2pt padding plus the text view's 5pt line
-                        // fragment padding, and no top offset — so the caret
-                        // blinks exactly at the placeholder's first letter.
-                        Text(placeholder)
-                            // The editor's own font, since the placeholder
-                            // stands exactly where the first typed letter
-                            // will: a proportional one would sit a hair off
-                            // the caret it is drawn behind.
-                            .font(Typo.mono(size: Typo.subhead))
-                            .ink(.tertiary)
-                            .padding(.leading, 7)
-                            .allowsHitTesting(false)
-                    }
-                    TextEditor(text: $text)
-                        .font(Typo.mono(size: Typo.subhead))
-                        .scrollContentBackground(.hidden)
-                        .frame(
-                            minHeight: PRComposerMetrics.editorMinHeight(compact: compact),
-                            maxHeight: PRComposerMetrics.editorMaxHeight(compact: compact)
-                        )
-                        .padding(.horizontal, 2)
-                }
-                .padding(.horizontal, 9)
-                .padding(.top, PRComposerMetrics.editorTopPadding(compact: compact))
+                // The editor is sized by a hidden copy of its own text rather
+                // than by a frame of its own: inside a scroll a `TextEditor`
+                // is offered no height to fill and would sit at whichever
+                // bound its frame named, so the copy — wrapped at the text
+                // view's own 5pt line fragment padding — measures the lines,
+                // clamped to the editor's floor and ceiling, and the editor
+                // is laid over exactly that.
+                Text(sizingText)
+                    .font(Typo.mono(size: Typo.subhead))
+                    .padding(.horizontal, 5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(
+                        minHeight: PRComposerMetrics.editorMinHeight,
+                        maxHeight: PRComposerMetrics.editorMaxHeight,
+                        alignment: .top
+                    )
+                    .hidden()
+                    .overlay(alignment: .topLeading) { editor }
+                    .padding(.horizontal, 2)
+                        .padding(.top, PRComposerMetrics.editorTopPadding)
 
                 // The mock's toolbar row also draws textformat and paperclip
                 // icons here; neither has anything real to do — gh has no API
@@ -647,6 +682,29 @@ struct PRComposerView: View {
                     .ink(.danger)
                     .lineLimit(2)
             }
+        }
+    }
+
+    /// The editor itself, with the placeholder under it while it is empty.
+    private var editor: some View {
+        ZStack(alignment: .topLeading) {
+            if text.isEmpty {
+                // Laid where the editor's own first line starts — the text
+                // view's 5pt line fragment padding, and no top offset — so
+                // the caret blinks exactly at the placeholder's first letter.
+                Text(placeholder)
+                    // The editor's own font, since the placeholder stands
+                    // exactly where the first typed letter will: a
+                    // proportional one would sit a hair off the caret it is
+                    // drawn behind.
+                    .font(Typo.mono(size: Typo.subhead))
+                    .ink(.tertiary)
+                    .padding(.leading, 5)
+                    .allowsHitTesting(false)
+            }
+            TextEditor(text: $text)
+                .font(Typo.mono(size: Typo.subhead))
+                .scrollContentBackground(.hidden)
         }
     }
 }
