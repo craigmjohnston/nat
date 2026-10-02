@@ -9,13 +9,15 @@ import NatKit
 ///
 /// Everything the old project tabs and rail did that the design does not
 /// draw lives on here as the row it belongs to: a project's menu (New Slice,
-/// Workshop the Plan, Open in Notion, Reveal, Close), a milestone's (New
+/// Workshop…, Open in Notion, Reveal, Close), a milestone's (New
 /// Slice, Rename, Move, Delete), a slice's (Launch, Edit, Open, Move, Delete),
-/// each project's own `+` (New Slice, Workshop the Plan), a proposal's tree
+/// each project's own `+` (New Milestone, New Slice, Workshop…), a proposal's tree
 /// under its Untitled row and an ended session under its project.
 struct SidebarView: View {
     @Bindable var appModel: AppModel
     var onNewProject: () -> Void = {}
+    /// View ▸ Show/Hide Done Items.
+    @Environment(\.showsDoneItems) private var showsDoneItems
 
     /// The folds the user has made, by key: `active`, `work`, `p:<project>`
     /// and `m:<project>/<milestone>`. A project with no entry is open exactly
@@ -37,6 +39,9 @@ struct SidebarView: View {
     /// The Scratch fold's tree at its natural height: what it takes, at most,
     /// beside an open Projects tree.
     @State private var scratchContentHeight: CGFloat = 0
+    /// The project row under the pointer, whose folder turns into its fold
+    /// chevron.
+    @State private var hoveredProject: String?
 
     init(appModel: AppModel, onNewProject: @escaping () -> Void = {}, folded: [String: Bool] = [:]) {
         self.appModel = appModel
@@ -56,7 +61,15 @@ struct SidebarView: View {
         var id: String { "\(projectID)/\(name)" }
     }
 
-    private var model: SidebarModel { appModel.sidebarModel }
+    /// The sidebar's model, its done work dropped while View ▸ Hide Done
+    /// Items is on.
+    private var model: SidebarModel {
+        let model = appModel.sidebarModel
+        guard !showsDoneItems else { return model }
+        return SidebarModel(
+            active: model.active, projects: model.projects.map { $0.hidingDone() },
+            scratch: model.scratch?.hidingDone())
+    }
 
     var body: some View {
         let model = model
@@ -191,12 +204,12 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func addItems(_ project: SidebarProject) -> some View {
-        Button("New Milestone\u{2026}") {
+        Button("New Milestone\u{2026}", systemImage: "folder.badge.plus") {
             newMilestoneText = ""
             newMilestoneProject = project.id
         }
-        Button("New Slice\u{2026}") { newSliceTarget = NewSliceTarget(projectID: project.id, milestone: "") }
-        Button("Workshop the Plan") { Task { await appModel.selectWorkshop(inProject: project.id) } }
+        Button("New Slice\u{2026}", systemImage: "plus") { newSliceTarget = NewSliceTarget(projectID: project.id, milestone: "") }
+        Button("Workshop\u{2026}", systemImage: "sparkles") { Task { await appModel.selectWorkshop(inProject: project.id) } }
     }
 
     /// Active's `+`: a new ad hoc session, in the active project's working
@@ -266,11 +279,11 @@ struct SidebarView: View {
         switch row.kind {
         case .session:
             if let session = appModel.sessionStore?.sessions.first(where: { $0.id == row.targetID }) {
-                Button("End Session") { Task { await appModel.endSession(tag: session.tag) } }
-                Button("Discard\u{2026}", role: .destructive) { sessionForDiscard = session.id }
+                Button("End Session", systemImage: "stop.circle") { Task { await appModel.endSession(tag: session.tag) } }
+                Button("Discard\u{2026}", systemImage: "trash", role: .destructive) { sessionForDiscard = session.id }
             }
         case .workshop:
-            Button("End Workshop Session\u{2026}") {
+            Button("End Workshop Session\u{2026}", systemImage: "stop.circle") {
                 Task {
                     await appModel.selectWorkshop(inProject: row.projectID)
                     workshopPendingClose = true
@@ -296,11 +309,18 @@ struct SidebarView: View {
             // The project's own fold mark: a folder of folders, outlined
             // while folded and open with its flap swung out once its
             // milestones are on the tree.
-            StackedFolderGlyph(
-                open: open,
-                color: DesignTokens.ink(.primary, on: .header),
-                backColor: DesignTokens.ink(.tertiary, on: .header))
-                .frame(width: 16)
+            // Under the pointer, it gives way to the chevron the click works.
+            Group {
+                if hoveredProject == project.id {
+                    DisclosureChevron(open: open)
+                } else {
+                    StackedFolderGlyph(
+                        open: open,
+                        color: DesignTokens.ink(.primary, on: .header),
+                        backColor: DesignTokens.ink(.tertiary, on: .header))
+                }
+            }
+            .frame(width: 16)
             Group {
                 switch project.kind {
                 case .untitled:
@@ -327,6 +347,9 @@ struct SidebarView: View {
         .frame(height: GnatMetrics.sidebarRowHeight)
         .gnatRow(selected: project.kind == .untitled && isActive)
         .contentShape(Rectangle())
+        .onHover { inside in
+            if inside { hoveredProject = project.id } else if hoveredProject == project.id { hoveredProject = nil }
+        }
         .onTapGesture {
             toggle("p:\(project.id)", open: open)
             if project.kind == .untitled { Task { await appModel.activateProject(project.id) } }
@@ -378,7 +401,9 @@ struct SidebarView: View {
                 ForEach(milestone.slices) { sliceRow($0, indent: 34 - outdent) }
             }
         }
-        if isActive {
+        // An ended session is drawn as done, so it goes with the rest of
+        // the finished work under Hide Done Items.
+        if isActive && showsDoneItems {
             endedSessions(project, outdent: outdent)
         }
         doneFolder(project, outdent: outdent)
@@ -470,9 +495,11 @@ struct SidebarView: View {
     private func sliceLine(
         title: String, state: SliceDisplayState, live: Bool, selected: Bool, indent: CGFloat = 34
     ) -> some View {
-        // Done recedes to grey under its strike; blocked recedes further, to
-        // the faintest ink, since it is not available at all.
-        let ink: InkRole = state == .blocked ? .quaternary : (state == .done ? .tertiary : .primary)
+        // Done and blocked both recede to the faintest ink — blocked since it
+        // is not available at all, done since it is finished — and done
+        // fades further still under its strike, so finished work sits back
+        // behind everything that is not.
+        let ink: InkRole = state == .blocked || state == .done ? .quaternary : .primary
         return HStack(spacing: 6) {
             StateDot(state: state, live: live).frame(width: 12)
             Text(title)
@@ -482,6 +509,7 @@ struct SidebarView: View {
                 .lineLimit(1)
             Spacer(minLength: 0)
         }
+        .opacity(state == .done ? 0.7 : 1)
         .padding(.leading, indent)
         .padding(.trailing, 10)
         .frame(height: GnatMetrics.sidebarRowHeight)
@@ -536,7 +564,7 @@ struct SidebarView: View {
                         selected: appModel.selectedSessionID == session.id, indent: 34 - outdent)
                         .onTapGesture { appModel.selectedSessionID = session.id }
                         .contextMenu {
-                            Button("Discard\u{2026}", role: .destructive) { sessionForDiscard = session.id }
+                            Button("Discard\u{2026}", systemImage: "trash", role: .destructive) { sessionForDiscard = session.id }
                         }
                 }
             }
@@ -552,16 +580,16 @@ struct SidebarView: View {
             Divider()
         }
         if project.kind == .project, let url = NotionPageURL.forPage(project.id) {
-            Button("Open in Notion") { NSWorkspace.shared.open(url) }
+            Button("Open in Notion", systemImage: "arrow.up.right.square") { NSWorkspace.shared.open(url) }
         }
         if let directory = workingDirectory(of: project.id) {
-            Button("Reveal Working Directory in Finder") {
+            Button("Reveal Working Directory in Finder", systemImage: "folder") {
                 NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: directory)])
             }
         }
         if ProjectTabRules.showsClose(tabCount: appModel.closableTabCount, isScratch: project.kind == .scratch) {
             Divider()
-            Button("Close Project") { requestClose(project.id) }
+            Button("Close Project", systemImage: "xmark.circle") { requestClose(project.id) }
         }
     }
 
@@ -571,22 +599,22 @@ struct SidebarView: View {
         let filed = appModel.plan(projectID: projectID)?.slices.filter { $0.milestoneID == name }.count ?? 0
         let actions = MilestoneMenuRules.actions(for: name, in: milestones, sliceCount: filed)
 
-        Button("New Slice\u{2026}") { newSliceTarget = NewSliceTarget(projectID: projectID, milestone: name) }
-        Button("Rename\u{2026}") {
+        Button("New Slice\u{2026}", systemImage: "plus") { newSliceTarget = NewSliceTarget(projectID: projectID, milestone: name) }
+        Button("Rename\u{2026}", systemImage: "pencil") {
             renameText = name
             milestoneForRename = MilestoneRef(projectID: projectID, name: name)
         }
         Divider()
-        Button("Move Up") {
+        Button("Move Up", systemImage: "arrow.up") {
             run { try await NatClient().milestoneMove(projectID: projectID, name: name, before: actions.moveBefore, after: nil) }
         }
         .disabled(actions.moveBefore == nil)
-        Button("Move Down") {
+        Button("Move Down", systemImage: "arrow.down") {
             run { try await NatClient().milestoneMove(projectID: projectID, name: name, before: nil, after: actions.moveAfter) }
         }
         .disabled(actions.moveAfter == nil)
         Divider()
-        Button("Delete", role: .destructive) { milestoneForDeletion = MilestoneRef(projectID: projectID, name: name) }
+        Button("Delete", systemImage: "trash", role: .destructive) { milestoneForDeletion = MilestoneRef(projectID: projectID, name: name) }
             .disabled(!actions.canDelete)
     }
 
@@ -599,16 +627,16 @@ struct SidebarView: View {
         let targets = (plan?.milestones ?? []).sorted { $0.order < $1.order }.filter { $0.id != milestone }
         let hasLiveAgent = appModel.activityStore?.agents[row.sliceID] != nil
 
-        Button("Launch Agent") { launch(row) }
+        Button("Launch Agent", systemImage: "play.circle") { launch(row) }
             .disabled(page.map { !LaunchPlan(for: $0, hasLiveAgent: hasLiveAgent).canLaunch } ?? true)
-        Button("Edit Description\u{2026}") { sliceForEdit = row }
+        Button("Edit Description\u{2026}", systemImage: "pencil") { sliceForEdit = row }
             .disabled(page?.status != "Todo")
         if let url = page.flatMap({ URL(string: $0.url) }) ?? NotionPageURL.forPage(row.sliceID) {
-            Button("Open in Notion") { NSWorkspace.shared.open(url) }
+            Button("Open in Notion", systemImage: "arrow.up.right.square") { NSWorkspace.shared.open(url) }
         }
         Divider()
         if !targets.isEmpty {
-            Menu("Move to") {
+            Menu("Move to", systemImage: "folder") {
                 ForEach(targets) { target in
                     Button(target.name) {
                         run { try await NatClient().sliceMove(projectID: row.projectID, sliceRef: row.sliceID, milestone: target.name) }
@@ -616,7 +644,7 @@ struct SidebarView: View {
                 }
             }
         }
-        Button("Delete\u{2026}", role: .destructive) { sliceForDeletion = (row, page?.status == "Done") }
+        Button("Delete\u{2026}", systemImage: "trash", role: .destructive) { sliceForDeletion = (row, page?.status == "Done") }
     }
 
     // MARK: - Actions
@@ -847,5 +875,19 @@ struct SidebarView: View {
                     Text(message)
                 }
         }
+    }
+}
+
+private struct ShowsDoneItemsKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// View ▸ Show/Hide Done Items, as the app's menu holds it — an
+    /// environment value rather than the sidebar's own storage read so a
+    /// gallery story can say which it is about.
+    var showsDoneItems: Bool {
+        get { self[ShowsDoneItemsKey.self] }
+        set { self[ShowsDoneItemsKey.self] = newValue }
     }
 }

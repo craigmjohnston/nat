@@ -37,12 +37,19 @@ public func dependencyLine(dependsOn: [String]?, blocked: Bool, plan: [Slice]) -
 /// filed elsewhere) is left out rather than guessed at, the same rule
 /// `dependencyLine` applies to its own count fallback.
 public func dependencyEntries(_ dependsOn: [String]?, plan: [Slice]) -> [(name: String, done: Bool)] {
+    dependencySlices(dependsOn, plan: plan).map { ($0.name, $0.status == "Done") }
+}
+
+/// The plan's own slices a slice depends on, in the order its relation
+/// names them — what the brief's depends list draws a row of, and selects,
+/// for each. The same resolution as `dependencyEntries`.
+public func dependencySlices(_ dependsOn: [String]?, plan: [Slice]) -> [Slice] {
     guard let deps = dependsOn, !deps.isEmpty else { return [] }
 
     let byID: [String: Slice] = plan.reduce(into: [:]) { map, slice in
         map[normalisedPageID(slice.id)] = slice
     }
-    return deps.compactMap { byID[normalisedPageID($0)] }.map { ($0.name, $0.status == "Done") }
+    return deps.compactMap { byID[normalisedPageID($0)] }
 }
 
 /// A page ID with its dashes stripped and case folded, the one spelling two

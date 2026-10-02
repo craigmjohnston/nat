@@ -156,16 +156,16 @@ final class NavigatorModelTests: XCTestCase {
             agent: agent(.working, model: "Opus 5.5", effort: "medium", context: 36.6),
             brief: nil)
         XCTAssertEqual(events, [
-            ThreadEvent(who: "Launched", body: "Opus 5.5 · medium", foot: "slice/x"),
-            ThreadEvent(who: "Agent", meta: "working", tone: .accent, foot: "ctx 37%"),
+            ThreadEvent(.launched, who: "Launched", body: "Opus 5.5 · medium", foot: "slice/x"),
+            ThreadEvent(.agent, who: "Agent", meta: "working", tone: .accent, foot: "ctx 37%"),
         ])
     }
 
     func testAWaitingAgentIsHotAndAnUnreadReadingSaysNothing() {
         let events = buildThreadEvents(slice: slice(status: "In progress"), agent: agent(.waiting, model: ""), brief: nil)
         XCTAssertEqual(events, [
-            ThreadEvent(who: "Launched"),
-            ThreadEvent(who: "Agent", meta: "waiting for you", tone: .hot),
+            ThreadEvent(.launched, who: "Launched"),
+            ThreadEvent(.agent, who: "Agent", meta: "waiting for you", tone: .hot),
         ])
     }
 
@@ -187,30 +187,30 @@ final class NavigatorModelTests: XCTestCase {
         """
         let events = buildThreadEvents(
             slice: slice(status: "In progress", branch: "b", handedBack: true), agent: nil, brief: brief)
-        XCTAssertEqual(events.last, ThreadEvent(who: "Agent", meta: "handed back", body: "Second pass, **done**."))
+        XCTAssertEqual(events.last, ThreadEvent(.handedBack, who: "Agent", meta: "handed back", body: "Second pass, **done**."))
     }
 
     func testAnApprovedAndMergedSliceReadsToTheEnd() {
         let events = buildThreadEvents(slice: slice(status: "Done", branch: "b", pr: prURL), agent: nil, brief: nil)
         XCTAssertEqual(events.map(\.who), ["Launched", "Agent", "You", "Merged"])
-        XCTAssertEqual(events[2], ThreadEvent(who: "You", meta: "approved", foot: "PR #40 → main"))
+        XCTAssertEqual(events[2], ThreadEvent(.approved, who: "You", meta: "approved", foot: "PR #40 → main"))
     }
 
     func testAPullRequestWithNoNumberStillReadsApproved() {
         let events = buildThreadEvents(slice: slice(status: "In progress", pr: "https://example.com/x"), agent: nil, brief: nil)
-        XCTAssertEqual(events.last, ThreadEvent(who: "You", meta: "approved", foot: "PR opened"))
+        XCTAssertEqual(events.last, ThreadEvent(.approved, who: "You", meta: "approved", foot: "PR opened"))
     }
 
     func testASliceClosedWithNoBranchSaysClosedWithItsSummary() {
         let brief = "Look into it.\n\n### Summary\n\nNothing to change; wrote it up.\n"
         let events = buildThreadEvents(slice: slice(status: "Done"), agent: nil, brief: brief)
         XCTAssertEqual(events, [
-            ThreadEvent(who: "Launched"),
-            ThreadEvent(who: "Closed", body: "Nothing to change; wrote it up."),
+            ThreadEvent(.launched, who: "Launched"),
+            ThreadEvent(.closed, who: "Closed", body: "Nothing to change; wrote it up."),
         ])
         XCTAssertEqual(
             buildThreadEvents(slice: slice(status: "Done"), agent: nil, brief: nil).last,
-            ThreadEvent(who: "Closed"))
+            ThreadEvent(.closed, who: "Closed"))
     }
 
     func testADoneSliceWithABranchButNoPullRequestWasMerged() {

@@ -14,6 +14,10 @@ struct NatApp: App {
     /// in `DesignTokens` re-resolves under the new appearance.
     @AppStorage(Theme.storageKey) private var storedTheme = Theme.system.rawValue
 
+    /// View ▸ Show/Hide Done Items: whether the sidebar draws finished work
+    /// — done slices, ended sessions and each project's Done folder.
+    @AppStorage(showsDoneItemsKey) private var showsDoneItems = true
+
     private var theme: Theme { Theme(stored: storedTheme) }
 
     init() {
@@ -93,6 +97,7 @@ struct NatApp: App {
                     AgentTerminalDebugView(session: session)
                 } else {
                     WindowShellView(appModel: appModel)
+                        .environment(\.showsDoneItems, showsDoneItems)
                         .task { await Self.snapshotIfAsked(appModel) }
                 }
             }
@@ -124,6 +129,16 @@ struct NatApp: App {
         .commands {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesView(model: updaterViewModel)
+            }
+            // The View menu's own first group: Finder's Show/Hide Hidden
+            // Files, for finished work, on the same ⇧⌘. Finder uses.
+            CommandGroup(before: .toolbar) {
+                Button(showsDoneItems ? "Hide Done Items" : "Show Done Items",
+                       systemImage: showsDoneItems ? "eye.slash" : "eye") {
+                    showsDoneItems.toggle()
+                }
+                .keyboardShortcut(".", modifiers: [.command, .shift])
+                Divider()
             }
         }
 

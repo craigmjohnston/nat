@@ -22,6 +22,21 @@ public enum SliceDisplayState: String, CaseIterable, Equatable, Sendable {
         self != .todo && self != .blocked
     }
 
+    /// The state in words, for where a dot alone says too little — a
+    /// dependency's hover detail.
+    public var word: String {
+        switch self {
+        case .todo: return "To do"
+        case .working: return "Working"
+        case .waiting: return "Waiting for you"
+        case .review: return "In review"
+        case .pr: return "PR open"
+        case .fixing: return "Fixing"
+        case .blocked: return "Blocked"
+        case .done: return "Done"
+        }
+    }
+
     /// What the Active fold lists — `inFlightSliceIDs`'s own rule, so the
     /// fold and the reaper's sweep can never disagree.
     public var isInFlight: Bool {
@@ -145,7 +160,24 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
     public func doneContains(sliceID: String) -> Bool {
         doneMilestones.contains { $0.slices.contains { $0.sliceID == sliceID } }
     }
+
+    /// The project as View ▸ Hide Done Items draws it: no Done folder, and
+    /// no done slice under a milestone still holding work. A milestone keeps
+    /// its own count — it is still that far through.
+    public func hidingDone() -> SidebarProject {
+        SidebarProject(
+            id: id, name: name, kind: kind, status: status,
+            milestones: milestones.map { milestone in
+                SidebarMilestone(
+                    name: milestone.name, done: milestone.done, total: milestone.total,
+                    slices: milestone.slices.filter { $0.state != .done })
+            },
+            doneMilestones: [], needsYou: needsYou)
+    }
 }
+
+/// The `UserDefaults` key View ▸ Show/Hide Done Items writes.
+public let showsDoneItemsKey = "showsDoneItems"
 
 /// What an Active row selects.
 public enum SidebarActiveKind: Equatable, Sendable {

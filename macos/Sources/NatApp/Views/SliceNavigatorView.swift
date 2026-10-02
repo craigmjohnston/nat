@@ -20,7 +20,6 @@ struct SliceNavigatorView: View {
     @State private var agentOptions = AgentOptions.fallback
     @State private var launchWarning: String?
     @State private var showMergeConfirm = false
-    @State private var showsFullBrief = false
 
     private var projectID: String { appModel.projectStore?.projectID ?? "" }
     private var agent: AgentStatus? { appModel.activityStore?.agents[slice.id] }
@@ -70,7 +69,6 @@ struct SliceNavigatorView: View {
         }
         .task(id: slice.id) {
             resetLaunchForm()
-            showsFullBrief = false
             agentOptions = await AgentOptionsCache.shared.resolve()
         }
         .task(id: "\(slice.id)|\(slice.pr)") {
@@ -148,14 +146,10 @@ struct SliceNavigatorView: View {
                     if detail.brief.isEmpty {
                         Text("No brief yet — what you write here becomes the agent's prompt.").ink(.secondary)
                     } else {
-                        let excerpt = briefExcerpt(detail.brief, maxWords: briefExcerptWords)
-                        Text(markdownAttributed(
-                            showsFullBrief ? detail.brief : excerpt ?? detail.brief, size: 13.5))
-                            .ink(.primary)
-                            .textSelection(.enabled)
-                        if excerpt != nil {
-                            Button(showsFullBrief ? "Show less" : "Show more") { showsFullBrief.toggle() }
-                                .buttonStyle(GnatLinkButtonStyle())
+                        Excerpt(text: detail.brief) { shown in
+                            Text(markdownAttributed(shown, size: 13.5))
+                                .ink(.primary)
+                                .textSelection(.enabled)
                         }
                     }
                 } else if let message = detail.errorMessage {
@@ -180,24 +174,30 @@ struct SliceNavigatorView: View {
         }
     }
 
+    /// The brief's foot: its milestone, and what it depends on — one row
+    /// per dependency, each its dot and name, selecting it on a click.
     private var facts: some View {
-        let deps = dependencyEntries(slice.dependsOn, plan: appModel.projectStore?.state.projectInfo?.slices ?? [])
-        let branch = (slice.branch ?? "").isEmpty ? nil : slice.branch
+        let deps = dependencies
         return Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
             GridRow {
                 Text("milestone").ink(.tertiary)
                 Text(milestoneName).ink(.primary).lineLimit(1)
             }
-            GridRow {
+            GridRow(alignment: .firstTextBaseline) {
                 Text("depends").ink(.tertiary)
-                Text(deps.isEmpty ? "none" : deps.map(\.name).joined(separator: ", "))
-                    .ink(deps.isEmpty ? .secondary : .primary).lineLimit(1)
-            }
-            GridRow {
-                Text("branch").ink(.tertiary)
-                Text(branch ?? (slice.status == "Done" ? "none" : "assigned on launch"))
-                    .ink(branch == nil ? .secondary : .primary)
-                    .lineLimit(1).truncationMode(.middle)
+                if deps.isEmpty {
+                    Text("none").ink(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(deps) { dep in
+                            DependencyRow(
+                                slice: dep, state: state(of: dep),
+                                live: appModel.activityStore?.agents[dep.id] != nil,
+                                milestone: milestoneName(of: dep),
+                                onSelect: { Task { await appModel.selectSlice(dep.id, inProject: projectID) } })
+                        }
+                    }
+                }
             }
         }
         .monoXS()
@@ -206,6 +206,20 @@ struct SliceNavigatorView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .surface(.chrome)
         .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
+    }
+
+    private var plan: [Slice] { appModel.projectStore?.state.projectInfo?.slices ?? [] }
+    private var dependencies: [Slice] { dependencySlices(slice.dependsOn, plan: plan) }
+
+    private func state(of other: Slice) -> SliceDisplayState {
+        displayState(
+            for: other, agent: appModel.activityStore?.agents[other.id].map { AgentActivity($0.activity) },
+            fixLaunched: appModel.fixLaunched[other.id] != nil)
+    }
+
+    private func milestoneName(of other: Slice) -> String {
+        appModel.projectStore?.state.projectInfo?.milestones.first { $0.id == other.milestoneID }?.name
+            ?? other.milestoneID
     }
 
     // MARK: - Thread
@@ -229,45 +243,28 @@ struct SliceNavigatorView: View {
         }
     }
 
+    /// The brief, what has happened since, any follow-ups, and — while the
+    /// slice can be launched — the launch card that says what comes next.
     @ViewBuilder
     private func threadBody(_ nav: NavigatorModel) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                briefCard
-                    .padding([.horizontal, .top], 6)
-                if !nav.state.isLaunched && agent == nil {
-                    NavProse {
-                        if nav.state == .blocked {
-                            let deps = dependencyEntries(
-                                slice.dependsOn, plan: appModel.projectStore?.state.projectInfo?.slices ?? [])
-                                .filter { !$0.done }.map(\.name)
-                            (Text("Blocked on ") + Text(deps.joined(separator: ", ")).foregroundStyle(DesignTokens.ink(.primary, on: .window))
-                                + Text(". Launch unlocks when that slice is done."))
-                                .ink(.secondary)
-                        } else {
-                            Text("Launch starts Claude Code on this brief, in a worktree on a new branch. Its log appears here and the terminal opens on the right.")
-                                .ink(.secondary)
-                        }
-                        launchChips
+                VStack(spacing: 6) {
+                    briefCard
+                    ForEach(Array(buildThreadEvents(slice: slice, agent: agent, brief: detail.detail?.brief).enumerated()), id: \.offset) {
+                        ThreadEventCard(event: $0.element)
                     }
-                } else {
-                    VStack(spacing: 6) {
-                        ForEach(Array(buildThreadEvents(slice: slice, agent: agent, brief: detail.detail?.brief).enumerated()), id: \.offset) {
-                            ThreadEventCard(event: $0.element)
-                        }
-                        if !followUps.isEmpty {
-                            FollowUpCards(appModel: appModel, slice: slice, followUps: followUps, milestone: milestoneName, hasLiveAgent: agent != nil)
-                        }
+                    if !followUps.isEmpty {
+                        FollowUpCards(appModel: appModel, slice: slice, followUps: followUps, milestone: milestoneName, hasLiveAgent: agent != nil)
                     }
-                    .padding(6)
                     if nav.showsLaunch {
-                        NavProse {
-                            Text("No agent is running on it. Launch relaunches one on its branch, told it is continuing.")
-                                .ink(.secondary)
-                            launchChips
-                        }
+                        LaunchCard(
+                            mode: launchMode(nav), model: $model, effort: $effort, options: agentOptions,
+                            enabled: appModel.sliceActions.isEnabled(.launch, sliceID: slice.id, available: nav.canLaunch),
+                            isBusy: isLaunching, onLaunch: launch)
                     }
                 }
+                .padding(6)
                 if let launchError { NavNotice(text: launchError) }
                 if let launchWarning { NavNotice(text: launchWarning, role: .warning) }
             }
@@ -275,17 +272,11 @@ struct SliceNavigatorView: View {
         .inelastic()
     }
 
-    private var launchChips: some View {
-        HStack(spacing: 6) {
-            NavChipMenu(title: model.isEmpty ? "default model" : model) {
-                Button("Default") { model = "" }
-                ForEach(agentOptions.models, id: \.self) { option in Button(option) { model = option } }
-            }
-            NavChipMenu(title: effort.isEmpty ? "default effort" : effort) {
-                Button("Default") { effort = "" }
-                ForEach(agentOptions.efforts, id: \.self) { option in Button(option) { effort = option } }
-            }
+    private func launchMode(_ nav: NavigatorModel) -> LaunchCard.Mode {
+        if nav.state == .blocked {
+            return .blocked(waitingOn: dependencies.filter { $0.status != "Done" }.map(\.name))
         }
+        return nav.state.isLaunched ? .relaunch : .launch
     }
 
     private func resetLaunchForm() {
@@ -387,9 +378,11 @@ struct SliceNavigatorView: View {
     private var mergeAction: some View {
         let available = prStore.loadState.pr.map(mergeIsEnabled) ?? false
         return Button(action: { showMergeConfirm = true }) {
-            HeaderActionLabel(title: "Merge", isBusy: appModel.sliceActions.isRunning(.merge, sliceID: slice.id))
+            HeaderActionLabel(
+                title: "Merge", systemImage: "arrow.triangle.merge",
+                isBusy: appModel.sliceActions.isRunning(.merge, sliceID: slice.id))
         }
-        .buttonStyle(GnatHeaderButtonStyle())
+        .buttonStyle(GnatHeaderButtonStyle(primary: true))
         .disabled(!appModel.sliceActions.isEnabled(.merge, sliceID: slice.id, available: available))
         .onChange(of: available, initial: true) { _, available in
             appModel.sliceActions.observe(.merge, sliceID: slice.id, available: available)
@@ -469,8 +462,10 @@ struct PRSectionBody: View {
                      : sentenceCase(verdict.word))
                     .ink(.secondary)
 
-                Button("Open in GitHub") {
+                Button {
                     if let url = URL(string: pr.url) { NSWorkspace.shared.open(url) }
+                } label: {
+                    HeaderActionLabel(title: "Open in GitHub", systemImage: "arrow.up.right.square")
                 }
                 .buttonStyle(GnatButtonStyle())
                 .padding(.top, 2)
