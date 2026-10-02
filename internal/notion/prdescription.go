@@ -17,6 +17,12 @@ const (
 	FollowUpsTriagedHeading = "Follow-ups triaged"
 )
 
+// VisualChangesHeading is the heading `slice-visuals` files the images an agent
+// rendered of its change under, one numbered item per image: what it shows,
+// with where it is nested under that. Matched as PRDescriptionHeading is, and
+// read by store.VisualChanges.
+const VisualChangesHeading = "Visual changes"
+
 // PRDescriptionOf is the pull request description an agent left on a slice
 // page: the blocks between its PR description heading and the next heading of
 // the same or higher level, rendered as markdown. A page with no such heading —

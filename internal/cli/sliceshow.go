@@ -89,6 +89,16 @@ type sliceShowJSON struct {
 	// FollowUps are the follow-ups the slice's agent handed in that still
 	// await the user's decision, each by the index slice-triage takes.
 	FollowUps []followUpJSON `json:"followUps,omitempty"`
+	// Visuals are the images the slice's agent last handed in of what it
+	// changed, for the app's Visual changes section.
+	Visuals []visualJSON `json:"visuals,omitempty"`
+}
+
+// visualJSON is one handed-in image.
+type visualJSON struct {
+	Index int    `json:"index"`
+	Name  string `json:"name"`
+	URI   string `json:"uri"`
 }
 
 // followUpJSON is one pending follow-up.
@@ -130,6 +140,9 @@ func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, proje
 	}
 	for _, f := range store.PendingFollowUps(brief) {
 		sj.FollowUps = append(sj.FollowUps, followUpJSON{Index: f.Index, Title: f.Title, Brief: f.Brief})
+	}
+	for _, v := range store.VisualChanges(brief) {
+		sj.Visuals = append(sj.Visuals, visualJSON{Index: v.Index, Name: v.Name, URI: v.URI})
 	}
 
 	enc := json.NewEncoder(out)

@@ -53,10 +53,30 @@ final class NavigatorModelTests: XCTestCase {
 
     func testEachSectionPutsUpItsOwnMainView() {
         let todo = NavigatorModel(slice: slice(), agent: nil, fixLaunched: false)
-        XCTAssertEqual(NavigatorSection.allCases.map { todo.mainMode(for: $0) }, [nil, nil, nil])
+        XCTAssertEqual(NavigatorSection.allCases.map { todo.mainMode(for: $0) }, [nil, nil, nil, nil])
 
         let approved = NavigatorModel(slice: slice(status: "In progress", branch: "b", pr: prURL), agent: nil, fixLaunched: false)
-        XCTAssertEqual(NavigatorSection.allCases.map { approved.mainMode(for: $0) }, [.terminal, .diff, .pr])
+        XCTAssertEqual(NavigatorSection.allCases.map { approved.mainMode(for: $0) }, [.terminal, .diff, nil, .pr])
+
+        let shown = NavigatorModel(
+            slice: slice(status: "In progress", branch: "b", pr: prURL), agent: nil, fixLaunched: false, hasVisuals: true)
+        XCTAssertEqual(NavigatorSection.allCases.map { shown.mainMode(for: $0) }, [.terminal, .diff, .visuals, .pr])
+    }
+
+    func testVisualChangesAreLiveOnlyWithImagesAndSendOnlyToALiveAgent() {
+        let none = NavigatorModel(slice: slice(status: "In progress"), agent: .working, fixLaunched: false)
+        XCTAssertFalse(none.isLive(.visuals))
+        XCTAssertFalse(none.showsVisualActions)
+
+        let handedIn = NavigatorModel(
+            slice: slice(status: "In progress", branch: "b", handedBack: true), agent: nil, fixLaunched: false, hasVisuals: true)
+        XCTAssertTrue(handedIn.isLive(.visuals))
+        XCTAssertFalse(handedIn.showsVisualActions, "no agent to send to")
+        XCTAssertEqual(handedIn.phase, .changes, "images move neither the phase")
+        XCTAssertEqual(handedIn.defaultMain, .diff, "nor the default view")
+
+        let live = NavigatorModel(slice: slice(status: "In progress"), agent: .waiting, fixLaunched: false, hasVisuals: true)
+        XCTAssertTrue(live.showsVisualActions)
     }
 
     // MARK: - Header clicks
@@ -99,9 +119,21 @@ final class NavigatorModelTests: XCTestCase {
     }
 
     func testEachTabStandsForItsSectionsView() {
-        XCTAssertEqual(MainPaneTab.allCases.map(\.label), ["Terminal", "Changes", "PR"])
-        XCTAssertEqual(MainPaneTab.allCases.map(\.section), [.thread, .changes, .pr])
-        XCTAssertEqual(MainPaneTab.allCases.map(\.mode), [.terminal, .diff, .pr])
+        XCTAssertEqual(MainPaneTab.allCases.map(\.label), ["Terminal", "Changes", "Visual changes", "PR"])
+        XCTAssertEqual(MainPaneTab.allCases.map(\.section), [.thread, .changes, .visuals, .pr])
+        XCTAssertEqual(MainPaneTab.allCases.map(\.mode), [.terminal, .diff, .visuals, .pr])
+    }
+
+    func testTheVisualChangesTabShowsOnlyWithImagesBetweenChangesAndPR() {
+        let reviewed = slice(status: "In progress", branch: "b", pr: prURL)
+        XCTAssertEqual(NavigatorModel(slice: reviewed, agent: nil, fixLaunched: false).tabs,
+                       [.terminal, .changes, .pr])
+        XCTAssertEqual(NavigatorModel(slice: reviewed, agent: nil, fixLaunched: false, hasVisuals: true).tabs,
+                       [.terminal, .changes, .visuals, .pr])
+        XCTAssertEqual(NavigatorModel(slice: slice(status: "In progress"), agent: .working, fixLaunched: false,
+                                      hasVisuals: true).tabs, [.terminal, .visuals])
+        XCTAssertEqual(NavigatorModel(slice: slice(), agent: nil, fixLaunched: false, hasVisuals: true).tabs,
+                       [.visuals], "images handed in on a slice with no agent or branch")
     }
 
     func testASlicesTabsAreTheSectionsThatPutAViewUp() {
@@ -167,7 +199,7 @@ final class NavigatorModelTests: XCTestCase {
     }
 
     func testEverySectionHasItsLabel() {
-        XCTAssertEqual(NavigatorSection.allCases.map(\.label), ["Task", "Changes", "PR"])
+        XCTAssertEqual(NavigatorSection.allCases.map(\.label), ["Task", "Changes", "Visual changes", "PR"])
     }
 
     // MARK: - The Thread

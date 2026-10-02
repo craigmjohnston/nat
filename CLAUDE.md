@@ -118,6 +118,19 @@ prompt and `/next-slice` carry the passage — the TUI has no triage surface.
 gnat's `FollowUpsSidebarView` is pane-level, shown while `slice-show`'s
 `followUps` is non-empty. Design: `docs/design/follow-up-triage/`.
 
+**Visual changes.** Where a project already has a cheap or usual way to
+render what a slice changed (a gallery story, a screenshot script), every
+slice agent — slice prompt, fix prompt, `/next-slice` — hands the images in
+with `nat slice-visuals`, and is told never to build a way to render where
+there is none. They are a `Visual changes` section of the slice body (numbered
+items: name, URI indented under it) — no column, both stores write the same
+markdown — and the **last section wins**, since an agent hands in the full set
+each time. `slice-show`'s `visuals` reads them (`store.VisualChanges`); gnat's
+Visual changes section shows them, and its comments go back by `agent-send`,
+then `slice-rework` only where the slice is handed back. Nothing blocks
+hand-back on them. A slice you hold may hand them in, and so may a Done one
+with a PR recorded, assigned to you — a fix session's.
+
 **Approving** (`a` on the diff screen, or `nat slice-approve`) opens the PR
 and records only its URL — status stays In progress. **Done means the work
 is on main**, and only the merge writes it: `m` / `nat pr-merge`, or

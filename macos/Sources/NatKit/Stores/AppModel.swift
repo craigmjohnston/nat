@@ -278,6 +278,10 @@ public final class AppModel {
     /// its own.
     private var diffStores: [String: DiffStore] = [:]
 
+    /// One visual-changes store per project (lazily created), for the same
+    /// reason — the Visual changes section and pane read through this.
+    private var visualStores: [String: VisualStore] = [:]
+
     /// One ad hoc session diff cache per project (lazily created), for the
     /// same reason — `SessionDiffTabView` reads through this rather than
     /// owning a `SessionDiffStore` of its own.
@@ -914,6 +918,15 @@ public final class AppModel {
         if let existing = diffStores[projectID] { return existing }
         let store = DiffStore(client: clientFactory())
         diffStores[projectID] = store
+        return store
+    }
+
+    /// The visual-changes store for one project, created on first use — see
+    /// `sliceDetailStore(projectID:)`.
+    public func visualStore(projectID: String) -> VisualStore {
+        if let existing = visualStores[projectID] { return existing }
+        let store = VisualStore(client: clientFactory())
+        visualStores[projectID] = store
         return store
     }
 
@@ -1876,6 +1889,7 @@ public final class AppModel {
         sessionStore = nil
         sliceDetailStores = [:]
         diffStores = [:]
+        visualStores = [:]
         prStores = [:]
         sessionDiffStores = [:]
         pickerMemory = PickerSelectionMemory()

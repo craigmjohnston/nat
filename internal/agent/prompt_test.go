@@ -612,7 +612,7 @@ func TestPromptFlagsAWorktreesOverrideByItsCheckout(t *testing.T) {
 
 // natCommand matches a `nat` invocation by its subcommand, so the prose that
 // merely says "the `nat` commands" is not read as one.
-var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-followups|release-slice|milestone-add|slice-add|slice-depends|plan-apply|project-create)\b`)
+var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-followups|slice-visuals|release-slice|milestone-add|slice-add|slice-depends|plan-apply|project-create)\b`)
 
 // natCommands are the invocations a prompt names: each from the command word to
 // the end of its line, and on through the lines a trailing backslash continues
@@ -656,6 +656,34 @@ func TestOnlyAGnatPromptProposesFollowUps(t *testing.T) {
 		if got := Prompt(c); strings.Contains(got, "slice-followups") || !strings.Contains(got, "follow-ups\nworth queueing") {
 			t.Errorf("the %q prompt should keep follow-ups in the summary", f)
 		}
+	}
+}
+
+// Every slice agent, whatever launched it, and a fix session too, is told to
+// hand in images of a visible change — and never to build a way to render one.
+// Nothing waits on a hand-in, so unlike follow-ups it is not the app's alone.
+func TestEverySlicePromptHandsInVisualChanges(t *testing.T) {
+	prompts := map[string]string{"fix": Prompt(fixContext())}
+	for _, f := range []Frontend{FrontendTUI, FrontendGnat, ""} {
+		c := testContext()
+		c.Frontend = f
+		prompts["slice "+string(f)] = Prompt(c)
+	}
+	for name, text := range prompts {
+		for _, want := range []string{
+			"    nat slice-visuals " + testContext().Slice.ID + " --project " + testProjectID + " \\\n        --visual '",
+			"Do not build a way to render",
+		} {
+			if !strings.Contains(text, want) {
+				t.Errorf("the %s prompt does not say %q", name, want)
+			}
+		}
+	}
+	if !strings.Contains(Prompt(testContext()), "images in before `complete-slice`") {
+		t.Error("the slice prompt does not hand the images in before complete-slice")
+	}
+	if !strings.Contains(Prompt(fixContext()), "images in before you report back") {
+		t.Error("the fix prompt does not hand the images in before reporting back")
 	}
 }
 

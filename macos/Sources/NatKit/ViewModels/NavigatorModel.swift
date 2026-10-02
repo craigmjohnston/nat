@@ -1,25 +1,29 @@
 import Foundation
 
-/// The navigator's three stacked foldouts, in the order the design stacks
-/// them. The brief is no section of its own: it is the Thread's first item,
-/// what the slice's story starts from.
+/// The navigator's stacked foldouts, in the order the design stacks them —
+/// Visual changes, which the design does not draw, between Changes and PR.
+/// The brief is no section of its own: it is the Thread's first item, what
+/// the slice's story starts from.
 public enum NavigatorSection: String, CaseIterable, Equatable, Hashable, Sendable {
-    case thread, changes, pr
+    case thread, changes, visuals, pr
 
     public var label: String {
         switch self {
         case .thread: return "Task"
         case .changes: return "Changes"
+        case .visuals: return "Visual changes"
         case .pr: return "PR"
         }
     }
 }
 
-/// What the main pane shows: the agent's terminal, the diff, the pull
-/// request's description and conversation, or nothing.
+/// What the main pane shows: the agent's terminal, the diff, the images the
+/// agent handed in, the pull request's description and conversation, or
+/// nothing.
 public enum MainPaneMode: Equatable, Sendable {
     case terminal
     case diff
+    case visuals
     case pr
     /// "The terminal opens here on launch."
     case empty
@@ -71,12 +75,13 @@ public struct NavigatorFocus: Equatable, Sendable {
 /// The main pane's tabs, in its titlebar: each stands for a navigator
 /// section and the view that section's header puts up.
 public enum MainPaneTab: CaseIterable, Equatable, Sendable {
-    case terminal, changes, pr
+    case terminal, changes, visuals, pr
 
     public var label: String {
         switch self {
         case .terminal: return "Terminal"
         case .changes: return "Changes"
+        case .visuals: return "Visual changes"
         case .pr: return "PR"
         }
     }
@@ -86,6 +91,7 @@ public enum MainPaneTab: CaseIterable, Equatable, Sendable {
         switch self {
         case .terminal: return .thread
         case .changes: return .changes
+        case .visuals: return .visuals
         case .pr: return .pr
         }
     }
@@ -95,6 +101,7 @@ public enum MainPaneTab: CaseIterable, Equatable, Sendable {
         switch self {
         case .terminal: return .terminal
         case .changes: return .diff
+        case .visuals: return .visuals
         case .pr: return .pr
         }
     }
@@ -121,13 +128,17 @@ public struct NavigatorModel: Equatable, Sendable {
     /// The Thread header's Launch: `LaunchPlan`'s own answer, so the header,
     /// the slice menu and the CLI never disagree.
     public let canLaunch: Bool
+    /// Whether the slice's agent has handed in any images — the Visual
+    /// changes section exists only then.
+    public let hasVisuals: Bool
 
-    public init(slice: Slice, agent: AgentActivity?, fixLaunched: Bool) {
+    public init(slice: Slice, agent: AgentActivity?, fixLaunched: Bool, hasVisuals: Bool = false) {
         self.state = displayState(for: slice, agent: agent, fixLaunched: fixLaunched)
         self.hasPR = !slice.pr.isEmpty
         self.hasBranch = slice.handedBack || !(slice.branch ?? "").isEmpty
         self.hasLiveAgent = agent != nil
         self.canLaunch = LaunchPlan(for: slice, hasLiveAgent: agent != nil).canLaunch
+        self.hasVisuals = hasVisuals
     }
 
     /// Where the slice stands, as the section that should be open first.
@@ -150,6 +161,7 @@ public struct NavigatorModel: Equatable, Sendable {
         switch section {
         case .thread: return true
         case .changes: return hasBranch
+        case .visuals: return hasVisuals
         case .pr: return hasPR
         }
     }
@@ -159,6 +171,7 @@ public struct NavigatorModel: Equatable, Sendable {
         switch section {
         case .thread: return agentAvailable ? .terminal : nil
         case .changes: return diffAvailable ? .diff : nil
+        case .visuals: return hasVisuals ? .visuals : nil
         case .pr: return hasPR ? .pr : nil
         }
     }
@@ -204,6 +217,10 @@ public struct NavigatorModel: Equatable, Sendable {
     /// Whether Changes carries Send and Approve: only a hand-back awaiting
     /// review has anything to approve.
     public var showsReviewActions: Bool { state == .review }
+
+    /// Whether Visual changes carries Send: comments go to the agent, so
+    /// only while there is one to receive them.
+    public var showsVisualActions: Bool { hasVisuals && hasLiveAgent }
 
     /// Whether the PR header carries Merge: an open pull request on a slice
     /// not yet Done.

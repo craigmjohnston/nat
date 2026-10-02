@@ -90,7 +90,9 @@ struct SessionNavigatorView: View {
     /// a session has a main-pane view of its own.
     private func click(_ section: NavigatorSection) {
         let shows: MainPaneMode = switch section {
-        case .thread: .terminal
+        // A session builds no Visual changes header, so this is never
+        // reached; the terminal is the harmless answer.
+        case .thread, .visuals: .terminal
         case .changes: .diff
         case .pr: .pr
         }
@@ -183,7 +185,7 @@ struct SessionMainPane: View {
         VStack(spacing: 0) {
             MainPaneTitlebar(tabs: tabs, selected: mode, onTab: onTab) {
                 switch mode {
-                case .terminal, .empty:
+                case .terminal, .empty, .visuals:
                     AgentModelHeading(agent: appModel.activityStore?.agents[session.tag])
                 case .pr:
                     PROpenInGitHubButton(
@@ -194,7 +196,7 @@ struct SessionMainPane: View {
                 }
             }
             switch mode {
-            case .terminal, .empty:
+            case .terminal, .empty, .visuals:
                 AgentTerminalPane(
                     agent: appModel.activityStore?.agents[session.tag],
                     sessionExists: { appModel.activityStore?.agents[session.tag] != nil })

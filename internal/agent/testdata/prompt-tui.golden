@@ -78,6 +78,20 @@ the deliverable the brief asks for and link it in the summary below.
 
 ## Finish
 
+If what you changed is visible — a pane, a page, a rendered component —
+and the project already has a cheap or usual way to render it (a gallery
+story, a screenshot script, a storybook), render the result and hand the
+images in before `complete-slice`:
+
+    nat slice-visuals 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
+        --visual '<what it shows, one line>
+<absolute path to the image>'
+
+`--visual` repeats, one per image. Hand in the full set each time: a later
+hand-in replaces an earlier one. Do not build a way to render when the
+project has none — go on without images instead. The user reviews them
+in the app; their comments, if any, arrive here as a message.
+
 On completion, record the outcome:
 
     nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \

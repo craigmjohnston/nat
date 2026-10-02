@@ -31,8 +31,10 @@ enum AppStories {
     private static let sidebar = CGSize(width: 260, height: 820)
 
     /// The whole window, held still and with the terminal drawn.
-    private static func shell(_ appModel: AppModel, folds: [String: Bool] = [:]) -> some View {
-        WindowShellView(appModel: appModel, sidebarFolds: folds)
+    private static func shell(
+        _ appModel: AppModel, folds: [String: Bool] = [:], focus: NavigatorFocus? = nil
+    ) -> some View {
+        WindowShellView(appModel: appModel, sidebarFolds: folds, focus: focus)
             .environment(\.terminalStubbed, true)
             .environment(\.pulsesPaused, true)
     }
@@ -42,10 +44,11 @@ enum AppStories {
     /// to land so the slice is drawn in the state it is a story about.
     private static func slicePane(
         _ sliceID: String, agents: [AgentStatus] = Fixtures.agentStatuses, fixing: Bool = false,
+        details: [String: SliceDetail] = Fixtures.sliceDetails, focus: NavigatorFocus? = nil,
         configure: @MainActor (AppModel) async -> Void = { _ in }
     ) async -> some View {
         let appModel = await Fixtures.startedAppModel(
-            client: FixtureNatClient(agents: agents), config: Fixtures.twoProjectConfig)
+            client: FixtureNatClient(agents: agents, details: details), config: Fixtures.twoProjectConfig)
         if fixing { appModel.markFixLaunched(sliceID: sliceID) }
         appModel.selectedSliceID = sliceID
         for _ in 0..<50 where !agents.isEmpty && appModel.activityStore?.agents.isEmpty != false {
@@ -61,7 +64,28 @@ enum AppStories {
             await appModel.prStore(projectID: Fixtures.projectID).fetch(projectID: Fixtures.projectID, sliceRef: sliceID)
         }
         await configure(appModel)
-        return shell(appModel)
+        return shell(appModel, focus: focus)
+    }
+
+    /// The handed-back slice with its images handed in, the Visual changes
+    /// section open and the image list up — `live` adding a waiting agent so
+    /// there is one to send comments to.
+    private static func visualsPane(live: Bool, seeded: Bool) async -> some View {
+        let sliceID = Fixtures.mergeBoxSliceID
+        let agents = Fixtures.agentStatuses + (live ? [AgentStatus(
+            sliceID: sliceID, session: TmuxSession.name(forSlicePageID: sliceID), activity: .waiting)] : [])
+        return await slicePane(
+            sliceID, agents: agents, details: Fixtures.visualsSliceDetails,
+            focus: NavigatorFocus(open: [.visuals], main: .visuals)
+        ) { appModel in
+            let store = appModel.visualStore(projectID: Fixtures.projectID)
+            store.loader = Fixtures.visualImageLoader
+            await store.load(sliceID: sliceID, visuals: Fixtures.visualChanges)
+            if seeded {
+                Fixtures.seedPendingVisualComments(into: store)
+                store.toggleViewed(sliceID: sliceID, index: 1)
+            }
+        }
     }
 
     /// The fixture plan with a dozen more slices in flight — what a sidebar
@@ -201,6 +225,42 @@ enum AppStories {
                 if let top = gaps.first { await store.expand(path: file.path, gap: top, control: .all) }
                 if gaps.count > 1 { await store.expand(path: file.path, gap: gaps[1], control: .down) }
             }
+        },
+
+        Story(
+            name: "window-visuals",
+            summary: "A review whose agent handed in images: Visual changes open with a thumbnail per image, "
+                + "the image list up at 100% under the first one's pinned header, the third a placeholder card.",
+            size: window
+        ) {
+            await visualsPane(live: false, seeded: false)
+        },
+
+        Story(
+            name: "window-visuals-comments",
+            summary: "The same with a live agent and comments pending, the first image marked viewed — ticked "
+                + "in its row and header, folded in the pane — the whole-image comment on the second, and Send 2 comments.",
+            size: window
+        ) {
+            await visualsPane(live: true, seeded: true)
+        },
+
+        Story(
+            name: "visuals-zoomed",
+            summary: "The image list alone, tall: the first image at 200% scrolled to its middle, its pin still on "
+                + "its spot, the second still fitted at 100%.",
+            size: CGSize(width: pane.width, height: 1500)
+        ) {
+            await VisualsPaneStory.make(zoomFirst: 2, draft: nil)
+        },
+
+        Story(
+            name: "visuals-comment-editor",
+            summary: "The image list alone with the comment box open where the first image was clicked, "
+                + "under a pending pin.",
+            size: pane
+        ) {
+            await VisualsPaneStory.make(zoomFirst: 1, draft: CGPoint(x: 900, y: 180))
         },
 
         Story(
@@ -1024,6 +1084,31 @@ private struct DiffCommentButtonStory: View {
         return DiffCanvasRepresentable(
             files: [file], state: state, attachments: [:], actions: DiffCanvasActions(),
             review: nil, store: nil, authorName: "craig johnston", authorInitials: "CJ")
+        .surface(.window)
+    }
+}
+
+/// The image list on its own, over the handed-back slice's images with the
+/// pending comments seeded: the first image zoomed as given, and with
+/// `draft`, the comment box open at that point on it.
+@MainActor
+private enum VisualsPaneStory {
+    static func make(zoomFirst: CGFloat, draft: CGPoint?) async -> some View {
+        let appModel = await Fixtures.startedAppModel(
+            client: FixtureNatClient(details: Fixtures.visualsSliceDetails), config: Fixtures.twoProjectConfig)
+        let review = VisualReview()
+        let store = review.store(appModel)
+        store.loader = Fixtures.visualImageLoader
+        await store.load(sliceID: Fixtures.mergeBoxSliceID, visuals: Fixtures.visualChanges)
+        Fixtures.seedPendingVisualComments(into: store)
+        store.setZoom(zoomFirst, sliceID: Fixtures.mergeBoxSliceID, index: 1)
+        if let draft, let size = Fixtures.visualPixelSizes[Fixtures.visualChanges[0].uri] {
+            review.openDraft(Fixtures.visualChanges[0], point: draft, imageSize: size)
+        }
+        return VisualsPane(
+            appModel: appModel, review: review, slice: Fixtures.slice(Fixtures.mergeBoxSliceID),
+            visuals: Fixtures.visualChanges, authorName: "Craig Johnston",
+            horizontalAnchor: zoomFirst > 1 ? .center : .leading)
         .surface(.window)
     }
 }

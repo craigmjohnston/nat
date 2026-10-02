@@ -89,6 +89,25 @@ func TestNextSliceHandsTheBranchBack(t *testing.T) {
 	}
 }
 
+// Visible work is handed in as images where the project already renders them,
+// and never by a rendering pipeline the agent made up; the slice and fix
+// prompts say the same in their own words.
+func TestNextSliceHandsInVisualChanges(t *testing.T) {
+	body, err := fs.ReadFile(FS(), "next-slice/SKILL.md")
+	if err != nil {
+		t.Fatalf("read the next-slice skill: %v", err)
+	}
+	text := unwrapped(string(body))
+	for _, want := range []string{
+		"nat slice-visuals <slice> --project <project>",
+		"Do not build a way to render",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the next-slice skill does not say %q", want)
+		}
+	}
+}
+
 // prEnding matches the --pr flag alone, so the --pr-description one it prefixes
 // does not read as it.
 var prEnding = regexp.MustCompile(`--pr($|[^-\w])`)
@@ -211,7 +230,7 @@ func TestQueueProjectSendsTheUserToTheSwitchPicker(t *testing.T) {
 
 // natCommand matches a `nat` invocation by its subcommand, so the prose that
 // describes what a command does is not read as a call to it.
-var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|release-slice|milestone-add|slice-add|slice-depends|plan-apply|project-create)\b`)
+var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-visuals|release-slice|milestone-add|slice-add|slice-depends|plan-apply|project-create)\b`)
 
 // fencedNatCommands are the `nat` invocations inside a skill's fenced code
 // blocks: the lines an agent copies and runs, as against the backticked prose

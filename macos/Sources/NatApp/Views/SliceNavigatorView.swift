@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 import NatKit
 
-/// A slice's navigator: Thread, Changes and PR, stacked, the Thread opening
+/// A slice's navigator: Thread, Changes, Visual changes (only once images
+/// are handed in) and PR, stacked, the Thread opening
 /// on the brief. Which are open and what the main pane shows are the shell's
 /// (`open`, `main`) — the design's own pairing: a header puts its section's
 /// view up (the Thread the terminal, Changes the diff, PR its conversation),
@@ -13,6 +14,7 @@ struct SliceNavigatorView: View {
     @Binding var open: Set<NavigatorSection>
     @Binding var main: MainPaneMode
     let review: DiffReview
+    let visualReview: VisualReview
     /// The launch card's model and effort — the shell's, since the main
     /// pane's heading says what a launch will run as.
     @Binding var model: String
@@ -28,10 +30,13 @@ struct SliceNavigatorView: View {
     private var nav: NavigatorModel {
         NavigatorModel(
             slice: slice, agent: agent.map { AgentActivity($0.activity) },
-            fixLaunched: appModel.fixLaunched[slice.id] != nil)
+            fixLaunched: appModel.fixLaunched[slice.id] != nil,
+            hasVisuals: !visuals.isEmpty)
     }
     private var detail: SliceDetailLoadState { appModel.sliceDetailStore(projectID: projectID).state(for: slice.id) }
+    private var visuals: [VisualChange] { detail.detail?.visuals ?? [] }
     private var diffStore: DiffStore { review.store(appModel) }
+    private var visualStore: VisualStore { visualReview.store(appModel) }
     private var prStore: PRStore { appModel.prStore(projectID: projectID) }
     private var milestoneName: String {
         appModel.projectStore?.state.projectInfo?.milestones.first { $0.id == slice.milestoneID }?.name
@@ -64,6 +69,20 @@ struct SliceNavigatorView: View {
                     }
                 }
             }
+            // Visual changes is there only once the agent has handed in
+            // images — absent, not greyed, before.
+            if nav.isLive(.visuals) {
+                NavSectionView(
+                    label: NavigatorSection.visuals.label, open: open.contains(.visuals), selected: main == .visuals,
+                    onHead: { click(.visuals) }, onFold: { fold(.visuals) }
+                ) {
+                    visualActions(nav)
+                } content: {
+                    VisualsSectionBody(appModel: appModel, review: visualReview, slice: slice, visuals: visuals) {
+                        main = .visuals
+                    }
+                }
+            }
             if nav.isLive(.pr) {
                 NavSectionView(
                     label: "PR", open: open.contains(.pr), selected: main == .pr,
@@ -85,6 +104,9 @@ struct SliceNavigatorView: View {
             prStore.startPolling()
         }
         .onDisappear { prStore.stopPolling() }
+        .task(id: "\(slice.id)|\(visuals.map(\.uri).joined(separator: "|"))") {
+            await visualStore.load(sliceID: slice.id, visuals: visuals)
+        }
         .focusedSceneValue(\.sliceMenu, menuActions(nav))
         .sheet(isPresented: $editingBrief) {
             EditBriefSheetView(
@@ -136,6 +158,13 @@ struct SliceNavigatorView: View {
         if let notionURL { actions.openInNotion = { NSWorkspace.shared.open(notionURL) } }
         actions.showThread = { show(.thread) }
         if nav.isLive(.changes) { actions.showChanges = { show(.changes) } }
+        if nav.isLive(.visuals) {
+            // The titlebar tab's own path: open the section, put the images
+            // up, never fold.
+            actions.showVisuals = {
+                apply(NavigatorFocus(open: open, main: main).showing(.visuals, shows: nav.mainMode(for: .visuals)))
+            }
+        }
         if nav.isLive(.pr) { actions.showPullRequest = { show(.pr) } }
         return actions
     }
@@ -411,6 +440,26 @@ struct SliceNavigatorView: View {
         return pending > 0
             ? "Send \(pending) \(plural(pending, "comment", "comments")) to the agent, and open a pull request for \(branch) once it hands back?"
             : "Approve and open a pull request for \(branch)?"
+    }
+
+    // MARK: - Visual changes
+
+    /// Send, while comments are pending on the slice's images — disabled
+    /// while a send is out, or with no live agent to receive them.
+    @ViewBuilder
+    private func visualActions(_ nav: NavigatorModel) -> some View {
+        let pending = visualStore.comments(for: slice.id).count
+        if pending > 0 {
+            Button(action: { Task { await visualReview.sendComments(appModel: appModel, slice: slice) } }) {
+                HeaderActionLabel(
+                    title: "Send \(pending) \(plural(pending, "comment", "comments"))",
+                    systemImage: "arrow.right",
+                    isBusy: visualReview.isSending)
+            }
+            .buttonStyle(GnatHeaderButtonStyle(primary: true))
+            .disabled(visualReview.isSending || !nav.showsVisualActions)
+            .help(nav.showsVisualActions ? "" : "No live agent to send the comments to")
+        }
     }
 
     // MARK: - PR

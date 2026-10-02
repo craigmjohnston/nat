@@ -91,21 +91,11 @@ struct SidebarView: View {
             // Folded, Projects (and Scratch under it) pins to the sidebar's
             // foot rather than leaving an empty well under its heading.
             let pinsProjects = !isOpen("work") && !(model.scratch != nil && isOpen("scratch", byDefault: false))
-            // Rows run straight into the line under them, which is laid over
-            // the last one's foot — so a selected last row's wash meets it,
-            // and the line adds no height — unless Projects pins away from
-            // them.
-            let rowsMeetRule = isOpen("active") && !model.active.isEmpty && !pinsProjects
             if isOpen("active") {
                 if model.active.isEmpty {
                     GnatNote(text: EmptyActiveNote.text.lowercased(), height: GnatMetrics.sidebarRowHeight)
                 } else {
-                    VStack(spacing: 0) {
-                        ForEach(model.active) { activeRow($0) }
-                    }
-                    .overlay(alignment: .bottom) {
-                        if rowsMeetRule { Rule(.separator) }
-                    }
+                    ForEach(model.active) { activeRow($0, last: $0.id == model.active.last?.id) }
                 }
             }
 
@@ -113,11 +103,11 @@ struct SidebarView: View {
                 Spacer(minLength: 0)
             }
 
-            if !rowsMeetRule {
-                // The air under the empty note, not under a folded heading —
-                // that would set the heading above it off-centre.
-                Rule(.separator).padding(.top, isOpen("active") && model.active.isEmpty ? 4 : 0)
-            }
+            // 4pt of air above the line: under the empty note it is padding
+            // here; under rows it is the last row's own, so its wash meets
+            // the line; under a folded heading there is none, which would set
+            // the heading above it off-centre.
+            Rule(.separator).padding(.top, isOpen("active") && model.active.isEmpty ? 4 : 0)
 
             head("work", label: "Projects", count: 0) {
                 Button(action: onNewProject) {
@@ -346,7 +336,7 @@ struct SidebarView: View {
 
     // MARK: - Active
 
-    private func activeRow(_ row: SidebarActiveRow) -> some View {
+    private func activeRow(_ row: SidebarActiveRow, last: Bool) -> some View {
         HStack(spacing: 6) {
             StateDot(state: row.state, live: row.live).frame(width: 12)
             (Text(row.projectTag)
@@ -366,6 +356,9 @@ struct SidebarView: View {
         .padding(.leading, 18)
         .padding(.trailing, 10)
         .frame(height: GnatMetrics.sidebarRowHeight)
+        // The last row owns the air above the line under Active, so its wash
+        // reaches the line while its text stays put.
+        .padding(.bottom, last ? 4 : 0)
         .gnatRow(selected: isSelected(row))
         .contentShape(Rectangle())
         .onTapGesture { select(row) }

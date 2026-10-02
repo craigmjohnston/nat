@@ -100,8 +100,9 @@ func fixPrompt(c PromptContext) string {
 	b.WriteString("The project's conventions, which is what the rest of the review will\n")
 	b.WriteString("be measured against:\n\n")
 	fmt.Fprintf(&b, "    nat info --project %s\n\n", c.ProjectID)
-	b.WriteString("That is the only `nat` command this session has any business running, and\n")
-	b.WriteString("it names the project the way every other one does:\n\n")
+	b.WriteString("That and the `slice-visuals` command below are the only `nat` commands\n")
+	b.WriteString("this session has any business running, and both name the project the way\n")
+	b.WriteString("every other one does:\n\n")
 	fmt.Fprintf(&b, "    --project %s\n\n", c.ProjectID)
 	b.WriteString("A command given no project is refused: there is nothing for it to fall\n")
 	b.WriteString("back to, and in particular not the project the user's board is on,\n")
@@ -120,14 +121,19 @@ func fixPrompt(c PromptContext) string {
 		b.WriteString("the whole of the ending: nothing to record, no second pull request to\n")
 		b.WriteString("open, and no branch of your own to create or switch to.\n\n")
 	}
+	// A fix session's slice is Done, which slice-visuals takes from its own
+	// holder only where a pull request is recorded — which is what makes it a
+	// fix session at all.
+	b.WriteString(visualsPassage(c, "before you report back"))
 	b.WriteString("Then say what you changed and what is still outstanding, so the user can\n")
 	b.WriteString("read the review's state off your last message.\n")
 
 	b.WriteString("\n## Guardrails\n\n")
 	b.WriteString("- One pull request per session. Never pick up another slice when this\n")
 	b.WriteString("  one is done.\n")
-	b.WriteString("- Never change the slice on the tracker: it is done, and its record of\n")
-	b.WriteString("  what happened is not yours to rewrite.\n")
+	b.WriteString("- Never change the slice on the tracker beyond handing in renders of your\n")
+	b.WriteString("  fixes: it is done, and its record of what happened is not yours to\n")
+	b.WriteString("  rewrite.\n")
 	b.WriteString("- `gh pr view` and `gh pr checks` are the only `gh` you may run.\n")
 	b.WriteString("- Never open, merge, close or reopen a pull request, and never push to\n")
 	b.WriteString("  the main branch.\n")
