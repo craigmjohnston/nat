@@ -108,7 +108,10 @@ every per-project reading is keyed by it — and the sidebar selects across
 projects by activating first (`selectSlice(_:inProject:)`). The Thread shows
 only what nat reports (`buildThreadEvents`). What the design does not draw
 (workshop, sessions, follow-ups, menus) lives on as the row or section it
-belongs to.
+belongs to. gnat is one `Window` scene — no tabs (`allowsAutomaticWindowTabbing`
+off), no New Window. The menu bar reaches the window through focused scene
+values (`MenuCommands.swift`): the sidebar, shell and slice navigator each
+publish the actions they already own, nil where their control is disabled.
 
 ## Design tokens
 

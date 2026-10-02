@@ -137,7 +137,7 @@ struct NavHeading: View {
 }
 
 /// One card of the Thread log: its icon, who, the toned meta; then the body,
-/// cut short as the brief is; then a mono foot on the chrome ground under a
+/// cut short as the brief is; then its labelled facts on the chrome ground under a
 /// line.
 struct ThreadEventCard: View {
     let event: ThreadEvent
@@ -156,7 +156,7 @@ struct ThreadEventCard: View {
             }
             .padding(.horizontal, 10)
             .padding(.top, 8)
-            .padding(.bottom, event.body == nil && event.foot == nil ? 8 : 0)
+            .padding(.bottom, event.body == nil && event.facts.isEmpty ? 8 : 0)
 
             if let body = event.body {
                 Excerpt(text: body) { shown in
@@ -171,18 +171,26 @@ struct ThreadEventCard: View {
                     .padding(.bottom, 8)
             }
 
-            if let foot = event.foot {
-                Text(foot)
-                    .monoXS()
-                    .ink(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .surface(.chrome)
-                    .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
-                    .padding(.top, event.body == nil ? 8 : 0)
+            if !event.facts.isEmpty {
+                // Labelled values, as the brief's own facts are drawn.
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
+                    ForEach(Array(event.facts.enumerated()), id: \.offset) { _, fact in
+                        GridRow {
+                            Text(fact.key).ink(.tertiary)
+                            Text(fact.value)
+                                .ink(.primary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+                }
+                .monoXS()
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .surface(.chrome)
+                .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
+                .padding(.top, event.body == nil ? 8 : 0)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -23,6 +23,7 @@ public protocol NatClientProtocol: Sendable {
     func prStatus(projectID: String) async throws -> PRStatusDoc
     func prMerge(projectID: String, sliceRef: String) async throws -> Void
     func prComment(projectID: String, sliceRef: String, body: String) async throws -> Void
+    func prReviewers(projectID: String, sliceRef: String, add: [String], remove: [String]) async throws -> PRReviewers
     func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult
     func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult
     func configShow() async throws -> ConfigDoc
@@ -44,6 +45,12 @@ public protocol NatClientProtocol: Sendable {
 }
 
 extension NatClientProtocol {
+    /// Reviewers: only `NatClient` and the fixture client implement this,
+    /// the same reasoning as `workspaceLaunch`.
+    public func prReviewers(projectID: String, sliceRef: String, add: [String], remove: [String]) async throws -> PRReviewers {
+        throw NatError.commandFailed("pr-reviewers: not supported by this client")
+    }
+
     /// Triaging follow-ups: only `NatClient` and the fixture client
     /// implement these, the same reasoning as `workspaceLaunch`.
     public func sliceTriage(projectID: String, sliceRef: String, queue: [Int], fold: [Int], drop: [Int]) async throws -> TriageResult {

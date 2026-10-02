@@ -240,6 +240,14 @@ final class DesignTokensTests: XCTestCase {
         return resolved
     }
 
+    /// The status bar's gnat takes the app icon's ink for the appearance:
+    /// the dark icon's cream, the light one's accent blue.
+    func testTheMarkIsTheIconsInkForEachAppearance() {
+        let mark = NSColor(DesignTokens.mark)
+        assertResolves(mark, .darkAqua, to: "f2e8d2", name: "mark (dark)")
+        assertResolves(mark, .aqua, to: Palette.light.accent.hex, name: "mark (light)")
+    }
+
     private func assertResolves(
         _ color: NSColor,
         _ appearance: NSAppearance.Name,

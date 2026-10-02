@@ -508,3 +508,6 @@ func TestWorthReadingPRAndReadinessOf(t *testing.T) {
 		t.Errorf("readinessOf({}) = %v, want awaiting review", got)
 	}
 }
+
+func (f *fakePRReader) EditReviewers(dir, ref string, add, remove []string) error { return nil }
+func (f *fakePRReader) Collaborators(dir string) ([]string, error)                { return nil, nil }

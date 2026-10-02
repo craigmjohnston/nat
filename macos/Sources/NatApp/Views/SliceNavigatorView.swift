@@ -62,6 +62,7 @@ struct SliceNavigatorView: View {
                 label: "PR", open: open.contains(.pr), selected: main == .pr,
                 live: nav.isLive(.pr), onHead: { click(.pr) }, onFold: { fold(.pr) }
             ) {
+                if !slice.pr.isEmpty { openInGitHubAction }
                 if nav.showsMerge { mergeAction }
             } content: {
                 prBody
@@ -77,6 +78,7 @@ struct SliceNavigatorView: View {
             prStore.startPolling()
         }
         .onDisappear { prStore.stopPolling() }
+        .focusedSceneValue(\.sliceMenu, menuActions(nav))
         .sheet(isPresented: $editingBrief) {
             EditBriefSheetView(
                 projectID: projectID, sliceID: slice.id, sliceName: slice.name,
@@ -105,6 +107,37 @@ struct SliceNavigatorView: View {
             Button("Merge") { Task { await merge() } }
             Button("Cancel", role: .cancel) {}
         }
+    }
+
+    // MARK: - Menu
+
+    /// The Slice menu and View's sections — each nil, and so disabled,
+    /// exactly where the control it mirrors is.
+    private func menuActions(_ nav: NavigatorModel) -> SliceMenuActions {
+        let canLaunch = nav.showsLaunch
+            && appModel.sliceActions.isEnabled(.launch, sliceID: slice.id, available: nav.canLaunch)
+        let canMerge = nav.showsMerge
+            && appModel.sliceActions.isEnabled(
+                .merge, sliceID: slice.id, available: prStore.loadState.pr.map(mergeIsEnabled) ?? false)
+        let prURL = URL(string: prStore.loadState.pr?.url ?? slice.pr)
+        let notionURL = URL(string: slice.url) ?? NotionPageURL.forPage(slice.id)
+        var actions = SliceMenuActions()
+        if canLaunch { actions.launch = launch }
+        if slice.status == "Todo" && detail.detail != nil { actions.editBrief = { editingBrief = true } }
+        if canMerge { actions.merge = { showMergeConfirm = true } }
+        if !slice.pr.isEmpty, let prURL { actions.openPullRequest = { NSWorkspace.shared.open(prURL) } }
+        if let notionURL { actions.openInNotion = { NSWorkspace.shared.open(notionURL) } }
+        actions.showThread = { show(.thread) }
+        if nav.isLive(.changes) { actions.showChanges = { show(.changes) } }
+        if nav.isLive(.pr) { actions.showPullRequest = { show(.pr) } }
+        return actions
+    }
+
+    /// A View menu section item: the header click, but never folding a
+    /// section whose view is already up.
+    private func show(_ section: NavigatorSection) {
+        guard !(open.contains(section) && main == nav.mainMode(for: section)) else { return }
+        click(section)
     }
 
     // MARK: - Heads
@@ -389,6 +422,18 @@ struct SliceNavigatorView: View {
         }
     }
 
+    /// Secondary to Merge, beside it: the pull request on GitHub — the one
+    /// read nat has already made, else the URL the slice recorded.
+    private var openInGitHubAction: some View {
+        Button {
+            if let url = URL(string: prStore.loadState.pr?.url ?? slice.pr) { NSWorkspace.shared.open(url) }
+        } label: {
+            HeaderActionLabel(title: "Open in GitHub", systemImage: "arrow.up.right.square")
+        }
+        .buttonStyle(GnatHeaderButtonStyle())
+        .help("Open the pull request on GitHub")
+    }
+
     private func mergeIsEnabled(_ pr: PRDetail) -> Bool {
         guard pr.state != PRLifecycleState.merged, pr.state != PRLifecycleState.closed, !pr.isDraft else { return false }
         return mergeRefusal(pr) == nil
@@ -409,6 +454,7 @@ struct SliceNavigatorView: View {
         if let pr = prStore.loadState.pr {
             PRSectionBody(
                 pr: pr,
+                reviewerStore: prStore,
                 staleMessage: prStore.loadState.errorMessage,
                 actionError: appModel.sliceActions.error(.merge, sliceID: slice.id)
             )
@@ -425,11 +471,15 @@ struct SliceNavigatorView: View {
     }
 }
 
-/// The PR section's body: the readout — the checks and the review verdict,
-/// then Open in GitHub. The description and the conversation are the main
+/// The PR section's body: the readout — the checks and the review verdict.
+/// Open in GitHub is the header's, beside Merge. The description and the conversation are the main
 /// pane's (`PRConversationPane`).
 struct PRSectionBody: View {
     let pr: PRDetail
+    /// The store reviewers are asked through — a slice's pull request. Nil
+    /// for an ad hoc session's, which lists its requests but cannot edit
+    /// them (`nat pr-reviewers` names a slice).
+    var reviewerStore: PRStore?
     var staleMessage: String?
     var actionError: String?
 
@@ -462,28 +512,28 @@ struct PRSectionBody: View {
                      : sentenceCase(verdict.word))
                     .ink(.secondary)
 
-                Button {
-                    if let url = URL(string: pr.url) { NSWorkspace.shared.open(url) }
-                } label: {
-                    HeaderActionLabel(title: "Open in GitHub", systemImage: "arrow.up.right.square")
-                }
-                .buttonStyle(GnatButtonStyle())
-                .padding(.top, 2)
+                ReviewersBlock(pr: pr, store: reviewerStore)
             }
         }
         .inelastic()
     }
 
+    /// A check's line, led by a circle of its outcome: empty for one that
+    /// did not run, dashed for one running, and filled — the only two in
+    /// colour — for done and failed.
     private func checkLine(_ check: PRCheck) -> some View {
         let outcome = checkOutcome(state: check.state)
-        let (glyph, role): (String, InkRole) = switch outcome {
-        case .passing: ("\u{2713}", .success)
-        case .failing: ("\u{2717}", .danger)
-        case .pending: ("\u{25D0}", .hot)
-        case .skipped: ("\u{25CB}", .secondary)
+        let (symbol, role): (String, InkRole) = switch outcome {
+        case .passing: ("checkmark.circle.fill", .success)
+        case .failing: ("xmark.circle.fill", .danger)
+        case .pending: ("circle.dashed", .secondary)
+        case .skipped: ("circle", .tertiary)
         }
         return HStack(spacing: 6) {
-            Text(glyph).ink(role)
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .medium))
+                .ink(role)
+                .frame(width: 13)
             Text(check.name).ink(.primary).lineLimit(1)
             if outcome != .passing {
                 Text("· \(checkStateWord(check.state))").ink(.secondary).lineLimit(1)

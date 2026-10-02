@@ -141,6 +141,14 @@ enum AppStories {
         },
 
         Story(
+            name: "diff-comment-button",
+            summary: "A marked line in the diff: the comment button laid over the end of the line on a face of its own, the code under it unwrapped.",
+            size: CGSize(width: 520, height: 260)
+        ) {
+            DiffCommentButtonStory()
+        },
+
+        Story(
             name: "window-todo",
             summary: "A Todo slice: the Thread open on its brief, cut short with Show more, Launch primary in its header, the main pane's note.",
             size: window
@@ -500,7 +508,9 @@ enum AppStories {
             summary: "The scratch project as its own fold under Projects: its milestones at a project row's depth.",
             size: sidebar
         ) {
-            SidebarView(appModel: await Fixtures.startedAppModel(config: Fixtures.scratchConfigWithSecondProject))
+            SidebarView(
+                appModel: await Fixtures.startedAppModel(config: Fixtures.scratchConfigWithSecondProject),
+                folded: ["scratch": false])
                 .environment(\.pulsesPaused, true)
         },
 
@@ -511,18 +521,17 @@ enum AppStories {
         ) {
             SidebarView(
                 appModel: await Fixtures.startedAppModel(config: Fixtures.scratchConfigWithSecondProject),
-                folded: ["work": true])
+                folded: ["work": true, "scratch": false])
                 .environment(\.pulsesPaused, true)
         },
 
         Story(
             name: "sidebar-scratch-folded",
-            summary: "Scratch folded with Projects open: its heading pins to the sidebar's foot.",
+            summary: "Scratch folded, as it starts, with Projects open: its heading pins to the sidebar's foot.",
             size: sidebar
         ) {
             SidebarView(
-                appModel: await Fixtures.startedAppModel(config: Fixtures.scratchConfigWithSecondProject),
-                folded: ["scratch": true])
+                appModel: await Fixtures.startedAppModel(config: Fixtures.scratchConfigWithSecondProject))
                 .environment(\.pulsesPaused, true)
         },
 
@@ -588,7 +597,7 @@ enum AppStories {
         Story(
             name: "terminal-heading-readout",
             summary: "The terminal heading over a live agent: its model, effort and context percent at the band\u{2019}s leading edge.",
-            size: CGSize(width: 730, height: GnatMetrics.sectionHeadHeight)
+            size: CGSize(width: 730, height: GnatMetrics.sectionHeadHeight + 1)
         ) {
             MainPaneHeader {
                 AgentModelHeading(agent: AgentStatus(
@@ -600,7 +609,7 @@ enum AppStories {
         Story(
             name: "terminal-heading-readout-high-context",
             summary: "Context at 91%: the percent switches to the warning tint.",
-            size: CGSize(width: 730, height: GnatMetrics.sectionHeadHeight)
+            size: CGSize(width: 730, height: GnatMetrics.sectionHeadHeight + 1)
         ) {
             MainPaneHeader {
                 AgentModelHeading(agent: AgentStatus(
@@ -759,9 +768,9 @@ enum AppStories {
 
         Story(
             name: "markdown-table",
-            summary: "A comment carrying a markdown table, at the navigator's width: the long Note "
-                + "column cut to its share with the expand mark in its heading, the table "
-                + "scrolling sideways.",
+            summary: "A comment carrying a markdown table, at the navigator's width: the long "
+                + "Command and Note columns each cut to its share with the expand mark in its "
+                + "heading, the table scrolling sideways.",
             size: CGSize(width: 330, height: 220)
         ) {
             MarkdownTableStory(expanded: [])
@@ -773,7 +782,33 @@ enum AppStories {
                 + "abbreviate mark in its heading, the rest scrolled off to the right.",
             size: CGSize(width: 330, height: 220)
         ) {
-            MarkdownTableStory(expanded: [2])
+            MarkdownTableStory(expanded: [3])
+        },
+
+        Story(
+            name: "markdown-details",
+            summary: "A comment carrying two GitHub <details> folds: one shut on its summary, one "
+                + "written open showing the markdown it folds.",
+            size: CGSize(width: 420, height: 220)
+        ) {
+            MarkdownView(text: """
+                Ran the suite twice.
+
+                <details>
+                <summary>First run's log</summary>
+
+                lots of output
+                </details>
+
+                <details open>
+                <summary>Second run</summary>
+
+                All **green** — `PRStoreTests` passed on retry.
+                </details>
+                """, size: 13.5)
+            .padding(12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .surface(.window)
         },
 
         // MARK: - Follow-ups
@@ -822,10 +857,10 @@ private struct MarkdownTableStory: View {
         MarkdownTableStoryBody(text: """
             Results of the run:
 
-            | Check | Result | Note |
-            |-------|:------:|------|
-            | lint | ✓ | clean on every package, including the generated fixtures |
-            | test | ✗ | `PRStoreTests` timed out waiting on the poll interval |
+            | Check | Result | Command | Note |
+            |-------|:------:|---------|------|
+            | lint | ✓ | `golangci-lint run ./...` | clean on every package, including the generated fixtures |
+            | test | ✗ | `swift test --filter PRStoreTests` | `PRStoreTests` timed out waiting on the poll interval |
             """, expanded: expanded)
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -844,9 +879,30 @@ private struct MarkdownTableStoryBody: View {
                 case .text(let prose):
                     Text(prose.trimmingCharacters(in: .newlines)).font(.system(size: 13.5)).ink(.primary)
                 case .table(let table): MarkdownTableView(table: table, size: 13.5, initiallyExpanded: expanded)
+                case .details(let details): MarkdownDetailsView(details: details, size: 13.5, ink: .primary)
                 }
             }
         }
+    }
+}
+
+/// One file of the fixture diff with a line marked, so its comment button
+/// shows without a pointer over it.
+private struct DiffCommentButtonStory: View {
+    var body: some View {
+        let model = Fixtures.diffModel
+        let file = model.files[0]
+        let marked = file.rows.first { $0.kind == .added } ?? file.rows[0]
+        return ScrollView {
+            DiffFileBoxView(
+                file: file, numberWidth: model.numberWidth, isViewed: false, isCollapsed: false,
+                comments: [], selection: DiffSelection(path: file.path, rowIDs: [marked.id]), draft: nil,
+                authorName: "craig johnston", authorInitials: "CJ",
+                onToggleViewed: {}, onToggleCollapsed: {}, onRowClick: { _, _ in }, onOpenCommentEditor: {},
+                onEditComment: { _ in }, onDeleteComment: { _ in }, onSaveDraft: { _ in }, onCancelDraft: {})
+            .padding(12)
+        }
+        .surface(.window)
     }
 }
 

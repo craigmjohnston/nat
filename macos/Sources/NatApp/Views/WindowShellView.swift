@@ -59,6 +59,9 @@ struct WindowShellView: View {
         .task {
             await appModel.start()
         }
+        .focusedSceneValue(\.shellMenu, ShellMenuActions(
+            newProject: { appModel.openUntitledTab() },
+            refresh: { Task { await appModel.refresh() } }))
     }
 
     private var board: some View {
@@ -111,7 +114,7 @@ struct WindowShellView: View {
             if let project = crumbs.project {
                 HStack(spacing: 10) {
                     Text(project).ink(.primary)
-                    Text("/").ink(.tertiary)
+                    Text("/").ink(.quaternary)
                 }
                 .transition(.opacity)
             }
@@ -123,7 +126,7 @@ struct WindowShellView: View {
                             .padding(.trailing, -3)
                     }
                     Text(parent).ink(.primary)
-                    Text("/").ink(.tertiary)
+                    Text("/").ink(.quaternary)
                 }
                 .transition(.opacity)
             }

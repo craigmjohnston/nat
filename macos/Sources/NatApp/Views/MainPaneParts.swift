@@ -11,15 +11,20 @@ struct MainPaneHeader<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        HStack(spacing: 8) {
-            content()
+        // The rule sits under the band, not inside it — as a navigator
+        // section's does, whose body's top line lies just below its 32pt
+        // header — so the two headings are one height across the window.
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                content()
+            }
+            .padding(.horizontal, 12)
+            .frame(height: GnatMetrics.sectionHeadHeight)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(DesignTokens.fill(.chrome))
+            .environment(\.ground, .chrome)
+            DesignTokens.rule(.separator, on: .chrome).frame(height: 1)
         }
-        .padding(.horizontal, 12)
-        .frame(height: GnatMetrics.sectionHeadHeight)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DesignTokens.fill(.chrome))
-        .environment(\.ground, .chrome)
-        .overlay(alignment: .bottom) { DesignTokens.rule(.separator, on: .chrome).frame(height: 1) }
     }
 }
 
@@ -158,9 +163,56 @@ struct MarkdownView: View {
                     }
                 case .table(let table):
                     MarkdownTableView(table: table, size: size)
+                case .details(let details):
+                    MarkdownDetailsView(details: details, size: size, ink: ink)
                 }
             }
         }
+    }
+}
+
+/// A `<details>` fold as GitHub draws it: a disclosure triangle and the
+/// summary, the folded markdown under it, indented, once opened.
+struct MarkdownDetailsView: View {
+    let details: MarkdownDetails
+    let size: CGFloat
+    let ink: InkRole
+
+    @State private var isOpen: Bool
+
+    init(details: MarkdownDetails, size: CGFloat, ink: InkRole) {
+        self.details = details
+        self.size = size
+        self.ink = ink
+        _isOpen = State(initialValue: details.open)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(Motion.stateChange) { isOpen.toggle() }
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: size - 4, weight: .semibold))
+                        .ink(.tertiary)
+                        .rotationEffect(.degrees(isOpen ? 90 : 0))
+                    Text(markdownAttributed(details.summary, size: size))
+                        .font(.system(size: size, weight: .medium))
+                        .ink(ink)
+                        .multilineTextAlignment(.leading)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(isOpen ? "Fold" : "Show the details")
+
+            if isOpen && !details.body.isEmpty {
+                MarkdownView(text: details.body, size: size, ink: ink)
+                    .padding(.leading, size + 2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -174,6 +226,10 @@ struct MarkdownTableView: View {
 
     @State private var available: CGFloat = 0
     @State private var expanded: Set<Int>
+    /// Each column's widest cell as SwiftUI actually lays it out, read off a
+    /// hidden copy of the column — code spans, bold and emoji included,
+    /// which a plain-font measurement misses and then cuts with no mark.
+    @State private var measured: [Int: CGFloat] = [:]
 
     /// `initiallyExpanded` is the gallery's seam: a story seeds the columns
     /// it is a story about.
@@ -183,12 +239,14 @@ struct MarkdownTableView: View {
         _expanded = State(initialValue: initiallyExpanded)
     }
 
-    /// What each column would take with nothing cut: its widest cell, set in
-    /// the face it is drawn in, plus the cell's own padding.
+    /// What each column would take with nothing cut: its widest cell as
+    /// drawn (`measured`), plus the cell's own padding — until that is read,
+    /// the plain text set in the system face.
     private var naturalWidths: [Double] {
         let body = NSFont.systemFont(ofSize: size)
         let heading = NSFont.systemFont(ofSize: size, weight: .semibold)
         return table.header.indices.map { column in
+            if let width = measured[column] { return Double(ceil(width)) + Self.cellPadding * 2 }
             let cells = [(table.header[column], heading)] + table.rows.map { ($0[column], body) }
             let widest = cells.map { cell, font in
                 (String(markdownAttributed(cell, size: size).characters) as NSString)
@@ -196,6 +254,29 @@ struct MarkdownTableView: View {
             }.max() ?? 0
             return Double(ceil(widest)) + Self.cellPadding * 2
         }
+    }
+
+    /// Every column laid out at its ideal width, unseen, so `measured` reads
+    /// what each cell really takes.
+    private var measurer: some View {
+        HStack(alignment: .top, spacing: 0) {
+            ForEach(table.header.indices, id: \.self) { column in
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(markdownAttributed(table.header[column], size: size))
+                        .font(.system(size: size, weight: .semibold))
+                    ForEach(table.rows.indices, id: \.self) { row in
+                        Text(markdownAttributed(table.rows[row][column], size: size))
+                            .font(.system(size: size))
+                    }
+                }
+                .lineLimit(1)
+                .fixedSize()
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { measured[column] = $0 }
+            }
+        }
+        .fixedSize()
+        .hidden()
+        .accessibilityHidden(true)
     }
 
     static let cellPadding: Double = 8
@@ -227,6 +308,7 @@ struct MarkdownTableView: View {
             .clipShape(RoundedRectangle(cornerRadius: 4))
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        .background(alignment: .topLeading) { measurer.frame(width: 0, height: 0, alignment: .topLeading).clipped() }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { available = $0 }
     }
 

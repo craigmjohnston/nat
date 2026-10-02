@@ -252,6 +252,20 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         try await record("pr-comment \(sliceRef)")
     }
 
+    /// The fixture repository's collaborators, the pull request's own
+    /// requests edited by whatever was asked — answered, not remembered.
+    public func prReviewers(
+        projectID: String, sliceRef: String, add: [String], remove: [String]
+    ) async throws -> PRReviewers {
+        if !add.isEmpty || !remove.isEmpty {
+            try await record("pr-reviewers \(sliceRef) +\(add.joined(separator: ",")) -\(remove.joined(separator: ","))")
+        }
+        let requested = (pr.reviewRequests + add).filter { !remove.contains($0) }
+        return try await answer(PRReviewers(
+            pr: pr.url, requested: requested,
+            candidates: Fixtures.collaborators.filter { $0 != pr.author && !requested.contains($0) }))
+    }
+
     public func workshopLaunch(
         projectID: String, model: String?, effort: String?, request: String?
     ) async throws -> WorkshopLaunchResult {

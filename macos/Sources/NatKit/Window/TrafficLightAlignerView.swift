@@ -30,25 +30,26 @@ public struct TrafficLightAlignerView: NSViewRepresentable {
 }
 
 /// The geometry alone, kept pure so the placement rule is testable without a
-/// window: the inset that centres a button's height in the header band is
+/// window: the inset that centres the close button in the header band is
 /// applied on the leading side too, and each button sits at the offset from
-/// the close button that AppKit's own layout gave it. The offset is a number
+/// the close button — across *and* down — that AppKit's own layout gave it.
+/// Centring each button on its own frame instead put the zoom button a
+/// couple of points above the other two, its frame not being theirs. The offset is a number
 /// captured once rather than a frame read live, because an align pass can run
 /// mid-way through AppKit's own relayout — the close button reset, the others
 /// still where the last pass put them — and offsets measured across that
 /// mixed state smear the reset into the pitch, one pass at a time.
 enum TrafficLightAlignment {
     static func origin(
-        frame: NSRect,
-        offsetFromClose: CGFloat,
+        closeHeight: CGFloat,
+        offsetFromClose: CGVector,
         headerHeight: CGFloat,
         superviewHeight: CGFloat,
         flipped: Bool
     ) -> NSPoint {
-        let inset = (headerHeight - frame.height) / 2
-        let x = inset + offsetFromClose
-        let y = flipped ? inset : superviewHeight - inset - frame.height
-        return NSPoint(x: x, y: y)
+        let inset = (headerHeight - closeHeight) / 2
+        let closeY = flipped ? inset : superviewHeight - inset - closeHeight
+        return NSPoint(x: inset + offsetFromClose.dx, y: closeY + offsetFromClose.dy)
     }
 }
 
@@ -67,7 +68,7 @@ public final class TrafficLightAlignerNSView: NSView {
     /// replacing the buttons is detected by this identity changing, and a
     /// fresh set is adopted — offsets recaptured, observers moved over.
     private var adoptedClose: ObjectIdentifier?
-    private var offsets: [NSWindow.ButtonType: CGFloat] = [:]
+    private var offsets: [NSWindow.ButtonType: CGVector] = [:]
 
     private static let buttonTypes: [NSWindow.ButtonType] = [
         .closeButton, .miniaturizeButton, .zoomButton,
@@ -113,7 +114,8 @@ public final class TrafficLightAlignerNSView: NSView {
         offsets = [:]
         for type in Self.buttonTypes {
             guard let button = window.standardWindowButton(type) else { continue }
-            offsets[type] = button.frame.minX - close.frame.minX
+            offsets[type] = CGVector(
+                dx: button.frame.minX - close.frame.minX, dy: button.frame.minY - close.frame.minY)
             button.postsFrameChangedNotifications = true
             NotificationCenter.default.addObserver(
                 self,
@@ -134,11 +136,12 @@ public final class TrafficLightAlignerNSView: NSView {
         guard let close = window.standardWindowButton(.closeButton),
               let superview = close.superview else { return }
         adoptButtonsIfNeeded(window, close: close)
+        let closeHeight = close.frame.height
         for type in Self.buttonTypes {
             guard let button = window.standardWindowButton(type) else { continue }
             button.setFrameOrigin(TrafficLightAlignment.origin(
-                frame: button.frame,
-                offsetFromClose: offsets[type] ?? 0,
+                closeHeight: closeHeight,
+                offsetFromClose: offsets[type] ?? .zero,
                 headerHeight: headerHeight,
                 superviewHeight: superview.bounds.height,
                 flipped: superview.isFlipped

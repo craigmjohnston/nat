@@ -9,10 +9,9 @@ final class TrafficLightAlignerTests: XCTestCase {
     // MARK: - The geometry rule
 
     func testOriginCentresTheButtonAndMatchesTheLeadingInsetToTheVerticalOne() {
-        let close = NSRect(x: 7, y: 6, width: 14, height: 16)
         let origin = TrafficLightAlignment.origin(
-            frame: close,
-            offsetFromClose: 0,
+            closeHeight: 16,
+            offsetFromClose: .zero,
             headerHeight: 40,
             superviewHeight: 28,
             flipped: true
@@ -24,23 +23,37 @@ final class TrafficLightAlignerTests: XCTestCase {
     }
 
     func testOriginKeepsEachButtonsPitchFromTheCloseButton() {
-        let zoom = NSRect(x: 47, y: 6, width: 14, height: 16)
         let origin = TrafficLightAlignment.origin(
-            frame: zoom,
-            offsetFromClose: 40,
+            closeHeight: 16,
+            offsetFromClose: CGVector(dx: 40, dy: 0),
             headerHeight: 40,
             superviewHeight: 28,
             flipped: true
         )
 
         XCTAssertEqual(origin.x, 12 + 40)
+        XCTAssertEqual(origin.y, 12)
+    }
+
+    /// A button whose frame is not the close button's height keeps the
+    /// vertical offset AppKit gave it rather than being centred on its own
+    /// frame — which is what lifted the zoom button above the other two.
+    func testOriginKeepsAButtonsVerticalOffsetFromTheCloseButton() {
+        let origin = TrafficLightAlignment.origin(
+            closeHeight: 16,
+            offsetFromClose: CGVector(dx: 40, dy: -2),
+            headerHeight: 40,
+            superviewHeight: 28,
+            flipped: true
+        )
+
+        XCTAssertEqual(origin.y, 10)
     }
 
     func testOriginInAnUnflippedSuperviewMeasuresTheInsetFromTheTop() {
-        let close = NSRect(x: 7, y: 6, width: 14, height: 16)
         let origin = TrafficLightAlignment.origin(
-            frame: close,
-            offsetFromClose: 0,
+            closeHeight: 16,
+            offsetFromClose: .zero,
             headerHeight: 40,
             superviewHeight: 28,
             flipped: false
@@ -114,6 +127,16 @@ final class TrafficLightAlignerTests: XCTestCase {
 
         XCTAssertEqual(mini.frame.minX - close.frame.minX, pitches[0])
         XCTAssertEqual(zoom.frame.minX - mini.frame.minX, pitches[1])
+    }
+
+    @MainActor
+    func testMountingKeepsTheButtonsOnOneLine() throws {
+        let (window, _) = makeAlignedWindow()
+        let close = try XCTUnwrap(window.standardWindowButton(.closeButton))
+        for type in [NSWindow.ButtonType.miniaturizeButton, .zoomButton] {
+            let button = try XCTUnwrap(window.standardWindowButton(type))
+            XCTAssertEqual(windowFrame(of: button).midY, windowFrame(of: close).midY, "\(type)")
+        }
     }
 
     /// AppKit putting a button back where it wants it is the reset the

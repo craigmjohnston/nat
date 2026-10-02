@@ -16,12 +16,13 @@ import (
 // branches, its URL), whether it is open, merged or still a draft, what stands
 // between it and main (the review decision, mergeability, GitHub's own summary
 // of the merge state, the checks), what has been said on it, and its change
-// stats — additions, deletions, changed files, and the commit count. gh's own
+// stats — additions, deletions, changed files, and the commit count — and who
+// has been asked to review it. gh's own
 // "commits" field is a full object per commit; only its length is kept, since
 // the commits themselves are read through internal/git instead.
 const prViewFields = "number,title,body,state,isDraft,author,baseRefName,headRefName,url," +
 	"reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviews,comments," +
-	"additions,deletions,changedFiles,commits"
+	"additions,deletions,changedFiles,commits,reviewRequests"
 
 // PR is one pull request as it is drawn: gh's answer decoded into the fields
 // the viewer has a use for. GitHub's vocabulary is kept as GitHub writes it —
@@ -53,6 +54,9 @@ type PR struct {
 	Deletions    int
 	ChangedFiles int
 	Commits      int
+	// ReviewRequests is who has been asked for a review and not yet given
+	// one: a user by login, a team as its slug.
+	ReviewRequests []string
 }
 
 // The two states a pull request is in that a reader acts on: GitHub's own
@@ -265,7 +269,12 @@ type prView struct {
 	// Commits is decoded as raw JSON rather than a struct this package would
 	// otherwise have to keep in step with GitHub's own commit shape: only the
 	// length of it is ever read.
-	Commits []json.RawMessage `json:"commits"`
+	Commits        []json.RawMessage `json:"commits"`
+	ReviewRequests []struct {
+		Login string `json:"login"`
+		Slug  string `json:"slug"`
+		Name  string `json:"name"`
+	} `json:"reviewRequests"`
 }
 
 // ghUser is whoever GitHub names, of which only the login is drawn. A comment
@@ -336,6 +345,19 @@ func (v prView) pr() PR {
 	}
 	for _, entry := range v.Rollup {
 		pr.Checks = append(pr.Checks, entry.check())
+	}
+	for _, request := range v.ReviewRequests {
+		// A user names itself by login; a team has none, and goes by its slug.
+		name := request.Login
+		if name == "" {
+			name = request.Slug
+		}
+		if name == "" {
+			name = request.Name
+		}
+		if name != "" {
+			pr.ReviewRequests = append(pr.ReviewRequests, name)
+		}
 	}
 	for _, review := range v.Reviews {
 		pr.Reviews = append(pr.Reviews, Review{

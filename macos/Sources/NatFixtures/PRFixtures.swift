@@ -86,8 +86,12 @@ extension Fixtures {
         additions: diffAdds,
         deletions: diffDels,
         changedFiles: sliceDiff.files.count,
-        commits: commits.count
+        commits: commits.count,
+        reviewRequests: ["hubot"]
     )
+
+    /// Who the fixture repository could ask to review.
+    public static let collaborators = ["craigmjohnston", "octocat", "hubot", "mona"]
 
     /// A check has gone red and another is still running, and the review has
     /// asked for changes — the merge box's own no, with a refusal to show.

@@ -46,6 +46,13 @@ struct NatApp: App {
         // activate happens when the window first appears — this early, there
         // is no window yet and the request is ignored.
         NSApplication.shared.setActivationPolicy(.regular)
+        // One window, never tabbed: no tab bar, and no View ▸ Show Tab Bar or
+        // Show All Tabs for AppKit to add on the window's behalf.
+        NSWindow.allowsAutomaticWindowTabbing = false
+        // Scroll bars always shown wherever there is something to scroll,
+        // whatever the Mac's own Appearance setting: the app's own domain
+        // outranks the global one AppKit otherwise reads the style from.
+        UserDefaults.standard.set("Always", forKey: "AppleShowScrollBars")
         Self.setDockIcon()
     }
 
@@ -86,8 +93,9 @@ struct NatApp: App {
     var body: some Scene {
         // The mock's canvas is 1360×840 and every metric in it was chosen at
         // that size — opening there is what makes the proportions read as
-        // designed.
-        WindowGroup("gnat") {
+        // designed. A single `Window` rather than a group: gnat is one window
+        // over every project, so there is no New Window to offer.
+        Window("gnat", id: "main") {
             // NAT_TERM_SESSION is a debug affordance only: it lets a session
             // name be smoke-tested against a real tmux session before the
             // Agent tab has anywhere of its own to launch one from. Anyone
@@ -104,7 +112,7 @@ struct NatApp: App {
             // Diagnostics only: a no-op unless NAT_CURSOR_DEBUG=1 is set, for
             // tracking down the persistent I-beam cursor bug live. `.task`
             // is a View modifier and so goes on the window's content, not on
-            // the WindowGroup scene below.
+            // the Window scene below.
             .task { CursorDebugWalker.startIfAsked() }
             // The other half of init's `.regular` policy: brings the window
             // to the front the way launching a bundled app would, now that
@@ -130,16 +138,7 @@ struct NatApp: App {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesView(model: updaterViewModel)
             }
-            // The View menu's own first group: Finder's Show/Hide Hidden
-            // Files, for finished work, on the same ⇧⌘. Finder uses.
-            CommandGroup(before: .toolbar) {
-                Button(showsDoneItems ? "Hide Done Items" : "Show Done Items",
-                       systemImage: showsDoneItems ? "eye.slash" : "eye") {
-                    showsDoneItems.toggle()
-                }
-                .keyboardShortcut(".", modifiers: [.command, .shift])
-                Divider()
-            }
+            GnatCommands(showsDoneItems: $showsDoneItems)
         }
 
         // The settings window takes the app's appearance (`NSApp.appearance`,

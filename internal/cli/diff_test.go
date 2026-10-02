@@ -678,3 +678,6 @@ func TestSliceDiffRefusesCommitsAndCommitTogether(t *testing.T) {
 		t.Errorf("err = %v, want the mutual-exclusion refusal", err)
 	}
 }
+
+func (f *fakePRBase) EditReviewers(dir, ref string, add, remove []string) error { return nil }
+func (f *fakePRBase) Collaborators(dir string) ([]string, error)                { return nil, nil }
