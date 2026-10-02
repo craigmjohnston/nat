@@ -275,6 +275,7 @@ func Prompt(c PromptContext) string {
 		b.WriteString("write them into the summary or the brief instead. No follow-ups: hand\n")
 		b.WriteString("back straight away.\n\n")
 	}
+	b.WriteString(visualsPassage(c, "before `complete-slice`"))
 	b.WriteString("On completion, record the outcome:\n\n")
 	fmt.Fprintf(&b, "    nat complete-slice %s --project %s \\\n", c.Slice.ID, c.ProjectID)
 	fmt.Fprintf(&b, "        --branch %s --summary '- <what changed>\\n- <key decision>' \\\n", branchArg(c))
@@ -450,6 +451,27 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 // snapshot is worth gathering is the same question this prompt already asks.
 func Resuming(c PromptContext) bool {
 	return c.Branch != "" && c.Branch == strings.TrimSpace(c.Slice.Branch)
+}
+
+// visualsPassage tells a slice agent to hand in images of a visible change
+// where the project already renders such things cheaply, and never to build a
+// way to render where it does not; when says where in its ending that comes.
+// It is told to every slice agent whatever launched it, unlike follow-ups,
+// since nothing waits on a hand-in: the user's comments, if any, arrive as a
+// message. skills/next-slice/SKILL.md says the same in its own words.
+func visualsPassage(c PromptContext, when string) string {
+	var b strings.Builder
+	b.WriteString("If what you changed is visible — a pane, a page, a rendered component —\n")
+	b.WriteString("and the project already has a cheap or usual way to render it (a gallery\n")
+	b.WriteString("story, a screenshot script, a storybook), render the result and hand the\n")
+	fmt.Fprintf(&b, "images in %s:\n\n", when)
+	fmt.Fprintf(&b, "    nat slice-visuals %s --project %s \\\n", c.Slice.ID, c.ProjectID)
+	b.WriteString("        --visual '<what it shows, one line>\n<absolute path to the image>'\n\n")
+	b.WriteString("`--visual` repeats, one per image. Hand in the full set each time: a later\n")
+	b.WriteString("hand-in replaces an earlier one. Do not build a way to render when the\n")
+	b.WriteString("project has none — go on without images instead. The user reviews them\n")
+	b.WriteString("in the app; their comments, if any, arrive here as a message.\n\n")
+	return b.String()
 }
 
 // branchArg is what the hand-back command names: the branch the session's

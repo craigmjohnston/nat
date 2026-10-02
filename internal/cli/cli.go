@@ -368,6 +368,11 @@ usage:
                       fold it into this slice, or drop it. Records the
                       decision on the slice, then tells its agent in one
                       message; --fold needs a live agent
+  nat slice-visuals <slice> --visual TEXT [--visual TEXT]... --project ID
+                      file images rendered of what a slice you claimed changed,
+                      for the user to review in the app: each value's first
+                      line what it shows, the next the image's path or URI. A
+                      later hand-in replaces an earlier one; nothing waits on it
   nat slice-rework <slice> --project ID
                       take a handed-back slice back out of review: its branch is
                       cleared and nothing else, so it reads as in progress until
@@ -529,6 +534,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return sliceFollowUps(ctx, args[1:], env)
 	case "slice-triage":
 		return sliceTriage(ctx, args[1:], env)
+	case "slice-visuals":
+		return sliceVisuals(ctx, args[1:], env)
 	case "release-slice":
 		return releaseSlice(ctx, args[1:], env)
 	case "pr-view":

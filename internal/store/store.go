@@ -201,6 +201,9 @@ type Store interface {
 	// Follow-ups triaged heading in the body, which is what takes them out of
 	// [PendingFollowUps].
 	RecordTriage(ctx context.Context, id string, items []Triaged) error
+	// RecordVisuals files the images an agent rendered of its change, under a
+	// Visual changes heading in the body, where [VisualChanges] reads them back.
+	RecordVisuals(ctx context.Context, id string, items []VisualChange) error
 	// RecordPR writes a pull request's URL onto a slice and nothing else. The
 	// slice stays in progress: the merge is what marks work landed.
 	RecordPR(ctx context.Context, id, url string) error

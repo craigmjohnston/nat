@@ -177,6 +177,22 @@ as a message naming what to fold in. Do that, then hand back as below.
 branch to include a follow-up on your own, and never write them into the
 summary or the brief instead. No follow-ups: hand back straight away.
 
+If what you changed is visible — a pane, a page, a rendered component — and the
+project already has a cheap or usual way to render it (a gallery story, a
+screenshot script, a storybook), render the result and hand the images in
+before `complete-slice`:
+
+```
+nat slice-visuals <slice> --project <project> \
+    --visual '<what it shows, one line>
+<absolute path to the image>'
+```
+
+`--visual` repeats, one per image. Hand in the full set each time: a later
+hand-in replaces an earlier one. Do not build a way to render when the project
+has none — hand back without images instead. The user reviews them in the app;
+their comments, if any, arrive here as a message.
+
 Record the outcome with the slice's page ID or URL, as printed in the brief:
 
 ```

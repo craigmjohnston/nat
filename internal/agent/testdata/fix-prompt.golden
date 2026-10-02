@@ -49,8 +49,9 @@ be measured against:
 
     nat info --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
 
-That is the only `nat` command this session has any business running, and
-it names the project the way every other one does:
+That and the `slice-visuals` command below are the only `nat` commands
+this session has any business running, and both name the project the way
+every other one does:
 
     --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
 
@@ -65,6 +66,20 @@ same branch, which is the one the pull request is built from. It picks
 up what you push by itself, so that is the whole of the ending: nothing
 to record, no second pull request to open, and no branch of your own to
 create or switch to.
+
+If what you changed is visible — a pane, a page, a rendered component —
+and the project already has a cheap or usual way to render it (a gallery
+story, a screenshot script, a storybook), render the result and hand the
+images in before you report back:
+
+    nat slice-visuals 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
+        --visual '<what it shows, one line>
+<absolute path to the image>'
+
+`--visual` repeats, one per image. Hand in the full set each time: a later
+hand-in replaces an earlier one. Do not build a way to render when the
+project has none — go on without images instead. The user reviews them
+in the app; their comments, if any, arrive here as a message.
 
 Then say what you changed and what is still outstanding, so the user can
 read the review's state off your last message.

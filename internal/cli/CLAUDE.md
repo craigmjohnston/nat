@@ -105,6 +105,14 @@ once, or `--drop-all` alone; refuses a Todo slice, nothing pending, and any
 nudges, then sends one message — a failed send exits non-zero with the
 record standing). See root CLAUDE.md's Follow-ups rule.
 
+`slice-visuals` (held slices only; `--visual` repeatable, first line the
+name, the next the image's path or URI; refuses none, an empty name/URI, a URI
+over more than one line, or a duplicate name). A bare path or `file://` URI is
+made absolute against `getwd` and refused if `os.Stat` fails; any other scheme
+is filed as given. `Store.RecordVisuals`, nudge, print — never blocks
+`complete-slice`. `slice-show --json`'s `visuals` reads back the last section
+(`store.VisualChanges`). See root CLAUDE.md's Visual changes rule.
+
 `slice-rework` (handed-back slices only): clears the slice's `Branch` and
 nothing else (`Store.ClearBranch`), so it reads as in progress until the agent's
 next `complete-slice --branch` re-records it — the deterministic signal gnat's
