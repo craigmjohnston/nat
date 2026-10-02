@@ -52,7 +52,10 @@ struct NavSectionView<Actions: View, Content: View>: View {
             Text(label)
                 .font(.system(size: GnatMetrics.body))
                 .ink(.primary)
-                .frame(width: 58, alignment: .leading)
+                // A label longer than the column ("Visual changes") takes
+                // the room it needs rather than truncating.
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: 58, alignment: .leading)
             Spacer(minLength: 0)
             HStack(spacing: 0) { actions() }
                 .frame(maxHeight: .infinity)

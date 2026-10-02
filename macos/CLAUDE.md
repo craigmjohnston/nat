@@ -126,6 +126,21 @@ off), no New Window. The menu bar reaches the window through focused scene
 values (`MenuCommands.swift`): the sidebar, shell and slice navigator each
 publish the actions they already own, nil where their control is disabled.
 
+**Visual changes** is a fourth navigator section, between Changes and PR,
+**absent** unless `slice-show`'s `visuals` is non-empty (the images an agent
+handed in with `nat slice-visuals`). `VisualStore` (one per project,
+`AppModel.visualStore`) and `VisualReview` (the shell's) mirror `DiffStore`/
+`DiffReview`: images loaded by URI through a swappable `loader` (local paths
+only — any other URI is a placeholder card, no network), zoom per image,
+comments per slice at a point in the image's own pixels or on the whole image.
+Send is `agent-send`, then `slice-rework` only where the slice is handed back;
+a failed send keeps the comments. The comment box is drawn in the pane, not a
+`.popover`, so the gallery can render it. `VisualsPane` is the one scrolling
+pane SwiftUI lays out (pinned headers, `ScrollViewReader`) — safe only because
+nothing draws until every image's pixel size is known and every image has an
+explicit frame; keep it so. Stories: `window-visuals`,
+`window-visuals-comments`, `visuals-zoomed`, `visuals-comment-editor`.
+
 ## The diff is AppKit, laid out exactly
 
 The continuous diff is `DiffCanvasView` (NatKit), not a SwiftUI stack: a

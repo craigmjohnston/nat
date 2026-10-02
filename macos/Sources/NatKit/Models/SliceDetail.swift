@@ -23,6 +23,9 @@ public struct SliceDetail: Codable, Equatable, Sendable {
     /// user's decision — `nat slice-show`'s `followUps`, absent (decoded as
     /// empty) when there are none.
     public let followUps: [FollowUp]
+    /// The images the slice's agent last handed in of what it changed —
+    /// `nat slice-show`'s `visuals`, absent (decoded as empty) when none were.
+    public let visuals: [VisualChange]
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -41,6 +44,7 @@ public struct SliceDetail: Codable, Equatable, Sendable {
         case state
         case brief
         case followUps
+        case visuals
     }
 
     public init(from decoder: Decoder) throws {
@@ -61,6 +65,7 @@ public struct SliceDetail: Codable, Equatable, Sendable {
         state = try c.decodeIfPresent(String.self, forKey: .state)
         brief = try c.decode(String.self, forKey: .brief)
         followUps = try c.decodeIfPresent([FollowUp].self, forKey: .followUps) ?? []
+        visuals = try c.decodeIfPresent([VisualChange].self, forKey: .visuals) ?? []
     }
 
     public init(
@@ -79,7 +84,8 @@ public struct SliceDetail: Codable, Equatable, Sendable {
         handedBack: Bool,
         state: String? = nil,
         brief: String,
-        followUps: [FollowUp] = []
+        followUps: [FollowUp] = [],
+        visuals: [VisualChange] = []
     ) {
         self.id = id
         self.name = name
@@ -97,6 +103,7 @@ public struct SliceDetail: Codable, Equatable, Sendable {
         self.state = state
         self.brief = brief
         self.followUps = followUps
+        self.visuals = visuals
     }
 }
 
@@ -114,6 +121,23 @@ public struct FollowUp: Codable, Equatable, Hashable, Sendable, Identifiable {
         self.index = index
         self.title = title
         self.brief = brief
+    }
+}
+
+/// One image an agent handed in of what its slice changed, as `slice-show`
+/// reads it: its 1-based index in the hand-in, what it shows, and where it is —
+/// an absolute path, or a URI as the agent gave it.
+public struct VisualChange: Codable, Equatable, Hashable, Sendable, Identifiable {
+    public let index: Int
+    public let name: String
+    public let uri: String
+
+    public var id: Int { index }
+
+    public init(index: Int, name: String, uri: String) {
+        self.index = index
+        self.name = name
+        self.uri = uri
     }
 }
 

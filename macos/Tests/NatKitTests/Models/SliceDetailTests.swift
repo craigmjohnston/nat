@@ -31,6 +31,26 @@ final class SliceDetailTests: XCTestCase {
         XCTAssertNil(detail.base)
         XCTAssertFalse(detail.blocked)
         XCTAssertFalse(detail.handedBack)
+        XCTAssertEqual(detail.visuals, [], "no visuals key reads as none handed in")
+    }
+
+    func testSliceDetailDecodesVisuals() throws {
+        let json = """
+        {
+            "id": "s", "name": "n", "url": "u", "status": "In progress", "milestone": "M",
+            "assignee": "a", "blocked": false, "handed_back": true, "brief": "b",
+            "visuals": [
+                {"index": 1, "name": "Settings, dark", "uri": "/tmp/dark.png"},
+                {"index": 2, "name": "Docs", "uri": "https://example.com/docs.png"}
+            ]
+        }
+        """
+        let detail = try JSONDecoder().decode(SliceDetail.self, from: Data(json.utf8))
+        XCTAssertEqual(detail.visuals, [
+            VisualChange(index: 1, name: "Settings, dark", uri: "/tmp/dark.png"),
+            VisualChange(index: 2, name: "Docs", uri: "https://example.com/docs.png"),
+        ])
+        XCTAssertEqual(detail.visuals.map(\.id), [1, 2])
     }
 
     func testSliceDetailDecodingWithAllFields() throws {

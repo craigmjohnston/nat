@@ -11,18 +11,42 @@ import NatKit
 /// an avatar circle (the configured user's initials), their name, a yellow
 /// "Pending" badge — every comment here is, since none of them are written
 /// anywhere until they are sent — and the edit/delete icons the mock shows.
+/// `meta`, where given, is added to that line — where on an image a visual
+/// comment sits.
 struct PendingCommentCardView: View {
     @Environment(\.ground) private var ground
-    let comment: PendingComment
+    let text: String
     let authorName: String
     let authorInitials: String
+    var meta: String?
     let onEdit: () -> Void
     let onDelete: () -> Void
+
+    init(
+        comment: PendingComment, authorName: String, authorInitials: String, meta: String? = nil,
+        onEdit: @escaping () -> Void, onDelete: @escaping () -> Void
+    ) {
+        self.init(authorName: authorName, initials: authorInitials, text: comment.text, meta: meta,
+                  onEdit: onEdit, onDelete: onDelete)
+    }
+
+    init(
+        authorName: String, initials: String, text: String, meta: String?,
+        onEdit: @escaping () -> Void, onDelete: @escaping () -> Void
+    ) {
+        self.text = text
+        self.authorName = authorName
+        self.authorInitials = initials
+        self.meta = meta
+        self.onEdit = onEdit
+        self.onDelete = onDelete
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
-                Text("\(authorName.lowercased()) · pending").monoXS().ink(.secondary)
+                Text(["\(authorName.lowercased()) · pending", meta].compactMap { $0 }.joined(separator: " · "))
+                    .monoXS().ink(.secondary)
                 Spacer(minLength: 0)
                 Button(action: onEdit) {
                     Image(systemName: "pencil").font(.system(size: 11)).ink(.tertiary)
@@ -37,7 +61,7 @@ struct PendingCommentCardView: View {
                 .buttonStyle(GnatIconButtonStyle())
                 .help("Delete this comment")
             }
-            Text(comment.text)
+            Text(text)
                 .font(.system(size: 13.5))
                 .lineSpacing(2)
                 .ink(.primary)

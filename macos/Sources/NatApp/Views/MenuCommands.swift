@@ -30,6 +30,7 @@ struct SliceMenuActions {
     var openInNotion: (() -> Void)?
     var showThread: (() -> Void)?
     var showChanges: (() -> Void)?
+    var showVisuals: (() -> Void)?
     var showPullRequest: (() -> Void)?
 }
 
@@ -74,6 +75,9 @@ struct GnatCommands: Commands {
             Divider()
             item("Task", slice?.showThread).keyboardShortcut("1")
             item("Changes", slice?.showChanges).keyboardShortcut("2")
+            // Out of numeric order on purpose, so the menu reads in the
+            // navigator's order; ⌘3 stays Pull request's.
+            item("Visual changes", slice?.showVisuals).keyboardShortcut("4")
             item("Pull request", slice?.showPullRequest).keyboardShortcut("3")
             Divider()
             Toggle("Wrap lines in diffs", isOn: $diffWrapsLines)

@@ -79,7 +79,7 @@ final class StoryNamesTests: XCTestCase {
     func testEverySurfaceOfTheAppIsInTheCatalog() throws {
         let names = try shippedNames()
         for prefix in [
-            "window-review", "window-todo", "window-blocked", "window-working", "window-waiting",
+            "window-review", "window-visuals", "window-todo", "window-blocked", "window-working", "window-waiting",
             "window-pr", "window-fixing", "window-done", "window-light", "window-onboarding",
             "window-workshop", "window-session-", "window-untitled", "sidebar-skeleton",
             "sidebar-loaded", "sidebar-empty", "sidebar-error", "status-bar-", "workshop-", "settings",

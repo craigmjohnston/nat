@@ -22,6 +22,7 @@ struct WindowShellView: View {
     @State private var liveNavigatorWidth: Double?
 
     @State private var review = DiffReview()
+    @State private var visualReview = VisualReview()
     @State private var launchModel = ""
     @State private var launchEffort = ""
     @State private var openOverride: Set<NavigatorSection>?
@@ -34,6 +35,9 @@ struct WindowShellView: View {
     /// The gallery's seam: a story seeds the sidebar folds it is a story
     /// about.
     var sidebarFolds: [String: Bool] = [:]
+    /// The gallery's seam: a story opens the sections and puts up the view
+    /// it is a story about, where the selection's defaults would not.
+    var focus: NavigatorFocus?
 
     var body: some View {
         ZStack {
@@ -90,6 +94,12 @@ struct WindowShellView: View {
             .frame(maxHeight: .infinity)
 
             StatusBarView(appModel: appModel) { breadcrumb }
+        }
+        .onAppear {
+            if let focus {
+                openOverride = focus.open
+                mainOverride = focus.main
+            }
         }
         .onChange(of: selectionKey) { _, _ in resetToDefaults() }
         .onChange(of: slicePhase) { _, _ in resetToDefaults() }
@@ -280,6 +290,7 @@ struct WindowShellView: View {
         openOverride = nil
         mainOverride = nil
         review.reset()
+        visualReview.reset()
     }
 
     /// A session's defaults: its agent's Thread and terminal while one is
@@ -352,10 +363,11 @@ struct WindowShellView: View {
             columns {
                 SliceNavigatorView(
                     appModel: appModel, slice: slice, open: open, main: main, review: review,
-                    model: $launchModel, effort: $launchEffort)
+                    visualReview: visualReview, model: $launchModel, effort: $launchEffort)
             } main: {
                 SliceMainPane(
-                    appModel: appModel, slice: slice, mode: main, review: review, tabs: tabs, onTab: showTab)
+                    appModel: appModel, slice: slice, mode: main, review: review, visualReview: visualReview,
+                    tabs: tabs, onTab: showTab)
             }
             .task(id: slice.id) {
                 await appModel.sliceDetailStore(projectID: appModel.projectStore?.projectID ?? "")

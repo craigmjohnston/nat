@@ -192,8 +192,14 @@ struct SliceMainPane: View {
     let slice: Slice
     @Binding var mode: MainPaneMode
     let review: DiffReview
+    let visualReview: VisualReview
     var tabs: [MainPaneTab] = []
     var onTab: (MainPaneTab) -> Void = { _ in }
+
+    private var visuals: [VisualChange] {
+        appModel.sliceDetailStore(projectID: appModel.projectStore?.projectID ?? "")
+            .state(for: slice.id).detail?.visuals ?? []
+    }
 
     private var nav: NavigatorModel {
         NavigatorModel(
@@ -215,6 +221,10 @@ struct SliceMainPane: View {
                 }
             case .diff:
                 diffPane
+            case .visuals:
+                VisualsPane(
+                    appModel: appModel, review: visualReview, slice: slice, visuals: visuals,
+                    authorName: appModel.config?.assigneeUserName ?? "You")
             case .pr:
                 PRConversationPane(
                     store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),
@@ -242,6 +252,10 @@ struct SliceMainPane: View {
                     onSelectCommit: { sha in Task { await store.selectCommit(sha) } },
                     bottomPadding: 0)
                     .fixedSize()
+            case .visuals:
+                // Nothing: zoom lives in each image's own header, and there
+                // is no one image a pane-wide control would mean.
+                EmptyView()
             case .pr:
                 PROpenInGitHubButton(
                     store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),

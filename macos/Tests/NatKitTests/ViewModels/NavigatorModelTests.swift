@@ -53,10 +53,30 @@ final class NavigatorModelTests: XCTestCase {
 
     func testEachSectionPutsUpItsOwnMainView() {
         let todo = NavigatorModel(slice: slice(), agent: nil, fixLaunched: false)
-        XCTAssertEqual(NavigatorSection.allCases.map { todo.mainMode(for: $0) }, [nil, nil, nil])
+        XCTAssertEqual(NavigatorSection.allCases.map { todo.mainMode(for: $0) }, [nil, nil, nil, nil])
 
         let approved = NavigatorModel(slice: slice(status: "In progress", branch: "b", pr: prURL), agent: nil, fixLaunched: false)
-        XCTAssertEqual(NavigatorSection.allCases.map { approved.mainMode(for: $0) }, [.terminal, .diff, .pr])
+        XCTAssertEqual(NavigatorSection.allCases.map { approved.mainMode(for: $0) }, [.terminal, .diff, nil, .pr])
+
+        let shown = NavigatorModel(
+            slice: slice(status: "In progress", branch: "b", pr: prURL), agent: nil, fixLaunched: false, hasVisuals: true)
+        XCTAssertEqual(NavigatorSection.allCases.map { shown.mainMode(for: $0) }, [.terminal, .diff, .visuals, .pr])
+    }
+
+    func testVisualChangesAreLiveOnlyWithImagesAndSendOnlyToALiveAgent() {
+        let none = NavigatorModel(slice: slice(status: "In progress"), agent: .working, fixLaunched: false)
+        XCTAssertFalse(none.isLive(.visuals))
+        XCTAssertFalse(none.showsVisualActions)
+
+        let handedIn = NavigatorModel(
+            slice: slice(status: "In progress", branch: "b", handedBack: true), agent: nil, fixLaunched: false, hasVisuals: true)
+        XCTAssertTrue(handedIn.isLive(.visuals))
+        XCTAssertFalse(handedIn.showsVisualActions, "no agent to send to")
+        XCTAssertEqual(handedIn.phase, .changes, "images move neither the phase")
+        XCTAssertEqual(handedIn.defaultMain, .diff, "nor the default view")
+
+        let live = NavigatorModel(slice: slice(status: "In progress"), agent: .waiting, fixLaunched: false, hasVisuals: true)
+        XCTAssertTrue(live.showsVisualActions)
     }
 
     // MARK: - Header clicks
@@ -167,7 +187,7 @@ final class NavigatorModelTests: XCTestCase {
     }
 
     func testEverySectionHasItsLabel() {
-        XCTAssertEqual(NavigatorSection.allCases.map(\.label), ["Task", "Changes", "PR"])
+        XCTAssertEqual(NavigatorSection.allCases.map(\.label), ["Task", "Changes", "Visual changes", "PR"])
     }
 
     // MARK: - The Thread
