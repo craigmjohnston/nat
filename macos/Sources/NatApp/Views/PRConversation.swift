@@ -42,7 +42,7 @@ struct PRConversationEntryView: View {
             .surface(.chrome)
 
             if !entry.body.isEmpty {
-                MarkdownView(text: entry.body, size: Typo.subhead, ink: .primary)
+                MarkdownView(text: entry.body, size: PRConversationMetrics.textSize, ink: .primary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
                     .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
@@ -202,6 +202,9 @@ struct PRComposerView: View {
             TextEditor(text: $text)
                 .font(Typo.mono(size: Typo.subhead))
                 .scrollContentBackground(.hidden)
+                // No scroller, and so no gutter where "Show scroll bars" is
+                // Always (or a mouse is connected): the box still scrolls.
+                .scrollIndicators(.never)
         }
     }
 }

@@ -6,7 +6,7 @@ import Foundation
 /// empty board cannot say different things.
 public enum EmptyProjectNote {
     /// The heading: there is a plan, and it holds nothing yet.
-    public static let title = "No slices yet"
+    public static let title = "No tasks yet"
 
     /// What to do about it. A project opened from the "+" tab has no working
     /// directory recorded — opening records where a plan lives and nothing
@@ -16,6 +16,6 @@ public enum EmptyProjectNote {
         if needsWorkingDir {
             return "This project has no working directory on this Mac. Set one in Settings (⌘,) so agents launch in its checkout, then workshop the plan with the wand above."
         }
-        return "Workshop the plan with the wand above, or file a slice with the plus beside it."
+        return "Workshop the plan with the wand above, or file a task with the plus beside it."
     }
 }

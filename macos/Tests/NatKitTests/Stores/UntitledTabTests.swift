@@ -150,8 +150,8 @@ final class UntitledTabTests: XCTestCase {
 
     func testTheRailExplainers() {
         XCTAssertEqual(StarterCard.railWorkshopExplainer,
-                       "Milestones and slices land here as the workshop settles on a plan.")
+                       "Milestones and tasks land here as the workshop settles on a plan.")
         XCTAssertEqual(StarterCard.railExplainer,
-                       "Milestones and slices appear here once the project has a plan.")
+                       "Milestones and tasks appear here once the project has a plan.")
     }
 }

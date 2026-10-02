@@ -34,7 +34,6 @@ struct DiffFileSidebarView: View {
                 }
             }
             .padding(8)
-            .inelastic()
         }
         .thinScrollers()
     }

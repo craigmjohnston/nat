@@ -109,14 +109,14 @@ final class PlanProposalModelTests: XCTestCase {
     }
 
     func testTheWordsAreThePluralisedMocksOwn() {
-        XCTAssertEqual(ProposalText.counts(milestones: 4, slices: 14), "4 milestones · 14 slices")
-        XCTAssertEqual(ProposalText.counts(milestones: 1, slices: 1), "1 milestone · 1 slice")
+        XCTAssertEqual(ProposalText.counts(milestones: 4, slices: 14), "4 milestones · 14 tasks")
+        XCTAssertEqual(ProposalText.counts(milestones: 1, slices: 1), "1 milestone · 1 task")
         XCTAssertEqual(
             ProposalText.acceptCaption(name: "rust-importer"),
             "Accepting writes the plan to local storage as “rust-importer”.")
         XCTAssertEqual(
             ProposalText.acceptedSubtitle(milestones: 4, slices: 14),
-            "4 milestones · 14 slices written locally. Select a slice to begin.")
+            "4 milestones · 14 tasks written locally. Select a task to begin.")
     }
 
     func testAClientThatDoesNotKnowTheCommandsRefusesThem() async {

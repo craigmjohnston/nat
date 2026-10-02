@@ -67,7 +67,6 @@ struct CrumbTreePicker: View {
         ScrollView {
             VStack(spacing: 0) { content() }
                 .padding(.vertical, 6)
-                .inelastic()
         }
         .thinScrollers()
         .frame(width: Self.columnWidth)

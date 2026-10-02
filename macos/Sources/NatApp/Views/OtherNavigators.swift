@@ -32,7 +32,7 @@ struct SessionNavigatorView: View {
     var body: some View {
         NavigatorColumn(anyOpen: !open.isEmpty) {
             NavSectionView(
-                label: "Thread", open: open.contains(.thread), selected: main == .terminal,
+                label: "Session", open: open.contains(.thread), selected: main == .terminal,
                 onHead: { click(.thread) }, onFold: { fold(.thread) }
             ) {
                 ScrollView {
@@ -54,7 +54,6 @@ struct SessionNavigatorView: View {
                     .padding(6)
                 }
                 .thinScrollers()
-                .inelastic()
             }
             NavSectionView(
                 label: "Changes", open: open.contains(.changes), selected: main == .diff,
@@ -62,11 +61,13 @@ struct SessionNavigatorView: View {
             ) {
                 changesBody
             }
-            NavSectionView(
-                label: "PR", open: open.contains(.pr), selected: main == .pr, live: !session.prs.isEmpty,
-                onHead: { click(.pr) }, onFold: { fold(.pr) }
-            ) {
-                prBody
+            if !session.prs.isEmpty {
+                NavSectionView(
+                    label: "PR", open: open.contains(.pr), selected: main == .pr,
+                    onHead: { click(.pr) }, onFold: { fold(.pr) }
+                ) {
+                    prBody
+                }
             }
         }
         .task(id: "\(session.id)|\(requestedBranch ?? "")") {
@@ -101,7 +102,9 @@ struct SessionNavigatorView: View {
     }
 
     private func apply(_ focus: NavigatorFocus) {
-        withAnimation(Motion.stateChange) { open = focus.open }
+        // Sections snap open and shut: no animation, everything shown or
+        // hidden at once.
+        open = focus.open
         if focus.main != main { main = focus.main }
     }
 
@@ -143,7 +146,6 @@ struct SessionNavigatorView: View {
             .padding(.vertical, 4)
         }
         .thinScrollers()
-        .inelastic()
     }
 
     @ViewBuilder
@@ -178,15 +180,21 @@ struct SessionMainPane: View {
         let store = appModel.sessionDiffStore(projectID: appModel.projectStore?.projectID ?? "")
         VStack(spacing: 0) {
             MainPaneHeader {
-                if mode == .terminal || mode == .empty {
+                switch mode {
+                case .terminal, .empty:
                     AgentModelHeading(agent: appModel.activityStore?.agents[session.tag])
+                case .pr:
+                    PRPaneHeading(
+                        store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),
+                        expectedNumber: selectedPRNumber)
+                case .diff:
+                    EmptyView()
                 }
             }
             switch mode {
             case .terminal, .empty:
                 AgentTerminalPane(
                     agent: appModel.activityStore?.agents[session.tag],
-                    emptyText: "No agent is running on this session.",
                     sessionExists: { appModel.activityStore?.agents[session.tag] != nil })
             case .diff:
                 if let diff = store.loadState.diff {
@@ -203,13 +211,18 @@ struct SessionMainPane: View {
                     QuietLoadingView(label: "Reading the branch").frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             case .pr:
-                let url = appModel.selectedPickerID(.pullRequest, sessionID: session.id, among: session.prs.map(\.url))
                 PRConversationPane(
                     store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),
-                    expectedNumber: session.prs.first { $0.url == url }?.number)
+                    expectedNumber: selectedPRNumber)
             }
         }
         .surface(.window)
+    }
+
+    /// The number of the pull request the PR section's picker has chosen.
+    private var selectedPRNumber: Int? {
+        let url = appModel.selectedPickerID(.pullRequest, sessionID: session.id, among: session.prs.map(\.url))
+        return session.prs.first { $0.url == url }?.number
     }
 }
 
@@ -230,7 +243,7 @@ struct WorkshopNavigatorView: View {
             NavSectionView(label: "Plan", open: true, onHead: {}) {
                 actions
             } content: {
-                ScrollView { content }.inelastic().thinScrollers()
+                ScrollView { content }.thinScrollers()
             }
         }
         .alert("End the workshop session?", isPresented: $confirmingEnd) {
@@ -295,7 +308,7 @@ struct WorkshopNavigatorView: View {
             NavProse { Text("Starting the workshop session\u{2026}").ink(.secondary) }
         } else {
             NavProse {
-                Text("Describe the changes you want to make. You can list several and the agent will plan milestones and slices for them in one go.")
+                Text("Describe the changes you want to make. You can list several and the agent will plan milestones and tasks for them in one go.")
                     .ink(.secondary)
                 TextEditor(text: $appModel.workshopDraft)
                     .font(Typo.mono(size: 13))
@@ -320,9 +333,7 @@ struct WorkshopMainPane: View {
             MainPaneHeader { AgentModelHeading(agent: appModel.planningAgent) }
             AgentTerminalPane(
                 agent: appModel.planningAgent,
-                emptyText: appModel.workshopLaunching
-                    ? "Starting the workshop session\u{2026}"
-                    : "The planning agent's terminal opens here on launch.",
+                emptyText: appModel.workshopLaunching ? "Starting the workshop session\u{2026}" : nil,
                 focusRequest: appModel.terminalFocusRequest,
                 sessionExists: { appModel.planningAgent != nil })
         }

@@ -17,13 +17,13 @@ import Foundation
 /// nothing nameable at all falls back to the count.
 public func dependencyLine(dependsOn: [String]?, blocked: Bool, plan: [Slice]) -> String {
     guard let deps = dependsOn, !deps.isEmpty else {
-        return blocked ? "Blocked" : "Nothing blocks this slice"
+        return blocked ? "Blocked" : "Nothing blocks this task"
     }
 
     let named = dependencyEntries(dependsOn, plan: plan)
     let listed = blocked ? named.filter { !$0.done } : named
     guard !listed.isEmpty else {
-        return "Waits on \(deps.count) slice\(deps.count == 1 ? "" : "s")"
+        return "Waits on \(deps.count) task\(deps.count == 1 ? "" : "s")"
     }
 
     let line = "Waits on " + listed.map(\.name).joined(separator: ", ")

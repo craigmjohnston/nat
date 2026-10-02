@@ -83,9 +83,9 @@ public final class FollowUpStore {
         var parts: [String] = []
         if queued > 0 {
             let place = milestone.isEmpty ? "" : " under \(milestone)"
-            parts.append("queues \(queued) slice\(queued == 1 ? "" : "s")\(place)")
+            parts.append("queues \(queued) task\(queued == 1 ? "" : "s")\(place)")
         }
-        if folded > 0 { parts.append("folds \(folded) into this slice") }
+        if folded > 0 { parts.append("folds \(folded) into this task") }
         if dropped > 0 { parts.append("drops \(dropped)") }
         let joined = parts.count > 1
             ? parts.dropLast().joined(separator: ", ") + " and " + parts.last!

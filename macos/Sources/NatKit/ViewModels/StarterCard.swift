@@ -11,7 +11,7 @@ public enum StarterCard {
 
     public static let describeHeading = "Describe a plan"
     public static let describePlaceholder =
-        "What do you want to do? Sketch the milestones and slices, paste a Notion page or URL, or drop a plan file — the planning agent workshops it into a plan with you."
+        "What do you want to do? Sketch the milestones and tasks, paste a Notion page or URL, or drop a plan file — the planning agent workshops it into a plan with you."
     public static let openPlanLabel = "Open plan from filesystem…"
     public static let startHint = "⌘↩ to start"
     public static let workshopLabel = "Workshop the plan"
@@ -23,13 +23,13 @@ public enum StarterCard {
     public static let filesystemSubtitle = "Choose a project folder that already has a plan"
 
     /// The Untitled tab's TODO section, in place of a plan it has none of.
-    public static let railExplainer = "Milestones and slices appear here once the project has a plan."
+    public static let railExplainer = "Milestones and tasks appear here once the project has a plan."
 
     /// The TODO explainer once the workshop session is running, in place of
     /// `railExplainer` (`NFRail`'s non-proposal branch in
     /// `docs/design/nat-new-project/ui-npflow.jsx`).
     public static let railWorkshopExplainer =
-        "Milestones and slices land here as the workshop settles on a plan."
+        "Milestones and tasks land here as the workshop settles on a plan."
 
     /// What the folder picker asks, and what a folder with no plan is refused
     /// with — said as what was looked for, so the message can be acted on.

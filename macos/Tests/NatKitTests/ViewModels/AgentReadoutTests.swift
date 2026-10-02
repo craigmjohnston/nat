@@ -59,4 +59,13 @@ final class AgentReadoutTests: XCTestCase {
         XCTAssertEqual(status.contextPercent, 12.5)
         XCTAssertEqual(status.contextTokens, 125_000)
     }
+
+    /// A launch's model and effort are written as a live agent's are, each
+    /// half dropped when unset, and nothing at all with neither.
+    func testModelEffortLabel() {
+        XCTAssertEqual(modelEffortLabel(model: "opus", effort: "high"), "opus / high")
+        XCTAssertEqual(modelEffortLabel(model: "opus", effort: ""), "opus")
+        XCTAssertEqual(modelEffortLabel(model: "", effort: "max"), "max")
+        XCTAssertNil(modelEffortLabel(model: "", effort: ""))
+    }
 }

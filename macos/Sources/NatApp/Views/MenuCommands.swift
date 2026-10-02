@@ -52,7 +52,7 @@ struct GnatCommands: Commands {
         // One window, so no New Window: File ▸ New makes plan items instead.
         CommandGroup(replacing: .newItem) {
             item("New project\u{2026}", shell?.newProject).keyboardShortcut("n", modifiers: [.command, .shift])
-            item("New slice\u{2026}", sidebar?.newSlice).keyboardShortcut("n")
+            item("New task\u{2026}", sidebar?.newSlice).keyboardShortcut("n")
             item("New milestone\u{2026}", sidebar?.newMilestone).keyboardShortcut("n", modifiers: [.command, .option])
             item("New ad hoc session", sidebar?.newSession).keyboardShortcut("n", modifiers: [.command, .control])
             item("Workshop\u{2026}", sidebar?.workshop)
@@ -72,7 +72,7 @@ struct GnatCommands: Commands {
             .keyboardShortcut(".", modifiers: [.command, .shift])
             item("Refresh", shell?.refresh).keyboardShortcut("r")
             Divider()
-            item("Thread", slice?.showThread).keyboardShortcut("1")
+            item("Task", slice?.showThread).keyboardShortcut("1")
             item("Changes", slice?.showChanges).keyboardShortcut("2")
             item("Pull request", slice?.showPullRequest).keyboardShortcut("3")
             Divider()
@@ -80,10 +80,10 @@ struct GnatCommands: Commands {
             Divider()
         }
 
-        // The menu's own title stays "Slice"; which slice is said by a
+        // The menu's own title stays "Task"; which task is said by a
         // section header over its items, so a long name never reaches the
         // menu bar.
-        CommandMenu("Slice") {
+        CommandMenu("Task") {
             Section(sliceMenuHeader(slice?.title)) {
                 item("Launch agent", slice?.launch).keyboardShortcut("l")
                 item("Edit brief\u{2026}", slice?.editBrief)
@@ -91,13 +91,13 @@ struct GnatCommands: Commands {
             Divider()
             item("Merge pull request\u{2026}", slice?.merge)
             item("Open pull request in GitHub", slice?.openPullRequest)
-            item("Open slice in Notion", slice?.openInNotion)
+            item("Open task in Notion", slice?.openInNotion)
         }
     }
 
     /// The Slice menu's header: the slice's name, cut to a menu's width.
     private func sliceMenuHeader(_ title: String?) -> String {
-        guard let title, !title.isEmpty else { return "No slice selected" }
+        guard let title, !title.isEmpty else { return "No task selected" }
         return title.count > 48 ? title.prefix(47).trimmingCharacters(in: .whitespaces) + "\u{2026}" : title
     }
 

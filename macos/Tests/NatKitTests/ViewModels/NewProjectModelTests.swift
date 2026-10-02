@@ -65,6 +65,6 @@ final class EmptyProjectNoteTests: XCTestCase {
     }
 
     func testTitleSaysThePlanIsEmptyRatherThanUnread() {
-        XCTAssertEqual(EmptyProjectNote.title, "No slices yet")
+        XCTAssertEqual(EmptyProjectNote.title, "No tasks yet")
     }
 }

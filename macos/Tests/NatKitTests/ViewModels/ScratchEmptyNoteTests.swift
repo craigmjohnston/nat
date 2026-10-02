@@ -5,7 +5,7 @@ final class ScratchEmptyNoteTests: XCTestCase {
     func testTheNoteReadsAsOneSentenceWithBothLinks() {
         XCTAssertEqual(
             String(ScratchEmptyNote.markdown.characters),
-            "No slices. Use a workshop agent or add one yourself.")
+            "No tasks. Use a workshop agent or add one yourself.")
         let links = ScratchEmptyNote.markdown.runs.compactMap(\.link).compactMap(ScratchEmptyNote.Link.init)
         XCTAssertEqual(links, [.workshop, .addSlice])
     }

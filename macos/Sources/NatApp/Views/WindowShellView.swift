@@ -22,6 +22,8 @@ struct WindowShellView: View {
     @State private var liveNavigatorWidth: Double?
 
     @State private var review = DiffReview()
+    @State private var launchModel = ""
+    @State private var launchEffort = ""
     @State private var openOverride: Set<NavigatorSection>?
     @State private var mainOverride: MainPaneMode?
     /// Which crumb's tree picker is open: the project's or the milestone's.
@@ -313,9 +315,13 @@ struct WindowShellView: View {
             }
         } else if let slice = selectedSlice {
             columns {
-                SliceNavigatorView(appModel: appModel, slice: slice, open: open, main: main, review: review)
+                SliceNavigatorView(
+                    appModel: appModel, slice: slice, open: open, main: main, review: review,
+                    model: $launchModel, effort: $launchEffort)
             } main: {
-                SliceMainPane(appModel: appModel, slice: slice, mode: main, review: review)
+                SliceMainPane(
+                    appModel: appModel, slice: slice, mode: main, review: review,
+                    launch: modelEffortLabel(model: launchModel, effort: launchEffort))
             }
             .task(id: slice.id) {
                 await appModel.sliceDetailStore(projectID: appModel.projectStore?.projectID ?? "")
@@ -340,7 +346,7 @@ struct WindowShellView: View {
                         .frame(maxHeight: .infinity, alignment: .top)
                         .surface(.window)
                     } else {
-                        Text("Select a slice in the sidebar.")
+                        Text("Select a task in the sidebar.")
                             .font(.system(size: GnatMetrics.body))
                             .ink(.tertiary)
                             .multilineTextAlignment(.center)

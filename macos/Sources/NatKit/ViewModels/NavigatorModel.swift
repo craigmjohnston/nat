@@ -8,7 +8,7 @@ public enum NavigatorSection: String, CaseIterable, Equatable, Hashable, Sendabl
 
     public var label: String {
         switch self {
-        case .thread: return "Thread"
+        case .thread: return "Task"
         case .changes: return "Changes"
         case .pr: return "PR"
         }

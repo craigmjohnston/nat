@@ -108,7 +108,7 @@ public enum ProposalText {
 
     /// "4 milestones · 14 slices", each pluralised on its own.
     public static func counts(milestones: Int, slices: Int) -> String {
-        "\(milestones) \(milestones == 1 ? "milestone" : "milestones") · \(slices) \(slices == 1 ? "slice" : "slices")"
+        "\(milestones) \(milestones == 1 ? "milestone" : "milestones") · \(slices) \(slices == 1 ? "task" : "tasks")"
     }
 
     /// The caption under the buttons, tracking the name field.
@@ -117,6 +117,6 @@ public enum ProposalText {
     }
 
     public static func acceptedSubtitle(milestones: Int, slices: Int) -> String {
-        "\(counts(milestones: milestones, slices: slices)) written locally. Select a slice to begin."
+        "\(counts(milestones: milestones, slices: slices)) written locally. Select a task to begin."
     }
 }
