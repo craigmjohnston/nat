@@ -534,6 +534,20 @@ final class DiffCanvasViewTests: XCTestCase {
         try assertDraws(canvas)
     }
 
+    /// A later file's header pinned at the very top draws no rule along its
+    /// top edge: the pane heading's own line is already there, and a second
+    /// one under it reads as a double border.
+    func testAPinnedHeaderAtTheTopDrawsNoTopRule() throws {
+        let canvas = makeCanvas()
+        let header = canvas.diffLayout.top(canvas.diffLayout.headerIndex[1])
+        canvas.scrollView.contentView.setBoundsOrigin(NSPoint(x: 0, y: header + 10))
+        let viewport = canvas.viewport
+        let rep = try XCTUnwrap(viewport.bitmapImageRepForCachingDisplay(in: viewport.bounds))
+        viewport.cacheDisplay(in: viewport.bounds, to: rep)
+        let x = rep.pixelsWide - 2
+        XCTAssertEqual(rep.colorAt(x: x, y: 0), rep.colorAt(x: x, y: 6))
+    }
+
     /// A fling through a 50,000-row diff, every frame drawn afresh: a
     /// hundred viewports, each a thousand points further down, as many
     /// rows set and drawn for the first time as a scroll can ask for.
