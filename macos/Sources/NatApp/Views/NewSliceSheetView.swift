@@ -14,6 +14,9 @@ struct NewSliceSheetView: View {
     /// asking again would be the sheet forgetting where it was opened. Empty
     /// is the toolbar button's own answer: nothing said, so nothing picked.
     var initialMilestone: String = ""
+    /// The scratch project's sheet: a slice there may go under no milestone,
+    /// which nat files under the project's unfiled one.
+    var milestoneOptional = false
     let onClose: () -> Void
     let onCreated: () -> Void
 
@@ -26,7 +29,7 @@ struct NewSliceSheetView: View {
     private var canSubmit: Bool {
         !isSubmitting
             && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !selectedMilestone.isEmpty
+            && (milestoneOptional || !selectedMilestone.isEmpty)
     }
 
     var body: some View {
@@ -49,8 +52,8 @@ struct NewSliceSheetView: View {
                     .font(.system(size: Typo.subhead, weight: .semibold))
                     .ink(.secondary)
                 Picker("Milestone", selection: $selectedMilestone) {
-                    Text("Select a milestone").tag("")
-                    ForEach(milestones) { milestone in
+                    Text(milestoneOptional ? "No milestone" : "Select a milestone").tag("")
+                    ForEach(milestones.filter { !$0.unfiled }) { milestone in
                         Text(milestone.name).tag(milestone.name)
                     }
                 }

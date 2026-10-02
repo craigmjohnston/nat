@@ -368,3 +368,98 @@ func TestConfigShowNamesTheScratchProject(t *testing.T) {
 		t.Errorf("markdown lacks the scratch project:\n%s", out.String())
 	}
 }
+
+func TestSliceAddFilesAScratchSliceWithNoMilestoneUnderUnfiled(t *testing.T) {
+	stubHomeDir(t, "/home/craig", nil)
+	env, out, saved := noNotionEnv(t, config.Config{}, false)
+	if err := Run(context.Background(), []string{"scratch-open"}, env); err != nil {
+		t.Fatalf("scratch-open: %v", err)
+	}
+	id := saved.ScratchProject
+
+	// Twice: the first adds the milestone, the second finds it.
+	for _, title := range []string{"Try a thing", "Try another"} {
+		out.Reset()
+		if err := Run(context.Background(), []string{"slice-add", title, "--project", id, "--json"}, env); err != nil {
+			t.Fatalf("slice-add %q: %v", title, err)
+		}
+		var added sliceAddedJSON
+		if err := json.Unmarshal(out.Bytes(), &added); err != nil {
+			t.Fatalf("not JSON: %v\n%s", err, out.String())
+		}
+		if added.Slice.MilestoneName != unfiledMilestone {
+			t.Errorf("%q filed under %q, want %q", title, added.Slice.MilestoneName, unfiledMilestone)
+		}
+	}
+
+	out.Reset()
+	if err := Run(context.Background(), []string{"info", "--project", id, "--json"}, env); err != nil {
+		t.Fatalf("info: %v", err)
+	}
+	var doc infoJSON
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	if len(doc.Milestones) != 1 || doc.Milestones[0].Name != unfiledMilestone || !doc.Milestones[0].Unfiled {
+		t.Fatalf("milestones = %+v, want the one Unfiled milestone, marked", doc.Milestones)
+	}
+	if len(doc.Slices) != 2 {
+		t.Errorf("%d slices, want 2", len(doc.Slices))
+	}
+}
+
+func TestSliceAddStillRefusesNoMilestoneOutsideScratch(t *testing.T) {
+	stubHomeDir(t, "/home/craig", nil)
+	env, out, saved := noNotionEnv(t, config.Config{}, false)
+	if err := Run(context.Background(), []string{"scratch-open"}, env); err != nil {
+		t.Fatalf("scratch-open: %v", err)
+	}
+	if err := Run(context.Background(), []string{"project-create", "Mine", "--local", "--plan-dir", t.TempDir(), "--json"}, env); err != nil {
+		t.Fatalf("project-create: %v", err)
+	}
+	var mine string
+	for id := range saved.Projects {
+		if id != saved.ScratchProject {
+			mine = id
+		}
+	}
+	out.Reset()
+	err := Run(context.Background(), []string{"slice-add", "Render", "--project", mine}, env)
+	if err == nil || !strings.Contains(err.Error(), "pass --milestone") {
+		t.Errorf("err = %v, want the no-milestone refusal", err)
+	}
+
+	// A milestone of the same name in an ordinary project is just a milestone.
+	if err := Run(context.Background(), []string{"milestone-add", unfiledMilestone, "--project", mine}, env); err != nil {
+		t.Fatalf("milestone-add: %v", err)
+	}
+	out.Reset()
+	if err := Run(context.Background(), []string{"info", "--project", mine, "--json"}, env); err != nil {
+		t.Fatalf("info: %v", err)
+	}
+	var doc infoJSON
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Milestones) != 1 || doc.Milestones[0].Unfiled {
+		t.Errorf("milestones = %+v, want one, not marked", doc.Milestones)
+	}
+}
+
+// failingMilestoneStore refuses every milestone it is asked to add.
+type failingMilestoneStore struct {
+	store.Store
+	err error
+}
+
+func (s failingMilestoneStore) AddMilestones(context.Context, store.Project, store.Shape, []string) ([]domain.Milestone, error) {
+	return nil, s.err
+}
+
+func TestUnfiledMilestoneOfReportsAMilestoneItCouldNotAdd(t *testing.T) {
+	boom := errors.New("disk full")
+	_, err := unfiledMilestoneOf(context.Background(), failingMilestoneStore{err: boom}, store.Project{}, store.Shape{})
+	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "add the Unfiled milestone") {
+		t.Errorf("err = %v, want the failed add, named", err)
+	}
+}

@@ -30,6 +30,13 @@ struct NoScrollElasticity: NSViewRepresentable {
 final class ElasticityOffView: NSView {
     // Unsafe only so deinit can read it: it is written on the main thread alone.
     nonisolated(unsafe) private var styleObserver: NSObjectProtocol?
+    /// Watches the scroll's own style, which AppKit sets back to the
+    /// system's whenever it decides afresh what that is — not only on the
+    /// public notification, and in the running app evidently after this
+    /// view's own pass (a mouse in use makes the system's style the legacy
+    /// one, which reserves a gutter beside the content).
+    private var styleWatch: NSKeyValueObservation?
+    private weak var watchedScrollView: NSScrollView?
 
     deinit {
         if let styleObserver { NotificationCenter.default.removeObserver(styleObserver) }
@@ -70,6 +77,18 @@ final class ElasticityOffView: NSView {
         if !(scrollView.verticalScroller is ThinScroller) { scrollView.verticalScroller = ThinScroller() }
         if !(scrollView.horizontalScroller is ThinScroller) { scrollView.horizontalScroller = ThinScroller() }
         scrollView.scrollerStyle = .overlay
+        guard watchedScrollView !== scrollView else { return }
+        watchedScrollView = scrollView
+        styleWatch = scrollView.observe(\.scrollerStyle, options: [.new]) { [weak self] scrollView, change in
+            guard change.newValue != .overlay else { return }
+            // After the setter that changed it has finished, not inside it.
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, self.enclosingScrollView === scrollView else { return }
+                    self.applyScrollers(to: scrollView)
+                }
+            }
+        }
     }
 }
 

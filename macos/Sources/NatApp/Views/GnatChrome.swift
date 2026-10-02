@@ -335,10 +335,23 @@ struct HeaderActionLabel: View {
     let title: String
     var systemImage: String?
     var isBusy = false
+    /// A second line of small text under the title — what the action will
+    /// run with, such as a launch's model and effort.
+    var detail: String?
 
     var body: some View {
         HStack(spacing: 7) {
-            Text(title).fixedSize()
+            if let detail, !detail.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(title).fixedSize()
+                    Text(detail)
+                        .font(Typo.mono(size: 10))
+                        .opacity(0.7)
+                        .fixedSize()
+                }
+            } else {
+                Text(title).fixedSize()
+            }
             if isBusy {
                 ProgressView().controlSize(.mini).frame(width: 11, height: 11)
             } else if let systemImage {

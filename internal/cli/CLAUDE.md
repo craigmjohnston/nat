@@ -135,7 +135,11 @@ Scratch project: `scratch-open` (no `--project`; creates the reserved local
 then only reads it back) and `done-clear` (local projects only: deletes Done
 slices and ended sessions, then milestones left empty; refuses a project with
 a workspace behind it by name, so it can never trash Notion pages). gnat runs
-both once per launch, before the scratch project's first read.
+both once per launch, before the scratch project's first read. On the
+scratch project alone, `slice-add` takes no `--milestone`: the slice is filed
+under the reserved `Unfiled` milestone (`unfiledMilestone`, added on first
+use), which `info --json` marks `"unfiled": true` — gnat draws its slices
+loose at the head of the Scratch fold, never as a folder.
 
 `project-open-folder <dir>` (no `--project`; the starter card's "From
 filesystem" tile) records the local plan a folder already holds. It finds

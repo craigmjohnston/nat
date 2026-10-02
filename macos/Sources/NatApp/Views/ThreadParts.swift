@@ -170,10 +170,10 @@ struct LaunchCard: View {
     private var explanation: some View {
         switch mode {
         case .launch:
-            Text("Starts Claude Code on this brief, in a worktree on a new branch. Its log appears here and the terminal opens on the right.")
+            Text("Start an agent with this brief, in a worktree on a new branch. Its log appears here and its terminal opens on the right.")
                 .ink(.secondary)
         case .relaunch:
-            Text("No agent is running on it. Relaunching starts one on its branch, told it is continuing.")
+            Text("Start a new agent on its branch, told it is continuing — no agent is running on it now.")
                 .ink(.secondary)
         case .blocked(let names):
             let waiting = names.isEmpty ? Text("its dependencies") : names.enumerated().reduce(Text("")) { text, entry in
@@ -233,7 +233,7 @@ struct DependencyRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .popover(isPresented: $hovering, arrowEdge: .trailing) {
+        .quietPopover(isPresented: $hovering, arrowEdge: .maxX) {
             DependencyDetailView(slice: slice, state: state, live: live, milestone: milestone)
         }
         .accessibilityHint("Selects the slice")

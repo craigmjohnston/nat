@@ -21,7 +21,7 @@ func info(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	_, projectID, project, err := env.projectFor(projectRef)
+	cfg, projectID, project, err := env.projectFor(projectRef)
 	if err != nil {
 		return err
 	}
@@ -42,7 +42,7 @@ func info(ctx context.Context, args []string, env Env) error {
 	p := plan.Project
 
 	if asJSON {
-		return writeInfoJSON(env.Out, p, conventions)
+		return writeInfoJSON(env.Out, p, conventions, projectID == cfg.ScratchProject)
 	}
 	_, err = io.WriteString(env.Out, infoMarkdown(p, conventions))
 	return err
@@ -87,6 +87,8 @@ type milestoneJSON struct {
 	Name   string  `json:"name"`
 	Order  float64 `json:"order"`
 	Status string  `json:"status"`
+	// Unfiled marks the scratch project's reserved milestone (unfiledMilestone).
+	Unfiled bool `json:"unfiled,omitempty"`
 }
 
 type sliceJSON struct {
@@ -107,7 +109,8 @@ type sliceJSON struct {
 
 // writeInfoJSON encodes the project as JSON, indented: it is read by people as
 // often as by programs, and a stream nobody can skim is a poor default.
-func writeInfoJSON(out io.Writer, p domain.Project, conventions string) error {
+// scratch says p is the scratch project, whose unfiledMilestone is marked.
+func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch bool) error {
 	doc := infoJSON{
 		Project:    projectJSON{ID: p.ID, Name: p.Name, Conventions: conventions},
 		Milestones: make([]milestoneJSON, 0, len(p.Milestones)),
@@ -116,6 +119,7 @@ func writeInfoJSON(out io.Writer, p domain.Project, conventions string) error {
 	for _, m := range p.Milestones {
 		doc.Milestones = append(doc.Milestones, milestoneJSON{
 			ID: m.ID, Name: m.Name, Order: m.Order, Status: string(m.Status),
+			Unfiled: scratch && m.Name == unfiledMilestone,
 		})
 	}
 

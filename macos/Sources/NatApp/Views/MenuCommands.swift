@@ -20,6 +20,9 @@ struct ShellMenuActions {
 }
 
 struct SliceMenuActions {
+    /// The slice's name, which heads the Slice menu so every item in it
+    /// reads as being about that slice.
+    var title: String?
     var launch: (() -> Void)?
     var editBrief: (() -> Void)?
     var merge: (() -> Void)?
@@ -74,14 +77,25 @@ struct GnatCommands: Commands {
             Divider()
         }
 
+        // The menu's own title stays "Slice"; which slice is said by a
+        // section header over its items, so a long name never reaches the
+        // menu bar.
         CommandMenu("Slice") {
-            item("Launch agent", slice?.launch).keyboardShortcut("l")
-            item("Edit brief\u{2026}", slice?.editBrief)
+            Section(sliceMenuHeader(slice?.title)) {
+                item("Launch agent", slice?.launch).keyboardShortcut("l")
+                item("Edit brief\u{2026}", slice?.editBrief)
+            }
             Divider()
             item("Merge pull request\u{2026}", slice?.merge)
             item("Open pull request in GitHub", slice?.openPullRequest)
             item("Open slice in Notion", slice?.openInNotion)
         }
+    }
+
+    /// The Slice menu's header: the slice's name, cut to a menu's width.
+    private func sliceMenuHeader(_ title: String?) -> String {
+        guard let title, !title.isEmpty else { return "No slice selected" }
+        return title.count > 48 ? title.prefix(47).trimmingCharacters(in: .whitespaces) + "\u{2026}" : title
     }
 
     private func item(_ title: String, _ action: (() -> Void)?) -> some View {

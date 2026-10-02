@@ -41,6 +41,40 @@ final class ScrollElasticityTests: XCTestCase {
         XCTAssertEqual(scrollView.scrollerStyle, .overlay)
     }
 
+    /// AppKit setting the style back on its own, with no notification at
+    /// all, is undone too — on the next turn of the run loop.
+    func testAStyleSetBehindItsBackIsUndone() {
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: 200))
+        let document = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: 600))
+        scrollView.documentView = document
+        let seam = ElasticityOffView()
+        document.addSubview(seam)
+
+        scrollView.scrollerStyle = .legacy
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(scrollView.scrollerStyle, .overlay)
+
+        // Planted again in the same scroll, it watches once, not twice.
+        seam.applyToEnclosingScrollView()
+        scrollView.scrollerStyle = .legacy
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(scrollView.scrollerStyle, .overlay)
+    }
+
+    /// A seam moved out of the scroll it watched leaves that scroll be.
+    func testASeamThatLeftItsScrollStopsMindingIt() {
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: 200))
+        let document = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: 600))
+        scrollView.documentView = document
+        let seam = ElasticityOffView()
+        document.addSubview(seam)
+        seam.removeFromSuperview()
+
+        scrollView.scrollerStyle = .legacy
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertEqual(scrollView.scrollerStyle, .legacy)
+    }
+
     /// The scroller is one fixed thin width whatever the style, and draws
     /// no slot.
     func testThinScrollerWidth() {

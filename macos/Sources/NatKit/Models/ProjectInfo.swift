@@ -44,19 +44,34 @@ public struct Milestone: Codable, Equatable, Identifiable, Sendable {
     public let name: String
     public let order: Double
     public let status: String
+    /// The scratch project's reserved milestone, which files the slices
+    /// added there with none — `nat info`'s `unfiled`. The sidebar draws its
+    /// slices loose at the head of the Scratch fold, never as a folder.
+    public let unfiled: Bool
 
     enum CodingKeys: String, CodingKey {
         case id
         case name
         case order
         case status
+        case unfiled
     }
 
-    public init(id: String, name: String, order: Double, status: String) {
+    public init(id: String, name: String, order: Double, status: String, unfiled: Bool = false) {
         self.id = id
         self.name = name
         self.order = order
         self.status = status
+        self.unfiled = unfiled
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        order = try container.decode(Double.self, forKey: .order)
+        status = try container.decode(String.self, forKey: .status)
+        unfiled = try container.decodeIfPresent(Bool.self, forKey: .unfiled) ?? false
     }
 }
 

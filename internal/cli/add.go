@@ -72,6 +72,8 @@ func milestoneAdd(ctx context.Context, args []string, env Env) error {
 //
 // The milestone is named rather than assumed: a slice belongs to a phase of the
 // plan, and one filed under the wrong phase is worse than one not filed at all.
+// The scratch project alone takes none, and files the slice under its reserved
+// unfiledMilestone, adding that milestone the first time it is needed.
 func sliceAdd(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("slice-add", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -93,9 +95,7 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	if title == "" {
 		return usageErrorf("slice-add: the slice title is empty")
 	}
-	if strings.TrimSpace(*milestoneRef) == "" {
-		return usageErrorf("slice-add: no milestone given: pass --milestone")
-	}
+	unfiled := strings.TrimSpace(*milestoneRef) == ""
 	// The brief is settled before anything is read from Notion, so a slice-add
 	// whose stdin cannot be read fails having written nothing.
 	brief, err := briefText("slice-add", "--description", *description, env.In)
@@ -109,9 +109,12 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 		}
 	}
 
-	_, projectID, project, err := env.projectFor(*projectRef)
+	cfg, projectID, project, err := env.projectFor(*projectRef)
 	if err != nil {
 		return err
+	}
+	if unfiled && projectID != cfg.ScratchProject {
+		return usageErrorf("slice-add: no milestone given: pass --milestone")
 	}
 	st, err := env.storeFor(ctx, projectID, project)
 	if err != nil {
@@ -123,7 +126,12 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	milestone, err := resolveMilestone(*milestoneRef, shape.Milestones)
+	var milestone domain.Milestone
+	if unfiled {
+		milestone, err = unfiledMilestoneOf(ctx, st, sp, shape)
+	} else {
+		milestone, err = resolveMilestone(*milestoneRef, shape.Milestones)
+	}
 	if err != nil {
 		return err
 	}
@@ -153,6 +161,21 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	}
 	_, err = io.WriteString(env.Out, sliceAddedMarkdown(s, milestone, project))
 	return err
+}
+
+// unfiledMilestoneOf is the scratch project's unfiledMilestone, added at the end
+// of the plan if it is not there yet.
+func unfiledMilestoneOf(ctx context.Context, st store.Store, sp store.Project, shape store.Shape) (domain.Milestone, error) {
+	for _, m := range shape.Milestones {
+		if m.Name == unfiledMilestone {
+			return m, nil
+		}
+	}
+	added, err := st.AddMilestones(ctx, sp, shape, []string{unfiledMilestone})
+	if err != nil {
+		return domain.Milestone{}, fmt.Errorf("add the %s milestone: %w", unfiledMilestone, err)
+	}
+	return added[0], nil
 }
 
 // resolveMilestone finds the milestone a new slice is filed under, by name: a

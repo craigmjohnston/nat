@@ -2,14 +2,14 @@
   <img src="docs/assets/gnat-icon.png" width="128" alt="the nat icon: the gnat's looping flight, written as a script g">
 </p>
 
-<h1 align="center">gnat — notion-agent-tracker</h1>
+<h1 align="center">gnat</h1>
 
-<p align="center">A macOS app for tracking project work in Notion, executed by Claude Code agents.</p>
+<p align="center">A macOS app for tracking project work executed by Claude Code agents.</p>
 
 **gnat** is the native macOS app. You plan a project as milestones and slices
 (small units of work), launch Claude Code agents on them, review what they hand
 back in a diff, and open and merge the pull request — all from one window. It
-is a thin app over the `nat` command line: gnat carries no Notion, tmux or
+is a thin app over the `nat` command line: gnat carries no tracker, tmux or
 GitHub logic of its own and shells out to `nat <command> --json` for every read
 and write, so what you see is always what `nat` sees.
 
@@ -24,11 +24,10 @@ Three pieces share one tracker:
   It is still maintained and keeps up with the CLI, for when you live in a
   terminal.
 
-**Notion** is the source of truth: a Project DB contains project pages; each
-project page holds its own Slices DB — milestones are an option list on the
-Slices DB's own Milestone column, not a database of their own — plus free-form
-project info in the page body. A project can also be *local*, with its plan in
-a SQLite file and no Notion workspace behind it.
+A project's plan — its conventions, milestones and slices — lives in a local
+SQLite file. Notion is an optional backend: a project can instead keep its plan
+in a Notion workspace (a Project DB of project pages, each holding its own
+Slices DB), or a local project can be mirrored to a Notion page later.
 
 ## Install gnat
 
@@ -44,11 +43,11 @@ gnat needs, on the machine's own install (none are bundled):
 
 - `tmux` and the `claude` CLI — agents run in detached tmux sessions
 - `gh`, logged in — for pull requests
-- Notion's official CLI, `ntn` (`curl -fsSL https://ntn.dev | bash`), logged in
-  with `ntn login`, for Notion-backed projects. The tracker reads its Notion
-  token from that CLI rather than storing one of its own, so no integration or
-  personal access token is needed — and because the token is workspace-scoped,
-  there is no per-page ••• → Connections step. Local projects need none of it.
+- Only for Notion-backed projects: Notion's official CLI, `ntn`
+  (`curl -fsSL https://ntn.dev | bash`), logged in with `ntn login`. The
+  tracker reads its Notion token from that CLI rather than storing one of its
+  own, so no integration or personal access token is needed. Local projects
+  need none of it.
 
 macOS 15 or later. To build the app from source, see `macos/README.md`.
 
@@ -57,10 +56,12 @@ macOS 15 or later. To build the app from source, see `macos/README.md`.
 Go 1.25.x is required:
 
 ```sh
-ntn login                # once, to authorise the CLI against your workspace
 go install github.com/craigmjohnston/nat@latest
-nat                      # first run launches the onboarding wizard
+nat project-create "My project" --local   # a project whose plan is a local file
+nat                                       # the terminal board
 ```
+
+For a Notion-backed project, log in with `ntn login` once first.
 
 The repo is private, so the module proxy cannot fetch it. Configure the Go
 toolchain to go straight to GitHub over SSH, once per machine:
@@ -90,7 +91,7 @@ agents parse. In outline:
 - **Projects, sessions and setup:** `project-create`, `session-*`,
   `workshop-launch`, `config-show`, `config-set`, `setup`, `paths`, `usage`.
 
-Every project-scoped command requires `--project <page ID>`; there is no active
+Every project-scoped command requires `--project <ID>`; there is no active
 project fallback, since the board's own project can change while an agent works.
 Run one without it to be told the projects this machine tracks.
 
@@ -114,8 +115,8 @@ launch nothing and need none of it.
 
 The board does not need restarting to notice a change. A write made through a
 `nat` command — an agent claiming or closing out a slice — shows within a
-second. A change made in Notion itself is picked up by a background poll, every
-30 seconds by default; `r` refetches at once. A poll is skipped while a form,
+second. A change made elsewhere (in Notion, for a Notion-backed project) is
+picked up by a background poll, every 30 seconds by default; `r` refetches at once. A poll is skipped while a form,
 a prompt or a write is in flight, so nothing lands on top of what you are
 typing, and resumes on the next one. A poll that fails leaves the plan on the
 board as it was and says so on the status line.
@@ -198,4 +199,4 @@ checkout of this repo works on the skills in place, is left alone and said so.
 
 ## Status
 
-Being dogfooded on its own Notion tracker.
+Being dogfooded on its own tracker.

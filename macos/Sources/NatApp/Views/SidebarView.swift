@@ -170,8 +170,12 @@ struct SidebarView: View {
         return true
     }
 
+    /// Snapped, not animated: a fold opening or closing puts its rows in
+    /// place (or takes them away) at once, with no slide and no fade.
     private func toggle(_ key: String, open: Bool) {
-        withAnimation(Motion.stateChange) { fold[key] = open }
+        var snap = Transaction()
+        snap.disablesAnimations = true
+        withTransaction(snap) { fold[key] = open }
     }
 
     // MARK: - Headings
@@ -416,6 +420,8 @@ struct SidebarView: View {
             GnatNote(text: "loading\u{2026}", leading: 26 - outdent, height: GnatMetrics.sidebarRowHeight)
         case .failed(let message):
             failedRow(project, message: message, leading: 26 - outdent)
+        case .empty where project.kind == .scratch:
+            scratchEmptyNote(project, leading: 26 - outdent)
         case .empty:
             GnatNote(text: "no slices", leading: 26 - outdent, height: GnatMetrics.sidebarRowHeight)
         case .stale(let message):
@@ -436,6 +442,10 @@ struct SidebarView: View {
                 }
             }
         }
+        // The scratch project's unfiled slices: loose at the head of the
+        // tree, where a milestone would sit, under no folder of their own.
+        // The dot's 12pt column centred on a folder's 16pt one.
+        ForEach(project.loose) { sliceRow($0, indent: 28 - outdent) }
         ForEach(project.milestones) { milestone in
             let key = "m:\(project.id)/\(milestone.name)"
             milestoneHead(
@@ -474,6 +484,28 @@ struct SidebarView: View {
             }
             .frame(maxHeight: projectsOpen ? scratchContentHeight : .infinity)
         }
+    }
+
+    /// An empty Scratch: what to do about it, each way in a link.
+    private func scratchEmptyNote(_ project: SidebarProject, leading: CGFloat) -> some View {
+        Text(ScratchEmptyNote.markdown)
+            .font(.system(size: GnatMetrics.body))
+            .ink(.tertiary)
+            .tint(DesignTokens.accent)
+            .lineSpacing(2)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.leading, leading)
+            .padding(.trailing, 10)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .environment(\.openURL, OpenURLAction { url in
+                switch ScratchEmptyNote.Link(url) {
+                case .workshop: Task { await appModel.selectWorkshop(inProject: project.id) }
+                case .addSlice: newSliceTarget = NewSliceTarget(projectID: project.id, milestone: "")
+                case nil: return .systemAction
+                }
+                return .handled
+            })
     }
 
     private func failedRow(_ project: SidebarProject, message: String, leading: CGFloat = 26) -> some View {
@@ -848,6 +880,7 @@ struct SidebarView: View {
                         projectID: target.projectID,
                         milestones: appModel.plan(projectID: target.projectID)?.milestones ?? [],
                         initialMilestone: target.milestone,
+                        milestoneOptional: target.projectID == appModel.scratchProjectID,
                         onClose: { view.newSliceTarget = nil },
                         onCreated: {
                             view.newSliceTarget = nil

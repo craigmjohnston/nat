@@ -859,20 +859,33 @@ public final class AppModel {
     /// one first when it is not, which is what every per-project reading
     /// (detail, diff, pull request, sessions) is keyed by.
     public func selectSlice(_ sliceID: String, inProject projectID: String) async {
-        if activeProjectID != projectID { await activateProject(projectID) }
-        selectedSliceID = sliceID
+        await select(inProject: projectID) { $0.selectedSliceID = sliceID }
     }
 
     /// Select an ad hoc session of a project, activating it first.
     public func selectSession(_ sessionID: String, inProject projectID: String) async {
-        if activeProjectID != projectID { await activateProject(projectID) }
-        selectedSessionID = sessionID
+        await select(inProject: projectID) { $0.selectedSessionID = sessionID }
     }
 
     /// Select a project's workshop row, activating it first.
     public func selectWorkshop(inProject projectID: String) async {
-        if activeProjectID != projectID { await activateProject(projectID) }
-        workshopSelected = true
+        await select(inProject: projectID) { $0.workshopSelected = true }
+    }
+
+    /// Makes a selection in a project, switching to it first where it is not
+    /// the active one. The switch and the selection both land at once, before
+    /// the activation's reads: those take seconds, and a selection written
+    /// only after them is a click that seems not to take — and, finishing
+    /// after a later click has selected something else, one that overwrites
+    /// that click with its own.
+    private func select(inProject projectID: String, _ selection: (AppModel) -> Void) async {
+        guard activeProjectID != projectID else {
+            selection(self)
+            return
+        }
+        if config != nil || isUntitledTab(projectID) { activeProjectID = projectID }
+        selection(self)
+        await activateProject(projectID)
     }
 
     /// Re-read every open project but the active one, in the background —
