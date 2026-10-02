@@ -88,7 +88,8 @@ changes nothing. Stories: `window-plan-accepted`, `notion-page-picker`.
 The gnat hi-fi design (Claude Design project `e81457f6-…`, `gnat.html` with
 `gnat-data/shell/nav/main.jsx` and `gnat.css`) is the spec: `SidebarView`
 (Active across every project, the Projects tree, then the scratch project
-as a Scratch fold of its own — `SidebarModel.scratch`), the navigator's
+as a Scratch fold of its own — `SidebarModel.scratch`, whose unfiled
+milestone's slices, `Milestone.unfiled`, sit loose at its head), the navigator's
 stacked Thread/Changes/PR foldouts (`SliceNavigatorView`, with
 `NavigatorModel` deciding phase, liveness and header actions). The brief is
 the Thread's first card, not a section. A header click puts its section's
@@ -106,7 +107,12 @@ short as the brief does (`Excerpt`). View ▸ Hide done items
 the sidebar. `AppModel` keeps its one *active* project —
 every per-project reading is keyed by it — and the sidebar selects across
 projects by activating first (`selectSlice(_:inProject:)`). The Thread shows
-only what nat reports (`buildThreadEvents`). What the design does not draw
+only what nat reports (`buildThreadEvents`). A slice's project and milestone
+crumbs in the titlebar each open `CrumbTreePicker` (projects → milestones →
+slices, `CrumbTree`) on themselves; with nothing selected there is no
+breadcrumb. Selecting sets the selection *before* awaiting the project's
+activation (`AppModel.select(inProject:)`), so a later click is never
+overwritten by an earlier one finishing. What the design does not draw
 (workshop, sessions, follow-ups, menus) lives on as the row or section it
 belongs to. gnat is one `Window` scene — no tabs (`allowsAutomaticWindowTabbing`
 off), no New Window. The menu bar reaches the window through focused scene

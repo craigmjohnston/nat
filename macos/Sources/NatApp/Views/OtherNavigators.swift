@@ -53,6 +53,7 @@ struct SessionNavigatorView: View {
                     }
                     .padding(6)
                 }
+                .thinScrollers()
                 .inelastic()
             }
             NavSectionView(
@@ -141,6 +142,7 @@ struct SessionNavigatorView: View {
             }
             .padding(.vertical, 4)
         }
+        .thinScrollers()
         .inelastic()
     }
 
@@ -228,7 +230,7 @@ struct WorkshopNavigatorView: View {
             NavSectionView(label: "Plan", open: true, onHead: {}) {
                 actions
             } content: {
-                ScrollView { content }.inelastic()
+                ScrollView { content }.inelastic().thinScrollers()
             }
         }
         .alert("End the workshop session?", isPresented: $confirmingEnd) {

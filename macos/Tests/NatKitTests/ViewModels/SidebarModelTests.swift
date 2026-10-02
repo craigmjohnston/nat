@@ -239,4 +239,22 @@ final class SidebarModelTests: XCTestCase {
         XCTAssertEqual(hidden.needsYou, 1)
         XCTAssertEqual(hidden.id, "p")
     }
+
+    func testTheUnfiledMilestonesSlicesAreLooseNotAFolder() {
+        let info = ProjectInfo(
+            project: Project(id: "s", name: "Scratch", conventions: ""),
+            milestones: [
+                Milestone(id: "M1", name: "M1", order: 0, status: "Active"),
+                Milestone(id: "U", name: "Unfiled", order: 1, status: "Queued", unfiled: true),
+            ],
+            slices: [slice("1", milestone: "U"), slice("2"), slice("3", status: "Done", milestone: "U")])
+        let model = buildSidebarModel(
+            projects: [SidebarProjectInput(id: "s", name: "Scratch", kind: .scratch, plan: info)], liveAgents: [:])
+
+        let scratch = try! XCTUnwrap(model.scratch)
+        XCTAssertEqual(scratch.milestones.map(\.name), ["M1"])
+        XCTAssertEqual(scratch.loose.map(\.sliceID), ["1", "3"])
+        XCTAssertTrue(scratch.contains(sliceID: "1"))
+        XCTAssertEqual(scratch.hidingDone().loose.map(\.sliceID), ["1"])
+    }
 }

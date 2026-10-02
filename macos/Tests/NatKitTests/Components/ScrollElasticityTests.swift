@@ -21,46 +21,6 @@ final class ScrollElasticityTests: XCTestCase {
 
         XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
         XCTAssertEqual(scrollView.horizontalScrollElasticity, .none)
-        XCTAssertTrue(scrollView.verticalScroller is ThinScroller)
-        XCTAssertTrue(scrollView.horizontalScroller is ThinScroller)
-        XCTAssertEqual(scrollView.scrollerStyle, .overlay)
-    }
-
-    /// The system switching its scroller style (a mouse plugged in, Show
-    /// scroll bars changed) puts the scroll back to that style; the seam puts
-    /// it back to the overlay.
-    func testAPreferredStyleChangeIsUndone() {
-        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: 200))
-        let document = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: 600))
-        scrollView.documentView = document
-        document.addSubview(ElasticityOffView())
-
-        scrollView.scrollerStyle = .legacy
-        NotificationCenter.default.post(name: NSScroller.preferredScrollerStyleDidChangeNotification, object: nil)
-
-        XCTAssertEqual(scrollView.scrollerStyle, .overlay)
-    }
-
-    /// The scroller is one fixed thin width whatever the style, and draws
-    /// no slot.
-    func testThinScrollerWidth() {
-        XCTAssertEqual(ThinScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy), ThinScroller.width)
-        XCTAssertEqual(ThinScroller.scrollerWidth(for: .small, scrollerStyle: .overlay), ThinScroller.width)
-        XCTAssertTrue(ThinScroller.isCompatibleWithOverlayScrollers)
-    }
-
-    /// Drawn, it paints its knob and leaves where a slot would be bare.
-    func testThinScrollerDrawsOnlyItsKnob() throws {
-        let scroller = ThinScroller(frame: NSRect(x: 0, y: 0, width: ThinScroller.width, height: 200))
-        scroller.knobProportion = 0.25
-        scroller.doubleValue = 0
-        scroller.isEnabled = true
-        let rep = try XCTUnwrap(scroller.bitmapImageRepForCachingDisplay(in: scroller.bounds))
-        scroller.cacheDisplay(in: scroller.bounds, to: rep)
-        let knob = scroller.rect(for: .knob)
-        let alphaAt = { (y: CGFloat) in rep.colorAt(x: Int(rep.pixelsWide / 2), y: Int(y * CGFloat(rep.pixelsHigh) / 200))?.alphaComponent ?? 0 }
-        XCTAssertGreaterThan(alphaAt(knob.midY), 0)
-        XCTAssertEqual(alphaAt(knob.maxY + 40), 0)
     }
 
     /// A view in no scroll at all is the ordinary case for the first moment

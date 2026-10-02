@@ -954,6 +954,15 @@ final class NatClientTests: XCTestCase {
         XCTAssertNil(fakeRunner.lastStandardInput)
     }
 
+    func testSliceAddWithNoMilestoneOmitsTheFlag() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceAddSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        _ = try await client.sliceAdd(projectID: "scratch", title: "Try a thing", milestone: "", description: nil)
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["slice-add", "Try a thing", "--project", "scratch", "--json"])
+    }
+
     func testSliceAddFailure() async throws {
         let fakeRunner = FakeRunner(fixture: .sliceAddFailure)
         let client = NatClient(commandRunner: fakeRunner)

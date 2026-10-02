@@ -141,6 +141,7 @@ struct NotionPickerSheetView: View {
                 }
                 .inelastic()
             }
+            .thinScrollers()
             .frame(maxHeight: 260)
         }
     }

@@ -15,6 +15,46 @@ struct MainPaneNote: View {
     }
 }
 
+/// The main pane with nothing selected, an editor's watermark: the gnat
+/// mark, large and barely there, over the keyboard shortcuts that work with
+/// nothing selected — each the menu bar's own. Set a little above centre,
+/// where the eye rests in an empty pane.
+struct MainPaneEmptyState: View {
+    private static let shortcuts: [(action: String, keys: String)] = [
+        ("New slice", "\u{2318}N"),
+        ("New milestone", "\u{2325}\u{2318}N"),
+        ("New ad hoc session", "\u{2303}\u{2318}N"),
+        ("New project", "\u{21E7}\u{2318}N"),
+        ("Show or hide done items", "\u{21E7}\u{2318}."),
+        ("Refresh", "\u{2318}R"),
+    ]
+
+    var body: some View {
+        VStack(spacing: 36) {
+            GnatMark(color: DesignTokens.ink(.quaternary, on: .window))
+                .frame(width: 88, height: 88)
+                .opacity(0.6)
+            Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 9) {
+                ForEach(Self.shortcuts, id: \.action) { shortcut in
+                    GridRow {
+                        Text(shortcut.action)
+                            .font(.system(size: 12.5))
+                            .ink(.tertiary)
+                            .gridColumnAlignment(.trailing)
+                        Text(shortcut.keys)
+                            .font(Typo.mono(size: 12))
+                            .tracking(1.5)
+                            .ink(.quaternary)
+                    }
+                }
+            }
+        }
+        .padding(24)
+        .offset(y: -32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 /// A live agent's terminal, full-bleed on the terminal ground, or the note
 /// saying there is none.
 struct AgentTerminalPane: View {
@@ -100,6 +140,7 @@ struct ContinuousDiffView: View {
                 .scrollTargetLayout()
                 .inelastic()
             }
+            .thinScrollers(position: $fileScroll)
             .scrollPosition($fileScroll, anchor: .top)
             .coordinateSpace(name: DiffRowFramesKey.space)
             .onPreferenceChange(DiffRowFramesKey.self) { frames in

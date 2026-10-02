@@ -302,7 +302,9 @@ usage:
                         [--repo DIR] [--depends-on <slice>]... [--json]
                         --project ID
                       add a Todo slice under a milestone, its description
-                      written on the page; --description - reads it from stdin
+                      written on the page; --description - reads it from stdin.
+                      The scratch project takes no --milestone, filing the
+                      slice under its reserved Unfiled milestone
   nat slice-depends <slice> [--on <slice>]... [--clear] [--json] --project ID
                       record the slices a slice waits on, by URL or ID; --clear
                       drops what is there first, so on its own it frees the

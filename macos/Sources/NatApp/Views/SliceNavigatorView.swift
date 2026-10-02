@@ -121,7 +121,7 @@ struct SliceNavigatorView: View {
                 .merge, sliceID: slice.id, available: prStore.loadState.pr.map(mergeIsEnabled) ?? false)
         let prURL = URL(string: prStore.loadState.pr?.url ?? slice.pr)
         let notionURL = URL(string: slice.url) ?? NotionPageURL.forPage(slice.id)
-        var actions = SliceMenuActions()
+        var actions = SliceMenuActions(title: slice.name)
         if canLaunch { actions.launch = launch }
         if slice.status == "Todo" && detail.detail != nil { actions.editBrief = { editingBrief = true } }
         if canMerge { actions.merge = { showMergeConfirm = true } }
@@ -217,7 +217,7 @@ struct SliceNavigatorView: View {
                 Text(milestoneName).ink(.primary).lineLimit(1)
             }
             GridRow(alignment: .firstTextBaseline) {
-                Text("depends").ink(.tertiary)
+                Text("depends on").ink(.tertiary)
                 if deps.isEmpty {
                     Text("none").ink(.secondary)
                 } else {
@@ -266,7 +266,7 @@ struct SliceNavigatorView: View {
         if nav.showsLaunch {
             let enabled = appModel.sliceActions.isEnabled(.launch, sliceID: slice.id, available: nav.canLaunch)
             Button(action: launch) {
-                HeaderActionLabel(title: "Launch", systemImage: "arrow.right", isBusy: isLaunching)
+                HeaderActionLabel(title: "Launch", systemImage: "arrow.right", isBusy: isLaunching, detail: launchDetail)
             }
             .buttonStyle(GnatHeaderButtonStyle(primary: nav.launchIsPrimary))
             .disabled(!enabled)
@@ -303,7 +303,14 @@ struct SliceNavigatorView: View {
                 if let launchWarning { NavNotice(text: launchWarning, role: .warning) }
             }
         }
+        .thinScrollers()
         .inelastic()
+    }
+
+    /// The model and effort the header's Launch launches with, under its
+    /// label — whichever of the two the launch card has set.
+    private var launchDetail: String {
+        [model, effort].filter { !$0.isEmpty }.joined(separator: " \u{00B7} ")
     }
 
     private func launchMode(_ nav: NavigatorModel) -> LaunchCard.Mode {
@@ -513,6 +520,7 @@ struct PRSectionBody: View {
                 ReviewersBlock(pr: pr, store: reviewerStore)
             }
         }
+        .thinScrollers()
         .inelastic()
     }
 

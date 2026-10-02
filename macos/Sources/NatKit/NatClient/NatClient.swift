@@ -483,12 +483,15 @@ public final class NatClient: Sendable {
     /// - Parameters:
     ///   - projectID: The project's Notion page ID
     ///   - title: The new slice's title
-    ///   - milestone: The milestone to file it under, by name
+    ///   - milestone: The milestone to file it under, by name; empty omits
+    ///     `--milestone`, which only the scratch project takes (its unfiled one)
     ///   - description: Optional brief to write on the slice page
     /// - Returns: SliceAddResult with the created slice's fields
     /// - Throws: NatError if the command fails (no such milestone, empty title, etc.)
     public func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult {
-        var arguments = ["slice-add", title, "--project", projectID, "--milestone", milestone, "--json"]
+        var arguments = ["slice-add", title, "--project", projectID]
+        if !milestone.isEmpty { arguments.append(contentsOf: ["--milestone", milestone]) }
+        arguments.append("--json")
         var standardInput: Data?
         if let description = description, !description.isEmpty {
             arguments.append(contentsOf: ["--description", "-"])

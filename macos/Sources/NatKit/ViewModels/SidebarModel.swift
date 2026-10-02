@@ -137,10 +137,15 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
     public let doneMilestones: [SidebarMilestone]
     /// How many of its rows need the user — the collapsed row's hot dot.
     public let needsYou: Int
+    /// The slices of the scratch project's unfiled milestone (`Milestone.unfiled`):
+    /// drawn loose at the head of the tree, above every milestone, with no
+    /// folder of their own. Empty for every other project.
+    public let loose: [SidebarSliceRow]
 
     public init(
         id: String, name: String, kind: SidebarProjectKind, status: SidebarPlanStatus,
-        milestones: [SidebarMilestone], doneMilestones: [SidebarMilestone] = [], needsYou: Int
+        milestones: [SidebarMilestone], doneMilestones: [SidebarMilestone] = [], needsYou: Int,
+        loose: [SidebarSliceRow] = []
     ) {
         self.id = id
         self.name = name
@@ -149,11 +154,13 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
         self.milestones = milestones
         self.doneMilestones = doneMilestones
         self.needsYou = needsYou
+        self.loose = loose
     }
 
     /// Whether the project files a slice, for the default-open rule.
     public func contains(sliceID: String) -> Bool {
-        (milestones + doneMilestones).contains { $0.slices.contains { $0.sliceID == sliceID } }
+        loose.contains { $0.sliceID == sliceID }
+            || (milestones + doneMilestones).contains { $0.slices.contains { $0.sliceID == sliceID } }
     }
 
     /// Whether the Done folder holds a slice — what opens it by default.
@@ -172,7 +179,7 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
                     name: milestone.name, done: milestone.done, total: milestone.total,
                     slices: milestone.slices.filter { $0.state != .done })
             },
-            doneMilestones: [], needsYou: needsYou)
+            doneMilestones: [], needsYou: needsYou, loose: loose.filter { $0.state != .done })
     }
 }
 
@@ -336,6 +343,7 @@ public func buildSidebarModel(
 
         var milestones: [SidebarMilestone] = []
         var doneMilestones: [SidebarMilestone] = []
+        var loose: [SidebarSliceRow] = []
         if let plan = project.plan {
             let rows = plan.slices.map { slice -> SidebarSliceRow in
                 let agent = liveAgents[slice.id]
@@ -360,6 +368,10 @@ public func buildSidebarModel(
                 let slices = filedRows.filter { $0.state != .blocked && $0.state != .done }
                     + filedRows.filter { $0.state == .blocked } + filedRows.filter { $0.state == .done }
                 filed.formUnion(ids)
+                if milestone.unfiled {
+                    loose = slices
+                    continue
+                }
                 let row = SidebarMilestone(
                     name: milestone.name,
                     done: slices.filter { $0.state == .done }.count,
@@ -384,7 +396,7 @@ public func buildSidebarModel(
         built.append(SidebarProject(
             id: project.id, name: project.name, kind: project.kind,
             status: planStatus(project), milestones: milestones, doneMilestones: doneMilestones,
-            needsYou: needsYou))
+            needsYou: needsYou, loose: loose))
     }
 
     // Stable: needs-you first, the rest of the order kept.

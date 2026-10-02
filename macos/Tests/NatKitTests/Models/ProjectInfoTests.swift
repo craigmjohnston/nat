@@ -2,6 +2,15 @@ import XCTest
 @testable import NatKit
 
 final class ProjectInfoTests: XCTestCase {
+    func testAMilestoneReadsUnfiledOnlyWhereNatSaysSo() throws {
+        let json = """
+        [{"id": "m1", "name": "Phase 1", "order": 1, "status": "Active"},
+         {"id": "u", "name": "Unfiled", "order": 2, "status": "Queued", "unfiled": true}]
+        """
+        let milestones = try JSONDecoder().decode([Milestone].self, from: Data(json.utf8))
+        XCTAssertEqual(milestones.map(\.unfiled), [false, true])
+    }
+
     func testProjectInfoDecoding() throws {
         let json = """
         {

@@ -24,6 +24,10 @@ struct WindowShellView: View {
     @State private var review = DiffReview()
     @State private var openOverride: Set<NavigatorSection>?
     @State private var mainOverride: MainPaneMode?
+    /// Which crumb's tree picker is open: the project's or the milestone's.
+    @State private var crumbPicker: CrumbPickerOrigin?
+
+    private enum CrumbPickerOrigin { case project, milestone }
 
     /// The gallery's seam: a story seeds the sidebar folds it is a story
     /// about.
@@ -108,12 +112,15 @@ struct WindowShellView: View {
     /// them: each part keeps its place in the row, so a name that changes
     /// width pushes its neighbours along while the words cross-fade, and a
     /// part that comes or goes fades.
+    ///
+    /// A slice's project and milestone crumbs each open the tree picker
+    /// (`CrumbTreePicker`) on themselves.
     private var breadcrumb: some View {
         let crumbs = crumbs
         return HStack(spacing: 10) {
             if let project = crumbs.project {
                 HStack(spacing: 10) {
-                    Text(project).ink(.secondary)
+                    crumbButton(.project) { Text(project).ink(.secondary) }
                     Text("/").ink(.quaternary)
                 }
                 .transition(.opacity)
@@ -121,11 +128,16 @@ struct WindowShellView: View {
             if let parent = crumbs.parent {
                 HStack(spacing: 10) {
                     if crumbs.parentIsMilestone {
-                        // The sidebar's own milestone mark, open.
-                        FolderGlyph(open: true, color: DesignTokens.ink(.tertiary, on: .header))
-                            .padding(.trailing, -3)
+                        crumbButton(.milestone) {
+                            HStack(spacing: 7) {
+                                // The sidebar's own milestone mark, open.
+                                FolderGlyph(open: true, color: DesignTokens.ink(.tertiary, on: .header))
+                                Text(parent).ink(.secondary)
+                            }
+                        }
+                    } else {
+                        Text(parent).ink(.secondary)
                     }
-                    Text(parent).ink(.secondary)
                     Text("/").ink(.quaternary)
                 }
                 .transition(.opacity)
@@ -146,6 +158,41 @@ struct WindowShellView: View {
         .animation(Motion.breadcrumb, value: [crumbs.project ?? "", crumbs.parent ?? "", crumbs.title])
     }
 
+    /// A crumb that opens the tree picker on itself.
+    private func crumbButton<Label: View>(_ origin: CrumbPickerOrigin, @ViewBuilder label: () -> Label) -> some View {
+        Button { crumbPicker = origin } label: {
+            label()
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .hoverWash(cornerRadius: 5)
+                .padding(.horizontal, -5)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: Binding(
+            get: { crumbPicker == origin }, set: { if !$0 { crumbPicker = nil } }
+        ), arrowEdge: .bottom) {
+            crumbTreePicker(openingOn: origin)
+        }
+    }
+
+    private func crumbTreePicker(openingOn origin: CrumbPickerOrigin) -> some View {
+        let projectID = appModel.activeProjectID ?? ""
+        let milestone = origin == .milestone ? selectedSlice.flatMap(milestoneName(of:)) : nil
+        return CrumbTreePicker(tree: CrumbTree(model: appModel.sidebarModel, projectID: projectID, milestone: milestone)) { row in
+            crumbPicker = nil
+            Task { await appModel.selectSlice(row.sliceID, inProject: row.projectID) }
+        }
+    }
+
+    /// A slice's milestone by name, or nil for one under the scratch
+    /// project's unfiled milestone, which is no milestone to show.
+    private func milestoneName(of slice: Slice) -> String? {
+        guard let milestone = appModel.projectStore?.state.projectInfo?.milestones
+            .first(where: { $0.id == slice.milestoneID }) else { return slice.milestoneID }
+        return milestone.unfiled ? nil : milestone.name
+    }
+
     private var crumbs: (
         project: String?, parent: String?, parentIsMilestone: Bool,
         dot: (state: SliceDisplayState, live: Bool)?, title: String
@@ -160,12 +207,12 @@ struct WindowShellView: View {
             return (nil, projectName, false, nil, "\(sessionRowTitle) · \(session.label)")
         }
         if let slice = selectedSlice, let navigatorModel {
-            let milestone = appModel.projectStore?.state.projectInfo?.milestones
-                .first { $0.id == slice.milestoneID }?.name ?? slice.milestoneID
-            return (projectName, milestone, true,
+            let milestone = milestoneName(of: slice)
+            return (projectName, milestone, milestone != nil,
                     (navigatorModel.state, appModel.activityStore?.agents[slice.id] != nil), slice.name)
         }
-        return (nil, nil, false, nil, projectName)
+        // Nothing selected: no breadcrumb at all.
+        return (nil, nil, false, nil, "")
     }
 
     // MARK: - The selection
@@ -284,17 +331,23 @@ struct WindowShellView: View {
                     // The section header's band with nothing in it, so the
                     // navigator keeps its shape with nothing selected.
                     NavEmptyHeader()
-                    NavProse {
-                        if appModel.activePlanIsEmpty {
+                    if appModel.activePlanIsEmpty {
+                        NavProse {
                             Text(EmptyProjectNote.title).ink(.primary)
                             Text(EmptyProjectNote.subtitle(needsWorkingDir: appModel.activeProjectNeedsWorkingDir))
                                 .ink(.secondary)
-                        } else {
-                            Text("Select a slice in the sidebar.").ink(.secondary)
                         }
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .surface(.window)
+                    } else {
+                        Text("Select a slice in the sidebar.")
+                            .font(.system(size: GnatMetrics.body))
+                            .ink(.tertiary)
+                            .multilineTextAlignment(.center)
+                            .padding(24)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .surface(.window)
                     }
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .surface(.window)
                 }
             } main: {
                 VStack(spacing: 0) {
@@ -303,7 +356,7 @@ struct WindowShellView: View {
                         MainPaneNote(text: ProposalText.acceptedTitle + "\n"
                             + ProposalText.acceptedSubtitle(milestones: accepted.milestones, slices: accepted.slices))
                     } else {
-                        MainPaneNote(text: "The terminal opens here on launch.")
+                        MainPaneEmptyState()
                     }
                 }
                 .surface(.window)

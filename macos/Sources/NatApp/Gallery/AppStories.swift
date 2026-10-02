@@ -100,6 +100,54 @@ enum AppStories {
         }
     )
 
+    /// A scratch plan: one slice added with no milestone (so under the
+    /// unfiled one), one under a milestone of its own.
+    private static let unfiledScratchPlan = ProjectInfo(
+        project: Project(id: Fixtures.scratchProjectID, name: "Scratch", conventions: ""),
+        milestones: [
+            Milestone(id: "Spikes", name: "Spikes", order: 0, status: "Active"),
+            Milestone(id: "Unfiled", name: "Unfiled", order: 1, status: "Queued", unfiled: true),
+        ],
+        slices: [
+            Slice(id: "f1x7aaaa-0000-4000-8000-000000000001", name: "Try the new tmux hooks", status: "Todo",
+                  milestoneID: "Unfiled", assignee: "", pr: "", url: "", blocked: false, handedBack: false),
+            Slice(id: "f1x7aaaa-0000-4000-8000-000000000002", name: "Look at the release log", status: "Todo",
+                  milestoneID: "Unfiled", assignee: "", pr: "", url: "", blocked: false, handedBack: false),
+            Slice(id: "f1x7aaaa-0000-4000-8000-000000000003", name: "Profile the diff read", status: "Todo",
+                  milestoneID: "Spikes", assignee: "", pr: "", url: "", blocked: false, handedBack: false),
+        ])
+
+    /// A scratch project with nothing in it.
+    private static let emptyScratchPlan = ProjectInfo(
+        project: Project(id: Fixtures.scratchProjectID, name: "Scratch", conventions: ""),
+        milestones: [], slices: [])
+
+    nonisolated private static func scratchClient(_ scratchPlan: ProjectInfo) -> FixtureNatClient {
+        FixtureNatClient(otherPlans: [
+            Fixtures.secondProjectID: Fixtures.secondProjectInfo, Fixtures.scratchProjectID: scratchPlan,
+        ])
+    }
+
+    /// The breadcrumb's tree picker, as a milestone crumb opens it.
+    private static func crumbTreePicker() async -> some View {
+        let appModel = await Fixtures.startedAppModel(
+            client: FixtureNatClient(agents: Fixtures.agentStatuses), config: Fixtures.twoProjectConfig)
+        for _ in 0..<50 where appModel.activityStore?.agents.isEmpty != false {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        let tree = CrumbTree(model: appModel.sidebarModel, projectID: Fixtures.projectID, milestone: "M2: Review flow")
+        return CrumbTreePicker(tree: tree, onPick: { _ in })
+            .environment(\.pulsesPaused, true)
+    }
+
+    /// The sidebar with Scratch open over the given scratch plan.
+    private static func scratchSidebar(_ scratchPlan: ProjectInfo) async -> some View {
+        let appModel = await Fixtures.startedAppModel(
+            client: scratchClient(scratchPlan), config: Fixtures.scratchConfigWithSecondProject)
+        return SidebarView(appModel: appModel, folded: ["scratch": false])
+            .environment(\.pulsesPaused, true)
+    }
+
     /// An app model on the activity slice with its three follow-ups pending
     /// and its agent waiting, the choices given already made.
     private static func followUpsModel(choices: [Int: FollowUpChoice]) async -> AppModel {
@@ -346,6 +394,24 @@ enum AppStories {
         },
 
         Story(
+            name: "window-nothing-selected",
+            summary: "Nothing selected: no breadcrumb, the navigator's note centred, and the main pane's quiet empty state.",
+            size: window
+        ) {
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(agents: Fixtures.agentStatuses), config: Fixtures.twoProjectConfig)
+            return shell(appModel)
+        },
+
+        Story(
+            name: "crumb-tree-picker",
+            summary: "The breadcrumb's tree picker opened from a milestone crumb: projects, the project's milestones, the milestone's slices.",
+            size: CGSize(width: 693, height: 320)
+        ) {
+            await crumbTreePicker()
+        },
+
+        Story(
             name: "window-sidebar-folded",
             summary: "Active and the second project folded away: the hot count stays on the Active heading.",
             size: window
@@ -512,6 +578,22 @@ enum AppStories {
                 appModel: await Fixtures.startedAppModel(config: Fixtures.scratchConfigWithSecondProject),
                 folded: ["scratch": false])
                 .environment(\.pulsesPaused, true)
+        },
+
+        Story(
+            name: "sidebar-scratch-unfiled",
+            summary: "Scratch slices added with no milestone: loose at the head of the fold, above its one milestone, with no folder of their own.",
+            size: sidebar
+        ) {
+            await scratchSidebar(unfiledScratchPlan)
+        },
+
+        Story(
+            name: "sidebar-scratch-empty",
+            summary: "An empty Scratch: the note under its heading, linking the workshop agent and adding a slice.",
+            size: sidebar
+        ) {
+            await scratchSidebar(emptyScratchPlan)
         },
 
         Story(
@@ -915,6 +997,7 @@ private struct DiffCommentButtonStory: View {
                 onEditComment: { _ in }, onDeleteComment: { _ in }, onSaveDraft: { _ in }, onCancelDraft: {})
             .padding(12)
         }
+        .thinScrollers()
         .surface(.window)
     }
 }

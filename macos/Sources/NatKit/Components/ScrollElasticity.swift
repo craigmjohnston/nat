@@ -14,11 +14,6 @@ import SwiftUI
 /// inside the `NSScrollView` and so what can find it — a view hung off the
 /// `ScrollView` itself would walk up past it and find whatever scroll the
 /// whole thing happens to sit in.
-///
-/// Being the one seam every scroll in the app plants, it also puts the app's
-/// own scroll bar on it — `ThinScroller`, in the overlay style whatever the
-/// system's Show scroll bars setting says, so the bar sits in the content's
-/// right padding rather than reserving a gutter beside it.
 struct NoScrollElasticity: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { ElasticityOffView() }
 
@@ -28,13 +23,6 @@ struct NoScrollElasticity: NSViewRepresentable {
 }
 
 final class ElasticityOffView: NSView {
-    // Unsafe only so deinit can read it: it is written on the main thread alone.
-    nonisolated(unsafe) private var styleObserver: NSObjectProtocol?
-
-    deinit {
-        if let styleObserver { NotificationCenter.default.removeObserver(styleObserver) }
-    }
-
     override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
         applyToEnclosingScrollView()
@@ -51,25 +39,6 @@ final class ElasticityOffView: NSView {
         guard let scrollView = enclosingScrollView else { return }
         scrollView.verticalScrollElasticity = .none
         scrollView.horizontalScrollElasticity = .none
-        applyScrollers(to: scrollView)
-        // AppKit puts every scroll back to the system's preferred style when
-        // that setting (or the pointing device) changes; put ours back after.
-        if styleObserver == nil {
-            styleObserver = NotificationCenter.default.addObserver(
-                forName: NSScroller.preferredScrollerStyleDidChangeNotification, object: nil, queue: nil
-            ) { [weak self] _ in
-                MainActor.assumeIsolated {
-                    guard let self, let scrollView = self.enclosingScrollView else { return }
-                    self.applyScrollers(to: scrollView)
-                }
-            }
-        }
-    }
-
-    func applyScrollers(to scrollView: NSScrollView) {
-        if !(scrollView.verticalScroller is ThinScroller) { scrollView.verticalScroller = ThinScroller() }
-        if !(scrollView.horizontalScroller is ThinScroller) { scrollView.horizontalScroller = ThinScroller() }
-        scrollView.scrollerStyle = .overlay
     }
 }
 

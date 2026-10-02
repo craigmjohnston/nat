@@ -21,6 +21,14 @@ var homeDir = os.UserHomeDir
 // scratchName is what the reserved project is called.
 const scratchName = "Scratch"
 
+// unfiledMilestone is the reserved milestone a scratch slice added with no
+// milestone is filed under, made on first use: scratch work often belongs to no
+// phase at all, and a milestone is the only place a slice can be filed. It is
+// a milestone like any other to the store; `info --json` marks it `unfiled` so
+// the app can draw its slices loose at the head of the Scratch fold rather than
+// as a folder.
+const unfiledMilestone = "Unfiled"
+
 // scratchConventions is the page body the scratch project's plan carries. A
 // scratch project has no conventions to speak of; this only says what it is.
 const scratchConventions = "Scratch: ad hoc work with no plan set up first. A local project like any other."
