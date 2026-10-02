@@ -202,8 +202,9 @@ final class DiffViewportView: NSView {
         DiffInk.headerBand.setFill()
         band.fill()
         DiffInk.rule.setFill()
-        // The first file's top is the pane heading's own line.
-        if file > 0 { NSRect(x: 0, y: y, width: band.width, height: 1).fill() }
+        // A header at the top — the first file's, or any file's pinned there —
+        // sits on the pane heading's own line.
+        if y > 0 { NSRect(x: 0, y: y, width: band.width, height: 1).fill() }
         NSRect(x: 0, y: band.maxY - 1, width: band.width, height: 1).fill()
 
         drawChevron(open: !canvas.state.collapsed.contains(model.path), at: NSPoint(x: 11, y: y + 9))
