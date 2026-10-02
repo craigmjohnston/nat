@@ -13,7 +13,7 @@ enum GnatMetrics {
     static let sidebarRowHeight: CGFloat = 26
     /// A navigator section's header.
     static let sectionHeadHeight: CGFloat = 32
-    static let statusBarHeight: CGFloat = 28
+    static let statusBarHeight: CGFloat = 32
     static let sidebarWidth: Double = 260
     static let navigatorWidth: Double = 330
     /// The design's mono `xs` and its body sizes.
