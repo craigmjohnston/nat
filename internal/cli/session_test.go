@@ -116,6 +116,7 @@ func (f *fakeSessionRepo) CommitsFrom(dir, baseName, branch string) (string, []g
 	return "", nil, nil
 }
 func (f *fakeSessionRepo) CommitDiff(dir, sha string) (string, error) { return "", nil }
+func (f *fakeSessionRepo) Show(dir, branch, path string) ([]string, error) { return nil, nil }
 func (f *fakeSessionRepo) CurrentBranch(dir string) (string, error) {
 	return f.currentBranch, f.currentErr
 }

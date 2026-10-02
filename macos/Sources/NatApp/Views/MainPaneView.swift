@@ -170,6 +170,9 @@ struct ContinuousDiffView: View {
         actions.collapseToggled = { onToggleCollapsed($0) }
         // A diff with no store takes no marks — a session's diff.
         guard let review, let store else { return actions }
+        actions.gapExpanded = { file, gap, control in
+            Task { await store.expand(path: file.path, gap: gap, control: control) }
+        }
         actions.rowClicked = { file, row, shift in review.handleRowClick(file: file, row: row, shift: shift) }
         actions.rowsDragged = { file, rowIDs in review.handleRowDrag(file: file, rowIDs: rowIDs) }
         actions.commentRequested = { file, row, endsSelection in

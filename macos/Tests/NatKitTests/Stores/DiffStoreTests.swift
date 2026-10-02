@@ -106,6 +106,24 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
         }
     }
 
+    /// What `sliceFile` answers: each requested line numbered, out of a file
+    /// `fileLength` long — or `fileError`.
+    var fileLength = 100
+    var fileError: Error?
+    private(set) var fileCalls: [(commit: String?, path: String, from: Int, to: Int?)] = []
+
+    func sliceFile(
+        projectID: String, sliceRef: String, commit: String?, path: String, from: Int, to: Int?
+    ) async throws -> SliceFileLines {
+        fileCalls.append((commit, path, from, to))
+        if let fileError { throw fileError }
+        let last = min(to ?? fileLength, fileLength)
+        let lines = from > last ? [] : (from...last).map { "file line \($0)" }
+        return SliceFileLines(
+            path: path, from: from, total: fileLength, lines: lines,
+            tokens: lines.map { [TokenRun(kind: .text, length: $0.utf8.count)] })
+    }
+
     func sliceCommits(projectID: String, sliceRef: String) async throws -> SliceCommitsDoc {
         commitsCallCount += 1
         return try commitsResult.get()
@@ -188,6 +206,113 @@ final class DiffStoreTests: XCTestCase {
                 )
             ]
         )
+    }
+
+    /// A file changed in two places, with lines above, between and after.
+    private func makeGappedDiff() -> SliceDiff {
+        SliceDiff(base: "main", branch: "nat/example", files: [
+            SliceDiffFile(path: "a.go", oldPath: "a.go", adds: 2, dels: 0, described: false, lines: [
+                "diff --git a/a.go b/a.go", "--- a/a.go", "+++ b/a.go",
+                "@@ -10,1 +10,2 @@", " ten", "+added",
+                "@@ -60,1 +61,2 @@", " sixty", "+again",
+            ]),
+        ])
+    }
+
+    @MainActor
+    func testExpandRevealsAGapsLinesInPlace() async throws {
+        let client = MockDiffClient(response: .success(makeGappedDiff()))
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "p", sliceRef: "s")
+        let between = try XCTUnwrap(store.loadState.diff?.files[0].rows.compactMap(\.gap).first { $0.first == 12 })
+
+        await store.expand(path: "a.go", gap: between, control: .down)
+
+        XCTAssertEqual(client.fileCalls.last?.from, 12)
+        XCTAssertEqual(client.fileCalls.last?.to, 31)
+        XCTAssertNil(client.fileCalls.last?.commit)
+        let rows = try XCTUnwrap(store.loadState.diff?.files[0].rows)
+        let revealed = try XCTUnwrap(rows.first { $0.newNumber == 12 })
+        XCTAssertEqual(revealed.text, "file line 12")
+        XCTAssertEqual(revealed.oldNumber, 11)
+        XCTAssertTrue(rows.contains { $0.gap == DiffGap(first: 32, last: 60, oldOffset: -1) })
+
+        // The file's length came back too: the gap after the last change is
+        // now bounded by it.
+        let end = try XCTUnwrap(rows.last?.gap)
+        XCTAssertEqual(end, DiffGap(first: 63, last: 100, oldOffset: -2, endsFile: true))
+    }
+
+    @MainActor
+    func testAFailedExpandRevealsNothing() async throws {
+        let client = MockDiffClient(response: .success(makeGappedDiff()))
+        client.fileError = DiffTestError()
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "p", sliceRef: "s")
+        let before = store.loadState
+        let gap = try XCTUnwrap(store.loadState.diff?.files[0].rows.compactMap(\.gap).first)
+
+        await store.expand(path: "a.go", gap: gap, control: .all)
+
+        XCTAssertEqual(store.loadState, before)
+    }
+
+    @MainActor
+    func testExpandBeforeAnyFetchDoesNothing() async {
+        let client = MockDiffClient(response: .success(makeGappedDiff()))
+        let store = DiffStore(client: client)
+        await store.expand(path: "a.go", gap: DiffGap(first: 1, last: 5, oldOffset: 0), control: .all)
+        XCTAssertTrue(client.fileCalls.isEmpty)
+    }
+
+    @MainActor
+    func testARefreshDropsWhatWasRevealed() async throws {
+        let client = MockDiffClient(response: .success(makeGappedDiff()))
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "p", sliceRef: "s")
+        let top = try XCTUnwrap(store.loadState.diff?.files[0].rows.first?.gap)
+        await store.expand(path: "a.go", gap: top, control: .all)
+        XCTAssertEqual(store.loadState.diff?.files[0].rows.first?.newNumber, 1)
+
+        await store.refresh()
+
+        XCTAssertEqual(store.loadState.diff?.files[0].rows.first?.gap, top)
+    }
+
+    @MainActor
+    func testExpandingOneCommitReadsTheFileAtThatCommitAndKeepsToIt() async throws {
+        let client = MockDiffClient(response: .success(makeGappedDiff()))
+        client.commitDiffs["abc"] = makeGappedDiff()
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "p", sliceRef: "s")
+        await store.selectCommit("abc")
+        let top = try XCTUnwrap(store.loadState.diff?.files[0].rows.first?.gap)
+
+        await store.expand(path: "a.go", gap: top, control: .all)
+
+        XCTAssertEqual(client.fileCalls.last?.commit, "abc")
+        XCTAssertEqual(store.loadState.diff?.files[0].rows.first?.newNumber, 1)
+        // Back on the branch, nothing was revealed there; and back on the
+        // commit, what was revealed is still shown.
+        await store.selectCommit(nil)
+        XCTAssertEqual(store.loadState.diff?.files[0].rows.first?.gap, top)
+        await store.selectCommit("abc")
+        XCTAssertEqual(store.loadState.diff?.files[0].rows.first?.newNumber, 1)
+    }
+
+    @MainActor
+    func testARevealOnAnotherSliceIsCleared() async throws {
+        let client = MockDiffClient(response: .success(makeGappedDiff()))
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "p", sliceRef: "s")
+        let top = try XCTUnwrap(store.loadState.diff?.files[0].rows.first?.gap)
+        await store.expand(path: "a.go", gap: top, control: .all)
+
+        await store.fetch(projectID: "p", sliceRef: "other")
+        await store.fetch(projectID: "p", sliceRef: "s")
+        XCTAssertEqual(store.loadState.diff?.files[0].rows.first?.gap, top)
+        store.clear()
+        XCTAssertEqual(store.loadState, .idle)
     }
 
     @MainActor

@@ -88,7 +88,7 @@ struct WindowShellView: View {
             }
             .frame(maxHeight: .infinity)
 
-            StatusBarView(appModel: appModel)
+            StatusBarView(appModel: appModel) { breadcrumb }
         }
         .onChange(of: selectionKey) { _, _ in resetToDefaults() }
         .onChange(of: slicePhase) { _, _ in resetToDefaults() }
@@ -96,17 +96,18 @@ struct WindowShellView: View {
 
     // MARK: - The titlebar
 
-    /// The one titlebar across the window: at its trailing edge, where the
-    /// selection sits — its project, its milestone, then its dot and name,
-    /// slash-separated.
+    /// The one titlebar across the window: the traffic lights, and nothing
+    /// else — where the selection sits is the status bar's.
     private var titlebar: some View {
         GnatTitlebar(leading: GnatMetrics.lightsInset) {
             Spacer(minLength: 0)
-            breadcrumb
         }
     }
 
-    /// Where the selection sits, read left to right: a slice's project, its
+    // MARK: - The breadcrumb
+
+    /// Where the selection sits, at the status bar's trailing edge, read
+    /// left to right: a slice's project, its
     /// milestone (or what stands for one), each followed by a quiet slash,
     /// then the selection itself.
     ///
@@ -154,7 +155,7 @@ struct WindowShellView: View {
             }
         }
         .contentTransition(.interpolate)
-        .font(.system(size: GnatMetrics.titlebarText))
+        .font(.system(size: GnatMetrics.xs))
         .lineLimit(1)
         .truncationMode(.tail)
         .animation(Motion.breadcrumb, value: [crumbs.project ?? "", crumbs.parent ?? "", crumbs.title])
@@ -173,7 +174,7 @@ struct WindowShellView: View {
         .buttonStyle(.plain)
         .popover(isPresented: Binding(
             get: { crumbPicker == origin }, set: { if !$0 { crumbPicker = nil } }
-        ), arrowEdge: .bottom) {
+        ), arrowEdge: .top) {
             crumbTreePicker(openingOn: origin)
         }
     }

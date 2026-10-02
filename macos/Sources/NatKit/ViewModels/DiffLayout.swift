@@ -29,20 +29,22 @@ public struct DiffMetrics: Equatable, Sendable {
 
     public init() {}
 
-    /// One line-number column: the digits, and a little air.
+    /// The line-number column: the digits, and a little air — never
+    /// narrower than a gap's expand button, which it also holds.
     public var numberColumnWidth: CGFloat {
-        CGFloat(numberDigits) * digitWidth + 4
+        max(CGFloat(numberDigits) * digitWidth + 4, 16)
     }
 
-    /// The gutter: both number columns, the gap between them and their
-    /// padding either side.
+    /// The gutter: the one number column — each line's number on the
+    /// branch's side, a removed line's left blank and coloured, as GitHub
+    /// and delta draw a unified diff — and its padding either side.
     public var gutterWidth: CGFloat {
-        numberColumnWidth * 2 + 6 + 16
+        numberColumnWidth + 16
     }
 
-    /// Where the +/- glyph's column starts, and where the code does.
-    public var glyphX: CGFloat { gutterWidth + 12 }
-    public var textX: CGFloat { glyphX + 13 }
+    /// Where the code starts. No +/- column: a row's colour says what the
+    /// change did to it.
+    public var textX: CGFloat { gutterWidth + 10 }
 
     /// How many columns of code fit across `width`.
     public func wrapColumns(width: CGFloat) -> Int {
@@ -164,11 +166,11 @@ public struct DiffLayout: Sendable {
         "\(path)\u{0}\(rowID)"
     }
 
-    /// A row's height at `limit` columns: a hunk break is always one line,
-    /// since it is cut short rather than wrapped.
+    /// A row's height at `limit` columns: a hunk break is cut short rather
+    /// than wrapped — one line, or one per control a gap stacks.
     static func rowHeight(_ row: DiffRow, limit: Int?, metrics: DiffMetrics) -> CGFloat {
         let lines = row.kind == .hunkBreak
-            ? 1
+            ? row.gap?.controls.count ?? 1
             : DiffText.lineCount(row.text, columns: row.columns, isNarrow: row.isNarrow, limit: limit)
         return max(metrics.rowMinHeight, CGFloat(lines) * metrics.lineHeight + metrics.rowPadding)
     }

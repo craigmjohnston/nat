@@ -131,6 +131,17 @@ public final class DiffStore {
     /// served silently under a name the user was just told failed.
     private var branchDiffCache: [String: DiffModel] = [:]
 
+    /// The lines revealed between hunks (`expand`), by view — "" for the
+    /// branch as a whole, else a commit's sha — then by file and line, and
+    /// each file's length as the reads that revealed them said it. Kept
+    /// apart from the diffs above, which stay as git wrote them: what is
+    /// shown is a diff with these put back (`displayed`). A fresh read of a
+    /// view drops its own, since the lines may have moved under it.
+    private var revealed: [String: [String: [Int: RevealedLine]]] = [:]
+    private var fileEnds: [String: [String: Int]] = [:]
+    /// The gaps a read is already out for, so a second press waits for it.
+    private var expanding: Set<String> = []
+
     public init(client: NatClientProtocol = NatClient()) {
         self.client = client
     }
@@ -161,13 +172,15 @@ public final class DiffStore {
             branchDiff = nil
             viewedFiles = []
             collapsedFiles = []
+            revealed = [:]
+            fileEnds = [:]
         }
         self.projectID = projectID
         self.sliceRef = sliceRef
 
         if let cached = branchDiffCache[sliceRef] {
             branchDiff = cached
-            loadState = .loaded(cached)
+            loadState = .loaded(displayed(cached, view: ""))
             return
         }
 
@@ -204,12 +217,12 @@ public final class DiffStore {
 
         guard let sha else {
             if let branchDiff {
-                loadState = .loaded(branchDiff)
+                loadState = .loaded(displayed(branchDiff, view: ""))
             }
             return
         }
         if let cached = commitDiffCache[sha] {
-            loadState = .loaded(cached)
+            loadState = .loaded(displayed(cached, view: sha))
             return
         }
         await loadCommitDiff(sha, projectID: projectID, sliceRef: sliceRef)
@@ -277,6 +290,54 @@ public final class DiffStore {
         commitDiffCache = [:]
         branchDiff = nil
         branchDiffCache = [:]
+        revealed = [:]
+        fileEnds = [:]
+    }
+
+    // MARK: - Expanding
+
+    /// Reveal what one of a gap's controls offers: the lines are read from
+    /// the file as the view on screen has it (`nat slice-file`, at the branch
+    /// or the selected commit) and put back in place of the gap, which keeps
+    /// whatever is still hidden. A read that fails reveals nothing — the gap
+    /// stays as it was, to be pressed again — and one that lands after the
+    /// view has moved on is dropped.
+    public func expand(path: String, gap: DiffGap, control: DiffGap.Control) async {
+        guard let projectID, let sliceRef else { return }
+        let view = selectedCommit ?? ""
+        let marker = "\(view)\u{0}\(path)\u{0}\(gap.first)"
+        guard !expanding.contains(marker) else { return }
+        expanding.insert(marker)
+        defer { expanding.remove(marker) }
+
+        let range = gap.range(for: control)
+        guard let read = try? await client.sliceFile(
+            projectID: projectID, sliceRef: sliceRef, commit: selectedCommit, path: path, from: range.from, to: range.to)
+        else { return }
+        guard self.sliceRef == sliceRef, (selectedCommit ?? "") == view else { return }
+
+        var lines = revealed[view]?[path] ?? [:]
+        for (offset, text) in read.lines.enumerated() {
+            let tokens = read.tokens.flatMap { offset < $0.count ? $0[offset] : nil }
+            lines[read.from + offset] = RevealedLine(text: text, tokens: tokens)
+        }
+        revealed[view, default: [:]][path] = lines
+        fileEnds[view, default: [:]][path] = read.total
+
+        let base = view.isEmpty ? branchDiff : commitDiffCache[view]
+        if let base, case .loaded = loadState {
+            loadState = .loaded(displayed(base, view: view))
+        }
+    }
+
+    /// A view's diff with the lines revealed in it put back.
+    private func displayed(_ model: DiffModel, view: String) -> DiffModel {
+        let lines = revealed[view] ?? [:]
+        let ends = fileEnds[view] ?? [:]
+        guard !lines.isEmpty || !ends.isEmpty else { return model }
+        return DiffModel(base: model.base, branch: model.branch, files: model.files.map {
+            $0.revealing(lines[$0.path] ?? [:], fileEnd: ends[$0.path])
+        })
     }
 
     // MARK: - Comments
@@ -386,7 +447,9 @@ public final class DiffStore {
 
         do {
             let diff = try await client.sliceDiff(projectID: projectID, sliceRef: sliceRef, commit: nil)
-            let model = buildDiffModel(from: diff)
+            let model = buildDiffModel(from: diff, expandable: true)
+            revealed[""] = nil
+            fileEnds[""] = nil
             branchDiff = model
             branchDiffCache[sliceRef] = model
             // A re-read's marks are the previous diff's, not the one that
@@ -425,7 +488,9 @@ public final class DiffStore {
         loadState = .loading
         do {
             let diff = try await client.sliceDiff(projectID: projectID, sliceRef: sliceRef, commit: sha)
-            let model = buildDiffModel(from: diff)
+            let model = buildDiffModel(from: diff, expandable: true)
+            revealed[sha] = nil
+            fileEnds[sha] = nil
             commitDiffCache[sha] = model
             loadState = .loaded(model)
         } catch {

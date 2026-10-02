@@ -33,7 +33,18 @@ enum DiffInk {
     static let rule = NSColor(DesignTokens.rule(.separator, on: .window))
     static let added = NSColor(DesignTokens.diffAddedRowBg(on: .window))
     static let removed = NSColor(DesignTokens.diffRemovedRowBg(on: .window))
+    /// The number column beside an added or removed row: the same hue
+    /// pressed harder, the stripe that marks the change now there is no
+    /// +/- to.
+    static let addedGutter = NSColor(DesignTokens.diffAddedGutterBg(on: .window))
+    static let removedGutter = NSColor(DesignTokens.diffRemovedGutterBg(on: .window))
     static let selection = NSColor(DesignTokens.wash(.selection, tone: .accent, on: .window))
+    /// A gap's band, its gutter cell — where its expand buttons sit — a step
+    /// stronger, and stronger again under the pointer.
+    static let gapBand = NSColor(DesignTokens.wash(.comment, tone: .accent, on: .window))
+    static let gapButton = NSColor(DesignTokens.wash(.selection, tone: .accent, on: .window))
+    static let gapButtonHover = NSColor(DesignTokens.wash(.chip, tone: .accent, on: .window))
+    static let accent = NSColor(DesignTokens.ink(.accent, on: .window))
     static let primary = NSColor(DesignTokens.ink(.primary, on: .window))
     static let secondary = NSColor(DesignTokens.ink(.secondary, on: .window))
     static let tertiary = NSColor(DesignTokens.ink(.tertiary, on: .window))
@@ -64,8 +75,7 @@ enum DiffInk {
 /// its lines, and the gutter's numbers.
 struct DiffRowLines {
     var code: [CTLine] = []
-    var old: CTLine?
-    var new: CTLine?
+    var number: CTLine?
 }
 
 /// The visible rect of the diff, drawn: whatever `DiffLayout` puts between
@@ -77,6 +87,8 @@ final class DiffViewportView: NSView {
     /// A drag across rows: the file and row it began on.
     private var dragAnchor: (file: Int, row: Int)?
     private var dragLast: Int?
+    /// Where the pointer is, for the gap control under it.
+    private var hoverPoint: NSPoint?
 
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { true }
@@ -139,12 +151,17 @@ final class DiffViewportView: NSView {
             fill.setFill()
             rect.fill()
         }
+        if !selected, let stripe = model.kind == .added ? DiffInk.addedGutter : model.kind == .removed ? DiffInk.removedGutter : nil {
+            stripe.setFill()
+            NSRect(x: 0, y: rect.minY, width: metrics.gutterWidth, height: rect.height).fill()
+        }
 
         if model.kind == .hunkBreak {
+            if let gap = model.gap { drawGap(gap, metrics: metrics, rect: rect) }
             drawString(
                 model.text, font: canvas.fonts.small, color: DiffInk.tertiary,
                 in: NSRect(x: metrics.textX, y: rect.minY, width: max(bounds.width - metrics.textX - 16, 0),
-                           height: metrics.rowMinHeight),
+                           height: rect.height),
                 truncating: .byTruncatingTail)
             return
         }
@@ -154,18 +171,8 @@ final class DiffViewportView: NSView {
         context.saveGState()
         context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
 
-        let numberWidth = metrics.numberColumnWidth
-        if let old = lines.old {
-            draw(old, context: context, rightEdge: 8 + numberWidth, baseline: baseline)
-        }
-        if let new = lines.new {
-            draw(new, context: context, rightEdge: 8 + numberWidth * 2 + 6, baseline: baseline)
-        }
-        if model.prefix == "+" || model.prefix == "-" {
-            let glyph = canvas.glyphLine(added: model.prefix == "+")
-            let width = CTLineGetTypographicBounds(glyph, nil, nil, nil)
-            context.textPosition = CGPoint(x: metrics.glyphX + (13 - width) / 2, y: baseline)
-            CTLineDraw(glyph, context)
+        if let number = lines.number {
+            draw(number, context: context, rightEdge: 8 + metrics.numberColumnWidth, baseline: baseline)
         }
 
         // Code scrolls sideways under a gutter that does not.
@@ -176,6 +183,28 @@ final class DiffViewportView: NSView {
             CTLineDraw(line, context)
         }
         context.restoreGState()
+    }
+
+    /// A gap's band, and its controls stacked in the gutter, one row-height
+    /// slot apiece: ↓ the lines below the change above, ↑ those above the
+    /// change below, ↕ the lot.
+    private func drawGap(_ gap: DiffGap, metrics: DiffMetrics, rect: NSRect) {
+        DiffInk.gapBand.setFill()
+        rect.fill()
+        for (slot, control) in gap.controls.enumerated() {
+            let cell = NSRect(
+                x: 0, y: rect.minY + CGFloat(slot) * metrics.rowMinHeight,
+                width: metrics.gutterWidth, height: metrics.rowMinHeight)
+            let hovered = hoverPoint.map { cell.insetBy(dx: 0, dy: -0.5).contains($0) } ?? false
+            (hovered ? DiffInk.gapButtonHover : DiffInk.gapButton).setFill()
+            cell.fill()
+            let symbol = switch control {
+            case .down: "arrow.down"
+            case .up: "arrow.up"
+            case .all: "arrow.up.and.down"
+            }
+            drawSymbol(symbol, size: 11, weight: .semibold, color: hovered ? DiffInk.primary : DiffInk.accent, in: cell)
+        }
     }
 
     private func draw(_ line: CTLine, context: CGContext, rightEdge: CGFloat, baseline: CGFloat) {
@@ -365,6 +394,8 @@ final class DiffViewportView: NSView {
         case header(file: Int, viewed: Bool)
         case commentButton(file: Int, row: Int, endsSelection: Bool)
         case row(file: Int, row: Int)
+        /// One of a gap's controls: its button, or anywhere along its slot.
+        case gap(file: Int, row: Int, control: DiffGap.Control)
     }
 
     /// What is under a point of the view: the pinned header first, since it
@@ -386,6 +417,10 @@ final class DiffViewportView: NSView {
         case .header(let file):
             return headerHit(canvas, file: file, y: layout.top(index) - top, point: point)
         case .row(let file, let row):
+            if let gap = canvas.files[file].rows[row].gap {
+                let slot = Int((top + point.y - layout.top(index)) / canvas.metrics.rowMinHeight)
+                return .gap(file: file, row: row, control: gap.controls[min(max(slot, 0), gap.controls.count - 1)])
+            }
             return .row(file: file, row: row)
         case .attachment, .footer:
             return nil
@@ -407,6 +442,10 @@ final class DiffViewportView: NSView {
             viewed ? canvas.actions.viewedToggled(path) : canvas.actions.collapseToggled(path)
         case .commentButton(let file, let row, let endsSelection):
             canvas.actions.commentRequested(canvas.files[file], canvas.files[file].rows[row], endsSelection)
+        case .gap(let file, let row, let control):
+            if let gap = canvas.files[file].rows[row].gap {
+                canvas.actions.gapExpanded(canvas.files[file], gap, control)
+            }
         case .row(let file, let row):
             let model = canvas.files[file]
             guard model.rows[row].kind != .hunkBreak else { return }
@@ -479,11 +518,18 @@ final class DiffViewportView: NSView {
     private func setHover(at point: NSPoint?) {
         guard let canvas else { return }
         var hovered: Int?
-        if let point, case .row(let file, let row)? = hit(at: point) {
+        let found = point.flatMap { hit(at: $0) }
+        if case .row(let file, let row)? = found {
             hovered = canvas.diffLayout.index(of: .row(file: file, row: row))
-        } else if let point, case .commentButton? = hit(at: point) {
+        } else if case .commentButton? = found {
             hovered = canvas.hoveredItem
         }
+        // A gap redraws as the pointer crosses it, so the control under it
+        // lights up.
+        let overGap: Bool = if case .gap? = found { true } else { false }
+        let wasOverGap = hoverPoint != nil
+        hoverPoint = overGap ? point : nil
+        if overGap || wasOverGap { needsDisplay = true }
         if hovered != canvas.hoveredItem {
             canvas.hoveredItem = hovered
             needsDisplay = true
@@ -526,8 +572,7 @@ extension DiffCanvasView {
             }
             return CTLineCreateWithAttributedString(text)
         }
-        lines.old = row.oldNumber.map { numberLine($0) }
-        lines.new = row.newNumber.map { numberLine($0) }
+        lines.number = row.newNumber.map { numberLine($0) }
         lineCache[index] = lines
         return lines
     }
@@ -536,15 +581,6 @@ extension DiffCanvasView {
         CTLineCreateWithAttributedString(NSAttributedString(string: String(number), attributes: [
             .font: fonts.code,
             NSAttributedString.Key(kCTForegroundColorAttributeName as String): DiffInk.tertiary.cgColor,
-        ]))
-    }
-
-    /// The gutter's +/− glyph, in the colour of what the row did.
-    func glyphLine(added: Bool) -> CTLine {
-        CTLineCreateWithAttributedString(NSAttributedString(string: added ? "+" : "\u{2212}", attributes: [
-            .font: fonts.code,
-            NSAttributedString.Key(kCTForegroundColorAttributeName as String):
-                (added ? DiffInk.success : DiffInk.danger).cgColor,
         ]))
     }
 }

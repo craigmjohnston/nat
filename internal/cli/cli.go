@@ -87,6 +87,7 @@ type GitCLI interface {
 	DiffWorkingTreeFrom(dir, baseName string) (base, diff string, err error)
 	CommitsFrom(dir, baseName, branch string) (string, []git.Commit, error)
 	CommitDiff(dir, sha string) (string, error)
+	Show(dir, branch, path string) ([]string, error)
 	CurrentBranch(dir string) (string, error)
 	ReflogBranches(dir string) ([]string, error)
 }
@@ -215,6 +216,10 @@ usage:
                       parent, instead of the whole branch; --commits and
                       --commit are mutually exclusive with each other and with
                       the whole-branch diff
+  nat slice-file <slice> --path P [--from N] [--to M] [--commit SHA] [--json] --project ID
+                      print lines N..M (1-based, inclusive; M left off reads
+                      to the end) of a file as the branch, or one commit of
+                      it, leaves it — what a diff's expand controls reveal
   nat slice-edit <slice> --description TEXT|- --project ID
                       replace a Todo slice's description, its page body;
                       refused on a slice in progress or Done. --description -
@@ -470,6 +475,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return sliceRework(ctx, args[1:], env)
 	case "slice-diff":
 		return sliceDiff(ctx, args[1:], env)
+	case "slice-file":
+		return sliceFile(ctx, args[1:], env)
 	case "slice-edit":
 		return sliceEdit(ctx, args[1:], env)
 	case "slice-move":

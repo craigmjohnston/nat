@@ -44,6 +44,8 @@ public struct DiffCanvasActions {
     public var commentRequested: @MainActor (DiffFileModel, DiffRow, _ endsSelection: Bool) -> Void = { _, _, _ in }
     public var viewedToggled: @MainActor (String) -> Void = { _ in }
     public var collapseToggled: @MainActor (String) -> Void = { _ in }
+    /// A gap's control pressed: reveal what it offers.
+    public var gapExpanded: @MainActor (DiffFileModel, DiffGap, DiffGap.Control) -> Void = { _, _, _ in }
 
     public init() {}
 }

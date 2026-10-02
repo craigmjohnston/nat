@@ -42,13 +42,28 @@ final class DiffLayoutTests: XCTestCase {
 
     func testMetricsGeometry() {
         let m = metrics
-        XCTAssertEqual(m.numberColumnWidth, 14)
-        XCTAssertEqual(m.gutterWidth, 14 * 2 + 6 + 16)
-        XCTAssertEqual(m.glyphX, m.gutterWidth + 12)
-        XCTAssertEqual(m.textX, m.glyphX + 13)
+        // One number column, held to the expand button's 16 at one digit.
+        XCTAssertEqual(m.numberColumnWidth, 16)
+        XCTAssertEqual(m.gutterWidth, 16 + 16)
+        XCTAssertEqual(m.textX, m.gutterWidth + 10)
+        var wide = m
+        wide.numberDigits = 4
+        XCTAssertEqual(wide.numberColumnWidth, 44)
         XCTAssertEqual(m.wrapColumns(width: width(columns: 10)), 10)
         XCTAssertEqual(m.wrapColumns(width: width(columns: 10) + 9), 10)
         XCTAssertEqual(m.wrapColumns(width: 0), 1)
+    }
+
+    /// A gap stacks one row-height slot per control; a plain break is one.
+    func testAGapIsAsTallAsItsControls() {
+        let between = DiffRow(
+            id: "g", kind: .hunkBreak, oldNumber: nil, newNumber: nil, prefix: nil, text: "@@",
+            gap: DiffGap(first: 10, last: 90, oldOffset: 0))
+        let small = DiffRow(
+            id: "s", kind: .hunkBreak, oldNumber: nil, newNumber: nil, prefix: nil, text: "@@",
+            gap: DiffGap(first: 10, last: 12, oldOffset: 0))
+        XCTAssertEqual(DiffLayout.rowHeight(between, limit: nil, metrics: metrics), 42)
+        XCTAssertEqual(DiffLayout.rowHeight(small, limit: nil, metrics: metrics), 22)
     }
 
     // MARK: - Laying out

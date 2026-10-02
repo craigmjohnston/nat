@@ -189,6 +189,21 @@ enum AppStories {
         },
 
         Story(
+            name: "window-review-expanded",
+            summary: "The review with its first file opened out: the gap above its first change revealed whole, "
+                + "the next twenty lines down from it revealed and the rest still a gap with its controls.",
+            size: window
+        ) {
+            await slicePane(Fixtures.mergeBoxSliceID) { appModel in
+                let store = appModel.diffStore(projectID: Fixtures.projectID)
+                guard let file = store.loadState.diff?.files.first else { return }
+                let gaps = file.rows.compactMap(\.gap)
+                if let top = gaps.first { await store.expand(path: file.path, gap: top, control: .all) }
+                if gaps.count > 1 { await store.expand(path: file.path, gap: gaps[1], control: .down) }
+            }
+        },
+
+        Story(
             name: "diff-comment-button",
             summary: "A marked line in the diff: the comment button laid over the end of the line on a face of its own, the code under it unwrapped.",
             size: CGSize(width: 520, height: 260)
@@ -719,8 +734,8 @@ enum AppStories {
         Story(
             name: "status-bar-no-agents",
             summary: "The same bar with nothing running: the agent count reads zero, "
-                + "still right-aligned to the bar's far edge.",
-            size: CGSize(width: 1320, height: StatusBarView.height)
+                + "the usage windows after it.",
+            size: CGSize(width: 1320, height: GnatMetrics.statusBarHeight)
         ) {
             StatusBarView(
                 appModel: await Fixtures.startedAppModel(
@@ -732,7 +747,7 @@ enum AppStories {
             name: "status-bar-several-agents",
             summary: "The bar with the crowded plan and three agents live: the count "
                 + "pluralizes.",
-            size: CGSize(width: 1320, height: StatusBarView.height)
+            size: CGSize(width: 1320, height: GnatMetrics.statusBarHeight)
         ) {
             StatusBarView(
                 appModel: await Fixtures.startedAppModel(
@@ -742,10 +757,10 @@ enum AppStories {
 
         Story(
             name: "status-bar-usage-at-rest",
-            summary: "The Claude usage readout at the bar's far right, both windows "
+            summary: "The Claude usage windows after the agent count, each set off by a faint divider, both "
                 + "well under the warning threshold: each window's "
                 + "percent and reset in the bar's own tertiary tint.",
-            size: CGSize(width: 1320, height: StatusBarView.height)
+            size: CGSize(width: 1320, height: GnatMetrics.statusBarHeight)
         ) {
             StatusBarView(
                 appModel: await Fixtures.startedAppModel(
@@ -759,7 +774,7 @@ enum AppStories {
             summary: "One window past the warning threshold: its whole clause — "
                 + "percent and reset together — switches to the warning tint (system "
                 + "orange), the other window stays tertiary.",
-            size: CGSize(width: 1320, height: StatusBarView.height)
+            size: CGSize(width: 1320, height: GnatMetrics.statusBarHeight)
         ) {
             StatusBarView(
                 appModel: await Fixtures.startedAppModel(
@@ -773,7 +788,7 @@ enum AppStories {
             name: "status-bar-usage-both-warning",
             summary: "Both windows past the warning threshold: both clauses draw in "
                 + "the warning tint.",
-            size: CGSize(width: 1320, height: StatusBarView.height)
+            size: CGSize(width: 1320, height: GnatMetrics.statusBarHeight)
         ) {
             StatusBarView(
                 appModel: await Fixtures.startedAppModel(
@@ -786,8 +801,8 @@ enum AppStories {
         Story(
             name: "status-bar-usage-unavailable",
             summary: "No usage reading available at all — the readout draws nothing, "
-                + "leaving only the agent count at the bar's far right.",
-            size: CGSize(width: 1320, height: StatusBarView.height)
+                + "leaving the agent count alone at the bar's leading edge.",
+            size: CGSize(width: 1320, height: GnatMetrics.statusBarHeight)
         ) {
             StatusBarView(
                 appModel: await Fixtures.startedAppModel(
