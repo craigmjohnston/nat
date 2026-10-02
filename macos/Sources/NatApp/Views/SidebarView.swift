@@ -113,6 +113,7 @@ struct SidebarView: View {
                     }
                     .inelastic()
                 }
+                .thinScrollers()
                 .frame(maxHeight: .infinity)
             }
 
@@ -482,6 +483,7 @@ struct SidebarView: View {
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scratchContentHeight = $0 }
                 .inelastic()
             }
+            .thinScrollers()
             .frame(maxHeight: projectsOpen ? scratchContentHeight : .infinity)
         }
     }

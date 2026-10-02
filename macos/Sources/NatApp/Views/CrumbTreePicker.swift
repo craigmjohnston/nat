@@ -69,6 +69,7 @@ struct CrumbTreePicker: View {
                 .padding(.vertical, 6)
                 .inelastic()
         }
+        .thinScrollers()
         .frame(width: Self.columnWidth)
     }
 

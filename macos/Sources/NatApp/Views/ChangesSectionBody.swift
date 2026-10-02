@@ -34,6 +34,7 @@ struct ChangesSectionBody: View {
                 }
                 .padding(.vertical, 4)
             }
+            .thinScrollers()
             .inelastic()
 
             notices

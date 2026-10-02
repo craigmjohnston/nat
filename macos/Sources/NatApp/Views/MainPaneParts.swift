@@ -121,6 +121,7 @@ struct PRConversationPane: View {
             .frame(maxWidth: 820, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .thinScrollers()
         .inelastic()
     }
 
@@ -307,6 +308,7 @@ struct MarkdownTableView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 4))
         }
+        .thinScrollers(.horizontal)
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .background(alignment: .topLeading) { measurer.frame(width: 0, height: 0, alignment: .topLeading).clipped() }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { available = $0 }

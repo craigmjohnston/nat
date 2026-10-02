@@ -303,6 +303,7 @@ struct SliceNavigatorView: View {
                 if let launchWarning { NavNotice(text: launchWarning, role: .warning) }
             }
         }
+        .thinScrollers()
         .inelastic()
     }
 
@@ -519,6 +520,7 @@ struct PRSectionBody: View {
                 ReviewersBlock(pr: pr, store: reviewerStore)
             }
         }
+        .thinScrollers()
         .inelastic()
     }
 

@@ -140,6 +140,7 @@ struct ContinuousDiffView: View {
                 .scrollTargetLayout()
                 .inelastic()
             }
+            .thinScrollers(position: $fileScroll)
             .scrollPosition($fileScroll, anchor: .top)
             .coordinateSpace(name: DiffRowFramesKey.space)
             .onPreferenceChange(DiffRowFramesKey.self) { frames in

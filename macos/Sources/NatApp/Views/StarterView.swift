@@ -100,6 +100,7 @@ struct StarterView: View {
             .frame(maxWidth: .infinity)
             .inelastic()
         }
+        .thinScrollers()
         .surface(.window)
     }
 

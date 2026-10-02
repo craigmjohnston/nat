@@ -997,6 +997,7 @@ private struct DiffCommentButtonStory: View {
                 onEditComment: { _ in }, onDeleteComment: { _ in }, onSaveDraft: { _ in }, onCancelDraft: {})
             .padding(12)
         }
+        .thinScrollers()
         .surface(.window)
     }
 }
