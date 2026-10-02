@@ -15,9 +15,6 @@ struct SessionNavigatorView: View {
 
     @State private var branches: [String] = []
     @State private var branchesSessionID: String?
-    @State private var commentText = ""
-    @State private var isSendingComment = false
-    @State private var commentError: String?
 
     private var projectID: String { appModel.projectStore?.projectID ?? "" }
     private var agent: AgentStatus? { appModel.activityStore?.agents[session.tag] }
@@ -36,12 +33,8 @@ struct SessionNavigatorView: View {
         NavigatorColumn(anyOpen: !open.isEmpty) {
             NavSectionView(
                 label: "Thread", open: open.contains(.thread), selected: main == .terminal,
-                onHead: { toggle(.thread) }
+                onHead: { click(.thread) }, onFold: { fold(.thread) }
             ) {
-                if agent != nil {
-                    TerminalHeaderButton { main = .terminal }
-                }
-            } content: {
                 ScrollView {
                     VStack(spacing: 6) {
                         ThreadEventCard(event: ThreadEvent(
@@ -62,10 +55,16 @@ struct SessionNavigatorView: View {
                 }
                 .inelastic()
             }
-            NavSectionView(label: "Changes", open: open.contains(.changes), selected: main == .diff, onHead: { toggle(.changes) }) {
+            NavSectionView(
+                label: "Changes", open: open.contains(.changes), selected: main == .diff,
+                onHead: { click(.changes) }, onFold: { fold(.changes) }
+            ) {
                 changesBody
             }
-            NavSectionView(label: "PR", open: open.contains(.pr), live: !session.prs.isEmpty, onHead: { toggle(.pr) }) {
+            NavSectionView(
+                label: "PR", open: open.contains(.pr), selected: main == .pr, live: !session.prs.isEmpty,
+                onHead: { click(.pr) }, onFold: { fold(.pr) }
+            ) {
                 prBody
             }
         }
@@ -85,12 +84,24 @@ struct SessionNavigatorView: View {
         .onDisappear { prStore.stopPolling() }
     }
 
-    private func toggle(_ section: NavigatorSection) {
-        withAnimation(Motion.stateChange) {
-            if open.contains(section) { open.remove(section) } else { open.insert(section) }
+    /// A header click — see `NavigatorFocus.clickingHead`. Every section of
+    /// a session has a main-pane view of its own.
+    private func click(_ section: NavigatorSection) {
+        let shows: MainPaneMode = switch section {
+        case .thread: .terminal
+        case .changes: .diff
+        case .pr: .pr
         }
-        if section == .thread { main = .terminal }
-        if section == .changes { main = .diff }
+        apply(NavigatorFocus(open: open, main: main).clickingHead(section, shows: shows))
+    }
+
+    private func fold(_ section: NavigatorSection) {
+        apply(NavigatorFocus(open: open, main: main).togglingFold(section))
+    }
+
+    private func apply(_ focus: NavigatorFocus) {
+        withAnimation(Motion.stateChange) { open = focus.open }
+        if focus.main != main { main = focus.main }
     }
 
     private var changesBody: some View {
@@ -143,10 +154,7 @@ struct SessionNavigatorView: View {
             }
             let selected = session.prs.first { $0.url == selectedPRURL }
             if let pr = prStore.loadState.pr, pr.number == selected?.number {
-                PRSectionBody(
-                    pr: pr, staleMessage: prStore.loadState.errorMessage,
-                    commentText: $commentText, isSending: isSendingComment, commentError: commentError,
-                    onSend: { Task { await sendComment() } })
+                PRSectionBody(pr: pr, staleMessage: prStore.loadState.errorMessage)
             } else if let message = prStore.loadState.errorMessage {
                 NavNotice(text: "The pull request could not be read — \(message)")
             } else {
@@ -154,21 +162,10 @@ struct SessionNavigatorView: View {
             }
         }
     }
-
-    private func sendComment() async {
-        isSendingComment = true
-        commentError = nil
-        do {
-            try await prStore.comment(text: commentText)
-            commentText = ""
-        } catch {
-            commentError = SliceActionTracker.message(for: error)
-        }
-        isSendingComment = false
-    }
 }
 
-/// An ad hoc session's main pane: its agent's terminal or its branch's diff.
+/// An ad hoc session's main pane, under its heading: its agent's terminal,
+/// its branch's diff, or its picked pull request's conversation.
 struct SessionMainPane: View {
     @Bindable var appModel: AppModel
     let session: Session
@@ -178,6 +175,11 @@ struct SessionMainPane: View {
     var body: some View {
         let store = appModel.sessionDiffStore(projectID: appModel.projectStore?.projectID ?? "")
         VStack(spacing: 0) {
+            MainPaneHeader {
+                if mode == .terminal || mode == .empty {
+                    AgentModelHeading(agent: appModel.activityStore?.agents[session.tag])
+                }
+            }
             switch mode {
             case .terminal, .empty:
                 AgentTerminalPane(
@@ -198,6 +200,11 @@ struct SessionMainPane: View {
                 } else {
                     QuietLoadingView(label: "Reading the branch").frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+            case .pr:
+                let url = appModel.selectedPickerID(.pullRequest, sessionID: session.id, among: session.prs.map(\.url))
+                PRConversationPane(
+                    store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),
+                    expectedNumber: session.prs.first { $0.url == url }?.number)
             }
         }
         .surface(.window)
@@ -308,6 +315,7 @@ struct WorkshopMainPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            MainPaneHeader { AgentModelHeading(agent: appModel.planningAgent) }
             AgentTerminalPane(
                 agent: appModel.planningAgent,
                 emptyText: appModel.workshopLaunching

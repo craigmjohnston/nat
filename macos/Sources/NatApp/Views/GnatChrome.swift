@@ -230,6 +230,20 @@ struct GnatButtonStyle: ButtonStyle {
     }
 }
 
+/// A link-like button: bare text in the accent ink, no chrome — "Show more",
+/// a card's Edit. Dimmed when disabled.
+struct GnatLinkButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13))
+            .ink(isEnabled ? .accent : .tertiary)
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .contentShape(Rectangle())
+    }
+}
+
 /// A section header's own action: flush to the header's full height, a line
 /// on its left, the `--bg` ground behind it (the accent-dim one for a
 /// primary), and the label beside an optional glyph.
@@ -268,20 +282,6 @@ struct HeaderActionLabel: View {
                 Image(systemName: systemImage).font(.system(size: 10, weight: .semibold))
             }
         }
-    }
-}
-
-/// The Thread header's Terminal action: puts the agent's terminal up in the
-/// main pane without folding the Thread, as its header click would.
-struct TerminalHeaderButton: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HeaderActionLabel(title: "Terminal", systemImage: "terminal")
-        }
-        .buttonStyle(GnatHeaderButtonStyle())
-        .help("Show the agent's terminal")
     }
 }
 

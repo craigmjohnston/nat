@@ -89,9 +89,15 @@ The gnat hi-fi design (Claude Design project `e81457f6-…`, `gnat.html` with
 `gnat-data/shell/nav/main.jsx` and `gnat.css`) is the spec: `SidebarView`
 (Active across every project, the Projects tree, then the scratch project
 as a Scratch fold of its own — `SidebarModel.scratch`), the navigator's
-stacked Brief/Thread/Changes/PR foldouts (`SliceNavigatorView`, with
-`NavigatorModel` deciding phase, liveness and header actions — Thread's
-Terminal and Changes' file rows pick the main pane). `AppModel` keeps its one *active* project —
+stacked Thread/Changes/PR foldouts (`SliceNavigatorView`, with
+`NavigatorModel` deciding phase, liveness and header actions). The brief is
+the Thread's first card, not a section. A header click puts its section's
+view up in the main pane — Thread the terminal, Changes the diff, PR the
+description and conversation (the PR section keeps checks and review) — and
+folds it again when that view is already up; the chevron only folds
+(`NavigatorFocus`). Folded bodies stay built, so unfolding reloads nothing.
+The main pane carries a heading band the height of a section header: the
+diff's commit switcher, the agent's model/effort, or empty. `AppModel` keeps its one *active* project —
 every per-project reading is keyed by it — and the sidebar selects across
 projects by activating first (`selectSlice(_:inProject:)`). The Thread shows
 only what nat reports (`buildThreadEvents`). What the design does not draw

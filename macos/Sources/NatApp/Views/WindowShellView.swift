@@ -87,11 +87,12 @@ struct WindowShellView: View {
 
     // MARK: - The titlebar
 
-    /// The one titlebar across the window: past the traffic lights, where
-    /// the selection sits — its project, its milestone, then its dot and
-    /// name, slash-separated.
+    /// The one titlebar across the window: at its trailing edge, where the
+    /// selection sits — its project, its milestone, then its dot and name,
+    /// slash-separated.
     private var titlebar: some View {
         GnatTitlebar(leading: GnatMetrics.lightsInset) {
+            Spacer(minLength: 0)
             breadcrumb
         }
     }
@@ -183,7 +184,8 @@ struct WindowShellView: View {
     }
 
     /// A session's defaults: its agent's Thread and terminal while one is
-    /// live; once it has exited, its pull requests and its diff.
+    /// live; once it has exited, its pull request's section and conversation,
+    /// or with none its diff.
     private var sessionLive: Bool {
         selectedSession.map { appModel.activityStore?.agents[$0.tag] != nil } ?? false
     }
@@ -198,7 +200,10 @@ struct WindowShellView: View {
 
     private var defaultMain: MainPaneMode {
         if let navigatorModel { return navigatorModel.defaultMain }
-        if selectedSession != nil { return sessionLive ? .terminal : .diff }
+        if let session = selectedSession {
+            if sessionLive { return .terminal }
+            return session.prs.isEmpty ? .diff : .pr
+        }
         return .empty
     }
 
@@ -209,19 +214,13 @@ struct WindowShellView: View {
         )
     }
 
-    /// The main pane's mode. Picking one opens its section too, as the
-    /// design's `pickMain` does: the diff opens Changes, the terminal Thread
-    /// (the Thread header's Terminal button, a Changes file row).
+    /// The main pane's mode. Setting it opens no section: a header click
+    /// sets both together (`NavigatorFocus`), and a fold must be able to
+    /// leave its section's view up without the view reopening it.
     private var main: Binding<MainPaneMode> {
         Binding(
             get: { mainOverride ?? defaultMain },
-            set: { mode in
-                mainOverride = mode
-                var sections = open.wrappedValue
-                if mode == .diff { sections.insert(.changes) }
-                if mode == .terminal { sections.insert(.thread) }
-                if sections != open.wrappedValue { openOverride = sections }
-            }
+            set: { mainOverride = $0 }
         )
     }
 
@@ -277,6 +276,7 @@ struct WindowShellView: View {
                 }
             } main: {
                 VStack(spacing: 0) {
+                    MainPaneHeader()
                     if let accepted = appModel.acceptedPlanShown {
                         MainPaneNote(text: ProposalText.acceptedTitle + "\n"
                             + ProposalText.acceptedSubtitle(milestones: accepted.milestones, slices: accepted.slices))

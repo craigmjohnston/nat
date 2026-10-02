@@ -1,12 +1,13 @@
 import Foundation
 
-/// The navigator's four stacked foldouts, in the order the design stacks them.
+/// The navigator's three stacked foldouts, in the order the design stacks
+/// them. The brief is no section of its own: it is the Thread's first item,
+/// what the slice's story starts from.
 public enum NavigatorSection: String, CaseIterable, Equatable, Hashable, Sendable {
-    case brief, thread, changes, pr
+    case thread, changes, pr
 
     public var label: String {
         switch self {
-        case .brief: return "Brief"
         case .thread: return "Thread"
         case .changes: return "Changes"
         case .pr: return "PR"
@@ -14,12 +15,46 @@ public enum NavigatorSection: String, CaseIterable, Equatable, Hashable, Sendabl
     }
 }
 
-/// What the main pane shows: the agent's terminal, the diff, or nothing.
+/// What the main pane shows: the agent's terminal, the diff, the pull
+/// request's description and conversation, or nothing.
 public enum MainPaneMode: Equatable, Sendable {
     case terminal
     case diff
+    case pr
     /// "The terminal opens here on launch."
     case empty
+}
+
+/// What the navigator has open and what the main pane shows, together — the
+/// two a header click changes at once.
+public struct NavigatorFocus: Equatable, Sendable {
+    public var open: Set<NavigatorSection>
+    public var main: MainPaneMode
+
+    public init(open: Set<NavigatorSection>, main: MainPaneMode) {
+        self.open = open
+        self.main = main
+    }
+
+    /// The chevron: fold or unfold the section, and nothing else — the main
+    /// pane stays on whatever it was showing.
+    public func togglingFold(_ section: NavigatorSection) -> NavigatorFocus {
+        var next = self
+        if open.contains(section) { next.open.remove(section) } else { next.open.insert(section) }
+        return next
+    }
+
+    /// The rest of the header: a section with a main-pane view of its own
+    /// (`shows`) is opened and its view put up — or, when it is already open
+    /// and already up, folded, so a second click undoes the first. A section
+    /// with none just folds or unfolds, as its chevron would.
+    public func clickingHead(_ section: NavigatorSection, shows: MainPaneMode?) -> NavigatorFocus {
+        guard let shows, !(open.contains(section) && main == shows) else { return togglingFold(section) }
+        var next = self
+        next.open.insert(section)
+        next.main = shows
+        return next
+    }
 }
 
 /// The navigator's reading of one slice: which sections are live, which open
@@ -49,8 +84,7 @@ public struct NavigatorModel: Equatable, Sendable {
     /// Where the slice stands, as the section that should be open first.
     public var phase: NavigatorSection {
         switch state {
-        case .todo, .blocked: return .brief
-        case .working, .waiting, .fixing: return .thread
+        case .todo, .blocked, .working, .waiting, .fixing: return .thread
         case .review: return .changes
         case .pr: return .pr
         // With no pull request, the Thread is where a finished slice says
@@ -61,19 +95,31 @@ public struct NavigatorModel: Equatable, Sendable {
 
     public var defaultOpen: Set<NavigatorSection> { [phase] }
 
-    /// Whether a section's header can be opened at all.
+    /// Whether a section's header can be opened at all. The Thread always
+    /// can: it opens on the brief.
     public func isLive(_ section: NavigatorSection) -> Bool {
         switch section {
-        case .brief, .thread: return true
+        case .thread: return true
         case .changes: return hasBranch
         case .pr: return hasPR
         }
     }
 
+    /// The main-pane view a section's header puts up, when it has one.
+    public func mainMode(for section: NavigatorSection) -> MainPaneMode? {
+        switch section {
+        case .thread: return agentAvailable ? .terminal : nil
+        case .changes: return diffAvailable ? .diff : nil
+        case .pr: return hasPR ? .pr : nil
+        }
+    }
+
     /// The design's main-pane default: the terminal while the Thread is the
-    /// phase, the diff once anything has been handed back, else the note.
+    /// phase of a launched slice, the pull request while that is, the diff
+    /// once anything has been handed back, else the note.
     public var defaultMain: MainPaneMode {
-        if phase == .thread && state != .done { return .terminal }
+        if phase == .thread && agentAvailable && state != .done { return .terminal }
+        if phase == .pr { return .pr }
         return hasBranch ? .diff : .empty
     }
 

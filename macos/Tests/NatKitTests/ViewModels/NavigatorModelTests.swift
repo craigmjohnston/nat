@@ -17,14 +17,14 @@ final class NavigatorModelTests: XCTestCase {
 
     func testEachStateOpensTheDesignsSection() {
         let cases: [(Slice, AgentActivity?, Bool, NavigatorSection, MainPaneMode)] = [
-            (slice(), nil, false, .brief, .empty),
-            (slice(blocked: true), nil, false, .brief, .empty),
+            (slice(), nil, false, .thread, .empty),
+            (slice(blocked: true), nil, false, .thread, .empty),
             (slice(status: "In progress"), .working, false, .thread, .terminal),
             (slice(status: "In progress"), .waiting, false, .thread, .terminal),
             (slice(status: "In progress", branch: "b", handedBack: true), nil, false, .changes, .diff),
-            (slice(status: "In progress", branch: "b", pr: prURL), nil, false, .pr, .diff),
+            (slice(status: "In progress", branch: "b", pr: prURL), nil, false, .pr, .pr),
             (slice(status: "In progress", branch: "b", pr: prURL), .working, true, .thread, .terminal),
-            (slice(status: "Done", branch: "b", pr: prURL), nil, false, .pr, .diff),
+            (slice(status: "Done", branch: "b", pr: prURL), nil, false, .pr, .pr),
             (slice(status: "Done"), nil, false, .thread, .empty),
             (slice(status: "Done", branch: "b"), nil, false, .thread, .diff),
         ]
@@ -38,8 +38,7 @@ final class NavigatorModelTests: XCTestCase {
 
     func testSectionsAreLiveOnTheFactsTheyRead() {
         let todo = NavigatorModel(slice: slice(), agent: nil, fixLaunched: false)
-        XCTAssertTrue(todo.isLive(.brief))
-        XCTAssertTrue(todo.isLive(.thread))
+        XCTAssertTrue(todo.isLive(.thread), "it opens on the brief")
         XCTAssertFalse(todo.isLive(.changes))
         XCTAssertFalse(todo.isLive(.pr))
         XCTAssertFalse(todo.agentAvailable)
@@ -50,6 +49,44 @@ final class NavigatorModelTests: XCTestCase {
         XCTAssertTrue(approved.isLive(.pr))
         XCTAssertTrue(approved.agentAvailable)
         XCTAssertTrue(approved.diffAvailable)
+    }
+
+    func testEachSectionPutsUpItsOwnMainView() {
+        let todo = NavigatorModel(slice: slice(), agent: nil, fixLaunched: false)
+        XCTAssertEqual(NavigatorSection.allCases.map { todo.mainMode(for: $0) }, [nil, nil, nil])
+
+        let approved = NavigatorModel(slice: slice(status: "In progress", branch: "b", pr: prURL), agent: nil, fixLaunched: false)
+        XCTAssertEqual(NavigatorSection.allCases.map { approved.mainMode(for: $0) }, [.terminal, .diff, .pr])
+    }
+
+    // MARK: - Header clicks
+
+    func testTheChevronOnlyFolds() {
+        let focus = NavigatorFocus(open: [.changes], main: .diff)
+        XCTAssertEqual(focus.togglingFold(.changes), NavigatorFocus(open: [], main: .diff))
+        XCTAssertEqual(focus.togglingFold(.pr), NavigatorFocus(open: [.changes, .pr], main: .diff))
+    }
+
+    func testAHeadOpensItsSectionAndPutsItsViewUp() {
+        let focus = NavigatorFocus(open: [.thread], main: .terminal)
+        XCTAssertEqual(focus.clickingHead(.changes, shows: .diff), NavigatorFocus(open: [.thread, .changes], main: .diff))
+    }
+
+    func testAHeadAlreadyOpenWithItsViewUpFolds() {
+        let focus = NavigatorFocus(open: [.changes], main: .diff)
+        XCTAssertEqual(focus.clickingHead(.changes, shows: .diff), NavigatorFocus(open: [], main: .diff))
+    }
+
+    func testAnOpenHeadWhoseViewIsNotUpPutsItUpAndStaysOpen() {
+        let focus = NavigatorFocus(open: [.changes, .thread], main: .terminal)
+        XCTAssertEqual(focus.clickingHead(.changes, shows: .diff), NavigatorFocus(open: [.changes, .thread], main: .diff))
+    }
+
+    func testAHeadWithNoViewOfItsOwnJustFolds() {
+        let focus = NavigatorFocus(open: [.thread], main: .empty)
+        XCTAssertEqual(focus.clickingHead(.thread, shows: nil), NavigatorFocus(open: [], main: .empty))
+        XCTAssertEqual(NavigatorFocus(open: [], main: .empty).clickingHead(.thread, shows: nil),
+                       NavigatorFocus(open: [.thread], main: .empty))
     }
 
     // MARK: - Header actions
@@ -100,7 +137,7 @@ final class NavigatorModelTests: XCTestCase {
     }
 
     func testEverySectionHasItsLabel() {
-        XCTAssertEqual(NavigatorSection.allCases.map(\.label), ["Brief", "Thread", "Changes", "PR"])
+        XCTAssertEqual(NavigatorSection.allCases.map(\.label), ["Thread", "Changes", "PR"])
     }
 
     // MARK: - The Thread

@@ -322,10 +322,11 @@ public func buildSidebarModel(
             var filed = Set<String>()
             for milestone in plan.milestones.sorted(by: { $0.order < $1.order }) {
                 let ids = Set(plan.slices.filter { $0.milestoneID == milestone.id }.map(\.id))
-                // Plan order, with the blocked ones moved below the rest:
-                // what can be started reads first.
+                // Plan order, with the blocked ones moved below the rest and
+                // the done ones below those: what can be started reads first.
                 let filedRows = rows.filter { ids.contains($0.sliceID) }
-                let slices = filedRows.filter { $0.state != .blocked } + filedRows.filter { $0.state == .blocked }
+                let slices = filedRows.filter { $0.state != .blocked && $0.state != .done }
+                    + filedRows.filter { $0.state == .blocked } + filedRows.filter { $0.state == .done }
                 filed.formUnion(ids)
                 let row = SidebarMilestone(
                     name: milestone.name,
