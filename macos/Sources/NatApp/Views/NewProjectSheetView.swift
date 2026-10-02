@@ -20,8 +20,8 @@ struct NewProjectSheetView: View {
     let onAdded: (String, String) -> Void
 
     enum Mode: String, CaseIterable {
-        case open = "Open Existing"
-        case create = "Create New"
+        case open = "Open existing"
+        case create = "Create new"
     }
 
     @State private var mode: Mode = .open
@@ -55,7 +55,7 @@ struct NewProjectSheetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Add a Project")
+            Text("Add a project")
                 .font(.system(size: Typo.headline, weight: .semibold))
                 .ink(.primary)
 
@@ -109,7 +109,7 @@ struct NewProjectSheetView: View {
     @ViewBuilder
     private var openForm: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Workspace Project")
+            Text("Workspace project")
                 .font(.system(size: Typo.subhead, weight: .semibold))
                 .ink(.secondary)
 

@@ -101,12 +101,13 @@ func statuslineSettings(sink string) string {
 }
 
 // AgentStatus is what is known of one live agent's model, reasoning effort and
-// context use. Each field is independently absent — empty, or nil — when
-// unknown; never zero.
+// context use — as a percentage of its window, and as the tokens in it. Each
+// field is independently absent — empty, or nil — when unknown; never zero.
 type AgentStatus struct {
-	Model   string
-	Effort  string
-	Context *float64
+	Model         string
+	Effort        string
+	Context       *float64
+	ContextTokens *int
 }
 
 // statuslineAgentPayload is the slice of a statusline payload this reads.
@@ -120,6 +121,14 @@ type statuslineAgentPayload struct {
 	} `json:"effort"`
 	ContextWindow struct {
 		UsedPercentage *float64 `json:"used_percentage"`
+		// CurrentUsage is the last turn's input, which is what fills the
+		// window: its input, cache-creation and cache-read tokens together
+		// are the tokens UsedPercentage is a share of.
+		CurrentUsage *struct {
+			InputTokens              int `json:"input_tokens"`
+			CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+			CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+		} `json:"current_usage"`
 	} `json:"context_window"`
 }
 
@@ -141,6 +150,10 @@ func readStatus(dir, session string) AgentStatus {
 	st.Model = firstNonEmpty(p.Model.DisplayName, p.Model.ID, rec.Model)
 	st.Effort = firstNonEmpty(p.Effort.Level, rec.Effort)
 	st.Context = p.ContextWindow.UsedPercentage
+	if u := p.ContextWindow.CurrentUsage; u != nil {
+		tokens := u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens
+		st.ContextTokens = &tokens
+	}
 	return st
 }
 

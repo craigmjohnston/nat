@@ -290,7 +290,7 @@ enum AppStories {
 
         Story(
             name: "window-done-hidden",
-            summary: "View \u{25B8} Hide Done Items: no done slices under the milestones, no ended sessions and no Done folder.",
+            summary: "View \u{25B8} Hide done items: no done slices under the milestones, no ended sessions and no Done folder.",
             size: window
         ) {
             let appModel = await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig)
@@ -602,7 +602,7 @@ enum AppStories {
             MainPaneHeader {
                 AgentModelHeading(agent: AgentStatus(
                     sliceID: Fixtures.diffPaneSliceID, session: "nat-1", activity: .working,
-                    model: "Sonnet 5", effort: "high", contextPercent: 42))
+                    model: "Sonnet 5", effort: "high", contextPercent: 42, contextTokens: 84_120))
             }
         },
 
@@ -614,7 +614,7 @@ enum AppStories {
             MainPaneHeader {
                 AgentModelHeading(agent: AgentStatus(
                     sliceID: Fixtures.diffPaneSliceID, session: "nat-1", activity: .working,
-                    model: "Sonnet 5", effort: "high", contextPercent: 91))
+                    model: "Sonnet 5", effort: "high", contextPercent: 91, contextTokens: 182_300))
             }
         },
 
@@ -717,6 +717,19 @@ enum AppStories {
         },
 
         Story(
+            name: "notion-page-picker-light",
+            summary: "The same sheet in the light theme: the Notion mark a light face under dark lines, as in the dark.",
+            size: CGSize(width: 440, height: 380),
+            colorScheme: .light
+        ) {
+            let model = NotionPickerModel(client: FixtureNatClient())
+            await model.search()
+            model.selectedID = Fixtures.notionPlaces.first?.id
+            return NotionPickerSheetView(
+                model: model, onCancel: {}, onCreate: { _ in nil }, onCreated: {})
+        },
+
+        Story(
             name: "launch-options-model-picker",
             summary: "The Brief tab's launch popover form: the model field is a menu "
                 + "picker now, offering Default and AgentOptions' own aliases.",
@@ -743,7 +756,7 @@ enum AppStories {
 
         Story(
             name: "agent-skeleton",
-            summary: "The Agent stage the pane advances to the moment Launch Agent is pressed, before the session appears.",
+            summary: "The Agent stage the pane advances to the moment Launch agent is pressed, before the session appears.",
             size: pane
         ) {
             AgentSkeletonView()

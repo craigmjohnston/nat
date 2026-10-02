@@ -4,16 +4,23 @@ import NatKit
 /// The Notion mark, drawn from the design's own SVG (`NotionMark` in
 /// `docs/design/nat-new-project/ui-newproject.jsx`, a 100×100 viewBox): the
 /// cube's face and, over it, the outline and the N cut out of it. Two shapes
-/// rather than one image so each takes a theme token — the face the primary
-/// ink, the cut-outs the card it sits on — and the mark reads in both themes
-/// without a colour of its own.
+/// rather than one image so each takes a theme token, and the mark reads in
+/// both themes without a colour of its own. Notion's own mark is a light
+/// face under dark lines, so that is how it is drawn in either theme: in the
+/// dark the face is the primary ink and the lines the card; in the light,
+/// the other way round — the dark one's colours there would turn it into a
+/// negative of itself.
 struct NotionMark: View {
+    @Environment(\.colorScheme) private var colorScheme
     var size: CGFloat = 20
 
     var body: some View {
+        // The ink is the light one in the dark theme, the card the dark one.
+        let ink = DesignTokens.label
+        let card = DesignTokens.fill(.card)
         ZStack {
-            NotionMarkFace().fill(DesignTokens.label)
-            NotionMarkDetail().fill(DesignTokens.fill(.card))
+            NotionMarkFace().fill(colorScheme == .dark ? ink : card)
+            NotionMarkDetail().fill(colorScheme == .dark ? card : ink)
         }
         .frame(width: size, height: size)
     }

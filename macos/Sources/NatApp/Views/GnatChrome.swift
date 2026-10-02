@@ -201,69 +201,132 @@ struct GnatTitlebar<Content: View>: View {
 
 // MARK: - Buttons
 
+/// A button label that knows whether the pointer is over it — a style's
+/// `makeBody` cannot hold state of its own, so its hover wash is drawn from
+/// here. Never hovered while disabled, since a dead control should not
+/// answer the pointer.
+struct HoverReader<Content: View>: View {
+    @Environment(\.isEnabled) private var isEnabled
+    @ViewBuilder let content: (Bool) -> Content
+    @State private var hovering = false
+
+    var body: some View {
+        content(hovering && isEnabled).onHover { hovering = $0 }
+    }
+}
+
+/// The lift an accent-filled button takes under the pointer: its own fill a
+/// shade brighter, so the hover never introduces a colour of its own.
+let hoverBrightness = 0.06
+
+extension View {
+    /// A filled control's hover: the whole of it a shade brighter.
+    func hoverBrightens() -> some View {
+        HoverReader { hovering in brightness(hovering ? hoverBrightness : 0) }
+    }
+}
+
+/// A bare glyph button — a heading's `+`, a card's ✕, a comment's pencil:
+/// no chrome at rest, the hover wash behind it under the pointer.
+struct GnatIconButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .hoverWash(cornerRadius: 4, enabled: isEnabled)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.7 : 1) : 0.4)
+            .contentShape(Rectangle())
+    }
+}
+
 /// The design's `.btn`: a 22pt bordered button, or `.primary`'s accent-dim
-/// fill with the accent's own ink; dimmed to 40% when disabled.
+/// fill with the accent's own ink; dimmed to 40% when disabled. Under the
+/// pointer, a bordered one takes the row wash and a primary one brightens.
 struct GnatButtonStyle: ButtonStyle {
     @Environment(\.ground) private var ground
     @Environment(\.isEnabled) private var isEnabled
     var primary = false
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 13))
-            .lineLimit(1)
-            .padding(.horizontal, 10)
-            .frame(height: 22)
-            .foregroundStyle(primary ? DesignTokens.accentInk(on: ground) : DesignTokens.ink(.primary, on: ground))
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(primary ? DesignTokens.accentDim(on: ground) : (configuration.isPressed ? DesignTokens.rowWash(selected: false, on: ground) : .clear))
-            )
-            .overlay {
-                if !primary {
+        HoverReader { hovering in
+            configuration.label
+                .font(.system(size: 13))
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .frame(height: 22)
+                .foregroundStyle(primary ? DesignTokens.accentInk(on: ground) : DesignTokens.ink(.primary, on: ground))
+                .background(
                     RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(DesignTokens.rule(.border, on: ground), lineWidth: 1)
+                        .fill(fill(pressed: configuration.isPressed, hovering: hovering))
+                )
+                .overlay {
+                    if !primary {
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(DesignTokens.rule(.border, on: ground), lineWidth: 1)
+                    }
                 }
-            }
-            .opacity(isEnabled ? (configuration.isPressed ? 0.85 : 1) : 0.4)
-            .contentShape(Rectangle())
+                .brightness(primary && hovering ? hoverBrightness : 0)
+                .opacity(isEnabled ? (configuration.isPressed ? 0.85 : 1) : 0.4)
+                .contentShape(Rectangle())
+        }
+    }
+
+    private func fill(pressed: Bool, hovering: Bool) -> Color {
+        if primary { return DesignTokens.accentDim(on: ground) }
+        return pressed || hovering ? DesignTokens.rowWash(selected: false, on: ground) : .clear
     }
 }
 
 /// A link-like button: bare text in the accent ink, no chrome — "Show more",
-/// a card's Edit. Dimmed when disabled.
+/// a card's Edit — underlined under the pointer. Dimmed when disabled.
 struct GnatLinkButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 13))
-            .ink(isEnabled ? .accent : .tertiary)
-            .opacity(configuration.isPressed ? 0.7 : 1)
-            .contentShape(Rectangle())
+        HoverReader { hovering in
+            configuration.label
+                .font(.system(size: 13))
+                .underline(hovering)
+                .ink(isEnabled ? .accent : .tertiary)
+                .opacity(configuration.isPressed ? 0.7 : 1)
+                .contentShape(Rectangle())
+        }
     }
 }
 
-/// A section header's own action: flush to the header's full height, a line
-/// on its left, the `--bg` ground behind it (the accent-dim one for a
-/// primary), and the label beside an optional glyph.
+/// A section header's own action: flush to the header's full height, the
+/// label beside an optional glyph. A primary one stands on the accent-dim
+/// ground with a line on its left; a secondary one is bare on the header
+/// and takes the row wash under the pointer.
 struct GnatHeaderButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
     var primary = false
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 13))
-            .lineLimit(1)
-            .padding(.horizontal, 12)
-            .frame(maxHeight: .infinity)
-            .foregroundStyle(primary ? DesignTokens.accentInk(on: .window) : DesignTokens.ink(.primary, on: .window))
-            .background(primary && isEnabled ? DesignTokens.accentDim(on: .window) : DesignTokens.fill(.window))
-            .overlay(alignment: .leading) {
-                DesignTokens.rule(.separator, on: .chrome).frame(width: 1)
-            }
-            .opacity(isEnabled ? (configuration.isPressed ? 0.85 : 1) : 0.4)
-            .contentShape(Rectangle())
+        HoverReader { hovering in
+            configuration.label
+                .font(.system(size: 13))
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .frame(maxHeight: .infinity)
+                .foregroundStyle(primary ? DesignTokens.accentInk(on: .window) : DesignTokens.ink(.primary, on: .chrome))
+                .background(background(hovering: hovering))
+                .overlay(alignment: .leading) {
+                    if primary {
+                        DesignTokens.rule(.separator, on: .chrome).frame(width: 1)
+                    }
+                }
+                .brightness(primary && hovering ? hoverBrightness : 0)
+                .opacity(isEnabled ? (configuration.isPressed ? 0.85 : 1) : 0.4)
+                .contentShape(Rectangle())
+        }
+    }
+
+    private func background(hovering: Bool) -> Color {
+        if primary {
+            return isEnabled ? DesignTokens.accentDim(on: .window) : DesignTokens.fill(.window)
+        }
+        return hovering ? DesignTokens.rowWash(selected: false, on: .chrome) : .clear
     }
 }
 

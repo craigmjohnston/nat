@@ -352,7 +352,7 @@ final class NatClientTests: XCTestCase {
         }
     }
 
-    /// "Move Up" — the milestone lands directly before the one above it, and
+    /// "Move up" — the milestone lands directly before the one above it, and
     /// only `--before` is passed.
     func testMilestoneMoveBefore() async throws {
         let fakeRunner = FakeRunner(fixture: .milestoneMoveSuccess)
@@ -366,7 +366,7 @@ final class NatClientTests: XCTestCase {
         ])
     }
 
-    /// "Move Down" — the other side of the same command, and only `--after`.
+    /// "Move down" — the other side of the same command, and only `--after`.
     func testMilestoneMoveAfter() async throws {
         let fakeRunner = FakeRunner(fixture: .milestoneMoveSuccess)
         let client = NatClient(commandRunner: fakeRunner)

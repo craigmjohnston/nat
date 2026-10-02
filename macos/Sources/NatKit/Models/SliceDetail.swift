@@ -10,6 +10,9 @@ public struct SliceDetail: Codable, Equatable, Sendable {
     public let assignee: String
     public let branch: String?
     public let repo: String?
+    /// The branch a launch cuts the slice's worktree from, as nat resolves
+    /// it in the slice's repo; absent with no repo to ask.
+    public let base: String?
     public let pr: String?
     public let dependsOn: [String]?
     public let blocked: Bool
@@ -30,6 +33,7 @@ public struct SliceDetail: Codable, Equatable, Sendable {
         case assignee
         case branch
         case repo
+        case base
         case pr
         case dependsOn = "depends_on"
         case blocked
@@ -49,6 +53,7 @@ public struct SliceDetail: Codable, Equatable, Sendable {
         assignee = try c.decode(String.self, forKey: .assignee)
         branch = try c.decodeIfPresent(String.self, forKey: .branch)
         repo = try c.decodeIfPresent(String.self, forKey: .repo)
+        base = try c.decodeIfPresent(String.self, forKey: .base)
         pr = try c.decodeIfPresent(String.self, forKey: .pr)
         dependsOn = try c.decodeIfPresent([String].self, forKey: .dependsOn)
         blocked = try c.decode(Bool.self, forKey: .blocked)
@@ -67,6 +72,7 @@ public struct SliceDetail: Codable, Equatable, Sendable {
         assignee: String,
         branch: String? = nil,
         repo: String? = nil,
+        base: String? = nil,
         pr: String? = nil,
         dependsOn: [String]? = nil,
         blocked: Bool,
@@ -83,6 +89,7 @@ public struct SliceDetail: Codable, Equatable, Sendable {
         self.assignee = assignee
         self.branch = branch
         self.repo = repo
+        self.base = base
         self.pr = pr
         self.dependsOn = dependsOn
         self.blocked = blocked

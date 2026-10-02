@@ -2,7 +2,7 @@ import Combine
 import Sparkle
 import SwiftUI
 
-/// Sparkle's own update flow — the alert, "Install Update", "Install and
+/// Sparkle's own update flow — the alert, "Install update", "Install and
 /// Relaunch" — needs nothing from this app beyond starting it and offering a
 /// menu item to trigger a check by hand; `SUEnableAutomaticChecks` in the
 /// Info.plist is what makes it also check on Sparkle's own schedule.
@@ -37,13 +37,13 @@ final class UpdaterViewModel: ObservableObject {
     }
 }
 
-/// The "Check for Updates…" item NatApp adds to `CommandGroup(after:
+/// The "Check for updates…" item NatApp adds to `CommandGroup(after:
 /// .appInfo)`.
 struct CheckForUpdatesView: View {
     @ObservedObject var model: UpdaterViewModel
 
     var body: some View {
-        Button("Check for Updates…") {
+        Button("Check for updates…") {
             model.checkForUpdates()
         }
         .disabled(!model.canCheckForUpdates)

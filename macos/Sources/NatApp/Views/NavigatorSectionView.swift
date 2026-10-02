@@ -74,14 +74,17 @@ extension NavSectionView where Actions == EmptyView {
 
 /// A section header's band with nothing in it — no chevron, no label, no
 /// actions: what heads the navigator while nothing is selected, so the
-/// column keeps the shape it has with a selection.
+/// column keeps the shape it has with a selection. Its rule sits under the
+/// band, not inside it — where a section's body draws its top line, and
+/// where `MainPaneHeader` draws its own — so the two headings line up.
 struct NavEmptyHeader: View {
     var body: some View {
-        Color.clear
-            .frame(maxWidth: .infinity)
-            .frame(height: GnatMetrics.sectionHeadHeight)
-            .background(DesignTokens.fill(.chrome))
-            .overlay(alignment: .bottom) { DesignTokens.rule(.separator, on: .chrome).frame(height: 1) }
+        VStack(spacing: 0) {
+            DesignTokens.fill(.chrome)
+                .frame(maxWidth: .infinity)
+                .frame(height: GnatMetrics.sectionHeadHeight)
+            DesignTokens.rule(.separator, on: .chrome).frame(height: 1)
+        }
     }
 }
 
@@ -209,28 +212,50 @@ struct ThreadEventCard: View {
     }
 }
 
-/// A bordered mono chip: the launch form's model and effort pickers.
-struct NavChipMenu<Items: View>: View {
+/// A Thread fact's value the user can change: the value as a fact draws it,
+/// with a small caret after it and the hover wash under it, opening a menu of
+/// the choices — the launch card's model and effort. An empty value reads
+/// "default", a step quieter than a chosen one. Disabled, it is drawn as a
+/// plain fact in the quaternary ink, with no caret.
+struct NavFactMenu<Items: View>: View {
     @Environment(\.isEnabled) private var isEnabled
-    let title: String
+    let value: String
     @ViewBuilder var items: () -> Items
 
     var body: some View {
-        Menu {
-            items()
-        } label: {
-            Text("\(title) \u{25BE}")
-                .monoXS()
-                .ink(isEnabled ? .secondary : .quaternary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 4).strokeBorder(DesignTokens.rule(.border, on: .window), lineWidth: 1)
+        if isEnabled {
+            Menu {
+                items()
+            } label: {
+                HStack(spacing: 4) {
+                    text
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .semibold))
+                        .ink(.tertiary)
                 }
+                .monoXS()
+                .padding(.horizontal, 4)
+                .hoverWash(cornerRadius: 4)
+                .contentShape(Rectangle())
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            // Back out the padding the wash needs, so the value starts in the
+            // column every other fact's value starts in.
+            .padding(.horizontal, -4)
+        } else {
+            // Disabled, a plain fact: a disabled Menu fades its label on top
+            // of any ink, which would leave it fainter than the facts beside it.
+            text.monoXS()
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
+    }
+
+    private var text: some View {
+        Text(value.isEmpty ? "default" : value)
+            .ink(isEnabled ? (value.isEmpty ? .secondary : .primary) : .quaternary)
+            .lineLimit(1)
     }
 }
 

@@ -87,6 +87,10 @@ public enum DesignTokens {
     /// disabled glyph and the empty-slot rule, never words to read.
     public static let labelQuaternary = token(\.labelQuaternary)
 
+    /// A scroll bar's knob (`ThinScroller`): the quaternary ink, which is for
+    /// marks rather than words.
+    static let scrollerKnob = dynamicNSColor(\.labelQuaternary)
+
     // MARK: - Symbols
 
     /// The scratch tab's glyph — a pencil and a scribble — for the tab itself

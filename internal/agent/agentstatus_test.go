@@ -161,6 +161,22 @@ func TestReadStatusContextAbsentNotZero(t *testing.T) {
 	}
 }
 
+// The tokens in the window are the last turn's input in all three of its
+// parts; a payload with no current_usage (before the first response) leaves
+// them absent rather than zero.
+func TestReadStatusContextTokens(t *testing.T) {
+	dir := isolatedStatusDir(t)
+	write(t, payloadPath(dir, "nat-a"),
+		`{"context_window":{"used_percentage":33,"current_usage":{"input_tokens":2,"output_tokens":672,"cache_creation_input_tokens":2321,"cache_read_input_tokens":323517}}}`)
+	if st := readStatus(dir, "nat-a"); st.ContextTokens == nil || *st.ContextTokens != 325840 {
+		t.Errorf("context tokens = %v, want 325840", st.ContextTokens)
+	}
+	write(t, payloadPath(dir, "nat-a"), `{"context_window":{"used_percentage":null,"current_usage":null}}`)
+	if st := readStatus(dir, "nat-a"); st.ContextTokens != nil {
+		t.Errorf("context tokens = %v, want nil before the first response", *st.ContextTokens)
+	}
+}
+
 func TestReadStatusNothingReadable(t *testing.T) {
 	dir := isolatedStatusDir(t)
 	if st := readStatus(dir, "nat-a"); st != (AgentStatus{}) {

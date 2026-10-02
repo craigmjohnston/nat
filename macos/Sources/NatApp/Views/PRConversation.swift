@@ -161,6 +161,7 @@ struct PRComposerView: View {
                         .frame(width: 24, height: PRComposerMetrics.sendRowHeight)
                         .background(canSend ? DesignTokens.accent : DesignTokens.accentMuted(on: .field))
                         .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .hoverBrightens()
                     }
                     .buttonStyle(.plain)
                     .disabled(!canSend)
@@ -257,7 +258,7 @@ struct ReviewersBlock: View {
                                         .frame(width: 16, height: 16)
                                         .contentShape(Rectangle())
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(GnatIconButtonStyle())
                                 .disabled(busy)
                                 .help("Withdraw the request to \(login)")
                             }
@@ -284,7 +285,7 @@ struct ReviewersBlock: View {
                             askingOther = true
                         }
                     } label: {
-                        HeaderActionLabel(title: "Request Review", systemImage: "person.badge.plus", isBusy: busy)
+                        HeaderActionLabel(title: "Request review", systemImage: "person.badge.plus", isBusy: busy)
                     }
                     .menuStyle(.button)
                     .buttonStyle(GnatButtonStyle())

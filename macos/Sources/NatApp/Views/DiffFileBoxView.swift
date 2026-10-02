@@ -381,13 +381,15 @@ struct PendingCommentCardView: View {
                 Spacer(minLength: 0)
                 Button(action: onEdit) {
                     Image(systemName: "pencil").font(.system(size: 11)).ink(.tertiary)
+                        .frame(width: 18, height: 18)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(GnatIconButtonStyle())
                 .help("Edit this comment")
                 Button(action: onDelete) {
                     Image(systemName: "trash").font(.system(size: 11)).ink(.tertiary)
+                        .frame(width: 18, height: 18)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(GnatIconButtonStyle())
                 .help("Delete this comment")
             }
             Text(comment.text)
