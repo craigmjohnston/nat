@@ -81,7 +81,10 @@ enum AppStories {
             let store = appModel.visualStore(projectID: Fixtures.projectID)
             store.loader = Fixtures.visualImageLoader
             await store.load(sliceID: sliceID, visuals: Fixtures.visualChanges)
-            if seeded { Fixtures.seedPendingVisualComments(into: store) }
+            if seeded {
+                Fixtures.seedPendingVisualComments(into: store)
+                store.toggleViewed(sliceID: sliceID, index: 1)
+            }
         }
     }
 
@@ -235,8 +238,8 @@ enum AppStories {
 
         Story(
             name: "window-visuals-comments",
-            summary: "The same with a live agent and comments pending: a numbered pin on the first image, "
-                + "its card under it, the whole-image comment on the second, and Send 2 comments on the header.",
+            summary: "The same with a live agent and comments pending, the first image marked viewed — ticked "
+                + "in its row and header, folded in the pane — the whole-image comment on the second, and Send 2 comments.",
             size: window
         ) {
             await visualsPane(live: true, seeded: true)

@@ -47,10 +47,14 @@ struct VisualsPane: View {
                     LazyVStack(spacing: 0, pinnedViews: .sectionHeaders) {
                         ForEach(visuals) { visual in
                             Section {
-                                VisualImageSection(
-                                    appModel: appModel, review: review, slice: slice, visual: visual,
-                                    paneWidth: paneWidth, authorName: authorName,
-                                    horizontalAnchor: horizontalAnchor)
+                                // A folded image is its header alone, as a
+                                // folded diff file is.
+                                if !store.isCollapsed(sliceID: slice.id, index: visual.index) {
+                                    VisualImageSection(
+                                        appModel: appModel, review: review, slice: slice, visual: visual,
+                                        paneWidth: paneWidth, authorName: authorName,
+                                        horizontalAnchor: horizontalAnchor)
+                                }
                             } header: {
                                 VisualHeader(appModel: appModel, review: review, slice: slice, visual: visual)
                             }
@@ -105,8 +109,11 @@ struct VisualHeader: View {
         let zoom = store.zoom(sliceID: slice.id, index: visual.index)
         let pending = store.comments(for: slice.id).contains { $0.index == visual.index }
         let size = store.image(for: visual.uri)?.pixelSize
+        let viewed = store.isViewed(sliceID: slice.id, index: visual.index)
         VStack(spacing: 0) {
             HStack(spacing: 8) {
+                DisclosureChevron(open: !store.isCollapsed(sliceID: slice.id, index: visual.index))
+                    .transaction { $0.animation = nil }
                 Text(visual.name)
                     .font(.system(size: 13, weight: .medium))
                     .ink(.primary)
@@ -138,11 +145,26 @@ struct VisualHeader: View {
                 }
                 .buttonStyle(GnatIconButtonStyle())
                 .help("Comment on the whole image")
+                // The diff header's viewed toggle, box and word, at its
+                // trailing edge.
+                Button(action: { store.toggleViewed(sliceID: slice.id, index: visual.index) }) {
+                    HStack(spacing: 6) {
+                        ViewedCheckbox(checked: viewed)
+                        Text("viewed").monoXS().ink(viewed ? .primary : .secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(viewed ? "Mark not viewed" : "Mark viewed")
             }
             .padding(.horizontal, 12)
             .frame(height: DiffMetrics().headerHeight - 1)
             .background(DesignTokens.fill(.chrome))
             .environment(\.ground, .chrome)
+            // The header's bare parts fold the image, as a diff file
+            // header's do.
+            .contentShape(Rectangle())
+            .onTapGesture { store.toggleCollapsed(sliceID: slice.id, index: visual.index) }
             DesignTokens.rule(.separator, on: .chrome).frame(height: 1)
         }
     }

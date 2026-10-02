@@ -94,6 +94,52 @@ final class VisualStoreTests: XCTestCase {
         XCTAssertEqual(store.zoom(sliceID: slice, index: 2), 0.8)
     }
 
+    // MARK: - Viewed and folded
+
+    func testMarkingViewedFoldsAndUnmarkingLeavesTheFold() {
+        let store = VisualStore(client: FixtureNatClient())
+        XCTAssertFalse(store.isViewed(sliceID: slice, index: 1))
+        XCTAssertFalse(store.isCollapsed(sliceID: slice, index: 1))
+
+        store.toggleViewed(sliceID: slice, index: 1)
+        XCTAssertTrue(store.isViewed(sliceID: slice, index: 1))
+        XCTAssertTrue(store.isCollapsed(sliceID: slice, index: 1), "viewed folds, GitHub-fashion")
+        XCTAssertFalse(store.isViewed(sliceID: slice, index: 2), "one image never marks another")
+        XCTAssertFalse(store.isViewed(sliceID: "other", index: 1))
+
+        store.toggleViewed(sliceID: slice, index: 1)
+        XCTAssertFalse(store.isViewed(sliceID: slice, index: 1))
+        XCTAssertTrue(store.isCollapsed(sliceID: slice, index: 1), "un-marking leaves the fold alone")
+
+        store.toggleCollapsed(sliceID: slice, index: 1)
+        XCTAssertFalse(store.isCollapsed(sliceID: slice, index: 1))
+        store.toggleCollapsed(sliceID: slice, index: 2)
+        XCTAssertTrue(store.isCollapsed(sliceID: slice, index: 2))
+        XCTAssertFalse(store.isViewed(sliceID: slice, index: 2), "folding is not viewing")
+    }
+
+    func testANewHandInDropsMarksOnImagesItReplaced() async {
+        let store = VisualStore(client: FixtureNatClient())
+        store.loader = { _ in .unavailable }
+        await store.load(sliceID: slice, visuals: [wide, tall])
+        store.toggleViewed(sliceID: slice, index: 1)
+        store.toggleViewed(sliceID: slice, index: 2)
+
+        await store.load(sliceID: slice, visuals: [wide, tall])
+        XCTAssertTrue(store.isViewed(sliceID: slice, index: 2), "the same hand-in read again keeps its marks")
+
+        let retaken = VisualChange(index: 2, name: "Tall", uri: "/tmp/tall-2.png")
+        await store.load(sliceID: slice, visuals: [wide, retaken])
+        XCTAssertTrue(store.isViewed(sliceID: slice, index: 1))
+        XCTAssertTrue(store.isCollapsed(sliceID: slice, index: 1))
+        XCTAssertFalse(store.isViewed(sliceID: slice, index: 2), "a new image at the same index starts unviewed")
+        XCTAssertFalse(store.isCollapsed(sliceID: slice, index: 2))
+
+        await store.load(sliceID: slice, visuals: [])
+        XCTAssertNil(store.viewed[slice])
+        XCTAssertNil(store.collapsed[slice])
+    }
+
     // MARK: - Comments
 
     private func set(_ store: VisualStore, _ visual: VisualChange, _ point: CGPoint?, _ text: String, id: UUID? = nil)

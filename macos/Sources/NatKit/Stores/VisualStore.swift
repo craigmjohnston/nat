@@ -54,12 +54,22 @@ public final class VisualStore {
     /// first, then top to bottom and left to right.
     public private(set) var comments: [String: [PendingVisualComment]] = [:]
 
+    /// Which images have been marked viewed, and which are folded to their
+    /// header, by slice ID then visual index — the screen's own state, never
+    /// written anywhere, as `DiffStore`'s viewed and collapsed files are.
+    public private(set) var viewed: [String: Set<Int>] = [:]
+    public private(set) var collapsed: [String: Set<Int>] = [:]
+
     /// How a URI becomes an image — a seam a story or test swaps after first
     /// access (nothing is read until `load`), so `AppModel` takes no new
     /// parameter for it. Runs off the main actor.
     public var loader: @Sendable (String) -> VisualImage = VisualStore.fileLoader
 
     private let client: NatClientProtocol
+
+    /// The URI each index carried at the last load, by slice — what tells a
+    /// newer hand-in's image apart from the one a viewed mark was left on.
+    private var seenURIs: [String: [Int: String]] = [:]
 
     public init(client: NatClientProtocol = NatClient()) {
         self.client = client
@@ -91,12 +101,22 @@ public final class VisualStore {
     /// Load every image of a slice's hand-in not already loaded, off the main
     /// actor, and publish them together — so nothing draws until every size
     /// is known and no list height ever shifts. Comments left on images the
-    /// hand-in no longer carries are dropped: a new hand-in starts afresh.
+    /// hand-in no longer carries are dropped, and so are their viewed marks
+    /// and folds: a new hand-in starts afresh.
     public func load(sliceID: String, visuals: [VisualChange]) async {
+        let current = Set(visuals.map { "\($0.index)\u{0}\($0.uri)" })
         if let pending = comments[sliceID] {
-            let current = Set(visuals.map { "\($0.index)\u{0}\($0.uri)" })
             let kept = pending.filter { current.contains("\($0.index)\u{0}\($0.uri)") }
             comments[sliceID] = kept.isEmpty ? nil : kept
+        }
+        // A viewed mark is keyed by index alone, so an index whose URI
+        // changed is a different image and loses it too.
+        let uris = Dictionary(visuals.map { ($0.index, $0.uri) }, uniquingKeysWith: { first, _ in first })
+        if seenURIs[sliceID] != uris {
+            let kept = Set(uris.keys.filter { seenURIs[sliceID]?[$0] == uris[$0] })
+            viewed[sliceID] = viewed[sliceID].map { $0.intersection(kept) }.flatMap { $0.isEmpty ? nil : $0 }
+            collapsed[sliceID] = collapsed[sliceID].map { $0.intersection(kept) }.flatMap { $0.isEmpty ? nil : $0 }
+            seenURIs[sliceID] = uris
         }
         var seen = Set(loaded.keys)
         let missing = visuals.map(\.uri).filter { seen.insert($0).inserted }
@@ -142,6 +162,37 @@ public final class VisualStore {
     /// Back to fitted to the pane's width.
     public func resetZoom(sliceID: String, index: Int) {
         zooms[sliceID]?[index] = nil
+    }
+
+    // MARK: - Viewed and folded
+
+    public func isViewed(sliceID: String, index: Int) -> Bool {
+        viewed[sliceID]?.contains(index) ?? false
+    }
+
+    public func isCollapsed(sliceID: String, index: Int) -> Bool {
+        collapsed[sliceID]?.contains(index) ?? false
+    }
+
+    /// Toggle an image's viewed mark. Marking it viewed folds it too,
+    /// GitHub-fashion, as `DiffStore.toggleViewed` does; un-marking it leaves
+    /// its fold as it was.
+    public func toggleViewed(sliceID: String, index: Int) {
+        if isViewed(sliceID: sliceID, index: index) {
+            viewed[sliceID]?.remove(index)
+        } else {
+            viewed[sliceID, default: []].insert(index)
+            collapsed[sliceID, default: []].insert(index)
+        }
+    }
+
+    /// Toggle an image's own fold, whether or not it is viewed.
+    public func toggleCollapsed(sliceID: String, index: Int) {
+        if isCollapsed(sliceID: sliceID, index: index) {
+            collapsed[sliceID]?.remove(index)
+        } else {
+            collapsed[sliceID, default: []].insert(index)
+        }
     }
 
     // MARK: - Comments

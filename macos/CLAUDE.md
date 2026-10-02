@@ -132,7 +132,9 @@ handed in with `nat slice-visuals`). `VisualStore` (one per project,
 `AppModel.visualStore`) and `VisualReview` (the shell's) mirror `DiffStore`/
 `DiffReview`: images loaded by URI through a swappable `loader` (local paths
 only — any other URI is a placeholder card, no network), zoom per image,
-comments per slice at a point in the image's own pixels or on the whole image.
+comments per slice at a point in the image's own pixels or on the whole image,
+and per-image viewed/folded marks that follow `DiffStore.toggleViewed`'s rule
+(viewed folds; a newer image at that index starts afresh).
 Send is `agent-send`, then `slice-rework` only where the slice is handed back;
 a failed send keeps the comments. The comment box is drawn in the pane, not a
 `.popover`, so the gallery can render it. `VisualsPane` is the one scrolling
