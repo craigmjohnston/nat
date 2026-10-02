@@ -61,7 +61,7 @@ struct OnboardingView: View {
                 HStack(spacing: 10) {
                     if natFound {
                         Button(action: onNewProject) {
-                            Text("Add a Project…")
+                            Text("Add a project…")
                                 .frame(width: 120)
                         }
                         .buttonStyle(PrimaryButtonStyle())
@@ -79,7 +79,7 @@ struct OnboardingView: View {
     private var checkAgainButton: some View {
         Button(action: checkAgain) {
             AsyncActionLabel(isBusy: isChecking) {
-                Text("Check Again")
+                Text("Check again")
             }
         }
         .disabled(isChecking)

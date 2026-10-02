@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
@@ -80,6 +81,49 @@ func TestSliceShowPrintsJSON(t *testing.T) {
 	}
 	if !got.HandedBack {
 		t.Errorf("handed_back = %v, want true", got.HandedBack)
+	}
+	if got.Base != git.DefaultBase {
+		t.Errorf("base = %q, want the fallback %q with origin naming none", got.Base, git.DefaultBase)
+	}
+}
+
+// The base is what the slice's repo names as its default branch, read there;
+// with no repo anywhere there is nowhere to read it, and it is left out.
+func TestSliceShowBase(t *testing.T) {
+	const sliceID = "3b738308f65481708c99eccab4463d8f"
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			sliceID: {slicePageWithBranch(sliceID, "Test slice", notion.SliceTodo, "M1: First", "")},
+		},
+		dataSources: map[string]notion.DataSource{
+			"slices-ds": selectMilestoneSlicesDS("M1: First"),
+		},
+	}
+	env, out := testEnv(testConfig(t), api)
+	runner := &fakeGitRunner{base: "origin/trunk"}
+	env.NewGit = func() GitCLI { return git.NewWithRunner(runner) }
+	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-show --json: %v", err)
+	}
+	var got sliceShowJSON
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("output is not JSON: %v", err)
+	}
+	if got.Base != "origin/trunk" || runner.dir != "/tmp/nat" {
+		t.Errorf("base = %q read in %q, want origin/trunk from the working dir", got.Base, runner.dir)
+	}
+
+	cfg := testConfig(t)
+	project := cfg.Projects["project-1"]
+	project.WorkingDir = ""
+	cfg.Projects["project-1"] = project
+	env, out = testEnv(cfg, api)
+	env.NewGit = func() GitCLI { t.Fatal("git asked with no repo to ask in"); return nil }
+	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-show --json: %v", err)
+	}
+	if strings.Contains(out.String(), `"base"`) {
+		t.Errorf("output = %s, want no base with no repo", out.String())
 	}
 }
 

@@ -95,7 +95,7 @@ struct SliceNavigatorView: View {
         .confirmationDialog(
             approveQuestion, isPresented: Bindable(review).showApproveConfirm, titleVisibility: .visible
         ) {
-            Button(diffStore.pendingCommentCount > 0 ? "Send & Approve on Hand-back" : "Approve & Open PR") {
+            Button(diffStore.pendingCommentCount > 0 ? "Send & approve on hand-back" : "Approve & open PR") {
                 Task { await review.approve(appModel: appModel, slice: slice) }
             }
             Button("Cancel", role: .cancel) {}
@@ -293,6 +293,7 @@ struct SliceNavigatorView: View {
                     if nav.showsLaunch {
                         LaunchCard(
                             mode: launchMode(nav), model: $model, effort: $effort, options: agentOptions,
+                            base: detail.detail?.base,
                             enabled: appModel.sliceActions.isEnabled(.launch, sliceID: slice.id, available: nav.canLaunch),
                             isBusy: isLaunching, onLaunch: launch)
                     }
@@ -360,11 +361,8 @@ struct SliceNavigatorView: View {
                         .font(.system(size: 11, weight: .semibold))
                         .frame(width: 26)
                         .frame(maxHeight: .infinity)
-                        .foregroundStyle(DesignTokens.ink(.primary, on: .window))
-                        .background(DesignTokens.fill(.window))
-                        .overlay(alignment: .leading) {
-                            DesignTokens.rule(.separator, on: .chrome).frame(width: 1)
-                        }
+                        .foregroundStyle(DesignTokens.ink(.primary, on: .chrome))
+                        .hoverWash(cornerRadius: 0)
                         .contentShape(Rectangle())
                 }
                 .menuStyle(.button)

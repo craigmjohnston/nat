@@ -60,10 +60,12 @@ struct ThreadIcon: View {
 // MARK: - Launch
 
 /// The Thread's last item while the slice can be launched: a ghost card —
-/// dashed, not yet anything that happened — saying what Launch will do, with
-/// the model and effort chips and Launch itself. Blocked, it is the same card
-/// greyed and hatched: the chips and Launch disabled, and what it waits on
-/// said.
+/// dashed, not yet anything that happened — drawn as the Launched card it
+/// will become: its header (with Launch itself at the trailing end), what
+/// Launch will do, then the facts that card will carry on the chrome ground
+/// under a line. Model and effort are editable there, each a menu; the base
+/// the worktree is cut from is not. Blocked, it is the same card greyed and
+/// hatched: the menus and Launch disabled, and what it waits on said.
 struct LaunchCard: View {
     enum Mode: Equatable {
         case launch
@@ -77,6 +79,9 @@ struct LaunchCard: View {
     @Binding var model: String
     @Binding var effort: String
     let options: AgentOptions
+    /// The branch the worktree is cut from, as nat resolves it; nil before
+    /// the slice's detail is read, or with no repo to read it in.
+    let base: String?
     let enabled: Bool
     let isBusy: Bool
     let onLaunch: () -> Void
@@ -88,52 +93,77 @@ struct LaunchCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+            HStack(alignment: .center, spacing: 6) {
                 ThreadIcon(symbol: blocked ? "lock" : "play.circle")
                 Text(blocked ? "Blocked" : mode == .relaunch ? "Relaunch" : "Launch")
                     .monoXS(weight: .medium)
                     .ink(blocked ? .tertiary : .secondary)
                 Spacer(minLength: 0)
+                Button(action: onLaunch) {
+                    HeaderActionLabel(title: mode == .relaunch ? "Relaunch" : "Launch", systemImage: "arrow.right", isBusy: isBusy)
+                }
+                .buttonStyle(GnatButtonStyle(primary: !blocked))
+                .disabled(!enabled || blocked)
             }
             .padding(.horizontal, 10)
-            .padding(.top, 8)
+            .padding(.top, 6)
 
             explanation
                 .font(.system(size: 13))
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 10)
-                .padding(.top, 4)
+                .padding(.top, 2)
                 .padding(.bottom, 8)
 
-            HStack(spacing: 6) {
-                NavChipMenu(title: model.isEmpty ? "default model" : model) {
-                    Button("Default") { model = "" }
-                    ForEach(options.models, id: \.self) { option in Button(option) { model = option } }
-                }
-                NavChipMenu(title: effort.isEmpty ? "default effort" : effort) {
-                    Button("Default") { effort = "" }
-                    ForEach(options.efforts, id: \.self) { option in Button(option) { effort = option } }
-                }
-                Spacer(minLength: 0)
-                Button(action: onLaunch) {
-                    HeaderActionLabel(title: mode == .relaunch ? "Relaunch" : "Launch", systemImage: "arrow.right", isBusy: isBusy)
-                }
-                .buttonStyle(GnatButtonStyle(primary: !blocked))
-                .disabled(!enabled)
-            }
-            .disabled(blocked)
-            .padding(.horizontal, 10)
-            .padding(.bottom, 8)
+            facts
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             if blocked { BlockedHatch().clipShape(RoundedRectangle(cornerRadius: 4)) }
         }
+        .clipShape(RoundedRectangle(cornerRadius: 4))
         .overlay {
             RoundedRectangle(cornerRadius: 4).strokeBorder(
                 DesignTokens.rule(.border, on: .window), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
         }
+    }
+
+    /// The Launched card's own facts, in its order: model and effort as
+    /// menus, then the base as a plain value.
+    private var facts: some View {
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
+            GridRow {
+                Text("model").ink(.tertiary)
+                NavFactMenu(value: model) {
+                    Button("Default") { model = "" }
+                    ForEach(options.models, id: \.self) { option in Button(option) { model = option } }
+                }
+            }
+            GridRow {
+                Text("effort").ink(.tertiary)
+                NavFactMenu(value: effort) {
+                    Button("Default") { effort = "" }
+                    ForEach(options.efforts, id: \.self) { option in Button(option) { effort = option } }
+                }
+            }
+            if let base {
+                GridRow {
+                    Text("base").ink(.tertiary)
+                    Text(base)
+                        .ink(blocked ? .quaternary : .primary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+        }
+        .disabled(blocked)
+        .monoXS()
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(blocked ? Color.clear : DesignTokens.fill(.chrome))
+        .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
     }
 
     @ViewBuilder

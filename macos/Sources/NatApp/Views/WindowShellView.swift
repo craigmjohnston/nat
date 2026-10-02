@@ -113,7 +113,7 @@ struct WindowShellView: View {
         return HStack(spacing: 10) {
             if let project = crumbs.project {
                 HStack(spacing: 10) {
-                    Text(project).ink(.primary)
+                    Text(project).ink(.secondary)
                     Text("/").ink(.quaternary)
                 }
                 .transition(.opacity)
@@ -125,7 +125,7 @@ struct WindowShellView: View {
                         FolderGlyph(open: true, color: DesignTokens.ink(.tertiary, on: .header))
                             .padding(.trailing, -3)
                     }
-                    Text(parent).ink(.primary)
+                    Text(parent).ink(.secondary)
                     Text("/").ink(.quaternary)
                 }
                 .transition(.opacity)
@@ -136,7 +136,7 @@ struct WindowShellView: View {
                         .padding(.trailing, -3)
                         .transition(.opacity)
                 }
-                Text(crumbs.title).ink(.primary)
+                Text(crumbs.title).ink(.secondary)
             }
         }
         .contentTransition(.interpolate)

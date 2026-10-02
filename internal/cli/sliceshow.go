@@ -61,21 +61,25 @@ func sliceShow(ctx context.Context, args []string, env Env) error {
 	}
 
 	if *asJSON {
-		return writeSliceShowJSON(env.Out, s, milestone, project, depByID, brief)
+		return writeSliceShowJSON(env.Out, s, milestone, project, depByID, brief, sliceBase(env, s, project))
 	}
 	return writeSliceShowMarkdown(env.Out, s, milestone, project, brief)
 }
 
 // sliceShowJSON is the full structured form of a single slice.
 type sliceShowJSON struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	URL        string   `json:"url"`
-	Status     string   `json:"status"`
-	Milestone  string   `json:"milestone"`
-	Assignee   string   `json:"assignee"`
-	Branch     string   `json:"branch,omitempty"`
-	Repo       string   `json:"repo,omitempty"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	URL       string `json:"url"`
+	Status    string `json:"status"`
+	Milestone string `json:"milestone"`
+	Assignee  string `json:"assignee"`
+	Branch    string `json:"branch,omitempty"`
+	Repo      string `json:"repo,omitempty"`
+	// Base is the branch a launch cuts the slice's worktree from, as
+	// [git.CLI.Base] resolves it in the slice's repo — omitted with no repo
+	// to ask.
+	Base       string   `json:"base,omitempty"`
 	PR         string   `json:"pr,omitempty"`
 	DependsOn  []string `json:"depends_on,omitempty"`
 	Blocked    bool     `json:"blocked"`
@@ -95,7 +99,7 @@ type followUpJSON struct {
 }
 
 // writeSliceShowJSON encodes the slice as JSON.
-func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, project config.ProjectConfig, depByID map[string]domain.Slice, brief string) error {
+func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, project config.ProjectConfig, depByID map[string]domain.Slice, brief, base string) error {
 	// Compute state the same way info.go does.
 	slicesByID := domain.SlicesByID([]domain.Slice{s})
 	// Add dependencies to the index so blocking can be computed.
@@ -114,6 +118,7 @@ func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, proje
 		Assignee:   s.AssigneeName,
 		Branch:     s.Branch,
 		Repo:       sliceRepo(s, project),
+		Base:       base,
 		PR:         s.PRURL,
 		DependsOn:  s.DependsOn,
 		Blocked:    domain.Blocked(s, slicesByID),
@@ -166,6 +171,17 @@ func writeSliceShowMarkdown(out io.Writer, s domain.Slice, m domain.Milestone, p
 // sliceRepo is the repo a slice is working in: the slice's own override when it
 // has one, and the project default otherwise. It is the same logic
 // briefOf uses.
+// sliceBase is the base a launch of s would cut from: the same resolution
+// [actions.PlaceAgent] makes, read from the slice's repo. Empty with no repo,
+// since there is nowhere to read one from.
+func sliceBase(env Env, s domain.Slice, project config.ProjectConfig) string {
+	dir := sliceRepo(s, project)
+	if dir == "" {
+		return ""
+	}
+	return env.NewGit().Base(dir)
+}
+
 func sliceRepo(s domain.Slice, project config.ProjectConfig) string {
 	if s.Repo != "" {
 		return s.Repo

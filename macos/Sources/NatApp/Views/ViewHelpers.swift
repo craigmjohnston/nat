@@ -359,6 +359,7 @@ struct PrimaryButtonStyle: ButtonStyle {
                 DesignTokens.accent,
                 in: RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius)
             )
+            .hoverBrightens()
             .opacity(buttonOpacity(isPressed: configuration.isPressed, isEnabled: isEnabled))
             .contentShape(RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius))
     }
@@ -376,6 +377,7 @@ struct SecondaryButtonStyle: ButtonStyle {
             .ink(.primary)
             .padding(.horizontal, ButtonMetrics.horizontalPadding)
             .frame(height: ButtonMetrics.height)
+            .hoverWash(cornerRadius: ButtonMetrics.cornerRadius, enabled: isEnabled)
             .control(radius: ButtonMetrics.cornerRadius, border: .hairline)
             .opacity(buttonOpacity(isPressed: configuration.isPressed, isEnabled: isEnabled))
             .contentShape(RoundedRectangle(cornerRadius: ButtonMetrics.cornerRadius))
@@ -391,6 +393,7 @@ struct GhostButtonStyle: ButtonStyle {
             .ink(.secondary)
             .padding(.horizontal, ButtonMetrics.ghostHorizontalPadding)
             .frame(height: ButtonMetrics.height)
+            .hoverWash(cornerRadius: ButtonMetrics.cornerRadius, enabled: isEnabled)
             .opacity(buttonOpacity(isPressed: configuration.isPressed, isEnabled: isEnabled))
             .contentShape(Rectangle())
     }
@@ -423,6 +426,7 @@ struct InspectorPrimaryButtonStyle: ButtonStyle {
                 DesignTokens.accent,
                 in: RoundedRectangle(cornerRadius: InspectorActionMetrics.cornerRadius)
             )
+            .hoverBrightens()
             .opacity(buttonOpacity(isPressed: configuration.isPressed, isEnabled: isEnabled))
             .contentShape(RoundedRectangle(cornerRadius: InspectorActionMetrics.cornerRadius))
     }
@@ -437,6 +441,7 @@ struct InspectorSecondaryButtonStyle: ButtonStyle {
             .ink(.primary)
             .frame(maxWidth: .infinity)
             .frame(height: InspectorActionMetrics.height)
+            .hoverWash(cornerRadius: InspectorActionMetrics.cornerRadius, enabled: isEnabled)
             .control(radius: InspectorActionMetrics.cornerRadius, border: .hairline)
             .opacity(buttonOpacity(isPressed: configuration.isPressed, isEnabled: isEnabled))
             .contentShape(RoundedRectangle(cornerRadius: InspectorActionMetrics.cornerRadius))
@@ -469,6 +474,8 @@ struct InspectorSplitButton<Menu: View>: View {
                 .primaryButtonLabel()
                 .frame(maxWidth: .infinity)
                 .frame(height: InspectorActionMetrics.height)
+                .background(DesignTokens.accent)
+                .hoverBrightens()
             }
             .buttonStyle(.plain)
             .disabled(!isEnabled || isBusy)
@@ -482,6 +489,8 @@ struct InspectorSplitButton<Menu: View>: View {
                     .font(.system(size: 12, weight: .medium))
                     .ink(.onAccent)
                     .frame(width: InspectorActionMetrics.height, height: InspectorActionMetrics.height)
+                    .background(DesignTokens.accent)
+                    .hoverBrightens()
             }
             .buttonStyle(.plain)
             .disabled(!isEnabled)

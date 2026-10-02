@@ -28,6 +28,7 @@ final class SliceDetailTests: XCTestCase {
         XCTAssertEqual(detail.milestone, "Milestone 1")
         XCTAssertEqual(detail.brief, "Do the thing")
         XCTAssertEqual(detail.branch, "feature/test")
+        XCTAssertNil(detail.base)
         XCTAssertFalse(detail.blocked)
         XCTAssertFalse(detail.handedBack)
     }
@@ -43,6 +44,7 @@ final class SliceDetailTests: XCTestCase {
             "assignee": "Jane",
             "branch": "review/pr",
             "repo": "/path/to/repo",
+            "base": "origin/main",
             "pr": "https://github.com/owner/repo/pull/42",
             "depends_on": ["slice-123", "slice-124"],
             "blocked": true,
@@ -61,6 +63,7 @@ final class SliceDetailTests: XCTestCase {
         XCTAssertEqual(detail.status, "Done")
         XCTAssertEqual(detail.branch, "review/pr")
         XCTAssertEqual(detail.repo, "/path/to/repo")
+        XCTAssertEqual(detail.base, "origin/main")
         XCTAssertEqual(detail.pr, "https://github.com/owner/repo/pull/42")
         XCTAssertEqual(detail.dependsOn, ["slice-123", "slice-124"])
         XCTAssertTrue(detail.blocked)

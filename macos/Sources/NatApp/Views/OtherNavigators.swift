@@ -232,7 +232,7 @@ struct WorkshopNavigatorView: View {
             }
         }
         .alert("End the workshop session?", isPresented: $confirmingEnd) {
-            Button("End Session", role: .destructive) {
+            Button("End session", role: .destructive) {
                 Task { endError = await appModel.closeWorkshopTab() }
             }
             Button("Cancel", role: .cancel) {}

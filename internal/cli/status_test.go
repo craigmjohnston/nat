@@ -449,7 +449,7 @@ func TestStatusJSONCarriesAgentStatusline(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	payload := `{"model":{"id":"claude-sonnet-5","display_name":"Sonnet 5"},"effort":{"level":"high"},"context_window":{"used_percentage":12.5}}`
+	payload := `{"model":{"id":"claude-sonnet-5","display_name":"Sonnet 5"},"effort":{"level":"high"},"context_window":{"used_percentage":12.5,"current_usage":{"input_tokens":5,"cache_creation_input_tokens":10,"cache_read_input_tokens":100}}}`
 	if err := os.WriteFile(filepath.Join(dir, "nat-11111111.json"), []byte(payload), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -477,10 +477,11 @@ func TestStatusJSONCarriesAgentStatusline(t *testing.T) {
 		t.Fatalf("agents = %v", doc.Agents)
 	}
 	first, second := doc.Agents[0], doc.Agents[1]
-	if first["model"] != "Sonnet 5" || first["effort"] != "high" || first["context_percent"] != 12.5 {
+	if first["model"] != "Sonnet 5" || first["effort"] != "high" || first["context_percent"] != 12.5 ||
+		first["context_tokens"] != 115.0 {
 		t.Errorf("slice-1 = %v, want the payload's model, effort and context", first)
 	}
-	for _, k := range []string{"model", "effort", "context_percent"} {
+	for _, k := range []string{"model", "effort", "context_percent", "context_tokens"} {
 		if _, present := second[k]; present {
 			t.Errorf("slice-2 has %q = %v, want it absent with no payload", k, second[k])
 		}

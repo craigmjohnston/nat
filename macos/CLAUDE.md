@@ -101,7 +101,7 @@ status (the agent's model, effort and context — the status bar carries none
 of these) on its left, actions and selects (the diff's commit switcher) on
 its right, or empty. The Thread ends, while the slice can be launched, on a
 ghost `LaunchCard` (greyed and hatched when blocked); its prose items cut
-short as the brief does (`Excerpt`). View ▸ Hide Done Items
+short as the brief does (`Excerpt`). View ▸ Hide done items
 (`showsDoneItems`) drops done slices, ended sessions and the Done folder from
 the sidebar. `AppModel` keeps its one *active* project —
 every per-project reading is keyed by it — and the sidebar selects across

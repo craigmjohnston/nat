@@ -32,9 +32,9 @@ extension MainPaneHeader where Content == EmptyView {
     init() { self.init(content: { EmptyView() }) }
 }
 
-/// The agent heading's words: the live agent's model, effort and context
-/// use as its own statusline reports them — the context in the warning tint
-/// once it runs high — or nothing with no reading.
+/// The agent heading's words: the live agent's model / effort, then its
+/// context use as its own statusline reports them — the context in the
+/// warning tint once it runs high — or nothing with no reading.
 struct AgentModelHeading: View {
     let agent: AgentStatus?
 
@@ -337,7 +337,7 @@ struct MarkdownTableView: View {
                         .frame(width: 14, height: 14)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(GnatIconButtonStyle())
                 .help(isExpanded ? "Abbreviate the column" : "Show the column at full width")
             }
         }

@@ -161,8 +161,9 @@ struct StarterView: View {
                         Image(systemName: "xmark")
                             .font(.system(size: 9, weight: .medium))
                             .ink(.tertiary)
+                            .frame(width: 16, height: 16)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(GnatIconButtonStyle())
                     .help("Remove the plan file")
                 }
                 .padding(.top, 8)

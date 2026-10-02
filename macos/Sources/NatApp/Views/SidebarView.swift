@@ -103,8 +103,8 @@ struct SidebarView: View {
                         .frame(width: 20, height: 18)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .help("New Project\u{2026}")
+                .buttonStyle(GnatIconButtonStyle())
+                .help("New project\u{2026}")
             }
             if isOpen("work") {
                 ScrollView {
@@ -222,7 +222,7 @@ struct SidebarView: View {
             plusGlyph
         }
         .menuStyle(.button)
-        .buttonStyle(.plain)
+        .buttonStyle(GnatIconButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
         .help("Add to \(project.name)")
@@ -230,15 +230,15 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func addItems(_ project: SidebarProject) -> some View {
-        Button("New Milestone\u{2026}", systemImage: "folder.badge.plus") {
+        Button("New milestone\u{2026}", systemImage: "folder.badge.plus") {
             newMilestoneText = ""
             newMilestoneProject = project.id
         }
-        Button("New Slice\u{2026}", systemImage: "plus") { newSliceTarget = NewSliceTarget(projectID: project.id, milestone: "") }
+        Button("New slice\u{2026}", systemImage: "plus") { newSliceTarget = NewSliceTarget(projectID: project.id, milestone: "") }
         Button("Workshop\u{2026}", systemImage: "sparkles") { Task { await appModel.selectWorkshop(inProject: project.id) } }
         Divider()
         Button(
-            project.kind == .scratch ? "New Ad Hoc Session\u{2026}" : "New Ad Hoc Session",
+            project.kind == .scratch ? "New ad hoc session\u{2026}" : "New ad hoc session",
             systemImage: "terminal"
         ) { Task { await startNewSession(inProject: project.id) } }
             .disabled(appModel.newSessionLaunching)
@@ -250,7 +250,7 @@ struct SidebarView: View {
     private func newSessionMenu(_ model: SidebarModel) -> some View {
         let targets = model.projects.filter { $0.kind == .project } + (model.scratch.map { [$0] } ?? [])
         return Menu {
-            Section("New Ad Hoc Session In") {
+            Section("New ad hoc session in") {
                 ForEach(targets) { project in
                     Button(project.kind == .scratch ? "Scratch\u{2026}" : project.name) {
                         Task { await startNewSession(inProject: project.id) }
@@ -265,7 +265,7 @@ struct SidebarView: View {
             }
         }
         .menuStyle(.button)
-        .buttonStyle(.plain)
+        .buttonStyle(GnatIconButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
         .disabled(appModel.newSessionLaunching || targets.isEmpty)
@@ -324,11 +324,11 @@ struct SidebarView: View {
         switch row.kind {
         case .session:
             if let session = appModel.sessionStore?.sessions.first(where: { $0.id == row.targetID }) {
-                Button("End Session", systemImage: "stop.circle") { Task { await appModel.endSession(tag: session.tag) } }
+                Button("End session", systemImage: "stop.circle") { Task { await appModel.endSession(tag: session.tag) } }
                 Button("Discard\u{2026}", systemImage: "trash", role: .destructive) { sessionForDiscard = session.id }
             }
         case .workshop:
-            Button("End Workshop Session\u{2026}", systemImage: "stop.circle") {
+            Button("End workshop session\u{2026}", systemImage: "stop.circle") {
                 Task {
                     await appModel.selectWorkshop(inProject: row.projectID)
                     workshopPendingClose = true
@@ -361,7 +361,7 @@ struct SidebarView: View {
                 } else {
                     StackedFolderGlyph(
                         open: open,
-                        color: DesignTokens.ink(.primary, on: .header),
+                        color: DesignTokens.ink(.tertiary, on: .header),
                         backColor: DesignTokens.ink(.tertiary, on: .header))
                 }
             }
@@ -447,7 +447,7 @@ struct SidebarView: View {
             }
         }
         // An ended session is drawn as done, so it goes with the rest of
-        // the finished work under Hide Done Items.
+        // the finished work under Hide done items.
         if isActive && showsDoneItems {
             endedSessions(project, outdent: outdent)
         }
@@ -516,7 +516,7 @@ struct SidebarView: View {
             // Every live line of the tree is one ink — milestones, projects
             // and slices alike; only the Done folder recedes with what it holds.
             Text(name)
-                .font(.system(size: 13))
+                .font(.system(size: GnatMetrics.body))
                 .ink(isDone ? .tertiary : .secondary)
                 .lineLimit(1)
             Spacer(minLength: 0)
@@ -631,13 +631,13 @@ struct SidebarView: View {
             Button("Open in Notion", systemImage: "arrow.up.right.square") { NSWorkspace.shared.open(url) }
         }
         if let directory = workingDirectory(of: project.id) {
-            Button("Reveal Working Directory in Finder", systemImage: "folder") {
+            Button("Reveal working directory in Finder", systemImage: "folder") {
                 NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: directory)])
             }
         }
         if ProjectTabRules.showsClose(tabCount: appModel.closableTabCount, isScratch: project.kind == .scratch) {
             Divider()
-            Button("Close Project", systemImage: "xmark.circle") { requestClose(project.id) }
+            Button("Close project", systemImage: "xmark.circle") { requestClose(project.id) }
         }
     }
 
@@ -647,17 +647,17 @@ struct SidebarView: View {
         let filed = appModel.plan(projectID: projectID)?.slices.filter { $0.milestoneID == name }.count ?? 0
         let actions = MilestoneMenuRules.actions(for: name, in: milestones, sliceCount: filed)
 
-        Button("New Slice\u{2026}", systemImage: "plus") { newSliceTarget = NewSliceTarget(projectID: projectID, milestone: name) }
+        Button("New slice\u{2026}", systemImage: "plus") { newSliceTarget = NewSliceTarget(projectID: projectID, milestone: name) }
         Button("Rename\u{2026}", systemImage: "pencil") {
             renameText = name
             milestoneForRename = MilestoneRef(projectID: projectID, name: name)
         }
         Divider()
-        Button("Move Up", systemImage: "arrow.up") {
+        Button("Move up", systemImage: "arrow.up") {
             run { try await NatClient().milestoneMove(projectID: projectID, name: name, before: actions.moveBefore, after: nil) }
         }
         .disabled(actions.moveBefore == nil)
-        Button("Move Down", systemImage: "arrow.down") {
+        Button("Move down", systemImage: "arrow.down") {
             run { try await NatClient().milestoneMove(projectID: projectID, name: name, before: nil, after: actions.moveAfter) }
         }
         .disabled(actions.moveAfter == nil)
@@ -675,9 +675,9 @@ struct SidebarView: View {
         let targets = (plan?.milestones ?? []).sorted { $0.order < $1.order }.filter { $0.id != milestone }
         let hasLiveAgent = appModel.activityStore?.agents[row.sliceID] != nil
 
-        Button("Launch Agent", systemImage: "play.circle") { launch(row) }
+        Button("Launch agent", systemImage: "play.circle") { launch(row) }
             .disabled(page.map { !LaunchPlan(for: $0, hasLiveAgent: hasLiveAgent).canLaunch } ?? true)
-        Button("Edit Description\u{2026}", systemImage: "pencil") { sliceForEdit = row }
+        Button("Edit description\u{2026}", systemImage: "pencil") { sliceForEdit = row }
             .disabled(page?.status != "Todo")
         if let url = page.flatMap({ URL(string: $0.url) }) ?? NotionPageURL.forPage(row.sliceID) {
             Button("Open in Notion", systemImage: "arrow.up.right.square") { NSWorkspace.shared.open(url) }
@@ -763,7 +763,7 @@ struct SidebarView: View {
             panel.canChooseFiles = false
             panel.allowsMultipleSelection = false
             panel.canCreateDirectories = true
-            panel.prompt = "Start Session"
+            panel.prompt = "Start session"
             panel.message = "Choose the folder the session runs in"
             if let last = appModel.lastSessionFolder { panel.directoryURL = URL(fileURLWithPath: last) }
             guard panel.runModal() == .OK, let path = panel.url?.path else { return }
@@ -820,7 +820,7 @@ struct SidebarView: View {
                     Text("The slices filed under it are refiled onto the new name, and it keeps its place in the plan.")
                 }
                 .alert(
-                    "New Milestone",
+                    "New milestone",
                     isPresented: presenting(view.$newMilestoneProject),
                     presenting: view.newMilestoneProject
                 ) { projectID in
@@ -876,7 +876,7 @@ struct SidebarView: View {
                     )
                 }
                 .alert("End the workshop session?", isPresented: view.$workshopPendingClose) {
-                    Button("End Session", role: .destructive) {
+                    Button("End session", role: .destructive) {
                         Task {
                             if let refusal = await appModel.closeWorkshopTab() { view.actionError = refusal }
                         }
@@ -890,7 +890,7 @@ struct SidebarView: View {
                     isPresented: presenting(view.$projectPendingClose),
                     presenting: view.projectPendingClose
                 ) { projectID in
-                    Button("End Session", role: .destructive) {
+                    Button("End session", role: .destructive) {
                         Task {
                             if let refusal = await appModel.closeProject(projectID) { view.actionError = refusal }
                         }

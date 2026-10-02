@@ -47,21 +47,21 @@ struct GnatCommands: Commands {
     var body: some Commands {
         // One window, so no New Window: File ▸ New makes plan items instead.
         CommandGroup(replacing: .newItem) {
-            item("New Project\u{2026}", shell?.newProject).keyboardShortcut("n", modifiers: [.command, .shift])
-            item("New Slice\u{2026}", sidebar?.newSlice).keyboardShortcut("n")
-            item("New Milestone\u{2026}", sidebar?.newMilestone).keyboardShortcut("n", modifiers: [.command, .option])
-            item("New Ad Hoc Session", sidebar?.newSession).keyboardShortcut("n", modifiers: [.command, .control])
+            item("New project\u{2026}", shell?.newProject).keyboardShortcut("n", modifiers: [.command, .shift])
+            item("New slice\u{2026}", sidebar?.newSlice).keyboardShortcut("n")
+            item("New milestone\u{2026}", sidebar?.newMilestone).keyboardShortcut("n", modifiers: [.command, .option])
+            item("New ad hoc session", sidebar?.newSession).keyboardShortcut("n", modifiers: [.command, .control])
             item("Workshop\u{2026}", sidebar?.workshop)
             Divider()
-            item("Open Project in Notion", sidebar?.openProjectInNotion)
-            item("Reveal Working Directory in Finder", sidebar?.revealWorkingDirectory)
+            item("Open project in Notion", sidebar?.openProjectInNotion)
+            item("Reveal working directory in Finder", sidebar?.revealWorkingDirectory)
         }
 
         // The View menu's own first group: Finder's Show/Hide Hidden Files,
         // for finished work, on the same ⇧⌘. Finder uses; then refreshing,
         // and the navigator's three sections.
         CommandGroup(before: .toolbar) {
-            Button(showsDoneItems ? "Hide Done Items" : "Show Done Items",
+            Button(showsDoneItems ? "Hide done items" : "Show done items",
                    systemImage: showsDoneItems ? "eye.slash" : "eye") {
                 showsDoneItems.toggle()
             }
@@ -70,17 +70,17 @@ struct GnatCommands: Commands {
             Divider()
             item("Thread", slice?.showThread).keyboardShortcut("1")
             item("Changes", slice?.showChanges).keyboardShortcut("2")
-            item("Pull Request", slice?.showPullRequest).keyboardShortcut("3")
+            item("Pull request", slice?.showPullRequest).keyboardShortcut("3")
             Divider()
         }
 
         CommandMenu("Slice") {
-            item("Launch Agent", slice?.launch).keyboardShortcut("l")
-            item("Edit Brief\u{2026}", slice?.editBrief)
+            item("Launch agent", slice?.launch).keyboardShortcut("l")
+            item("Edit brief\u{2026}", slice?.editBrief)
             Divider()
-            item("Merge Pull Request\u{2026}", slice?.merge)
-            item("Open Pull Request in GitHub", slice?.openPullRequest)
-            item("Open Slice in Notion", slice?.openInNotion)
+            item("Merge pull request\u{2026}", slice?.merge)
+            item("Open pull request in GitHub", slice?.openPullRequest)
+            item("Open slice in Notion", slice?.openInNotion)
         }
     }
 

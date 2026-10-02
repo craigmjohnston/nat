@@ -4,12 +4,12 @@ import NatKit
 /// The sheet the plus toolbar button opens: a small native form for filing
 /// one new slice under a milestone of the active plan, Todo and unassigned —
 /// the macOS app's answer to `nat slice-add`. It stays thin: the one thing
-/// worth deciding here is when "Add Slice" is enabled, which is a title and a
+/// worth deciding here is when "Add slice" is enabled, which is a title and a
 /// milestone both present.
 struct NewSliceSheetView: View {
     let projectID: String
     let milestones: [Milestone]
-    /// The milestone the sheet opens on, for the rail's "New Slice…" — a
+    /// The milestone the sheet opens on, for the rail's "New slice…" — a
     /// menu opened on a folder has already said which milestone it means, so
     /// asking again would be the sheet forgetting where it was opened. Empty
     /// is the toolbar button's own answer: nothing said, so nothing picked.
@@ -31,7 +31,7 @@ struct NewSliceSheetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("New Slice")
+            Text("New slice")
                 .font(.system(size: Typo.headline, weight: .semibold))
                 .ink(.primary)
 
@@ -90,7 +90,7 @@ struct NewSliceSheetView: View {
 
                 Button(action: submit) {
                     AsyncActionLabel(isBusy: isSubmitting) {
-                        Text("Add Slice")
+                        Text("Add slice")
                     }
                 }
                 .buttonStyle(PrimaryButtonStyle())

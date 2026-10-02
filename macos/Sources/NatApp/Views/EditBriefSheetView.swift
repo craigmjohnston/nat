@@ -1,7 +1,7 @@
 import SwiftUI
 import NatKit
 
-/// The sheet the rail's "Edit Description…" opens: one Todo slice's brief,
+/// The sheet the rail's "Edit description…" opens: one Todo slice's brief,
 /// read back off its page and written whole — the same `nat slice-edit` the
 /// Brief tab's own "Edit…" runs, reached from the tree rather than from the
 /// pane.
@@ -27,7 +27,7 @@ struct EditBriefSheetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Edit Description")
+            Text("Edit description")
                 .font(.system(size: Typo.headline, weight: .semibold))
                 .ink(.primary)
 

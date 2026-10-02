@@ -4,8 +4,8 @@ import Foundation
 public let contextWarningThreshold = 80.0
 
 /// What the terminal's heading draws for its agent:
-/// "Sonnet 5 · high" (`label`) and "42%" (`context`), each independently
-/// absent when `nat` had no value for it — never a zero.
+/// "Sonnet 5 / high" (`label`) and "context 42% (84k tokens)" (`context`),
+/// each independently absent when `nat` had no value for it — never a zero.
 public struct AgentReadout: Equatable {
     public struct Context: Equatable {
         public let text: String
@@ -31,10 +31,20 @@ public struct AgentReadout: Equatable {
 public func buildAgentReadout(from agent: AgentStatus?) -> AgentReadout? {
     guard let agent else { return nil }
     let parts = [agent.model, agent.effort].compactMap { $0 }.filter { !$0.isEmpty }
-    let label = parts.isEmpty ? nil : parts.joined(separator: " · ")
-    let context = agent.contextPercent.map {
-        AgentReadout.Context(text: "ctx \(Int($0.rounded()))%", warning: $0 >= contextWarningThreshold)
+    let label = parts.isEmpty ? nil : parts.joined(separator: " / ")
+    let context = agent.contextPercent.map { percent in
+        let tokens = agent.contextTokens.map { " (\(formatTokenCount($0)) tokens)" } ?? ""
+        return AgentReadout.Context(
+            text: "context \(Int(percent.rounded()))%\(tokens)", warning: percent >= contextWarningThreshold)
     }
     guard label != nil || context != nil else { return nil }
     return AgentReadout(label: label, context: context)
+}
+
+/// A token count as the heading writes it: whole below a thousand, then
+/// thousands ("326k"), then millions to one place ("1.2m").
+func formatTokenCount(_ count: Int) -> String {
+    if count < 1000 { return "\(count)" }
+    if count < 999_500 { return "\(Int((Double(count) / 1000).rounded()))k" }
+    return String(format: "%.1fm", Double(count) / 1_000_000)
 }

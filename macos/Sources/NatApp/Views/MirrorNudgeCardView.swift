@@ -26,7 +26,7 @@ struct MirrorNudgeCardView: View {
                         .frame(width: 18, height: 18)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(GnatIconButtonStyle())
                 .help(MirrorText.dismiss)
                 .accessibilityLabel(MirrorText.dismiss)
             }

@@ -238,7 +238,7 @@ public final class AppModel {
     /// was found, or one was found naming no projects. The window shows a
     /// welcome pane in its place, which offers the same two ways onto the
     /// board the "+" tab does — `addProject(id:name:)` is where both of them
-    /// end — and a "Check Again" that re-runs `start()` for a workspace set
+    /// end — and a "Check again" that re-runs `start()` for a workspace set
     /// up elsewhere in the meantime.
     public private(set) var needsOnboarding: Bool = true
 
