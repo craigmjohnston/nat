@@ -4,10 +4,10 @@ import SwiftUI
 /// Design tokens for the nat UI theme — every colour the app draws with,
 /// named by the role it plays rather than by the colour it happens to be.
 ///
-/// Each one is a *dynamic* colour: it holds both palettes and resolves the
-/// one the appearance it is drawn under calls for, so a call site says
-/// `DesignTokens.windowBg` and gets Mocha on a dark window and Latte on a
-/// light one without knowing there are two. That is what makes the theme
+/// Each one is a *dynamic* colour: it resolves against the palette the
+/// appearance it is drawn under calls for — the user's dark choice on a dark
+/// window, their light choice on a light one — so a call site says
+/// `DesignTokens.windowBg` without knowing which palettes there are. That is what makes the theme
 /// switch live and what makes `Theme.system` follow macOS — an unpinned
 /// window's appearance changes when the Mac's does, and every one of these
 /// colours re-resolves with it.
@@ -20,9 +20,10 @@ public enum DesignTokens {
     // MARK: - Resolution
 
     /// The palette a colour scheme draws with — the seam every token below
-    /// is built over, and the one place the two themes are chosen between.
+    /// is built over: whichever palette the user has put in that scheme's
+    /// slot (`PaletteSelection`).
     public static func palette(for scheme: ColorScheme) -> Palette {
-        scheme == .dark ? .dark : .light
+        PaletteSelection.shared.palette(dark: scheme == .dark)
     }
 
     /// The same choice made from an AppKit appearance, which is what a
@@ -32,7 +33,7 @@ public enum DesignTokens {
     /// carry values for — resolves light, because light is the platform's
     /// own default and a wrong guess there is a readable window either way.
     static func palette(for appearance: NSAppearance) -> Palette {
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .dark : .light
+        PaletteSelection.shared.palette(dark: appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua)
     }
 
     /// A dynamic `NSColor` over one palette field. There is deliberately no
@@ -627,8 +628,8 @@ func rgbComponents(hex: String) -> (red: Double, green: Double, blue: Double)? {
     )
 }
 
-/// What a hex that will not parse resolves to: the dark palette's accent,
-/// which is the app's own accent.
+/// What a hex that will not parse resolves to: the light palette's accent,
+/// which is the app's own navy.
 ///
 /// It used to be white — the one colour in the app guaranteed to belong to
 /// neither palette, and so the one whose appearance says "this is a bug"
@@ -637,11 +638,11 @@ func rgbComponents(hex: String) -> (red: Double, green: Double, blue: Double)? {
 /// by a glance at the window; what the fallback is for is the frame drawn
 /// before anybody looks at the test, and a frame drawn in the accent is one
 /// that still reads as this app. Written out channel by channel rather than
-/// parsed from `Palette.dark.accent`, because the fallback for a parse
+/// parsed from `Palette.light.accent`, because the fallback for a parse
 /// cannot itself depend on a parse succeeding — `hexFallbackIsTheAccent`
 /// asserts the two agree.
 let hexFallback: (red: Double, green: Double, blue: Double) = (
-    Double(0x2c) / 255.0, Double(0x5e) / 255.0, Double(0xd7) / 255.0
+    Double(0x1f) / 255.0, Double(0x44) / 255.0, Double(0xa3) / 255.0
 )
 
 extension Color {

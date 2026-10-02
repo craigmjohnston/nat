@@ -23,15 +23,19 @@ structure and design-system writeup.
 ## Conventions
 - The design reference is the gnat hi-fi design (`gnat.html` in the Claude Design project `macOS native UI for TUI app`) — the colours come from its `gnat.css` token blocks.
 - Theme tokens are centralized in `NatKit/Theme/DesignTokens.swift`, and are
-  *dynamic*: each one holds both palettes and resolves the one the window's
-  appearance calls for, so a view says `DesignTokens.windowBg` and never asks
-  which theme is on. The values themselves — the design's dark and light
-  tokens — live in `NatKit/Theme/Palette.swift`, and `PaletteTests` asserts
-  every role is the design's own token, unedited.
-- Which palette a window asks for is `NatKit/Theme/Theme.swift`: system, dark
-  or light, persisted in `UserDefaults` under `Theme.storageKey` and switched
-  from the Settings window. `system` pins nothing, which is what makes it
-  follow the Mac's own appearance as that changes.
+  *dynamic*: each one resolves against the palette the window's appearance
+  calls for, so a view says `DesignTokens.windowBg` and never asks which
+  theme is on. The values themselves live in `NatKit/Theme/Palette.swift` —
+  `light` (the design's own tokens), `oneLight`, `tokyoDay`, `iceberg` and
+  `slateInk` — and
+  `PaletteTests` asserts every role is its source's value, unedited.
+- Whether a window is dark or light is `NatKit/Theme/Theme.swift`: system,
+  dark or light, persisted in `UserDefaults` under `Theme.storageKey`.
+  `system` pins nothing, which is what makes it follow the Mac's own
+  appearance as that changes. *Which* dark and which light palette is
+  `NatKit/Theme/PaletteChoice.swift`: one choice per slot, persisted under
+  `PaletteChoice.darkStorageKey`/`lightStorageKey`, held for the tokens by
+  `PaletteSelection`. All three are switched from the Settings window.
 - No view file constructs a colour. Every one it draws — including the washes
   and bands that used to be a token behind a bare `.opacity(0.18)` — is a named
   token, so a weight is chosen once in the theme rather than typed again in
@@ -128,6 +132,7 @@ swift build --package-path macos
 macos/.build/debug/gnat --list                                  # the index: every story and what it shows
 macos/.build/debug/gnat --story window-review --out /tmp/review.png   # one of them
 macos/.build/debug/gnat --all --out /tmp/gallery                # the whole catalog
+macos/.build/debug/gnat --all --out /tmp/slate --palette slateInk  # the catalog in one palette
 open /tmp/review.png
 ```
 
@@ -139,7 +144,9 @@ creating it if it is not there, one `<story-name>.png` apiece, and prints each
 path as it lands — that is the run to make when a change is to the theme, the
 window chrome or anything else that is not one pane's own. Both writes
 overwrite, so rendering before and after a change into two directories is how
-the difference is read.
+the difference is read. `--palette <id>` (`light`, `oneLight`, `tokyoDay`, `iceberg`, `slateInk`) draws
+either run in that palette and its scheme — a light palette draws a story
+written dark as light — instead of each scheme's default palette.
 
 Crop or downscale to the element under test before reading a render, whether
 it is a story's PNG or a live `NAT_SNAPSHOT` capture, rather than reading the

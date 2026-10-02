@@ -154,15 +154,13 @@ public func mix(_ color: String, _ into: String, _ amount: Double) -> String {
 /// published spec. `DesignTokens` is what turns one into the dynamic colours
 /// SwiftUI draws — see `DesignTokens.palette(for:)`.
 ///
-/// The two palettes are the gnat hi-fi design's structure: the dark one
-/// near-monochrome — neutral greys, whites a touch warm, deep navy only where
-/// something is highlighted — and the light one barely-warm paper with navy
-/// ink; two surfaces (`--bg` and `--chrome`), one accent and one
-/// "hot" colour for whatever needs the user. Both are taken from the design's
-/// `gnat.css` (whose own values were violet; the app is navy), each value
-/// named by the token it stands for. The few hues the design never names (yellow, blue, pink, teal)
-/// and the terminal's ANSI set keep the Catppuccin values the app drew with
-/// before, since nothing in the design says otherwise.
+/// Every palette has the gnat hi-fi design's structure: two surfaces
+/// (`--bg` and `--chrome`), a four-step ink ramp, two rules, one accent and
+/// one "hot" colour for whatever needs the user. `light` is the
+/// design's own `.win.light` block (whose values were violet; the app is
+/// navy). The others are published community themes laid onto the same
+/// roles — `oneLight`, `tokyoDay`, `iceberg` and `slateInk` — and which of them a window draws
+/// with is the user's choice, `PaletteChoice`.
 public struct Palette: Equatable, Sendable {
     // MARK: - Surfaces
 
@@ -435,66 +433,121 @@ public struct Palette: Equatable, Sendable {
         self.isDark = isDark
     }
 
-    /// The dark theme: the design's `:root` block.
+    /// Iceberg (cocopon/iceberg.vim): a cold, desaturated indigo with grey
+    /// ink. Its ground is lifted one step off the published `#161821`, which
+    /// becomes the chrome, so the window reads as dark rather than black.
     ///
-    /// `--bg` is the window and every body the navigator's sections open
-    /// onto; `--chrome` the sidebar, navigator and bars. The card and control
-    /// levels the older panes still draw step up from `--chrome` through the
-    /// design's own two rule colours, `--line` and `--line-2`, rather than
-    /// inventing levels it does not have. The rule shares are `--line` and
-    /// `--line-2` themselves, expressed as `--ink` mixed into `--bg`.
-    public static let dark = Palette(
-        windowBg: Surface("19161f"),          // --bg
-        chromeBg: Surface("1e1b25"),          // --chrome
-        titlebarBg: Surface("120f17"),        // the titlebars, well below the chrome
-        controlBg: Surface("1e1b25"),         // --chrome
-        rowAltBg: Surface(mix("2c2935", "1e1b25", 0.5)),  // half --line into --chrome
-        controlFace: Surface("2c2935"),       // --line
-        fieldBg: Surface("19161f"),           // --bg
-        hoverWash: Surface(mix("f4f0e9", "19161f", 0.06)),  // --sel
-        terminalBg: Surface("19161f"),        // --bg
-        terminalFg: Ink("f4f0e9"),            // --ink
-        terminalCursor: Tint("2c5ed7"),       // --accent
-        terminalSelection: Surface(mix("f4f0e9", "19161f", 0.11)),  // --sel-2
-        // The design names no terminal colours: Catppuccin Mocha's own
-        // published mapping, as the app drew with before.
+    /// Rules, hover and selection are taken from the theme's own ramp; the
+    /// row washes are the accent, as the light theme's are.
+    public static let iceberg = Palette(
+        windowBg: Surface("1b1d28"),
+        chromeBg: Surface("161821"),
+        titlebarBg: Surface("161821"),
+        controlBg: Surface("1e2132"),
+        rowAltBg: Surface(mix("262a3c", "1e2132", 0.5)),  // half the line into the card
+        controlFace: Surface("2a3158"),
+        fieldBg: Surface("1b1d28"),
+        hoverWash: Surface(mix("84a0c6", "1b1d28", 0.08)),
+        terminalBg: Surface("1b1d28"),
+        terminalFg: Ink("c6c8d1"),
+        terminalCursor: Tint("84a0c6"),
+        terminalSelection: Surface(mix("84a0c6", "1b1d28", 0.16)),
+        // Iceberg's own published terminal mapping.
         ansi: [
-            "45475a", "f38ba8", "a6e3a1", "f9e2af",
-            "89b4fa", "f5c2e7", "94e2d5", "bac2de",
-            "585b70", "f38ba8", "a6e3a1", "f9e2af",
-            "89b4fa", "f5c2e7", "94e2d5", "a6adc8",
+            "1e2132", "e27878", "b4be82", "e2a478",
+            "84a0c6", "a093c7", "89b8c2", "c6c8d1",
+            "6b7089", "e27878", "b4be82", "e2a478",
+            "84a0c6", "a093c7", "89b8c2", "d2d4de",
         ],
-        label: Ink("f4f0e9"),             // --ink
-        labelSecondary: Ink("9a9ca5"),    // --ink-2
-        labelTertiary: Ink("5f616a"),     // --ink-3
-        labelQuaternary: Ink("393b43"),   // --ink-4
-        accent: Tint("2c5ed7"),            // --accent: the brand, the icon's ink at its head
-        accentText: Ink("f4f0e9"),        // --ink: the navy is dark enough to write white on
-        hot: Tint("fca05f"),               // --hot
-        rowHoverShare: 0.06,               // --sel
-        rowSelectedShare: 0.11,            // --sel-2
-        rowWashTint: Tint("f4f0e9"),       // --ink: a neutral highlight
-        line: Ink("2c2935"),               // --line
-        line2: Ink("36333f"),              // --line-2
-        selectionShare: 0.14,              // --accent-dim
+        label: Ink("c6c8d1"),
+        labelSecondary: Ink("a3a6b7"),
+        labelTertiary: Ink("6b7089"),
+        labelQuaternary: Ink("3e445e"),
+        accent: Tint("84a0c6"),
+        accentText: Ink("161821"),
+        hot: Tint("e2a478"),
+        rowHoverShare: 0.08,
+        rowSelectedShare: 0.16,
+        rowWashTint: Tint("84a0c6"),
+        line: Ink("262a3c"),
+        line2: Ink("33374c"),
+        selectionShare: 0.16,
         bandShare: 0.50,
-        chipShare: 0.30,                   // --accent-dim / --hot-dim
+        chipShare: 0.24,
         avatarShare: 0.30,
-        diffRowShare: 0.10,                // --add-bg / --del-bg
-        diffGutterShare: 0.20,
+        diffRowShare: 0.12,
+        diffGutterShare: 0.22,
         commentShare: 0.10,
         headerVeilShare: 0.0,
         mutedShare: 0.45,
         skeletonShare: 0.10,
         onAccentRuleShare: 0.25,
-        systemOrange: Tint("fca05f"),      // --hot
-        systemYellow: Tint("f9e2af"),
-        systemGreen: Tint("9fd2a4"),       // --add
-        systemRed: Tint("e49aa0"),         // --del
-        systemBlue: Tint("89b4fa"),
-        systemPink: Tint("f5c2e7"),
-        systemTeal: Tint("94e2d5"),
-        systemGray: Tint("9a9ca5"),        // --ink-2
+        systemOrange: Tint("e2a478"),
+        systemYellow: Tint("e2a478"),
+        systemGreen: Tint("b4be82"),
+        systemRed: Tint("e27878"),
+        systemBlue: Tint("84a0c6"),
+        systemPink: Tint("a093c7"),
+        systemTeal: Tint("89b8c2"),
+        systemGray: Tint("a3a6b7"),
+        isDark: true
+    )
+
+    /// Slate ink: a blue-grey slate ground under Kanagawa's (rebelot/
+    /// kanagawa.nvim) cream ink, crystal-blue accent and hues — the warm ink
+    /// takes the edge off the blue.
+    public static let slateInk = Palette(
+        windowBg: Surface("252838"),
+        chromeBg: Surface("1f2231"),
+        titlebarBg: Surface("1f2231"),
+        controlBg: Surface("2b2e40"),
+        rowAltBg: Surface(mix("313549", "2b2e40", 0.5)),  // half the line into the card
+        controlFace: Surface("363a4f"),
+        fieldBg: Surface("252838"),
+        hoverWash: Surface(mix("9aaaf0", "252838", 0.07)),
+        terminalBg: Surface("252838"),
+        terminalFg: Ink("dcd7ba"),
+        terminalCursor: Tint("7e9cd8"),
+        terminalSelection: Surface(mix("9aaaf0", "252838", 0.14)),
+        // Kanagawa's own published terminal mapping, its black lifted to
+        // read on the slate.
+        ansi: [
+            "2a2e42", "c34043", "76946a", "c0a36e",
+            "7e9cd8", "957fb8", "6a9589", "c8c093",
+            "727169", "c34043", "76946a", "c0a36e",
+            "7e9cd8", "957fb8", "6a9589", "dcd7ba",
+        ],
+        label: Ink("dcd7ba"),
+        labelSecondary: Ink("a8a594"),
+        labelTertiary: Ink("7a7a8a"),
+        labelQuaternary: Ink("444862"),
+        accent: Tint("7e9cd8"),
+        accentText: Ink("1f2231"),
+        hot: Tint("ffa066"),
+        rowHoverShare: 0.07,
+        rowSelectedShare: 0.14,
+        rowWashTint: Tint("9aaaf0"),
+        line: Ink("313549"),
+        line2: Ink("3c4057"),
+        selectionShare: 0.16,
+        bandShare: 0.50,
+        chipShare: 0.24,
+        avatarShare: 0.30,
+        diffRowShare: 0.12,
+        diffGutterShare: 0.22,
+        commentShare: 0.10,
+        headerVeilShare: 0.0,
+        mutedShare: 0.45,
+        skeletonShare: 0.10,
+        onAccentRuleShare: 0.25,
+        systemOrange: Tint("ffa066"),
+        systemYellow: Tint("e6c384"),
+        systemGreen: Tint("98bb6c"),
+        systemRed: Tint("e46876"),
+        systemBlue: Tint("7fb4ca"),
+        systemPink: Tint("957fb8"),
+        systemTeal: Tint("7aa89f"),
+        systemGray: Tint("a8a594"),
         isDark: true
     )
 
@@ -551,6 +604,122 @@ public struct Palette: Equatable, Sendable {
         systemPink: Tint("ea76cb"),
         systemTeal: Tint("179299"),
         systemGray: Tint("55566d"),        // --ink-2
+        isDark: false
+    )
+    /// One Light (Atom): a neutral off-white with soft charcoal ink and a
+    /// clear blue accent. It names no orange of its own, so `hot` is its
+    /// yellow taken toward orange; its accent (`#4078f2`) is shaded a step
+    /// darker so white reads on a filled button.
+    public static let oneLight = Palette(
+        windowBg: Surface("fafafa"),
+        chromeBg: Surface("f0f0f1"),
+        titlebarBg: Surface("f0f0f1"),
+        controlBg: Surface("f0f0f1"),
+        rowAltBg: Surface(mix("e0e0e2", "f0f0f1", 0.5)),  // half the line into the card
+        controlFace: Surface("e5e5e6"),
+        fieldBg: Surface("fafafa"),
+        hoverWash: Surface(mix("2f6cf1", "fafafa", 0.06)),
+        terminalBg: Surface("fafafa"),
+        terminalFg: Ink("383a42"),
+        terminalCursor: Tint("2f6cf1"),
+        terminalSelection: Surface(mix("2f6cf1", "fafafa", 0.12)),
+        // One Light's own published terminal mapping.
+        ansi: [
+            "383a42", "e45649", "50a14f", "c18401",
+            "4078f2", "a626a4", "0184bc", "a0a1a7",
+            "4f525e", "e45649", "50a14f", "c18401",
+            "4078f2", "a626a4", "0184bc", "fafafa",
+        ],
+        label: Ink("383a42"),
+        labelSecondary: Ink("696c77"),
+        labelTertiary: Ink("a0a1a7"),
+        labelQuaternary: Ink("d4d4d6"),
+        accent: Tint("2f6cf1"),
+        accentText: Ink("ffffff"),
+        hot: Tint("d0721f"),
+        rowHoverShare: 0.06,
+        rowSelectedShare: 0.12,
+        rowWashTint: Tint("2f6cf1"),
+        line: Ink("e0e0e2"),
+        line2: Ink("d4d4d7"),
+        selectionShare: 0.12,
+        bandShare: 0.50,
+        chipShare: 0.12,
+        avatarShare: 0.24,
+        diffRowShare: 0.10,
+        diffGutterShare: 0.18,
+        commentShare: 0.08,
+        headerVeilShare: 0.0,
+        mutedShare: 0.45,
+        skeletonShare: 0.12,
+        onAccentRuleShare: 0.25,
+        systemOrange: Tint("d0721f"),
+        systemYellow: Tint("c18401"),
+        systemGreen: Tint("50a14f"),
+        systemRed: Tint("e45649"),
+        systemBlue: Tint("4078f2"),
+        systemPink: Tint("a626a4"),
+        systemTeal: Tint("0184bc"),
+        systemGray: Tint("696c77"),
+        isDark: false
+    )
+
+    /// Tokyo Night Day (folke/tokyonight.nvim): lavender-grey paper and
+    /// blue ink — the light twin of the Tokyo Night family. Its ink
+    /// (`#3760bf`) and accent (`#2e7de9`) are each shaded a step darker: the
+    /// published ink sits too close to its own secondary tier once that is
+    /// made readable, and white on the published accent is under 4.5:1.
+    public static let tokyoDay = Palette(
+        windowBg: Surface("e1e2e7"),
+        chromeBg: Surface("d0d5e3"),
+        titlebarBg: Surface("d0d5e3"),
+        controlBg: Surface("d0d5e3"),
+        rowAltBg: Surface(mix("c4c8da", "d0d5e3", 0.5)),  // half the line into the card
+        controlFace: Surface("c4c8da"),
+        fieldBg: Surface("e1e2e7"),
+        hoverWash: Surface(mix("1c72e7", "e1e2e7", 0.06)),
+        terminalBg: Surface("e1e2e7"),
+        terminalFg: Ink("2f52a3"),
+        terminalCursor: Tint("1c72e7"),
+        terminalSelection: Surface(mix("1c72e7", "e1e2e7", 0.12)),
+        // Tokyo Night Day's own published terminal mapping.
+        ansi: [
+            "e9e9ed", "f52a65", "587539", "8c6c3e",
+            "2e7de9", "9854f1", "007197", "6172b0",
+            "a1a6c5", "f52a65", "587539", "8c6c3e",
+            "2e7de9", "9854f1", "007197", "3760bf",
+        ],
+        label: Ink("2f52a3"),
+        labelSecondary: Ink("6172b0"),
+        labelTertiary: Ink("848cb5"),
+        labelQuaternary: Ink("b4b9cf"),
+        accent: Tint("1c72e7"),
+        accentText: Ink("ffffff"),
+        hot: Tint("b15c00"),
+        rowHoverShare: 0.06,
+        rowSelectedShare: 0.12,
+        rowWashTint: Tint("1c72e7"),
+        line: Ink("c4c8da"),
+        line2: Ink("b6bcd2"),
+        selectionShare: 0.12,
+        bandShare: 0.50,
+        chipShare: 0.12,
+        avatarShare: 0.24,
+        diffRowShare: 0.10,
+        diffGutterShare: 0.18,
+        commentShare: 0.08,
+        headerVeilShare: 0.0,
+        mutedShare: 0.45,
+        skeletonShare: 0.12,
+        onAccentRuleShare: 0.25,
+        systemOrange: Tint("b15c00"),
+        systemYellow: Tint("8c6c3e"),
+        systemGreen: Tint("587539"),
+        systemRed: Tint("f52a65"),
+        systemBlue: Tint("2e7de9"),
+        systemPink: Tint("9854f1"),
+        systemTeal: Tint("007197"),
+        systemGray: Tint("6172b0"),
         isDark: false
     )
 }

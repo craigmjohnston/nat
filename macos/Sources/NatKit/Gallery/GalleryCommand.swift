@@ -11,10 +11,20 @@ public enum GalleryCommand: Equatable {
     /// `--list`: every story's name, one per line, and nothing drawn.
     case list
     /// `--story <name> --out <file.png>`: that one story, to that file.
-    case one(story: String, out: String)
+    case one(story: String, out: String, palette: PaletteChoice? = nil)
     /// `--all --out <dir>`: the whole catalog, one PNG per story, into that
     /// directory.
-    case all(directory: String)
+    case all(directory: String, palette: PaletteChoice? = nil)
+
+    /// `--palette <id>` on either drawing run: every story drawn in that
+    /// palette, in its scheme — a light palette draws a story written dark
+    /// as light — rather than in the scheme's default palette.
+    public var palette: PaletteChoice? {
+        switch self {
+        case .list: nil
+        case .one(_, _, let palette), .all(_, let palette): palette
+        }
+    }
 }
 
 /// Why an argument list naming a gallery flag is not a gallery command.
@@ -36,6 +46,8 @@ public enum GalleryCommandError: Error, Equatable, CustomStringConvertible {
     /// `--out` with neither `--story` nor `--all` — a destination for
     /// nothing.
     case outWithoutTarget
+    /// `--palette` naming no palette the app ships.
+    case unknownPalette(name: String)
     /// An argument the gallery does not know, on a line that named a gallery
     /// flag. Anything at all is allowed on a line that named none: that is
     /// the app being launched, and AppKit passes arguments of its own.
@@ -53,6 +65,9 @@ public enum GalleryCommandError: Error, Equatable, CustomStringConvertible {
             return "--out is where the PNG goes; name it"
         case .outWithoutTarget:
             return "--out needs --story <name> or --all"
+        case .unknownPalette(let name):
+            let known = PaletteChoice.allCases.map(\.rawValue).joined(separator: ", ")
+            return "no palette called \(name); the app ships: \(known)"
         case .unknown(let argument):
             return "unknown argument \(argument)"
         }
@@ -64,7 +79,7 @@ extension GalleryCommand {
     /// tells "the app, launched" from "the gallery, mis-typed": a line with
     /// none of these is the app's, however odd it looks, and a line with one
     /// of them is the gallery's and is held to the gallery's rules.
-    static let flags = ["--list", "--story", "--all", "--out"]
+    static let flags = ["--list", "--story", "--all", "--out", "--palette"]
 
     /// Reads the command out of an argument list, argv's own — the first
     /// element is the executable and is skipped.
@@ -80,6 +95,7 @@ extension GalleryCommand {
         var all = false
         var story: String?
         var out: String?
+        var palette: PaletteChoice?
         var index = 0
         while index < args.count {
             let arg = args[index]
@@ -92,6 +108,12 @@ extension GalleryCommand {
                 story = try value(after: arg, in: args, at: &index)
             case "--out":
                 out = try value(after: arg, in: args, at: &index)
+            case "--palette":
+                let name = try value(after: arg, in: args, at: &index)
+                guard let choice = PaletteChoice(rawValue: name) else {
+                    throw GalleryCommandError.unknownPalette(name: name)
+                }
+                palette = choice
             default:
                 throw GalleryCommandError.unknown(argument: arg)
             }
@@ -99,7 +121,7 @@ extension GalleryCommand {
         }
 
         if list {
-            guard !all, story == nil, out == nil else { throw GalleryCommandError.listWithOthers }
+            guard !all, story == nil, out == nil, palette == nil else { throw GalleryCommandError.listWithOthers }
             return .list
         }
         if all, story != nil { throw GalleryCommandError.storyAndAll }
@@ -108,9 +130,9 @@ extension GalleryCommand {
                 ? GalleryCommandError.missingOut
                 : GalleryCommandError.outWithoutTarget
         }
-        if all { return .all(directory: out) }
+        if all { return .all(directory: out, palette: palette) }
         guard let story else { throw GalleryCommandError.outWithoutTarget }
-        return .one(story: story, out: out)
+        return .one(story: story, out: out, palette: palette)
     }
 
     /// The argument after a flag, advancing past it. A flag at the end of the

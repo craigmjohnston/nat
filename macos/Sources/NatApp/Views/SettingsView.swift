@@ -62,6 +62,8 @@ struct SettingsView: View {
     /// is shown whatever became of the config read — including while that
     /// read is still in flight, or has failed.
     @AppStorage(Theme.storageKey) private var storedTheme = Theme.system.rawValue
+    @AppStorage(PaletteChoice.darkStorageKey) private var storedDarkPalette = PaletteChoice.defaultDark.rawValue
+    @AppStorage(PaletteChoice.lightStorageKey) private var storedLightPalette = PaletteChoice.defaultLight.rawValue
 
     @State private var projectNames: [String: String] = [:]
     @State private var original: SettingsFields?
@@ -129,8 +131,10 @@ struct SettingsView: View {
                     // rather than stretched across it.
                     .fixedSize()
                 }
+                paletteRow(title: "Light theme", dark: false, stored: $storedLightPalette)
+                paletteRow(title: "Dark theme", dark: true, stored: $storedDarkPalette)
             } footer: {
-                sectionFootnote("The palette the app draws with, the agent terminal included. Applies at once.")
+                sectionFootnote("The palettes the app draws with, the agent terminal included. System switches between the two as the Mac does. Applies at once.")
             }
 
             configSection(
@@ -377,6 +381,23 @@ struct SettingsView: View {
             get: { base.wrappedValue.isEmpty ? defaultTag : base.wrappedValue },
             set: { base.wrappedValue = $0 == defaultTag ? "" : $0 }
         )
+    }
+
+    /// One slot's palette picker: the palettes of that scheme, by name.
+    private func paletteRow(title: String, dark: Bool, stored: Binding<String>) -> some View {
+        settingRow(title: title) {
+            Picker(title, selection: Binding(
+                get: { PaletteChoice(stored: stored.wrappedValue, dark: dark) },
+                set: { stored.wrappedValue = $0.rawValue }
+            )) {
+                ForEach(PaletteChoice.choices(dark: dark)) { choice in
+                    Text(choice.title).tag(choice)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .fixedSize()
+        }
     }
 
     /// The stored string as the enum the picker selects over, so an unwritten
