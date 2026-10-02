@@ -87,7 +87,8 @@ changes nothing. Stories: `window-plan-accepted`, `notion-page-picker`.
 
 The gnat hi-fi design (Claude Design project `e81457f6-…`, `gnat.html` with
 `gnat-data/shell/nav/main.jsx` and `gnat.css`) is the spec: `SidebarView`
-(Active across every project, then the Projects tree), the navigator's
+(Active across every project, the Projects tree, then the scratch project
+as a Scratch fold of its own — `SidebarModel.scratch`), the navigator's
 stacked Brief/Thread/Changes/PR foldouts (`SliceNavigatorView`, with
 `NavigatorModel` deciding phase, liveness and header actions — Thread's
 Terminal and Changes' file rows pick the main pane). `AppModel` keeps its one *active* project —
