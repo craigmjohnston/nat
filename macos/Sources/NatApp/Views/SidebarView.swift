@@ -1,0 +1,849 @@
+import AppKit
+import SwiftUI
+import NatKit
+
+/// The gnat design's sidebar: the Active fold — every project's work in
+/// flight, needs-you first, tagged `Project / title` — and the Projects
+/// fold, each project a disclosure over its milestones and their slices —
+/// then the Scratch fold, the scratch project's milestones straight under it.
+///
+/// Everything the old project tabs and rail did that the design does not
+/// draw lives on here as the row it belongs to: a project's menu (New Slice,
+/// Workshop the Plan, Open in Notion, Reveal, Close), a milestone's (New
+/// Slice, Rename, Move, Delete), a slice's (Launch, Edit, Open, Move, Delete),
+/// each project's own `+` (New Slice, Workshop the Plan), a proposal's tree
+/// under its Untitled row and an ended session under its project.
+struct SidebarView: View {
+    @Bindable var appModel: AppModel
+    var onNewProject: () -> Void = {}
+
+    /// The folds the user has made, by key: `active`, `work`, `p:<project>`
+    /// and `m:<project>/<milestone>`. A project with no entry is open exactly
+    /// when it holds the selection — the design's own default.
+    @State private var fold: [String: Bool]
+
+    @State private var sliceForDeletion: (row: SidebarSliceRow, done: Bool)?
+    @State private var sessionForDiscard: String?
+    @State private var newSliceTarget: NewSliceTarget?
+    @State private var milestoneForRename: MilestoneRef?
+    @State private var renameText = ""
+    @State private var milestoneForDeletion: MilestoneRef?
+    @State private var sliceForEdit: SidebarSliceRow?
+    @State private var projectPendingClose: String?
+    @State private var workshopPendingClose = false
+    @State private var actionError: String?
+    @State private var newMilestoneProject: String?
+    @State private var newMilestoneText = ""
+    /// The Scratch fold's tree at its natural height: what it takes, at most,
+    /// beside an open Projects tree.
+    @State private var scratchContentHeight: CGFloat = 0
+
+    init(appModel: AppModel, onNewProject: @escaping () -> Void = {}, folded: [String: Bool] = [:]) {
+        self.appModel = appModel
+        self.onNewProject = onNewProject
+        _fold = State(initialValue: folded)
+    }
+
+    private struct NewSliceTarget: Identifiable {
+        let projectID: String
+        let milestone: String
+        var id: String { "\(projectID)/\(milestone)" }
+    }
+
+    fileprivate struct MilestoneRef: Identifiable, Equatable {
+        let projectID: String
+        let name: String
+        var id: String { "\(projectID)/\(name)" }
+    }
+
+    private var model: SidebarModel { appModel.sidebarModel }
+
+    var body: some View {
+        let model = model
+        VStack(spacing: 0) {
+            head("active", label: "Active", count: model.needsYouCount) { newSessionButton }
+            if isOpen("active") {
+                if model.active.isEmpty {
+                    GnatNote(text: EmptyActiveNote.text.lowercased(), height: GnatMetrics.sidebarRowHeight)
+                } else {
+                    ForEach(model.active) { activeRow($0) }
+                }
+            }
+
+            // Folded, Projects (and Scratch under it) pins to the sidebar's
+            // foot rather than leaving an empty well under its heading.
+            if !isOpen("work") && !(model.scratch != nil && isOpen("scratch")) {
+                Spacer(minLength: 0)
+            }
+
+            // The air under a list, not under a folded heading — that would
+            // set the heading above it off-centre.
+            Rule(.separator).padding(.top, isOpen("active") ? 4 : 0)
+
+            head("work", label: "Projects", count: 0) {
+                Button(action: onNewProject) {
+                    Image(systemName: "folder.badge.plus")
+                        .font(.system(size: 13))
+                        .ink(.tertiary)
+                        .frame(width: 20, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("New Project\u{2026}")
+            }
+            if isOpen("work") {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(model.projects) { projectRows($0) }
+                    }
+                    .inelastic()
+                }
+                .frame(maxHeight: .infinity)
+            }
+
+            if let scratch = model.scratch {
+                scratchFold(scratch, projectsOpen: isOpen("work"))
+            }
+
+            if appModel.mirrorNudgeShown {
+                MirrorNudgeCardView(
+                    onChoose: { appModel.mirrorPickerPresented = true },
+                    onDismiss: { appModel.dismissMirrorNudge() }
+                )
+                .padding(12)
+            }
+        }
+        .surface(.header)
+        .rule(.separator, edges: [.trailing], width: 1)
+        .modifier(SidebarDialogs(view: self))
+    }
+
+    // MARK: - Fold
+
+    private func isOpen(_ key: String, byDefault: Bool = true) -> Bool {
+        fold[key].map { !$0 } ?? byDefault
+    }
+
+    private func isProjectOpen(_ project: SidebarProject) -> Bool {
+        if let folded = fold["p:\(project.id)"] { return !folded }
+        guard appModel.activeProjectID == project.id else { return false }
+        if let slice = appModel.selectedSliceID { return project.contains(sliceID: slice) }
+        return true
+    }
+
+    private func toggle(_ key: String, open: Bool) {
+        withAnimation(Motion.stateChange) { fold[key] = open }
+    }
+
+    // MARK: - Headings
+
+    private func head<Trailing: View>(
+        _ key: String, label: String, count: Int, @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        let open = isOpen(key)
+        return HStack(spacing: 6) {
+            DisclosureChevron(open: open)
+            Text(label.uppercased())
+                .font(.system(size: 12))
+                .tracking(0.7)
+                .ink(.secondary)
+            if count > 0 {
+                Text("\(count)").monoXS().ink(.hot)
+            }
+            Spacer(minLength: 0)
+            trailing()
+        }
+        .padding(.horizontal, 10)
+        // The 4pt of air a heading takes is shared above and below it, so a
+        // folded heading sits centred between its rule and the next line.
+        .frame(height: GnatMetrics.sidebarRowHeight + 4)
+        .contentShape(Rectangle())
+        .onTapGesture { toggle(key, open: open) }
+    }
+
+    /// A symbol rather than the "+" character, whose glyph sits on the
+    /// text baseline and so reads low beside a heading's label.
+    private var plusGlyph: some View {
+        Image(systemName: "plus")
+            .font(.system(size: 13, weight: .light))
+            .ink(.tertiary)
+            .frame(width: 18, height: 18)
+            .contentShape(Rectangle())
+    }
+
+    /// A project row's own `+`, and the Scratch heading's: add to that
+    /// project's plan — a milestone or a slice outright, or by workshopping
+    /// it with the planning agent.
+    private func addMenu(_ project: SidebarProject) -> some View {
+        Menu {
+            addItems(project)
+        } label: {
+            plusGlyph
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Add to \(project.name)")
+    }
+
+    @ViewBuilder
+    private func addItems(_ project: SidebarProject) -> some View {
+        Button("New Milestone\u{2026}") {
+            newMilestoneText = ""
+            newMilestoneProject = project.id
+        }
+        Button("New Slice\u{2026}") { newSliceTarget = NewSliceTarget(projectID: project.id, milestone: "") }
+        Button("Workshop the Plan") { Task { await appModel.selectWorkshop(inProject: project.id) } }
+    }
+
+    /// Active's `+`: a new ad hoc session, in the active project's working
+    /// directory — or, on the scratch project, a folder chosen first.
+    private var newSessionButton: some View {
+        Button(action: { Task { await startNewSession() } }) {
+            if appModel.newSessionLaunching {
+                ProgressView().controlSize(.mini).frame(width: 18, height: 18)
+            } else {
+                plusGlyph
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(appModel.newSessionLaunching || appModel.activeProjectID == nil || appModel.activeTabIsUntitled)
+        .help("New ad-hoc session")
+    }
+
+    // MARK: - Active
+
+    private func activeRow(_ row: SidebarActiveRow) -> some View {
+        HStack(spacing: 6) {
+            StateDot(state: row.state, live: row.live).frame(width: 12)
+            (Text(row.projectTag)
+                .font(Typo.mono(size: 10, weight: .medium))
+                .tracking(1)
+                // Raised off the shared baseline so the small capitals sit
+                // on the title's middle rather than its foot.
+                .baselineOffset(1.5)
+                .foregroundStyle(DesignTokens.ink(.secondary, on: .header))
+                + Text("  \u{2009}")
+                + Text(row.title))
+                .font(.system(size: GnatMetrics.body))
+                .ink(.primary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 18)
+        .padding(.trailing, 10)
+        .frame(height: GnatMetrics.sidebarRowHeight)
+        .gnatRow(selected: isSelected(row))
+        .contentShape(Rectangle())
+        .onTapGesture { select(row) }
+        .contextMenu { activeMenu(row) }
+    }
+
+    private func isSelected(_ row: SidebarActiveRow) -> Bool {
+        guard appModel.activeProjectID == row.projectID else { return false }
+        switch row.kind {
+        case .slice: return appModel.selectedSliceID == row.targetID
+        case .session: return appModel.selectedSessionID == row.targetID
+        case .workshop: return appModel.workshopSelected
+        }
+    }
+
+    private func select(_ row: SidebarActiveRow) {
+        Task {
+            switch row.kind {
+            case .slice: await appModel.selectSlice(row.targetID, inProject: row.projectID)
+            case .session: await appModel.selectSession(row.targetID, inProject: row.projectID)
+            case .workshop: await appModel.selectWorkshop(inProject: row.projectID)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func activeMenu(_ row: SidebarActiveRow) -> some View {
+        switch row.kind {
+        case .session:
+            if let session = appModel.sessionStore?.sessions.first(where: { $0.id == row.targetID }) {
+                Button("End Session") { Task { await appModel.endSession(tag: session.tag) } }
+                Button("Discard\u{2026}", role: .destructive) { sessionForDiscard = session.id }
+            }
+        case .workshop:
+            Button("End Workshop Session\u{2026}") {
+                Task {
+                    await appModel.selectWorkshop(inProject: row.projectID)
+                    workshopPendingClose = true
+                }
+            }
+        case .slice:
+            if let plan = appModel.plan(projectID: row.projectID),
+               let slice = plan.slices.first(where: { $0.id == row.targetID }) {
+                sliceMenu(SidebarSliceRow(
+                    sliceID: slice.id, projectID: row.projectID, title: slice.name, state: row.state, live: row.live),
+                          milestone: slice.milestoneID)
+            }
+        }
+    }
+
+    // MARK: - Projects
+
+    @ViewBuilder
+    private func projectRows(_ project: SidebarProject) -> some View {
+        let open = isProjectOpen(project)
+        let isActive = appModel.activeProjectID == project.id
+        HStack(spacing: 7) {
+            // The project's own fold mark: a folder of folders, outlined
+            // while folded and open with its flap swung out once its
+            // milestones are on the tree.
+            StackedFolderGlyph(
+                open: open,
+                color: DesignTokens.ink(.primary, on: .header),
+                backColor: DesignTokens.ink(.tertiary, on: .header))
+                .frame(width: 16)
+            Group {
+                switch project.kind {
+                case .untitled:
+                    Text(project.name).italic()
+                case .scratch:
+                    Label(project.name, systemImage: DesignTokens.scratchSymbol).labelStyle(.titleAndIcon)
+                case .project:
+                    Text(project.name)
+                }
+            }
+            .font(.system(size: GnatMetrics.body))
+            .ink(.primary)
+            .lineLimit(1)
+            Spacer(minLength: 0)
+            if !open && project.needsYou > 0 {
+                Circle().fill(DesignTokens.hot).frame(width: 6, height: 6)
+            }
+            if project.kind != .untitled {
+                addMenu(project)
+            }
+        }
+        .padding(.leading, 18)
+        .padding(.trailing, 10)
+        .frame(height: GnatMetrics.sidebarRowHeight)
+        .gnatRow(selected: project.kind == .untitled && isActive)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            toggle("p:\(project.id)", open: open)
+            if project.kind == .untitled { Task { await appModel.activateProject(project.id) } }
+        }
+        .contextMenu { projectMenu(project) }
+
+        if open {
+            projectBody(project, isActive: isActive)
+        }
+    }
+
+    /// A project's tree under its row. `outdent` pulls the whole tree left
+    /// by one level — the Scratch fold's, whose milestones sit where a
+    /// project row would.
+    @ViewBuilder
+    private func projectBody(_ project: SidebarProject, isActive: Bool, outdent: CGFloat = 0) -> some View {
+        switch project.status {
+        case .loading:
+            GnatNote(text: "loading\u{2026}", leading: 26 - outdent, height: GnatMetrics.sidebarRowHeight)
+        case .failed(let message):
+            failedRow(project, message: message, leading: 26 - outdent)
+        case .empty:
+            GnatNote(text: "no slices", leading: 26 - outdent, height: GnatMetrics.sidebarRowHeight)
+        case .stale(let message):
+            GnatNote(
+                text: "refresh failed — showing the last plan", role: .warning, leading: 26 - outdent,
+                height: GnatMetrics.sidebarRowHeight)
+                .help(message)
+        case .loaded, .none:
+            EmptyView()
+        }
+        if project.kind == .untitled, isActive, let proposal = appModel.activeProposal {
+            ForEach(proposal.folders, id: \.milestoneID) { folder in
+                milestoneHead(name: folder.title, count: "\(folder.slices.count)", key: "m:\(project.id)/\(folder.title)")
+                if isOpen("m:\(project.id)/\(folder.title)") {
+                    ForEach(folder.slices, id: \.sliceID) { slice in
+                        sliceLine(title: slice.name, state: .todo, live: false, selected: false)
+                    }
+                }
+            }
+        }
+        ForEach(project.milestones) { milestone in
+            let key = "m:\(project.id)/\(milestone.name)"
+            milestoneHead(
+                name: milestone.name.isEmpty ? "No milestone" : milestone.name,
+                count: "\(milestone.done)/\(milestone.total)", key: key, indent: 26 - outdent)
+                .contextMenu { milestoneMenu(project.id, milestone.name) }
+            if isOpen(key) {
+                ForEach(milestone.slices) { sliceRow($0, indent: 34 - outdent) }
+            }
+        }
+        if isActive {
+            endedSessions(project, outdent: outdent)
+        }
+        doneFolder(project, outdent: outdent)
+    }
+
+    /// The Scratch fold: the reserved scratch project's tree straight under
+    /// its own heading, with no project row — it is a project to nat, but
+    /// never drawn as one. Beside an open Projects tree it takes only the
+    /// height it needs; with Projects folded, everything that is left.
+    @ViewBuilder
+    private func scratchFold(_ scratch: SidebarProject, projectsOpen: Bool) -> some View {
+        Rule(.separator).padding(.top, projectsOpen ? 4 : 0)
+        head("scratch", label: "Scratch", count: 0) { addMenu(scratch) }
+            .contextMenu { addItems(scratch) }
+        if isOpen("scratch") {
+            ScrollView {
+                VStack(spacing: 0) {
+                    projectBody(scratch, isActive: appModel.activeProjectID == scratch.id, outdent: 8)
+                }
+                .padding(.bottom, 4)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scratchContentHeight = $0 }
+                .inelastic()
+            }
+            .frame(maxHeight: projectsOpen ? scratchContentHeight : .infinity)
+        }
+    }
+
+    private func failedRow(_ project: SidebarProject, message: String, leading: CGFloat = 26) -> some View {
+        HStack(spacing: 6) {
+            Text("the plan could not be loaded")
+                .font(.system(size: GnatMetrics.body))
+                .ink(.warning)
+                .lineLimit(1)
+                .help(message)
+            Spacer(minLength: 0)
+            Button("Retry") {
+                Task {
+                    await appModel.activateProject(project.id)
+                    await appModel.refresh()
+                }
+            }
+            .buttonStyle(GnatButtonStyle())
+        }
+        .padding(.leading, leading)
+        .padding(.trailing, 10)
+        .frame(height: GnatMetrics.sidebarRowHeight + 4)
+    }
+
+    private func milestoneHead(
+        name: String, count: String, key: String, indent: CGFloat = 26, openByDefault: Bool = true,
+        isDone: Bool = false
+    ) -> some View {
+        let open = isOpen(key, byDefault: openByDefault)
+        return HStack(spacing: 7) {
+            // A milestone's fold mark: one folder, outlined or open, always in
+            // the muted ink — never the accent.
+            Group {
+                if isDone {
+                    DoneFolderGlyph(open: open, color: DesignTokens.ink(.tertiary, on: .header))
+                } else {
+                    FolderGlyph(open: open, color: DesignTokens.ink(.tertiary, on: .header))
+                }
+            }
+            .frame(width: 16)
+            Text(name)
+                .font(.system(size: 13))
+                .ink(.tertiary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Text(count).monoXS().ink(.quaternary)
+        }
+        .padding(.leading, indent)
+        .padding(.trailing, 10)
+        .frame(height: GnatMetrics.sidebarRowHeight)
+        .contentShape(Rectangle())
+        .onTapGesture { toggle(key, open: open) }
+    }
+
+    private func sliceRow(_ row: SidebarSliceRow, indent: CGFloat = 34) -> some View {
+        let selected = appModel.activeProjectID == row.projectID && appModel.selectedSliceID == row.sliceID
+        return sliceLine(title: row.title, state: row.state, live: row.live, selected: selected, indent: indent)
+            .onTapGesture { Task { await appModel.selectSlice(row.sliceID, inProject: row.projectID) } }
+            .contextMenu {
+                sliceMenu(row, milestone: appModel.plan(projectID: row.projectID)?
+                    .slices.first { $0.id == row.sliceID }?.milestoneID ?? "")
+            }
+    }
+
+    private func sliceLine(
+        title: String, state: SliceDisplayState, live: Bool, selected: Bool, indent: CGFloat = 34
+    ) -> some View {
+        // Done recedes to grey under its strike; blocked recedes further, to
+        // the faintest ink, since it is not available at all.
+        let ink: InkRole = state == .blocked ? .quaternary : (state == .done ? .tertiary : .primary)
+        return HStack(spacing: 6) {
+            StateDot(state: state, live: live).frame(width: 12)
+            Text(title)
+                .font(.system(size: GnatMetrics.body))
+                .strikethrough(state == .done)
+                .ink(ink)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, indent)
+        .padding(.trailing, 10)
+        .frame(height: GnatMetrics.sidebarRowHeight)
+        .gnatRow(selected: selected)
+        .contentShape(Rectangle())
+    }
+
+    /// The project's finished milestones, once it has one: a Done folder at
+    /// the foot of its tree, folded unless it holds the selected slice, each
+    /// milestone in it a folder of its own, folded the same way.
+    @ViewBuilder
+    private func doneFolder(_ project: SidebarProject, outdent: CGFloat = 0) -> some View {
+        if !project.doneMilestones.isEmpty {
+            let selected = appModel.activeProjectID == project.id ? appModel.selectedSliceID : nil
+            let key = "d:\(project.id)"
+            let holdsSelection = selected.map(project.doneContains) ?? false
+            let sliceCount = project.doneMilestones.reduce(0) { $0 + $1.total }
+            milestoneHead(
+                name: "Done", count: "\(sliceCount)", key: key, indent: 26 - outdent,
+                openByDefault: holdsSelection, isDone: true)
+            if isOpen(key, byDefault: holdsSelection) {
+                ForEach(project.doneMilestones) { milestone in
+                    let milestoneKey = "m:\(project.id)/\(milestone.name)"
+                    let opensItself = selected.map { id in milestone.slices.contains { $0.sliceID == id } } ?? false
+                    milestoneHead(
+                        name: milestone.name, count: "\(milestone.done)/\(milestone.total)", key: milestoneKey,
+                        indent: 36 - outdent, openByDefault: opensItself)
+                        .contextMenu { milestoneMenu(project.id, milestone.name) }
+                    if isOpen(milestoneKey, byDefault: opensItself) {
+                        ForEach(milestone.slices) { sliceRow($0, indent: 44 - outdent) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The active project's ended ad hoc sessions, under a heading of their
+    /// own at the foot of its tree — they belong to no milestone.
+    @ViewBuilder
+    private func endedSessions(_ project: SidebarProject, outdent: CGFloat = 0) -> some View {
+        let live = (appModel.activityStore?.agents ?? [:]).mapValues { AgentActivity($0.activity) }
+        let ended = (appModel.sessionStore?.sessions ?? [])
+            .filter { sessionIsDone($0, liveAgents: live) }
+            .sorted { $0.startedAt > $1.startedAt }
+        if !ended.isEmpty {
+            let key = "m:\(project.id)/~sessions"
+            milestoneHead(name: "Ad hoc sessions", count: "\(ended.count)", key: key, indent: 26 - outdent)
+            if isOpen(key) {
+                ForEach(ended) { session in
+                    sliceLine(
+                        title: session.label, state: .done, live: false,
+                        selected: appModel.selectedSessionID == session.id, indent: 34 - outdent)
+                        .onTapGesture { appModel.selectedSessionID = session.id }
+                        .contextMenu {
+                            Button("Discard\u{2026}", role: .destructive) { sessionForDiscard = session.id }
+                        }
+                }
+            }
+        }
+    }
+
+    // MARK: - Menus
+
+    @ViewBuilder
+    private func projectMenu(_ project: SidebarProject) -> some View {
+        if project.kind != .untitled {
+            addItems(project)
+            Divider()
+        }
+        if project.kind == .project, let url = NotionPageURL.forPage(project.id) {
+            Button("Open in Notion") { NSWorkspace.shared.open(url) }
+        }
+        if let directory = workingDirectory(of: project.id) {
+            Button("Reveal Working Directory in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: directory)])
+            }
+        }
+        if ProjectTabRules.showsClose(tabCount: appModel.closableTabCount, isScratch: project.kind == .scratch) {
+            Divider()
+            Button("Close Project") { requestClose(project.id) }
+        }
+    }
+
+    @ViewBuilder
+    private func milestoneMenu(_ projectID: String, _ name: String) -> some View {
+        let milestones = appModel.plan(projectID: projectID)?.milestones ?? []
+        let filed = appModel.plan(projectID: projectID)?.slices.filter { $0.milestoneID == name }.count ?? 0
+        let actions = MilestoneMenuRules.actions(for: name, in: milestones, sliceCount: filed)
+
+        Button("New Slice\u{2026}") { newSliceTarget = NewSliceTarget(projectID: projectID, milestone: name) }
+        Button("Rename\u{2026}") {
+            renameText = name
+            milestoneForRename = MilestoneRef(projectID: projectID, name: name)
+        }
+        Divider()
+        Button("Move Up") {
+            run { try await NatClient().milestoneMove(projectID: projectID, name: name, before: actions.moveBefore, after: nil) }
+        }
+        .disabled(actions.moveBefore == nil)
+        Button("Move Down") {
+            run { try await NatClient().milestoneMove(projectID: projectID, name: name, before: nil, after: actions.moveAfter) }
+        }
+        .disabled(actions.moveAfter == nil)
+        Divider()
+        Button("Delete", role: .destructive) { milestoneForDeletion = MilestoneRef(projectID: projectID, name: name) }
+            .disabled(!actions.canDelete)
+    }
+
+    /// A slice's menu — the rail's own, each item enabled exactly when the
+    /// control it mirrors is.
+    @ViewBuilder
+    private func sliceMenu(_ row: SidebarSliceRow, milestone: String) -> some View {
+        let plan = appModel.plan(projectID: row.projectID)
+        let page = plan?.slices.first { $0.id == row.sliceID }
+        let targets = (plan?.milestones ?? []).sorted { $0.order < $1.order }.filter { $0.id != milestone }
+        let hasLiveAgent = appModel.activityStore?.agents[row.sliceID] != nil
+
+        Button("Launch Agent") { launch(row) }
+            .disabled(page.map { !LaunchPlan(for: $0, hasLiveAgent: hasLiveAgent).canLaunch } ?? true)
+        Button("Edit Description\u{2026}") { sliceForEdit = row }
+            .disabled(page?.status != "Todo")
+        if let url = page.flatMap({ URL(string: $0.url) }) ?? NotionPageURL.forPage(row.sliceID) {
+            Button("Open in Notion") { NSWorkspace.shared.open(url) }
+        }
+        Divider()
+        if !targets.isEmpty {
+            Menu("Move to") {
+                ForEach(targets) { target in
+                    Button(target.name) {
+                        run { try await NatClient().sliceMove(projectID: row.projectID, sliceRef: row.sliceID, milestone: target.name) }
+                    }
+                }
+            }
+        }
+        Button("Delete\u{2026}", role: .destructive) { sliceForDeletion = (row, page?.status == "Done") }
+    }
+
+    // MARK: - Actions
+
+    private func workingDirectory(of projectID: String) -> String? {
+        let directory = appModel.config?.projects[projectID]?.workingDir
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return directory.isEmpty ? nil : directory
+    }
+
+    private func requestClose(_ projectID: String) {
+        if appModel.tabHasLiveWorkshop(projectID) {
+            projectPendingClose = projectID
+        } else {
+            Task { await appModel.closeProject(projectID) }
+        }
+    }
+
+    /// Runs a nat write and refreshes, surfacing nat's own refusal.
+    private func run(_ work: @escaping @MainActor () async throws -> Void) {
+        Task {
+            do {
+                try await work()
+                await appModel.refresh()
+            } catch {
+                actionError = commandMessage(of: error)
+            }
+        }
+    }
+
+    private func launch(_ row: SidebarSliceRow) {
+        let agent = appModel.config?.sliceAgent
+        run {
+            _ = try await NatClient().sliceLaunch(
+                projectID: row.projectID, sliceRef: row.sliceID, model: agent?.model, effort: agent?.effort)
+            await appModel.selectSlice(row.sliceID, inProject: row.projectID)
+        }
+    }
+
+    fileprivate func renameMilestone(_ ref: MilestoneRef) {
+        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != ref.name else { return }
+        let from = ref.name
+        run { try await NatClient().milestoneRename(projectID: ref.projectID, from: from, to: trimmed) }
+        if let folded = fold.removeValue(forKey: "m:\(ref.projectID)/\(from)") {
+            fold["m:\(ref.projectID)/\(trimmed)"] = folded
+        }
+    }
+
+    fileprivate func addMilestone(_ projectID: String) {
+        let name = newMilestoneText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        run { try await NatClient().milestoneAdd(projectID: projectID, name: name) }
+    }
+
+    fileprivate func deleteSlice(_ row: SidebarSliceRow) {
+        run {
+            try await NatClient().sliceDelete(projectID: row.projectID, sliceRef: row.sliceID)
+            if appModel.selectedSliceID == row.sliceID { appModel.selectedSliceID = nil }
+        }
+    }
+
+    private func startNewSession() async {
+        var folder: String?
+        if appModel.newSessionNeedsFolder {
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = true
+            panel.canChooseFiles = false
+            panel.allowsMultipleSelection = false
+            panel.canCreateDirectories = true
+            panel.prompt = "Start Session"
+            panel.message = "Choose the folder the session runs in"
+            if let last = appModel.lastSessionFolder { panel.directoryURL = URL(fileURLWithPath: last) }
+            guard panel.runModal() == .OK, let path = panel.url?.path else { return }
+            folder = path
+        }
+        await appModel.launchSession(dir: folder)
+        if let error = appModel.newSessionError { actionError = error }
+    }
+
+    private func commandMessage(of error: Error) -> String {
+        if case NatError.commandFailed(let message) = error { return message }
+        return error.localizedDescription
+    }
+
+    // MARK: - Dialogs
+
+    /// Every sheet and alert the sidebar's menus open, kept off the body so
+    /// the layout above reads as the design does.
+    private struct SidebarDialogs: ViewModifier {
+        let view: SidebarView
+
+        private func presenting<Value>(_ value: Binding<Value?>) -> Binding<Bool> {
+            Binding(get: { value.wrappedValue != nil }, set: { if !$0 { value.wrappedValue = nil } })
+        }
+
+        func body(content: Content) -> some View {
+            let appModel = view.appModel
+            return content
+                .alert(
+                    "Delete \u{201C}\(view.sliceForDeletion?.row.title ?? "")\u{201D}?",
+                    isPresented: Binding(
+                        get: { view.sliceForDeletion != nil },
+                        set: { if !$0 { view.sliceForDeletion = nil } })
+                ) {
+                    Button("Delete", role: .destructive) {
+                        if let row = view.sliceForDeletion?.row { view.deleteSlice(row) }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text(view.sliceForDeletion?.done == true
+                        ? "This slice is Done — deleting it drops the record of finished work. The page goes to Notion's trash."
+                        : "The page goes to Notion's trash.")
+                }
+                .alert(
+                    "Rename \u{201C}\(view.milestoneForRename?.name ?? "")\u{201D}",
+                    isPresented: presenting(view.$milestoneForRename),
+                    presenting: view.milestoneForRename
+                ) { ref in
+                    TextField("Milestone name", text: view.$renameText)
+                        .font(Typo.mono(size: Typo.code))
+                    Button("Rename") { view.renameMilestone(ref) }
+                    Button("Cancel", role: .cancel) {}
+                } message: { _ in
+                    Text("The slices filed under it are refiled onto the new name, and it keeps its place in the plan.")
+                }
+                .alert(
+                    "New Milestone",
+                    isPresented: presenting(view.$newMilestoneProject),
+                    presenting: view.newMilestoneProject
+                ) { projectID in
+                    TextField("Milestone name", text: view.$newMilestoneText)
+                        .font(Typo.mono(size: Typo.code))
+                    Button("Add") { view.addMilestone(projectID) }
+                    Button("Cancel", role: .cancel) {}
+                } message: { _ in
+                    Text("It goes at the end of the plan, empty, ready for slices.")
+                }
+                .alert(
+                    "Delete \u{201C}\(view.milestoneForDeletion?.name ?? "")\u{201D}?",
+                    isPresented: presenting(view.$milestoneForDeletion),
+                    presenting: view.milestoneForDeletion
+                ) { ref in
+                    Button("Delete", role: .destructive) {
+                        view.run { try await NatClient().milestoneRemove(projectID: ref.projectID, name: ref.name) }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: { _ in
+                    Text("The milestone is dropped from the plan. It holds no slices, so no work goes with it.")
+                }
+                .sheet(item: view.$newSliceTarget) { target in
+                    NewSliceSheetView(
+                        projectID: target.projectID,
+                        milestones: appModel.plan(projectID: target.projectID)?.milestones ?? [],
+                        initialMilestone: target.milestone,
+                        onClose: { view.newSliceTarget = nil },
+                        onCreated: {
+                            view.newSliceTarget = nil
+                            Task { await appModel.refresh() }
+                        }
+                    )
+                }
+                .sheet(item: view.$sliceForEdit) { row in
+                    EditBriefSheetView(
+                        projectID: row.projectID,
+                        sliceID: row.sliceID,
+                        sliceName: row.title,
+                        onClose: { view.sliceForEdit = nil },
+                        onSaved: {
+                            view.sliceForEdit = nil
+                            Task { await appModel.refresh() }
+                        }
+                    )
+                }
+                .sheet(isPresented: Bindable(appModel).mirrorPickerPresented) {
+                    NotionPickerSheetView(
+                        model: appModel.makeNotionPicker(),
+                        onCancel: { appModel.mirrorPickerPresented = false },
+                        onCreate: { place in await appModel.mirrorActiveProject(into: place) },
+                        onCreated: { appModel.mirrorPickerPresented = false }
+                    )
+                }
+                .alert("End the workshop session?", isPresented: view.$workshopPendingClose) {
+                    Button("End Session", role: .destructive) {
+                        Task {
+                            if let refusal = await appModel.closeWorkshopTab() { view.actionError = refusal }
+                        }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("The planning agent is still running. Ending it ends its session; the draft goes with it.")
+                }
+                .alert(
+                    "End the workshop session?",
+                    isPresented: presenting(view.$projectPendingClose),
+                    presenting: view.projectPendingClose
+                ) { projectID in
+                    Button("End Session", role: .destructive) {
+                        Task {
+                            if let refusal = await appModel.closeProject(projectID) { view.actionError = refusal }
+                        }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: { _ in
+                    Text("The planning agent is still running. Closing the project ends its session; the draft goes with it.")
+                }
+                .alert(
+                    "Discard this session?",
+                    isPresented: presenting(view.$sessionForDiscard),
+                    presenting: view.sessionForDiscard
+                ) { id in
+                    Button("Discard", role: .destructive) {
+                        Task {
+                            if let refusal = await appModel.discardSession(id: id) { view.actionError = refusal }
+                        }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: { _ in
+                    Text("Its worktree is removed. This cannot be undone.")
+                }
+                .alert(
+                    "That didn't work",
+                    isPresented: presenting(view.$actionError),
+                    presenting: view.actionError
+                ) { _ in
+                    Button("OK") {}
+                } message: { message in
+                    Text(message)
+                }
+        }
+    }
+}

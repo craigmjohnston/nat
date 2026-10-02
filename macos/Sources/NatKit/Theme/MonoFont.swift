@@ -9,11 +9,11 @@ import SwiftUI
 /// from the system: a terminal, a diff and a code span are the surfaces this
 /// app is read on, and leaving their face to `design: .monospaced` means
 /// whatever SF Mono the OS release happens to carry — a different rhythm on
-/// a different machine, and one nobody here chose. Four static faces are
-/// carried (regular, bold, and both italics, ~1.1MB, OFL — the licence sits
-/// beside them in `Resources/Fonts`), which is every combination SwiftUI can
-/// ask this family for; the variable font is not, because a face registered
-/// per weight is a face that resolves by name.
+/// a different machine, and one nobody here chose. Five static faces are
+/// carried (regular, medium, bold, and the regular and bold italics, ~1.4MB,
+/// OFL — the licence sits beside them in `Resources/Fonts`): a three-step
+/// weight ramp, and its two ends slanted. The variable font is not, because a
+/// face registered per weight is a face that resolves by name.
 ///
 /// Nothing installs anything: `register` hands the files to CoreText for
 /// this process alone, so a machine without JetBrains Mono has it for as
@@ -21,20 +21,26 @@ import SwiftUI
 /// through `Typo.mono`, which falls back to the monospaced system font
 /// wherever the face is not there to be had — a registration that failed, a
 /// bundle built without the resource — so the app is readable either way.
+/// The three weights the bundled family carries.
+public enum MonoWeight: Equatable, Sendable {
+    case regular, medium, bold
+}
+
 public enum MonoFont {
-    /// The family, as the four faces name themselves.
+    /// The family, as the faces name themselves.
     public static let family = "JetBrains Mono"
 
     /// The PostScript names the faces resolve by. They are what `NSFont` and
     /// `Font.custom` are given: a family name leaves the choice of face to
-    /// the text system, and the point of registering four is to say which.
+    /// the text system, and the point of registering each is to say which.
     public static let regularFace = "JetBrainsMono-Regular"
+    public static let mediumFace = "JetBrainsMono-Medium"
     public static let boldFace = "JetBrainsMono-Bold"
     public static let italicFace = "JetBrainsMono-Italic"
     public static let boldItalicFace = "JetBrainsMono-BoldItalic"
 
     /// Every face this bundles, in the order they are registered.
-    public static let faces = [regularFace, boldFace, italicFace, boldItalicFace]
+    public static let faces = [regularFace, mediumFace, boldFace, italicFace, boldItalicFace]
 
     /// Registers the bundled faces with CoreText for this process.
     ///
@@ -59,13 +65,21 @@ public enum MonoFont {
     /// installed on the Mac already, and a registration that failed against
     /// an identical font already registered is not a font that is missing.
     public static func face(bold: Bool = false, italic: Bool = false) -> String? {
+        face(weight: bold ? .bold : .regular, italic: italic)
+    }
+
+    /// The face for a step of the weight ramp. Medium carries no italic of
+    /// its own, so a medium italic is the regular italic — the slant is the
+    /// thing asked for, and it is kept.
+    public static func face(weight: MonoWeight, italic: Bool = false) -> String? {
         register()
         let name: String
-        switch (bold, italic) {
-        case (false, false): name = regularFace
-        case (true, false): name = boldFace
-        case (false, true): name = italicFace
-        case (true, true): name = boldItalicFace
+        switch (weight, italic) {
+        case (.regular, false): name = regularFace
+        case (.medium, false): name = mediumFace
+        case (.bold, false): name = boldFace
+        case (.regular, true), (.medium, true): name = italicFace
+        case (.bold, true): name = boldItalicFace
         }
         return isResolvable(name) ? name : nil
     }
@@ -100,7 +114,7 @@ public enum MonoFont {
         return isResolvable(regularFace)
     }()
 
-    /// The four TTFs inside the resource bundle, in `faces` order so a
+    /// The bundled TTFs inside the resource bundle, in `faces` order so a
     /// registration reads in the order the faces are declared.
     static var bundledFontURLs: [URL] {
         guard let bundle = resourceBundle else { return [] }

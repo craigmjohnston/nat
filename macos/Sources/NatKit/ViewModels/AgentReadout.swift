@@ -33,7 +33,7 @@ public func buildAgentReadout(from agent: AgentStatus?) -> AgentReadout? {
     let parts = [agent.model, agent.effort].compactMap { $0 }.filter { !$0.isEmpty }
     let label = parts.isEmpty ? nil : parts.joined(separator: " · ")
     let context = agent.contextPercent.map {
-        AgentReadout.Context(text: "\(Int($0.rounded()))%", warning: $0 >= contextWarningThreshold)
+        AgentReadout.Context(text: "ctx \(Int($0.rounded()))%", warning: $0 >= contextWarningThreshold)
     }
     guard label != nil || context != nil else { return nil }
     return AgentReadout(label: label, context: context)

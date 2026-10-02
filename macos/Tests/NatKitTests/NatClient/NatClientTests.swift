@@ -302,6 +302,30 @@ final class NatClientTests: XCTestCase {
 
     // MARK: - Milestones
 
+    func testMilestoneAdd() async throws {
+        let fakeRunner = FakeRunner(fixture: .milestoneAddSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.milestoneAdd(projectID: "proj-123", name: "Phase 3")
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["milestone-add", "Phase 3", "--project", "proj-123", "--json"])
+    }
+
+    func testMilestoneAddFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .milestoneAddFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            try await client.milestoneAdd(projectID: "proj-123", name: " ")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            guard case .commandFailed(let message) = error else {
+                return XCTFail("Expected commandFailed error")
+            }
+            XCTAssertEqual(message, "milestone-add: the milestone name is empty")
+        }
+    }
+
     func testMilestoneRename() async throws {
         let fakeRunner = FakeRunner(fixture: .milestoneRenameSuccess)
         let client = NatClient(commandRunner: fakeRunner)

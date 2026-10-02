@@ -1,0 +1,216 @@
+import XCTest
+@testable import NatKit
+
+final class SidebarModelTests: XCTestCase {
+    private func slice(
+        _ id: String, status: String = "Todo", milestone: String = "M1", branch: String? = nil,
+        handedBack: Bool = false, pr: String = "", blocked: Bool = false
+    ) -> Slice {
+        Slice(
+            id: id, name: "Slice \(id)", status: status, milestoneID: milestone, assignee: "", pr: pr, url: "",
+            branch: branch, blocked: blocked, handedBack: handedBack)
+    }
+
+    private func plan(_ slices: [Slice], milestones: [String] = ["M1", "M2"]) -> ProjectInfo {
+        ProjectInfo(
+            project: Project(id: "p", name: "P", conventions: ""),
+            milestones: milestones.enumerated().map { Milestone(id: $1, name: $1, order: Double($0), status: "Active") },
+            slices: slices)
+    }
+
+    private func session(_ id: String, tag: String, startedAt: Date, prs: [SessionPR] = []) -> Session {
+        Session(id: id, tag: tag, live: false, startedAt: startedAt, dir: "/tmp", branch: "session/\(id)", prs: prs)
+    }
+
+    // MARK: - Display state
+
+    func testEveryStageReadsAsItsDisplayState() {
+        XCTAssertEqual(displayState(for: slice("a"), agent: nil, fixLaunched: false), .todo)
+        XCTAssertEqual(displayState(for: slice("a", blocked: true), agent: nil, fixLaunched: false), .blocked)
+        XCTAssertEqual(displayState(for: slice("a", status: "In progress"), agent: nil, fixLaunched: false), .working)
+        XCTAssertEqual(displayState(for: slice("a", status: "In progress"), agent: .working, fixLaunched: false), .working)
+        XCTAssertEqual(displayState(for: slice("a", status: "In progress"), agent: .waiting, fixLaunched: false), .waiting)
+        XCTAssertEqual(
+            displayState(for: slice("a", status: "In progress", branch: "b", handedBack: true), agent: .waiting, fixLaunched: false),
+            .review, "a live session never moves a handed-back slice")
+        XCTAssertEqual(displayState(for: slice("a", status: "In progress", pr: "https://x/pull/1"), agent: nil, fixLaunched: false), .pr)
+        XCTAssertEqual(displayState(for: slice("a", status: "In progress", pr: "https://x/pull/1"), agent: .working, fixLaunched: true), .fixing)
+        XCTAssertEqual(displayState(for: slice("a", status: "In progress", pr: "https://x/pull/1"), agent: .waiting, fixLaunched: true), .waiting)
+        XCTAssertEqual(displayState(for: slice("a", status: "Done", pr: "https://x/pull/1"), agent: .working, fixLaunched: false), .done)
+    }
+
+    func testTheStatesFlagsAreTheDesigns() {
+        XCTAssertEqual(SliceDisplayState.allCases.filter(\.needsYou), [.waiting, .review, .pr])
+        XCTAssertEqual(SliceDisplayState.allCases.filter { !$0.isLaunched }, [.todo, .blocked])
+        XCTAssertEqual(SliceDisplayState.allCases.filter(\.isInFlight), [.working, .waiting, .review, .pr, .fixing])
+    }
+
+    // MARK: - The tree
+
+    func testMilestonesHoldTheirSlicesInPlanOrderWithTheirCounts() {
+        let model = buildSidebarModel(
+            projects: [SidebarProjectInput(id: "p", name: "P", plan: plan([
+                slice("1", status: "Done"), slice("2"), slice("3", milestone: "M2"), slice("4", milestone: "Gone"),
+            ]))],
+            liveAgents: [:])
+        let project = model.projects[0]
+        XCTAssertEqual(project.status, .loaded)
+        XCTAssertEqual(project.milestones.map(\.name), ["M1", "M2", ""])
+        XCTAssertEqual(project.milestones[0].slices.map(\.sliceID), ["1", "2"])
+        XCTAssertEqual(project.milestones[0].done, 1)
+        XCTAssertEqual(project.milestones[0].total, 2)
+        XCTAssertEqual(project.milestones[2].slices.map(\.sliceID), ["4"], "an unfiled slice is still drawn")
+        XCTAssertTrue(project.contains(sliceID: "3"))
+        XCTAssertEqual(project.milestones[0].id, "M1")
+        XCTAssertEqual(project.milestones[0].slices[0].id, "1")
+        XCTAssertFalse(project.contains(sliceID: "9"))
+    }
+
+    func testAFinishedMilestoneMovesToDoneAndAFinishedSliceStaysPut() {
+        let model = buildSidebarModel(
+            projects: [SidebarProjectInput(id: "p", name: "P", plan: plan([
+                slice("1", status: "Done"), slice("2", status: "Done"),
+                slice("3", status: "Done", milestone: "M2"), slice("4", milestone: "M2"),
+            ]))],
+            liveAgents: [:])
+        let project = model.projects[0]
+        XCTAssertEqual(project.milestones.map(\.name), ["M2"])
+        XCTAssertEqual(project.milestones[0].slices.map(\.sliceID), ["3", "4"], "a done slice waits for its milestone")
+        XCTAssertEqual(project.doneMilestones.map(\.name), ["M1"])
+        XCTAssertTrue(project.doneMilestones[0].isComplete)
+        XCTAssertTrue(project.doneContains(sliceID: "1"))
+        XCTAssertFalse(project.doneContains(sliceID: "3"))
+        XCTAssertTrue(project.contains(sliceID: "1"))
+    }
+
+    func testBlockedSlicesSitBelowTheRestOfTheirMilestone() {
+        let model = buildSidebarModel(
+            projects: [SidebarProjectInput(id: "p", name: "P", plan: plan([
+                slice("a", blocked: true), slice("b"), slice("c", blocked: true), slice("d", status: "Done"),
+                slice("e"),
+            ]))],
+            liveAgents: [:])
+        XCTAssertEqual(model.projects[0].milestones[0].slices.map(\.sliceID), ["b", "d", "e", "a", "c"])
+    }
+
+    func testAnEmptyMilestoneIsStillARow() {
+        let model = buildSidebarModel(
+            projects: [SidebarProjectInput(id: "p", name: "P", plan: plan([slice("1")]))], liveAgents: [:])
+        XCTAssertEqual(model.projects[0].milestones.map(\.total), [1, 0])
+    }
+
+    func testEachPlanStatusIsReadOffTheLoad() {
+        let inputs = [
+            SidebarProjectInput(id: "a", name: "A", plan: nil, isLoading: true),
+            SidebarProjectInput(id: "b", name: "B", plan: nil, isLoading: false, errorMessage: "boom"),
+            SidebarProjectInput(id: "c", name: "C", plan: plan([slice("1")]), errorMessage: "stale"),
+            SidebarProjectInput(id: "d", name: "D", plan: plan([])),
+            SidebarProjectInput(id: "e", name: "E", kind: .untitled, plan: nil),
+            SidebarProjectInput(id: "f", name: "F", plan: nil),
+        ]
+        let model = buildSidebarModel(projects: inputs, liveAgents: [:])
+        XCTAssertEqual(model.projects.map(\.status), [
+            .loading, .failed("boom"), .stale("stale"), .empty, .none, .loading,
+        ])
+        XCTAssertEqual(model.projects[4].kind, .untitled)
+    }
+
+    func testTheScratchProjectIsItsOwnFoldNotAProjectRow() {
+        let model = buildSidebarModel(
+            projects: [
+                SidebarProjectInput(id: "s", name: "Scratch", kind: .scratch, plan: plan([slice("1")])),
+                SidebarProjectInput(id: "p", name: "P", plan: plan([slice("2")])),
+            ],
+            liveAgents: [:])
+        XCTAssertEqual(model.projects.map(\.id), ["p"])
+        XCTAssertEqual(model.scratch?.id, "s")
+        XCTAssertTrue(model.scratch?.contains(sliceID: "1") ?? false)
+    }
+
+    func testNoScratchProjectMeansNoScratchFold() {
+        let model = buildSidebarModel(
+            projects: [SidebarProjectInput(id: "p", name: "P", plan: plan([]))], liveAgents: [:])
+        XCTAssertNil(model.scratch)
+    }
+
+    // MARK: - Active
+
+    func testActiveListsWhatIsInFlightNeedsYouFirstAcrossProjects() {
+        let first = SidebarProjectInput(id: "p", name: "P", plan: plan([
+            slice("working", status: "In progress"),
+            slice("todo"),
+            slice("review", status: "In progress", branch: "b", handedBack: true),
+            slice("done", status: "Done"),
+        ]))
+        let second = SidebarProjectInput(id: "q", name: "Q", plan: plan([
+            slice("waiting", status: "In progress"),
+            slice("pr", status: "In progress", pr: "https://x/pull/2"),
+        ]))
+        let model = buildSidebarModel(
+            projects: [first, second], liveAgents: ["working": .working, "waiting": .waiting])
+        XCTAssertEqual(model.active.map(\.targetID), ["review", "waiting", "pr", "working"])
+        XCTAssertEqual(model.active.map(\.projectName), ["P", "Q", "Q", "P"])
+        XCTAssertEqual(model.needsYouCount, 3)
+        XCTAssertEqual(model.projects.map(\.needsYou), [1, 2])
+        XCTAssertTrue(model.active.last?.live == true)
+        XCTAssertEqual(model.active.first?.id, "slice:review")
+    }
+
+    func testPlanningAgentsAndSessionsJoinActive() {
+        let now = Date()
+        let live = session("s1", tag: "session:p:s1", startedAt: now)
+        let review = session(
+            "s2", tag: "session:p:s2", startedAt: now.addingTimeInterval(-60),
+            prs: [SessionPR(number: 1, title: "t", url: "u", state: "OPEN")])
+        let ended = session("s3", tag: "session:p:s3", startedAt: now.addingTimeInterval(-120))
+        let model = buildSidebarModel(
+            projects: [
+                SidebarProjectInput(id: "p", name: "P", plan: plan([])),
+                SidebarProjectInput(id: "q", name: "Q", plan: plan([])),
+            ],
+            liveAgents: ["session:p:s1": .waiting],
+            sessions: [ended, review, live],
+            sessionsProjectID: "p",
+            planningAgents: ["q": .working, "p": .waiting])
+        XCTAssertEqual(model.active.map(\.id), ["workshop:p", "session:s1", "session:s2", "workshop:q"])
+        XCTAssertEqual(model.active.map(\.state), [.waiting, .waiting, .review, .working])
+        XCTAssertEqual(model.active[0].title, workshopRowTitle)
+        XCTAssertEqual(model.active[1].title, sessionRowTitle)
+        XCTAssertEqual(model.active[1].kind, .session)
+        XCTAssertEqual(model.active[3].kind, .workshop)
+        XCTAssertEqual(model.projects.map(\.needsYou), [3, 0])
+    }
+
+    func testAProjectsTagIsItsFirstThreeLetters() {
+        XCTAssertEqual(projectTags([("a", "notion-agent-tracker"), ("b", "gnat")]), ["a": "NOT", "b": "GNA"])
+        XCTAssertEqual(projectTags([("a", "Go")]), ["a": "GO"])
+    }
+
+    func testTagsThatWouldCollideTakeANumberInstead() {
+        XCTAssertEqual(
+            projectTags([("a", "notion"), ("b", "gnat"), ("c", "nothing"), ("d", "Notes app")]),
+            ["a": "NO1", "b": "GNA", "c": "NO2", "d": "NO3"])
+    }
+
+    func testActiveRowsCarryTheirProjectsTag() {
+        let model = buildSidebarModel(
+            projects: [
+                SidebarProjectInput(id: "p", name: "notion", plan: plan([slice("1", status: "In progress")])),
+                SidebarProjectInput(id: "q", name: "nothing", plan: plan([slice("2", status: "In progress")])),
+            ],
+            liveAgents: [:])
+        XCTAssertEqual(model.active.map(\.projectTag), ["NO1", "NO2"])
+        let lone = SidebarActiveRow(
+            kind: .slice, targetID: "x", projectID: "p", projectName: "gnat", title: "t", state: .working, live: false)
+        XCTAssertEqual(lone.projectTag, "GNA")
+    }
+
+    func testSessionsOfAnotherProjectAreNotItsOwn() {
+        let model = buildSidebarModel(
+            projects: [SidebarProjectInput(id: "p", name: "P", plan: plan([]))],
+            liveAgents: ["t": .working],
+            sessions: [session("s", tag: "t", startedAt: Date())],
+            sessionsProjectID: "other")
+        XCTAssertTrue(model.active.isEmpty)
+    }
+}

@@ -154,19 +154,26 @@ public func mix(_ color: String, _ into: String, _ amount: Double) -> String {
 /// published spec. `DesignTokens` is what turns one into the dynamic colours
 /// SwiftUI draws — see `DesignTokens.palette(for:)`.
 ///
-/// The two palettes are Catppuccin Mocha and Catppuccin Latte, the same
-/// family the Go TUI draws with, so both faces of the product read as one
-/// product. Both are taken as published: every value below is Catppuccin's
-/// own, named by the swatch it comes from, and the job here is choosing
-/// which swatch plays which role rather than choosing colours. A palette
-/// this widely used has been read in anger by more people than any rule
-/// applied here would stand in for, and a value tweaked to satisfy one would
-/// no longer be the theme the user recognises.
+/// The two palettes are the gnat hi-fi design's structure: the dark one
+/// near-monochrome — neutral greys, whites a touch warm, deep navy only where
+/// something is highlighted — and the light one barely-warm paper with navy
+/// ink; two surfaces (`--bg` and `--chrome`), one accent and one
+/// "hot" colour for whatever needs the user. Both are taken from the design's
+/// `gnat.css` (whose own values were violet; the app is navy), each value
+/// named by the token it stands for. The few hues the design never names (yellow, blue, pink, teal)
+/// and the terminal's ANSI set keep the Catppuccin values the app drew with
+/// before, since nothing in the design says otherwise.
 public struct Palette: Equatable, Sendable {
     // MARK: - Surfaces
 
     /// The app's ground, and the fill of every pane that is not a card.
     public let windowBg: Surface
+    /// The design's `--chrome`: the sidebar, the navigator, every titlebar
+    /// and the status bar — the second of its two surfaces.
+    public let chromeBg: Surface
+    /// The three titlebars' own ground — darker than the chrome in the dark
+    /// theme, the chrome itself in the light one.
+    public let titlebarBg: Surface
     /// The face of a card raised off the ground.
     public let controlBg: Surface
     /// The band that has to read apart from a card it sits inside.
@@ -225,15 +232,30 @@ public struct Palette: Equatable, Sendable {
     public let accent: Tint
     /// What is written on top of the accent.
     public let accentText: Ink
+    /// The design's `--hot`: what needs the user — a waiting agent, a branch
+    /// to review, an open pull request.
+    public let hot: Tint
 
     // MARK: - Opacities
 
-    /// `label` at this opacity is the quiet border between two surfaces.
-    public let hairlineShare: Double
-    /// `label` at this opacity is the line between two rows of one list.
-    public let separatorShare: Double
-    /// `label` at this opacity is the edge of something the pointer acts on.
-    public let borderShare: Double
+    /// The accent at this opacity is `--sel`: the fill under the pointer on a
+    /// row — an indigo wash rather than the design's grey, which went muddy
+    /// on the near-black frame.
+    public let rowHoverShare: Double
+    /// The accent at this opacity is `--sel-2`: the fill behind the selected
+    /// row.
+    public let rowSelectedShare: Double
+    /// What the row washes are mixed from: the ink in the dark theme, so a
+    /// highlight is a neutral lift and the navy stays the primary colour
+    /// alone; the accent in the light one.
+    public let rowWashTint: Tint
+
+    /// The design's `--line`: the quiet border between two surfaces and the
+    /// line between two rows of one list — one navy colour on
+    /// either surface, as the design draws it, rather than a grey mix.
+    public let line: Ink
+    /// The design's `--line-2`: the edge of something the pointer acts on.
+    public let line2: Ink
     /// `accent` at this opacity is the fill behind a selected row.
     public let selectionShare: Double
 
@@ -321,6 +343,8 @@ public struct Palette: Equatable, Sendable {
 
     public init(
         windowBg: Surface,
+        chromeBg: Surface,
+        titlebarBg: Surface,
         controlBg: Surface,
         rowAltBg: Surface,
         controlFace: Surface,
@@ -337,9 +361,12 @@ public struct Palette: Equatable, Sendable {
         labelQuaternary: Ink,
         accent: Tint,
         accentText: Ink,
-        hairlineShare: Double,
-        separatorShare: Double,
-        borderShare: Double,
+        hot: Tint,
+        rowHoverShare: Double,
+        rowSelectedShare: Double,
+        rowWashTint: Tint,
+        line: Ink,
+        line2: Ink,
         selectionShare: Double,
         bandShare: Double,
         chipShare: Double,
@@ -362,6 +389,8 @@ public struct Palette: Equatable, Sendable {
         isDark: Bool
     ) {
         self.windowBg = windowBg
+        self.chromeBg = chromeBg
+        self.titlebarBg = titlebarBg
         self.controlBg = controlBg
         self.rowAltBg = rowAltBg
         self.controlFace = controlFace
@@ -378,9 +407,12 @@ public struct Palette: Equatable, Sendable {
         self.labelQuaternary = labelQuaternary
         self.accent = accent
         self.accentText = accentText
-        self.hairlineShare = hairlineShare
-        self.separatorShare = separatorShare
-        self.borderShare = borderShare
+        self.hot = hot
+        self.rowHoverShare = rowHoverShare
+        self.rowSelectedShare = rowSelectedShare
+        self.rowWashTint = rowWashTint
+        self.line = line
+        self.line2 = line2
         self.selectionShare = selectionShare
         self.bandShare = bandShare
         self.chipShare = chipShare
@@ -403,164 +435,122 @@ public struct Palette: Equatable, Sendable {
         self.isDark = isDark
     }
 
-    /// The dark theme: Catppuccin Mocha, exactly the values the app drew
-    /// with when it was dark-only.
+    /// The dark theme: the design's `:root` block.
     ///
-    /// The surfaces run `fieldBg` < `windowBg` < `controlBg` < `rowAltBg` <
-    /// `controlFace`: the well is Mocha's `mantle` and not black, and every
-    /// level above it is one of Mocha's own surfaces bar `rowAltBg`, which
-    /// is the step between `surface0` and `surface1` that the palette does
-    /// not name.
-    public static let mocha = Palette(
-        windowBg: Surface("1e1e2e"),          // base
-        controlBg: Surface("313244"),         // surface0
-        // The one level this ladder needs and Catppuccin does not name,
-        // derived from the two swatches either side of it rather than typed
-        // as a hex — see `mix`. A literal here is the one thing in a theme
-        // that cannot port: a new palette computes this from its own
-        // surfaces, where a hex would have to be invented again.
-        rowAltBg: Surface(mix("313244", "45475a", 0.5)),  // half surface0 into surface1
-        controlFace: Surface("45475a"),       // surface1
-        fieldBg: Surface("181825"),           // mantle
-        // Mocha's `surface0`, the step Catppuccin's own ports hover with:
-        // published, one clear level off `base`, and `text` (#cdd6f4)
-        // clears 8.7:1 on it. `surface1` is a wider step and still
-        // published, but its Latte twin takes that theme's label to
-        // 4.39:1 — under the bar this token exists to hold. Two levels
-        // below the `overlay0` a hover used to fill with, which is why
-        // every hover in the app now darkens rather than lightening.
-        hoverWash: Surface("313244"),         // surface0
-        terminalBg: Surface("181825"),
-        terminalFg: Ink("cdd6f4"),
-        terminalCursor: Tint("cba6f7"),
-        terminalSelection: Surface("45475a"),
-        // Catppuccin's own published Mocha terminal mapping: surface1 for
-        // black, subtext1 for white, surface2 and subtext0 for their bright
-        // halves, and the accent hues unchanged between the two — Mocha's
-        // accents are already the bright ones.
+    /// `--bg` is the window and every body the navigator's sections open
+    /// onto; `--chrome` the sidebar, navigator and bars. The card and control
+    /// levels the older panes still draw step up from `--chrome` through the
+    /// design's own two rule colours, `--line` and `--line-2`, rather than
+    /// inventing levels it does not have. The rule shares are `--line` and
+    /// `--line-2` themselves, expressed as `--ink` mixed into `--bg`.
+    public static let dark = Palette(
+        windowBg: Surface("19161f"),          // --bg
+        chromeBg: Surface("1e1b25"),          // --chrome
+        titlebarBg: Surface("120f17"),        // the titlebars, well below the chrome
+        controlBg: Surface("1e1b25"),         // --chrome
+        rowAltBg: Surface(mix("2c2935", "1e1b25", 0.5)),  // half --line into --chrome
+        controlFace: Surface("2c2935"),       // --line
+        fieldBg: Surface("19161f"),           // --bg
+        hoverWash: Surface(mix("f4f0e9", "19161f", 0.06)),  // --sel
+        terminalBg: Surface("19161f"),        // --bg
+        terminalFg: Ink("f4f0e9"),            // --ink
+        terminalCursor: Tint("2c5ed7"),       // --accent
+        terminalSelection: Surface(mix("f4f0e9", "19161f", 0.11)),  // --sel-2
+        // The design names no terminal colours: Catppuccin Mocha's own
+        // published mapping, as the app drew with before.
         ansi: [
             "45475a", "f38ba8", "a6e3a1", "f9e2af",
             "89b4fa", "f5c2e7", "94e2d5", "bac2de",
             "585b70", "f38ba8", "a6e3a1", "f9e2af",
             "89b4fa", "f5c2e7", "94e2d5", "a6adc8",
         ],
-        label: Ink("cdd6f4"),             // text
-        labelSecondary: Ink("a6adc8"),    // subtext0
-        labelTertiary: Ink("9399b2"),     // overlay2
-        labelQuaternary: Ink("6c7086"),   // overlay0
-        accent: Tint("cba6f7"),            // mauve
-        accentText: Ink("11111b"),        // crust
-        hairlineShare: 0.10,
-        separatorShare: 0.16,
-        borderShare: 0.22,
-        selectionShare: 0.20,
+        label: Ink("f4f0e9"),             // --ink
+        labelSecondary: Ink("9a9ca5"),    // --ink-2
+        labelTertiary: Ink("5f616a"),     // --ink-3
+        labelQuaternary: Ink("393b43"),   // --ink-4
+        accent: Tint("2c5ed7"),            // --accent: the brand, the icon's ink at its head
+        accentText: Ink("f4f0e9"),        // --ink: the navy is dark enough to write white on
+        hot: Tint("fca05f"),               // --hot
+        rowHoverShare: 0.06,               // --sel
+        rowSelectedShare: 0.11,            // --sel-2
+        rowWashTint: Tint("f4f0e9"),       // --ink: a neutral highlight
+        line: Ink("2c2935"),               // --line
+        line2: Ink("36333f"),              // --line-2
+        selectionShare: 0.14,              // --accent-dim
         bandShare: 0.50,
-        chipShare: 0.18,
+        chipShare: 0.30,                   // --accent-dim / --hot-dim
         avatarShare: 0.30,
-        diffRowShare: 0.20,
-        diffGutterShare: 0.32,
+        diffRowShare: 0.10,                // --add-bg / --del-bg
+        diffGutterShare: 0.20,
         commentShare: 0.10,
-        headerVeilShare: 0.09,
+        headerVeilShare: 0.0,
         mutedShare: 0.45,
         skeletonShare: 0.10,
         onAccentRuleShare: 0.25,
-        systemOrange: Tint("fab387"),      // peach
-        systemYellow: Tint("f9e2af"),      // yellow
-        systemGreen: Tint("a6e3a1"),       // green
-        systemRed: Tint("f38ba8"),         // red
-        systemBlue: Tint("89b4fa"),        // blue
-        systemPink: Tint("f5c2e7"),        // pink
-        systemTeal: Tint("94e2d5"),        // teal
-        systemGray: Tint("9399b2"),        // overlay2
+        systemOrange: Tint("fca05f"),      // --hot
+        systemYellow: Tint("f9e2af"),
+        systemGreen: Tint("9fd2a4"),       // --add
+        systemRed: Tint("e49aa0"),         // --del
+        systemBlue: Tint("89b4fa"),
+        systemPink: Tint("f5c2e7"),
+        systemTeal: Tint("94e2d5"),
+        systemGray: Tint("9a9ca5"),        // --ink-2
         isDark: true
     )
 
-    /// The light theme: Catppuccin Latte, mapped role for role onto the
-    /// same names Mocha fills, and taken as published.
-    ///
-    /// Nothing here is adjusted to meet a contrast number. Latte is a theme
-    /// thousands of people read code in every day and its authors chose
-    /// these values deliberately; a hex "corrected" here would be a colour
-    /// nobody else's Latte has, and would read as wrong beside every other
-    /// Latte the user has open. The one value that is not published is
-    /// `rowAltBg`, which is the level between `surface0` and `surface1` that
-    /// this ladder needs and the palette does not name — the same
-    /// interpolated step Mocha takes, for the same reason.
-    ///
-    /// Latte sinks and raises in the same direction: `mantle` and `crust`
-    /// sit below `base` and so do the surfaces, which is simply what a light
-    /// Catppuccin is. The five levels are therefore distinct rather than
-    /// monotone, and that is the theme's own arrangement rather than
-    /// something to iron out.
-    public static let latte = Palette(
-        windowBg: Surface("eff1f5"),          // base
-        controlBg: Surface("ccd0da"),         // surface0
-        rowAltBg: Surface(mix("ccd0da", "bcc0cc", 0.5)),  // half surface0 into surface1
-        controlFace: Surface("bcc0cc"),       // surface1
-        fieldBg: Surface("e6e9ef"),           // mantle
-        // Latte's `surface0`, the same swatch Mocha hovers with, which in a
-        // light Catppuccin sinks rather than rises — Latte's surfaces all
-        // sit below its `base` — and so is a hover that deepens, as a light
-        // theme's should. `text` (#4c4f69) clears 5.2:1 on it, where
-        // `surface1` manages only 4.39:1.
-        hoverWash: Surface("ccd0da"),         // surface0
-        terminalBg: Surface("e6e9ef"),
-        terminalFg: Ink("4c4f69"),
-        terminalCursor: Tint("8839ef"),
-        terminalSelection: Surface("bcc0cc"),
-        // Catppuccin's own published Latte terminal mapping, exactly as its
-        // ports write it: surface1 and surface2 for the two blacks, subtext1
-        // and subtext0 for the two whites, and the accent hues unchanged
-        // between the normal and bright halves.
+    /// The light theme: the design's `.win.light` block, role for role onto
+    /// the names the dark one fills.
+    public static let light = Palette(
+        windowBg: Surface("faf9f7"),          // --bg
+        chromeBg: Surface("f3f2ef"),          // --chrome
+        titlebarBg: Surface("f3f2ef"),        // --chrome
+        controlBg: Surface("f3f2ef"),         // --chrome
+        rowAltBg: Surface(mix("d9d9e2", "f3f2ef", 0.5)),  // half --line into --chrome
+        controlFace: Surface("d9d9e2"),       // --line
+        fieldBg: Surface("faf9f7"),           // --bg
+        hoverWash: Surface(mix("1f44a3", "faf9f7", 0.06)),  // --sel: the accent, not grey
+        terminalBg: Surface("faf9f7"),        // --bg
+        terminalFg: Ink("151632"),            // --ink
+        terminalCursor: Tint("1f44a3"),       // --accent
+        terminalSelection: Surface(mix("1f44a3", "faf9f7", 0.12)),  // --sel-2
+        // Catppuccin Latte's own published terminal mapping, as before.
         ansi: [
             "bcc0cc", "d20f39", "40a02b", "df8e1d",
             "1e66f5", "ea76cb", "179299", "5c5f77",
             "acb0be", "d20f39", "40a02b", "df8e1d",
             "1e66f5", "ea76cb", "179299", "6c6f85",
         ],
-        label: Ink("4c4f69"),             // text
-        labelSecondary: Ink("6c6f85"),    // subtext0
-        labelTertiary: Ink("7c7f93"),     // overlay2
-        labelQuaternary: Ink("9ca0b0"),   // overlay0
-        accent: Tint("8839ef"),            // mauve
-        accentText: Ink("dce0e8"),        // crust
-        // The one place the two themes differ by more than their palettes:
-        // dark ink on a light ground reads fainter than light ink on a dark
-        // one at the same alpha, so the borders here are a couple of points
-        // heavier and the selection wash a couple lighter — Latte's mauve is
-        // a dark colour, and the same alpha would draw a far heavier slab.
-        // These are the theme's own material rather than Catppuccin's, which
-        // says nothing about how hard to press a hairline.
-        hairlineShare: 0.12,
-        separatorShare: 0.18,
-        borderShare: 0.26,
-        selectionShare: 0.16,
+        label: Ink("151632"),             // --ink
+        labelSecondary: Ink("55566d"),    // --ink-2
+        labelTertiary: Ink("9090a2"),     // --ink-3
+        labelQuaternary: Ink("d1d1db"),   // --ink-4
+        accent: Tint("1f44a3"),            // --accent: the brand, the icon's ink at its midpoint
+        accentText: Ink("faf9f7"),        // --bg
+        hot: Tint("d75f09"),               // --hot
+        rowHoverShare: 0.06,               // --sel
+        rowSelectedShare: 0.12,            // --sel-2
+        rowWashTint: Tint("1f44a3"),       // --accent
+        line: Ink("d9d9e2"),               // --line
+        line2: Ink("c9c9d4"),              // --line-2
+        selectionShare: 0.12,              // --accent-dim
         bandShare: 0.50,
-        // Latte's mauve, green and red are dark saturated colours, so the
-        // same share of one over a light ground is a much heavier slab than
-        // Mocha's pastels make over a dark one: every hue wash here is a few
-        // points lighter than its Mocha twin, exactly as the selection wash
-        // above already is.
-        chipShare: 0.14,
+        chipShare: 0.12,                   // --accent-dim / --hot-dim
         avatarShare: 0.24,
-        diffRowShare: 0.16,
-        diffGutterShare: 0.26,
+        diffRowShare: 0.10,                // --add-bg / --del-bg
+        diffGutterShare: 0.18,
         commentShare: 0.08,
-        headerVeilShare: 0.07,
+        headerVeilShare: 0.0,
         mutedShare: 0.45,
-        // And back the other way for the one wash of `label`, which is the
-        // border ramp's rule: dark ink reads fainter than light ink at the
-        // same alpha.
         skeletonShare: 0.12,
         onAccentRuleShare: 0.25,
-        systemOrange: Tint("fe640b"),      // peach
-        systemYellow: Tint("df8e1d"),      // yellow
-        systemGreen: Tint("40a02b"),       // green
-        systemRed: Tint("d20f39"),         // red
-        systemBlue: Tint("1e66f5"),        // blue
-        systemPink: Tint("ea76cb"),        // pink
-        systemTeal: Tint("179299"),        // teal
-        systemGray: Tint("7c7f93"),        // overlay2
+        systemOrange: Tint("d75f09"),      // --hot
+        systemYellow: Tint("df8e1d"),
+        systemGreen: Tint("2e7d3a"),       // --add
+        systemRed: Tint("b23a48"),         // --del
+        systemBlue: Tint("1e66f5"),
+        systemPink: Tint("ea76cb"),
+        systemTeal: Tint("179299"),
+        systemGray: Tint("55566d"),        // --ink-2
         isDark: false
     )
 }
@@ -577,11 +567,12 @@ public struct Palette: Equatable, Sendable {
 /// here, the ground is an input to the colour instead of an accident of the
 /// view hierarchy, so what comes out is one opaque value the theme decided.
 public enum Ground: String, CaseIterable, Sendable {
-    case window, card, rowAlt, control, field, band, header, terminal, hover
+    case window, chrome, card, rowAlt, control, field, band, header, terminal, hover
 
     public func surface(in palette: Palette) -> Surface {
         switch self {
         case .window: palette.windowBg
+        case .chrome: palette.chromeBg
         case .card: palette.controlBg
         case .rowAlt: palette.rowAltBg
         case .control: palette.controlFace
@@ -622,24 +613,27 @@ extension Palette {
         Surface(mix(controlBg.hex, windowBg.hex, bandShare))
     }
 
-    /// The header band: the accent veiled over the window ground. It used to
-    /// be two layers — the ground at 85% with the veil on top — which let
-    /// the desktop through a window that paints no material behind it. One
-    /// opaque colour says the same thing and means it.
+    /// The header band: every titlebar.
     public var headerBg: Surface {
-        Surface(mix(accent.hex, windowBg.hex, headerVeilShare))
+        titlebarBg
     }
 
-    /// A rule drawn on a named ground: the primary label mixed into it, at
-    /// the weight the rule is for. Opaque, so the line is the same line
-    /// wherever the view it belongs to is placed.
+    /// A row's wash on a named ground: `--sel` under the pointer, `--sel-2`
+    /// behind the selected row. `rowWashTint` mixed into the ground, so it is
+    /// the same opaque step whichever surface the row sits on.
+    public func rowWash(selected: Bool, on ground: Ground) -> Surface {
+        Surface(mix(rowWashTint.hex, ground.surface(in: self).hex, selected ? rowSelectedShare : rowHoverShare))
+    }
+
+    /// A rule at a weight. The design draws its two line colours on every
+    /// surface alike, so the ground is taken for the call sites' sake and
+    /// does not change the line.
     public func rule(_ weight: RuleWeight, on ground: Ground) -> Ink {
-        let share = switch weight {
-        case .hairline: hairlineShare
-        case .separator: separatorShare
-        case .border: borderShare
+        _ = ground
+        switch weight {
+        case .hairline, .separator: return line
+        case .border: return line2
         }
-        return Ink(mix(label.hex, ground.surface(in: self).hex, share))
     }
 
     /// A hue washed into a named ground, as a ground: a chip's capsule, a

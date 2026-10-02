@@ -51,13 +51,28 @@ struct NatApp: App {
     /// through `Bundle.module`, whose generated accessor traps when the
     /// resource bundle is missing, and missing is not an error here: an app
     /// with no icon set still runs, it just keeps the generic one.
+    ///
+    /// It also follows the appearance: the paper icon while the app is light,
+    /// the dark-navy one while it is dark — for the bundled app too, whose
+    /// plist icon (the light one) is only what Finder shows.
     private static func setDockIcon() {
+        applyDockIcon()
+        appearanceObservation = NSApplication.shared.observe(\.effectiveAppearance) { _, _ in
+            DispatchQueue.main.async { applyDockIcon() }
+        }
+    }
+
+    /// Held for the life of the app, so the dock icon keeps following.
+    nonisolated(unsafe) private static var appearanceObservation: NSKeyValueObservation?
+
+    private static func applyDockIcon() {
+        let dark = NSApplication.shared.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let file = dark ? "AppIconDark.icns" : "AppIcon.icns"
         let candidates = [
             // Beside the bare executable, where SwiftPM builds it.
-            Bundle.main.bundleURL.appendingPathComponent("nat_NatApp.bundle/AppIcon.icns"),
-            // A bundled app's own Resources, should this run before AppKit
-            // reads the plist's.
-            Bundle.main.resourceURL?.appendingPathComponent("AppIcon.icns"),
+            Bundle.main.bundleURL.appendingPathComponent("nat_NatApp.bundle/\(file)"),
+            // A bundled app's own Resources.
+            Bundle.main.resourceURL?.appendingPathComponent(file),
         ].compactMap { $0 }
         guard let url = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }),
               let image = NSImage(contentsOf: url) else { return }

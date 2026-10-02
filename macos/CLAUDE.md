@@ -43,8 +43,9 @@ fuller structure and theme system.
 `SettingsView` (⌘,) matches System Settings/Safari's shape (toolbar tabs,
 grouped stock forms), not the app's own chrome — reads `nat config-show`,
 writes one `nat config-set <key> <value>` per changed key. `WorkflowStage`
-(`stage(for:)`) is the one source of where a slice stands: the pane's landing
-tab and `RailModel.isReviewSlice`/`isActiveSlice` both read it, and it mirrors
+(`stage(for:)`) is the one source of where a slice stands: the navigator's
+phase (`NavigatorModel`), the sidebar's dots (`displayState(for:)`) and
+`RailModel.isReviewSlice`/`isActiveSlice` all read it, and it mirrors
 Go's `domain.StateOf` (Notion's status is the one source of lifecycle truth,
 so a Done slice is never in-flight even with `nat pr-status` still reporting
 its PR open) — change `internal/domain/state.go` and the stage together. A
@@ -56,16 +57,16 @@ live session never moves the stage; `fixing` comes only from
 An Untitled tab's workshop proposes with `nat plan-propose`; the app never
 reads the proposal file itself. `AppModel` watches the nudge marker (its own
 `NudgeWatcher`, alive while any Untitled tab is) and reads `nat plan-proposal`
-per tab; the rail draws `PlanProposal.folders` with the ordinary folder/slice
-rows. Accept is `nat plan-accept` (project + plan are nat's doing), then the
+per tab; the sidebar draws `PlanProposal.folders` under the Untitled row and
+the workshop navigator holds the name field, Accept and Keep workshopping. Accept is `nat plan-accept` (project + plan are nat's doing), then the
 workshop session is killed and `addProject(replacing:)` hands the tab over.
 Stories: `window-untitled-proposal`, `window-plan-accepted`.
 
 ## The Notion mirror nudge
 
 After an accepted plan, `AppModel.acceptProposal` arms `MirrorNudgeMemory`
-(UserDefaults, per project; `.inMemory()` for tests and stories) and the rail
-foot draws `MirrorNudgeCardView` while `mirrorNudgeShown` (armed **and** local).
+(UserDefaults, per project; `.inMemory()` for tests and stories) and the
+sidebar's foot draws `MirrorNudgeCardView` while `mirrorNudgeShown` (armed **and** local).
 ✕ disarms for good. "Choose page…" opens `NotionPickerSheetView` over
 `NotionPickerModel` (`nat notion-search`); "Create page" is
 `mirrorActiveProject` → `nat project-mirror`, which changes the project's ID, so
@@ -82,9 +83,27 @@ changes nothing. Stories: `window-plan-accepted`, `notion-page-picker`.
   (swiftlang/swift-package-manager#7442). Needs the Go toolchain too.
 - `tmux`, `gh`, `ntn` are never bundled — the machine's own install.
 
+## The window
+
+The gnat hi-fi design (Claude Design project `e81457f6-…`, `gnat.html` with
+`gnat-data/shell/nav/main.jsx` and `gnat.css`) is the spec: `SidebarView`
+(Active across every project, the Projects tree, then the scratch project
+as a Scratch fold of its own — `SidebarModel.scratch`), the navigator's
+stacked Brief/Thread/Changes/PR foldouts (`SliceNavigatorView`, with
+`NavigatorModel` deciding phase, liveness and header actions — Thread's
+Terminal and Changes' file rows pick the main pane). `AppModel` keeps its one *active* project —
+every per-project reading is keyed by it — and the sidebar selects across
+projects by activating first (`selectSlice(_:inProject:)`). The Thread shows
+only what nat reports (`buildThreadEvents`). What the design does not draw
+(workshop, sessions, follow-ups, menus) lives on as the row or section it
+belongs to.
+
 ## Design tokens
 
-Every colour is a named, dynamic token in `DesignTokens.swift` (Catppuccin
-Mocha/Latte from `Palette.swift`), never a bare `Color(hex:)`/`(nsColor:)` at
-a call site (`ColorSourcesTests` enforces this) — reference is
-`docs/design/nat-ui-v2/nat-ui-v2.html`'s `.nat` CSS block.
+Every colour is a named, dynamic token in `DesignTokens.swift` (the design's
+`gnat.css` dark and light tokens, in `Palette.swift`), never a bare
+`Color(hex:)`/`(nsColor:)` at a call site (`ColorSourcesTests` enforces
+this). Rules are the design's `--line`/`--line-2` outright, row washes its
+`--sel`/`--sel-2`; hues the design does not name keep their old Catppuccin
+values. The fonts are the app's own (system sans, JetBrains Mono), not the
+design's.

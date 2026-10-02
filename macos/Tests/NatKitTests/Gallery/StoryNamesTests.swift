@@ -71,15 +71,18 @@ final class StoryNamesTests: XCTestCase {
     }
 
     /// The catalog covers the app rather than whatever was easiest to draw:
-    /// the window shell, the rail's own load states, every tab of the
-    /// workflow, and the two screens that belong to no slice. Held by name
+    /// the window on a slice in every phase the design draws, the screens
+    /// that belong to no slice, the sidebar's own load states, and the
+    /// status bar and settings. Held by name
     /// prefix, so a state may be renamed but a whole surface cannot quietly
     /// fall out of the gallery.
     func testEverySurfaceOfTheAppIsInTheCatalog() throws {
         let names = try shippedNames()
         for prefix in [
-            "window-", "window-onboarding", "rail-skeleton", "rail-loaded", "rail-empty",
-            "rail-error", "brief-", "agent-", "diff-", "pr-", "workshop-", "settings",
+            "window-review", "window-todo", "window-blocked", "window-working", "window-waiting",
+            "window-pr", "window-fixing", "window-done", "window-light", "window-onboarding",
+            "window-workshop", "window-session-", "window-untitled", "sidebar-skeleton",
+            "sidebar-loaded", "sidebar-empty", "sidebar-error", "status-bar-", "workshop-", "settings",
         ] {
             XCTAssertTrue(
                 names.contains { $0.hasPrefix(prefix) },

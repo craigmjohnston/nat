@@ -1,0 +1,238 @@
+import Foundation
+
+/// The navigator's four stacked foldouts, in the order the design stacks them.
+public enum NavigatorSection: String, CaseIterable, Equatable, Hashable, Sendable {
+    case brief, thread, changes, pr
+
+    public var label: String {
+        switch self {
+        case .brief: return "Brief"
+        case .thread: return "Thread"
+        case .changes: return "Changes"
+        case .pr: return "PR"
+        }
+    }
+}
+
+/// What the main pane shows: the agent's terminal, the diff, or nothing.
+public enum MainPaneMode: Equatable, Sendable {
+    case terminal
+    case diff
+    /// "The terminal opens here on launch."
+    case empty
+}
+
+/// The navigator's reading of one slice: which sections are live, which open
+/// first, which header actions it offers, and what the main pane lands on.
+/// The design's `phaseOf`/`launched`/`handed`/`hasPR`, over the slice's real
+/// facts — and, where the design assumed a fact nat does not have, over the
+/// fact nat does: Changes reads a branch, and only a recorded one can be read
+/// (`nat slice-diff` refuses a slice with none), so it is live once a branch
+/// is recorded rather than the moment an agent launches.
+public struct NavigatorModel: Equatable, Sendable {
+    public let state: SliceDisplayState
+    public let hasPR: Bool
+    public let hasBranch: Bool
+    public let hasLiveAgent: Bool
+    /// The Thread header's Launch: `LaunchPlan`'s own answer, so the header,
+    /// the slice menu and the CLI never disagree.
+    public let canLaunch: Bool
+
+    public init(slice: Slice, agent: AgentActivity?, fixLaunched: Bool) {
+        self.state = displayState(for: slice, agent: agent, fixLaunched: fixLaunched)
+        self.hasPR = !slice.pr.isEmpty
+        self.hasBranch = slice.handedBack || !(slice.branch ?? "").isEmpty
+        self.hasLiveAgent = agent != nil
+        self.canLaunch = LaunchPlan(for: slice, hasLiveAgent: agent != nil).canLaunch
+    }
+
+    /// Where the slice stands, as the section that should be open first.
+    public var phase: NavigatorSection {
+        switch state {
+        case .todo, .blocked: return .brief
+        case .working, .waiting, .fixing: return .thread
+        case .review: return .changes
+        case .pr: return .pr
+        // With no pull request, the Thread is where a finished slice says
+        // how it ended — merged, or closed with the agent's summary.
+        case .done: return hasPR ? .pr : .thread
+        }
+    }
+
+    public var defaultOpen: Set<NavigatorSection> { [phase] }
+
+    /// Whether a section's header can be opened at all.
+    public func isLive(_ section: NavigatorSection) -> Bool {
+        switch section {
+        case .brief, .thread: return true
+        case .changes: return hasBranch
+        case .pr: return hasPR
+        }
+    }
+
+    /// The design's main-pane default: the terminal while the Thread is the
+    /// phase, the diff once anything has been handed back, else the note.
+    public var defaultMain: MainPaneMode {
+        if phase == .thread && state != .done { return .terminal }
+        return hasBranch ? .diff : .empty
+    }
+
+    /// Whether the Agent half of the switch can be picked.
+    public var agentAvailable: Bool { state.isLaunched || hasLiveAgent }
+
+    /// Whether the Diff half can.
+    public var diffAvailable: Bool { hasBranch }
+
+    /// Whether Launch is the primary action — a Todo slice — rather than a
+    /// relaunch or a fix session offered on one already under way.
+    public var launchIsPrimary: Bool { state == .todo }
+
+    /// Whether the Thread header offers Launch: a slice not yet launched (a
+    /// blocked one drawn disabled, as the design draws it), and one being
+    /// worked whose agent is gone — a relaunch. A slice handed back, in
+    /// review or done carries no Launch here, as in the design; the slice's
+    /// menu still offers whatever `LaunchPlan` allows.
+    public var showsLaunch: Bool {
+        guard !hasLiveAgent else { return false }
+        switch state {
+        case .todo, .blocked, .working, .fixing: return true
+        case .waiting, .review, .pr, .done: return false
+        }
+    }
+
+    /// Whether Changes carries Send and Approve: only a hand-back awaiting
+    /// review has anything to approve.
+    public var showsReviewActions: Bool { state == .review }
+
+    /// Whether the PR header carries Merge: an open pull request on a slice
+    /// not yet Done.
+    public var showsMerge: Bool { hasPR && state != .done }
+}
+
+/// How a Thread card's meta line is toned.
+public enum ThreadTone: Equatable, Sendable {
+    case muted, accent, hot
+}
+
+/// One card of the Thread log.
+public struct ThreadEvent: Equatable, Sendable {
+    public let who: String
+    public let meta: String?
+    public let tone: ThreadTone
+    public let body: String?
+    public let foot: String?
+
+    public init(who: String, meta: String? = nil, tone: ThreadTone = .muted, body: String? = nil, foot: String? = nil) {
+        self.who = who
+        self.meta = meta
+        self.tone = tone
+        self.body = body
+        self.foot = foot
+    }
+}
+
+/// The Thread log, built only from what nat reports: the live agent's own
+/// statusline reading (model, effort, context), the slice's recorded branch,
+/// the last hand-back note on its page, its pull request and its status. The
+/// design's launch time, token count, files touched, current tool and
+/// merged-by have no source in nat yet, and are left out rather than made up.
+public func buildThreadEvents(slice: Slice, agent: AgentStatus?, brief: String?) -> [ThreadEvent] {
+    let state = displayState(
+        for: slice, agent: agent.map { AgentActivity($0.activity) }, fixLaunched: false)
+    guard state.isLaunched || agent != nil else { return [] }
+
+    var events: [ThreadEvent] = []
+    let branch = (slice.branch ?? "").isEmpty ? nil : slice.branch
+    let modelLine = agent.flatMap { status -> String? in
+        let parts = [status.model, status.effort].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+    events.append(ThreadEvent(who: "Launched", body: modelLine, foot: branch))
+
+    if let agent {
+        let waiting = AgentActivity(agent.activity) == .waiting
+        events.append(ThreadEvent(
+            who: "Agent",
+            meta: waiting ? "waiting for you" : "working",
+            tone: waiting ? .hot : .accent,
+            foot: agent.contextPercent.map { "ctx \(Int($0.rounded()))%" }))
+    }
+
+    if slice.handedBack || !slice.pr.isEmpty || (state == .done && branch != nil) {
+        events.append(ThreadEvent(
+            who: "Agent", meta: "handed back",
+            body: brief.flatMap(handBackNote)))
+    }
+
+    if let number = pullRequestNumber(slice.pr) {
+        events.append(ThreadEvent(who: "You", meta: "approved", foot: "PR #\(number) → main"))
+    } else if !slice.pr.isEmpty {
+        events.append(ThreadEvent(who: "You", meta: "approved", foot: "PR opened"))
+    }
+
+    if state == .done {
+        if branch == nil && slice.pr.isEmpty {
+            // Closed straight to Done with no branch — work that was never
+            // code — so nothing was merged: the card says it closed, with
+            // the summary the agent filed in place of a hand-back note.
+            events.append(ThreadEvent(who: "Closed", body: brief.flatMap(summaryNote)))
+        } else {
+            events.append(ThreadEvent(who: "Merged"))
+        }
+    }
+    return events
+}
+
+/// The pull request's number off its URL — `…/pull/40` reads 40.
+public func pullRequestNumber(_ url: String) -> Int? {
+    guard let range = url.range(of: "/pull/") else { return nil }
+    let digits = url[range.upperBound...].prefix { $0.isNumber }
+    return Int(digits)
+}
+
+/// The heading a hand-back note is filed under on the slice's page — the
+/// store's own `handedBackHeading`.
+public let handedBackHeading = "Handed back"
+
+/// The heading a slice closed straight to Done files its note under.
+public let summaryHeading = "Summary"
+
+/// The last `Summary` section of a slice's page body — see `handBackNote`.
+public func summaryNote(_ body: String) -> String? {
+    lastSection(named: summaryHeading, in: body)
+}
+
+/// The last `Handed back` section of a slice's page body, as markdown: the
+/// text under the heading up to the next heading of the same or a higher
+/// level. A slice handed back twice has one per hand-back, and the last is
+/// the one that describes the branch as it stands. Nil with none.
+public func handBackNote(_ body: String) -> String? {
+    lastSection(named: handedBackHeading, in: body)
+}
+
+/// The last section under a heading of this name: the text up to the next
+/// heading of the same or a higher level.
+func lastSection(named heading: String, in body: String) -> String? {
+    var note: [Substring]?
+    var level = 0
+    var last: [Substring]?
+    for line in body.split(separator: "\n", omittingEmptySubsequences: false) {
+        let hashes = line.prefix { $0 == "#" }.count
+        let isHeading = hashes > 0 && line.dropFirst(hashes).first == " "
+        if isHeading {
+            if note != nil && hashes <= level {
+                last = note
+                note = nil
+            }
+            let title = line.dropFirst(hashes).trimmingCharacters(in: .whitespaces)
+            if title.caseInsensitiveCompare(heading) == .orderedSame {
+                note = []
+                level = hashes
+                continue
+            }
+        }
+        note?.append(line)
+    }
+    let text = (note ?? last)?.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    return (text?.isEmpty ?? true) ? nil : text
+}

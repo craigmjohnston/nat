@@ -64,7 +64,8 @@ let package = Package(
                 // as a resource so the bare executable `make run` starts can
                 // put it on the dock, where a bundled app reads it from
                 // Info.plist instead.
-                .copy("Resources/AppIcon.icns")
+                .copy("Resources/AppIcon.icns"),
+                .copy("Resources/AppIconDark.icns"),
             ],
             // So the bundled app finds Sparkle.framework, copied into
             // Contents/Frameworks by make-app.sh, at runtime.

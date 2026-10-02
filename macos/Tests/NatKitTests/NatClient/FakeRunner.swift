@@ -46,6 +46,8 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case sliceMoveFailure
         case sliceDeleteSuccess
         case sliceDeleteFailure
+        case milestoneAddSuccess
+        case milestoneAddFailure
         case milestoneRenameSuccess
         case milestoneRenameFailure
         case milestoneMoveSuccess
@@ -181,6 +183,10 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return (fixtureSliceDelete.data(using: .utf8)!, Data(), 0)
         case .sliceDeleteFailure:
             return (Data(), "\"Write the UI\" is in progress: work in flight is not deleted under its agent".data(using: .utf8)!, 1)
+        case .milestoneAddSuccess:
+            return (fixtureMilestoneAdd.data(using: .utf8)!, Data(), 0)
+        case .milestoneAddFailure:
+            return (Data(), "milestone-add: the milestone name is empty".data(using: .utf8)!, 1)
         case .milestoneRenameSuccess:
             return (fixtureMilestoneRename.data(using: .utf8)!, Data(), 0)
         case .milestoneRenameFailure:
@@ -632,6 +638,19 @@ let fixtureSliceDelete = """
   "id": "slice-1",
   "name": "Write the UI",
   "deleted": true
+}
+"""
+
+// fixtureMilestoneAdd is `milestone-add --json`'s success reading,
+// mirroring internal/cli/add.go's milestoneAddedJSON.
+let fixtureMilestoneAdd = """
+{
+  "milestone": {
+    "id": "Phase 3",
+    "name": "Phase 3",
+    "order": 2,
+    "status": "Queued"
+  }
 }
 """
 

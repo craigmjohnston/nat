@@ -1,136 +1,117 @@
 import XCTest
 @testable import NatKit
 
-/// Both palettes, held to one rule: they are Catppuccin's, unedited.
+/// Both palettes, held to one rule: they are the app's navy scheme, token for
+/// token in the roles the gnat design's `gnat.css` names.
 ///
-/// There is deliberately no contrast assertion here. Mocha and Latte are
-/// published themes with a great many people reading code in them, and a
-/// value bent here to satisfy a ratio would be a colour no other Catppuccin
-/// has — wrong beside every other window the user has open, and wrong on the
-/// authority of a calculator over the people who made the thing. What is
-/// worth asserting is that nothing has drifted from the published values and
-/// that each swatch is still playing the role it was given.
+/// What is asserted is that nothing has drifted from the design's tokens,
+/// that each token is still playing the role it was given, and that the two
+/// rule colours the design names (`--line`, `--line-2`) come out of the
+/// shares that derive them.
 final class PaletteTests: XCTestCase {
     private let palettes: [(String, Palette)] = [
-        ("mocha", .mocha),
-        ("latte", .latte),
+        ("dark", .dark),
+        ("light", .light),
     ]
 
-    /// Catppuccin's published Mocha, by swatch name.
-    private let mochaSwatches = [
-        "base": "1e1e2e", "mantle": "181825", "crust": "11111b",
-        "surface0": "313244", "surface1": "45475a", "surface2": "585b70",
-        "overlay0": "6c7086", "overlay1": "7f849c", "overlay2": "9399b2",
-        "subtext0": "a6adc8", "subtext1": "bac2de", "text": "cdd6f4",
-        "mauve": "cba6f7", "red": "f38ba8", "green": "a6e3a1",
-        "yellow": "f9e2af", "peach": "fab387", "blue": "89b4fa",
-        "pink": "f5c2e7", "teal": "94e2d5",
+    /// The design's `:root` tokens.
+    private let darkTokens = [
+        "bg": "19161f", "chrome": "1e1b25", "line": "2c2935", "line-2": "36333f",
+        "ink": "f4f0e9", "ink-2": "9a9ca5", "ink-3": "5f616a", "ink-4": "393b43",
+        "accent": "2c5ed7", "hot": "fca05f", "add": "9fd2a4", "del": "e49aa0",
     ]
 
-    /// Catppuccin's published Latte, by swatch name.
-    private let latteSwatches = [
-        "base": "eff1f5", "mantle": "e6e9ef", "crust": "dce0e8",
-        "surface0": "ccd0da", "surface1": "bcc0cc", "surface2": "acb0be",
-        "overlay0": "9ca0b0", "overlay1": "8c8fa1", "overlay2": "7c7f93",
-        "subtext0": "6c6f85", "subtext1": "5c5f77", "text": "4c4f69",
-        "mauve": "8839ef", "red": "d20f39", "green": "40a02b",
-        "yellow": "df8e1d", "peach": "fe640b", "blue": "1e66f5",
-        "pink": "ea76cb", "teal": "179299",
+    /// The design's `.win.light` tokens.
+    private let lightTokens = [
+        "bg": "faf9f7", "chrome": "f3f2ef", "line": "d9d9e2", "line-2": "c9c9d4",
+        "ink": "151632", "ink-2": "55566d", "ink-3": "9090a2", "ink-4": "d1d1db",
+        "accent": "1f44a3", "hot": "d75f09", "add": "2e7d3a", "del": "b23a48",
     ]
 
-    /// Which swatch plays which role — the whole of what this app decided,
-    /// and the same decision in both themes, so the two are one design in
-    /// two palettes rather than two designs.
+    /// Which token plays which role — the same decision in both themes.
     private let roles: [(String, (Palette) -> String, String)] = [
-        ("windowBg", { $0.windowBg.hex }, "base"),
-        ("controlBg", { $0.controlBg.hex }, "surface0"),
-        ("controlFace", { $0.controlFace.hex }, "surface1"),
-        ("hoverWash", { $0.hoverWash.hex }, "surface0"),
-        ("fieldBg", { $0.fieldBg.hex }, "mantle"),
-        ("terminalBg", { $0.terminalBg.hex }, "mantle"),
-        ("terminalFg", { $0.terminalFg.hex }, "text"),
-        ("terminalCursor", { $0.terminalCursor.hex }, "mauve"),
-        ("terminalSelection", { $0.terminalSelection.hex }, "surface1"),
-        ("label", { $0.label.hex }, "text"),
-        ("labelSecondary", { $0.labelSecondary.hex }, "subtext0"),
-        ("labelTertiary", { $0.labelTertiary.hex }, "overlay2"),
-        ("labelQuaternary", { $0.labelQuaternary.hex }, "overlay0"),
-        ("accent", { $0.accent.hex }, "mauve"),
-        ("accentText", { $0.accentText.hex }, "crust"),
-        ("systemOrange", { $0.systemOrange.hex }, "peach"),
-        ("systemYellow", { $0.systemYellow.hex }, "yellow"),
-        ("systemGreen", { $0.systemGreen.hex }, "green"),
-        ("systemRed", { $0.systemRed.hex }, "red"),
-        ("systemBlue", { $0.systemBlue.hex }, "blue"),
-        ("systemPink", { $0.systemPink.hex }, "pink"),
-        ("systemTeal", { $0.systemTeal.hex }, "teal"),
-        ("systemGray", { $0.systemGray.hex }, "overlay2"),
+        ("windowBg", { $0.windowBg.hex }, "bg"),
+        ("chromeBg", { $0.chromeBg.hex }, "chrome"),
+        ("controlBg", { $0.controlBg.hex }, "chrome"),
+        ("controlFace", { $0.controlFace.hex }, "line"),
+        ("fieldBg", { $0.fieldBg.hex }, "bg"),
+        ("terminalBg", { $0.terminalBg.hex }, "bg"),
+        ("terminalFg", { $0.terminalFg.hex }, "ink"),
+        ("terminalCursor", { $0.terminalCursor.hex }, "accent"),
+        ("label", { $0.label.hex }, "ink"),
+        ("labelSecondary", { $0.labelSecondary.hex }, "ink-2"),
+        ("labelTertiary", { $0.labelTertiary.hex }, "ink-3"),
+        ("labelQuaternary", { $0.labelQuaternary.hex }, "ink-4"),
+        ("accent", { $0.accent.hex }, "accent"),
+        ("hot", { $0.hot.hex }, "hot"),
+        ("systemOrange", { $0.systemOrange.hex }, "hot"),
+        ("systemGreen", { $0.systemGreen.hex }, "add"),
+        ("systemRed", { $0.systemRed.hex }, "del"),
+        ("systemGray", { $0.systemGray.hex }, "ink-2"),
     ]
+
+    private func tokens(_ name: String) -> [String: String] {
+        name == "dark" ? darkTokens : lightTokens
+    }
 
     // MARK: - Fidelity
 
-    /// Every token is the published swatch its role names, in both themes.
-    /// This is the test that would catch the tempting edit: one hex nudged
-    /// darker to win an argument with a contrast checker, and the palette is
-    /// no longer the one it says it is.
-    func testEveryRoleIsThePublishedSwatch() {
+    /// What is written on the accent: the ink on the dark theme's deep navy,
+    /// the paper on the light theme's.
+    func testTheDarkHighlightIsNeutralAndTheLightOneTheAccent() {
+        XCTAssertEqual(Palette.dark.rowWashTint.hex, darkTokens["ink"])
+        XCTAssertEqual(Palette.light.rowWashTint, Palette.light.accent)
+    }
+
+    func testTheAccentsTextIsTheContrastingSurface() {
+        XCTAssertEqual(Palette.dark.accentText.hex, darkTokens["ink"])
+        XCTAssertEqual(Palette.light.accentText.hex, lightTokens["bg"])
+    }
+
+    func testEveryRoleIsTheDesignsToken() {
         for (name, palette) in palettes {
-            let swatches = name == "mocha" ? mochaSwatches : latteSwatches
-            for (role, value, swatch) in roles {
-                XCTAssertEqual(
-                    value(palette), swatches[swatch],
-                    "\(name): \(role) should be Catppuccin's \(swatch), unedited"
-                )
+            for (role, value, token) in roles {
+                XCTAssertEqual(value(palette), tokens(name)[token], "\(name): \(role) should be --\(token)")
             }
         }
     }
 
-    /// The one value neither palette publishes: the level between
-    /// `surface0` and `surface1` that a band inside a card needs. It is
-    /// *derived* rather than typed — an expression over two published
-    /// swatches, which is what lets a third theme compute its own without
-    /// anyone inventing a hex for it — and this holds it to exactly that
-    /// expression as well as to lying between its two parents.
-    func testRowAltIsInterpolatedBetweenTheTwoSurfaces() {
+    /// The design's two rule colours, `--line` and `--line-2`, are the
+    /// rules on every ground alike.
+    func testTheRulesAreTheDesignsLines() {
         for (name, palette) in palettes {
-            let swatches = name == "mocha" ? mochaSwatches : latteSwatches
-            let row = try? XCTUnwrap(rgbComponents(hex: palette.rowAltBg.hex))
-            let low = try? XCTUnwrap(rgbComponents(hex: swatches["surface0"] ?? ""))
-            let high = try? XCTUnwrap(rgbComponents(hex: swatches["surface1"] ?? ""))
-            guard let row, let low, let high else { return XCTFail("\(name): unreadable swatch") }
+            for ground in Ground.allCases {
+                XCTAssertEqual(palette.rule(.hairline, on: ground).hex, tokens(name)["line"], "\(name): \(ground)")
+                XCTAssertEqual(palette.rule(.separator, on: ground).hex, tokens(name)["line"], "\(name): \(ground)")
+                XCTAssertEqual(palette.rule(.border, on: ground).hex, tokens(name)["line-2"], "\(name): \(ground)")
+            }
+        }
+    }
+
+    /// The one level the design does not name — a band inside a card —
+    /// derived from the two either side of it rather than typed.
+    func testRowAltIsInterpolatedBetweenLineAndChrome() {
+        for (name, palette) in palettes {
             XCTAssertEqual(
-                palette.rowAltBg.hex,
-                mix(swatches["surface0"] ?? "", swatches["surface1"] ?? "", 0.5),
-                "\(name): rowAltBg should be derived, not typed"
-            )
-            for (channel, values) in [
-                ("red", (row.red, low.red, high.red)),
-                ("green", (row.green, low.green, high.green)),
-                ("blue", (row.blue, low.blue, high.blue)),
-            ] {
-                let (value, first, second) = values
-                XCTAssertGreaterThanOrEqual(value, min(first, second), "\(name): rowAltBg \(channel)")
-                XCTAssertLessThanOrEqual(value, max(first, second), "\(name): rowAltBg \(channel)")
-            }
+                palette.rowAltBg.hex, mix(tokens(name)["line"] ?? "", tokens(name)["chrome"] ?? "", 0.5),
+                "\(name): rowAltBg should be derived, not typed")
         }
     }
 
-    /// The five surfaces are five: a role mapped to a swatch another role
-    /// already has is a level of the design silently gone.
-    func testSurfacesAreDistinct() {
+    /// The titlebars have their own ground: well below the chrome in the dark
+    /// theme, the chrome itself in the light one.
+    func testTheTitlebarsHaveTheirOwnGround() {
         for (name, palette) in palettes {
-            let surfaces = [
-                palette.fieldBg.hex, palette.windowBg.hex, palette.controlBg.hex,
-                palette.rowAltBg.hex, palette.controlFace.hex,
-            ]
-            XCTAssertEqual(Set(surfaces).count, surfaces.count, "\(name): every surface should be its own level")
+            XCTAssertEqual(palette.headerBg, palette.titlebarBg, "\(name)")
+            XCTAssertEqual(Ground.chrome.surface(in: palette), palette.chromeBg, "\(name)")
+            XCTAssertEqual(Ground.header.surface(in: palette), palette.titlebarBg, "\(name)")
         }
+        XCTAssertLessThan(luminance(Palette.dark.titlebarBg.hex), luminance(Palette.dark.chromeBg.hex))
+        XCTAssertEqual(Palette.light.titlebarBg, Palette.light.chromeBg)
     }
 
-    /// The four label tiers are Catppuccin's own ramp and stay in its order:
-    /// each recedes further from the ground than the one above it, which is
-    /// what makes a meta line read as a meta line. Which colours those are
-    /// is the theme's; that they are in order is the mapping's.
+    /// The four ink tiers stay in order: each recedes further from the
+    /// ground than the one above it.
     func testLabelTiersRecede() {
         for (name, palette) in palettes {
             let tiers = [
@@ -139,211 +120,102 @@ final class PaletteTests: XCTestCase {
             ].map(luminance)
             let ground = luminance(palette.windowBg.hex)
             for (above, below) in zip(tiers, tiers.dropFirst()) {
-                XCTAssertGreaterThan(
-                    abs(above - ground), abs(below - ground),
-                    "\(name): each label tier should recede further than the one above it"
-                )
+                XCTAssertGreaterThan(abs(above - ground), abs(below - ground), "\(name): ink tiers should recede")
             }
         }
     }
 
-    /// The hover fill is a surface and not a label. It used to be
-    /// `labelQuaternary`, which is `overlay0` — ink, drawn as ground — and
-    /// under Mocha that left `text` sitting on a mid-grey. What is asserted
-    /// is the two things that choice has to satisfy in either theme: the
-    /// primary label reads further off the hover fill than it did off the
-    /// colour it replaced, and the fill still parts from the ground it is
-    /// laid on, or a hover would be invisible.
-    func testHoverIsASurfaceTheLabelStaysReadableOn() {
-        for (name, palette) in palettes {
-            let label = luminance(palette.label.hex)
-            XCTAssertGreaterThan(
-                abs(label - luminance(palette.hoverWash.hex)),
-                abs(label - luminance(palette.labelQuaternary.hex)),
-                "\(name): a label should read further off the hover fill than off the ink it replaced"
-            )
-            XCTAssertNotEqual(
-                palette.hoverWash.hex, palette.windowBg.hex,
-                "\(name): a hover fill that matched the ground would not be a hover"
-            )
-        }
-    }
+    // MARK: - Row washes
 
-    /// And it moves the way its own theme moves: Mocha's surfaces rise off
-    /// `base` and Latte's sink below it, so a hover raises in the dark theme
-    /// and deepens in the light one. Either way it is a step off the ground
-    /// rather than a step towards the label, which is what the old fill was.
-    func testHoverFollowsItsThemesOwnDirection() {
-        XCTAssertGreaterThan(
-            luminance(Palette.mocha.hoverWash.hex), luminance(Palette.mocha.windowBg.hex),
-            "mocha: a hover should rise off the ground"
-        )
-        XCTAssertLessThan(
-            luminance(Palette.latte.hoverWash.hex), luminance(Palette.latte.windowBg.hex),
-            "latte: a hover should deepen from the ground"
-        )
+    /// `--sel` and `--sel-2`: the row tint mixed into the ground — the ink in
+    /// the dark theme, the accent in the light one — the selected
+    /// row's the heavier, both still a step off the ground.
+    func testRowWashesAreTheInkOverTheGround() {
+        for (name, palette) in palettes {
+            let hover = palette.rowWash(selected: false, on: .window)
+            let selected = palette.rowWash(selected: true, on: .window)
+            XCTAssertEqual(hover.hex, mix(palette.rowWashTint.hex, palette.windowBg.hex, palette.rowHoverShare), "\(name)")
+            XCTAssertEqual(selected.hex, mix(palette.rowWashTint.hex, palette.windowBg.hex, palette.rowSelectedShare), "\(name)")
+            XCTAssertLessThan(palette.rowHoverShare, palette.rowSelectedShare, "\(name): hover is the lighter")
+            XCTAssertNotEqual(hover.hex, palette.windowBg.hex, "\(name): a hover the ground hides is no hover")
+            XCTAssertEqual(palette.hoverWash, hover, "\(name): the hover surface is --sel")
+        }
     }
 
     // MARK: - Terminal
 
-    /// Sixteen colours, in the order a terminal numbers them, every one of
-    /// them a colour rather than the white `Color(hex:)` falls back to.
-    func testAnsiPaletteIsSixteenReadableHexValues() {
+    func testAnsiPaletteIsSixteenRepeatedHues() {
         for (name, palette) in palettes {
-            XCTAssertEqual(palette.ansi.count, 16, "\(name): a terminal takes sixteen ANSI colours")
+            XCTAssertEqual(palette.ansi.count, 16, "\(name)")
             for hex in palette.ansi {
-                XCTAssertNotNil(rgbComponents(hex: hex), "\(name): \(hex) should be six hex digits")
+                XCTAssertNotNil(rgbComponents(hex: hex), "\(name): \(hex)")
             }
-        }
-    }
-
-    /// Catppuccin's own terminal mapping, which its ports all write the same
-    /// way: the two surfaces for the two blacks, the two subtexts for the
-    /// two whites, and the accent hues repeated between the halves.
-    func testAnsiPaletteIsCatppuccinsTerminalMapping() {
-        for (name, palette) in palettes {
-            let swatches = name == "mocha" ? mochaSwatches : latteSwatches
-            XCTAssertEqual(palette.ansi[0], swatches["surface1"], "\(name): ANSI black")
-            XCTAssertEqual(palette.ansi[8], swatches["surface2"], "\(name): ANSI bright black")
-            XCTAssertEqual(palette.ansi[7], swatches["subtext1"], "\(name): ANSI white")
-            XCTAssertEqual(palette.ansi[15], swatches["subtext0"], "\(name): ANSI bright white")
             for hue in 1...6 {
-                XCTAssertEqual(
-                    palette.ansi[hue], palette.ansi[hue + 8],
-                    "\(name): ANSI \(hue) should be the same hue bright as normal"
-                )
+                XCTAssertEqual(palette.ansi[hue], palette.ansi[hue + 8], "\(name): ANSI \(hue)")
             }
         }
     }
 
-    /// The terminal is drawn in the app's own colours: its surface is the
-    /// app's other well, its foreground the app's primary label and its
-    /// caret the app's accent. The pane is part of the window rather than a
-    /// second product embedded in it.
+    /// The terminal sits on the window ground in the window's own ink, with
+    /// the accent for a caret and `--sel-2` behind a selection.
     func testTerminalTakesTheAppsOwnColors() {
         for (name, palette) in palettes {
-            XCTAssertEqual(palette.terminalBg.hex, palette.fieldBg.hex, "\(name): terminal surface")
+            XCTAssertEqual(palette.terminalBg, palette.windowBg, "\(name): terminal surface")
             XCTAssertEqual(palette.terminalFg.hex, palette.label.hex, "\(name): terminal foreground")
-            XCTAssertEqual(palette.terminalCursor.hex, palette.accent.hex, "\(name): terminal caret")
-            XCTAssertEqual(palette.terminalSelection.hex, palette.controlFace.hex, "\(name): terminal selection")
+            XCTAssertEqual(palette.terminalCursor, palette.accent, "\(name): terminal caret")
+            XCTAssertEqual(palette.terminalSelection, palette.rowWash(selected: true, on: .window), "\(name)")
         }
     }
 
-    // MARK: - Opacities
+    // MARK: - Shares
 
-    /// The borders are a ramp and the wash is a wash. These are the one
-    /// thing Catppuccin says nothing about — how hard to press a hairline —
-    /// so they are the theme's own, and all that is asserted is that they
-    /// stay in order and stay translucent.
-    func testBorderOpacitiesAreOrderedAndSubtle() {
+    /// `--line-2` is the heavier of the two: it stands further off the
+    /// window ground than `--line` does.
+    func testTheBorderIsTheHeavierLine() {
         for (name, palette) in palettes {
-            XCTAssertLessThan(palette.hairlineShare, palette.separatorShare, "\(name): hairline vs separator")
-            XCTAssertLessThan(palette.separatorShare, palette.borderShare, "\(name): separator vs border")
-            for opacity in [
-                palette.hairlineShare, palette.separatorShare,
-                palette.borderShare, palette.selectionShare,
-            ] {
-                XCTAssertGreaterThan(opacity, 0, "\(name): no token should be invisible")
-                XCTAssertLessThanOrEqual(opacity, 1, "\(name): no opacity should exceed one")
-            }
+            let ground = luminance(palette.windowBg.hex)
+            XCTAssertGreaterThan(
+                abs(luminance(palette.line2.hex) - ground), abs(luminance(palette.line.hex) - ground), "\(name)")
         }
     }
 
-    /// Every opacity in the palette is an opacity: visible, and not a
-    /// number typed past one. The washes are not in the ramp above, since
-    /// they answer to their own roles rather than to each other — what is
-    /// asserted of them is only that they are washes.
     func testEveryWashIsTranslucent() {
         let washes: [(String, KeyPath<Palette, Double>)] = [
-            ("bandShare", \.bandShare),
-            ("chipShare", \.chipShare),
-            ("avatarShare", \.avatarShare),
-            ("diffRowShare", \.diffRowShare),
-            ("diffGutterShare", \.diffGutterShare),
-            ("commentShare", \.commentShare),
-            ("headerVeilShare", \.headerVeilShare),
-            ("mutedShare", \.mutedShare),
-            ("skeletonShare", \.skeletonShare),
-            ("onAccentRuleShare", \.onAccentRuleShare),
+            ("bandShare", \.bandShare), ("chipShare", \.chipShare), ("avatarShare", \.avatarShare),
+            ("diffRowShare", \.diffRowShare), ("diffGutterShare", \.diffGutterShare),
+            ("commentShare", \.commentShare), ("mutedShare", \.mutedShare),
+            ("skeletonShare", \.skeletonShare), ("onAccentRuleShare", \.onAccentRuleShare),
+            ("rowHoverShare", \.rowHoverShare), ("rowSelectedShare", \.rowSelectedShare),
         ]
         for (name, palette) in palettes {
             for (wash, key) in washes {
-                let opacity = palette[keyPath: key]
-                XCTAssertGreaterThan(opacity, 0, "\(name): \(wash) should be visible")
-                XCTAssertLessThan(opacity, 1, "\(name): a wash at full strength is not a wash")
+                XCTAssertGreaterThan(palette[keyPath: key], 0, "\(name): \(wash)")
+                XCTAssertLessThan(palette[keyPath: key], 1, "\(name): \(wash)")
             }
         }
     }
 
-    /// The diff's two weights of the same outcome colour stay in order: a
-    /// gutter cell is a stripe a few characters wide and has to carry the
-    /// row's sign on its own, so it is the heavier of the two, and a comment
-    /// is an annotation rather than a change and is the lightest mark in the
-    /// box.
     func testDiffWashesAreOrdered() {
         for (name, palette) in palettes {
-            XCTAssertLessThan(palette.commentShare, palette.diffRowShare, "\(name): comment vs row")
-            XCTAssertLessThan(palette.diffRowShare, palette.diffGutterShare, "\(name): row vs gutter")
+            XCTAssertLessThanOrEqual(palette.commentShare, palette.diffRowShare, "\(name)")
+            XCTAssertLessThan(palette.diffRowShare, palette.diffGutterShare, "\(name)")
         }
     }
 
-    /// Each wash is pressed for the ground it lands on, which is the rule
-    /// `selectionShare` and the border ramp already follow: a wash of
-    /// a hue is lighter in Latte, whose accents are dark saturated colours
-    /// over a light ground, and a wash of `label` is heavier, since dark ink
-    /// reads fainter than light ink at the same alpha.
-    func testWashesArePressedForTheirGround() {
-        let hues: [(String, KeyPath<Palette, Double>)] = [
-            ("selectionShare", \.selectionShare),
-            ("chipShare", \.chipShare),
-            ("avatarShare", \.avatarShare),
-            ("diffRowShare", \.diffRowShare),
-            ("diffGutterShare", \.diffGutterShare),
-            ("commentShare", \.commentShare),
-            ("headerVeilShare", \.headerVeilShare),
-        ]
-        for (name, key) in hues {
-            XCTAssertLessThan(
-                Palette.latte[keyPath: key], Palette.mocha[keyPath: key],
-                "\(name): a hue wash should be lighter in Latte"
-            )
-        }
-        for (name, key) in [
-            ("hairlineShare", \Palette.hairlineShare),
-            ("separatorShare", \Palette.separatorShare),
-            ("borderShare", \Palette.borderShare),
-            ("skeletonShare", \Palette.skeletonShare),
-        ] {
-            XCTAssertGreaterThan(
-                Palette.latte[keyPath: key], Palette.mocha[keyPath: key],
-                "\(name): a wash of `label` should be heavier in Latte"
-            )
-        }
+    func testTheGroundlessWashesMatchAcrossThemes() {
+        XCTAssertEqual(Palette.light.bandShare, Palette.dark.bandShare)
+        XCTAssertEqual(Palette.light.onAccentRuleShare, Palette.dark.onAccentRuleShare)
+        XCTAssertEqual(Palette.light.mutedShare, Palette.dark.mutedShare)
     }
 
-    /// The two washes that are deliberately the same in both themes, and
-    /// the comments beside them are the reason: `bandShare` mixes two of
-    /// the palette's own surfaces, so it re-balances by itself, and
-    /// `onAccentRuleShare` is the accent's own maximum-contrast ink
-    /// over the accent, which is what `accentText` is in either theme.
-    func testTheTwoGroundlessWashesMatchAcrossThemes() {
-        XCTAssertEqual(Palette.latte.bandShare, Palette.mocha.bandShare)
-        XCTAssertEqual(Palette.latte.onAccentRuleShare, Palette.mocha.onAccentRuleShare)
-        // A dim is read against the full colour beside it rather than
-        // against the ground under it, so it is the same fraction too.
-        XCTAssertEqual(Palette.latte.mutedShare, Palette.mocha.mutedShare)
-    }
-
-    /// The two palettes are two: nothing here is one value shared by
-    /// accident, which is what a half-written light theme would look like.
     func testThePalettesDiffer() {
-        XCTAssertNotEqual(Palette.mocha, Palette.latte)
-        XCTAssertTrue(Palette.mocha.isDark)
-        XCTAssertFalse(Palette.latte.isDark)
+        XCTAssertNotEqual(Palette.dark, Palette.light)
+        XCTAssertTrue(Palette.dark.isDark)
+        XCTAssertFalse(Palette.light.isDark)
     }
 
-    /// Relative luminance, used here only to compare two colours against
-    /// each other — never against a threshold.
+    // MARK: - Helpers
+
     private func luminance(_ hex: String) -> Double {
         let rgb = rgbComponents(hex: hex) ?? (1, 1, 1)
         let channels = [rgb.red, rgb.green, rgb.blue].map { value -> Double in

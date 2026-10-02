@@ -32,7 +32,7 @@ struct DiffFileBoxView: View {
     /// `DiffSkeletonView` reserves exactly the row this draws — its height is
     /// what holds the box open over the "Viewed" button inside it.
     static let headerSpacing: CGFloat = 10
-    static let headerHeight: CGFloat = 32
+    static let headerHeight: CGFloat = 28
 
     let file: DiffFileModel
     let numberWidth: Int
@@ -67,134 +67,136 @@ struct DiffFileBoxView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
-
+            DiffFileHeaderView(
+                file: file, isViewed: isViewed, isCollapsed: isCollapsed, commentCount: comments.count,
+                showsViewed: true, onToggleViewed: onToggleViewed, onToggleCollapsed: onToggleCollapsed)
             if !isCollapsed {
-                Divider().frame(height: 0.5)
-
-                let commentsByAnchor = Dictionary(grouping: comments) { $0.anchorRowIDs.last }
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(file.rows) { row in
-                        DiffRowView(
-                            row: row,
-                            numberWidth: numberWidth,
-                            isSelected: selection?.rowIDs.contains(row.id) ?? false,
-                            showCommentButton: commentsEnabled && draft == nil && row.kind != .hunkBreak
-                                && selection?.rowIDs.last == row.id,
-                            onSelect: { shift in onRowClick(row, shift) },
-                            onComment: onOpenCommentEditor
-                        )
-                        // Each realised row reports where it sits in the
-                        // scroll view, and is a scroll target under a
-                        // path-qualified id — what `DiffScrollAnchor` keeps
-                        // through a width change (lazy, so only what is near
-                        // the viewport reports).
-                        .id(DiffScrollAnchor.Key(path: file.path, rowID: row.id).scrollID)
-                        .background(GeometryReader { proxy in
-                            let frame = proxy.frame(in: .named(DiffRowFramesKey.space))
-                            Color.clear.preference(
-                                key: DiffRowFramesKey.self,
-                                value: [DiffScrollAnchor.Key(path: file.path, rowID: row.id): frame.minY...frame.maxY]
-                            )
-                        })
-
-                        if let draft, draft.anchorRowIDs.last == row.id {
-                            CommentEditorView(
-                                initialText: draft.text,
-                                onSave: onSaveDraft,
-                                onCancel: onCancelDraft
-                            )
-                            .padding(.leading, commentLeadingInset)
-                            .padding(.trailing, 12)
-                            .padding(.vertical, 10)
-                            .surface(.rowAlt)
-                        }
-
-                        ForEach(commentsByAnchor[row.id] ?? []) { comment in
-                            PendingCommentCardView(
-                                comment: comment,
-                                authorName: authorName,
-                                authorInitials: authorInitials,
-                                onEdit: { onEditComment(comment) },
-                                onDelete: { onDeleteComment(comment) }
-                            )
-                            .padding(.leading, commentLeadingInset)
-                            .padding(.trailing, 12)
-                            .padding(.vertical, 10)
-                            .surface(.rowAlt)
-                        }
-                    }
-                }
-                .scrollTargetLayout()
+                rows
             }
         }
-        .card(radius: 10)
     }
 
-    private var header: some View {
-        HStack(spacing: Self.headerSpacing) {
-            Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                .font(.system(size: 12, weight: .medium))
-                .frame(width: 12)
-                .ink(.tertiary)
+    /// The file's body rows, with any comment drawn under the last row it
+    /// covers — what the main pane lays under each pinned header.
+    var rows: some View {
+        let commentsByAnchor = Dictionary(grouping: comments) { $0.anchorRowIDs.last }
+        return LazyVStack(alignment: .leading, spacing: 0) {
+            ForEach(file.rows) { row in
+                DiffRowView(
+                    row: row,
+                    numberWidth: numberWidth,
+                    isSelected: selection?.rowIDs.contains(row.id) ?? false,
+                    canComment: commentsEnabled && draft == nil && row.kind != .hunkBreak,
+                    isSelectionEnd: selection?.rowIDs.last == row.id,
+                    onSelect: { shift in onRowClick(row, shift) },
+                    onComment: { endsSelection in
+                        // A hovered row that is not the end of the marked run
+                        // is marked first, so the comment is about it.
+                        if !endsSelection { onRowClick(row, false) }
+                        onOpenCommentEditor()
+                    }
+                )
+                // Each realised row reports where it sits in the scroll
+                // view, and is a scroll target under a path-qualified id —
+                // what `DiffScrollAnchor` keeps through a width change.
+                .id(DiffScrollAnchor.Key(path: file.path, rowID: row.id).scrollID)
+                .background(GeometryReader { proxy in
+                    let frame = proxy.frame(in: .named(DiffRowFramesKey.space))
+                    Color.clear.preference(
+                        key: DiffRowFramesKey.self,
+                        value: [DiffScrollAnchor.Key(path: file.path, rowID: row.id): frame.minY...frame.maxY]
+                    )
+                })
 
-            if isViewed {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 12, weight: .medium))
-                    .ink(.success)
+                if let draft, draft.anchorRowIDs.last == row.id {
+                    CommentEditorView(initialText: draft.text, onSave: onSaveDraft, onCancel: onCancelDraft)
+                        .padding(.leading, commentLeadingInset)
+                        .padding(.trailing, 16)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                ForEach(commentsByAnchor[row.id] ?? []) { comment in
+                    PendingCommentCardView(
+                        comment: comment,
+                        authorName: authorName,
+                        authorInitials: authorInitials,
+                        onEdit: { onEditComment(comment) },
+                        onDelete: { onDeleteComment(comment) }
+                    )
+                    .padding(.leading, commentLeadingInset)
+                    .padding(.trailing, 16)
+                    .padding(.top, 4)
+                    .padding(.bottom, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
+        }
+        .scrollTargetLayout()
+    }
+}
 
+/// A file's header in the continuous diff: the `--sel` band with a line
+/// above and below, the fold chevron, the path, its tally, and — on a review
+/// — the viewed mark at the trailing edge. Pinned by the main pane, so the
+/// file a row belongs to is always named above it.
+struct DiffFileHeaderView: View {
+    let file: DiffFileModel
+    let isViewed: Bool
+    let isCollapsed: Bool
+    var commentCount: Int = 0
+    var showsViewed: Bool = true
+    /// Whether the band draws its top line — not for the first file, whose
+    /// top is the titlebar's own line, as the design's first header has none.
+    var showsTopRule: Bool = true
+    let onToggleViewed: () -> Void
+    let onToggleCollapsed: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            DisclosureChevron(open: !isCollapsed)
             Text(file.path)
-                .font(Typo.mono(size: Typo.code, weight: .regular))
+                .font(Typo.mono(size: Typo.code, weight: .medium))
                 .ink(.primary)
                 .lineLimit(1)
                 .truncationMode(.head)
-
             if file.isRenamed {
-                Text("was \(file.oldPath)")
-                    .font(Typo.mono(size: Typo.code, weight: .regular))
-                    .ink(.tertiary)
-                    .lineLimit(1)
+                Text("was \(file.oldPath)").monoXS().ink(.secondary).lineLimit(1)
             }
-
-            if !comments.isEmpty {
-                HStack(spacing: 3) {
-                    Image(systemName: "text.bubble")
-                        .font(.system(size: 12, weight: .medium))
-                    Text("\(comments.count)")
-                        .font(.system(size: Typo.subhead, weight: .regular))
-                        .monospacedDigit()
+            Text(tally).monoXS().ink(.secondary)
+            if commentCount > 0 {
+                Image(systemName: "text.bubble.fill")
+                    .font(.system(size: 10))
+                    .ink(.secondary)
+                    .help("Pending comments")
+            }
+            Spacer(minLength: 0)
+            if showsViewed {
+                Button(action: onToggleViewed) {
+                    HStack(spacing: 6) {
+                        ViewedCheckbox(checked: isViewed)
+                        Text("viewed").monoXS().ink(isViewed ? .primary : .secondary)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .ink(.accent)
+                .buttonStyle(.plain)
+                .help(isViewed ? "Mark not viewed" : "Mark viewed")
             }
-
-            Spacer()
-
-            if file.adds > 0 {
-                Text("+\(file.adds)")
-                    .font(.system(size: Typo.subhead, weight: .regular))
-                    .monospacedDigit()
-                    .ink(.success)
-            }
-            if file.dels > 0 {
-                Text("\u{2212}\(file.dels)")
-                    .font(.system(size: Typo.subhead, weight: .regular))
-                    .monospacedDigit()
-                    .ink(.danger)
-            }
-
-            Button(action: onToggleViewed) {
-                Text("Viewed")
-            }
-            .buttonStyle(GhostButtonStyle())
         }
-        .padding(.horizontal, 12)
-        .frame(height: Self.headerHeight)
-        .surface(.rowAlt)
+        .padding(.leading, 10)
+        .padding(.trailing, 16)
+        .frame(height: DiffFileBoxView.headerHeight)
+        .background(DesignTokens.rowWash(selected: false, on: .window))
+        .overlay(alignment: .top) {
+            if showsTopRule { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
+        }
+        .overlay(alignment: .bottom) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
         .contentShape(Rectangle())
-        .onTapGesture {
-            onToggleCollapsed()
-        }
+        .onTapGesture(perform: onToggleCollapsed)
+    }
+
+    private var tally: String {
+        "+\(file.adds) \u{2212}\(file.dels)"
     }
 }
 
@@ -211,9 +213,21 @@ struct DiffRowView: View {
     let row: DiffRow
     let numberWidth: Int
     let isSelected: Bool
-    let showCommentButton: Bool
+    /// Whether a comment can be started on this row at all.
+    let canComment: Bool
+    /// Whether the row ends the marked run — where a comment on the run goes.
+    let isSelectionEnd: Bool
     let onSelect: (Bool) -> Void
-    let onComment: () -> Void
+    /// Opens the comment editor; told whether the row already ends the run.
+    let onComment: (Bool) -> Void
+    @State private var hovering = false
+
+    /// The comment button shows on the row under the pointer, and on the end
+    /// of a marked run, so a line can be commented on without clicking it
+    /// first.
+    private var showCommentButton: Bool {
+        canComment && (hovering || isSelectionEnd)
+    }
 
     // The per-character width of the gutter's monospaced digits at
     // Typo.code — scaled up from the 7.5pt this was calibrated at when
@@ -240,19 +254,6 @@ struct DiffRowView: View {
         Self.gutterWidth(numberWidth: numberWidth)
     }
 
-    /// The gutter's paint, drawn as the row's own background rather than the
-    /// numbers': a wrapped line makes the row taller than its numbers, and a
-    /// fill on the numbers alone floats in the middle of it as a block with
-    /// bare row above and below. The hairline is the mock's border between
-    /// the gutter and the code.
-    private func gutterCell(_ fill: Color) -> some View {
-        HStack(spacing: 0) {
-            fill
-            DesignTokens.rule(.separator, on: .rowAlt).frame(width: 0.5)
-        }
-        .frame(width: gutterWidth + 0.5)
-    }
-
     var body: some View {
         switch row.kind {
         case .hunkBreak:
@@ -263,30 +264,20 @@ struct DiffRowView: View {
     }
 
     private var hunkBreakRow: some View {
-        HStack(spacing: 0) {
-            Text("···")
-                .font(Typo.mono(size: Typo.code, weight: .regular))
-                .ink(.accent)
-                .frame(width: gutterWidth)
-
-            Text(row.text)
-                .font(Typo.mono(size: Typo.code, weight: .regular))
-                .ink(.tertiary)
-                .lineLimit(1)
-                .padding(.leading, 12)
-
-            Spacer(minLength: 0)
-        }
-        .frame(minHeight: 24)
-        .background(alignment: .leading) {
-            gutterCell(DesignTokens.diffCommentGutterBg(on: ground))
-        }
+        Text(row.text)
+            .font(Typo.mono(size: GnatMetrics.xs))
+            .ink(.tertiary)
+            .lineLimit(1)
+            .padding(.leading, gutterWidth + 25)
+            .padding(.trailing, 16)
+            .frame(minHeight: 21, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// What a row of a file's body is at least — one line of code, its
     /// vertical padding included. Named rather than inline for the reason the
     /// header's height is: `DiffSkeletonView` stands in for these rows.
-    static let minimumRowHeight: CGFloat = 19
+    static let minimumRowHeight: CGFloat = 21
 
     // Top-aligned, not centred: a long line wraps, and everything that
     // belongs to the line as a whole — its numbers, its +/- — belongs on the
@@ -317,7 +308,7 @@ struct DiffRowView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if showCommentButton {
-                Button(action: onComment) {
+                Button(action: { onComment(isSelectionEnd) }) {
                     Image(systemName: "plus.bubble")
                         .font(.system(size: 12, weight: .medium))
                         .ink(.accent)
@@ -329,14 +320,12 @@ struct DiffRowView: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 1.5)
+        .padding(.vertical, 1)
         .frame(minHeight: Self.minimumRowHeight)
-        .background(alignment: .leading) {
-            gutterCell(gutterFill)
-        }
         .background(rowFill)
         .background(isSelected ? DesignTokens.wash(.selection, tone: .accent, on: ground) : Color.clear)
         .contentShape(Rectangle())
+        .onHover { hovering = $0 }
         .onTapGesture {
             onSelect(NSEvent.modifierFlags.contains(.shift))
         }
@@ -366,13 +355,6 @@ struct DiffRowView: View {
         }
     }
 
-    private var gutterFill: Color {
-        switch row.kind {
-        case .added: return DesignTokens.diffAddedGutterBg(on: ground)
-        case .removed: return DesignTokens.diffRemovedGutterBg(on: ground)
-        default: return DesignTokens.fill(.rowAlt)
-        }
-    }
 }
 
 /// A pending comment, drawn as a card right under the last line it covers:
@@ -388,59 +370,33 @@ struct PendingCommentCardView: View {
     let onDelete: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
-                Text(authorInitials)
-                    .font(.system(size: Typo.caption, weight: .semibold))
-                    .ink(.accent)
-                    .frame(width: 20, height: 20)
-                    .wash(.avatar)
-                    .clipShape(Circle())
-
-                Text(authorName)
-                    .font(.system(size: Typo.subhead, weight: .semibold))
-                    .ink(.primary)
-
-                Text("Pending")
-                    .font(.system(size: Typo.caption, weight: .semibold))
-                    .ink(.warning)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(DesignTokens.systemYellowWash(on: ground))
-                    .clipShape(Capsule())
-
-                Spacer()
-
+                Text("\(authorName.lowercased()) · pending").monoXS().ink(.secondary)
+                Spacer(minLength: 0)
                 Button(action: onEdit) {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 12, weight: .medium))
-                        .ink(.tertiary)
+                    Image(systemName: "pencil").font(.system(size: 11)).ink(.tertiary)
                 }
                 .buttonStyle(.plain)
                 .help("Edit this comment")
-
                 Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 12, weight: .medium))
-                        .ink(.tertiary)
+                    Image(systemName: "trash").font(.system(size: 11)).ink(.tertiary)
                 }
                 .buttonStyle(.plain)
                 .help("Delete this comment")
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .surface(.control)
-
-            Divider().frame(height: 0.5)
-
             Text(comment.text)
-                .font(.system(size: Typo.subhead, weight: .regular))
+                .font(.system(size: 13.5))
+                .lineSpacing(2)
                 .ink(.primary)
-                .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .card(radius: 8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .surface(.chrome, radius: 4)
+        .overlay {
+            RoundedRectangle(cornerRadius: 4).strokeBorder(DesignTokens.rule(.border, on: .window), lineWidth: 1)
+        }
     }
 }
 

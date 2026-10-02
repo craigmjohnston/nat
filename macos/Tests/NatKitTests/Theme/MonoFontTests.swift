@@ -20,9 +20,10 @@ final class MonoFontTests: XCTestCase {
     /// Four faces, and the names the call sites resolve them by. A face
     /// renamed upstream is a silent fall back to the system font, which is
     /// precisely the thing this test is here to fail over.
-    func testTheFourFacesAreDeclared() {
+    func testTheFacesAreDeclared() {
         XCTAssertEqual(MonoFont.faces, [
             "JetBrainsMono-Regular",
+            "JetBrainsMono-Medium",
             "JetBrainsMono-Bold",
             "JetBrainsMono-Italic",
             "JetBrainsMono-BoldItalic",
@@ -108,6 +109,15 @@ final class MonoFontTests: XCTestCase {
         XCTAssertEqual(MonoFont.face(bold: true, italic: true), MonoFont.boldItalicFace)
     }
 
+    /// The ramp's middle step, and its slant — which, with no medium italic
+    /// bundled, is the regular italic.
+    func testFaceNamesTheMediumStep() {
+        XCTAssertEqual(MonoFont.face(weight: .medium), MonoFont.mediumFace)
+        XCTAssertEqual(MonoFont.face(weight: .medium, italic: true), MonoFont.italicFace)
+        XCTAssertEqual(MonoFont.face(weight: .regular), MonoFont.regularFace)
+        XCTAssertEqual(MonoFont.face(weight: .bold, italic: true), MonoFont.boldItalicFace)
+    }
+
     /// The faces are the family's, which is what lets `NSFontManager` and
     /// SwiftUI's own `.italic()` find their way between them.
     func testTheFacesBelongToTheOneFamily() throws {
@@ -147,6 +157,23 @@ final class MonoFontTests: XCTestCase {
         let font = Typo.monoNSFont(size: Typo.code)
         XCTAssertEqual(font.fontName, MonoFont.regularFace)
         XCTAssertEqual(font.pointSize, Typo.code)
+    }
+
+    func testMonoTakesTheMediumFaceForMedium() {
+        XCTAssertEqual(Typo.mono(size: Typo.code, weight: .medium),
+                       .custom(MonoFont.mediumFace, fixedSize: Typo.code))
+    }
+
+    func testMonoNSFontTakesTheMediumFaceForMedium() {
+        XCTAssertEqual(Typo.monoNSFont(size: Typo.code, weight: .medium).fontName, MonoFont.mediumFace)
+    }
+
+    func testEachWeightMapsToItsStep() {
+        XCTAssertEqual(Typo.monoWeight(.regular), .regular)
+        XCTAssertEqual(Typo.monoWeight(.light), .regular)
+        XCTAssertEqual(Typo.monoWeight(.medium), .medium)
+        XCTAssertEqual(Typo.monoWeight(.semibold), .bold)
+        XCTAssertEqual(Typo.monoWeight(.black), .bold)
     }
 
     func testMonoNSFontTakesTheBoldFaceForAHeavyWeight() {

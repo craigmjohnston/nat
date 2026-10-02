@@ -553,6 +553,19 @@ public final class NatClient: Sendable {
         ])
     }
 
+    /// Add a milestone to the end of the plan — the Scratch fold's New
+    /// Milestone, mirroring `internal/cli/add.go`'s `milestoneAdd`. The CLI
+    /// refuses an empty name; that passes straight through as
+    /// `NatError.commandFailed`.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - name: The new milestone's name
+    /// - Throws: NatError if the name is refused, or the command fails
+    public func milestoneAdd(projectID: String, name: String) async throws {
+        _ = try await runNat(arguments: ["milestone-add", name, "--project", projectID, "--json"])
+    }
+
     /// Move a milestone in the plan, to sit directly before or after another
     /// — the rail's Move Up and Move Down, mirroring
     /// `internal/cli/milestonemove.go`'s `milestoneMove`. Only the order

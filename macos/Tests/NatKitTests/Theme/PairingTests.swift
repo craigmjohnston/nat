@@ -17,7 +17,7 @@ import XCTest
 /// filling the swatch table; this is what says whether its own ramp survives
 /// the roles this app puts it in, in CI rather than by squinting at a window.
 final class PairingTests: XCTestCase {
-    private let palettes: [(String, Palette)] = [("mocha", .mocha), ("latte", .latte)]
+    private let palettes: [(String, Palette)] = [("mocha", .dark), ("latte", .light)]
 
     /// What each ink tier has to clear, and why. The bars are WCAG's: 4.5:1
     /// for anything read as body text, 3:1 for text that is deliberately
@@ -187,10 +187,10 @@ final class PairingTests: XCTestCase {
     /// Every ground the app can paint is covered by the sweep above. A ground
     /// added without a pairing to go with it would otherwise be untested.
     func testEveryGroundIsCovered() {
-        XCTAssertEqual(Ground.allCases.count, 9)
+        XCTAssertEqual(Ground.allCases.count, 10)
         for ground in Ground.allCases {
-            XCTAssertNotNil(rgbComponents(hex: ground.surface(in: .mocha).hex), "\(ground.rawValue)")
-            XCTAssertNotNil(rgbComponents(hex: ground.surface(in: .latte).hex), "\(ground.rawValue)")
+            XCTAssertNotNil(rgbComponents(hex: ground.surface(in: .dark).hex), "\(ground.rawValue)")
+            XCTAssertNotNil(rgbComponents(hex: ground.surface(in: .light).hex), "\(ground.rawValue)")
         }
     }
 

@@ -21,14 +21,13 @@ structure and design-system writeup.
   pixel perfection — see "Verify a UI change: render the gallery" below.
 
 ## Conventions
-- The design reference lives in `docs/design/nat-ui-v2/nat-ui-v2.html` — all colors and token values come from the `.nat` CSS block in that file.
+- The design reference is the gnat hi-fi design (`gnat.html` in the Claude Design project `macOS native UI for TUI app`) — the colours come from its `gnat.css` token blocks.
 - Theme tokens are centralized in `NatKit/Theme/DesignTokens.swift`, and are
   *dynamic*: each one holds both palettes and resolves the one the window's
   appearance calls for, so a view says `DesignTokens.windowBg` and never asks
-  which theme is on. The values themselves — Catppuccin Mocha and Latte — live
-  in `NatKit/Theme/Palette.swift`, taken as published — the tests there assert
-  every role is Catppuccin's own swatch, unedited. Do not bend a value to meet
-  a contrast number: it would be a colour no other Catppuccin has.
+  which theme is on. The values themselves — the design's dark and light
+  tokens — live in `NatKit/Theme/Palette.swift`, and `PaletteTests` asserts
+  every role is the design's own token, unedited.
 - Which palette a window asks for is `NatKit/Theme/Theme.swift`: system, dark
   or light, persisted in `UserDefaults` under `Theme.storageKey` and switched
   from the Settings window. `system` pins nothing, which is what makes it
@@ -43,8 +42,8 @@ structure and design-system writeup.
 - A colour that will not parse falls back to Mocha's mauve, the app's accent,
   rather than to white: a parse failure is a bug the tests catch, and the frame
   drawn before anyone reads them should still read as this app.
-- The monospaced face is the app's own, not the Mac's: JetBrains Mono, four
-  static faces under `NatKit/Resources/Fonts` (with the OFL beside them),
+- The monospaced face is the app's own, not the Mac's: JetBrains Mono, five
+  static faces (regular, medium, bold, two italics) under `NatKit/Resources/Fonts`, with the OFL beside them,
   registered with CoreText for this process alone at launch — nothing is
   installed on the Mac. `MonoFont` holds the names and the registration and
   `Typo.mono(size:weight:)` is the one thing a view calls, falling back to the
@@ -127,9 +126,9 @@ it, open it. Four commands, and they work as written from the repository root:
 ```bash
 swift build --package-path macos
 macos/.build/debug/gnat --list                                  # the index: every story and what it shows
-macos/.build/debug/gnat --story diff-handed-back --out /tmp/diff.png   # one of them
+macos/.build/debug/gnat --story window-review --out /tmp/review.png   # one of them
 macos/.build/debug/gnat --all --out /tmp/gallery                # the whole catalog
-open /tmp/diff.png
+open /tmp/review.png
 ```
 
 `--list` writes nothing and takes no other flag. `--story` names one story by
@@ -173,8 +172,9 @@ and no tmux, writes its PNGs and exits, so the same pixels come out on any
 machine and in a clean checkout. A named story is about a second and a half.
 
 The catalog is `Sources/NatApp/Gallery/AppStories.swift` — adding a story is an
-entry in that array and nothing else. It covers the window shell, the rail in
-each state a load leaves it in, every tab of the workflow, the workshop pane,
+entry in that array and nothing else. It covers the window on a slice in
+every phase the design draws, the workshop, sessions and the Untitled starter,
+the sidebar in each state a load leaves it in, the status bar,
 settings and onboarding, and it reads down in that order, which is what makes
 `--list` an index of the app's UI rather than a heap of file names. Names are
 slugs, because a name is both a `--story` argument and a file name, and every
@@ -252,11 +252,11 @@ macos/
 │   │   ├── Resources/Fonts/       — JetBrains Mono (bundled, OFL)
 │   │   ├── Stores/                — ~9 files: state management (ActivityStore, ReviewStatsStore, …)
 │   │   ├── Terminal/              — agent-terminal key encoding, link and mouse handling
-│   │   ├── Theme/                 — DesignTokens, Palette (Catppuccin), Theme, MonoFont
-│   │   ├── ViewModels/            — ~22 files: RailModel, SettingsModel, and the rest of the view-facing logic
+│   │   ├── Theme/                 — DesignTokens, Palette (the gnat design's tokens), Theme, MonoFont
+│   │   ├── ViewModels/            — ~22 files: SidebarModel, NavigatorModel, SettingsModel, and the rest of the view-facing logic
 │   │   └── Window/                — window-chrome helpers
 │   └── NatApp/                   — thin SwiftUI views binding to NatKit; see macos/CLAUDE.md
-│       ├── Views/                 — ~27 files: the window shell, rail, tabs, settings, onboarding, terminal host
+│       ├── Views/                 — ~27 files: the window shell, sidebar, navigator, main pane, settings, onboarding, terminal host
 │       ├── Gallery/               — the AppKit story capture (AppStories.swift, the window-pixel renderer)
 │       ├── Resources/             — app-level resources (icons, etc.)
 │       └── main.swift             — entry point (no @main — the gallery's argument parsing runs before App.main())

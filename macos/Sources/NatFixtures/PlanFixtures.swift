@@ -214,6 +214,36 @@ extension Fixtures {
 
     /// A project with a plan and nothing in it — what a freshly created
     /// project looks like before anything has been queued into it.
+    /// The second project's plan (`twoProjectConfig`'s "gnat"): one milestone
+    /// part-way through — a branch handed back for review, a slice blocked on
+    /// a Todo one, and one Done — so a sidebar drawing both projects has
+    /// something of each state under a project other than the active one.
+    public static let secondProjectInfo = ProjectInfo(
+        project: Project(id: secondProjectID, name: "gnat", conventions: ""),
+        milestones: [
+            Milestone(id: "Detail overhaul", name: "Detail overhaul", order: 0, status: "Active"),
+        ],
+        slices: [
+            Slice(
+                id: "f1x75333-0000-4000-8000-000000000001", name: "Show library truth on the detail page",
+                status: "In progress", milestoneID: "Detail overhaul", assignee: "Craig Johnston", pr: "",
+                url: "", branch: "slice/show-library-truth", blocked: false, handedBack: true),
+            Slice(
+                id: "f1x75333-0000-4000-8000-000000000002", name: "Add a settings screen for host entry",
+                status: "Todo", milestoneID: "Detail overhaul", assignee: "", pr: "", url: "",
+                blocked: false, handedBack: false),
+            Slice(
+                id: "f1x75333-0000-4000-8000-000000000003", name: "Re-resolve credentials when a host changes",
+                status: "Todo", milestoneID: "Detail overhaul", assignee: "", pr: "", url: "",
+                dependsOn: ["f1x75333-0000-4000-8000-000000000002"], blocked: true, handedBack: false),
+            Slice(
+                id: "f1x75333-0000-4000-8000-000000000004", name: "Fetch series, episodes and files",
+                status: "Done", milestoneID: "Detail overhaul", assignee: "Craig Johnston",
+                pr: "https://github.com/craigmjohnston/gnat/pull/38", url: "",
+                branch: "slice/fetch-series", blocked: false, handedBack: false),
+        ]
+    )
+
     public static let emptyProjectInfo = ProjectInfo(
         project: Project(id: projectID, name: "notion-agent-tracker", conventions: ""),
         milestones: [],
