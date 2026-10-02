@@ -49,7 +49,7 @@ final class DesignTokensTests: XCTestCase {
     /// failure drew was guaranteed to be the most off-theme thing on screen.
     func testHexColorFallbackIsOnThePalette() {
         let palette = Set(
-            [Palette.dark, Palette.light].flatMap { palette in
+            PaletteChoice.allCases.map(\.palette).flatMap { palette in
                 palette.ansi + [
                     palette.windowBg.hex, palette.controlBg.hex, palette.rowAltBg.hex,
                     palette.controlFace.hex, palette.fieldBg.hex, palette.label.hex,
@@ -70,11 +70,11 @@ final class DesignTokensTests: XCTestCase {
         XCTAssertNotEqual(hexFallback.red + hexFallback.green + hexFallback.blue, 3, "…and never to white")
     }
 
-    /// Which one it is: Mocha's mauve, the app's own accent. The constant is
+    /// Which one it is: the light palette's navy, the app's own accent. The constant is
     /// written out channel by channel because the fallback for a parse
     /// cannot depend on a parse; this is what holds the two in step.
     func testHexFallbackIsTheAccent() {
-        let accent = try? XCTUnwrap(rgbComponents(hex: Palette.dark.accent.hex))
+        let accent = try? XCTUnwrap(rgbComponents(hex: Palette.light.accent.hex))
         XCTAssertEqual(accent?.red, hexFallback.red)
         XCTAssertEqual(accent?.green, hexFallback.green)
         XCTAssertEqual(accent?.blue, hexFallback.blue)
@@ -104,10 +104,21 @@ final class DesignTokensTests: XCTestCase {
     // MARK: - Token resolution
 
     /// The seam every token is built over: which palette a colour scheme
-    /// draws with.
+    /// draws with — each slot's default until the user picks otherwise.
     func testSchemeChoosesThePalette() {
-        XCTAssertEqual(DesignTokens.palette(for: .dark), .dark)
-        XCTAssertEqual(DesignTokens.palette(for: .light), .light)
+        XCTAssertEqual(DesignTokens.palette(for: .dark), .iceberg)
+        XCTAssertEqual(DesignTokens.palette(for: .light), .oneLight)
+    }
+
+    /// A pick moves its own slot and nothing else, and every token resolves
+    /// against it.
+    func testThePickedPaletteIsWhatTokensResolveTo() {
+        PaletteSelection.shared.select(.slateInk)
+        defer { PaletteSelection.shared.select(PaletteChoice.defaultDark) }
+        XCTAssertEqual(DesignTokens.palette(for: .dark), .slateInk)
+        XCTAssertEqual(DesignTokens.palette(for: .light), .oneLight)
+        assertResolves(DesignTokens.dynamicNSColor(\.windowBg), .darkAqua,
+                       to: Palette.slateInk.windowBg.hex, name: "windowBg (slate ink)")
     }
 
     /// The same choice made from the AppKit appearance a dynamic colour is
@@ -116,11 +127,11 @@ final class DesignTokensTests: XCTestCase {
     func testAppearanceChoosesThePalette() {
         for name in [NSAppearance.Name.darkAqua, .vibrantDark] {
             let appearance = try? XCTUnwrap(NSAppearance(named: name))
-            XCTAssertEqual(appearance.map(DesignTokens.palette(for:)), .dark, "\(name.rawValue)")
+            XCTAssertEqual(appearance.map(DesignTokens.palette(for:)), .iceberg, "\(name.rawValue)")
         }
         for name in [NSAppearance.Name.aqua, .vibrantLight] {
             let appearance = try? XCTUnwrap(NSAppearance(named: name))
-            XCTAssertEqual(appearance.map(DesignTokens.palette(for:)), .light, "\(name.rawValue)")
+            XCTAssertEqual(appearance.map(DesignTokens.palette(for:)), .oneLight, "\(name.rawValue)")
         }
     }
 
@@ -152,8 +163,8 @@ final class DesignTokensTests: XCTestCase {
             ("systemGray", DesignTokens.dynamicNSColor(\.systemGray), { $0.systemGray.hex }),
         ]
         for (name, token, value) in keys {
-            assertResolves(token, .darkAqua, to: value(.dark), name: "\(name) (dark)")
-            assertResolves(token, .aqua, to: value(.light), name: "\(name) (light)")
+            assertResolves(token, .darkAqua, to: value(.iceberg), name: "\(name) (dark)")
+            assertResolves(token, .aqua, to: value(.oneLight), name: "\(name) (light)")
         }
     }
 
@@ -221,7 +232,7 @@ final class DesignTokensTests: XCTestCase {
         }
         checks.append(("hot", NSColor(DesignTokens.hot), { $0.hot.hex }))
         for (name, token, value) in checks {
-            for (appearance, palette) in [(NSAppearance.Name.darkAqua, Palette.dark), (.aqua, .light)] {
+            for (appearance, palette) in [(NSAppearance.Name.darkAqua, Palette.iceberg), (.aqua, .oneLight)] {
                 assertResolves(token, appearance, to: value(palette), name: "\(name) \(appearance.rawValue)")
                 XCTAssertEqual(
                     resolve(token, appearance)?.alphaComponent, 1,
@@ -245,7 +256,7 @@ final class DesignTokensTests: XCTestCase {
     func testTheMarkIsTheIconsInkForEachAppearance() {
         let mark = NSColor(DesignTokens.mark)
         assertResolves(mark, .darkAqua, to: "f2e8d2", name: "mark (dark)")
-        assertResolves(mark, .aqua, to: Palette.light.accent.hex, name: "mark (light)")
+        assertResolves(mark, .aqua, to: Palette.oneLight.accent.hex, name: "mark (light)")
     }
 
     private func assertResolves(
@@ -340,7 +351,7 @@ final class DesignTokensTests: XCTestCase {
     /// still a label while the pointer is on it — WCAG AA for body text,
     /// on the design's `--sel` in either theme.
     func testLabelClearsAAOnTheHoverFill() {
-        for (name, palette) in [("mocha", Palette.dark), ("latte", Palette.light)] {
+        for (name, palette) in PaletteChoice.allCases.map({ ($0.rawValue, $0.palette) }) {
             XCTAssertGreaterThanOrEqual(
                 contrast(palette.label.hex, palette.hoverWash.hex), 4.5,
                 "\(name): a label on the hover fill should clear AA"

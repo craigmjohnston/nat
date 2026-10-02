@@ -54,7 +54,8 @@ enum GalleryRunner {
     }
 
     /// Draws one story and hands back its PNG.
-    static func png(of story: Story) async throws -> Data {
+    static func png(of story: Story, scheme: ColorScheme? = nil) async throws -> Data {
+        let scheme = scheme ?? story.colorScheme
         let content = await story.content()
         let frame = NSRect(origin: .zero, size: story.size)
 
@@ -65,9 +66,9 @@ enum GalleryRunner {
         // the window's appearance is what a dynamic `NSColor` resolves
         // against, and `preferredColorScheme` is what SwiftUI's own
         // environment reads.
-        window.appearance = NSAppearance(named: story.colorScheme == .dark ? .darkAqua : .aqua)
+        window.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
         window.contentView = NSHostingView(
-            rootView: AnyView(content.preferredColorScheme(story.colorScheme)))
+            rootView: AnyView(content.preferredColorScheme(scheme)))
         window.setFrame(frame, display: false)
         // Far off any screen: the window has to be ordered in for SwiftUI to
         // lay it out and draw it, and a window that flashes up in front of
@@ -135,19 +136,22 @@ final class GalleryDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func render() async throws {
+        if let palette = command.palette {
+            PaletteSelection.shared.select(palette)
+        }
         switch command {
         case .list:
             // Answered before the app was ever started; kept exhaustive
             // rather than defaulted so a fourth command has to be decided
             // here too.
             break
-        case .one(let name, let out):
+        case .one(let name, let out, _):
             guard let story = catalog.story(named: name) else {
                 throw GalleryRenderError.unknownStory(name: name, known: catalog.names)
             }
             try await write(story, to: URL(fileURLWithPath: out))
             print(out)
-        case .all(let directory):
+        case .all(let directory, _):
             let dir = URL(fileURLWithPath: directory, isDirectory: true)
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             for story in catalog.stories {
@@ -159,7 +163,8 @@ final class GalleryDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func write(_ story: Story, to url: URL) async throws {
-        let png = try await GalleryRunner.png(of: story)
+        let scheme: ColorScheme? = command.palette.map { $0.palette.isDark ? .dark : .light }
+        let png = try await GalleryRunner.png(of: story, scheme: scheme)
         try png.write(to: url)
     }
 }

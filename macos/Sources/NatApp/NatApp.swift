@@ -14,11 +14,40 @@ struct NatApp: App {
     /// in `DesignTokens` re-resolves under the new appearance.
     @AppStorage(Theme.storageKey) private var storedTheme = Theme.system.rawValue
 
+    /// Which palette each of the two schemes draws with, as the settings
+    /// window writes them.
+    @AppStorage(PaletteChoice.darkStorageKey) private var storedDarkPalette = PaletteChoice.defaultDark.rawValue
+    @AppStorage(PaletteChoice.lightStorageKey) private var storedLightPalette = PaletteChoice.defaultLight.rawValue
+
     /// View ▸ Show/Hide Done Items: whether the sidebar draws finished work
     /// — done slices, ended sessions and each project's Done folder.
     @AppStorage(showsDoneItemsKey) private var showsDoneItems = true
 
     private var theme: Theme { Theme(stored: storedTheme) }
+
+    /// The two stored palettes, put in their slots, as one identity for the
+    /// window's content.
+    ///
+    /// Selecting here — while the body that is about to draw with them is
+    /// being computed — is what guarantees the new subtree's first frame
+    /// already resolves against them; an `onChange` runs after that frame.
+    /// It is idempotent, so a body re-run for any other reason re-selects
+    /// what is already selected.
+    ///
+    /// The identity is what makes the switch take: SwiftUI keeps the colours
+    /// it has resolved for an appearance, and a palette change is not an
+    /// appearance change, so nothing under the old tree re-asks. Flipping
+    /// the appearance and back repaints only part of the window; rebuilding
+    /// the content repaints all of it, at the cost of the views' own state
+    /// (folds, scroll offsets) — which a palette pick, made rarely and from
+    /// Settings, can afford. The app's model lives above this and survives.
+    private var paletteIdentity: String {
+        let dark = PaletteChoice(stored: storedDarkPalette, dark: true)
+        let light = PaletteChoice(stored: storedLightPalette, dark: false)
+        PaletteSelection.shared.select(dark)
+        PaletteSelection.shared.select(light)
+        return "\(dark.rawValue)/\(light.rawValue)"
+    }
 
     init() {
         // The very first thing the process does: compose the real PATH —
@@ -109,6 +138,7 @@ struct NatApp: App {
                         .task { await Self.snapshotIfAsked(appModel) }
                 }
             }
+            .id(paletteIdentity)
             // Diagnostics only: a no-op unless NAT_CURSOR_DEBUG=1 is set, for
             // tracking down the persistent I-beam cursor bug live. `.task`
             // is a View modifier and so goes on the window's content, not on

@@ -1,24 +1,45 @@
 import XCTest
 @testable import NatKit
 
-/// Both palettes, held to one rule: they are the app's navy scheme, token for
-/// token in the roles the gnat design's `gnat.css` names.
+/// Every palette the app ships, held to one rule: each is its source's values,
+/// token for token, in the roles the gnat design's `gnat.css` names — the
+/// light one the design's own tokens, the dark ones the community themes
+/// they are taken from.
 ///
-/// What is asserted is that nothing has drifted from the design's tokens,
-/// that each token is still playing the role it was given, and that the two
-/// rule colours the design names (`--line`, `--line-2`) come out of the
-/// shares that derive them.
+/// What is asserted is that nothing has drifted from those values, that each
+/// is still playing the role it was given, and that the two rule colours
+/// (`--line`, `--line-2`) come out of the shares that derive them.
 final class PaletteTests: XCTestCase {
-    private let palettes: [(String, Palette)] = [
-        ("dark", .dark),
-        ("light", .light),
+    private let palettes: [(String, Palette)] = PaletteChoice.allCases.map { ($0.rawValue, $0.palette) }
+
+    /// Iceberg's published values, its ground lifted a step (`#161821` is
+    /// the chrome).
+    private let icebergTokens = [
+        "bg": "1b1d28", "chrome": "161821", "line": "262a3c", "line-2": "33374c",
+        "ink": "c6c8d1", "ink-2": "a3a6b7", "ink-3": "6b7089", "ink-4": "3e445e",
+        "accent": "84a0c6", "hot": "e2a478", "add": "b4be82", "del": "e27878",
     ]
 
-    /// The design's `:root` tokens.
-    private let darkTokens = [
-        "bg": "19161f", "chrome": "1e1b25", "line": "2c2935", "line-2": "36333f",
-        "ink": "f4f0e9", "ink-2": "9a9ca5", "ink-3": "5f616a", "ink-4": "393b43",
-        "accent": "2c5ed7", "hot": "fca05f", "add": "9fd2a4", "del": "e49aa0",
+    /// One Light's published values, its accent shaded a step darker.
+    private let oneLightTokens = [
+        "bg": "fafafa", "chrome": "f0f0f1", "line": "e0e0e2", "line-2": "d4d4d7",
+        "ink": "383a42", "ink-2": "696c77", "ink-3": "a0a1a7", "ink-4": "d4d4d6",
+        "accent": "2f6cf1", "hot": "d0721f", "add": "50a14f", "del": "e45649",
+    ]
+
+    /// Tokyo Night Day's published values, its ink and accent shaded a step
+    /// darker.
+    private let tokyoDayTokens = [
+        "bg": "e1e2e7", "chrome": "d0d5e3", "line": "c4c8da", "line-2": "b6bcd2",
+        "ink": "2f52a3", "ink-2": "6172b0", "ink-3": "848cb5", "ink-4": "b4b9cf",
+        "accent": "1c72e7", "hot": "b15c00", "add": "587539", "del": "f52a65",
+    ]
+
+    /// Slate's grounds under Kanagawa's ink and hues.
+    private let slateInkTokens = [
+        "bg": "252838", "chrome": "1f2231", "line": "313549", "line-2": "3c4057",
+        "ink": "dcd7ba", "ink-2": "a8a594", "ink-3": "7a7a8a", "ink-4": "444862",
+        "accent": "7e9cd8", "hot": "ffa066", "add": "98bb6c", "del": "e46876",
     ]
 
     /// The design's `.win.light` tokens.
@@ -28,12 +49,13 @@ final class PaletteTests: XCTestCase {
         "accent": "1f44a3", "hot": "d75f09", "add": "2e7d3a", "del": "b23a48",
     ]
 
-    /// Which token plays which role — the same decision in both themes.
+    /// Which token plays which role — the same decision in every palette.
+    /// The light palette's cards and control faces are its chrome and its
+    /// line; the dark ones take those from levels of their own theme's ramp.
     private let roles: [(String, (Palette) -> String, String)] = [
         ("windowBg", { $0.windowBg.hex }, "bg"),
         ("chromeBg", { $0.chromeBg.hex }, "chrome"),
-        ("controlBg", { $0.controlBg.hex }, "chrome"),
-        ("controlFace", { $0.controlFace.hex }, "line"),
+        ("titlebarBg", { $0.titlebarBg.hex }, "chrome"),
         ("fieldBg", { $0.fieldBg.hex }, "bg"),
         ("terminalBg", { $0.terminalBg.hex }, "bg"),
         ("terminalFg", { $0.terminalFg.hex }, "ink"),
@@ -51,21 +73,36 @@ final class PaletteTests: XCTestCase {
     ]
 
     private func tokens(_ name: String) -> [String: String] {
-        name == "dark" ? darkTokens : lightTokens
+        switch PaletteChoice(rawValue: name) {
+        case .oneLight: oneLightTokens
+        case .tokyoDay: tokyoDayTokens
+        case .iceberg: icebergTokens
+        case .slateInk: slateInkTokens
+        case .light, nil: lightTokens
+        }
     }
 
     // MARK: - Fidelity
 
-    /// What is written on the accent: the ink on the dark theme's deep navy,
-    /// the paper on the light theme's.
-    func testTheDarkHighlightIsNeutralAndTheLightOneTheAccent() {
-        XCTAssertEqual(Palette.dark.rowWashTint.hex, darkTokens["ink"])
-        XCTAssertEqual(Palette.light.rowWashTint, Palette.light.accent)
+    /// A light palette's highlight is its accent, and its cards are its
+    /// chrome — the design's light structure, which every light palette
+    /// keeps. The design's own control face is its line.
+    func testTheLightPalettesAreTheDesignsStructure() {
+        for choice in PaletteChoice.choices(dark: false) {
+            XCTAssertEqual(choice.palette.rowWashTint, choice.palette.accent, "\(choice)")
+            XCTAssertEqual(choice.palette.controlBg, choice.palette.chromeBg, "\(choice)")
+        }
+        XCTAssertEqual(Palette.light.controlFace.hex, lightTokens["line"])
     }
 
+    /// What is written on the accent: paper or white on a light theme's
+    /// strong accent, the chrome on a dark theme's pale one.
     func testTheAccentsTextIsTheContrastingSurface() {
-        XCTAssertEqual(Palette.dark.accentText.hex, darkTokens["ink"])
         XCTAssertEqual(Palette.light.accentText.hex, lightTokens["bg"])
+        XCTAssertEqual(Palette.oneLight.accentText.hex, "ffffff")
+        XCTAssertEqual(Palette.tokyoDay.accentText.hex, "ffffff")
+        XCTAssertEqual(Palette.iceberg.accentText, Ink(Palette.iceberg.chromeBg.hex))
+        XCTAssertEqual(Palette.slateInk.accentText, Ink(Palette.slateInk.chromeBg.hex))
     }
 
     func testEveryRoleIsTheDesignsToken() {
@@ -88,26 +125,23 @@ final class PaletteTests: XCTestCase {
         }
     }
 
-    /// The one level the design does not name — a band inside a card —
-    /// derived from the two either side of it rather than typed.
-    func testRowAltIsInterpolatedBetweenLineAndChrome() {
+    /// The one level no theme names — a band inside a card — derived from
+    /// the two either side of it rather than typed.
+    func testRowAltIsInterpolatedBetweenLineAndCard() {
         for (name, palette) in palettes {
             XCTAssertEqual(
-                palette.rowAltBg.hex, mix(tokens(name)["line"] ?? "", tokens(name)["chrome"] ?? "", 0.5),
+                palette.rowAltBg.hex, mix(tokens(name)["line"] ?? "", palette.controlBg.hex, 0.5),
                 "\(name): rowAltBg should be derived, not typed")
         }
     }
 
-    /// The titlebars have their own ground: well below the chrome in the dark
-    /// theme, the chrome itself in the light one.
-    func testTheTitlebarsHaveTheirOwnGround() {
+    /// The titlebars are the chrome, and the header ground is the titlebar.
+    func testTheTitlebarsAreTheChrome() {
         for (name, palette) in palettes {
             XCTAssertEqual(palette.headerBg, palette.titlebarBg, "\(name)")
             XCTAssertEqual(Ground.chrome.surface(in: palette), palette.chromeBg, "\(name)")
             XCTAssertEqual(Ground.header.surface(in: palette), palette.titlebarBg, "\(name)")
         }
-        XCTAssertLessThan(luminance(Palette.dark.titlebarBg.hex), luminance(Palette.dark.chromeBg.hex))
-        XCTAssertEqual(Palette.light.titlebarBg, Palette.light.chromeBg)
     }
 
     /// The four ink tiers stay in order: each recedes further from the
@@ -127,9 +161,8 @@ final class PaletteTests: XCTestCase {
 
     // MARK: - Row washes
 
-    /// `--sel` and `--sel-2`: the row tint mixed into the ground — the ink in
-    /// the dark theme, the accent in the light one — the selected
-    /// row's the heavier, both still a step off the ground.
+    /// `--sel` and `--sel-2`: the row tint mixed into the ground, the
+    /// selected row's the heavier, both still a step off the ground.
     func testRowWashesAreTheInkOverTheGround() {
         for (name, palette) in palettes {
             let hover = palette.rowWash(selected: false, on: .window)
@@ -203,15 +236,20 @@ final class PaletteTests: XCTestCase {
     }
 
     func testTheGroundlessWashesMatchAcrossThemes() {
-        XCTAssertEqual(Palette.light.bandShare, Palette.dark.bandShare)
-        XCTAssertEqual(Palette.light.onAccentRuleShare, Palette.dark.onAccentRuleShare)
-        XCTAssertEqual(Palette.light.mutedShare, Palette.dark.mutedShare)
+        for (name, palette) in palettes {
+            XCTAssertEqual(Palette.light.bandShare, palette.bandShare, "\(name)")
+            XCTAssertEqual(Palette.light.onAccentRuleShare, palette.onAccentRuleShare, "\(name)")
+            XCTAssertEqual(Palette.light.mutedShare, palette.mutedShare, "\(name)")
+        }
     }
 
     func testThePalettesDiffer() {
-        XCTAssertNotEqual(Palette.dark, Palette.light)
-        XCTAssertTrue(Palette.dark.isDark)
+        XCTAssertEqual(Set(palettes.map { $0.1.windowBg.hex }).count, palettes.count)
+        XCTAssertTrue(Palette.iceberg.isDark)
+        XCTAssertTrue(Palette.slateInk.isDark)
         XCTAssertFalse(Palette.light.isDark)
+        XCTAssertFalse(Palette.oneLight.isDark)
+        XCTAssertFalse(Palette.tokyoDay.isDark)
     }
 
     // MARK: - Helpers

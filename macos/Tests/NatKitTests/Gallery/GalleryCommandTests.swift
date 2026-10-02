@@ -87,6 +87,38 @@ final class GalleryCommandTests: XCTestCase {
         assertRefused(try parse("--out", "/tmp/a.png"), .outWithoutTarget)
     }
 
+    // MARK: - Palette
+
+    func testOneStoryInAPalette() throws {
+        let command = try parse("--story", "window-shell", "--out", "/tmp/a.png", "--palette", "slateInk")
+        XCTAssertEqual(command, .one(story: "window-shell", out: "/tmp/a.png", palette: .slateInk))
+        XCTAssertEqual(command?.palette, .slateInk)
+    }
+
+    func testAllInAPalette() throws {
+        let command = try parse("--all", "--out", "/tmp/g", "--palette", "light")
+        XCTAssertEqual(command, .all(directory: "/tmp/g", palette: .light))
+        XCTAssertEqual(command?.palette, .light)
+    }
+
+    /// No `--palette` is each scheme's own palette, and `--list` has none.
+    func testNoPaletteNamed() throws {
+        XCTAssertNil(try parse("--story", "window-shell", "--out", "/tmp/a.png")?.palette)
+        XCTAssertNil(try parse("--list")?.palette)
+    }
+
+    func testAPaletteTheAppDoesNotShip() {
+        assertRefused(try parse("--all", "--out", "/tmp/g", "--palette", "mocha"), .unknownPalette(name: "mocha"))
+    }
+
+    func testPaletteWithNoValue() {
+        assertRefused(try parse("--all", "--out", "/tmp/g", "--palette"), .missingValue(flag: "--palette"))
+    }
+
+    func testListWithPalette() {
+        assertRefused(try parse("--list", "--palette", "light"), .listWithOthers)
+    }
+
     func testUnknownArgumentOnAGalleryLine() {
         assertRefused(try parse("--list", "--verbose"), .unknown(argument: "--verbose"))
     }
@@ -99,7 +131,8 @@ final class GalleryCommandTests: XCTestCase {
     func testEveryRefusalSaysSomethingOfItsOwn() {
         let errors: [GalleryCommandError] = [
             .missingValue(flag: "--story"), .storyAndAll, .listWithOthers,
-            .missingOut, .outWithoutTarget, .unknown(argument: "--verbose"),
+            .missingOut, .outWithoutTarget, .unknownPalette(name: "mocha"),
+            .unknown(argument: "--verbose"),
         ]
         let said = errors.map(\.description)
         for message in said {

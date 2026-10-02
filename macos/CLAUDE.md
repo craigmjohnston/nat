@@ -121,10 +121,18 @@ publish the actions they already own, nil where their control is disabled.
 
 ## Design tokens
 
-Every colour is a named, dynamic token in `DesignTokens.swift` (the design's
-`gnat.css` dark and light tokens, in `Palette.swift`), never a bare
-`Color(hex:)`/`(nsColor:)` at a call site (`ColorSourcesTests` enforces
-this). Rules are the design's `--line`/`--line-2` outright, row washes its
-`--sel`/`--sel-2`; hues the design does not name keep their old Catppuccin
-values. The fonts are the app's own (system sans, JetBrains Mono), not the
-design's.
+Every colour is a named, dynamic token in `DesignTokens.swift` (values in
+`Palette.swift`), never a bare `Color(hex:)`/`(nsColor:)` at a call site
+(`ColorSourcesTests` enforces this). The palettes are named — `light` (the
+design's `gnat.css` light tokens), `oneLight` (the light default),
+`tokyoDay`, `iceberg` (the dark default) and `slateInk` (community themes
+laid onto the same roles) — and listed by `PaletteChoice`. `Theme`
+picks dark, light or system; the user's dark-slot and light-slot palettes
+(two `UserDefaults` keys, Settings ▸ General) say which palette each scheme
+draws with, through `PaletteSelection`, which every token resolves against.
+A palette pick rebuilds the window's content (`NatApp`'s `.id`): SwiftUI
+keeps colours it resolved per appearance, so a palette change that is not
+an appearance change repaints nothing otherwise. Adding a palette is a
+`Palette` static plus a `PaletteChoice` case; `PaletteTests`/`PairingTests`
+hold every case. Render one with `gnat --palette <id>`. The fonts are the
+app's own (system sans, JetBrains Mono), not the design's.
