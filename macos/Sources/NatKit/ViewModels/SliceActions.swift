@@ -166,7 +166,7 @@ public final class SliceActionTracker {
 
     /// The words a failure is shown in: a refused command's own message,
     /// otherwise the error's description.
-    static func message(for error: Error) -> String {
+    public static func message(for error: Error) -> String {
         if let natError = error as? NatError, case .commandFailed(let message) = natError {
             return message
         }

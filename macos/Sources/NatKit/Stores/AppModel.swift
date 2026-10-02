@@ -805,6 +805,86 @@ public final class AppModel {
         return stores[activeID]
     }
 
+    // MARK: - Every project at once (the sidebar)
+
+    /// Each open project as the sidebar draws it, in `projectTabs` order: its
+    /// plan as its own store last read it — every project's is loaded at
+    /// start, not only the active one's — and where that read has got to.
+    public var sidebarInputs: [SidebarProjectInput] {
+        projectTabs.map { tab in
+            let kind: SidebarProjectKind = isUntitledTab(tab.id)
+                ? .untitled
+                : (tab.id == scratchProjectID ? .scratch : .project)
+            let state = stores[tab.id]?.state
+            return SidebarProjectInput(
+                id: tab.id, name: tab.name, kind: kind,
+                plan: state?.projectInfo,
+                isLoading: state?.isLoading ?? (kind != .untitled),
+                errorMessage: state?.errorMessage)
+        }
+    }
+
+    /// One project's plan as its store last read it — nil before it lands.
+    public func plan(projectID: String) -> ProjectInfo? {
+        stores[projectID]?.state.projectInfo
+    }
+
+    /// The live planning agent of every open project that has one, keyed by
+    /// project — each project's own scoped tag, and an Untitled tab's
+    /// workspace tag under the tab's ID.
+    public var planningAgents: [String: AgentActivity] {
+        let agents = activityStore?.agents ?? [:]
+        var found: [String: AgentActivity] = [:]
+        for tab in projectTabs {
+            let key = workspaceIDs[tab.id] ?? tab.id
+            if let agent = agents[TmuxSession.planTag(projectID: key)] {
+                found[tab.id] = AgentActivity(agent.activity)
+            }
+        }
+        return found
+    }
+
+    /// The sidebar's model, over every open project.
+    public var sidebarModel: SidebarModel {
+        buildSidebarModel(
+            projects: sidebarInputs,
+            liveAgents: (activityStore?.agents ?? [:]).mapValues { AgentActivity($0.activity) },
+            sessions: sessionStore?.sessions ?? [],
+            sessionsProjectID: activeProjectID,
+            planningAgents: planningAgents,
+            fixLaunched: fixLaunchedSliceIDs)
+    }
+
+    /// Select a slice wherever it is filed: its project is made the active
+    /// one first when it is not, which is what every per-project reading
+    /// (detail, diff, pull request, sessions) is keyed by.
+    public func selectSlice(_ sliceID: String, inProject projectID: String) async {
+        if activeProjectID != projectID { await activateProject(projectID) }
+        selectedSliceID = sliceID
+    }
+
+    /// Select an ad hoc session of a project, activating it first.
+    public func selectSession(_ sessionID: String, inProject projectID: String) async {
+        if activeProjectID != projectID { await activateProject(projectID) }
+        selectedSessionID = sessionID
+    }
+
+    /// Select a project's workshop row, activating it first.
+    public func selectWorkshop(inProject projectID: String) async {
+        if activeProjectID != projectID { await activateProject(projectID) }
+        workshopSelected = true
+    }
+
+    /// Re-read every open project but the active one, in the background —
+    /// the sidebar draws all of their plans, and a nudge or a poll tick is as
+    /// much news for them as for the one on screen.
+    private func refreshBackgroundProjects() {
+        for tab in projectTabs where tab.id != activeProjectID && !isUntitledTab(tab.id) {
+            guard let store = stores[tab.id] else { continue }
+            Task { await store.refresh() }
+        }
+    }
+
     /// The slice-detail cache for one project, created on first use — the
     /// same instance every call after that, so a slice's brief read once
     /// this session stays cached across tab switches and slice reselection.
@@ -1361,6 +1441,7 @@ public final class AppModel {
     /// waiting for the next poll.
     public func refresh() async {
         guard let projectStore = projectStore else { return }
+        refreshBackgroundProjects()
         await projectStore.refresh()
         await settlePendingApprovals(projectStore: projectStore)
         await updateReviewStats(projectID: projectStore.projectID, projectStore: projectStore)

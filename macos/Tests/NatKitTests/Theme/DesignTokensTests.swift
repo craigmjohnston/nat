@@ -49,7 +49,7 @@ final class DesignTokensTests: XCTestCase {
     /// failure drew was guaranteed to be the most off-theme thing on screen.
     func testHexColorFallbackIsOnThePalette() {
         let palette = Set(
-            [Palette.mocha, Palette.latte].flatMap { palette in
+            [Palette.dark, Palette.light].flatMap { palette in
                 palette.ansi + [
                     palette.windowBg.hex, palette.controlBg.hex, palette.rowAltBg.hex,
                     palette.controlFace.hex, palette.fieldBg.hex, palette.label.hex,
@@ -74,7 +74,7 @@ final class DesignTokensTests: XCTestCase {
     /// written out channel by channel because the fallback for a parse
     /// cannot depend on a parse; this is what holds the two in step.
     func testHexFallbackIsTheAccent() {
-        let accent = try? XCTUnwrap(rgbComponents(hex: Palette.mocha.accent.hex))
+        let accent = try? XCTUnwrap(rgbComponents(hex: Palette.dark.accent.hex))
         XCTAssertEqual(accent?.red, hexFallback.red)
         XCTAssertEqual(accent?.green, hexFallback.green)
         XCTAssertEqual(accent?.blue, hexFallback.blue)
@@ -106,8 +106,8 @@ final class DesignTokensTests: XCTestCase {
     /// The seam every token is built over: which palette a colour scheme
     /// draws with.
     func testSchemeChoosesThePalette() {
-        XCTAssertEqual(DesignTokens.palette(for: .dark), .mocha)
-        XCTAssertEqual(DesignTokens.palette(for: .light), .latte)
+        XCTAssertEqual(DesignTokens.palette(for: .dark), .dark)
+        XCTAssertEqual(DesignTokens.palette(for: .light), .light)
     }
 
     /// The same choice made from the AppKit appearance a dynamic colour is
@@ -116,11 +116,11 @@ final class DesignTokensTests: XCTestCase {
     func testAppearanceChoosesThePalette() {
         for name in [NSAppearance.Name.darkAqua, .vibrantDark] {
             let appearance = try? XCTUnwrap(NSAppearance(named: name))
-            XCTAssertEqual(appearance.map(DesignTokens.palette(for:)), .mocha, "\(name.rawValue)")
+            XCTAssertEqual(appearance.map(DesignTokens.palette(for:)), .dark, "\(name.rawValue)")
         }
         for name in [NSAppearance.Name.aqua, .vibrantLight] {
             let appearance = try? XCTUnwrap(NSAppearance(named: name))
-            XCTAssertEqual(appearance.map(DesignTokens.palette(for:)), .latte, "\(name.rawValue)")
+            XCTAssertEqual(appearance.map(DesignTokens.palette(for:)), .light, "\(name.rawValue)")
         }
     }
 
@@ -152,8 +152,8 @@ final class DesignTokensTests: XCTestCase {
             ("systemGray", DesignTokens.dynamicNSColor(\.systemGray), { $0.systemGray.hex }),
         ]
         for (name, token, value) in keys {
-            assertResolves(token, .darkAqua, to: value(.mocha), name: "\(name) (dark)")
-            assertResolves(token, .aqua, to: value(.latte), name: "\(name) (light)")
+            assertResolves(token, .darkAqua, to: value(.dark), name: "\(name) (dark)")
+            assertResolves(token, .aqua, to: value(.light), name: "\(name) (light)")
         }
     }
 
@@ -208,9 +208,20 @@ final class DesignTokensTests: XCTestCase {
                            { $0.wash(.comment, of: $0.accent, on: ground).hex }))
             checks.append(("skeletonHighlight on \(ground.rawValue)", NSColor(DesignTokens.skeletonHighlight(on: ground)),
                            { $0.skeletonHighlight(on: ground.surface(in: $0)).hex }))
+            checks.append(("rowWash on \(ground.rawValue)", NSColor(DesignTokens.rowWash(selected: false, on: ground)),
+                           { $0.rowWash(selected: false, on: ground).hex }))
+            checks.append(("rowWash selected on \(ground.rawValue)", NSColor(DesignTokens.rowWash(selected: true, on: ground)),
+                           { $0.rowWash(selected: true, on: ground).hex }))
+            checks.append(("hotInk on \(ground.rawValue)", NSColor(DesignTokens.hotInk(on: ground)),
+                           { $0.ink(of: $0.hot, on: ground.surface(in: $0)).hex }))
+            checks.append(("hot ink role on \(ground.rawValue)", NSColor(DesignTokens.ink(.hot, on: ground)),
+                           { $0.ink(of: $0.hot, on: ground.surface(in: $0)).hex }))
+            checks.append(("accentDim on \(ground.rawValue)", NSColor(DesignTokens.accentDim(on: ground)),
+                           { $0.wash(.chip, of: $0.accent, on: ground).hex }))
         }
+        checks.append(("hot", NSColor(DesignTokens.hot), { $0.hot.hex }))
         for (name, token, value) in checks {
-            for (appearance, palette) in [(NSAppearance.Name.darkAqua, Palette.mocha), (.aqua, .latte)] {
+            for (appearance, palette) in [(NSAppearance.Name.darkAqua, Palette.dark), (.aqua, .light)] {
                 assertResolves(token, appearance, to: value(palette), name: "\(name) \(appearance.rawValue)")
                 XCTAssertEqual(
                     resolve(token, appearance)?.alphaComponent, 1,
@@ -318,22 +329,13 @@ final class DesignTokensTests: XCTestCase {
     // MARK: - Hover
 
     /// The one thing the hover fill exists to guarantee: a row's label is
-    /// still a label while the pointer is on it. This is a threshold rather
-    /// than a comparison — unlike `PaletteTests`, which refuses to hold
-    /// Catppuccin's own values to one — because what it tests is this app's
-    /// choice of which swatch plays hover, not the swatch itself. The bar is
-    /// WCAG AA for body text, and `labelQuaternary`, the ink this used to be
-    /// filled with, is asserted to fail it: that is the bug the token was
-    /// added for.
+    /// still a label while the pointer is on it — WCAG AA for body text,
+    /// on the design's `--sel` in either theme.
     func testLabelClearsAAOnTheHoverFill() {
-        for (name, palette) in [("mocha", Palette.mocha), ("latte", Palette.latte)] {
+        for (name, palette) in [("mocha", Palette.dark), ("latte", Palette.light)] {
             XCTAssertGreaterThanOrEqual(
                 contrast(palette.label.hex, palette.hoverWash.hex), 4.5,
                 "\(name): a label on the hover fill should clear AA"
-            )
-            XCTAssertLessThan(
-                contrast(palette.label.hex, palette.labelQuaternary.hex), 4.5,
-                "\(name): the ink the hover fill replaced should be why it was replaced"
             )
         }
     }

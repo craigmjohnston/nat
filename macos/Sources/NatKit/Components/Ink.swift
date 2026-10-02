@@ -24,6 +24,8 @@ public enum InkRole: Sendable {
     case onAccent
 
     case accent, success, danger, warning, info
+    /// The design's `--hot`: what needs the user.
+    case hot
 }
 
 extension View {

@@ -10,46 +10,62 @@ import NatFixtures
 /// memory — so a run reaches no Notion, no `nat` and no tmux, and renders the
 /// same pixels on any machine.
 ///
-/// The catalog is the app's own shape: the window first, then the rail in
-/// each of the states a load leaves it in, then one pane per tab of the
-/// workflow, then the two screens that are neither — the workshop's composer
-/// and the settings window. `--list` reads down it in that order, which is
-/// what makes it an index rather than a heap.
+/// The catalog is the app's own shape: the window in each phase a slice goes
+/// through (the gnat design's own states — todo, working, waiting, review,
+/// pr, blocked, done, plus fixing), then the screens that are not a slice
+/// (workshop, sessions, the Untitled starter, onboarding), then the sidebar
+/// and the status bar on their own, then the smaller pieces and settings.
 ///
 /// Two regions are drawn rather than run — the agent terminal and the
-/// onboarding checklist; see `StorySeams` for why and for how a story says
-/// so. Adding a story is an entry in this array and nothing else.
-/// `@MainActor` because a story's content is: every one of these builds a
-/// view over a fixture app model, and both are the main actor's.
+/// onboarding checklist; see `StorySeams`. Pulses are held still so a capture
+/// never lands mid-fade.
 @MainActor
 enum AppStories {
-    /// The mock's own canvas size — every metric in the shell was chosen at
-    /// 1360×840, so this is the one size a whole window is worth drawing at.
-    private static let window = CGSize(width: 1360, height: 840)
+    /// The design's own canvas: every metric in the shell was drawn at this.
+    private static let window = CGSize(width: 1320, height: 820)
 
-    /// A pane on its own: wide enough for the diff's sidebar and its widest
-    /// fixture line, tall enough for more than one file box.
-    private static let pane = CGSize(width: 1040, height: 680)
+    /// The main pane on its own, at what the window leaves it.
+    private static let pane = CGSize(width: 730, height: 760)
 
-    /// The rail at the width the window gives it, over the window's full
-    /// height — a rail drawn shorter says nothing true about how much of the
-    /// plan is in view.
-    private static let rail = CGSize(width: 372, height: 840)
+    /// The sidebar on its own, at its default width and the window's height.
+    private static let sidebar = CGSize(width: 260, height: 820)
 
-    /// Waits for a background (never-activated) project's tab to have a
-    /// loaded plan — the async task `AppModel.start` fires for every tab but
-    /// the active one — without ever activating it, which is the point of
-    /// the story this backs.
-    private static func waitForBackgroundAttention(_ appModel: AppModel, projectID: String) async {
-        while appModel.attention(projectID: projectID) == .none {
-            await Task.yield()
-        }
+    /// The whole window, held still and with the terminal drawn.
+    private static func shell(_ appModel: AppModel, folds: [String: Bool] = [:]) -> some View {
+        WindowShellView(appModel: appModel, sidebarFolds: folds)
+            .environment(\.terminalStubbed, true)
+            .environment(\.pulsesPaused, true)
     }
 
-    /// The fixture plan with a dozen more slices in flight — what a rail
-    /// with more running than fits looks like. The fixture plan's own six
-    /// sit inside any share the rail hands out; twice that is what the
-    /// sharing is for.
+    /// The window on one slice, the fixture plan beside the second project's,
+    /// with the live readings the fixtures carry, waiting for those readings
+    /// to land so the slice is drawn in the state it is a story about.
+    private static func slicePane(
+        _ sliceID: String, agents: [AgentStatus] = Fixtures.agentStatuses, fixing: Bool = false,
+        configure: @MainActor (AppModel) async -> Void = { _ in }
+    ) async -> some View {
+        let appModel = await Fixtures.startedAppModel(
+            client: FixtureNatClient(agents: agents), config: Fixtures.twoProjectConfig)
+        if fixing { appModel.markFixLaunched(sliceID: sliceID) }
+        appModel.selectedSliceID = sliceID
+        for _ in 0..<50 where !agents.isEmpty && appModel.activityStore?.agents.isEmpty != false {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        await appModel.sliceDetailStore(projectID: Fixtures.projectID).fetch(sliceRef: sliceID)
+        let store = appModel.diffStore(projectID: Fixtures.projectID)
+        let slice = Fixtures.slice(sliceID)
+        if slice.handedBack || !(slice.branch ?? "").isEmpty {
+            await store.fetch(projectID: Fixtures.projectID, sliceRef: sliceID)
+        }
+        if !slice.pr.isEmpty {
+            await appModel.prStore(projectID: Fixtures.projectID).fetch(projectID: Fixtures.projectID, sliceRef: sliceID)
+        }
+        await configure(appModel)
+        return shell(appModel)
+    }
+
+    /// The fixture plan with a dozen more slices in flight — what a sidebar
+    /// with more running than fits looks like.
     private static let crowdedPlan = ProjectInfo(
         project: Fixtures.project,
         milestones: Fixtures.milestones,
@@ -69,9 +85,7 @@ enum AppStories {
     )
 
     /// The fixture plan with two of M2's slices marked Done, so the status
-    /// bar has a started (partially filled) milestone alongside M3's
-    /// untouched one — the fixture plan alone never puts a Done slice
-    /// outside a fully Done milestone.
+    /// bar has a started milestone alongside an untouched one.
     private static let statusBarPlan = ProjectInfo(
         project: Fixtures.project,
         milestones: Fixtures.milestones,
@@ -80,57 +94,22 @@ enum AppStories {
                 return slice
             }
             return Slice(
-                id: slice.id,
-                name: slice.name,
-                status: "Done",
-                milestoneID: slice.milestoneID,
-                assignee: slice.assignee,
-                pr: slice.pr,
-                url: slice.url,
-                branch: slice.branch,
-                repo: slice.repo,
-                dependsOn: slice.dependsOn,
-                blocked: slice.blocked,
-                handedBack: slice.handedBack
-            )
+                id: slice.id, name: slice.name, status: "Done", milestoneID: slice.milestoneID,
+                assignee: slice.assignee, pr: slice.pr, url: slice.url, branch: slice.branch, repo: slice.repo,
+                dependsOn: slice.dependsOn, blocked: slice.blocked, handedBack: slice.handedBack)
         }
     )
 
-    /// The pane on one slice with a live session attached, whatever its stage
-    /// — the state the landing tab used to get wrong. `fixing` sets the fix
-    /// mark, the one way a slice reaches that stage.
-    @MainActor
-    private static func stagePane(_ sliceID: String, fixing: Bool) async -> some View {
-        let session = AgentStatus(
-            sliceID: sliceID, session: TmuxSession.name(forSlicePageID: sliceID), activity: .working)
-        let appModel = await Fixtures.startedAppModel(client: FixtureNatClient(agents: [session]))
-        if fixing { appModel.markFixLaunched(sliceID: sliceID) }
-        appModel.selectedSliceID = sliceID
-        // The pane lands on selection; wait for the first activity reading so
-        // the session really is attached when it is drawn.
-        for _ in 0..<50 where appModel.activityStore?.agents[sliceID] == nil {
-            try? await Task.sleep(nanoseconds: 20_000_000)
-        }
-        return PaneView(appModel: appModel).surface(.window)
-    }
-
-    /// The sidebar on its own: its default width, over the mock's height.
-    private static let followUpsSidebar = CGSize(width: 232, height: 600)
-
     /// An app model on the activity slice with its three follow-ups pending
-    /// — its agent live (and waiting) unless `live` is false — and the
-    /// choices given already made in the sidebar.
-    @MainActor
-    private static func followUpsModel(live: Bool, choices: [Int: FollowUpChoice]) async -> AppModel {
+    /// and its agent waiting, the choices given already made.
+    private static func followUpsModel(choices: [Int: FollowUpChoice]) async -> AppModel {
         let sliceID = Fixtures.activitySliceID
-        let agents = live ? Fixtures.agentStatuses : Fixtures.agentStatuses.filter { $0.sliceID != sliceID }
         let appModel = await Fixtures.startedAppModel(
-            client: FixtureNatClient(agents: agents, details: Fixtures.followUpsSliceDetails))
+            client: FixtureNatClient(agents: Fixtures.agentStatuses, details: Fixtures.followUpsSliceDetails),
+            config: Fixtures.twoProjectConfig)
         appModel.selectedSliceID = sliceID
-        if let projectID = appModel.projectStore?.projectID {
-            await appModel.sliceDetailStore(projectID: projectID).fetch(sliceRef: sliceID)
-        }
-        for _ in 0..<50 where live && appModel.activityStore?.agents[sliceID] == nil {
+        await appModel.sliceDetailStore(projectID: Fixtures.projectID).fetch(sliceRef: sliceID)
+        for _ in 0..<50 where appModel.activityStore?.agents[sliceID] == nil {
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
         for (index, choice) in choices {
@@ -139,72 +118,276 @@ enum AppStories {
         return appModel
     }
 
-    /// The Follow-ups sidebar alone over `followUpsModel`.
-    @MainActor
-    private static func followUpsSidebarStory(live: Bool, choices: [Int: FollowUpChoice], applying: Bool = false) async -> some View {
-        let appModel = await followUpsModel(live: live, choices: choices)
-        if applying { appModel.followUpStore.markApplying(sliceID: Fixtures.activitySliceID) }
-        let slice = appModel.projectStore?.state.projectInfo?.slices.first { $0.id == Fixtures.activitySliceID }
-        return Group {
-            if let slice {
-                FollowUpsSidebarView(
-                    appModel: appModel, slice: slice, followUps: Fixtures.proposedFollowUps,
-                    milestone: "M2: Review flow", hasLiveAgent: live)
-            }
-        }
-        .frame(maxHeight: .infinity)
-        .surface(.card)
-    }
-
     static let catalog = StoryCatalog([
 
-        // MARK: - The window
+        // MARK: - The window, one slice in each phase
 
         Story(
-            name: "window-shell",
-            summary: "The whole window on a loaded project, a handed-back slice selected.",
+            name: "window-review",
+            summary: "A handed-back slice: Changes open with Send and Approve, the continuous diff in the main pane.",
             size: window
         ) {
-            let appModel = await Fixtures.startedAppModel()
-            appModel.selectedSliceID = Fixtures.mergeBoxSliceID
-            return WindowShellView(appModel: appModel)
+            await slicePane(Fixtures.mergeBoxSliceID)
         },
 
         Story(
-            name: "window-rail-crowded",
-            summary: "The whole window on a plan taller than it: the rail stays the "
-                + "window\u{2019}s height and scrolls within it rather than stretching "
-                + "the shell to fit the plan.",
+            name: "window-review-comments",
+            summary: "The same review with comments pending: the count on Send, the dot on the file row, the inline cards in the diff.",
             size: window
         ) {
-            // The rail stories draw the rail as the root of their own window,
-            // where it is laid out at exactly the size it is given whatever
-            // its column comes to — so the one thing they cannot show is a
-            // rail pushing the shell out of shape. This is that: the rail
-            // inside the shell\u{2019}s own HStack, on a plan with more in
-            // flight than the window has room for.
-            WindowShellView(appModel: await Fixtures.startedAppModel(
-                client: FixtureNatClient(plan: crowdedPlan, agents: Fixtures.agentStatuses)))
+            await slicePane(Fixtures.mergeBoxSliceID) { appModel in
+                Fixtures.seedPendingComments(into: appModel.diffStore(projectID: Fixtures.projectID))
+            }
+        },
+
+        Story(
+            name: "window-todo",
+            summary: "A Todo slice: Brief open, Launch primary in the Thread header, the main pane's note.",
+            size: window
+        ) {
+            await slicePane(Fixtures.fixturesSliceID)
+        },
+
+        Story(
+            name: "window-blocked",
+            summary: "A blocked slice: its dot hollow and dim, Launch disabled.",
+            size: window
+        ) {
+            await slicePane(Fixtures.cacheSliceID)
+        },
+
+        Story(
+            name: "window-working",
+            summary: "A slice with its agent working: Thread open on its log, the terminal in the main pane.",
+            size: window
+        ) {
+            await slicePane(Fixtures.diffPaneSliceID)
+        },
+
+        Story(
+            name: "window-waiting",
+            summary: "A slice whose agent waits for the user: hot in Active and in the Thread.",
+            size: window
+        ) {
+            await slicePane(Fixtures.activitySliceID)
+        },
+
+        Story(
+            name: "window-pr",
+            summary: "An approved slice: PR open with its checks, review and conversation, Merge in the header.",
+            size: window
+        ) {
+            await slicePane(Fixtures.approveSliceID)
+        },
+
+        Story(
+            name: "window-fixing",
+            summary: "An approved slice with a fix session on it: Thread and the terminal, as working.",
+            size: window
+        ) {
+            await slicePane(Fixtures.approveSliceID, agents: Fixtures.agentStatuses + [
+                AgentStatus(sliceID: Fixtures.approveSliceID,
+                            session: TmuxSession.name(forSlicePageID: Fixtures.approveSliceID), activity: .working)
+            ], fixing: true)
+        },
+
+        Story(
+            name: "window-done",
+            summary: "A Done slice: struck through in the tree, its PR section open on the merged pull request.",
+            size: window
+        ) {
+            await slicePane(Fixtures.shellSliceID, agents: [])
+        },
+
+        Story(
+            name: "window-done-closed",
+            summary: "A slice closed straight to Done with no branch: the Thread ends Closed with "
+                + "the agent's summary, and Changes and PR stay greyed out.",
+            size: window
+        ) {
+            let id = "f1x75111-0000-4000-8000-0000000000c1"
+            let closed = Slice(
+                id: id, name: "Survey how other boards draw a review", status: "Done",
+                milestoneID: "M2: Review flow", assignee: "Craig Johnston", pr: "", url: "",
+                blocked: false, handedBack: false)
+            let plan = ProjectInfo(
+                project: Fixtures.project, milestones: Fixtures.milestones, slices: Fixtures.slices + [closed])
+            var details = Fixtures.sliceDetails
+            details[id] = SliceDetail(
+                id: id, name: closed.name, url: "", status: "Done", milestone: "M2: Review flow",
+                assignee: "Craig Johnston", branch: nil, repo: nil, pr: nil, dependsOn: nil, blocked: false,
+                handedBack: false, state: nil,
+                brief: "Look at how three other review tools lay out a pull request.\n\n"
+                    + "### Summary\n\nNo code to change. Wrote the comparison up on the milestone's page; "
+                    + "the merge box should lead with the worst verdict.")
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(plan: plan, agents: [], details: details), config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = id
+            await appModel.sliceDetailStore(projectID: Fixtures.projectID).fetch(sliceRef: id)
+            return shell(appModel)
+        },
+
+        Story(
+            name: "window-followups",
+            summary: "A waiting agent that proposed three follow-ups: their cards in the Thread, Apply in its header.",
+            size: window
+        ) {
+            shell(await followUpsModel(choices: [1: .queue, 2: .fold, 3: .drop]))
+        },
+
+        Story(
+            name: "window-light",
+            summary: "The review window in the design's light palette.",
+            size: window,
+            colorScheme: .light
+        ) {
+            await slicePane(Fixtures.mergeBoxSliceID)
         },
 
         Story(
             name: "window-no-selection",
-            summary: "The same window with nothing selected — the pane's own empty state.",
+            summary: "A project with nothing selected: the navigator's note and the main pane's.",
             size: window
         ) {
-            WindowShellView(appModel: await Fixtures.startedAppModel())
+            shell(await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig))
         },
 
         Story(
+            name: "window-crowded",
+            summary: "A dozen slices in flight: Active grows and the Projects tree scrolls under it.",
+            size: window
+        ) {
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(plan: crowdedPlan, agents: Fixtures.agentStatuses),
+                config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = Fixtures.mergeBoxSliceID
+            return shell(appModel)
+        },
+
+        Story(
+            name: "window-sidebar-folded",
+            summary: "Active and the second project folded away: the hot count stays on the Active heading.",
+            size: window
+        ) {
+            let appModel = await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = Fixtures.mergeBoxSliceID
+            return shell(appModel, folds: ["active": true, "p:\(Fixtures.secondProjectID)": true])
+        },
+
+        Story(
+            name: "window-projects-folded",
+            summary: "Projects folded away: its heading pins to the sidebar's foot, Active above it.",
+            size: window
+        ) {
+            let appModel = await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = Fixtures.mergeBoxSliceID
+            return shell(appModel, folds: ["work": true])
+        },
+
+        // MARK: - The window, on what is not a slice
+
+        Story(
             name: "window-workshop",
-            summary: "The window with the workshop entry selected and a planning agent live.",
+            summary: "A project's workshop with its planning agent live: the Plan section and the planning terminal.",
             size: window
         ) {
             let appModel = await Fixtures.startedAppModel(
                 client: FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner))
             appModel.workshopSelected = true
-            return WindowShellView(appModel: appModel)
-                .environment(\.terminalStubbed, true)
+            return shell(appModel)
+        },
+
+        Story(
+            name: "workshop-composer",
+            summary: "A project's workshop with nothing running: the request to start one on, Launch in the header.",
+            size: window
+        ) {
+            let appModel = await Fixtures.startedAppModel()
+            appModel.workshopSelected = true
+            return shell(appModel)
+        },
+
+        Story(
+            name: "window-session-live",
+            summary: "An ad hoc session with its agent running: Active lists it, Thread and the terminal.",
+            size: window
+        ) {
+            let appModel = await Fixtures.startedAppModel(client: FixtureNatClient(
+                agents: Fixtures.agentStatuses + [Fixtures.sessionAgentStatus], sessions: [Fixtures.liveSession]))
+            appModel.selectedSessionID = Fixtures.liveSession.id
+            return shell(appModel)
+        },
+
+        Story(
+            name: "window-session-review",
+            summary: "An ad hoc session whose agent has exited with a pull request open, and an ended one under its project.",
+            size: window
+        ) {
+            let appModel = await Fixtures.startedAppModel(client: FixtureNatClient(
+                sessions: [Fixtures.reviewSession, Fixtures.doneSession]))
+            appModel.selectedSessionID = Fixtures.reviewSession.id
+            return shell(appModel)
+        },
+
+        Story(
+            name: "window-untitled",
+            summary: "A launch with no projects: one Untitled project row and the starter card across the navigator and main pane.",
+            size: window
+        ) {
+            shell(await Fixtures.startedAppModel(config: Fixtures.emptyConfig, toolsReady: true))
+        },
+
+        Story(
+            name: "window-untitled-plan-file",
+            summary: "The starter card with a plan file attached.",
+            size: window
+        ) {
+            let appModel = await Fixtures.startedAppModel(config: Fixtures.emptyConfig, toolsReady: true)
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("habit-tracker-plan.md")
+            try? "# Habit tracker\n".write(to: url, atomically: true, encoding: .utf8)
+            appModel.attachPlanFile(url)
+            return shell(appModel)
+        },
+
+        Story(
+            name: "window-untitled-workshop",
+            summary: "An Untitled project after Workshop the plan: the planning agent's terminal and the Plan section.",
+            size: window
+        ) {
+            let appModel = await Fixtures.startedAppModel(config: Fixtures.emptyConfig, toolsReady: true)
+            appModel.workshopDraft = "A habit tracker with streaks."
+            await appModel.launchWorkshop(request: appModel.workshopDraft)
+            return shell(appModel)
+        },
+
+        Story(
+            name: "window-untitled-proposal",
+            summary: "An Untitled project whose workshop proposed a plan: the tree under its row, the name field, Accept and Keep workshopping.",
+            size: window
+        ) {
+            let client = FixtureNatClient()
+            client.setProposal(Fixtures.proposal)
+            let appModel = await Fixtures.startedAppModel(client: client, config: Fixtures.emptyConfig, toolsReady: true)
+            appModel.workshopDraft = "A Rust rewrite of the importer."
+            await appModel.launchWorkshop(request: appModel.workshopDraft)
+            await appModel.refreshProposals()
+            return shell(appModel)
+        },
+
+        Story(
+            name: "window-plan-accepted",
+            summary: "The proposal just accepted: the project's own tree, the Notion nudge at the sidebar's foot, Plan accepted in the main pane.",
+            size: window
+        ) {
+            let client = FixtureNatClient()
+            client.setProposal(Fixtures.proposal)
+            let appModel = await Fixtures.startedAppModel(client: client, config: Fixtures.acceptedConfig, toolsReady: true)
+            appModel.openUntitledTab()
+            appModel.workshopDraft = "A Rust rewrite of the importer."
+            await appModel.launchWorkshop(request: appModel.workshopDraft)
+            await appModel.refreshProposals()
+            await appModel.acceptProposal()
+            return shell(appModel)
         },
 
         Story(
@@ -218,81 +401,249 @@ enum AppStories {
         },
 
         Story(
-            name: "window-untitled",
-            summary: "A launch with no projects: one Untitled tab, its empty rail and the starter card.",
+            name: "window-onboarding-missing-tools",
+            summary: "First run with nat and gh missing: the checklist's other shape.",
             size: window
         ) {
-            WindowShellView(appModel: await Fixtures.startedAppModel(
-                config: Fixtures.emptyConfig, toolsReady: true))
+            let appModel = await Fixtures.startedAppModel(config: Fixtures.emptyConfig)
+            return WindowShellView(appModel: appModel)
+                .environment(\.toolStatus, { Fixtures.toolStatus($0, in: Fixtures.toolsWithoutNat) })
+        },
+
+        // MARK: - The sidebar
+
+        Story(
+            name: "sidebar-loaded",
+            summary: "The sidebar over two projects: Active needs-you first, the active project's tree open, the other folded with its hot dot.",
+            size: sidebar
+        ) {
+            let appModel = await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = Fixtures.mergeBoxSliceID
+            return SidebarView(appModel: appModel).environment(\.pulsesPaused, true)
         },
 
         Story(
-            name: "window-untitled-plan-file",
-            summary: "The starter card with a plan file attached: its name beside the picker "
-                + "link, a ✕ to take it off, and Workshop the plan live with no description typed.",
-            size: window
+            name: "sidebar-scratch",
+            summary: "The scratch project as its own fold under Projects: its milestones at a project row's depth.",
+            size: sidebar
         ) {
-            let appModel = await Fixtures.startedAppModel(
-                config: Fixtures.emptyConfig, toolsReady: true)
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("habit-tracker-plan.md")
-            try? "# Habit tracker\n".write(to: url, atomically: true, encoding: .utf8)
-            appModel.attachPlanFile(url)
-            return WindowShellView(appModel: appModel)
+            SidebarView(appModel: await Fixtures.startedAppModel(config: Fixtures.scratchConfigWithSecondProject))
+                .environment(\.pulsesPaused, true)
         },
 
         Story(
-            name: "window-untitled-workshop",
-            summary: "An Untitled tab after Workshop the plan: the planning agent's terminal "
-                + "fills the pane, the rail has the workshop ACTIVE entry and the TODO explainer's "
-                + "workshop wording.",
-            size: window
+            name: "sidebar-scratch-projects-folded",
+            summary: "Projects folded with Scratch open: Scratch takes the height Projects gave up.",
+            size: sidebar
         ) {
-            let appModel = await Fixtures.startedAppModel(
-                config: Fixtures.emptyConfig, toolsReady: true)
-            appModel.workshopDraft = "A habit tracker with streaks."
-            await appModel.launchWorkshop(request: appModel.workshopDraft)
-            return WindowShellView(appModel: appModel)
-                .environment(\.terminalStubbed, true)
+            SidebarView(
+                appModel: await Fixtures.startedAppModel(config: Fixtures.scratchConfigWithSecondProject),
+                folded: ["work": true])
+                .environment(\.pulsesPaused, true)
         },
 
         Story(
-            name: "window-untitled-proposal",
-            summary: "An Untitled tab whose workshop has proposed a plan (\"Proposal ready\" in the "
-                + "design): the PROPOSED tree in the rail below ACTIVE, the name field prefilled, "
-                + "Accept plan beside Keep workshopping pinned at the foot.",
-            size: window
+            name: "sidebar-scratch-folded",
+            summary: "Scratch folded with Projects open: its heading pins to the sidebar's foot.",
+            size: sidebar
         ) {
-            let client = FixtureNatClient()
-            client.setProposal(Fixtures.proposal)
-            let appModel = await Fixtures.startedAppModel(
-                client: client, config: Fixtures.emptyConfig, toolsReady: true)
-            appModel.workshopDraft = "A Rust rewrite of the importer."
-            await appModel.launchWorkshop(request: appModel.workshopDraft)
-            await appModel.refreshProposals()
-            return WindowShellView(appModel: appModel)
-                .environment(\.terminalStubbed, true)
+            SidebarView(
+                appModel: await Fixtures.startedAppModel(config: Fixtures.scratchConfigWithSecondProject),
+                folded: ["scratch": true])
+                .environment(\.pulsesPaused, true)
         },
 
         Story(
-            name: "window-plan-accepted",
-            summary: "The proposal just accepted (\"Accepted\" in the design, with its Notion nudge): the tab "
-                + "is the project's, the rail is its ordinary TODO tree with the one-time \"Mirror this "
-                + "plan to Notion?\" card pinned at its foot, and the pane says Plan accepted.",
-            size: window
+            name: "sidebar-all-folded",
+            summary: "Active, Projects and Scratch all folded: the two lower headings pinned to the foot.",
+            size: sidebar
         ) {
-            let client = FixtureNatClient()
-            client.setProposal(Fixtures.proposal)
-            // The config is the one accepting leaves behind, so the window's
-            // own start() finds the project a real one would.
-            let appModel = await Fixtures.startedAppModel(
-                client: client, config: Fixtures.acceptedConfig, toolsReady: true)
-            appModel.openUntitledTab()
-            appModel.workshopDraft = "A Rust rewrite of the importer."
-            await appModel.launchWorkshop(request: appModel.workshopDraft)
-            await appModel.refreshProposals()
-            await appModel.acceptProposal()
-            return WindowShellView(appModel: appModel)
+            SidebarView(
+                appModel: await Fixtures.startedAppModel(config: Fixtures.scratchConfigWithSecondProject),
+                folded: ["active": true, "work": true, "scratch": true])
+                .environment(\.pulsesPaused, true)
         },
+
+        Story(
+            name: "sidebar-skeleton",
+            summary: "The sidebar on a first load that has not landed.",
+            size: sidebar
+        ) {
+            SidebarView(appModel: Fixtures.loadingAppModel())
+        },
+
+        Story(
+            name: "sidebar-empty",
+            summary: "A project with nothing queued: nothing running, no slices.",
+            size: sidebar
+        ) {
+            SidebarView(appModel: await Fixtures.startedAppModel(
+                client: FixtureNatClient(plan: Fixtures.emptyProjectInfo, agents: [])))
+        },
+
+        Story(
+            name: "sidebar-error",
+            summary: "The first read of the plan failed: the note under the project, with Retry.",
+            size: sidebar
+        ) {
+            SidebarView(appModel: await Fixtures.startedAppModel(
+                client: FixtureNatClient(behaviour: .refusing(Fixtures.loadErrorMessage))))
+        },
+
+        Story(
+            name: "sidebar-state-dots",
+            summary: "Every slice dot side by side as sidebar rows: todo, blocked, working (live and not), "
+                + "fixing, waiting, review, pr open and done, with a folded project's needs-you dot.",
+            size: CGSize(width: 300, height: 330)
+        ) {
+            StateDotsStory()
+        },
+
+        Story(
+            name: "sidebar-state-dots-light",
+            summary: "The same dots in the light theme.",
+            size: CGSize(width: 300, height: 330),
+            colorScheme: .light
+        ) {
+            StateDotsStory()
+        },
+
+        // MARK: - The status bar
+
+        Story(
+            name: "status-bar-readout",
+            summary: "The attached live agent\u{2019}s model, effort and context percent at the left of the content side, in the bar\u{2019}s tertiary tint.",
+            size: CGSize(width: 1320, height: StatusBarView.height)
+        ) {
+            let agents = [
+                AgentStatus(
+                    sliceID: Fixtures.diffPaneSliceID,
+                    session: TmuxSession.name(forSlicePageID: Fixtures.diffPaneSliceID),
+                    activity: .working, model: "Sonnet 5", effort: "high", contextPercent: 42)
+            ]
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(plan: statusBarPlan, agents: agents))
+            appModel.selectedSliceID = Fixtures.diffPaneSliceID
+            return StatusBarView(appModel: appModel)
+        },
+
+        Story(
+            name: "status-bar-readout-high-context",
+            summary: "Context at 91%: the percent switches to the warning tint.",
+            size: CGSize(width: 1320, height: StatusBarView.height)
+        ) {
+            let agents = [
+                AgentStatus(
+                    sliceID: Fixtures.diffPaneSliceID,
+                    session: TmuxSession.name(forSlicePageID: Fixtures.diffPaneSliceID),
+                    activity: .working, model: "Sonnet 5", effort: "high", contextPercent: 91)
+            ]
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(plan: statusBarPlan, agents: agents))
+            appModel.selectedSliceID = Fixtures.diffPaneSliceID
+            return StatusBarView(appModel: appModel)
+        },
+
+        Story(
+            name: "status-bar-readout-absent",
+            summary: "A live agent with no statusline reading yet: nothing is drawn, no placeholder and no zeros.",
+            size: CGSize(width: 1320, height: StatusBarView.height)
+        ) {
+            let agents = [
+                AgentStatus(
+                    sliceID: Fixtures.diffPaneSliceID,
+                    session: TmuxSession.name(forSlicePageID: Fixtures.diffPaneSliceID),
+                    activity: .working)
+            ]
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(plan: statusBarPlan, agents: agents))
+            appModel.selectedSliceID = Fixtures.diffPaneSliceID
+            return StatusBarView(appModel: appModel)
+        },
+
+        Story(
+            name: "status-bar-no-agents",
+            summary: "The same bar with nothing running: the agent count reads zero, "
+                + "still right-aligned to the bar's far edge.",
+            size: CGSize(width: 1320, height: StatusBarView.height)
+        ) {
+            StatusBarView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(plan: statusBarPlan, agents: []))
+            )
+        },
+
+        Story(
+            name: "status-bar-several-agents",
+            summary: "The bar with the crowded plan and three agents live: the count "
+                + "pluralizes.",
+            size: CGSize(width: 1320, height: StatusBarView.height)
+        ) {
+            StatusBarView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(plan: crowdedPlan, agents: Fixtures.agentStatusesWithPlanner))
+            )
+        },
+
+        Story(
+            name: "status-bar-usage-at-rest",
+            summary: "The Claude usage readout at the bar's far right, both windows "
+                + "well under the warning threshold: each window's "
+                + "percent and reset in the bar's own tertiary tint.",
+            size: CGSize(width: 1320, height: StatusBarView.height)
+        ) {
+            StatusBarView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(
+                        plan: statusBarPlan, agents: Fixtures.agentStatuses, usage: Fixtures.usageReading))
+            )
+        },
+
+        Story(
+            name: "status-bar-usage-one-warning",
+            summary: "One window past the warning threshold: its whole clause — "
+                + "percent and reset together — switches to the warning tint (system "
+                + "orange), the other window stays tertiary.",
+            size: CGSize(width: 1320, height: StatusBarView.height)
+        ) {
+            StatusBarView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(
+                        plan: statusBarPlan, agents: Fixtures.agentStatuses,
+                        usage: Fixtures.usageReadingOneWarning))
+            )
+        },
+
+        Story(
+            name: "status-bar-usage-both-warning",
+            summary: "Both windows past the warning threshold: both clauses draw in "
+                + "the warning tint.",
+            size: CGSize(width: 1320, height: StatusBarView.height)
+        ) {
+            StatusBarView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(
+                        plan: statusBarPlan, agents: Fixtures.agentStatuses,
+                        usage: Fixtures.usageReadingBothWarning))
+            )
+        },
+
+        Story(
+            name: "status-bar-usage-unavailable",
+            summary: "No usage reading available at all — the readout draws nothing, "
+                + "leaving only the agent count at the bar's far right.",
+            size: CGSize(width: 1320, height: StatusBarView.height)
+        ) {
+            StatusBarView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(
+                        plan: statusBarPlan, agents: Fixtures.agentStatuses, usage: .empty))
+            )
+        },
+
+        // MARK: - The header
+
+        // MARK: - Pieces
 
         Story(
             name: "notion-page-picker",
@@ -306,431 +657,6 @@ enum AppStories {
             model.selectedID = Fixtures.notionPlaces.first?.id
             return NotionPickerSheetView(
                 model: model, onCancel: {}, onCreate: { _ in nil }, onCreated: {})
-        },
-
-        Story(
-            name: "project-tabs-untitled",
-            summary: "The strip with an Untitled tab active beside a project: the italic name, "
-                + "the neutral dot, and a close button on each.",
-            size: CGSize(width: 640, height: 40)
-        ) {
-            let appModel = await Fixtures.startedAppModel()
-            appModel.openUntitledTab()
-            return ProjectTabsView(appModel: appModel)
-        },
-
-        Story(
-            name: "window-onboarding-missing-tools",
-            summary: "First run with nat and gh missing: the checklist's other shape.",
-            size: window
-        ) {
-            let appModel = await Fixtures.startedAppModel(config: Fixtures.emptyConfig)
-            return WindowShellView(appModel: appModel)
-                .environment(\.toolStatus, { Fixtures.toolStatus($0, in: Fixtures.toolsWithoutNat) })
-        },
-
-        // MARK: - The status bar
-
-        Story(
-            name: "status-bar-mixed",
-            summary: "The status bar with a done stub — a bold text-coloured checkmark "
-                + "with an outer stroke — a started milestone as a track with a partial accent fill, "
-                + "and an untouched one as a muted circle. The agent "
-                + "count sits at the bar's far right.",
-            size: CGSize(width: 1360, height: StatusBarView.height)
-        ) {
-            StatusBarView(
-                appModel: await Fixtures.startedAppModel(
-                    client: FixtureNatClient(plan: statusBarPlan, agents: Fixtures.agentStatuses)),
-                railWidth: 372
-            )
-        },
-
-        Story(
-            name: "status-bar-readout",
-            summary: "The attached live agent\u{2019}s model, effort and context percent at the left of the content side, in the bar\u{2019}s tertiary tint.",
-            size: CGSize(width: 1360, height: StatusBarView.height)
-        ) {
-            let agents = [
-                AgentStatus(
-                    sliceID: Fixtures.diffPaneSliceID,
-                    session: TmuxSession.name(forSlicePageID: Fixtures.diffPaneSliceID),
-                    activity: .working, model: "Sonnet 5", effort: "high", contextPercent: 42)
-            ]
-            let appModel = await Fixtures.startedAppModel(
-                client: FixtureNatClient(plan: statusBarPlan, agents: agents))
-            appModel.selectedSliceID = Fixtures.diffPaneSliceID
-            return StatusBarView(appModel: appModel, railWidth: 372)
-        },
-
-        Story(
-            name: "status-bar-readout-high-context",
-            summary: "Context at 91%: the percent switches to the warning tint.",
-            size: CGSize(width: 1360, height: StatusBarView.height)
-        ) {
-            let agents = [
-                AgentStatus(
-                    sliceID: Fixtures.diffPaneSliceID,
-                    session: TmuxSession.name(forSlicePageID: Fixtures.diffPaneSliceID),
-                    activity: .working, model: "Sonnet 5", effort: "high", contextPercent: 91)
-            ]
-            let appModel = await Fixtures.startedAppModel(
-                client: FixtureNatClient(plan: statusBarPlan, agents: agents))
-            appModel.selectedSliceID = Fixtures.diffPaneSliceID
-            return StatusBarView(appModel: appModel, railWidth: 372)
-        },
-
-        Story(
-            name: "status-bar-readout-absent",
-            summary: "A live agent with no statusline reading yet: nothing is drawn, no placeholder and no zeros.",
-            size: CGSize(width: 1360, height: StatusBarView.height)
-        ) {
-            let agents = [
-                AgentStatus(
-                    sliceID: Fixtures.diffPaneSliceID,
-                    session: TmuxSession.name(forSlicePageID: Fixtures.diffPaneSliceID),
-                    activity: .working)
-            ]
-            let appModel = await Fixtures.startedAppModel(
-                client: FixtureNatClient(plan: statusBarPlan, agents: agents))
-            appModel.selectedSliceID = Fixtures.diffPaneSliceID
-            return StatusBarView(appModel: appModel, railWidth: 372)
-        },
-
-        Story(
-            name: "status-bar-no-agents",
-            summary: "The same bar with nothing running: the agent count reads zero, "
-                + "still right-aligned to the bar's far edge.",
-            size: CGSize(width: 1360, height: StatusBarView.height)
-        ) {
-            StatusBarView(
-                appModel: await Fixtures.startedAppModel(
-                    client: FixtureNatClient(plan: statusBarPlan, agents: [])),
-                railWidth: 372
-            )
-        },
-
-        Story(
-            name: "status-bar-several-agents",
-            summary: "The bar with the crowded plan and three agents live: the count "
-                + "pluralizes and the plan's own progress bar still fits the sidebar's width.",
-            size: CGSize(width: 1360, height: StatusBarView.height)
-        ) {
-            StatusBarView(
-                appModel: await Fixtures.startedAppModel(
-                    client: FixtureNatClient(plan: crowdedPlan, agents: Fixtures.agentStatusesWithPlanner)),
-                railWidth: 372
-            )
-        },
-
-        Story(
-            name: "status-bar-usage-at-rest",
-            summary: "The Claude usage readout at the bar's far right, both windows "
-                + "well under the warning threshold: each window's "
-                + "percent and reset in the bar's own tertiary tint.",
-            size: CGSize(width: 1360, height: StatusBarView.height)
-        ) {
-            StatusBarView(
-                appModel: await Fixtures.startedAppModel(
-                    client: FixtureNatClient(
-                        plan: statusBarPlan, agents: Fixtures.agentStatuses, usage: Fixtures.usageReading)),
-                railWidth: 372
-            )
-        },
-
-        Story(
-            name: "status-bar-usage-one-warning",
-            summary: "One window past the warning threshold: its whole clause — "
-                + "percent and reset together — switches to the warning tint (system "
-                + "orange), the other window stays tertiary.",
-            size: CGSize(width: 1360, height: StatusBarView.height)
-        ) {
-            StatusBarView(
-                appModel: await Fixtures.startedAppModel(
-                    client: FixtureNatClient(
-                        plan: statusBarPlan, agents: Fixtures.agentStatuses,
-                        usage: Fixtures.usageReadingOneWarning)),
-                railWidth: 372
-            )
-        },
-
-        Story(
-            name: "status-bar-usage-both-warning",
-            summary: "Both windows past the warning threshold: both clauses draw in "
-                + "the warning tint.",
-            size: CGSize(width: 1360, height: StatusBarView.height)
-        ) {
-            StatusBarView(
-                appModel: await Fixtures.startedAppModel(
-                    client: FixtureNatClient(
-                        plan: statusBarPlan, agents: Fixtures.agentStatuses,
-                        usage: Fixtures.usageReadingBothWarning)),
-                railWidth: 372
-            )
-        },
-
-        Story(
-            name: "status-bar-usage-unavailable",
-            summary: "No usage reading available at all — the readout draws nothing, "
-                + "leaving only the agent count at the bar's far right.",
-            size: CGSize(width: 1360, height: StatusBarView.height)
-        ) {
-            StatusBarView(
-                appModel: await Fixtures.startedAppModel(
-                    client: FixtureNatClient(
-                        plan: statusBarPlan, agents: Fixtures.agentStatuses, usage: .empty)),
-                railWidth: 372
-            )
-        },
-
-        // MARK: - The header
-
-        Story(
-            name: "project-tabs",
-            summary: "The project tab strip: the attention dot and the count of what wants the user.",
-            size: CGSize(width: 640, height: 40)
-        ) {
-            ProjectTabsView(
-                appModel: await Fixtures.startedAppModel(
-                    client: FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner))
-            )
-        },
-
-        Story(
-            name: "project-tabs-multiple",
-            summary: "The tab strip with a second project open: the close button on the "
-                + "active tab, with the count pill seated against it.",
-            size: CGSize(width: 640, height: 40)
-        ) {
-            ProjectTabsView(
-                appModel: await Fixtures.startedAppModel(
-                    client: FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner),
-                    config: Fixtures.twoProjectConfig
-                )
-            )
-        },
-
-        Story(
-            name: "project-tabs-scratch",
-            summary: "The strip with the scratch tab pinned first and a project active: "
-                + "the scratch tab is a lone glyph, inactive, with no name and no close button.",
-            size: CGSize(width: 640, height: 40)
-        ) {
-            ProjectTabsView(
-                appModel: await Fixtures.startedAppModel(
-                    client: FixtureNatClient(agents: Fixtures.agentStatuses),
-                    config: Fixtures.scratchConfig
-                )
-            )
-        },
-
-        Story(
-            name: "project-tabs-scratch-active",
-            summary: "The same strip with the scratch tab active: the glyph inked as the "
-                + "active tab's label, and the project tab beside it the last tab standing "
-                + "with no close button of its own.",
-            size: CGSize(width: 640, height: 40)
-        ) {
-            let appModel = await Fixtures.startedAppModel(
-                client: FixtureNatClient(agents: Fixtures.agentStatuses),
-                config: Fixtures.scratchConfig
-            )
-            await appModel.activateProject(Fixtures.scratchProjectID)
-            return ProjectTabsView(appModel: appModel)
-        },
-
-        Story(
-            name: "project-tabs-background-attention",
-            summary: "A second project's tab carries the attention dot for a live agent "
-                + "even though this run has never opened it — loaded from its own cache "
-                + "and a background refresh, not a click.",
-            size: CGSize(width: 640, height: 40)
-        ) {
-            let appModel = await Fixtures.startedAppModel(
-                client: FixtureNatClient(agents: Fixtures.agentStatuses),
-                config: Fixtures.twoProjectConfig
-            )
-            await waitForBackgroundAttention(appModel, projectID: Fixtures.secondProjectID)
-            return ProjectTabsView(appModel: appModel)
-        },
-
-        // MARK: - The rail
-
-        Story(
-            name: "rail-skeleton",
-            summary: "The rail on a first load that has not landed — the plan's own placeholder.",
-            size: rail
-        ) {
-            // The one state that needs a client which never answers: a
-            // skeleton is what a load looks like while it is still in
-            // flight, and a fixture that answers instantly has no such
-            // moment to catch.
-            RailView(appModel: Fixtures.loadingAppModel())
-        },
-
-        Story(
-            name: "rail-folder-glyphs",
-            summary: "The milestone folder pictogram closed (outline) and open (filled), "
-                + "at rail size and enlarged, side by side.",
-            size: CGSize(width: 320, height: 140)
-        ) {
-            VStack(spacing: 16) {
-                ForEach([1.0, 5.0], id: \.self) { scale in
-                    HStack(spacing: 24) {
-                        FolderGlyphShape(open: false)
-                            .stroke(DesignTokens.ink(.secondary, on: .field), lineWidth: FolderGlyphShape.strokeWidth)
-                            .frame(width: 13 * scale, height: RailView.folderGlyphHeight * scale)
-                        FolderGlyphShape(open: true)
-                            .fill(DesignTokens.ink(.secondary, on: .field))
-                            .frame(width: 13 * scale, height: RailView.folderGlyphHeight * scale)
-                    }
-                }
-            }
-            .padding(20)
-            .background(DesignTokens.fill(.field))
-        },
-
-        Story(
-            name: "rail-loaded",
-            summary: "The rail on the fixture plan: the ACTIVE section, milestones, done.",
-            size: rail
-        ) {
-            RailView(appModel: await Fixtures.startedAppModel())
-        },
-
-        Story(
-            name: "rail-workshop",
-            summary: "The one ACTIVE section with a planning agent live: the workshop entry, "
-                + "the branches awaiting review, then the slices being worked.",
-            size: rail
-        ) {
-            let appModel = await Fixtures.startedAppModel(
-                client: FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner))
-            appModel.workshopSelected = true
-            return RailView(appModel: appModel)
-        },
-
-        Story(
-            name: "rail-active-crowded",
-            summary: "A dozen slices in flight: ACTIVE scrolls within its share of the "
-                + "rail rather than pushing TODO and DONE off it.",
-            size: rail
-        ) {
-            RailView(appModel: await Fixtures.startedAppModel(
-                client: FixtureNatClient(plan: crowdedPlan, agents: Fixtures.agentStatuses)))
-        },
-
-        Story(
-            name: "rail-folded",
-            summary: "ACTIVE and TODO folded away to their headings: the three titles "
-                + "hold their places and DONE takes the space the other two gave back.",
-            size: rail
-        ) {
-            RailView(
-                appModel: await Fixtures.startedAppModel(),
-                collapsedSections: [.active, .todo]
-            )
-        },
-
-        Story(
-            name: "rail-sections-open",
-            summary: "All three sections open on a crowded plan: each heading pinned "
-                + "over a scroll of its own, the rail shared between them.",
-            size: rail
-        ) {
-            RailView(
-                appModel: await Fixtures.startedAppModel(
-                    client: FixtureNatClient(plan: crowdedPlan, agents: Fixtures.agentStatuses)),
-                collapsedSections: []
-            )
-        },
-
-        Story(
-            name: "rail-empty",
-            summary: "The rail of a project with nothing queued into it yet.",
-            size: rail
-        ) {
-            RailView(appModel: await Fixtures.startedAppModel(
-                client: FixtureNatClient(plan: Fixtures.emptyProjectInfo, agents: [])))
-        },
-
-        Story(
-            name: "rail-error",
-            summary: "The rail when the first read of the plan failed, with the retry.",
-            size: rail
-        ) {
-            RailView(appModel: await Fixtures.startedAppModel(
-                client: FixtureNatClient(behaviour: .refusing(Fixtures.loadErrorMessage))))
-        },
-
-        // MARK: - The workflow's tabs
-
-        Story(
-            name: "brief-skeleton",
-            summary: "The Brief tab on a first read that has not landed — the brief's own "
-                + "placeholder, under the disabled Launch Agent split button the loaded "
-                + "pane's inspector opens with.",
-            size: pane
-        ) {
-            // A client that never answers, for the reason `rail-skeleton`
-            // has one: the skeleton is a moment a fixture that answers
-            // instantly never has.
-            BriefTabView(appModel: Fixtures.loadingAppModel(), slice: Fixtures.slice(Fixtures.mergeBoxSliceID))
-                .surface(.window)
-        },
-
-        Story(
-            name: "brief-launch-disabled",
-            summary: "The Brief tab straight after Launch Agent succeeded: the split control dimmed as a whole, so a second press cannot land before the state refresh catches up.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel()
-            await appModel.sliceActions.run(.launch, sliceID: Fixtures.mergeBoxSliceID, select: { _ in }) {}
-            return BriefTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.mergeBoxSliceID))
-                .surface(.window)
-        },
-
-        Story(
-            name: "diff-approve-disabled",
-            summary: "The Diff tab straight after Approve succeeded: the button dimmed, one-shot, until it fails or becomes available again.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel()
-            await appModel.sliceActions.run(.approve, sliceID: Fixtures.mergeBoxSliceID, select: { _ in }) {}
-            return DiffTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.mergeBoxSliceID))
-                .surface(.window)
-        },
-
-        Story(
-            name: "pr-merge-disabled",
-            summary: "The PR tab straight after Merge succeeded: the button dimmed until the reading catches up.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel()
-            await appModel.sliceActions.run(.merge, sliceID: Fixtures.approveSliceID, select: { _ in }) {}
-            return PRTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.approveSliceID))
-                .surface(.window)
-        },
-
-        Story(
-            name: "agent-skeleton",
-            summary: "The Agent stage the pane advances to the moment Launch Agent is pressed, before the session appears.",
-            size: pane
-        ) {
-            AgentSkeletonView()
-        },
-
-        Story(
-            name: "brief-handed-back",
-            summary: "The Brief tab of a slice whose branch is waiting to be reviewed, the "
-                + "Launch Agent split button atop the inspector — and, at its foot, no "
-                + "pinned notice band at all: nothing is refreshing and there is no "
-                + "error or warning to hold room for.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel()
-            return BriefTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.mergeBoxSliceID))
-                .surface(.window)
         },
 
         Story(
@@ -759,24 +685,11 @@ enum AppStories {
         },
 
         Story(
-            name: "brief-blocked",
-            summary: "The Brief tab of a slice still waiting on what it depends on.",
+            name: "agent-skeleton",
+            summary: "The Agent stage the pane advances to the moment Launch Agent is pressed, before the session appears.",
             size: pane
         ) {
-            let appModel = await Fixtures.startedAppModel()
-            return BriefTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.cacheSliceID))
-                .surface(.window)
-        },
-
-        Story(
-            name: "agent-terminal",
-            summary: "The Agent tab with a session attached — the terminal region is drawn, not run.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel()
-            appModel.selectedSliceID = Fixtures.diffPaneSliceID
-            return AgentTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.diffPaneSliceID))
-                .environment(\.terminalStubbed, true)
+            AgentSkeletonView()
         },
 
         Story(
@@ -785,145 +698,6 @@ enum AppStories {
             size: pane
         ) {
             TerminalSelectionStubView()
-        },
-
-        Story(
-            name: "diff-skeleton",
-            summary: "The Diff tab on a branch still being read — file boxes and the file "
-                + "list as placeholders, with the commits menu and the disabled "
-                + "Send/Approve actions atop the rail drawn real.",
-            size: pane
-        ) {
-            DiffTabView(appModel: Fixtures.loadingAppModel(), slice: Fixtures.slice(Fixtures.mergeBoxSliceID))
-                .surface(.window)
-        },
-
-        Story(
-            name: "diff-handed-back",
-            summary: "The Diff tab: the handed-back branch, one box per file, beside its file list.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel()
-            return DiffTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.mergeBoxSliceID))
-                .surface(.window)
-        },
-
-        Story(
-            name: "diff-collapsed-file",
-            summary: "The same diff with one file folded to its header row — the fold "
-                + "chevron's slot holds its width whichever way it points, so the path "
-                + "beside it never shifts.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel()
-            let slice = Fixtures.slice(Fixtures.mergeBoxSliceID)
-            let store = appModel.diffStore(projectID: Fixtures.projectID)
-            await store.fetch(projectID: Fixtures.projectID, sliceRef: slice.id)
-            if let path = store.loadState.diff?.files.first?.path {
-                store.toggleCollapsed(path)
-            }
-            return DiffTabView(appModel: appModel, slice: slice)
-                .surface(.window)
-        },
-
-        Story(
-            name: "diff-pending-comments",
-            summary: "The same diff with a review left on it and not yet sent.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel()
-            let slice = Fixtures.slice(Fixtures.mergeBoxSliceID)
-            // The comments are the store's own state rather than anything a
-            // reading carries, so the branch is read here first and the
-            // review left on the rows it came back with — exactly the order
-            // a user reaches this state in.
-            let store = appModel.diffStore(projectID: Fixtures.projectID)
-            await store.fetch(projectID: Fixtures.projectID, sliceRef: slice.id)
-            Fixtures.seedPendingComments(into: store)
-            return DiffTabView(appModel: appModel, slice: slice)
-                .surface(.window)
-        },
-
-        Story(
-            name: "diff-stale-notice",
-            summary: "The same diff after a refresh failed: the pinned foot grows "
-                + "upward to hold the stale-read warning, with no band or reserved "
-                + "height beneath it otherwise.",
-            size: pane
-        ) {
-            let client = FixtureNatClient()
-            let appModel = await Fixtures.startedAppModel(client: client)
-            let slice = Fixtures.slice(Fixtures.mergeBoxSliceID)
-            let store = appModel.diffStore(projectID: Fixtures.projectID)
-            await store.fetch(projectID: Fixtures.projectID, sliceRef: slice.id)
-            client.armDiffFailure(Fixtures.loadErrorMessage)
-            await store.refresh()
-            return DiffTabView(appModel: appModel, slice: slice)
-                .surface(.window)
-        },
-
-        Story(
-            name: "pr-skeleton",
-            summary: "The PR tab on a pull request still being read — the placeholder under "
-                + "the disabled Merge/Open-in-GitHub actions, split at the loaded pane's divider, "
-                + "with the comment box's band at the conversation's foot.",
-            size: pane
-        ) {
-            PRTabView(appModel: Fixtures.loadingAppModel(), slice: Fixtures.slice(Fixtures.approveSliceID))
-                .surface(.window)
-        },
-
-        Story(
-            name: "pr-ready-to-merge",
-            summary: "The PR tab on a green pull request — the merge box says yes; the "
-                + "description over the divider, the conversation ending in the comment box under it.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel()
-            return PRTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.approveSliceID))
-                .surface(.window)
-        },
-
-        Story(
-            name: "pr-failing-checks",
-            summary: "The PR tab with checks red: the rollup and the verdict that refuses the merge, "
-                + "the review's request for changes in the conversation pane.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel(
-                client: FixtureNatClient(pr: Fixtures.prFailingChecks))
-            return PRTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.approveSliceID))
-                .surface(.window)
-        },
-
-        Story(
-            name: "pr-conflicting",
-            summary: "The PR tab on a branch that conflicts with its base — a conversation with "
-                + "nothing said in it, the comment box straight under its line.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel(
-                client: FixtureNatClient(pr: Fixtures.prConflicting))
-            return PRTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.approveSliceID))
-                .surface(.window)
-        },
-
-        Story(
-            name: "pr-split-dragged-emoji",
-            summary: "The PR tab with its divider dragged up off the default, the conversation "
-                + "pane taking the room: a comment typed with an emoji and one written in "
-                + ":shortcode:s, both drawn as emoji (a code span's shortcode left as written).",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel(
-                client: FixtureNatClient(pr: Fixtures.prWithEmoji))
-            // A suite of the gallery's own, so a story's divider never moves
-            // the one the app itself remembers.
-            let defaults = UserDefaults(suiteName: "gnat.gallery.pr-split-dragged")!
-            defaults.set(PRSplitMetrics.minUpper + 30, forKey: PRSplitMetrics.storageKey)
-            return PRTabView(appModel: appModel, slice: Fixtures.slice(Fixtures.approveSliceID))
-                .surface(.window)
-                .defaultAppStorage(defaults)
         },
 
         Story(
@@ -937,215 +711,8 @@ enum AppStories {
 
         // MARK: - Follow-ups
 
-        Story(
-            name: "followups-pending",
-            summary: "The whole window on a slice whose agent proposed three follow-ups and "
-                + "waits: the Follow-ups sidebar up beside the Agent tab, one row queued, one "
-                + "folded in, one dropped, and the rail row reading 3 follow-ups.",
-            size: window
-        ) {
-            let appModel = await followUpsModel(live: true, choices: [1: .queue, 2: .fold, 3: .drop])
-            return WindowShellView(appModel: appModel)
-                .environment(\.terminalStubbed, true)
-        },
+        // MARK: - Settings
 
-        Story(
-            name: "followups-undecided",
-            summary: "The Follow-ups sidebar with nothing decided: Apply dimmed, the foot "
-                + "asking for every follow-up to be decided or all discarded.",
-            size: followUpsSidebar
-        ) {
-            await followUpsSidebarStory(live: true, choices: [:])
-        },
-
-        Story(
-            name: "followups-no-agent",
-            summary: "The Follow-ups sidebar with no live agent: Fold in unavailable on every "
-                + "row and the foot warning that nothing can be folded in.",
-            size: followUpsSidebar
-        ) {
-            await followUpsSidebarStory(live: false, choices: [1: .queue])
-        },
-
-        Story(
-            name: "followups-applying",
-            summary: "The Follow-ups sidebar mid-apply: Apply spinning and reading Applying, "
-                + "every control disabled, the foot saying what is being sent.",
-            size: followUpsSidebar
-        ) {
-            await followUpsSidebarStory(live: true, choices: [1: .queue, 2: .fold, 3: .drop], applying: true)
-        },
-
-        // MARK: - Ad hoc sessions
-
-        Story(
-            name: "rail-session-live",
-            summary: "ACTIVE with an ad hoc session's agent still running: its row pulses "
-                + "beside the slices, listed after the workshop and before them.",
-            size: rail
-        ) {
-            RailView(appModel: await Fixtures.startedAppModel(
-                client: FixtureNatClient(
-                    agents: Fixtures.agentStatuses + [Fixtures.sessionAgentStatus],
-                    sessions: [Fixtures.liveSession]
-                )))
-        },
-
-        Story(
-            name: "rail-session-needs-review",
-            summary: "An ad hoc session whose agent has exited with a pull request still "
-                + "open — Needs review, the same green the branch rows use.",
-            size: rail
-        ) {
-            RailView(appModel: await Fixtures.startedAppModel(
-                client: FixtureNatClient(sessions: [Fixtures.reviewSession, Fixtures.doneSession])))
-        },
-
-        Story(
-            name: "session-agent-tab",
-            summary: "An ad hoc session's Agent tab: the embedded terminal on its own tmux "
-                + "session.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel(
-                client: FixtureNatClient(agents: [Fixtures.sessionAgentStatus], sessions: [Fixtures.liveSession]))
-            return SessionAgentTabView(appModel: appModel, session: Fixtures.liveSession)
-                .environment(\.terminalStubbed, true)
-        },
-
-        Story(
-            name: "session-diff-tab",
-            summary: "An ad hoc session's Diff tab: `nat session-diff`'s reading, with no "
-                + "approve action and no comment composer.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel(client: FixtureNatClient(sessions: [Fixtures.reviewSession]))
-            return SessionDiffTabView(appModel: appModel, session: Fixtures.reviewSession)
-                .surface(.window)
-        },
-
-        Story(
-            name: "session-pr-tab",
-            summary: "An ad hoc session's PR tab: the first pull request `nat session-status` "
-                + "reports.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel(client: FixtureNatClient(sessions: [Fixtures.reviewSession]))
-            return SessionPRTabView(appModel: appModel, session: Fixtures.reviewSession)
-                .surface(.window)
-        },
-
-        Story(
-            name: "session-pr-tab-three-prs",
-            summary: "An ad hoc session's PR tab with three pull requests in three states: the "
-                + "picker row of chips above the selected one's reading.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel(
-                client: FixtureNatClient(sessions: [Fixtures.multiPRSession]))
-            return SessionPRTabView(appModel: appModel, session: Fixtures.multiPRSession)
-                .surface(.window)
-        },
-
-        Story(
-            name: "session-diff-tab-two-branches",
-            summary: "An ad hoc session's Diff tab over two branches: the picker row marks the "
-                + "checked-out one as the default.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel(
-                client: FixtureNatClient(sessions: [Fixtures.twoBranchSession]))
-            return SessionDiffTabView(appModel: appModel, session: Fixtures.twoBranchSession)
-                .surface(.window)
-        },
-
-        Story(
-            name: "stage-todo",
-            summary: "A Todo slice with a live session attached: the pane lands on Brief.",
-            size: pane
-        ) {
-            await stagePane(Fixtures.cacheSliceID, fixing: false)
-        },
-
-        Story(
-            name: "stage-working",
-            summary: "A working slice with its session live: the pane lands on Agent.",
-            size: pane
-        ) {
-            await stagePane(Fixtures.diffPaneSliceID, fixing: false)
-        },
-
-        Story(
-            name: "stage-review",
-            summary: "A handed-back slice whose session is still alive: the pane lands on Diff, not Agent.",
-            size: pane
-        ) {
-            await stagePane(Fixtures.mergeBoxSliceID, fixing: false)
-        },
-
-        Story(
-            name: "stage-pr",
-            summary: "An approved slice whose session is still alive: the pane lands on PR, not Agent.",
-            size: pane
-        ) {
-            await stagePane(Fixtures.approveSliceID, fixing: false)
-        },
-
-        Story(
-            name: "stage-fixing",
-            summary: "An approved slice with its fix mark set and a live session: the pane lands on Agent.",
-            size: pane
-        ) {
-            await stagePane(Fixtures.approveSliceID, fixing: true)
-        },
-
-        Story(
-            name: "stage-done",
-            summary: "A Done slice with a session left alive: the pane lands on Brief or PR by its recorded pull request, never Agent.",
-            size: pane
-        ) {
-            await stagePane(Fixtures.shellSliceID, fixing: false)
-        },
-
-        Story(
-            name: "session-pane-stepper-three-prs",
-            summary: "The session pane over a session with three pull requests, one open: the "
-                + "stepper's PR stage badged with the open count and not yet green.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel(
-                client: FixtureNatClient(sessions: [Fixtures.multiPRSession]))
-            appModel.selectedSessionID = Fixtures.multiPRSessionID
-            return PaneView(appModel: appModel)
-                .surface(.window)
-        },
-
-        Story(
-            name: "session-pr-tab-empty",
-            summary: "An ad hoc session's PR tab with no pull request yet — naming the branch.",
-            size: pane
-        ) {
-            let appModel = await Fixtures.startedAppModel(client: FixtureNatClient(sessions: [Fixtures.liveSession]))
-            return SessionPRTabView(appModel: appModel, session: Fixtures.liveSession)
-                .surface(.window)
-        },
-
-        // MARK: - The screens that are neither
-
-        Story(
-            name: "workshop-composer",
-            summary: "The workshop pane with no session running: the request to start one on.",
-            size: pane
-        ) {
-            WorkshopPaneView(appModel: await Fixtures.startedAppModel())
-        },
-
-        // Drawn in the light palette because the settings window is: it
-        // follows the Mac rather than the app's own theme (see `NatApp`), and
-        // the machine a reference is rendered on has no theme to follow.
-        // The tab strip above the form is the settings *scene's* toolbar,
-        // which a window made for a capture has none of — the form under it
-        // is the whole of what this story is for.
         Story(
             name: "settings",
             summary: "The settings window's General tab over the fixture config.",
@@ -1197,3 +764,49 @@ private struct PRComposerTypedStory: View {
         .surface(.window)
     }
 }
+
+
+/// Every state a sidebar dot takes, as rows on the sidebar's own ground.
+private struct StateDotsStory: View {
+    private let rows: [(String, SliceDisplayState, Bool)] = [
+        ("todo", .todo, false),
+        ("blocked", .blocked, false),
+        ("working — agent live", .working, true),
+        ("working — no agent", .working, false),
+        ("fixing", .fixing, true),
+        ("waiting for you", .waiting, true),
+        ("review", .review, false),
+        ("pr open", .pr, false),
+        ("done", .done, false),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 7) {
+                    StateDot(state: row.1, live: row.2).frame(width: 16)
+                    Text(row.0)
+                        .font(.system(size: 14))
+                        .strikethrough(row.1 == .done)
+                        .ink(row.1 == .blocked ? .quaternary : (row.1 == .done ? .tertiary : .primary))
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 16)
+                .frame(height: GnatMetrics.sidebarRowHeight)
+            }
+            HStack(spacing: 7) {
+                Text("folded project, needs you").font(.system(size: 14)).ink(.primary)
+                Spacer(minLength: 0)
+                Circle().fill(DesignTokens.hot).frame(width: 6, height: 6)
+            }
+            .padding(.horizontal, 16)
+            .frame(height: GnatMetrics.sidebarRowHeight)
+        }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .surface(.header)
+        .environment(\.pulsesPaused, true)
+    }
+}
+
+

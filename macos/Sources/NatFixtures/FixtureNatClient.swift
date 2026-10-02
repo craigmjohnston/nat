@@ -25,6 +25,10 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
 
     public let behaviour: Behaviour
     private let plan: ProjectInfo
+    /// Plans for projects other than the fixture's own, by project ID — what
+    /// a multi-project sidebar reads for each of the others. A project with
+    /// none here reads `plan`.
+    private let otherPlans: [String: ProjectInfo]
     private let agents: [AgentStatus]
     /// The planning agents Untitled tabs have launched here, on top of the
     /// fixed `agents` — a launch puts one in the next reading and a kill
@@ -60,6 +64,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     public init(
         behaviour: Behaviour = .answering,
         plan: ProjectInfo = Fixtures.projectInfo,
+        otherPlans: [String: ProjectInfo] = [Fixtures.secondProjectID: Fixtures.secondProjectInfo],
         agents: [AgentStatus] = Fixtures.agentStatuses,
         diff: SliceDiff = Fixtures.sliceDiff,
         pr: PRDetail = Fixtures.prGreen,
@@ -70,6 +75,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     ) {
         self.behaviour = behaviour
         self.plan = plan
+        self.otherPlans = otherPlans
         self.agents = agents
         self.diff = diff
         self.pr = pr
@@ -132,7 +138,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     // MARK: - Reads
 
     public func info(projectID: String) async throws -> ProjectInfo {
-        try await answer(plan)
+        try await answer(otherPlans[projectID] ?? plan)
     }
 
     public func status() async throws -> [AgentStatus] {

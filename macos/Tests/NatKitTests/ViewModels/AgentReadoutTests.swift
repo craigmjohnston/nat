@@ -19,14 +19,14 @@ final class AgentReadoutTests: XCTestCase {
     func testFullReading() {
         let readout = buildAgentReadout(from: agent(model: "Sonnet 5", effort: "high", context: 41.6))
         XCTAssertEqual(readout?.label, "Sonnet 5 · high")
-        XCTAssertEqual(readout?.context, AgentReadout.Context(text: "42%", warning: false))
+        XCTAssertEqual(readout?.context, AgentReadout.Context(text: "ctx 42%", warning: false))
     }
 
     func testPartialReadings() {
         XCTAssertEqual(buildAgentReadout(from: agent(model: "Sonnet 5"))?.label, "Sonnet 5")
         XCTAssertNil(buildAgentReadout(from: agent(model: "Sonnet 5"))?.context)
         XCTAssertNil(buildAgentReadout(from: agent(context: 10))?.label)
-        XCTAssertEqual(buildAgentReadout(from: agent(context: 0))?.context?.text, "0%")
+        XCTAssertEqual(buildAgentReadout(from: agent(context: 0))?.context?.text, "ctx 0%")
     }
 
     func testHighContextWarnsAtThreshold() {

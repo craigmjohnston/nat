@@ -22,7 +22,7 @@ public enum DesignTokens {
     /// The palette a colour scheme draws with — the seam every token below
     /// is built over, and the one place the two themes are chosen between.
     public static func palette(for scheme: ColorScheme) -> Palette {
-        scheme == .dark ? .mocha : .latte
+        scheme == .dark ? .dark : .light
     }
 
     /// The same choice made from an AppKit appearance, which is what a
@@ -32,7 +32,7 @@ public enum DesignTokens {
     /// carry values for — resolves light, because light is the platform's
     /// own default and a wrong guess there is a readable window either way.
     static func palette(for appearance: NSAppearance) -> Palette {
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .mocha : .latte
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .dark : .light
     }
 
     /// A dynamic `NSColor` over one palette field. There is deliberately no
@@ -123,6 +123,26 @@ public enum DesignTokens {
     /// The soft fill behind a selected row, in place of a solid accent slab.
     public static func selectionWash(on ground: Ground) -> Color {
         derived { $0.wash(.selection, of: $0.accent, on: ground) }
+    }
+
+    /// The design's neutral row washes: `--sel` under the pointer, `--sel-2`
+    /// behind the selected row.
+    public static func rowWash(selected: Bool, on ground: Ground) -> Color {
+        derived { $0.rowWash(selected: selected, on: ground) }
+    }
+
+    /// The design's `--hot`, as a fill: a needs-you dot.
+    public static let hot = token(\.hot)
+
+    /// `--hot` written on a ground.
+    public static func hotInk(on ground: Ground) -> Color {
+        derived { $0.ink(of: $0.hot, on: ground.surface(in: $0)) }
+    }
+
+    /// The design's `--accent-dim`: a primary action's fill, the accent
+    /// washed into the ground it sits on.
+    public static func accentDim(on ground: Ground) -> Color {
+        derived { $0.wash(.chip, of: $0.accent, on: ground) }
     }
 
     /// Separator color: the line between two rows of one list.
@@ -262,6 +282,7 @@ public enum DesignTokens {
             case .danger: return palette.ink(of: palette.systemRed, on: surface)
             case .warning: return palette.ink(of: palette.systemYellow, on: surface)
             case .info: return palette.ink(of: palette.systemBlue, on: surface)
+            case .hot: return palette.ink(of: palette.hot, on: surface)
             }
         }
     }
@@ -410,14 +431,16 @@ public enum Typo {
     /// the ramp's own numbers, chosen at the mock's canvas size, and a call
     /// site asking for `Typo.code` means 13 points.
     public static func mono(size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        mono(size: size, weight: weight, face: MonoFont.face(bold: isBold(weight)))
+        mono(size: size, weight: weight, face: MonoFont.face(weight: monoWeight(weight)))
     }
 
     /// The same font for AppKit, which is what the terminal sets its type
     /// with and what an `NSTextView` behind a SwiftUI input is handed.
     public static func monoNSFont(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
-        let bold = weight.rawValue >= NSFont.Weight.semibold.rawValue
-        return monoNSFont(size: size, weight: weight, face: MonoFont.face(bold: bold))
+        let step: MonoWeight = weight.rawValue >= NSFont.Weight.semibold.rawValue
+            ? .bold
+            : (weight.rawValue >= NSFont.Weight.medium.rawValue ? .medium : .regular)
+        return monoNSFont(size: size, weight: weight, face: MonoFont.face(weight: step))
     }
 
     /// The two above with the face named rather than looked up — the seam a
@@ -442,6 +465,13 @@ public enum Typo {
     /// named rather than measured.
     static func isBold(_ weight: Font.Weight) -> Bool {
         [Font.Weight.semibold, .bold, .heavy, .black].contains(weight)
+    }
+
+    /// Which step of the bundled ramp a SwiftUI weight asks for: medium is
+    /// its own, semibold and up are bold, and lighter is regular.
+    static func monoWeight(_ weight: Font.Weight) -> MonoWeight {
+        if isBold(weight) { return .bold }
+        return weight == .medium ? .medium : .regular
     }
 }
 
@@ -585,7 +615,7 @@ func rgbComponents(hex: String) -> (red: Double, green: Double, blue: Double)? {
     )
 }
 
-/// What a hex that will not parse resolves to: Catppuccin Mocha's mauve,
+/// What a hex that will not parse resolves to: the dark palette's accent,
 /// which is the app's own accent.
 ///
 /// It used to be white — the one colour in the app guaranteed to belong to
@@ -595,11 +625,11 @@ func rgbComponents(hex: String) -> (red: Double, green: Double, blue: Double)? {
 /// by a glance at the window; what the fallback is for is the frame drawn
 /// before anybody looks at the test, and a frame drawn in the accent is one
 /// that still reads as this app. Written out channel by channel rather than
-/// parsed from `Palette.mocha.accent`, because the fallback for a parse
+/// parsed from `Palette.dark.accent`, because the fallback for a parse
 /// cannot itself depend on a parse succeeding — `hexFallbackIsTheAccent`
 /// asserts the two agree.
 let hexFallback: (red: Double, green: Double, blue: Double) = (
-    Double(0xcb) / 255.0, Double(0xa6) / 255.0, Double(0xf7) / 255.0
+    Double(0x2c) / 255.0, Double(0x5e) / 255.0, Double(0xd7) / 255.0
 )
 
 extension Color {

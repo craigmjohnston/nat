@@ -5,7 +5,8 @@ import Foundation
 /// one clause.
 public let usageWarningThreshold = 80.0
 
-/// One window's rendered clause — "Session 38% · resets 6:00 PM" — and
+/// One window's rendered clause — "5h 38% · resets 6:00 PM", the design's
+/// own short names for the two windows — and
 /// whether it crossed the warning threshold, which is drawn as one tint
 /// across the whole clause.
 public struct UsageWindowDisplay: Equatable {
@@ -45,10 +46,10 @@ public func buildUsageDisplay(
 
     var windows: [UsageWindowDisplay] = []
     if let fiveHour = reading.fiveHour, fiveHour.resetsAt > now {
-        windows.append(windowDisplay(label: "Session", limit: fiveHour, resetFormat: usageTimeFormatter(timeZone: timeZone)))
+        windows.append(windowDisplay(label: "5h", limit: fiveHour, resetFormat: usageTimeFormatter(timeZone: timeZone)))
     }
     if let sevenDay = reading.sevenDay, sevenDay.resetsAt > now {
-        windows.append(windowDisplay(label: "Week", limit: sevenDay, resetFormat: usageWeekdayFormatter(timeZone: timeZone)))
+        windows.append(windowDisplay(label: "wk", limit: sevenDay, resetFormat: usageWeekdayFormatter(timeZone: timeZone)))
     }
     return UsageDisplay(windows: windows)
 }

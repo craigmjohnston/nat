@@ -50,14 +50,14 @@ final class ComponentsTests: XCTestCase {
     /// `.success` meaning the palette's own.
     func testToneMapsToItsHue() {
         let pairs: [(Tone, String)] = [
-            (.accent, Palette.mocha.accent.hex),
-            (.success, Palette.mocha.systemGreen.hex),
-            (.danger, Palette.mocha.systemRed.hex),
-            (.warning, Palette.mocha.systemYellow.hex),
-            (.neutral, Palette.mocha.labelSecondary.hex),
+            (.accent, Palette.dark.accent.hex),
+            (.success, Palette.dark.systemGreen.hex),
+            (.danger, Palette.dark.systemRed.hex),
+            (.warning, Palette.dark.systemYellow.hex),
+            (.neutral, Palette.dark.labelSecondary.hex),
         ]
         for (tone, hex) in pairs {
-            XCTAssertEqual(tone.chipTint.tint(in: .mocha).hex, hex, "\(tone)")
+            XCTAssertEqual(tone.chipTint.tint(in: .dark).hex, hex, "\(tone)")
         }
     }
 
@@ -67,7 +67,7 @@ final class ComponentsTests: XCTestCase {
     func testEveryChipToneIsLegibleOnEveryGround() {
         for tone in [Tone.accent, .success, .danger, .warning, .neutral] {
             for ground in Ground.allCases {
-                for palette in [Palette.mocha, Palette.latte] {
+                for palette in [Palette.dark, Palette.light] {
                     let tint = tone.chipTint.tint(in: palette)
                     let capsule = palette.wash(.chip, of: tint, on: ground)
                     let word = palette.chipInk(of: tint, on: ground)
