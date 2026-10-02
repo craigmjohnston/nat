@@ -119,6 +119,18 @@ off), no New Window. The menu bar reaches the window through focused scene
 values (`MenuCommands.swift`): the sidebar, shell and slice navigator each
 publish the actions they already own, nil where their control is disabled.
 
+## The diff is AppKit, laid out exactly
+
+The continuous diff is `DiffCanvasView` (NatKit), not a SwiftUI stack: a
+lazy stack estimates the heights of rows it hasn't drawn, so the content
+height and every offset shift as it scrolls (jumps at file boundaries, a
+jumping scroller, a jump-to-file that lands wrong). `DiffLayout` computes
+every row's height up front from its columns (`DiffText` — layout and drawing
+wrap through the same code, so they can't disagree), and a viewport-sized view
+draws only what's visible over a sizer document. Comments and the editor stay
+SwiftUI, hosted per anchor row (`DiffCanvasRepresentable`). Don't move the
+rows back into SwiftUI. Stories: `diff-stress`, `diff-stress-unwrapped`.
+
 ## Design tokens
 
 Every colour is a named, dynamic token in `DesignTokens.swift` (values in

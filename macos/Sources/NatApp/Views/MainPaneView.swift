@@ -18,7 +18,9 @@ struct MainPaneNote: View {
 /// The main pane with nothing selected, an editor's watermark: the gnat
 /// mark, large and barely there, over the keyboard shortcuts that work with
 /// nothing selected — each the menu bar's own. Set a little above centre,
-/// where the eye rests in an empty pane.
+/// where the eye rests in an empty pane. The two columns are held to one
+/// width, so the gap between action and keys falls on the mark's own axis
+/// rather than wherever the longest action happens to push it.
 struct MainPaneEmptyState: View {
     private static let shortcuts: [(action: String, keys: String)] = [
         ("New slice", "\u{2318}N"),
@@ -40,11 +42,12 @@ struct MainPaneEmptyState: View {
                         Text(shortcut.action)
                             .font(.system(size: 12.5))
                             .ink(.tertiary)
-                            .gridColumnAlignment(.trailing)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                         Text(shortcut.keys)
                             .font(Typo.mono(size: 12))
                             .tracking(1.5)
                             .ink(.quaternary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
@@ -106,90 +109,63 @@ struct ContinuousDiffView: View {
     var authorName = "You"
     var authorInitials = ""
 
-    @State private var fileScroll = ScrollPosition(idType: String.self)
-    @State private var anchor = DiffScrollAnchor()
+    /// View ▸ Wrap lines in diffs.
+    @AppStorage(diffWrapsLinesKey) private var wrapsLines = true
 
     var body: some View {
         if diff.files.isEmpty {
             MainPaneNote(text: "Nothing to show — the branch matches its base")
         } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    ForEach(diff.files) { file in
-                        Section {
-                            if !isCollapsed(file.path) {
-                                box(file).rows
-                            }
-                        } header: {
-                            DiffFileHeaderView(
-                                file: file, isViewed: isViewed(file.path), isCollapsed: isCollapsed(file.path),
-                                commentCount: store?.commentsByPath[file.path]?.count ?? 0,
-                                showsViewed: showsViewed,
-                                showsTopRule: file.id != diff.files.first?.id,
-                                onToggleViewed: { onToggleViewed(file.path) },
-                                onToggleCollapsed: { onToggleCollapsed(file.path) })
-                            .id(file.path)
-                        }
-                    }
-                    Text("\(diff.files.count) \(plural(diff.files.count, "file", "files"))")
-                        .monoXS()
-                        .ink(.secondary)
-                        .padding(14)
-                        .frame(maxWidth: .infinity)
-                }
-                .scrollTargetLayout()
-                .inelastic()
-            }
-            .thinScrollers(position: $fileScroll)
-            .scrollPosition($fileScroll, anchor: .top)
-            .coordinateSpace(name: DiffRowFramesKey.space)
-            .onPreferenceChange(DiffRowFramesKey.self) { frames in
-                anchor.update(rows: frames.map { (key: $0.key, minY: $0.value.lowerBound, maxY: $0.value.upperBound) })
-            }
-            .onScrollGeometryChange(for: Bool.self) { $0.contentSize.height > $0.containerSize.height } action: { _, canScroll in
-                anchor.canScroll = canScroll
-            }
-            // A width change re-wraps rows and the old offset lands on other
-            // code, so the top line is put back after the re-wrap.
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { old, new in
-                guard old != new, let key = anchor.beginRestore() else { return }
-                Task { @MainActor in
-                    await Task.yield()
-                    var transaction = Transaction()
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) { fileScroll.scrollTo(id: key.scrollID, anchor: .top) }
-                    anchor.endRestore()
-                }
-            }
-            .onChange(of: review?.scrollRequest?.token) { _, _ in
-                guard let path = review?.scrollRequest?.path else { return }
-                withAnimation(Motion.stateChange) { fileScroll.scrollTo(id: path, anchor: .top) }
-            }
-            .font(Typo.mono(size: Typo.code))
+            DiffCanvasRepresentable(
+                files: diff.files, state: state, attachments: attachments, actions: actions,
+                review: review, store: store, authorName: authorName, authorInitials: authorInitials)
         }
     }
 
-    private func box(_ file: DiffFileModel) -> DiffFileBoxView {
-        DiffFileBoxView(
-            file: file,
-            numberWidth: diff.numberWidth,
-            isViewed: isViewed(file.path),
-            isCollapsed: isCollapsed(file.path),
-            comments: store?.commentsByPath[file.path] ?? [],
-            selection: review?.selection?.path == file.path ? review?.selection : nil,
-            draft: review?.draft?.path == file.path ? review?.draft : nil,
-            commentsEnabled: review != nil && (store?.commentsEditable ?? false),
-            authorName: authorName,
-            authorInitials: authorInitials,
-            onToggleViewed: { onToggleViewed(file.path) },
-            onToggleCollapsed: { onToggleCollapsed(file.path) },
-            onRowClick: { row, shift in if store != nil { review?.handleRowClick(file: file, row: row, shift: shift) } },
-            onOpenCommentEditor: { if let store { review?.openCommentEditor(store) } },
-            onEditComment: { review?.editComment($0) },
-            onDeleteComment: { comment in if let store { review?.deleteComment(comment, store: store) } },
-            onSaveDraft: { text in if let store { review?.saveDraft(text, store: store) } },
-            onCancelDraft: { review?.draft = nil }
-        )
+    private var state: DiffCanvasState {
+        var state = DiffCanvasState()
+        let paths = diff.files.map(\.path)
+        state.viewed = Set(paths.filter(isViewed))
+        state.collapsed = Set(paths.filter(isCollapsed))
+        state.commentCounts = store?.commentsByPath.mapValues(\.count) ?? [:]
+        state.selection = review?.selection.map { DiffCanvasSelection(path: $0.path, rowIDs: $0.rowIDs) }
+        state.canComment = review != nil && store != nil && (store?.commentsEditable ?? false) && review?.draft == nil
+        state.showsViewed = showsViewed
+        state.wrap = wrapsLines
+        return state
+    }
+
+    /// What goes under each row: the editor open on it, and its pending
+    /// comments, keyed by the last row each covers.
+    private var attachments: [String: DiffAttachmentContent] {
+        var contents: [String: DiffAttachmentContent] = [:]
+        for comment in store?.comments ?? [] {
+            guard let last = comment.anchorRowIDs.last else { continue }
+            contents[DiffLayout.key(path: comment.path, rowID: last), default: DiffAttachmentContent()].comments.append(comment)
+        }
+        if let draft = review?.draft, let last = draft.anchorRowIDs.last {
+            contents[DiffLayout.key(path: draft.path, rowID: last), default: DiffAttachmentContent()].draft = draft
+        }
+        return contents
+    }
+
+    private var actions: DiffCanvasActions {
+        var actions = DiffCanvasActions()
+        let review = review, store = store
+        let onToggleViewed = onToggleViewed, onToggleCollapsed = onToggleCollapsed
+        actions.viewedToggled = { onToggleViewed($0) }
+        actions.collapseToggled = { onToggleCollapsed($0) }
+        // A diff with no store takes no marks — a session's diff.
+        guard let review, let store else { return actions }
+        actions.rowClicked = { file, row, shift in review.handleRowClick(file: file, row: row, shift: shift) }
+        actions.rowsDragged = { file, rowIDs in review.handleRowDrag(file: file, rowIDs: rowIDs) }
+        actions.commentRequested = { file, row, endsSelection in
+            // A hovered row that is not the end of the marked run is marked
+            // first, so the comment is about it.
+            if !endsSelection { review.handleRowClick(file: file, row: row, shift: false) }
+            review.openCommentEditor(store)
+        }
+        return actions
     }
 }
 

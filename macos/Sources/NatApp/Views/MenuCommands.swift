@@ -42,6 +42,7 @@ extension FocusedValues {
 /// File's new-item group, View's own items and the Slice menu.
 struct GnatCommands: Commands {
     @Binding var showsDoneItems: Bool
+    @Binding var diffWrapsLines: Bool
 
     @FocusedValue(\.sidebarMenu) private var sidebar
     @FocusedValue(\.shellMenu) private var shell
@@ -62,7 +63,7 @@ struct GnatCommands: Commands {
 
         // The View menu's own first group: Finder's Show/Hide Hidden Files,
         // for finished work, on the same ⇧⌘. Finder uses; then refreshing,
-        // and the navigator's three sections.
+        // the navigator's three sections, and how the diff sets long lines.
         CommandGroup(before: .toolbar) {
             Button(showsDoneItems ? "Hide done items" : "Show done items",
                    systemImage: showsDoneItems ? "eye.slash" : "eye") {
@@ -74,6 +75,8 @@ struct GnatCommands: Commands {
             item("Thread", slice?.showThread).keyboardShortcut("1")
             item("Changes", slice?.showChanges).keyboardShortcut("2")
             item("Pull request", slice?.showPullRequest).keyboardShortcut("3")
+            Divider()
+            Toggle("Wrap lines in diffs", isOn: $diffWrapsLines)
             Divider()
         }
 

@@ -197,6 +197,22 @@ enum AppStories {
         },
 
         Story(
+            name: "diff-stress",
+            summary: "A 300-file, 51,000-row diff jumped to its 150th file: the header pinned exactly at the top, long lines wrapped, tabs and wide characters on the grid.",
+            size: CGSize(width: 900, height: 640)
+        ) {
+            DiffStressStory(wrap: true)
+        },
+
+        Story(
+            name: "diff-stress-unwrapped",
+            summary: "The same diff with View ▸ Wrap lines in diffs off: every row one line, the long ones running past the pane's edge.",
+            size: CGSize(width: 900, height: 640)
+        ) {
+            DiffStressStory(wrap: false)
+        },
+
+        Story(
             name: "window-todo",
             summary: "A Todo slice: the Thread open on its brief, cut short with Show more, Launch primary in its header, the main pane's note.",
             size: window
@@ -985,19 +1001,33 @@ private struct MarkdownTableStoryBody: View {
 /// shows without a pointer over it.
 private struct DiffCommentButtonStory: View {
     var body: some View {
-        let model = Fixtures.diffModel
-        let file = model.files[0]
+        let file = Fixtures.diffModel.files[0]
         let marked = file.rows.first { $0.kind == .added } ?? file.rows[0]
-        return ScrollView {
-            DiffFileBoxView(
-                file: file, numberWidth: model.numberWidth, isViewed: false, isCollapsed: false,
-                comments: [], selection: DiffSelection(path: file.path, rowIDs: [marked.id]), draft: nil,
-                authorName: "craig johnston", authorInitials: "CJ",
-                onToggleViewed: {}, onToggleCollapsed: {}, onRowClick: { _, _ in }, onOpenCommentEditor: {},
-                onEditComment: { _ in }, onDeleteComment: { _ in }, onSaveDraft: { _ in }, onCancelDraft: {})
-            .padding(12)
-        }
-        .thinScrollers()
+        var state = DiffCanvasState()
+        state.selection = DiffCanvasSelection(path: file.path, rowIDs: [marked.id])
+        state.canComment = true
+        return DiffCanvasRepresentable(
+            files: [file], state: state, attachments: [:], actions: DiffCanvasActions(),
+            review: nil, store: nil, authorName: "craig johnston", authorInitials: "CJ")
+        .surface(.window)
+    }
+}
+
+/// The stress diff, jumped to a file halfway down it — the jump is the
+/// navigator's own (`DiffReview.requestScroll`), so where it lands is where
+/// a click on that file's row would land.
+private struct DiffStressStory: View {
+    let wrap: Bool
+    @State private var review = DiffReview()
+    private static let model = Fixtures.stressDiffModel
+
+    var body: some View {
+        var state = DiffCanvasState()
+        state.wrap = wrap
+        if review.scrollRequest == nil { review.requestScroll(to: Self.model.files[150].path) }
+        return DiffCanvasRepresentable(
+            files: Self.model.files, state: state, attachments: [:], actions: DiffCanvasActions(),
+            review: review, store: nil, authorName: "craig johnston", authorInitials: "CJ")
         .surface(.window)
     }
 }

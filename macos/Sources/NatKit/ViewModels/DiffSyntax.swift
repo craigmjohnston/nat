@@ -2,8 +2,8 @@ import SwiftUI
 
 /// The diff viewer's syntax highlighting: turning one line's `[TokenRun]`s
 /// (byte-length runs over the line's content, exactly as
-/// `internal/cli/difftokens.go` lexed it on the Go side) into an
-/// `AttributedString` a `Text` can draw — mirrors the Go TUI's
+/// `internal/cli/difftokens.go` lexed it on the Go side) into coloured runs
+/// the diff canvas draws — mirrors the Go TUI's
 /// `internal/tui/diffsyntax.go` in spirit, but there is no lexing to do here:
 /// the runs already say what colour each stretch takes, so this is purely the
 /// mapping from a run's kind to a colour, and the byte-safe slicing to apply
@@ -32,54 +32,51 @@ public enum DiffSyntax {
         }
     }
 
-    /// Builds one line's `AttributedString`, colouring each byte-length run
-    /// in its kind's colour and leaving everything else in `defaultColor`.
+    /// One stretch of a line in a single colour: the run's own text and the
+    /// kind that colours it.
+    public struct Run: Equatable, Sendable {
+        public let text: String
+        public let kind: TokenKind
+
+        public init(text: String, kind: TokenKind) {
+            self.text = text
+            self.kind = kind
+        }
+    }
+
+    /// Slices one line into its coloured runs, each byte-length run its kind.
     ///
     /// `tokens` is nil or empty for a line the Go side never lexed (no
-    /// matched language, or a line outside a hunk) — such a line renders
-    /// exactly as it always did, uncoloured. A run list whose lengths do not
-    /// consume `text` exactly, byte for byte — too short, too long, or one
-    /// that lands off a UTF-8 character boundary — is the wire disagreeing
-    /// with what it is describing; rather than draw a mis-sliced line (or
-    /// crash slicing invalid UTF-8), this falls all the way back to the plain,
-    /// uncoloured line, the same as a file with no language at all.
-    public static func attributedLine(_ text: String, tokens: [TokenRun]?, defaultColor: Color) -> AttributedString {
-        guard let tokens, !tokens.isEmpty else {
-            return plain(text, color: defaultColor)
-        }
+    /// matched language, or a line outside a hunk) — such a line is one
+    /// `.text` run, drawn exactly as it always was, uncoloured. A run list
+    /// whose lengths do not consume `text` exactly, byte for byte — too
+    /// short, too long, or one that lands off a UTF-8 character boundary — is
+    /// the wire disagreeing with what it is describing; rather than draw a
+    /// mis-sliced line (or crash slicing invalid UTF-8), this falls all the
+    /// way back to the one plain run, the same as a file with no language at
+    /// all.
+    public static func runs(_ text: String, tokens: [TokenRun]?) -> [Run] {
+        let plain = [Run(text: text, kind: .text)]
+        guard let tokens, !tokens.isEmpty else { return plain }
 
         let bytes = Array(text.utf8)
         var offset = 0
-        var pieces: [AttributedString] = []
-        pieces.reserveCapacity(tokens.count)
+        var runs: [Run] = []
+        runs.reserveCapacity(tokens.count)
 
         for run in tokens {
             let end = offset + run.length
-            guard run.length >= 0, offset >= 0, end <= bytes.count else {
-                return plain(text, color: defaultColor)
+            guard run.length >= 0, end <= bytes.count,
+                  let runText = String(bytes: bytes[offset..<end], encoding: .utf8) else {
+                return plain
             }
-            guard let runText = String(bytes: bytes[offset..<end], encoding: .utf8) else {
-                return plain(text, color: defaultColor)
-            }
-            var piece = AttributedString(runText)
-            piece.foregroundColor = color(for: run.kind, defaultColor: defaultColor)
-            pieces.append(piece)
+            runs.append(Run(text: runText, kind: run.kind))
             offset = end
         }
 
         // The runs must account for every byte of the line — a short count
         // (or one that overshoots, already refused above) is the same kind of
         // disagreement, so it falls back exactly the same way.
-        guard offset == bytes.count else {
-            return plain(text, color: defaultColor)
-        }
-
-        return pieces.reduce(into: AttributedString()) { $0 += $1 }
-    }
-
-    private static func plain(_ text: String, color: Color) -> AttributedString {
-        var s = AttributedString(text)
-        s.foregroundColor = color
-        return s
+        return offset == bytes.count ? runs : plain
     }
 }

@@ -602,6 +602,9 @@ public enum Motion {
     /// The one animation state changes (expand/collapse, selection) use.
     /// nil disables them app-wide.
     public static let stateChange: Animation? = .easeOut(duration: 0.15)
+    /// The same, for AppKit's animations (the diff's jump to a file): its
+    /// duration, nil where `stateChange` is.
+    public static let stateChangeDuration: TimeInterval? = stateChange == nil ? nil : 0.15
     /// The titlebar breadcrumb moving between selections: long enough to
     /// read as the crumbs sliding over to make room for one another.
     public static let breadcrumb: Animation? = .smooth(duration: 0.28)

@@ -23,6 +23,10 @@ struct NatApp: App {
     /// — done slices, ended sessions and each project's Done folder.
     @AppStorage(showsDoneItemsKey) private var showsDoneItems = true
 
+    /// View ▸ Wrap lines in diffs: whether a long line of code breaks at the
+    /// pane's edge or runs on, the diff scrolling sideways to it.
+    @AppStorage(diffWrapsLinesKey) private var diffWrapsLines = true
+
     private var theme: Theme { Theme(stored: storedTheme) }
 
     /// The two stored palettes, put in their slots, as one identity for the
@@ -168,7 +172,7 @@ struct NatApp: App {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesView(model: updaterViewModel)
             }
-            GnatCommands(showsDoneItems: $showsDoneItems)
+            GnatCommands(showsDoneItems: $showsDoneItems, diffWrapsLines: $diffWrapsLines)
         }
 
         // The settings window takes the app's appearance (`NSApp.appearance`,

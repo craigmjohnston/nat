@@ -57,14 +57,13 @@ public struct DiffRow: Identifiable, Equatable, Sendable {
     /// happen on this side: the Go side already lexed it once when the branch
     /// was read.
     public let tokens: [TokenRun]?
-    /// `text` styled for drawing, built once here so a render pass — and a
-    /// live resize re-renders every visible row every frame — never slices
-    /// bytes or concatenates pieces again. Coloured per `tokens` where the row
-    /// has any, on the `.card` ground the file box draws its rows on; the
-    /// default colour is the dimmer label for a described file's message, and
-    /// an empty line is one space so the row keeps its height. Derived from
-    /// the other fields alone, so it takes no part in `==`.
-    public let styledText: AttributedString
+    /// The columns `text` takes on the diff's grid, tabs expanded, and
+    /// whether every character in it is one column wide — measured once here
+    /// so the layout can say how tall the row is at any width without
+    /// reading the text again (`DiffText.lineCount`). Derived from `text`
+    /// alone, so they take no part in `==`.
+    public let columns: Int
+    public let isNarrow: Bool
 
     public static func == (lhs: DiffRow, rhs: DiffRow) -> Bool {
         lhs.id == rhs.id && lhs.kind == rhs.kind && lhs.oldNumber == rhs.oldNumber
@@ -88,15 +87,7 @@ public struct DiffRow: Identifiable, Equatable, Sendable {
         self.prefix = prefix
         self.text = text
         self.tokens = tokens
-
-        let defaultColor = DesignTokens.ink(kind == .described ? .secondary : .primary, on: .card)
-        if text.isEmpty {
-            var blank = AttributedString(" ")
-            blank.foregroundColor = defaultColor
-            self.styledText = blank
-        } else {
-            self.styledText = DiffSyntax.attributedLine(text, tokens: tokens, defaultColor: defaultColor)
-        }
+        (self.columns, self.isNarrow) = DiffText.measure(text)
     }
 }
 
