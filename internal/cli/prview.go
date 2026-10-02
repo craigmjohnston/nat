@@ -166,6 +166,8 @@ type prDoc struct {
 	Deletions    int `json:"deletions"`
 	ChangedFiles int `json:"changed_files"`
 	Commits      int `json:"commits"`
+	// ReviewRequests is who has been asked to review and not yet answered.
+	ReviewRequests []string `json:"review_requests"`
 }
 
 // prJSON maps gh's answer onto the structured form, keeping every field it
@@ -191,6 +193,7 @@ func prJSON(pr gh.PR) prDoc {
 		Deletions:        pr.Deletions,
 		ChangedFiles:     pr.ChangedFiles,
 		Commits:          pr.Commits,
+		ReviewRequests:   nonNil(pr.ReviewRequests),
 	}
 	for _, c := range pr.Checks {
 		doc.Checks = append(doc.Checks, checkJSON{Name: c.Name, State: c.State, Link: c.URL})

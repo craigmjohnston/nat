@@ -25,6 +25,9 @@ private final class MockPRClient: NatClientProtocol, @unchecked Sendable {
     private(set) var commentCalls: [(projectID: String, sliceRef: String, body: String)] = []
     var commentError: Error?
 
+    private(set) var reviewerCalls: [(add: [String], remove: [String])] = []
+    var reviewersError: Error?
+
     init(response: Response) {
         self.response = response
     }
@@ -80,6 +83,12 @@ private final class MockPRClient: NatClientProtocol, @unchecked Sendable {
     func prComment(projectID: String, sliceRef: String, body: String) async throws {
         commentCalls.append((projectID, sliceRef, body))
         if let commentError { throw commentError }
+    }
+
+    func prReviewers(projectID: String, sliceRef: String, add: [String], remove: [String]) async throws -> PRReviewers {
+        reviewerCalls.append((add, remove))
+        if let reviewersError { throw reviewersError }
+        return PRReviewers(pr: sliceRef, requested: add, candidates: ["mona"])
     }
 
     func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult {
@@ -585,6 +594,62 @@ final class PRStoreTests: XCTestCase {
         XCTAssertEqual(client.commentCalls[0].sliceRef, "slice-1")
         XCTAssertEqual(client.commentCalls[0].body, "Looks good.", "the body should be trimmed")
         XCTAssertEqual(client.viewCallCount, 2, "a posted comment should trigger a reread")
+    }
+
+    @MainActor
+    func testReviewersReadsWithoutEditingOrRereading() async throws {
+        let client = MockPRClient(response: .success(openPR()))
+        let store = PRStore(client: client)
+        let nothing = try await store.reviewers()
+        XCTAssertNil(nothing, "nothing fetched, nobody to ask about")
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        let answer = try await store.reviewers()
+
+        XCTAssertEqual(answer?.candidates, ["mona"])
+        XCTAssertEqual(client.reviewerCalls.count, 1)
+        XCTAssertEqual(client.reviewerCalls[0].add, [])
+        XCTAssertEqual(client.viewCallCount, 1)
+    }
+
+    @MainActor
+    func testEditReviewersThenRereads() async throws {
+        let client = MockPRClient(response: .success(openPR()))
+        let store = PRStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        let answer = try await store.editReviewers(add: ["hubot"], remove: ["octocat"])
+
+        XCTAssertEqual(answer?.requested, ["hubot"])
+        XCTAssertEqual(client.reviewerCalls[0].remove, ["octocat"])
+        XCTAssertEqual(client.viewCallCount, 2, "an edit should trigger a reread")
+    }
+
+    @MainActor
+    func testEditReviewersPropagatesFailureWithoutRereading() async {
+        let client = MockPRClient(response: .success(openPR()))
+        client.reviewersError = PRTestError()
+        let store = PRStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        do {
+            try await store.editReviewers(add: ["hubot"])
+            XCTFail("should have thrown")
+        } catch {}
+        XCTAssertEqual(client.viewCallCount, 1)
+    }
+
+    @MainActor
+    func testASessionsPullRequestHasNoReviewersToEdit() async throws {
+        let client = MockPRClient(response: .success(openPR()))
+        let store = PRStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "https://x/pull/7", sessionID: "s1")
+
+        let read = try await store.reviewers()
+        let edited = try await store.editReviewers(add: ["hubot"])
+        XCTAssertNil(read)
+        XCTAssertNil(edited)
+        XCTAssertTrue(client.reviewerCalls.isEmpty)
     }
 
     @MainActor

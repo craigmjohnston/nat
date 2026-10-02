@@ -173,6 +173,18 @@ public enum ThreadEventKind: Equatable, Sendable {
     case closed
 }
 
+/// One labelled value in a Thread card's foot — `model opus`, `branch
+/// slice/x` — drawn as the brief's own facts are.
+public struct ThreadFact: Equatable, Sendable {
+    public let key: String
+    public let value: String
+
+    public init(_ key: String, _ value: String) {
+        self.key = key
+        self.value = value
+    }
+}
+
 /// One card of the Thread log.
 public struct ThreadEvent: Equatable, Sendable {
     public let kind: ThreadEventKind
@@ -180,19 +192,30 @@ public struct ThreadEvent: Equatable, Sendable {
     public let meta: String?
     public let tone: ThreadTone
     public let body: String?
-    public let foot: String?
+    public let facts: [ThreadFact]
 
     public init(
         _ kind: ThreadEventKind, who: String, meta: String? = nil, tone: ThreadTone = .muted,
-        body: String? = nil, foot: String? = nil
+        body: String? = nil, facts: [ThreadFact] = []
     ) {
         self.kind = kind
         self.who = who
         self.meta = meta
         self.tone = tone
         self.body = body
-        self.foot = foot
+        self.facts = facts
     }
+}
+
+/// A live agent's own statusline reading as facts: its model, its effort
+/// and how much of its context it has used, each only once read.
+public func agentFacts(_ agent: AgentStatus?) -> (model: [ThreadFact], context: [ThreadFact]) {
+    guard let agent else { return ([], []) }
+    var model: [ThreadFact] = []
+    if let name = agent.model, !name.isEmpty { model.append(ThreadFact("model", name)) }
+    if let effort = agent.effort, !effort.isEmpty { model.append(ThreadFact("effort", effort)) }
+    let context = agent.contextPercent.map { [ThreadFact("context", "\(Int($0.rounded()))%")] } ?? []
+    return (model, context)
 }
 
 /// The Thread log, built only from what nat reports: the live agent's own
@@ -207,11 +230,9 @@ public func buildThreadEvents(slice: Slice, agent: AgentStatus?, brief: String?)
 
     var events: [ThreadEvent] = []
     let branch = (slice.branch ?? "").isEmpty ? nil : slice.branch
-    let modelLine = agent.flatMap { status -> String? in
-        let parts = [status.model, status.effort].compactMap { $0 }.filter { !$0.isEmpty }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
-    }
-    events.append(ThreadEvent(.launched, who: "Launched", body: modelLine, foot: branch))
+    let reading = agentFacts(agent)
+    events.append(ThreadEvent(
+        .launched, who: "Launched", facts: reading.model + (branch.map { [ThreadFact("branch", $0)] } ?? [])))
 
     if let agent {
         let waiting = AgentActivity(agent.activity) == .waiting
@@ -219,7 +240,7 @@ public func buildThreadEvents(slice: Slice, agent: AgentStatus?, brief: String?)
             .agent, who: "Agent",
             meta: waiting ? "waiting for you" : "working",
             tone: waiting ? .hot : .accent,
-            foot: agent.contextPercent.map { "ctx \(Int($0.rounded()))%" }))
+            facts: reading.context))
     }
 
     if slice.handedBack || !slice.pr.isEmpty || (state == .done && branch != nil) {
@@ -229,9 +250,10 @@ public func buildThreadEvents(slice: Slice, agent: AgentStatus?, brief: String?)
     }
 
     if let number = pullRequestNumber(slice.pr) {
-        events.append(ThreadEvent(.approved, who: "You", meta: "approved", foot: "PR #\(number) → main"))
+        events.append(ThreadEvent(
+            .approved, who: "You", meta: "approved", facts: [ThreadFact("pr", "#\(number)"), ThreadFact("into", "main")]))
     } else if !slice.pr.isEmpty {
-        events.append(ThreadEvent(.approved, who: "You", meta: "approved", foot: "PR opened"))
+        events.append(ThreadEvent(.approved, who: "You", meta: "approved", facts: [ThreadFact("pr", slice.pr)]))
     }
 
     if state == .done {

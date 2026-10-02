@@ -103,6 +103,11 @@ public enum DesignTokens {
     /// Text color for content on accent background.
     public static let accentText = token(\.accentText)
 
+    /// The gnat mark drawn on its own, in the ink the app icon draws it in
+    /// for the same appearance: the paper icon's blue (the accent) in light,
+    /// the dark-navy icon's cream (`gnat-paper-dark-navy.svg`) in dark.
+    public static let mark = derived { $0.isDark ? Tint("f2e8d2") : $0.accent }
+
     /// The app icon's mark gradient, used sparingly: primary actions and
     /// active accents only. It is the brand's own and not the palette's, so
     /// it is the one thing here that is the same under both themes — a brand

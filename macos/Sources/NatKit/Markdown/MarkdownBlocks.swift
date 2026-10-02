@@ -1,11 +1,27 @@
 import Foundation
 
 /// A run of markdown as the app draws it: prose (handed to
-/// `markdownAttributed`) or a table, which `Text` cannot lay out and so is
-/// drawn as a grid of its own.
+/// `markdownAttributed`), a table, which `Text` cannot lay out and so is
+/// drawn as a grid of its own, or a GitHub `<details>` fold.
 public enum MarkdownBlock: Equatable, Sendable {
     case text(String)
     case table(MarkdownTable)
+    case details(MarkdownDetails)
+}
+
+/// A `<details>` element as GitHub draws one: its `<summary>` line, always
+/// shown, and the markdown it folds away — open from the start when the tag
+/// said `open`.
+public struct MarkdownDetails: Equatable, Sendable {
+    public let summary: String
+    public let body: String
+    public let open: Bool
+
+    public init(summary: String, body: String, open: Bool = false) {
+        self.summary = summary
+        self.body = body
+        self.open = open
+    }
 }
 
 /// A GitHub-flavoured table: its header cells, each column's alignment, and
@@ -25,9 +41,11 @@ public struct MarkdownTable: Equatable, Sendable {
     }
 }
 
-/// Splits markdown into prose and tables. A table is a header row, then a
-/// delimiter row (`|---|:---:|`) of the same width, then every following line
-/// that still carries a pipe. Nothing inside a code fence is a table.
+/// Splits markdown into prose, tables and `<details>` folds. A table is a
+/// header row, then a delimiter row (`|---|:---:|`) of the same width, then
+/// every following line that still carries a pipe. A fold runs from a line
+/// opening `<details` to the `</details>` that balances it. Nothing inside a
+/// code fence is either.
 public func markdownBlocks(_ text: String) -> [MarkdownBlock] {
     let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
     var blocks: [MarkdownBlock] = []
@@ -45,6 +63,13 @@ public func markdownBlocks(_ text: String) -> [MarkdownBlock] {
         let line = lines[index]
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") { inFence.toggle() }
+        if !inFence, trimmed.lowercased().hasPrefix("<details") {
+            let (details, next) = detailsBlock(lines, from: index)
+            flushProse()
+            blocks.append(.details(details))
+            index = next
+            continue
+        }
         if !inFence, index + 1 < lines.count, line.contains("|"),
            let alignments = delimiterRow(lines[index + 1]) {
             let header = tableCells(line)
@@ -67,6 +92,41 @@ public func markdownBlocks(_ text: String) -> [MarkdownBlock] {
     }
     flushProse()
     return blocks
+}
+
+/// The fold opening at `start`: every line up to the one whose
+/// `</details>` closes it (or the end, as a browser would), its `<summary>`
+/// pulled out and the rest kept as its body. Returns the line after it.
+private func detailsBlock(_ lines: [String], from start: Int) -> (MarkdownDetails, Int) {
+    var depth = 0
+    var end = lines.count - 1
+    for index in start..<lines.count {
+        let lower = lines[index].lowercased()
+        depth += lower.components(separatedBy: "<details").count - 1
+        depth -= lower.components(separatedBy: "</details>").count - 1
+        if depth <= 0 {
+            end = index
+            break
+        }
+    }
+    var inner = lines[start...end].joined(separator: "\n")
+    // The opening tag, whatever attributes it carries.
+    let openTag = inner.range(of: ">").map { inner[..<$0.upperBound] } ?? Substring(inner)
+    let isOpen = openTag.lowercased().range(of: #"\bopen\b"#, options: .regularExpression) != nil
+    inner = String(inner[openTag.endIndex...])
+    if let close = inner.range(of: "</details>", options: [.caseInsensitive, .backwards]) {
+        inner = String(inner[..<close.lowerBound])
+    }
+    var summary = "Details"
+    if let match = inner.range(of: #"<summary[^>]*>[\s\S]*?</summary>"#, options: [.regularExpression, .caseInsensitive]) {
+        let tag = String(inner[match])
+        summary = tag
+            .replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        inner.removeSubrange(match)
+    }
+    let body = inner.trimmingCharacters(in: .whitespacesAndNewlines)
+    return (MarkdownDetails(summary: summary, body: body, open: isOpen), end + 1)
 }
 
 /// A row's cells: split on unescaped pipes, the outer pipes dropped, each

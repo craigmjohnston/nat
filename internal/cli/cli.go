@@ -54,8 +54,8 @@ func DefaultNewTmux() *agent.Tmux { return agent.NewTmux() }
 
 // GH is everything the pull request commands need of the GitHub CLI:
 // [actions.PRCreator] for slice-approve, [PRViewer] for pr-view, [PRMerger]
-// for pr-merge, [PRReader] for pr-status and [PRCommenter] for pr-comment. One
-// gh.CLI answers all five, and a headless command names whichever of them it
+// for pr-merge, [PRReader] for pr-status, [PRCommenter] for pr-comment and
+// [PRReviewerEditor] for pr-reviewers. One gh.CLI answers all of them, and a headless command names whichever of them it
 // actually calls, the way [GitCLI] combines git's two seams for the same
 // reason.
 type GH interface {
@@ -65,6 +65,7 @@ type GH interface {
 	PRReader
 	PRCommenter
 	PRHeadLister
+	PRReviewerEditor
 }
 
 // NewGHFunc builds the GitHub CLI driver the pull request commands run
@@ -375,6 +376,9 @@ usage:
   nat pr-comment <slice> [--body TEXT|-] [--json] --project ID
                       post a comment on the slice's recorded pull request;
                       --body - or absent reads it from stdin
+  nat pr-reviewers <slice> [--add LOGIN]... [--remove LOGIN]... [--json] --project ID
+                      who is asked to review the slice's pull request, and who
+                      else could be; --add/--remove ask or withdraw first
   nat pr-merge <slice> [--json] --project ID
                       merge a slice's pull request through gh and mark the
                       slice Done, refused in the merge box's own words when a
@@ -522,6 +526,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return prView(ctx, args[1:], env)
 	case "pr-comment":
 		return prComment(ctx, args[1:], env)
+	case "pr-reviewers":
+		return prReviewers(ctx, args[1:], env)
 	case "pr-merge":
 		return prMerge(ctx, args[1:], env)
 	case "pr-status":

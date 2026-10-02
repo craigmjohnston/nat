@@ -92,6 +92,7 @@ final class PRDetailTests: XCTestCase {
         XCTAssertNil(pr.deletions)
         XCTAssertNil(pr.changedFiles)
         XCTAssertNil(pr.commits)
+        XCTAssertEqual(pr.reviewRequests, [], "an older nat sends no requests at all")
     }
 
     func testPRDetailDecodesWithTheOptionalTally() throws {
@@ -101,9 +102,11 @@ final class PRDetailTests: XCTestCase {
           "author": "a", "base_ref_name": "main", "head_ref_name": "h", "url": "https://x",
           "checks": [], "reviews": [], "comments": [],
           "review_decision": "", "mergeable": "", "merge_state_status": "",
-          "additions": 10, "deletions": 2, "changed_files": 3, "commits": 4
+          "additions": 10, "deletions": 2, "changed_files": 3, "commits": 4,
+          "review_requests": ["hubot", "core"]
         }
         """)
+        XCTAssertEqual(pr.reviewRequests, ["hubot", "core"])
         XCTAssertEqual(pr.additions, 10)
         XCTAssertEqual(pr.deletions, 2)
         XCTAssertEqual(pr.changedFiles, 3)

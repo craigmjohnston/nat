@@ -11,7 +11,8 @@ import NatKit
 /// draw lives on here as the row it belongs to: a project's menu (New Slice,
 /// Workshop…, Open in Notion, Reveal, Close), a milestone's (New
 /// Slice, Rename, Move, Delete), a slice's (Launch, Edit, Open, Move, Delete),
-/// each project's own `+` (New Milestone, New Slice, Workshop…), a proposal's tree
+/// each project's own `+` (New Milestone, New Slice, Workshop…, New Ad Hoc
+/// Session), Active's `+` (a session in any project), a proposal's tree
 /// under its Untitled row and an ended session under its project.
 struct SidebarView: View {
     @Bindable var appModel: AppModel
@@ -19,9 +20,10 @@ struct SidebarView: View {
     /// View ▸ Show/Hide Done Items.
     @Environment(\.showsDoneItems) private var showsDoneItems
 
-    /// The folds the user has made, by key: `active`, `work`, `p:<project>`
-    /// and `m:<project>/<milestone>`. A project with no entry is open exactly
-    /// when it holds the selection — the design's own default.
+    /// The folds the user has made, by key: `active`, `work`, `scratch`,
+    /// `p:<project>` and `m:<project>/<milestone>`. A project with no entry is
+    /// open exactly when it holds the selection — the design's own default —
+    /// and Scratch starts folded.
     @State private var fold: [String: Bool]
 
     @State private var sliceForDeletion: (row: SidebarSliceRow, done: Bool)?
@@ -74,7 +76,7 @@ struct SidebarView: View {
     var body: some View {
         let model = model
         VStack(spacing: 0) {
-            head("active", label: "Active", count: model.needsYouCount) { newSessionButton }
+            head("active", label: "Active", count: model.needsYouCount) { newSessionMenu(model) }
             if isOpen("active") {
                 if model.active.isEmpty {
                     GnatNote(text: EmptyActiveNote.text.lowercased(), height: GnatMetrics.sidebarRowHeight)
@@ -85,7 +87,7 @@ struct SidebarView: View {
 
             // Folded, Projects (and Scratch under it) pins to the sidebar's
             // foot rather than leaving an empty well under its heading.
-            if !isOpen("work") && !(model.scratch != nil && isOpen("scratch")) {
+            if !isOpen("work") && !(model.scratch != nil && isOpen("scratch", byDefault: false)) {
                 Spacer(minLength: 0)
             }
 
@@ -129,6 +131,30 @@ struct SidebarView: View {
         .surface(.header)
         .rule(.separator, edges: [.trailing], width: 1)
         .modifier(SidebarDialogs(view: self))
+        .focusedSceneValue(\.sidebarMenu, menuActions)
+    }
+
+    /// The active project's row actions, for the File menu — nil, and so
+    /// disabled, wherever its own `+` or menu would not offer them.
+    private var menuActions: SidebarMenuActions {
+        guard let projectID = appModel.activeProjectID, !appModel.activeTabIsUntitled else {
+            return SidebarMenuActions()
+        }
+        let isProject = !appModel.activeTabIsScratch
+        return SidebarMenuActions(
+            newSlice: { newSliceTarget = NewSliceTarget(projectID: projectID, milestone: "") },
+            newMilestone: {
+                newMilestoneText = ""
+                newMilestoneProject = projectID
+            },
+            newSession: appModel.newSessionLaunching ? nil : { Task { await startNewSession(inProject: projectID) } },
+            workshop: { Task { await appModel.selectWorkshop(inProject: projectID) } },
+            revealWorkingDirectory: workingDirectory(of: projectID).map { directory in
+                { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: directory)]) }
+            },
+            openProjectInNotion: isProject ? NotionPageURL.forPage(projectID).map { url in
+                { NSWorkspace.shared.open(url) }
+            } : nil)
     }
 
     // MARK: - Fold
@@ -151,9 +177,9 @@ struct SidebarView: View {
     // MARK: - Headings
 
     private func head<Trailing: View>(
-        _ key: String, label: String, count: Int, @ViewBuilder trailing: () -> Trailing
+        _ key: String, label: String, count: Int, openByDefault: Bool = true, @ViewBuilder trailing: () -> Trailing
     ) -> some View {
-        let open = isOpen(key)
+        let open = isOpen(key, byDefault: openByDefault)
         return HStack(spacing: 6) {
             DisclosureChevron(open: open)
             Text(label.uppercased())
@@ -210,21 +236,40 @@ struct SidebarView: View {
         }
         Button("New Slice\u{2026}", systemImage: "plus") { newSliceTarget = NewSliceTarget(projectID: project.id, milestone: "") }
         Button("Workshop\u{2026}", systemImage: "sparkles") { Task { await appModel.selectWorkshop(inProject: project.id) } }
+        Divider()
+        Button(
+            project.kind == .scratch ? "New Ad Hoc Session\u{2026}" : "New Ad Hoc Session",
+            systemImage: "terminal"
+        ) { Task { await startNewSession(inProject: project.id) } }
+            .disabled(appModel.newSessionLaunching)
     }
 
-    /// Active's `+`: a new ad hoc session, in the active project's working
-    /// directory — or, on the scratch project, a folder chosen first.
-    private var newSessionButton: some View {
-        Button(action: { Task { await startNewSession() } }) {
+    /// Active's `+`: a new ad hoc session, attached to whichever project the
+    /// menu names — in its working directory, or, for Scratch, a folder
+    /// chosen first.
+    private func newSessionMenu(_ model: SidebarModel) -> some View {
+        let targets = model.projects.filter { $0.kind == .project } + (model.scratch.map { [$0] } ?? [])
+        return Menu {
+            Section("New Ad Hoc Session In") {
+                ForEach(targets) { project in
+                    Button(project.kind == .scratch ? "Scratch\u{2026}" : project.name) {
+                        Task { await startNewSession(inProject: project.id) }
+                    }
+                }
+            }
+        } label: {
             if appModel.newSessionLaunching {
                 ProgressView().controlSize(.mini).frame(width: 18, height: 18)
             } else {
                 plusGlyph
             }
         }
+        .menuStyle(.button)
         .buttonStyle(.plain)
-        .disabled(appModel.newSessionLaunching || appModel.activeProjectID == nil || appModel.activeTabIsUntitled)
-        .help("New ad-hoc session")
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(appModel.newSessionLaunching || targets.isEmpty)
+        .help("New ad hoc session")
     }
 
     // MARK: - Active
@@ -242,7 +287,7 @@ struct SidebarView: View {
                 + Text("  \u{2009}")
                 + Text(row.title))
                 .font(.system(size: GnatMetrics.body))
-                .ink(.primary)
+                .ink(.secondary)
                 .lineLimit(1)
             Spacer(minLength: 0)
         }
@@ -332,7 +377,7 @@ struct SidebarView: View {
                 }
             }
             .font(.system(size: GnatMetrics.body))
-            .ink(.primary)
+            .ink(.secondary)
             .lineLimit(1)
             Spacer(minLength: 0)
             if !open && project.needsYou > 0 {
@@ -416,9 +461,9 @@ struct SidebarView: View {
     @ViewBuilder
     private func scratchFold(_ scratch: SidebarProject, projectsOpen: Bool) -> some View {
         Rule(.separator).padding(.top, projectsOpen ? 4 : 0)
-        head("scratch", label: "Scratch", count: 0) { addMenu(scratch) }
+        head("scratch", label: "Scratch", count: 0, openByDefault: false) { addMenu(scratch) }
             .contextMenu { addItems(scratch) }
-        if isOpen("scratch") {
+        if isOpen("scratch", byDefault: false) {
             ScrollView {
                 VStack(spacing: 0) {
                     projectBody(scratch, isActive: appModel.activeProjectID == scratch.id, outdent: 8)
@@ -468,12 +513,14 @@ struct SidebarView: View {
                 }
             }
             .frame(width: 16)
+            // Every live line of the tree is one ink — milestones, projects
+            // and slices alike; only the Done folder recedes with what it holds.
             Text(name)
                 .font(.system(size: 13))
-                .ink(.tertiary)
+                .ink(isDone ? .tertiary : .secondary)
                 .lineLimit(1)
             Spacer(minLength: 0)
-            Text(count).monoXS().ink(.quaternary)
+            Text(count).monoXS().ink(isDone ? .quaternary : .tertiary)
         }
         .padding(.leading, indent)
         .padding(.trailing, 10)
@@ -498,8 +545,9 @@ struct SidebarView: View {
         // Done and blocked both recede to the faintest ink — blocked since it
         // is not available at all, done since it is finished — and done
         // fades further still under its strike, so finished work sits back
-        // behind everything that is not.
-        let ink: InkRole = state == .blocked || state == .done ? .quaternary : .primary
+        // behind everything that is not. Everything else takes the tree's
+        // one ink, a step under the primary.
+        let ink: InkRole = state == .blocked || state == .done ? .quaternary : .secondary
         return HStack(spacing: 6) {
             StateDot(state: state, live: live).frame(width: 12)
             Text(title)
@@ -707,9 +755,9 @@ struct SidebarView: View {
         }
     }
 
-    private func startNewSession() async {
+    private func startNewSession(inProject projectID: String) async {
         var folder: String?
-        if appModel.newSessionNeedsFolder {
+        if appModel.sessionNeedsFolder(inProject: projectID) {
             let panel = NSOpenPanel()
             panel.canChooseDirectories = true
             panel.canChooseFiles = false
@@ -721,7 +769,7 @@ struct SidebarView: View {
             guard panel.runModal() == .OK, let path = panel.url?.path else { return }
             folder = path
         }
-        await appModel.launchSession(dir: folder)
+        await appModel.launchSession(inProject: projectID, dir: folder)
         if let error = appModel.newSessionError { actionError = error }
     }
 

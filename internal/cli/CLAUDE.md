@@ -113,7 +113,11 @@ page for the eventual `slice-approve`.
 
 PR actions: `slice-approve` (`actions.OpenPR` + `actions.RecordPR`, the
 approve key's two-step write, headless), `pr-comment` (`gh pr comment
---body-file -`, `--body` or stdin), `pr-merge` (re-reads the PR, applies
+--body-file -`, `--body` or stdin), `pr-reviewers` (`--add`/`--remove`
+run `gh pr edit` first, then the PR is read back for `requested`;
+`candidates` are the repo's collaborators bar the author and the requested,
+and a failed collaborator listing is `candidates_error`, never "nobody"),
+`pr-merge` (re-reads the PR, applies
 `actions.MergeRefusal` before ever calling `gh pr merge`, marks Done on
 success — the merge landed regardless of whether this last write does, so
 its own failure says so rather than pretending the merge never happened),

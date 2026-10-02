@@ -16,7 +16,7 @@ struct StatusBarView: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            GnatMark(color: DesignTokens.accent)
+            GnatMark(color: DesignTokens.mark)
                 .frame(width: 14, height: 14)
             Text("\(agentCount) agent\(agentCount == 1 ? "" : "s") running")
                 .ink(.secondary)
@@ -41,7 +41,7 @@ private struct UsageReadoutView: View {
     @Environment(\.ground) private var ground
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 36) {
             ForEach(Array(usage.windows.enumerated()), id: \.offset) { _, window in
                 Text(window.text)
                     .foregroundStyle(window.warning ? DesignTokens.hotInk(on: ground) : DesignTokens.ink(.secondary, on: ground))

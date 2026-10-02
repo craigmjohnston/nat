@@ -26,7 +26,7 @@ final class UsageDisplayTests: XCTestCase {
         XCTAssertFalse(display.windows[0].warning)
         XCTAssertFalse(display.windows[1].warning)
         XCTAssertTrue(display.windows[0].text.hasPrefix("5h 38%"))
-        XCTAssertTrue(display.windows[1].text.hasPrefix("wk 45%"))
+        XCTAssertTrue(display.windows[1].text.hasPrefix("weekly 45%"))
     }
 
     func testAWindowAtOrAboveThresholdWarns() {
@@ -62,7 +62,7 @@ final class UsageDisplayTests: XCTestCase {
         let display = buildUsageDisplay(from: reading, now: now, timeZone: utc)
 
         XCTAssertEqual(display.windows.count, 1)
-        XCTAssertTrue(display.windows[0].text.hasPrefix("wk 81%"))
+        XCTAssertTrue(display.windows[0].text.hasPrefix("weekly 81%"))
     }
 
     func testBothWindowsExpiredDrawsNothing() {
@@ -93,6 +93,6 @@ final class UsageDisplayTests: XCTestCase {
         let display = buildUsageDisplay(from: reading, now: now, timeZone: utc)
 
         XCTAssertEqual(display.windows[0].text, "5h 38% · resets 6:00 PM")
-        XCTAssertEqual(display.windows[1].text, "wk 81% · resets Tue")
+        XCTAssertEqual(display.windows[1].text, "weekly 81% · resets Tue")
     }
 }

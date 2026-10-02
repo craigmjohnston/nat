@@ -85,20 +85,20 @@ func (f *fakeSessionWorktrees) Remove(dir, branch string) error {
 // [CurrentBranch]/[ReflogBranches]; the rest of GitCLI is stubbed since
 // nothing here calls it.
 type fakeSessionRepo struct {
-	base          string
-	fetched       []string
-	currentBranch string
-	currentErr    error
-	reflog        []string
-	reflogErr     error
-	diffOut       string
-	diffFromCalls []string
+	base                 string
+	fetched              []string
+	currentBranch        string
+	currentErr           error
+	reflog               []string
+	reflogErr            error
+	diffOut              string
+	diffFromCalls        []string
 	diffWorkingTreeCalls int
 	diffWorkingTreeErr   error
 }
 
-func (f *fakeSessionRepo) Fetch(dir string)  { f.fetched = append(f.fetched, dir) }
-func (f *fakeSessionRepo) Base(string) string { return f.base }
+func (f *fakeSessionRepo) Fetch(dir string)                                    { f.fetched = append(f.fetched, dir) }
+func (f *fakeSessionRepo) Base(string) string                                  { return f.base }
 func (f *fakeSessionRepo) LogOneline(dir, base, branch string) (string, error) { return "", nil }
 func (f *fakeSessionRepo) DiffStat(dir, base, branch string) (string, error)   { return "", nil }
 func (f *fakeSessionRepo) DiffFrom(dir, baseName, branch string) (string, string, error) {
@@ -637,9 +637,11 @@ func TestSessionStatusMarkdown(t *testing.T) {
 	id := launchOneSession(t, env, dir, "")
 
 	env.NewGit = func() GitCLI { return &fakeSessionRepo{currentBranch: "session/one"} }
-	env.NewGH = func() GH { return &fakeSessionGH{byBranch: map[string][]gh.HeadPR{
-		"session/one": {{Number: 1, Title: "First", State: "OPEN", URL: "https://github.test/x/y/pull/1"}},
-	}} }
+	env.NewGH = func() GH {
+		return &fakeSessionGH{byBranch: map[string][]gh.HeadPR{
+			"session/one": {{Number: 1, Title: "First", State: "OPEN", URL: "https://github.test/x/y/pull/1"}},
+		}}
+	}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 	env.NewWorktrees = func() actions.Worktrees { return &fakeSessionWorktrees{} }
 	var out strings.Builder
@@ -907,3 +909,6 @@ func TestSessionDiffRefusesWithNoRepository(t *testing.T) {
 		t.Fatal("session-diff outside a repository: want a refusal — there is nothing to diff")
 	}
 }
+
+func (f *fakeSessionGH) EditReviewers(dir, ref string, add, remove []string) error { return nil }
+func (f *fakeSessionGH) Collaborators(dir string) ([]string, error)                { return nil, nil }

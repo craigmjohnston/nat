@@ -36,6 +36,9 @@ public struct PRDetail: Codable, Equatable, Sendable {
     public let deletions: Int?
     public let changedFiles: Int?
     public let commits: Int?
+    /// Who has been asked to review and not yet answered — a user's login,
+    /// a team's slug. Empty where an older `nat` sent no such key.
+    public let reviewRequests: [String]
 
     enum CodingKeys: String, CodingKey {
         case number, title, body, state
@@ -50,6 +53,31 @@ public struct PRDetail: Codable, Equatable, Sendable {
         case additions, deletions
         case changedFiles = "changed_files"
         case commits
+        case reviewRequests = "review_requests"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        number = try c.decode(Int.self, forKey: .number)
+        title = try c.decode(String.self, forKey: .title)
+        body = try c.decode(String.self, forKey: .body)
+        state = try c.decode(String.self, forKey: .state)
+        isDraft = try c.decode(Bool.self, forKey: .isDraft)
+        author = try c.decode(String.self, forKey: .author)
+        baseRefName = try c.decode(String.self, forKey: .baseRefName)
+        headRefName = try c.decode(String.self, forKey: .headRefName)
+        url = try c.decode(String.self, forKey: .url)
+        checks = try c.decode([PRCheck].self, forKey: .checks)
+        reviews = try c.decode([PRReview].self, forKey: .reviews)
+        comments = try c.decode([PRCommentEntry].self, forKey: .comments)
+        reviewDecision = try c.decode(String.self, forKey: .reviewDecision)
+        mergeable = try c.decode(String.self, forKey: .mergeable)
+        mergeStateStatus = try c.decode(String.self, forKey: .mergeStateStatus)
+        additions = try c.decodeIfPresent(Int.self, forKey: .additions)
+        deletions = try c.decodeIfPresent(Int.self, forKey: .deletions)
+        changedFiles = try c.decodeIfPresent(Int.self, forKey: .changedFiles)
+        commits = try c.decodeIfPresent(Int.self, forKey: .commits)
+        reviewRequests = try c.decodeIfPresent([String].self, forKey: .reviewRequests) ?? []
     }
 
     public init(
@@ -71,7 +99,8 @@ public struct PRDetail: Codable, Equatable, Sendable {
         additions: Int? = nil,
         deletions: Int? = nil,
         changedFiles: Int? = nil,
-        commits: Int? = nil
+        commits: Int? = nil,
+        reviewRequests: [String] = []
     ) {
         self.number = number
         self.title = title
@@ -92,6 +121,7 @@ public struct PRDetail: Codable, Equatable, Sendable {
         self.deletions = deletions
         self.changedFiles = changedFiles
         self.commits = commits
+        self.reviewRequests = reviewRequests
     }
 }
 

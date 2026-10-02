@@ -736,6 +736,22 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(fakeRunner.lastStandardInput, "Looks good.".data(using: .utf8))
     }
 
+    func testPRReviewersReadsAndEdits() async throws {
+        let fakeRunner = FakeRunner(fixture: .prReviewersSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let read = try await client.prReviewers(projectID: "proj-123", sliceRef: "slice-1")
+        XCTAssertEqual(fakeRunner.lastArguments, ["pr-reviewers", "slice-1", "--project", "proj-123", "--json"])
+        XCTAssertEqual(read, PRReviewers(
+            pr: "https://x/pull/7", requested: ["hubot"], candidates: ["mona"], candidatesError: "HTTP 403"))
+
+        _ = try await client.prReviewers(projectID: "proj-123", sliceRef: "slice-1", add: ["a", "b"], remove: ["c"])
+        XCTAssertEqual(fakeRunner.lastArguments, [
+            "pr-reviewers", "slice-1", "--project", "proj-123", "--json",
+            "--add", "a", "--add", "b", "--remove", "c",
+        ])
+    }
+
     func testPRCommentSendsEmojiAsUTF8() async throws {
         let fakeRunner = FakeRunner(fixture: .prCommentSuccess)
         let client = NatClient(commandRunner: fakeRunner)

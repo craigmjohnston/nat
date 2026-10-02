@@ -170,4 +170,31 @@ final class ScratchTabTests: XCTestCase {
         XCTAssertNil(appModel.lastSessionFolder)
         XCTAssertEqual(appModel.newSessionError, "no tmux")
     }
+
+    func testASessionLaunchedIntoAnotherProjectActivatesItFirst() async {
+        let client = FixtureNatClient()
+        let appModel = model(client: client)
+        await appModel.start(configPath: "/c", nudgePath: "/n")
+        XCTAssertNotEqual(appModel.activeProjectID, scratchID)
+        XCTAssertTrue(appModel.sessionNeedsFolder(inProject: scratchID))
+        XCTAssertFalse(appModel.sessionNeedsFolder(inProject: projectID))
+
+        await appModel.launchSession(inProject: scratchID, dir: "/elsewhere")
+
+        XCTAssertEqual(appModel.activeProjectID, scratchID)
+        XCTAssertTrue(client.writes.contains("session-launch /elsewhere"))
+        XCTAssertEqual(appModel.lastSessionFolder, "/elsewhere")
+    }
+
+    func testASessionLaunchedIntoTheActiveProjectStaysOnIt() async {
+        let client = FixtureNatClient()
+        let appModel = model(client: client)
+        await appModel.start(configPath: "/c", nudgePath: "/n")
+        let active = appModel.activeProjectID
+
+        await appModel.launchSession(inProject: projectID)
+
+        XCTAssertEqual(appModel.activeProjectID, active)
+        XCTAssertTrue(client.writes.contains("session-launch "))
+    }
 }

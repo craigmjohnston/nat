@@ -306,22 +306,27 @@ struct DiffRowView: View {
                 .font(Typo.mono(size: Typo.code, weight: .regular))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-
+        }
+        .padding(.vertical, 1)
+        .frame(minHeight: Self.minimumRowHeight)
+        // Over the line rather than beside it, on a face of its own, so
+        // showing it never rewraps the code under the pointer.
+        .overlay(alignment: .topTrailing) {
             if showCommentButton {
                 Button(action: { onComment(isSelectionEnd) }) {
                     Image(systemName: "plus.bubble")
                         .font(.system(size: 12, weight: .medium))
                         .ink(.accent)
+                        .frame(width: 24, height: Self.minimumRowHeight - 2)
+                        .control(radius: 4)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .padding(.top, 1)
                 .padding(.trailing, 8)
                 .help("Comment on this line")
             }
-
-            Spacer(minLength: 0)
         }
-        .padding(.vertical, 1)
-        .frame(minHeight: Self.minimumRowHeight)
         .background(rowFill)
         .background(isSelected ? DesignTokens.wash(.selection, tone: .accent, on: ground) : Color.clear)
         .contentShape(Rectangle())

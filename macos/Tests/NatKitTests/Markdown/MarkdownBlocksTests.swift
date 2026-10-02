@@ -102,4 +102,49 @@ final class MarkdownBlocksTests: XCTestCase {
         XCTAssertEqual(briefExcerpt("## Goal\n\nDo **this** now, then that.", maxWords: 4), "## Goal\n\nDo **this**\u{2026}")
         XCTAssertEqual(briefExcerpt("a b\n\nc", maxWords: 2), "a b\u{2026}")
     }
+
+    // MARK: - Details
+
+    func testADetailsFoldSplitsTheProseAroundIt() {
+        let text = """
+        Before.
+        <details>
+        <summary>Logs</summary>
+
+        | a |
+        |---|
+        | 1 |
+        </details>
+        After.
+        """
+        XCTAssertEqual(markdownBlocks(text), [
+            .text("Before."),
+            .details(MarkdownDetails(summary: "Logs", body: "| a |\n|---|\n| 1 |")),
+            .text("After."),
+        ])
+    }
+
+    func testAOneLineFoldReadsItsSummaryTagsAndOpen() {
+        XCTAssertEqual(
+            markdownBlocks("<details open><summary><b>Why</b> it</summary>Because.</details>"),
+            [.details(MarkdownDetails(summary: "Why it", body: "Because.", open: true))])
+    }
+
+    func testNestedFoldsCloseOnTheBalancingTag() {
+        let text = "<details>\n<summary>Outer</summary>\n<details>\n<summary>Inner</summary>\nx\n</details>\n</details>\nend"
+        let blocks = markdownBlocks(text)
+        XCTAssertEqual(blocks.count, 2)
+        guard case .details(let outer) = blocks[0] else { return XCTFail("not a fold") }
+        XCTAssertEqual(outer.summary, "Outer")
+        XCTAssertEqual(markdownBlocks(outer.body), [.details(MarkdownDetails(summary: "Inner", body: "x"))])
+        XCTAssertEqual(blocks[1], .text("end"))
+    }
+
+    func testAnUnclosedFoldWithNoSummaryRunsToTheEnd() {
+        XCTAssertEqual(markdownBlocks("<details>\nbody"), [.details(MarkdownDetails(summary: "Details", body: "body"))])
+    }
+
+    func testADetailsTagInsideAFenceIsCode() {
+        XCTAssertEqual(markdownBlocks("```\n<details>\n```"), [.text("```\n<details>\n```")])
+    }
 }

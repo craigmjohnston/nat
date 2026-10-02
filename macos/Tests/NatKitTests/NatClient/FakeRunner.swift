@@ -38,6 +38,7 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case prMergeFailure
         case prCommentSuccess
         case prCommentFailure
+        case prReviewersSuccess
         case workshopLaunchSuccess
         case workshopLaunchAlreadyLive
         case sliceAddSuccess
@@ -167,6 +168,8 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return (Data(), Data(), 0)
         case .prCommentFailure:
             return (Data(), "\"Write the UI\" has no pull request recorded: nothing to comment on".data(using: .utf8)!, 1)
+        case .prReviewersSuccess:
+            return (Data(#"{"pr":"https://x/pull/7","requested":["hubot"],"candidates":["mona"],"candidates_error":"HTTP 403"}"#.utf8), Data(), 0)
         case .workshopLaunchSuccess:
             return (fixtureWorkshopLaunch.data(using: .utf8)!, Data(), 0)
         case .workshopLaunchAlreadyLive:

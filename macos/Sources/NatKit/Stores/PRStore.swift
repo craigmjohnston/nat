@@ -160,6 +160,26 @@ public final class PRStore {
         await refresh()
     }
 
+    /// Who is asked to review the pull request on show and who else could
+    /// be — `nat pr-reviewers`, a read for the reviewer picker. Nil with
+    /// nothing fetched, or for an ad hoc session's pull request, which has
+    /// no slice to name it by.
+    public func reviewers() async throws -> PRReviewers? {
+        guard let projectID, let sliceRef, sessionID == nil else { return nil }
+        return try await client.prReviewers(projectID: projectID, sliceRef: sliceRef, add: [], remove: [])
+    }
+
+    /// Ask (`add`) or stop asking (`remove`) for reviews on the pull request
+    /// on show, then read it again so its requested reviewers say so. A
+    /// refusal from gh propagates for the view to show, nothing re-read.
+    @discardableResult
+    public func editReviewers(add: [String] = [], remove: [String] = []) async throws -> PRReviewers? {
+        guard let projectID, let sliceRef, sessionID == nil else { return nil }
+        let answer = try await client.prReviewers(projectID: projectID, sliceRef: sliceRef, add: add, remove: remove)
+        await refresh()
+        return answer
+    }
+
     /// Drop everything, as if nothing had ever been fetched.
     public func clear() {
         stopPolling()

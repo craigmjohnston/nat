@@ -1618,6 +1618,21 @@ public final class AppModel {
         newSessionLaunching = false
     }
 
+    /// Start an ad hoc session in the named project, activating it first —
+    /// Active's `+` names one from its menu, and every project's own `+`
+    /// (Scratch's included) names itself. A scratch project's session needs
+    /// its `dir` chosen first, as `sessionNeedsFolder(inProject:)` says.
+    public func launchSession(inProject projectID: String, dir: String? = nil) async {
+        if activeProjectID != projectID { await activateProject(projectID) }
+        await launchSession(dir: dir)
+    }
+
+    /// Whether a session in the named project must ask for a folder first —
+    /// `newSessionNeedsFolder` for a project that is not yet the active one.
+    public func sessionNeedsFolder(inProject projectID: String) -> Bool {
+        isScratchTab(projectID)
+    }
+
     /// Read a session's branches and pull requests fresh — `nat
     /// session-status`, the PR tab's own reading. A plain read, unlike
     /// `endSession`/`discardSession`: it never ends the session (`discard`

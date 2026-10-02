@@ -51,6 +51,12 @@ human has read the diff.
 - `MergePR(dir, ref)` — `gh pr merge <ref> --merge`. The strategy flag is
   mandatory: a `Runner` subprocess has nothing on stdin, so without it gh
   prompts for a strategy and the merge hangs.
+- `EditReviewers(dir, ref, add, remove)` — `gh pr edit <ref> --add-reviewer
+  a,b --remove-reviewer c`; an edit naming nobody is refused before gh runs
+  (gh would prompt). `Collaborators(dir)` — `gh api
+  repos/{owner}/{repo}/collaborators --paginate --jq .[].login` (needs push
+  access; a refusal is an error, never an empty list). `ViewPR` also reads
+  `reviewRequests` (a user's login, a team's slug).
 - `NormaliseURL(url)` — strips query/fragment, trailing slash, lowercases
   owner/repo — so a URL pasted from a review comment matches the canonical
   one gh prints.

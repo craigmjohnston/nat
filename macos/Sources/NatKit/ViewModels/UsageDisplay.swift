@@ -49,7 +49,7 @@ public func buildUsageDisplay(
         windows.append(windowDisplay(label: "5h", limit: fiveHour, resetFormat: usageTimeFormatter(timeZone: timeZone)))
     }
     if let sevenDay = reading.sevenDay, sevenDay.resetsAt > now {
-        windows.append(windowDisplay(label: "wk", limit: sevenDay, resetFormat: usageWeekdayFormatter(timeZone: timeZone)))
+        windows.append(windowDisplay(label: "weekly", limit: sevenDay, resetFormat: usageWeekdayFormatter(timeZone: timeZone)))
     }
     return UsageDisplay(windows: windows)
 }

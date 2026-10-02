@@ -2,49 +2,56 @@ import AppKit
 import SwiftUI
 import NatKit
 
-/// One entry of the conversation timeline, the mock's `PRComment` shape: an
-/// avatar circle with the author's initials, their name, what they did in
-/// saying it — coloured by its tone, since a review's verdict is the entry's
-/// whole point and an avatar cannot carry it — when, and the markdown they
-/// wrote, aligned under the name rather than the avatar.
+/// One entry of the conversation timeline, boxed as a Thread item is: a
+/// byline — an avatar circle with the author's initials, their name, what
+/// they did in saying it, coloured by its tone, since a review's verdict is
+/// the entry's whole point and an avatar cannot carry it, and when — over
+/// the markdown they wrote.
 struct PRConversationEntryView: View {
     let entry: ConvoEntry
 
-    /// The byline's avatar and the gap after it. Internal rather than
-    /// private, so `PRSkeletonView` stands its entries in the very column
-    /// these put the text in.
-    static let avatarSize: CGFloat = 22
-    static let avatarGap: CGFloat = 10
+    static let avatarSize: CGFloat = 20
 
     var body: some View {
-        HStack(alignment: .top, spacing: Self.avatarGap) {
-            Text(authorInitials(entry.author))
-                .font(.system(size: 9, weight: .semibold))
-                .ink(.accent)
-                .frame(width: Self.avatarSize, height: Self.avatarSize)
-                .wash(.avatar)
-                .clipShape(Circle())
-                .padding(.top, 2)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 8) {
+                Text(authorInitials(entry.author))
+                    .font(.system(size: 8, weight: .semibold))
+                    .ink(.accent)
+                    .frame(width: Self.avatarSize, height: Self.avatarSize)
+                    .wash(.avatar)
+                    .clipShape(Circle())
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 8) {
-                    Text(entry.author)
-                        .font(.system(size: Typo.subhead, weight: .semibold))
-                        .ink(.primary)
+                Text(entry.author)
+                    .font(.system(size: Typo.subhead, weight: .semibold))
+                    .ink(.primary)
 
-                    Text(entry.verb)
-                        .font(.system(size: Typo.subhead, weight: .regular))
-                        .foregroundStyle(entry.tone.tint)
+                Text(entry.verb)
+                    .font(.system(size: Typo.subhead, weight: .regular))
+                    .foregroundStyle(entry.tone.tint)
 
-                    Text(ago(Date().timeIntervalSince(entry.at)))
-                        .font(.system(size: Typo.caption, weight: .regular))
-                        .ink(.tertiary)
-                }
+                Spacer(minLength: 0)
 
-                if !entry.body.isEmpty {
-                    MarkdownView(text: entry.body, size: Typo.subhead, ink: .secondary)
-                }
+                Text(ago(Date().timeIntervalSince(entry.at)))
+                    .font(.system(size: Typo.caption, weight: .regular))
+                    .ink(.tertiary)
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .surface(.chrome)
+
+            if !entry.body.isEmpty {
+                MarkdownView(text: entry.body, size: Typo.subhead, ink: .primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay {
+            RoundedRectangle(cornerRadius: 4).strokeBorder(DesignTokens.rule(.separator, on: .window), lineWidth: 1)
         }
     }
 }
@@ -204,4 +211,133 @@ struct PRComposerView: View {
 func sentenceCase(_ word: String) -> String {
     guard let first = word.first else { return word }
     return first.uppercased() + word.dropFirst()
+}
+
+/// The PR section's reviewers: everyone asked and not yet answered, each
+/// with a ✕ that withdraws the request, and Request Review — the
+/// repository's collaborators, read when the section shows, and Other… for
+/// a login (or `org/team`) typed out. All through `nat pr-reviewers`; a
+/// refusal shows under the list and changes nothing.
+struct ReviewersBlock: View {
+    let pr: PRDetail
+    let store: PRStore?
+
+    @State private var candidates: [String] = []
+    @State private var candidatesError: String?
+    @State private var busy = false
+    @State private var error: String?
+    @State private var askingOther = false
+    @State private var otherLogin = ""
+
+    private var editable: Bool {
+        store != nil && pr.state != PRLifecycleState.merged && pr.state != PRLifecycleState.closed
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            NavHeading(text: "Reviewers")
+            if pr.reviewRequests.isEmpty {
+                Text("No review requested.").ink(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(pr.reviewRequests, id: \.self) { login in
+                        HStack(spacing: 6) {
+                            Image(systemName: "circle.dashed")
+                                .font(.system(size: 11, weight: .medium))
+                                .ink(.secondary)
+                                .frame(width: 13)
+                            Text(login).ink(.primary).lineLimit(1)
+                            Text("· requested").ink(.secondary)
+                            Spacer(minLength: 0)
+                            if editable {
+                                Button { edit(remove: [login]) } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 9, weight: .semibold))
+                                        .ink(.tertiary)
+                                        .frame(width: 16, height: 16)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(busy)
+                                .help("Withdraw the request to \(login)")
+                            }
+                        }
+                    }
+                }
+                .monoXS()
+            }
+
+            if editable {
+                HStack(spacing: 8) {
+                    Menu {
+                        if let candidatesError {
+                            Text("Collaborators could not be listed — \(candidatesError)")
+                        } else if candidates.isEmpty {
+                            Text("No one else to ask")
+                        }
+                        ForEach(candidates, id: \.self) { login in
+                            Button(login) { edit(add: [login]) }
+                        }
+                        Divider()
+                        Button("Other\u{2026}") {
+                            otherLogin = ""
+                            askingOther = true
+                        }
+                    } label: {
+                        HeaderActionLabel(title: "Request Review", systemImage: "person.badge.plus", isBusy: busy)
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(GnatButtonStyle())
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .disabled(busy)
+                }
+                .padding(.top, 2)
+            }
+
+            if let error {
+                Text(error).ink(.danger).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .task(id: "\(pr.url)|\(pr.reviewRequests.joined(separator: ","))") { await loadCandidates() }
+        .alert("Request a review", isPresented: $askingOther) {
+            TextField("login or org/team", text: $otherLogin)
+                .font(Typo.mono(size: Typo.code))
+            Button("Request") {
+                let login = otherLogin.trimmingCharacters(in: .whitespaces)
+                if !login.isEmpty { edit(add: [login]) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("GitHub asks them to review pull request #\(pr.number).")
+        }
+    }
+
+    private func loadCandidates() async {
+        guard editable, let store else { return }
+        do {
+            let answer = try await store.reviewers()
+            candidates = answer?.candidates ?? []
+            candidatesError = answer?.candidatesError
+        } catch {
+            candidatesError = SliceActionTracker.message(for: error)
+        }
+    }
+
+    private func edit(add: [String] = [], remove: [String] = []) {
+        guard let store else { return }
+        busy = true
+        error = nil
+        Task {
+            do {
+                if let answer = try await store.editReviewers(add: add, remove: remove) {
+                    candidates = answer.candidates
+                    candidatesError = answer.candidatesError
+                }
+            } catch {
+                self.error = SliceActionTracker.message(for: error)
+            }
+            busy = false
+        }
+    }
 }

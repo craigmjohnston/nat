@@ -39,14 +39,14 @@ struct SessionNavigatorView: View {
                     VStack(spacing: 6) {
                         ThreadEventCard(event: ThreadEvent(
                             .launched, who: "Started", meta: ago(Date().timeIntervalSince(session.startedAt)),
-                            foot: session.branch.isEmpty ? session.dir : session.branch))
+                            facts: [session.branch.isEmpty ? ThreadFact("dir", session.dir) : ThreadFact("branch", session.branch)]))
                         if let agent {
                             let waiting = AgentActivity(agent.activity) == .waiting
+                            let reading = agentFacts(agent)
                             ThreadEventCard(event: ThreadEvent(
                                 .agent, who: "Agent", meta: waiting ? "waiting for you" : "working",
                                 tone: waiting ? .hot : .accent,
-                                body: buildAgentReadout(from: agent)?.label,
-                                foot: agent.contextPercent.map { "ctx \(Int($0.rounded()))%" }))
+                                facts: reading.model + reading.context))
                         } else {
                             ThreadEventCard(event: ThreadEvent(.agent, who: "Agent", meta: "ended"))
                         }

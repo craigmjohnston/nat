@@ -260,7 +260,8 @@ extension Fixtures {
         AgentStatus(
             sliceID: diffPaneSliceID,
             session: TmuxSession.name(forSlicePageID: diffPaneSliceID),
-            activity: .working
+            activity: .working,
+            model: "Opus 5.5", effort: "high", contextPercent: 37
         ),
         AgentStatus(
             sliceID: activitySliceID,

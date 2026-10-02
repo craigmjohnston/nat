@@ -387,6 +387,22 @@ public final class NatClient: Sendable {
         )
     }
 
+    /// Who is asked to review a slice's pull request and who else could be —
+    /// `nat pr-reviewers`, asking (`add`) and withdrawing (`remove`) first
+    /// when either is given. The answer is read back from GitHub after the
+    /// edit, so it is what the pull request now says.
+    ///
+    /// - Throws: NatError if the slice has no pull request, or gh refuses
+    public func prReviewers(
+        projectID: String, sliceRef: String, add: [String] = [], remove: [String] = []
+    ) async throws -> PRReviewers {
+        var arguments = ["pr-reviewers", sliceRef, "--project", projectID, "--json"]
+        for login in add { arguments += ["--add", login] }
+        for login in remove { arguments += ["--remove", login] }
+        let output = try await runNat(arguments: arguments)
+        return try decodeJSON(PRReviewers.self, from: output)
+    }
+
     /// Launch the planning agent, detached in tmux, on the active project —
     /// the wand toolbar button's own action, mirroring the board's `W`
     /// (`internal/cli/workshoplaunch.go`). The model and effort are the

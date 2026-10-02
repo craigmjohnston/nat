@@ -46,7 +46,7 @@ func TestViewPRRunsGh(t *testing.T) {
 	want := []string{"pr", "view", "slice/read-a-pull-request-through-gh", "--json",
 		"number,title,body,state,isDraft,author,baseRefName,headRefName,url," +
 			"reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviews,comments," +
-			"additions,deletions,changedFiles,commits"}
+			"additions,deletions,changedFiles,commits,reviewRequests"}
 	if !reflect.DeepEqual(runner.args, want) {
 		t.Errorf("args = %v, want %v", runner.args, want)
 	}
@@ -127,6 +127,21 @@ func TestViewPRChangeStats(t *testing.T) {
 	}
 	if pr.Additions != 42 || pr.Deletions != 8 || pr.ChangedFiles != 5 || pr.Commits != 3 {
 		t.Errorf("ViewPR() = %+v, want additions 42, deletions 8, changedFiles 5, commits 3", pr)
+	}
+}
+
+// Who has been asked to review: a user by login, a team by its slug, and an
+// entry naming neither dropped.
+func TestViewPRReviewRequests(t *testing.T) {
+	runner := &fakeRunner{out: `{"number":7,"reviewRequests":[` +
+		`{"__typename":"User","login":"octocat"},{"__typename":"Team","slug":"core","name":"Core"},` +
+		`{"__typename":"Team","name":"Legacy"},{}]}`}
+	pr, err := NewWithRunner(runner).ViewPR("/repos/nat", "7")
+	if err != nil {
+		t.Fatalf("ViewPR() = %v, want a pull request", err)
+	}
+	if want := []string{"octocat", "core", "Legacy"}; !reflect.DeepEqual(pr.ReviewRequests, want) {
+		t.Errorf("ReviewRequests = %v, want %v", pr.ReviewRequests, want)
 	}
 }
 
