@@ -207,7 +207,7 @@ final class DiffViewportView: NSView {
         if y > 0 { NSRect(x: 0, y: y, width: band.width, height: 1).fill() }
         NSRect(x: 0, y: band.maxY - 1, width: band.width, height: 1).fill()
 
-        drawChevron(open: !canvas.state.collapsed.contains(model.path), at: NSPoint(x: 11, y: y + 9))
+        drawChevron(open: !canvas.state.collapsed.contains(model.path), at: NSPoint(x: 11, y: y + (height - 10) / 2))
 
         let layout = headerLayout(canvas, file: file, y: y)
         drawString(model.path, font: canvas.fonts.header, color: DiffInk.primary, in: layout.path, truncating: .byTruncatingHead)

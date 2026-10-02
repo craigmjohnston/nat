@@ -2,7 +2,8 @@ import SwiftUI
 import NatKit
 
 /// One of the navigator's stacked foldouts: a 32pt header — chevron, label,
-/// and the section's own actions flush against its trailing edge — over a
+/// and the section's own actions flush against its trailing edge — and its
+/// rule, over a
 /// body on the window's ground that takes an equal share of what is left
 /// while open. A dead section (nothing to show yet) is drawn greyed and
 /// cannot be opened.
@@ -25,10 +26,12 @@ struct NavSectionView<Actions: View, Content: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            // Under the band, not inside it — open or folded — so the band is
+            // the full height the sidebar's and the main pane's headings are.
+            DesignTokens.rule(.separator, on: .chrome).frame(height: 1)
             content()
                 .frame(maxWidth: .infinity, maxHeight: open ? .infinity : 0, alignment: .top)
                 .surface(.window)
-                .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .chrome).frame(height: 1) }
                 .clipped()
                 .opacity(open ? 1 : 0)
                 .allowsHitTesting(open)
