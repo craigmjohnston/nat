@@ -192,7 +192,8 @@ struct SliceMainPane: View {
         .surface(.window)
     }
 
-    /// The diff's commit switcher, the agent's model and effort, or nothing.
+    /// The agent's model, effort and context on the left; the diff's commit
+    /// switcher on the right; or nothing.
     private var heading: some View {
         MainPaneHeader {
             switch mode {
@@ -200,12 +201,13 @@ struct SliceMainPane: View {
                 AgentModelHeading(agent: appModel.activityStore?.agents[slice.id])
             case .diff:
                 let store = review.store(appModel)
+                Spacer(minLength: 0)
                 DiffCommitsMenu(
                     commits: store.commits,
                     selectedCommit: store.selectedCommit,
                     onSelectCommit: { sha in Task { await store.selectCommit(sha) } },
                     bottomPadding: 0)
-                    .frame(maxWidth: 320)
+                    .fixedSize()
             case .pr, .empty:
                 EmptyView()
             }

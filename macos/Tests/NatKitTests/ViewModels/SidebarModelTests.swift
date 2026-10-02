@@ -214,4 +214,29 @@ final class SidebarModelTests: XCTestCase {
             sessionsProjectID: "other")
         XCTAssertTrue(model.active.isEmpty)
     }
+
+    func testEveryStateHasItsOwnWord() {
+        let words = SliceDisplayState.allCases.map(\.word)
+        XCTAssertEqual(words, ["To do", "Working", "Waiting for you", "In review", "PR open", "Fixing", "Blocked", "Done"])
+    }
+
+    /// Hiding done items drops the Done folder and every done slice still
+    /// under an open milestone, and leaves the milestone's count alone.
+    func testHidingDoneDropsDoneSlicesAndTheDoneFolder() {
+        func row(_ id: String, _ state: SliceDisplayState) -> SidebarSliceRow {
+            SidebarSliceRow(sliceID: id, projectID: "p", title: id, state: state, live: false)
+        }
+        let finished = SidebarMilestone(name: "M1", done: 1, total: 1, slices: [row("a", .done)])
+        let open = SidebarMilestone(name: "M2", done: 1, total: 3, slices: [row("b", .done), row("c", .todo), row("d", .review)])
+        let project = SidebarProject(
+            id: "p", name: "P", kind: .project, status: .loaded,
+            milestones: [open], doneMilestones: [finished], needsYou: 1)
+
+        let hidden = project.hidingDone()
+
+        XCTAssertEqual(hidden.milestones, [SidebarMilestone(name: "M2", done: 1, total: 3, slices: [row("c", .todo), row("d", .review)])])
+        XCTAssertTrue(hidden.doneMilestones.isEmpty)
+        XCTAssertEqual(hidden.needsYou, 1)
+        XCTAssertEqual(hidden.id, "p")
+    }
 }

@@ -100,31 +100,47 @@ struct WindowShellView: View {
     /// Where the selection sits, read left to right: a slice's project, its
     /// milestone (or what stands for one), each followed by a quiet slash,
     /// then the selection itself.
+    ///
+    /// Moving between selections slides the crumbs rather than snapping
+    /// them: each part keeps its place in the row, so a name that changes
+    /// width pushes its neighbours along while the words cross-fade, and a
+    /// part that comes or goes fades.
     private var breadcrumb: some View {
         let crumbs = crumbs
         return HStack(spacing: 10) {
             if let project = crumbs.project {
-                Text(project).ink(.primary)
-                Text("/").ink(.tertiary)
+                HStack(spacing: 10) {
+                    Text(project).ink(.primary)
+                    Text("/").ink(.tertiary)
+                }
+                .transition(.opacity)
             }
             if let parent = crumbs.parent {
-                if crumbs.parentIsMilestone {
-                    // The sidebar's own milestone mark, open.
-                    FolderGlyph(open: true, color: DesignTokens.ink(.tertiary, on: .header))
-                        .padding(.trailing, -3)
+                HStack(spacing: 10) {
+                    if crumbs.parentIsMilestone {
+                        // The sidebar's own milestone mark, open.
+                        FolderGlyph(open: true, color: DesignTokens.ink(.tertiary, on: .header))
+                            .padding(.trailing, -3)
+                    }
+                    Text(parent).ink(.primary)
+                    Text("/").ink(.tertiary)
                 }
-                Text(parent).ink(.primary)
-                Text("/").ink(.tertiary)
+                .transition(.opacity)
             }
-            if let dot = crumbs.dot {
-                StateDot(state: dot.state, live: dot.live)
-                    .padding(.trailing, -3)
+            HStack(spacing: 10) {
+                if let dot = crumbs.dot {
+                    StateDot(state: dot.state, live: dot.live)
+                        .padding(.trailing, -3)
+                        .transition(.opacity)
+                }
+                Text(crumbs.title).ink(.primary)
             }
-            Text(crumbs.title).ink(.primary)
         }
+        .contentTransition(.interpolate)
         .font(.system(size: GnatMetrics.titlebarText))
         .lineLimit(1)
         .truncationMode(.tail)
+        .animation(Motion.breadcrumb, value: [crumbs.project ?? "", crumbs.parent ?? "", crumbs.title])
     }
 
     private var crumbs: (
@@ -262,6 +278,9 @@ struct WindowShellView: View {
         } else {
             columns {
                 NavigatorColumn(anyOpen: true) {
+                    // The section header's band with nothing in it, so the
+                    // navigator keeps its shape with nothing selected.
+                    NavEmptyHeader()
                     NavProse {
                         if appModel.activePlanIsEmpty {
                             Text(EmptyProjectNote.title).ink(.primary)

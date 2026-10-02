@@ -72,6 +72,19 @@ extension NavSectionView where Actions == EmptyView {
     }
 }
 
+/// A section header's band with nothing in it — no chevron, no label, no
+/// actions: what heads the navigator while nothing is selected, so the
+/// column keeps the shape it has with a selection.
+struct NavEmptyHeader: View {
+    var body: some View {
+        Color.clear
+            .frame(maxWidth: .infinity)
+            .frame(height: GnatMetrics.sectionHeadHeight)
+            .background(DesignTokens.fill(.chrome))
+            .overlay(alignment: .bottom) { DesignTokens.rule(.separator, on: .chrome).frame(height: 1) }
+    }
+}
+
 /// The navigator column: whatever sections the selection has, and a filler
 /// taking the column's slack when every section is folded. Its title is the
 /// window titlebar's, drawn by the shell.
@@ -123,15 +136,19 @@ struct NavHeading: View {
     }
 }
 
-/// One card of the Thread log: who, the toned meta, when; then the body;
-/// then a mono foot on the chrome ground under a line.
+/// One card of the Thread log: its icon, who, the toned meta; then the body,
+/// cut short as the brief is; then a mono foot on the chrome ground under a
+/// line.
 struct ThreadEventCard: View {
     let event: ThreadEvent
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(event.who).monoXS(weight: .medium).ink(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    ThreadIcon(symbol: event.kind.symbol)
+                    Text(event.who).monoXS(weight: .medium).ink(.secondary)
+                }
                 if let meta = event.meta {
                     Text(meta).monoXS().ink(tone).lineLimit(1)
                 }
@@ -142,11 +159,13 @@ struct ThreadEventCard: View {
             .padding(.bottom, event.body == nil && event.foot == nil ? 8 : 0)
 
             if let body = event.body {
-                Text(markdownAttributed(body, size: 13.5))
-                    .font(.system(size: 13.5))
-                    .lineSpacing(2)
-                    .ink(.primary)
-                    .textSelection(.enabled)
+                Excerpt(text: body) { shown in
+                    Text(markdownAttributed(shown, size: 13.5))
+                        .font(.system(size: 13.5))
+                        .lineSpacing(2)
+                        .ink(.primary)
+                        .textSelection(.enabled)
+                }
                     .padding(.horizontal, 10)
                     .padding(.top, 4)
                     .padding(.bottom, 8)
@@ -184,6 +203,7 @@ struct ThreadEventCard: View {
 
 /// A bordered mono chip: the launch form's model and effort pickers.
 struct NavChipMenu<Items: View>: View {
+    @Environment(\.isEnabled) private var isEnabled
     let title: String
     @ViewBuilder var items: () -> Items
 
@@ -193,7 +213,7 @@ struct NavChipMenu<Items: View>: View {
         } label: {
             Text("\(title) \u{25BE}")
                 .monoXS()
-                .ink(.secondary)
+                .ink(isEnabled ? .secondary : .quaternary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 2)
                 .overlay {

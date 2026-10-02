@@ -4,7 +4,9 @@ import NatKit
 
 /// The main pane's heading: a band the height of a navigator section's
 /// header, on the same ground, with what describes the view under it — the
-/// diff's commit switcher, the agent's model and effort — or nothing.
+/// agent's model, effort and context at its leading edge; the diff's commit
+/// switcher, an action rather than a status, at its trailing edge — or
+/// nothing.
 struct MainPaneHeader<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
@@ -25,14 +27,26 @@ extension MainPaneHeader where Content == EmptyView {
     init() { self.init(content: { EmptyView() }) }
 }
 
-/// The agent heading's words: the live agent's model and effort as its own
-/// statusline reports them, or nothing with no reading.
+/// The agent heading's words: the live agent's model, effort and context
+/// use as its own statusline reports them — the context in the warning tint
+/// once it runs high — or nothing with no reading.
 struct AgentModelHeading: View {
     let agent: AgentStatus?
 
     var body: some View {
-        if let label = buildAgentReadout(from: agent)?.label {
-            Text(label).monoXS().ink(.secondary).lineLimit(1)
+        if let readout = buildAgentReadout(from: agent) {
+            HStack(spacing: 4) {
+                if let label = readout.label {
+                    Text(label).ink(.secondary)
+                }
+                if let context = readout.context {
+                    if readout.label != nil { Text("·").ink(.secondary) }
+                    Text(context.text).ink(context.warning ? .hot : .secondary)
+                }
+            }
+            .monoXS()
+            .monospacedDigit()
+            .lineLimit(1)
         }
     }
 }
@@ -79,7 +93,9 @@ struct PRConversationPane: View {
                 if described.isEmpty {
                     Text("No description.").font(.system(size: 13.5)).ink(.secondary)
                 } else {
-                    MarkdownView(text: described, size: 13.5)
+                    Excerpt(text: described, maxWords: briefExcerptWords * 3) { shown in
+                        MarkdownView(text: shown, size: 13.5)
+                    }
                 }
 
                 NavHeading(text: entries.isEmpty ? "Conversation" : "Conversation · \(entries.count)")

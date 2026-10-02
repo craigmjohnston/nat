@@ -150,10 +150,40 @@ enum AppStories {
 
         Story(
             name: "window-blocked",
-            summary: "A blocked slice: its dot hollow and dim, Launch disabled.",
+            summary: "A blocked slice: its dot hollow and dim, Launch disabled, and the Thread's launch card greyed and hatched over what it waits on.",
             size: window
         ) {
             await slicePane(Fixtures.cacheSliceID)
+        },
+
+        Story(
+            name: "window-blocked-several",
+            summary: "A slice blocked on two slices with a third already done: the brief's depends list one row apiece, each with its dot, and the launch card naming the two still open.",
+            size: window
+        ) {
+            let plan = ProjectInfo(
+                project: Fixtures.project, milestones: Fixtures.milestones,
+                slices: Fixtures.slices.map { slice in
+                    guard slice.id == Fixtures.cacheSliceID else { return slice }
+                    return Slice(
+                        id: slice.id, name: slice.name, status: slice.status, milestoneID: slice.milestoneID,
+                        assignee: slice.assignee, pr: slice.pr, url: slice.url,
+                        dependsOn: [Fixtures.commentsSliceID, Fixtures.fixturesSliceID, Fixtures.shellSliceID],
+                        blocked: true, handedBack: false)
+                })
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(plan: plan), config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = Fixtures.cacheSliceID
+            await appModel.sliceDetailStore(projectID: Fixtures.projectID).fetch(sliceRef: Fixtures.cacheSliceID)
+            return shell(appModel)
+        },
+
+        Story(
+            name: "window-relaunch",
+            summary: "A slice in progress whose agent is gone: the Thread's log, then the launch card offering Relaunch.",
+            size: window
+        ) {
+            await slicePane(Fixtures.diffPaneSliceID, agents: [])
         },
 
         Story(
@@ -202,7 +232,7 @@ enum AppStories {
         Story(
             name: "window-done-closed",
             summary: "A slice closed straight to Done with no branch: the Thread ends Closed with "
-                + "the agent's summary, and Changes and PR stay greyed out.",
+                + "the agent's summary cut short with Show more, and Changes and PR stay greyed out.",
             size: window
         ) {
             let id = "f1x75111-0000-4000-8000-0000000000c1"
@@ -219,12 +249,55 @@ enum AppStories {
                 handedBack: false, state: nil,
                 brief: "Look at how three other review tools lay out a pull request.\n\n"
                     + "### Summary\n\nNo code to change. Wrote the comparison up on the milestone's page; "
-                    + "the merge box should lead with the worst verdict.")
+                    + "the merge box should lead with the worst verdict. All three put the checks above the "
+                    + "conversation and none of them repeat the review decision in the button itself, which "
+                    + "is the one place ours currently disagrees.")
             let appModel = await Fixtures.startedAppModel(
                 client: FixtureNatClient(plan: plan, agents: [], details: details), config: Fixtures.twoProjectConfig)
             appModel.selectedSliceID = id
             await appModel.sliceDetailStore(projectID: Fixtures.projectID).fetch(sliceRef: id)
             return shell(appModel)
+        },
+
+        Story(
+            name: "window-pr-long-description",
+            summary: "A pull request whose description runs long: cut to three times the brief's length, with Show more.",
+            size: window
+        ) {
+            let green = Fixtures.prGreen
+            let pr = PRDetail(
+                number: green.number, title: green.title,
+                body: green.body + "\n\n" + String(repeating: "The heading is read off the same verdicts the rows are, so the two can never tell a different story about whether this merges. ", count: 4),
+                state: green.state, isDraft: green.isDraft, author: green.author, baseRefName: green.baseRefName,
+                headRefName: green.headRefName, url: green.url, checks: green.checks, reviews: green.reviews,
+                comments: green.comments, reviewDecision: green.reviewDecision, mergeable: green.mergeable,
+                mergeStateStatus: green.mergeStateStatus, additions: green.additions, deletions: green.deletions,
+                changedFiles: green.changedFiles, commits: green.commits)
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(pr: pr), config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = Fixtures.approveSliceID
+            await appModel.prStore(projectID: Fixtures.projectID).fetch(projectID: Fixtures.projectID, sliceRef: Fixtures.approveSliceID)
+            return shell(appModel)
+        },
+
+        Story(
+            name: "window-done-hidden",
+            summary: "View \u{25B8} Hide Done Items: no done slices under the milestones, no ended sessions and no Done folder.",
+            size: window
+        ) {
+            let appModel = await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = Fixtures.fixturesSliceID
+            return shell(appModel).environment(\.showsDoneItems, false)
+        },
+
+        Story(
+            name: "dependency-detail",
+            summary: "The detail a depends row shows the moment the pointer is over it: the slice's whole name, where it stands, its milestone and pull request.",
+            size: CGSize(width: 260, height: 170)
+        ) {
+            DependencyDetailView(
+                slice: Fixtures.slice(Fixtures.approveSliceID), state: .pr, live: false, milestone: "M2: Review flow")
+                .surface(.window)
         },
 
         Story(
@@ -510,55 +583,30 @@ enum AppStories {
 
         // MARK: - The status bar
 
+        // MARK: - The terminal's heading
+
         Story(
-            name: "status-bar-readout",
-            summary: "The attached live agent\u{2019}s model, effort and context percent at the left of the content side, in the bar\u{2019}s tertiary tint.",
-            size: CGSize(width: 1320, height: StatusBarView.height)
+            name: "terminal-heading-readout",
+            summary: "The terminal heading over a live agent: its model, effort and context percent at the band\u{2019}s leading edge.",
+            size: CGSize(width: 730, height: GnatMetrics.sectionHeadHeight)
         ) {
-            let agents = [
-                AgentStatus(
-                    sliceID: Fixtures.diffPaneSliceID,
-                    session: TmuxSession.name(forSlicePageID: Fixtures.diffPaneSliceID),
-                    activity: .working, model: "Sonnet 5", effort: "high", contextPercent: 42)
-            ]
-            let appModel = await Fixtures.startedAppModel(
-                client: FixtureNatClient(plan: statusBarPlan, agents: agents))
-            appModel.selectedSliceID = Fixtures.diffPaneSliceID
-            return StatusBarView(appModel: appModel)
+            MainPaneHeader {
+                AgentModelHeading(agent: AgentStatus(
+                    sliceID: Fixtures.diffPaneSliceID, session: "nat-1", activity: .working,
+                    model: "Sonnet 5", effort: "high", contextPercent: 42))
+            }
         },
 
         Story(
-            name: "status-bar-readout-high-context",
+            name: "terminal-heading-readout-high-context",
             summary: "Context at 91%: the percent switches to the warning tint.",
-            size: CGSize(width: 1320, height: StatusBarView.height)
+            size: CGSize(width: 730, height: GnatMetrics.sectionHeadHeight)
         ) {
-            let agents = [
-                AgentStatus(
-                    sliceID: Fixtures.diffPaneSliceID,
-                    session: TmuxSession.name(forSlicePageID: Fixtures.diffPaneSliceID),
-                    activity: .working, model: "Sonnet 5", effort: "high", contextPercent: 91)
-            ]
-            let appModel = await Fixtures.startedAppModel(
-                client: FixtureNatClient(plan: statusBarPlan, agents: agents))
-            appModel.selectedSliceID = Fixtures.diffPaneSliceID
-            return StatusBarView(appModel: appModel)
-        },
-
-        Story(
-            name: "status-bar-readout-absent",
-            summary: "A live agent with no statusline reading yet: nothing is drawn, no placeholder and no zeros.",
-            size: CGSize(width: 1320, height: StatusBarView.height)
-        ) {
-            let agents = [
-                AgentStatus(
-                    sliceID: Fixtures.diffPaneSliceID,
-                    session: TmuxSession.name(forSlicePageID: Fixtures.diffPaneSliceID),
-                    activity: .working)
-            ]
-            let appModel = await Fixtures.startedAppModel(
-                client: FixtureNatClient(plan: statusBarPlan, agents: agents))
-            appModel.selectedSliceID = Fixtures.diffPaneSliceID
-            return StatusBarView(appModel: appModel)
+            MainPaneHeader {
+                AgentModelHeading(agent: AgentStatus(
+                    sliceID: Fixtures.diffPaneSliceID, session: "nat-1", activity: .working,
+                    model: "Sonnet 5", effort: "high", contextPercent: 91))
+            }
         },
 
         Story(

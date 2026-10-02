@@ -96,8 +96,14 @@ view up in the main pane — Thread the terminal, Changes the diff, PR the
 description and conversation (the PR section keeps checks and review) — and
 folds it again when that view is already up; the chevron only folds
 (`NavigatorFocus`). Folded bodies stay built, so unfolding reloads nothing.
-The main pane carries a heading band the height of a section header: the
-diff's commit switcher, the agent's model/effort, or empty. `AppModel` keeps its one *active* project —
+The main pane carries a heading band the height of a section header:
+status (the agent's model, effort and context — the status bar carries none
+of these) on its left, actions and selects (the diff's commit switcher) on
+its right, or empty. The Thread ends, while the slice can be launched, on a
+ghost `LaunchCard` (greyed and hatched when blocked); its prose items cut
+short as the brief does (`Excerpt`). View ▸ Hide Done Items
+(`showsDoneItems`) drops done slices, ended sessions and the Done folder from
+the sidebar. `AppModel` keeps its one *active* project —
 every per-project reading is keyed by it — and the sidebar selects across
 projects by activating first (`selectSlice(_:inProject:)`). The Thread shows
 only what nat reports (`buildThreadEvents`). What the design does not draw

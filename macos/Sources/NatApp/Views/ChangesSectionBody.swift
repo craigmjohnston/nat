@@ -111,7 +111,10 @@ struct FollowUpCards: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Agent").monoXS(weight: .medium).ink(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    ThreadIcon(symbol: "lightbulb")
+                    Text("Agent").monoXS(weight: .medium).ink(.secondary)
+                }
                 Text("proposed \(followUps.count) follow-up\(followUps.count == 1 ? "" : "s")").monoXS().ink(.hot)
                 Spacer(minLength: 0)
             }
@@ -125,11 +128,13 @@ struct FollowUpCards: View {
                         .font(.system(size: 13.5))
                         .ink(.primary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(followUp.brief)
-                        .font(.system(size: 13))
-                        .ink(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
+                    Excerpt(text: followUp.brief) { shown in
+                        Text(shown)
+                            .font(.system(size: 13))
+                            .ink(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
                     picker(followUp)
                 }
                 .padding(.horizontal, 10)

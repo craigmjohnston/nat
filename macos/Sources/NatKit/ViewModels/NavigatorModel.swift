@@ -160,15 +160,33 @@ public enum ThreadTone: Equatable, Sendable {
     case muted, accent, hot
 }
 
+/// What a Thread card records — what its icon is drawn from.
+public enum ThreadEventKind: Equatable, Sendable {
+    /// An agent launched on the slice, or a session started.
+    case launched
+    /// The live agent, working or waiting — or a session's, ended.
+    case agent
+    case handedBack
+    case approved
+    case merged
+    /// Closed straight to Done with no branch.
+    case closed
+}
+
 /// One card of the Thread log.
 public struct ThreadEvent: Equatable, Sendable {
+    public let kind: ThreadEventKind
     public let who: String
     public let meta: String?
     public let tone: ThreadTone
     public let body: String?
     public let foot: String?
 
-    public init(who: String, meta: String? = nil, tone: ThreadTone = .muted, body: String? = nil, foot: String? = nil) {
+    public init(
+        _ kind: ThreadEventKind, who: String, meta: String? = nil, tone: ThreadTone = .muted,
+        body: String? = nil, foot: String? = nil
+    ) {
+        self.kind = kind
         self.who = who
         self.meta = meta
         self.tone = tone
@@ -193,12 +211,12 @@ public func buildThreadEvents(slice: Slice, agent: AgentStatus?, brief: String?)
         let parts = [status.model, status.effort].compactMap { $0 }.filter { !$0.isEmpty }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
-    events.append(ThreadEvent(who: "Launched", body: modelLine, foot: branch))
+    events.append(ThreadEvent(.launched, who: "Launched", body: modelLine, foot: branch))
 
     if let agent {
         let waiting = AgentActivity(agent.activity) == .waiting
         events.append(ThreadEvent(
-            who: "Agent",
+            .agent, who: "Agent",
             meta: waiting ? "waiting for you" : "working",
             tone: waiting ? .hot : .accent,
             foot: agent.contextPercent.map { "ctx \(Int($0.rounded()))%" }))
@@ -206,14 +224,14 @@ public func buildThreadEvents(slice: Slice, agent: AgentStatus?, brief: String?)
 
     if slice.handedBack || !slice.pr.isEmpty || (state == .done && branch != nil) {
         events.append(ThreadEvent(
-            who: "Agent", meta: "handed back",
+            .handedBack, who: "Agent", meta: "handed back",
             body: brief.flatMap(handBackNote)))
     }
 
     if let number = pullRequestNumber(slice.pr) {
-        events.append(ThreadEvent(who: "You", meta: "approved", foot: "PR #\(number) → main"))
+        events.append(ThreadEvent(.approved, who: "You", meta: "approved", foot: "PR #\(number) → main"))
     } else if !slice.pr.isEmpty {
-        events.append(ThreadEvent(who: "You", meta: "approved", foot: "PR opened"))
+        events.append(ThreadEvent(.approved, who: "You", meta: "approved", foot: "PR opened"))
     }
 
     if state == .done {
@@ -221,9 +239,9 @@ public func buildThreadEvents(slice: Slice, agent: AgentStatus?, brief: String?)
             // Closed straight to Done with no branch — work that was never
             // code — so nothing was merged: the card says it closed, with
             // the summary the agent filed in place of a hand-back note.
-            events.append(ThreadEvent(who: "Closed", body: brief.flatMap(summaryNote)))
+            events.append(ThreadEvent(.closed, who: "Closed", body: brief.flatMap(summaryNote)))
         } else {
-            events.append(ThreadEvent(who: "Merged"))
+            events.append(ThreadEvent(.merged, who: "Merged"))
         }
     }
     return events

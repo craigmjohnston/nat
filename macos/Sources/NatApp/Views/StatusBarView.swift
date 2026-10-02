@@ -1,10 +1,10 @@
 import SwiftUI
 import NatKit
 
-/// The window's status bar, the design's own line: the gnat mark, how many
-/// agents are running and the attached agent's model, effort and context on
-/// the left, and the Claude usage windows at the far right — all in the mono
-/// `xs`, quietly.
+/// The window's status bar, the design's own line: the gnat mark and how
+/// many agents are running on the left, and the Claude usage windows at the
+/// far right — all in the mono `xs`, quietly. The attached agent's model,
+/// effort and context are the terminal's own heading (`AgentModelHeading`).
 struct StatusBarView: View {
     @Bindable var appModel: AppModel
 
@@ -20,9 +20,6 @@ struct StatusBarView: View {
                 .frame(width: 14, height: 14)
             Text("\(agentCount) agent\(agentCount == 1 ? "" : "s") running")
                 .ink(.secondary)
-            if let readout = buildAgentReadout(from: appModel.attachedAgent) {
-                AgentReadoutView(readout: readout)
-            }
             Spacer(minLength: 0)
             UsageReadoutView(usage: buildUsageDisplay(from: appModel.usageStore?.reading))
         }
@@ -33,26 +30,6 @@ struct StatusBarView: View {
         .frame(height: Self.height)
         .surface(.chrome)
         .rule(.separator, edges: [.top], width: 1)
-    }
-}
-
-/// The attached agent's readout: "Opus 5.5 · medium · ctx 37%", the context
-/// in the warning tint once it runs high.
-private struct AgentReadoutView: View {
-    let readout: AgentReadout
-    @Environment(\.ground) private var ground
-
-    var body: some View {
-        HStack(spacing: 4) {
-            if let label = readout.label {
-                Text(label).ink(.secondary)
-            }
-            if let context = readout.context {
-                if readout.label != nil { Text("·").ink(.secondary) }
-                Text(context.text)
-                    .foregroundStyle(context.warning ? DesignTokens.hotInk(on: ground) : DesignTokens.ink(.secondary, on: ground))
-            }
-        }
     }
 }
 

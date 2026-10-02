@@ -38,17 +38,17 @@ struct SessionNavigatorView: View {
                 ScrollView {
                     VStack(spacing: 6) {
                         ThreadEventCard(event: ThreadEvent(
-                            who: "Started", meta: ago(Date().timeIntervalSince(session.startedAt)),
+                            .launched, who: "Started", meta: ago(Date().timeIntervalSince(session.startedAt)),
                             foot: session.branch.isEmpty ? session.dir : session.branch))
                         if let agent {
                             let waiting = AgentActivity(agent.activity) == .waiting
                             ThreadEventCard(event: ThreadEvent(
-                                who: "Agent", meta: waiting ? "waiting for you" : "working",
+                                .agent, who: "Agent", meta: waiting ? "waiting for you" : "working",
                                 tone: waiting ? .hot : .accent,
                                 body: buildAgentReadout(from: agent)?.label,
                                 foot: agent.contextPercent.map { "ctx \(Int($0.rounded()))%" }))
                         } else {
-                            ThreadEventCard(event: ThreadEvent(who: "Agent", meta: "ended"))
+                            ThreadEventCard(event: ThreadEvent(.agent, who: "Agent", meta: "ended"))
                         }
                     }
                     .padding(6)

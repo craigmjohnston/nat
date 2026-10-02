@@ -3,7 +3,7 @@ import Foundation
 /// Context use at or above this percent renders in the warning tint.
 public let contextWarningThreshold = 80.0
 
-/// What the status bar's left readout draws for the attached agent:
+/// What the terminal's heading draws for its agent:
 /// "Sonnet 5 · high" (`label`) and "42%" (`context`), each independently
 /// absent when `nat` had no value for it — never a zero.
 public struct AgentReadout: Equatable {

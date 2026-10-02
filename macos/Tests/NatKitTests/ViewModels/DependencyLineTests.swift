@@ -125,4 +125,17 @@ final class DependencyLineTests: XCTestCase {
         let entries = dependencyEntries(["dep-1", "gone-2"], plan: plan)
         XCTAssertEqual(entries.map(\.name), ["Fix the parser"])
     }
+
+    // MARK: - dependencySlices
+
+    /// The plan's own slices, in relation order, unresolvable IDs skipped —
+    /// the rows the brief's depends list selects.
+    func testSlicesResolveToThePlansOwnSlices() {
+        let plan = [
+            slice("dep-1", "Fix the parser", status: "Todo"),
+            slice("dep-2", "Ship the client", status: "Done"),
+        ]
+        XCTAssertEqual(dependencySlices(["dep-2", "gone-3", "dep-1"], plan: plan), [plan[1], plan[0]])
+        XCTAssertTrue(dependencySlices(nil, plan: plan).isEmpty)
+    }
 }
