@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/craigmjohnston/nat/internal/domain"
@@ -20,9 +21,8 @@ import (
 // A later hand-in replaces an earlier one, so the agent hands in the full set
 // each time.
 //
-// Only a slice this user holds takes them, for the reason complete-slice is
-// held to the same rule: the agent working it is the one with something to
-// hand in.
+// Only a slice this user holds takes them — or one of theirs that is Done with
+// its pull request still out; see [canHandInVisuals].
 func sliceVisuals(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("slice-visuals", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -64,8 +64,8 @@ func sliceVisuals(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	if !store.Holds(s, shape.On(pageShape), cfg.AssigneeUserID) {
-		return notOursError(s, cfg.AssigneeUserName, "given visual changes")
+	if !canHandInVisuals(s, shape.On(pageShape), cfg.AssigneeUserID) {
+		return visualsRefusal(s, cfg.AssigneeUserName)
 	}
 
 	if err := st.RecordVisuals(ctx, s.ID, items); err != nil {
@@ -74,6 +74,38 @@ func sliceVisuals(ctx context.Context, args []string, env Env) error {
 	env.nudged()
 	_, err = io.WriteString(env.Out, visualsFiledMarkdown(s, items))
 	return err
+}
+
+// canHandInVisuals says whether the caller's agent may hand images in on s: a
+// slice they hold, as complete-slice asks — the agent working it is the one
+// with something to hand in — or one of theirs that is Done with a pull
+// request recorded. The second is a fix session's slice (root CLAUDE.md's Fix
+// sessions rule): it runs on a Done slice whose pull request is still open, and
+// renders of its fixes are review material as much as a first hand-in's are.
+// Whether that pull request is still open is not asked of gh here: a read that
+// fails concludes nothing, and the fix launch has already asked.
+func canHandInVisuals(s domain.Slice, sh store.Shape, userID string) bool {
+	if store.Holds(s, sh, userID) {
+		return true
+	}
+	if s.Status != domain.SliceDone || s.PRURL == "" {
+		return false
+	}
+	return !sh.HasAssignee || slices.Contains(s.AssigneeIDs, userID)
+}
+
+// visualsRefusal says why a slice takes no visual changes from this user, and
+// what would.
+func visualsRefusal(s domain.Slice, assignee string) error {
+	held := ""
+	switch {
+	case s.AssigneeName == "":
+		held = ", held by nobody"
+	case s.AssigneeName != assignee:
+		held = ", held by " + s.AssigneeName
+	}
+	return fmt.Errorf("%q is %s%s: visual changes can be given only to a slice you hold, "+
+		"or one of yours that is Done with its pull request still open", s.Name, blank(s.StatusName), held)
 }
 
 // uriScheme is the scheme a URI opens with, which is what tells one apart from

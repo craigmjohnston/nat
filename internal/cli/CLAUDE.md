@@ -105,7 +105,9 @@ once, or `--drop-all` alone; refuses a Todo slice, nothing pending, and any
 nudges, then sends one message — a failed send exits non-zero with the
 record standing). See root CLAUDE.md's Follow-ups rule.
 
-`slice-visuals` (held slices only; `--visual` repeatable, first line the
+`slice-visuals` (held slices, or — `canHandInVisuals` — a Done slice with a
+PR recorded, assigned to you where the project has an Assignee column: a fix
+session's, its PR not re-checked with gh; `--visual` repeatable, first line the
 name, the next the image's path or URI; refuses none, an empty name/URI, a URI
 over more than one line, or a duplicate name). A bare path or `file://` URI is
 made absolute against `getwd` and refused if `os.Stat` fails; any other scheme

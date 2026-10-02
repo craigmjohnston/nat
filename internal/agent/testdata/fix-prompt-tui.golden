@@ -90,8 +90,9 @@ read the review's state off your last message.
 
 - One pull request per session. Never pick up another slice when this
   one is done.
-- Never change the slice on the tracker: it is done, and its record of
-  what happened is not yours to rewrite.
+- Never change the slice on the tracker beyond handing in renders of your
+  fixes: it is done, and its record of what happened is not yours to
+  rewrite.
 - `gh pr view` and `gh pr checks` are the only `gh` you may run.
 - Never open, merge, close or reopen a pull request, and never push to
   the main branch.

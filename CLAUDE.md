@@ -128,7 +128,8 @@ markdown — and the **last section wins**, since an agent hands in the full set
 each time. `slice-show`'s `visuals` reads them (`store.VisualChanges`); gnat's
 Visual changes section shows them, and its comments go back by `agent-send`,
 then `slice-rework` only where the slice is handed back. Nothing blocks
-hand-back on them.
+hand-back on them. A slice you hold may hand them in, and so may a Done one
+with a PR recorded, assigned to you — a fix session's.
 
 **Approving** (`a` on the diff screen, or `nat slice-approve`) opens the PR
 and records only its URL — status stays In progress. **Done means the work
