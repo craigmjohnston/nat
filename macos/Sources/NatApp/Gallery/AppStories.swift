@@ -709,10 +709,10 @@ enum AppStories {
 
         Story(
             name: "terminal-heading-readout",
-            summary: "The terminal heading over a live agent: its model, effort and context percent at the band\u{2019}s leading edge.",
-            size: CGSize(width: 730, height: GnatMetrics.sectionHeadHeight + 1)
+            summary: "The main pane\u{2019}s titlebar over a live agent: its tabs, and the agent\u{2019}s model, effort and context percent at the trailing edge.",
+            size: CGSize(width: 730, height: GnatMetrics.titlebarHeight)
         ) {
-            MainPaneHeader {
+            MainPaneTitlebar(tabs: [.terminal, .changes], selected: .terminal) {
                 AgentModelHeading(agent: AgentStatus(
                     sliceID: Fixtures.diffPaneSliceID, session: "nat-1", activity: .working,
                     model: "Sonnet 5", effort: "high", contextPercent: 42, contextTokens: 84_120))
@@ -722,9 +722,9 @@ enum AppStories {
         Story(
             name: "terminal-heading-readout-high-context",
             summary: "Context at 91%: the percent switches to the warning tint.",
-            size: CGSize(width: 730, height: GnatMetrics.sectionHeadHeight + 1)
+            size: CGSize(width: 730, height: GnatMetrics.titlebarHeight)
         ) {
-            MainPaneHeader {
+            MainPaneTitlebar(tabs: [.terminal], selected: .terminal) {
                 AgentModelHeading(agent: AgentStatus(
                     sliceID: Fixtures.diffPaneSliceID, session: "nat-1", activity: .working,
                     model: "Sonnet 5", effort: "high", contextPercent: 91, contextTokens: 182_300))

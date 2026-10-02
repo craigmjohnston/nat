@@ -467,7 +467,7 @@ struct SliceNavigatorView: View {
 
 /// The PR section's body: the readout — the checks and the review verdict.
 /// The title, the description, the conversation and Open in GitHub are the
-/// main pane's (`PRConversationPane`, `PRPaneHeading`).
+/// main pane's (`PRConversationPane`, `PROpenInGitHubButton`).
 struct PRSectionBody: View {
     let pr: PRDetail
     /// The store reviewers are asked through — a slice's pull request. Nil

@@ -185,16 +185,15 @@ struct ContinuousDiffView: View {
     }
 }
 
-/// A slice's main pane, under its heading: its terminal, its branch's diff,
-/// its pull request's conversation, or the note.
+/// A slice's main pane, under its titlebar segment: its terminal, its
+/// branch's diff, its pull request's conversation, or the note.
 struct SliceMainPane: View {
     @Bindable var appModel: AppModel
     let slice: Slice
     @Binding var mode: MainPaneMode
     let review: DiffReview
-    /// What the launch card would launch as, for the heading while there is
-    /// no agent.
-    var launch: String?
+    var tabs: [MainPaneTab] = []
+    var onTab: (MainPaneTab) -> Void = { _ in }
 
     private var nav: NavigatorModel {
         NavigatorModel(
@@ -203,9 +202,8 @@ struct SliceMainPane: View {
     }
 
     var body: some View {
-        let nav = nav
         VStack(spacing: 0) {
-            heading
+            titlebar
             switch mode {
             case .terminal:
                 if appModel.sliceActions.advance(for: slice.id)?.to == .agent {
@@ -228,17 +226,16 @@ struct SliceMainPane: View {
         .surface(.window)
     }
 
-    /// The agent's model, effort and context on the left — before a launch,
-    /// the model and effort it will run as; the diff's commit switcher on
-    /// the right; the pull request's title, and Open in GitHub; or nothing.
-    private var heading: some View {
-        MainPaneHeader {
+    /// The tabs, then at the trailing edge: the agent's model, effort and
+    /// context over its terminal; the diff's commit switcher; the pull
+    /// request's Open in GitHub; or nothing.
+    private var titlebar: some View {
+        MainPaneTitlebar(tabs: tabs, selected: mode, onTab: onTab) {
             switch mode {
             case .terminal, .empty:
-                AgentModelHeading(agent: appModel.activityStore?.agents[slice.id], launch: nav.showsLaunch ? launch : nil)
+                AgentModelHeading(agent: appModel.activityStore?.agents[slice.id])
             case .diff:
                 let store = review.store(appModel)
-                Spacer(minLength: 0)
                 DiffCommitsMenu(
                     commits: store.commits,
                     selectedCommit: store.selectedCommit,
@@ -246,7 +243,7 @@ struct SliceMainPane: View {
                     bottomPadding: 0)
                     .fixedSize()
             case .pr:
-                PRPaneHeading(
+                PROpenInGitHubButton(
                     store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),
                     expectedNumber: pullRequestNumber(slice.pr))
             }

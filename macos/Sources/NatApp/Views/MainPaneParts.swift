@@ -2,48 +2,52 @@ import AppKit
 import SwiftUI
 import NatKit
 
-/// The main pane's heading: a band the height of a navigator section's
-/// header, on the same ground, with what describes the view under it — the
-/// agent's model, effort and context at its leading edge; the diff's commit
-/// switcher, an action rather than a status, at its trailing edge — or
-/// nothing.
-struct MainPaneHeader<Content: View>: View {
-    @ViewBuilder var content: () -> Content
+/// The main pane's segment of the window titlebar — the pane has no heading
+/// band of its own. Its tabs (`MainPaneTab`) start flush at the pane's
+/// leading edge; at its trailing edge, the live agent's readout and the
+/// view's own actions, or nothing.
+struct MainPaneTitlebar<Trailing: View>: View {
+    var tabs: [MainPaneTab] = []
+    var selected: MainPaneMode?
+    var onTab: (MainPaneTab) -> Void = { _ in }
+    @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
-        // The rule sits under the band, not inside it — as a navigator
-        // section's does, whose body's top line lies just below its 32pt
-        // header — so the two headings are one height across the window.
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                content()
+        GnatTitlebar(leading: 0, trailing: 0, rule: false) {
+            HStack(spacing: 0) {
+                ForEach(tabs, id: \.self) { tab in
+                    MainPaneTabButton(title: tab.label, selected: tab.mode == selected) { onTab(tab) }
+                }
+                HStack(spacing: 8) {
+                    Spacer(minLength: 8)
+                    trailing()
+                }
+                .padding(.trailing, 12)
+                .frame(maxHeight: .infinity)
+                // The band's line, where no tab stands over it.
+                .overlay(alignment: .bottom) {
+                    DesignTokens.rule(.separator, on: .header).frame(height: 1).allowsHitTesting(false)
+                }
             }
-            .padding(.horizontal, 12)
-            .frame(height: GnatMetrics.sectionHeadHeight)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(DesignTokens.fill(.chrome))
-            .environment(\.ground, .chrome)
-            DesignTokens.rule(.separator, on: .chrome).frame(height: 1)
         }
     }
 }
 
-extension MainPaneHeader where Content == EmptyView {
-    init() { self.init(content: { EmptyView() }) }
+extension MainPaneTitlebar where Trailing == EmptyView {
+    init(tabs: [MainPaneTab] = [], selected: MainPaneMode? = nil, onTab: @escaping (MainPaneTab) -> Void = { _ in }) {
+        self.init(tabs: tabs, selected: selected, onTab: onTab, trailing: { EmptyView() })
+    }
 }
 
-/// The agent heading's words: the live agent's model / effort, then its
-/// context use as its own statusline reports them — the context in the
-/// warning tint once it runs high — or, with no agent, what a launch would
-/// run as (`launch`), or nothing.
+/// The agent readout, at the main pane's titlebar's trailing edge: the live
+/// agent's model / effort, then its context use as its own statusline
+/// reports them — the context in the warning tint once it runs high — or
+/// nothing.
 struct AgentModelHeading: View {
     let agent: AgentStatus?
-    var launch: String?
 
     var body: some View {
-        if agent == nil, let launch {
-            Text(launch).ink(.secondary).monoXS().lineLimit(1)
-        } else if let readout = buildAgentReadout(from: agent) {
+        if let readout = buildAgentReadout(from: agent) {
             HStack(spacing: 4) {
                 if let label = readout.label {
                     Text(label).ink(.secondary)
@@ -60,23 +64,15 @@ struct AgentModelHeading: View {
     }
 }
 
-/// The PR view's heading: the pull request's title and number at its
-/// leading edge, Open in GitHub at its trailing one — once the right pull
-/// request is read (`expectedNumber`, as `PRConversationPane` checks it).
-struct PRPaneHeading: View {
+/// The PR view's action, in the main pane's titlebar: Open in GitHub, once
+/// the right pull request is read (`expectedNumber`, as
+/// `PRConversationPane` checks it).
+struct PROpenInGitHubButton: View {
     let store: PRStore
     let expectedNumber: Int?
 
     var body: some View {
         if let pr = store.loadState.pr, expectedNumber == nil || pr.number == expectedNumber {
-            HStack(spacing: 8) {
-                Text(pr.title).ink(.primary).truncationMode(.tail)
-                Text("#\(pr.number)").ink(.tertiary).fixedSize()
-            }
-            .font(.system(size: 13, weight: .medium))
-            .lineLimit(1)
-            .textSelection(.enabled)
-            Spacer(minLength: 8)
             Button {
                 if let url = URL(string: pr.url) { NSWorkspace.shared.open(url) }
             } label: {
@@ -129,6 +125,12 @@ struct PRConversationPane: View {
         let described = pr.body.trimmingCharacters(in: .whitespacesAndNewlines)
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(pr.title).ink(.primary)
+                    Text("#\(pr.number)").ink(.tertiary).fixedSize()
+                }
+                .font(.system(size: 20, weight: .semibold))
+                .textSelection(.enabled)
                 NavHeading(text: "Description")
                 if described.isEmpty {
                     Text("No description.").font(.system(size: PRConversationMetrics.textSize)).ink(.secondary)

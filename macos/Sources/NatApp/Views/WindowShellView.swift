@@ -4,8 +4,8 @@ import NatKit
 import NatFixtures
 
 /// The window, as the gnat design lays it out: the sidebar, the navigator
-/// and the main pane side by side under one 32pt titlebar band, over the
-/// status bar.
+/// and the main pane side by side over the status bar, each carrying its own
+/// segment of the 32pt titlebar band.
 ///
 /// What the navigator has open and what the main pane shows belong to the
 /// selection, so they are held here, between the two: each starts at the
@@ -29,7 +29,7 @@ struct WindowShellView: View {
     /// Which crumb's tree picker is open: the project's or the milestone's.
     @State private var crumbPicker: CrumbPickerOrigin?
 
-    private enum CrumbPickerOrigin { case project, milestone }
+    private enum CrumbPickerOrigin { case project, milestone, title }
 
     /// The gallery's seam: a story seeds the sidebar folds it is a story
     /// about.
@@ -72,9 +72,10 @@ struct WindowShellView: View {
 
     private var board: some View {
         VStack(spacing: 0) {
-            titlebar
             HStack(spacing: 0) {
-                SidebarView(appModel: appModel, onNewProject: { appModel.openUntitledTab() }, folded: sidebarFolds)
+                SidebarView(
+                    appModel: appModel, onNewProject: { appModel.openUntitledTab() }, showsTitlebar: true,
+                    folded: sidebarFolds)
                     .frame(width: liveSidebarWidth ?? sidebarWidth)
                     .zIndex(1)
 
@@ -96,12 +97,41 @@ struct WindowShellView: View {
 
     // MARK: - The titlebar
 
-    /// The one titlebar across the window: the traffic lights, and nothing
-    /// else — where the selection sits is the status bar's.
-    private var titlebar: some View {
-        GnatTitlebar(leading: GnatMetrics.lightsInset) {
-            Spacer(minLength: 0)
+    /// The navigator's segment of the titlebar: the selection's name, which
+    /// opens the tree picker on it.
+    private var navigatorTitlebar: some View {
+        GnatTitlebar {
+            let title = crumbs.title
+            if !title.isEmpty {
+                crumbButton(.title) {
+                    HStack(spacing: 5) {
+                        Text(title).ink(.primary)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .ink(.tertiary)
+                    }
+                    .font(.system(size: GnatMetrics.titlebarText))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                }
+            }
         }
+        .rule(.separator, edges: [.trailing], width: 1)
+    }
+
+    /// The main pane's tabs — each pane draws its own titlebar segment, with
+    /// its actions — one per view the navigator's sections can put up, for a
+    /// slice or a session; none otherwise.
+    private var tabs: [MainPaneTab] {
+        if let navigatorModel { return navigatorModel.tabs }
+        if let session = selectedSession { return MainPaneTab.forSession(hasPRs: !session.prs.isEmpty) }
+        return []
+    }
+
+    private func showTab(_ tab: MainPaneTab) {
+        let focus = NavigatorFocus(open: open.wrappedValue, main: main.wrappedValue).showing(tab.section, shows: tab.mode)
+        open.wrappedValue = focus.open
+        if focus.main != main.wrappedValue { main.wrappedValue = focus.main }
     }
 
     // MARK: - The breadcrumb
@@ -181,7 +211,7 @@ struct WindowShellView: View {
 
     private func crumbTreePicker(openingOn origin: CrumbPickerOrigin) -> some View {
         let projectID = appModel.activeProjectID ?? ""
-        let milestone = origin == .milestone ? selectedSlice.flatMap(milestoneName(of:)) : nil
+        let milestone = origin == .project ? nil : selectedSlice.flatMap(milestoneName(of:))
         return CrumbTreePicker(tree: CrumbTree(model: appModel.sidebarModel, projectID: projectID, milestone: milestone)) { row in
             crumbPicker = nil
             Task { await appModel.selectSlice(row.sliceID, inProject: row.projectID) }
@@ -300,8 +330,11 @@ struct WindowShellView: View {
     @ViewBuilder
     private var selectionColumns: some View {
         if appModel.activeTabIsUntitled && !appModel.untitledWorkshopVisible {
-            StarterView(appModel: appModel, onFromNotion: { showNewProjectSheet = true })
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 0) {
+                GnatTitlebar { Spacer(minLength: 0) }
+                StarterView(appModel: appModel, onFromNotion: { showNewProjectSheet = true })
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         } else if appModel.workshopSelected || appModel.untitledWorkshopVisible {
             columns {
                 WorkshopNavigatorView(appModel: appModel, projectName: projectName)
@@ -312,7 +345,8 @@ struct WindowShellView: View {
             columns {
                 SessionNavigatorView(appModel: appModel, session: session, open: open, main: main, review: review)
             } main: {
-                SessionMainPane(appModel: appModel, session: session, mode: main, review: review)
+                SessionMainPane(
+                    appModel: appModel, session: session, mode: main, review: review, tabs: tabs, onTab: showTab)
             }
         } else if let slice = selectedSlice {
             columns {
@@ -321,8 +355,7 @@ struct WindowShellView: View {
                     model: $launchModel, effort: $launchEffort)
             } main: {
                 SliceMainPane(
-                    appModel: appModel, slice: slice, mode: main, review: review,
-                    launch: modelEffortLabel(model: launchModel, effort: launchEffort))
+                    appModel: appModel, slice: slice, mode: main, review: review, tabs: tabs, onTab: showTab)
             }
             .task(id: slice.id) {
                 await appModel.sliceDetailStore(projectID: appModel.projectStore?.projectID ?? "")
@@ -335,9 +368,6 @@ struct WindowShellView: View {
         } else {
             columns {
                 NavigatorColumn(anyOpen: true) {
-                    // The section header's band with nothing in it, so the
-                    // navigator keeps its shape with nothing selected.
-                    NavEmptyHeader()
                     if appModel.activePlanIsEmpty {
                         NavProse {
                             Text(EmptyProjectNote.title).ink(.primary)
@@ -358,7 +388,7 @@ struct WindowShellView: View {
                 }
             } main: {
                 VStack(spacing: 0) {
-                    MainPaneHeader()
+                    MainPaneTitlebar()
                     if let accepted = appModel.acceptedPlanShown {
                         MainPaneNote(text: ProposalText.acceptedTitle + "\n"
                             + ProposalText.acceptedSubtitle(milestones: accepted.milestones, slices: accepted.slices))
@@ -375,9 +405,12 @@ struct WindowShellView: View {
         @ViewBuilder navigator: () -> Navigator, @ViewBuilder main: () -> Main
     ) -> some View {
         HStack(spacing: 0) {
-            navigator()
-                .frame(width: liveNavigatorWidth ?? navigatorWidth)
-                .zIndex(1)
+            VStack(spacing: 0) {
+                navigatorTitlebar
+                navigator()
+            }
+            .frame(width: liveNavigatorWidth ?? navigatorWidth)
+            .zIndex(1)
             main()
                 .frame(maxWidth: .infinity)
                 .overlay(alignment: .leading) {

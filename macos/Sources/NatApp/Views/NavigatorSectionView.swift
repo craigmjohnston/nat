@@ -76,21 +76,6 @@ extension NavSectionView where Actions == EmptyView {
     }
 }
 
-/// A section header's band with nothing in it — no chevron, no label, no
-/// actions: what heads the navigator while nothing is selected, so the
-/// column keeps the shape it has with a selection. Its rule sits under the
-/// band, not inside it — where a section's body draws its top line, and
-/// where `MainPaneHeader` draws its own — so the two headings line up.
-struct NavEmptyHeader: View {
-    var body: some View {
-        VStack(spacing: 0) {
-            DesignTokens.fill(.chrome)
-                .frame(maxWidth: .infinity)
-                .frame(height: GnatMetrics.sectionHeadHeight)
-            DesignTokens.rule(.separator, on: .chrome).frame(height: 1)
-        }
-    }
-}
 
 /// The navigator column: whatever sections the selection has, and a filler
 /// taking the column's slack when every section is folded. Its title is the

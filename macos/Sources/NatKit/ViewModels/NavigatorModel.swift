@@ -55,6 +55,55 @@ public struct NavigatorFocus: Equatable, Sendable {
         next.main = shows
         return next
     }
+
+    /// A main-pane tab (or a View menu item): open the section and put its
+    /// view up, never folding one whose view is already up. A section with
+    /// no view of its own changes nothing.
+    public func showing(_ section: NavigatorSection, shows: MainPaneMode?) -> NavigatorFocus {
+        guard let shows else { return self }
+        var next = self
+        next.open.insert(section)
+        next.main = shows
+        return next
+    }
+}
+
+/// The main pane's tabs, in its titlebar: each stands for a navigator
+/// section and the view that section's header puts up.
+public enum MainPaneTab: CaseIterable, Equatable, Sendable {
+    case terminal, changes, pr
+
+    public var label: String {
+        switch self {
+        case .terminal: return "Terminal"
+        case .changes: return "Changes"
+        case .pr: return "PR"
+        }
+    }
+
+    /// The section the tab opens.
+    public var section: NavigatorSection {
+        switch self {
+        case .terminal: return .thread
+        case .changes: return .changes
+        case .pr: return .pr
+        }
+    }
+
+    /// The main-pane view the tab puts up.
+    public var mode: MainPaneMode {
+        switch self {
+        case .terminal: return .terminal
+        case .changes: return .diff
+        case .pr: return .pr
+        }
+    }
+
+    /// A session's tabs: every section of a session has a view of its own,
+    /// PR only once the session has opened one.
+    public static func forSession(hasPRs: Bool) -> [MainPaneTab] {
+        hasPRs ? [.terminal, .changes, .pr] : [.terminal, .changes]
+    }
 }
 
 /// The navigator's reading of one slice: which sections are live, which open
@@ -121,6 +170,12 @@ public struct NavigatorModel: Equatable, Sendable {
         if phase == .thread && agentAvailable && state != .done { return .terminal }
         if phase == .pr { return .pr }
         return hasBranch ? .diff : .empty
+    }
+
+    /// The main pane's tabs: one per section the navigator draws whose
+    /// header would put its view up — so no Terminal before an agent.
+    public var tabs: [MainPaneTab] {
+        MainPaneTab.allCases.filter { isLive($0.section) && mainMode(for: $0.section) == $0.mode }
     }
 
     /// Whether the Agent half of the switch can be picked.

@@ -168,23 +168,25 @@ struct SessionNavigatorView: View {
     }
 }
 
-/// An ad hoc session's main pane, under its heading: its agent's terminal,
+/// An ad hoc session's main pane, under its titlebar segment: its agent's terminal,
 /// its branch's diff, or its picked pull request's conversation.
 struct SessionMainPane: View {
     @Bindable var appModel: AppModel
     let session: Session
     @Binding var mode: MainPaneMode
     let review: DiffReview
+    var tabs: [MainPaneTab] = []
+    var onTab: (MainPaneTab) -> Void = { _ in }
 
     var body: some View {
         let store = appModel.sessionDiffStore(projectID: appModel.projectStore?.projectID ?? "")
         VStack(spacing: 0) {
-            MainPaneHeader {
+            MainPaneTitlebar(tabs: tabs, selected: mode, onTab: onTab) {
                 switch mode {
                 case .terminal, .empty:
                     AgentModelHeading(agent: appModel.activityStore?.agents[session.tag])
                 case .pr:
-                    PRPaneHeading(
+                    PROpenInGitHubButton(
                         store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),
                         expectedNumber: selectedPRNumber)
                 case .diff:
@@ -330,7 +332,7 @@ struct WorkshopMainPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            MainPaneHeader { AgentModelHeading(agent: appModel.planningAgent) }
+            MainPaneTitlebar { AgentModelHeading(agent: appModel.planningAgent) }
             AgentTerminalPane(
                 agent: appModel.planningAgent,
                 emptyText: appModel.workshopLaunching ? "Starting the workshop session\u{2026}" : nil,
