@@ -12,11 +12,15 @@ import NatKit
 /// Workshop…, Open in Notion, Reveal, Close), a milestone's (New
 /// Slice, Rename, Move, Delete), a slice's (Launch, Edit, Open, Move, Delete),
 /// each project's own `+` (New Milestone, New Slice, Workshop…, New Ad Hoc
-/// Session), Active's `+` (a session in any project), a proposal's tree
+/// Session), the titlebar's `+` (any of those in a project it asks for, or a
+/// new project) beside its Settings cog, a proposal's tree
 /// under its Untitled row and an ended session under its project.
 struct SidebarView: View {
     @Bindable var appModel: AppModel
     var onNewProject: () -> Void = {}
+    /// Whether the sidebar draws its own segment of the window titlebar —
+    /// the shell's way; a story of the sidebar alone has no window around it.
+    var showsTitlebar = false
     /// View ▸ Show/Hide Done Items.
     @Environment(\.showsDoneItems) private var showsDoneItems
 
@@ -45,9 +49,13 @@ struct SidebarView: View {
     /// chevron.
     @State private var hoveredProject: String?
 
-    init(appModel: AppModel, onNewProject: @escaping () -> Void = {}, folded: [String: Bool] = [:]) {
+    init(
+        appModel: AppModel, onNewProject: @escaping () -> Void = {}, showsTitlebar: Bool = false,
+        folded: [String: Bool] = [:]
+    ) {
         self.appModel = appModel
         self.onNewProject = onNewProject
+        self.showsTitlebar = showsTitlebar
         _fold = State(initialValue: folded)
     }
 
@@ -76,7 +84,10 @@ struct SidebarView: View {
     var body: some View {
         let model = model
         VStack(spacing: 0) {
-            head("active", label: "Active", count: model.needsYouCount) { newSessionMenu(model) }
+            if showsTitlebar {
+                titlebar(model)
+            }
+            head("active", label: "Active", count: model.needsYouCount) { EmptyView() }
             // Folded, Projects (and Scratch under it) pins to the sidebar's
             // foot rather than leaving an empty well under its heading.
             let pinsProjects = !isOpen("work") && !(model.scratch != nil && isOpen("scratch", byDefault: false))
@@ -261,19 +272,50 @@ struct SidebarView: View {
             .disabled(appModel.newSessionLaunching)
     }
 
-    /// Active's `+`: a new ad hoc session, attached to whichever project the
-    /// menu names — in its working directory, or, for Scratch, a folder
-    /// chosen first.
-    private func newSessionMenu(_ model: SidebarModel) -> some View {
+    // MARK: - Titlebar
+
+    /// The sidebar's segment of the window titlebar: past the traffic
+    /// lights, Settings and the `+`, at its trailing edge over the project
+    /// rows' own.
+    private func titlebar(_ model: SidebarModel) -> some View {
+        GnatTitlebar(leading: GnatMetrics.lightsInset) {
+            Spacer(minLength: 0)
+            SettingsLink {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 13))
+                    .ink(.tertiary)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(GnatIconButtonStyle())
+            .help("Settings")
+            addAnythingMenu(model)
+        }
+    }
+
+    /// The titlebar's `+`: anything the sidebar can make. A project first;
+    /// then what goes in one, each asking which project from a submenu —
+    /// every project, then Scratch.
+    private func addAnythingMenu(_ model: SidebarModel) -> some View {
         let targets = model.projects.filter { $0.kind == .project } + (model.scratch.map { [$0] } ?? [])
         return Menu {
-            Section("New ad hoc session in") {
-                ForEach(targets) { project in
-                    Button(project.kind == .scratch ? "Scratch\u{2026}" : project.name) {
-                        Task { await startNewSession(inProject: project.id) }
-                    }
-                }
+            Button("New project\u{2026}", systemImage: "folder.badge.plus", action: onNewProject)
+            Divider()
+            projectSubmenu("New milestone", systemImage: "folder.badge.plus", targets) { project in
+                newMilestoneText = ""
+                newMilestoneProject = project.id
             }
+            projectSubmenu("New task", systemImage: "plus", targets) { project in
+                newSliceTarget = NewSliceTarget(projectID: project.id, milestone: "")
+            }
+            projectSubmenu("Workshop", systemImage: "sparkles", targets) { project in
+                Task { await appModel.selectWorkshop(inProject: project.id) }
+            }
+            Divider()
+            projectSubmenu("New ad hoc session", systemImage: "terminal", targets) { project in
+                Task { await startNewSession(inProject: project.id) }
+            }
+            .disabled(appModel.newSessionLaunching)
         } label: {
             if appModel.newSessionLaunching {
                 ProgressView().controlSize(.mini).frame(width: 18, height: 18)
@@ -285,8 +327,21 @@ struct SidebarView: View {
         .buttonStyle(GnatIconButtonStyle())
         .menuIndicator(.hidden)
         .fixedSize()
-        .disabled(appModel.newSessionLaunching || targets.isEmpty)
-        .help("New ad hoc session")
+        .help("New\u{2026}")
+    }
+
+    /// One of the `+` menu's items, as a submenu naming the project it goes
+    /// in.
+    private func projectSubmenu(
+        _ title: String, systemImage: String, _ targets: [SidebarProject],
+        action: @escaping (SidebarProject) -> Void
+    ) -> some View {
+        Menu(title, systemImage: systemImage) {
+            ForEach(targets) { project in
+                Button(project.kind == .scratch ? "Scratch" : project.name) { action(project) }
+            }
+        }
+        .disabled(targets.isEmpty)
     }
 
     // MARK: - Active

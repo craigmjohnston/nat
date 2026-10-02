@@ -89,6 +89,36 @@ final class NavigatorModelTests: XCTestCase {
                        NavigatorFocus(open: [.thread], main: .empty))
     }
 
+    // MARK: - Main-pane tabs
+
+    func testATabOpensItsSectionAndPutsItsViewUpWithoutEverFolding() {
+        let focus = NavigatorFocus(open: [.thread], main: .terminal)
+        XCTAssertEqual(focus.showing(.changes, shows: .diff), NavigatorFocus(open: [.thread, .changes], main: .diff))
+        XCTAssertEqual(focus.showing(.thread, shows: .terminal), focus, "already up: stays open")
+        XCTAssertEqual(focus.showing(.pr, shows: nil), focus, "no view of its own: nothing changes")
+    }
+
+    func testEachTabStandsForItsSectionsView() {
+        XCTAssertEqual(MainPaneTab.allCases.map(\.label), ["Terminal", "Changes", "PR"])
+        XCTAssertEqual(MainPaneTab.allCases.map(\.section), [.thread, .changes, .pr])
+        XCTAssertEqual(MainPaneTab.allCases.map(\.mode), [.terminal, .diff, .pr])
+    }
+
+    func testASlicesTabsAreTheSectionsThatPutAViewUp() {
+        XCTAssertEqual(NavigatorModel(slice: slice(), agent: nil, fixLaunched: false).tabs, [])
+        XCTAssertEqual(NavigatorModel(slice: slice(status: "In progress"), agent: .working, fixLaunched: false).tabs,
+                       [.terminal])
+        XCTAssertEqual(NavigatorModel(slice: slice(status: "In progress", branch: "b", handedBack: true),
+                                      agent: nil, fixLaunched: false).tabs, [.terminal, .changes])
+        XCTAssertEqual(NavigatorModel(slice: slice(status: "In progress", branch: "b", pr: prURL),
+                                      agent: nil, fixLaunched: false).tabs, [.terminal, .changes, .pr])
+    }
+
+    func testASessionsTabsWaitForAPRBeforeShowingOne() {
+        XCTAssertEqual(MainPaneTab.forSession(hasPRs: false), [.terminal, .changes])
+        XCTAssertEqual(MainPaneTab.forSession(hasPRs: true), [.terminal, .changes, .pr])
+    }
+
     // MARK: - Header actions
 
     func testLaunchIsOfferedBeforeLaunchAndToRelaunchAWorkingSlice() {

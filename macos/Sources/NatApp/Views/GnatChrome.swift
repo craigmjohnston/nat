@@ -173,6 +173,10 @@ extension View {
 struct GnatTitlebar<Content: View>: View {
     var leading: CGFloat = 10
     var trailing: CGFloat = 10
+    /// The line under the band — off where the content draws its own, as
+    /// the main pane's tabs do, so the picked one can stand open into the
+    /// pane below.
+    var rule = true
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -194,7 +198,9 @@ struct GnatTitlebar<Content: View>: View {
         // Drawn straight onto the bottom edge: `rule(edges: [.bottom])`
         // alone lays its line at the top of a row with no height of its own.
         .overlay(alignment: .bottom) {
-            DesignTokens.rule(.separator, on: .header).frame(height: 1)
+            if rule {
+                DesignTokens.rule(.separator, on: .header).frame(height: 1)
+            }
         }
     }
 }
@@ -291,6 +297,48 @@ struct GnatLinkButtonStyle: ButtonStyle {
                 .opacity(configuration.isPressed ? 0.7 : 1)
                 .contentShape(Rectangle())
         }
+    }
+}
+
+/// One of the main pane's titlebar tabs, as Zed draws them: the band's full
+/// height, square, a line on its trailing edge. The picked one stands on the
+/// pane's own ground (`.window`) with no line under it, so it reads as open into the
+/// pane; the rest sit on the titlebar over its bottom line, in the secondary
+/// ink, washed under the pointer.
+struct MainPaneTabButton: View {
+    let title: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HoverReader { hovering in
+                Text(title)
+                    .font(.system(size: GnatMetrics.titlebarText))
+                    .lineLimit(1)
+                    .fixedSize()
+                    .ink(selected ? .primary : .secondary)
+                    .padding(.horizontal, 16)
+                    .frame(maxHeight: .infinity)
+                    .background(fill(hovering: hovering))
+                    .overlay(alignment: .bottom) {
+                        if !selected {
+                            DesignTokens.rule(.separator, on: .header).frame(height: 1)
+                        }
+                    }
+                    .overlay(alignment: .trailing) {
+                        DesignTokens.rule(.separator, on: .header).frame(width: 1)
+                    }
+                    .contentShape(Rectangle())
+            }
+        }
+        .buttonStyle(.plain)
+        .environment(\.ground, selected ? .window : .header)
+    }
+
+    private func fill(hovering: Bool) -> Color {
+        if selected { return DesignTokens.fill(.window) }
+        return hovering ? DesignTokens.rowWash(selected: false, on: .header) : .clear
     }
 }
 

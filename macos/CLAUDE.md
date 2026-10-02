@@ -97,20 +97,27 @@ view up in the main pane — Thread the terminal, Changes the diff, PR the
 description and conversation (the PR section keeps checks and review) — and
 folds it again when that view is already up; the chevron only folds
 (`NavigatorFocus`). Folded bodies stay built, so unfolding reloads nothing.
-The main pane carries a heading band the height of a section header:
-status (the agent's model, effort and context — the status bar carries none
-of these) on its left, actions and selects (the diff's commit switcher) on
-its right, or empty. The Thread ends, while the slice can be launched, on a
+The main pane has no heading band: its titlebar segment
+(`MainPaneTitlebar`) carries its tabs, then at the trailing edge the live
+agent's model, effort and context (the status bar carries none of these)
+or the view's actions and selects (the diff's commit switcher, Open in
+GitHub); the PR's title heads the PR view's own body. The Thread ends, while the slice can be launched, on a
 ghost `LaunchCard` (greyed and hatched when blocked); its prose items cut
 short as the brief does (`Excerpt`). View ▸ Hide done items
 (`showsDoneItems`) drops done slices, ended sessions and the Done folder from
 the sidebar. `AppModel` keeps its one *active* project —
 every per-project reading is keyed by it — and the sidebar selects across
 projects by activating first (`selectSlice(_:inProject:)`). The Thread shows
-only what nat reports (`buildThreadEvents`). A slice's project and milestone
-crumbs in the titlebar each open `CrumbTreePicker` (projects → milestones →
-slices, `CrumbTree`) on themselves; with nothing selected there is no
-breadcrumb. Selecting sets the selection *before* awaiting the project's
+only what nat reports (`buildThreadEvents`). The titlebar is segmented, each
+column carrying its own: the sidebar's holds Settings and the `+` (anything
+the sidebar makes, its project asked for by submenu), the navigator's the
+selection's name, the main pane's the `MainPaneTab`s — Zed-style, full
+height and square, one per section that would put its view up
+(`NavigatorModel.tabs`, `MainPaneTab.forSession`); a tab is
+`NavigatorFocus.showing`, which opens and never folds. The selection's name, and a slice's
+project and milestone crumbs in the status bar, each open `CrumbTreePicker`
+(projects → milestones → slices, `CrumbTree`) on themselves; with nothing
+selected there is no breadcrumb. Selecting sets the selection *before* awaiting the project's
 activation (`AppModel.select(inProject:)`), so a later click is never
 overwritten by an earlier one finishing. What the design does not draw
 (workshop, sessions, follow-ups, menus) lives on as the row or section it
