@@ -181,6 +181,44 @@ extension Fixtures {
 
     public static var smallDiffModel: DiffModel { buildDiffModel(from: smallSliceDiff) }
 
+    /// A diff far bigger than any branch is: 300 files and some 51,000
+    /// rows, every kind of row in it — long lines that wrap several times,
+    /// tabbed ones, a wide-character one, hunk breaks — syntax-coloured
+    /// throughout. What the diff is held to handling without effort.
+    public static var stressDiffModel: DiffModel {
+        let files = (0..<300).map { f -> SliceDiffFile in
+            let path = "Sources/Stress/Module\(f / 20)/File\(f).swift"
+            var lines: [FixtureLine] = [
+                FixtureLine.raw("diff --git a/\(path) b/\(path)"),
+                FixtureLine.raw("--- a/\(path)"),
+                FixtureLine.raw("+++ b/\(path)"),
+                FixtureLine.raw("@@ -1,90 +1,90 @@ struct File\(f) {"),
+            ]
+            for i in 0..<170 {
+                if i == 85 { lines.append(FixtureLine.raw("@@ -400,90 +400,90 @@ extension File\(f) {")) }
+                let mark: Character = i % 7 == 3 ? "+" : i % 11 == 5 ? "-" : " "
+                switch i % 13 {
+                case 0:
+                    lines.append(FixtureLine(mark, [
+                        (.comment, "// " + String(repeating: "A long comment that runs well past the pane's edge. ", count: 5)),
+                    ]))
+                case 4:
+                    lines.append(FixtureLine(mark, [(.text, "\t\t"), (.keyword, "return"), (.text, " "), (.string, "\"日本語のテキスト\"")]))
+                default:
+                    lines.append(FixtureLine(mark, [
+                        (.text, "    "), (.keyword, "let"), (.text, " "), (.name, "value\(i)"), (.text, " = "),
+                        (.name, "compute"), (.text, "("), (.number, "\(i * 31)"), (.text, ", label: "),
+                        (.string, "\"row \(i) of file \(f)\""), (.text, ")"),
+                    ]))
+                }
+            }
+            return SliceDiffFile(
+                path: path, oldPath: path, adds: 24, dels: 15, described: false,
+                lines: lines.texts, language: "Swift", tokens: lines.tokens)
+        }
+        return buildDiffModel(from: SliceDiff(base: diffBase, branch: diffBranch, files: files))
+    }
+
     /// A branch whose diff came back empty — nothing pushed to it yet.
     public static var emptyDiffModel: DiffModel {
         buildDiffModel(from: SliceDiff(base: diffBase, branch: diffBranch, files: []))

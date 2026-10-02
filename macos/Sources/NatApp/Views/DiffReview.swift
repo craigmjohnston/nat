@@ -38,6 +38,10 @@ final class DiffReview {
     /// The file the main pane is asked to scroll to, bumped with a token so
     /// asking for the same file twice still scrolls.
     private(set) var scrollRequest: (path: String, token: Int)?
+    /// The last request the diff acted on — so a diff that opens because of
+    /// a request still acts on it, and one reopened later does not act on an
+    /// old one again.
+    @ObservationIgnored var handledScrollToken = 0
 
     func requestScroll(to path: String) {
         scrollRequest = (path, (scrollRequest?.token ?? 0) + 1)
@@ -64,12 +68,23 @@ final class DiffReview {
            let anchorIndex = file.rows.firstIndex(where: { $0.id == anchorID }),
            let clickIndex = file.rows.firstIndex(where: { $0.id == row.id }) {
             let range = anchorIndex <= clickIndex ? anchorIndex...clickIndex : clickIndex...anchorIndex
-            selection = DiffSelection(path: file.path, rowIDs: range.map { file.rows[$0].id })
+            mark(DiffSelection(path: file.path, rowIDs: range.map { file.rows[$0].id }))
         } else {
-            selection = DiffSelection(path: file.path, rowIDs: [row.id])
+            mark(DiffSelection(path: file.path, rowIDs: [row.id]))
         }
-        // A fresh click that is not what the open draft is about abandons it.
-        if let draft, draft.path != selection?.path || draft.anchorRowIDs != selection?.rowIDs {
+    }
+
+    /// A drag across a file's rows marks the run it covers, already in the
+    /// file's order.
+    func handleRowDrag(file: DiffFileModel, rowIDs: [String]) {
+        guard !rowIDs.isEmpty else { return }
+        mark(DiffSelection(path: file.path, rowIDs: rowIDs))
+    }
+
+    private func mark(_ marked: DiffSelection) {
+        selection = marked
+        // A fresh mark that is not what the open draft is about abandons it.
+        if let draft, draft.path != marked.path || draft.anchorRowIDs != marked.rowIDs {
             self.draft = nil
         }
     }
