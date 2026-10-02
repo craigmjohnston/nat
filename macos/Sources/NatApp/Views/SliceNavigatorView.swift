@@ -13,10 +13,12 @@ struct SliceNavigatorView: View {
     @Binding var open: Set<NavigatorSection>
     @Binding var main: MainPaneMode
     let review: DiffReview
+    /// The launch card's model and effort — the shell's, since the main
+    /// pane's heading says what a launch will run as.
+    @Binding var model: String
+    @Binding var effort: String
 
     @State private var editingBrief = false
-    @State private var model = ""
-    @State private var effort = ""
     @State private var agentOptions = AgentOptions.fallback
     @State private var launchWarning: String?
     @State private var showMergeConfirm = false
@@ -40,7 +42,7 @@ struct SliceNavigatorView: View {
         let nav = nav
         NavigatorColumn(anyOpen: !open.isEmpty) {
             NavSectionView(
-                label: "Thread", open: open.contains(.thread),
+                label: NavigatorSection.thread.label, open: open.contains(.thread),
                 selected: main == .terminal && nav.agentAvailable,
                 onHead: { click(.thread) }, onFold: { fold(.thread) }
             ) {
@@ -48,24 +50,29 @@ struct SliceNavigatorView: View {
             } content: {
                 threadBody(nav)
             }
-            NavSectionView(
-                label: "Changes", open: open.contains(.changes), selected: main == .diff,
-                live: nav.isLive(.changes), onHead: { click(.changes) }, onFold: { fold(.changes) }
-            ) {
-                if nav.showsReviewActions { reviewActions }
-            } content: {
-                ChangesSectionBody(appModel: appModel, review: review, slice: slice, reviewing: nav.showsReviewActions) {
-                    main = .diff
+            // Changes and PR are only there once there is a branch, and a
+            // pull request, to show.
+            if nav.isLive(.changes) {
+                NavSectionView(
+                    label: "Changes", open: open.contains(.changes), selected: main == .diff,
+                    onHead: { click(.changes) }, onFold: { fold(.changes) }
+                ) {
+                    if nav.showsReviewActions { reviewActions }
+                } content: {
+                    ChangesSectionBody(appModel: appModel, review: review, slice: slice, reviewing: nav.showsReviewActions) {
+                        main = .diff
+                    }
                 }
             }
-            NavSectionView(
-                label: "PR", open: open.contains(.pr), selected: main == .pr,
-                live: nav.isLive(.pr), onHead: { click(.pr) }, onFold: { fold(.pr) }
-            ) {
-                if !slice.pr.isEmpty { openInGitHubAction }
-                if nav.showsMerge { mergeAction }
-            } content: {
-                prBody
+            if nav.isLive(.pr) {
+                NavSectionView(
+                    label: "PR", open: open.contains(.pr), selected: main == .pr,
+                    onHead: { click(.pr) }, onFold: { fold(.pr) }
+                ) {
+                    if nav.showsMerge { mergeAction }
+                } content: {
+                    prBody
+                }
             }
         }
         .task(id: slice.id) {
@@ -153,7 +160,9 @@ struct SliceNavigatorView: View {
     }
 
     private func apply(_ focus: NavigatorFocus) {
-        withAnimation(Motion.stateChange) { open = focus.open }
+        // Sections snap open and shut: no animation, everything shown or
+        // hidden at once.
+        open = focus.open
         if focus.main != main { main = focus.main }
     }
 
@@ -169,7 +178,7 @@ struct SliceNavigatorView: View {
                 Button("Edit") { editingBrief = true }
                     .buttonStyle(GnatLinkButtonStyle())
                     .disabled(slice.status != "Todo" || detail.detail == nil)
-                    .help(slice.status == "Todo" ? "Edit the brief" : "Only a Todo slice's brief can be edited")
+                    .help(slice.status == "Todo" ? "Edit the brief" : "Only a Todo task's brief can be edited")
             }
             .padding(.horizontal, 10)
             .padding(.top, 8)
@@ -266,7 +275,7 @@ struct SliceNavigatorView: View {
         if nav.showsLaunch {
             let enabled = appModel.sliceActions.isEnabled(.launch, sliceID: slice.id, available: nav.canLaunch)
             Button(action: launch) {
-                HeaderActionLabel(title: "Launch", systemImage: "arrow.right", isBusy: isLaunching, detail: launchDetail)
+                HeaderActionLabel(title: "Launch", systemImage: "arrow.right", isBusy: isLaunching)
             }
             .buttonStyle(GnatHeaderButtonStyle(primary: nav.launchIsPrimary))
             .disabled(!enabled)
@@ -304,13 +313,6 @@ struct SliceNavigatorView: View {
             }
         }
         .thinScrollers()
-        .inelastic()
-    }
-
-    /// The model and effort the header's Launch launches with, under its
-    /// label — whichever of the two the launch card has set.
-    private var launchDetail: String {
-        [model, effort].filter { !$0.isEmpty }.joined(separator: " \u{00B7} ")
     }
 
     private func launchMode(_ nav: NavigatorModel) -> LaunchCard.Mode {
@@ -365,7 +367,7 @@ struct SliceNavigatorView: View {
                         .disabled(!approveEnabled)
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .frame(width: 26)
                         .frame(maxHeight: .infinity)
                         .foregroundStyle(DesignTokens.ink(.primary, on: .chrome))
@@ -417,26 +419,13 @@ struct SliceNavigatorView: View {
         let available = prStore.loadState.pr.map(mergeIsEnabled) ?? false
         return Button(action: { showMergeConfirm = true }) {
             HeaderActionLabel(
-                title: "Merge", systemImage: "arrow.triangle.merge",
-                isBusy: appModel.sliceActions.isRunning(.merge, sliceID: slice.id))
+                title: "Merge", isBusy: appModel.sliceActions.isRunning(.merge, sliceID: slice.id), glyph: .merge)
         }
         .buttonStyle(GnatHeaderButtonStyle(primary: true))
         .disabled(!appModel.sliceActions.isEnabled(.merge, sliceID: slice.id, available: available))
         .onChange(of: available, initial: true) { _, available in
             appModel.sliceActions.observe(.merge, sliceID: slice.id, available: available)
         }
-    }
-
-    /// Secondary to Merge, beside it: the pull request on GitHub — the one
-    /// read nat has already made, else the URL the slice recorded.
-    private var openInGitHubAction: some View {
-        Button {
-            if let url = URL(string: prStore.loadState.pr?.url ?? slice.pr) { NSWorkspace.shared.open(url) }
-        } label: {
-            HeaderActionLabel(title: "Open in GitHub", systemImage: "arrow.up.right.square")
-        }
-        .buttonStyle(GnatHeaderButtonStyle())
-        .help("Open the pull request on GitHub")
     }
 
     private func mergeIsEnabled(_ pr: PRDetail) -> Bool {
@@ -477,8 +466,8 @@ struct SliceNavigatorView: View {
 }
 
 /// The PR section's body: the readout — the checks and the review verdict.
-/// Open in GitHub is the header's, beside Merge. The description and the conversation are the main
-/// pane's (`PRConversationPane`).
+/// The title, the description, the conversation and Open in GitHub are the
+/// main pane's (`PRConversationPane`, `PRPaneHeading`).
 struct PRSectionBody: View {
     let pr: PRDetail
     /// The store reviewers are asked through — a slice's pull request. Nil
@@ -521,7 +510,6 @@ struct PRSectionBody: View {
             }
         }
         .thinScrollers()
-        .inelastic()
     }
 
     /// A check's line, led by a circle of its outcome: empty for one that

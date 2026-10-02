@@ -36,6 +36,11 @@ type fakeGitRunner struct {
 	// diffArgs is the last diff invocation verbatim, for asserting which
 	// base the comparison was actually made against.
 	diffArgs []string
+	// showOut/showErr answer show, the file read slice-file makes; showArgs
+	// is the last such invocation verbatim.
+	showOut  string
+	showErr  error
+	showArgs []string
 }
 
 func (f *fakeGitRunner) Run(dir, _ string, args ...string) (string, error) {
@@ -55,6 +60,9 @@ func (f *fakeGitRunner) Run(dir, _ string, args ...string) (string, error) {
 		return f.base, nil
 	case "log":
 		return f.logOut, f.logErr
+	case "show":
+		f.showArgs = args
+		return f.showOut, f.showErr
 	case "rev-parse":
 		last := ""
 		if len(args) > 0 {

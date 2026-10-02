@@ -29,13 +29,13 @@ final class FollowUpStoreTests: XCTestCase {
     func testSummarySaysWhatApplyWillDo() {
         XCTAssertEqual(
             FollowUpStore.summary(followUps: followUps, choices: [1: .queue, 2: .fold, 3: .drop], milestone: "M53"),
-            "Apply queues 1 slice under M53, folds 1 into this slice and drops 1.")
+            "Apply queues 1 task under M53, folds 1 into this task and drops 1.")
         XCTAssertEqual(
             FollowUpStore.summary(followUps: followUps, choices: [1: .queue, 2: .queue, 3: .queue], milestone: ""),
-            "Apply queues 3 slices.")
+            "Apply queues 3 tasks.")
         XCTAssertEqual(
             FollowUpStore.summary(followUps: followUps, choices: [1: .drop, 2: .fold, 3: .drop], milestone: "M"),
-            "Apply folds 1 into this slice and drops 2.")
+            "Apply folds 1 into this task and drops 2.")
         XCTAssertEqual(
             FollowUpStore.summary(followUps: followUps, choices: [1: .queue], milestone: "M"),
             "Decide every follow-up to apply, or discard them all.")

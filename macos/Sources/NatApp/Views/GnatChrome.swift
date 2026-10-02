@@ -330,34 +330,56 @@ struct GnatHeaderButtonStyle: ButtonStyle {
     }
 }
 
-/// A header action's label: the words, then the design's small glyph.
+/// A header action's label: the words, then the design's small glyph — an
+/// SF Symbol, or one of gnat's own (`glyph`) where no symbol reads right.
 struct HeaderActionLabel: View {
     let title: String
     var systemImage: String?
     var isBusy = false
-    /// A second line of small text under the title — what the action will
-    /// run with, such as a launch's model and effort.
-    var detail: String?
+    var glyph: HeaderGlyph?
 
     var body: some View {
         HStack(spacing: 7) {
-            if let detail, !detail.isEmpty {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(title).fixedSize()
-                    Text(detail)
-                        .font(Typo.mono(size: 10))
-                        .opacity(0.7)
-                        .fixedSize()
-                }
-            } else {
-                Text(title).fixedSize()
-            }
+            Text(title).fixedSize()
             if isBusy {
-                ProgressView().controlSize(.mini).frame(width: 11, height: 11)
+                ProgressView().controlSize(.mini).frame(width: 13, height: 13)
+            } else if glyph == .merge {
+                MergeGlyph()
+                    .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                    .frame(width: 13, height: 13)
             } else if let systemImage {
-                Image(systemName: systemImage).font(.system(size: 10, weight: .semibold))
+                Image(systemName: systemImage).font(.system(size: 12, weight: .semibold))
             }
         }
+    }
+}
+
+/// The glyphs gnat draws itself for a header action.
+enum HeaderGlyph {
+    /// git's merge, as GitHub draws it: two commits on one line, and a third
+    /// joining it from the side — square, where `arrow.triangle.merge` is a
+    /// thin, tall fork that reads as nothing in particular at this size.
+    case merge
+}
+
+/// The merge glyph's strokes, on a 14-unit square: the main line's two
+/// commits, its stem, and the branch curving in to the third.
+struct MergeGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let unit = min(rect.width, rect.height) / 14
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: rect.minX + x * unit, y: rect.minY + y * unit)
+        }
+        let radius = 1.9 * unit
+        var path = Path()
+        for (x, y) in [(3.5, 2.5), (3.5, 11.5), (10.5, 8.0)] as [(CGFloat, CGFloat)] {
+            path.addEllipse(in: CGRect(x: point(x, y).x - radius, y: point(x, y).y - radius, width: radius * 2, height: radius * 2))
+        }
+        path.move(to: point(3.5, 4.4))
+        path.addLine(to: point(3.5, 9.6))
+        path.move(to: point(3.5, 4.4))
+        path.addQuadCurve(to: point(8.6, 8.0), control: point(3.5, 8.0))
+        return path
     }
 }
 

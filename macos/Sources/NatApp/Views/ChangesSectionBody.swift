@@ -35,7 +35,6 @@ struct ChangesSectionBody: View {
                 .padding(.vertical, 4)
             }
             .thinScrollers()
-            .inelastic()
 
             notices
         }
@@ -194,7 +193,7 @@ struct FollowUpCards: View {
     private var notice: (text: String, role: InkRole)? {
         if let error = store.error(sliceID: slice.id) { return (error, .danger) }
         if !hasLiveAgent {
-            return ("No live agent, so nothing can be folded in. Relaunch the slice first, or queue it instead.", .warning)
+            return ("No live agent, so nothing can be folded in. Relaunch the task first, or queue it instead.", .warning)
         }
         return nil
     }

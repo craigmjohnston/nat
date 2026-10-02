@@ -137,7 +137,7 @@ final class NavigatorModelTests: XCTestCase {
     }
 
     func testEverySectionHasItsLabel() {
-        XCTAssertEqual(NavigatorSection.allCases.map(\.label), ["Thread", "Changes", "PR"])
+        XCTAssertEqual(NavigatorSection.allCases.map(\.label), ["Task", "Changes", "PR"])
     }
 
     // MARK: - The Thread

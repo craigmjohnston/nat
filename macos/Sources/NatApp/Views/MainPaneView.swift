@@ -21,9 +21,15 @@ struct MainPaneNote: View {
 /// where the eye rests in an empty pane. The two columns are held to one
 /// width, so the gap between action and keys falls on the mark's own axis
 /// rather than wherever the longest action happens to push it.
+///
+/// With a selection whose main pane has nothing to show — no agent yet —
+/// it is the mark alone (`showsShortcuts` off), centred: the shortcuts are
+/// the nothing-selected ones.
 struct MainPaneEmptyState: View {
+    var showsShortcuts = true
+
     private static let shortcuts: [(action: String, keys: String)] = [
-        ("New slice", "\u{2318}N"),
+        ("New task", "\u{2318}N"),
         ("New milestone", "\u{2325}\u{2318}N"),
         ("New ad hoc session", "\u{2303}\u{2318}N"),
         ("New project", "\u{21E7}\u{2318}N"),
@@ -36,33 +42,38 @@ struct MainPaneEmptyState: View {
             GnatMark(color: DesignTokens.ink(.quaternary, on: .window))
                 .frame(width: 88, height: 88)
                 .opacity(0.6)
-            Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 9) {
-                ForEach(Self.shortcuts, id: \.action) { shortcut in
-                    GridRow {
-                        Text(shortcut.action)
-                            .font(.system(size: 12.5))
-                            .ink(.tertiary)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text(shortcut.keys)
-                            .font(Typo.mono(size: 12))
-                            .tracking(1.5)
-                            .ink(.quaternary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+            if showsShortcuts { shortcutGrid }
+        }
+        .padding(24)
+        .offset(y: showsShortcuts ? -32 : 0)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var shortcutGrid: some View {
+        Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 9) {
+            ForEach(Self.shortcuts, id: \.action) { shortcut in
+                GridRow {
+                    Text(shortcut.action)
+                        .font(.system(size: 12.5))
+                        .ink(.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    Text(shortcut.keys)
+                        .font(Typo.mono(size: 12))
+                        .tracking(1.5)
+                        .ink(.quaternary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
-        .padding(24)
-        .offset(y: -32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-/// A live agent's terminal, full-bleed on the terminal ground, or the note
-/// saying there is none.
+/// A live agent's terminal, full-bleed on the terminal ground — or, with
+/// none, the empty pane's mark, or `emptyText` where there is something to
+/// say instead.
 struct AgentTerminalPane: View {
     let agent: AgentStatus?
-    var emptyText = "No agent is running. Launch starts one, and its terminal opens here."
+    var emptyText: String?
     var focusRequest = 0
     var sessionExists: () -> Bool = { true }
     @Environment(\.terminalStubbed) private var terminalStubbed
@@ -87,8 +98,10 @@ struct AgentTerminalPane: View {
                 .padding(.vertical, 14)
                 .padding(.horizontal, 20)
             }
-        } else {
+        } else if let emptyText {
             MainPaneNote(text: emptyText)
+        } else {
+            MainPaneEmptyState(showsShortcuts: false)
         }
     }
 }
@@ -157,6 +170,9 @@ struct ContinuousDiffView: View {
         actions.collapseToggled = { onToggleCollapsed($0) }
         // A diff with no store takes no marks — a session's diff.
         guard let review, let store else { return actions }
+        actions.gapExpanded = { file, gap, control in
+            Task { await store.expand(path: file.path, gap: gap, control: control) }
+        }
         actions.rowClicked = { file, row, shift in review.handleRowClick(file: file, row: row, shift: shift) }
         actions.rowsDragged = { file, rowIDs in review.handleRowDrag(file: file, rowIDs: rowIDs) }
         actions.commentRequested = { file, row, endsSelection in
@@ -176,6 +192,9 @@ struct SliceMainPane: View {
     let slice: Slice
     @Binding var mode: MainPaneMode
     let review: DiffReview
+    /// What the launch card would launch as, for the heading while there is
+    /// no agent.
+    var launch: String?
 
     private var nav: NavigatorModel {
         NavigatorModel(
@@ -203,19 +222,20 @@ struct SliceMainPane: View {
                     store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),
                     expectedNumber: pullRequestNumber(slice.pr))
             case .empty:
-                MainPaneNote(text: "The terminal opens here on launch.")
+                MainPaneEmptyState(showsShortcuts: false)
             }
         }
         .surface(.window)
     }
 
-    /// The agent's model, effort and context on the left; the diff's commit
-    /// switcher on the right; or nothing.
+    /// The agent's model, effort and context on the left — before a launch,
+    /// the model and effort it will run as; the diff's commit switcher on
+    /// the right; the pull request's title, and Open in GitHub; or nothing.
     private var heading: some View {
         MainPaneHeader {
             switch mode {
-            case .terminal:
-                AgentModelHeading(agent: appModel.activityStore?.agents[slice.id])
+            case .terminal, .empty:
+                AgentModelHeading(agent: appModel.activityStore?.agents[slice.id], launch: nav.showsLaunch ? launch : nil)
             case .diff:
                 let store = review.store(appModel)
                 Spacer(minLength: 0)
@@ -225,8 +245,10 @@ struct SliceMainPane: View {
                     onSelectCommit: { sha in Task { await store.selectCommit(sha) } },
                     bottomPadding: 0)
                     .fixedSize()
-            case .pr, .empty:
-                EmptyView()
+            case .pr:
+                PRPaneHeading(
+                    store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),
+                    expectedNumber: pullRequestNumber(slice.pr))
             }
         }
     }

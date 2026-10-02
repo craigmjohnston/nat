@@ -162,6 +162,17 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         return try await answer(commit == nil ? diff : Fixtures.smallSliceDiff)
     }
 
+    /// A file's own lines, made up: every fixture file is 400 lines of
+    /// unremarkable code, which is all an expanded gap needs to show.
+    public func sliceFile(
+        projectID: String, sliceRef: String, commit: String?, path: String, from: Int, to: Int?
+    ) async throws -> SliceFileLines {
+        let total = 400
+        let last = min(to ?? total, total)
+        let lines = from > last ? [] : (from...last).map { "    let unchanged\($0) = context(\($0))" }
+        return try await answer(SliceFileLines(path: path, from: from, total: total, lines: lines))
+    }
+
     public func sliceCommits(projectID: String, sliceRef: String) async throws -> SliceCommitsDoc {
         try await answer(Fixtures.commitsDoc)
     }

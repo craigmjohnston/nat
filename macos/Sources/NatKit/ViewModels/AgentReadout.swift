@@ -30,8 +30,7 @@ public struct AgentReadout: Equatable {
 /// placeholder — with no agent or nothing known about it yet.
 public func buildAgentReadout(from agent: AgentStatus?) -> AgentReadout? {
     guard let agent else { return nil }
-    let parts = [agent.model, agent.effort].compactMap { $0 }.filter { !$0.isEmpty }
-    let label = parts.isEmpty ? nil : parts.joined(separator: " / ")
+    let label = modelEffortLabel(model: agent.model ?? "", effort: agent.effort ?? "")
     let context = agent.contextPercent.map { percent in
         let tokens = agent.contextTokens.map { " (\(formatTokenCount($0)) tokens)" } ?? ""
         return AgentReadout.Context(
@@ -39,6 +38,13 @@ public func buildAgentReadout(from agent: AgentStatus?) -> AgentReadout? {
     }
     guard label != nil || context != nil else { return nil }
     return AgentReadout(label: label, context: context)
+}
+
+/// A model and effort as the heading writes them, "Sonnet 5 / high" — a
+/// live agent's, or the ones a launch will run with. Nil with neither.
+public func modelEffortLabel(model: String, effort: String) -> String? {
+    let parts = [model, effort].filter { !$0.isEmpty }
+    return parts.isEmpty ? nil : parts.joined(separator: " / ")
 }
 
 /// A token count as the heading writes it: whole below a thousand, then

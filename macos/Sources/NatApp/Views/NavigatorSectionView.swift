@@ -5,8 +5,8 @@ import NatKit
 /// and the section's own actions flush against its trailing edge — and its
 /// rule, over a
 /// body on the window's ground that takes an equal share of what is left
-/// while open. A dead section (nothing to show yet) is drawn greyed and
-/// cannot be opened.
+/// while open. A section with nothing to show yet is not drawn at all — the
+/// navigator leaves it out.
 ///
 /// The chevron only folds (`onFold`); the rest of the header is `onHead`,
 /// which may also put the section's view up in the main pane. The body is
@@ -17,7 +17,6 @@ struct NavSectionView<Actions: View, Content: View>: View {
     let label: String
     let open: Bool
     var selected = false
-    var live = true
     let onHead: () -> Void
     var onFold: (() -> Void)?
     @ViewBuilder var actions: () -> Actions
@@ -44,13 +43,15 @@ struct NavSectionView<Actions: View, Content: View>: View {
     private var header: some View {
         HStack(spacing: 8) {
             DisclosureChevron(open: open)
+                // Turned at once, as the section snaps.
+                .transaction { $0.animation = nil }
                 .frame(width: 24, height: GnatMetrics.sectionHeadHeight)
                 .padding(.horizontal, -6)
                 .contentShape(Rectangle())
-                .onTapGesture { if live { (onFold ?? onHead)() } }
+                .onTapGesture { (onFold ?? onHead)() }
             Text(label)
                 .font(.system(size: GnatMetrics.body))
-                .ink(live ? .primary : .tertiary)
+                .ink(.primary)
                 .frame(width: 58, alignment: .leading)
             Spacer(minLength: 0)
             HStack(spacing: 0) { actions() }
@@ -60,17 +61,17 @@ struct NavSectionView<Actions: View, Content: View>: View {
         .frame(height: GnatMetrics.sectionHeadHeight)
         .background(selected ? DesignTokens.rowWash(selected: true, on: .chrome) : DesignTokens.fill(.chrome))
         .contentShape(Rectangle())
-        .onTapGesture { if live { onHead() } }
+        .onTapGesture { onHead() }
     }
 }
 
 extension NavSectionView where Actions == EmptyView {
     init(
-        label: String, open: Bool, selected: Bool = false, live: Bool = true,
+        label: String, open: Bool, selected: Bool = false,
         onHead: @escaping () -> Void, onFold: (() -> Void)? = nil, @ViewBuilder content: @escaping () -> Content
     ) {
         self.init(
-            label: label, open: open, selected: selected, live: live, onHead: onHead, onFold: onFold,
+            label: label, open: open, selected: selected, onHead: onHead, onFold: onFold,
             actions: { EmptyView() }, content: content)
     }
 }

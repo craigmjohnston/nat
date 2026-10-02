@@ -5,7 +5,7 @@ import Foundation
 /// one clause.
 public let usageWarningThreshold = 80.0
 
-/// One window's rendered clause — "5h 38% · resets 6:00 PM", the design's
+/// One window's rendered clause — "5h: 38% (6:00PM)", the design's
 /// own short names for the two windows — and
 /// whether it crossed the warning threshold, which is drawn as one tint
 /// across the whole clause.
@@ -49,32 +49,32 @@ public func buildUsageDisplay(
         windows.append(windowDisplay(label: "5h", limit: fiveHour, resetFormat: usageTimeFormatter(timeZone: timeZone)))
     }
     if let sevenDay = reading.sevenDay, sevenDay.resetsAt > now {
-        windows.append(windowDisplay(label: "weekly", limit: sevenDay, resetFormat: usageWeekdayFormatter(timeZone: timeZone)))
+        windows.append(windowDisplay(label: "week", limit: sevenDay, resetFormat: usageWeekdayFormatter(timeZone: timeZone)))
     }
     return UsageDisplay(windows: windows)
 }
 
 private func windowDisplay(label: String, limit: UsageRateLimit, resetFormat: DateFormatter) -> UsageWindowDisplay {
     let percent = Int(limit.usedPercentage.rounded())
-    let text = "\(label) \(percent)% · resets \(resetFormat.string(from: limit.resetsAt))"
+    let text = "\(label): \(percent)% (\(resetFormat.string(from: limit.resetsAt)))"
     return UsageWindowDisplay(text: text, warning: limit.usedPercentage >= usageWarningThreshold)
 }
 
-/// "6:00 PM" — the five-hour window's own reset, precise to the minute since
+/// "6:00PM" — the five-hour window's own reset, precise to the minute since
 /// it is always today or the next few hours.
 private func usageTimeFormatter(timeZone: TimeZone) -> DateFormatter {
     let formatter = DateFormatter()
-    formatter.dateFormat = "h:mm a"
+    formatter.dateFormat = "h:mma"
     formatter.timeZone = timeZone
     formatter.locale = Locale(identifier: "en_US_POSIX")
     return formatter
 }
 
-/// "Tue" — the seven-day window's own reset, named by weekday rather than
+/// "Tuesday" — the seven-day window's own reset, named by weekday rather than
 /// clock time since it is always a few days out.
 private func usageWeekdayFormatter(timeZone: TimeZone) -> DateFormatter {
     let formatter = DateFormatter()
-    formatter.dateFormat = "EEE"
+    formatter.dateFormat = "EEEE"
     formatter.timeZone = timeZone
     formatter.locale = Locale(identifier: "en_US_POSIX")
     return formatter

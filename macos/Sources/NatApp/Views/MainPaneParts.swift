@@ -34,12 +34,16 @@ extension MainPaneHeader where Content == EmptyView {
 
 /// The agent heading's words: the live agent's model / effort, then its
 /// context use as its own statusline reports them — the context in the
-/// warning tint once it runs high — or nothing with no reading.
+/// warning tint once it runs high — or, with no agent, what a launch would
+/// run as (`launch`), or nothing.
 struct AgentModelHeading: View {
     let agent: AgentStatus?
+    var launch: String?
 
     var body: some View {
-        if let readout = buildAgentReadout(from: agent) {
+        if agent == nil, let launch {
+            Text(launch).ink(.secondary).monoXS().lineLimit(1)
+        } else if let readout = buildAgentReadout(from: agent) {
             HStack(spacing: 4) {
                 if let label = readout.label {
                     Text(label).ink(.secondary)
@@ -54,6 +58,42 @@ struct AgentModelHeading: View {
             .lineLimit(1)
         }
     }
+}
+
+/// The PR view's heading: the pull request's title and number at its
+/// leading edge, Open in GitHub at its trailing one — once the right pull
+/// request is read (`expectedNumber`, as `PRConversationPane` checks it).
+struct PRPaneHeading: View {
+    let store: PRStore
+    let expectedNumber: Int?
+
+    var body: some View {
+        if let pr = store.loadState.pr, expectedNumber == nil || pr.number == expectedNumber {
+            HStack(spacing: 8) {
+                Text(pr.title).ink(.primary).truncationMode(.tail)
+                Text("#\(pr.number)").ink(.tertiary).fixedSize()
+            }
+            .font(.system(size: 13, weight: .medium))
+            .lineLimit(1)
+            .textSelection(.enabled)
+            Spacer(minLength: 8)
+            Button {
+                if let url = URL(string: pr.url) { NSWorkspace.shared.open(url) }
+            } label: {
+                HeaderActionLabel(title: "Open in GitHub", systemImage: "arrow.up.right.square")
+            }
+            .buttonStyle(GnatHeaderButtonStyle())
+            .help("Open the pull request on GitHub")
+            // Flush with the pane's edge, as a navigator header's actions are.
+            .padding(.trailing, -12)
+        }
+    }
+}
+
+/// The size the PR view sets its prose in — the description and every
+/// comment alike.
+enum PRConversationMetrics {
+    static let textSize: CGFloat = 15
 }
 
 /// A pull request's description and conversation, with the comment box at
@@ -89,23 +129,18 @@ struct PRConversationPane: View {
         let described = pr.body.trimmingCharacters(in: .whitespacesAndNewlines)
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text("\(pr.title) #\(pr.number)")
-                    .font(.system(size: 18, weight: .semibold))
-                    .ink(.primary)
-                    .textSelection(.enabled)
-
                 NavHeading(text: "Description")
                 if described.isEmpty {
-                    Text("No description.").font(.system(size: 13.5)).ink(.secondary)
+                    Text("No description.").font(.system(size: PRConversationMetrics.textSize)).ink(.secondary)
                 } else {
                     Excerpt(text: described, maxWords: briefExcerptWords * 3) { shown in
-                        MarkdownView(text: shown, size: 13.5)
+                        MarkdownView(text: shown, size: PRConversationMetrics.textSize)
                     }
                 }
 
                 NavHeading(text: entries.isEmpty ? "Conversation" : "Conversation · \(entries.count)")
                 if entries.isEmpty {
-                    Text("No comments yet.").font(.system(size: 13.5)).ink(.secondary)
+                    Text("No comments yet.").font(.system(size: PRConversationMetrics.textSize)).ink(.secondary)
                 }
                 ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
                     PRConversationEntryView(entry: entry)
@@ -122,7 +157,6 @@ struct PRConversationPane: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .thinScrollers()
-        .inelastic()
     }
 
     private func send() async {

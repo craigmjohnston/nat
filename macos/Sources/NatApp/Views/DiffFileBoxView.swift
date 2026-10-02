@@ -73,6 +73,9 @@ struct CommentEditorView: View {
             TextEditor(text: $text)
                 .font(Typo.mono(size: Typo.subhead))
                 .scrollContentBackground(.hidden)
+                // No scroller, and so no gutter where "Show scroll bars" is
+                // Always (or a mouse is connected): the box still scrolls.
+                .scrollIndicators(.never)
                 .frame(minHeight: 60, idealHeight: 60, maxHeight: 140)
                 .padding(6)
                 .field(radius: 8)

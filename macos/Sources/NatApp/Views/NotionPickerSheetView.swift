@@ -139,7 +139,6 @@ struct NotionPickerSheetView: View {
                             .onTapGesture { model.selectedID = place.id }
                     }
                 }
-                .inelastic()
             }
             .thinScrollers()
             .frame(maxHeight: 260)

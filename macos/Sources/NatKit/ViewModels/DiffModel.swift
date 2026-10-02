@@ -64,11 +64,15 @@ public struct DiffRow: Identifiable, Equatable, Sendable {
     /// alone, so they take no part in `==`.
     public let columns: Int
     public let isNarrow: Bool
+    /// For a `hunkBreak` row in a diff read for expanding: the lines it
+    /// stands in for, which its controls reveal. Nil for every other row, and
+    /// for a break with nothing behind it to reveal.
+    public let gap: DiffGap?
 
     public static func == (lhs: DiffRow, rhs: DiffRow) -> Bool {
         lhs.id == rhs.id && lhs.kind == rhs.kind && lhs.oldNumber == rhs.oldNumber
             && lhs.newNumber == rhs.newNumber && lhs.prefix == rhs.prefix
-            && lhs.text == rhs.text && lhs.tokens == rhs.tokens
+            && lhs.text == rhs.text && lhs.tokens == rhs.tokens && lhs.gap == rhs.gap
     }
 
     public init(
@@ -78,7 +82,8 @@ public struct DiffRow: Identifiable, Equatable, Sendable {
         newNumber: Int?,
         prefix: Character?,
         text: String,
-        tokens: [TokenRun]? = nil
+        tokens: [TokenRun]? = nil,
+        gap: DiffGap? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -87,7 +92,89 @@ public struct DiffRow: Identifiable, Equatable, Sendable {
         self.prefix = prefix
         self.text = text
         self.tokens = tokens
+        self.gap = gap
         (self.columns, self.isNarrow) = DiffText.measure(text)
+    }
+}
+
+/// A run of a file's own lines the diff leaves out — above its first hunk,
+/// between two, or after its last — and the controls that reveal it, as
+/// GitHub's diff draws them: the next lines down from the change above, the
+/// next lines up from the change below, or, where that would leave little
+/// hidden, all of it at once.
+///
+/// Lines are numbered on the branch's side, which is the side `nat
+/// slice-file` reads; every hidden line is context, on both sides, so its old
+/// number is its new one plus `oldOffset`.
+public struct DiffGap: Equatable, Sendable {
+    /// What one control reveals.
+    public enum Control: Equatable, Sendable {
+        /// The lines just below the change above.
+        case down
+        /// The lines just above the change below.
+        case up
+        /// The whole gap.
+        case all
+    }
+
+    /// How many lines one press reveals — GitHub's own step.
+    public static let step = 20
+
+    /// The first hidden line and the last — nil where the gap runs to the
+    /// end of a file whose length is not yet known.
+    public let first: Int
+    public let last: Int?
+    public let oldOffset: Int
+    /// Whether the gap runs to the end of the file: the one after the last
+    /// hunk.
+    public let endsFile: Bool
+
+    public init(first: Int, last: Int?, oldOffset: Int, endsFile: Bool = false) {
+        self.first = first
+        self.last = last
+        self.oldOffset = oldOffset
+        self.endsFile = endsFile
+    }
+
+    /// How many lines are hidden, where that is known.
+    public var count: Int? { last.map { $0 - first + 1 } }
+
+    /// The controls, top to bottom. A gap a single step would close takes
+    /// one control for all of it; otherwise the gap above a file's first
+    /// change only reveals upwards, towards it, the gap after its last only
+    /// downwards, away from it, and a gap between two changes both ways.
+    public var controls: [Control] {
+        if let count, count <= Self.step { return [.all] }
+        if first == 1 { return [.up] }
+        if endsFile { return [.down] }
+        return [.down, .up]
+    }
+
+    /// The lines a control reveals, as `nat slice-file` takes them: 1-based,
+    /// inclusive, `to` nil for the rest of the file.
+    public func range(for control: Control) -> (from: Int, to: Int?) {
+        switch control {
+        case .all:
+            return (first, last)
+        case .down:
+            let to = first + Self.step - 1
+            return (first, last.map { min($0, to) } ?? to)
+        case .up:
+            let last = last ?? first + Self.step - 1
+            return (max(first, last - Self.step + 1), last)
+        }
+    }
+}
+
+/// One revealed line of a file: its text and, where the file has a
+/// language, its syntax runs.
+public struct RevealedLine: Equatable, Sendable {
+    public let text: String
+    public let tokens: [TokenRun]?
+
+    public init(text: String, tokens: [TokenRun]? = nil) {
+        self.text = text
+        self.tokens = tokens
     }
 }
 
@@ -124,6 +211,76 @@ public struct DiffFileModel: Identifiable, Equatable, Sendable {
         self.described = described
         self.rows = rows
     }
+
+    /// The file with `revealed` lines (by their number on the branch's
+    /// side) put back in place of the gaps that hid them, as context rows
+    /// numbered exactly as git would have numbered them — so a comment on one
+    /// anchors as it would on any context line. What is still hidden stays a
+    /// gap, split around what was revealed. `fileEnd` is the file's length
+    /// where a read has said it: it bounds the gap after the last hunk, which
+    /// goes once nothing is left in it.
+    public func revealing(_ revealed: [Int: RevealedLine], fileEnd: Int?) -> DiffFileModel {
+        guard rows.contains(where: { $0.gap != nil }) else { return self }
+        var out: [DiffRow] = []
+        out.reserveCapacity(rows.count + revealed.count)
+        for row in rows {
+            guard let gap = row.gap else {
+                out.append(row)
+                continue
+            }
+            out.append(contentsOf: revealRows(gap, header: row.text, revealed: revealed, fileEnd: fileEnd))
+        }
+        return DiffFileModel(path: path, oldPath: oldPath, adds: adds, dels: dels, described: described, rows: out)
+    }
+
+    /// One gap's rows once `revealed` is put into it: context rows for what
+    /// is revealed, and a gap row for each run still hidden — the one next to
+    /// the change below keeping the hunk header the gap was drawn with.
+    private func revealRows(_ gap: DiffGap, header: String, revealed: [Int: RevealedLine], fileEnd: Int?) -> [DiffRow] {
+        var rows: [DiffRow] = []
+        func context(_ n: Int, _ line: RevealedLine) {
+            let old = n + gap.oldOffset
+            rows.append(DiffRow(
+                id: anchoredID(path, old: old, new: n), kind: .context, oldNumber: old, newNumber: n,
+                prefix: " ", text: line.text, tokens: line.tokens))
+        }
+        /// A run still hidden: the gap's last run keeps its header (next to
+        /// the change below) or its place at the end of the file.
+        func hidden(_ first: Int, _ last: Int?, isLast: Bool) {
+            let run = DiffGap(first: first, last: last, oldOffset: gap.oldOffset, endsFile: gap.endsFile && isLast)
+            rows.append(DiffRow(
+                id: "\(path)#gap#\(first)", kind: .hunkBreak, oldNumber: nil, newNumber: nil, prefix: nil,
+                text: isLast ? header : "", gap: run))
+        }
+
+        guard let end = gap.last ?? fileEnd else {
+            // Running to an end not yet known: what has been revealed runs
+            // down from the change above, and the rest is still hidden.
+            var n = gap.first
+            while let line = revealed[n] {
+                context(n, line)
+                n += 1
+            }
+            hidden(n, nil, isLast: true)
+            return rows
+        }
+        var runStart: Int?
+        for n in gap.first...max(gap.first, end) where n <= end {
+            if let line = revealed[n] {
+                if let start = runStart {
+                    hidden(start, n - 1, isLast: false)
+                    runStart = nil
+                }
+                context(n, line)
+            } else if runStart == nil {
+                runStart = n
+            }
+        }
+        if let start = runStart {
+            hidden(start, end, isLast: true)
+        }
+        return rows
+    }
 }
 
 /// A whole diff, parsed into render-ready files.
@@ -157,12 +314,15 @@ public struct DiffModel: Equatable, Sendable {
 // MARK: - Building
 
 /// Builds a render-ready `DiffModel` from the wire response of
-/// `nat slice-diff --json`.
-public func buildDiffModel(from diff: SliceDiff) -> DiffModel {
+/// `nat slice-diff --json`. `expandable` reads it for a viewer that can
+/// reveal the lines between hunks (`nat slice-file`): every gap — above the
+/// first hunk, between each pair, after the last — becomes a break carrying
+/// its `DiffGap`.
+public func buildDiffModel(from diff: SliceDiff, expandable: Bool = false) -> DiffModel {
     DiffModel(
         base: diff.base,
         branch: diff.branch,
-        files: diff.files.map(buildDiffFileModel)
+        files: diff.files.map { buildDiffFileModel(from: $0, expandable: expandable) }
     )
 }
 
@@ -179,14 +339,14 @@ public func buildDiffModel(from diff: SliceDiff) -> DiffModel {
 /// "similarity index"/"rename from"/"rename to", or an unrecognised header) is
 /// drawn like a context line, but numbered by neither side, since no hunk has
 /// claimed it yet.
-func buildDiffFileModel(from file: SliceDiffFile) -> DiffFileModel {
+func buildDiffFileModel(from file: SliceDiffFile, expandable: Bool = false) -> DiffFileModel {
     DiffFileModel(
         path: file.path,
         oldPath: file.oldPath,
         adds: file.adds,
         dels: file.dels,
         described: file.described,
-        rows: diffRows(for: file)
+        rows: diffRows(for: file, expandable: expandable)
     )
 }
 
@@ -195,17 +355,33 @@ private let gitBlobMarker = "index "
 private let gitOldMarker = "--- "
 private let gitNewMarker = "+++ "
 
-func diffRows(for file: SliceDiffFile) -> [DiffRow] {
+func diffRows(for file: SliceDiffFile, expandable: Bool = false) -> [DiffRow] {
     var rows: [DiffRow] = []
     var inHunk = false
     var nextOld = 0
     var nextNew = 0
+    // A side a hunk starts at 0 is a side the file is not on: an added file
+    // (old) or a deleted one (new) is its whole self in the one hunk, with
+    // nothing around it to reveal.
+    var wholeFile = false
 
     for (lineIndex, line) in file.lines.enumerated() {
         let tokens = tokenRuns(file, at: lineIndex)
 
         if let hunk = hunkStarts(line) {
-            if inHunk {
+            wholeFile = hunk.old == 0 || hunk.new == 0
+            let gap: DiffGap? = if !expandable || wholeFile {
+                nil
+            } else if inHunk {
+                hunk.new > nextNew ? DiffGap(first: nextNew, last: hunk.new - 1, oldOffset: nextOld - nextNew) : nil
+            } else {
+                hunk.new > 1 ? DiffGap(first: 1, last: hunk.new - 1, oldOffset: hunk.old - hunk.new) : nil
+            }
+            if let gap {
+                rows.append(DiffRow(
+                    id: "\(file.path)#gap#\(gap.first)", kind: .hunkBreak,
+                    oldNumber: nil, newNumber: nil, prefix: nil, text: line, gap: gap))
+            } else if inHunk {
                 rows.append(DiffRow(
                     id: unanchoredID(file.path, rows.count),
                     kind: .hunkBreak,
@@ -255,6 +431,14 @@ func diffRows(for file: SliceDiffFile) -> [DiffRow] {
         rows.append(contentRow(path: file.path, line: line, tokens: tokens, nextOld: &nextOld, nextNew: &nextNew))
     }
 
+    // After the last hunk, the rest of the file — however much there is,
+    // which only reading it will say. A file whose last line git noted has
+    // no newline ends right there.
+    if expandable, inHunk, !file.described, !wholeFile, file.lines.last?.hasPrefix("\\") != true {
+        rows.append(DiffRow(
+            id: "\(file.path)#gap#\(nextNew)", kind: .hunkBreak, oldNumber: nil, newNumber: nil, prefix: nil,
+            text: "", gap: DiffGap(first: nextNew, last: nil, oldOffset: nextOld - nextNew, endsFile: true)))
+    }
     return rows
 }
 

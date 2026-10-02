@@ -3,37 +3,54 @@ import SwiftUI
 import XCTest
 @testable import NatKit
 
-/// `inelastic()` really does reach the scroll it is planted in. A source
-/// scan can only say the modifier was written; what matters is that the
-/// `NSScrollView` behind a SwiftUI `ScrollView` comes back with its
-/// elasticity off, so the seam is hosted and then read.
+/// `ScrollElasticity.disableEverywhere()` really does reach every scroll: a
+/// plain `NSScrollView`, one asked for its bounce back, and the one behind a
+/// hosted SwiftUI `ScrollView` all come back with their elasticity off.
 @MainActor
 final class ScrollElasticityTests: XCTestCase {
-    /// The modifier's own view, hung inside a real `NSScrollView`: what it
-    /// finds by walking up is the scroll it is inside, and both axes go.
-    func testItTakesTheElasticityOffTheScrollItIsIn() {
-        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: 200))
-        let document = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: 600))
-        scrollView.documentView = document
-        XCTAssertEqual(scrollView.verticalScrollElasticity, .automatic)
+    override func setUp() {
+        super.setUp()
+        ScrollElasticity.disableEverywhere()
+    }
 
-        document.addSubview(ElasticityOffView())
+    /// A scroll view joining a window loses its bounce on both axes.
+    func testAScrollViewInAWindowIsInelastic() {
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: 200))
+        let window = NSWindow(contentRect: scrollView.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = scrollView
 
         XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
         XCTAssertEqual(scrollView.horizontalScrollElasticity, .none)
     }
 
-    /// A view in no scroll at all is the ordinary case for the first moment
-    /// of a layout, and it passes over rather than falling over.
-    func testAViewInNoScrollDoesNothing() {
-        let loose = NSView(frame: .zero)
-        loose.addSubview(ElasticityOffView())
-        XCTAssertNil(loose.enclosingScrollView)
+    /// Asking for the bounce back is held to none.
+    func testSettingElasticityIsHeldToNone() {
+        let scrollView = NSScrollView(frame: .zero)
+        scrollView.verticalScrollElasticity = .allowed
+        scrollView.horizontalScrollElasticity = .automatic
+
+        XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
+        XCTAssertEqual(scrollView.horizontalScrollElasticity, .none)
     }
 
-    /// And the whole thing end to end: a SwiftUI `ScrollView` whose content
-    /// carries `inelastic()`, hosted and laid out, leaves AppKit's own
-    /// scroll with no bounce in it.
+    /// Installing twice swaps nothing back.
+    func testInstallingTwiceKeepsItOff() {
+        ScrollElasticity.disableEverywhere()
+        let scrollView = NSScrollView(frame: .zero)
+        scrollView.verticalScrollElasticity = .allowed
+        XCTAssertEqual(scrollView.verticalScrollElasticity, .none)
+    }
+
+    /// Other views moving to a window are untouched by the hook.
+    func testOtherViewsStillMoveToWindows() {
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 10, height: 10))
+        let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = view
+        XCTAssertIdentical(view.window, window)
+    }
+
+    /// And end to end: a SwiftUI `ScrollView`, hosted and laid out with no
+    /// modifier of ours, leaves AppKit's own scroll with no bounce in it.
     func testAHostedScrollViewEndsUpInelastic() throws {
         let hosting = NSHostingView(
             rootView: ScrollView {
@@ -42,7 +59,6 @@ final class ScrollElasticityTests: XCTestCase {
                         Text("row \(index)")
                     }
                 }
-                .inelastic()
             }
         )
         hosting.frame = NSRect(x: 0, y: 0, width: 200, height: 200)

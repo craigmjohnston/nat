@@ -130,6 +130,13 @@ wrap through the same code, so they can't disagree), and a viewport-sized view
 draws only what's visible over a sizer document. Comments and the editor stay
 SwiftUI, hosted per anchor row (`DiffCanvasRepresentable`). Don't move the
 rows back into SwiftUI. Stories: `diff-stress`, `diff-stress-unwrapped`.
+The gutter is one number column (the branch's side; a removed line's is
+blank) and there is no +/- column — a row's fill, and its gutter stripe,
+say what changed. A task's diff is read `expandable`: every gap around its
+hunks is a `hunkBreak` row carrying a `DiffGap`, whose controls (GitHub's ↓
+↑ ↕) sit in the gutter; `DiffStore.expand` reads the lines through `nat
+slice-file` and `DiffFileModel.revealing` puts them back as context rows
+numbered as git would have. Story: `window-review-expanded`.
 
 ## Design tokens
 

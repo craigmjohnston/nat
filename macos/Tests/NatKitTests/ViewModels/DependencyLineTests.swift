@@ -12,11 +12,11 @@ final class DependencyLineTests: XCTestCase {
     func testNoDependencies() {
         XCTAssertEqual(
             dependencyLine(dependsOn: nil, blocked: false, plan: []),
-            "Nothing blocks this slice"
+            "Nothing blocks this task"
         )
         XCTAssertEqual(
             dependencyLine(dependsOn: [], blocked: false, plan: []),
-            "Nothing blocks this slice"
+            "Nothing blocks this task"
         )
     }
 
@@ -72,11 +72,11 @@ final class DependencyLineTests: XCTestCase {
     func testFallsBackToTheCountWhenNothingCanBeNamed() {
         XCTAssertEqual(
             dependencyLine(dependsOn: ["gone-1"], blocked: true, plan: []),
-            "Waits on 1 slice"
+            "Waits on 1 task"
         )
         XCTAssertEqual(
             dependencyLine(dependsOn: ["gone-1", "gone-2"], blocked: false, plan: []),
-            "Waits on 2 slices"
+            "Waits on 2 tasks"
         )
     }
 
@@ -86,7 +86,7 @@ final class DependencyLineTests: XCTestCase {
         let plan = [slice("dep-1", "Fix the parser", status: "Done")]
         XCTAssertEqual(
             dependencyLine(dependsOn: ["dep-1", "gone-2"], blocked: true, plan: plan),
-            "Waits on 2 slices"
+            "Waits on 2 tasks"
         )
     }
 

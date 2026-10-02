@@ -10,6 +10,9 @@ import NatKit
 // loop — and the gallery needs the arguments read before any of that. A
 // SwiftPM executable target with a `main.swift` has its entry point here, so
 // `NatApp` carries no `@main` attribute and is started by hand below.
+// No scroll anywhere bounces — the gallery's renders included.
+MainActor.assumeIsolated { ScrollElasticity.disableEverywhere() }
+
 do {
     if let command = try GalleryCommand.parse(CommandLine.arguments) {
         GalleryRunner.run(command)

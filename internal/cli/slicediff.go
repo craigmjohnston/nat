@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/logging"
 )
@@ -36,35 +37,9 @@ func sliceDiff(ctx context.Context, args []string, env Env) error {
 		return usageErrorf("slice-diff: --commits and --commit are two different reads: " +
 			"list the branch's commits, or diff one of them, not both")
 	}
-	id, err := pageID("slice-diff", rest[0])
+	s, workdir, err := handedBackSlice(ctx, "slice-diff", rest[0], *projectRef, env)
 	if err != nil {
 		return err
-	}
-
-	_, projectID, project, err := env.projectFor(*projectRef)
-	if err != nil {
-		return err
-	}
-	st, err := env.storeFor(ctx, projectID, project)
-	if err != nil {
-		return err
-	}
-
-	s, _, err := st.Slice(ctx, id)
-	if err != nil {
-		return fmt.Errorf("load the slice: %w", err)
-	}
-	// Only a slice with a branch recorded has a diff to read at all. A Done
-	// one is no longer refused: the board marks a slice Done as it opens the
-	// pull request, and the review goes on reading the branch until that
-	// lands — the same reason such a slice stays in the NEEDS REVIEW section.
-	if s.Branch == "" {
-		return fmt.Errorf("%q is not handed back: only a slice with a branch has a diff to read", s.Name)
-	}
-
-	workdir := s.Repo
-	if workdir == "" {
-		workdir = project.WorkingDir
 	}
 	gitCLI := env.NewGit()
 
@@ -93,6 +68,43 @@ func sliceDiff(ctx context.Context, args []string, env Env) error {
 	default:
 		return sliceBranchDiff(gitCLI, workdir, baseName, s.Branch, *asJSON, env.Out)
 	}
+}
+
+// handedBackSlice is the slice a branch read is about and the checkout its
+// branch is read in — refused for a slice with no branch
+// recorded, which has nothing to read. Shared by slice-diff and slice-file.
+func handedBackSlice(ctx context.Context, command, ref, projectRef string, env Env) (domain.Slice, string, error) {
+	id, err := pageID(command, ref)
+	if err != nil {
+		return domain.Slice{}, "", err
+	}
+
+	_, projectID, project, err := env.projectFor(projectRef)
+	if err != nil {
+		return domain.Slice{}, "", err
+	}
+	st, err := env.storeFor(ctx, projectID, project)
+	if err != nil {
+		return domain.Slice{}, "", err
+	}
+
+	s, _, err := st.Slice(ctx, id)
+	if err != nil {
+		return domain.Slice{}, "", fmt.Errorf("load the slice: %w", err)
+	}
+	// Only a slice with a branch recorded has a diff to read at all. A Done
+	// one is no longer refused: the board marks a slice Done as it opens the
+	// pull request, and the review goes on reading the branch until that
+	// lands — the same reason such a slice stays in the NEEDS REVIEW section.
+	if s.Branch == "" {
+		return domain.Slice{}, "", fmt.Errorf("%q is not handed back: only a slice with a branch has a diff to read", s.Name)
+	}
+
+	workdir := s.Repo
+	if workdir == "" {
+		workdir = project.WorkingDir
+	}
+	return s, workdir, nil
 }
 
 // sliceBranchDiff is the plain, whole-branch read: the same call slice-diff

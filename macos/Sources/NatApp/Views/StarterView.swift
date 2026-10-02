@@ -98,7 +98,6 @@ struct StarterView: View {
             .padding(.top, 96)
             .padding(.bottom, 40)
             .frame(maxWidth: .infinity)
-            .inelastic()
         }
         .thinScrollers()
         .surface(.window)

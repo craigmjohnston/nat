@@ -100,6 +100,25 @@ public struct SliceDiffFile: Codable, Equatable, Sendable {
     }
 }
 
+/// A run of one file's own lines, as `nat slice-file --json` reads them:
+/// lines `from`… of a file `total` lines long, each lexed as the diff's own
+/// lines are (`tokens`, one per line, where the path matched a language).
+public struct SliceFileLines: Codable, Equatable, Sendable {
+    public let path: String
+    public let from: Int
+    public let total: Int
+    public let lines: [String]
+    public let tokens: [[TokenRun]]?
+
+    public init(path: String, from: Int, total: Int, lines: [String], tokens: [[TokenRun]]? = nil) {
+        self.path = path
+        self.from = from
+        self.total = total
+        self.lines = lines
+        self.tokens = tokens
+    }
+}
+
 /// One of the diff viewer's few syntax colours, named as the wire's own
 /// lowercase string (mirrors `internal/cli/difftokens.go`'s `tokenKind`).
 public enum TokenKind: String, Codable, Equatable, Sendable {

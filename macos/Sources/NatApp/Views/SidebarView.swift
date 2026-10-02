@@ -77,23 +77,36 @@ struct SidebarView: View {
         let model = model
         VStack(spacing: 0) {
             head("active", label: "Active", count: model.needsYouCount) { newSessionMenu(model) }
+            // Folded, Projects (and Scratch under it) pins to the sidebar's
+            // foot rather than leaving an empty well under its heading.
+            let pinsProjects = !isOpen("work") && !(model.scratch != nil && isOpen("scratch", byDefault: false))
+            // Rows run straight into the line under them, which is laid over
+            // the last one's foot — so a selected last row's wash meets it,
+            // and the line adds no height — unless Projects pins away from
+            // them.
+            let rowsMeetRule = isOpen("active") && !model.active.isEmpty && !pinsProjects
             if isOpen("active") {
                 if model.active.isEmpty {
                     GnatNote(text: EmptyActiveNote.text.lowercased(), height: GnatMetrics.sidebarRowHeight)
                 } else {
-                    ForEach(model.active) { activeRow($0) }
+                    VStack(spacing: 0) {
+                        ForEach(model.active) { activeRow($0) }
+                    }
+                    .overlay(alignment: .bottom) {
+                        if rowsMeetRule { Rule(.separator) }
+                    }
                 }
             }
 
-            // Folded, Projects (and Scratch under it) pins to the sidebar's
-            // foot rather than leaving an empty well under its heading.
-            if !isOpen("work") && !(model.scratch != nil && isOpen("scratch", byDefault: false)) {
+            if pinsProjects {
                 Spacer(minLength: 0)
             }
 
-            // The air under a list, not under a folded heading — that would
-            // set the heading above it off-centre.
-            Rule(.separator).padding(.top, isOpen("active") ? 4 : 0)
+            if !rowsMeetRule {
+                // The air under the empty note, not under a folded heading —
+                // that would set the heading above it off-centre.
+                Rule(.separator).padding(.top, isOpen("active") && model.active.isEmpty ? 4 : 0)
+            }
 
             head("work", label: "Projects", count: 0) {
                 Button(action: onNewProject) {
@@ -111,7 +124,6 @@ struct SidebarView: View {
                     VStack(spacing: 0) {
                         ForEach(model.projects) { projectRows($0) }
                     }
-                    .inelastic()
                 }
                 .thinScrollers()
                 .frame(maxHeight: .infinity)
@@ -239,7 +251,7 @@ struct SidebarView: View {
             newMilestoneText = ""
             newMilestoneProject = project.id
         }
-        Button("New slice\u{2026}", systemImage: "plus") { newSliceTarget = NewSliceTarget(projectID: project.id, milestone: "") }
+        Button("New task\u{2026}", systemImage: "plus") { newSliceTarget = NewSliceTarget(projectID: project.id, milestone: "") }
         Button("Workshop\u{2026}", systemImage: "sparkles") { Task { await appModel.selectWorkshop(inProject: project.id) } }
         Divider()
         Button(
@@ -424,7 +436,7 @@ struct SidebarView: View {
         case .empty where project.kind == .scratch:
             scratchEmptyNote(project, leading: 26 - outdent)
         case .empty:
-            GnatNote(text: "no slices", leading: 26 - outdent, height: GnatMetrics.sidebarRowHeight)
+            GnatNote(text: "no tasks", leading: 26 - outdent, height: GnatMetrics.sidebarRowHeight)
         case .stale(let message):
             GnatNote(
                 text: "refresh failed — showing the last plan", role: .warning, leading: 26 - outdent,
@@ -481,7 +493,6 @@ struct SidebarView: View {
                 }
                 .padding(.bottom, 4)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scratchContentHeight = $0 }
-                .inelastic()
             }
             .thinScrollers()
             .frame(maxHeight: projectsOpen ? scratchContentHeight : .infinity)
@@ -681,7 +692,7 @@ struct SidebarView: View {
         let filed = appModel.plan(projectID: projectID)?.slices.filter { $0.milestoneID == name }.count ?? 0
         let actions = MilestoneMenuRules.actions(for: name, in: milestones, sliceCount: filed)
 
-        Button("New slice\u{2026}", systemImage: "plus") { newSliceTarget = NewSliceTarget(projectID: projectID, milestone: name) }
+        Button("New task\u{2026}", systemImage: "plus") { newSliceTarget = NewSliceTarget(projectID: projectID, milestone: name) }
         Button("Rename\u{2026}", systemImage: "pencil") {
             renameText = name
             milestoneForRename = MilestoneRef(projectID: projectID, name: name)
@@ -838,7 +849,7 @@ struct SidebarView: View {
                     Button("Cancel", role: .cancel) {}
                 } message: {
                     Text(view.sliceForDeletion?.done == true
-                        ? "This slice is Done — deleting it drops the record of finished work. The page goes to Notion's trash."
+                        ? "This task is Done — deleting it drops the record of finished work. The page goes to Notion's trash."
                         : "The page goes to Notion's trash.")
                 }
                 .alert(
@@ -851,7 +862,7 @@ struct SidebarView: View {
                     Button("Rename") { view.renameMilestone(ref) }
                     Button("Cancel", role: .cancel) {}
                 } message: { _ in
-                    Text("The slices filed under it are refiled onto the new name, and it keeps its place in the plan.")
+                    Text("The tasks filed under it are refiled onto the new name, and it keeps its place in the plan.")
                 }
                 .alert(
                     "New milestone",
@@ -863,7 +874,7 @@ struct SidebarView: View {
                     Button("Add") { view.addMilestone(projectID) }
                     Button("Cancel", role: .cancel) {}
                 } message: { _ in
-                    Text("It goes at the end of the plan, empty, ready for slices.")
+                    Text("It goes at the end of the plan, empty, ready for tasks.")
                 }
                 .alert(
                     "Delete \u{201C}\(view.milestoneForDeletion?.name ?? "")\u{201D}?",
@@ -875,7 +886,7 @@ struct SidebarView: View {
                     }
                     Button("Cancel", role: .cancel) {}
                 } message: { _ in
-                    Text("The milestone is dropped from the plan. It holds no slices, so no work goes with it.")
+                    Text("The milestone is dropped from the plan. It holds no tasks, so no work goes with it.")
                 }
                 .sheet(item: view.$newSliceTarget) { target in
                     NewSliceSheetView(

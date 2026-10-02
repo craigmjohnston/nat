@@ -181,7 +181,7 @@ struct LaunchCard: View {
                     + Text(entry.element).foregroundStyle(DesignTokens.ink(.primary, on: .window))
             }
             (Text("Waits on ") + waiting
-                + Text(names.count > 1 ? ". Launch unlocks when they are done." : ". Launch unlocks when that slice is done."))
+                + Text(names.count > 1 ? ". Launch unlocks when they are done." : ". Launch unlocks when that task is done."))
                 .ink(.secondary)
         }
     }
@@ -236,7 +236,7 @@ struct DependencyRow: View {
         .quietPopover(isPresented: $hovering, arrowEdge: .maxX) {
             DependencyDetailView(slice: slice, state: state, live: live, milestone: milestone)
         }
-        .accessibilityHint("Selects the slice")
+        .accessibilityHint("Selects the task")
     }
 }
 
@@ -277,7 +277,7 @@ struct DependencyDetailView: View {
                 }
             }
             .monoXS()
-            Text("Click to open the slice.")
+            Text("Click to open the task.")
                 .font(.system(size: 12))
                 .ink(.tertiary)
         }

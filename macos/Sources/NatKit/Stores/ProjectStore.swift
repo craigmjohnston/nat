@@ -9,6 +9,7 @@ public protocol NatClientProtocol: Sendable {
     func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail
     func sliceDiff(projectID: String, sliceRef: String, commit: String?) async throws -> SliceDiff
     func sliceCommits(projectID: String, sliceRef: String) async throws -> SliceCommitsDoc
+    func sliceFile(projectID: String, sliceRef: String, commit: String?, path: String, from: Int, to: Int?) async throws -> SliceFileLines
     func sliceEdit(projectID: String, sliceRef: String, description: String) async throws -> SliceEditResult
     func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult
     func agentSend(projectID: String, sliceRef: String, text: String) async throws -> Void
@@ -45,6 +46,15 @@ public protocol NatClientProtocol: Sendable {
 }
 
 extension NatClientProtocol {
+    /// A file's own lines: only `NatClient`, the fixture client and the
+    /// diff store's tests implement this, the same reasoning as
+    /// `workspaceLaunch`.
+    public func sliceFile(
+        projectID: String, sliceRef: String, commit: String?, path: String, from: Int, to: Int?
+    ) async throws -> SliceFileLines {
+        throw NatError.commandFailed("slice-file: not supported by this client")
+    }
+
     /// Reviewers: only `NatClient` and the fixture client implement this,
     /// the same reasoning as `workspaceLaunch`.
     public func prReviewers(projectID: String, sliceRef: String, add: [String], remove: [String]) async throws -> PRReviewers {

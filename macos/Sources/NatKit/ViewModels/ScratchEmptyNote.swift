@@ -6,7 +6,7 @@ import Foundation
 public enum ScratchEmptyNote {
     /// The note, its two ways in as markdown links to `Link`'s URLs.
     public static let markdown: AttributedString = {
-        let source = "No slices. Use a [workshop agent](gnat-scratch:workshop) or [add one](gnat-scratch:add-slice) yourself."
+        let source = "No tasks. Use a [workshop agent](gnat-scratch:workshop) or [add one](gnat-scratch:add-slice) yourself."
         return (try? AttributedString(markdown: source)) ?? AttributedString(source)
     }()
 

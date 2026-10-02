@@ -34,7 +34,7 @@ struct NewSliceSheetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("New slice")
+            Text("New task")
                 .font(.system(size: Typo.headline, weight: .semibold))
                 .ink(.primary)
 
@@ -42,7 +42,7 @@ struct NewSliceSheetView: View {
                 Text("Title")
                     .font(.system(size: Typo.subhead, weight: .semibold))
                     .ink(.secondary)
-                TextField("Slice title", text: $title)
+                TextField("Task title", text: $title)
                     .textFieldStyle(.roundedBorder)
                     .font(Typo.mono(size: Typo.code))
             }
@@ -64,7 +64,7 @@ struct NewSliceSheetView: View {
                 Text("Description")
                     .font(.system(size: Typo.subhead, weight: .semibold))
                     .ink(.secondary)
-                Text("Optional. Becomes the slice page's brief.")
+                Text("Optional. Becomes the task page's brief.")
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .ink(.tertiary)
                 TextEditor(text: $description)
@@ -93,7 +93,7 @@ struct NewSliceSheetView: View {
 
                 Button(action: submit) {
                     AsyncActionLabel(isBusy: isSubmitting) {
-                        Text("Add slice")
+                        Text("Add task")
                     }
                 }
                 .buttonStyle(PrimaryButtonStyle())

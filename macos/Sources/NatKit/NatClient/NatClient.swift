@@ -136,6 +136,25 @@ public final class NatClient: Sendable {
         return try decodeJSON(SliceDiff.self, from: output)
     }
 
+    /// A run of one file's own lines as the branch — or one commit of it —
+    /// leaves it, mirroring `nat slice-file`: what the diff's expand
+    /// controls reveal between its hunks.
+    ///
+    /// - Parameters:
+    ///   - commit: A commit's sha, to read the file as that commit left it
+    ///   - from: The first line, 1-based
+    ///   - to: The last line, inclusive; nil reads to the end of the file
+    public func sliceFile(
+        projectID: String, sliceRef: String, commit: String?, path: String, from: Int, to: Int?
+    ) async throws -> SliceFileLines {
+        var arguments = ["slice-file", "--project", projectID, "--json", "--path", path, "--from", String(from)]
+        if let to { arguments.append(contentsOf: ["--to", String(to)]) }
+        if let commit, !commit.isEmpty { arguments.append(contentsOf: ["--commit", commit]) }
+        arguments.append(sliceRef)
+        let output = try await runNat(arguments: arguments)
+        return try decodeJSON(SliceFileLines.self, from: output)
+    }
+
     /// List a handed-back slice's branch's own commits since the merge base,
     /// without diffing any of them — the sidebar's "All commits" dropdown,
     /// mirroring `nat slice-diff --commits`.

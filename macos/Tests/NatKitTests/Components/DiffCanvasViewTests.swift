@@ -51,7 +51,8 @@ final class DiffCanvasViewTests: XCTestCase {
     }
 
     private func makeCanvas(
-        width: CGFloat = 600, height: CGFloat = 300, state: DiffCanvasState = DiffCanvasState()
+        width: CGFloat = 600, height: CGFloat = 300, state: DiffCanvasState = DiffCanvasState(),
+        files: [DiffFileModel]? = nil
     ) -> DiffCanvasView {
         let canvas = DiffCanvasView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         let window = NSWindow(
@@ -59,7 +60,7 @@ final class DiffCanvasViewTests: XCTestCase {
         window.isReleasedWhenClosed = false
         window.contentView = canvas
         self.window = window
-        canvas.update(files: files, state: state)
+        canvas.update(files: files ?? self.files, state: state)
         canvas.layoutSubtreeIfNeeded()
         return canvas
     }
@@ -362,6 +363,45 @@ final class DiffCanvasViewTests: XCTestCase {
         XCTAssertEqual(asked.clicked.map(\.1), [false, true])
         XCTAssertEqual(asked.commented.map(\.0), ["f0#4"])
         XCTAssertTrue(window?.firstResponder === viewport)
+    }
+
+    /// A file with a gap between two changes, a line, and a small gap.
+    private var gappedFiles: [DiffFileModel] {
+        let between = DiffRow(
+            id: "g1", kind: .hunkBreak, oldNumber: nil, newNumber: nil, prefix: nil, text: "@@ -1 +1 @@",
+            gap: DiffGap(first: 10, last: 90, oldOffset: 0))
+        let small = DiffRow(
+            id: "g2", kind: .hunkBreak, oldNumber: nil, newNumber: nil, prefix: nil, text: "",
+            gap: DiffGap(first: 92, last: 95, oldOffset: 0))
+        return [DiffFileModel(
+            path: "a.swift", oldPath: "a.swift", adds: 1, dels: 0, described: false,
+            rows: [between, row("r", 91, "line"), small, row("x", 96, "added", kind: .added)])]
+    }
+
+    func testAGapsControlsEachRevealTheirOwnWay() throws {
+        let canvas = makeCanvas(files: gappedFiles)
+        var pressed: [(String, DiffGap.Control)] = []
+        var actions = DiffCanvasActions()
+        actions.gapExpanded = { file, gap, control in pressed.append(("\(file.path)@\(gap.first)", control)) }
+        actions.rowClicked = { _, _, _ in XCTFail("a gap is no row to mark") }
+        canvas.actions = actions
+        let viewport = canvas.viewport
+        let rowHeight = canvas.metrics.rowMinHeight
+
+        let top = point(of: .row(file: 0, row: 0), in: canvas, x: 10)
+        viewport.mouseDown(with: event(.leftMouseDown, at: top, in: canvas))
+        viewport.mouseDown(with: event(
+            .leftMouseDown, at: NSPoint(x: 300, y: top.y + rowHeight), in: canvas))
+        viewport.mouseDown(with: event(.leftMouseDown, at: point(of: .row(file: 0, row: 2), in: canvas), in: canvas))
+
+        XCTAssertEqual(pressed.map(\.0), ["a.swift@10", "a.swift@10", "a.swift@92"])
+        XCTAssertEqual(pressed.map(\.1), [.down, .up, .all])
+
+        // The control under the pointer lights up, and goes out as it leaves.
+        viewport.mouseMoved(with: event(.mouseMoved, at: top, in: canvas))
+        try assertDraws(canvas)
+        viewport.mouseMoved(with: event(.mouseMoved, at: point(of: .row(file: 0, row: 1), in: canvas), in: canvas))
+        try assertDraws(canvas)
     }
 
     func testADragMarksTheRunFromWhereItBegan() {

@@ -169,7 +169,7 @@ final class FixtureClientTests: XCTestCase {
         // The per-slice stores it makes read the canned client too.
         let diffStore = model.diffStore(projectID: Fixtures.projectID)
         await diffStore.fetch(projectID: Fixtures.projectID, sliceRef: Fixtures.mergeBoxSliceID)
-        XCTAssertEqual(diffStore.loadState.diff, Fixtures.diffModel)
+        XCTAssertEqual(diffStore.loadState.diff, buildDiffModel(from: Fixtures.sliceDiff, expandable: true))
 
         let prStore = model.prStore(projectID: Fixtures.projectID)
         await prStore.fetch(projectID: Fixtures.projectID, sliceRef: Fixtures.approveSliceID)

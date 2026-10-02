@@ -152,8 +152,8 @@ struct SettingsView: View {
     private var agentsTab: some View {
         Form {
             configSection(
-                "Slice agent",
-                footer: "Which Claude Code a slice's agent runs as, and how hard it thinks, unless the launch itself overrides them. Applies at the next launch."
+                "Task agent",
+                footer: "Which Claude Code a task's agent runs as, and how hard it thinks, unless the launch itself overrides them. Applies at the next launch."
             ) {
                 agentRows(
                     modelKey: SettingsKey.sliceModel,
@@ -182,7 +182,7 @@ struct SettingsView: View {
         Form {
             configSection(
                 "Working directories",
-                footer: "Where a project's agents start, unless a slice names its own repo. Applies at the next launch."
+                footer: "Where a project's agents start, unless a task names its own repo. Applies at the next launch."
             ) {
                 if sortedProjectIDs.isEmpty {
                     Text("No projects are tracked on this Mac yet.")

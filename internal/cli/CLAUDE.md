@@ -205,3 +205,12 @@ a recorded PR, `gh.ViewPR`'s `BaseRefName` is used instead (a PR opened
 against anything but the default branch is measured against what it would
 actually merge into) — a `gh` that cannot answer is logged and the command
 falls back to the default rather than failing the diff over it.
+
+## `slice-file`
+
+The lines a diff leaves out between its hunks, for gnat's expand controls:
+`git show <ref>:<path>` (the slice's branch, or `--commit`'s sha) cut to
+`--from`..`--to` (1-based, inclusive; `--to` off reads to the end), under
+`slice-diff`'s own refusals (`handedBackSlice`). The JSON carries the file's
+`total` length — a diff says where its hunks end and nothing about how much
+file follows — and lexes each line as `slice-diff` lexes a context line.
