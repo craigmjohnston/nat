@@ -119,9 +119,21 @@ final class NavigatorModelTests: XCTestCase {
     }
 
     func testEachTabStandsForItsSectionsView() {
-        XCTAssertEqual(MainPaneTab.allCases.map(\.label), ["Terminal", "Changes", "PR"])
-        XCTAssertEqual(MainPaneTab.allCases.map(\.section), [.thread, .changes, .pr])
-        XCTAssertEqual(MainPaneTab.allCases.map(\.mode), [.terminal, .diff, .pr])
+        XCTAssertEqual(MainPaneTab.allCases.map(\.label), ["Terminal", "Changes", "Visual changes", "PR"])
+        XCTAssertEqual(MainPaneTab.allCases.map(\.section), [.thread, .changes, .visuals, .pr])
+        XCTAssertEqual(MainPaneTab.allCases.map(\.mode), [.terminal, .diff, .visuals, .pr])
+    }
+
+    func testTheVisualChangesTabShowsOnlyWithImagesBetweenChangesAndPR() {
+        let reviewed = slice(status: "In progress", branch: "b", pr: prURL)
+        XCTAssertEqual(NavigatorModel(slice: reviewed, agent: nil, fixLaunched: false).tabs,
+                       [.terminal, .changes, .pr])
+        XCTAssertEqual(NavigatorModel(slice: reviewed, agent: nil, fixLaunched: false, hasVisuals: true).tabs,
+                       [.terminal, .changes, .visuals, .pr])
+        XCTAssertEqual(NavigatorModel(slice: slice(status: "In progress"), agent: .working, fixLaunched: false,
+                                      hasVisuals: true).tabs, [.terminal, .visuals])
+        XCTAssertEqual(NavigatorModel(slice: slice(), agent: nil, fixLaunched: false, hasVisuals: true).tabs,
+                       [.visuals], "images handed in on a slice with no agent or branch")
     }
 
     func testASlicesTabsAreTheSectionsThatPutAViewUp() {

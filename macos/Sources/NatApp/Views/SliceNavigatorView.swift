@@ -158,7 +158,13 @@ struct SliceNavigatorView: View {
         if let notionURL { actions.openInNotion = { NSWorkspace.shared.open(notionURL) } }
         actions.showThread = { show(.thread) }
         if nav.isLive(.changes) { actions.showChanges = { show(.changes) } }
-        if nav.isLive(.visuals) { actions.showVisuals = { show(.visuals) } }
+        if nav.isLive(.visuals) {
+            // The titlebar tab's own path: open the section, put the images
+            // up, never fold.
+            actions.showVisuals = {
+                apply(NavigatorFocus(open: open, main: main).showing(.visuals, shows: nav.mainMode(for: .visuals)))
+            }
+        }
         if nav.isLive(.pr) { actions.showPullRequest = { show(.pr) } }
         return actions
     }

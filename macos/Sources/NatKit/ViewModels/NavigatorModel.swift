@@ -75,12 +75,13 @@ public struct NavigatorFocus: Equatable, Sendable {
 /// The main pane's tabs, in its titlebar: each stands for a navigator
 /// section and the view that section's header puts up.
 public enum MainPaneTab: CaseIterable, Equatable, Sendable {
-    case terminal, changes, pr
+    case terminal, changes, visuals, pr
 
     public var label: String {
         switch self {
         case .terminal: return "Terminal"
         case .changes: return "Changes"
+        case .visuals: return "Visual changes"
         case .pr: return "PR"
         }
     }
@@ -90,6 +91,7 @@ public enum MainPaneTab: CaseIterable, Equatable, Sendable {
         switch self {
         case .terminal: return .thread
         case .changes: return .changes
+        case .visuals: return .visuals
         case .pr: return .pr
         }
     }
@@ -99,6 +101,7 @@ public enum MainPaneTab: CaseIterable, Equatable, Sendable {
         switch self {
         case .terminal: return .terminal
         case .changes: return .diff
+        case .visuals: return .visuals
         case .pr: return .pr
         }
     }

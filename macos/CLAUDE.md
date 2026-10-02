@@ -128,7 +128,9 @@ publish the actions they already own, nil where their control is disabled.
 
 **Visual changes** is a fourth navigator section, between Changes and PR,
 **absent** unless `slice-show`'s `visuals` is non-empty (the images an agent
-handed in with `nat slice-visuals`). `VisualStore` (one per project,
+handed in with `nat slice-visuals`), and so is its titlebar tab
+(`MainPaneTab.visuals`; no trailing actions, zoom being per image).
+`VisualStore` (one per project,
 `AppModel.visualStore`) and `VisualReview` (the shell's) mirror `DiffStore`/
 `DiffReview`: images loaded by URI through a swappable `loader` (local paths
 only — any other URI is a placeholder card, no network), zoom per image,
