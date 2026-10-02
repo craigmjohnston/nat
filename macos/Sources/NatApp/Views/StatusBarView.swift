@@ -20,7 +20,7 @@ struct StatusBarView<Trailing: View>: View {
     var body: some View {
         let usage = buildUsageDisplay(from: appModel.usageStore?.reading)
         HStack(spacing: 10) {
-            HStack(spacing: 8) {
+            HStack(spacing: 12) {
                 GnatMark(color: DesignTokens.mark)
                     .frame(width: 14, height: 14)
                 Text("\(agentCount) agent\(agentCount == 1 ? "" : "s")")

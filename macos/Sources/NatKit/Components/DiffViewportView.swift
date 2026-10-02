@@ -185,17 +185,18 @@ final class DiffViewportView: NSView {
         context.restoreGState()
     }
 
-    /// A gap's band, and its controls stacked in the gutter, one row-height
-    /// slot apiece: ↓ the lines below the change above, ↑ those above the
-    /// change below, ↕ the lot.
+    /// A gap's band, and its controls stacked in the gutter, an equal share
+    /// of the band apiece: ↓ the lines below the change above, ↑ those above
+    /// the change below, ↕ the lot.
     private func drawGap(_ gap: DiffGap, metrics: DiffMetrics, rect: NSRect) {
         DiffInk.gapBand.setFill()
         rect.fill()
+        let slotHeight = rect.height / CGFloat(gap.controls.count)
         for (slot, control) in gap.controls.enumerated() {
             let cell = NSRect(
-                x: 0, y: rect.minY + CGFloat(slot) * metrics.rowMinHeight,
-                width: metrics.gutterWidth, height: metrics.rowMinHeight)
-            let hovered = hoverPoint.map { cell.insetBy(dx: 0, dy: -0.5).contains($0) } ?? false
+                x: 0, y: rect.minY + CGFloat(slot) * slotHeight,
+                width: metrics.gutterWidth, height: slotHeight)
+            let hovered = hoverPoint.map { cell.contains($0) } ?? false
             (hovered ? DiffInk.gapButtonHover : DiffInk.gapButton).setFill()
             cell.fill()
             let symbol = switch control {
@@ -418,7 +419,7 @@ final class DiffViewportView: NSView {
             return headerHit(canvas, file: file, y: layout.top(index) - top, point: point)
         case .row(let file, let row):
             if let gap = canvas.files[file].rows[row].gap {
-                let slot = Int((top + point.y - layout.top(index)) / canvas.metrics.rowMinHeight)
+                let slot = Int((top + point.y - layout.top(index)) / (layout.height(index) / CGFloat(gap.controls.count)))
                 return .gap(file: file, row: row, control: gap.controls[min(max(slot, 0), gap.controls.count - 1)])
             }
             return .row(file: file, row: row)
