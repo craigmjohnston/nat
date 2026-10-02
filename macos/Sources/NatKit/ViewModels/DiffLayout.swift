@@ -4,8 +4,9 @@ import Foundation
 /// canvas draws to and the layout counts heights with, kept in one value so
 /// the two can never drift apart.
 public struct DiffMetrics: Equatable, Sendable {
-    /// A file's header band.
-    public var headerHeight: CGFloat = 28
+    /// A file's header band, its bottom rule included: the 32pt band every
+    /// other heading in the window is, and the rule under it.
+    public var headerHeight: CGFloat = 33
     /// A row of a file's body at least — one line of code, its padding
     /// included.
     public var rowMinHeight: CGFloat = 21
