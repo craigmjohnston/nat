@@ -92,7 +92,7 @@ final class UsageDisplayTests: XCTestCase {
         )
         let display = buildUsageDisplay(from: reading, now: now, timeZone: utc)
 
-        XCTAssertEqual(display.windows[0].text, "5h: 38% (6:00PM)")
+        XCTAssertEqual(display.windows[0].text, "5h: 38% (6:00pm)")
         XCTAssertEqual(display.windows[1].text, "week: 81% (Tuesday)")
     }
 }

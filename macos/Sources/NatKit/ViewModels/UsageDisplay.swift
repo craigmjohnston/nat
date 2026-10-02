@@ -5,7 +5,7 @@ import Foundation
 /// one clause.
 public let usageWarningThreshold = 80.0
 
-/// One window's rendered clause — "5h: 38% (6:00PM)", the design's
+/// One window's rendered clause — "5h: 38% (6:00pm)", the design's
 /// own short names for the two windows — and
 /// whether it crossed the warning threshold, which is drawn as one tint
 /// across the whole clause.
@@ -60,11 +60,13 @@ private func windowDisplay(label: String, limit: UsageRateLimit, resetFormat: Da
     return UsageWindowDisplay(text: text, warning: limit.usedPercentage >= usageWarningThreshold)
 }
 
-/// "6:00PM" — the five-hour window's own reset, precise to the minute since
+/// "6:00pm" — the five-hour window's own reset, precise to the minute since
 /// it is always today or the next few hours.
 private func usageTimeFormatter(timeZone: TimeZone) -> DateFormatter {
     let formatter = DateFormatter()
     formatter.dateFormat = "h:mma"
+    formatter.amSymbol = "am"
+    formatter.pmSymbol = "pm"
     formatter.timeZone = timeZone
     formatter.locale = Locale(identifier: "en_US_POSIX")
     return formatter
