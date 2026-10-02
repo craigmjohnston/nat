@@ -154,9 +154,11 @@ struct SidebarView: View {
             trailing()
         }
         .padding(.horizontal, 10)
-        // The 4pt of air a heading takes is shared above and below it, so a
-        // folded heading sits centred between its rule and the next line.
-        .frame(height: GnatMetrics.sidebarRowHeight + 4)
+        // A navigator section header's height, so Active lines up with the
+        // Thread beside it; the air over the row height is shared above and
+        // below, so a folded heading sits centred between its rule and the
+        // next line.
+        .frame(height: GnatMetrics.sectionHeadHeight)
         .contentShape(Rectangle())
         .onTapGesture { toggle(key, open: open) }
     }

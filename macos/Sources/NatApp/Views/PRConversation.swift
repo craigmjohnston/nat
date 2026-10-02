@@ -42,10 +42,7 @@ struct PRConversationEntryView: View {
                 }
 
                 if !entry.body.isEmpty {
-                    Text(markdownAttributed(entry.body, size: Typo.subhead))
-                        .font(.system(size: Typo.subhead, weight: .regular))
-                        .ink(.secondary)
-                        .lineSpacing(2)
+                    MarkdownView(text: entry.body, size: Typo.subhead, ink: .secondary)
                 }
             }
         }

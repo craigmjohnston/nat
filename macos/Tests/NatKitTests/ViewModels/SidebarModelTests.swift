@@ -50,7 +50,7 @@ final class SidebarModelTests: XCTestCase {
     func testMilestonesHoldTheirSlicesInPlanOrderWithTheirCounts() {
         let model = buildSidebarModel(
             projects: [SidebarProjectInput(id: "p", name: "P", plan: plan([
-                slice("1", status: "Done"), slice("2"), slice("3", milestone: "M2"), slice("4", milestone: "Gone"),
+                slice("1"), slice("2", status: "Done"), slice("3", milestone: "M2"), slice("4", milestone: "Gone"),
             ]))],
             liveAgents: [:])
         let project = model.projects[0]
@@ -75,7 +75,8 @@ final class SidebarModelTests: XCTestCase {
             liveAgents: [:])
         let project = model.projects[0]
         XCTAssertEqual(project.milestones.map(\.name), ["M2"])
-        XCTAssertEqual(project.milestones[0].slices.map(\.sliceID), ["3", "4"], "a done slice waits for its milestone")
+        XCTAssertEqual(project.milestones[0].slices.map(\.sliceID), ["4", "3"],
+                       "a done slice waits for its milestone, at its foot")
         XCTAssertEqual(project.doneMilestones.map(\.name), ["M1"])
         XCTAssertTrue(project.doneMilestones[0].isComplete)
         XCTAssertTrue(project.doneContains(sliceID: "1"))
@@ -83,14 +84,14 @@ final class SidebarModelTests: XCTestCase {
         XCTAssertTrue(project.contains(sliceID: "1"))
     }
 
-    func testBlockedSlicesSitBelowTheRestOfTheirMilestone() {
+    func testBlockedSlicesSitBelowTheRestOfTheirMilestoneAndDoneOnesBelowThem() {
         let model = buildSidebarModel(
             projects: [SidebarProjectInput(id: "p", name: "P", plan: plan([
                 slice("a", blocked: true), slice("b"), slice("c", blocked: true), slice("d", status: "Done"),
-                slice("e"),
+                slice("e"), slice("f", status: "Done"),
             ]))],
             liveAgents: [:])
-        XCTAssertEqual(model.projects[0].milestones[0].slices.map(\.sliceID), ["b", "d", "e", "a", "c"])
+        XCTAssertEqual(model.projects[0].milestones[0].slices.map(\.sliceID), ["b", "e", "a", "c", "d", "f"])
     }
 
     func testAnEmptyMilestoneIsStillARow() {

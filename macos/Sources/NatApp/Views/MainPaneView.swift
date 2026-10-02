@@ -152,7 +152,8 @@ struct ContinuousDiffView: View {
     }
 }
 
-/// A slice's main pane: its terminal, its branch's diff, or the note.
+/// A slice's main pane, under its heading: its terminal, its branch's diff,
+/// its pull request's conversation, or the note.
 struct SliceMainPane: View {
     @Bindable var appModel: AppModel
     let slice: Slice
@@ -168,6 +169,7 @@ struct SliceMainPane: View {
     var body: some View {
         let nav = nav
         VStack(spacing: 0) {
+            heading
             switch mode {
             case .terminal:
                 if appModel.sliceActions.advance(for: slice.id)?.to == .agent {
@@ -179,11 +181,35 @@ struct SliceMainPane: View {
                 }
             case .diff:
                 diffPane
+            case .pr:
+                PRConversationPane(
+                    store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),
+                    expectedNumber: pullRequestNumber(slice.pr))
             case .empty:
                 MainPaneNote(text: "The terminal opens here on launch.")
             }
         }
         .surface(.window)
+    }
+
+    /// The diff's commit switcher, the agent's model and effort, or nothing.
+    private var heading: some View {
+        MainPaneHeader {
+            switch mode {
+            case .terminal:
+                AgentModelHeading(agent: appModel.activityStore?.agents[slice.id])
+            case .diff:
+                let store = review.store(appModel)
+                DiffCommitsMenu(
+                    commits: store.commits,
+                    selectedCommit: store.selectedCommit,
+                    onSelectCommit: { sha in Task { await store.selectCommit(sha) } },
+                    bottomPadding: 0)
+                    .frame(maxWidth: 320)
+            case .pr, .empty:
+                EmptyView()
+            }
+        }
     }
 
     @ViewBuilder

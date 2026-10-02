@@ -2,10 +2,11 @@ import AppKit
 import SwiftUI
 import NatKit
 
-/// A slice's navigator: Brief, Thread, Changes and PR, stacked. Which are
-/// open and what the main pane shows are the shell's (`open`, `main`) — the
-/// design's own pairing: opening Thread (or its Terminal button) puts the
-/// terminal up, opening Changes the diff.
+/// A slice's navigator: Thread, Changes and PR, stacked, the Thread opening
+/// on the brief. Which are open and what the main pane shows are the shell's
+/// (`open`, `main`) — the design's own pairing: a header puts its section's
+/// view up (the Thread the terminal, Changes the diff, PR its conversation),
+/// its chevron only folds.
 struct SliceNavigatorView: View {
     @Bindable var appModel: AppModel
     let slice: Slice
@@ -19,9 +20,7 @@ struct SliceNavigatorView: View {
     @State private var agentOptions = AgentOptions.fallback
     @State private var launchWarning: String?
     @State private var showMergeConfirm = false
-    @State private var commentText = ""
-    @State private var isSendingComment = false
-    @State private var commentError: String?
+    @State private var showsFullBrief = false
 
     private var projectID: String { appModel.projectStore?.projectID ?? "" }
     private var agent: AgentStatus? { appModel.activityStore?.agents[slice.id] }
@@ -41,12 +40,10 @@ struct SliceNavigatorView: View {
     var body: some View {
         let nav = nav
         NavigatorColumn(anyOpen: !open.isEmpty) {
-            NavSectionView(label: "Brief", open: open.contains(.brief), onHead: { toggle(.brief) }) {
-                briefBody
-            }
             NavSectionView(
                 label: "Thread", open: open.contains(.thread),
-                selected: main == .terminal && nav.agentAvailable, onHead: { toggle(.thread) }
+                selected: main == .terminal && nav.agentAvailable,
+                onHead: { click(.thread) }, onFold: { fold(.thread) }
             ) {
                 threadActions(nav)
             } content: {
@@ -54,7 +51,7 @@ struct SliceNavigatorView: View {
             }
             NavSectionView(
                 label: "Changes", open: open.contains(.changes), selected: main == .diff,
-                live: nav.isLive(.changes), onHead: { toggle(.changes) }
+                live: nav.isLive(.changes), onHead: { click(.changes) }, onFold: { fold(.changes) }
             ) {
                 if nav.showsReviewActions { reviewActions }
             } content: {
@@ -63,7 +60,8 @@ struct SliceNavigatorView: View {
                 }
             }
             NavSectionView(
-                label: "PR", open: open.contains(.pr), live: nav.isLive(.pr), onHead: { toggle(.pr) }
+                label: "PR", open: open.contains(.pr), selected: main == .pr,
+                live: nav.isLive(.pr), onHead: { click(.pr) }, onFold: { fold(.pr) }
             ) {
                 if nav.showsMerge { mergeAction }
             } content: {
@@ -72,6 +70,7 @@ struct SliceNavigatorView: View {
         }
         .task(id: slice.id) {
             resetLaunchForm()
+            showsFullBrief = false
             agentOptions = await AgentOptionsCache.shared.resolve()
         }
         .task(id: "\(slice.id)|\(slice.pr)") {
@@ -112,48 +111,73 @@ struct SliceNavigatorView: View {
 
     // MARK: - Heads
 
-    /// The design's `onHead`: fold the section, and, for the two that have a
-    /// main-pane view of their own, put that view up.
-    private func toggle(_ section: NavigatorSection) {
-        withAnimation(Motion.stateChange) {
-            if open.contains(section) { open.remove(section) } else { open.insert(section) }
-        }
-        if section == .thread && nav.agentAvailable { main = .terminal }
-        if section == .changes && nav.diffAvailable { main = .diff }
+    /// A header click — see `NavigatorFocus.clickingHead`.
+    private func click(_ section: NavigatorSection) {
+        apply(NavigatorFocus(open: open, main: main).clickingHead(section, shows: nav.mainMode(for: section)))
+    }
+
+    /// A chevron click: fold, nothing else.
+    private func fold(_ section: NavigatorSection) {
+        apply(NavigatorFocus(open: open, main: main).togglingFold(section))
+    }
+
+    private func apply(_ focus: NavigatorFocus) {
+        withAnimation(Motion.stateChange) { open = focus.open }
+        if focus.main != main { main = focus.main }
     }
 
     // MARK: - Brief
 
-    private var briefBody: some View {
-        ScrollView {
-            NavProse {
+    /// The Thread's first item: the brief, cut to its first few lines until
+    /// asked for the rest, its Edit, and the slice's facts as its foot.
+    private var briefCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Brief").monoXS(weight: .medium).ink(.secondary)
+                Spacer(minLength: 0)
+                Button("Edit") { editingBrief = true }
+                    .buttonStyle(GnatLinkButtonStyle())
+                    .disabled(slice.status != "Todo" || detail.detail == nil)
+                    .help(slice.status == "Todo" ? "Edit the brief" : "Only a Todo slice's brief can be edited")
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+
+            VStack(alignment: .leading, spacing: 4) {
                 if let detail = detail.detail {
                     if detail.brief.isEmpty {
                         Text("No brief yet — what you write here becomes the agent's prompt.").ink(.secondary)
                     } else {
-                        Text(markdownAttributed(detail.brief, size: GnatMetrics.body))
+                        let excerpt = briefExcerpt(detail.brief, maxWords: briefExcerptWords)
+                        Text(markdownAttributed(
+                            showsFullBrief ? detail.brief : excerpt ?? detail.brief, size: 13.5))
                             .ink(.primary)
                             .textSelection(.enabled)
+                        if excerpt != nil {
+                            Button(showsFullBrief ? "Show less" : "Show more") { showsFullBrief.toggle() }
+                                .buttonStyle(GnatLinkButtonStyle())
+                        }
                     }
                 } else if let message = detail.errorMessage {
                     Text("The brief could not be read — \(message)").ink(.danger)
                 } else {
                     QuietLoadingView(label: "Reading the brief")
-                        .frame(maxWidth: .infinity, minHeight: 80)
+                        .frame(maxWidth: .infinity, minHeight: 60)
                 }
-
-                HStack(spacing: 6) {
-                    Button("Edit brief") { editingBrief = true }
-                        .buttonStyle(GnatButtonStyle())
-                        .disabled(slice.status != "Todo" || detail.detail == nil)
-                        .help(slice.status == "Todo" ? "" : "Only a Todo slice's brief can be edited")
-                }
-                .padding(.top, 2)
-
-                facts
             }
+            .font(.system(size: 13.5))
+            .lineSpacing(2)
+            .padding(.horizontal, 10)
+            .padding(.top, 4)
+            .padding(.bottom, 8)
+
+            facts
         }
-        .inelastic()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay {
+            RoundedRectangle(cornerRadius: 4).strokeBorder(DesignTokens.rule(.separator, on: .window), lineWidth: 1)
+        }
     }
 
     private var facts: some View {
@@ -177,10 +201,11 @@ struct SliceNavigatorView: View {
             }
         }
         .monoXS()
-        .padding(.top, 12)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .surface(.chrome)
         .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
-        .padding(.top, 6)
     }
 
     // MARK: - Thread
@@ -191,9 +216,6 @@ struct SliceNavigatorView: View {
 
     @ViewBuilder
     private func threadActions(_ nav: NavigatorModel) -> some View {
-        if nav.agentAvailable {
-            TerminalHeaderButton { main = .terminal }
-        }
         if nav.showsLaunch {
             let enabled = appModel.sliceActions.isEnabled(.launch, sliceID: slice.id, available: nav.canLaunch)
             Button(action: launch) {
@@ -211,6 +233,8 @@ struct SliceNavigatorView: View {
     private func threadBody(_ nav: NavigatorModel) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                briefCard
+                    .padding([.horizontal, .top], 6)
                 if !nav.state.isLaunched && agent == nil {
                     NavProse {
                         if nav.state == .blocked {
@@ -221,7 +245,7 @@ struct SliceNavigatorView: View {
                                 + Text(". Launch unlocks when that slice is done."))
                                 .ink(.secondary)
                         } else {
-                            Text("Launch starts Claude Code in a worktree on a new branch. Its log appears here and the terminal opens on the right.")
+                            Text("Launch starts Claude Code on this brief, in a worktree on a new branch. Its log appears here and the terminal opens on the right.")
                                 .ink(.secondary)
                         }
                         launchChips
@@ -393,11 +417,7 @@ struct SliceNavigatorView: View {
             PRSectionBody(
                 pr: pr,
                 staleMessage: prStore.loadState.errorMessage,
-                actionError: appModel.sliceActions.error(.merge, sliceID: slice.id),
-                commentText: $commentText,
-                isSending: isSendingComment,
-                commentError: commentError,
-                onSend: { Task { await sendComment() } }
+                actionError: appModel.sliceActions.error(.merge, sliceID: slice.id)
             )
         } else if let message = prStore.loadState.errorMessage {
             NavProse {
@@ -410,33 +430,17 @@ struct SliceNavigatorView: View {
                 .frame(maxWidth: .infinity, minHeight: 80)
         }
     }
-
-    private func sendComment() async {
-        isSendingComment = true
-        commentError = nil
-        do {
-            try await prStore.comment(text: commentText)
-            commentText = ""
-        } catch {
-            commentError = SliceActionTracker.message(for: error)
-        }
-        isSendingComment = false
-    }
 }
 
-/// The PR section's body: the description, the checks, the review verdict
-/// and the conversation, ending in the comment box and Open in GitHub.
+/// The PR section's body: the readout — the checks and the review verdict,
+/// then Open in GitHub. The description and the conversation are the main
+/// pane's (`PRConversationPane`).
 struct PRSectionBody: View {
     let pr: PRDetail
     var staleMessage: String?
     var actionError: String?
-    @Binding var commentText: String
-    let isSending: Bool
-    let commentError: String?
-    let onSend: () -> Void
 
     var body: some View {
-        let entries = conversation(comments: pr.comments, reviews: pr.reviews)
         let verdict = reviewVerdict(reviewDecision: pr.reviewDecision)
         ScrollView {
             NavProse {
@@ -445,15 +449,6 @@ struct PRSectionBody: View {
                 }
                 if let actionError {
                     Text(actionError).ink(.danger)
-                }
-
-                let described = pr.body.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !described.isEmpty {
-                    NavHeading(text: "Description")
-                    Text(markdownAttributed(described, size: 13.5))
-                        .font(.system(size: 13.5))
-                        .ink(.primary)
-                        .textSelection(.enabled)
                 }
 
                 NavHeading(text: "Checks")
@@ -473,31 +468,6 @@ struct PRSectionBody: View {
                      ? approvedBy(reviews: pr.reviews).map { "\(sentenceCase(verdict.word)) by \($0)" } ?? sentenceCase(verdict.word)
                      : sentenceCase(verdict.word))
                     .ink(.secondary)
-
-                NavHeading(text: entries.isEmpty ? "Conversation" : "Conversation · \(entries.count)")
-                ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(entry.author) \(entry.verb) · \(ago(Date().timeIntervalSince(entry.at)))")
-                            .monoXS().ink(.secondary)
-                        if !entry.body.isEmpty {
-                            Text(markdownAttributed(entry.body, size: 13.5))
-                                .font(.system(size: 13.5))
-                                .ink(.primary)
-                                .textSelection(.enabled)
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 4).strokeBorder(DesignTokens.rule(.separator, on: .window), lineWidth: 1)
-                    }
-                }
-                if pr.state != PRLifecycleState.merged && pr.state != PRLifecycleState.closed {
-                    PRComposerView(
-                        placeholder: "Comment on the pull request\u{2026}",
-                        text: $commentText, isSending: isSending, error: commentError, onSend: onSend)
-                }
 
                 Button("Open in GitHub") {
                     if let url = URL(string: pr.url) { NSWorkspace.shared.open(url) }

@@ -1,29 +1,38 @@
 import SwiftUI
 import NatKit
 
-/// One of the navigator's stacked foldouts: a 28pt header — chevron, label,
+/// One of the navigator's stacked foldouts: a 32pt header — chevron, label,
 /// and the section's own actions flush against its trailing edge — over a
 /// body on the window's ground that takes an equal share of what is left
 /// while open. A dead section (nothing to show yet) is drawn greyed and
 /// cannot be opened.
+///
+/// The chevron only folds (`onFold`); the rest of the header is `onHead`,
+/// which may also put the section's view up in the main pane. The body is
+/// built once and kept while folded — collapsed to nothing rather than torn
+/// down — so unfolding it again redraws nothing and reloads nothing: its
+/// scroll position, its reads and its rendered markdown are all as left.
 struct NavSectionView<Actions: View, Content: View>: View {
     let label: String
     let open: Bool
     var selected = false
     var live = true
     let onHead: () -> Void
+    var onFold: (() -> Void)?
     @ViewBuilder var actions: () -> Actions
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            if open {
-                content()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .surface(.window)
-                    .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .chrome).frame(height: 1) }
-            }
+            content()
+                .frame(maxWidth: .infinity, maxHeight: open ? .infinity : 0, alignment: .top)
+                .surface(.window)
+                .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .chrome).frame(height: 1) }
+                .clipped()
+                .opacity(open ? 1 : 0)
+                .allowsHitTesting(open)
+                .accessibilityHidden(!open)
         }
         .frame(maxHeight: open ? .infinity : nil)
         .overlay(alignment: .bottom) { DesignTokens.rule(.separator, on: .chrome).frame(height: 1) }
@@ -32,6 +41,10 @@ struct NavSectionView<Actions: View, Content: View>: View {
     private var header: some View {
         HStack(spacing: 8) {
             DisclosureChevron(open: open)
+                .frame(width: 24, height: GnatMetrics.sectionHeadHeight)
+                .padding(.horizontal, -6)
+                .contentShape(Rectangle())
+                .onTapGesture { if live { (onFold ?? onHead)() } }
             Text(label)
                 .font(.system(size: GnatMetrics.body))
                 .ink(live ? .primary : .tertiary)
@@ -51,10 +64,10 @@ struct NavSectionView<Actions: View, Content: View>: View {
 extension NavSectionView where Actions == EmptyView {
     init(
         label: String, open: Bool, selected: Bool = false, live: Bool = true,
-        onHead: @escaping () -> Void, @ViewBuilder content: @escaping () -> Content
+        onHead: @escaping () -> Void, onFold: (() -> Void)? = nil, @ViewBuilder content: @escaping () -> Content
     ) {
         self.init(
-            label: label, open: open, selected: selected, live: live, onHead: onHead,
+            label: label, open: open, selected: selected, live: live, onHead: onHead, onFold: onFold,
             actions: { EmptyView() }, content: content)
     }
 }

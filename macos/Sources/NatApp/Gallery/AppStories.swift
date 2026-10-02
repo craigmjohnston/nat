@@ -142,7 +142,7 @@ enum AppStories {
 
         Story(
             name: "window-todo",
-            summary: "A Todo slice: Brief open, Launch primary in the Thread header, the main pane's note.",
+            summary: "A Todo slice: the Thread open on its brief, cut short with Show more, Launch primary in its header, the main pane's note.",
             size: window
         ) {
             await slicePane(Fixtures.fixturesSliceID)
@@ -174,7 +174,7 @@ enum AppStories {
 
         Story(
             name: "window-pr",
-            summary: "An approved slice: PR open with its checks, review and conversation, Merge in the header.",
+            summary: "An approved slice: PR open on its checks and review, Merge in the header, its description and conversation in the main pane.",
             size: window
         ) {
             await slicePane(Fixtures.approveSliceID)
@@ -709,6 +709,25 @@ enum AppStories {
             PRComposerTypedStory()
         },
 
+        Story(
+            name: "markdown-table",
+            summary: "A comment carrying a markdown table, at the navigator's width: the long Note "
+                + "column cut to its share with the expand mark in its heading, the table "
+                + "scrolling sideways.",
+            size: CGSize(width: 330, height: 220)
+        ) {
+            MarkdownTableStory(expanded: [])
+        },
+
+        Story(
+            name: "markdown-table-expanded",
+            summary: "The same table with its Note column expanded to its full width: the "
+                + "abbreviate mark in its heading, the rest scrolled off to the right.",
+            size: CGSize(width: 330, height: 220)
+        ) {
+            MarkdownTableStory(expanded: [2])
+        },
+
         // MARK: - Follow-ups
 
         // MARK: - Settings
@@ -748,6 +767,41 @@ enum AppStories {
 
 /// `PRComposerView` holding a typed comment, which its binding needs a home
 /// of its own for.
+private struct MarkdownTableStory: View {
+    let expanded: Set<Int>
+
+    var body: some View {
+        MarkdownTableStoryBody(text: """
+            Results of the run:
+
+            | Check | Result | Note |
+            |-------|:------:|------|
+            | lint | ✓ | clean on every package, including the generated fixtures |
+            | test | ✗ | `PRStoreTests` timed out waiting on the poll interval |
+            """, expanded: expanded)
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .surface(.window)
+    }
+}
+
+private struct MarkdownTableStoryBody: View {
+    let text: String
+    let expanded: Set<Int>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(markdownBlocks(text).enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .text(let prose):
+                    Text(prose.trimmingCharacters(in: .newlines)).font(.system(size: 13.5)).ink(.primary)
+                case .table(let table): MarkdownTableView(table: table, size: 13.5, initiallyExpanded: expanded)
+                }
+            }
+        }
+    }
+}
+
 private struct PRComposerTypedStory: View {
     @State private var text = "Ship it 🎉 — the worst verdict reads right 👍\nOne nit: the heading wraps 🙈"
 

@@ -55,6 +55,7 @@ struct DiffCommitsMenu: View {
     var commits: [SliceCommit] = []
     var selectedCommit: String?
     var onSelectCommit: (String?) -> Void = { _ in }
+    var bottomPadding: CGFloat = 6
 
     private var selectedCommitTitle: String {
         guard let selectedCommit, let commit = commits.first(where: { $0.sha == selectedCommit }) else {
@@ -105,7 +106,7 @@ struct DiffCommitsMenu: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .padding(.bottom, 6)
+        .padding(.bottom, bottomPadding)
     }
 }
 

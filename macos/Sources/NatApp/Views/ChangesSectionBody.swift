@@ -1,10 +1,10 @@
 import SwiftUI
 import NatKit
 
-/// The Changes section's body: the commits menu, then one row per file — on
-/// a review, a viewed box and the file's pending-comment count beside it —
-/// with its tally. Picking a row scrolls the main pane's diff to that file
-/// and puts the diff up.
+/// The Changes section's body: one row per file — on a review, a viewed box
+/// and the file's pending-comment count beside it — with its tally. Picking a
+/// row scrolls the main pane's diff to that file and puts the diff up. The
+/// commits menu is the diff's own heading's (`SliceMainPane`).
 struct ChangesSectionBody: View {
     @Bindable var appModel: AppModel
     let review: DiffReview
@@ -18,14 +18,6 @@ struct ChangesSectionBody: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: 0) {
-                    DiffCommitsMenu(
-                        commits: store.commits,
-                        selectedCommit: store.selectedCommit,
-                        onSelectCommit: { sha in Task { await store.selectCommit(sha) } }
-                    )
-                    .padding(.horizontal, 10)
-                    .padding(.top, 8)
-
                     if let diff = store.loadState.diff {
                         if diff.files.isEmpty {
                             GnatNote(text: "nothing changed against the base", leading: 10)
@@ -40,7 +32,7 @@ struct ChangesSectionBody: View {
                             .frame(maxWidth: .infinity, minHeight: 80)
                     }
                 }
-                .padding(.bottom, 4)
+                .padding(.vertical, 4)
             }
             .inelastic()
 
