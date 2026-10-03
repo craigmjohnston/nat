@@ -44,6 +44,9 @@ no working dir.
   `container_id` is a no-op (title drift accepted, `name` never rewritten); a
   new one goes after the last milestone, named `title (id)` where another
   milestone already holds the title (case-insensitive, `milestoneNamed`).
+  A task given no `Repo` starts from the repository of the container's latest
+  task with one (`containerRepo`, a plan read that fails concluding nothing)
+  — a source project has no working directory of its own.
 - **Refusals**, in Sourced's own words naming the plugin, before any write:
   `AddMilestones`/`RenameMilestone`/`RemoveMilestone`/`MoveMilestone`,
   `MoveSlice`, and `ReorderSlice` across containers (no `moved` event in the
@@ -56,10 +59,12 @@ no working dir.
   alone); `DeleteSlice` reads it *before* the delete. `Task.Status` is
   `StatusName` (`Todo`/`In progress`/`Done`). Everything else delegates to
   `Local` and tells nobody.
-- **Narrow interfaces** in `store.go` — `Describer`, `SidebarReader`,
+- **Narrow interfaces** in `store.go` — `Describer`, `SidebarReader`
+  (answering a `source.Sidebar`: groups and an optional header menu),
   `ContainerReader`, `ActionRunner` — answered only by `*Sourced`, each
   delegating to the client with the project's `plugin`. Callers type-assert,
-  as with `Puller`.
+  as with `Puller`. `RepoSetter` (`SetSliceRepo`, the repo and nothing else)
+  is answered by `*Local` and `*Sourced` — `nat slice-repo`'s.
 
 ## Shape
 

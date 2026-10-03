@@ -126,6 +126,61 @@ final class SourceSelectionTests: XCTestCase {
         XCTAssertEqual(refusing.sourcePlugins, [])
     }
 
+    /// A connected plugin, as the Shortcut one is once its token is set.
+    private func connected(_ name: String, set: Bool? = true) -> SourcePlugin {
+        SourcePlugin(name: name, path: "/p/\(name)", describe: SourceDescribe(
+            name: name, title: name == "shortcut" ? "Shortcut" : name, tag: "SC", iconSymbol: "s",
+            containerNoun: "card", taskNoun: "task",
+            setup: [PluginSetupField(id: "token", label: "API token", input: "secret", set: set)]))
+    }
+
+    func testConnectingAPluginMakesItsSectionOnce() async {
+        let client = FixtureNatClient(sources: [
+            connected("shortcut"), connected("jira", set: false), connected("demo"),
+            SourcePlugin(name: "broken", path: "/p/broken", error: "no"),
+        ])
+        // sourceConfig already has a demo project; Shortcut has none.
+        let appModel = await started(client)
+        await appModel.loadSourcePlugins()
+        XCTAssertEqual(client.writes.filter { $0.hasPrefix("project-create") }, [],
+                       "only the app's own start makes one, never a start a test drives")
+        await appModel.ensureSourceProjects()
+        XCTAssertEqual(client.writes.filter { $0.hasPrefix("project-create") }, ["project-create Shortcut --source shortcut"])
+        let made = "f1x8500c-0000-4000-8000-shortcut"
+        XCTAssertTrue(appModel.projectTabs.contains { $0.id == made && $0.name == "Shortcut" })
+        XCTAssertNotEqual(appModel.activeProjectID, made, "taken in, not opened")
+
+        // Read again — the config, here, still not naming it — nothing more.
+        await appModel.reloadSourcePlugins()
+        await appModel.ensureSourceProjects()
+        XCTAssertEqual(client.writes.filter { $0.hasPrefix("project-create") }.count, 1)
+        XCTAssertEqual(appModel.projectTabs.filter { $0.id == made }.count, 1)
+    }
+
+    func testNothingIsMadeBeforeConfigOrOnARefusal() async {
+        let early = Fixtures.appModel(client: FixtureNatClient(sources: [connected("shortcut")]))
+        await early.loadSourcePlugins()
+        await early.ensureSourceProjects()
+        XCTAssertFalse(early.projectTabs.contains { $0.name == "Shortcut" }, "no config read yet")
+
+        let refusing = FixtureNatClient(behaviour: .refusing("nope"), sources: [connected("shortcut")])
+        let appModel = Fixtures.appModel(client: refusing, config: Fixtures.sourceConfig)
+        await Fixtures.start(appModel)
+        await appModel.ensureSourceProjects()
+        XCTAssertFalse(appModel.projectTabs.contains { $0.name == "Shortcut" })
+    }
+
+    func testTheFilterActionIsReadFromTheTreeAsItIsNow() async {
+        let appModel = await started()
+        let source = appModel.source(ofProject: Fixtures.sourceProjectID)
+        XCTAssertEqual(source?.filterAction(group: nil)?.fields.first { $0.id == "project" }?.value, ["30"])
+        XCTAssertEqual(source?.filterAction(group: "ready/mine")?.fields.first { $0.id == "team" }?.value, ["board"])
+        XCTAssertNil(source?.filterAction(group: "doing"))
+        XCTAssertNil(source?.filterAction(group: "nope"))
+        await appModel.rereadSource(projectID: Fixtures.sourceProjectID)
+        await appModel.rereadSource(projectID: Fixtures.secondProjectID)
+    }
+
     func testARefreshReadsTheContainerOnScreenAgain() async {
         let appModel = await started()
         await appModel.selectContainer(Fixtures.sourceCardID, inProject: Fixtures.sourceProjectID)

@@ -46,21 +46,27 @@ func TestSearchOperators(t *testing.T) {
 	s.Stories[StoryBug].Labels = []shortcut.Label{{Name: "sidebar"}}
 	s.Stories[StoryBug].OwnerIDs = []string{"ghost", DanaID}
 	for q, want := range map[string][]int64{
-		"owner:craig":              {StoryDone, StoryReady, StoryDoing},
-		"owner:me":                 nil,
-		"owner:dana":               {StoryBug},
-		"owner:craig !is:done":     {StoryReady, StoryDoing},
-		"owner:craig -is:started":  {StoryDone, StoryReady},
-		`state:"ready for dev"`:    {StoryReady, StoryBug},
-		"type:bug":                 {StoryBug},
-		"label:sidebar":            {StoryBug},
-		"team:board":               {StoryReady},
-		`team:"Native App"`:        {StoryDone, StoryDoing},
-		"epic:10":                  {StoryBug, StoryDoing},
-		`epic:"Native app parity"`: {StoryBug, StoryDoing},
-		"kanban":                   {StoryReady},
-		"nonsense:op":              nil,
-		"  is:done  ":              {StoryDone},
+		"owner:craig":                      {StoryDone, StoryDoneThisWeek, StoryReady, StoryDoing},
+		"owner:me":                         nil,
+		"owner:dana":                       {StoryBug},
+		"owner:craig !is:done":             {StoryReady, StoryDoing},
+		"owner:craig -is:started":          {StoryDone, StoryDoneThisWeek, StoryReady},
+		`state:"ready for dev"`:            {StoryReady, StoryBug},
+		"type:bug":                         {StoryBug},
+		"label:sidebar":                    {StoryBug},
+		"team:board":                       {StoryReady},
+		`team:"Native App"`:                {StoryDone, StoryDoing},
+		"project:30":                       {StoryDoneThisWeek, StoryDoing},
+		`project:"Web"`:                    {StoryBug},
+		"completed:2026-09-28..*":          {StoryDoneThisWeek},
+		"completed:*..2026-09-27":          {StoryDone},
+		"completed:2026-09-26":             {StoryDone},
+		"completed:2026-09-20..2026-09-30": {StoryDone},
+		"epic:10":                          {StoryBug, StoryDoing},
+		`epic:"Native app parity"`:         {StoryBug, StoryDoing},
+		"kanban":                           {StoryReady},
+		"nonsense:op":                      nil,
+		"  is:done  ":                      {StoryDone, StoryDoneThisWeek},
 	} {
 		if got := search(t, s, q); !slices.Equal(got, want) {
 			t.Errorf("%q = %v, want %v", q, got, want)
@@ -70,7 +76,7 @@ func TestSearchOperators(t *testing.T) {
 	code, body := do(t, s, "GET", "/search/stories?query=owner:craig&page_size=2", "")
 	var res shortcut.SearchResult
 	_ = json.Unmarshal([]byte(body), &res)
-	if code != 200 || len(res.Data) != 2 || res.Total != 3 || !strings.Contains(res.Next, "next=2") {
+	if code != 200 || len(res.Data) != 2 || res.Total != 4 || !strings.Contains(res.Next, "next=2") {
 		t.Errorf("page 1 = %d %+v", code, res)
 	}
 	if got := search(t, s, "owner:nobody"); got != nil {
@@ -91,7 +97,7 @@ func TestRoutesAndFailures(t *testing.T) {
 	s := Seed("t")
 	var log strings.Builder
 	s.Log = &log
-	for _, p := range []string{"/member", "/members", "/workflows", "/groups", "/epics/10", "/iterations/41", "/stories/4821"} {
+	for _, p := range []string{"/member", "/members", "/workflows", "/groups", "/projects", "/labels", "/epics", "/epics/10", "/iterations/41", "/stories/4821"} {
 		if code, _ := do(t, s, "GET", p, ""); code != 200 {
 			t.Errorf("GET %s = %d", p, code)
 		}
@@ -101,7 +107,7 @@ func TestRoutesAndFailures(t *testing.T) {
 		want               int
 	}{
 		{"GET", "/nope", "", 404},
-		{"GET", "/epics/11", "", 404},
+		{"GET", "/epics/99", "", 404},
 		{"GET", "/stories/abc", "", 404},
 		{"GET", "/stories/1", "", 404},
 		{"PATCH", "/stories/4821", "", 404},

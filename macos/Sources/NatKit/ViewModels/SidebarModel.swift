@@ -324,6 +324,19 @@ public struct SidebarSource: Equatable, Sendable {
         return nil
     }
 
+    /// The filter action of the header's menu (`group` nil) or of a group's,
+    /// as the tree has it now — what an open filter editor redraws from, so
+    /// a field still loading fills in when the tree is read again.
+    public func filterAction(group: String?) -> SourceAction? {
+        let menu: [SourceAction]
+        if let group {
+            menu = (groups + groups.flatMap(\.children)).first { $0.id == group }?.menu ?? []
+        } else {
+            menu = self.menu
+        }
+        return menu.first { $0.input == .filter }
+    }
+
     /// Every group that lists containers, depth-first, a child group named
     /// under its parent ("Ready · Mine") — the breadcrumb picker's column.
     public var containerGroups: [(group: SidebarSourceGroup, containers: [SidebarContainer])] {

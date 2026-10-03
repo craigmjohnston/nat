@@ -39,7 +39,8 @@ type sourceInfoJSON struct {
 }
 
 // sourceInfo reads a source project's plugin for info: describe, then the
-// sidebar with expand's lazy groups filled in. A failed read concludes
+// sidebar with expand's lazy groups filled in — whose header menu, where it
+// sends one, replaces describe's static one. A failed read concludes
 // nothing — info still prints, the error is carried, and the containers
 // with tasks are still drawn from the plan's cached titles under _unlisted.
 // A describe that fails is not followed by a sidebar read: a plugin that
@@ -47,9 +48,13 @@ type sourceInfoJSON struct {
 // cost a timeout.
 func sourceInfo(ctx context.Context, ss sourceStore, project config.ProjectConfig, p domain.Project, expand []string) *sourceInfoJSON {
 	d, err := ss.Describe(ctx)
-	var groups []source.Group
+	var sb source.Sidebar
 	if err == nil {
-		groups, err = ss.Sidebar(ctx, expand)
+		sb, err = ss.Sidebar(ctx, expand)
+	}
+	groups, menu := sb.Groups, d.Menu
+	if sb.Menu != nil {
+		menu = sb.Menu
 	}
 	out := &sourceInfoJSON{
 		Name:          project.Source,
@@ -59,7 +64,7 @@ func sourceInfo(ctx context.Context, ss sourceStore, project config.ProjectConfi
 		IconSVG:       d.IconSVG,
 		ContainerNoun: cmp.Or(d.ContainerNoun, "container"),
 		TaskNoun:      cmp.Or(d.TaskNoun, "task"),
-		Menu:          append([]source.Action{}, d.Menu...),
+		Menu:          append([]source.Action{}, menu...),
 	}
 	if err != nil {
 		logging.Error("task source unread for info", "project", p.ID, "source", project.Source, "err", err)

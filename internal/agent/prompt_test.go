@@ -465,6 +465,57 @@ func worktreeContext() PromptContext {
 	return c
 }
 
+// repoUnknownContext is a source project's task with no repository yet: no
+// project working directory, no worktree, the session in the home directory.
+func repoUnknownContext() PromptContext {
+	c := testContext()
+	c.Project = config.ProjectConfig{Name: "Shortcut", Backend: config.BackendSource, Source: "shortcut"}
+	c.WorkingDir, c.RepoUnknown = "/Users/craig", true
+	c.Container = &PromptContainer{Noun: "card", Title: "Fix the login page", ExternalURL: "https://app.shortcut.com/acme/story/4821"}
+	return c
+}
+
+func TestPromptWithNoRepositoryYet(t *testing.T) {
+	golden(t, "prompt-repo-unknown", Prompt(repoUnknownContext()))
+}
+
+// A task with no repository is sent to find it first: from the card, asking
+// the user where it cannot tell, recorded with slice-repo, and the worktree
+// cut by nat's own naming — and is told nothing that assumes it is already in
+// a checkout.
+func TestPromptSendsAnAgentWithNoRepositoryToFindIt(t *testing.T) {
+	c := repoUnknownContext()
+	got := Prompt(c)
+	for _, want := range []string{
+		"- Working directory: none yet — this session starts in /Users/craig, your home",
+		"## First, find the repository",
+		"whichever repository its card is about",
+		"ask the user\nhere in the terminal, and do nothing else until they answer",
+		"    nat slice-repo " + c.Slice.ID + " --project " + testProjectID + " --repo <absolute path to the checkout>",
+		"`slice/fix-the-login-page`",
+		"`/repos/app.worktrees/slice-fix-the-login-page`",
+		"--path-format=absolute --git-common-dir",
+		"git worktree list --porcelain",
+		"`git worktree add <repo>.worktrees/<path slug> -b slice/<slug> <base>`",
+		"git symbolic-ref --short refs/remotes/origin/HEAD",
+		"Work in the worktree you cut above",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt does not say %q:\n%s", want, got)
+		}
+	}
+	for _, unwanted := range []string{"already loaded git status", "## Already in your context", "branch for the slice"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("prompt still says %q", unwanted)
+		}
+	}
+	// With no container to name, the noun is the generic one.
+	c.Container = nil
+	if got := Prompt(c); !strings.Contains(got, "whichever repository its container is about") {
+		t.Errorf("no container: prompt = %s", got)
+	}
+}
+
 func TestPromptWithAWorktree(t *testing.T) {
 	golden(t, "prompt-worktree", Prompt(worktreeContext()))
 }
@@ -749,6 +800,7 @@ func TestEveryCommandInAPromptNamesTheProject(t *testing.T) {
 		"slice":          Prompt(testContext()),
 		"slice worktree": Prompt(worktreeContext()),
 		"slice gnat":     Prompt(gnatContext()),
+		"slice no repo":  Prompt(repoUnknownContext()),
 		"fix":            Prompt(fixContext()),
 		"plan":           PlanPrompt(testProjectID, name, dir, "", "", ""),
 		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", "", ""),
@@ -775,6 +827,7 @@ func TestEveryPromptCarriesTheNamingRule(t *testing.T) {
 		"slice worktree": Prompt(worktreeContext()),
 		"slice gnat":     Prompt(gnatContext()),
 		"slice resume":   Prompt(resumeContext()),
+		"slice no repo":  Prompt(repoUnknownContext()),
 		"fix":            Prompt(fixContext()),
 		"plan":           PlanPrompt(testProjectID, name, dir, "", "", ""),
 		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", "", ""),
@@ -795,6 +848,7 @@ func TestSliceAndFixPromptsCarryTheNoteCommand(t *testing.T) {
 		"slice worktree": worktreeContext(),
 		"slice gnat":     gnatContext(),
 		"slice resume":   resumeContext(),
+		"slice no repo":  repoUnknownContext(),
 		"fix":            fixContext(),
 	} {
 		want := "nat slice-note '<slice name>' --from " + c.Slice.ID + " --project " + testProjectID

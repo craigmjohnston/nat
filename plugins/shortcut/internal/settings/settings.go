@@ -49,18 +49,30 @@ func (d Dirs) CacheDir() string {
 	return filepath.Join(d.home(), "Library", "Caches", "nat-source-shortcut")
 }
 
-// Segment is one saved search under Ready. ID is fixed when the segment is
-// made and never re-derived from Name, since nat and gnat remember a group by
-// its id (`ready/<id>`).
+// Segment is one saved search, a top-level group of the sidebar between Doing
+// and Done. ID is fixed when the segment is made and never re-derived from
+// Name, since nat and gnat remember a group by its id (`ready/<id>`). An entry
+// written before filters, with a free-text `query`, reads as an empty filter:
+// the old field is simply not read.
 type Segment struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Query string `json:"query"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Filter Filter `json:"filter"`
+}
+
+// Filter is what a segment shows, as the filter editor sets it: a team by
+// mention name, a project and an epic by id, labels by name. Empty fields
+// restrict nothing, so the zero Filter is every unstarted story.
+type Filter struct {
+	Team    string   `json:"team,omitempty"`
+	Project string   `json:"project,omitempty"`
+	Epic    string   `json:"epic,omitempty"`
+	Labels  []string `json:"labels,omitempty"`
 }
 
 // Project is one nat project's settings.
 type Project struct {
-	// Segments is nil for "never configured" (the default, one Mine
+	// Segments is nil for "never configured" (the default, one Ready
 	// segment), and empty once the user has removed every one.
 	Segments []Segment `json:"segments"`
 	// StartedState and DoneState name the state a claim and a last merge
@@ -68,13 +80,35 @@ type Project struct {
 	// workflow. Empty means the first state of that type by position.
 	StartedState string `json:"started_state,omitempty"`
 	DoneState    string `json:"done_state,omitempty"`
-	// Team, when set, restricts every search to one team (its mention name).
-	Team string `json:"team,omitempty"`
+	// Filter narrows every search the sidebar makes — Doing, each segment and
+	// Done — as the section header's filter editor sets it. A segment's own
+	// filter overrides it field by field (see the plugin's merged). An entry
+	// written before it, with a `team` (a mention name), reads as a Filter of
+	// that team.
+	Filter Filter `json:"filter"`
 }
 
-// DefaultSegments is what a project starts with.
+// UnmarshalJSON reads a project entry, an older one's `team` into Filter.
+func (p *Project) UnmarshalJSON(b []byte) error {
+	type plain Project
+	v := struct {
+		*plain
+		Team string `json:"team"`
+	}{plain: (*plain)(p)}
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	if p.Filter.Team == "" {
+		p.Filter.Team = v.Team
+	}
+	return nil
+}
+
+// DefaultSegments is what a project starts with: Ready, with an empty
+// filter — every unstarted story the search returns. Its id is what
+// [Project.NewSegmentID] gives the name.
 func DefaultSegments() []Segment {
-	return []Segment{{ID: "mine", Name: "Mine", Query: "owner:me"}}
+	return []Segment{{ID: "ready", Name: "Ready"}}
 }
 
 // File is the whole config file.

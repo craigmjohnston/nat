@@ -98,16 +98,18 @@ func TestDescribeReportsAFailedCall(t *testing.T) {
 }
 
 func TestSidebarSendsExpandAndDecodesGroups(t *testing.T) {
-	f := &fakeRunner{out: `{"groups":[{"id":"done","label":"Done","count":3,"lazy":true,"containers":[{"id":"c1","title":"Fix it","badges":[{"text":"WEB","color":"#f00"}]}]}]}`}
-	groups, err := NewWithRunner("sc", "/bin/nat-source-sc", f).Sidebar(context.Background(), testProject, []string{"done"})
+	f := &fakeRunner{out: `{"groups":[{"id":"done","label":"Done","count":3,"lazy":true,"containers":[{"id":"c1","title":"Fix it","badges":[{"text":"WEB","color":"#f00"}]}]}],` +
+		`"menu":[{"id":"refresh","label":"Refresh","input":"none"}]}`}
+	sb, err := NewWithRunner("sc", "/bin/nat-source-sc", f).Sidebar(context.Background(), testProject, []string{"done"})
 	if err != nil {
 		t.Fatalf("Sidebar() = %v", err)
 	}
 	three := 3
-	want := []Group{{ID: "done", Label: "Done", Count: &three, Lazy: true,
-		Containers: []Container{{ID: "c1", Title: "Fix it", Badges: []Badge{{Text: "WEB", Color: "#f00"}}}}}}
-	if !reflect.DeepEqual(groups, want) {
-		t.Errorf("Sidebar() = %+v, want %+v", groups, want)
+	want := Sidebar{Groups: []Group{{ID: "done", Label: "Done", Count: &three, Lazy: true,
+		Containers: []Container{{ID: "c1", Title: "Fix it", Badges: []Badge{{Text: "WEB", Color: "#f00"}}}}}},
+		Menu: []Action{{ID: "refresh", Label: "Refresh", Input: InputNone}}}
+	if !reflect.DeepEqual(sb, want) {
+		t.Errorf("Sidebar() = %+v, want %+v", sb, want)
 	}
 	assertSent(t, f, "sidebar", map[string]any{"expand": []any{"done"}})
 }
@@ -191,6 +193,32 @@ func TestActionReportsAFailedCall(t *testing.T) {
 	if err == nil || err.Error() != "nat-source-sc action: plugin exited 1" {
 		t.Errorf("Action() = %v, want the exit code", err)
 	}
+}
+
+// TestFilterActionRoundTrip: a group's filter action decodes with its fields,
+// options and selection, and its answer goes back as the action's input — a
+// string holding the JSON object, so the wire's input stays one type.
+func TestFilterActionRoundTrip(t *testing.T) {
+	f := &fakeRunner{out: `{"groups":[{"id":"ready/r","label":"Ready","menu":[{"id":"filter","label":"Filter…","input":"filter",` +
+		`"fields":[{"id":"labels","label":"Labels","multi":true,"options":[{"id":"bug","label":"bug","color":"#ff0000"},{"id":"ux","label":"ux"}],"value":["ux"]}]}]}]}`}
+	e := NewWithRunner("sc", "/bin/nat-source-sc", f)
+	groups, err := e.Sidebar(context.Background(), testProject, nil)
+	if err != nil {
+		t.Fatalf("Sidebar() = %v", err)
+	}
+	want := Action{ID: "filter", Label: "Filter…", Input: InputFilter, Fields: []FilterField{{
+		ID: "labels", Label: "Labels", Multi: true,
+		Options: []FilterOption{{ID: "bug", Label: "bug", Color: "#ff0000"}, {ID: "ux", Label: "ux"}},
+		Value:   []string{"ux"},
+	}}}
+	if len(groups.Groups) != 1 || !reflect.DeepEqual(groups.Groups[0].Menu, []Action{want}) {
+		t.Fatalf("Sidebar() = %+v, want the filter action %+v", groups, want)
+	}
+	f.out = `{}`
+	if _, err := e.Action(context.Background(), testProject, "filter", Target{Group: "ready/r"}, `{"labels":["bug","ux"]}`); err != nil {
+		t.Fatalf("Action() = %v", err)
+	}
+	assertSent(t, f, "action", map[string]any{"action": "filter", "target": map[string]any{"group": "ready/r"}, "input": `{"labels":["bug","ux"]}`})
 }
 
 func TestEventSendsTheTaskAndIgnoresStdout(t *testing.T) {

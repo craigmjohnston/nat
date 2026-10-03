@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -35,10 +36,23 @@ func (a *app) runAction(ctx context.Context) (string, error) {
 			if input == "" {
 				return "", errors.New("shortcut: a new segment needs a name")
 			}
-			p.Segments = append(p.Segments, settings.Segment{ID: p.NewSegmentID(input), Name: input, Query: "owner:me"})
-			return fmt.Sprintf("Added segment %s (owner:me) — Edit Query to change it", input), nil
+			p.Segments = append(p.Segments, settings.Segment{ID: p.NewSegmentID(input), Name: input})
+			return fmt.Sprintf("Added segment %s, showing every unstarted story — Filter… to narrow it", input), nil
 		})
-	case "rename", "edit-query", "remove":
+	case "filter":
+		if a.req.Target.Group == "" {
+			// The section header's: every search the sidebar makes.
+			return a.editSegments(func(p *settings.Project) (string, error) {
+				f, err := parseFilter(input)
+				if err != nil {
+					return "", err
+				}
+				p.Filter = f
+				return "Every Shortcut list now shows " + describeFilter(f, "everything"), nil
+			})
+		}
+		fallthrough
+	case "rename", "remove":
 		return a.editSegments(func(p *settings.Project) (string, error) {
 			return segmentAction(p, a.req.Action, a.req.Target.Group, input)
 		})
@@ -75,7 +89,7 @@ func (a *app) editSegments(edit func(p *settings.Project) (string, error)) (stri
 	return msg, f.Save(a.dirs.ConfigFile())
 }
 
-// segmentAction renames, re-queries or removes the segment whose group id is
+// segmentAction renames, re-filters or removes the segment whose group id is
 // group.
 func segmentAction(p *settings.Project, action, group, input string) (string, error) {
 	i := p.Find(group)
@@ -91,16 +105,82 @@ func segmentAction(p *settings.Project, action, group, input string) (string, er
 		old := s.Name
 		s.Name = input
 		return fmt.Sprintf("Renamed %s to %s", old, input), nil
-	case "edit-query":
-		if input == "" {
-			return "", errors.New("shortcut: a segment needs a query")
+	case "filter":
+		f, err := parseFilter(input)
+		if err != nil {
+			return "", err
 		}
-		s.Query = input
-		return fmt.Sprintf("%s now shows %s", s.Name, input), nil
+		s.Filter = f
+		return fmt.Sprintf("%s now shows %s", s.Name, describeFilter(f, "every unstarted story")), nil
 	}
 	name := s.Name
 	p.Segments = slices.Delete(p.Segments, i, i+1)
 	return "Removed segment " + name, nil
+}
+
+// parseFilter reads the filter editor's answer: a JSON object of field id —
+// team, project, epic, labels — to the option ids chosen, an empty list (or a
+// field left out) being "any". Team, project and epic take one choice each.
+func parseFilter(input string) (settings.Filter, error) {
+	var chosen map[string][]string
+	if json.Unmarshal([]byte(input), &chosen) != nil {
+		return settings.Filter{}, errors.New("shortcut: a filter is a JSON object of field ids to lists of choices")
+	}
+	var f settings.Filter
+	for field, ids := range chosen {
+		ids = slices.DeleteFunc(slices.Clone(ids), func(id string) bool { return strings.TrimSpace(id) == "" })
+		one := func(dst *string) error {
+			if len(ids) > 1 {
+				return fmt.Errorf("shortcut: a segment's %s is one choice, not %d", field, len(ids))
+			}
+			if len(ids) == 1 {
+				*dst = ids[0]
+			}
+			return nil
+		}
+		var err error
+		switch field {
+		case "team":
+			err = one(&f.Team)
+		case "project":
+			err = one(&f.Project)
+		case "epic":
+			err = one(&f.Epic)
+		case "labels":
+			f.Labels = ids
+		default:
+			err = fmt.Errorf("shortcut: a segment has no filter field %q", field)
+		}
+		if err != nil {
+			return settings.Filter{}, err
+		}
+	}
+	if len(f.Labels) == 0 {
+		f.Labels = nil
+	}
+	return f, nil
+}
+
+// describeFilter is a filter as a toast says it: what it narrows to, field by
+// field, or none where it narrows nothing.
+func describeFilter(f settings.Filter, none string) string {
+	var parts []string
+	if f.Team != "" {
+		parts = append(parts, "team "+f.Team)
+	}
+	if f.Project != "" {
+		parts = append(parts, "project "+f.Project)
+	}
+	if f.Epic != "" {
+		parts = append(parts, "epic "+f.Epic)
+	}
+	if len(f.Labels) > 0 {
+		parts = append(parts, "labels "+strings.Join(f.Labels, ", "))
+	}
+	if len(parts) == 0 {
+		return none
+	}
+	return strings.Join(parts, "; ")
 }
 
 // addMe adds the token's member to the target story's owners or followers.

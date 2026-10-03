@@ -21,7 +21,9 @@ plan itself is an ordinary `store.Local`, wrapped by `store.Sourced`.
 - `describe` refuses any `protocol` but `ProtocolVersion` (naming the plugin
   and both numbers) rather than half-understanding a newer plugin.
 - Methods: `describe`, `sidebar`, `container`, `action`, `event`, `setup`.
-- `sidebar` always sends `expand` as a list, never `null`.
+- `sidebar` always sends `expand` as a list, never `null`, and answers a
+  `Sidebar` — the groups and, optionally, the header `menu` that replaces
+  `describe`'s for that project (a filter's choices are per project).
 - `event` is fire-and-forget: its stdout is not read at all.
 - `setup` (`Exec.Setup(ctx, id, input)`) is about no project, like
   `describe`: the envelope is empty and the run's dir is `""`. It sends
@@ -32,11 +34,15 @@ plan itself is an ordinary `store.Local`, wrapped by `store.Sourced`.
   `ValidateDescribe` (tag `^[A-Z0-9]{1,3}$`, menu, `setup` fields: id
   `^[a-z0-9-]+$` and unique, input `secret`|`text`; `set` — `*bool`, nil
   where the plugin doesn't say — is not checked), `Sidebar` →
-  `ValidateGroups` (children *xor* containers, one level of children, unique
-  group ids, no empty or `_`-prefixed group/container id — `_` is nat's, for
-  `_unlisted` — and every menu), `Container` → `ValidateContainer` (menu and
-  composers). Every action check is the same: a `choice` with no options,
-  and any `secret` input (a setup field's alone), is refused. The error is `nat-source-<name> <method>: invalid response: <rule>`
+  `ValidateSidebar` (`ValidateGroups` — children *xor* containers, one level
+  of children, unique group ids, no empty or `_`-prefixed group/container id —
+  `_` is nat's, for `_unlisted` — and every menu — then the header menu),
+  `Container` → `ValidateContainer` (menu and composers). Every action check
+  is the same: a `choice` with no options, and any `secret` input (a setup
+  field's alone), is refused; a `filter` with no fields, an empty or
+  repeated field or option id, two values in a field not `multi`, or a value
+  its field doesn't offer, is refused (`validateFilter`). A filter's answer
+  is the action's `input`, a string holding the JSON object. The error is `nat-source-<name> <method>: invalid response: <rule>`
   — the rule, never the body (`Exec.invalid`).
 - **Stdout is capped** at 4 MiB (`maxStdout`, a var for tests): `capWriter`
   refuses the write past it, which closes the plugin's pipe, and the cap is
@@ -79,7 +85,7 @@ input is the sharpest case: `TestSetupNeverLogsTheInput` opens the real log
 - Inside this package: `NewWithRunner(name, path, r)` with a fake
   `StdinRunner` (see `exec_test.go`'s `fakeRunner`), which runs events
   through the same runner.
-- Everywhere else: `source.Fake` — canned `DescribeResult`/`Groups`/`Details`/
+- Everywhere else: `source.Fake` — canned `DescribeResult`/`Groups`/`SidebarMenu`/`Details`/
   `ActionResult`/`SetupMessage`, per-method `…Err`, and recorded `Expands`,
   `ContainerIDs`, `Actions`, `Events`, `Setups` to assert what was sent. Its
   zero value works (a nil `Details` answers the zero detail).

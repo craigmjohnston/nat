@@ -257,6 +257,22 @@ final class PluginsModelTests: XCTestCase {
         XCTAssertNil(model.actionError, "a setup answer is the field's, not the tab's")
     }
 
+    /// A value saved may be what connects the plugin, so whoever reads the
+    /// plugins hears of it; a refusal changes nothing to hear of.
+    func testSaveSetupTellsWhoeverReadsThePlugins() async {
+        var told = 0
+        let model = PluginsModel(client: FixtureNatClient(plugins: Fixtures.pluginListingShortcut)) { told += 1 }
+        let key = PluginsModel.SetupKey(plugin: "shortcut", field: "token")
+        model.setupValues[key] = "s3cret"
+        await model.saveSetup(plugin: "shortcut", field: "token")
+        XCTAssertEqual(told, 1)
+
+        let refusing = PluginsModel(client: FixtureNatClient(behaviour: .refusing("no"))) { told += 1 }
+        refusing.setupValues[key] = "wrong"
+        await refusing.saveSetup(plugin: "shortcut", field: "token")
+        XCTAssertEqual(told, 1)
+    }
+
     func testSaveSetupKeepsARefusalAndTheValue() async {
         let model = PluginsModel(client: FixtureNatClient(behaviour: .refusing("shortcut: token stored, but Shortcut refused it")))
         let key = PluginsModel.SetupKey(plugin: "shortcut", field: "token")

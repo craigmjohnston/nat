@@ -44,7 +44,7 @@ func TestLoadSaveRoundTrip(t *testing.T) {
 	if !reflect.DeepEqual(p.Segments, DefaultSegments()) {
 		t.Errorf("default segments = %v", p.Segments)
 	}
-	p.Team = "board"
+	p.Filter.Team = "board"
 	if err := f.Save(path); err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestLoadSaveRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := g.Project("p1"); got.Team != "board" || len(got.Segments) != 1 {
+	if got := g.Project("p1"); got.Filter.Team != "board" || len(got.Segments) != 1 {
 		t.Errorf("round trip = %+v", got)
 	}
 	// Every segment removed stays removed: an empty list isn't the default.
@@ -63,6 +63,41 @@ func TestLoadSaveRoundTrip(t *testing.T) {
 	h, _ := Load(path)
 	if got := h.Project("p1").Segments; len(got) != 0 {
 		t.Errorf("emptied segments came back as %v", got)
+	}
+}
+
+// The default is one Ready segment with an empty filter, its id what
+// NewSegmentID makes of the name; an entry written with a free-text query and
+// no filter reads as an empty filter, not as a failed load.
+func TestDefaultsAndOldEntries(t *testing.T) {
+	if got := DefaultSegments(); len(got) != 1 || got[0].ID != (&Project{}).NewSegmentID("Ready") || got[0].Name != "Ready" ||
+		!reflect.DeepEqual(got[0].Filter, Filter{}) {
+		t.Errorf("DefaultSegments = %+v", got)
+	}
+	path := filepath.Join(t.TempDir(), "config.json")
+	_ = os.WriteFile(path, []byte(`{"projects":{"p1":{"segments":[{"id":"mine","name":"Mine","query":"owner:me"}]}}}`), 0o600)
+	f, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.Project("p1").Segments; len(got) != 1 || got[0].ID != "mine" || !reflect.DeepEqual(got[0].Filter, Filter{}) {
+		t.Errorf("old entry = %+v", got)
+	}
+	// An older project-level team is the section filter's team; a filter
+	// written since wins over it.
+	_ = os.WriteFile(path, []byte(`{"projects":{"p1":{"team":"board","done_state":"Done"},"p2":{"team":"old","filter":{"team":"new"}},"p3":{"segments":7}}}`), 0o600)
+	if _, err := Load(path); err == nil {
+		t.Error("a malformed entry loaded")
+	}
+	_ = os.WriteFile(path, []byte(`{"projects":{"p1":{"team":"board","done_state":"Done"},"p2":{"team":"old","filter":{"team":"new"}}}}`), 0o600)
+	if f, err = Load(path); err != nil {
+		t.Fatal(err)
+	}
+	if p := f.Project("p1"); p.Filter.Team != "board" || p.DoneState != "Done" {
+		t.Errorf("old team entry = %+v", p)
+	}
+	if p := f.Project("p2"); p.Filter.Team != "new" {
+		t.Errorf("both = %+v", p)
 	}
 }
 

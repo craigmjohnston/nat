@@ -41,3 +41,21 @@ func TestMainWiring(t *testing.T) {
 		t.Errorf("main: exit %d, stderr %q", code, errb.String())
 	}
 }
+
+// The warm-up is started detached from the binary nat ran; a binary that
+// cannot be found or started is an error, never a hang.
+func TestSpawnDetaches(t *testing.T) {
+	defer func(e func() (string, error)) { executable = e }(executable)
+	executable = func() (string, error) { return "/usr/bin/true", nil }
+	if err := spawn("warm"); err != nil {
+		t.Errorf("spawn = %v", err)
+	}
+	executable = func() (string, error) { return "/no/such/binary", nil }
+	if err := spawn("warm"); err == nil {
+		t.Error("spawn of a missing binary = nil")
+	}
+	executable = func() (string, error) { return "", errors.New("unknown") }
+	if err := spawn("warm"); err == nil {
+		t.Error("spawn with no executable = nil")
+	}
+}

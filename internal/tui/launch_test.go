@@ -1963,7 +1963,7 @@ func TestBusyNoteOf(t *testing.T) {
 		want  string
 	}{
 		{"a write", newDeleteSliceForm(DefaultStyles().FormTheme, domain.Slice{Name: "x"}), "Saving…"},
-		{"a launch", newLaunchForm(DefaultStyles().FormTheme, domain.Slice{Name: "x"}, "/tmp", config.AgentModel{}), "Launching the agent…"},
+		{"a launch", newLaunchForm(DefaultStyles().FormTheme, domain.Slice{Name: "x"}, "/tmp", config.AgentModel{}, config.ProjectConfig{}), "Launching the agent…"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

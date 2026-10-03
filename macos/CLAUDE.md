@@ -35,8 +35,9 @@ fuller structure and theme system.
 - Plugin install: `PluginModels.swift` mirrors `nat plugin-list` and the
   other `plugin-*` answers; Settings ▸ Sources draws them through
   `PluginsModel` (Installed, Available, Plugin sources), each button one
-  `nat plugin-*` call and then a fresh `plugin-list`, and an install or
-  uninstall re-reads `AppModel.sourcePlugins` for the `+` menu. An
+  `nat plugin-*` call and then a fresh `plugin-list`, and an install,
+  uninstall or setup Save re-reads `AppModel.sourcePlugins` — which is how
+  a plugin just connected gets its section (see **Task sources**). An
   installed row draws its `describe_error` as a warning line and its
   `setup` fields beneath it (`SecureField` for `secret`; `set == false` a
   "<label> not set" warning over it, `true` a quiet "<label> set" ✓ and a
@@ -219,19 +220,39 @@ nothing draws until every image's pixel size is known and every image has an
 explicit frame; keep it so. Stories: `window-visuals`,
 `window-visuals-comments`, `visuals-zoomed`, `visuals-comment-editor`.
 
-**Task sources.** A source project (config `backend: source`, or a plan
-carrying `source`) is pulled out of Projects into a top-level fold of its own
-between Projects and Scratch (`SidebarModel.sources`, `SidebarSource`): the
-plugin's icon (`SourceIconView` — `icon_svg` as a template, else the SF
-Symbol), the project's name and the header `menu`; then the plugin's groups
-(one level of children), container rows (`SidebarContainer` — badges, hover
-`meta` and `+`, `menu`, Open in <source>) and each container's tasks, the
+**Task sources.** There is no new-project entry for one: **connecting a
+plugin makes its section.** `AppModel.ensureSourceProjects` makes exactly one
+source project — `project-create --source`, named after the plugin's title,
+no working directory — for each plugin whose `describe` is connected
+(`SourceDescribe.isConnected`: no setup field `set == false`), takes it into
+the sidebar without opening it, and makes it once per run whatever a config
+re-read says. It runs after each reading of `source-list` and once config is
+read — **only in an `AppModel` made with `makesSourceProjects: true`**, as
+`NatApp` makes the app's: tests drive models over the machine's real `nat`
+(the default `NatClient`), and must never write a project into the real
+config. A source project (config `backend: source`, or a plan carrying
+`source`) is pulled out of Projects into a section of its own — its heading,
+then its own scroll, as Active, Projects and Scratch have — between Projects
+and Scratch (`SidebarModel.sources`, `SidebarSource`): the plugin's icon
+(`SourceIconView` — `icon_svg` as a template, else the SF Symbol), the
+plugin's **title**, never the project's name (nothing renames the section),
+and the header `menu` (the `sidebar` response's where it sent one); then the
+plugin's groups (one level of children), container rows (`SidebarContainer`
+— badges; under the pointer the `meta` and a `+` that takes the badges'
+trailing slot, hiding them, so nothing shifts; `menu`, Open in <source>) and
+each container's tasks, the
 plan's slices whose `milestoneID` is the container's id, through
 `displayState(for:)` like every row (Hide Done applies; a container in two
 groups is one container). A lazy group's fold is `AppModel.sourceExpanded`,
 passed on every read as `info --expand` (`ProjectStore.expand`). Plugin
 actions run through `AppModel.runSourceAction` (`text` asks in a sheet,
-`choice` is a submenu, `destructive` is confirmed), then re-read the plan.
+`choice` is a submenu, `filter` opens `SourceFilterPopover` — a `.popover`
+anchored to the header or the segment's row, its choices a
+`SourceFilterDraft`, "Any" naming what it falls through to, a `loading`
+field read once more through `AppModel.rereadSource` — `destructive` is
+confirmed), then re-read the plan. Every section but Active, folded, pins to
+the sidebar's foot under the open ones (`SidebarView.foldSlots`); open ones
+take at most their natural height and share the room only when short of it.
 Active rows and the titlebar carry the plugin's `tag` (`sidebarTags`). A
 container is a third selection kind (`selectedContainerID`, exclusive with
 slice, session and workshop); `ContainerStore` caches `container-show` per
@@ -246,7 +267,9 @@ the PR section its `task_note`, and the breadcrumb `<container> / <task>`;
 becomes a `Color` (as a hue through the palette's rules). Stories:
 `sidebar-source`, `sidebar-source-error`, `window-container`,
 `window-container-links`, `window-source-task-brief`,
-`window-source-task-pr`, `new-source-project`.
+`window-source-task-pr`, `sidebar-source-hover`, `sidebar-source-projects-open`,
+`sidebar-source-folded`, `sidebar-source-all-folded`, `source-filter-popover`,
+`source-filter-popover-section`, `source-filter-popover-loading`.
 
 ## The diff is AppKit, laid out exactly
 

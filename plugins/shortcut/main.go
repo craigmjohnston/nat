@@ -8,6 +8,8 @@ package main
 import (
 	"io"
 	"os"
+	"os/exec"
+	"syscall"
 	"time"
 
 	"github.com/craigmjohnston/nat/plugins/shortcut/internal/keychain"
@@ -26,8 +28,33 @@ var (
 	getenv                 = os.Getenv
 	tokens   plugin.Tokens = keychain.Keychain{Run: keychain.ExecRunner{}}
 	clockNow               = time.Now
+	executable             = os.Executable
 )
 
 func main() {
-	exit(plugin.Run(args(), stdin, stdout, stderr, plugin.Env{Getenv: getenv, Now: clockNow, Tokens: tokens}))
+	exit(plugin.Run(args(), stdin, stdout, stderr, plugin.Env{Getenv: getenv, Now: clockNow, Tokens: tokens, Spawn: spawn}))
+}
+
+// spawn starts this binary again with args, detached — plugin.Env.Spawn.
+func spawn(args ...string) error {
+	exe, err := executable()
+	if err != nil {
+		return err
+	}
+	return detach(exe, args...)
+}
+
+// detach starts name with args in a session of its own, so nat's kill of the
+// call that started it does not reach it, with stdin, stdout and stderr all
+// /dev/null — nat waits on its child's pipes, and nothing the warm-up could
+// say belongs there — and lets it go without waiting. It inherits the
+// environment: the token (from SHORTCUT_API_TOKEN or the Keychain), the API
+// and the cache directory are the ones the call that started it used.
+func detach(name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
 }

@@ -297,6 +297,15 @@ public final class AppModel {
     /// Empty where the read failed: a missing plugin is no reason to say so.
     public private(set) var sourcePlugins: [SourcePlugin] = []
     private var sourcePluginsLoaded = false
+    /// The plugins a source project has been made for in this run, or is
+    /// being made for now — so two readings landing together, or one landing
+    /// before the config re-read shows the new project, make it once.
+    private var sourceProjectsMade: Set<String> = []
+    /// Whether a reading of the plugins, or of config, may go on to make a
+    /// connected plugin's project. Only the app itself turns it on: a test
+    /// drives this model over whatever `nat` the machine has, and must never
+    /// write a project into its real config.
+    private let makesSourceProjects: Bool
 
     /// How long each visited slice's session is held from being reaped, keyed
     /// by slice ID and set to visit-time-plus-hold on every visit — the
@@ -506,8 +515,10 @@ public final class AppModel {
         toolsReady: @escaping @Sendable () -> Bool = {
             ["nat", "tmux", "gh", "ntn"].allSatisfy { BinaryLocator.status(of: $0).isFound }
         },
-        mirrorNudgeMemory: MirrorNudgeMemory = .inMemory()
+        mirrorNudgeMemory: MirrorNudgeMemory = .inMemory(),
+        makesSourceProjects: Bool = false
     ) {
+        self.makesSourceProjects = makesSourceProjects
         self.mirrorNudgeMemory = mirrorNudgeMemory
         self.mirrorNudgePending = mirrorNudgeMemory.pending
         self.toolsReady = toolsReady
@@ -575,6 +586,38 @@ public final class AppModel {
         guard !sourcePluginsLoaded else { return }
         sourcePluginsLoaded = true
         sourcePlugins = (try? await clientFactory().sourceList()) ?? []
+        if makesSourceProjects { await ensureSourceProjects() }
+    }
+
+    /// Connecting a plugin makes its section: every plugin whose `describe`
+    /// says it is connected (`SourceDescribe.isConnected` — for Shortcut, the
+    /// token set) gets exactly one source project, made here the first time
+    /// with the plugin's title for its name and no working directory — each
+    /// of its tasks works out its own repository — and taken into the
+    /// sidebar without being opened. A plugin with one already gets nothing,
+    /// and so does every plugin before config has been read, since config is
+    /// where the existing ones are found. A refusal concludes nothing: the
+    /// next reading of the plugins tries again.
+    public func ensureSourceProjects() async {
+        guard let config else { return }
+        let have = Set(config.projects.values.compactMap(\.source))
+        for plugin in sourcePlugins {
+            guard let describe = plugin.describe, describe.isConnected, !have.contains(plugin.name),
+                  !sourceProjectsMade.contains(plugin.name) else { continue }
+            sourceProjectsMade.insert(plugin.name)
+            do {
+                let created = try await clientFactory().projectCreate(
+                    name: plugin.displayTitle, repo: nil, description: nil, source: plugin.name)
+                await reloadConfig()
+                if !projectTabs.contains(where: { $0.id == created.id }) {
+                    projectTabs.append((id: created.id, name: self.config?.projects[created.id]?.name ?? created.name))
+                }
+                loadBackgroundProject(created.id)
+            } catch {
+                sourceProjectsMade.remove(plugin.name)
+                NSLog("AppModel: could not make the %@ source project: %@", plugin.name, error.localizedDescription)
+            }
+        }
     }
 
     /// Reads them again, after Settings ▸ Sources installed or took one away.
@@ -607,6 +650,7 @@ public final class AppModel {
                 // the tools it is the onboarding pane's checklist, as before.
                 if toolsReady() {
                     startWithUntitledTab()
+                    if makesSourceProjects { await ensureSourceProjects() }
                 } else {
                     needsOnboarding = true
                 }
@@ -654,6 +698,9 @@ public final class AppModel {
             if let firstProjectID {
                 await activateProject(firstProjectID, nudgePath: nudgePath, config: loadedConfig)
             }
+            // The plugins' reading may have landed before config did, with
+            // nowhere then to look for their projects.
+            if makesSourceProjects { await ensureSourceProjects() }
         } catch {
             // No config file to read from is the common case here, not a
             // crash-worthy one: it is exactly what a first run looks like.
@@ -1036,13 +1083,20 @@ public final class AppModel {
         } catch {
             return error.localizedDescription
         }
+        await rereadSource(projectID: projectID)
+        if let container { await containerStore(projectID: projectID).fetch(containerID: container) }
+        return nil
+    }
+
+    /// Reads a source project's plan — and so its plugin's tree — again: what
+    /// an action ends on, and what an open filter editor asks for once while
+    /// a field of it is still loading.
+    public func rereadSource(projectID: String) async {
         if projectID == activeProjectID {
             await refresh(.replica)
         } else {
             await stores[projectID]?.refresh(.replica)
         }
-        if let container { await containerStore(projectID: projectID).fetch(containerID: container) }
-        return nil
     }
 
     /// Select a slice wherever it is filed: its project is made the active

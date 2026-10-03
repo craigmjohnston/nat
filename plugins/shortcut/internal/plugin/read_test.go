@@ -136,33 +136,64 @@ func tree(t *testing.T, out string) string {
 	return strings.Join(lines, "\n")
 }
 
-const segMenu = "{rename(text) edit-query(text) remove(none,destructive)}"
+const segMenu = "{rename(text) filter(filter) remove(none,destructive)}"
+
+// doneThisWeek is the Done search for the seeded Saturday: owner:me (as the
+// token's mention name), done, completed on or after that week's Monday.
+const doneThisWeek = "owner:craig is:done completed:2026-09-28..*"
 
 func TestSidebarDefault(t *testing.T) {
 	h := newHarness(t)
 	got := tree(t, h.call("sidebar", `"expand":[]`))
+	// Segments are top-level groups between Doing and Done; the default is
+	// Ready, every unstarted story. A story's badge is its Shortcut project
+	// (abbreviation, else a code from its name; its colour, else grey), else
+	// its team.
 	want := strings.Join([]string{
-		"doing Doing 1: 4821[NA #2c3e7a Native App|3 pts]",
-		"ready Ready 1:",
-		"  ready/mine Mine 1 " + segMenu + ": 4802[BO #2aa198 Board|1 pt]",
+		"doing Doing 1: 4821[MOB #e5732a Mobile App|3 pts]",
+		"ready/ready Ready 2 " + segMenu + ": 4811[WE #8e8e93 Web|] 4802[BO #2aa198 Board|1 pt]",
 		"done Done 1 lazy:",
 	}, "\n")
 	if got != want {
 		t.Errorf("sidebar:\n%s\nwant:\n%s", got, want)
 	}
-	// owner:me goes out as the token's mention name; no team-less story,
-	// so no epic is looked up.
+	// owner:me goes out as the token's mention name; every story has a
+	// project or a team, so no epic is looked up; and the epic list is never
+	// fetched on the sidebar's path.
 	wantGets := []string{
-		"/groups", "/member",
-		"/search/stories owner:craig !is:done", "/search/stories owner:craig is:done", "/search/stories owner:craig is:started",
+		"/groups", "/labels", "/member", "/projects",
+		"/search/stories !is:done", "/search/stories " + doneThisWeek, "/search/stories owner:craig is:started",
 		"/workflows",
 	}
 	if g := h.gets(); !slices.Equal(g, wantGets) {
 		t.Errorf("requests = %q", g)
 	}
 	for _, r := range h.fake.Requests() {
-		if r.Query.Get("query") == "owner:craig is:done" && r.Query.Get("page_size") != "25" {
+		if r.Query.Get("query") == doneThisWeek && r.Query.Get("page_size") != "25" {
 			t.Errorf("done count query = %v", r.Query)
+		}
+	}
+}
+
+// Done is mine, this week: a story completed last week is neither counted
+// nor listed.
+func TestSidebarDoneThisWeek(t *testing.T) {
+	h := newHarness(t)
+	var sb sidebarResponse
+	_ = json.Unmarshal([]byte(h.call("sidebar", `"expand":["done"]`)), &sb)
+	done := sb.Groups[len(sb.Groups)-1]
+	if *done.Count != 1 || len(done.Containers) != 1 || done.Containers[0].ID != "4760" {
+		t.Errorf("done = count %d, %+v; want this week's story alone", *done.Count, done.Containers)
+	}
+	// The week runs from Monday in now's own time: on a Monday it starts that
+	// day, on a Sunday six days back.
+	for now, want := range map[time.Time]string{
+		time.Date(2026, 9, 28, 0, 30, 0, 0, time.UTC):                    "2026-09-28",
+		time.Date(2026, 10, 4, 23, 0, 0, 0, time.UTC):                    "2026-09-28",
+		time.Date(2026, 10, 5, 9, 0, 0, 0, time.FixedZone("x", -8*3600)): "2026-10-05",
+	} {
+		if got := weekStart(now); got != want {
+			t.Errorf("weekStart(%v) = %s, want %s", now, got, want)
 		}
 	}
 }
@@ -180,6 +211,7 @@ func TestSidebarDoneExpanded(t *testing.T) {
 	var sb sidebarResponse
 	_ = json.Unmarshal([]byte(h.call("sidebar", `"expand":["done"]`)), &sb)
 	done := sb.Groups[2]
+	// 30 of these and the seeded one from this week; last week's is out.
 	if *done.Count != 31 || len(done.Containers) != doneShow {
 		t.Fatalf("done = count %d, %d shown", *done.Count, len(done.Containers))
 	}
@@ -198,10 +230,10 @@ func TestSidebarDoneExpanded(t *testing.T) {
 			t.Errorf("done not newest-first at %d", i)
 		}
 	}
-	// The 7-day-old seeded story is older than every bulk one: not shown.
+	// The seeded story from last week is not this week's: never listed.
 	for _, c := range done.Containers {
 		if c.ID == "4756" {
-			t.Error("the oldest done story made the 25")
+			t.Error("last week's done story made the list")
 		}
 	}
 }
@@ -209,32 +241,69 @@ func TestSidebarDoneExpanded(t *testing.T) {
 func TestSidebarSegmentsAndTeam(t *testing.T) {
 	h := newHarness(t)
 	h.writeConfig(settings.Project{Segments: []settings.Segment{
-		{ID: "bugs", Name: "Bugs", Query: "type:bug"},
-		{ID: "all", Name: "Everything", Query: "Kanban"},
+		{ID: "web", Name: "Web", Filter: settings.Filter{Project: "31"}},
+		{ID: "parity", Name: "Parity", Filter: settings.Filter{Epic: "10"}},
+		{ID: "board", Name: "Board", Filter: settings.Filter{Team: "board"}},
+		{ID: "none", Name: "Nothing", Filter: settings.Filter{Labels: []string{"no such"}}},
 	}})
 	got := tree(t, h.call("sidebar", `"expand":[]`))
 	want := strings.Join([]string{
-		"doing Doing 1: 4821[NA #2c3e7a Native App|3 pts]",
-		"ready Ready 2:",
-		"  ready/bugs Bugs 1 " + segMenu + ": 4811[NAP #2aa198 Native app parity|]",
-		"  ready/all Everything 1 " + segMenu + ": 4802[BO #2aa198 Board|1 pt]",
+		"doing Doing 1: 4821[MOB #e5732a Mobile App|3 pts]",
+		"ready/web Web 1 " + segMenu + ": 4811[WE #8e8e93 Web|]",
+		"ready/parity Parity 1 " + segMenu + ": 4811[WE #8e8e93 Web|]",
+		"ready/board Board 1 " + segMenu + ": 4802[BO #2aa198 Board|1 pt]",
+		"ready/none Nothing 0 " + segMenu + ":",
 		"done Done 1 lazy:",
 	}, "\n")
 	if got != want {
 		t.Errorf("sidebar:\n%s\nwant:\n%s", got, want)
 	}
+	// Each filter compiles to the search: project by id, the epic by its
+	// name (looked up by id, through the long cache), labels quoted.
+	for _, q := range []string{
+		"/search/stories project:31 !is:done",
+		`/search/stories epic:"Native app parity" !is:done`,
+		"/search/stories team:board !is:done",
+		`/search/stories label:"no such" !is:done`,
+		"/epics/10",
+	} {
+		if !slices.Contains(h.gets(), q) {
+			t.Errorf("no request %q in %q", q, h.gets())
+		}
+	}
 
-	h.writeConfig(settings.Project{Team: "Native App", Segments: []settings.Segment{}})
+	h.writeConfig(settings.Project{Filter: settings.Filter{Team: "Native App"}, Segments: []settings.Segment{}})
 	h.fake.Reset()
 	h.now = h.now.Add(time.Minute) // past the cache
 	got = tree(t, h.call("sidebar", `"expand":[]`))
-	if got != "doing Doing 1: 4821[NA #2c3e7a Native App|3 pts]\nready Ready 0:\ndone Done 1 lazy:" {
+	if got != "doing Doing 1: 4821[MOB #e5732a Mobile App|3 pts]\ndone Done 0 lazy:" {
 		t.Errorf("team-filtered sidebar:\n%s", got)
 	}
 	for _, g := range h.gets() {
-		if strings.HasPrefix(g, "/search") && !strings.HasSuffix(g, ` team:"Native App"`) {
+		if strings.HasPrefix(g, "/search") && !strings.HasPrefix(g, `/search/stories team:"Native App" `) {
 			t.Errorf("search without the team filter: %q", g)
 		}
+	}
+}
+
+// A story with no project badges by its team, else its epic (coloured by the
+// epic's team), else nothing — the epic looked up only for such a story.
+func TestSidebarBadgeFallbacks(t *testing.T) {
+	h := newHarness(t)
+	h.fake.Stories[fakeshortcut.StoryBug].ProjectID = 0
+	h.fake.Stories[fakeshortcut.StoryReady].ProjectID = fakeshortcut.ProjectLegacy // archived still badges
+	got := tree(t, h.call("sidebar", `"expand":[]`))
+	if !strings.Contains(got, "4811[NAP #2aa198 Native app parity|] 4802[LEG #123456 Legacy|1 pt]") {
+		t.Errorf("sidebar:\n%s", got)
+	}
+	if !slices.Contains(h.gets(), "/epics/10") {
+		t.Errorf("the team-less story's epic was not looked up: %q", h.gets())
+	}
+	// A workspace that won't list projects badges by team instead.
+	h.fake.Fail = map[string]int{"GET /projects": 404}
+	h.now = h.now.Add(time.Minute)
+	if got := tree(t, h.call("sidebar", `"expand":[]`)); !strings.HasPrefix(got, "doing Doing 1: 4821[NA #2c3e7a Native App|3 pts]") {
+		t.Errorf("no projects:\n%s", got)
 	}
 }
 
@@ -250,6 +319,7 @@ func TestSidebarPositionOrder(t *testing.T) {
 
 func TestSidebarCache(t *testing.T) {
 	h := newHarness(t)
+	h.warmEpics()
 	first := h.call("sidebar", `"expand":[]`)
 	h.fake.Reset()
 
@@ -326,6 +396,7 @@ func TestContainer(t *testing.T) {
 	want := strings.Join([]string{
 		"id=sc-4821",
 		"team=NA · Native App (#2c3e7a)",
+		"project=MOB · Mobile App (#e5732a)",
 		"state=In Development",
 		"type=feature",
 		"epic=Native app parity",
@@ -387,7 +458,7 @@ func TestContainerSparse(t *testing.T) {
 	st.PullRequests = []shortcut.PullRequest{{ID: 5, Number: 5, Closed: true}}
 	d := detail(t, h.call("container", `"id":"4811"`))
 	want := strings.Join([]string{
-		"id=sc-4811", "team=—", "state=Ready for Dev", "type=bug", "epic=Native app parity", "labels=—",
+		"id=sc-4811", "team=—", "project=WE · Web (#8e8e93)", "state=Ready for Dev", "type=bug", "epic=Native app parity", "labels=—",
 		"owner=unassigned", "requester=—", "created=16 Sep", "updated=6d ago", "iteration=—",
 	}, "\n")
 	if got := facts(d.Facts); got != want {

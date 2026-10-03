@@ -273,8 +273,8 @@ struct SettingsView: View {
             Text("Installed")
         } footer: {
             sectionFootnote(
-                "Each plugin adds a \u{201C}New \u{2026} project\u{201D} item to the + menu, for a project whose cards "
-                    + "come from that service. Updates come from the sources below. A plugin marked manual or on "
+                "Connecting a plugin \u{2014} setting what it asks for here \u{2014} adds its section to the sidebar, "
+                    + "its cards from that service. Updates come from the sources below. A plugin marked manual or on "
                     + "PATH was installed outside gnat and is left as you put it.")
         }
     }

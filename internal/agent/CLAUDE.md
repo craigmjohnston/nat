@@ -46,9 +46,16 @@ running agent's state.
   fix, plan and new-project prompt, and `notesPassage` (`nat slice-note
   --from <own slice ID>`) in every slice and fix prompt; tests walk each
   template for them. The skills carry the same words in their own copies.
+- `PromptContext.RepoUnknown` (a source project's task with no repository)
+  swaps "Already in your context" for `repoPassage`: work the repository out
+  from the card's facts and links, ask the user where it cannot tell, record
+  it with `nat slice-repo <id> --project <id> --repo <path>`, cut the
+  worktree. The session starts in the home directory, so the git-status and
+  CLAUDE.md lines are left out too. The template walks (`--project` pinning,
+  the naming rule, the note command) cover it as `repoUnknownContext`.
 - The `SliceBranch`/`pathSlug`/`Base` naming triad (how a branch name and its
   worktree path are derived — `actions.SliceBranch`, `worktree.pathSlug`,
-  `git.CLI.Base`) is spelled out **verbatim** in this package's prompts and in
+  `git.CLI.Base`) is spelled out in prose in `repoPassage` and in
   `skills/next-slice/SKILL.md` — **do not deduplicate this.** A skill is read
   by an agent, not compiled, so it can't import Go code; both copies must
   independently say the same thing.

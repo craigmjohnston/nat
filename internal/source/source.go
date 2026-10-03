@@ -79,6 +79,15 @@ type Group struct {
 	Containers []Container `json:"containers,omitempty"`
 }
 
+// Sidebar is a sidebar response: the tree, and — where the plugin sends one —
+// the section header's menu for this project, which replaces describe's own
+// static one. A filter's options and selection are per project, which a
+// describe answered about no project cannot carry.
+type Sidebar struct {
+	Groups []Group  `json:"groups"`
+	Menu   []Action `json:"menu,omitempty"`
+}
+
 // Container is one row of the sidebar tree: the thing a task hangs off.
 type Container struct {
 	ID          string   `json:"id"`
@@ -98,22 +107,52 @@ type Badge struct {
 
 // The input an [Action] asks for before it runs. InputSecret is a
 // [SetupField]'s alone — drawn masked — and never valid on an action.
+// InputFilter asks for a selection in each of the action's Fields, and
+// sends them back as a JSON object of field id to option ids.
 const (
 	InputNone   = "none"
 	InputText   = "text"
 	InputChoice = "choice"
 	InputSecret = "secret"
+	InputFilter = "filter"
 )
 
 // Action is a named thing the plugin can do, offered on a menu. Its ID is
 // what comes back in an action request; Options are the choices an
-// [InputChoice] offers.
+// [InputChoice] offers, Fields what an [InputFilter] edits.
 type Action struct {
-	ID          string   `json:"id"`
-	Label       string   `json:"label"`
-	Input       string   `json:"input"`
-	Options     []string `json:"options,omitempty"`
-	Destructive bool     `json:"destructive,omitempty"`
+	ID          string        `json:"id"`
+	Label       string        `json:"label"`
+	Input       string        `json:"input"`
+	Options     []string      `json:"options,omitempty"`
+	Fields      []FilterField `json:"fields,omitempty"`
+	Destructive bool          `json:"destructive,omitempty"`
+}
+
+// FilterField is one field of an [InputFilter] action: a choice among
+// Options — one, or several where Multi — with Value the current selection,
+// which the plugin sends afresh on every response, so the editor always opens
+// on what is saved. An empty Value is "any" — or, where Inherited names
+// something, falls through to that: a wider filter's own choice for the
+// field, which the editor shows beside "Any" so an override reads as one.
+// Loading says the plugin is still fetching the options in the background:
+// the editor draws the field as loading and reads the tree once more, and
+// never holds the other fields for it.
+type FilterField struct {
+	ID        string         `json:"id"`
+	Label     string         `json:"label"`
+	Multi     bool           `json:"multi,omitempty"`
+	Options   []FilterOption `json:"options"`
+	Value     []string       `json:"value"`
+	Inherited string         `json:"inherited,omitempty"`
+	Loading   bool           `json:"loading,omitempty"`
+}
+
+// FilterOption is one choice of a [FilterField]; Color, `#rrggbb`, tints it.
+type FilterOption struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	Color string `json:"color,omitempty"`
 }
 
 // ContainerDetail is everything the plugin shows about one container: its
@@ -208,7 +247,7 @@ const (
 // one; [Fake] stands in for it in tests.
 type Client interface {
 	Describe(ctx context.Context, p Project) (Describe, error)
-	Sidebar(ctx context.Context, p Project, expand []string) ([]Group, error)
+	Sidebar(ctx context.Context, p Project, expand []string) (Sidebar, error)
 	Container(ctx context.Context, p Project, id string) (ContainerDetail, error)
 	Action(ctx context.Context, p Project, action string, target Target, input string) (ActionResult, error)
 	Event(ctx context.Context, p Project, container string, task Task, event string) error

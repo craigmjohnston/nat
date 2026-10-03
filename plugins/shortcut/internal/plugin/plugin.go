@@ -65,6 +65,10 @@ type Env struct {
 	Tokens Tokens
 	// HTTP, when set, replaces the client's own (tests shorten its timeout).
 	HTTP *http.Client
+	// Spawn starts this program again with args, detached — in its own
+	// session, its stdio nowhere — and does not wait for it: how a sidebar
+	// starts the epic list's warm-up (see cachedEpics). Nil starts nothing.
+	Spawn func(args ...string) error
 }
 
 const usage = "usage: nat-source-shortcut <describe|sidebar|container|action|event|setup> < request.json\n" +
@@ -88,20 +92,22 @@ type request struct {
 	Event     string         `json:"event"`     // event
 }
 
-// sidebarResponse is the sidebar method's response — in nat, likewise an
-// unexported struct inside Exec.Sidebar.
-type sidebarResponse struct {
-	Groups []source.Group `json:"groups"`
-}
+// sidebarResponse is the sidebar method's response: nat's own source.Sidebar —
+// the tree, and the section header's menu for this project, which carries its
+// filter editor.
+type sidebarResponse = source.Sidebar
 
-// app is one method call's state.
+// app is one method call's state. noCache, set while a response is built,
+// keeps that response out of the cache: one drawn while the epic list was
+// still on its way, which the next read must not be served.
 type app struct {
-	env   Env
-	req   request
-	sc    *shortcut.Client
-	dirs  settings.Dirs
-	cache cache.Cache
-	now   time.Time
+	env     Env
+	req     request
+	sc      *shortcut.Client
+	dirs    settings.Dirs
+	cache   cache.Cache
+	now     time.Time
+	noCache bool
 }
 
 type method func(a *app, ctx context.Context) ([]byte, error)
@@ -125,6 +131,8 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer, env Env) int 
 	switch args[1] {
 	case "login":
 		return login(stdout, stderr, env)
+	case "warm":
+		return warm(env)
 	case "config":
 		if len(args) != 3 {
 			_, _ = fmt.Fprintln(stderr, usage)
@@ -241,7 +249,9 @@ func (a *app) cached(key string, build func() (any, error)) ([]byte, error) {
 		return nil, err
 	}
 	b := marshal(v)
-	a.cache.Put(pid, key, b)
+	if !a.noCache {
+		a.cache.Put(pid, key, b)
+	}
 	return b, nil
 }
 

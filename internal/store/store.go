@@ -58,9 +58,10 @@ type Describer interface {
 }
 
 // SidebarReader is answered only by [Sourced]: the plugin's own tree of
-// groups and containers, with the lazy groups named in expand filled in.
+// groups and containers, with the lazy groups named in expand filled in, and
+// the section header's menu where the plugin sends one.
 type SidebarReader interface {
-	Sidebar(ctx context.Context, expand []string) ([]source.Group, error)
+	Sidebar(ctx context.Context, expand []string) (source.Sidebar, error)
 }
 
 // ContainerReader is answered only by [Sourced]: everything the plugin shows
@@ -73,6 +74,15 @@ type ContainerReader interface {
 // actions, run against a group, a container, or the source itself.
 type ActionRunner interface {
 	Action(ctx context.Context, action string, target source.Target, input string) (source.ActionResult, error)
+}
+
+// RepoSetter is answered by a plan kept in a file of nat's own — [Local] and
+// [Sourced] — and records the repository one slice is worked in, and nothing
+// else about it: what a source project's agent writes once it has worked out
+// which repository its card is about, since such a project has no working
+// directory of its own to fall back on.
+type RepoSetter interface {
+	SetSliceRepo(ctx context.Context, id, repo string) error
 }
 
 // Shape is what a store can record about one project's slices, and the

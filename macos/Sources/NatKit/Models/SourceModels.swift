@@ -27,9 +27,10 @@ extension KeyedDecodingContainer {
 }
 
 /// How an action asks for its input: `none` runs on click, `text` asks for a
-/// line of text, `choice` offers its `options`.
+/// line of text, `choice` offers its `options`, `filter` opens the filter
+/// editor over its `fields`.
 public enum SourceActionInput: Equatable, Sendable, Codable {
-    case none, text, choice
+    case none, text, choice, filter
     /// An input word this build does not know, kept as given.
     case unknown(String)
 
@@ -38,6 +39,7 @@ public enum SourceActionInput: Equatable, Sendable, Codable {
         case "", "none": self = .none
         case "text": self = .text
         case "choice": self = .choice
+        case "filter": self = .filter
         default: self = .unknown(word)
         }
     }
@@ -47,6 +49,7 @@ public enum SourceActionInput: Equatable, Sendable, Codable {
         case .none: "none"
         case .text: "text"
         case .choice: "choice"
+        case .filter: "filter"
         case .unknown(let word): word
         }
     }
@@ -67,15 +70,21 @@ public struct SourceAction: Codable, Equatable, Sendable, Identifiable {
     public let label: String
     public let input: SourceActionInput
     public let options: [String]
+    /// What a `filter` action edits.
+    public let fields: [SourceFilterField]
     public let destructive: Bool
 
-    enum CodingKeys: String, CodingKey { case id, label, input, options, destructive }
+    enum CodingKeys: String, CodingKey { case id, label, input, options, fields, destructive }
 
-    public init(id: String, label: String, input: SourceActionInput = .none, options: [String] = [], destructive: Bool = false) {
+    public init(
+        id: String, label: String, input: SourceActionInput = .none, options: [String] = [],
+        fields: [SourceFilterField] = [], destructive: Bool = false
+    ) {
         self.id = id
         self.label = label
         self.input = input
         self.options = options
+        self.fields = fields
         self.destructive = destructive
     }
 
@@ -85,7 +94,70 @@ public struct SourceAction: Codable, Equatable, Sendable, Identifiable {
         label = c.lenientString(.label)
         input = SourceActionInput(word: c.lenientString(.input))
         options = (try? c.list(String.self, .options)) ?? []
+        fields = (try? c.list(SourceFilterField.self, .fields)) ?? []
         destructive = ((try? c.decodeIfPresent(Bool.self, forKey: .destructive)) ?? nil) ?? false
+    }
+}
+
+/// One choice of a filter field; `color` (`#rrggbb`) tints it.
+public struct SourceFilterOption: Codable, Equatable, Sendable, Identifiable, Hashable {
+    public let id: String
+    public let label: String
+    public let color: String?
+
+    enum CodingKeys: String, CodingKey { case id, label, color }
+
+    public init(id: String, label: String, color: String? = nil) {
+        self.id = id
+        self.label = label
+        self.color = color
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = c.lenientString(.id)
+        label = c.lenientString(.label)
+        color = c.optionalString(.color)
+    }
+}
+
+/// One field of a `filter` action: a choice among `options` — one, or
+/// several where `multi` — with `value` what is saved now (empty is "Any").
+/// `inherited` names what "Any" falls through to — a wider filter's choice —
+/// and `loading` says the plugin is still fetching the options.
+public struct SourceFilterField: Codable, Equatable, Sendable, Identifiable {
+    public let id: String
+    public let label: String
+    public let multi: Bool
+    public let options: [SourceFilterOption]
+    public let value: [String]
+    public let inherited: String?
+    public let loading: Bool
+
+    enum CodingKeys: String, CodingKey { case id, label, multi, options, value, inherited, loading }
+
+    public init(
+        id: String, label: String, multi: Bool = false, options: [SourceFilterOption] = [], value: [String] = [],
+        inherited: String? = nil, loading: Bool = false
+    ) {
+        self.id = id
+        self.label = label
+        self.multi = multi
+        self.options = options
+        self.value = value
+        self.inherited = inherited
+        self.loading = loading
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = c.lenientString(.id)
+        label = c.lenientString(.label)
+        multi = ((try? c.decodeIfPresent(Bool.self, forKey: .multi)) ?? nil) ?? false
+        options = (try? c.list(SourceFilterOption.self, .options)) ?? []
+        value = (try? c.list(String.self, .value)) ?? []
+        inherited = c.optionalString(.inherited)
+        loading = ((try? c.decodeIfPresent(Bool.self, forKey: .loading)) ?? nil) ?? false
     }
 }
 
@@ -495,6 +567,8 @@ public struct SourceDescribe: Codable, Equatable, Sendable {
     public let containerNoun: String
     public let taskNoun: String
     public let menu: [SourceAction]
+    /// What the plugin needs set before it works, with whether each is.
+    public let setup: [PluginSetupField]
 
     enum CodingKeys: String, CodingKey {
         case `protocol`, name, title, tag
@@ -502,12 +576,13 @@ public struct SourceDescribe: Codable, Equatable, Sendable {
         case iconSVG = "icon_svg"
         case containerNoun = "container_noun"
         case taskNoun = "task_noun"
-        case menu
+        case menu, setup
     }
 
     public init(
         protocol: Int = 1, name: String, title: String, tag: String, iconSymbol: String,
-        iconSVG: String? = nil, containerNoun: String, taskNoun: String, menu: [SourceAction] = []
+        iconSVG: String? = nil, containerNoun: String, taskNoun: String, menu: [SourceAction] = [],
+        setup: [PluginSetupField] = []
     ) {
         self.protocol = `protocol`
         self.name = name
@@ -518,7 +593,14 @@ public struct SourceDescribe: Codable, Equatable, Sendable {
         self.containerNoun = containerNoun
         self.taskNoun = taskNoun
         self.menu = menu
+        self.setup = setup
     }
+
+    /// Whether the plugin is connected: every setup field it lists is set.
+    /// A field it says nothing about (`set` nil) does not hold it back — the
+    /// plugin did not say it was missing — and one with nothing to set up is
+    /// connected as installed.
+    public var isConnected: Bool { setup.allSatisfy { $0.set != false } }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -531,6 +613,7 @@ public struct SourceDescribe: Codable, Equatable, Sendable {
         containerNoun = c.lenientString(.containerNoun)
         taskNoun = c.lenientString(.taskNoun)
         menu = try c.list(SourceAction.self, .menu)
+        setup = (try? c.list(PluginSetupField.self, .setup)) ?? []
     }
 }
 

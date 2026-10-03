@@ -75,6 +75,43 @@ final class SourceModelsTests: XCTestCase {
         XCTAssertEqual(again, actions)
     }
 
+    func testAFilterActionReadsItsFields() throws {
+        let action = try decode(SourceAction.self, """
+        {"id": "filter", "label": "Filter…", "input": "filter", "fields": [
+          {"id": "team", "label": "Team", "options": [{"id": "board", "label": "Board", "color": "#2a9d8f"}],
+           "value": ["board"]},
+          {"id": "project", "label": "Project", "options": [], "value": [], "inherited": "Mobile App"},
+          {"id": "epic", "label": "Epic", "options": [], "value": [], "loading": true},
+          {"id": "labels", "label": "Labels", "multi": true, "options": [{"id": "bug", "label": "bug"}], "value": []},
+          {"id": "odd", "label": 3, "multi": "yes", "options": "no", "value": 1, "inherited": "", "loading": "no"}
+        ]}
+        """)
+        XCTAssertEqual(action.input, .filter)
+        XCTAssertEqual(action.input.word, "filter")
+        XCTAssertEqual(action.fields.map(\.id), ["team", "project", "epic", "labels", "odd"])
+        XCTAssertEqual(action.fields[0].options, [SourceFilterOption(id: "board", label: "Board", color: "#2a9d8f")])
+        XCTAssertEqual(action.fields[0].value, ["board"])
+        XCTAssertEqual(action.fields[1].inherited, "Mobile App")
+        XCTAssertTrue(action.fields[2].loading)
+        XCTAssertTrue(action.fields[3].multi)
+        XCTAssertNil(action.fields[3].options[0].color)
+        XCTAssertEqual(action.fields[4], SourceFilterField(id: "odd", label: ""), "a field of odd shapes reads as empty")
+        let again = try JSONDecoder().decode(SourceAction.self, from: JSONEncoder().encode(action))
+        XCTAssertEqual(again, action)
+    }
+
+    func testDescribeSaysWhetherThePluginIsConnected() throws {
+        let unset = try decode(SourceDescribe.self, #"{"name":"sc","setup":[{"id":"token","label":"API token","input":"secret","set":false}]}"#)
+        XCTAssertFalse(unset.isConnected)
+        XCTAssertEqual(unset.setup.map(\.id), ["token"])
+        let set = try decode(SourceDescribe.self, #"{"name":"sc","setup":[{"id":"token","label":"API token","input":"secret","set":true}]}"#)
+        XCTAssertTrue(set.isConnected)
+        let silent = try decode(SourceDescribe.self, #"{"name":"sc","setup":[{"id":"token","label":"API token","input":"secret"}]}"#)
+        XCTAssertTrue(silent.isConnected, "a field the plugin says nothing about holds nothing back")
+        XCTAssertTrue(try decode(SourceDescribe.self, #"{"name":"demo"}"#).isConnected, "nothing to set up")
+        XCTAssertEqual(try decode(SourceDescribe.self, #"{"name":"x","setup":"no"}"#).setup, [])
+    }
+
     func testAnActionWithFieldsOfTheWrongTypeStillReads() throws {
         let action = try decode(SourceAction.self, #"{"id": "a", "label": 3, "input": 7, "options": "no", "destructive": "yes"}"#)
         XCTAssertEqual(action, SourceAction(id: "a", label: ""))

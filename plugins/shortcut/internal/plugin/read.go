@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/craigmjohnston/nat/internal/source"
+	"github.com/craigmjohnston/nat/plugins/shortcut/internal/settings"
 	"github.com/craigmjohnston/nat/plugins/shortcut/internal/shortcut"
 )
 
@@ -46,11 +47,21 @@ func (a *app) describe(context.Context) ([]byte, error) {
 	return marshal(describeResponse(set)), nil
 }
 
-// segmentMenu is every Ready segment's menu.
-var segmentMenu = []source.Action{
-	{ID: "rename", Label: "Rename…", Input: source.InputText},
-	{ID: "edit-query", Label: "Edit Query…", Input: source.InputText},
-	{ID: "remove", Label: "Remove Segment", Input: source.InputNone, Destructive: true},
+// segmentMenu is a segment's menu: Rename, the filter editor — opened on the
+// segment's own filter over the section's, its options the workspace's — and
+// Remove.
+func (r *refs) segmentMenu(f, section settings.Filter) []source.Action {
+	return []source.Action{
+		{ID: "rename", Label: "Rename…", Input: source.InputText},
+		filterAction(r.filterFields(f, &section)),
+		{ID: "remove", Label: "Remove Segment", Input: source.InputNone, Destructive: true},
+	}
+}
+
+// sectionMenu is the section header's menu for this project: describe's own,
+// then the section's filter editor, which narrows every search.
+func (r *refs) sectionMenu(f settings.Filter) []source.Action {
+	return append(slices.Clone(describeResponse(false).Menu), filterAction(r.filterFields(f, nil)))
 }
 
 // The most stories a group reads, and the most Done shows.
@@ -67,33 +78,49 @@ func (a *app) sidebar(ctx context.Context) ([]byte, error) {
 	})
 }
 
-// buildSidebar reads who the token is, then everything the tree needs in one
-// parallel round — workflows, teams and every group's search — then the
-// epics of any team-less story (for its badge, through the long cache), and
-// draws it.
+// buildSidebar reads who the token is and the names of the segments' epics
+// (which a segment is searched by), then everything else the tree needs in
+// one parallel round — workflows, teams, projects, labels and every group's
+// search — then the epics of any story with no project or team (for its
+// badge, through the long cache), and draws it. The epic list the filter
+// editor offers is never fetched here: see cachedEpics.
 func (a *app) buildSidebar(ctx context.Context, doneOpen bool) (sidebarResponse, error) {
 	_, proj, err := a.settings()
 	if err != nil {
 		return sidebarResponse{}, err
 	}
+	var segEpics []int64
+	for _, f := range append([]settings.Filter{proj.Filter}, segmentFilters(proj)...) {
+		if id, err := strconv.ParseInt(f.Epic, 10, 64); err == nil {
+			segEpics = append(segEpics, id)
+		}
+	}
 	// Shortcut's search takes `owner:me` without complaint and matches
 	// nothing, so every query goes out with the token's own mention name in
-	// its place. Segments keep `owner:me` as written, so a config stays
-	// portable between people.
-	me, err := a.sc.Me(ctx)
-	if err != nil {
+	// its place.
+	var me shortcut.MemberInfo
+	var r refs
+	if err := parallel(
+		func() (err error) { me, err = a.sc.Me(ctx); return err },
+		func() error { r.epics = lookup(ctx, a, "epic", segEpics, a.sc.Epic); return nil },
+	); err != nil {
 		return sidebarResponse{}, err
 	}
-	query := func(q string) string { return withTeam(withMe(q, me.MentionName), proj) }
-	var r refs
+	r.epicList, r.epicsLoading = a.cachedEpics()
+	query := func(f settings.Filter, base string) string { return withMe(r.search(f, base), me.MentionName) }
 	var doing, done []shortcut.Story
 	var doneTotal int
 	segs := make([][]shortcut.Story, len(proj.Segments))
 	fns := []func() error{
 		into(ctx, &r.workflows, a.sc.Workflows),
 		into(ctx, &r.groups, a.sc.Groups),
+		// Projects are a badge and a filter's options, nothing the tree
+		// needs to be drawn: a workspace that won't list them (Shortcut
+		// calls them deprecated) badges by team instead.
+		func() error { r.projects, _ = a.sc.Projects(ctx); return nil },
+		func() error { r.labels = listed(ctx, a, "labels", a.sc.Labels); return nil },
 		func() (err error) {
-			doing, _, err = a.sc.Search(ctx, query("owner:me is:started"), groupMax)
+			doing, _, err = a.sc.Search(ctx, query(proj.Filter, "owner:me is:started"), groupMax)
 			return err
 		},
 		func() (err error) {
@@ -103,13 +130,13 @@ func (a *app) buildSidebar(ctx context.Context, doneOpen bool) (sidebarResponse,
 			if doneOpen {
 				n = groupMax
 			}
-			done, doneTotal, err = a.sc.Search(ctx, query("owner:me is:done"), n)
+			done, doneTotal, err = a.sc.Search(ctx, query(proj.Filter, "owner:me is:done completed:"+weekStart(a.now)+"..*"), n)
 			return err
 		},
 	}
 	for i, s := range proj.Segments {
 		fns = append(fns, func() (err error) {
-			segs[i], _, err = a.sc.Search(ctx, query(s.Query+" !is:done"), groupMax)
+			segs[i], _, err = a.sc.Search(ctx, query(merged(proj.Filter, s.Filter), "!is:done"), groupMax)
 			return err
 		})
 	}
@@ -118,11 +145,12 @@ func (a *app) buildSidebar(ctx context.Context, doneOpen bool) (sidebarResponse,
 	}
 	var epicIDs []int64
 	for _, st := range slices.Concat(append(segs, doing, done)...) {
-		if _, ok := r.group(st.GroupID); !ok {
+		_, inProject := r.project(st.ProjectID)
+		if _, inTeam := r.group(st.GroupID); !inProject && !inTeam {
 			epicIDs = append(epicIDs, st.EpicID)
 		}
 	}
-	r.epics = lookup(ctx, a, "epic", epicIDs, a.sc.Epic)
+	r.epics = append(r.epics, lookup(ctx, a, "epic", epicIDs, a.sc.Epic)...)
 
 	byPosition := func(x, y shortcut.Story) int { return compare(x.Position, y.Position) }
 
@@ -132,22 +160,21 @@ func (a *app) buildSidebar(ctx context.Context, doneOpen bool) (sidebarResponse,
 		doingGroup.Containers = append(doingGroup.Containers, r.row(st))
 	}
 
-	ready := source.Group{ID: "ready", Label: "Ready", Children: []source.Group{}}
-	unique := map[int64]bool{}
+	// Each segment is a top-level group of its own between Doing and Done;
+	// its id is still `ready/<id>`, which gnat remembers folds by.
+	groups := []source.Group{doingGroup}
 	for i, s := range proj.Segments {
-		g := source.Group{ID: s.GroupID(), Label: s.Name, Menu: segmentMenu}
+		g := source.Group{ID: s.GroupID(), Label: s.Name, Menu: r.segmentMenu(s.Filter, proj.Filter)}
 		stories := slices.DeleteFunc(segs[i], func(st shortcut.Story) bool {
 			return r.stateType(st.WorkflowStateID) != shortcut.StateUnstarted
 		})
 		slices.SortStableFunc(stories, byPosition)
 		for _, st := range stories {
 			g.Containers = append(g.Containers, r.row(st))
-			unique[st.ID] = true
 		}
 		g.Count = count(len(stories))
-		ready.Children = append(ready.Children, g)
+		groups = append(groups, g)
 	}
-	ready.Count = count(len(unique))
 
 	doneGroup := source.Group{ID: "done", Label: "Done", Count: count(doneTotal), Lazy: true}
 	if doneOpen {
@@ -156,7 +183,23 @@ func (a *app) buildSidebar(ctx context.Context, doneOpen bool) (sidebarResponse,
 			doneGroup.Containers = append(doneGroup.Containers, r.row(st))
 		}
 	}
-	return sidebarResponse{Groups: []source.Group{doingGroup, ready, doneGroup}}, nil
+	return sidebarResponse{Groups: append(groups, doneGroup), Menu: r.sectionMenu(proj.Filter)}, nil
+}
+
+// segmentFilters are the project's segments' filters, in order.
+func segmentFilters(p *settings.Project) []settings.Filter {
+	fs := make([]settings.Filter, len(p.Segments))
+	for i, s := range p.Segments {
+		fs[i] = s.Filter
+	}
+	return fs
+}
+
+// weekStart is the Monday of now's week, as the date search takes it: Done
+// is this week's work, from Monday on, in the local time now is in.
+func weekStart(now time.Time) string {
+	back := (int(now.Weekday()) + 6) % 7
+	return now.AddDate(0, 0, -back).Format("2006-01-02")
 }
 
 func compare(x, y int64) int {
@@ -179,9 +222,9 @@ func (a *app) container(ctx context.Context) ([]byte, error) {
 	return a.cached("container:"+a.req.ID, func() (any, error) { return a.buildContainer(ctx, id) })
 }
 
-// buildContainer reads the story with the workspace's workflows, teams and
-// members in one parallel round, then its epic and iteration through the
-// long cache, and draws its detail.
+// buildContainer reads the story with the workspace's workflows, teams,
+// projects and members in one parallel round, then its epic and iteration
+// through the long cache, and draws its detail.
 func (a *app) buildContainer(ctx context.Context, id int64) (source.ContainerDetail, error) {
 	var r refs
 	var st shortcut.Story
@@ -189,6 +232,8 @@ func (a *app) buildContainer(ctx context.Context, id int64) (source.ContainerDet
 		func() (err error) { st, err = a.story(ctx, id); return err },
 		into(ctx, &r.workflows, a.sc.Workflows),
 		into(ctx, &r.groups, a.sc.Groups),
+		// A project is one fact; a workspace that won't list them shows "—".
+		func() error { r.projects, _ = a.sc.Projects(ctx); return nil },
 		into(ctx, &r.members, a.sc.Members),
 	)
 	if err != nil {
@@ -226,12 +271,16 @@ func orDash(s string) string {
 	return s
 }
 
-// facts are the brief's list, in its order: id, team, state, type, epic,
-// labels, owner(s), requester, created, updated, iteration.
+// facts are the brief's list, in its order: id, team, project, state, type,
+// epic, labels, owner(s), requester, created, updated, iteration.
 func (r *refs) facts(st shortcut.Story, now time.Time) []source.Fact {
 	team := source.Fact{Label: "team", Value: "—"}
 	if g, ok := r.group(st.GroupID); ok {
 		team = source.Fact{Label: "team", Value: code(g.MentionName, g.Name) + " · " + g.Name, Color: teamColor(g)}
+	}
+	project := source.Fact{Label: "project", Value: "—"}
+	if p, ok := r.project(st.ProjectID); ok {
+		project = source.Fact{Label: "project", Value: projectCode(p) + " · " + p.Name, Color: hexOr(p.Color, neutral)}
 	}
 	state, _, _ := r.state(st.WorkflowStateID)
 	epic, _ := r.epic(st.EpicID)
@@ -257,6 +306,7 @@ func (r *refs) facts(st shortcut.Story, now time.Time) []source.Fact {
 	return []source.Fact{
 		{Label: "id", Value: "sc-" + strconv.FormatInt(st.ID, 10)},
 		team,
+		project,
 		{Label: "state", Value: orDash(state.Name)},
 		{Label: "type", Value: orDash(st.StoryType)},
 		{Label: "epic", Value: orDash(epic.Name)},

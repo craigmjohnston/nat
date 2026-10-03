@@ -232,6 +232,9 @@ func (s *Sourced) AddSlice(ctx context.Context, p Project, n NewSlice) (domain.S
 	if err := s.local.ensureMilestone(ctx, n.Milestone.ID, n.Milestone.Name); err != nil {
 		return domain.Slice{}, err
 	}
+	if n.Repo == "" {
+		n.Repo = s.containerRepo(ctx, p, n.Milestone.ID)
+	}
 	sl, err := s.local.AddSlice(ctx, p, n)
 	if err != nil {
 		return domain.Slice{}, err
@@ -240,9 +243,36 @@ func (s *Sourced) AddSlice(ctx context.Context, p Project, n NewSlice) (domain.S
 	return sl, nil
 }
 
+// containerRepo is the repository the container's latest task with one is
+// worked in — what a new task on the same card starts from, since a source
+// project has no working directory and the card's earlier tasks already
+// worked out where its code is. Empty where none has one; a plan that cannot
+// be read is logged and concludes nothing.
+func (s *Sourced) containerRepo(ctx context.Context, p Project, container string) string {
+	plan, err := s.local.Plan(ctx, p)
+	if err != nil {
+		logging.Error("could not read the plan for a container's repository", "container", container, "err", err)
+		return ""
+	}
+	repo := ""
+	for _, sl := range plan.Project.Slices {
+		if sl.MilestoneID == container && sl.Repo != "" {
+			repo = sl.Repo
+		}
+	}
+	return repo
+}
+
 // EditSlice rewrites the slice in the file.
 func (s *Sourced) EditSlice(ctx context.Context, id, title, repo, brief string) error {
 	return s.local.EditSlice(ctx, id, title, repo, brief)
+}
+
+// SetSliceRepo records the slice's repository in the file. No event: the
+// plugin is told of a task's lifecycle, and where it is worked is not part of
+// it.
+func (s *Sourced) SetSliceRepo(ctx context.Context, id, repo string) error {
+	return s.local.SetSliceRepo(ctx, id, repo)
 }
 
 // SetSliceBrief rewrites the slice's brief in the file.
@@ -316,8 +346,8 @@ func (s *Sourced) Describe(ctx context.Context) (source.Describe, error) {
 	return s.client.Describe(ctx, s.plugin)
 }
 
-// Sidebar asks the plugin for its tree.
-func (s *Sourced) Sidebar(ctx context.Context, expand []string) ([]source.Group, error) {
+// Sidebar asks the plugin for its tree, and its header menu where it sends one.
+func (s *Sourced) Sidebar(ctx context.Context, expand []string) (source.Sidebar, error) {
 	return s.client.Sidebar(ctx, s.plugin, expand)
 }
 

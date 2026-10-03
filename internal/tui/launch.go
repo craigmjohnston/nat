@@ -128,7 +128,8 @@ type LaunchForm struct {
 // newLaunchForm returns the form for launching an agent on a slice, showing
 // the working directory the config resolves to and the model it names for
 // slice work.
-func newLaunchForm(theme huh.Theme, s domain.Slice, workdir string, m config.AgentModel) *LaunchForm {
+func newLaunchForm(theme huh.Theme, s domain.Slice, workdir string, m config.AgentModel, project config.ProjectConfig) *LaunchForm {
+	check := func(dir string) error { return actions.LaunchDir(dir, project) }
 	f := &LaunchForm{heading: "Launch an agent for " + s.Name, slice: s, workdir: workdir, model: m}
 	f.form = newForm(theme,
 		huh.NewGroup(
@@ -148,7 +149,7 @@ func newLaunchForm(theme huh.Theme, s domain.Slice, workdir string, m config.Age
 					if a == actionEdit {
 						return nil
 					}
-					return existingDir(f.workdir)
+					return check(f.workdir)
 				}),
 		),
 		huh.NewGroup(append([]huh.Field{
@@ -156,7 +157,7 @@ func newLaunchForm(theme huh.Theme, s domain.Slice, workdir string, m config.Age
 				Title("Working directory").
 				Description("Where the agent's session starts; ~ is expanded.").
 				Value(&f.workdir).
-				Validate(existingDir),
+				Validate(check),
 		}, modelFields(&f.model)...)...).
 			WithHideFunc(func() bool { return f.action != actionEdit }),
 	)
@@ -476,7 +477,7 @@ func (a *App) launchAgentFlow() tea.Cmd {
 	}
 	workdir := workdirFor(s, project)
 	return a.openPrompt(launchChoices, func(choice int) tea.Cmd {
-		return a.launchChosen(s, workdir, choice)
+		return a.launchChosen(s, workdir, project, choice)
 	})
 }
 
@@ -488,11 +489,11 @@ func (a *App) launchAgentFlow() tea.Cmd {
 // started somewhere that is not there fails with nobody looking. The refusal
 // takes the prompt's place on the row, so l and the other choice are the way
 // past it.
-func (a *App) launchChosen(s domain.Slice, workdir string, choice int) tea.Cmd {
+func (a *App) launchChosen(s domain.Slice, workdir string, project config.ProjectConfig, choice int) tea.Cmd {
 	if choice == choiceConfigure {
-		return a.openForm(newLaunchForm(a.styles.FormTheme, s, workdir, a.cfg.SliceAgent))
+		return a.openForm(newLaunchForm(a.styles.FormTheme, s, workdir, a.cfg.SliceAgent, project))
 	}
-	if err := existingDir(workdir); err != nil {
+	if err := actions.LaunchDir(workdir, project); err != nil {
 		return a.showConfirm(fmt.Sprintf("Cannot launch an agent for %q: %v.", s.Name, err), sevError)
 	}
 	a.busy, a.note = true, launchNote

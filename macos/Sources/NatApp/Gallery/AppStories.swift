@@ -66,12 +66,25 @@ enum AppStories {
         return shell(appModel, folds: ["work": true], containerFocus: containerFocus)
     }
 
-    /// The sidebar alone over the Work source project, Projects folded.
-    private static func sourceSidebar(client: FixtureNatClient = FixtureNatClient()) async -> some View {
+    /// The sidebar alone over the Work source project — Projects folded
+    /// unless `folded` says otherwise — the first card selected.
+    private static func sourceSidebar(
+        client: FixtureNatClient = FixtureNatClient(), folded: [String: Bool] = ["work": true],
+        hoveredContainer: String? = nil
+    ) async -> some View {
         let appModel = await Fixtures.startedAppModel(client: client, config: Fixtures.sourceConfig)
         await appModel.selectContainer(Fixtures.sourceCardID, inProject: Fixtures.sourceProjectID)
-        return SidebarView(appModel: appModel, folded: ["work": true])
+        return SidebarView(
+            appModel: appModel, folded: folded,
+            hoveredContainer: hoveredContainer.map { (Fixtures.sourceProjectID, $0) })
             .environment(\.pulsesPaused, true)
+    }
+
+    /// The filter editor as it opens from a menu, alone — a real popover is a
+    /// window of its own, which no render of the main one can show.
+    private static func filterPopover(_ action: SourceAction?) -> some View {
+        SourceFilterPopover(action: action ?? Fixtures.sourceFilterAction([:]), onCancel: {}, onApply: { _ in })
+            .surface(.window)
     }
 
     /// The window on one slice, the fixture plan beside the second project's,
@@ -1052,12 +1065,49 @@ enum AppStories {
 
         Story(
             name: "sidebar-source",
-            summary: "The Work source project's own fold under Projects: the plugin's icon and header menu, "
-                + "Doing with its cards and their tasks, Ready's Mine and Board segments (one card in both), "
-                + "the lazy Done folded with its count; the first card selected.",
+            summary: "The Work source project's own fold, headed by the plugin's title, never the project's: "
+                + "its icon and header menu, Doing with its cards and their tasks, the Mine and Board segments "
+                + "as top-level groups (one card in both), the lazy Done folded with its count; the first card "
+                + "selected, and its badges where the + would be under the pointer. Projects, folded, pins to the foot.",
             size: sidebar
         ) {
             await sourceSidebar()
+        },
+
+        Story(
+            name: "sidebar-source-hover",
+            summary: "A card row under the pointer: its estimate shows, and the + takes the badge's place "
+                + "rather than pushing it left — the title does not move.",
+            size: sidebar
+        ) {
+            await sourceSidebar(hoveredContainer: Fixtures.sourceSecondCardID)
+        },
+
+        Story(
+            name: "sidebar-source-projects-open",
+            summary: "Projects and the source fold both open: each its own section with its own scroll, "
+                + "Projects taking the room and the source fold its natural height under it.",
+            size: sidebar
+        ) {
+            await sourceSidebar(folded: [:])
+        },
+
+        Story(
+            name: "sidebar-source-folded",
+            summary: "The source fold folded with Projects open: Projects takes the room, the folded "
+                + "source heading pins to the foot.",
+            size: sidebar
+        ) {
+            await sourceSidebar(folded: ["s:\(Fixtures.sourceProjectID)": true])
+        },
+
+        Story(
+            name: "sidebar-source-all-folded",
+            summary: "Projects and the source fold both folded: their headings stack at the foot in their "
+                + "usual order, Projects then the source, Active alone at the top.",
+            size: sidebar
+        ) {
+            await sourceSidebar(folded: ["work": true, "s:\(Fixtures.sourceProjectID)": true])
         },
 
         Story(
@@ -1109,15 +1159,31 @@ enum AppStories {
         },
 
         Story(
-            name: "new-source-project",
-            summary: "The sheet the + menu's New Demo source project\u{2026} opens: the plugin's icon and title, "
-                + "what a source project is, a name and a working directory.",
-            size: CGSize(width: 460, height: 330)
+            name: "source-filter-popover",
+            summary: "A segment's Filter…: Team, Project, Epic and Labels over the workspace's choices, "
+                + "opened on the segment's own (team Board); where the section sets a field, Any names "
+                + "what it falls through to (\u{201C}Any (section\u{2019}s: Mobile App)\u{201D}).",
+            size: CGSize(width: 360, height: 240)
         ) {
-            NewSourceProjectSheetView(
-                plugin: Fixtures.sourcePlugins[0], initialName: "Work", initialDirectory: "/Users/craig/work/app",
-                onClose: {}, onAdded: { _, _ in })
-                .surface(.window)
+            filterPopover(Fixtures.sourceGroups()[1].menu.first { $0.input == .filter })
+        },
+
+        Story(
+            name: "source-filter-popover-section",
+            summary: "The section header's Filter…: the same four fields, narrowing every list the fold "
+                + "draws (here, the Mobile App project), with nothing wider to fall through to.",
+            size: CGSize(width: 360, height: 240)
+        ) {
+            filterPopover(Fixtures.sourceInfo().menu.first { $0.input == .filter })
+        },
+
+        Story(
+            name: "source-filter-popover-loading",
+            summary: "The editor opened before the plugin's background fetch of the epic list has landed: "
+                + "Epic says it is loading, and the other three fields work regardless.",
+            size: CGSize(width: 360, height: 240)
+        ) {
+            filterPopover(Fixtures.sourceGroups(epicsLoading: true)[1].menu.first { $0.input == .filter })
         },
 
         // MARK: - The titlebar band

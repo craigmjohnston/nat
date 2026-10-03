@@ -231,7 +231,9 @@ fix, planning prompts) and every skill spells this out explicitly, and one test 
 `SliceBranch`/`pathSlug`/`Base` naming triad (how a branch name and its
 worktree path are derived — implemented once, in `internal/actions`,
 `internal/worktree` and `internal/git`) is **re-spelled in prose twice**:
-in `internal/agent`'s prompt templates and in `skills/next-slice/SKILL.md`.
+in `internal/agent`'s slice prompt (`repoPassage`, told to a source
+project's task that has no repository yet) and in
+`skills/next-slice/SKILL.md`.
 **Never deduplicate this** — a prompt and a skill are both text handed to an
 LLM, not code, so neither can call the Go implementation; both copies must
 independently say the same thing.
@@ -273,8 +275,18 @@ and appends a synthesized `_unlisted` group of every container with tasks
 that the plugin's tree leaves out, from nat's cached title, so a task never
 vanishes; a plugin that fails or is missing concludes nothing — the project
 still opens and `source.error` says why. gnat talks only to `nat`, and
-agents never see the plugin. The protocol and the `nat` contract are
-specified in `docs/design/task-sources/README.md`.
+agents never see the plugin. **A source project has no working directory**
+(`project-create --source` records none): the repository is each task's own
+`Repo`. A task launched with none (`actions.RepoUnknown`) starts in the home
+directory with no worktree or git read, and its prompt sends the agent to
+work the repository out from the card, ask the user where it cannot tell,
+record it with `nat slice-repo`, and cut its worktree by nat's own naming;
+from then on every path finds it through `actions.WorkdirFor`. A new task on
+a card starts from the repository of the card's latest task with one. gnat
+makes a plugin's one source project itself the moment the plugin is
+connected (every `describe` setup field set) — there is no new-project entry
+for one. The protocol and the `nat` contract are specified in
+`docs/design/task-sources/README.md`.
 
 **Plugin install.** `nat plugin-install`/`-uninstall` (and gnat's Settings
 ▸ Sources over them) put a plugin under `<config dir>/plugins/<name>/` from a
