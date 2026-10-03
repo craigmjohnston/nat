@@ -47,12 +47,12 @@ public struct Chip: View {
     public var body: some View {
         let small = size == .small
         Text(label)
-            .font(.system(size: small ? Typo.caption : Typo.subhead, weight: small ? .medium : .semibold))
+            .font(.system(size: small ? Typo.caption : Typo.subhead, weight: small ? .regular : .semibold))
             .foregroundStyle(DesignTokens.chipInk(tone.chipTint, on: ground))
             .padding(.horizontal, small ? 5 : 10)
             .frame(height: small ? 17 : 22)
             .background(DesignTokens.chipWash(tone.chipTint, on: ground))
-            .clipShape(RoundedRectangle(cornerRadius: small ? 3 : 11))
+            .clipShape(RoundedRectangle(cornerRadius: small ? 1.5 : 11))
     }
 }
 
