@@ -119,7 +119,7 @@ public enum MainPaneTab: CaseIterable, Equatable, Sendable {
 /// facts — and, where the design assumed a fact nat does not have, over the
 /// fact nat does: Changes reads a branch, and only a recorded one can be read
 /// (`nat slice-diff` refuses a slice with none), so it is live once a branch
-/// is recorded rather than the moment an agent launches.
+/// is recorded rather than the moment an agent is launched.
 public struct NavigatorModel: Equatable, Sendable {
     public let state: SliceDisplayState
     public let hasPR: Bool
@@ -232,6 +232,24 @@ public struct NavigatorModel: Equatable, Sendable {
     /// Whether the PR header carries Merge: an open pull request on a slice
     /// not yet Done.
     public var showsMerge: Bool { hasPR && state != .done }
+
+    /// The PR header's status: Merged once the slice is Done with a pull
+    /// request — Done is written only by the merge, so nothing past the
+    /// slice's own status is read for it.
+    public var prStatus: NavSectionStatus? {
+        state == .done && hasPR ? .merged : nil
+    }
+}
+
+/// A status a navigator section's header carries beside its label.
+public enum NavSectionStatus: Equatable, Sendable {
+    case merged
+
+    public var label: String {
+        switch self {
+        case .merged: return "Merged"
+        }
+    }
 }
 
 /// How a Thread card's meta line is toned.

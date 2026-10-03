@@ -85,7 +85,7 @@ struct SliceNavigatorView: View {
             }
             if nav.isLive(.pr) {
                 NavSectionView(
-                    label: "PR", open: open.contains(.pr), selected: main == .pr,
+                    label: "PR", open: open.contains(.pr), selected: main == .pr, status: nav.prStatus,
                     onHead: { click(.pr) }, onFold: { fold(.pr) }
                 ) {
                     PROpenInGitHubButton(store: prStore, expectedNumber: pullRequestNumber(slice.pr))
@@ -203,7 +203,9 @@ struct SliceNavigatorView: View {
     private var briefCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Brief").monoXS(weight: .medium).ink(.secondary)
+                Text("Brief")
+                    .font(.system(size: GnatMetrics.body, weight: .medium))
+                    .ink(.secondary)
                 Spacer(minLength: 0)
                 Button("Edit") { editingBrief = true }
                     .buttonStyle(GnatLinkButtonStyle())
@@ -216,7 +218,7 @@ struct SliceNavigatorView: View {
             VStack(alignment: .leading, spacing: 4) {
                 if let detail = detail.detail {
                     if detail.brief.isEmpty {
-                        Text("No brief yet — what you write here becomes the agent's prompt.").ink(.secondary)
+                        Text("This task has no brief yet. What you write here becomes the agent's prompt.").ink(.secondary)
                     } else {
                         Excerpt(text: detail.brief) { shown in
                             Text(markdownAttributed(shown, size: 13.5))
@@ -225,7 +227,7 @@ struct SliceNavigatorView: View {
                         }
                     }
                 } else if let message = detail.errorMessage {
-                    Text("The brief could not be read — \(message)").ink(.danger)
+                    Text("The brief could not be read: \(message)").ink(.danger)
                 } else {
                     QuietLoadingView(label: "Reading the brief")
                         .frame(maxWidth: .infinity, minHeight: 60)
@@ -294,8 +296,6 @@ struct SliceNavigatorView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .surface(.chrome)
-        .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
     }
 
     /// What the project's source calls a container — "card".
@@ -542,7 +542,7 @@ struct SliceNavigatorView: View {
             )
         } else if let message = prStore.loadState.errorMessage {
             NavProse {
-                Text("The pull request could not be read — \(message)").ink(.danger)
+                Text("The pull request could not be read: \(message)").ink(.danger)
                 Button("Retry") { Task { await prStore.refresh(); prStore.startPolling() } }
                     .buttonStyle(GnatButtonStyle())
             }
@@ -573,7 +573,7 @@ struct PRSectionBody: View {
         ScrollView {
             NavProse {
                 if let staleMessage {
-                    Text("Showing the last reading — \(staleMessage)").ink(.warning)
+                    Text("The refresh failed, so this is the last reading: \(staleMessage)").ink(.warning)
                 }
                 if let actionError {
                     Text(actionError).ink(.danger)

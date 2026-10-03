@@ -275,7 +275,7 @@ struct ReviewersBlock: View {
                 HStack(spacing: 8) {
                     Menu {
                         if let candidatesError {
-                            Text("Collaborators could not be listed — \(candidatesError)")
+                            Text("Collaborators could not be listed: \(candidatesError)")
                         } else if candidates.isEmpty {
                             Text("No one else to ask")
                         }

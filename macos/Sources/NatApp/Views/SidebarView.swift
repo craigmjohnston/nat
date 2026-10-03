@@ -21,6 +21,9 @@ struct SidebarView: View {
     /// Whether the sidebar draws its own segment of the window titlebar —
     /// the shell's way; a story of the sidebar alone has no window around it.
     var showsTitlebar = false
+    /// Where the Projects tree's scroll starts — nil, its top, everywhere
+    /// but a story that shows a project's header pinned over its rows.
+    var treeAnchor: UnitPoint?
     /// View ▸ Show/Hide Done Items.
     @Environment(\.showsDoneItems) private var showsDoneItems
 
@@ -61,11 +64,12 @@ struct SidebarView: View {
 
     init(
         appModel: AppModel, onNewProject: @escaping () -> Void = {}, showsTitlebar: Bool = false,
-        folded: [String: Bool] = [:]
+        folded: [String: Bool] = [:], treeAnchor: UnitPoint? = nil
     ) {
         self.appModel = appModel
         self.onNewProject = onNewProject
         self.showsTitlebar = showsTitlebar
+        self.treeAnchor = treeAnchor
         _fold = State(initialValue: folded)
     }
 
@@ -156,13 +160,17 @@ struct SidebarView: View {
             }
             if treeShown {
                 ScrollView {
-                    VStack(spacing: 0) {
+                    // One section per project and per source fold, its own
+                    // row the header, pinned at the top while its milestones
+                    // scroll under it.
+                    LazyVStack(spacing: 0, pinnedViews: .sectionHeaders) {
                         if isOpen("work") {
-                            ForEach(model.projects) { projectRows($0) }
+                            ForEach(model.projects) { projectSection($0) }
                         }
-                        ForEach(model.sources) { sourceFold($0) }
+                        ForEach(model.sources) { sourceSection($0) }
                     }
                 }
+                .defaultScrollAnchor(treeAnchor)
                 .thinScrollers()
                 .frame(maxHeight: .infinity)
             }
@@ -385,51 +393,62 @@ struct SidebarView: View {
     /// A source project's fold: a heading of its own — the plugin's icon,
     /// the project's name, its header menu — over the plugin's groups, their
     /// containers, and each container's tasks.
-    @ViewBuilder
-    private func sourceFold(_ project: SidebarProject) -> some View {
-        let key = "s:\(project.id)"
-        let open = isOpen(key)
-        let source = project.source
-        Rule(.separator).padding(.top, 4)
-        HStack(spacing: 6) {
-            DisclosureChevron(open: open)
-            SourceIconView(icon: source?.icon ?? SourceIcon(symbol: ""), size: 13)
-                .ink(.secondary)
-            Text(project.name.uppercased())
-                .font(.system(size: 12))
-                .tracking(0.7)
-                .ink(.secondary)
-                .lineLimit(1)
-            if !open && project.needsYou > 0 {
-                Text("\(project.needsYou)").monoXS().ink(.hot)
+    private func sourceSection(_ project: SidebarProject) -> some View {
+        let open = isOpen("s:\(project.id)")
+        return Section {
+            if open {
+                sourceBody(project)
             }
-            Spacer(minLength: 0)
-            if let source, !source.menu.isEmpty {
-                Menu {
-                    actionItems(source.menu, projectID: project.id)
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 12, weight: .medium))
-                        .ink(.tertiary)
-                        .frame(width: 18, height: 18)
-                        .contentShape(Rectangle())
-                }
-                .menuStyle(.button)
-                .buttonStyle(GnatIconButtonStyle())
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .help(source.title)
-            }
+        } header: {
+            sourceHead(project, open: open)
         }
-        .padding(.horizontal, 10)
-        .frame(height: GnatMetrics.sectionHeadHeight)
-        .contentShape(Rectangle())
-        .onTapGesture { toggle(key, open: open) }
-        .contextMenu { sourceProjectMenu(project) }
+    }
 
-        if open {
-            sourceBody(project)
+    /// A source fold's heading and the line over it, drawn on the
+    /// sidebar's own ground so the rows scrolling under it while it is
+    /// pinned do not show through.
+    private func sourceHead(_ project: SidebarProject, open: Bool) -> some View {
+        let key = "s:\(project.id)"
+        let source = project.source
+        return VStack(spacing: 0) {
+            Rule(.separator).padding(.top, 4)
+            HStack(spacing: 6) {
+                DisclosureChevron(open: open)
+                SourceIconView(icon: source?.icon ?? SourceIcon(symbol: ""), size: 13)
+                    .ink(.secondary)
+                Text(project.name.uppercased())
+                    .font(.system(size: 12))
+                    .tracking(0.7)
+                    .ink(.secondary)
+                    .lineLimit(1)
+                if !open && project.needsYou > 0 {
+                    Text("\(project.needsYou)").monoXS().ink(.hot)
+                }
+                Spacer(minLength: 0)
+                if let source, !source.menu.isEmpty {
+                    Menu {
+                        actionItems(source.menu, projectID: project.id)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 12, weight: .medium))
+                            .ink(.tertiary)
+                            .frame(width: 18, height: 18)
+                            .contentShape(Rectangle())
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(GnatIconButtonStyle())
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help(source.title)
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(height: GnatMetrics.sectionHeadHeight)
+            .contentShape(Rectangle())
+            .onTapGesture { toggle(key, open: open) }
+            .contextMenu { sourceProjectMenu(project) }
         }
+        .surface(.header)
     }
 
     @ViewBuilder
@@ -441,7 +460,7 @@ struct SidebarView: View {
             failedRow(project, message: message)
         case .stale(let message):
             GnatNote(
-                text: "refresh failed — showing the last plan", role: .warning, leading: 26,
+                text: "refresh failed, showing the last plan", role: .warning, leading: 26,
                 height: GnatMetrics.sidebarRowHeight)
                 .help(message)
         case .loaded, .empty, .none:
@@ -752,11 +771,23 @@ struct SidebarView: View {
 
     // MARK: - Projects
 
-    @ViewBuilder
-    private func projectRows(_ project: SidebarProject) -> some View {
+    private func projectSection(_ project: SidebarProject) -> some View {
         let open = isProjectOpen(project)
+        return Section {
+            if open {
+                projectBody(project, isActive: appModel.activeProjectID == project.id)
+            }
+        } header: {
+            projectHead(project, open: open)
+        }
+    }
+
+    /// A project's own row: the fold toggle, and its section's header —
+    /// on the sidebar's ground, so its milestones scrolling under it while
+    /// it is pinned do not show through.
+    private func projectHead(_ project: SidebarProject, open: Bool) -> some View {
         let isActive = appModel.activeProjectID == project.id
-        HStack(spacing: 7) {
+        return HStack(spacing: 7) {
             // The project's own fold mark: a folder of folders, outlined
             // while folded and open with its flap swung out once its
             // milestones are on the tree.
@@ -814,10 +845,7 @@ struct SidebarView: View {
             if project.kind == .untitled { Task { await appModel.activateProject(project.id) } }
         }
         .contextMenu { projectMenu(project) }
-
-        if open {
-            projectBody(project, isActive: isActive)
-        }
+        .surface(.header)
     }
 
     /// A project's tree under its row. `outdent` pulls the whole tree left
@@ -836,7 +864,7 @@ struct SidebarView: View {
             GnatNote(text: "no tasks", leading: 26 - outdent, height: GnatMetrics.sidebarRowHeight)
         case .stale(let message):
             GnatNote(
-                text: "refresh failed — showing the last plan", role: .warning, leading: 26 - outdent,
+                text: "refresh failed, showing the last plan", role: .warning, leading: 26 - outdent,
                 height: GnatMetrics.sidebarRowHeight)
                 .help(message)
         case .loaded, .none:
@@ -1235,7 +1263,7 @@ struct SidebarView: View {
                     Button("Cancel", role: .cancel) {}
                 } message: {
                     Text(view.sliceForDeletion?.done == true
-                        ? "This task is Done — deleting it drops the record of finished work. The page goes to Notion's trash."
+                        ? "This task is Done, so deleting it removes the record of finished work. The page goes to Notion's trash."
                         : "The page goes to Notion's trash.")
                 }
                 .alert(

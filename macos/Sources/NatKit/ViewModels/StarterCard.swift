@@ -11,9 +11,9 @@ public enum StarterCard {
 
     public static let describeHeading = "Describe a plan"
     public static let describePlaceholder =
-        "What do you want to do? Sketch the milestones and tasks, paste a Notion page or URL, or drop a plan file — the planning agent workshops it into a plan with you."
+        "What do you want to do? Sketch the milestones and tasks, paste a Notion page or URL, or drop a plan file. The planning agent will work it into a plan with you."
     public static let openPlanLabel = "Open plan from filesystem…"
-    public static let startHint = "⌘↩ to start"
+    public static let startHint = "Press ⌘↩ to start"
     public static let workshopLabel = "Workshop the plan"
 
     public static let openDivider = "or open an existing project"
@@ -40,7 +40,7 @@ public enum StarterCard {
     /// The refusal for a plan file the picker cannot hand to an agent: size is
     /// the only sanity asked, judging what is in it being the agent's job.
     public static func planFileTooLarge(name: String, bytes: Int) -> String {
-        "\(name) is \(bytes / 1024) KB — a plan file over \(PlanFile.maxBytes / 1024) KB is too large to hand to the planning agent"
+        "\(name) is \(bytes / 1024) KB. A plan file must be \(PlanFile.maxBytes / 1024) KB or smaller to hand to the planning agent."
     }
 
     public static func planFileUnreadable(name: String) -> String {

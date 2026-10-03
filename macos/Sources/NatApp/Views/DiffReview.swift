@@ -133,7 +133,7 @@ final class DiffReview {
     private func updateDropNotice(_ store: DiffStore) {
         let n = store.lastDroppedCommentCount
         dropNotice = n > 0
-            ? "\(n) pending \(plural(n, "comment", "comments")) dropped — \(plural(n, "its", "their")) lines changed."
+            ? "\(n) pending \(plural(n, "comment was", "comments were")) dropped because \(plural(n, "its", "their")) lines changed."
             : nil
     }
 

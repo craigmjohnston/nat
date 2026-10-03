@@ -27,7 +27,7 @@ public func dependencyLine(dependsOn: [String]?, blocked: Bool, plan: [Slice]) -
     }
 
     let line = "Waits on " + listed.map(\.name).joined(separator: ", ")
-    return blocked ? line : line + " — all done"
+    return blocked ? line : line + ", all done"
 }
 
 /// The resolvable dependencies of a slice, in plan order, each with whether

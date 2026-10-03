@@ -82,7 +82,7 @@ public final class AppModel {
     /// successful launch (`launchWorkshop(request:)`) or the ✕ closing the
     /// tab outright — never by navigating away, which is the one thing this
     /// exists to survive. In-memory only, like every other per-project piece
-    /// of view state here; there is no draft to restore across app launches.
+    /// of view state here; there is no draft to restore when the app is next launched.
     private var workshopDrafts: [String: String] = [:]
 
     /// The plan document chosen or dropped on an Untitled tab's starter card,
@@ -1737,7 +1737,7 @@ public final class AppModel {
             await launchSettleWait()
         }
         guard planningAgent == nil else { return }
-        workshopLaunchError = "the workshop session was launched but has not appeared — check `nat status`"
+        workshopLaunchError = "The workshop session was launched but has not appeared. Run `nat status` to check on it."
     }
 
     /// What a project's tab says needs attention — the count its pill draws

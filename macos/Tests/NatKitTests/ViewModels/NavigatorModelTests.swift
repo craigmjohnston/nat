@@ -198,6 +198,23 @@ final class NavigatorModelTests: XCTestCase {
         XCTAssertFalse(done.showsMerge)
     }
 
+    func testThePRHeaderSaysMergedOnlyOnceTheSliceIsDoneWithAPR() {
+        let merged = NavigatorModel(slice: slice(status: "Done", pr: prURL), agent: nil, fixLaunched: false)
+        XCTAssertEqual(merged.prStatus, .merged)
+        XCTAssertEqual(merged.prStatus?.label, "Merged")
+
+        // A fix session on an approved slice is fixing, not done, and so
+        // not merged.
+        let fixing = NavigatorModel(slice: slice(status: "In progress", pr: prURL), agent: .working, fixLaunched: true)
+        XCTAssertNil(fixing.prStatus)
+
+        let approved = NavigatorModel(slice: slice(status: "In progress", pr: prURL), agent: nil, fixLaunched: false)
+        XCTAssertNil(approved.prStatus)
+
+        let closed = NavigatorModel(slice: slice(status: "Done"), agent: nil, fixLaunched: false)
+        XCTAssertNil(closed.prStatus)
+    }
+
     func testEverySectionHasItsLabel() {
         XCTAssertEqual(NavigatorSection.allCases.map(\.label), ["Task", "Changes", "Visual changes", "PR"])
     }

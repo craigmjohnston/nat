@@ -814,7 +814,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(appModel.workshopLaunching)
         XCTAssertEqual(
             appModel.workshopLaunchError,
-            "the workshop session was launched but has not appeared — check `nat status`"
+            "The workshop session was launched but has not appeared. Run `nat status` to check on it."
         )
     }
 

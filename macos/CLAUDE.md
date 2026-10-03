@@ -99,7 +99,7 @@ the sidebar's own rows) and the sidebar shows nothing of it. Accept is `nat plan
 Untitled tab it makes the project, then the session is killed and
 `addProject(replacing:)` hands the tab over; on a project it files the plan
 (`--project`) and leaves the session running. The layout is one for both:
-the navigator's Brief (the request; Launch, then End session) over Plan (the
+the navigator's Brief (the request; Plan, then End session) over Plan (the
 proposal, Accept and Keep workshopping — absent until there is one), and the main pane: the brief
 editor before launch, with no tabs; from launch on the titlebar band's
 `WorkshopTab`s (`TitlebarBand` takes `TitlebarTab`, which `MainPaneTab` and

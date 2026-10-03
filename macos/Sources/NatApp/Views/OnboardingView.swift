@@ -101,7 +101,7 @@ struct OnboardingView: View {
     private var guidance: String {
         switch natStatus {
         case .found:
-            return "Add a project to get started — one the workspace already has, or a new one."
+            return "Add a project to get started. Choose one the workspace already has, or create a new one."
         case .damagedInstall:
             return "This copy of gnat is missing the nat it was built with. Reinstall gnat."
         case .missing:

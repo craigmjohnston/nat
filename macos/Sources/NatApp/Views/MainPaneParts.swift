@@ -134,7 +134,7 @@ struct TitlebarBreadcrumb<Picker: View>: View {
             if let project = crumbs.project {
                 HStack(spacing: 10) {
                     crumbButton(.project) { Text(project).ink(.secondary) }
-                    Text("/").ink(.quaternary)
+                    CrumbSlash()
                 }
                 .transition(.opacity)
             }
@@ -149,9 +149,11 @@ struct TitlebarBreadcrumb<Picker: View>: View {
                                     Image(systemName: SourceGlyph.container)
                                         .font(.system(size: 10))
                                         .ink(.tertiary)
+                                        .frame(width: 13, height: CrumbLine.height)
                                 } else {
                                     // The sidebar's own milestone mark, open.
                                     FolderGlyph(open: true, color: DesignTokens.ink(.tertiary, on: .header))
+                                        .frame(height: CrumbLine.height)
                                 }
                                 Text(parent).ink(.secondary)
                             }
@@ -159,7 +161,7 @@ struct TitlebarBreadcrumb<Picker: View>: View {
                     case .project:
                         Text(parent).ink(.secondary)
                     }
-                    Text("/").ink(.quaternary)
+                    CrumbSlash()
                 }
                 .transition(.opacity)
             }
@@ -197,6 +199,25 @@ struct TitlebarBreadcrumb<Picker: View>: View {
     }
 }
 
+/// The breadcrumb's one line: every crumb's glyph is framed to the crumb
+/// text's line height, so the row centres them all on the text's middle
+/// rather than each on its own bounds.
+private enum CrumbLine {
+    static let height: CGFloat = 16
+}
+
+/// The quiet slash after a crumb. A slash descends below the baseline, so
+/// its glyph's middle sits a point under the text's; it is lifted that
+/// point, without moving its frame, onto the line the rest share.
+private struct CrumbSlash: View {
+    var body: some View {
+        Text("/")
+            .ink(.quaternary)
+            .frame(height: CrumbLine.height)
+            .offset(y: -1)
+    }
+}
+
 /// The selection as the titlebar band's last crumb names it — its Active
 /// row's dot, project tag and title, or the bare title where it has none —
 /// and the chevron that says it opens the tree picker. As room runs out the
@@ -225,6 +246,7 @@ struct TitlebarIdentityLabel: View {
                 .font(.system(size: 9, weight: .semibold))
                 .ink(.tertiary)
                 .fixedSize()
+                .frame(height: CrumbLine.height)
         }
         .font(.system(size: GnatMetrics.titlebarText))
         .lineLimit(1)
@@ -302,7 +324,7 @@ struct PRConversationPane: View {
                     commentError = nil
                 }
         } else if let message = store.loadState.errorMessage {
-            MainPaneNote(text: "The pull request could not be read — \(message)")
+            MainPaneNote(text: "The pull request could not be read: \(message)")
         } else {
             QuietLoadingView(label: "Reading the pull request")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

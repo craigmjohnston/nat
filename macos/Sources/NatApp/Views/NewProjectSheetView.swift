@@ -132,7 +132,7 @@ struct NewProjectSheetView: View {
                 }
                 .labelsHidden()
 
-                Text("Its plan is read straight away. Where its code lives is this Mac's own answer — set a working directory in Settings before launching an agent on it.")
+                Text("gnat reads its plan straight away. Before you launch an agent on it, set its working directory in Settings.")
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .ink(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -169,7 +169,7 @@ struct NewProjectSheetView: View {
             Text("Conventions")
                 .font(.system(size: Typo.subhead, weight: .semibold))
                 .ink(.secondary)
-            Text("Optional. Becomes the project page's body — what every agent reads first.")
+            Text("Optional. This becomes the project page's body, which every agent reads first.")
                 .font(.system(size: Typo.subhead, weight: .regular))
                 .ink(.tertiary)
             TextEditor(text: $descriptionText)
