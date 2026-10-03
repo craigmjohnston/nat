@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
@@ -38,7 +39,13 @@ func NewClient(token notion.TokenFunc) *notion.Client { return notion.NewWithTok
 // Notion is a plan kept in Notion: milestones as the options of the slices'
 // own Milestone column, one page per slice, and the slice's brief as that
 // page's body.
-type Notion struct{ api API }
+type Notion struct {
+	api API
+	// Clock is what every task-log section this store writes is stamped with
+	// the time of: nil is the wall clock, and a test sets it to hold a
+	// request's exact JSON still.
+	Clock func() time.Time
+}
 
 // Over returns a store reading and writing a plan through the given Notion
 // client. It takes the interface rather than the client itself so a caller
@@ -195,7 +202,7 @@ func (n *Notion) ClaimSlice(ctx context.Context, id string, sh Shape, userID str
 // back at Todo is one the caller would refuse to add a line to.
 func (n *Notion) ReleaseSlice(ctx context.Context, id string, sh Shape, by string) (domain.Slice, error) {
 	if _, err := n.api.AppendBlockChildren(ctx, id,
-		[]map[string]any{textBlock("paragraph", releasedLine(by))}); err != nil {
+		[]map[string]any{textBlock("paragraph", releasedLine(by, clockOr(n.Clock)))}); err != nil {
 		return domain.Slice{}, fmt.Errorf("note the release on the slice: %w", err)
 	}
 	properties := map[string]notion.PropertyValue{
@@ -217,9 +224,12 @@ func (n *Notion) ReleaseSlice(ctx context.Context, id string, sh Shape, by strin
 // went round twice reads as having done so rather than as having been worked
 // once by somebody who wrote nothing down. The board and the headless command
 // are the same act by two routes, and they say so in the same words because
-// there is only one place it is said.
-func releasedLine(assignee string) string {
-	return fmt.Sprintf("Released back to Todo by %s: the session working it ended without finishing it.", assignee)
+// there is only one place it is said. It names when, too, as every task-log
+// section's stamp does — inside the sentence rather than a paragraph of its
+// own, since the line is a bare paragraph with no section to stamp.
+func releasedLine(assignee string, at time.Time) string {
+	return fmt.Sprintf("Released back to Todo by %s at %s: the session working it ended without finishing it.",
+		assignee, at.Format(time.RFC3339))
 }
 
 // The headings a closing note is filed under, so a page read later says which
@@ -249,11 +259,12 @@ func noteHeading(o Outcome) string {
 // again, whereas a Done slice with no summary refuses every attempt to add
 // one.
 func (n *Notion) CompleteSlice(ctx context.Context, id string, sh Shape, o Outcome) (domain.Slice, error) {
-	blocks := noteBlocks(noteHeading(o), o.Summary)
+	blocks := noteBlocks(noteHeading(o), stamped(clockOr(n.Clock), o.Summary))
 	// The description goes on in the same write, under a heading of its own: it
 	// is not the summary of what was done but the text the pull request will be
 	// opened with, and the board reads it back off the page by that heading
-	// whenever the user gets to reviewing the branch.
+	// whenever the user gets to reviewing the branch — which is why it alone
+	// carries no stamp: every line under it is the pull request's body.
 	if o.PRDescription != "" {
 		blocks = append(blocks, noteBlocks(notion.PRDescriptionHeading, o.PRDescription)...)
 	}

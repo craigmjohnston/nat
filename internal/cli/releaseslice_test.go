@@ -46,7 +46,7 @@ func TestReleaseSliceHandsTheSliceBack(t *testing.T) {
 	if len(api.appends) != 1 || api.appends[0].id != sliceID {
 		t.Fatalf("appends = %+v, want exactly one, to the slice", api.appends)
 	}
-	want := []string{"paragraph: Released back to Todo by Craig Johnston: " +
+	want := []string{"paragraph: Released back to Todo by Craig Johnston at <stamp>: " +
 		"the session working it ended without finishing it."}
 	if got := blockTexts(t, api.appends[0].children); !equalLines(got, want) {
 		t.Errorf("blocks = %v, want %v", got, want)

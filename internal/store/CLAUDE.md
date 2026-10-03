@@ -66,6 +66,24 @@ no working dir.
   as with `Puller`. `RepoSetter` (`SetSliceRepo`, the repo and nothing else)
   is answered by `*Local` and `*Sourced` — `nat slice-repo`'s.
 
+## Task log (`taskevents.go`, `stamp.go`, `tasklog.go`)
+
+- Every task-log section either store writes opens with a stamp paragraph,
+  `At <RFC 3339, local time with offset>` (`stamped`): Handed back /
+  Blocked / Summary (`CompleteSlice`), Sent back, Note (stamp, then the
+  `From …` provenance, then the note), Relaunched, Follow-ups and
+  Follow-ups triaged. `PR description` is **never** stamped — every line under
+  it is the PR's body. The released line carries its time in the sentence
+  (`… by <name> at <RFC 3339>: …`), the ` at …` optional on read.
+- The time comes from each store's `Clock` (nil → `time.Now`); tests set it
+  (`fixedClock`, `clocked`) so bodies and Notion request JSON stay exact.
+- `TaskEvents` reads each stamp into `TaskEvent.At` (zero where absent —
+  old plans read exactly as before); `PendingFollowUps` passes the stamp line
+  over as a non-item, and `HandbackSummaryOf` strips it. `SliceLabel` writes
+  a note's `"Name" (Milestone)` provenance and `sliceLabelOf` reads it back
+  into `FromSlice` — write and parse kept together. `HasHistory` is the one
+  rule for "launched before": any event but a note.
+
 ## Shape
 
 - `Shape` is read, not assumed: exported `HasAssignee`/`HasBranch`/

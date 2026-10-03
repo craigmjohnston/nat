@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
@@ -139,11 +140,27 @@ func sliceContainer(ctx context.Context, cr store.ContainerReader, s domain.Slic
 // taskEventJSON is one entry of a slice's task log, the wire form of
 // [store.TaskEvent].
 type taskEventJSON struct {
-	Kind      string             `json:"kind"`
-	Note      string             `json:"note,omitempty"`
-	By        string             `json:"by,omitempty"`
+	Kind string `json:"kind"`
+	Note string `json:"note,omitempty"`
+	By   string `json:"by,omitempty"`
+	// FromSlice is the slice a note came from, by name and milestone, where
+	// its provenance names one — never resolved to an ID here, which would
+	// mean reading the whole plan; the app matches it against the plan it
+	// already holds.
+	FromSlice *noteSourceJSON `json:"fromSlice,omitempty"`
+	// At is when the event was written, RFC 3339 — omitted for one written
+	// before sections were stamped, and for "approved" and "merged", which
+	// are read off properties that record no time.
+	At        string             `json:"at,omitempty"`
 	PR        string             `json:"pr,omitempty"`
 	FollowUps []taskFollowUpJSON `json:"followUps,omitempty"`
+}
+
+// noteSourceJSON is the wire form of [store.NoteSource]; milestone is omitted
+// for a slice filed under none.
+type noteSourceJSON struct {
+	Name      string `json:"name"`
+	Milestone string `json:"milestone,omitempty"`
 }
 
 // taskFollowUpJSON is one follow-up of a "follow_ups" event, the wire form of
@@ -166,6 +183,12 @@ func taskEventsJSON(s domain.Slice, brief string) []taskEventJSON {
 	out := make([]taskEventJSON, 0, len(events)+2)
 	for _, e := range events {
 		tj := taskEventJSON{Kind: e.Kind, Note: e.Note, By: e.By}
+		if e.FromSlice != nil {
+			tj.FromSlice = &noteSourceJSON{Name: e.FromSlice.Name, Milestone: e.FromSlice.Milestone}
+		}
+		if !e.At.IsZero() {
+			tj.At = e.At.Format(time.RFC3339)
+		}
 		for _, f := range e.FollowUps {
 			tj.FollowUps = append(tj.FollowUps, taskFollowUpJSON{
 				Index: f.Index, Title: f.Title, Brief: f.Brief, Decision: f.Decision, Link: f.Link,

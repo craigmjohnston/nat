@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
@@ -77,7 +78,9 @@ var numberedItem = regexp.MustCompile(`^(\d+)\. (.*)$`)
 // under it, de-indented, up to the next item or the end of the section.
 // Matching against the record is by title, exactly. A fenced block is passed
 // over whole, as [lastMarkdownSection] does, so a brief quoting a shell session
-// is not cut short by a line of its own that happens to start with a hash.
+// is not cut short by a line of its own that happens to start with a hash. The
+// stamp a section opens with is a line at the margin that is not a numbered
+// item, and so is passed over like any other.
 //
 // The last section wins because a second proposal can only be pending if the
 // agent proposed again before the user acted — and then the newer set is the
@@ -272,10 +275,10 @@ func triageMarkdown(items []Triaged) string {
 }
 
 // followUpBlocks is the Follow-ups section as Notion holds it: a heading, then
-// one numbered item per follow-up with its title as the item's text and its
-// brief as paragraphs nested under it.
-func followUpBlocks(items []FollowUp) []map[string]any {
-	blocks := []map[string]any{textBlock("heading_3", notion.FollowUpsHeading)}
+// its stamp for at, then one numbered item per follow-up with its title as the
+// item's text and its brief as paragraphs nested under it.
+func followUpBlocks(at time.Time, items []FollowUp) []map[string]any {
+	blocks := []map[string]any{textBlock("heading_3", notion.FollowUpsHeading), textBlock("paragraph", stampLine(at))}
 	for _, it := range items {
 		b := textBlock("numbered_list_item", it.Title)
 		if kids := paragraphBlocks(it.Brief); len(kids) > 0 {
@@ -287,9 +290,9 @@ func followUpBlocks(items []FollowUp) []map[string]any {
 }
 
 // triageBlocks is the Follow-ups triaged section as Notion holds it: a heading,
-// then one bullet per follow-up.
-func triageBlocks(items []Triaged) []map[string]any {
-	blocks := []map[string]any{textBlock("heading_3", notion.FollowUpsTriagedHeading)}
+// its stamp for at, then one bullet per follow-up.
+func triageBlocks(at time.Time, items []Triaged) []map[string]any {
+	blocks := []map[string]any{textBlock("heading_3", notion.FollowUpsTriagedHeading), textBlock("paragraph", stampLine(at))}
 	for _, t := range items {
 		blocks = append(blocks, textBlock("bulleted_list_item", t.line()))
 	}
@@ -299,7 +302,7 @@ func triageBlocks(items []Triaged) []map[string]any {
 // ProposeFollowUps files the follow-ups on the slice page under a heading of
 // their own, in one append.
 func (n *Notion) ProposeFollowUps(ctx context.Context, id string, items []FollowUp) error {
-	if _, err := n.api.AppendBlockChildren(ctx, id, followUpBlocks(items)); err != nil {
+	if _, err := n.api.AppendBlockChildren(ctx, id, followUpBlocks(clockOr(n.Clock), items)); err != nil {
 		return err
 	}
 	logging.Action("follow-ups proposed", "slice", id, "count", len(items))
@@ -309,7 +312,7 @@ func (n *Notion) ProposeFollowUps(ctx context.Context, id string, items []Follow
 // RecordTriage files the user's decision on the slice page under a heading of
 // its own, in one append.
 func (n *Notion) RecordTriage(ctx context.Context, id string, items []Triaged) error {
-	if _, err := n.api.AppendBlockChildren(ctx, id, triageBlocks(items)); err != nil {
+	if _, err := n.api.AppendBlockChildren(ctx, id, triageBlocks(clockOr(n.Clock), items)); err != nil {
 		return err
 	}
 	logging.Action("follow-ups triaged", "slice", id, "count", len(items))
@@ -319,7 +322,8 @@ func (n *Notion) RecordTriage(ctx context.Context, id string, items []Triaged) e
 // ProposeFollowUps appends the follow-ups to the slice's body, in the markdown
 // Notion would render the same section to.
 func (l *Local) ProposeFollowUps(ctx context.Context, id string, items []FollowUp) error {
-	if err := l.appendToBody(ctx, id, "file the follow-ups", notion.FollowUpsHeading, followUpsMarkdown(items)); err != nil {
+	if err := l.appendToBody(ctx, id, "file the follow-ups", notion.FollowUpsHeading,
+		stamped(clockOr(l.Clock), followUpsMarkdown(items))); err != nil {
 		return err
 	}
 	logging.Action("follow-ups proposed", "slice", id, "count", len(items))
@@ -328,7 +332,8 @@ func (l *Local) ProposeFollowUps(ctx context.Context, id string, items []FollowU
 
 // RecordTriage appends the user's decision to the slice's body.
 func (l *Local) RecordTriage(ctx context.Context, id string, items []Triaged) error {
-	if err := l.appendToBody(ctx, id, "record the triage", notion.FollowUpsTriagedHeading, triageMarkdown(items)); err != nil {
+	if err := l.appendToBody(ctx, id, "record the triage", notion.FollowUpsTriagedHeading,
+		stamped(clockOr(l.Clock), triageMarkdown(items))); err != nil {
 		return err
 	}
 	logging.Action("follow-ups triaged", "slice", id, "count", len(items))

@@ -100,8 +100,9 @@ func TestSliceReworkWithNoCommentsStillFilesTheHeading(t *testing.T) {
 		t.Fatalf("slice-rework: %v", err)
 	}
 	got, _ := json.Marshal(api.appends[0].children)
-	want := `[{"heading_3":{"rich_text":[{"text":{"content":"Sent back"},"type":"text"}]},"object":"block","type":"heading_3"}]`
-	if string(got) != want {
+	want := `[{"heading_3":{"rich_text":[{"text":{"content":"Sent back"},"type":"text"}]},"object":"block","type":"heading_3"},` +
+		`{"object":"block","paragraph":{"rich_text":[{"text":{"content":"At <stamp>"},"type":"text"}]},"type":"paragraph"}]`
+	if stampless(string(got)) != want {
 		t.Errorf("appended = %s, want %s", got, want)
 	}
 }

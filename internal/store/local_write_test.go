@@ -65,7 +65,7 @@ func TestLocalClaimAndRelease(t *testing.T) {
 	if released.Status != domain.SliceTodo || released.AssigneeName != "" {
 		t.Errorf("released = %+v, want Todo and held by nobody", released)
 	}
-	if want := releasedLine("Craig Johnston"); !strings.Contains(body(t, l, "writes"), want) {
+	if want := "Released back to Todo by Craig Johnston at "; !strings.Contains(body(t, l, "writes"), want) {
 		t.Errorf("body = %q, want it to carry %q", body(t, l, "writes"), want)
 	}
 	// The brief is the work so far the next session wants, and a release is not
@@ -164,7 +164,7 @@ func TestLocalCompleteSlice(t *testing.T) {
 				t.Errorf("branch/pr = %q/%q, want %q/%q", got.Branch, got.PRURL, wantBranch, wantPR)
 			}
 			text := body(t, l, "reads")
-			if !strings.Contains(text, "### "+c.heading+"\n\n"+c.outcome.Summary) {
+			if !strings.Contains(text, "### "+c.heading+"\n\n"+testStamp+"\n\n"+c.outcome.Summary) {
 				t.Errorf("body = %q, want the summary filed under %q", text, c.heading)
 			}
 			if !strings.HasPrefix(text, "Read the plan.") {

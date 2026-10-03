@@ -783,7 +783,7 @@ enum AppStories {
 
         Story(
             name: "window-task-log-notes",
-            summary: "An in-progress task's log with two notes on its brief: one from another task, by name and milestone, and one from a person, each labelled with who it came from.",
+            summary: "An in-progress task's log with two notes on its brief, each headed \"Another agent left a note\": one from a task on the plan, its task fact the depends-on row (dot, name, hover, click to go), and one from a person, its source fact plain text. Each card is stamped at its header's end — the time for today's, the day for this year's, the year too for last year's.",
             size: window
         ) {
             await slicePane(

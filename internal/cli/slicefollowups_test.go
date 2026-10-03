@@ -217,7 +217,7 @@ Then hand back with nat complete-slice as usual.`
 	if brief != wantBrief {
 		t.Errorf("queued brief = %q, want %q", brief, wantBrief)
 	}
-	if !strings.Contains(fp.body(t), "### Follow-ups triaged\n\n- Queued: Persist the split width → "+queued.ID+
+	if !strings.Contains(stampless(fp.body(t)), "### Follow-ups triaged\n\nAt <stamp>\n\n- Queued: Persist the split width → "+queued.ID+
 		"\n- Folded in: Render the picker in a story\n- Dropped: Remove dead code") {
 		t.Errorf("body = %q, want the triage recorded", fp.body(t))
 	}

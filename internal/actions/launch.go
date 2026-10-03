@@ -119,14 +119,16 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, view
 		c.Brief, c.Conventions = brief, conventions
 		c.MilestoneDigest = milestoneDigest(ctx, st, c.Milestone, c.MilestoneSlices)
 		// A relaunch — the slice was not Todo before this claim, or its brief
-		// already carries a task event from an earlier pass — gets one more
-		// line in the task log, so the log says a session picked this back up
-		// rather than reading as though one continuous session did it all. A
-		// fresh launch (Todo, nothing in the log yet) writes nothing here: its
-		// own claim is the task log's first word on this slice. The write's own
-		// failure is logged and never fails the launch — the agent is started
-		// either way, and the gap is one line in a log, not lost work.
-		if c.Slice.Status != domain.SliceTodo || len(store.TaskEvents(brief)) > 0 {
+		// already carries history from an earlier pass ([store.HasHistory]: a
+		// note alone is not history, since one can be left on a slice nobody
+		// has launched yet) — gets one more line in the task log, so the log
+		// says a session picked this back up rather than reading as though one
+		// continuous session did it all. A fresh launch (Todo, no history yet)
+		// writes nothing here: its own claim is the task log's first word on
+		// this slice. The write's own failure is logged and never fails the
+		// launch — the agent is started either way, and the gap is one line in
+		// a log, not lost work.
+		if c.Slice.Status != domain.SliceTodo || store.HasHistory(store.TaskEvents(brief)) {
 			if err := st.RecordRelaunch(ctx, c.Slice.ID); err != nil {
 				logging.Action("could not record a relaunch", "slice", c.Slice.ID, "err", err)
 			}

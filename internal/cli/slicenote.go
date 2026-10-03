@@ -118,12 +118,10 @@ func fromSlice(s domain.Slice, milestones []domain.Milestone) string {
 }
 
 // sliceLabel names a slice as a reader of the plan knows it: its name, quoted,
-// and its milestone's after it where it has one.
+// and its milestone's after it where it has one — [store.SliceLabel]'s format,
+// which lives beside the one reader that parses it back.
 func sliceLabel(s domain.Slice, milestones []domain.Milestone) string {
-	if m := milestoneOf(s, milestones); m.Name != "" {
-		return `"` + s.Name + `" (` + m.Name + `)`
-	}
-	return `"` + s.Name + `"`
+	return store.SliceLabel(s.Name, milestoneOf(s, milestones).Name)
 }
 
 // fromPerson says a note came from a person rather than a slice: one typed by

@@ -12,7 +12,7 @@ import (
 
 func TestNotionRecordSentBackWritesOneAppend(t *testing.T) {
 	api := &fakeAPI{}
-	err := Over(api).RecordSentBack(context.Background(), "s5", "Please rename the helper.")
+	err := clocked(api).RecordSentBack(context.Background(), "s5", "Please rename the helper.")
 	if err != nil {
 		t.Fatalf("RecordSentBack() error = %v", err)
 	}
@@ -21,21 +21,23 @@ func TestNotionRecordSentBackWritesOneAppend(t *testing.T) {
 	}
 	got, _ := json.Marshal(api.appended[0])
 	want := `[{"heading_3":{"rich_text":[{"text":{"content":"Sent back"},"type":"text"}]},"object":"block","type":"heading_3"},` +
+		stampBlockJSON + `,` +
 		`{"object":"block","paragraph":{"rich_text":[{"text":{"content":"Please rename the helper."},"type":"text"}]},"type":"paragraph"}]`
 	if string(got) != want {
 		t.Errorf("blocks =\n%s\nwant\n%s", got, want)
 	}
 }
 
-// Empty comments still file the heading — a slice sent back with nothing
-// written is still an event in the log.
+// Empty comments still file the heading and its stamp — a slice sent back with
+// nothing written is still an event in the log.
 func TestNotionRecordSentBackWithEmptyComments(t *testing.T) {
 	api := &fakeAPI{}
-	if err := Over(api).RecordSentBack(context.Background(), "s5", ""); err != nil {
+	if err := clocked(api).RecordSentBack(context.Background(), "s5", ""); err != nil {
 		t.Fatalf("RecordSentBack() error = %v", err)
 	}
 	got, _ := json.Marshal(api.appended[0])
-	want := `[{"heading_3":{"rich_text":[{"text":{"content":"Sent back"},"type":"text"}]},"object":"block","type":"heading_3"}]`
+	want := `[{"heading_3":{"rich_text":[{"text":{"content":"Sent back"},"type":"text"}]},"object":"block","type":"heading_3"},` +
+		stampBlockJSON + `]`
 	if string(got) != want {
 		t.Errorf("blocks =\n%s\nwant\n%s", got, want)
 	}
@@ -50,7 +52,7 @@ func TestNotionRecordSentBackCarriesTheFailureUp(t *testing.T) {
 
 func TestNotionRecordRelaunchWritesOneAppend(t *testing.T) {
 	api := &fakeAPI{}
-	if err := Over(api).RecordRelaunch(context.Background(), "s5"); err != nil {
+	if err := clocked(api).RecordRelaunch(context.Background(), "s5"); err != nil {
 		t.Fatalf("RecordRelaunch() error = %v", err)
 	}
 	if len(api.appended) != 1 {
@@ -58,6 +60,7 @@ func TestNotionRecordRelaunchWritesOneAppend(t *testing.T) {
 	}
 	got, _ := json.Marshal(api.appended[0])
 	want := `[{"heading_3":{"rich_text":[{"text":{"content":"Relaunched"},"type":"text"}]},"object":"block","type":"heading_3"},` +
+		stampBlockJSON + `,` +
 		`{"object":"block","paragraph":{"rich_text":[{"text":{"content":"Relaunched to pick up the work so far."},"type":"text"}]},"type":"paragraph"}]`
 	if string(got) != want {
 		t.Errorf("blocks =\n%s\nwant\n%s", got, want)
@@ -100,8 +103,8 @@ func TestLocalRecordSentBackWithEmptyComments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Body: %v", err)
 	}
-	if !strings.HasSuffix(strings.TrimRight(body, "\n"), "### Sent back") {
-		t.Errorf("body = %q, want it to end in a bare Sent back heading", body)
+	if !strings.HasSuffix(strings.TrimRight(body, "\n"), "### Sent back\n\n"+testStamp) {
+		t.Errorf("body = %q, want it to end in a Sent back heading with only its stamp", body)
 	}
 }
 
@@ -192,7 +195,7 @@ func TestMirroredRecordRelaunchCarriesTheLocalFailureUp(t *testing.T) {
 
 func TestNotionRecordNoteWritesOneAppend(t *testing.T) {
 	api := &fakeAPI{}
-	err := Over(api).RecordNote(context.Background(), "s5", `From "Draw it" (M2)`, "The seam moved.\n\nTwice.")
+	err := clocked(api).RecordNote(context.Background(), "s5", `From "Draw it" (M2)`, "The seam moved.\n\nTwice.")
 	if err != nil {
 		t.Fatalf("RecordNote() error = %v", err)
 	}
@@ -201,6 +204,7 @@ func TestNotionRecordNoteWritesOneAppend(t *testing.T) {
 	}
 	got, _ := json.Marshal(api.appended[0])
 	want := `[{"heading_3":{"rich_text":[{"text":{"content":"Note"},"type":"text"}]},"object":"block","type":"heading_3"},` +
+		stampBlockJSON + `,` +
 		`{"object":"block","paragraph":{"rich_text":[{"text":{"content":"From \"Draw it\" (M2)"},"type":"text"}]},"type":"paragraph"},` +
 		`{"object":"block","paragraph":{"rich_text":[{"text":{"content":"The seam moved."},"type":"text"}]},"type":"paragraph"},` +
 		`{"object":"block","paragraph":{"rich_text":[{"text":{"content":"Twice."},"type":"text"}]},"type":"paragraph"}]`
@@ -211,7 +215,7 @@ func TestNotionRecordNoteWritesOneAppend(t *testing.T) {
 
 func TestNotionRecordNoteCarriesTheFailureUp(t *testing.T) {
 	api := &fakeAPI{appendBlocks: func(string, []map[string]any) ([]notion.Block, error) { return nil, errBoom }}
-	if err := Over(api).RecordNote(context.Background(), "s5", "From Craig", "note"); !errors.Is(err, errBoom) {
+	if err := clocked(api).RecordNote(context.Background(), "s5", "From Craig", "note"); !errors.Is(err, errBoom) {
 		t.Errorf("RecordNote err = %v, want the append's failure", err)
 	}
 }
@@ -230,7 +234,7 @@ func TestLocalRecordNoteEndsTheBody(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Body: %v", err)
 	}
-	want := "Do the thing.\n\n### Note\n\nFrom \"Draw it\" (M2)\n\nThe seam moved."
+	want := "Do the thing.\n\n### Note\n\n" + testStamp + "\n\nFrom \"Draw it\" (M2)\n\nThe seam moved."
 	if strings.TrimRight(body, "\n") != want {
 		t.Errorf("body = %q, want %q", body, want)
 	}
@@ -254,7 +258,7 @@ func TestMirroredRecordNoteGoesLocallyThenPushes(t *testing.T) {
 		t.Errorf("appends = %d, want it pushed", len(api.appended))
 	}
 	body, _ := l.Body(ctx, "writes")
-	if !strings.HasSuffix(strings.TrimRight(body, "\n"), "### Note\n\nFrom Craig\n\nMind the cache.") {
+	if !strings.HasSuffix(strings.TrimRight(body, "\n"), "### Note\n\n"+testStamp+"\n\nFrom Craig\n\nMind the cache.") {
 		t.Errorf("body = %q, want it to end in the Note section", body)
 	}
 	if dirty, _ := l.Dirty(ctx, "writes"); dirty {
