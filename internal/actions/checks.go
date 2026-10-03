@@ -17,8 +17,8 @@ type PromptSender interface {
 }
 
 // ChecksStore is what [NoticeFailingChecks] does to a plan: read a slice's
-// task log, and file one event on it — a Sent back where an agent was told, a
-// Checks failed where none was there to be.
+// task log, and file one event on it — a Sent back where the failure went to a
+// live agent, a Checks failed where there was none to send it to.
 type ChecksStore interface {
 	Body(ctx context.Context, id string) (string, error)
 	RecordSentBack(ctx context.Context, id, comments string) error
@@ -86,7 +86,7 @@ func NoticeFailingChecks(ctx context.Context, st ChecksStore, sender PromptSende
 			continue
 		}
 		logging.Action("told an agent its pull request's checks are failing", "slice", f.Slice.ID, "session", session)
-		if err := st.RecordSentBack(ctx, f.Slice.ID, "The pull request's checks failed, and the agent was told:\n\n"+lines); err != nil {
+		if err := st.RecordSentBack(ctx, f.Slice.ID, ChecksProvenance+"\n\n"+lines); err != nil {
 			logging.Action("could not record a checks nudge", "slice", f.Slice.ID, "error", err)
 			continue
 		}
@@ -94,6 +94,11 @@ func NoticeFailingChecks(ctx context.Context, st ChecksStore, sender PromptSende
 	}
 	return wrote
 }
+
+// ChecksProvenance opens the Sent back a nudge files, so the task log reads
+// it as CI's (store.TaskEvents puts it in the event's By) rather than as
+// comments the user sent.
+const ChecksProvenance = "From CI"
 
 // checkLines is the failed checks as the record names them, one bullet each:
 // its name, then its run URL where it has one.

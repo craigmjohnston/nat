@@ -22,8 +22,9 @@ type TaskEvent struct {
 	// fixed sentence and so carries nothing worth surfacing a second time.
 	Note string
 	// By is who released the slice, for a "released" event, and who a "note"
-	// came from — its provenance line less the leading "From " — for a note.
-	// Note is a note's text without that line.
+	// came from — its provenance line less the leading "From " — for a note,
+	// and likewise for a "sent_back" a checks nudge filed (a review's own
+	// comments carry no such line, and no By). Note is the text without it.
 	By string
 	// FromSlice is the slice a "note" came from, where By reads as the label
 	// [SliceLabel] writes — its name and milestone, never an ID, since the
@@ -178,6 +179,11 @@ func TaskEvents(body string) []TaskEvent {
 				e.FromSlice = &src
 			}
 			events = append(events, e)
+		case sentBackKind:
+			// A Sent back opened by a provenance line was filed by something
+			// other than the user — a checks nudge — and says so in By.
+			by, note := noteParts(text)
+			events = append(events, TaskEvent{Kind: sentBackKind, Note: note, By: by, At: at})
 		default:
 			events = append(events, TaskEvent{Kind: curKind, Note: text, At: at})
 		}

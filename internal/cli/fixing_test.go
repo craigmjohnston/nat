@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/store"
@@ -122,5 +123,48 @@ func TestFixingSlicesPassesOverAnUnreadableBody(t *testing.T) {
 	got := fixingSlices(ctx, failingBodyStore{st}, append(plan.Project.Slices, approved))
 	if len(got) != 0 {
 		t.Errorf("fixing = %v, want nothing concluded", got)
+	}
+}
+
+// A Sent back a checks nudge filed comes back from slice-show --json with by
+// set to CI; a review's own carries none.
+func TestSliceShowAttributesANudgeSentBack(t *testing.T) {
+	ctx := context.Background()
+	env, id, st, sp, _ := scratchWithWork(t)
+	env.NewGit = func() GitCLI { return git.NewWithRunner(&fakeGitRunner{base: "origin/main"}) }
+	plan, err := st.Plan(ctx, sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := plan.Project.Slices[0]
+	if err := st.RecordSentBack(ctx, s.ID, "Rename the helper."); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.RecordSentBack(ctx, s.ID, actions.ChecksProvenance+"\n\n- test: https://ci/1"); err != nil {
+		t.Fatal(err)
+	}
+	out := env.Out.(interface {
+		String() string
+		Reset()
+	})
+	out.Reset()
+	if err := Run(ctx, []string{"slice-show", s.ID, "--json", "--project", id}, env); err != nil {
+		t.Fatalf("slice-show: %v", err)
+	}
+	var doc struct {
+		Events []taskEventJSON `json:"events"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &doc); err != nil {
+		t.Fatal(err)
+	}
+	var sentBack []taskEventJSON
+	for _, e := range doc.Events {
+		if e.Kind == "sent_back" {
+			sentBack = append(sentBack, e)
+		}
+	}
+	want := []taskEventJSON{{Kind: "sent_back", Note: "Rename the helper."}, {Kind: "sent_back", Note: "- test: https://ci/1", By: "CI"}}
+	if len(sentBack) != 2 || sentBack[0].By != want[0].By || sentBack[1].By != want[1].By || sentBack[1].Note != want[1].Note {
+		t.Errorf("sent backs = %+v, want %+v", sentBack, want)
 	}
 }

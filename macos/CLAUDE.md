@@ -88,7 +88,7 @@ Launch and `LaunchCard` say "Launch fix agent", through the ordinary
 each reading, kept on a failed one) drives the Active row's danger marker
 (`SidebarActiveRow.failingChecks`, pr/fixing stage only) and
 `checksNotice` — the notice atop the Thread and PR bodies: Launch fix agent
-with no agent, "the agent has been told" when the latest recorded event is
+with no agent, "sent to the agent to fix" when the latest recorded event is
 the nudge's Sent back. `projectAttention` counts a red pr/fixing slice once.
 Stories: `window-pr-fix-launch`, `window-fixing`, `sidebar-checks-failing`,
 `window-pr-checks-failing`, `window-pr-checks-agent-told`,

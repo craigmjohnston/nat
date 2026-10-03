@@ -173,7 +173,8 @@ every template and every skill for it.
 **Task log.** A slice's history is read off its body, in order, by
 `store.TaskEvents`: each `Handed back`, `Sent back` (`slice-rework
 --comments`, filed before the branch is cleared, as hand-back files before
-its property; or a checks nudge, which clears nothing), `Checks failed`
+its property; or a checks nudge, which clears nothing and opens with a
+`From CI` line read back as its `by`), `Checks failed`
 (`checks_failed`, a red reading with no live agent), `Relaunched` (written
 by a fix launch, and by a non-fix `actions.Launch` of a slice already under
 way or with history — `store.HasHistory`: notes alone are not history; a

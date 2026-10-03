@@ -8,6 +8,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // checksStore is a task log in memory: Body is whatever has been filed, each
@@ -87,6 +88,11 @@ func TestNoticeFailingChecksNudgesALiveAgentOncePerFailure(t *testing.T) {
 	}
 	if !strings.Contains(st.bodies["s1"], "- test: https://github.test/runs/1") {
 		t.Errorf("record = %q, want the check and its URL", st.bodies["s1"])
+	}
+	// The Sent back reads back as CI's, not the user's.
+	if events := store.TaskEvents(st.bodies["s1"]); events[len(events)-1].By != "CI" ||
+		events[len(events)-1].Note != "- test: https://github.test/runs/1" {
+		t.Errorf("last event = %+v, want a Sent back from CI", events[len(events)-1])
 	}
 
 	if NoticeFailingChecks(ctx, st, sender, live, "proj", red("https://github.test/runs/1")) || len(sender.sent) != 1 {

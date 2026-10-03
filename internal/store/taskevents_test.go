@@ -399,3 +399,17 @@ func TestFixing(t *testing.T) {
 		}
 	}
 }
+
+// TestTaskEventsSentBackProvenance: a Sent back opened by a provenance line —
+// a checks nudge's — carries it as By; a review's comments carry none.
+func TestTaskEventsSentBackProvenance(t *testing.T) {
+	body := "### Sent back\n\nFrom CI\n\n- test: https://ci/1\n" +
+		"\n### Sent back\n\nRename the helper.\n"
+	want := []TaskEvent{
+		{Kind: "sent_back", By: "CI", Note: "- test: https://ci/1"},
+		{Kind: "sent_back", Note: "Rename the helper."},
+	}
+	if got := TaskEvents(body); !reflect.DeepEqual(got, want) {
+		t.Errorf("TaskEvents() = %#v, want %#v", got, want)
+	}
+}

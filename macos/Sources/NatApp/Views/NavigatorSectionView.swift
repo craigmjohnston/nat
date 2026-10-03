@@ -291,7 +291,8 @@ struct NavFactMenu<Items: View>: View {
 /// A one-line notice in a section body: a refusal, a warning, a stale read.
 /// The notice a pull request failing its checks puts at the head of the
 /// section the pane lands on (`checksNotice`): the checks by name, then the
-/// fix launch where there is one to make — none where the agent was told.
+/// fix launch where there is one to make — none where the failure was already
+/// sent to the agent.
 struct ChecksNoticeView: View {
     let notice: ChecksNotice
     var isLaunching = false

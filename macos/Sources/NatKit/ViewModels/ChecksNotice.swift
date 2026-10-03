@@ -1,18 +1,18 @@
 import Foundation
 
 /// What the pane says about a pull request whose checks are failing: which
-/// checks, and what is to be done — launch a fix agent, or nothing, the agent
-/// already told.
+/// checks, and what is to be done — launch a fix agent, or nothing, the
+/// failure already sent to the agent.
 public struct ChecksNotice: Equatable, Sendable {
     public enum Action: Equatable, Sendable {
         /// No agent is live, and one can be launched: the notice offers the
         /// fix launch the Thread's own Launch makes.
         case launchFix
-        /// The live agent was sent the failure (the `Sent back` nat files
+        /// The failure was sent to the live agent (the `Sent back` nat files
         /// with its nudge is the latest thing on the record): nothing to press.
-        case agentTold
-        /// Neither: an agent is live but the record does not say it was told,
-        /// or no launch is open.
+        case sentToAgent
+        /// Neither: an agent is live but the record does not say the failure
+        /// was sent to it, or no launch is open.
         case none
     }
 
@@ -24,12 +24,12 @@ public struct ChecksNotice: Equatable, Sendable {
         self.action = action
     }
 
-    /// The notice's words: the failing checks by name, and — once the agent
-    /// has been told — that it has.
+    /// The notice's words: the failing checks by name, and — once they
+    /// have gone to the agent — that it has them to fix.
     public var text: String {
-        let named = checks.isEmpty ? "Checks are failing" : "Failing: \(checks.joined(separator: ", "))"
+        let named = checks.isEmpty ? "Checks failing" : "Checks failing: \(checks.joined(separator: ", "))"
         switch action {
-        case .agentTold: return "\(named) — the agent has been told."
+        case .sentToAgent: return "\(named) — sent to the agent to fix."
         case .launchFix, .none: return "\(named)."
         }
     }
@@ -56,5 +56,5 @@ public func checksNotice(
     }
     let closing: Set<TaskLogEvent.Kind> = [.approved, .merged]
     let latest = events?.last { !closing.contains($0.kind) }
-    return ChecksNotice(checks: failing, action: latest?.kind == .sentBack ? .agentTold : .none)
+    return ChecksNotice(checks: failing, action: latest?.kind == .sentBack ? .sentToAgent : .none)
 }

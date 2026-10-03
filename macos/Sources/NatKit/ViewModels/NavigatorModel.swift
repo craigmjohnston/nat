@@ -467,6 +467,11 @@ private func threadEvent(_ event: TaskLogEvent, plan: [Slice], milestones: [Mile
     case .handedBack:
         return ThreadEvent(.handedBack, who: "Agent", meta: "handed back", body: note)
     case .sentBack:
+        // One nat filed for a red pull request names where it came from in
+        // `by` (CI), where a review's own comments name nobody: they are yours.
+        if event.by.map({ !$0.isEmpty }) ?? false {
+            return ThreadEvent(.sentBack, who: "Checks failed", meta: "— sent to the agent", tone: .accent, body: note)
+        }
         return ThreadEvent(.sentBack, who: "You", meta: "sent back with comments", tone: .accent, body: note)
     case .released:
         guard let by = event.by.flatMap({ $0.isEmpty ? nil : $0 }) else {

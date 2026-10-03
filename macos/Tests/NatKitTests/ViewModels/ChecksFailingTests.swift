@@ -56,14 +56,14 @@ final class ChecksFailingTests: XCTestCase {
     func testNoticeOffersTheFixLaunchWithNoAgent() {
         let notice = checksNotice(slice: slice(), failing: ["test", "lint"], hasLiveAgent: false, events: nil)
         XCTAssertEqual(notice, ChecksNotice(checks: ["test", "lint"], action: .launchFix))
-        XCTAssertEqual(notice?.text, "Failing: test, lint.")
+        XCTAssertEqual(notice?.text, "Checks failing: test, lint.")
     }
 
     func testNoticeSaysTheAgentWasToldWhenTheNudgeIsTheLatestEvent() {
         let told: [TaskLogEvent] = [TaskLogEvent(.handedBack), TaskLogEvent(.sentBack, note: "x"), TaskLogEvent(.approved, pr: "u")]
         let notice = checksNotice(slice: slice(fixing: true), failing: ["test"], hasLiveAgent: true, events: told)
-        XCTAssertEqual(notice?.action, .agentTold)
-        XCTAssertEqual(notice?.text, "Failing: test — the agent has been told.")
+        XCTAssertEqual(notice?.action, .sentToAgent)
+        XCTAssertEqual(notice?.text, "Checks failing: test — sent to the agent to fix.")
 
         let untold: [TaskLogEvent] = [TaskLogEvent(.sentBack, note: "x"), TaskLogEvent(.handedBack), TaskLogEvent(.approved, pr: "u")]
         XCTAssertEqual(checksNotice(slice: slice(), failing: ["test"], hasLiveAgent: true, events: untold)?.action, ChecksNotice.Action.none)
@@ -75,7 +75,7 @@ final class ChecksFailingTests: XCTestCase {
         XCTAssertNil(checksNotice(slice: slice(status: "Done"), failing: ["test"], hasLiveAgent: false, events: nil))
         XCTAssertNil(checksNotice(slice: slice(pr: "", handedBack: true, branch: "b"), failing: ["test"], hasLiveAgent: false, events: nil))
         XCTAssertNotNil(checksNotice(slice: slice(fixing: true), failing: ["test"], hasLiveAgent: false, events: nil))
-        XCTAssertEqual(ChecksNotice(checks: [], action: .none).text, "Checks are failing.")
+        XCTAssertEqual(ChecksNotice(checks: [], action: .none).text, "Checks failing.")
     }
 
     // MARK: - The rail
@@ -105,5 +105,18 @@ final class ChecksFailingTests: XCTestCase {
         XCTAssertEqual(card?.title, "Checks failed")
         XCTAssertEqual(card?.body, "- test: https://ci/1")
         XCTAssertEqual(card?.tone, .hot)
+    }
+
+    /// A nudge's Sent back says the failing checks went to the agent; a
+    /// review's own is yours.
+    func testANudgeSentBackIsAttributedToTheChecksReading() {
+        let log = buildThreadEvents(
+            slice: slice(), agent: nil, brief: nil,
+            events: [
+                TaskLogEvent(.sentBack, note: "Rename the helper."),
+                TaskLogEvent(.sentBack, note: "- test: https://ci/1", by: "CI"),
+            ])
+        let sentBack = log.filter { $0.kind == .sentBack }.map(\.title)
+        XCTAssertEqual(sentBack, ["You sent back with comments", "Checks failed — sent to the agent"])
     }
 }

@@ -73,7 +73,8 @@ extension Fixtures {
     /// a Sent back.
     public static var checksNudgedSliceDetails: [String: SliceDetail] {
         sliceDetails.merging([approveSliceID: approvedSliceDetail(last: TaskLogEvent(
-            .sentBack, note: "The pull request's checks failed, and the agent was told:\n\n- test: \(failingRunURL)"))]) { _, new in new }
+            .sentBack, note: "- test: \(failingRunURL)",
+            by: "CI"))]) { _, new in new }
     }
 
     /// A live fix agent on the approved slice.

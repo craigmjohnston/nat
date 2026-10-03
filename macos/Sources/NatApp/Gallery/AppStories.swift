@@ -541,7 +541,7 @@ enum AppStories {
 
         Story(
             name: "window-pr-checks-agent-told",
-            summary: "The same red pull request with its fix agent live and the nudge on record: the notice says the agent has been told, with no button.",
+            summary: "The same red pull request with its fix agent live and the nudge on record: the notice says the failing check was sent to the agent to fix, with no button; the task log card reads Checks failed — sent to the agent.",
             size: window
         ) {
             await slicePane(
