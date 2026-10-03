@@ -53,6 +53,25 @@ final class TitlebarIdentityTests: XCTestCase {
         XCTAssertEqual(ended, TitlebarIdentity(tag: "", state: .done, live: false, title: "t"))
     }
 
+    func testTheLastCrumbDropsTheTagAfterAProjectCrumb() {
+        let identity = TitlebarIdentity(tag: "GNA", state: .waiting, live: true, title: "Draw the box")
+        XCTAssertEqual(
+            identity.lastCrumb(afterProjectCrumb: true),
+            TitlebarIdentity(tag: "", state: .waiting, live: true, title: "Draw the box"))
+    }
+
+    func testTheLastCrumbKeepsTheTagWithNoProjectCrumbBeforeIt() {
+        let identity = TitlebarIdentity(tag: "GNA", state: .waiting, live: true, title: "Draw the box")
+        XCTAssertEqual(identity.lastCrumb(afterProjectCrumb: false), identity)
+    }
+
+    func testAContainersLastCrumbKeepsItsIconWhenItsTagIsDropped() {
+        let icon = SourceIcon(symbol: "rectangle.stack")
+        let crumb = TitlebarIdentity.container(title: "Billing", tag: "SC", icon: icon)
+            .lastCrumb(afterProjectCrumb: true)
+        XCTAssertEqual(crumb, TitlebarIdentity(tag: "", state: .todo, live: false, title: "Billing", icon: icon))
+    }
+
     @MainActor
     func testTheAppModelReadsTheActiveProjectsRows() async {
         let model = await Fixtures.startedAppModel(client: FixtureNatClient(agents: []))

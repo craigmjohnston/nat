@@ -16,20 +16,27 @@ struct ActiveIdentityLabel: View {
     var body: some View {
         HStack(spacing: 6) {
             StateDot(state: state, live: live).frame(width: 12)
-            (Text(tag)
-                .font(Typo.mono(size: 10, weight: .medium))
-                .tracking(1)
-                // Raised off the shared baseline so the small capitals sit
-                // on the title's middle rather than its foot.
-                .baselineOffset(1.5)
-                .foregroundStyle(DesignTokens.ink(.secondary, on: ground))
-                + Text("  \u{2009}")
-                + Text(title))
+            (identityTag(tag, on: ground) + Text(title))
                 .font(.system(size: size))
                 .ink(titleInk)
                 .lineLimit(1)
         }
     }
+}
+
+/// An identity's project tag and the gap after it, ahead of its title — or
+/// nothing at all for no tag (the breadcrumb's last crumb, whose project
+/// crumb already names the project).
+func identityTag(_ tag: String, on ground: Ground) -> Text {
+    guard !tag.isEmpty else { return Text("") }
+    return Text(tag)
+        .font(Typo.mono(size: 10, weight: .medium))
+        .tracking(1)
+        // Raised off the shared baseline so the small capitals sit
+        // on the title's middle rather than its foot.
+        .baselineOffset(1.5)
+        .foregroundStyle(DesignTokens.ink(.secondary, on: ground))
+        + Text("  \u{2009}")
 }
 
 /// A milestone line of a plan tree, as the sidebar draws it: its folder,

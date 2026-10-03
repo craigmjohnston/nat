@@ -16,7 +16,8 @@ private func containerState(_ appModel: AppModel, _ containerID: String) -> Cont
 
 /// A selected container's navigator: the first section — titled by the
 /// story's own title — holding its facts and how far its tasks are, with
-/// **New task** in its header; then each section the plugin declared, of a
+/// Open in <source> (where the plugin gave the container a URL) and **New
+/// task** in its header; then each section the plugin declared, of a
 /// kind this build draws.
 struct ContainerNavigatorView: View {
     @Bindable var appModel: AppModel
@@ -36,6 +37,15 @@ struct ContainerNavigatorView: View {
                     selected: focus.main == .story,
                     onHead: { click(model.storyID, shows: .story) }, onFold: { fold(model.storyID) }
                 ) {
+                    if let url = (show.container.externalURL ?? source?.container(withID: containerID)?.externalURL)
+                        .flatMap(URL.init(string:)) {
+                        HeaderLinkButton(
+                            title: "Open in \(source?.title ?? "source")", systemImage: SourceGlyph.externalLink,
+                            help: url.absoluteString
+                        ) {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
                     Button(action: onNewTask) {
                         HeaderActionLabel(title: "New \(source?.taskNoun ?? "task")", systemImage: "plus")
                     }
@@ -312,29 +322,6 @@ struct SourceCommentView: View {
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .overlay {
             RoundedRectangle(cornerRadius: 4).strokeBorder(DesignTokens.rule(.separator, on: .window), lineWidth: 1)
-        }
-    }
-}
-
-/// What a container's main pane stands at the titlebar band's trailing
-/// edge: Open in <source>, where the plugin gave the container a URL.
-struct ContainerTitlebarTrailing: View {
-    @Bindable var appModel: AppModel
-    let containerID: String
-
-    var body: some View {
-        let source = appModel.source(ofProject: appModel.activeProjectID ?? "")
-        let url = containerState(appModel, containerID).show?.container.externalURL
-            ?? source?.container(withID: containerID)?.externalURL
-        if let url = url.flatMap(URL.init(string:)) {
-            Button {
-                NSWorkspace.shared.open(url)
-            } label: {
-                HeaderActionLabel(title: "Open in \(source?.title ?? "source")", systemImage: SourceGlyph.externalLink)
-            }
-            .buttonStyle(GnatHeaderButtonStyle())
-            .help(url.absoluteString)
-            .padding(.trailing, -12)
         }
     }
 }

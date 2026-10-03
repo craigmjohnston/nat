@@ -1,8 +1,8 @@
 import XCTest
 @testable import NatKit
 
-/// The one titlebar band: the run of readout/actions and tabs lives in the
-/// main pane's part alone, anchored right; the identity takes what is left.
+/// The one titlebar band: the run of tabs lives in the main pane's part
+/// alone, anchored right; the breadcrumb takes what is left.
 final class TitlebarBandLayoutTests: XCTestCase {
     func testTheMainPartIsTheBandLessTheNavigatorsWidth() {
         let layout = TitlebarBandLayout(bandWidth: 1060, navigatorWidth: 330, runWidth: 200)

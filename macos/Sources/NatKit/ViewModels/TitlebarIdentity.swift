@@ -24,6 +24,14 @@ public struct TitlebarIdentity: Equatable, Sendable {
     public static func container(title: String, tag: String, icon: SourceIcon) -> TitlebarIdentity {
         TitlebarIdentity(tag: tag, state: .todo, live: false, title: title, icon: icon)
     }
+
+    /// The identity as the titlebar's breadcrumb draws it, as its last crumb:
+    /// without the project's tag where a crumb before it already names the
+    /// project, whole otherwise.
+    public func lastCrumb(afterProjectCrumb: Bool) -> TitlebarIdentity {
+        guard afterProjectCrumb else { return self }
+        return TitlebarIdentity(tag: "", state: state, live: live, title: title, icon: icon)
+    }
 }
 
 /// The selection the navigator's titlebar names, with what it knows of it

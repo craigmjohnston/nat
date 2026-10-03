@@ -1,14 +1,13 @@
 import Foundation
 
 /// Where the one titlebar band over the navigator and the main pane puts its
-/// two parts: the selection's identity from the band's leading edge, and the
-/// run — the view's readout or actions, then the tabs — anchored to its
-/// trailing edge.
+/// two parts: the selection's breadcrumb from the band's leading edge, and the
+/// run — the main pane's tabs, nothing else — anchored to its trailing edge.
 ///
 /// The run lives in the main pane's part of the band alone, a frame exactly
 /// the main pane's width: it is shown whole while it fits there and cut at
 /// its leading edge where it does not, never crossing into the navigator's
-/// part. The identity takes whatever the run leaves, so a long title runs
+/// part. The breadcrumb takes whatever the run leaves, so a long title runs
 /// on past the navigator's width into the gap and gives way only to the run.
 public struct TitlebarBandLayout: Equatable, Sendable {
     /// The main pane's part of the band: what is left of it after the

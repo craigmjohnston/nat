@@ -256,36 +256,3 @@ struct SliceMainPane: View {
         }
     }
 }
-
-/// What a slice's main pane stands at the titlebar band's trailing edge,
-/// right of its tabs: the agent's model, effort and context over its terminal; the
-/// diff's commit switcher; the pull request's Open in GitHub; or nothing.
-struct SliceTitlebarTrailing: View {
-    @Bindable var appModel: AppModel
-    let slice: Slice
-    let mode: MainPaneMode
-    let review: DiffReview
-
-    var body: some View {
-        switch mode {
-        case .terminal, .empty:
-            AgentModelHeading(agent: appModel.activityStore?.agents[slice.id])
-        case .diff:
-            let store = review.store(appModel)
-            DiffCommitsMenu(
-                commits: store.commits,
-                selectedCommit: store.selectedCommit,
-                onSelectCommit: { sha in Task { await store.selectCommit(sha) } },
-                bottomPadding: 0)
-                .fixedSize()
-        case .visuals:
-            // Nothing: zoom lives in each image's own header, and there
-            // is no one image a pane-wide control would mean.
-            EmptyView()
-        case .pr:
-            PROpenInGitHubButton(
-                store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),
-                expectedNumber: pullRequestNumber(slice.pr))
-        }
-    }
-}

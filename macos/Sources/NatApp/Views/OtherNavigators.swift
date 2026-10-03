@@ -66,6 +66,8 @@ struct SessionNavigatorView: View {
                     label: "PR", open: open.contains(.pr), selected: main == .pr,
                     onHead: { click(.pr) }, onFold: { fold(.pr) }
                 ) {
+                    PROpenInGitHubButton(store: prStore, expectedNumber: sessionSelectedPRNumber(appModel, session))
+                } content: {
                     prBody
                 }
             }
@@ -210,28 +212,6 @@ struct SessionMainPane: View {
     }
 
     private var selectedPRNumber: Int? { sessionSelectedPRNumber(appModel, session) }
-}
-
-/// What an ad hoc session's main pane stands at the titlebar band's
-/// trailing edge, right of its tabs: its agent's readout, or its picked pull request's Open in
-/// GitHub; nothing over its diff.
-struct SessionTitlebarTrailing: View {
-    @Bindable var appModel: AppModel
-    let session: Session
-    let mode: MainPaneMode
-
-    var body: some View {
-        switch mode {
-        case .terminal, .empty, .visuals:
-            AgentModelHeading(agent: appModel.activityStore?.agents[session.tag])
-        case .pr:
-            PROpenInGitHubButton(
-                store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),
-                expectedNumber: sessionSelectedPRNumber(appModel, session))
-        case .diff:
-            EmptyView()
-        }
-    }
 }
 
 /// The number of the pull request a session's PR section's picker has chosen.
@@ -424,23 +404,9 @@ struct WorkshopMainPane: View {
     }
 }
 
-/// What the workshop's main pane stands at the titlebar band's trailing
-/// edge, with no tabs: the planning agent's readout from launch on, the
-/// launch shortcut before.
-struct WorkshopTitlebarTrailing: View {
-    @Bindable var appModel: AppModel
-
-    var body: some View {
-        if workshopLaunched(appModel) {
-            AgentModelHeading(agent: appModel.planningAgent)
-        } else {
-            Text("\u{2318}\u{21A9} to launch").monoXS().ink(.tertiary)
-        }
-    }
-}
-
 /// The brief being written, edge to edge in the main pane, with a
-/// placeholder until anything is typed and focus on arrival.
+/// placeholder until anything is typed — ending on the launch shortcut — and
+/// focus on arrival.
 private struct WorkshopBriefEditor: View {
     @Binding var text: String
     let onLaunch: () -> Void
@@ -456,7 +422,7 @@ private struct WorkshopBriefEditor: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
             if text.isEmpty {
-                Text("What should the plan cover? Describe the changes — several at once is fine.")
+                Text("What should the plan cover? Describe the changes — several at once is fine. \u{2318}\u{21A9} to launch.")
                     .font(Typo.mono(size: Typo.code))
                     .ink(.tertiary)
                     .padding(.horizontal, 19)

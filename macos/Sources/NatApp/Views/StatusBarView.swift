@@ -3,10 +3,11 @@ import NatKit
 
 /// The window's status bar: the gnat mark and how many agents are running,
 /// then each Claude usage window, set apart by faint dividers at the leading
-/// edge; where the selection sits (`trailing`, the shell's breadcrumb) at the
-/// trailing edge — all quietly, in the system sans at `xs`. The attached
-/// agent's model, effort and context are the terminal's own heading
-/// (`AgentModelHeading`).
+/// edge, all quietly in the system sans at `xs`; at the trailing edge
+/// (`trailing`), the selection's live agent's model, effort and context in
+/// small mono (`AgentModelHeading`) — a slice's, a session's, the planning
+/// agent's — or nothing. Where the selection sits is the titlebar band's
+/// breadcrumb.
 struct StatusBarView<Trailing: View>: View {
     @Bindable var appModel: AppModel
     @ViewBuilder var trailing: () -> Trailing
