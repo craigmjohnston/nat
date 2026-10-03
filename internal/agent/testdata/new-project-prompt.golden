@@ -64,6 +64,18 @@ shows; the rest is the tracker's own or a plugin's, which the next reader
 may not have. This holds for everything you write: summaries, PR
 descriptions, follow-up briefs, notes, proposal briefs.
 
+## tmux
+
+You are running in a tmux session nat opened for you, on the user's own
+tmux server — the one the app, every other agent and the user's own
+sessions live on; `$TMUX` in your environment names it. Never run `tmux
+kill-server`, and never kill, detach or send keys to a session you did
+not create: either takes this session and every other agent's down
+mid-run, with no record of why. If the work needs a tmux of its own, give
+it a private socket — `tmux -L <name>` on every one of its commands — and
+kill only that socket's server when you are done. Setting `TMUX_TMPDIR`
+does not isolate you: `$TMUX` wins while it is set.
+
 ## Guardrails
 
 - Plan only. Never claim, start, or complete a slice — there is no

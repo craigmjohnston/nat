@@ -53,6 +53,12 @@ running agent's state.
   worktree. The session starts in the home directory, so the git-status and
   CLAUDE.md lines are left out too. The template walks (`--project` pinning,
   the naming rule, the note command) cover it as `repoUnknownContext`.
+- `tmuxPassage` (never `tmux kill-server`, never touch another session; a
+  private `-L` socket for any tmux of the agent's own) is in every prompt,
+  since every agent nat launches sits on the user's own tmux server. One
+  `kill-server` under a `TMUX_TMPDIR` the agent thought isolated it took down
+  every running agent twice — `$TMUX` wins while set. A test walks each
+  template for it; `/next-slice` carries the rule in its own words.
 - The `SliceBranch`/`pathSlug`/`Base` naming triad (how a branch name and its
   worktree path are derived — `actions.SliceBranch`, `worktree.pathSlug`,
   `git.CLI.Base`) is spelled out in prose in `repoPassage` and in

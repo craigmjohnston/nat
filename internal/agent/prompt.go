@@ -391,6 +391,7 @@ func Prompt(c PromptContext) string {
 	b.WriteString("the deliverable the brief asks for and link it in the summary below.\n")
 	b.WriteString(notesPassage(c))
 	b.WriteString(namingPassage)
+	b.WriteString(tmuxPassage)
 
 	b.WriteString("\n## Finish\n\n")
 	// Only the app has anywhere to triage follow-ups, so only an agent it
@@ -571,6 +572,7 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 	}
 
 	b.WriteString(namingPassage)
+	b.WriteString(tmuxPassage)
 
 	b.WriteString("\n## Guardrails\n\n")
 	b.WriteString("- Plan only. Never claim, start, or complete a slice — launching work is\n")
@@ -667,6 +669,25 @@ const namingPassage = "\n## Naming slices\n\n" +
 	"shows; the rest is the tracker's own or a plugin's, which the next reader\n" +
 	"may not have. This holds for everything you write: summaries, PR\n" +
 	"descriptions, follow-up briefs, notes, proposal briefs.\n"
+
+// tmuxPassage is the rule every agent nat launches carries, since every one of
+// them runs in a pane of the user's own tmux server: never kill that server,
+// and never kill a session that is not its own. An agent that wanted a clean
+// tmux for an experiment once ran `tmux kill-server` under its own
+// `TMUX_TMPDIR`, believing that isolated it — it does not, since `$TMUX` names
+// the socket while set — and took down itself, every other agent and the
+// user's own sessions, twice. A test walks every prompt for it; the next-slice
+// skill carries the same rule in its own words.
+const tmuxPassage = "\n## tmux\n\n" +
+	"You are running in a tmux session nat opened for you, on the user's own\n" +
+	"tmux server — the one the app, every other agent and the user's own\n" +
+	"sessions live on; `$TMUX` in your environment names it. Never run `tmux\n" +
+	"kill-server`, and never kill, detach or send keys to a session you did\n" +
+	"not create: either takes this session and every other agent's down\n" +
+	"mid-run, with no record of why. If the work needs a tmux of its own, give\n" +
+	"it a private socket — `tmux -L <name>` on every one of its commands — and\n" +
+	"kill only that socket's server when you are done. Setting `TMUX_TMPDIR`\n" +
+	"does not isolate you: `$TMUX` wins while it is set.\n"
 
 // followUpBriefPassage says how a follow-up is written: as the brief of the
 // slice it becomes if queued, since slice-triage files it as one verbatim.
