@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/plugins"
+	"github.com/craigmjohnston/nat/internal/source"
 )
 
 // NewPluginsFunc builds the plugin installer the plugin-* commands run
@@ -60,15 +62,64 @@ func pluginList(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return fmt.Errorf("look for task source plugins: %w", err)
 	}
+	l := describeInstalled(ctx, env, listing)
 	if *asJSON {
-		return writeJSON(env.Out, listing)
+		return writeJSON(env.Out, l)
 	}
-	_, err = io.WriteString(env.Out, pluginListText(listing))
+	_, err = io.WriteString(env.Out, pluginListText(l))
 	return err
 }
 
+// pluginListingJSON is plugin-list's listing with each installed plugin
+// described: what it asks to be set up, and why it would not say.
+type pluginListingJSON struct {
+	Sources   []plugins.SourceStatus `json:"sources"`
+	Installed []installedPluginJSON  `json:"installed"`
+	Available []plugins.Available    `json:"available"`
+}
+
+// installedPluginJSON is one installed plugin with its describe's setup
+// fields — always a list, empty where it has none or would not describe —
+// and DescribeError, the line a failed describe answered (the plugin's own
+// first stderr line where it wrote one), so gnat draws a plugin's setup form
+// and its "token missing" warning from one read.
+type installedPluginJSON struct {
+	plugins.Installed
+	Setup         []source.SetupField `json:"setup"`
+	DescribeError string              `json:"describe_error"`
+}
+
+// describeInstalled describes every installed plugin, one after another. A
+// failure is that plugin's DescribeError, never the listing's.
+func describeInstalled(ctx context.Context, env Env, l plugins.Listing) pluginListingJSON {
+	out := pluginListingJSON{Sources: l.Sources, Installed: []installedPluginJSON{}, Available: l.Available}
+	for _, p := range l.Installed {
+		in := installedPluginJSON{Installed: p, Setup: []source.SetupField{}}
+		d, err := describePlugin(ctx, env, p.Name)
+		if err != nil {
+			in.DescribeError = describeErrorLine(err)
+		} else {
+			in.Setup = append(in.Setup, d.Setup...)
+		}
+		out.Installed = append(out.Installed, in)
+	}
+	return out
+}
+
+// describeErrorLine is what a failed describe said: the plugin's own first
+// stderr line when it exited non-zero — "Shortcut token missing — …", with no
+// "nat-source-<name> describe:" in front of it — else the failure as nat
+// worded it.
+func describeErrorLine(err error) string {
+	var exitErr *source.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.Error()
+	}
+	return err.Error()
+}
+
 // pluginListText is plugin-list's plain form.
-func pluginListText(l plugins.Listing) string {
+func pluginListText(l pluginListingJSON) string {
 	var b strings.Builder
 	b.WriteString("sources:\n")
 	for _, s := range l.Sources {
@@ -86,6 +137,12 @@ func pluginListText(l plugins.Listing) string {
 		}
 		if p.Update != "" {
 			fmt.Fprintf(&b, "\t(update: %s)", p.Update)
+		}
+		for _, f := range p.Setup {
+			fmt.Fprintf(&b, "\tsetup: %s", f.ID)
+		}
+		if p.DescribeError != "" {
+			fmt.Fprintf(&b, "\terror: %s", p.DescribeError)
 		}
 		b.WriteString("\n")
 	}

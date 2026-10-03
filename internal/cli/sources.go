@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/craigmjohnston/nat/internal/config"
@@ -328,5 +329,66 @@ func sourceAction(ctx context.Context, args []string, env Env) error {
 		return writeJSON(env.Out, sourceActionJSON(result))
 	}
 	_, err = io.WriteString(env.Out, cmp.Or(result.Message, "Ran "+id+".")+"\n")
+	return err
+}
+
+// sourceSetupJSON is what a plugin said of a value it was set up with.
+type sourceSetupJSON struct {
+	Message string `json:"message"`
+}
+
+// sourceSetup hands an installed plugin the value of one of its setup fields
+// — an API token, say — read from stdin, never a flag, so it is in no argv
+// and no `ps`. The plugin is described first, so an id it does not list is
+// refused before the value is read, let alone sent; so is an empty value. It
+// acts on no project.
+func sourceSetup(ctx context.Context, args []string, env Env) error {
+	flags := flag.NewFlagSet("source-setup", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	fieldID := flags.String("id", "", "the setup field to set, by `id` (required)")
+	asJSON := flags.Bool("json", false, "print structured JSON instead of plain text")
+	rest, err := parseFlags(flags, args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 || strings.TrimSpace(rest[0]) == "" {
+		return usageErrorf("source-setup: want exactly one plugin, by name")
+	}
+	name, id := strings.TrimSpace(rest[0]), strings.TrimSpace(*fieldID)
+	if id == "" {
+		return usageErrorf("source-setup: no setup field given: pass --id")
+	}
+
+	src, err := env.NewSource(name)
+	if err != nil {
+		return err
+	}
+	d, err := describeSource(ctx, name, src)
+	if err != nil {
+		return err
+	}
+	if !slices.ContainsFunc(d.Setup, func(f source.SetupField) bool { return f.ID == id }) {
+		return fmt.Errorf("source-setup: %s has no setup field %q", name, id)
+	}
+	if env.In == nil {
+		return usageErrorf("source-setup: the value is read from stdin, and there is nothing to read")
+	}
+	b, err := io.ReadAll(env.In)
+	if err != nil {
+		return fmt.Errorf("source-setup: read the value: %w", err)
+	}
+	value := strings.TrimSuffix(strings.TrimSuffix(string(b), "\n"), "\r")
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("source-setup: no value for %s's %s on stdin", name, id)
+	}
+	msg, err := src.Setup(ctx, id, value)
+	if err != nil {
+		return err
+	}
+
+	if *asJSON {
+		return writeJSON(env.Out, sourceSetupJSON{Message: msg})
+	}
+	_, err = io.WriteString(env.Out, cmp.Or(msg, "Set "+name+"'s "+id+".")+"\n")
 	return err
 }
