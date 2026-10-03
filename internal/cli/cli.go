@@ -157,6 +157,9 @@ type Env struct {
 	// NewSource builds a task-source plugin's client, by the plugin's name. It
 	// is DefaultNewSource in production.
 	NewSource NewSourceFunc
+	// NewPlugins builds the task-source plugin installer. It is
+	// DefaultNewPlugins in production.
+	NewPlugins NewPluginsFunc
 	// Out is where a command writes its output.
 	Out io.Writer
 	// In is where a command reads input a flag was not given for; it is stdin
@@ -242,8 +245,8 @@ Every command below that acts on a project requires --project, naming one of
 the config file's projects by its page ID; run one without it to be told the
 projects this machine tracks. There is no fallback to the project the board is
 on: that is the board's own, and the user moves it while an agent works. setup,
-paths, project-create and source-list take no such flag: none acts on a project
-already tracked.
+paths, project-create, source-list and the plugin-* commands take no such flag:
+none acts on a project already tracked.
 
 usage:
   nat                 open the board
@@ -370,6 +373,28 @@ usage:
                       run one of a source project's plugin actions, against a
                       group, a container or (neither) the source itself;
                       --input - reads the input from stdin
+  nat plugin-list [--json]
+                      list the plugin sources (nat's own repository first,
+                      then the config's plugin_sources), the installed
+                      plugins with any update their source offers, and every
+                      plugin a source offers; a source that cannot be read is
+                      listed with its error
+  nat plugin-install <name> [--source OWNER/REPO] [--version V] [--json]
+                      download a task-source plugin from a source's release —
+                      the named source, else the first that offers it; the
+                      latest release, else version V — check its SHA-256 and
+                      install it under nat's plugins directory. Over an
+                      install of nat's own this is the update; over one put
+                      there by hand it is refused
+  nat plugin-uninstall <name> [--json]
+                      remove a plugin from nat's plugins directory; refused
+                      while a project is a source project of it, and for a
+                      plugin found only on PATH
+  nat plugin-source-add <owner/repo> [--json]
+  nat plugin-source-remove <owner/repo> [--json]
+                      add or remove a GitHub repository plugins may be
+                      installed from; nat's own is always read and cannot be
+                      removed
   nat project-open-folder <DIR> [--json]
                       open the local plan already kept in DIR as a project:
                       records it in local config, writes nothing to the plan.
@@ -666,6 +691,16 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return containerShow(ctx, args[1:], env)
 	case "source-action":
 		return sourceAction(ctx, args[1:], env)
+	case "plugin-list":
+		return pluginList(ctx, args[1:], env)
+	case "plugin-install":
+		return pluginInstall(ctx, args[1:], env)
+	case "plugin-uninstall":
+		return pluginUninstall(args[1:], env)
+	case "plugin-source-add":
+		return pluginSourceAdd(args[1:], env)
+	case "plugin-source-remove":
+		return pluginSourceRemove(args[1:], env)
 	case "help", "-h", "--help":
 		_, err := io.WriteString(env.Out, Usage)
 		return err

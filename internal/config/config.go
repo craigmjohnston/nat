@@ -162,6 +162,11 @@ type Config struct {
 	// in, recorded by `nat scratch-open` the first time it runs. It is one of
 	// Projects like any other; this only says which. Omitted until then.
 	ScratchProject string `json:"scratch_project,omitempty"`
+	// PluginSources are the GitHub repositories, as owner/repo, task-source
+	// plugins may be installed from besides nat's own — which is always
+	// read first and is never written here (see internal/plugins). Omitted
+	// until one is added.
+	PluginSources []string `json:"plugin_sources,omitempty"`
 }
 
 // The share of the window an agent's pane takes beside the board. The default

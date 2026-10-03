@@ -133,6 +133,51 @@ public final class NatClient: Sendable {
         return try decodeJSON([SourcePlugin].self, from: output)
     }
 
+    // MARK: - Plugin install
+
+    /// Every plugin source, installed plugin and plugin on offer — `nat
+    /// plugin-list`. A source nat could not read comes back with its
+    /// `error`, not as one offering nothing.
+    public func pluginList() async throws -> PluginListing {
+        let output = try await runNat(arguments: ["plugin-list", "--json"])
+        return try decodeJSON(PluginListing.self, from: output)
+    }
+
+    /// Install, or update, one plugin — `nat plugin-install`: from `source`
+    /// where given, else the first source offering it; at `version` where
+    /// given, else the latest.
+    ///
+    /// - Throws: NatError carrying nat's refusal (one installed by hand, a
+    ///   digest that did not match, no source offering it)
+    public func pluginInstall(name: String, source: String?, version: String?) async throws -> PluginInstalled {
+        var arguments = ["plugin-install", name]
+        if let source, !source.isEmpty { arguments += ["--source", source] }
+        if let version, !version.isEmpty { arguments += ["--version", version] }
+        arguments.append("--json")
+        let output = try await runNat(arguments: arguments)
+        return try decodeJSON(PluginInstalled.self, from: output)
+    }
+
+    /// Remove one plugin from nat's plugins directory — `nat
+    /// plugin-uninstall`, refused while a project uses it.
+    public func pluginUninstall(name: String) async throws -> PluginUninstalled {
+        let output = try await runNat(arguments: ["plugin-uninstall", name, "--json"])
+        return try decodeJSON(PluginUninstalled.self, from: output)
+    }
+
+    /// Add a plugin source, `owner/repo` — `nat plugin-source-add`.
+    public func pluginSourceAdd(repo: String) async throws -> PluginSourceList {
+        let output = try await runNat(arguments: ["plugin-source-add", repo, "--json"])
+        return try decodeJSON(PluginSourceList.self, from: output)
+    }
+
+    /// Remove a plugin source — `nat plugin-source-remove`, refused for
+    /// nat's own.
+    public func pluginSourceRemove(repo: String) async throws -> PluginSourceList {
+        let output = try await runNat(arguments: ["plugin-source-remove", repo, "--json"])
+        return try decodeJSON(PluginSourceList.self, from: output)
+    }
+
     /// Get paths to nat's configuration and runtime files.
     ///
     /// - Returns: NatPaths containing config path, log directory, and nudge file path

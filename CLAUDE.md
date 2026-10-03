@@ -26,6 +26,8 @@ any one package does it.
 - `internal/source/` — the task-source plugin protocol — external
   `nat-source-<name>` binaries own the containers a source project's tasks
   hang off. See `internal/source/CLAUDE.md`.
+- `internal/plugins/` — installs, updates and uninstalls those binaries from
+  plugin sources' GitHub releases (`nat-plugins.json`), behind `nat plugin-*`.
 - `internal/domain/` — Project/Milestone/Slice models, `StateOf`, progress math.
 - `internal/actions/` — headless claim/launch/approve/landed/worktree flow,
   shared by `internal/tui` and `internal/cli`. See `internal/actions/CLAUDE.md`.
@@ -249,6 +251,16 @@ vanishes; a plugin that fails or is missing concludes nothing — the project
 still opens and `source.error` says why. gnat talks only to `nat`, and
 agents never see the plugin. The protocol and the `nat` contract are
 specified in `docs/design/task-sources/README.md`.
+
+**Plugin install.** `nat plugin-install`/`-uninstall` (and gnat's Settings
+▸ Sources over them) put a plugin under `<config dir>/plugins/<name>/` from a
+plugin source's release, checked against its manifest's sha256, with an
+`installed.json` beside it. A plugin directory with no such record was put
+there by hand and is **never overwritten**; uninstall is **refused while any
+project uses the plugin** (naming them) and for one found only on PATH. nat's
+own repo is always the first source and **can't be removed**; a source that
+can't be read is its `error`, never "no plugins". Format and contract:
+`docs/design/task-sources/README.md`, "Installing plugins".
 
 **Plan order.** Read from the Slices data source's first view's own row
 order (`notion.PlanOrder`), never from `created_time` — Notion records that
