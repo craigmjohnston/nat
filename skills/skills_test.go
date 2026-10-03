@@ -89,6 +89,26 @@ func TestNextSliceHandsTheBranchBack(t *testing.T) {
 	}
 }
 
+// A /next-slice agent may well be on the user's tmux server too, so the skill
+// carries the prompts' tmux rule in its own words.
+func TestNextSliceNeverKillsTheTmuxServer(t *testing.T) {
+	body, err := fs.ReadFile(FS(), "next-slice/SKILL.md")
+	if err != nil {
+		t.Fatalf("read the next-slice skill: %v", err)
+	}
+	text := string(body)
+	for _, want := range []string{
+		"Never run `tmux kill-server`",
+		"session you did not create",
+		"`tmux -L <name>` on every command",
+		"`TMUX_TMPDIR` does not\n  isolate you",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the next-slice skill does not say %q", want)
+		}
+	}
+}
+
 // Visible work is handed in as images where the project already renders them,
 // and never by a rendering pipeline the agent made up; the slice and fix
 // prompts say the same in their own words.

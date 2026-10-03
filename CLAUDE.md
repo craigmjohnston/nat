@@ -108,6 +108,12 @@ agent sent at a review that's already over). Dependencies are not checked.
 standing ban on agents running `gh` is relaxed — for exactly `gh pr view
 --comments` and `gh pr checks`.
 
+**tmux is the user's.** Every agent nat launches runs on the user's own tmux
+server, beside every other agent, so every prompt and `/next-slice` carry a
+standing rule: never `tmux kill-server`, never kill, detach or send keys to a
+session the agent did not create, and a tmux of its own goes on a private
+`-L` socket (`TMUX_TMPDIR` does not isolate a process with `$TMUX` set).
+
 **Hand-back.** `complete-slice --branch` (or `/next-slice`'s own end)
 records the branch and leaves status alone — refused outright on a project
 with no `Branch` column, before the note goes on. The hand-back note and any

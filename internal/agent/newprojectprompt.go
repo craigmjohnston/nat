@@ -80,6 +80,7 @@ func NewProjectPrompt(workspaceID, description string) string {
 	b.WriteString("workspace id replaces the proposal already there rather than adding a\n")
 	b.WriteString("second one.\n")
 	b.WriteString(namingPassage)
+	b.WriteString(tmuxPassage)
 
 	b.WriteString("\n## Guardrails\n\n")
 	b.WriteString("- Plan only. Never claim, start, or complete a slice — there is no\n")

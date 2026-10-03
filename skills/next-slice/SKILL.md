@@ -293,3 +293,8 @@ too — a milestone's status follows its slices, and there is nothing to set.
 - One branch per slice, and never push to main.
 - Never open or merge a pull request. Opening one is the board's job, after the
   user has reviewed the branch you handed back.
+- Never run `tmux kill-server`, and never kill, detach or send keys to a tmux
+  session you did not create: when nat launched you, you are on the user's own
+  server (`$TMUX` names it), beside every other agent. A tmux of your own gets
+  a private socket, `tmux -L <name>` on every command — `TMUX_TMPDIR` does not
+  isolate you while `$TMUX` is set.

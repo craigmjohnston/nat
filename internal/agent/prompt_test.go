@@ -840,6 +840,34 @@ func TestEveryPromptCarriesTheNamingRule(t *testing.T) {
 	}
 }
 
+// Every agent nat launches sits on the user's own tmux server, so every prompt
+// says not to kill it or touch another session — one kill-server took every
+// running agent down twice.
+func TestEveryPromptCarriesTheTmuxRule(t *testing.T) {
+	const name, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
+	for prompt, text := range map[string]string{
+		"slice":          Prompt(testContext()),
+		"slice worktree": Prompt(worktreeContext()),
+		"slice gnat":     Prompt(gnatContext()),
+		"slice resume":   Prompt(resumeContext()),
+		"slice no repo":  Prompt(repoUnknownContext()),
+		"fix":            Prompt(fixContext()),
+		"plan":           PlanPrompt(testProjectID, name, dir, "", "", ""),
+		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", "", ""),
+		"plan gnat":      PlanPrompt(testProjectID, name, dir, "", "", FrontendGnat),
+		"new project":    NewProjectPrompt("ws-1", "A todo app."),
+	} {
+		if !strings.Contains(text, tmuxPassage) {
+			t.Errorf("the %s prompt does not carry the tmux rule", prompt)
+		}
+	}
+	for _, want := range []string{"Never run `tmux\nkill-server`", "tmux -L <name>", "`TMUX_TMPDIR`\ndoes not isolate you"} {
+		if !strings.Contains(tmuxPassage, want) {
+			t.Errorf("the tmux rule does not say %q", want)
+		}
+	}
+}
+
 // Every slice and fix prompt tells the agent how to leave a note on a later
 // slice, from its own slice and pinned to the project like every command.
 func TestSliceAndFixPromptsCarryTheNoteCommand(t *testing.T) {

@@ -109,6 +109,7 @@ func fixPrompt(c PromptContext) string {
 	b.WriteString("which they can switch while you work.\n")
 	b.WriteString(notesPassage(c))
 	b.WriteString(namingPassage)
+	b.WriteString(tmuxPassage)
 
 	b.WriteString("\n## Finish\n\n")
 	if c.Branch != "" {
