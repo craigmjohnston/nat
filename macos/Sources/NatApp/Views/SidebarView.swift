@@ -1142,12 +1142,17 @@ struct SidebarView: View {
         }
     }
 
-    /// Runs a nat write and refreshes, surfacing nat's own refusal.
+    /// Runs a nat write and refreshes, surfacing nat's own refusal. The write
+    /// went through the replica, so the replica is what is read back — a
+    /// staleness pull would only wait on news we made. Kept although the
+    /// write also nudges: the watcher only notices on its next one-second
+    /// tick, and only once a project has started it, where this read lands
+    /// the write's result straight away for the cost of a file read.
     private func run(_ work: @escaping @MainActor () async throws -> Void) {
         Task {
             do {
                 try await work()
-                await appModel.refresh()
+                await appModel.refresh(.replica)
             } catch {
                 actionError = commandMessage(of: error)
             }
@@ -1283,7 +1288,7 @@ struct SidebarView: View {
                         onClose: { view.newSliceTarget = nil },
                         onCreated: {
                             view.newSliceTarget = nil
-                            Task { await appModel.refresh() }
+                            Task { await appModel.refresh(.replica) }
                         }
                     )
                 }
@@ -1296,7 +1301,7 @@ struct SidebarView: View {
                         onClose: { view.newTaskContainer = nil },
                         onCreated: {
                             view.newTaskContainer = nil
-                            Task { await appModel.refresh() }
+                            Task { await appModel.refresh(.replica) }
                         }
                     )
                 }
@@ -1336,7 +1341,7 @@ struct SidebarView: View {
                         onClose: { view.sliceForEdit = nil },
                         onSaved: {
                             view.sliceForEdit = nil
-                            Task { await appModel.refresh() }
+                            Task { await appModel.refresh(.replica) }
                         }
                     )
                 }
