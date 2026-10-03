@@ -32,7 +32,7 @@ public struct MilestoneStatus: Equatable {
     }
 
     /// What the segment's tooltip reads, e.g. "M33 — 4/15".
-    public var tooltip: String { "\(title) — \(done)/\(total)" }
+    public var tooltip: String { "\(title): \(done)/\(total)" }
 }
 
 /// The status bar's left cell, built once from a project's plan: the overall
@@ -58,7 +58,7 @@ public struct StatusBarProgress: Equatable {
     }
 
     /// What the done stub's tooltip reads, e.g. "Done — 175".
-    public var doneTooltip: String { "Done — \(doneStub)" }
+    public var doneTooltip: String { "Done: \(doneStub)" }
 }
 
 /// Builds the status bar's progress from a project's milestones.

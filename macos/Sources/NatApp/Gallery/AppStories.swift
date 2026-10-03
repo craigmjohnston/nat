@@ -511,7 +511,7 @@ enum AppStories {
 
         Story(
             name: "window-done",
-            summary: "A Done slice: struck through in the tree, its PR section open on the merged pull request.",
+            summary: "A Done slice: struck through in the tree, its PR section open on the merged pull request, Merged beside the PR heading.",
             size: window
         ) {
             await slicePane(Fixtures.shellSliceID, agents: [])
@@ -690,7 +690,7 @@ enum AppStories {
 
         Story(
             name: "workshop-composer",
-            summary: "A project's workshop before launch: Brief alone in the middle, no Plan section yet, no titlebar tabs, the brief editor full-height on the right, Launch in Brief's header.",
+            summary: "A project's workshop before launch: Brief alone in the middle, no Plan section yet, no titlebar tabs, the brief editor full-height on the right, Plan in Brief's header.",
             size: window
         ) {
             let appModel = await Fixtures.startedAppModel()
@@ -701,7 +701,7 @@ enum AppStories {
 
         Story(
             name: "workshop-launching",
-            summary: "A project's workshop mid-launch: Launch busy, the brief read-only, the Terminal tab alone, the terminal pane starting.",
+            summary: "A project's workshop mid-launch: Plan busy, the brief read-only, the Terminal tab alone, the terminal pane starting.",
             size: window
         ) {
             let client = FixtureNatClient()
@@ -844,7 +844,7 @@ enum AppStories {
 
         Story(
             name: "untitled-workshop-launching",
-            summary: "An Untitled project mid-launch from the starter card: the workshop's layout with Launch busy and the request read-only.",
+            summary: "An Untitled project mid-launch from the starter card: the workshop's layout with Plan busy and the request read-only.",
             size: window
         ) {
             let client = FixtureNatClient()
@@ -931,6 +931,18 @@ enum AppStories {
             let appModel = await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig)
             appModel.selectedSliceID = Fixtures.mergeBoxSliceID
             return SidebarView(appModel: appModel).environment(\.pulsesPaused, true)
+        },
+
+        Story(
+            name: "sidebar-scrolled",
+            summary: "The sidebar, short, its Projects tree scrolled down: the active project's row pinned at the "
+                + "top of the tree over its milestones, the rows scrolling under it hidden behind it.",
+            size: CGSize(width: sidebar.width, height: 420)
+        ) {
+            let appModel = await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = Fixtures.mergeBoxSliceID
+            return SidebarView(appModel: appModel, folded: ["active": true], treeAnchor: .center)
+                .environment(\.pulsesPaused, true)
         },
 
         Story(

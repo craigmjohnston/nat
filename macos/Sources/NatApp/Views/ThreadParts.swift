@@ -102,7 +102,7 @@ struct LaunchCard: View {
             HStack(alignment: .center, spacing: 6) {
                 ThreadIcon(symbol: blocked ? "lock" : "play.circle")
                 Text(blocked ? "Blocked" : mode == .relaunch ? "Relaunch" : "Launch")
-                    .monoXS(weight: .medium)
+                    .font(.system(size: GnatMetrics.body, weight: .medium))
                     .ink(blocked ? .tertiary : .secondary)
                 Spacer(minLength: 0)
                 Button(action: onLaunch) {
@@ -179,7 +179,7 @@ struct LaunchCard: View {
             Text("Start an agent with this brief, in a worktree on a new branch. Its log appears here and its terminal opens on the right.")
                 .ink(.secondary)
         case .relaunch:
-            Text("Start a new agent on its branch, told it is continuing — no agent is running on it now.")
+            Text("No agent is running on this task. Relaunch to start a new agent on its branch that carries on from the work so far.")
                 .ink(.secondary)
         case .blocked(let names):
             let waiting = names.isEmpty ? Text("its dependencies") : names.enumerated().reduce(Text("")) { text, entry in

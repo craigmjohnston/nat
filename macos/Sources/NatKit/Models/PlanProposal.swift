@@ -164,7 +164,7 @@ public struct PlanAccepted: Equatable, Sendable, Decodable {
 /// The words of the proposal's rail section and the accepted pane, written once
 /// — the mock is `NFRail`/`NFShell` in `docs/design/nat-new-project/ui-npflow.jsx`.
 public enum ProposalText {
-    public static let nameCaption = "Project name — suggested by the planning agent"
+    public static let nameCaption = "Project name, suggested by the planning agent"
     public static let acceptLabel = "Accept plan"
     public static let keepLabel = "Keep workshopping"
     public static let emptyNameError = "Give the project a name to accept the plan."

@@ -54,7 +54,7 @@ struct LaunchOptionsForm: View {
                 .padding(.vertical, 4)
 
             // Footnote
-            Text("Runs detached in tmux — closing nat won't stop it.")
+            Text("The agent runs in tmux, so closing gnat won't stop it.")
                 .font(.system(size: Typo.caption, weight: .regular))
                 .ink(.tertiary)
         }

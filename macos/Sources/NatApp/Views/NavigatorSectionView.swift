@@ -20,6 +20,9 @@ struct NavSectionView<Actions: View, Content: View>: View {
     /// The design's quiet meta beside the label, drawn only while folded — a
     /// source section's count.
     var meta: String?
+    /// A status badge just after the label, drawn open or folded — the PR
+    /// section's Merged.
+    var status: NavSectionStatus?
     let onHead: () -> Void
     var onFold: (() -> Void)?
     @ViewBuilder var actions: () -> Actions
@@ -52,14 +55,20 @@ struct NavSectionView<Actions: View, Content: View>: View {
                 .padding(.horizontal, -6)
                 .contentShape(Rectangle())
                 .onTapGesture { (onFold ?? onHead)() }
-            Text(label)
-                .font(.system(size: GnatMetrics.body))
-                .ink(.primary)
-                // A label longer than the column ("Visual changes") takes
-                // the room it needs rather than truncating.
-                .fixedSize(horizontal: true, vertical: false)
-                .frame(minWidth: 58, alignment: .leading)
-            if let meta, !open {
+            HStack(spacing: 6) {
+                Text(label)
+                    .font(.system(size: GnatMetrics.body))
+                    .ink(.primary)
+                    // A label longer than the column ("Visual changes") takes
+                    // the room it needs rather than truncating.
+                    .fixedSize(horizontal: true, vertical: false)
+                // The status, a badge just after the label.
+                if let status {
+                    Chip(status.label, tone: status.tone, size: .small).fixedSize()
+                }
+            }
+            .frame(minWidth: 58, alignment: .leading)
+            if status == nil, let meta, !open {
                 Text(meta).monoXS().ink(.tertiary).lineLimit(1)
             }
             Spacer(minLength: 0)
@@ -76,15 +85,22 @@ struct NavSectionView<Actions: View, Content: View>: View {
 
 extension NavSectionView where Actions == EmptyView {
     init(
-        label: String, open: Bool, selected: Bool = false, meta: String? = nil,
+        label: String, open: Bool, selected: Bool = false, meta: String? = nil, status: NavSectionStatus? = nil,
         onHead: @escaping () -> Void, onFold: (() -> Void)? = nil, @ViewBuilder content: @escaping () -> Content
     ) {
         self.init(
-            label: label, open: open, selected: selected, meta: meta, onHead: onHead, onFold: onFold,
+            label: label, open: open, selected: selected, meta: meta, status: status, onHead: onHead, onFold: onFold,
             actions: { EmptyView() }, content: content)
     }
 }
 
+extension NavSectionStatus {
+    var tone: Tone {
+        switch self {
+        case .merged: return .success
+        }
+    }
+}
 
 /// The navigator column: whatever sections the selection has, and a filler
 /// taking the column's slack when every section is folded. Its title is the
@@ -137,9 +153,9 @@ struct NavHeading: View {
     }
 }
 
-/// One card of the Thread log: its icon, who, the toned meta; then the body,
-/// cut short as the brief is; then its labelled facts on the chrome ground under a
-/// line.
+/// One card of the Thread log: its icon and title (who and what they did,
+/// as one line); then the body, cut short as the brief is; then its
+/// labelled facts, on the same ground with nothing between them.
 struct ThreadEventCard: View {
     let event: ThreadEvent
 
@@ -148,9 +164,13 @@ struct ThreadEventCard: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     ThreadIcon(symbol: event.kind.symbol)
-                    Text(event.who).monoXS(weight: .medium).ink(.secondary)
+                    // An action and who did it are one line, in one face
+                    // and ink: "Agent handed back".
+                    Text(event.title)
+                        .font(.system(size: GnatMetrics.body, weight: .medium))
+                        .ink(.secondary)
                 }
-                if let meta = event.meta {
+                if !event.metaIsAction, let meta = event.meta {
                     Text(meta).monoXS().ink(tone).lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -189,9 +209,7 @@ struct ThreadEventCard: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .surface(.chrome)
-                .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
-                .padding(.top, event.body == nil ? 8 : 0)
+                .padding(.top, event.body == nil ? 2 : 0)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

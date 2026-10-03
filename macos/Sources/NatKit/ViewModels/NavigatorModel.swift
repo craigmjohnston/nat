@@ -119,7 +119,7 @@ public enum MainPaneTab: CaseIterable, Equatable, Sendable {
 /// facts — and, where the design assumed a fact nat does not have, over the
 /// fact nat does: Changes reads a branch, and only a recorded one can be read
 /// (`nat slice-diff` refuses a slice with none), so it is live once a branch
-/// is recorded rather than the moment an agent launches.
+/// is recorded rather than the moment an agent is launched.
 public struct NavigatorModel: Equatable, Sendable {
     public let state: SliceDisplayState
     public let hasPR: Bool
@@ -232,6 +232,24 @@ public struct NavigatorModel: Equatable, Sendable {
     /// Whether the PR header carries Merge: an open pull request on a slice
     /// not yet Done.
     public var showsMerge: Bool { hasPR && state != .done }
+
+    /// The PR header's status: Merged once the slice is Done with a pull
+    /// request — Done is written only by the merge, so nothing past the
+    /// slice's own status is read for it.
+    public var prStatus: NavSectionStatus? {
+        state == .done && hasPR ? .merged : nil
+    }
+}
+
+/// A status a navigator section's header carries beside its label.
+public enum NavSectionStatus: Equatable, Sendable {
+    case merged
+
+    public var label: String {
+        switch self {
+        case .merged: return "Merged"
+        }
+    }
 }
 
 /// How a Thread card's meta line is toned.
@@ -288,10 +306,14 @@ public struct ThreadEvent: Equatable, Sendable {
     /// drawn as the triage card (Queue / Fold in / Drop, Apply) in its place
     /// in the log rather than as a record.
     public let awaitsTriage: Bool
+    /// Whether the meta says what `who` did ("handed back", "left a note"),
+    /// so the card reads the two as one line, `title`; false where it is
+    /// a separate fact about the card, such as a comment's time.
+    public let metaIsAction: Bool
 
     public init(
         _ kind: ThreadEventKind, who: String, meta: String? = nil, tone: ThreadTone = .muted,
-        body: String? = nil, facts: [ThreadFact] = [], awaitsTriage: Bool = false
+        body: String? = nil, facts: [ThreadFact] = [], awaitsTriage: Bool = false, metaIsAction: Bool = true
     ) {
         self.kind = kind
         self.who = who
@@ -300,6 +322,14 @@ public struct ThreadEvent: Equatable, Sendable {
         self.body = body
         self.facts = facts
         self.awaitsTriage = awaitsTriage
+        self.metaIsAction = metaIsAction
+    }
+
+    /// The card's first line where the meta is an action: who, then what
+    /// they did, as one sentence — "Agent handed back".
+    public var title: String {
+        guard metaIsAction, let meta else { return who }
+        return "\(who) \(meta)"
     }
 }
 
@@ -370,10 +400,12 @@ private func threadEvent(_ event: TaskLogEvent) -> ThreadEvent {
     case .sentBack:
         return ThreadEvent(.sentBack, who: "You", meta: "sent back with comments", tone: .accent, body: note)
     case .released:
-        return ThreadEvent(.released, who: event.by.flatMap { $0.isEmpty ? nil : $0 } ?? "Released",
-                           meta: "released to Todo")
+        guard let by = event.by.flatMap({ $0.isEmpty ? nil : $0 }) else {
+            return ThreadEvent(.released, who: "Released to Todo")
+        }
+        return ThreadEvent(.released, who: by, meta: "released to Todo")
     case .relaunched:
-        return ThreadEvent(.relaunched, who: "Relaunched", meta: "picking up the work so far")
+        return ThreadEvent(.relaunched, who: "Relaunched on the work so far")
     case .blocked:
         return ThreadEvent(.blocked, who: "Agent", meta: "blocked", tone: .hot, body: note)
     case .summary:
@@ -389,8 +421,10 @@ private func threadEvent(_ event: TaskLogEvent) -> ThreadEvent {
             },
             awaitsTriage: pending)
     case .note:
-        return ThreadEvent(.note, who: event.by.flatMap { $0.isEmpty ? nil : $0 } ?? "Note",
-                           meta: "left a note", body: note)
+        guard let by = event.by.flatMap({ $0.isEmpty ? nil : $0 }) else {
+            return ThreadEvent(.note, who: "Note", body: note)
+        }
+        return ThreadEvent(.note, who: by, meta: "left a note", body: note)
     case .approved:
         let pr = event.pr ?? ""
         if let number = pullRequestNumber(pr) {

@@ -127,7 +127,7 @@ struct ContinuousDiffView: View {
 
     var body: some View {
         if diff.files.isEmpty {
-            MainPaneNote(text: "Nothing to show — the branch matches its base")
+            MainPaneNote(text: "The branch matches its base, so there is nothing to show")
         } else {
             DiffCanvasRepresentable(
                 files: diff.files, state: state, attachments: attachments, actions: actions,
@@ -249,7 +249,7 @@ struct SliceMainPane: View {
                 authorName: appModel.config?.assigneeUserName ?? "You",
                 authorInitials: initialsFor(appModel.config?.assigneeUserName))
         } else if let message = store.loadState.errorMessage {
-            MainPaneNote(text: "Failed to read the diff — \(message)")
+            MainPaneNote(text: "The diff could not be read: \(message)")
         } else {
             QuietLoadingView(label: "Reading the branch")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

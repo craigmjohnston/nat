@@ -48,7 +48,7 @@ public struct ProjectMirrored: Equatable, Sendable, Decodable {
 public enum MirrorText {
     public static let cardTitle = "Mirror this plan to Notion?"
     public static let cardBody =
-        "The plan stays local either way — a Notion page keeps it in sync, so anyone on the project can read and edit it."
+        "The plan stays on this Mac either way. A Notion page keeps a copy in sync, so anyone on the project can read and edit it."
     public static let choosePage = "Choose page\u{2026}"
     public static let dismiss = "Dismiss"
 

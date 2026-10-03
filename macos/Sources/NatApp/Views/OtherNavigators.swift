@@ -39,7 +39,8 @@ struct SessionNavigatorView: View {
                     VStack(spacing: 6) {
                         ThreadEventCard(event: ThreadEvent(
                             .launched, who: "Started", meta: ago(Date().timeIntervalSince(session.startedAt)),
-                            facts: [session.branch.isEmpty ? ThreadFact("dir", session.dir) : ThreadFact("branch", session.branch)]))
+                            facts: [session.branch.isEmpty ? ThreadFact("dir", session.dir) : ThreadFact("branch", session.branch)],
+                            metaIsAction: false))
                         if let agent {
                             let waiting = AgentActivity(agent.activity) == .waiting
                             let reading = agentFacts(agent)
@@ -142,7 +143,7 @@ struct SessionNavigatorView: View {
                         }
                     }
                 } else if let message = diffStore.loadState.errorMessage {
-                    NavNotice(text: "The diff could not be read — \(message)")
+                    NavNotice(text: "The diff could not be read: \(message)")
                 } else {
                     QuietLoadingView(label: "Reading the branch").frame(maxWidth: .infinity, minHeight: 80)
                 }
@@ -164,7 +165,7 @@ struct SessionNavigatorView: View {
             if let pr = prStore.loadState.pr, pr.number == selected?.number {
                 PRSectionBody(pr: pr, staleMessage: prStore.loadState.errorMessage)
             } else if let message = prStore.loadState.errorMessage {
-                NavNotice(text: "The pull request could not be read — \(message)")
+                NavNotice(text: "The pull request could not be read: \(message)")
             } else {
                 QuietLoadingView(label: "Reading the pull request").frame(maxWidth: .infinity, minHeight: 80)
             }
@@ -198,7 +199,7 @@ struct SessionMainPane: View {
                         onToggleCollapsed: { store.toggleCollapsed($0) },
                         review: review)
                 } else if let message = store.loadState.errorMessage {
-                    MainPaneNote(text: "Failed to read the diff — \(message)")
+                    MainPaneNote(text: "The diff could not be read: \(message)")
                 } else {
                     QuietLoadingView(label: "Reading the branch").frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -224,7 +225,7 @@ private func sessionSelectedPRNumber(_ appModel: AppModel, _ session: Session) -
 // MARK: - The workshop
 
 /// The workshop's navigator, the same for an Untitled tab and a project:
-/// Brief — the request, Launch before and End session after — over Plan —
+/// Brief — the request, Plan before and End session after — over Plan —
 /// what the agent has proposed, with Accept beside Keep workshopping.
 struct WorkshopNavigatorView: View {
     @Bindable var appModel: AppModel
@@ -296,7 +297,7 @@ struct WorkshopNavigatorView: View {
                 .buttonStyle(GnatHeaderButtonStyle())
         } else {
             Button(action: { Task { await appModel.launchWorkshop(request: appModel.workshopDraft) } }) {
-                HeaderActionLabel(title: "Launch", systemImage: "arrow.right", isBusy: appModel.workshopLaunching)
+                HeaderActionLabel(title: "Plan", systemImage: "arrow.right", isBusy: appModel.workshopLaunching)
             }
             .buttonStyle(GnatHeaderButtonStyle(primary: true))
             .keyboardShortcut(.return, modifiers: .command)
@@ -310,7 +311,7 @@ struct WorkshopNavigatorView: View {
             NavProse {
                 if let request = appModel.workshopRequest {
                     if request.isEmpty {
-                        Text("Launched with no request — a plain planning session.").ink(.secondary)
+                        Text("This planning session was started without a request.").ink(.secondary)
                     } else {
                         Excerpt(text: request) { shown in
                             Text(markdownAttributed(shown, size: GnatMetrics.body))
@@ -319,11 +320,11 @@ struct WorkshopNavigatorView: View {
                         }
                     }
                 } else {
-                    Text("This session was launched before gnat was; what it was asked is in the terminal.")
+                    Text("This session was started before gnat opened. You can find its request in the terminal.")
                         .ink(.secondary)
                 }
                 if appModel.activeProposal == nil {
-                    Text("The plan appears here when the agent proposes it.").ink(.tertiary)
+                    Text("The plan will appear here when the agent proposes one.").ink(.tertiary)
                 }
                 if let endError { Text(endError).ink(.danger) }
             }
@@ -331,7 +332,7 @@ struct WorkshopNavigatorView: View {
             NavProse {
                 Text("Describe the changes you want to make in the editor on the right. You can list several and the agent will plan milestones and tasks for them in one go.")
                     .ink(.secondary)
-                Text("\u{2318}\u{21A9} launches.").ink(.tertiary)
+                Text("Use \u{2318}\u{21A9} to send the brief to an agent.").ink(.tertiary)
                 if let error = appModel.workshopLaunchError { Text(error).ink(.danger) }
             }
         }
@@ -499,7 +500,7 @@ private struct ProposedSliceBox: View {
                         .textSelection(.enabled)
                 }
                 if slice.brief.isEmpty {
-                    Text("No brief — the plan gives this task a title only.")
+                    Text("This task has a title but no brief.")
                         .font(.system(size: GnatMetrics.body))
                         .ink(.tertiary)
                 } else {
@@ -532,7 +533,7 @@ private struct WorkshopBriefEditor: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
             if text.isEmpty {
-                Text("What should the plan cover? Describe the changes — several at once is fine. \u{2318}\u{21A9} to launch.")
+                Text("What should the plan cover? Describe the changes you want. You can list several at once. Press \u{2318}\u{21A9} to start planning.")
                     .font(Typo.mono(size: Typo.code))
                     .ink(.tertiary)
                     .padding(.horizontal, 19)

@@ -54,7 +54,7 @@ struct ContainerNavigatorView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 8) {
                             if let message = state.errorMessage {
-                                Text("Showing the last reading — \(message)").ink(.warning)
+                                Text("The refresh failed, so this is the last reading: \(message)").ink(.warning)
                             }
                             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
                                 SourceFactRows(facts: show.container.facts)
@@ -87,7 +87,7 @@ struct ContainerNavigatorView: View {
             NavigatorColumn(anyOpen: true) {
                 Group {
                     if let message = state.errorMessage {
-                        NavNotice(text: "The \(source?.containerNoun ?? "container") could not be read — \(message)")
+                        NavNotice(text: "The \(source?.containerNoun ?? "container") could not be read: \(message)")
                     } else {
                         QuietLoadingView(label: "Reading the \(source?.containerNoun ?? "container")")
                             .frame(maxWidth: .infinity, minHeight: 80)
@@ -117,7 +117,8 @@ struct ContainerNavigatorView: View {
                         NavProse { Text("No comments yet.").ink(.secondary) }
                     }
                     ForEach(Array(section.comments.enumerated()), id: \.offset) { _, comment in
-                        ThreadEventCard(event: ThreadEvent(.agent, who: comment.by, meta: comment.when, body: comment.text))
+                        ThreadEventCard(event: ThreadEvent(
+                            .agent, who: comment.by, meta: comment.when, body: comment.text, metaIsAction: false))
                     }
                 }
                 .padding(6)
@@ -215,7 +216,7 @@ struct ContainerPane: View {
                     .thinScrollers()
                 }
             } else if let message = state.errorMessage {
-                MainPaneNote(text: "The \(noun) could not be read — \(message)")
+                MainPaneNote(text: "The \(noun) could not be read: \(message)")
             } else {
                 QuietLoadingView(label: "Reading the \(noun)")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

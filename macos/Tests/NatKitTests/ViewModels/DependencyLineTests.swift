@@ -52,7 +52,7 @@ final class DependencyLineTests: XCTestCase {
         ]
         XCTAssertEqual(
             dependencyLine(dependsOn: ["dep-1", "dep-2"], blocked: false, plan: plan),
-            "Waits on Fix the parser, Ship the client — all done"
+            "Waits on Fix the parser, Ship the client, all done"
         )
     }
 

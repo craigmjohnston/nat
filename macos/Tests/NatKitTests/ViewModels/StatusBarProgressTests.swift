@@ -42,7 +42,7 @@ final class StatusBarProgressTests: XCTestCase {
         XCTAssertEqual(progress.done, 2)
         XCTAssertEqual(progress.total, 2)
         XCTAssertTrue(progress.milestones.isEmpty)
-        XCTAssertEqual(progress.doneTooltip, "Done — 2")
+        XCTAssertEqual(progress.doneTooltip, "Done: 2")
     }
 
     /// Done milestones fold into the stub whatever their plan order; the open
@@ -123,7 +123,7 @@ final class StatusBarProgressTests: XCTestCase {
         XCTAssertEqual(m.total, 3)
         XCTAssertTrue(m.started)
         XCTAssertEqual(m.fraction, 1.0 / 3.0, accuracy: 0.0001)
-        XCTAssertEqual(m.tooltip, "Foundations — 1/3")
+        XCTAssertEqual(m.tooltip, "Foundations: 1/3")
     }
 
     /// A milestone with nothing done yet collapses to an unstarted circle.
@@ -142,7 +142,7 @@ final class StatusBarProgressTests: XCTestCase {
         let m = progress.milestones[0]
         XCTAssertFalse(m.started)
         XCTAssertEqual(m.fraction, 0.0)
-        XCTAssertEqual(m.tooltip, "Ship — 0/1")
+        XCTAssertEqual(m.tooltip, "Ship: 0/1")
     }
 
     /// A Done slice counts as progress the moment its page says so — see

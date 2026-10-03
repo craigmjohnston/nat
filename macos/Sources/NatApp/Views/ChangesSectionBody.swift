@@ -32,7 +32,7 @@ struct ChangesSectionBody: View {
                         }
                         ForEach(diff.files) { fileRow($0) }
                     } else if let message = store.loadState.errorMessage {
-                        NavNotice(text: "The diff could not be read — \(message)")
+                        NavNotice(text: "The diff could not be read: \(message)")
                         Button("Retry") { Task { await review.refresh(appModel: appModel) } }
                             .buttonStyle(GnatButtonStyle())
                     } else {
@@ -90,13 +90,13 @@ struct ChangesSectionBody: View {
     @ViewBuilder
     private var notices: some View {
         if let stale = store.loadState.errorMessage, store.loadState.diff != nil {
-            NavNotice(text: "Showing the last reading — \(stale)", role: .warning)
+            NavNotice(text: "The refresh failed, so this is the last reading: \(stale)", role: .warning)
         }
         if let drop = review.dropNotice { NavNotice(text: drop, role: .warning) }
         if let error = review.sendError { NavNotice(text: error) }
         if let error = appModel.sliceActions.error(.approve, sliceID: slice.id) { NavNotice(text: error) }
         if reviewing && !store.commentsEditable {
-            NavNotice(text: "Viewing one commit — switch to All commits to comment or approve", role: .secondary)
+            NavNotice(text: "You are viewing one commit. Switch to All commits to comment or approve.", role: .secondary)
         }
     }
 }
@@ -121,9 +121,10 @@ struct FollowUpCards: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     ThreadIcon(symbol: "lightbulb")
-                    Text("Agent").monoXS(weight: .medium).ink(.secondary)
+                    Text("Agent proposed \(followUps.count) follow-up\(followUps.count == 1 ? "" : "s")")
+                        .font(.system(size: GnatMetrics.body, weight: .medium))
+                        .ink(.secondary)
                 }
-                Text("proposed \(followUps.count) follow-up\(followUps.count == 1 ? "" : "s")").monoXS().ink(.hot)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)
