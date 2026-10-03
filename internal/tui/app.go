@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"image/color"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -21,6 +22,8 @@ import (
 	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/logging"
+	"github.com/craigmjohnston/nat/internal/source"
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
@@ -301,7 +304,11 @@ type App struct {
 	prPollGen    int
 	prPollBusy   bool
 	reviewReader actions.PRReviewReader
-	prMerger     PRMerger
+	// newSource builds the task-source client a source project's store tells
+	// what happened to its tasks, by the plugin's name — the installed
+	// nat-source-<name> in production, a fake in the tests.
+	newSource func(name string) (source.Client, error)
+	prMerger  PRMerger
 	prState      map[string]domain.PRReadiness
 	prSettled    map[string]bool
 	worktreeGone map[string]bool
@@ -371,7 +378,7 @@ func NewApp(cfg config.Config, client NotionAPI) *App {
 		board: NewBoard(s), info: NewInfo(s), diff: NewDiff(s), prview: NewPRView(s),
 		launcher: newLauncher(), prs: newPRCreator(), differ: newDiffer(),
 		prReader: newPRReader(), prViewer: newPRViewer(), reviewReader: newReviewReader(), prMerger: newPRMerger(),
-		boardVP: viewport.New(), helpVP: viewport.New()}
+		newSource: defaultNewSource, boardVP: viewport.New(), helpVP: viewport.New()}
 	a.helpVP.SetContent(a.helpBody())
 	return a
 }
@@ -873,9 +880,25 @@ func (a *App) storeFor(id string, cfg config.ProjectConfig) (store.Store, error)
 		return nil, err
 	}
 	// A project of nat's own is the file and nothing else: there is no workspace
-	// to mirror, and so nothing here that could want a credential.
+	// to mirror, and so nothing here that could want a credential. A source
+	// project is the same file, wrapped so its plugin hears of every task —
+	// and wants no credential either. A plugin that cannot be found does not
+	// stop the plan opening, since the plan is nat's own: it opens over a
+	// [source.Unavailable], every plugin call failing in its place, the way
+	// the headless commands open one.
 	st := store.Store(local)
-	if !proj.Local {
+	switch {
+	case proj.Local:
+	case proj.Source != "":
+		src, err := a.newSource(proj.Source)
+		if err != nil {
+			logging.Error("task source plugin unavailable, opening its project without it",
+				"project", id, "source", proj.Source, "err", err)
+			src = source.Unavailable{Err: err}
+		}
+		plugin := source.Project{ID: id, Name: cfg.Name, WorkingDir: cfg.WorkingDir}
+		st = store.NewSourced(local, src, plugin, proj.Source)
+	default:
 		st = store.Mirror(local, store.Over(a.client), proj)
 	}
 	if a.stores == nil {
@@ -883,6 +906,24 @@ func (a *App) storeFor(id string, cfg config.ProjectConfig) (store.Store, error)
 	}
 	a.stores[id] = st
 	return st, nil
+}
+
+// defaultNewSource is the installed nat-source-<name>, found the way every nat
+// command finds one: nat's own plugins directory first, then PATH.
+func defaultNewSource(name string) (source.Client, error) {
+	dir, err := config.Dir()
+	if err != nil {
+		return nil, err
+	}
+	p, ok, err := source.Find(dir, name)
+	if err != nil {
+		return nil, fmt.Errorf("look for the %s task source: %w", name, err)
+	}
+	if !ok {
+		return nil, fmt.Errorf("the %s task source is not installed: no nat-source-%s in %s or on PATH",
+			name, name, filepath.Join(dir, "plugins", name))
+	}
+	return source.New(p.Name, p.Path), nil
 }
 
 // activeStore is the active project's store and its config, or ok false when
@@ -906,6 +947,11 @@ func (a *App) activeStore() (store.Store, config.ProjectConfig, bool) {
 func (a *App) addSlice() tea.Cmd {
 	if !a.canWrite() {
 		return nil
+	}
+	// A source project's milestones are a plugin's containers, which this board
+	// has no way to pick from or offer the plugin's own wording for.
+	if cfg, _ := a.activeProject(); cfg.Source != "" {
+		return a.showToast(fmt.Sprintf("Add tasks to a %s project from gnat or `nat slice-add --container`.", cfg.Source), sevWarning)
 	}
 	m, ok := a.board.SelectedMilestone()
 	if !ok {

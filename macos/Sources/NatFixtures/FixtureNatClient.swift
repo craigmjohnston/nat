@@ -169,7 +169,25 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     // MARK: - Reads
 
     public func info(projectID: String) async throws -> ProjectInfo {
-        try await answer(otherPlans[projectID] ?? plan)
+        try await info(projectID: projectID, refresh: false, expand: [])
+    }
+
+    /// The source project (`Fixtures.sourceProjectID`) answers its own plan,
+    /// its lazy Done group listing cards only where `expand` opens it; every
+    /// other project reads as it always has.
+    public func info(projectID: String, refresh: Bool, expand: [String]) async throws -> ProjectInfo {
+        if projectID == Fixtures.sourceProjectID, otherPlans[projectID] == nil {
+            return try await answer(Fixtures.sourceProjectInfo(expand: expand))
+        }
+        return try await answer(otherPlans[projectID] ?? plan)
+    }
+
+    public func containerShow(projectID: String, containerID: String) async throws -> ContainerShow {
+        try await answer(Fixtures.sourceContainerShow(id: containerID))
+    }
+
+    public func sourceList() async throws -> [SourcePlugin] {
+        try await answer(Fixtures.sourcePlugins)
     }
 
     public func status() async throws -> [AgentStatus] {
@@ -181,7 +199,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail {
-        try await answer(details[sliceRef] ?? Fixtures.sliceDetail)
+        try await answer(details[sliceRef] ?? Fixtures.sourceSliceDetails[sliceRef] ?? Fixtures.sliceDetail)
     }
 
     public func sliceDiff(projectID: String, sliceRef: String, commit: String?) async throws -> SliceDiff {
@@ -400,8 +418,25 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         )
     }
 
+    public func sliceAdd(projectID: String, title: String, container: String, description: String?) async throws -> SliceAddResult {
+        try await record("slice-add \(title) --container \(container)")
+        return SliceAddResult(
+            id: "f1x7500c-0000-4000-8000-000000000099", name: title, status: "Todo",
+            milestoneID: container, milestoneName: container, repo: "", url: "nat://f1x7500c-0000-4000-8000-000000000099")
+    }
+
     public func configSet(key: String, value: String) async throws {
         try await record("config-set \(key)")
+    }
+
+    /// Remembered by action and target, and answered with the message a
+    /// plugin would give.
+    public func sourceAction(
+        projectID: String, action: String, group: String?, container: String?, input: String?
+    ) async throws -> SourceActionResult {
+        let target = group.map { " --group \($0)" } ?? container.map { " --container \($0)" } ?? ""
+        try await record("source-action \(action)\(target)")
+        return SourceActionResult(message: "Ran \(action).")
     }
 
     // MARK: - Scratch project

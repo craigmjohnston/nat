@@ -23,6 +23,9 @@ any one package does it.
 - `internal/notion/` — the Notion client. See `internal/notion/CLAUDE.md`.
 - `internal/store/` — the port between nat and wherever a plan lives
   (`Notion`, `Local`/SQLite). See `internal/store/CLAUDE.md`.
+- `internal/source/` — the task-source plugin protocol — external
+  `nat-source-<name>` binaries own the containers a source project's tasks
+  hang off. See `internal/source/CLAUDE.md`.
 - `internal/domain/` — Project/Milestone/Slice models, `StateOf`, progress math.
 - `internal/actions/` — headless claim/launch/approve/landed/worktree flow,
   shared by `internal/tui` and `internal/cli`. See `internal/actions/CLAUDE.md`.
@@ -229,6 +232,23 @@ falling back to whoever is logged in. Creating one writes the plan file
 board's `N`, which asks where the plan lives only when a projects database
 gives a choice). `config-show` says every project's backend. gnat's
 `ProjectConfig` / `ConfigDocProject` decode all of it and tolerate a missing `slices_ds_id`.
+
+**Task sources.** A source project is a local plan with `backend: source`
+and `source: <plugin name>` in its config entry; its milestones are the
+plugin's *containers* (a Shortcut card, say), keyed by the plugin's id. nat
+owns the tasks; the containers are the plugin's — nat never adds, renames,
+removes or moves one, and never moves a task between them (each refused in
+`store.Sourced`'s own words). Every task is filed under a container
+(`slice-add --container`; `--milestone` refused there). The plugin hears of
+a task's lifecycle by events sent **after** nat's own write, logged and never
+fatal; request and response bodies are never logged — only method, ids and
+exit code. `info --json` carries a `source` block (describe + sidebar tree)
+and appends a synthesized `_unlisted` group of every container with tasks
+that the plugin's tree leaves out, from nat's cached title, so a task never
+vanishes; a plugin that fails or is missing concludes nothing — the project
+still opens and `source.error` says why. gnat talks only to `nat`, and
+agents never see the plugin. The protocol and the `nat` contract are
+specified in `docs/design/task-sources/README.md`.
 
 **Plan order.** Read from the Slices data source's first view's own row
 order (`notion.PlanOrder`), never from `created_time` — Notion records that

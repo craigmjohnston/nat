@@ -32,6 +32,9 @@ public struct SliceDetail: Codable, Equatable, Sendable {
     /// say. Nil from a nat too old to report them, which the Task log reads
     /// as "fall back to what the properties alone say".
     public let events: [TaskLogEvent]?
+    /// The container a task in a source project is filed under —
+    /// `slice-show`'s `container`; nil for every other project.
+    public let container: SliceContainer?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -52,6 +55,7 @@ public struct SliceDetail: Codable, Equatable, Sendable {
         case followUps
         case visuals
         case events
+        case container
     }
 
     public init(from decoder: Decoder) throws {
@@ -76,6 +80,7 @@ public struct SliceDetail: Codable, Equatable, Sendable {
         // A kind this build does not know is left out rather than failing
         // the whole read — a newer nat may record more than this app draws.
         events = try c.decodeIfPresent([LossyTaskLogEvent].self, forKey: .events)?.compactMap(\.event)
+        container = try c.decodeIfPresent(SliceContainer.self, forKey: .container)
     }
 
     public init(
@@ -96,7 +101,8 @@ public struct SliceDetail: Codable, Equatable, Sendable {
         brief: String,
         followUps: [FollowUp] = [],
         visuals: [VisualChange] = [],
-        events: [TaskLogEvent]? = nil
+        events: [TaskLogEvent]? = nil,
+        container: SliceContainer? = nil
     ) {
         self.id = id
         self.name = name
@@ -116,6 +122,7 @@ public struct SliceDetail: Codable, Equatable, Sendable {
         self.followUps = followUps
         self.visuals = visuals
         self.events = events
+        self.container = container
     }
 }
 

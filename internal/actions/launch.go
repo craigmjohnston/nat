@@ -12,6 +12,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
+	"github.com/craigmjohnston/nat/internal/source"
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
@@ -120,6 +121,7 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, view
 				logging.Action("could not record a relaunch", "slice", c.Slice.ID, "err", err)
 			}
 		}
+		c.Container = promptContainer(ctx, st, c.Slice)
 	} else {
 		c.ReviewComments, c.ReviewChecks = reviewSnapshot(viewer, c.WorkingDir, c.Slice.PRURL)
 	}
@@ -132,6 +134,39 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, view
 		return LaunchResult{}, err
 	}
 	return LaunchResult{Context: c, Session: session, Toast: p.Toast, Sev: p.Sev}, nil
+}
+
+// promptContainer reads the container a source project's slice hangs off — its
+// milestone, which in such a project is the plugin's container — for the
+// prompt to carry as context. Only a store with a task source behind it
+// answers [store.ContainerReader], so every other project, and a slice filed
+// under nothing, reads nothing and gets nil. The noun is the plugin's own where
+// it will say, "container" otherwise; a failed container read is logged and
+// leaves the prompt without the section, since a launch never fails over
+// missing context.
+func promptContainer(ctx context.Context, st Store, s domain.Slice) *agent.PromptContainer {
+	cr, ok := st.(store.ContainerReader)
+	if !ok || s.MilestoneID == "" {
+		return nil
+	}
+	d, err := cr.Container(ctx, s.MilestoneID)
+	if err != nil {
+		logging.Error("could not read a slice's container for a launch prompt", "slice", s.ID, "container", s.MilestoneID, "err", err)
+		return nil
+	}
+	noun := "container"
+	if ds, ok := st.(store.Describer); ok {
+		if desc, err := ds.Describe(ctx); err == nil && desc.ContainerNoun != "" {
+			noun = desc.ContainerNoun
+		}
+	}
+	var prose []string
+	for _, sec := range d.Sections {
+		if sec.Kind == source.KindProse && sec.Body != "" {
+			prose = append(prose, sec.Body)
+		}
+	}
+	return &agent.PromptContainer{Noun: noun, Title: d.Title, ExternalURL: d.ExternalURL, Prose: strings.Join(prose, "\n\n")}
 }
 
 // milestoneDigest reads the hand-back summary of every Done sibling and

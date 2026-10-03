@@ -71,6 +71,11 @@ import (
 // may run again itself. Each is independently left empty on a failed read,
 // the project's usual reads-conclude-nothing posture — a launch never fails
 // over missing context.
+//
+// Container is the container a source project's slice hangs off, read off the
+// plugin at launch by [actions.Launch]; nil for every other project, for a fix
+// launch, and where the read failed — the prompt then simply has no section
+// for it.
 type PromptContext struct {
 	Slice           domain.Slice
 	Project         config.ProjectConfig
@@ -91,6 +96,45 @@ type PromptContext struct {
 	GitDiffStat     string
 	ReviewComments  string
 	ReviewChecks    string
+	Container       *PromptContainer
+}
+
+// PromptContainer is the container a task hangs off in a source project — the
+// card, story or ticket in the other tracker — as the agent is told of it.
+type PromptContainer struct {
+	Noun        string // the plugin's container_noun ("card"); "container" when empty
+	Title       string
+	ExternalURL string
+	Prose       string // the container's prose sections, Markdown, in order
+}
+
+// containerSection tells the agent about the container its slice hangs off,
+// as context only: the brief is the work, and the other tracker is nat's to
+// keep in step, so the agent is told to leave it alone. Empty where there is
+// no container.
+func containerSection(c PromptContext) string {
+	ct := c.Container
+	if ct == nil {
+		return ""
+	}
+	noun := ct.Noun
+	if noun == "" {
+		noun = "container"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n## The %s\n\n", noun)
+	fmt.Fprintf(&b, "This slice is one task of several on this %s in the project's tracker.\n", noun)
+	fmt.Fprintf(&b, "The %s's text below is context — the brief above is the work. Do not try\n", noun)
+	fmt.Fprintf(&b, "to act on the %s itself: no commenting on it, no closing it; nat keeps\n", noun)
+	b.WriteString("the tracker in step.\n\n")
+	fmt.Fprintf(&b, "%s\n", ct.Title)
+	if ct.ExternalURL != "" {
+		fmt.Fprintf(&b, "URL: %s\n", ct.ExternalURL)
+	}
+	if ct.Prose != "" {
+		fmt.Fprintf(&b, "\n%s\n", strings.TrimRight(ct.Prose, "\n"))
+	}
+	return b.String()
 }
 
 // gitSnapshotSection is the "captured at launch" rendering [Prompt] (for a
@@ -168,9 +212,9 @@ func Prompt(c PromptContext) string {
 
 	b.WriteString("## The slice\n\n")
 	fmt.Fprintf(&b, "- Name: %s\n", c.Slice.Name)
-	fmt.Fprintf(&b, "- Notion page ID: %s\n", c.Slice.ID)
+	fmt.Fprintf(&b, "- Slice ID: %s\n", c.Slice.ID)
 	if c.Slice.URL != "" {
-		fmt.Fprintf(&b, "- Notion URL: %s\n", c.Slice.URL)
+		fmt.Fprintf(&b, "- Slice URL: %s\n", c.Slice.URL)
 	}
 	fmt.Fprintf(&b, "- Working directory: %s\n", c.WorkingDir)
 	if repoOverridden(c) {
@@ -202,6 +246,7 @@ func Prompt(c PromptContext) string {
 	b.WriteString("A command given no project is refused: there is nothing for it to fall\n")
 	b.WriteString("back to, and in particular not the project the user's board is on,\n")
 	b.WriteString("which they can switch while you work.\n")
+	b.WriteString(containerSection(c))
 
 	b.WriteString("\n## Already in your context\n\n")
 	b.WriteString("`CLAUDE.md` in the working directory — architecture and the verification\n")

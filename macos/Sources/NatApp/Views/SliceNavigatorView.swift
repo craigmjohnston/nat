@@ -250,9 +250,27 @@ struct SliceNavigatorView: View {
     private var facts: some View {
         let deps = dependencies
         return Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
-            GridRow {
-                Text("milestone").ink(.tertiary)
-                Text(milestoneName).ink(.primary).lineLimit(1)
+            // A task under a source container: the container, opening in its
+            // source where it has a URL, and its own facts, in the
+            // milestone's place.
+            if let container = detail.detail?.container {
+                GridRow {
+                    Text(containerNoun).ink(.tertiary)
+                    if let url = container.externalURL.flatMap(URL.init(string:)) {
+                        Button(container.title) { NSWorkspace.shared.open(url) }
+                            .buttonStyle(GnatLinkButtonStyle())
+                            .lineLimit(1)
+                            .help(url.absoluteString)
+                    } else {
+                        Text(container.title).ink(.primary).lineLimit(1)
+                    }
+                }
+                SourceFactRows(facts: container.facts)
+            } else {
+                GridRow {
+                    Text("milestone").ink(.tertiary)
+                    Text(milestoneName).ink(.primary).lineLimit(1)
+                }
             }
             GridRow(alignment: .firstTextBaseline) {
                 Text("depends on").ink(.tertiary)
@@ -277,6 +295,11 @@ struct SliceNavigatorView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .surface(.chrome)
         .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
+    }
+
+    /// What the project's source calls a container — "card".
+    private var containerNoun: String {
+        appModel.source(ofProject: projectID)?.containerNoun ?? "container"
     }
 
     private var plan: [Slice] { appModel.projectStore?.state.projectInfo?.slices ?? [] }
@@ -513,7 +536,8 @@ struct SliceNavigatorView: View {
                 pr: pr,
                 reviewerStore: prStore,
                 staleMessage: prStore.loadState.errorMessage,
-                actionError: appModel.sliceActions.error(.merge, sliceID: slice.id)
+                actionError: appModel.sliceActions.error(.merge, sliceID: slice.id),
+                note: detail.detail?.container?.taskNote
             )
         } else if let message = prStore.loadState.errorMessage {
             NavProse {
@@ -539,6 +563,9 @@ struct PRSectionBody: View {
     var reviewerStore: PRStore?
     var staleMessage: String?
     var actionError: String?
+    /// A source container's word on its tasks' pull requests (`task_note`),
+    /// drawn small at the foot.
+    var note: String?
 
     var body: some View {
         let verdict = reviewVerdict(reviewDecision: pr.reviewDecision)
@@ -570,6 +597,14 @@ struct PRSectionBody: View {
                     .ink(.secondary)
 
                 ReviewersBlock(pr: pr, store: reviewerStore)
+
+                if let note {
+                    Text(note)
+                        .font(.system(size: GnatMetrics.xs))
+                        .ink(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
+                }
             }
         }
         .thinScrollers()

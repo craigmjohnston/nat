@@ -141,11 +141,14 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
     /// drawn loose at the head of the tree, above every milestone, with no
     /// folder of their own. Empty for every other project.
     public let loose: [SidebarSliceRow]
+    /// A source project's fold — its plugin and tree; nil for every other
+    /// project, and for a source project whose plan has not landed yet.
+    public let source: SidebarSource?
 
     public init(
         id: String, name: String, kind: SidebarProjectKind, status: SidebarPlanStatus,
         milestones: [SidebarMilestone], doneMilestones: [SidebarMilestone] = [], needsYou: Int,
-        loose: [SidebarSliceRow] = []
+        loose: [SidebarSliceRow] = [], source: SidebarSource? = nil
     ) {
         self.id = id
         self.name = name
@@ -155,6 +158,7 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
         self.doneMilestones = doneMilestones
         self.needsYou = needsYou
         self.loose = loose
+        self.source = source
     }
 
     /// Whether the project files a slice, for the default-open rule.
@@ -170,7 +174,8 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
 
     /// The project as View ▸ Hide Done Items draws it: no Done folder, and
     /// no done slice under a milestone still holding work. A milestone keeps
-    /// its own count — it is still that far through.
+    /// its own count — it is still that far through. A source project's
+    /// containers drop their done tasks the same way.
     public func hidingDone() -> SidebarProject {
         SidebarProject(
             id: id, name: name, kind: kind, status: status,
@@ -179,8 +184,190 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
                     name: milestone.name, done: milestone.done, total: milestone.total,
                     slices: milestone.slices.filter { $0.state != .done })
             },
-            doneMilestones: [], needsYou: needsYou, loose: loose.filter { $0.state != .done })
+            doneMilestones: [], needsYou: needsYou, loose: loose.filter { $0.state != .done },
+            source: source?.hidingDone())
     }
+}
+
+// MARK: - Task sources
+
+/// What a source draws itself with: an SF Symbol, and the plugin's own SVG
+/// where it gave one (drawn as a template, the symbol its fallback).
+public struct SourceIcon: Equatable, Sendable {
+    public let symbol: String
+    public let svg: String?
+
+    /// The glyph a source that named none is drawn with.
+    public static let fallbackSymbol = "puzzlepiece.extension"
+
+    public init(symbol: String, svg: String? = nil) {
+        self.symbol = symbol.isEmpty ? Self.fallbackSymbol : symbol
+        self.svg = svg
+    }
+}
+
+/// One container row of a source fold: the plugin's own row, with the plan's
+/// tasks filed under it nested beneath.
+public struct SidebarContainer: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let title: String
+    public let externalURL: String?
+    public let badges: [SourceBadge]
+    /// Drawn only under the pointer.
+    public let meta: String?
+    public let menu: [SourceAction]
+    public let tasks: [SidebarSliceRow]
+    /// How many of its tasks need the user.
+    public let needsYou: Int
+
+    public init(
+        id: String, title: String, externalURL: String? = nil, badges: [SourceBadge] = [], meta: String? = nil,
+        menu: [SourceAction] = [], tasks: [SidebarSliceRow], needsYou: Int
+    ) {
+        self.id = id
+        self.title = title
+        self.externalURL = externalURL
+        self.badges = badges
+        self.meta = meta
+        self.menu = menu
+        self.tasks = tasks
+        self.needsYou = needsYou
+    }
+
+    func hidingDone() -> SidebarContainer {
+        SidebarContainer(
+            id: id, title: title, externalURL: externalURL, badges: badges, meta: meta, menu: menu,
+            tasks: tasks.filter { $0.state != .done }, needsYou: needsYou)
+    }
+}
+
+/// One group of a source fold: a header with the plugin's count, then its
+/// child groups (one level) or its containers.
+public struct SidebarSourceGroup: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let label: String
+    public let count: Int?
+    /// Folded until asked for, and listed only once `info --expand` names it.
+    public let lazy: Bool
+    public let menu: [SourceAction]
+    public let children: [SidebarSourceGroup]
+    public let containers: [SidebarContainer]
+
+    public init(
+        id: String, label: String, count: Int? = nil, lazy: Bool = false, menu: [SourceAction] = [],
+        children: [SidebarSourceGroup] = [], containers: [SidebarContainer] = []
+    ) {
+        self.id = id
+        self.label = label
+        self.count = count
+        self.lazy = lazy
+        self.menu = menu
+        self.children = children
+        self.containers = containers
+    }
+
+    func hidingDone() -> SidebarSourceGroup {
+        SidebarSourceGroup(
+            id: id, label: label, count: count, lazy: lazy, menu: menu,
+            children: children.map { $0.hidingDone() }, containers: containers.map { $0.hidingDone() })
+    }
+}
+
+/// A source project's fold: who the plugin is, its header menu, its tree.
+public struct SidebarSource: Equatable, Sendable {
+    public let name: String
+    /// The plugin's own title, else its name.
+    public let title: String
+    /// The short tag Active rows and the titlebar carry for its tasks.
+    public let tag: String
+    public let icon: SourceIcon
+    public let containerNoun: String
+    public let taskNoun: String
+    public let menu: [SourceAction]
+    public let groups: [SidebarSourceGroup]
+    /// The plugin's failed read, drawn as the fold's note.
+    public let error: String?
+
+    public init(
+        name: String, title: String, tag: String, icon: SourceIcon, containerNoun: String, taskNoun: String,
+        menu: [SourceAction] = [], groups: [SidebarSourceGroup], error: String? = nil
+    ) {
+        self.name = name
+        self.title = title
+        self.tag = tag
+        self.icon = icon
+        self.containerNoun = containerNoun
+        self.taskNoun = taskNoun
+        self.menu = menu
+        self.groups = groups
+        self.error = error
+    }
+
+    func hidingDone() -> SidebarSource {
+        SidebarSource(
+            name: name, title: title, tag: tag, icon: icon, containerNoun: containerNoun, taskNoun: taskNoun,
+            menu: menu, groups: groups.map { $0.hidingDone() }, error: error)
+    }
+
+    /// The container with `id`, wherever it sits in the tree.
+    public func container(withID id: String) -> SidebarContainer? {
+        for (_, containers) in containerGroups {
+            if let found = containers.first(where: { $0.id == id }) { return found }
+        }
+        return nil
+    }
+
+    /// Every group that lists containers, depth-first, a child group named
+    /// under its parent ("Ready · Mine") — the breadcrumb picker's column.
+    public var containerGroups: [(group: SidebarSourceGroup, containers: [SidebarContainer])] {
+        var result: [(SidebarSourceGroup, [SidebarContainer])] = []
+        for group in groups {
+            result.append((group, group.containers))
+            for child in group.children {
+                let named = SidebarSourceGroup(
+                    id: child.id, label: "\(group.label) \u{00B7} \(child.label)", count: child.count,
+                    lazy: child.lazy, menu: child.menu, containers: child.containers)
+                result.append((named, child.containers))
+            }
+        }
+        return result
+    }
+}
+
+/// A source project's fold, built from its `info` reading: each container's
+/// tasks are the plan's slices filed under it (`milestoneID` is the
+/// container's id), so a container listed in two groups nests the same tasks
+/// in both.
+func buildSidebarSource(_ info: SourceInfo, rows: [SidebarSliceRow], plan: ProjectInfo) -> SidebarSource {
+    func container(_ row: SourceContainer) -> SidebarContainer {
+        let ids = Set(plan.slices.filter { $0.milestoneID == row.id }.map(\.id))
+        let filed = rows.filter { ids.contains($0.sliceID) }
+        // As a milestone orders them: what can be started first, then the
+        // blocked, then the done.
+        let tasks = filed.filter { $0.state != .blocked && $0.state != .done }
+            + filed.filter { $0.state == .blocked } + filed.filter { $0.state == .done }
+        return SidebarContainer(
+            id: row.id, title: row.title, externalURL: row.externalURL, badges: row.badges, meta: row.meta,
+            menu: row.menu, tasks: tasks, needsYou: tasks.filter(\.state.needsYou).count)
+    }
+    func group(_ group: SourceGroup) -> SidebarSourceGroup {
+        SidebarSourceGroup(
+            id: group.id, label: group.label, count: group.count, lazy: group.lazy, menu: group.menu,
+            children: group.children.map { child in
+                // One level of sub-groups: a grandchild's containers are its
+                // parent's.
+                SidebarSourceGroup(
+                    id: child.id, label: child.label, count: child.count, lazy: child.lazy, menu: child.menu,
+                    containers: (child.containers + child.children.flatMap(\.containers)).map(container))
+            },
+            containers: group.containers.map(container))
+    }
+    return SidebarSource(
+        name: info.name, title: info.title.isEmpty ? info.name : info.title,
+        tag: info.tag, icon: SourceIcon(symbol: info.iconSymbol, svg: info.iconSVG),
+        containerNoun: info.containerNoun.isEmpty ? "container" : info.containerNoun,
+        taskNoun: info.taskNoun.isEmpty ? "task" : info.taskNoun,
+        menu: info.menu, groups: info.groups.map(group), error: info.error)
 }
 
 /// The `UserDefaults` key View ▸ Show/Hide Done Items writes.
@@ -231,10 +418,13 @@ public struct SidebarProjectInput: Sendable {
     public let plan: ProjectInfo?
     public let isLoading: Bool
     public let errorMessage: String?
+    /// Whether config names it a source project — what files it under its
+    /// own fold before its plan (and the `source` in it) has landed.
+    public let isSource: Bool
 
     public init(
         id: String, name: String, kind: SidebarProjectKind = .project, plan: ProjectInfo?,
-        isLoading: Bool = false, errorMessage: String? = nil
+        isLoading: Bool = false, errorMessage: String? = nil, isSource: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -242,15 +432,22 @@ public struct SidebarProjectInput: Sendable {
         self.plan = plan
         self.isLoading = isLoading
         self.errorMessage = errorMessage
+        self.isSource = isSource
     }
+
+    /// A source project: config says so, or its plan carries a `source`.
+    public var isSourceProject: Bool { kind == .project && (isSource || plan?.source != nil) }
 }
 
-/// The sidebar: the Active fold across every project, the Projects tree, and
-/// the Scratch fold under it.
+/// The sidebar: the Active fold across every project, the Projects tree,
+/// each source project's own fold, and the Scratch fold under them.
 public struct SidebarModel: Equatable, Sendable {
     public let active: [SidebarActiveRow]
-    /// Every project but the scratch one.
+    /// Every project but the scratch one and the source projects.
     public let projects: [SidebarProject]
+    /// The source projects, each drawn as a top-level fold of its own
+    /// between Projects and Scratch.
+    public let sources: [SidebarProject]
     /// The reserved scratch project, drawn as a fold of its own rather than
     /// a row of Projects — nil when there is none open.
     public let scratch: SidebarProject?
@@ -260,11 +457,31 @@ public struct SidebarModel: Equatable, Sendable {
         active.filter(\.state.needsYou).count
     }
 
-    public init(active: [SidebarActiveRow], projects: [SidebarProject], scratch: SidebarProject? = nil) {
+    public init(
+        active: [SidebarActiveRow], projects: [SidebarProject], sources: [SidebarProject] = [],
+        scratch: SidebarProject? = nil
+    ) {
         self.active = active
         self.projects = projects
+        self.sources = sources
         self.scratch = scratch
     }
+
+    /// The source project with `id`, if it is one.
+    public func source(projectID id: String) -> SidebarProject? {
+        sources.first { $0.id == id }
+    }
+}
+
+/// Every project's tag as Active rows and the titlebar carry it: a source
+/// project's is its plugin's own `tag` where it has one, every other
+/// project's `projectTags`'.
+public func sidebarTags(_ projects: [SidebarProjectInput]) -> [String: String] {
+    var tags = projectTags(projects.map { (id: $0.id, name: $0.name) })
+    for project in projects {
+        if let tag = project.plan?.source?.tag, !tag.isEmpty { tags[project.id] = tag }
+    }
+    return tags
 }
 
 /// Each project's short tag for the Active rows: the first three letters of
@@ -317,7 +534,7 @@ public func buildSidebarModel(
 ) -> SidebarModel {
     var active: [SidebarActiveRow] = []
     var built: [SidebarProject] = []
-    let tags = projectTags(projects.map { (id: $0.id, name: $0.name) })
+    let tags = sidebarTags(projects)
 
     for project in projects {
         var needsYou = 0
@@ -371,6 +588,15 @@ public func buildSidebarModel(
                     title: row.title, state: row.state, live: row.live))
             }
 
+            // A source project's tasks are drawn under the plugin's own tree,
+            // not as milestones.
+            if let info = plan.source {
+                built.append(SidebarProject(
+                    id: project.id, name: project.name, kind: project.kind, status: planStatus(project),
+                    milestones: [], needsYou: needsYou, source: buildSidebarSource(info, rows: rows, plan: plan)))
+                continue
+            }
+
             var filed = Set<String>()
             for milestone in plan.milestones.sorted(by: { $0.order < $1.order }) {
                 let ids = Set(plan.slices.filter { $0.milestoneID == milestone.id }.map(\.id))
@@ -417,8 +643,10 @@ public func buildSidebarModel(
         return lhs.offset < rhs.offset
     }.map(\.element)
 
+    let sourceIDs = Set(projects.filter(\.isSourceProject).map(\.id))
     return SidebarModel(
-        active: sorted, projects: built.filter { $0.kind != .scratch },
+        active: sorted, projects: built.filter { $0.kind != .scratch && !sourceIDs.contains($0.id) },
+        sources: built.filter { sourceIDs.contains($0.id) },
         scratch: built.first { $0.kind == .scratch })
 }
 

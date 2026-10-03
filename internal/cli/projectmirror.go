@@ -60,6 +60,9 @@ func projectMirror(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
+	if project.IsSource() {
+		return fmt.Errorf("project-mirror: %q is a source project, whose tasks hang off the %s plugin's containers — Notion has nowhere to keep them, so it is not mirrored", project.Name, project.Source)
+	}
 	if !project.IsLocal() {
 		return fmt.Errorf("project-mirror: %q is already tracked in Notion: only a project of nat's own is mirrored", project.Name)
 	}

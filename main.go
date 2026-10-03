@@ -36,6 +36,7 @@ var (
 	newCLIGH        cli.NewGHFunc        = cli.DefaultNewGH
 	newCLIGit       cli.NewGitFunc       = cli.DefaultNewGit
 	newCLIWorktrees cli.NewWorktreesFunc = cli.DefaultNewWorktrees
+	newCLISource    cli.NewSourceFunc    = cli.DefaultNewSource
 	lookPath                             = exec.LookPath
 )
 
@@ -116,6 +117,7 @@ func command(tokens config.TokenSource) error {
 		NewGH:        newCLIGH,
 		NewGit:       newCLIGit,
 		NewWorktrees: newCLIWorktrees,
+		NewSource:    newCLISource,
 		Out:          stdout,
 		In:           stdin,
 		Nudge:        nudge.Touch,

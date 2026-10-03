@@ -25,7 +25,7 @@ import (
 // restores today's behaviour (pull first when the file's copy is stale) for
 // a caller that wants to be sure it is current.
 func info(ctx context.Context, args []string, env Env) error {
-	asJSON, projectRef, refresh, err := parseInfoFlags(args)
+	asJSON, projectRef, refresh, expand, err := parseInfoFlags(args)
 	if err != nil {
 		return err
 	}
@@ -56,28 +56,35 @@ func info(ctx context.Context, args []string, env Env) error {
 	p := plan.Project
 
 	if asJSON {
-		return writeInfoJSON(env.Out, p, conventions, projectID == cfg.ScratchProject)
+		var src *sourceInfoJSON
+		if ss, ok := st.(sourceStore); ok {
+			src = sourceInfo(ctx, ss, project, p, expand)
+		}
+		return writeInfoJSON(env.Out, p, conventions, projectID == cfg.ScratchProject, src)
 	}
 	_, err = io.WriteString(env.Out, infoMarkdown(p, conventions))
 	return err
 }
 
 // parseInfoFlags reads info's own command line: --json and --project like
-// every other read, plus --refresh — info's alone, so it gets its own parser
-// rather than widening [parseJSONFlag] for every command that shares it.
-func parseInfoFlags(args []string) (asJSON bool, projectRef string, refresh bool, err error) {
+// every other read, plus --refresh and --expand — info's alone, so it gets its
+// own parser rather than widening [parseJSONFlag] for every command that
+// shares it.
+func parseInfoFlags(args []string) (asJSON bool, projectRef string, refresh bool, expand []string, err error) {
 	flags := flag.NewFlagSet("info", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	j := flags.Bool("json", false, "print structured JSON instead of markdown")
 	r := flags.Bool("refresh", false, "pull from the workspace first if the replica is stale, instead of reading it as it stands")
+	var groups stringList
+	flags.Var(&groups, "expand", "a source project's lazy sidebar group to fill in, by id; repeat for more")
 	ref := projectFlag(flags)
 	if err := flags.Parse(args); err != nil {
-		return false, "", false, usageErrorf("info: %s", err)
+		return false, "", false, nil, usageErrorf("info: %s", err)
 	}
 	if flags.NArg() > 0 {
-		return false, "", false, usageErrorf("info: unexpected argument %q", flags.Arg(0))
+		return false, "", false, nil, usageErrorf("info: unexpected argument %q", flags.Arg(0))
 	}
-	return *j, *ref, *r, nil
+	return *j, *ref, *r, groups, nil
 }
 
 // parseJSONFlag reads the command line of a command whose only flags are --json
@@ -106,6 +113,9 @@ type infoJSON struct {
 	Project    projectJSON     `json:"project"`
 	Milestones []milestoneJSON `json:"milestones"`
 	Slices     []sliceJSON     `json:"slices"`
+	// Source is a source project's plugin and its sidebar tree; absent for
+	// any other project.
+	Source *sourceInfoJSON `json:"source,omitempty"`
 }
 
 type projectJSON struct {
@@ -142,11 +152,12 @@ type sliceJSON struct {
 // writeInfoJSON encodes the project as JSON, indented: it is read by people as
 // often as by programs, and a stream nobody can skim is a poor default.
 // scratch says p is the scratch project, whose unfiledMilestone is marked.
-func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch bool) error {
+func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch bool, src *sourceInfoJSON) error {
 	doc := infoJSON{
 		Project:    projectJSON{ID: p.ID, Name: p.Name, Conventions: conventions},
 		Milestones: make([]milestoneJSON, 0, len(p.Milestones)),
 		Slices:     make([]sliceJSON, 0, len(p.Slices)),
+		Source:     src,
 	}
 	for _, m := range p.Milestones {
 		doc.Milestones = append(doc.Milestones, milestoneJSON{
@@ -157,23 +168,30 @@ func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch 
 
 	slicesByID := domain.SlicesByID(p.Slices)
 	for _, s := range p.Slices {
-		sj := sliceJSON{
-			ID: s.ID, Name: s.Name, Status: s.StatusName, MilestoneID: s.MilestoneID,
-			Assignee: s.AssigneeName, PR: s.PRURL, URL: s.URL,
-			Branch: s.Branch, Repo: s.Repo, DependsOn: s.DependsOn,
-			Blocked: domain.Blocked(s, slicesByID), HandedBack: s.HandedBack(),
-		}
-		// The CLI takes no tmux or gh reading, so the state is the page's own:
-		// a Done slice reads as none, and a live agent's working/waiting are
-		// the app's to overlay from `nat status`.
-		if state := domain.StateOf(s, domain.AgentNone, domain.PRUnread, slicesByID); state != domain.SliceStateNone {
-			sj.State = state.String()
-		}
-		doc.Slices = append(doc.Slices, sj)
+		doc.Slices = append(doc.Slices, sliceJSONOf(s, slicesByID))
 	}
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	return enc.Encode(doc)
+}
+
+// sliceJSONOf is one slice as info prints it, its blocked and state read
+// against slicesByID — the plan it sits in. container-show prints a
+// container's tasks through it too, so a task reads the same from either.
+func sliceJSONOf(s domain.Slice, slicesByID map[string]domain.Slice) sliceJSON {
+	sj := sliceJSON{
+		ID: s.ID, Name: s.Name, Status: s.StatusName, MilestoneID: s.MilestoneID,
+		Assignee: s.AssigneeName, PR: s.PRURL, URL: s.URL,
+		Branch: s.Branch, Repo: s.Repo, DependsOn: s.DependsOn,
+		Blocked: domain.Blocked(s, slicesByID), HandedBack: s.HandedBack(),
+	}
+	// The CLI takes no tmux or gh reading, so the state is the page's own:
+	// a Done slice reads as none, and a live agent's working/waiting are
+	// the app's to overlay from `nat status`.
+	if state := domain.StateOf(s, domain.AgentNone, domain.PRUnread, slicesByID); state != domain.SliceStateNone {
+		sj.State = state.String()
+	}
+	return sj
 }
 
 // infoMarkdown renders the project as markdown — see [domain.PlanMarkdown],

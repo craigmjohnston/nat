@@ -183,7 +183,7 @@ func TestFixPromptWithoutOptionalContext(t *testing.T) {
 	c := fixContext()
 	c.Slice.URL = ""
 	got := Prompt(c)
-	if strings.Contains(got, "- Notion URL:") {
+	if strings.Contains(got, "- Slice URL:") {
 		t.Errorf("prompt names a URL the slice does not have:\n%s", got)
 	}
 }

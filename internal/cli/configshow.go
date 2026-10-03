@@ -64,6 +64,8 @@ type configProjectJSON struct {
 	WorkingDir string `json:"working_dir"`
 	Backend    string `json:"backend"`
 	PlanDir    string `json:"plan_dir,omitempty"`
+	// Source is a source project's task-source plugin, by name.
+	Source string `json:"source,omitempty"`
 }
 
 // configDoc is the structured form of local config.
@@ -93,7 +95,7 @@ func configShowJSON(cfg config.Config) configDoc {
 		ScratchProject:    cfg.ScratchProject,
 	}
 	for id, p := range cfg.Projects {
-		doc.Projects[id] = configProjectJSON{Name: p.Name, WorkingDir: p.WorkingDir, Backend: p.BackendName(), PlanDir: p.PlanDir}
+		doc.Projects[id] = configProjectJSON{Name: p.Name, WorkingDir: p.WorkingDir, Backend: p.BackendName(), PlanDir: p.PlanDir, Source: p.Source}
 	}
 	return doc
 }
@@ -125,6 +127,9 @@ func configShowMarkdown(cfg config.Config) string {
 		out += fmt.Sprintf("- %s (%s): backend=%s working_dir=%q", id, p.Name, p.BackendName(), p.WorkingDir)
 		if p.PlanDir != "" {
 			out += fmt.Sprintf(" plan_dir=%q", p.PlanDir)
+		}
+		if p.Source != "" {
+			out += fmt.Sprintf(" source=%s", p.Source)
 		}
 		out += "\n"
 	}

@@ -75,10 +75,62 @@ public final class NatClient: Sendable {
     /// holds it — a file read, which is what a first load wants to draw at
     /// once; the refreshes after it are what keep it current.
     public func info(projectID: String, refresh: Bool) async throws -> ProjectInfo {
+        try await info(projectID: projectID, refresh: refresh, expand: [])
+    }
+
+    /// The same read, `expand` naming the lazy groups of a source project's
+    /// sidebar the user has opened (`--expand <group id>` per entry), which
+    /// nat passes through to the plugin's `sidebar`.
+    public func info(projectID: String, refresh: Bool, expand: [String]) async throws -> ProjectInfo {
         var arguments = ["info", "--project", projectID, "--json"]
         if refresh { arguments.append("--refresh") }
+        for group in expand { arguments += ["--expand", group] }
         let output = try await runNat(arguments: arguments)
         return try decodeJSON(ProjectInfo.self, from: output)
+    }
+
+    // MARK: - Task sources
+
+    /// One container of a source project in full — `nat container-show`: the
+    /// plugin's own detail as-is, and the plan's tasks filed under it.
+    ///
+    /// - Throws: NatError if the project is not a source project, or the
+    ///   plugin's read failed (its stderr line is the message)
+    public func containerShow(projectID: String, containerID: String) async throws -> ContainerShow {
+        let output = try await runNat(arguments: ["container-show", containerID, "--project", projectID, "--json"])
+        return try decodeJSON(ContainerShow.self, from: output)
+    }
+
+    /// Run one of a source plugin's own actions — `nat source-action`. The
+    /// target is the group or container whose menu it came from (neither:
+    /// the source header; the CLI refuses both). The input, where the action
+    /// takes one, goes over stdin (`--input -`), as `agentSend`'s prompt does:
+    /// a comment may run to several lines.
+    ///
+    /// - Returns: What the plugin said, if anything
+    /// - Throws: NatError carrying the plugin's refusal
+    public func sourceAction(
+        projectID: String, action: String, group: String?, container: String?, input: String?
+    ) async throws -> SourceActionResult {
+        var arguments = ["source-action", "--project", projectID, "--action", action]
+        if let group, !group.isEmpty { arguments += ["--group", group] }
+        if let container, !container.isEmpty { arguments += ["--container", container] }
+        var standardInput: Data?
+        if let input {
+            arguments += ["--input", "-"]
+            standardInput = Data(input.utf8)
+        }
+        arguments.append("--json")
+        let output = try await runNat(arguments: arguments, standardInput: standardInput)
+        return try decodeJSON(SourceActionResult.self, from: output)
+    }
+
+    /// Every task-source plugin this machine has — `nat source-list`, each
+    /// described, or listed with why it would not be. Takes no `--project`:
+    /// it is about plugins, not any project.
+    public func sourceList() async throws -> [SourcePlugin] {
+        let output = try await runNat(arguments: ["source-list", "--json"])
+        return try decodeJSON([SourcePlugin].self, from: output)
     }
 
     /// Get paths to nat's configuration and runtime files.
@@ -524,8 +576,18 @@ public final class NatClient: Sendable {
     /// - Returns: SliceAddResult with the created slice's fields
     /// - Throws: NatError if the command fails (no such milestone, empty title, etc.)
     public func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult {
-        var arguments = ["slice-add", title, "--project", projectID]
-        if !milestone.isEmpty { arguments.append(contentsOf: ["--milestone", milestone]) }
+        try await sliceAdd(projectID: projectID, title: title, filing: milestone.isEmpty ? [] : ["--milestone", milestone], description: description)
+    }
+
+    /// File a new task under one of a source project's containers — `nat
+    /// slice-add --container <id>`, which a source project takes in place of
+    /// `--milestone`. The description goes over stdin as `sliceAdd`'s does.
+    public func sliceAdd(projectID: String, title: String, container: String, description: String?) async throws -> SliceAddResult {
+        try await sliceAdd(projectID: projectID, title: title, filing: ["--container", container], description: description)
+    }
+
+    private func sliceAdd(projectID: String, title: String, filing: [String], description: String?) async throws -> SliceAddResult {
+        var arguments = ["slice-add", title, "--project", projectID] + filing
         arguments.append("--json")
         var standardInput: Data?
         if let description = description, !description.isEmpty {
@@ -821,14 +883,22 @@ public final class NatClient: Sendable {
     ///   - name: The new project's name
     ///   - repo: Where its agents work; nil leaves it to the CLI's own default
     ///   - description: Optional conventions to write as the project page's body
+    ///   - source: A task-source plugin's name, making a source project over
+    ///     it instead (`--source`): a local plan, no Notion — the repo and
+    ///     conventions go with it as with any other.
     /// - Returns: CreatedProject with the page, the data source and the
     ///   working directory config now points at
     /// - Throws: NatError if the command fails (no projects database configured,
-    ///   an empty name, Notion refusing the write)
-    public func projectCreate(name: String, repo: String?, description: String?) async throws -> CreatedProject {
+    ///   an empty name, Notion refusing the write, a plugin that won't describe)
+    public func projectCreate(
+        name: String, repo: String?, description: String?, source: String? = nil
+    ) async throws -> CreatedProject {
         var arguments = ["project-create", name, "--json"]
         if let repo = repo, !repo.isEmpty {
             arguments.append(contentsOf: ["--repo", repo])
+        }
+        if let source, !source.isEmpty {
+            arguments.append(contentsOf: ["--source", source])
         }
         var standardInput: Data?
         if let description = description, !description.isEmpty {

@@ -271,6 +271,25 @@ public final class AppModel {
     /// Per-project selected slice IDs.
     private var selectedSliceIDs: [String: String?] = [:]
 
+    /// Per-project selected source containers, by container id — the third
+    /// kind of selection beside slices and sessions (and the workshop),
+    /// mutually exclusive with all of them.
+    private var selectedContainerIDs: [String: String?] = [:]
+
+    /// One container-detail cache per source project (lazily created), as
+    /// `sliceDetailStores` is per project.
+    private var containerStores: [String: ContainerStore] = [:]
+
+    /// Each source project's lazy groups the user has opened, passed on every
+    /// plan read of it (`info --expand`).
+    public private(set) var sourceExpanded: [String: Set<String>] = [:]
+
+    /// Every task-source plugin this machine has (`nat source-list`), read
+    /// once at startup — what the `+` menu offers a new source project for.
+    /// Empty where the read failed: a missing plugin is no reason to say so.
+    public private(set) var sourcePlugins: [SourcePlugin] = []
+    private var sourcePluginsLoaded = false
+
     /// How long each visited slice's session is held from being reaped, keyed
     /// by slice ID and set to visit-time-plus-hold on every visit — the
     /// session reaper's guard against killing what was just looked at. A
@@ -542,6 +561,14 @@ public final class AppModel {
         }
     }
 
+    /// Reads the task-source plugins, once: `sourcePlugins` stays empty on a
+    /// failed read.
+    public func loadSourcePlugins() async {
+        guard !sourcePluginsLoaded else { return }
+        sourcePluginsLoaded = true
+        sourcePlugins = (try? await clientFactory().sourceList()) ?? []
+    }
+
     /// Start the app: load config, create project store, start timers.
     ///
     /// No config file at all, or one naming no projects, leaves
@@ -551,6 +578,9 @@ public final class AppModel {
     public func start(configPath: String, nudgePath: String) async {
         self.nudgePath = nudgePath
         startProposalWatch()
+        // Off the startup path: `source-list` describes every plugin, and a
+        // slow one is no reason to hold the board.
+        if !sourcePluginsLoaded { Task { await loadSourcePlugins() } }
         do {
             let loadedConfig = try await configReader.readConfig(from: configPath)
             self.config = loadedConfig
@@ -856,7 +886,8 @@ public final class AppModel {
                 id: tab.id, name: tab.name, kind: kind,
                 plan: state?.projectInfo,
                 isLoading: state?.isLoading ?? (kind != .untitled),
-                errorMessage: state?.errorMessage)
+                errorMessage: state?.errorMessage,
+                isSource: config?.projects[tab.id]?.backend == .source)
         }
     }
 
@@ -898,7 +929,106 @@ public final class AppModel {
     public func titlebarIdentity(for selection: TitlebarSelection) -> TitlebarIdentity {
         NatKit.titlebarIdentity(
             for: selection, projectID: activeProjectID ?? "", active: sidebarModel.active,
-            tags: projectTags(sidebarInputs.map { (id: $0.id, name: $0.name) }))
+            tags: sidebarTags(sidebarInputs))
+    }
+
+    // MARK: - Task sources
+
+    /// A source project's fold as the sidebar draws it — nil for any other
+    /// project, or one whose plan has not landed.
+    public func source(ofProject projectID: String) -> SidebarSource? {
+        sidebarModel.source(projectID: projectID)?.source
+    }
+
+    /// The container selected in the active project, as its fold draws it —
+    /// nil with none selected or none drawn by that id.
+    public var selectedContainer: SidebarContainer? {
+        guard let id = selectedContainerID, let projectID = activeProjectID else { return nil }
+        return source(ofProject: projectID)?.container(withID: id)
+    }
+
+    /// The title a container goes by: the plugin's own, where its tree lists
+    /// it, else nat's cached milestone name, else its id.
+    public func containerTitle(_ containerID: String, inProject projectID: String) -> String {
+        if let row = source(ofProject: projectID)?.container(withID: containerID) { return row.title }
+        return plan(projectID: projectID)?.milestones.first { $0.id == containerID }?.name ?? containerID
+    }
+
+    /// Select a source container, activating its project first.
+    public func selectContainer(_ containerID: String, inProject projectID: String) async {
+        await select(inProject: projectID) { $0.selectedContainerID = containerID }
+    }
+
+    /// The selected source container's id (per-project). Selecting one
+    /// deselects the slice, the session and the workshop row — the sidebar
+    /// draws exactly one selected row.
+    public var selectedContainerID: String? {
+        get {
+            guard let activeID = activeProjectID else { return nil }
+            return selectedContainerIDs[activeID] ?? nil
+        }
+        set {
+            guard let activeID = activeProjectID else { return }
+            selectedContainerIDs[activeID] = newValue
+            if newValue != nil {
+                selectedSliceIDs[activeID] = nil
+                selectedSessionIDs[activeID] = nil
+                workshopSelectedProjects.remove(activeID)
+                workshopLaunchError = nil
+            }
+        }
+    }
+
+    /// The container-detail cache for one source project, created on first
+    /// use — see `sliceDetailStore(projectID:)`.
+    public func containerStore(projectID: String) -> ContainerStore {
+        if let existing = containerStores[projectID] { return existing }
+        let store = ContainerStore(projectID: projectID, client: clientFactory())
+        containerStores[projectID] = store
+        return store
+    }
+
+    /// Whether a source project's lazy group has been opened.
+    public func isSourceGroupExpanded(_ groupID: String, inProject projectID: String) -> Bool {
+        sourceExpanded[projectID]?.contains(groupID) ?? false
+    }
+
+    /// Opens or folds a source project's lazy group: the set goes on every
+    /// later read of that plan, and the plan is read again now, so an opened
+    /// group fills and a folded one stops being asked for.
+    public func setSourceGroup(_ groupID: String, expanded: Bool, inProject projectID: String) async {
+        var groups = sourceExpanded[projectID] ?? []
+        if expanded { groups.insert(groupID) } else { groups.remove(groupID) }
+        sourceExpanded[projectID] = groups
+        guard let store = stores[projectID] else { return }
+        store.expand = groups.sorted()
+        await store.refresh(.replica)
+    }
+
+    /// Runs one of a source plugin's own actions — the source header's (no
+    /// target), a group's or a container's — then reads the project's plan
+    /// again (nat re-reads the plugin's tree after any action) and the
+    /// container on screen. Answers with what went wrong, or nil.
+    @discardableResult
+    public func runSourceAction(
+        projectID: String, action: SourceAction, group: String? = nil, container: String? = nil, input: String? = nil
+    ) async -> String? {
+        do {
+            _ = try await clientFactory().sourceAction(
+                projectID: projectID, action: action.id, group: group, container: container, input: input)
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error { return message }
+            return error.localizedDescription
+        } catch {
+            return error.localizedDescription
+        }
+        if projectID == activeProjectID {
+            await refresh(.replica)
+        } else {
+            await stores[projectID]?.refresh(.replica)
+        }
+        if let container { await containerStore(projectID: projectID).fetch(containerID: container) }
+        return nil
     }
 
     /// Select a slice wherever it is filed: its project is made the active
@@ -1021,6 +1151,7 @@ public final class AppModel {
                 workshopSelectedProjects.remove(activeID)
                 workshopLaunchError = nil
                 selectedSessionIDs[activeID] = nil
+                selectedContainerIDs[activeID] = nil
             }
         }
     }
@@ -1038,6 +1169,7 @@ public final class AppModel {
             selectedSessionIDs[activeID] = newValue
             if newValue != nil {
                 selectedSliceIDs[activeID] = nil
+                selectedContainerIDs[activeID] = nil
                 workshopSelectedProjects.remove(activeID)
                 workshopLaunchError = nil
             }
@@ -1399,6 +1531,7 @@ public final class AppModel {
         stores[oldID] = nil
         selectedSliceIDs[oldID] = nil
         selectedSessionIDs[oldID] = nil
+        selectedContainerIDs[oldID] = nil
         workshopSelectedProjects.remove(oldID)
         workshopPinnedProjects.remove(oldID)
         workshopDrafts[oldID] = nil
@@ -1420,7 +1553,8 @@ public final class AppModel {
     /// project's tab is as accepting left it, before anything is selected.
     public var acceptedPlanShown: PlanAccepted? {
         guard let id = activeProjectID, let accepted = acceptedPlans[id],
-              selectedSliceID == nil, selectedSessionID == nil, !workshopSelected else { return nil }
+              selectedSliceID == nil, selectedSessionID == nil, selectedContainerID == nil,
+              !workshopSelected else { return nil }
         return accepted
     }
 
@@ -1437,6 +1571,7 @@ public final class AppModel {
                 workshopSelectedProjects.insert(activeID)
                 selectedSliceIDs[activeID] = nil
                 selectedSessionIDs[activeID] = nil
+                selectedContainerIDs[activeID] = nil
                 // Opened with nothing running: pinned to Active until it is
                 // launched or dismissed, so clicking away keeps its row.
                 if planningAgent == nil { workshopPinnedProjects.insert(activeID) }
@@ -1604,6 +1739,12 @@ public final class AppModel {
         // once they are triaged.
         if let selectedSliceID {
             await sliceDetailStore(projectID: projectStore.projectID).fetch(sliceRef: selectedSliceID)
+        }
+        // A source container's detail the same way: every other reading
+        // dropped, the one on screen read again behind what it shows.
+        containerStores[projectStore.projectID]?.invalidateCache(keeping: selectedContainerID)
+        if let selectedContainerID {
+            await containerStore(projectID: projectStore.projectID).fetch(containerID: selectedContainerID)
         }
     }
 
@@ -2029,6 +2170,7 @@ public final class AppModel {
         reviewStatsStore = nil
         sessionStore = nil
         sliceDetailStores = [:]
+        containerStores = [:]
         diffStores = [:]
         visualStores = [:]
         prStores = [:]

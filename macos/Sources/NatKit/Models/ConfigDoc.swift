@@ -54,19 +54,25 @@ public struct ConfigDocProject: Codable, Equatable, Sendable {
     public let backend: PlanBackend
     /// The directory a local project's plan file is kept in, when it chose one.
     public let planDir: String?
+    /// The task-source plugin's name, where the backend is `source`.
+    public let source: String?
 
     enum CodingKeys: String, CodingKey {
         case name
         case workingDir = "working_dir"
         case backend
         case planDir = "plan_dir"
+        case source
     }
 
-    public init(name: String, workingDir: String, backend: PlanBackend = .notion, planDir: String? = nil) {
+    public init(
+        name: String, workingDir: String, backend: PlanBackend = .notion, planDir: String? = nil, source: String? = nil
+    ) {
         self.name = name
         self.workingDir = workingDir
         self.backend = backend
         self.planDir = planDir
+        self.source = source
     }
 
     public init(from decoder: Decoder) throws {
@@ -75,6 +81,7 @@ public struct ConfigDocProject: Codable, Equatable, Sendable {
         workingDir = try c.decode(String.self, forKey: .workingDir)
         backend = PlanBackend(word: try? c.decodeIfPresent(String.self, forKey: .backend))
         planDir = try c.decodeIfPresent(String.self, forKey: .planDir)
+        source = try c.decodeIfPresent(String.self, forKey: .source)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -83,5 +90,6 @@ public struct ConfigDocProject: Codable, Equatable, Sendable {
         try c.encode(workingDir, forKey: .workingDir)
         try c.encode(backend.rawValue, forKey: .backend)
         try c.encodeIfPresent(planDir, forKey: .planDir)
+        try c.encodeIfPresent(source, forKey: .source)
     }
 }

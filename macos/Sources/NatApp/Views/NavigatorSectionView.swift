@@ -17,6 +17,9 @@ struct NavSectionView<Actions: View, Content: View>: View {
     let label: String
     let open: Bool
     var selected = false
+    /// The design's quiet meta beside the label, drawn only while folded — a
+    /// source section's count.
+    var meta: String?
     let onHead: () -> Void
     var onFold: (() -> Void)?
     @ViewBuilder var actions: () -> Actions
@@ -56,6 +59,9 @@ struct NavSectionView<Actions: View, Content: View>: View {
                 // the room it needs rather than truncating.
                 .fixedSize(horizontal: true, vertical: false)
                 .frame(minWidth: 58, alignment: .leading)
+            if let meta, !open {
+                Text(meta).monoXS().ink(.tertiary).lineLimit(1)
+            }
             Spacer(minLength: 0)
             HStack(spacing: 0) { actions() }
                 .frame(maxHeight: .infinity)
@@ -70,11 +76,11 @@ struct NavSectionView<Actions: View, Content: View>: View {
 
 extension NavSectionView where Actions == EmptyView {
     init(
-        label: String, open: Bool, selected: Bool = false,
+        label: String, open: Bool, selected: Bool = false, meta: String? = nil,
         onHead: @escaping () -> Void, onFold: (() -> Void)? = nil, @ViewBuilder content: @escaping () -> Content
     ) {
         self.init(
-            label: label, open: open, selected: selected, onHead: onHead, onFold: onFold,
+            label: label, open: open, selected: selected, meta: meta, onHead: onHead, onFold: onFold,
             actions: { EmptyView() }, content: content)
     }
 }

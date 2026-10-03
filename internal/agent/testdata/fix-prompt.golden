@@ -4,8 +4,8 @@ slice of the "notion-agent-tracker" project.
 ## The slice and its pull request
 
 - Name: tmux integration + agent prompt template
-- Notion page ID: 3b738308-f654-8170-8c99-eccab4463d8f
-- Notion URL: https://app.notion.com/p/3b738308f65481708c99eccab4463d8f
+- Slice ID: 3b738308-f654-8170-8c99-eccab4463d8f
+- Slice URL: https://app.notion.com/p/3b738308f65481708c99eccab4463d8f
 - Pull request: https://github.test/craig/nat/pull/12
 - Working directory: /Users/craig/Projects/notion-agent-tracker-worktrees/slice/tmux-integration-agent-prompt-template
 - Branch: slice/tmux-integration-agent-prompt-template (the working directory is a worktree already on it)

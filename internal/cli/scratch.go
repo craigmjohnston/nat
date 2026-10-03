@@ -117,6 +117,12 @@ func doneClear(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
+	// A source project is a file of nat's own too, but not one to clear: its
+	// containers are the plugin's, which nat never removes, and each Done task
+	// deleted would tell the plugin `deleted` of work that in fact merged.
+	if project.IsSource() {
+		return fmt.Errorf("done-clear: %q is a source project: its plugin is told of every task deleted, and its containers are the plugin's to remove, not nat's", project.Name)
+	}
 	if !project.IsLocal() {
 		return fmt.Errorf("done-clear: %q has a workspace behind it, and its Done slices are the record of the work — only a project kept in a local file is cleared", project.Name)
 	}

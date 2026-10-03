@@ -5,17 +5,30 @@ public struct ProjectInfo: Codable, Equatable, Sendable {
     public let project: Project
     public let milestones: [Milestone]
     public let slices: [Slice]
+    /// A source project's plugin and sidebar tree (`info --json`'s `source`);
+    /// nil for every other project. Its containers are `milestones` too.
+    public let source: SourceInfo?
 
     enum CodingKeys: String, CodingKey {
         case project
         case milestones
         case slices
+        case source
     }
 
-    public init(project: Project, milestones: [Milestone], slices: [Slice]) {
+    public init(project: Project, milestones: [Milestone], slices: [Slice], source: SourceInfo? = nil) {
         self.project = project
         self.milestones = milestones
         self.slices = slices
+        self.source = source
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        project = try c.decode(Project.self, forKey: .project)
+        milestones = try c.decode([Milestone].self, forKey: .milestones)
+        slices = try c.decode([Slice].self, forKey: .slices)
+        source = try c.decodeIfPresent(SourceInfo.self, forKey: .source)
     }
 }
 
@@ -205,19 +218,25 @@ public struct NatProjectConfig: Codable, Equatable, Sendable {
 /// Where a project's plan lives: a Notion database, or a file of nat's own with
 /// no workspace behind it.
 ///
-/// Only the word `local` says the second; anything else — an absent key, the
-/// empty string, a backend a later nat invented — reads as Notion, which is
-/// what every project meant before there was a choice. It is decoded from a
-/// string rather than as an enum so an unknown one can never fail the read: a
-/// config that will not parse is an app showing onboarding to somebody who has
-/// already onboarded.
+/// Only the words `local` and `source` (a local plan whose milestones are a
+/// task-source plugin's containers) say otherwise; anything else — an absent
+/// key, the empty string, a backend a later nat invented — reads as Notion,
+/// which is what every project meant before there was a choice. It is decoded
+/// from a string rather than as an enum so an unknown one can never fail the
+/// read: a config that will not parse is an app showing onboarding to somebody
+/// who has already onboarded.
 public enum PlanBackend: String, Equatable, Sendable {
     case notion
     case local
+    case source
 
     /// The backend a config file's (or `config-show`'s) word for it means.
     public init(word: String?) {
-        self = word == PlanBackend.local.rawValue ? .local : .notion
+        switch word {
+        case PlanBackend.local.rawValue: self = .local
+        case PlanBackend.source.rawValue: self = .source
+        default: self = .notion
+        }
     }
 }
 
@@ -233,6 +252,9 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
     /// The directory a local project's plan file is kept in, where its entry
     /// names one; nil is nat's own data directory.
     public let planDir: String?
+    /// The task-source plugin a `source` project's containers come from, by
+    /// name; nil for every other project.
+    public let source: String?
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -240,6 +262,7 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         case workingDir = "working_dir"
         case backend
         case planDir = "plan_dir"
+        case source
     }
 
     public init(
@@ -247,13 +270,15 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         slicesDSID: String? = nil,
         workingDir: String,
         backend: PlanBackend = .notion,
-        planDir: String? = nil
+        planDir: String? = nil,
+        source: String? = nil
     ) {
         self.name = name
         self.slicesDSID = slicesDSID
         self.workingDir = workingDir
         self.backend = backend
         self.planDir = planDir
+        self.source = source
     }
 
     public init(from decoder: Decoder) throws {
@@ -265,18 +290,20 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         // than one this build does not know: both read as Notion.
         backend = PlanBackend(word: try? c.decodeIfPresent(String.self, forKey: .backend))
         planDir = try c.decodeIfPresent(String.self, forKey: .planDir)
+        source = try c.decodeIfPresent(String.self, forKey: .source)
     }
 
-    /// Written the way nat writes it: the backend and plan directory only
-    /// where they mean something, so an entry for a Notion project round-trips
-    /// unchanged.
+    /// Written the way nat writes it: the backend, plan directory and source
+    /// only where they mean something, so an entry for a Notion project
+    /// round-trips unchanged.
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(name, forKey: .name)
         try c.encodeIfPresent(slicesDSID, forKey: .slicesDSID)
         try c.encode(workingDir, forKey: .workingDir)
-        if backend == .local { try c.encode(backend.rawValue, forKey: .backend) }
+        if backend != .notion { try c.encode(backend.rawValue, forKey: .backend) }
         try c.encodeIfPresent(planDir, forKey: .planDir)
+        try c.encodeIfPresent(source, forKey: .source)
     }
 }
 

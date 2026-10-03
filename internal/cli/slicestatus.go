@@ -50,7 +50,8 @@ func sliceStatus(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	if project.IsLocal() {
+	// A source project's plan is the same file of nat's own as a local one's.
+	if project.IsLocal() || project.IsSource() {
 		return localSliceStatus(ctx, env, projectID, project, id, *asJSON)
 	}
 

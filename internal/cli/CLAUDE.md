@@ -4,8 +4,8 @@ The headless `nat` subcommands: what an agent runs against its own slice,
 what skills run to plan and queue work, and the macOS app's entire backend
 contract (`NatClient` shells out to `nat <command> --json`). Runs before the
 tmux check, with no TUI code in the path — a command prints to the terminal
-it was typed in and exits. `setup` and `project-create` are the only two
-that act on no already-tracked project.
+it was typed in and exits. `setup`, `project-create` and `source-list` act
+on no already-tracked project.
 
 ## `--project` pinning
 
@@ -30,6 +30,51 @@ for the project (`Config.AssigneeFor`), and `Env.storeFor` builds no Notion
 client for a local project — so `project-create --local`, and everything run
 against such a project (`slice-status` included, which reads the plan file
 instead of a page), works with no credential.
+
+## Source projects
+
+A source project (`backend: source`, `source: <plugin>`) is a local plan
+file whose milestones are a task-source plugin's containers — see
+`internal/source/CLAUDE.md`, `internal/store/CLAUDE.md` (Sourced) and the
+spec, `docs/design/task-sources/README.md`.
+
+- `Env.storeFor` has three arms: local (file alone), source (file wrapped in
+  `store.Sourced` over `Env.NewSource(project.Source)`, the plugin told
+  `source.Project{ID, Name, WorkingDir}`), else Notion. **Neither of the
+  first two builds a Notion client.** A plugin `NewSource` can't find is
+  logged and replaced by `source.Unavailable{err}` — the project still opens,
+  every plugin read failing in its place. `DefaultNewSource` is `source.Find`
+  under `config.Dir()` → `source.New`.
+- `sourceStore` (Store + Describer/SidebarReader/ContainerReader/ActionRunner)
+  is what `sourceStoreFor` hands back, refusing a non-source project by name
+  before its plan is opened; `info`/`slice-show`/`slice-add` type-assert
+  instead, since they serve every project.
+- `source-list` (no `--project`): `source.Discover(config.Dir())`, each
+  described best-effort through `describePlugin` (`NewSource` +
+  `describeSource`, an empty envelope and a protocol check); a failure is the
+  entry's `error`, never a dropped entry.
+- `container-show <id>`: the plugin's `ContainerDetail` as-is + the plan's
+  slices under it through `sliceJSONOf` (info's builder). A failed plugin
+  read is the command's error.
+- `source-action --action [--group|--container] [--input|-]`: the input
+  through `briefText` (stdin on `-`), nudge on success.
+- `info --json` (`sourceInfo`): describe, then — only if that worked —
+  sidebar with `--expand`; then nat's `_unlisted` group (`unlistedGroups`):
+  every plan milestone with a slice whose id is nowhere in the tree, titled
+  from the cached name, omitted when empty. A failed read is `source.error`,
+  nouns default to container/task, `groups` keeps `_unlisted`.
+- `slice-show --json`'s `container`: the plugin's detail, falling back to id
+  + cached title (logged) on a failed read; absent for other projects.
+- `slice-add --container <id>`: required on a source project, where
+  `--milestone` is refused; refused anywhere else. An id already in the plan
+  is filed under by its cached title; a new one is read for its title (blank
+  → the id), and a failed read refuses the add.
+- `project-create --source <name>` (exclusive with `--local`):
+  `describePlugin` before any write, then `createPlanProject` — the same
+  file-then-config path `createLocalProject` takes.
+- Refusals: `project-mirror` and `done-clear` refuse a source project by
+  name (no Notion column for containers; a cleared Done task would tell the
+  plugin `deleted`); `slice-status` takes the local path.
 
 ## Deliberate duplication — ports, not calls
 

@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"fmt"
+
+	"github.com/craigmjohnston/nat/internal/source"
 )
 
 // ForProject is the one place a project's store is put together: it always
@@ -20,13 +22,26 @@ import (
 //
 // A project with no workspace behind it is the file alone, and remote may be
 // nil: nothing here reads a token or makes a request for it.
-func ForProject(ctx context.Context, p Project, remote *Notion) (Store, error) {
+//
+// A source project is the file too, wrapped in [Sourced] over the plugin's
+// client src, which is required for one — a source project opened with no
+// plugin to tell would file tasks under containers nobody ever hears about.
+// plugin is the project as the plugin is told of it, built by the caller since
+// a [Project] deliberately carries no working directory. remote may be nil
+// here as well.
+func ForProject(ctx context.Context, p Project, remote *Notion, plugin source.Project, src source.Client) (Store, error) {
+	if p.Source != "" && src == nil {
+		return nil, fmt.Errorf("the %q project's plan is kept with the %s task source, and no client for it was given", p.Name, p.Source)
+	}
 	local, err := OpenProject(p)
 	if err != nil {
 		return nil, err
 	}
 	if p.Local {
 		return local, nil
+	}
+	if p.Source != "" {
+		return NewSourced(local, src, plugin, p.Source), nil
 	}
 	m := Mirror(local, remote, p)
 	// Unordered: a headless command has no board to read a view order for,
@@ -54,7 +69,8 @@ func OpenProject(p Project) (*Local, error) {
 func NewProjectID() string { return newLocalID() }
 
 // CreateLocalProject lays down the plan of a project with no workspace behind
-// it: the file, with its project row and conventions. It touches Notion nowhere.
+// it — a local project's, or a source project's, which is the same file: the
+// file, with its project row and conventions. It touches Notion nowhere.
 // It is written before the config entry that names it, since a config naming a
 // project whose plan could not be laid down is one every later command fails on.
 func CreateLocalProject(ctx context.Context, p Project, conventions string) error {

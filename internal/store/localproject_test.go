@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/source"
 )
 
 func TestProjectOfNarrowsAConfigEntry(t *testing.T) {
@@ -55,7 +56,7 @@ func TestCreateLocalProjectNeedsNoRemote(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, localSlug(p.ID)+".db")); err != nil {
 		t.Fatalf("the plan file is not where the config will say: %v", err)
 	}
-	st, err := ForProject(ctx, p, nil)
+	st, err := ForProject(ctx, p, nil, source.Project{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +88,7 @@ func TestCreateLocalProjectFailsWhereThePlanCannotBeLaid(t *testing.T) {
 	if err == nil {
 		t.Fatal("want an error")
 	}
-	if _, err := ForProject(context.Background(), Project{ID: "x", Local: true, PlanDir: filepath.Join(file, "sub")}, nil); err == nil {
+	if _, err := ForProject(context.Background(), Project{ID: "x", Local: true, PlanDir: filepath.Join(file, "sub")}, nil, source.Project{}, nil); err == nil {
 		t.Fatal("ForProject: want an error")
 	}
 }

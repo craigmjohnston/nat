@@ -28,32 +28,48 @@ type ProjectConfig struct {
 	// nat's own has none, so it is omitted rather than written empty.
 	SlicesDSID string `json:"slices_ds_id,omitempty"`
 	WorkingDir string `json:"working_dir"`
-	// Backend is where the plan lives: [BackendLocal] or, for anything else,
-	// Notion. Omitted until it means something, so a config written before there
-	// was a choice round-trips unchanged and goes on meaning what it meant.
+	// Backend is where the plan lives: [BackendLocal], [BackendSource] or, for
+	// anything else, Notion. Omitted until it means something, so a config
+	// written before there was a choice round-trips unchanged and goes on
+	// meaning what it meant.
 	Backend string `json:"backend,omitempty"`
-	// PlanDir is the directory a local project's plan file is kept in, where the
-	// user chose one; empty is nat's own data directory. Meaningless for Notion.
+	// PlanDir is the directory a local or source project's plan file is kept
+	// in, where the user chose one; empty is nat's own data directory.
+	// Meaningless for Notion.
 	PlanDir string `json:"plan_dir,omitempty"`
+	// Source is the task-source plugin a source project's containers come from:
+	// the <name> of its nat-source-<name> binary. Omitted for every other
+	// project.
+	Source string `json:"source,omitempty"`
 }
 
-// The two places a plan can live.
+// The three places a plan can live.
 const (
 	BackendNotion = "notion"
 	BackendLocal  = "local"
+	BackendSource = "source"
 )
 
 // IsLocal reports whether the plan is a file of nat's own with no workspace
-// behind it. Only the local word says so: a backend a later nat invented is
-// one this build cannot open a file for, and anything else — the empty string
-// included — reads as Notion.
+// and no task source behind it. Only the local word says so.
 func (p ProjectConfig) IsLocal() bool { return p.Backend == BackendLocal }
 
-// BackendName is the backend as it is said out loud: always one of the two
+// IsSource reports whether the plan is a file of nat's own whose milestones
+// are a task-source plugin's containers. Only the source word says so.
+//
+// The local and source words are the only two that open a file: a backend a
+// later nat invented is one this build cannot open a file for, and anything
+// else — the empty string included — reads as Notion.
+func (p ProjectConfig) IsSource() bool { return p.Backend == BackendSource }
+
+// BackendName is the backend as it is said out loud: always one of the three
 // words, even for a project whose entry leaves it unwritten.
 func (p ProjectConfig) BackendName() string {
-	if p.IsLocal() {
+	switch {
+	case p.IsLocal():
 		return BackendLocal
+	case p.IsSource():
+		return BackendSource
 	}
 	return BackendNotion
 }
@@ -61,14 +77,14 @@ func (p ProjectConfig) BackendName() string {
 // UsesNotion reports whether anything this machine tracks is kept in Notion,
 // which is what decides whether a Notion credential is needed at all: a
 // project whose plan is in Notion, or — with no project yet — the projects
-// database that projects would be made in. A config of local projects alone
-// needs none.
+// database that projects would be made in. A config of local and source
+// projects alone needs none.
 func (c Config) UsesNotion() bool {
 	if len(c.Projects) == 0 {
 		return c.ProjectDBDataSourceID != ""
 	}
 	for _, p := range c.Projects {
-		if !p.IsLocal() {
+		if !p.IsLocal() && !p.IsSource() {
 			return true
 		}
 	}
@@ -76,12 +92,13 @@ func (c Config) UsesNotion() bool {
 }
 
 // AssigneeFor is who works a project's slices: the workspace user onboarding
-// resolved for a project in Notion. A plan of its own has no directory of
-// users, so there the name is the identity — the configured name where one is
-// set, else whoever is logged in where the config names nobody. Both are
-// empty only where neither exists, which the callers already refuse.
+// resolved for a project in Notion. A plan of its own — local or source — has
+// no directory of users, so there the name is the identity — the configured
+// name where one is set, else whoever is logged in where the config names
+// nobody. Both are empty only where neither exists, which the callers already
+// refuse.
 func (c Config) AssigneeFor(p ProjectConfig) (id, name string) {
-	if !p.IsLocal() {
+	if !p.IsLocal() && !p.IsSource() {
 		return c.AssigneeUserID, c.AssigneeUserName
 	}
 	name = c.AssigneeUserName

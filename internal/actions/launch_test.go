@@ -12,6 +12,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/source"
 	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
@@ -460,6 +461,137 @@ func TestLaunchToleratesAFailedRelaunchWrite(t *testing.T) {
 	}
 	if res.Session == "" {
 		t.Error("session = \"\", want the agent launched regardless")
+	}
+}
+
+// sourcedStore is a launch's Store with a task source behind it: the
+// container and describe reads a source project's store answers, over an
+// ordinary fake for everything else. Describe is answered only when describe
+// is set, so a store that reads containers but not itself is a case too.
+type sourcedStore struct {
+	Store
+	detail       source.ContainerDetail
+	containerErr error
+	containerIDs []string
+}
+
+func (s *sourcedStore) Container(_ context.Context, id string) (source.ContainerDetail, error) {
+	s.containerIDs = append(s.containerIDs, id)
+	return s.detail, s.containerErr
+}
+
+// describingStore is a sourcedStore that also says what it is.
+type describingStore struct {
+	*sourcedStore
+	describe    source.Describe
+	describeErr error
+}
+
+func (s *describingStore) Describe(context.Context) (source.Describe, error) {
+	return s.describe, s.describeErr
+}
+
+// launchSourced runs an ordinary first-time launch of a slice filed under
+// container c1 against st, and answers the prompt file it wrote.
+func launchSourced(t *testing.T, st Store, fix bool) (LaunchResult, string) {
+	t.Helper()
+	l := &fakeLauncher{}
+	slice := domain.Slice{ID: "s5", Name: "Info view", MilestoneID: "c1"}
+	if fix {
+		slice.Status, slice.PRURL = domain.SliceDone, "https://example/pr/1"
+	}
+	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, st, &fakeReviewer{}, "u1",
+		agent.PromptContext{Slice: slice, WorkingDir: t.TempDir(), Fix: fix}, config.AgentModel{})
+	if err != nil || len(l.launches) != 1 {
+		t.Fatalf("Launch() = %v, launches %+v, want it to go through", err, l.launches)
+	}
+	prompt, err := os.ReadFile(l.launches[0].promptFile)
+	if err != nil {
+		t.Fatalf("read prompt file: %v", err)
+	}
+	return res, string(prompt)
+}
+
+func sourcedFake() *sourcedStore {
+	client := &fakeClient{getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil }}
+	return &sourcedStore{Store: client.store(), detail: source.ContainerDetail{
+		ID: "c1", Title: "Checkout times out", ExternalURL: "https://tracker.example/c1",
+		Sections: []source.Section{
+			{Kind: source.KindProse, Body: "First paragraph."},
+			{Kind: source.KindComments, Comments: []source.Comment{{By: "a", Text: "not prose"}}},
+			{Kind: source.KindProse},
+			{Kind: source.KindProse, Body: "Second paragraph."},
+		},
+	}}
+}
+
+// A source project's slice is launched with its container in the prompt,
+// under the plugin's own noun, carrying only the prose sections.
+func TestLaunchCarriesTheContainer(t *testing.T) {
+	st := &describingStore{sourcedStore: sourcedFake(), describe: source.Describe{ContainerNoun: "card"}}
+	res, prompt := launchSourced(t, st, false)
+	want := &agent.PromptContainer{Noun: "card", Title: "Checkout times out", ExternalURL: "https://tracker.example/c1",
+		Prose: "First paragraph.\n\nSecond paragraph."}
+	if res.Context.Container == nil || *res.Context.Container != *want {
+		t.Errorf("container = %+v, want %+v", res.Context.Container, want)
+	}
+	if len(st.containerIDs) != 1 || st.containerIDs[0] != "c1" {
+		t.Errorf("container reads = %v, want exactly the slice's own", st.containerIDs)
+	}
+	for _, w := range []string{"## The card", "Checkout times out", "URL: https://tracker.example/c1", "First paragraph.\n\nSecond paragraph."} {
+		if !strings.Contains(prompt, w) {
+			t.Errorf("prompt does not carry %q:\n%s", w, prompt)
+		}
+	}
+	if strings.Contains(prompt, "not prose") {
+		t.Errorf("prompt carries a comments section:\n%s", prompt)
+	}
+}
+
+// A plugin that will not describe itself, or a store that cannot say, leaves
+// the container under the generic noun.
+func TestLaunchNamesAContainerGenericallyWithoutANoun(t *testing.T) {
+	for name, st := range map[string]Store{
+		"no describer":    sourcedFake(),
+		"describe failed": &describingStore{sourcedStore: sourcedFake(), describeErr: errors.New("plugin down")},
+		"empty noun":      &describingStore{sourcedStore: sourcedFake()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			res, prompt := launchSourced(t, st, false)
+			if res.Context.Container == nil || res.Context.Container.Noun != "container" {
+				t.Errorf("container = %+v, want the generic noun", res.Context.Container)
+			}
+			if !strings.Contains(prompt, "## The container") {
+				t.Errorf("prompt has no generic container section:\n%s", prompt)
+			}
+		})
+	}
+}
+
+// A container read that fails is logged and the launch goes on without it.
+func TestLaunchGoesOnWithoutAContainerThatCannotBeRead(t *testing.T) {
+	st := sourcedFake()
+	st.containerErr = errors.New("plugin down")
+	res, prompt := launchSourced(t, st, false)
+	if res.Context.Container != nil {
+		t.Errorf("container = %+v, want none after a failed read", res.Context.Container)
+	}
+	if strings.Contains(prompt, "## The container") || res.Session == "" {
+		t.Errorf("session %q, prompt:\n%s\nwant a launch with no container section", res.Session, prompt)
+	}
+}
+
+// A fix launch reads no container, and neither does a slice filed under none.
+func TestLaunchReadsNoContainerForAFixOrAnUnfiledSlice(t *testing.T) {
+	st := sourcedFake()
+	if res, _ := launchSourced(t, st, true); res.Context.Container != nil || len(st.containerIDs) != 0 {
+		t.Errorf("fix launch: container %+v, reads %v, want neither", res.Context.Container, st.containerIDs)
+	}
+	l := &fakeLauncher{}
+	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, st, nil, "u1",
+		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: t.TempDir()}, config.AgentModel{})
+	if err != nil || res.Context.Container != nil || len(st.containerIDs) != 0 {
+		t.Errorf("unfiled launch: err %v, container %+v, reads %v, want none", err, res.Context.Container, st.containerIDs)
 	}
 }
 

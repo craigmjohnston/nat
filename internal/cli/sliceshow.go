@@ -10,6 +10,8 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/logging"
+	"github.com/craigmjohnston/nat/internal/source"
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
@@ -61,7 +63,11 @@ func sliceShow(ctx context.Context, args []string, env Env) error {
 	}
 
 	if *asJSON {
-		return writeSliceShowJSON(env.Out, s, milestone, project, depByID, brief, sliceBase(env, s, project))
+		var container *sliceContainerJSON
+		if cr, ok := st.(store.ContainerReader); ok {
+			container = sliceContainer(ctx, cr, s, milestone)
+		}
+		return writeSliceShowJSON(env.Out, s, milestone, project, depByID, brief, sliceBase(env, s, project), container)
 	}
 	return writeSliceShowMarkdown(env.Out, s, milestone, project, brief)
 }
@@ -100,6 +106,34 @@ type sliceShowJSON struct {
 	// the app ranges over it with no nil check, so it is never omitted or
 	// left null.
 	Events []taskEventJSON `json:"events"`
+	// Container is the plugin's container a source project's task hangs
+	// off; absent for any other project.
+	Container *sliceContainerJSON `json:"container,omitempty"`
+}
+
+// sliceContainerJSON is what a task's view needs of its container: enough to
+// draw the brief's facts and the PR section's note, and to link out.
+type sliceContainerJSON struct {
+	ID          string        `json:"id"`
+	Title       string        `json:"title"`
+	ExternalURL string        `json:"external_url,omitempty"`
+	TaskNote    string        `json:"task_note,omitempty"`
+	Facts       []source.Fact `json:"facts,omitempty"`
+}
+
+// sliceContainer reads a source project's task's container from its plugin.
+// A failed read concludes nothing: it is logged, and the container is given
+// by what the plan knows of it — its id and cached title.
+func sliceContainer(ctx context.Context, cr store.ContainerReader, s domain.Slice, m domain.Milestone) *sliceContainerJSON {
+	d, err := cr.Container(ctx, s.MilestoneID)
+	if err != nil {
+		logging.Error("task source container unread for slice-show",
+			"slice", s.ID, "container", s.MilestoneID, "err", err)
+		return &sliceContainerJSON{ID: s.MilestoneID, Title: m.Name}
+	}
+	return &sliceContainerJSON{
+		ID: s.MilestoneID, Title: d.Title, ExternalURL: d.ExternalURL, TaskNote: d.TaskNote, Facts: d.Facts,
+	}
 }
 
 // taskEventJSON is one entry of a slice's task log, the wire form of
@@ -163,7 +197,7 @@ type followUpJSON struct {
 }
 
 // writeSliceShowJSON encodes the slice as JSON.
-func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, project config.ProjectConfig, depByID map[string]domain.Slice, brief, base string) error {
+func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, project config.ProjectConfig, depByID map[string]domain.Slice, brief, base string, container *sliceContainerJSON) error {
 	// Compute state the same way info.go does.
 	slicesByID := domain.SlicesByID([]domain.Slice{s})
 	// Add dependencies to the index so blocking can be computed.
@@ -189,6 +223,7 @@ func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, proje
 		HandedBack: s.HandedBack(),
 		Brief:      brief,
 		Events:     taskEventsJSON(s, brief),
+		Container:  container,
 	}
 	if state != domain.SliceStateNone {
 		sj.State = state.String()

@@ -592,9 +592,9 @@ func TestLocalNamesItsFileWhenARowWillNotScan(t *testing.T) {
 // SQLite's own error at the second row is a cheap way of asking.
 func TestLocalNamesItsFileWhenAReadFailsPartWayThrough(t *testing.T) {
 	l, path := openPlan(t)
-	overflow := `SELECT 'b', abs(-9223372036854775808), ''`
+	overflow := `SELECT 'b', abs(-9223372036854775808), '', NULL`
 	write(t, l, `DROP TABLE milestones`)
-	write(t, l, `CREATE VIEW milestones (name, position, select_type) AS SELECT 'a', 0.0, '' UNION ALL `+overflow)
+	write(t, l, `CREATE VIEW milestones (name, position, select_type, container_id) AS SELECT 'a', 0.0, '', NULL UNION ALL `+overflow)
 	write(t, l, `DROP TABLE slices`)
 	write(t, l, `CREATE VIEW slices (id, title, status, milestone, position, assignee, assignee_name, repo, branch, pr, url, body)
 		AS SELECT 'a', 'A', 'Todo', NULL, 0.0, '', '', '', '', '', '', ''
@@ -922,5 +922,140 @@ func TestHandbackSummaryOf(t *testing.T) {
 				t.Errorf("HandbackSummaryOf(%q) = %q, want %q", c.body, got, c.want)
 			}
 		})
+	}
+}
+
+// A plan written at schema v4 — before a milestone could be a container —
+// opens on today's build with the column and its index added, and every
+// milestone it already held still reads with its name as its ID.
+func TestLocalMigratesAV4PlanToContainers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.db")
+	db, err := sql.Open("sqlite3", localDSN(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(localSchemaV1 + localSchemaV2 + localSchemaV3 + localSchemaV4 + "\nPRAGMA user_version = 4;\n"); err != nil {
+		t.Fatalf("write the v4 schema: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO milestones (name, position) VALUES ('M1', 0), ('M2', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	l, err := OpenLocal(path)
+	if err != nil {
+		t.Fatalf("open the v4 plan: %v", err)
+	}
+	defer func() { _ = l.Close() }()
+	var version int
+	if err := l.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 5 {
+		t.Errorf("user_version = %d, %v; want 5", version, err)
+	}
+	var index string
+	if err := l.db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_milestones_container_id'`).
+		Scan(&index); err != nil {
+		t.Errorf("the container index is missing: %v", err)
+	}
+	ms, err := l.milestones(context.Background(), l.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range ms {
+		if m.ID != m.Name {
+			t.Errorf("milestone %+v: an existing row must keep its name as its ID", m)
+		}
+	}
+	if len(ms) != 2 {
+		t.Errorf("milestones = %+v", ms)
+	}
+}
+
+func TestEnsureMilestoneFilesAContainerOnce(t *testing.T) {
+	ctx := context.Background()
+	l, _ := openPlan(t)
+	write(t, l, `INSERT INTO milestones (name, position) VALUES ('Fix the login page', 0), ('Plain', 3)`)
+
+	if err := l.ensureMilestone(ctx, "sc-1", "Card one"); err != nil {
+		t.Fatal(err)
+	}
+	// Idempotent, and a changed title is drift the plan accepts.
+	if err := l.ensureMilestone(ctx, "sc-1", "Card one, renamed"); err != nil {
+		t.Fatal(err)
+	}
+	// A title another milestone already holds — any case — takes the id.
+	if err := l.ensureMilestone(ctx, "sc-2", "fix the LOGIN page"); err != nil {
+		t.Fatal(err)
+	}
+	ms, err := l.milestones(ctx, l.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]domain.Milestone{}
+	for _, m := range ms {
+		got[m.ID] = m
+	}
+	if m := got["sc-1"]; m.Name != "Card one" || m.Order != 4 {
+		t.Errorf("sc-1 = %+v, want its first title, past the last milestone", m)
+	}
+	if m := got["sc-2"]; m.Name != "fix the LOGIN page (sc-2)" || m.Order != 5 {
+		t.Errorf("sc-2 = %+v, want the colliding title renamed by its id", m)
+	}
+	if m := got["Plain"]; m.Name != "Plain" {
+		t.Errorf("an ordinary milestone = %+v, want its name as its ID", m)
+	}
+
+	// The first container of an empty plan goes first.
+	empty, _ := openPlan(t)
+	if err := empty.ensureMilestone(ctx, "c", "C"); err != nil {
+		t.Fatal(err)
+	}
+	if ms, _ := empty.milestones(ctx, empty.db); len(ms) != 1 || ms[0].Order != 0 || ms[0].ID != "c" {
+		t.Errorf("milestones = %+v", ms)
+	}
+}
+
+func TestEnsureMilestoneReportsWhatFails(t *testing.T) {
+	ctx := context.Background()
+	gone, _ := openPlan(t)
+	write(t, gone, `DROP TABLE milestones`)
+	if err := gone.ensureMilestone(ctx, "c", "C"); err == nil || !strings.Contains(err.Error(), "read the milestones") {
+		t.Errorf("no table: %v", err)
+	}
+
+	unreadable, _ := openPlan(t)
+	write(t, unreadable, `ALTER TABLE milestones DROP COLUMN select_type`)
+	if err := unreadable.ensureMilestone(ctx, "c", "C"); err == nil {
+		t.Error("an unreadable plan: want an error")
+	}
+
+	refused, _ := openPlan(t)
+	write(t, refused, `CREATE TRIGGER no_milestones BEFORE INSERT ON milestones BEGIN SELECT RAISE(ABORT, 'refused'); END`)
+	if err := refused.ensureMilestone(ctx, "c", "C"); err == nil || !strings.Contains(err.Error(), "file the container as a milestone") {
+		t.Errorf("a refused insert: %v", err)
+	}
+}
+
+// A slice is filed under a container by its id, never by its title.
+func TestAddSliceFilesUnderAContainerByItsID(t *testing.T) {
+	ctx := context.Background()
+	l, _ := openPlan(t)
+	if err := l.ensureMilestone(ctx, "sc-1", "Card"); err != nil {
+		t.Fatal(err)
+	}
+	s, err := l.AddSlice(ctx, Project{}, NewSlice{Title: "T", Milestone: domain.Milestone{ID: "sc-1"}})
+	if err != nil || s.MilestoneID != "sc-1" {
+		t.Fatalf("AddSlice = %+v, %v", s, err)
+	}
+	if _, err := l.AddSlice(ctx, Project{}, NewSlice{Title: "T", Milestone: domain.Milestone{ID: "Card"}}); err == nil {
+		t.Error("a container's title must not file a slice")
+	}
+	plan, err := l.Plan(ctx, Project{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := plan.Project.Groups(); len(g) != 1 || g[0].Milestone == nil || len(g[0].Slices) != 1 {
+		t.Errorf("the slice is not drawn under its container: %+v", g)
 	}
 }

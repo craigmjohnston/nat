@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/source"
 )
 
 // isolatedHome points HOME (and XDG_DATA_HOME, for a non-darwin run of this
@@ -28,7 +29,7 @@ func TestForProjectHydratesAnUnpulledPlan(t *testing.T) {
 	isolatedHome(t)
 	api := fullPlanAPI()
 
-	st, err := ForProject(context.Background(), project(), Over(api))
+	st, err := ForProject(context.Background(), project(), Over(api), source.Project{}, nil)
 	if err != nil {
 		t.Fatalf("ForProject: %v", err)
 	}
@@ -54,12 +55,12 @@ func TestForProjectLeavesAnAlreadyHydratedPlanAlone(t *testing.T) {
 	api := fullPlanAPI()
 	ctx := context.Background()
 
-	if _, err := ForProject(ctx, project(), Over(api)); err != nil {
+	if _, err := ForProject(ctx, project(), Over(api), source.Project{}, nil); err != nil {
 		t.Fatalf("ForProject (first): %v", err)
 	}
 	calledAfterFirst := len(api.calls)
 
-	st, err := ForProject(ctx, project(), Over(api))
+	st, err := ForProject(ctx, project(), Over(api), source.Project{}, nil)
 	if err != nil {
 		t.Fatalf("ForProject (second): %v", err)
 	}
@@ -84,7 +85,7 @@ func TestForProjectReportsAFailedPull(t *testing.T) {
 	boom := errors.New("notion down")
 	api := &fakeAPI{dataSource: func(string) (*notion.DataSource, error) { return nil, boom }}
 
-	if _, err := ForProject(context.Background(), project(), Over(api)); !errors.Is(err, boom) {
+	if _, err := ForProject(context.Background(), project(), Over(api), source.Project{}, nil); !errors.Is(err, boom) {
 		t.Errorf("ForProject err = %v, want %v", err, boom)
 	}
 }
@@ -96,7 +97,7 @@ func TestForProjectReportsAnUnresolvableHome(t *testing.T) {
 	t.Setenv("HOME", "")
 	t.Setenv("XDG_DATA_HOME", "")
 
-	if _, err := ForProject(context.Background(), project(), Over(&fakeAPI{})); err == nil {
+	if _, err := ForProject(context.Background(), project(), Over(&fakeAPI{}), source.Project{}, nil); err == nil {
 		t.Error("ForProject with no home: want an error")
 	}
 }
@@ -117,7 +118,7 @@ func TestForProjectReportsAFileWhereItsPlanDirectoryBelongs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := ForProject(context.Background(), project(), Over(&fakeAPI{})); err == nil {
+	if _, err := ForProject(context.Background(), project(), Over(&fakeAPI{}), source.Project{}, nil); err == nil {
 		t.Error("ForProject over a blocked plan directory: want an error")
 	}
 }
@@ -129,7 +130,7 @@ func TestForProjectReportsAFailedHydratedCheck(t *testing.T) {
 	isolatedHome(t)
 	api := fullPlanAPI()
 	ctx := context.Background()
-	if _, err := ForProject(ctx, project(), Over(api)); err != nil {
+	if _, err := ForProject(ctx, project(), Over(api), source.Project{}, nil); err != nil {
 		t.Fatalf("ForProject (first): %v", err)
 	}
 
@@ -146,7 +147,7 @@ func TestForProjectReportsAFailedHydratedCheck(t *testing.T) {
 		t.Fatalf("close the plan: %v", err)
 	}
 
-	if _, err := ForProject(ctx, project(), Over(api)); err == nil {
+	if _, err := ForProject(ctx, project(), Over(api), source.Project{}, nil); err == nil {
 		t.Error("ForProject over a plan with no project table: want an error")
 	}
 }
