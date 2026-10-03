@@ -29,6 +29,17 @@ public struct DiffMetrics: Equatable, Sendable {
 
     public init() {}
 
+    /// The geometry for code set at `codeSize` points rather than the 13
+    /// the numbers above were drawn for: a line, a row and a gutter digit
+    /// grow with the face, in proportion; the header band, the padding and
+    /// the insets are the window's and do not. At 13 it is `init()`.
+    public init(codeSize: CGFloat) {
+        let scale = codeSize / 13
+        lineHeight = (lineHeight * scale).rounded()
+        rowMinHeight = lineHeight + rowPadding
+        digitWidth *= scale
+    }
+
     /// The line-number column: the digits, and a little air — never
     /// narrower than a gap's expand button, which it also holds.
     public var numberColumnWidth: CGFloat {

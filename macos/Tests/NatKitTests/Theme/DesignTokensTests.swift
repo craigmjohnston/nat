@@ -325,12 +325,13 @@ final class DesignTokensTests: XCTestCase {
     // MARK: - Terminal type
 
     /// The pane is the app writing code on screen, so it writes it in the
-    /// font the diff pane writes code in — same family, same size. A
-    /// terminal a point off the ramp is the thing this exists to stop.
-    func testTerminalFontIsTheRampsCodeFace() {
+    /// font the diff pane writes code in — same family, same size: the
+    /// user's code size, 14 by default. A terminal a point off the diff is
+    /// the thing this exists to stop.
+    func testTerminalFontIsTheDiffsCodeFace() {
         let font = TerminalType.font
-        XCTAssertEqual(font.pointSize, Typo.code)
-        XCTAssertEqual(font, Typo.monoNSFont(size: Typo.code, weight: .regular))
+        XCTAssertEqual(font.pointSize, 14)
+        XCTAssertEqual(font, Typo.monoNSFont(size: Typo.codeView, weight: .regular))
     }
 
     /// A monospaced face, because every column of a terminal is one cell

@@ -75,6 +75,10 @@ struct SettingsView: View {
     @AppStorage(Theme.storageKey) private var storedTheme = Theme.system.rawValue
     @AppStorage(PaletteChoice.darkStorageKey) private var storedDarkPalette = PaletteChoice.defaultDark.rawValue
     @AppStorage(PaletteChoice.lightStorageKey) private var storedLightPalette = PaletteChoice.defaultLight.rawValue
+    /// The two text sizes, the theme's kind of preference and kept the same
+    /// way: `UserDefaults`, live, never `nat config-set`.
+    @AppStorage(TypeSize.uiStorageKey) private var storedUISize = TypeSize.defaultUI
+    @AppStorage(TypeSize.monoStorageKey) private var storedMonoSize = TypeSize.defaultMono
 
     @State private var projectNames: [String: String] = [:]
     @State private var original: SettingsFields?
@@ -152,6 +156,13 @@ struct SettingsView: View {
                 paletteRow(title: "Dark theme", dark: true, stored: $storedDarkPalette)
             } footer: {
                 sectionFootnote("The palettes the app draws with, the agent terminal included. System switches between the two as the Mac does. Applies at once.")
+            }
+
+            Section {
+                sizeRow(title: "Text size", range: TypeSize.uiRange, stored: $storedUISize)
+                sizeRow(title: "Code size", range: TypeSize.monoRange, stored: $storedMonoSize)
+            } footer: {
+                sectionFootnote("Text size is a sidebar row's, and the rest of the app's type follows it in proportion. Code size is the agent terminal's and the diff's. Applies at once.")
             }
 
             configSection(
@@ -619,6 +630,29 @@ struct SettingsView: View {
         }
     }
 
+    /// One text size: a points field and a stepper beside it, both writing
+    /// the stored value clamped to `range`, so neither can store a size the
+    /// app would not draw at.
+    private func sizeRow(title: String, range: ClosedRange<Int>, stored: Binding<Int>) -> some View {
+        let clamped = Binding(
+            get: { min(max(stored.wrappedValue, range.lowerBound), range.upperBound) },
+            set: { stored.wrappedValue = min(max($0, range.lowerBound), range.upperBound) }
+        )
+        return settingRow(title: title) {
+            HStack(spacing: 4) {
+                TextField(title, value: clamped, format: .number)
+                    .labelsHidden()
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: FieldWidth.size)
+                Text("pt")
+                    .ink(.secondary)
+                    .padding(.trailing, 2)
+                Stepper(title, value: clamped, in: range)
+                    .labelsHidden()
+            }
+        }
+    }
+
     /// The stored string as the enum the picker selects over, so an unwritten
     /// or unrecognised value arrives as `system` rather than as a selection
     /// matching no option.
@@ -707,6 +741,7 @@ struct SettingsView: View {
 /// window has.
 private enum FieldWidth {
     static let number: CGFloat = 80
+    static let size: CGFloat = 44
     static let model: CGFloat = 160
 }
 

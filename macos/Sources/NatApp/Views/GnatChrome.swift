@@ -16,9 +16,11 @@ enum GnatMetrics {
     static let statusBarHeight: CGFloat = 32
     static let sidebarWidth: Double = 260
     static let navigatorWidth: Double = 330
-    /// The design's mono `xs` and its body sizes.
+    /// The design's mono `xs` and its body sizes. The body is the ramp's —
+    /// a sidebar slice row is drawn at it, and so it is the size the user's
+    /// UI size setting names.
     static let xs: CGFloat = 12
-    static let body: CGFloat = 14
+    static var body: CGFloat { Typo.body }
     /// The window titlebar's text — a step under the body.
     static let titlebarText: CGFloat = 13
     /// Where a traffic-light window's titlebar content starts: past the lights.

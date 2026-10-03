@@ -19,6 +19,10 @@ struct NatApp: App {
     @AppStorage(PaletteChoice.darkStorageKey) private var storedDarkPalette = PaletteChoice.defaultDark.rawValue
     @AppStorage(PaletteChoice.lightStorageKey) private var storedLightPalette = PaletteChoice.defaultLight.rawValue
 
+    /// The UI and code text sizes, as the settings window writes them.
+    @AppStorage(TypeSize.uiStorageKey) private var storedUISize = TypeSize.defaultUI
+    @AppStorage(TypeSize.monoStorageKey) private var storedMonoSize = TypeSize.defaultMono
+
     /// View ▸ Show/Hide Done Items: whether the sidebar draws finished work
     /// — done slices, ended sessions and each project's Done folder.
     @AppStorage(showsDoneItemsKey) private var showsDoneItems = true
@@ -45,12 +49,19 @@ struct NatApp: App {
     /// the content repaints all of it, at the cost of the views' own state
     /// (folds, scroll offsets) — which a palette pick, made rarely and from
     /// Settings, can afford. The app's model lives above this and survives.
+    ///
+    /// The two text sizes join it for the same reason: every size on the
+    /// `Typo` ramp is read as a plain number when a view is built, and the
+    /// diff and the terminal measure their geometry from theirs once, so
+    /// only a rebuild draws everything at a new size.
     private var paletteIdentity: String {
         let dark = PaletteChoice(stored: storedDarkPalette, dark: true)
         let light = PaletteChoice(stored: storedLightPalette, dark: false)
         PaletteSelection.shared.select(dark)
         PaletteSelection.shared.select(light)
-        return "\(dark.rawValue)/\(light.rawValue)"
+        let size = TypeSize(ui: storedUISize, mono: storedMonoSize)
+        TypeSizeSelection.shared.select(size)
+        return "\(dark.rawValue)/\(light.rawValue)/\(size.identity)"
     }
 
     init() {

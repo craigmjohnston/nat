@@ -6,11 +6,11 @@ import SwiftUI
 /// layout needs: how wide a column of code is.
 @MainActor
 final class DiffFonts {
-    let code = Typo.monoNSFont(size: Typo.code)
-    let header = Typo.monoNSFont(size: Typo.code, weight: .medium)
+    let code = Typo.monoNSFont(size: Typo.codeView)
+    let header = Typo.monoNSFont(size: Typo.codeView, weight: .medium)
     /// The design's mono `xs`: a hunk break, a header's tally, the closing
     /// line.
-    let small = Typo.monoNSFont(size: 12)
+    let small = Typo.monoNSFont(size: Typo.codeView(12))
     let check = NSFont.systemFont(ofSize: 9)
 
     var charWidth: CGFloat {
