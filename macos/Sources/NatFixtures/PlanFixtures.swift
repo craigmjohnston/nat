@@ -560,4 +560,16 @@ extension Fixtures {
             "Retire the old importer",
         ]),
     ])
+
+    /// A tracked project's own proposal: no name, one new milestone, and two
+    /// slices filed into milestones the project already has — the shape
+    /// `plan-propose --project` writes for a revision of the fixture plan.
+    public static let revisionProposal = PlanProposal(name: "", milestones: [
+        .init(name: "M4: Keyboard", slices: ["Arrow keys walk the sidebar"]),
+        .init(name: "M2: Review flow", slices: [
+            "Diff tab remembers its scroll",
+            "Comments survive a refresh",
+        ], isNew: false),
+        .init(name: "M3: View gallery", slices: ["Render stories in one palette"], isNew: false),
+    ])
 }

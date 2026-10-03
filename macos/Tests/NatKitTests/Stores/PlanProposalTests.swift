@@ -49,6 +49,45 @@ final class PlanProposalModelTests: XCTestCase {
         XCTAssertEqual(proposal?.sliceCount, 3)
     }
 
+    /// A project's proposal may file every slice into milestones the project
+    /// already has and create none — the Plan section still has to draw it.
+    func testSlicesUnderMilestonesTheProposalDoesNotCreateAreGroupedAfterTheNewOnes() throws {
+        let proposal = try JSONDecoder().decode(PlanProposal.self, from: Data("""
+        {"project": "p-1", "name": "", "plan": {
+          "milestones": [{"name": "M9: New"}],
+          "slices": [
+            {"title": "Open only partly-done milestones", "milestone": "M53: App interaction fixes"},
+            {"title": "Into the new one", "milestone": "m9: new"},
+            {"title": "A later one", "milestone": " M12: Later "},
+            {"title": "One titlebar band", "milestone": " m53: App Interaction Fixes "}
+          ]
+        }}
+        """.utf8))
+
+        XCTAssertEqual(proposal.milestones, [
+            .init(name: "M9: New", slices: ["Into the new one"]),
+            .init(name: "M53: App interaction fixes", slices: ["Open only partly-done milestones", "One titlebar band"], isNew: false),
+            .init(name: "M12: Later", slices: ["A later one"], isNew: false),
+        ])
+        XCTAssertEqual(proposal.milestoneCount, 1, "accepting creates one milestone, not three")
+        XCTAssertEqual(proposal.sliceCount, 4)
+        XCTAssertEqual(proposal.folders.map(\.title), ["M9: New", "M53: App interaction fixes", "M12: Later"])
+        XCTAssertEqual(proposal.folders.map(\.total), [1, 2, 1])
+    }
+
+    func testAProposalCreatingNoMilestoneStillHoldsItsSlices() throws {
+        let proposal = try JSONDecoder().decode(PlanProposal.self, from: Data("""
+        {"project": "p-1", "name": "", "plan": {"milestones": [], "slices": [
+          {"title": "One", "milestone": "M53: App interaction fixes"},
+          {"title": "Two", "milestone": "M53: App interaction fixes"}
+        ]}}
+        """.utf8))
+
+        XCTAssertEqual(proposal.milestoneCount, 0)
+        XCTAssertEqual(proposal.sliceCount, 2)
+        XCTAssertEqual(proposal.milestones, [.init(name: "M53: App interaction fixes", slices: ["One", "Two"], isNew: false)])
+    }
+
     func testNoProposalYetReadsAsNil() async throws {
         let runner = StubRunner()
         runner.stdout = #"{"proposal": null}"#

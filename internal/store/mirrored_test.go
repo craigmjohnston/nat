@@ -269,6 +269,76 @@ func TestSliceMissingFromTheFileReadsThroughToTheWorkspace(t *testing.T) {
 	}
 }
 
+// A read by ID reaches any page the token can see. One that is a row of some
+// other data source — another project's slice, named under this project by
+// mistake — is refused as not in this plan, and nothing of it is taken into
+// the file: a page taken in here would be this project's slice on every read
+// after, until a pull pruned it and the next read by ID took it in again.
+func TestSliceMissingFromTheFileRefusesAPageOfAnotherDataSource(t *testing.T) {
+	l, _ := openPlan(t)
+	api := &fakeAPI{
+		page: func(id string) (*notion.Page, error) {
+			page := slicePage(id, "Someone else's", notion.SliceTodo)
+			page.Parent = notion.DataSourceParent("ds-elsewhere")
+			return page, nil
+		},
+		blocks: func(string) ([]notion.Block, error) {
+			t.Fatal("the body of a refused page must not be fetched")
+			return nil, nil
+		},
+	}
+	m := Mirror(l, Over(api), Project{ID: "proj", Name: "Mine", SlicesID: slicesDS})
+	ctx := context.Background()
+
+	_, _, err := m.Slice(ctx, "foreign")
+	if !errors.Is(err, ErrSliceNotFound) {
+		t.Fatalf("Slice: err = %v, want ErrSliceNotFound", err)
+	}
+	if !strings.Contains(err.Error(), `"Mine"`) || !strings.Contains(err.Error(), "foreign") {
+		t.Errorf("err = %q, want it to name the project and the slice", err)
+	}
+	if _, _, err := l.Slice(ctx, "foreign"); !errors.Is(err, ErrSliceNotFound) {
+		t.Errorf("the file took the refused page in: err = %v", err)
+	}
+}
+
+// The project's own data source, however its ID is written, is taken in as
+// before — and so is a page that names no data source at all, which is never
+// a row of another project's, only a reading with no parent on it.
+func TestSliceMissingFromTheFileTakesAPageOfItsOwnDataSource(t *testing.T) {
+	for name, parent := range map[string]notion.Parent{
+		"its own, written differently": notion.DataSourceParent(strings.ToUpper(strings.ReplaceAll(slicesDS, "-", ""))),
+		"none named":                   {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			l, _ := openPlan(t)
+			api := &fakeAPI{
+				page: func(id string) (*notion.Page, error) {
+					page := slicePage(id, "One of ours", notion.SliceTodo)
+					page.Parent = parent
+					return page, nil
+				},
+				blocks: func(string) ([]notion.Block, error) {
+					return paragraphBlock(t, "Ours."), nil
+				},
+			}
+			m := Mirror(l, Over(api), Project{ID: "proj", SlicesID: slicesDS})
+			ctx := context.Background()
+
+			s, _, err := m.Slice(ctx, "ours")
+			if err != nil {
+				t.Fatalf("Slice: %v", err)
+			}
+			if s.Name != "One of ours" {
+				t.Errorf("slice = %+v, want the page taken in", s)
+			}
+			if _, _, err := l.Slice(ctx, "ours"); err != nil {
+				t.Errorf("the file did not take the page in: %v", err)
+			}
+		})
+	}
+}
+
 // A slice read straight off the workspace may name a dependency the file has
 // never met either — the same rule AddSlice's own ensureHeld already
 // enforces, applied here because this path reaches the workspace by ID

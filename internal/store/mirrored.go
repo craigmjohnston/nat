@@ -178,9 +178,12 @@ func (m *Mirrored) Slice(ctx context.Context, id string) (domain.Slice, Shape, e
 	if !errors.Is(err, ErrSliceNotFound) {
 		return domain.Slice{}, Shape{}, err
 	}
-	s, _, err = m.remote.Slice(ctx, id)
+	s, _, parent, err := m.remote.slice(ctx, id)
 	if err != nil {
 		return domain.Slice{}, Shape{}, err
+	}
+	if !m.holdsPage(parent) {
+		return domain.Slice{}, Shape{}, fmt.Errorf("slice %s is not in the %q project's plan: %w", id, m.project.Name, ErrSliceNotFound)
 	}
 	body, err := m.remote.Body(ctx, id)
 	if err != nil {
@@ -198,6 +201,25 @@ func (m *Mirrored) Slice(ctx context.Context, id string) (domain.Slice, Shape, e
 		return domain.Slice{}, Shape{}, err
 	}
 	return m.local.Slice(ctx, id)
+}
+
+// holdsPage says whether a page read by ID is a row of this project's own
+// data source. A read by ID reaches any page the token can see — another
+// project's slice included, when a caller names a slice under the wrong
+// --project — and taking such a page into the file would make it this
+// project's slice on every later read, drawn on its board and launched from
+// it, until a pull pruned it and the next read by ID took it in again. So a
+// page that names a data source other than this project's is refused, as
+// not in its plan. A page naming none is taken on the caller's word, as
+// before: a row of a data source always names it, so that is never a real
+// slice of another project, only a project that does not know its own data
+// source (a config written before the column was recorded) or a reading
+// that carries no parent at all.
+func (m *Mirrored) holdsPage(parent notion.Parent) bool {
+	if m.project.SlicesID == "" || parent.DataSourceID == "" {
+		return true
+	}
+	return domain.NormaliseID(parent.DataSourceID) == domain.NormaliseID(m.project.SlicesID)
 }
 
 // Body reads the prose kept against an ID — a slice's brief, or a project's
