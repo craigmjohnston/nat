@@ -138,8 +138,8 @@ struct WindowShellView: View {
     /// itself, then the main pane's tabs.
     private var titlebar: some View {
         TitlebarBand(
-            navigatorWidth: liveNavigatorWidth ?? navigatorWidth, tabs: tabs, selected: main.wrappedValue,
-            onTab: showTab
+            navigatorWidth: liveNavigatorWidth ?? navigatorWidth, tabs: titlebarTabs, selected: selectedTabID,
+            onTab: showTitlebarTab
         ) {
             TitlebarBreadcrumb(crumbs: crumbs, identity: titlebarIdentity, openPicker: $crumbPicker) { origin in
                 crumbTreePicker(openingOn: origin)
@@ -189,6 +189,31 @@ struct WindowShellView: View {
         if let session = selectedSession { return MainPaneTab.forSession(hasPRs: !session.prs.isEmpty) }
         return []
     }
+
+    /// The band's tabs: the workshop's own, else a slice's or session's.
+    private var titlebarTabs: [TitlebarTab] {
+        if workshopShown { return appModel.workshopTabs.map(\.titlebarTab) }
+        return tabs.map(\.titlebarTab)
+    }
+
+    private var selectedTabID: String? {
+        if workshopShown { return appModel.workshopTab?.titlebarTab.id }
+        return tabs.first { $0.mode == main.wrappedValue }?.titlebarTab.id
+    }
+
+    private func showTitlebarTab(_ tab: TitlebarTab) {
+        if workshopShown {
+            if let picked = appModel.workshopTabs.first(where: { $0.titlebarTab == tab }) {
+                appModel.showWorkshopTab(picked)
+            }
+        } else if let picked = tabs.first(where: { $0.titlebarTab == tab }) {
+            showTab(picked)
+        }
+    }
+
+    /// Whether the workshop is what the columns show — a project's, or an
+    /// Untitled tab's.
+    private var workshopShown: Bool { appModel.workshopSelected || appModel.untitledWorkshopVisible }
 
     private func showTab(_ tab: MainPaneTab) {
         let focus = NavigatorFocus(open: open.wrappedValue, main: main.wrappedValue).showing(tab.section, shows: tab.mode)

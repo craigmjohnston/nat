@@ -535,29 +535,78 @@ extension Fixtures {
     ]
 
     /// The plan a workshop proposed — `NF_PROPOSAL` in the design's
-    /// `ui-npflow.jsx`, 4 milestones and 14 slices.
+    /// `ui-npflow.jsx`, 4 milestones and 14 slices, each with a brief (one
+    /// left without, as a plan may) and some waiting on others.
     public static let proposal = PlanProposal(name: "rust-importer", milestones: [
         .init(name: "M1: Parser core", slices: [
-            "Tokenize the export format",
-            "Parse rows into typed records",
-            "Surface malformed rows with line context",
-            "Fuzz the parser against captured exports",
+            .init(name: "Tokenize the export format", brief: """
+                Split a bank export into tokens the parser can consume. The format is CSV in name only: \
+                quoted fields may span lines, and the header row's column names vary by bank.
+
+                - Read the file as UTF-8, falling back to Latin-1 where the first 4 KB will not decode
+                - Treat `\\r\\n` and `\\n` alike
+                - Keep each token's line and column, for the error messages in M1's third task
+
+                **Done when** every export under `fixtures/exports/` tokenizes without a panic.
+                """),
+            .init(name: "Parse rows into typed records", brief: """
+                Turn tokens into `Record { date, payee, amount, memo }`, one per row. Dates come in \
+                three shapes (`2024-03-01`, `01/03/2024`, `1 Mar 2024`); amounts may carry a currency \
+                sign or a trailing `CR`.
+
+                | Field  | Source column        | Notes                      |
+                |--------|----------------------|----------------------------|
+                | date   | Date, Posted         | day-first unless ISO       |
+                | amount | Amount, Debit/Credit | Debit and Credit are split |
+                """, dependsOn: ["Tokenize the export format"]),
+            .init(name: "Surface malformed rows with line context", brief: """
+                A row that will not parse is reported, not skipped: its line number, the raw text and \
+                what was wrong with it, all of them at the end of the run rather than one at a time.
+                """, dependsOn: ["Parse rows into typed records"]),
+            .init(name: "Fuzz the parser against captured exports", brief: """
+                Add a `cargo fuzz` target seeded with the captured exports. Run it for ten minutes in \
+                CI on main only; a crash it finds is filed as a fixture before it is fixed.
+                """, dependsOn: ["Parse rows into typed records"]),
         ]),
         .init(name: "M2: Ledger model", slices: [
-            "Define accounts, postings and balances",
-            "Reconcile imported rows against balances",
-            "Handle rounding and currency minor units",
+            .init(name: "Define accounts, postings and balances", brief: """
+                The ledger's types, mirroring the old importer's schema exactly so M4 can diff the two: \
+                an `Account` holds `Posting`s, and a balance is always computed, never stored.
+                """),
+            .init(name: "Reconcile imported rows against balances", brief: """
+                Where an export carries a running balance, check each posting against it and report the \
+                first row where they part ways.
+                """, dependsOn: ["Define accounts, postings and balances", "Parse rows into typed records"]),
+            .init(name: "Handle rounding and currency minor units", brief: """
+                Amounts are integers in minor units throughout — never `f64`. Currencies with no minor \
+                unit (JPY) and three (BHD) both round-trip.
+                """),
         ]),
         .init(name: "M3: CLI parity", slices: [
-            "Mirror the import flags exactly",
-            "Match the exit codes and messages",
-            "Port the dry-run report",
-            "Port the progress output",
+            .init(name: "Mirror the import flags exactly", brief: """
+                Every flag the old importer takes, with the same names and defaults: `--account`, \
+                `--since`, `--dry-run`, `--format`. Unknown flags are refused, as they were.
+                """),
+            .init(name: "Match the exit codes and messages", brief: """
+                Scripts depend on these: `0` imported, `1` nothing to import, `2` malformed input, `3` \
+                a reconciliation failure.
+                """, dependsOn: ["Surface malformed rows with line context"]),
+            .init(name: "Port the dry-run report"),
+            .init(name: "Port the progress output", brief: """
+                One line per thousand rows on a terminal, nothing when stdout is not one.
+                """),
         ]),
         .init(name: "M4: Cutover", slices: [
-            "Run both importers over the archive",
-            "Diff the ledgers they produce",
-            "Retire the old importer",
+            .init(name: "Run both importers over the archive", brief: """
+                Import every archived export with each importer into a scratch ledger apiece.
+                """, dependsOn: ["Mirror the import flags exactly"]),
+            .init(name: "Diff the ledgers they produce", brief: """
+                Compare the two scratch ledgers posting by posting; any difference is a bug in the new \
+                importer until shown otherwise.
+                """, dependsOn: ["Run both importers over the archive"]),
+            .init(name: "Retire the old importer", brief: """
+                Delete it, and its CI job, once the diff is empty.
+                """, dependsOn: ["Diff the ledgers they produce"]),
         ]),
     ])
 
@@ -565,11 +614,26 @@ extension Fixtures {
     /// slices filed into milestones the project already has — the shape
     /// `plan-propose --project` writes for a revision of the fixture plan.
     public static let revisionProposal = PlanProposal(name: "", milestones: [
-        .init(name: "M4: Keyboard", slices: ["Arrow keys walk the sidebar"]),
+        .init(name: "M4: Keyboard", slices: [
+            .init(name: "Arrow keys walk the sidebar", brief: """
+                ↑ and ↓ move the selection through the sidebar's rows, skipping folded ones; → unfolds \
+                a milestone and ← folds it, as Finder's list view does.
+                """, dependsOn: ["Diff tab remembers its scroll"]),
+        ]),
         .init(name: "M2: Review flow", slices: [
-            "Diff tab remembers its scroll",
-            "Comments survive a refresh",
+            .init(name: "Diff tab remembers its scroll", brief: """
+                Switching away from the Changes tab and back lands where the diff was left, per slice, \
+                for the life of the window.
+                """),
+            .init(name: "Comments survive a refresh", brief: """
+                A pending comment is kept across a plan refresh and a re-read of the diff, as long as \
+                the lines it covers are still there.
+                """),
         ], isNew: false),
-        .init(name: "M3: View gallery", slices: ["Render stories in one palette"], isNew: false),
+        .init(name: "M3: View gallery", slices: [
+            .init(name: "Render stories in one palette", brief: """
+                `gnat --all --palette <id>` renders every story in that palette alone.
+                """),
+        ], isNew: false),
     ])
 }

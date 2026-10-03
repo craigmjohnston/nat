@@ -6,7 +6,8 @@ import NatKit
 /// a heading band of its own, and no rule divides the band where the two
 /// columns meet. It holds two things: the selection's breadcrumb
 /// (`TitlebarBreadcrumb`), from the navigator's leading inset and free to run
-/// on past its width, and the main pane's tabs (`MainPaneTab`) against the
+/// on past its width, and the main pane's tabs (`TitlebarTab` — a slice's
+/// or session's `MainPaneTab`, or the workshop's `WorkshopTab`) against the
 /// band's trailing edge. The tabs live in the main pane's part of the band
 /// alone (`TitlebarBandLayout`): a breadcrumb with no room left ellipsizes,
 /// and a main pane narrower than the tabs cuts them at their leading edge
@@ -15,9 +16,10 @@ import NatKit
 struct TitlebarBand<Identity: View>: View {
     /// The navigator's width: the band's main-pane part is what is left.
     let navigatorWidth: Double
-    var tabs: [MainPaneTab] = []
-    var selected: MainPaneMode?
-    var onTab: (MainPaneTab) -> Void = { _ in }
+    var tabs: [TitlebarTab] = []
+    /// The picked tab's `id`.
+    var selected: String?
+    var onTab: (TitlebarTab) -> Void = { _ in }
     @ViewBuilder var identity: () -> Identity
 
     var body: some View {
@@ -27,7 +29,7 @@ struct TitlebarBand<Identity: View>: View {
                     .padding(.horizontal, 10)
                 HStack(spacing: 0) {
                     ForEach(tabs, id: \.self) { tab in
-                        MainPaneTabButton(title: tab.label, selected: tab.mode == selected) { onTab(tab) }
+                        MainPaneTabButton(title: tab.label, selected: tab.id == selected) { onTab(tab) }
                     }
                 }
                 .fixedSize(horizontal: true, vertical: false)

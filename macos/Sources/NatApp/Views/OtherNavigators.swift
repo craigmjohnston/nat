@@ -223,14 +223,6 @@ private func sessionSelectedPRNumber(_ appModel: AppModel, _ session: Session) -
 
 // MARK: - The workshop
 
-/// Whether the workshop on screen has been launched — its agent live, or its
-/// launch under way: what moves the brief from the editor into the Brief
-/// section, read-only, and puts the terminal up in its place.
-@MainActor
-private func workshopLaunched(_ appModel: AppModel) -> Bool {
-    appModel.planningAgent != nil || appModel.workshopLaunching
-}
-
 /// The workshop's navigator, the same for an Untitled tab and a project:
 /// Brief — the request, Launch before and End session after — over Plan —
 /// what the agent has proposed, with Accept beside Keep workshopping.
@@ -251,7 +243,10 @@ struct WorkshopNavigatorView: View {
                 ScrollView { briefContent }.thinScrollers()
             }
             if let proposal {
-                NavSectionView(label: "Plan", open: !folded.contains("plan"), onHead: { toggle("plan") }) {
+                NavSectionView(
+                    label: "Plan", open: !folded.contains("plan"), selected: appModel.workshopTab == .plan,
+                    onHead: clickPlanHead, onFold: { toggle("plan") }
+                ) {
                     planActions
                 } content: {
                     ScrollView { planContent(proposal) }.thinScrollers()
@@ -263,6 +258,9 @@ struct WorkshopNavigatorView: View {
         .onChange(of: proposal == nil) { _, gone in
             if !gone { folded.remove("plan") }
         }
+        .focusedSceneValue(\.workshopMenu, WorkshopMenuActions(
+            showTerminal: appModel.workshopTabs.contains(.terminal) ? { appModel.showWorkshopTab(.terminal) } : nil,
+            showPlan: appModel.workshopTabs.contains(.plan) ? { appModel.showWorkshopTab(.plan) } : nil))
         .alert("End the workshop session?", isPresented: $confirmingEnd) {
             Button("End session", role: .destructive) {
                 Task { endError = await appModel.closeWorkshopTab() }
@@ -276,6 +274,17 @@ struct WorkshopNavigatorView: View {
     /// Sections snap open and shut, as a slice's do.
     private func toggle(_ section: String) {
         if folded.contains(section) { folded.remove(section) } else { folded.insert(section) }
+    }
+
+    /// The Plan header, as a slice section's: opens the section and puts
+    /// the Plan tab up — or folds it, when it is open with the tab already
+    /// up. With no Plan tab (no session) it only folds or unfolds.
+    private func clickPlanHead() {
+        guard appModel.workshopTabs.contains(.plan), folded.contains("plan") || appModel.workshopTab != .plan else {
+            return toggle("plan")
+        }
+        folded.remove("plan")
+        appModel.showWorkshopTab(.plan)
     }
 
     // MARK: - Brief
@@ -297,7 +306,7 @@ struct WorkshopNavigatorView: View {
 
     @ViewBuilder
     private var briefContent: some View {
-        if workshopLaunched(appModel) {
+        if appModel.workshopLaunched {
             NavProse {
                 if let request = appModel.workshopRequest {
                     if request.isEmpty {
@@ -345,7 +354,8 @@ struct WorkshopNavigatorView: View {
     /// The proposal: its counts, on an Untitled tab the name field, the
     /// caption, then the proposed tree in the sidebar's own rows — each
     /// milestone a folder over its slices, every one Todo. A revised
-    /// proposal replaces it in place.
+    /// proposal replaces it in place. A slice row scrolls the Plan tab to
+    /// that slice's box.
     private func planContent(_ proposal: PlanProposal) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             NavProse {
@@ -373,6 +383,7 @@ struct WorkshopNavigatorView: View {
                 TreeMilestoneLine(name: folder.title, count: "\(folder.slices.count)", indent: 12)
                 ForEach(folder.slices, id: \.sliceID) { slice in
                     TreeSliceLine(title: slice.name, state: .todo, indent: 20)
+                        .onTapGesture { appModel.showProposedSlice(slice.sliceID) }
                 }
             }
         }
@@ -380,15 +391,18 @@ struct WorkshopNavigatorView: View {
     }
 }
 
-/// The workshop's main pane, with no tabs: before launch, the brief editor,
-/// the whole height of the pane; from launch on, the planning agent's
-/// terminal, under the titlebar band.
+/// The workshop's main pane: before launch, the brief editor, the whole
+/// height of the pane, with no tabs; from launch on, under the titlebar
+/// band's Terminal and Plan tabs (`AppModel.workshopTab`), the planning
+/// agent's terminal or the proposal read brief by brief.
 struct WorkshopMainPane: View {
     @Bindable var appModel: AppModel
 
     var body: some View {
         VStack(spacing: 0) {
-            if workshopLaunched(appModel) {
+            if appModel.workshopTab == .plan, let proposal = appModel.activeProposal {
+                WorkshopPlanView(proposal: proposal, scroll: appModel.workshopPlanScroll)
+            } else if appModel.workshopLaunched {
                 AgentTerminalPane(
                     agent: appModel.planningAgent,
                     emptyText: appModel.workshopLaunching ? "Starting the workshop session\u{2026}" : nil,
@@ -401,6 +415,100 @@ struct WorkshopMainPane: View {
             }
         }
         .surface(.window)
+    }
+}
+
+/// The Plan tab: the proposal as the briefs it files, read like the Changes
+/// view reads a diff — one box per proposed slice, in plan order, under a
+/// heading per milestone, each box a header strip with the slice's title
+/// over its brief as rendered markdown. A revised proposal replaces it in
+/// place; `scroll` is the Plan section's ask to bring a slice's box to the
+/// top.
+private struct WorkshopPlanView: View {
+    let proposal: PlanProposal
+    let scroll: WorkshopPlanScroll?
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(proposal.milestones.enumerated()), id: \.offset) { index, milestone in
+                        ProposedMilestoneHeading(milestone: milestone)
+                        ForEach(Array(milestone.slices.enumerated()), id: \.offset) { sliceIndex, slice in
+                            ProposedSliceBox(slice: slice)
+                                .id(PlanProposal.sliceID(milestone: index, slice: sliceIndex))
+                        }
+                    }
+                }
+                .padding(.bottom, 24)
+            }
+            .thinScrollers()
+            .task(id: scroll) {
+                guard let scroll else { return }
+                proxy.scrollTo(scroll.sliceID, anchor: .top)
+            }
+        }
+    }
+}
+
+/// A milestone's heading in the Plan tab: its name, NEW where the proposal
+/// creates it, and how many tasks it files.
+private struct ProposedMilestoneHeading: View {
+    let milestone: PlanProposal.Milestone
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(milestone.name)
+                .font(.system(size: GnatMetrics.body, weight: .semibold))
+                .ink(.primary)
+            if milestone.isNew { Chip("NEW", tone: .accent) }
+            Spacer(minLength: 0)
+            Text("\(milestone.slices.count) \(milestone.slices.count == 1 ? "task" : "tasks")")
+                .monoXS().ink(.tertiary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 22)
+        .padding(.bottom, 10)
+    }
+}
+
+/// One proposed slice in the Plan tab, in the diff file box's chrome: a
+/// header strip with its title between rules, then — under one quiet line
+/// naming what it waits on, where it waits on anything — its brief.
+private struct ProposedSliceBox: View {
+    let slice: PlanProposal.ProposedSlice
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(slice.name)
+                .font(Typo.mono(size: Typo.code, weight: .medium))
+                .ink(.primary)
+                .textSelection(.enabled)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, minHeight: GnatMetrics.titlebarHeight, alignment: .leading)
+                .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
+                .overlay(alignment: .bottom) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
+            VStack(alignment: .leading, spacing: 10) {
+                if !slice.dependsOn.isEmpty {
+                    Text("Waits on " + slice.dependsOn.joined(separator: ", "))
+                        .font(.system(size: Typo.subhead))
+                        .ink(.tertiary)
+                        .textSelection(.enabled)
+                }
+                if slice.brief.isEmpty {
+                    Text("No brief — the plan gives this task a title only.")
+                        .font(.system(size: GnatMetrics.body))
+                        .ink(.tertiary)
+                } else {
+                    MarkdownView(text: slice.brief, size: GnatMetrics.body)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 
