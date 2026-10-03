@@ -2,7 +2,7 @@ import Foundation
 
 /// The plan a workshop session proposed for an Untitled tab — what
 /// `nat plan-proposal --json` reads back from the file `nat plan-propose`
-/// wrote. Held as the tree the rail draws: milestones in plan order, each with
+/// wrote. Held as the tree the workshop's Plan section draws: milestones in plan order, each with
 /// its slices' titles. Nothing here is a slice yet; accepting is what files
 /// them (`nat plan-accept`).
 public struct PlanProposal: Equatable, Sendable, Decodable {
@@ -29,8 +29,8 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
     public var milestoneCount: Int { milestones.count }
     public var sliceCount: Int { milestones.reduce(0) { $0 + $1.slices.count } }
 
-    /// The tree as the rail's own folders, so the existing folder and slice
-    /// rows draw it: every slice Todo, no milestone current, nothing done.
+    /// The tree as milestone folders, as the workshop's Plan section draws
+    /// it: every slice Todo, no milestone current, nothing done.
     public var folders: [MilestoneFolder] {
         milestones.enumerated().map { index, milestone in
             MilestoneFolder(
@@ -101,7 +101,6 @@ public struct PlanAccepted: Equatable, Sendable, Decodable {
 /// The words of the proposal's rail section and the accepted pane, written once
 /// — the mock is `NFRail`/`NFShell` in `docs/design/nat-new-project/ui-npflow.jsx`.
 public enum ProposalText {
-    public static let heading = "PROPOSED"
     public static let nameCaption = "Project name — suggested by the planning agent"
     public static let acceptLabel = "Accept plan"
     public static let keepLabel = "Keep workshopping"

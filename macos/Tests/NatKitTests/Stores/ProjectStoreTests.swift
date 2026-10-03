@@ -206,22 +206,59 @@ final class ProjectStoreTests: XCTestCase {
         }
     }
 
+    /// A load asked for while a read is in flight is owed, not dropped: that
+    /// read may have begun before what the caller wants to see, so one more
+    /// follows it — one for every request made meanwhile — and each caller
+    /// returns only once a read begun after its call has landed.
     @MainActor
-    func testConcurrentLoadCoalescing() async {
-        let mockClient = MockNatClient(response: .success(testProjectInfo))
-
+    func testLoadsDuringAReadAreOwedOneReadAfterIt() async {
+        let gate = Gate()
+        let before = ProjectInfo(project: testProject, milestones: [], slices: [])
+        let mockClient = MockNatClient(response: .success(before), gate: gate)
         let store = ProjectStore(projectID: "proj-1", client: mockClient, cache: FakePlanCache())
 
-        // Launch two load tasks that should be coalesced
-        let task1 = Task { await store.load() }
-        let task2 = Task { await store.load() }
+        let first = Task { await store.load() }
+        await gate.waitUntilAsked()
+        // The write lands while the first read is in flight; both callers
+        // after it are owed a read that sees it.
+        let after = ProjectInfo(
+            project: testProject, milestones: [Milestone(id: "M1", name: "M1", order: 0, status: "Active")], slices: [])
+        mockClient.response = .success(after)
+        let second = Task { await store.load(.replica) }
+        let third = Task { await store.load(.replica) }
+        while store.owedLoads < 2 { await Task.yield() }
+        await gate.open()
+        await first.value
+        await second.value
+        await third.value
 
-        // Wait for both to complete
-        await task1.value
-        await task2.value
+        XCTAssertEqual(mockClient.callCount, 2, "the two requests made meanwhile share one read")
+        XCTAssertEqual(store.state, .loaded(after))
+    }
 
-        // The second load should have been ignored due to coalescing
-        XCTAssertEqual(mockClient.callCount, 1)
+    /// A replica read never asks nat to pull; an owed read pulls if any
+    /// request it answers asked for one.
+    @MainActor
+    func testAReplicaReadNeverPullsAndAnOwedReadPullsIfAnyRequestDid() async {
+        let gate = Gate()
+        let mockClient = MockNatClient(response: .success(testProjectInfo))
+        let store = ProjectStore(projectID: "proj-1", client: mockClient, cache: FakePlanCache())
+        await store.load()
+        await store.load(.replica)
+        XCTAssertEqual(mockClient.refreshFlags, [false, false])
+
+        mockClient.gate = gate
+        let held = Task { await store.load(.replica) }
+        await gate.waitUntilAsked()
+        let replica = Task { await store.load(.replica) }
+        let pull = Task { await store.load(.pull) }
+        while store.owedLoads < 2 { await Task.yield() }
+        await gate.open()
+        await held.value
+        await replica.value
+        await pull.value
+
+        XCTAssertEqual(mockClient.refreshFlags, [false, false, false, true])
     }
 
     @MainActor

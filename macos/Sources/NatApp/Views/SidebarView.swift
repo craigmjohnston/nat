@@ -13,8 +13,8 @@ import NatKit
 /// Slice, Rename, Move, Delete), a slice's (Launch, Edit, Open, Move, Delete),
 /// each project's own `+` (New Milestone, New Slice, Workshop…, New Ad Hoc
 /// Session), the titlebar's `+` (any of those in a project it asks for, or a
-/// new project) beside its Settings cog, a proposal's tree
-/// under its Untitled row and an ended session under its project.
+/// new project) beside its Settings cog, and an ended session under its
+/// project.
 struct SidebarView: View {
     @Bindable var appModel: AppModel
     var onNewProject: () -> Void = {}
@@ -348,19 +348,7 @@ struct SidebarView: View {
 
     private func activeRow(_ row: SidebarActiveRow) -> some View {
         HStack(spacing: 6) {
-            StateDot(state: row.state, live: row.live).frame(width: 12)
-            (Text(row.projectTag)
-                .font(Typo.mono(size: 10, weight: .medium))
-                .tracking(1)
-                // Raised off the shared baseline so the small capitals sit
-                // on the title's middle rather than its foot.
-                .baselineOffset(1.5)
-                .foregroundStyle(DesignTokens.ink(.secondary, on: .header))
-                + Text("  \u{2009}")
-                + Text(row.title))
-                .font(.system(size: GnatMetrics.body))
-                .ink(.secondary)
-                .lineLimit(1)
+            ActiveIdentityLabel(tag: row.projectTag, state: row.state, live: row.live, title: row.title)
             Spacer(minLength: 0)
             if row.kind == .workshop {
                 Button { closeWorkshopRow(row) } label: {
@@ -533,16 +521,6 @@ struct SidebarView: View {
         case .loaded, .none:
             EmptyView()
         }
-        if project.kind == .untitled, isActive, let proposal = appModel.activeProposal {
-            ForEach(proposal.folders, id: \.milestoneID) { folder in
-                milestoneHead(name: folder.title, count: "\(folder.slices.count)", key: "m:\(project.id)/\(folder.title)")
-                if isOpen("m:\(project.id)/\(folder.title)") {
-                    ForEach(folder.slices, id: \.sliceID) { slice in
-                        sliceLine(title: slice.name, state: .todo, live: false, selected: false)
-                    }
-                }
-            }
-        }
         // The scratch project's unfiled slices: loose at the head of the
         // tree, where a milestone would sit, under no folder of their own.
         // The dot's 12pt column centred on a folder's 16pt one.
@@ -555,22 +533,6 @@ struct SidebarView: View {
                 .contextMenu { milestoneMenu(project.id, milestone.name) }
             if isOpen(key) {
                 ForEach(milestone.slices) { sliceRow($0, indent: 34 - outdent) }
-            }
-        }
-        // A project workshop's proposal: under the plan it would be filed
-        // into, set off by its own note, until it is accepted or revised.
-        if project.kind == .project, let proposal = appModel.proposal(forTab: project.id), !proposal.milestones.isEmpty {
-            GnatNote(
-                text: ProposalText.heading.lowercased(), role: .accent, leading: 26 - outdent,
-                height: GnatMetrics.sidebarRowHeight)
-            ForEach(proposal.folders, id: \.milestoneID) { folder in
-                let key = "pm:\(project.id)/\(folder.title)"
-                milestoneHead(name: folder.title, count: "\(folder.slices.count)", key: key, indent: 26 - outdent)
-                if isOpen(key) {
-                    ForEach(folder.slices, id: \.sliceID) { slice in
-                        sliceLine(title: slice.name, state: .todo, live: false, selected: false, indent: 34 - outdent)
-                    }
-                }
             }
         }
         // An ended session is drawn as done, so it goes with the rest of
@@ -633,7 +595,6 @@ struct SidebarView: View {
                 return isOpen("m:\(project.id)/~sessions") && appModel.selectedSessionID == last.id
             }
         }
-        if appModel.proposal(forTab: project.id).map({ !$0.milestones.isEmpty }) ?? false { return false }
         if let last = project.milestones.last {
             return endsIn(last, key: "m:\(project.id)/\(last.name)")
         }
@@ -688,31 +649,9 @@ struct SidebarView: View {
         isDone: Bool = false
     ) -> some View {
         let open = isOpen(key, byDefault: openByDefault)
-        return HStack(spacing: 7) {
-            // A milestone's fold mark: one folder, outlined or open, always in
-            // the muted ink — never the accent.
-            Group {
-                if isDone {
-                    DoneFolderGlyph(open: open, color: DesignTokens.ink(.tertiary, on: .header))
-                } else {
-                    FolderGlyph(open: open, color: DesignTokens.ink(.tertiary, on: .header))
-                }
-            }
-            .frame(width: 16)
-            // Every live line of the tree is one ink — milestones, projects
-            // and slices alike; only the Done folder recedes with what it holds.
-            Text(name)
-                .font(.system(size: GnatMetrics.body))
-                .ink(isDone ? .tertiary : .secondary)
-                .lineLimit(1)
-            Spacer(minLength: 0)
-            Text(count).monoXS().ink(isDone ? .quaternary : .tertiary)
-        }
-        .padding(.leading, indent)
-        .padding(.trailing, 10)
-        .frame(height: GnatMetrics.sidebarRowHeight)
-        .contentShape(Rectangle())
-        .onTapGesture { toggle(key, open: open) }
+        return TreeMilestoneLine(name: name, count: count, open: open, indent: indent, isDone: isDone)
+            .contentShape(Rectangle())
+            .onTapGesture { toggle(key, open: open) }
     }
 
     private func sliceRow(_ row: SidebarSliceRow, indent: CGFloat = 34) -> some View {
@@ -728,27 +667,7 @@ struct SidebarView: View {
     private func sliceLine(
         title: String, state: SliceDisplayState, live: Bool, selected: Bool, indent: CGFloat = 34
     ) -> some View {
-        // Done and blocked both recede to the faintest ink — blocked since it
-        // is not available at all, done since it is finished — and done
-        // fades further still under its strike, so finished work sits back
-        // behind everything that is not. Everything else takes the tree's
-        // one ink, a step under the primary.
-        let ink: InkRole = state == .blocked || state == .done ? .quaternary : .secondary
-        return HStack(spacing: 6) {
-            StateDot(state: state, live: live).frame(width: 12)
-            Text(title)
-                .font(.system(size: GnatMetrics.body))
-                .strikethrough(state == .done)
-                .ink(ink)
-                .lineLimit(1)
-            Spacer(minLength: 0)
-        }
-        .opacity(state == .done ? 0.7 : 1)
-        .padding(.leading, indent)
-        .padding(.trailing, 10)
-        .frame(height: GnatMetrics.sidebarRowHeight)
-        .gnatRow(selected: selected)
-        .contentShape(Rectangle())
+        TreeSliceLine(title: title, state: state, live: live, selected: selected, indent: indent)
     }
 
     /// The project's finished milestones, once it has one: a Done folder at

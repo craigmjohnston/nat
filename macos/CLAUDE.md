@@ -57,15 +57,30 @@ live session never moves the stage; `fixing` comes only from
 Every workshop proposes with `nat plan-propose` — an Untitled tab's by its
 workspace, a project's (gnat-launched) by `--project` — and the app never
 reads the proposal file itself. `AppModel.refreshProposals` reads `nat
-plan-proposal` per tab (an Untitled tab's on its own `NudgeWatcher`, alive
-while any Untitled tab is; a project's on `refresh()`, only while its planner
-is live, its row pinned or a proposal is up); the sidebar draws
-`PlanProposal.folders` under the row. Accept is `nat plan-accept`: on an
+plan-proposal` per tab — every Untitled tab's, and a project's only while its
+planner is live, its row pinned or a proposal is up — on its own
+`NudgeWatcher`, running for the app's life, plus the poll and opening a
+workshop. **No timing is relied on:** each tab's proposal is a
+`ProposalState` — a reading takes a ticket before it asks and lands only if
+nothing happened since (no later reading landed, no Accept began or ended),
+nothing lands mid-Accept, a reading that finds no file clears the proposal
+(the file is the one source), and a closed tab is discarded, not removed, so
+its in-flight readings are dropped. A project's Accept stays under way until
+its plan is re-read from the **replica** (`ProjectStore.load(.replica)` — nat
+wrote through it, so there is nothing to pull) and only then drops the
+proposal: the tree has the plan before the Plan section goes. `ProjectStore`
+never drops a load asked for mid-read — it owes one more read, answering
+every request made meanwhile — and a nudge reads the replica (`refresh(.replica)`;
+the poll and the user's refresh pull). `plan-accept` claims the proposal file
+before filing (so it is accepted at most once) and nudges only once it is
+gone. Tests: `ProposalStateTests`, `ProposalRaceTests`. The navigator's Plan
+section draws `PlanProposal.folders` (`TreeMilestoneLine`/`TreeSliceLine`,
+the sidebar's own rows) and the sidebar shows nothing of it. Accept is `nat plan-accept`: on an
 Untitled tab it makes the project, then the session is killed and
 `addProject(replacing:)` hands the tab over; on a project it files the plan
 (`--project`) and leaves the session running. The layout is one for both:
 the navigator's Brief (the request; Launch, then End session) over Plan (the
-proposal, Accept and Keep workshopping), and the main pane, with no tabs, the
+proposal, Accept and Keep workshopping — absent until there is one), and the main pane, with no tabs, the
 brief editor before launch and the terminal from launch on. Opening a
 workshop pins its row in Active (`workshopPinnedProjects`) until a launch or
 the row's ✕. Stories: `workshop-*`, `window-workshop*`,
@@ -120,7 +135,8 @@ projects by activating first (`selectSlice(_:inProject:)`). The Thread shows
 only what nat reports (`buildThreadEvents`). The titlebar is segmented, each
 column carrying its own: the sidebar's holds Settings and the `+` (anything
 the sidebar makes, its project asked for by submenu), the navigator's the
-selection's name, the main pane's the `MainPaneTab`s — Zed-style, full
+selection as its Active row names it (`ActiveIdentityLabel`: dot, project tag,
+title, read through `AppModel.titlebarIdentity`), the main pane's the `MainPaneTab`s — Zed-style, full
 height and square, one per section that would put its view up
 (`NavigatorModel.tabs`, `MainPaneTab.forSession`); a tab is
 `NavigatorFocus.showing`, which opens and never folds. The selection's name, and a slice's

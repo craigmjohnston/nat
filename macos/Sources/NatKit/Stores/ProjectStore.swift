@@ -181,11 +181,27 @@ extension NatClientProtocol {
 // Make NatClient conform to the protocol
 extension NatClient: NatClientProtocol {}
 
+/// How a plan read treats the replica nat answers from.
+public enum PlanRead: Sendable {
+    /// The replica as it stands — a file read. What follows a write made on
+    /// this machine: nat wrote it through the replica, so the replica already
+    /// holds it, and pulling the workspace would only wait on news we made.
+    case replica
+    /// Let nat bring a stale replica up to date first (`nat info --refresh`)
+    /// — the poll and the user's own refresh, which are how news made
+    /// elsewhere arrives.
+    case pull
+}
+
 /// Manages loading and refreshing project information.
 ///
-/// This store coordinates loading project data from the nat CLI. It handles concurrent load
-/// coalescing, error states with fallback to the previous successful load, and refresh
-/// operations that keep showing the previous data while reloading.
+/// Reads never overlap and never go missing: a read asked for while another
+/// is in flight is not dropped but owed, and every request made during one
+/// read is answered by the one read that follows it. So when `load` returns,
+/// the plan on hand is from a read that began after it was called — a write
+/// awaited before it is in what is drawn, whatever else was reading at the
+/// time. Errors fall back to the previous successful load, and a refresh keeps
+/// showing the previous data while it reloads.
 @MainActor
 @Observable
 public final class ProjectStore {
@@ -195,14 +211,28 @@ public final class ProjectStore {
     private let cache: PlanCaching
     private var isLoadInFlight = false
 
+    /// The read state machine's counters: every `load` call takes the next
+    /// request number, and `answered` is the highest request a read that
+    /// began after it has landed for. A call is done once `answered` reaches
+    /// its own number.
+    private var requested = 0
+    private var answered = 0
+    /// Whether any request still owed asked for a pull.
+    private var owedPull = false
+    private var waiters: [(request: Int, continuation: CheckedContinuation<Void, Never>)] = []
+
+    /// How many `load` calls are waiting on a read still to come — a test's
+    /// way to know its requests are queued before it lets a read finish.
+    var owedLoads: Int { waiters.count }
+
     /// Whether the cache has already been asked about this project. It is
     /// asked once, before the first read lands: after that the plan in hand
     /// is fresher than anything on disk, so a later load has nothing to seed
     /// from and every refresh that fails keeps what it has anyway.
     private var cacheConsulted = false
 
-    /// Whether a read has landed yet — what makes every read after the first
-    /// one a refreshing read (`info(projectID:refresh:)`).
+    /// Whether a read has landed yet — a pull is only asked for once there is
+    /// a plan on screen to wait behind; the first read is always the replica.
     private var hasRead = false
 
     public init(
@@ -215,18 +245,37 @@ public final class ProjectStore {
         self.cache = cache
     }
 
-    /// Load project information.
+    /// Load project information, and return once a read that began after
+    /// this call has landed.
     ///
-    /// If a load is already in flight, this call is ignored (concurrent load coalescing).
-    /// On error, the previous successful load (if any) is kept in the state.
-    public func load() async {
+    /// While a read is in flight the request is owed rather than run: the
+    /// in-flight read may have begun before whatever the caller is waiting
+    /// to see, so one more read follows it, answering every request made
+    /// meanwhile at once (a pull if any of them asked for one).
+    public func load(_ read: PlanRead = .pull) async {
+        requested += 1
+        let request = requested
+        if read == .pull { owedPull = true }
         guard !isLoadInFlight else {
+            await withCheckedContinuation { waiters.append((request, $0)) }
             return
         }
 
         isLoadInFlight = true
-        defer { isLoadInFlight = false }
+        while answered < requested {
+            let covers = requested
+            let pull = owedPull
+            owedPull = false
+            await readOnce(pull: pull)
+            answered = covers
+            let done = waiters.filter { $0.request <= covers }
+            waiters.removeAll { $0.request <= covers }
+            for waiter in done { waiter.continuation.resume() }
+        }
+        isLoadInFlight = false
+    }
 
+    private func readOnce(pull: Bool) async {
         // Only a first load shows as loading, and only where there is
         // nothing to show in the meantime: the last plan this project was
         // read as is on disk, and seeding it here is what puts the board on
@@ -245,9 +294,9 @@ public final class ProjectStore {
 
         do {
             // The first read takes the replica as it stands — a file read,
-            // nothing to wait on — and every read after it lets nat bring a
-            // stale one up to date first, behind what is already drawn.
-            let info = try await client.info(projectID: projectID, refresh: hasRead)
+            // nothing to wait on — and a pull asked for after it lets nat
+            // bring a stale one up to date first, behind what is already drawn.
+            let info = try await client.info(projectID: projectID, refresh: pull && hasRead)
             hasRead = true
             state = .loaded(info)
             // Every read that lands is what the next launch starts from.
@@ -258,11 +307,9 @@ public final class ProjectStore {
         }
     }
 
-    /// Refresh project information, keeping the previous data visible while reloading.
-    ///
-    /// This is the same as load() but more explicitly named for refresh operations.
-    /// If a load is already in flight, this call is ignored.
-    public func refresh() async {
-        await load()
+    /// Refresh project information, keeping the previous data visible while
+    /// reloading — `load` by another name.
+    public func refresh(_ read: PlanRead = .pull) async {
+        await load(read)
     }
 }

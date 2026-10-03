@@ -568,7 +568,7 @@ enum AppStories {
 
         Story(
             name: "window-workshop",
-            summary: "A project's workshop with its planning agent live and nothing proposed yet: Brief read-only with End session, Plan's note, the planning terminal.",
+            summary: "A project's workshop with its planning agent live and nothing proposed yet: Brief alone, read-only with End session and a line saying the plan appears here, no Plan section yet; the titlebar's pulsing dot; the planning terminal.",
             size: window
         ) {
             let appModel = await Fixtures.startedAppModel(
@@ -580,7 +580,7 @@ enum AppStories {
 
         Story(
             name: "workshop-composer",
-            summary: "A project's workshop before launch: Brief and Plan in the middle, the brief editor full-height on the right, Launch in Brief's header.",
+            summary: "A project's workshop before launch: Brief alone in the middle, no Plan section yet, the brief editor full-height on the right, Launch in Brief's header.",
             size: window
         ) {
             let appModel = await Fixtures.startedAppModel()
@@ -605,7 +605,7 @@ enum AppStories {
 
         Story(
             name: "workshop-proposal",
-            summary: "A project's workshop that proposed a plan: the tree under the project in the sidebar, Accept and Keep workshopping in Plan's header.",
+            summary: "A project's workshop that proposed a plan: the Plan section open on the proposed tree, Accept and Keep workshopping in its header, nothing of it in the sidebar.",
             size: window
         ) {
             await projectProposalShell(accepting: false)
@@ -697,7 +697,7 @@ enum AppStories {
 
         Story(
             name: "window-untitled-workshop",
-            summary: "An Untitled project after Workshop the plan: the planning agent's terminal and the Plan section.",
+            summary: "An Untitled project after Workshop the plan: the planning agent's terminal and Brief alone, no Plan section until a proposal.",
             size: window
         ) {
             let appModel = await Fixtures.startedAppModel(config: Fixtures.emptyConfig, toolsReady: true)
@@ -737,7 +737,7 @@ enum AppStories {
 
         Story(
             name: "window-untitled-proposal",
-            summary: "An Untitled project whose workshop proposed a plan: the tree under its row, the name field, Accept and Keep workshopping.",
+            summary: "An Untitled project whose workshop proposed a plan: the name field, then the proposed tree in the Plan section, Accept and Keep workshopping; nothing of it in the sidebar.",
             size: window
         ) {
             let client = FixtureNatClient()

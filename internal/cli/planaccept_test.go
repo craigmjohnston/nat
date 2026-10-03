@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -91,6 +92,10 @@ func TestPlanProposalRefusals(t *testing.T) {
 	defer func() { stateDir = prev }()
 	if err := Run(context.Background(), []string{"plan-proposal", "--workspace", "ws-1"}, env); err == nil {
 		t.Error("an unresolvable state directory should refuse")
+	}
+	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil ||
+		!strings.Contains(err.Error(), "resolve the proposal file") {
+		t.Errorf("err = %v, want plan-accept refused at the proposal file", err)
 	}
 }
 
@@ -420,29 +425,6 @@ func TestPlanAcceptWithProjectReportsAFailedApply(t *testing.T) {
 	}
 }
 
-// A proposal file that cannot be removed (a read-only proposals directory)
-// still leaves accepting into an existing project a success — the plan is in
-// either way.
-func TestPlanAcceptWithProjectSucceedsThoughTheProposalWillNotBeRemoved(t *testing.T) {
-	env, out, _ := acceptEnv(t)
-	id := makeLocalProject(t, env)
-	proposeToProject(t, env, id, validProposalDoc)
-	out.Reset()
-	dir, _ := stateDir()
-	proposals := filepath.Join(dir, "proposals")
-	if err := os.Chmod(proposals, 0o555); err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.Chmod(proposals, 0o755) }()
-
-	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err != nil {
-		t.Fatalf("plan-accept --project: %v", err)
-	}
-	if !strings.Contains(out.String(), "Accepted") {
-		t.Errorf("output = %q", out.String())
-	}
-}
-
 // Markdown output, like --workspace's, names what was accepted and into
 // which project.
 func TestPlanAcceptWithProjectMarkdown(t *testing.T) {
@@ -465,27 +447,6 @@ func TestPlanAcceptFailsWhereTheProjectCannotBeMade(t *testing.T) {
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, errors.New("config unreadable") }
 	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil {
 		t.Error("want the config failure surfaced")
-	}
-}
-
-// A proposal file that will not go is no reason to fail an accept that has
-// already filed the plan.
-func TestPlanAcceptSucceedsThoughTheProposalWillNotBeRemoved(t *testing.T) {
-	env, out, _ := acceptEnv(t)
-	propose(t, env, "ws-1", "importer", validProposalDoc)
-	out.Reset()
-	dir, _ := stateDir()
-	proposals := filepath.Join(dir, "proposals")
-	// A read-only directory: the file reads, but cannot be unlinked.
-	if err := os.Chmod(proposals, 0o555); err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.Chmod(proposals, 0o755) }()
-	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}, env); err != nil {
-		t.Fatalf("plan-accept: %v", err)
-	}
-	if !strings.Contains(out.String(), "Accepted") {
-		t.Errorf("output = %q", out.String())
 	}
 }
 
@@ -564,5 +525,221 @@ func TestPlanAcceptFailsWhereTheProjectCannotBeReadBack(t *testing.T) {
 	}
 	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil {
 		t.Error("want the config failure surfaced")
+	}
+}
+
+// plan-accept's last nudge fires only once the proposal file is gone, on both
+// halves: whatever it wakes reads the plan in and the proposal dropped
+// together, never the filed plan with the accepted proposal still beside it.
+// (The workspace half's project-create nudges earlier, before the plan is in,
+// which is a true state of its own that the last nudge then supersedes.)
+func TestPlanAcceptNudgesOnlyOnceTheProposalIsGone(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		run  func(t *testing.T, env Env) (key string, args []string)
+	}{
+		{"workspace", func(t *testing.T, env Env) (string, []string) {
+			propose(t, env, "ws-1", "importer", validProposalDoc)
+			return "ws-1", []string{"plan-accept", "--workspace", "ws-1", "--name", "Importer"}
+		}},
+		{"project", func(t *testing.T, env Env) (string, []string) {
+			id := makeLocalProject(t, env)
+			proposeToProject(t, env, id, validProposalDoc)
+			return id, []string{"plan-accept", "--project", id}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env, _, _ := acceptEnv(t)
+			key, args := tc.run(t, env)
+			dir, _ := stateDir()
+			path := filepath.Join(dir, "proposals", key+".json")
+			var nudges int
+			var lastSawProposal bool
+			env.Nudge = func() {
+				nudges++
+				_, err := os.Stat(path)
+				lastSawProposal = err == nil
+			}
+
+			if err := Run(context.Background(), args, env); err != nil {
+				t.Fatalf("plan-accept: %v", err)
+			}
+			if nudges == 0 {
+				t.Fatal("accepting should nudge the board")
+			}
+			if lastSawProposal {
+				t.Error("the last nudge fired with the accepted proposal still on disk")
+			}
+		})
+	}
+}
+
+// A proposal that cannot be claimed — a read-only proposals directory, so it
+// cannot be moved aside — is refused before anything is written, on both
+// halves: it would otherwise stay acceptable after its plan was filed, and a
+// second Accept would file it twice.
+func TestPlanAcceptRefusesWhereTheProposalCannotBeClaimed(t *testing.T) {
+	for _, half := range []string{"workspace", "project"} {
+		t.Run(half, func(t *testing.T) {
+			env, _, saved := acceptEnv(t)
+			key, args := "ws-1", []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}
+			if half == "project" {
+				key = makeLocalProject(t, env)
+				args = []string{"plan-accept", "--project", key}
+				proposeToProject(t, env, key, validProposalDoc)
+			} else {
+				propose(t, env, key, "importer", validProposalDoc)
+			}
+			before := len(saved.Projects)
+			dir, _ := stateDir()
+			proposals := filepath.Join(dir, "proposals")
+			if err := os.Chmod(proposals, 0o555); err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = os.Chmod(proposals, 0o755) }()
+
+			err := Run(context.Background(), args, env)
+			if err == nil || !strings.Contains(err.Error(), "claim the proposal") {
+				t.Fatalf("err = %v, want the claim refused", err)
+			}
+			if len(saved.Projects) != before {
+				t.Errorf("a refused accept made a project: %+v", saved.Projects)
+			}
+			if _, err := os.Stat(filepath.Join(proposals, key+".json")); err != nil {
+				t.Errorf("a refused accept must leave the proposal: %v", err)
+			}
+		})
+	}
+}
+
+// A proposal is accepted once: the second accept finds none, and the plan
+// holds one copy of what was filed.
+func TestPlanAcceptAcceptsAProposalOnce(t *testing.T) {
+	env, out, _ := acceptEnv(t)
+	id := makeLocalProject(t, env)
+	proposeToProject(t, env, id, validProposalDoc)
+	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err != nil {
+		t.Fatalf("first accept: %v", err)
+	}
+	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err == nil ||
+		!strings.Contains(err.Error(), "no proposal to accept for "+id) {
+		t.Fatalf("err = %v, want the second accept to find no proposal", err)
+	}
+	out.Reset()
+	if err := Run(context.Background(), []string{"info", "--project", id, "--json"}, env); err != nil {
+		t.Fatalf("info: %v", err)
+	}
+	if n := strings.Count(out.String(), "Lay the foundation"); n != 1 {
+		t.Errorf("the slice is filed %d times, want once:\n%s", n, out.String())
+	}
+}
+
+// An accepted proposal whose claimed file cannot be removed is still an
+// accept that succeeded, and still gone from where anything reads one.
+func TestPlanAcceptSucceedsThoughTheClaimedProposalWillNotBeRemoved(t *testing.T) {
+	env, out, _ := acceptEnv(t)
+	propose(t, env, "ws-1", "importer", validProposalDoc)
+	dir, _ := stateDir()
+	proposals := filepath.Join(dir, "proposals")
+	// Read-only from project creation on: after the claim, before the drop.
+	save := env.Save
+	env.Save = func(c config.Config) error {
+		_ = os.Chmod(proposals, 0o555)
+		return save(c)
+	}
+	defer func() { _ = os.Chmod(proposals, 0o755) }()
+
+	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}, env); err != nil {
+		t.Fatalf("plan-accept: %v", err)
+	}
+	out.Reset()
+	if err := Run(context.Background(), []string{"plan-proposal", "--workspace", "ws-1"}, env); err != nil {
+		t.Fatalf("plan-proposal: %v", err)
+	}
+	if !strings.Contains(out.String(), `"proposal": null`) {
+		t.Errorf("the accepted proposal is still readable: %s", out.String())
+	}
+}
+
+// A failed accept puts its proposal back — unless a revision was proposed
+// while it ran, which is newer and stays — and nudges once it has.
+func TestPlanAcceptFailingPutsTheProposalBackUnlessARevisionLanded(t *testing.T) {
+	for _, revised := range []bool{false, true} {
+		t.Run(fmt.Sprintf("revised=%v", revised), func(t *testing.T) {
+			env, _, _ := acceptEnv(t)
+			propose(t, env, "ws-1", "importer", validProposalDoc)
+			dir, _ := stateDir()
+			path := filepath.Join(dir, "proposals", "ws-1.json")
+			revision := []byte(`{"workspace":"ws-1","name":"revised","plan":{}}`)
+			damagePlanOnSave(t, &env, func(plan string) {
+				dropTable(t, "slices")(plan)
+				if revised {
+					if err := os.WriteFile(path, revision, 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
+			})
+			var lastSawProposal bool
+			env.Nudge = func() {
+				_, err := os.Stat(path)
+				lastSawProposal = err == nil
+			}
+
+			if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil {
+				t.Fatal("want the failed apply surfaced")
+			}
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("the proposal should be back: %v", err)
+			}
+			if revised != (string(got) == string(revision)) {
+				t.Errorf("proposal on disk = %s", got)
+			}
+			if !lastSawProposal {
+				t.Error("the last nudge fired before the proposal was back")
+			}
+			if leftovers, _ := filepath.Glob(path + ".accepting-*"); len(leftovers) != 0 {
+				t.Errorf("claimed files left behind: %v", leftovers)
+			}
+		})
+	}
+}
+
+// A failed accept whose proposal cannot be put back keeps it at its claimed
+// path rather than losing it.
+func TestPlanAcceptKeepsAProposalItCannotPutBack(t *testing.T) {
+	env, _, _ := acceptEnv(t)
+	propose(t, env, "ws-1", "importer", validProposalDoc)
+	dir, _ := stateDir()
+	proposals := filepath.Join(dir, "proposals")
+	damagePlanOnSave(t, &env, func(plan string) {
+		dropTable(t, "slices")(plan)
+		_ = os.Chmod(proposals, 0o555)
+	})
+	defer func() { _ = os.Chmod(proposals, 0o755) }()
+
+	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil {
+		t.Fatal("want the failed apply surfaced")
+	}
+	if kept, _ := filepath.Glob(filepath.Join(proposals, "ws-1.json.accepting-*")); len(kept) != 1 {
+		t.Errorf("claimed files = %v, want the one proposal kept", kept)
+	}
+}
+
+// A proposal that will not parse is refused, and left where it was.
+func TestPlanAcceptRefusesAProposalThatWillNotParseAndLeavesIt(t *testing.T) {
+	env, _, _ := acceptEnv(t)
+	propose(t, env, "ws-1", "importer", validProposalDoc)
+	dir, _ := stateDir()
+	path := filepath.Join(dir, "proposals", "ws-1.json")
+	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}, env)
+	if err == nil || !strings.Contains(err.Error(), "not valid JSON") {
+		t.Fatalf("err = %v, want the parse refusal", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("the proposal should be left where it was: %v", err)
 	}
 }
