@@ -540,26 +540,55 @@ func TestBackendMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(path)
-	if strings.Contains(string(data), "backend") || strings.Contains(string(data), "plan_dir") {
+	if strings.Contains(string(data), "backend") || strings.Contains(string(data), "plan_dir") ||
+		strings.Contains(string(data), `"source"`) {
 		t.Fatalf("an old config grew a key on save:\n%s", data)
 	}
 }
 
 func TestBackendReading(t *testing.T) {
-	for backend, local := range map[string]bool{
-		"local": true, "": false, "notion": false, "Local": false, "postgres": false,
+	for backend, want := range map[string]string{
+		"local": BackendLocal, "source": BackendSource, "": BackendNotion, "notion": BackendNotion,
+		"Local": BackendNotion, "Source": BackendNotion, "postgres": BackendNotion,
 	} {
 		p := ProjectConfig{Backend: backend}
-		if p.IsLocal() != local {
-			t.Errorf("backend %q: IsLocal = %v, want %v", backend, p.IsLocal(), local)
+		if p.IsLocal() != (want == BackendLocal) {
+			t.Errorf("backend %q: IsLocal = %v", backend, p.IsLocal())
 		}
-		want := BackendNotion
-		if local {
-			want = BackendLocal
+		if p.IsSource() != (want == BackendSource) {
+			t.Errorf("backend %q: IsSource = %v", backend, p.IsSource())
 		}
 		if p.BackendName() != want {
 			t.Errorf("backend %q: BackendName = %q, want %q", backend, p.BackendName(), want)
 		}
+	}
+}
+
+// A source project's plugin name survives a round trip, and a project with
+// none writes no source key at all.
+func TestSourceProjectRoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	in := Config{Projects: map[string]ProjectConfig{
+		"a": {Name: "work", WorkingDir: "/w", Backend: BackendSource, PlanDir: "/plans", Source: "shortcut"},
+	}}
+	if err := Save(in); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := out.Projects["a"]; got != in.Projects["a"] {
+		t.Fatalf("round trip: %+v", got)
+	}
+
+	if err := Save(Config{Projects: map[string]ProjectConfig{"b": {Name: "home", Backend: BackendLocal}}}); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := Path()
+	data, _ := os.ReadFile(path)
+	if strings.Contains(string(data), `"source"`) {
+		t.Fatalf("a project with no source wrote one:\n%s", data)
 	}
 }
 
@@ -587,6 +616,7 @@ func TestLocalProjectRoundTrip(t *testing.T) {
 
 func TestUsesNotion(t *testing.T) {
 	local := ProjectConfig{Backend: BackendLocal}
+	src := ProjectConfig{Backend: BackendSource, Source: "shortcut"}
 	cases := []struct {
 		name string
 		cfg  Config
@@ -595,6 +625,9 @@ func TestUsesNotion(t *testing.T) {
 		{"nothing at all", Config{}, false},
 		{"a projects database and no project", Config{ProjectDBDataSourceID: "ds"}, true},
 		{"only local projects", Config{ProjectDBDataSourceID: "ds", Projects: map[string]ProjectConfig{"a": local}}, false},
+		{"only source projects", Config{Projects: map[string]ProjectConfig{"a": src}}, false},
+		{"local and source projects", Config{Projects: map[string]ProjectConfig{"a": local, "c": src}}, false},
+		{"a source and a Notion project", Config{Projects: map[string]ProjectConfig{"a": src, "b": {}}}, true},
 		{"a mixed config", Config{Projects: map[string]ProjectConfig{"a": local, "b": {}}}, true},
 		{"an old config", Config{Projects: map[string]ProjectConfig{"b": {SlicesDSID: "x"}}}, true},
 	}
@@ -613,6 +646,9 @@ func TestAssigneeFor(t *testing.T) {
 	local := ProjectConfig{Backend: BackendLocal}
 	if id, name := cfg.AssigneeFor(local); id != "Craig" || name != "Craig" {
 		t.Errorf("local with a configured name: %q %q", id, name)
+	}
+	if id, name := cfg.AssigneeFor(ProjectConfig{Backend: BackendSource}); id != "Craig" || name != "Craig" {
+		t.Errorf("source with a configured name: %q %q", id, name)
 	}
 
 	orig := currentUser

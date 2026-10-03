@@ -189,7 +189,7 @@ func (l *Local) Path() string { return l.path }
 // SQLite's own user_version, so opening a plan written by this build is one
 // read and no writes, and a plan written by a later one can be refused rather
 // than half understood.
-const localSchemaVersion = 4
+const localSchemaVersion = 5
 
 // localSchemaV1 is the plan as tables, exactly as the first build of this store
 // created it. Every column maps one-to-one onto [domain.Slice] or
@@ -302,6 +302,22 @@ CREATE TABLE sessions (
 );
 `
 
+// localSchemaV5 is what a source project's plan needs that no plan before it
+// did: a milestone that is another tracker's container, whose identity is the
+// container's own id rather than its name. A container's title can change
+// under it, and two containers may share one, so name can no longer be the
+// key a slice is filed under for these rows — container_id is, and
+// [Local.milestones] answers it as the milestone's ID wherever it is set.
+//
+// Every row already in a plan keeps container_id NULL, and with it exactly
+// today's behaviour: its ID is its name. The index is partial so that NULL —
+// every milestone of every plan that is not a source project's — is never a
+// clash.
+const localSchemaV5 = `
+ALTER TABLE milestones ADD COLUMN container_id TEXT;
+CREATE UNIQUE INDEX idx_milestones_container_id ON milestones(container_id) WHERE container_id IS NOT NULL;
+`
+
 // localMigrations is what [Local.migrate] walks version+1..[localSchemaVersion]
 // through, so a plan lands on today's schema whichever version it started at —
 // an empty file walking every migration there is, and a plan already at v1
@@ -311,6 +327,7 @@ var localMigrations = map[int]string{
 	2: localSchemaV2,
 	3: localSchemaV3,
 	4: localSchemaV4,
+	5: localSchemaV5,
 }
 
 // migrate brings the file up to the schema this build speaks, and is what every
@@ -392,9 +409,12 @@ func (l *Local) Shape(ctx context.Context, p Project) (Shape, error) {
 
 // milestones reads the plan's milestones in plan order. A milestone is nothing
 // but a name and a place, exactly as domain already says: its status is
-// computed from the slices under it, so there is nothing else to store.
+// computed from the slices under it, so there is nothing else to store. Its ID
+// is its name, except for a task source's container ([localSchemaV5]), whose
+// ID is the container's own.
 func (l *Local) milestones(ctx context.Context, q localQuerier) ([]domain.Milestone, error) {
-	rows, err := q.QueryContext(ctx, `SELECT name, position, select_type FROM milestones ORDER BY position, name`)
+	rows, err := q.QueryContext(ctx,
+		`SELECT name, position, select_type, container_id FROM milestones ORDER BY position, name`)
 	if err != nil {
 		return nil, l.errorf(err, "read the milestones")
 	}
@@ -403,10 +423,14 @@ func (l *Local) milestones(ctx context.Context, q localQuerier) ([]domain.Milest
 	var ms []domain.Milestone
 	for rows.Next() {
 		var m domain.Milestone
-		if err := rows.Scan(&m.Name, &m.Order, &m.SelectType); err != nil {
+		var container sql.NullString
+		if err := rows.Scan(&m.Name, &m.Order, &m.SelectType, &container); err != nil {
 			return nil, l.errorf(err, "read a milestone")
 		}
 		m.ID = m.Name
+		if container.Valid {
+			m.ID = container.String
+		}
 		ms = append(ms, m)
 	}
 	if err := rows.Err(); err != nil {

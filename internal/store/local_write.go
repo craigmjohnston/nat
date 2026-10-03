@@ -573,15 +573,19 @@ func (l *Local) nextSlicePosition(ctx context.Context, tx *sql.Tx) (float64, err
 	return last + 1, nil
 }
 
-// checkMilestone refuses a milestone the plan does not hold. The empty name is
-// a slice filed under no milestone at all, which the plan draws on its own and
-// which the schema records as NULL.
+// checkMilestone refuses a milestone the plan does not hold, by its ID: the
+// name of an ordinary milestone, or the container id of a task source's
+// ([localSchemaV5]) — never a container's name, which is not what a slice
+// under it is filed by. The empty name is a slice filed under no milestone at
+// all, which the plan draws on its own and which the schema records as NULL.
 func (l *Local) checkMilestone(ctx context.Context, tx *sql.Tx, name string) error {
 	if name == "" {
 		return nil
 	}
 	var held string
-	err := tx.QueryRowContext(ctx, `SELECT name FROM milestones WHERE name = ?`, name).Scan(&held)
+	err := tx.QueryRowContext(ctx,
+		`SELECT name FROM milestones WHERE (name = ? AND container_id IS NULL) OR container_id = ?`,
+		name, name).Scan(&held)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return fmt.Errorf("the plan at %s has no milestone named %q", l.path, name)
@@ -1199,6 +1203,53 @@ func (l *Local) milestoneExists(ctx context.Context, q localQuerier, name string
 		return false, l.errorf(err, "read the milestones")
 	}
 	return true, nil
+}
+
+// ensureMilestone makes sure the plan holds a milestone for a task source's
+// container, keyed by the container's own id ([localSchemaV5]) — what
+// [Sourced.AddSlice] asks before filing a task under one, since the plugin,
+// not the plan, is what says which containers there are.
+//
+// A container the plan already holds is left exactly as it is, name included:
+// a title that has changed in the other tracker since is drift the plan
+// accepts rather than chases, because the name is only what the row is drawn
+// as and the id is what every slice under it is filed by. A new one goes at
+// the end of the plan, as [Local.AddMilestones] puts one. Its name is the
+// container's title — unless another milestone already holds that title,
+// another container with the same one being the ordinary case, in which case
+// it is "title (id)": a plan cannot hold two milestones of one name, and the
+// id is what tells the two apart.
+func (l *Local) ensureMilestone(ctx context.Context, id, title string) error {
+	return l.withTx(ctx, "file the container as a milestone", func(tx *sql.Tx) error {
+		var held string
+		err := tx.QueryRowContext(ctx, `SELECT name FROM milestones WHERE container_id = ?`, id).Scan(&held)
+		switch {
+		case err == nil:
+			return nil
+		case !errors.Is(err, sql.ErrNoRows):
+			return l.errorf(err, "read the milestones")
+		}
+		existing, err := l.milestones(ctx, tx)
+		if err != nil {
+			return err
+		}
+		name := title
+		if _, taken := milestoneNamed(existing, title); taken {
+			name = title + " (" + id + ")"
+		}
+		// Past the last milestone, read in plan order just above.
+		next := 0.0
+		if n := len(existing); n > 0 {
+			next = existing[n-1].Order + 1
+		}
+		if err := l.exec(ctx, tx, "file the container as a milestone",
+			`INSERT INTO milestones (name, position, container_id) VALUES (?, ?, ?)`,
+			name, next, id); err != nil {
+			return err
+		}
+		logging.Action("container filed as a milestone", "container", id, "order", next)
+		return nil
+	})
 }
 
 // NewSessionID mints an ad hoc session's ID, in the same shape [newLocalID]

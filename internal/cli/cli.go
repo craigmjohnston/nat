@@ -19,6 +19,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/source"
 	"github.com/craigmjohnston/nat/internal/store"
 	"github.com/craigmjohnston/nat/internal/worktree"
 )
@@ -162,7 +163,7 @@ func (e Env) storeFor(ctx context.Context, projectID string, project config.Proj
 	if !project.IsLocal() {
 		remote = store.Over(e.NewClient(e.Tokens.Token))
 	}
-	return store.ForProject(ctx, storeProject(projectID, project), remote)
+	return store.ForProject(ctx, storeProject(projectID, project), remote, source.Project{}, nil)
 }
 
 // Usage is the help text, listing every way the binary can be run.

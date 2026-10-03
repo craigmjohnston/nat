@@ -23,7 +23,43 @@ entry) say a plan is a file with no workspace behind it: `ForProject` returns
 the `Local` itself (remote may be nil), `PlanPath` honours the config's
 `plan_dir`, and `CreateLocalProject` lays the file down (`Local.InitProject`
 writes an *unstamped* project row, so `Shape` keeps answering yes to both
-columns and the plan never reads as hydrated).
+columns and the plan never reads as hydrated). `Project.Source` (the plugin
+name) is a source project: the same file, same `PlanPath`/`CreateLocalProject`,
+wrapped in `Sourced`.
+
+## Sourced (`sourced.go`)
+
+A `Local` plan whose milestones are a task-source plugin's containers
+(`internal/source`). `ForProject(ctx, p, remote, plugin, src)` builds it for
+`p.Source != ""` (after the `p.Local` arm, before `Mirror`) and refuses a nil
+`src`; the caller builds `plugin` (`source.Project`), since `Project` carries
+no working dir.
+
+- **Containers are the plugin's.** A container is a `milestones` row keyed by
+  `container_id` (schema v5, partial unique index); `milestones()` answers
+  `ID = container_id` where set, else `ID = name` (every older row).
+  `checkMilestone` matches `(name AND container_id IS NULL) OR container_id` —
+  a container's *title* never files a slice. `Sourced.AddSlice` refuses an
+  empty milestone ID, then `Local.ensureMilestone(id, title)`: an existing
+  `container_id` is a no-op (title drift accepted, `name` never rewritten); a
+  new one goes after the last milestone, named `title (id)` where another
+  milestone already holds the title (case-insensitive, `milestoneNamed`).
+- **Refusals**, in Sourced's own words naming the plugin, before any write:
+  `AddMilestones`/`RenameMilestone`/`RemoveMilestone`/`MoveMilestone`,
+  `MoveSlice`, and `ReorderSlice` across containers (no `moved` event in the
+  protocol). A same-container reorder delegates.
+- **Events follow the write**, only on success, logged never returned
+  (`fireEvent`): `AddSlice`→created, `ClaimSlice`→claimed,
+  `ReleaseSlice`→released, `CompleteSlice`→handed_back *only with a branch*,
+  `RecordPR`→approved, `MarkDone`→merged, `DeleteSlice`→deleted. `RecordPR`/
+  `MarkDone` read the slice back for the task (a failed read sends the ID
+  alone); `DeleteSlice` reads it *before* the delete. `Task.Status` is
+  `StatusName` (`Todo`/`In progress`/`Done`). Everything else delegates to
+  `Local` and tells nobody.
+- **Narrow interfaces** in `store.go` — `Describer`, `SidebarReader`,
+  `ContainerReader`, `ActionRunner` — answered only by `*Sourced`, each
+  delegating to the client with the project's `plugin`. Callers type-assert,
+  as with `Puller`.
 
 ## Shape
 
@@ -91,7 +127,8 @@ columns and the plan never reads as hydrated).
   and only asks for the write lock later, which is the **one** lock upgrade
   SQLite refuses outright rather than waits out the busy timeout for — so
   two concurrent writers fail fast rather than queue as intended.
-- Schema is stamped in `PRAGMA user_version` (currently `1`). `OpenLocal`
+- Schema is stamped in `PRAGMA user_version` (currently `5`; each step is a
+  `localSchemaVN` in `localMigrations`). `OpenLocal`
   creates directory + file + schema when none exists (an untouched project
   is an empty plan, not an error). A plan written by a newer nat is refused
   by name, never read through the wrong schema.

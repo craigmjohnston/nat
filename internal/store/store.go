@@ -19,6 +19,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/source"
 )
 
 // Project names the project an operation works on. It is the little a store
@@ -36,14 +37,42 @@ type Project struct {
 	// Local says the plan is a file of nat's own with no workspace behind it:
 	// there is nothing to mirror, and no credential to read.
 	Local bool
-	// PlanDir is where a local plan's file is kept, when not in nat's own data
-	// directory. Meaningless where Local is false.
+	// PlanDir is where a local or source plan's file is kept, when not in nat's
+	// own data directory. Meaningless for a project in Notion.
 	PlanDir string
+	// Source is the task-source plugin a source project's containers come from
+	// — its plan a file of nat's own like a local one's, whose milestones are
+	// the plugin's containers — and empty for every other project.
+	Source string
 }
 
 // ProjectOf narrows a config entry to what a store has any business reading.
 func ProjectOf(id string, c config.ProjectConfig) Project {
-	return Project{ID: id, Name: c.Name, SlicesID: c.SlicesDSID, Local: c.IsLocal(), PlanDir: c.PlanDir}
+	return Project{ID: id, Name: c.Name, SlicesID: c.SlicesDSID, Local: c.IsLocal(), PlanDir: c.PlanDir, Source: c.Source}
+}
+
+// Describer is answered by a store with a task source behind it — only
+// [Sourced] — and is what the plugin says about itself.
+type Describer interface {
+	Describe(ctx context.Context) (source.Describe, error)
+}
+
+// SidebarReader is answered only by [Sourced]: the plugin's own tree of
+// groups and containers, with the lazy groups named in expand filled in.
+type SidebarReader interface {
+	Sidebar(ctx context.Context, expand []string) ([]source.Group, error)
+}
+
+// ContainerReader is answered only by [Sourced]: everything the plugin shows
+// about one of its containers.
+type ContainerReader interface {
+	Container(ctx context.Context, id string) (source.ContainerDetail, error)
+}
+
+// ActionRunner is answered only by [Sourced]: one of the plugin's named
+// actions, run against a group, a container, or the source itself.
+type ActionRunner interface {
+	Action(ctx context.Context, action string, target source.Target, input string) (source.ActionResult, error)
 }
 
 // Shape is what a store can record about one project's slices, and the
