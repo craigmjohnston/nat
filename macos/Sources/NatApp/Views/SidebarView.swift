@@ -27,7 +27,9 @@ struct SidebarView: View {
     /// The folds the user has made, by key: `active`, `work`, `scratch`,
     /// `p:<project>` and `m:<project>/<milestone>`. A project with no entry is
     /// open exactly when it holds the selection — the design's own default —
-    /// and Scratch starts folded.
+    /// a milestone with no entry is open exactly when it is partly done or
+    /// holds the selection (`SidebarMilestone.opensByDefault`), and Scratch
+    /// starts folded.
     @State private var fold: [String: Bool]
 
     @State private var sliceForDeletion: (row: SidebarSliceRow, done: Bool)?
@@ -844,13 +846,16 @@ struct SidebarView: View {
         // tree, where a milestone would sit, under no folder of their own.
         // The dot's 12pt column centred on a folder's 16pt one.
         ForEach(project.loose) { sliceRow($0, indent: 28 - outdent) }
+        let selected = appModel.activeProjectID == project.id ? appModel.selectedSliceID : nil
         ForEach(project.milestones) { milestone in
             let key = "m:\(project.id)/\(milestone.name)"
+            let opensItself = milestone.opensByDefault(selecting: selected)
             milestoneHead(
                 name: milestone.name.isEmpty ? "No milestone" : milestone.name,
-                count: "\(milestone.done)/\(milestone.total)", key: key, indent: 26 - outdent)
+                count: "\(milestone.done)/\(milestone.total)", key: key, indent: 26 - outdent,
+                openByDefault: opensItself)
                 .contextMenu { milestoneMenu(project.id, milestone.name) }
-            if isOpen(key) {
+            if isOpen(key, byDefault: opensItself) {
                 ForEach(milestone.slices) { sliceRow($0, indent: 34 - outdent) }
             }
         }
@@ -915,7 +920,9 @@ struct SidebarView: View {
             }
         }
         if let last = project.milestones.last {
-            return endsIn(last, key: "m:\(project.id)/\(last.name)")
+            return endsIn(
+                last, key: "m:\(project.id)/\(last.name)",
+                byDefault: last.opensByDefault(selecting: selectedSlice))
         }
         return project.loose.last.map { $0.sliceID == selectedSlice } ?? false
     }

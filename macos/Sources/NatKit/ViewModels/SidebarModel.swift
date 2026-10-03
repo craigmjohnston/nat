@@ -94,6 +94,13 @@ public struct SidebarMilestone: Equatable, Identifiable, Sendable {
     /// milestone is a plan still to be filled, not a finished one.
     public var isComplete: Bool { total > 0 && done == total }
 
+    /// Whether its folder starts open, where the user has not folded it:
+    /// partly done, or holding the selected slice. One with nothing done
+    /// starts folded — its work in progress is already on show in Active.
+    public func opensByDefault(selecting sliceID: String?) -> Bool {
+        (done > 0 && done < total) || sliceID.map { id in slices.contains { $0.sliceID == id } } ?? false
+    }
+
     public init(name: String, done: Int, total: Int, slices: [SidebarSliceRow]) {
         self.name = name
         self.done = done
