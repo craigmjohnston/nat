@@ -72,24 +72,55 @@ func (v ChecksVerdict) String() string {
 	}
 }
 
-// checkFinished is every finished state a check arrives in — a CheckRun's
-// conclusion or a StatusContext's state, as [ghRoll.check] reduces them — and
-// whether it is a failure. A skipped, neutral, cancelled or stale check is
-// finished without having failed, so it holds nothing up. Everything not named
-// here (QUEUED, IN_PROGRESS, PENDING, EXPECTED, whatever GitHub adds next) is a
-// check still to finish: a state nobody can classify is not a pass, or the
-// board would call work ready that nothing said was.
-var checkFinished = map[string]bool{
-	"SUCCESS":         false,
-	"SKIPPED":         false,
-	"NEUTRAL":         false,
-	"CANCELLED":       false,
-	"STALE":           false,
-	"FAILURE":         true,
-	"ERROR":           true,
-	"TIMED_OUT":       true,
-	"STARTUP_FAILURE": true,
-	"ACTION_REQUIRED": true,
+// CheckOutcome is what one status check amounts to for a reader: it is still
+// going, it passed, it failed, or it finished without counting either way.
+// GitHub has a word for every way each of those happens — a run that timed out
+// and one that failed outright are two words for the same news — and this is
+// the one place those words are classified, so the board's verdict, the pull
+// request screen and the merge refusal can never disagree about whether CI is
+// red.
+//
+// The zero value is pending, which is also what a state nobody can classify
+// reads as.
+type CheckOutcome int
+
+const (
+	// CheckPending is a check not finished — QUEUED, IN_PROGRESS, PENDING,
+	// WAITING, REQUESTED, the EXPECTED of a status nothing has reported yet —
+	// or one in a state this build does not know: a check nobody can classify
+	// is exactly the check to keep watching, and calling it a pass would have
+	// work called ready that nothing said was.
+	CheckPending CheckOutcome = iota
+	// CheckPassing is a check that finished and succeeded.
+	CheckPassing
+	// CheckFailing is a check that finished and failed, in any of GitHub's
+	// words for it.
+	CheckFailing
+	// CheckSkipped is a check that finished without counting either way:
+	// skipped, neutral, cancelled or stale. It holds nothing up.
+	CheckSkipped
+)
+
+// checkOutcomes is every finished state a check arrives in — a CheckRun's
+// conclusion or a StatusContext's state, as [ghRoll.check] reduces them to the
+// one field — and what it amounts to. Everything not named here is pending.
+var checkOutcomes = map[string]CheckOutcome{
+	"SUCCESS":         CheckPassing,
+	"FAILURE":         CheckFailing,
+	"ERROR":           CheckFailing,
+	"TIMED_OUT":       CheckFailing,
+	"STARTUP_FAILURE": CheckFailing,
+	"ACTION_REQUIRED": CheckFailing,
+	"SKIPPED":         CheckSkipped,
+	"NEUTRAL":         CheckSkipped,
+	"CANCELLED":       CheckSkipped,
+	"STALE":           CheckSkipped,
+}
+
+// Outcome is where the check stands, read off its state whatever its case or
+// spacing.
+func (c Check) Outcome() CheckOutcome {
+	return checkOutcomes[strings.ToUpper(strings.TrimSpace(c.State))]
 }
 
 // checksVerdictOf rolls a pull request's checks into one verdict: any failure
@@ -100,11 +131,10 @@ func checksVerdictOf(rollup []ghRoll) ChecksVerdict {
 	}
 	verdict := ChecksPassing
 	for _, entry := range rollup {
-		failed, finished := checkFinished[strings.ToUpper(strings.TrimSpace(entry.check().State))]
-		switch {
-		case failed:
+		switch entry.check().Outcome() {
+		case CheckFailing:
 			return ChecksFailing
-		case !finished:
+		case CheckPending:
 			verdict = ChecksPending
 		}
 	}

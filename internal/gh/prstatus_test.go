@@ -132,6 +132,23 @@ func TestOpenPRsChecksVerdict(t *testing.T) {
 	}
 }
 
+// TestCheckOutcome is the one table of GitHub's check words: every finished
+// word, read whatever its case or spacing, and anything else — an unfinished
+// run, an empty state, a word GitHub adds later — as pending.
+func TestCheckOutcome(t *testing.T) {
+	for state, want := range map[string]CheckOutcome{
+		"SUCCESS": CheckPassing, " success ": CheckPassing,
+		"FAILURE": CheckFailing, "ERROR": CheckFailing, "TIMED_OUT": CheckFailing,
+		"STARTUP_FAILURE": CheckFailing, "ACTION_REQUIRED": CheckFailing,
+		"SKIPPED": CheckSkipped, "NEUTRAL": CheckSkipped, "CANCELLED": CheckSkipped, "STALE": CheckSkipped,
+		"IN_PROGRESS": CheckPending, "QUEUED": CheckPending, "": CheckPending, "SOMETHING_NEW": CheckPending,
+	} {
+		if got := (Check{State: state}).Outcome(); got != want {
+			t.Errorf("Check{State: %q}.Outcome() = %d, want %d", state, got, want)
+		}
+	}
+}
+
 // TestChecksVerdictString names every verdict, the zero value as none.
 func TestChecksVerdictString(t *testing.T) {
 	for v, want := range map[ChecksVerdict]string{

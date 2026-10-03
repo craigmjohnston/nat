@@ -77,29 +77,20 @@ func reviewVerdict(pr gh.PR) mergeVerdict {
 	}
 }
 
-// checkStates classifies a check the way the pull request screen's checks
-// section does: the states that are a machine done and either happy or not,
-// with everything else read as one still going rather than as a pass, since a
-// check nobody can classify is exactly the check to keep watching.
-var checkStates = map[string]mergeOutcome{
-	"SUCCESS":         mergePassing,
-	"FAILURE":         mergeFailing,
-	"ERROR":           mergeFailing,
-	"TIMED_OUT":       mergeFailing,
-	"STARTUP_FAILURE": mergeFailing,
-	"ACTION_REQUIRED": mergeFailing,
-	"SKIPPED":         mergeSkipped,
-	"NEUTRAL":         mergeSkipped,
-	"CANCELLED":       mergeSkipped,
-	"STALE":           mergeSkipped,
-}
-
-// checkOutcomeOf is where one check stands.
+// checkOutcomeOf is where one check stands, as [gh.Check.Outcome] classifies
+// it — the same one table the pull request screen's checks section reads, with
+// everything unclassified read as one still going rather than as a pass.
 func checkOutcomeOf(c gh.Check) mergeOutcome {
-	if o, ok := checkStates[strings.ToUpper(strings.TrimSpace(c.State))]; ok {
-		return o
+	switch c.Outcome() {
+	case gh.CheckPassing:
+		return mergePassing
+	case gh.CheckFailing:
+		return mergeFailing
+	case gh.CheckSkipped:
+		return mergeSkipped
+	default:
+		return mergePending
 	}
-	return mergePending
 }
 
 // checkOutcomeOrder is worst-first, the order a rollup and a summary are read

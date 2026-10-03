@@ -81,5 +81,7 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   call, because `internal/cli` must not import `internal/tui` (bubbletea,
   huh, lipgloss, glamour for a headless command that draws nothing). A change
   to either's wording belongs in **both**; `mergerefusal.go`'s doc comment
-  says so at the definition. `internal/cli/difftokens.go` is the same pattern
+  says so at the definition. The one exception is which GitHub check word
+  means what: both read `gh.Check.Outcome`, the single table, also behind
+  the board's checks verdict. `internal/cli/difftokens.go` is the same pattern
   again, for `internal/tui/diffsyntax.go`'s lexing rules.

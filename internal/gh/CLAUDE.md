@@ -40,9 +40,10 @@ human has read the diff.
   by URL. Only `APPROVED` and `MERGEABLE` count as true; every other GitHub
   word (`REVIEW_REQUIRED`, `CHANGES_REQUESTED`, `CONFLICTING`, `UNKNOWN`, a
   no-review-required repo's empty decision) is "not true." The rollup becomes
-  one `ChecksVerdict` (`checksVerdictOf`): any failure → failing, else any
-  unfinished or unknown state → pending, else passing; no checks → `ChecksNone`
-  (no verdict). The board folds failing into `domain.PRChecksFailing`.
+  one `ChecksVerdict` (`checksVerdictOf`, over `Check.Outcome` — the one
+  table of check words, which the TUI PR screen and `actions.MergeRefusal`
+  read too): any failure → failing, else any unfinished or unknown state →
+  pending, else passing; no checks → `ChecksNone` (no verdict). The board folds failing into `domain.PRChecksFailing`.
   **Limit 100 is past gh's default of 30** — a repo with more open PRs than
   that has its oldest silently missing, which reads exactly like a PR that
   closed. Not listed = not open; a failed listing is logged
