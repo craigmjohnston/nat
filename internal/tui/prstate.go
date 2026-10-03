@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/craigmjohnston/nat/internal/actions"
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/logging"
@@ -209,7 +210,7 @@ func (a *App) prStateRead(msg prStateMsg) tea.Cmd {
 	// The board's rows are drawn into a viewport and cached there, so a reading
 	// that is not synced never reaches the screen.
 	a.syncBoard()
-	cmds := []tea.Cmd{a.removeLanded(msg.settled)}
+	cmds := []tea.Cmd{a.removeLanded(msg.settled), a.nudgeFailingChecks(msg.state)}
 	// A slice the reading marked Done, or reopened to In progress, changed
 	// under the plan's copy of it, and the row should say so without waiting
 	// for a poll.
@@ -220,4 +221,74 @@ func (a *App) prStateRead(msg prStateMsg) tea.Cmd {
 		cmds = append(cmds, a.refreshSlice(id))
 	}
 	return tea.Batch(cmds...)
+}
+
+// checksNudgeMsg reports one nudge typed at a live agent's pane: the slice it
+// was about, the session it went to, and the failure that stopped it.
+type checksNudgeMsg struct {
+	sliceID, session string
+	err              error
+}
+
+// nudgeFailingChecks tells each live agent whose slice's pull request the
+// reading found failing its checks, in one prompt (see
+// [agent.ChecksFailingPrompt]), and re-arms every slice the reading found
+// failing no longer.
+//
+// It is edge-triggered, the way [App.prSettled] remembers a landing: a slice
+// is nudged once as its checks go red and not again until a reading has seen
+// them out of the red, so a board polling every thirty seconds never nags, and
+// an agent mid-turn simply finds the prompt queued. A slice the reading left
+// out — gh could not be asked — is neither nudged nor re-armed, since a
+// reading that failed concludes nothing. A slice with no live agent is not
+// nudged either, and not marked: the board's own checks-failing state is what
+// tells the user, and an agent launched onto it later is told on the next
+// reading.
+//
+// The mark goes on as the send is started rather than as it lands, so a
+// second reading arriving first sends nothing twice; a send that fails takes
+// it off again — see [App.checksNudgeSent].
+func (a *App) nudgeFailingChecks(state map[string]domain.PRReadiness) tea.Cmd {
+	if a.launcher == nil || a.project == nil {
+		return nil
+	}
+	launcher := a.launcher
+	var cmds []tea.Cmd
+	for _, s := range a.project.Slices {
+		readiness, read := state[s.ID]
+		if !read {
+			continue
+		}
+		if readiness != domain.PRChecksFailing {
+			delete(a.checksNudged, s.ID)
+			continue
+		}
+		session := a.live[s.ID]
+		if session == "" || a.checksNudged[s.ID] {
+			continue
+		}
+		if a.checksNudged == nil {
+			a.checksNudged = map[string]bool{}
+		}
+		a.checksNudged[s.ID] = true
+		id, prompt := s.ID, agent.ChecksFailingPrompt(s.PRURL, agentBranch(s))
+		cmds = append(cmds, func() tea.Msg {
+			return checksNudgeMsg{sliceID: id, session: session, err: launcher.SendPrompt(session, prompt)}
+		})
+	}
+	return tea.Batch(cmds...)
+}
+
+// checksNudgeSent logs how a nudge went. One that failed is unmarked, so the
+// next reading that still finds the checks failing tries again; nothing is
+// toasted either way, since the board is already drawing the failing checks.
+func (a *App) checksNudgeSent(msg checksNudgeMsg) {
+	if msg.err != nil {
+		delete(a.checksNudged, msg.sliceID)
+		logging.Action("could not tell an agent its pull request's checks are failing",
+			"slice", msg.sliceID, "session", msg.session, "error", msg.err)
+		return
+	}
+	logging.Action("told an agent its pull request's checks are failing",
+		"slice", msg.sliceID, "session", msg.session)
 }
