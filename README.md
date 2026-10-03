@@ -1,142 +1,157 @@
 <p align="center">
-  <img src="docs/assets/gnat-icon.png" width="128" alt="the nat icon: the gnat's looping flight, written as a script g">
+  <img src="docs/assets/gnat-icon.png" width="128" alt="the gnat icon: a gnat's looping flight, written as a script g">
 </p>
 
 <h1 align="center">gnat</h1>
 
-<p align="center">A macOS app for tracking project work executed by Claude Code agents.</p>
+<p align="center">Run several Claude Code agents on one project, each on its own task, and keep track of all of it from one window.</p>
 
-**gnat** is the native macOS app. You plan a project as milestones and slices
-(small units of work), launch Claude Code agents on them, review what they hand
-back in a diff, and open and merge the pull request — all from one window. It
-is a thin app over the `nat` command line: gnat carries no tracker, tmux or
-GitHub logic of its own and shells out to `nat <command> --json` for every read
-and write, so what you see is always what `nat` sees.
+Breaking a project into small, well-described tasks is what makes coding
+agents reliable. Running more than one of those agents at a time is what
+makes them fast. Doing both by hand means a pile of terminals, a pile of
+branches, and no clear picture of what is done, what is running, and what is
+waiting on you.
 
-Three pieces share one tracker:
+gnat is a macOS app for exactly that. You describe a project as milestones
+of tasks. Each task gets its own Claude Code agent, working on its own branch
+in its own checkout. The app shows what every agent is doing, lets you read
+what each one hands back as a diff, and opens and merges the pull request —
+without leaving the window.
 
-- **gnat** — the macOS app; the way most people use this.
-- **`nat` CLI** — the headless commands. Agents run as fresh `claude` sessions
-  in tmux and reach the tracker only through them (`nat start-slice`,
-  `nat complete-slice`), and gnat drives the same commands. `nat help` is the
-  reference for every command and flag.
-- **`nat` TUI** — running `nat` with no subcommand opens the terminal board.
-  It is still maintained and keeps up with the CLI, for when you live in a
-  terminal.
+## How it works
 
-A project's plan — its conventions, milestones and slices — lives in a local
-SQLite file. Notion is an optional backend: a project can instead keep its plan
-in a Notion workspace (a Project DB of project pages, each holding its own
-Slices DB), or a local project can be mirrored to a Notion page later.
+**Plan.** A project is a repository plus a plan: milestones in order, each
+holding tasks. A task is one brief — a few paragraphs saying what to change
+and how to know it is done — sized for a single agent session. You can write
+the plan yourself, or open a workshop: a planning agent reads the repo and
+your request, talks it through with you, and proposes milestones and tasks
+you can accept or send back. Tasks can depend on each other, and a task stays
+blocked until everything it depends on is done.
 
-## Install gnat
+**Launch.** Launching a task starts a fresh Claude Code session for it, in a
+detached tmux session, on a git worktree and branch of its own. The agent is
+handed the task's brief, the project's conventions, and a set of commands for
+reporting back. Launch as many tasks as you like at once; each runs
+independently. You pick the model and effort per launch, with defaults you
+set once.
 
-Download the latest `gnat-<version>.dmg` from the
-[GitHub Releases](https://github.com/craigmjohnston/nat/releases) page, open it
-and drag gnat to Applications. Every merge to `main` publishes a signed,
-notarized release, and gnat updates itself through Sparkle: it checks for new
-releases in the background and offers to install them, so the dmg is only
-needed once. The app bundles a universal `nat`; the CLI and TUI below are
-optional extras.
+**Watch.** Every running agent is listed across all your projects. Select one
+to see its terminal, embedded in the app. Type at it, send it a message,
+interrupt it, or end it. A task's history — handed back, sent back,
+relaunched, blocked, and so on — is kept on the task itself as a log.
 
-gnat needs, on the machine's own install (none are bundled):
+**Review.** When an agent finishes it hands the branch back for review, with a
+summary and a draft pull-request description. The app shows the diff, by file
+or by commit. Comment on lines and send the comments back, and the agent picks
+up where it left off and hands back again. Where the project has a cheap way
+to render what changed — a gallery story, a screenshot script — the agent
+hands those images in too. If the agent noticed work it did not do, it files
+follow-ups for you to queue as new tasks, fold into the current one, or drop.
+Approving opens the pull request.
+
+**Merge.** Merge from the app, or on GitHub. Either way the task is Done only
+once its work is on `main`; a pull request still open with review comments
+can be relaunched as a fix session that reads the comments and addresses
+them. Merging removes the task's worktree.
+
+Beyond planned tasks there is room for the one-off: a scratch project for
+tasks with no plan, and ad hoc sessions — a bare agent on a repo with no
+brief at all, still tracked, still reviewable, still merged from the app.
+
+## Where the plan lives
+
+By default a project's plan is a local SQLite file on your Mac. No account,
+no workspace, nothing to sign up for.
+
+A project can instead be kept in a Notion workspace — a project page holding
+a tasks database — so the plan can be read and edited from Notion as well as
+from the app. A local project can be mirrored into Notion later. For Notion
+the app reads its token from Notion's own CLI, `ntn`, and stores no
+credential of its own.
+
+Tasks can also hang off an external tracker. A task-source plugin owns the
+containers (a Shortcut story, say) and gnat owns the tasks filed under them.
+A Shortcut plugin is published with every release; plugins are installed and
+set up from Settings ▸ Sources.
+
+## Install
+
+Download the latest `gnat-<version>.dmg` from
+[GitHub Releases](https://github.com/craigmjohnston/nat/releases), open it,
+and drag gnat to Applications. The app keeps itself up to date: every merge
+to `main` publishes a signed, notarized release, and gnat offers new ones as
+they appear.
+
+macOS 15 or later. The app bundles its own command-line core; it needs these
+on the machine, none of which are bundled:
 
 - `tmux` and the `claude` CLI — agents run in detached tmux sessions
 - `gh`, logged in — for pull requests
-- Only for Notion-backed projects: Notion's official CLI, `ntn`
-  (`curl -fsSL https://ntn.dev | bash`), logged in with `ntn login`. The
-  tracker reads its Notion token from that CLI rather than storing one of its
-  own, so no integration or personal access token is needed. Local projects
-  need none of it.
+- `ntn`, Notion's official CLI, logged in — only for Notion-backed
+  projects (`curl -fsSL https://ntn.dev | bash`, then `ntn login`)
 
-macOS 15 or later. To build the app from source, see `macos/README.md`.
+To build the app from source, see [`macos/README.md`](macos/README.md).
 
-## Install the CLI and TUI
+## Your first project
 
-Go 1.25.x is required:
+1. Open gnat and make a new project, pointing it at a repository.
+2. Describe the work in the brief and start a workshop. The planning agent
+   proposes milestones and tasks; accept them, or keep workshopping.
+3. Launch a task. Watch its agent in the terminal pane, or launch a few more.
+4. When one hands back, read the diff. Send comments back, or approve to open
+   the pull request.
+5. Merge. The task is Done and its worktree is gone.
 
-```sh
-go install github.com/craigmjohnston/nat@latest
-nat project-create "My project" --local   # a project whose plan is a local file
-nat                                       # the terminal board
-```
+## The command line
 
-For a Notion-backed project, log in with `ntn login` once first.
+The app is a thin layer over a command-line tool, `nat`. Every read and write
+the app makes goes through `nat <command> --json`, and the agents report back
+through the same commands — which is why an agent needs no Notion or tracker
+access of its own, and why what you see in the app is always what the agents
+see.
 
-The repo is private, so the module proxy cannot fetch it. Configure the Go
-toolchain to go straight to GitHub over SSH, once per machine:
-
-```sh
-go env -w GOPRIVATE=github.com/craigmjohnston/*
-git config --global url."git@github.com:".insteadOf "https://github.com/"
-```
-
-To build from a clone instead: `make build && ./nat`.
-
-## The CLI
-
-Given a subcommand, `nat` runs it and exits rather than opening the board,
-printing to the terminal it was typed in. Run `nat help` for the full command
-list and flags — it is the source of truth, and this file does not duplicate
-it. Most commands take `--json` for structured output, which is what gnat and
-agents parse. In outline:
-
-- **Plan and read:** `info`, `slice-show`, `slice-status`, `slice-add`,
-  `slice-edit`, `slice-move`, `slice-depends`, `milestone-*`, `plan-apply`.
-- **Agent lifecycle:** `next-slice`, `start-slice`, `complete-slice`,
-  `release-slice`, `slice-launch`, `agent-send`, `agent-interrupt`,
-  `agent-kill`, `status`.
-- **Review and merge:** `slice-diff`, `slice-approve`, `pr-view`, `pr-comment`,
-  `pr-merge`, `pr-status`.
-- **Projects, sessions and setup:** `project-create`, `session-*`,
-  `workshop-launch`, `config-show`, `config-set`, `setup`, `paths`, `usage`.
-
-Every project-scoped command requires `--project <ID>`; there is no active
-project fallback, since the board's own project can change while an agent works.
-Run one without it to be told the projects this machine tracks.
+Because of that, everything in the app can be done from a terminal or a
+script, and `nat` with no subcommand opens a terminal board with the same
+plan on it. `nat help` is the reference for every command and flag.
 
 ```sh
-nat info --project <ID>          # conventions, milestones and slices as markdown
-nat info --project <ID> --json   # the same, structured
+go install github.com/craigmjohnston/nat@latest   # Go 1.25 or later
+nat project-create "My project" --local --repo .  # a project with a local plan
+nat info --project <ID>                           # its milestones and tasks
+nat                                               # the terminal board
 ```
 
-## The terminal board
+Every project-scoped command takes `--project <ID>`. There is no "current
+project": the app's selection can change while an agent is working, so
+nothing is allowed to depend on it.
 
-The TUI runs in the terminal you start it in, and hosts itself in nothing: the
-board draws its own status band and shows an agent in a box of its own beside
-it. Started from inside a tmux session of your own it behaves exactly the same.
+A naming note: the commands were written when tasks were called slices, and
+still say so — `slice-add`, `next-slice`, `complete-slice`. Read `slice` as
+task.
 
-tmux is still needed for the agents — each one runs in a detached session, which
-is what lets it outlive the board and be shown again later — so `nat` checks for
-it on startup and says how to install it if it is missing. The headless commands
-launch nothing and need none of it.
+### Skills
 
-### Keeping the board current
+Three Claude Code skills come with the binary and work in any repository
+once installed with `nat setup`:
 
-The board does not need restarting to notice a change. A write made through a
-`nat` command — an agent claiming or closing out a slice — shows within a
-second. A change made elsewhere (in Notion, for a Notion-backed project) is
-picked up by a background poll, every 30 seconds by default; `r` refetches at once. A poll is skipped while a form,
-a prompt or a write is in flight, so nothing lands on top of what you are
-typing, and resumes on the next one. A poll that fails leaves the plan on the
-board as it was and says so on the status line.
+- `/queue-work` — turn a description of work into milestones and tasks in an
+  existing project, after you approve the proposal.
+- `/queue-project` — turn a workshopped plan into a whole new project.
+- `/next-slice` — claim the next available task, do it, and hand the branch
+  back for review: the same loop a launched agent runs, for a Claude Code
+  session you started yourself.
 
-To change the interval, add `poll_seconds` to
-`~/.config/notion-agent-tracker/config.json`:
+Run `nat setup` again after upgrading; it reports each skill as created,
+updated or unchanged.
 
-```json
-{
-  "poll_seconds": 120
-}
-```
+### Configuration
 
-Anything outside 5–3600 is treated as a typo and the default is used instead.
-
-### Which Claude Code an agent runs as
-
-Agents are launched with whatever model and effort your own Claude Code is
-configured for. To say otherwise, add `slice_agent` and `workshop_agent` to
-`~/.config/notion-agent-tracker/config.json`:
+Config lives at `~/.config/notion-agent-tracker/config.json` (`nat paths`
+prints the location). The app's Settings window covers what most people
+change; `nat config-show` and `nat config-set` do the same from a terminal.
+The setting worth knowing about up front is which Claude Code an agent runs
+as. Planning and coding are different-sized jobs, so there are two defaults,
+each overridable per launch:
 
 ```json
 {
@@ -145,58 +160,13 @@ configured for. To say otherwise, add `slice_agent` and `workshop_agent` to
 }
 ```
 
-They are two settings because the two jobs are not the same size: workshopping
-a plan (`w` and `W`) is conversation, and often wants a lighter model than the
-agent that goes and writes the code (`l`). Either half of either pair may be
-left out, and what is left out is left to Claude Code — the values are its own
-`--model` and `--effort` flags, so an alias (`sonnet`, `opus`) or a full model
-name works, and the effort levels are `low`, `medium`, `high`, `xhigh` and
-`max`.
+The values are Claude Code's own `--model` and `--effort` flags; leave either
+half out to use whatever your Claude Code is configured for.
 
-Both are prefilled defaults, not fixed: the planning form and the launch
-options (`l`, then "configure & launch") show the pair and let you change it
-for that one launch, leaving the config as it is.
-
-### Watching an agent
-
-`t` on a slice with a running agent shows that agent in a pane beside the board;
-`t` again sends it back to a session of its own. The board keeps the keyboard
-while the agent runs next to it, and the mouse — reported to nat only while an
-agent is on show, so your own selection and scrollback are otherwise left
-alone — moves between the two:
-click the agent to type at it, click the board to come back.
-
-The agent's share of the window defaults to 65%. To change it, add
-`agent_split_percent` to `~/.config/notion-agent-tracker/config.json`:
-
-```json
-{
-  "agent_split_percent": 75
-}
-```
-
-Anything outside 10–90 is treated as a typo and the default is used instead.
-
-`T` is the way out of the split: it hands the whole terminal to the agent's
-session, and detaching with `ctrl-b d` comes back to the board.
-
-## Skills
-
-`/queue-work` (plan work into the tracker), `/queue-project` (turn a
-workshopped plan into a whole new tracked project) and `/next-slice` (pick up
-and complete the next slice) come with the binary. `nat setup` installs them
-into `~/.claude/skills`, which makes them available in any repo:
-
-```sh
-nat setup
-```
-
-Run it again after upgrading: each skill is reported as created, updated or
-unchanged, so an install left behind by an older binary is one command away from
-current. Nothing in `~/.claude/skills` other than the tracker's own skills is
-read or written — and a skill directory that is a symlink, which is how a
-checkout of this repo works on the skills in place, is left alone and said so.
+The terminal board has a few settings of its own — see
+[`docs/tui.md`](docs/tui.md).
 
 ## Status
 
-Being dogfooded on its own tracker.
+Early, and in daily use: gnat is developed on its own tracker, by the agents
+it launches.
