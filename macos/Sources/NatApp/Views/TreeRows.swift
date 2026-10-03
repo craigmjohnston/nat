@@ -1,0 +1,104 @@
+import SwiftUI
+import NatKit
+
+/// What names a piece of work as the sidebar's Active fold does: its state
+/// dot, the project's short tag, then its title. The Active rows and the
+/// navigator's titlebar both draw it, so the two read alike.
+struct ActiveIdentityLabel: View {
+    @Environment(\.ground) private var ground
+    let tag: String
+    let state: SliceDisplayState
+    let live: Bool
+    let title: String
+    var size: CGFloat = GnatMetrics.body
+    var titleInk: InkRole = .secondary
+
+    var body: some View {
+        HStack(spacing: 6) {
+            StateDot(state: state, live: live).frame(width: 12)
+            (Text(tag)
+                .font(Typo.mono(size: 10, weight: .medium))
+                .tracking(1)
+                // Raised off the shared baseline so the small capitals sit
+                // on the title's middle rather than its foot.
+                .baselineOffset(1.5)
+                .foregroundStyle(DesignTokens.ink(.secondary, on: ground))
+                + Text("  \u{2009}")
+                + Text(title))
+                .font(.system(size: size))
+                .ink(titleInk)
+                .lineLimit(1)
+        }
+    }
+}
+
+/// A milestone line of a plan tree, as the sidebar draws it: its folder,
+/// outlined or open, its name and its count. Folding, where there is any, is
+/// the caller's.
+struct TreeMilestoneLine: View {
+    @Environment(\.ground) private var ground
+    let name: String
+    let count: String
+    var open = true
+    var indent: CGFloat = 26
+    var isDone = false
+
+    var body: some View {
+        HStack(spacing: 7) {
+            // A milestone's fold mark: one folder, outlined or open, always in
+            // the muted ink — never the accent.
+            Group {
+                if isDone {
+                    DoneFolderGlyph(open: open, color: DesignTokens.ink(.tertiary, on: ground))
+                } else {
+                    FolderGlyph(open: open, color: DesignTokens.ink(.tertiary, on: ground))
+                }
+            }
+            .frame(width: 16)
+            // Every live line of the tree is one ink — milestones, projects
+            // and slices alike; only the Done folder recedes with what it holds.
+            Text(name)
+                .font(.system(size: GnatMetrics.body))
+                .ink(isDone ? .tertiary : .secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Text(count).monoXS().ink(isDone ? .quaternary : .tertiary)
+        }
+        .padding(.leading, indent)
+        .padding(.trailing, 10)
+        .frame(height: GnatMetrics.sidebarRowHeight)
+    }
+}
+
+/// A slice line of a plan tree, as the sidebar draws it: its dot and title.
+struct TreeSliceLine: View {
+    let title: String
+    let state: SliceDisplayState
+    var live = false
+    var selected = false
+    var indent: CGFloat = 34
+
+    var body: some View {
+        // Done and blocked both recede to the faintest ink — blocked since it
+        // is not available at all, done since it is finished — and done
+        // fades further still under its strike, so finished work sits back
+        // behind everything that is not. Everything else takes the tree's
+        // one ink, a step under the primary.
+        let ink: InkRole = state == .blocked || state == .done ? .quaternary : .secondary
+        HStack(spacing: 6) {
+            StateDot(state: state, live: live).frame(width: 12)
+            Text(title)
+                .font(.system(size: GnatMetrics.body))
+                .strikethrough(state == .done)
+                .ink(ink)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .opacity(state == .done ? 0.7 : 1)
+        .padding(.leading, indent)
+        .padding(.trailing, 10)
+        .frame(height: GnatMetrics.sidebarRowHeight)
+        .gnatRow(selected: selected)
+        .contentShape(Rectangle())
+    }
+}

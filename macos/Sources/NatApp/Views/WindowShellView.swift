@@ -107,15 +107,22 @@ struct WindowShellView: View {
 
     // MARK: - The titlebar
 
-    /// The navigator's segment of the titlebar: the selection's name, which
-    /// opens the tree picker on it.
+    /// The navigator's segment of the titlebar: the selection named as its
+    /// Active row names it — state dot, project tag, title — the whole of it
+    /// opening the tree picker on it.
     private var navigatorTitlebar: some View {
         GnatTitlebar {
             let title = crumbs.title
             if !title.isEmpty {
                 crumbButton(.title) {
                     HStack(spacing: 5) {
-                        Text(title).ink(.primary)
+                        if let identity = titlebarIdentity {
+                            ActiveIdentityLabel(
+                                tag: identity.tag, state: identity.state, live: identity.live, title: identity.title,
+                                size: GnatMetrics.titlebarText, titleInk: .primary)
+                        } else {
+                            Text(title).ink(.primary)
+                        }
                         Image(systemName: "chevron.down")
                             .font(.system(size: 9, weight: .semibold))
                             .ink(.tertiary)
@@ -127,6 +134,23 @@ struct WindowShellView: View {
             }
         }
         .rule(.separator, edges: [.trailing], width: 1)
+    }
+
+    /// The titlebar's tag, dot and title for a selected slice, workshop or
+    /// session; nil with nothing selected and on the Untitled starter, whose
+    /// segment stays as it is.
+    private var titlebarIdentity: TitlebarIdentity? {
+        if appModel.activeTabIsUntitled && !appModel.untitledWorkshopVisible { return nil }
+        if appModel.workshopSelected || appModel.untitledWorkshopVisible {
+            return appModel.titlebarIdentity(for: .workshop)
+        }
+        if let session = selectedSession {
+            return appModel.titlebarIdentity(for: .session(id: session.id, title: crumbs.title))
+        }
+        if let slice = selectedSlice, let navigatorModel {
+            return appModel.titlebarIdentity(for: .slice(id: slice.id, name: slice.name, state: navigatorModel.state))
+        }
+        return nil
     }
 
     /// The main pane's tabs — each pane draws its own titlebar segment, with

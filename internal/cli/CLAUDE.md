@@ -229,12 +229,18 @@ proposal's plan through `applyPlan`, then drops the proposal file; no
 re-validates the proposal's plan against that project's *current* plan with
 `validateAgainstProject` — a plan the project has outgrown since the
 proposal was written (a milestone renamed, a slice a `depends_on` named
-since deleted) is refused here, not half-applied — applies it, nudges only
-once something was actually written (as `plan-apply` does), then drops the
-proposal file. Refusals (no proposal, empty name, an invalid or outgrown
-plan) all land before anything is written; a failure partway through filing
-leaves the project (made or already there), what was filed, and the
-proposal, in place.
+since deleted) is refused here, not half-applied — applies it, then drops the
+proposal file. **A proposal is accepted once:** both halves first claim it
+(`claimProposal` renames it to `<key>.json.accepting-<pid>`, out of the
+proposal path) and file exactly what they claimed — a second accept finds no
+proposal, and no reader sees a proposal whose plan is in even if the claimed
+file will not then go; one that cannot be claimed is refused before anything
+is written. Success drops the claimed file, then nudges, so the last nudge
+always finds the plan in and the proposal gone together. Refusals (no
+proposal, empty name, an invalid or outgrown plan) all land before anything
+is written; a failure after the claim leaves the project (made or already
+there) and what was filed, puts the proposal back (`os.Link`, so a revision
+proposed meanwhile is never overwritten), then nudges.
 
 ## `usage`
 

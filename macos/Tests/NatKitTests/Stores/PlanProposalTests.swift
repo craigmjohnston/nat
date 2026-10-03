@@ -254,7 +254,7 @@ final class PlanProposalFlowTests: XCTestCase {
         client.readFailure = nil
         client.proposal = nil
         await appModel.refreshProposals()
-        XCTAssertEqual(appModel.activeProposal?.name, "first", "no file is no news")
+        XCTAssertNil(appModel.activeProposal, "no file is a proposal accepted elsewhere — the file is the one source")
     }
 
     func testTheNameFieldHasNothingToEditWithoutAProposal() async {

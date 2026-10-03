@@ -69,15 +69,75 @@ func loadProposal(workspaceID string) (proposalDoc, error) {
 	if err != nil {
 		return proposalDoc{}, fmt.Errorf("resolve the proposal file: %w", err)
 	}
+	return readProposalFile(path, workspaceID)
+}
+
+func readProposalFile(path, key string) (proposalDoc, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return proposalDoc{}, fmt.Errorf("read the proposal: %w", err)
 	}
 	var doc proposalDoc
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		return proposalDoc{}, fmt.Errorf("the proposal for workspace %s is not valid JSON: %w", workspaceID, err)
+		return proposalDoc{}, fmt.Errorf("the proposal for workspace %s is not valid JSON: %w", key, err)
 	}
 	return doc, nil
+}
+
+// claimedProposal is a proposal plan-accept has taken out of the proposal
+// path before filing anything, so that it is accepted exactly once: what is
+// filed is what was claimed, a second accept finds no proposal, and a reader
+// can never see a proposal whose plan is already filed — whether or not the
+// claimed file can be removed afterwards, it is no longer where anything
+// looks for a proposal.
+type claimedProposal struct {
+	path, claimed string
+	doc           proposalDoc
+}
+
+// claimProposal moves key's proposal aside — one rename, atomic on the same
+// filesystem — and reads it from there. No proposal is refused as one; a
+// proposal that cannot be moved is refused before anything is written, so
+// it is never filed while it stays acceptable. A claimed file that will not
+// parse is put back.
+func claimProposal(key string) (*claimedProposal, error) {
+	path, err := proposalPath(key)
+	if err != nil {
+		return nil, fmt.Errorf("resolve the proposal file: %w", err)
+	}
+	claimed := fmt.Sprintf("%s.accepting-%d", path, os.Getpid())
+	if err := os.Rename(path, claimed); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("no proposal to accept for %s: %w", key, fs.ErrNotExist)
+		}
+		return nil, fmt.Errorf("claim the proposal before accepting it: %w", err)
+	}
+	c := &claimedProposal{path: path, claimed: claimed}
+	if c.doc, err = readProposalFile(claimed, key); err != nil {
+		c.restore()
+		return nil, err
+	}
+	return c, nil
+}
+
+// restore puts an accept's proposal back where it was, for an accept that
+// failed — but only where nothing has taken its place: a revision proposed
+// meanwhile is newer, and wins. A proposal that cannot be put back is left
+// at its claimed path and logged rather than lost.
+func (c *claimedProposal) restore() {
+	if err := os.Link(c.claimed, c.path); err != nil && !errors.Is(err, fs.ErrExist) {
+		logging.Action("proposal not restored", "kept_at", c.claimed, "error", err.Error())
+		return
+	}
+	_ = os.Remove(c.claimed)
+}
+
+// drop discards an accepted proposal. One that will not go is logged and
+// left: it is already out of the proposal path, so nothing reads it again.
+func (c *claimedProposal) drop() {
+	if err := os.Remove(c.claimed); err != nil {
+		logging.Action("accepted proposal not removed", "path", c.claimed, "error", err.Error())
+	}
 }
 
 // planAccept is the user's Accept on a proposal — exactly one of --workspace
@@ -102,9 +162,17 @@ func loadProposal(workspaceID string) (proposalDoc, error) {
 // deleted) is refused here rather than half-applied. The proposal file is
 // dropped only once the plan is in, same order as --workspace.
 //
-// A run that fails while applying the plan leaves the project (made or
-// already there) and whatever was filed, and the proposal in place, and says
-// so — the same no-rollback stance plan-apply takes.
+// Either half first claims the proposal — moves it out of the proposal path
+// ([claimProposal]) — and files exactly what it claimed, so a proposal is
+// accepted once: a second accept finds none, and no reader ever sees a
+// proposal whose plan is already in, even where the claimed file then will
+// not go. A proposal that cannot be claimed is refused before anything is
+// written. Success drops the claimed file, then nudges.
+//
+// A run that fails after the claim leaves the project (made or already
+// there) and whatever was filed, puts the proposal back (unless a revision
+// was proposed meanwhile, which wins), nudges, and says so — the same
+// no-rollback stance plan-apply takes.
 func planAccept(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("plan-accept", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -139,12 +207,21 @@ func planAccept(ctx context.Context, args []string, env Env) error {
 
 // acceptIntoNewProject is planAccept's --workspace half: see planAccept's own
 // doc comment for the order and why.
-func acceptIntoNewProject(ctx context.Context, env Env, ws, projectName string, asJSON bool) error {
-	// Everything that can be refused is refused before the project is made.
-	doc, err := loadProposal(ws)
+func acceptIntoNewProject(ctx context.Context, env Env, ws, projectName string, asJSON bool) (err error) {
+	claim, err := claimProposal(ws)
 	if err != nil {
 		return err
 	}
+	// Any failure from here puts the proposal back and says so, after any
+	// partial write too: whatever the nudge wakes finds the proposal again.
+	defer func() {
+		if err != nil {
+			claim.restore()
+			env.nudged()
+		}
+	}()
+	doc := claim.doc
+	// Everything that can be refused is refused before the project is made.
 	// A new project has no milestones or slices of its own, so the targets
 	// resolved here are the ones applying it needs.
 	targets, err := validatePlan(doc.Plan, nil, nil)
@@ -170,18 +247,14 @@ func acceptIntoNewProject(ctx context.Context, env Env, ws, projectName string, 
 		return err
 	}
 	applied, err := applyPlan(ctx, st, sp, shape, doc.Plan, targets, shape.Milestones)
-	env.nudged()
 	if err != nil {
 		return err
 	}
 
-	// The plan is in: the proposal has done its job. A file that will not go is
-	// no reason to fail an accept that has already succeeded.
-	if path, perr := proposalPath(ws); perr == nil {
-		if rerr := os.Remove(path); rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
-			logging.Action("proposal not removed", "workspace", ws, "error", rerr.Error())
-		}
-	}
+	claim.drop()
+	// Only now, with the proposal gone: what the nudge wakes reads the plan in
+	// and the proposal dropped together.
+	env.nudged()
 	logging.Action("plan accepted", "workspace", ws, "project", projectID,
 		"milestones", len(applied.Milestones), "slices", len(applied.Slices))
 
@@ -199,15 +272,24 @@ func acceptIntoNewProject(ctx context.Context, env Env, ws, projectName string, 
 
 // acceptIntoProject is planAccept's --project half: see planAccept's own doc
 // comment for the order and why.
-func acceptIntoProject(ctx context.Context, env Env, projectRef string, asJSON bool) error {
+func acceptIntoProject(ctx context.Context, env Env, projectRef string, asJSON bool) (err error) {
 	_, projectID, project, err := env.projectFor(projectRef)
 	if err != nil {
 		return err
 	}
-	doc, err := loadProposal(projectID)
+	claim, err := claimProposal(projectID)
 	if err != nil {
 		return err
 	}
+	// Any failure from here puts the proposal back and says so, after any
+	// partial write too: whatever the nudge wakes finds the proposal again.
+	defer func() {
+		if err != nil {
+			claim.restore()
+			env.nudged()
+		}
+	}()
+	doc := claim.doc
 	st, err := env.storeFor(ctx, projectID, project)
 	if err != nil {
 		return err
@@ -222,22 +304,15 @@ func acceptIntoProject(ctx context.Context, env Env, projectRef string, asJSON b
 	}
 
 	applied, err := applyPlan(ctx, st, sp, shape, doc.Plan, targets, shape.Milestones)
-	// Nudge only once something was actually written, the same rule plan-apply
-	// itself applies.
-	if len(applied.Milestones) > 0 || len(applied.Slices) > 0 || len(applied.Dependencies) > 0 {
-		env.nudged()
-	}
 	if err != nil {
 		return err
 	}
 
-	// The plan is in: the proposal has done its job. A file that will not go is
-	// no reason to fail an accept that has already succeeded.
-	if path, perr := proposalPath(projectID); perr == nil {
-		if rerr := os.Remove(path); rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
-			logging.Action("proposal not removed", "project", projectID, "error", rerr.Error())
-		}
-	}
+	claim.drop()
+	// Only now, with the proposal gone — and always, since the proposal going
+	// is itself news to the app: what the nudge wakes reads the plan in and
+	// the proposal dropped together.
+	env.nudged()
 	logging.Action("plan accepted", "project", projectID,
 		"milestones", len(applied.Milestones), "slices", len(applied.Slices))
 

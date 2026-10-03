@@ -82,20 +82,31 @@ public final class AppModel {
     /// took, or the tab closing.
     private var workshopPlanFiles: [String: PlanFile] = [:]
 
-    /// The plan each tab's workshop has proposed, by tab — an Untitled tab's
-    /// by its workspace, a project's by the project — what the sidebar draws
-    /// as the proposed tree. Replaced in place by a revised one.
-    public private(set) var proposals: [String: PlanProposal] = [:]
+    /// Each tab's workshop proposal and its Accept, by tab — an Untitled
+    /// tab's read by its workspace, a project's by the project. See
+    /// `ProposalState` for the rules that keep readings and an Accept from
+    /// racing each other.
+    public private(set) var proposalStates: [String: ProposalState] = [:]
+
+    /// The plan each tab's workshop has proposed, by tab — what the
+    /// workshop's Plan section draws. Replaced in place by a revised one.
+    public var proposals: [String: PlanProposal] {
+        proposalStates.compactMapValues(\.proposal)
+    }
 
     /// The project name the user has typed over the agent's suggestion, per
     /// tab: absent while the field still shows the suggestion, so a revised
     /// proposal's own name follows it until the user has said otherwise.
     private var proposalNameEdits: [String: String] = [:]
 
-    /// True while an Accept is under way, and what the last one refused with —
-    /// drawn at the name field.
-    public private(set) var proposalAccepting = false
-    public private(set) var proposalError: String?
+    /// True while the tab on screen's Accept is under way, and what its last
+    /// one refused with — drawn at the name field.
+    public var proposalAccepting: Bool {
+        activeProjectID.flatMap { proposalStates[$0]?.accepting } ?? false
+    }
+    public var proposalError: String? {
+        activeProjectID.flatMap { proposalStates[$0]?.error }
+    }
 
     /// What each accepted plan went in as, by project: the pane's "Plan
     /// accepted" state, shown until something is selected.
@@ -539,6 +550,7 @@ public final class AppModel {
     /// which comes back through `addProject(id:name:)`.
     public func start(configPath: String, nudgePath: String) async {
         self.nudgePath = nudgePath
+        startProposalWatch()
         do {
             let loadedConfig = try await configReader.readConfig(from: configPath)
             self.config = loadedConfig
@@ -881,6 +893,14 @@ public final class AppModel {
             fixLaunched: fixLaunchedSliceIDs)
     }
 
+    /// What the navigator's titlebar names `selection` in the active project
+    /// by — its Active row's tag, dot and liveness where it has one.
+    public func titlebarIdentity(for selection: TitlebarSelection) -> TitlebarIdentity {
+        NatKit.titlebarIdentity(
+            for: selection, projectID: activeProjectID ?? "", active: sidebarModel.active,
+            tags: projectTags(sidebarInputs.map { (id: $0.id, name: $0.name) }))
+    }
+
     /// Select a slice wherever it is filed: its project is made the active
     /// one first when it is not, which is what every per-project reading
     /// (detail, diff, pull request, sessions) is keyed by.
@@ -896,6 +916,9 @@ public final class AppModel {
     /// Select a project's workshop row, activating it first.
     public func selectWorkshop(inProject projectID: String) async {
         await select(inProject: projectID) { $0.workshopSelected = true }
+        // A proposal written before the workshop was opened has no nudge
+        // still to come.
+        await refreshProposals()
     }
 
     /// Makes a selection in a project, switching to it first where it is not
@@ -917,10 +940,10 @@ public final class AppModel {
     /// Re-read every open project but the active one, in the background —
     /// the sidebar draws all of their plans, and a nudge or a poll tick is as
     /// much news for them as for the one on screen.
-    private func refreshBackgroundProjects() {
+    private func refreshBackgroundProjects(_ read: PlanRead) {
         for tab in projectTabs where tab.id != activeProjectID && !isUntitledTab(tab.id) {
             guard let store = stores[tab.id] else { continue }
-            Task { await store.refresh() }
+            Task { await store.refresh(read) }
         }
     }
 
@@ -1153,26 +1176,25 @@ public final class AppModel {
 
     // MARK: - Proposal
 
-    /// What a closed or handed-over Untitled tab leaves behind: its workspace
-    /// id, draft, attached file and proposal. The watch on the nudge marker
-    /// stops with the last Untitled tab.
+    /// What a closed tab, or a handed-over Untitled one, leaves behind: its
+    /// workspace id, draft, attached file and proposal.
     private func forgetUntitledTab(_ tabID: String) {
         workspaceIDs[tabID] = nil
         workshopDrafts[tabID] = nil
         workshopPlanFiles[tabID] = nil
         workshopPinnedProjects.remove(tabID)
         workshopRequests[tabID] = nil
-        proposals[tabID] = nil
+        // Discarded rather than removed, so a reading still in flight for
+        // this tab finds it and is dropped as stale.
+        proposalStates[tabID]?.discard()
         proposalNameEdits[tabID] = nil
-        if !projectTabs.contains(where: { isUntitledTab($0.id) }) {
-            proposalWatcher?.stop()
-            proposalWatcher = nil
-        }
     }
 
     /// Watch the nudge marker for `plan-propose`, which touches it: the same
     /// mtime watch the project's own refresh rides on, so a proposal reaches
-    /// the rail within its one-second poll.
+    /// the Plan section within its one-second poll. Started with the app and
+    /// running for its life, whatever tabs are open — a reading is cheap, and
+    /// only tabs with a workshop going are read at all.
     private func startProposalWatch() {
         guard proposalWatcher == nil, let nudgePath else { return }
         let watcher = NudgeWatcher()
@@ -1187,50 +1209,47 @@ public final class AppModel {
     /// Read every workshop's proposal: each Untitled tab's by its workspace,
     /// and each project's whose workshop could have one — its planning agent
     /// live, its row pinned, or a proposal already on screen — by the
-    /// project. One that will not read or parse is logged and leaves the tab
-    /// exactly as it was — the agent will propose again — and none yet is
-    /// the ordinary state, not news.
+    /// project. Each reading lands through `ProposalState`, so one that
+    /// finishes after a newer reading or across an Accept is dropped rather
+    /// than drawn. One that will not read or parse is logged and concludes
+    /// nothing — the agent will propose again.
     public func refreshProposals() async {
         for (tabID, workspace) in workspaceIDs {
-            let proposal: PlanProposal?
-            do {
-                proposal = try await clientFactory().planProposal(workspaceID: workspace)
-            } catch {
-                NSLog("AppModel: could not read the proposal for %@: %@", workspace, error.localizedDescription)
-                continue
-            }
-            // The tab may have been closed or handed over during the read.
-            guard let proposal, workspaceIDs[tabID] == workspace, proposals[tabID] != proposal else { continue }
-            proposals[tabID] = proposal
-            proposalError = nil
+            await readProposal(tabID: tabID) { try await $0.planProposal(workspaceID: workspace) }
         }
         let planners = planningAgents
         for tab in projectTabs where !isUntitledTab(tab.id) {
-            guard planners[tab.id] != nil || workshopPinnedProjects.contains(tab.id) || proposals[tab.id] != nil
+            guard planners[tab.id] != nil || workshopPinnedProjects.contains(tab.id)
+                || proposalStates[tab.id]?.proposal != nil
             else { continue }
-            let proposal: PlanProposal?
-            do {
-                proposal = try await clientFactory().planProposal(projectID: tab.id)
-            } catch {
-                NSLog("AppModel: could not read the proposal for %@: %@", tab.id, error.localizedDescription)
-                continue
-            }
-            guard let proposal, projectTabs.contains(where: { $0.id == tab.id }), proposals[tab.id] != proposal
-            else { continue }
-            proposals[tab.id] = proposal
-            proposalError = nil
+            await readProposal(tabID: tab.id) { try await $0.planProposal(projectID: tab.id) }
         }
+    }
+
+    /// One reading of one tab's proposal: a ticket taken before nat is asked,
+    /// handed back with what it found.
+    private func readProposal(
+        tabID: String, _ read: (NatClientProtocol) async throws -> PlanProposal?
+    ) async {
+        let ticket = proposalStates[tabID, default: ProposalState()].beginReading()
+        let found: PlanProposal?
+        do {
+            found = try await read(clientFactory())
+        } catch {
+            NSLog("AppModel: could not read the proposal for %@: %@", tabID, error.localizedDescription)
+            return
+        }
+        proposalStates[tabID]?.land(ticket, found: found)
     }
 
     /// The proposal the tab on screen holds, if any.
     public var activeProposal: PlanProposal? {
-        activeProjectID.flatMap { proposals[$0] }
+        activeProjectID.flatMap { proposalStates[$0]?.proposal }
     }
 
-    /// The proposal a tab holds, if any — what the sidebar draws under its
-    /// row.
+    /// The proposal a tab holds, if any, whether or not it is on screen.
     public func proposal(forTab tabID: String) -> PlanProposal? {
-        proposals[tabID]
+        proposalStates[tabID]?.proposal
     }
 
     /// The name field: the user's own text, or the agent's suggestion until
@@ -1238,12 +1257,12 @@ public final class AppModel {
     public var proposalName: String {
         get {
             guard let tabID = activeProjectID else { return "" }
-            return proposalNameEdits[tabID] ?? proposals[tabID]?.name ?? ""
+            return proposalNameEdits[tabID] ?? proposalStates[tabID]?.proposal?.name ?? ""
         }
         set {
-            guard let tabID = activeProjectID, proposals[tabID] != nil else { return }
+            guard let tabID = activeProjectID, proposalStates[tabID]?.proposal != nil else { return }
             proposalNameEdits[tabID] = newValue
-            proposalError = nil
+            proposalStates[tabID]?.clearError()
         }
     }
 
@@ -1258,9 +1277,12 @@ public final class AppModel {
     /// goodbye — and hand the tab over to the project. An empty name refuses
     /// at the field; a refusal from nat leaves the tab and its proposal as
     /// they were, with the reason at the field. On a project's tab it files
-    /// the proposal into the project — `acceptProjectProposal`.
+    /// the proposal into the project — `acceptProjectProposal`. Either way the
+    /// Accept is one span of `ProposalState`, begun before nat is asked and
+    /// ended once what it changed is on screen.
     public func acceptProposal() async {
-        guard let tabID = activeProjectID, proposals[tabID] != nil, !proposalAccepting else { return }
+        guard let tabID = activeProjectID, let state = proposalStates[tabID],
+              state.proposal != nil, !state.accepting else { return }
         guard isUntitledTab(tabID) else {
             await acceptProjectProposal(tabID)
             return
@@ -1268,12 +1290,10 @@ public final class AppModel {
         guard let workspace = workspaceIDs[tabID] else { return }
         let name = proposalName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
-            proposalError = ProposalText.emptyNameError
+            proposalStates[tabID]?.refuse(ProposalText.emptyNameError)
             return
         }
-        proposalAccepting = true
-        proposalError = nil
-        defer { proposalAccepting = false }
+        guard proposalStates[tabID]?.beginAccept() != nil else { return }
         do {
             let accepted = try await clientFactory().planAccept(workspaceID: workspace, name: name)
             // The plan is in and the project exists; a session that will not
@@ -1285,43 +1305,41 @@ public final class AppModel {
             // The card is owed from here until it is dismissed or answered.
             mirrorNudgeMemory.arm(accepted.project.id)
             mirrorNudgePending.insert(accepted.project.id)
+            // The Accept stays under way until the tab is the project's: the
+            // hand-over discards this tab's proposal state with the rest of it.
             await addProject(id: accepted.project.id, name: accepted.project.name, replacing: tabID)
+            proposalStates[tabID]?.endAccept(refusal: nil)
             activityStore?.kick()
-        } catch let error as NatError {
-            if case .commandFailed(let message) = error {
-                proposalError = message
-            } else {
-                proposalError = error.localizedDescription
-            }
         } catch {
-            proposalError = error.localizedDescription
+            proposalStates[tabID]?.endAccept(refusal: refusalMessage(error))
         }
     }
 
     /// A project workshop's Accept: `nat plan-accept --project` files the
     /// proposal into the project through plan-apply's own validation and
-    /// drops it, and the project's tree is read again with the plan in it.
-    /// Unlike an Untitled tab's, the session is left running — the project
-    /// was there before the workshop and is there after it, and the user may
-    /// well keep planning — so the terminal stays where it was. A refusal
-    /// leaves the proposal on screen with nat's reason under it.
+    /// drops it. The project's plan is then read from the replica — nat wrote
+    /// the plan through it, so there is nothing to pull from the workspace —
+    /// and only once that read has landed does the Accept end and the
+    /// proposal go, so the tree holds the new milestones before the Plan
+    /// section leaves, never neither. Unlike an Untitled tab's, the session is
+    /// left running — the project was there before the workshop and is there
+    /// after it, and the user may well keep planning. A refusal leaves the
+    /// proposal on screen with nat's reason under it.
     private func acceptProjectProposal(_ projectID: String) async {
-        proposalAccepting = true
-        proposalError = nil
-        defer { proposalAccepting = false }
+        guard proposalStates[projectID]?.beginAccept() != nil else { return }
         do {
             _ = try await clientFactory().planAccept(projectID: projectID)
-            proposals[projectID] = nil
-            await stores[projectID]?.refresh()
-        } catch let error as NatError {
-            if case .commandFailed(let message) = error {
-                proposalError = message
-            } else {
-                proposalError = error.localizedDescription
-            }
+            await stores[projectID]?.refresh(.replica)
+            proposalStates[projectID]?.endAccept(refusal: nil)
         } catch {
-            proposalError = error.localizedDescription
+            proposalStates[projectID]?.endAccept(refusal: refusalMessage(error))
         }
+    }
+
+    /// What a failed nat call says, for the field under the proposal.
+    private func refusalMessage(_ error: Error) -> String {
+        if case NatError.commandFailed(let message) = error { return message }
+        return error.localizedDescription
     }
 
     // MARK: - Mirroring to Notion
@@ -1565,13 +1583,10 @@ public final class AppModel {
     /// Manually refresh the current project — also the nudge watcher's own
     /// action, so an agent's hand-back reads that slice's stat in without
     /// waiting for the next poll.
-    public func refresh() async {
+    public func refresh(_ read: PlanRead = .pull) async {
         guard let projectStore = projectStore else { return }
-        refreshBackgroundProjects()
-        await projectStore.refresh()
-        // A project workshop's `plan-propose` nudges like any other write, so
-        // this is what brings its proposal up, and a revision over it.
-        await refreshProposals()
+        refreshBackgroundProjects(read)
+        await projectStore.refresh(read)
         await settlePendingApprovals(projectStore: projectStore)
         await updateReviewStats(projectID: projectStore.projectID, projectStore: projectStore)
         await reapFinishedAgents()
@@ -1954,7 +1969,9 @@ public final class AppModel {
         let watcher = NudgeWatcher()
         watcher.start(path: nudgePath) { [weak self] in
             Task { @MainActor in
-                await self?.refresh()
+                // A nudge is a write made on this machine, which nat made
+                // through the replica: it is already there to read.
+                await self?.refresh(.replica)
             }
         }
         self.nudgeWatcher = watcher
@@ -1986,6 +2003,10 @@ public final class AppModel {
                         // REVIEW rail within a poll interval rather than
                         // sitting there as "awaiting review" forever.
                         await self.refresh()
+                        // The nudge watch brings proposals within a second;
+                        // the poll is what catches one it never saw — a
+                        // proposal already on disk when its workshop opened.
+                        await self.refreshProposals()
                     }
                 } catch {
                     // Task was cancelled; exit the loop

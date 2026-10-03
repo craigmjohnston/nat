@@ -251,17 +251,26 @@ struct WorkshopNavigatorView: View {
     @State private var endError: String?
 
     var body: some View {
-        NavigatorColumn(anyOpen: folded.count < 2) {
+        // There is no Plan section until there is a plan to show in it.
+        let proposal = appModel.activeProposal
+        NavigatorColumn(anyOpen: !folded.contains("brief") || (proposal != nil && !folded.contains("plan"))) {
             NavSectionView(label: "Brief", open: !folded.contains("brief"), onHead: { toggle("brief") }) {
                 briefActions
             } content: {
                 ScrollView { briefContent }.thinScrollers()
             }
-            NavSectionView(label: "Plan", open: !folded.contains("plan"), onHead: { toggle("plan") }) {
-                planActions
-            } content: {
-                ScrollView { planContent }.thinScrollers()
+            if let proposal {
+                NavSectionView(label: "Plan", open: !folded.contains("plan"), onHead: { toggle("plan") }) {
+                    planActions
+                } content: {
+                    ScrollView { planContent(proposal) }.thinScrollers()
+                }
             }
+        }
+        // A proposal arriving opens its section, whatever an earlier one's
+        // was left as.
+        .onChange(of: proposal == nil) { _, gone in
+            if !gone { folded.remove("plan") }
         }
         .alert("End the workshop session?", isPresented: $confirmingEnd) {
             Button("End session", role: .destructive) {
@@ -313,6 +322,9 @@ struct WorkshopNavigatorView: View {
                     Text("This session was launched before gnat was; what it was asked is in the terminal.")
                         .ink(.secondary)
                 }
+                if appModel.activeProposal == nil {
+                    Text("The plan appears here when the agent proposes it.").ink(.tertiary)
+                }
                 if let endError { Text(endError).ink(.danger) }
             }
         } else {
@@ -329,21 +341,22 @@ struct WorkshopNavigatorView: View {
 
     @ViewBuilder
     private var planActions: some View {
-        if appModel.activeProposal != nil {
-            Button(action: { appModel.keepWorkshopping() }) { HeaderActionLabel(title: ProposalText.keepLabel) }
-                .buttonStyle(GnatHeaderButtonStyle())
-                .disabled(appModel.proposalAccepting)
-            Button(action: { Task { await appModel.acceptProposal() } }) {
-                HeaderActionLabel(title: "Accept", systemImage: "checkmark", isBusy: appModel.proposalAccepting)
-            }
-            .buttonStyle(GnatHeaderButtonStyle(primary: true))
+        Button(action: { appModel.keepWorkshopping() }) { HeaderActionLabel(title: ProposalText.keepLabel) }
+            .buttonStyle(GnatHeaderButtonStyle())
             .disabled(appModel.proposalAccepting)
+        Button(action: { Task { await appModel.acceptProposal() } }) {
+            HeaderActionLabel(title: "Accept", systemImage: "checkmark", isBusy: appModel.proposalAccepting)
         }
+        .buttonStyle(GnatHeaderButtonStyle(primary: true))
+        .disabled(appModel.proposalAccepting)
     }
 
-    @ViewBuilder
-    private var planContent: some View {
-        if let proposal = appModel.activeProposal {
+    /// The proposal: its counts, on an Untitled tab the name field, the
+    /// caption, then the proposed tree in the sidebar's own rows — each
+    /// milestone a folder over its slices, every one Todo. A revised
+    /// proposal replaces it in place.
+    private func planContent(_ proposal: PlanProposal) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
             NavProse {
                 NavHeading(text: ProposalText.counts(milestones: proposal.milestoneCount, slices: proposal.sliceCount))
                 if appModel.activeTabIsUntitled {
@@ -364,22 +377,15 @@ struct WorkshopNavigatorView: View {
                     Text(appModel.proposalError ?? ProposalText.projectAcceptCaption(project: projectName))
                         .ink(appModel.proposalError == nil ? .secondary : .danger)
                 }
-                Text("The proposed tree is drawn under this project in the sidebar. A revised proposal replaces it.")
-                    .ink(.secondary)
             }
-        } else if appModel.workshopLaunching && appModel.planningAgent == nil {
-            NavProse { Text("Starting the workshop session\u{2026}").ink(.secondary) }
-        } else if workshopLaunched(appModel) {
-            NavProse {
-                Text("The planning agent is working in the terminal on the right. As soon as it has a draft it proposes it here, and again on every revision — Accept files it into the plan.")
-                    .ink(.secondary)
-            }
-        } else {
-            NavProse {
-                Text("Once launched, the planning agent drafts a plan with you and proposes it here. Accepting it is the one approval — nothing is filed until you do.")
-                    .ink(.secondary)
+            ForEach(proposal.folders, id: \.milestoneID) { folder in
+                TreeMilestoneLine(name: folder.title, count: "\(folder.slices.count)", indent: 12)
+                ForEach(folder.slices, id: \.sliceID) { slice in
+                    TreeSliceLine(title: slice.name, state: .todo, indent: 20)
+                }
             }
         }
+        .padding(.bottom, 8)
     }
 }
 
