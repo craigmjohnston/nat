@@ -121,11 +121,10 @@ struct FollowUpCards: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     ThreadIcon(symbol: "lightbulb")
-                    Text("Agent")
+                    Text("Agent proposed \(followUps.count) follow-up\(followUps.count == 1 ? "" : "s")")
                         .font(.system(size: GnatMetrics.body, weight: .medium))
                         .ink(.secondary)
                 }
-                Text("proposed \(followUps.count) follow-up\(followUps.count == 1 ? "" : "s")").monoXS().ink(.hot)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)

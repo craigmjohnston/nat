@@ -95,7 +95,19 @@ final class TaskLogTests: XCTestCase {
         XCTAssertEqual(log[4].who, "Craig Johnston")
         let anonymous = buildThreadEvents(
             slice: slice(status: "In progress"), agent: nil, brief: nil, events: [TaskLogEvent(.note, note: "n")])
-        XCTAssertEqual(anonymous.last?.who, "Note")
+        XCTAssertEqual(anonymous.last?.title, "Note")
+        XCTAssertEqual(log[4].title, "Craig Johnston left a note")
+    }
+
+    /// An action reads as one line with who did it; a meta that is not an
+    /// action (a comment's time) stays apart from who.
+    func testAnActionsCardReadsAsOneLine() {
+        let log = buildThreadEvents(
+            slice: slice(status: "In progress"), agent: nil, brief: nil,
+            events: [TaskLogEvent(.handedBack, note: "n")])
+        XCTAssertEqual(log.last?.title, "Agent handed back")
+        XCTAssertEqual(ThreadEvent(.launched, who: "Launched").title, "Launched")
+        XCTAssertEqual(ThreadEvent(.agent, who: "Craig", meta: "2h ago", metaIsAction: false).title, "Craig")
     }
 
     /// Notes left on a slice never launched are read in its brief; they open
@@ -135,8 +147,10 @@ final class TaskLogTests: XCTestCase {
         XCTAssertEqual(log.map(\.kind), [
             .launched, .released, .released, .relaunched, .blocked, .closed, .followUps, .followUps, .approved,
         ])
-        XCTAssertEqual(log[1].who, "Craig")
-        XCTAssertEqual(log[2].who, "Released")
+        XCTAssertEqual(log[1].title, "Craig released to Todo")
+        XCTAssertEqual(log[2].title, "Released to Todo")
+        XCTAssertEqual(log[3].title, "Relaunched on the work so far")
+        XCTAssertEqual(log[4].title, "Agent blocked")
         XCTAssertEqual(log[4].tone, .hot)
         XCTAssertEqual(log[4].body, "No token.")
         XCTAssertEqual(log[5].body, "Wrote it up.")

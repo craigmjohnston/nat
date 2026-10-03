@@ -117,7 +117,8 @@ struct ContainerNavigatorView: View {
                         NavProse { Text("No comments yet.").ink(.secondary) }
                     }
                     ForEach(Array(section.comments.enumerated()), id: \.offset) { _, comment in
-                        ThreadEventCard(event: ThreadEvent(.agent, who: comment.by, meta: comment.when, body: comment.text))
+                        ThreadEventCard(event: ThreadEvent(
+                            .agent, who: comment.by, meta: comment.when, body: comment.text, metaIsAction: false))
                     }
                 }
                 .padding(6)

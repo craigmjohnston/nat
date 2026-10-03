@@ -39,7 +39,8 @@ struct SessionNavigatorView: View {
                     VStack(spacing: 6) {
                         ThreadEventCard(event: ThreadEvent(
                             .launched, who: "Started", meta: ago(Date().timeIntervalSince(session.startedAt)),
-                            facts: [session.branch.isEmpty ? ThreadFact("dir", session.dir) : ThreadFact("branch", session.branch)]))
+                            facts: [session.branch.isEmpty ? ThreadFact("dir", session.dir) : ThreadFact("branch", session.branch)],
+                            metaIsAction: false))
                         if let agent {
                             let waiting = AgentActivity(agent.activity) == .waiting
                             let reading = agentFacts(agent)

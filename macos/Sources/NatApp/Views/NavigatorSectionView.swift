@@ -149,9 +149,9 @@ struct NavHeading: View {
     }
 }
 
-/// One card of the Thread log: its icon, who, the toned meta; then the body,
-/// cut short as the brief is; then its labelled facts, on the same ground
-/// with nothing between them.
+/// One card of the Thread log: its icon and title (who and what they did,
+/// as one line); then the body, cut short as the brief is; then its
+/// labelled facts, on the same ground with nothing between them.
 struct ThreadEventCard: View {
     let event: ThreadEvent
 
@@ -160,11 +160,13 @@ struct ThreadEventCard: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     ThreadIcon(symbol: event.kind.symbol)
-                    Text(event.who)
+                    // An action and who did it are one line, in one face
+                    // and ink: "Agent handed back".
+                    Text(event.title)
                         .font(.system(size: GnatMetrics.body, weight: .medium))
                         .ink(.secondary)
                 }
-                if let meta = event.meta {
+                if !event.metaIsAction, let meta = event.meta {
                     Text(meta).monoXS().ink(tone).lineLimit(1)
                 }
                 Spacer(minLength: 0)
