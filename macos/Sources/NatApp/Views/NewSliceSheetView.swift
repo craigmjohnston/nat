@@ -55,7 +55,7 @@ struct NewSliceSheetView: View {
                     .ink(.secondary)
                 TextField("Task title", text: $title)
                     .textFieldStyle(.roundedBorder)
-                    .font(Typo.mono(size: Typo.code))
+                    .font(Typo.mono(size: Typo.input))
             }
 
             if let container {
@@ -94,7 +94,7 @@ struct NewSliceSheetView: View {
                     .font(.system(size: Typo.subhead, weight: .regular))
                     .ink(.tertiary)
                 TextEditor(text: $description)
-                    .font(Typo.mono(size: Typo.subhead))
+                    .font(Typo.mono(size: Typo.input))
                     .scrollContentBackground(.hidden)
                     .padding(6)
                     .surface(.field)

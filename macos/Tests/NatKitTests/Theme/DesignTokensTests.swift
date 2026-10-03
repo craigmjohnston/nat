@@ -317,6 +317,11 @@ final class DesignTokensTests: XCTestCase {
         XCTAssertGreaterThan(Typo.subhead, Typo.caption)
     }
 
+    /// Typed text is never set smaller than body.
+    func testTypoInputIsAtLeastBody() {
+        XCTAssertGreaterThanOrEqual(Typo.input, Typo.body)
+    }
+
     // MARK: - Terminal type
 
     /// The pane is the app writing code on screen, so it writes it in the

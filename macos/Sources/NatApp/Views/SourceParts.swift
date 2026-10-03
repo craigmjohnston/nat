@@ -173,7 +173,7 @@ struct SourceActionTextSheet: View {
                 .ink(.primary)
             TextField("", text: $text)
                 .textFieldStyle(.roundedBorder)
-                .font(Typo.mono(size: Typo.code))
+                .font(Typo.mono(size: Typo.input))
                 .onSubmit(submit)
             HStack {
                 Spacer()

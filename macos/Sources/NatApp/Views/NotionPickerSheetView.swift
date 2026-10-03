@@ -106,7 +106,7 @@ struct NotionPickerSheetView: View {
                 .ink(.tertiary)
             TextField(MirrorText.searchPrompt, text: $model.query)
                 .textFieldStyle(.plain)
-                .font(Typo.mono(size: Typo.code))
+                .font(Typo.mono(size: Typo.input))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)

@@ -37,7 +37,7 @@ struct EditBriefSheetView: View {
                 .lineLimit(1)
 
             TextEditor(text: $brief)
-                .font(Typo.mono(size: Typo.subhead))
+                .font(Typo.mono(size: Typo.input))
                 .scrollContentBackground(.hidden)
                 .padding(6)
                 .surface(.field)
