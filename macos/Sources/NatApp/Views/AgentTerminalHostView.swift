@@ -305,9 +305,13 @@ final class FirstLayoutTerminalView: LocalProcessTerminalView {
         super.viewDidMoveToWindow()
         removeKeyDownMonitor()
         guard window != nil else { return }
+        // Not `self?.interceptModifiedEnter(event) ?? event`: that turns the
+        // nil a sent enter answers back into the event, and SwiftTerm's
+        // keyDown then sends a return after the CSI-u (`KeyMonitorAnswer`).
         keyDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.interceptModifiedEnter(event) ?? event
+            KeyMonitorAnswer.answer(event, owner: self) { view, event in view.interceptModifiedEnter(event) }
         }
+        KeyDebug.log("monitor installed view=\(ObjectIdentifier(self).hashValue) window=\(window.map { $0.windowNumber } ?? -1)")
     }
 
     deinit {
@@ -319,6 +323,7 @@ final class FirstLayoutTerminalView: LocalProcessTerminalView {
     private func removeKeyDownMonitor() {
         if let keyDownMonitor {
             NSEvent.removeMonitor(keyDownMonitor)
+            KeyDebug.log("monitor removed view=\(ObjectIdentifier(self).hashValue)")
         }
         keyDownMonitor = nil
     }
@@ -342,6 +347,10 @@ final class FirstLayoutTerminalView: LocalProcessTerminalView {
     /// it resigns key, so a stale one left over from before another window
     /// took focus would otherwise read as this pane still having it.
     private func interceptModifiedEnter(_ event: NSEvent) -> NSEvent? {
+        if KeyDebug.enabled {
+            let responder = window?.firstResponder.map { String(describing: Swift.type(of: $0)) } ?? "nil"
+            KeyDebug.log("offered view=\(ObjectIdentifier(self).hashValue) keyCode=\(event.keyCode) flags=0x\(String(event.modifierFlags.rawValue, radix: 16)) repeat=\(event.isARepeat) sameWindow=\(event.window === window) firstResponder=\(responder) focus=\(hasKeyboardFocus) chars=\(KeyDebug.escaped(Array((event.characters ?? "").utf8)))")
+        }
         guard event.window === window,
               hasKeyboardFocus,
               Self.returnKeyCodes.contains(event.keyCode),
@@ -349,8 +358,21 @@ final class FirstLayoutTerminalView: LocalProcessTerminalView {
         else {
             return event
         }
+        KeyDebug.log("intercepted keyCode=\(event.keyCode) -> \(KeyDebug.escaped(Array(bytes.utf8)))")
         send(txt: bytes)
         return nil
+    }
+
+    /// Every byte run bound for the pty, logged under `NAT_KEY_DEBUG=1` —
+    /// SwiftTerm's own key encodings and this view's alike end here. A bare
+    /// return also logs who sent it, which is how a stray one is told from
+    /// the press that was meant to send it.
+    override func send(source: TerminalView, data: ArraySlice<UInt8>) {
+        KeyDebug.log("pty <- \(KeyDebug.escaped(data))")
+        if KeyDebug.enabled, data.elementsEqual([0x0d]) {
+            KeyDebug.log("sent by:\n" + Thread.callStackSymbols.dropFirst().prefix(20).joined(separator: "\n"))
+        }
+        super.send(source: source, data: data)
     }
 
     /// Whether this pane is where typing currently goes — itself, or any view
