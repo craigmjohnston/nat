@@ -24,7 +24,7 @@ private let proposalJSON = """
   "slices": [
     {"title": "Tokenize", "milestone": "M1: Parser"},
     {"title": " Post rows ", "milestone": "m2: ledger"},
-    {"title": "Parse", "milestone": " M1: Parser ", "description": "ignored", "depends_on": ["Tokenize"]}
+    {"title": "Parse", "milestone": " M1: Parser ", "description": "  Read **rows**.\\n\\n- one\\n", "depends_on": [" Tokenize "]}
   ]
 }}}
 """
@@ -41,7 +41,10 @@ final class PlanProposalModelTests: XCTestCase {
         XCTAssertEqual(runner.lastArguments, ["plan-proposal", "--workspace", "ws-1", "--json"])
         XCTAssertEqual(proposal?.name, "rust-importer")
         XCTAssertEqual(proposal?.milestones, [
-            .init(name: "M1: Parser", slices: ["Tokenize", "Parse"]),
+            .init(name: "M1: Parser", slices: [
+                "Tokenize",
+                .init(name: "Parse", brief: "Read **rows**.\n\n- one", dependsOn: ["Tokenize"]),
+            ]),
             .init(name: "M2: Ledger", slices: ["Post rows"]),
             .init(name: "M3: Empty", slices: []),
         ])
@@ -73,6 +76,7 @@ final class PlanProposalModelTests: XCTestCase {
         XCTAssertEqual(proposal.sliceCount, 4)
         XCTAssertEqual(proposal.folders.map(\.title), ["M9: New", "M53: App interaction fixes", "M12: Later"])
         XCTAssertEqual(proposal.folders.map(\.total), [1, 2, 1])
+        XCTAssertEqual(proposal.folders.map(\.isNew), [true, false, false], "only the milestone accepting creates is new")
     }
 
     func testAProposalCreatingNoMilestoneStillHoldsItsSlices() throws {
@@ -102,6 +106,33 @@ final class PlanProposalModelTests: XCTestCase {
         XCTAssertEqual(proposal.sliceCount, 0)
     }
 
+    func testASliceWithNoBriefOrDependenciesDecodesEmpty() throws {
+        let proposal = try JSONDecoder().decode(PlanProposal.self, from: Data("""
+        {"name": "n", "plan": {"milestones": [{"name": "M1"}], "slices": [
+          {"title": "Bare", "milestone": "M1", "description": "", "depends_on": []},
+          {"title": "Null", "milestone": "M1", "description": null, "depends_on": null}
+        ]}}
+        """.utf8))
+
+        let slices = proposal.milestones[0].slices
+        XCTAssertEqual(slices, [.init(name: "Bare"), .init(name: "Null")])
+        XCTAssertEqual(slices.map(\.brief), ["", ""])
+        XCTAssertEqual(slices.map(\.dependsOn), [[], []])
+    }
+
+    func testTheFixturesCarryBriefsAndDependencies() {
+        let slices = Fixtures.proposal.milestones.flatMap(\.slices)
+        XCTAssertEqual(slices.count, 14)
+        XCTAssertTrue(slices.contains { $0.brief.isEmpty }, "one slice has no brief, as a plan may")
+        XCTAssertGreaterThan(slices.filter { !$0.brief.isEmpty }.count, 10)
+        let titles = Set(slices.map(\.name))
+        XCTAssertTrue(slices.contains { !$0.dependsOn.isEmpty })
+        XCTAssertTrue(slices.allSatisfy { $0.dependsOn.allSatisfy(titles.contains) }, "every dependency is a proposed slice")
+        let revision = Fixtures.revisionProposal.milestones.flatMap(\.slices)
+        XCTAssertTrue(revision.allSatisfy { !$0.brief.isEmpty })
+        XCTAssertEqual(revision.first?.dependsOn, ["Diff tab remembers its scroll"])
+    }
+
     func testTheFoldersAreTheRailsOwnAllTodo() {
         let folders = Fixtures.proposal.folders
 
@@ -115,6 +146,7 @@ final class PlanProposalModelTests: XCTestCase {
         XCTAssertEqual(folders[0].slices[1].name, "Parse rows into typed records")
         let ids = folders.flatMap { $0.slices.map(\.sliceID) }
         XCTAssertEqual(Set(ids).count, ids.count, "every proposed slice row has an id of its own")
+        XCTAssertEqual(folders[1].slices[2].sliceID, PlanProposal.sliceID(milestone: 1, slice: 2))
     }
 
     func testAcceptPassesTheNameAndDecodesWhatWentIn() async throws {
@@ -241,7 +273,7 @@ final class PlanProposalFlowTests: XCTestCase {
         return (appModel, appModel.openUntitledTab())
     }
 
-    private func proposal(_ name: String = "importer", slices: [String] = ["One", "Two"]) -> PlanProposal {
+    private func proposal(_ name: String = "importer", slices: [PlanProposal.ProposedSlice] = ["One", "Two"]) -> PlanProposal {
         PlanProposal(name: name, milestones: [.init(name: "M1", slices: slices)])
     }
 
@@ -482,5 +514,184 @@ final class PlanProposalFlowTests: XCTestCase {
             try await Task.sleep(nanoseconds: 100_000_000)
         }
         XCTAssertEqual(appModel.activeProposal?.name, "watched")
+    }
+}
+
+/// The workshop pane's tabs: which there are, and which is up.
+final class WorkshopTabTests: XCTestCase {
+    func testNoTabsBeforeLaunchOrOnceTheSessionHasEnded() {
+        XCTAssertEqual(WorkshopTab.available(launched: false, hasProposal: false), [])
+        XCTAssertEqual(WorkshopTab.available(launched: false, hasProposal: true), [], "a proposal outliving its session has no tabs")
+    }
+
+    func testTerminalFromLaunchAndPlanBesideItOnceThereIsAProposal() {
+        XCTAssertEqual(WorkshopTab.available(launched: true, hasProposal: false), [.terminal])
+        XCTAssertEqual(WorkshopTab.available(launched: true, hasProposal: true), [.terminal, .plan])
+    }
+
+    func testEveryTabMapsToATitlebarTabOfItsOwn() {
+        XCTAssertEqual(WorkshopTab.terminal.titlebarTab.label, "Terminal")
+        XCTAssertEqual(WorkshopTab.plan.titlebarTab.label, "Plan")
+        let ids = WorkshopTab.allCases.map(\.titlebarTab.id) + MainPaneTab.allCases.map(\.titlebarTab.id)
+        XCTAssertEqual(Set(ids).count, ids.count, "a workshop tab never shares an id with a slice's")
+        XCTAssertEqual(MainPaneTab.changes.titlebarTab.label, "Changes")
+    }
+}
+
+/// The workshop pane's tab as the app moves it: Terminal at launch, Plan on
+/// a proposal's first arrival, left alone by a revision.
+@MainActor
+final class WorkshopTabFlowTests: XCTestCase {
+    private func model(client: ProposingClient) async -> AppModel {
+        let config = NatProjectConfig(
+            projects: ["proj-a": ProjectConfig(name: "A", slicesDSID: "ds-a", workingDir: "/a")],
+            workshopAgent: AgentModel(model: "opus", effort: "high"))
+        let appModel = AppModel(
+            configReader: MockConfigReader(response: .success(config)),
+            clientFactory: { client },
+            activityStoreFactory: { ActivityStore(client: client) },
+            launchSettleWait: { await Task.yield() })
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+        _ = appModel.openUntitledTab()
+        return appModel
+    }
+
+    private func proposal(_ slices: [PlanProposal.ProposedSlice] = ["One", "Two"]) -> PlanProposal {
+        PlanProposal(name: "p", milestones: [.init(name: "M1", slices: slices)])
+    }
+
+    /// Waits, bounded, for the activity poll a kill kicks to see the
+    /// planner gone.
+    private func sessionGone(_ appModel: AppModel) async {
+        for _ in 0..<250 where appModel.planningAgent != nil {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
+    func testBeforeLaunchThereAreNoTabsAndNothingToShow() async {
+        let client = ProposingClient()
+        let appModel = await model(client: client)
+        XCTAssertFalse(appModel.workshopLaunched)
+        XCTAssertEqual(appModel.workshopTabs, [])
+        XCTAssertNil(appModel.workshopTab)
+
+        appModel.showWorkshopTab(.terminal)
+        XCTAssertNil(appModel.workshopTab, "a tab the workshop does not have is never put up")
+    }
+
+    func testLaunchPutsTheTerminalUpAndAProposalsFirstArrivalPutsThePlanUp() async {
+        let client = ProposingClient()
+        let appModel = await model(client: client)
+        await appModel.launchWorkshop(request: "A plan.")
+        XCTAssertTrue(appModel.workshopLaunched)
+        XCTAssertEqual(appModel.workshopTabs, [.terminal])
+        XCTAssertEqual(appModel.workshopTab, .terminal)
+
+        client.proposal = proposal()
+        await appModel.refreshProposals()
+        XCTAssertEqual(appModel.workshopTabs, [.terminal, .plan])
+        XCTAssertEqual(appModel.workshopTab, .plan)
+    }
+
+    func testARevisionReplacesThePlanWithoutSwitchingTabs() async {
+        let client = ProposingClient()
+        let appModel = await model(client: client)
+        await appModel.launchWorkshop(request: "A plan.")
+        client.proposal = proposal()
+        await appModel.refreshProposals()
+
+        appModel.showWorkshopTab(.terminal)
+        client.proposal = proposal(["Revised"])
+        await appModel.refreshProposals()
+        XCTAssertEqual(appModel.workshopTab, .terminal, "a revision leaves the terminal up")
+        XCTAssertEqual(appModel.activeProposal?.milestones.first?.slices, ["Revised"])
+
+        appModel.showWorkshopTab(.plan)
+        client.proposal = proposal(["Again"])
+        await appModel.refreshProposals()
+        XCTAssertEqual(appModel.workshopTab, .plan, "and the plan up")
+
+        await appModel.refreshProposals()
+        XCTAssertEqual(appModel.workshopTab, .plan, "the same proposal read again changes nothing")
+    }
+
+    func testAProposalGoneTakesThePlanTabWithIt() async {
+        let client = ProposingClient()
+        let appModel = await model(client: client)
+        await appModel.launchWorkshop(request: "A plan.")
+        client.proposal = proposal()
+        await appModel.refreshProposals()
+
+        client.proposal = nil
+        await appModel.refreshProposals()
+        XCTAssertEqual(appModel.workshopTabs, [.terminal])
+        XCTAssertEqual(appModel.workshopTab, .terminal)
+    }
+
+    func testKeepWorkshoppingGoesBackToTheTerminal() async {
+        let client = ProposingClient()
+        let appModel = await model(client: client)
+        await appModel.launchWorkshop(request: "A plan.")
+        client.proposal = proposal()
+        await appModel.refreshProposals()
+        XCTAssertEqual(appModel.workshopTab, .plan)
+
+        appModel.keepWorkshopping()
+        XCTAssertEqual(appModel.workshopTab, .terminal)
+    }
+
+    func testEndingTheSessionTakesBothTabsAway() async {
+        let client = ProposingClient()
+        let appModel = await model(client: client)
+        await appModel.launchWorkshop(request: "A plan.")
+        client.proposal = proposal()
+        await appModel.refreshProposals()
+
+        let refusal = await appModel.closeWorkshopTab()
+        XCTAssertNil(refusal)
+        await sessionGone(appModel)
+        XCTAssertFalse(appModel.workshopLaunched)
+        XCTAssertEqual(appModel.workshopTabs, [])
+        XCTAssertNil(appModel.workshopTab)
+    }
+
+    func testARelaunchStartsBackOnTheTerminal() async {
+        let client = ProposingClient()
+        let appModel = await model(client: client)
+        await appModel.launchWorkshop(request: "A plan.")
+        client.proposal = proposal()
+        await appModel.refreshProposals()
+        _ = await appModel.closeWorkshopTab()
+        await sessionGone(appModel)
+
+        await appModel.launchWorkshop(request: "Again.")
+        XCTAssertEqual(appModel.workshopTab, .terminal, "the proposal is still there, but a launch opens on the terminal")
+    }
+
+    func testAPlanRowPutsThePlanUpScrolledToItsSlice() async {
+        let client = ProposingClient()
+        let appModel = await model(client: client)
+        await appModel.launchWorkshop(request: "A plan.")
+        client.proposal = proposal()
+        await appModel.refreshProposals()
+        appModel.showWorkshopTab(.terminal)
+
+        appModel.showProposedSlice("proposed-0-1")
+        XCTAssertEqual(appModel.workshopTab, .plan)
+        XCTAssertEqual(appModel.workshopPlanScroll, WorkshopPlanScroll(sliceID: "proposed-0-1", token: 1))
+
+        appModel.showProposedSlice("proposed-0-1")
+        XCTAssertEqual(appModel.workshopPlanScroll?.token, 2, "asking for the same slice again still scrolls")
+    }
+
+    func testAPlanRowWithNoPlanTabAsksForNoScroll() async {
+        let client = ProposingClient()
+        let appModel = await model(client: client)
+        client.proposal = proposal()
+        await appModel.refreshProposals()
+
+        appModel.showProposedSlice("proposed-0-0")
+        XCTAssertNil(appModel.workshopTab)
+        XCTAssertNil(appModel.workshopPlanScroll)
     }
 }

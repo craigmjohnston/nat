@@ -34,10 +34,16 @@ struct SliceMenuActions {
     var showPullRequest: (() -> Void)?
 }
 
+struct WorkshopMenuActions {
+    var showTerminal: (() -> Void)?
+    var showPlan: (() -> Void)?
+}
+
 extension FocusedValues {
     @Entry var sidebarMenu: SidebarMenuActions?
     @Entry var shellMenu: ShellMenuActions?
     @Entry var sliceMenu: SliceMenuActions?
+    @Entry var workshopMenu: WorkshopMenuActions?
 }
 
 /// File's new-item group, View's own items and the Slice menu.
@@ -48,6 +54,7 @@ struct GnatCommands: Commands {
     @FocusedValue(\.sidebarMenu) private var sidebar
     @FocusedValue(\.shellMenu) private var shell
     @FocusedValue(\.sliceMenu) private var slice
+    @FocusedValue(\.workshopMenu) private var workshop
 
     var body: some Commands {
         // One window, so no New Window: File ▸ New makes plan items instead.
@@ -73,12 +80,18 @@ struct GnatCommands: Commands {
             .keyboardShortcut(".", modifiers: [.command, .shift])
             item("Refresh", shell?.refresh).keyboardShortcut("r")
             Divider()
-            item("Task", slice?.showThread).keyboardShortcut("1")
-            item("Changes", slice?.showChanges).keyboardShortcut("2")
-            // Out of numeric order on purpose, so the menu reads in the
-            // navigator's order; ⌘3 stays Pull request's.
-            item("Visual changes", slice?.showVisuals).keyboardShortcut("4")
-            item("Pull request", slice?.showPullRequest).keyboardShortcut("3")
+            // The workshop's two tabs take ⌘1 and ⌘2 while it is on screen.
+            if let workshop {
+                item("Terminal", workshop.showTerminal).keyboardShortcut("1")
+                item("Plan", workshop.showPlan).keyboardShortcut("2")
+            } else {
+                item("Task", slice?.showThread).keyboardShortcut("1")
+                item("Changes", slice?.showChanges).keyboardShortcut("2")
+                // Out of numeric order on purpose, so the menu reads in the
+                // navigator's order; ⌘3 stays Pull request's.
+                item("Visual changes", slice?.showVisuals).keyboardShortcut("4")
+                item("Pull request", slice?.showPullRequest).keyboardShortcut("3")
+            }
             Divider()
             Toggle("Wrap lines in diffs", isOn: $diffWrapsLines)
             Divider()

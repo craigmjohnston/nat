@@ -53,6 +53,14 @@ public final class AppModel {
     /// selection: the rail draws one selected row.
     private var workshopSelectedProjects: Set<String> = []
 
+    /// The tab each project's workshop pane has up, as last picked — see
+    /// `workshopTab`. Set to Terminal by a launch and to Plan by a
+    /// proposal's first arrival.
+    private var workshopTabPicks: [String: WorkshopTab] = [:]
+
+    /// The Plan tab's last ask to scroll to a proposed slice's box.
+    public private(set) var workshopPlanScroll: WorkshopPlanScroll?
+
     /// The projects whose workshop has been opened and not yet launched or
     /// dismissed — each holding a "Workshop the plan" row in Active while the
     /// user is elsewhere, so clicking away loses neither the row nor the
@@ -1377,7 +1385,12 @@ public final class AppModel {
             NSLog("AppModel: could not read the proposal for %@: %@", tabID, error.localizedDescription)
             return
         }
-        proposalStates[tabID]?.land(ticket, found: found)
+        let arriving = found != nil && proposalStates[tabID]?.proposal == nil
+        // A proposal's first arrival puts the Plan tab up; a revision
+        // replaces the plan in place under whichever tab is up.
+        if proposalStates[tabID]?.land(ticket, found: found) == true, arriving {
+            workshopTabPicks[tabID] = .plan
+        }
     }
 
     /// The proposal the tab on screen holds, if any.
@@ -1407,7 +1420,41 @@ public final class AppModel {
     /// "Keep workshopping": back to the terminal, the tree left as it is — a
     /// revised proposal replaces it in place.
     public func keepWorkshopping() {
+        if let id = activeProjectID { workshopTabPicks[id] = .terminal }
         terminalFocusRequest += 1
+    }
+
+    /// Whether the workshop on screen has been launched — its agent live, or
+    /// its launch under way: what takes the brief editor down and puts the
+    /// terminal up in its place.
+    public var workshopLaunched: Bool { planningAgent != nil || workshopLaunching }
+
+    /// The workshop pane's tabs as they stand.
+    public var workshopTabs: [WorkshopTab] {
+        WorkshopTab.available(launched: workshopLaunched, hasProposal: activeProposal != nil)
+    }
+
+    /// The tab the workshop pane shows: the one last picked while it is
+    /// there, else the first there is; nil while there are none.
+    public var workshopTab: WorkshopTab? {
+        let tabs = workshopTabs
+        if let id = activeProjectID, let picked = workshopTabPicks[id], tabs.contains(picked) { return picked }
+        return tabs.first
+    }
+
+    /// A workshop tab, or the Plan section's header: put that tab up. One
+    /// the workshop does not have changes nothing.
+    public func showWorkshopTab(_ tab: WorkshopTab) {
+        guard let id = activeProjectID, workshopTabs.contains(tab) else { return }
+        workshopTabPicks[id] = tab
+    }
+
+    /// A slice row in the Plan section: the Plan tab up, scrolled to that
+    /// slice's box.
+    public func showProposedSlice(_ sliceID: String) {
+        showWorkshopTab(.plan)
+        guard workshopTab == .plan else { return }
+        workshopPlanScroll = WorkshopPlanScroll(sliceID: sliceID, token: (workshopPlanScroll?.token ?? 0) + 1)
     }
 
     /// "Accept plan": on an Untitled tab, make the proposal a local project
@@ -1623,6 +1670,7 @@ public final class AppModel {
 
         workshopLaunching = true
         workshopLaunchError = nil
+        workshopTabPicks[projectID] = .terminal
         // What the Brief shows, read-only, from the moment Launch is pressed:
         // the draft it came from is cleared by a launch that takes, and one
         // that does not takes this back off again.

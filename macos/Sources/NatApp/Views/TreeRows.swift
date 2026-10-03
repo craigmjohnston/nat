@@ -49,6 +49,9 @@ struct TreeMilestoneLine: View {
     var open = true
     var indent: CGFloat = 26
     var isDone = false
+    /// A proposed milestone the proposal creates: NEW beside its name, as
+    /// the workshop's Plan tab marks it.
+    var isNew = false
 
     var body: some View {
         HStack(spacing: 7) {
@@ -68,6 +71,7 @@ struct TreeMilestoneLine: View {
                 .font(.system(size: GnatMetrics.body))
                 .ink(isDone ? .tertiary : .secondary)
                 .lineLimit(1)
+            if isNew { Chip("NEW", tone: .accent) }
             Spacer(minLength: 0)
             Text(count).monoXS().ink(isDone ? .quaternary : .tertiary)
         }

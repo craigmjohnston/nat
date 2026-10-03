@@ -205,6 +205,9 @@ public struct MilestoneFolder: Equatable {
     /// The slices this folder lists when expanded — see the type comment for
     /// which slices those are per section.
     public let slices: [MilestoneSliceRow]
+    /// Whether a workshop's proposal creates the milestone — false for every
+    /// milestone of a plan, and for one a proposal only files slices under.
+    public let isNew: Bool
 
     /// Whether every slice of the milestone is Done — what earns a DONE
     /// folder its green checkmark.
@@ -225,7 +228,8 @@ public struct MilestoneFolder: Equatable {
         done: Int,
         total: Int,
         isCurrent: Bool,
-        slices: [MilestoneSliceRow]
+        slices: [MilestoneSliceRow],
+        isNew: Bool = false
     ) {
         self.milestoneID = milestoneID
         self.title = title
@@ -233,6 +237,7 @@ public struct MilestoneFolder: Equatable {
         self.total = total
         self.isCurrent = isCurrent
         self.slices = slices
+        self.isNew = isNew
     }
 }
 

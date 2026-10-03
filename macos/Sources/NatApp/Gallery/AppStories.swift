@@ -129,9 +129,10 @@ enum AppStories {
     }
 
     /// A project's workshop, its agent live, holding the fixture proposal —
-    /// `accepting` with an Accept under way that never lands.
+    /// `accepting` with an Accept under way that never lands, `scrollTo` the
+    /// Plan section's row for that proposed slice clicked.
     private static func projectProposalShell(
-        _ proposal: PlanProposal = Fixtures.proposal, accepting: Bool
+        _ proposal: PlanProposal = Fixtures.proposal, accepting: Bool, scrollTo: String? = nil
     ) async -> some View {
         let client = FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner)
         client.setProposal(proposal, forProject: Fixtures.projectID)
@@ -139,6 +140,7 @@ enum AppStories {
         await settleOnPlanner(appModel)
         appModel.workshopSelected = true
         await appModel.refreshProposals()
+        if let scrollTo { appModel.showProposedSlice(scrollTo) }
         if accepting {
             client.holdAccepts()
             await startHeld { await appModel.acceptProposal() }
@@ -187,7 +189,10 @@ enum AppStories {
         tabs: [MainPaneTab], selected: MainPaneMode?, crumbs: TitlebarCrumbs, state: SliceDisplayState = .working,
         identity: TitlebarIdentity? = nil
     ) -> some View {
-        TitlebarBand(navigatorWidth: GnatMetrics.navigatorWidth, tabs: tabs, selected: selected) {
+        TitlebarBand(
+            navigatorWidth: GnatMetrics.navigatorWidth, tabs: tabs.map(\.titlebarTab),
+            selected: tabs.first { $0.mode == selected }?.titlebarTab.id
+        ) {
             TitlebarBreadcrumb(
                 crumbs: crumbs,
                 identity: identity ?? TitlebarIdentity(tag: "GNA", state: state, live: true, title: crumbs.title),
@@ -649,7 +654,7 @@ enum AppStories {
 
         Story(
             name: "window-workshop",
-            summary: "A project's workshop with its planning agent live and nothing proposed yet: Brief alone, read-only with End session and a line saying the plan appears here, no Plan section yet; the titlebar's pulsing dot; the planning terminal.",
+            summary: "A project's workshop with its planning agent live and nothing proposed yet: Brief alone, read-only with End session and a line saying the plan appears here, no Plan section yet; the titlebar's pulsing dot and its Terminal tab alone; the planning terminal.",
             size: window
         ) {
             let appModel = await Fixtures.startedAppModel(
@@ -661,7 +666,7 @@ enum AppStories {
 
         Story(
             name: "workshop-composer",
-            summary: "A project's workshop before launch: Brief alone in the middle, no Plan section yet, the brief editor full-height on the right, Launch in Brief's header.",
+            summary: "A project's workshop before launch: Brief alone in the middle, no Plan section yet, no titlebar tabs, the brief editor full-height on the right, Launch in Brief's header.",
             size: window
         ) {
             let appModel = await Fixtures.startedAppModel()
@@ -672,7 +677,7 @@ enum AppStories {
 
         Story(
             name: "workshop-launching",
-            summary: "A project's workshop mid-launch: Launch busy, the brief read-only, the terminal pane starting.",
+            summary: "A project's workshop mid-launch: Launch busy, the brief read-only, the Terminal tab alone, the terminal pane starting.",
             size: window
         ) {
             let client = FixtureNatClient()
@@ -686,15 +691,23 @@ enum AppStories {
 
         Story(
             name: "workshop-proposal",
-            summary: "A project's workshop that proposed a plan: the Plan section open on the proposed tree, Accept and Keep workshopping in its header, nothing of it in the sidebar.",
+            summary: "A project's workshop that proposed a plan: the Plan section open on the proposed tree, Accept and Keep workshopping in its header, nothing of it in the sidebar; Terminal and Plan tabs, Plan up, each proposed task's brief boxed under its milestone.",
             size: window
         ) {
             await projectProposalShell(accepting: false)
         },
 
         Story(
+            name: "workshop-proposal-scrolled",
+            summary: "The Plan section's row for a later task clicked: the Plan tab scrolled to that task's box — M2's reconcile task, waiting on two others by name.",
+            size: window
+        ) {
+            await projectProposalShell(accepting: false, scrollTo: PlanProposal.sliceID(milestone: 1, slice: 1))
+        },
+
+        Story(
             name: "workshop-proposal-revision",
-            summary: "A project's proposal filing slices into milestones it already has: the new milestone first, then each existing one holding only its proposed slices; the count names what Accept creates.",
+            summary: "A project's proposal filing slices into milestones it already has: the new milestone first, then each existing one holding only its proposed slices; the count names what Accept creates; the Plan tab up, only the new milestone marked NEW.",
             size: window
         ) {
             await projectProposalShell(Fixtures.revisionProposal, accepting: false)

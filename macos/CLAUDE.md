@@ -100,10 +100,18 @@ Untitled tab it makes the project, then the session is killed and
 `addProject(replacing:)` hands the tab over; on a project it files the plan
 (`--project`) and leaves the session running. The layout is one for both:
 the navigator's Brief (the request; Launch, then End session) over Plan (the
-proposal, Accept and Keep workshopping — absent until there is one), and the main pane, with no tabs, the
-brief editor before launch and the terminal from launch on. Opening a
+proposal, Accept and Keep workshopping — absent until there is one), and the main pane: the brief
+editor before launch, with no tabs; from launch on the titlebar band's
+`WorkshopTab`s (`TitlebarBand` takes `TitlebarTab`, which `MainPaneTab` and
+`WorkshopTab` both map to) — Terminal, and Plan once there is a proposal
+(`WorkshopTab.available`, `AppModel.workshopTab`). A launch puts Terminal up,
+a proposal's first arrival Plan, a revision neither; Keep workshopping goes
+back to Terminal. The Plan tab boxes each proposed slice's brief
+(`PlanProposal.ProposedSlice`) under its milestone; the Plan header puts it
+up, a slice row scrolls it (`showProposedSlice`), and ⌘1/⌘2 switch the two
+while the workshop is on screen (`WorkshopMenuActions`). Opening a
 workshop pins its row in Active (`workshopPinnedProjects`) until a launch or
-the row's ✕. Stories: `workshop-*`, `window-workshop*`,
+the row's ✕. Stories: `workshop-*` (`workshop-proposal-scrolled` the Plan tab scrolled), `window-workshop*`,
 `untitled-*`, `window-untitled-proposal`, `window-plan-accepted`.
 
 ## The Notion mirror nudge

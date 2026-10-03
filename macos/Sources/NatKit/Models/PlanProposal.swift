@@ -3,21 +3,41 @@ import Foundation
 /// The plan a workshop session proposed — for an Untitled tab or a tracked
 /// project's own workshop — what `nat plan-proposal --json` reads back from
 /// the file `nat plan-propose` wrote. Held as the tree the workshop's Plan
-/// section draws: milestones in plan order, each with its slices' titles.
+/// section draws and the Plan tab reads: milestones in plan order, each with
+/// its proposed slices — title, brief and what each waits on.
 /// A project's proposal may file slices under milestones the project already
 /// has; those show as groups too, after the new ones, since a slice headed
 /// for an existing milestone is still proposed work. Nothing here is a slice
 /// yet; accepting is what files them (`nat plan-accept`).
 public struct PlanProposal: Equatable, Sendable, Decodable {
-    /// One milestone of the tree and the titles of the slices filed under
-    /// it. `isNew` says the proposal creates the milestone itself; false is
-    /// one the project already has, there only to hold its proposed slices.
+    /// One proposed slice: its title, its brief (markdown, empty where the
+    /// plan gives none) and the titles of the slices it waits on. A string
+    /// literal is a slice with only a title.
+    public struct ProposedSlice: Equatable, Sendable, ExpressibleByStringLiteral {
+        public let name: String
+        public let brief: String
+        public let dependsOn: [String]
+
+        public init(name: String, brief: String = "", dependsOn: [String] = []) {
+            self.name = name
+            self.brief = brief
+            self.dependsOn = dependsOn
+        }
+
+        public init(stringLiteral name: String) {
+            self.init(name: name)
+        }
+    }
+
+    /// One milestone of the tree and the slices filed under it. `isNew`
+    /// says the proposal creates the milestone itself; false is one the
+    /// project already has, there only to hold its proposed slices.
     public struct Milestone: Equatable, Sendable {
         public let name: String
-        public let slices: [String]
+        public let slices: [ProposedSlice]
         public let isNew: Bool
 
-        public init(name: String, slices: [String], isNew: Bool = true) {
+        public init(name: String, slices: [ProposedSlice], isNew: Bool = true) {
             self.name = name
             self.slices = slices
             self.isNew = isNew
@@ -39,7 +59,8 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
     public var sliceCount: Int { milestones.reduce(0) { $0 + $1.slices.count } }
 
     /// The tree as milestone folders, as the workshop's Plan section draws
-    /// it: every slice Todo, no milestone current, nothing done.
+    /// it: every slice Todo, no milestone current, nothing done, and each
+    /// marked new where the proposal creates it.
     public var folders: [MilestoneFolder] {
         milestones.enumerated().map { index, milestone in
             MilestoneFolder(
@@ -48,12 +69,20 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
                 done: 0,
                 total: milestone.slices.count,
                 isCurrent: false,
-                slices: milestone.slices.enumerated().map { sliceIndex, title in
+                slices: milestone.slices.enumerated().map { sliceIndex, slice in
                     MilestoneSliceRow(
-                        sliceID: "proposed-\(index)-\(sliceIndex)", name: title, glyph: .todo, isBlocked: false)
-                }
+                        sliceID: Self.sliceID(milestone: index, slice: sliceIndex), name: slice.name, glyph: .todo,
+                        isBlocked: false)
+                },
+                isNew: milestone.isNew
             )
         }
+    }
+
+    /// A proposed slice's id, by its place in the plan: what the Plan
+    /// section's row and the Plan tab's box for it share.
+    public static func sliceID(milestone: Int, slice: Int) -> String {
+        "proposed-\(milestone)-\(slice)"
     }
 
     // The wire shape is `plan-propose`'s proposal file: the plan document as
@@ -69,6 +98,13 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
         struct Slice: Decodable {
             let title: String
             let milestone: String
+            let description: String?
+            let dependsOn: [String]?
+
+            enum CodingKeys: String, CodingKey {
+                case title, milestone, description
+                case dependsOn = "depends_on"
+            }
         }
         let milestones: [Named]?
         let slices: [Slice]?
@@ -81,21 +117,25 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         let plan = try container.decode(Plan.self, forKey: .plan)
         let slices = plan.slices ?? []
-        func titles(under key: String) -> [String] {
-            slices.filter { Self.key($0.milestone) == key }
-                .map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) }
+        func proposed(under key: String) -> [ProposedSlice] {
+            slices.filter { Self.key($0.milestone) == key }.map {
+                ProposedSlice(
+                    name: $0.title.trimmingCharacters(in: .whitespacesAndNewlines),
+                    brief: ($0.description ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+                    dependsOn: ($0.dependsOn ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+            }
         }
         let new = (plan.milestones ?? []).map { milestone in
             Milestone(
                 name: milestone.name.trimmingCharacters(in: .whitespacesAndNewlines),
-                slices: titles(under: Self.key(milestone.name)))
+                slices: proposed(under: Self.key(milestone.name)))
         }
         var seen = Set(new.map { Self.key($0.name) })
         var existing: [Milestone] = []
         for slice in slices where seen.insert(Self.key(slice.milestone)).inserted {
             existing.append(Milestone(
                 name: slice.milestone.trimmingCharacters(in: .whitespacesAndNewlines),
-                slices: titles(under: Self.key(slice.milestone)),
+                slices: proposed(under: Self.key(slice.milestone)),
                 isNew: false))
         }
         milestones = new + existing
