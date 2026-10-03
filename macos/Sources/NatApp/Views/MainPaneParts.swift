@@ -2,69 +2,177 @@ import AppKit
 import SwiftUI
 import NatKit
 
-/// The main pane's segment of the window titlebar — the pane has no heading
-/// band of its own. Its tabs (`MainPaneTab`) start flush at the pane's
-/// leading edge; at its trailing edge, the live agent's readout and the
-/// view's own actions, or nothing.
-struct MainPaneTitlebar<Trailing: View>: View {
+/// The one titlebar band over the navigator and the main pane — neither has
+/// a heading band of its own, and no rule divides the band where the two
+/// columns meet. The selection's identity starts at the navigator's leading
+/// inset and may run on past its width; the live agent's readout or the
+/// view's own actions stand at the band's trailing edge, the main pane's
+/// tabs (`MainPaneTab`) just left of them. The tabs and those items live in
+/// the main pane's part of the band alone (`TitlebarBandLayout`): a title
+/// with no room left ellipsizes, and a main pane narrower than the run cuts
+/// the run at its leading edge rather than letting it cross the split.
+struct TitlebarBand<Identity: View, Trailing: View>: View {
+    /// The navigator's width: the band's main-pane part is what is left.
+    let navigatorWidth: Double
     var tabs: [MainPaneTab] = []
     var selected: MainPaneMode?
     var onTab: (MainPaneTab) -> Void = { _ in }
+    @ViewBuilder var identity: () -> Identity
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
         GnatTitlebar(leading: 0, trailing: 0, rule: false) {
-            HStack(spacing: 0) {
-                ForEach(tabs, id: \.self) { tab in
-                    MainPaneTabButton(title: tab.label, selected: tab.mode == selected) { onTab(tab) }
+            TitlebarBandStack(navigatorWidth: navigatorWidth) {
+                identity()
+                    .padding(.horizontal, 10)
+                HStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        ForEach(tabs, id: \.self) { tab in
+                            MainPaneTabButton(title: tab.label, selected: tab.mode == selected) { onTab(tab) }
+                        }
+                    }
+                    // Each tab's line is on its leading edge; this closes
+                    // the run off from the readout beside it.
+                    .overlay(alignment: .trailing) {
+                        if !tabs.isEmpty {
+                            DesignTokens.rule(.separator, on: .header).frame(width: 1)
+                        }
+                    }
+                    TrailingItemsStack { trailing() }
                 }
-                HStack(spacing: 8) {
-                    Spacer(minLength: 8)
-                    trailing()
-                }
-                .padding(.trailing, 12)
-                .frame(maxHeight: .infinity)
-                // The band's line, where no tab stands over it.
-                .overlay(alignment: .bottom) {
-                    DesignTokens.rule(.separator, on: .header).frame(height: 1).allowsHitTesting(false)
-                }
+                .fixedSize(horizontal: true, vertical: false)
+                // Exactly the room the band gives it, the run against its
+                // trailing edge and anything past its leading edge cut.
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .trailing)
+                .clipped()
+            }
+            .frame(maxHeight: .infinity)
+            // The band's line, behind the tabs: the picked one's own ground
+            // covers it, so it stands open into the pane below.
+            .background(alignment: .bottom) {
+                DesignTokens.rule(.separator, on: .header).frame(height: 1).allowsHitTesting(false)
             }
         }
     }
 }
 
-extension MainPaneTitlebar where Trailing == EmptyView {
-    init(tabs: [MainPaneTab] = [], selected: MainPaneMode? = nil, onTab: @escaping (MainPaneTab) -> Void = { _ in }) {
-        self.init(tabs: tabs, selected: selected, onTab: onTab, trailing: { EmptyView() })
+extension TitlebarBand where Identity == EmptyView, Trailing == EmptyView {
+    init(navigatorWidth: Double) {
+        self.init(navigatorWidth: navigatorWidth, identity: { EmptyView() }, trailing: { EmptyView() })
     }
 }
 
-/// The agent readout, at the main pane's titlebar's trailing edge: the live
-/// agent's model / effort, then its context use as its own statusline
-/// reports them — the context in the warning tint once it runs high — or
-/// nothing.
+/// The band's trailing items in a row, 8pt apart and inset 12pt either
+/// side — or nothing at all where none draws anything (a readout with no
+/// reading yet), so the tabs then stand flush against the band's edge.
+private struct TrailingItemsStack: Layout {
+    static let spacing: CGFloat = 8
+    static let inset: CGFloat = 12
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = shownSizes(subviews, height: proposal.height)
+        guard !sizes.isEmpty else { return CGSize(width: 0, height: proposal.height ?? 0) }
+        let width = sizes.reduce(0) { $0 + $1.width } + Self.spacing * CGFloat(sizes.count - 1) + Self.inset * 2
+        return CGSize(width: width, height: proposal.height ?? sizes.map(\.height).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX + Self.inset
+        for subview in subviews {
+            let size = subview.sizeThatFits(ProposedViewSize(width: nil, height: bounds.height))
+            guard size.width > 0 else { continue }
+            subview.place(
+                at: CGPoint(x: x, y: bounds.midY), anchor: .leading,
+                proposal: ProposedViewSize(width: size.width, height: bounds.height))
+            x += size.width + Self.spacing
+        }
+    }
+
+    private func shownSizes(_ subviews: Subviews, height: CGFloat?) -> [CGSize] {
+        subviews.map { $0.sizeThatFits(ProposedViewSize(width: nil, height: height)) }.filter { $0.width > 0 }
+    }
+}
+
+/// The band's two parts laid out as `TitlebarBandLayout` places them: the
+/// identity from the leading edge, offered the room up to the run; the run
+/// offered what of the main pane's part it takes, against the trailing edge.
+private struct TitlebarBandStack: Layout {
+    let navigatorWidth: Double
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        CGSize(width: proposal.width ?? navigatorWidth, height: proposal.height ?? GnatMetrics.titlebarHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard subviews.count == 2 else { return }
+        let run = subviews[1].sizeThatFits(ProposedViewSize(width: nil, height: bounds.height)).width
+        let layout = TitlebarBandLayout(bandWidth: bounds.width, navigatorWidth: navigatorWidth, runWidth: run)
+        subviews[0].place(
+            at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading,
+            proposal: ProposedViewSize(width: layout.identityWidth, height: bounds.height))
+        subviews[1].place(
+            at: CGPoint(x: bounds.minX + layout.runX, y: bounds.minY), anchor: .topLeading,
+            proposal: ProposedViewSize(width: layout.runShownWidth, height: bounds.height))
+    }
+}
+
+/// The selection as the titlebar band names it — its Active row's dot,
+/// project tag and title, or the bare title where it has none — and the
+/// chevron that says it opens the tree picker. As room runs out the title
+/// alone gives way, ending in an ellipsis with the chevron still beside it.
+struct TitlebarIdentityLabel: View {
+    let identity: TitlebarIdentity?
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Group {
+                if let identity {
+                    ActiveIdentityLabel(
+                        tag: identity.tag, state: identity.state, live: identity.live, title: identity.title,
+                        size: GnatMetrics.titlebarText, titleInk: .primary)
+                } else {
+                    Text(title).ink(.primary)
+                }
+            }
+            .layoutPriority(-1)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .semibold))
+                .ink(.tertiary)
+                .fixedSize()
+        }
+        .font(.system(size: GnatMetrics.titlebarText))
+        .lineLimit(1)
+        .truncationMode(.tail)
+    }
+}
+
+/// The agent readout, at the titlebar band's trailing edge beside the tabs,
+/// kept small: the live agent's model, its effort quieter, then its context
+/// use as a bare percent as its own statusline reports it — in the warning
+/// tint once it runs high — or nothing. The long form is its tooltip.
 struct AgentModelHeading: View {
     let agent: AgentStatus?
 
     var body: some View {
         if let readout = buildAgentReadout(from: agent) {
-            HStack(spacing: 4) {
-                if let label = readout.label {
-                    Text(label).ink(.secondary)
-                }
+            HStack(spacing: 6) {
+                if let model = readout.model { Text(model).ink(.secondary) }
+                if let effort = readout.effort { Text(effort).ink(.tertiary) }
                 if let context = readout.context {
-                    if readout.label != nil { Text("·").ink(.secondary) }
-                    Text(context.text).ink(context.warning ? .hot : .secondary)
+                    Text(context.text).ink(context.warning ? .hot : .tertiary)
                 }
             }
-            .monoXS()
+            .font(Typo.mono(size: 11))
             .monospacedDigit()
             .lineLimit(1)
+            .fixedSize()
+            .help(readout.detail)
         }
     }
 }
 
-/// The PR view's action, in the main pane's titlebar: Open in GitHub, once
+/// The PR view's action, at the titlebar band's trailing edge: Open in GitHub, once
 /// the right pull request is read (`expectedNumber`, as
 /// `PRConversationPane` checks it).
 struct PROpenInGitHubButton: View {
@@ -80,7 +188,7 @@ struct PROpenInGitHubButton: View {
             }
             .buttonStyle(GnatHeaderButtonStyle())
             .help("Open the pull request on GitHub")
-            // Flush with the pane's edge, as a navigator header's actions are.
+            // Flush with the band's edge, as a navigator header's actions are.
             .padding(.trailing, -12)
         }
     }

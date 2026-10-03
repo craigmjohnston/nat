@@ -301,7 +301,8 @@ struct GnatLinkButtonStyle: ButtonStyle {
 }
 
 /// One of the main pane's titlebar tabs, as Zed draws them: the band's full
-/// height, square, a line on its trailing edge. The picked one stands on the
+/// height, square, a line on its leading edge (the run closes its own
+/// trailing one, beside the readout at the band's right). The picked one stands on the
 /// pane's own ground (`.window`) with no line under it, so it reads as open into the
 /// pane; the rest sit on the titlebar over its bottom line, in the secondary
 /// ink, washed under the pointer.
@@ -326,7 +327,7 @@ struct MainPaneTabButton: View {
                             DesignTokens.rule(.separator, on: .header).frame(height: 1)
                         }
                     }
-                    .overlay(alignment: .trailing) {
+                    .overlay(alignment: .leading) {
                         DesignTokens.rule(.separator, on: .header).frame(width: 1)
                     }
                     .contentShape(Rectangle())
