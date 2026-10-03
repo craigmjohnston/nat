@@ -190,6 +190,36 @@ func TestPRStatesReadOnEveryPlanThatLands(t *testing.T) {
 	}
 }
 
+// A pull request whose checks have failed is named as such in the Active
+// panel, in the Danger colour, even approved and mergeable — the panel never
+// says ready to merge while CI is red. Checks still running change nothing.
+func TestFailingChecksShowOnTheActivePanel(t *testing.T) {
+	app, reader := prStateApp(t)
+	reader.open[natRepo]["https://github.test/pr/1"] = gh.PRStatus{
+		Approved: true, Mergeable: true, Checks: gh.ChecksFailing}
+	reader.open[otherRepo]["https://github.test/pr/3"] = gh.PRStatus{
+		Approved: true, Mergeable: true, Checks: gh.ChecksPending}
+	p := prStatePlan()
+
+	runPRRead(t, app, landPlan(t, app, p))
+
+	if got := app.board.state(sliceByID(t, p, approvedPR)); got != domain.SliceStateChecksFailing {
+		t.Errorf("the slice with failing checks is %v, want checks failing", got)
+	}
+	if got := app.board.state(sliceByID(t, p, ownRepoPR)); got != domain.SliceStateReadyToMerge {
+		t.Errorf("the slice with checks pending is %v, want ready to merge", got)
+	}
+	// Off the section, so the entry is drawn without the selection's fill.
+	app.board.SelectRow(len(app.board.rows) - 1)
+	failing := app.board.styles.StateChecksFailing.Render(domain.SliceStateChecksFailing.String())
+	if section := activeSection(app); !strings.Contains(section, failing) {
+		t.Errorf("the section does not name the failing checks in the danger colour:\n%s", section)
+	}
+	if fg := app.board.styles.StateChecksFailing.GetForeground(); fg != NewTokens(true).Danger {
+		t.Errorf("checks failing is drawn in %v, want the Danger colour", fg)
+	}
+}
+
 // A slice marked Done under the old rule — at approve, rather than at the
 // merge — with its pull request found still open is written back to In
 // progress: the un-done rule (actions.ReopenUnmerged), which is what keeps
@@ -560,7 +590,8 @@ func TestWorthReading(t *testing.T) {
 }
 
 // readinessOf is the one place GitHub's own answer becomes the rule's: only
-// approved and mergeable is a review that is over.
+// approved and mergeable is a review that is over, and a failed check beats
+// even that. Pending checks, and no checks at all, change nothing.
 func TestReadinessOf(t *testing.T) {
 	tests := []struct {
 		status gh.PRStatus
@@ -570,6 +601,10 @@ func TestReadinessOf(t *testing.T) {
 		{gh.PRStatus{Approved: true}, domain.PRAwaitingReview},
 		{gh.PRStatus{Mergeable: true}, domain.PRAwaitingReview},
 		{gh.PRStatus{}, domain.PRAwaitingReview},
+		{gh.PRStatus{Approved: true, Mergeable: true, Checks: gh.ChecksFailing}, domain.PRChecksFailing},
+		{gh.PRStatus{Checks: gh.ChecksFailing}, domain.PRChecksFailing},
+		{gh.PRStatus{Approved: true, Mergeable: true, Checks: gh.ChecksPending}, domain.PRReadyToMerge},
+		{gh.PRStatus{Approved: true, Mergeable: true, Checks: gh.ChecksPassing}, domain.PRReadyToMerge},
 	}
 	for _, tt := range tests {
 		if got := readinessOf(tt.status); got != tt.want {

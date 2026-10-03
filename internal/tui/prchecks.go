@@ -72,35 +72,21 @@ func (o checkOutcome) style(s Styles) lipgloss.Style {
 	}
 }
 
-// The states a check arrives in that are not a machine still working. They are
-// GitHub's own words — a CheckRun's conclusion, or a StatusContext's state,
-// which [gh.Check] has already reduced to the one field — and everything not
-// named here is a check that has not finished: QUEUED, IN_PROGRESS, PENDING,
-// WAITING, REQUESTED, the EXPECTED of a status nothing has reported yet, and
-// whatever GitHub adds next, all of which are things
-// the refresh key is worth pressing over.
-var checkStates = map[string]checkOutcome{
-	"SUCCESS":         checkPassing,
-	"FAILURE":         checkFailing,
-	"ERROR":           checkFailing,
-	"TIMED_OUT":       checkFailing,
-	"STARTUP_FAILURE": checkFailing,
-	"ACTION_REQUIRED": checkFailing,
-	"SKIPPED":         checkSkipped,
-	"NEUTRAL":         checkSkipped,
-	"CANCELLED":       checkSkipped,
-	"STALE":           checkSkipped,
-}
-
-// outcomeOf is where a check stands. A state this build does not know reads as
-// one still going rather than as one that passed: a check nobody can classify
-// is exactly the check to keep watching, and calling it a pass would have the
-// rollup line say the work is ready when nothing said so.
+// outcomeOf is where a check stands, as [gh.Check.Outcome] classifies GitHub's
+// words — the one table of them, shared with the board's checks verdict and
+// the headless merge refusal. A state this build does not know reads as one
+// still going, which is what the refresh key is worth pressing over.
 func outcomeOf(c gh.Check) checkOutcome {
-	if o, ok := checkStates[strings.ToUpper(strings.TrimSpace(c.State))]; ok {
-		return o
+	switch c.Outcome() {
+	case gh.CheckPassing:
+		return checkPassing
+	case gh.CheckFailing:
+		return checkFailing
+	case gh.CheckSkipped:
+		return checkSkipped
+	default:
+		return checkPending
 	}
-	return checkPending
 }
 
 // checkStateWord is how a check's own state is drawn beside its name: GitHub's

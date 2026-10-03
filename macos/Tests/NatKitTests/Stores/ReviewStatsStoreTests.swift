@@ -238,6 +238,7 @@ final class ReviewStatsStoreTests: XCTestCase {
         client.prStatusDoc = PRStatusDoc(slices: [
             .init(sliceID: "s-waiting", name: "A", pr: "url", readiness: "awaiting review"),
             .init(sliceID: "s-ready", name: "B", pr: "url", readiness: "ready to merge"),
+            .init(sliceID: "s-red", name: "D", pr: "url", readiness: "checks failing"),
             .init(sliceID: "s-landed", name: "C", pr: "url", readiness: "unread"),
         ])
         let store = ReviewStatsStore(client: client)
@@ -247,6 +248,7 @@ final class ReviewStatsStoreTests: XCTestCase {
         XCTAssertEqual(store.prReadiness, [
             "s-waiting": "awaiting review",
             "s-ready": "ready to merge",
+            "s-red": "checks failing",
         ])
     }
 

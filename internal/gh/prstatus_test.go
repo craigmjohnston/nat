@@ -2,13 +2,14 @@ package gh
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 )
 
 // TestOpenPRsRunsGh pins the invocation: gh, in the slice's repository, asked
-// for the open pull requests alone and for the three fields alone, with a limit
+// for the open pull requests alone and for the four fields alone, with a limit
 // past gh's own default.
 func TestOpenPRsRunsGh(t *testing.T) {
 	runner := &fakeRunner{out: `[{"url":"https://github.test/craig/nat/pull/7",` +
@@ -30,7 +31,7 @@ func TestOpenPRsRunsGh(t *testing.T) {
 	if runner.name != Binary {
 		t.Errorf("ran %q, want %q", runner.name, Binary)
 	}
-	want := []string{"pr", "list", "--state", "open", "--json", "url,reviewDecision,mergeable",
+	want := []string{"pr", "list", "--state", "open", "--json", "url,reviewDecision,mergeable,statusCheckRollup",
 		"--limit", "100"}
 	if !reflect.DeepEqual(runner.args, want) {
 		t.Errorf("args = %v, want %v", runner.args, want)
@@ -79,6 +80,83 @@ func TestOpenPRsReadings(t *testing.T) {
 					status, tt.wantApproved, tt.wantMergeable)
 			}
 		})
+	}
+}
+
+// TestOpenPRsChecksVerdict walks the rollup into its one verdict: no checks is
+// no verdict, any failure fails the lot, anything unfinished or unknown is
+// pending, and finished-without-failing — skipped and cancelled included — is
+// passing. Both shapes a check arrives in are read, a CheckRun by its
+// conclusion once it has completed and by its status until then.
+func TestOpenPRsChecksVerdict(t *testing.T) {
+	const url = "https://github.test/pr/7"
+	const (
+		run       = `{"__typename":"CheckRun","name":"test","status":"COMPLETED","conclusion":"%s"}`
+		running   = `{"__typename":"CheckRun","name":"test","status":"IN_PROGRESS","conclusion":""}`
+		ctxStatus = `{"__typename":"StatusContext","context":"ci","state":"%s"}`
+	)
+	tests := []struct {
+		name   string
+		rollup string
+		want   ChecksVerdict
+	}{
+		{name: "no rollup at all", rollup: ``, want: ChecksNone},
+		{name: "an empty rollup", rollup: `[]`, want: ChecksNone},
+		{name: "all green", rollup: `[` + fmt.Sprintf(run, "SUCCESS") + `,` +
+			fmt.Sprintf(ctxStatus, "SUCCESS") + `]`, want: ChecksPassing},
+		{name: "skipped and cancelled hold nothing up", rollup: `[` + fmt.Sprintf(run, "SKIPPED") + `,` +
+			fmt.Sprintf(run, "cancelled") + `,` + fmt.Sprintf(run, "SUCCESS") + `]`, want: ChecksPassing},
+		{name: "one still running", rollup: `[` + fmt.Sprintf(run, "SUCCESS") + `,` + running + `]`,
+			want: ChecksPending},
+		{name: "an unknown state reads as pending", rollup: `[` + fmt.Sprintf(ctxStatus, "SOMETHING_NEW") + `]`,
+			want: ChecksPending},
+		{name: "a failure beats a pending check", rollup: `[` + running + `,` + fmt.Sprintf(run, "FAILURE") + `]`,
+			want: ChecksFailing},
+		{name: "a failed status context", rollup: `[` + fmt.Sprintf(ctxStatus, "ERROR") + `]`,
+			want: ChecksFailing},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := `"url":"` + url + `"`
+			if tt.rollup != "" {
+				body += `,"statusCheckRollup":` + tt.rollup
+			}
+			open, err := NewWithRunner(&fakeRunner{out: "[{" + body + "}]"}).OpenPRs("/repos/nat")
+			if err != nil {
+				t.Fatalf("OpenPRs() = %v, want a listing", err)
+			}
+			if got := open[url].Checks; got != tt.want {
+				t.Errorf("Checks = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestCheckOutcome is the one table of GitHub's check words: every finished
+// word, read whatever its case or spacing, and anything else — an unfinished
+// run, an empty state, a word GitHub adds later — as pending.
+func TestCheckOutcome(t *testing.T) {
+	for state, want := range map[string]CheckOutcome{
+		"SUCCESS": CheckPassing, " success ": CheckPassing,
+		"FAILURE": CheckFailing, "ERROR": CheckFailing, "TIMED_OUT": CheckFailing,
+		"STARTUP_FAILURE": CheckFailing, "ACTION_REQUIRED": CheckFailing,
+		"SKIPPED": CheckSkipped, "NEUTRAL": CheckSkipped, "CANCELLED": CheckSkipped, "STALE": CheckSkipped,
+		"IN_PROGRESS": CheckPending, "QUEUED": CheckPending, "": CheckPending, "SOMETHING_NEW": CheckPending,
+	} {
+		if got := (Check{State: state}).Outcome(); got != want {
+			t.Errorf("Check{State: %q}.Outcome() = %d, want %d", state, got, want)
+		}
+	}
+}
+
+// TestChecksVerdictString names every verdict, the zero value as none.
+func TestChecksVerdictString(t *testing.T) {
+	for v, want := range map[ChecksVerdict]string{
+		ChecksNone: "none", ChecksPassing: "passing", ChecksPending: "pending", ChecksFailing: "failing",
+	} {
+		if got := v.String(); got != want {
+			t.Errorf("%d.String() = %q, want %q", int(v), got, want)
+		}
 	}
 }
 

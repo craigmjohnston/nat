@@ -18,25 +18,127 @@ import (
 const (
 	reviewApproved = "APPROVED"
 	stateMergeable = "MERGEABLE"
-	prListFields   = "url,reviewDecision,mergeable"
+	prListFields   = "url,reviewDecision,mergeable,statusCheckRollup"
 )
 
 // prListLimit is how many open pull requests one listing will carry. gh's own
 // default is thirty, which a busy repository passes without saying so, and the
 // three fields asked for are small enough that a hundred costs nothing worth
-// counting. A repository with more open than that has its oldest left out of
+// counting — the check rollup included, which is a handful of short entries per
+// pull request. A repository with more open than that has its oldest left out of
 // the answer, which reads here as a pull request that is no longer open — the
 // same thing an unread one reads as, and the quiet direction to be wrong in.
 const prListLimit = "100"
 
 // PRStatus is what gh says about a pull request that bears on whether it is
-// still waiting to be reviewed: whether a review has approved it, and whether
-// GitHub can merge it as it stands. Both false is a pull request with a review
-// still to come — and equally the zero value, which is what a read that never
-// happened comes back as.
+// still waiting to be reviewed: whether a review has approved it, whether
+// GitHub can merge it as it stands, and how its checks stand. Both false is a
+// pull request with a review still to come — and equally the zero value, which
+// is what a read that never happened comes back as.
 type PRStatus struct {
 	Approved  bool
 	Mergeable bool
+	Checks    ChecksVerdict
+}
+
+// ChecksVerdict is a pull request's whole status check rollup said as one word.
+// The zero value is a pull request with no checks at all, which is no verdict
+// rather than a pass: nothing ran, so nothing can be said to have gone green.
+type ChecksVerdict int
+
+const (
+	// ChecksNone is a pull request that reported no checks.
+	ChecksNone ChecksVerdict = iota
+	// ChecksPassing is every check finished and none of them failed.
+	ChecksPassing
+	// ChecksPending is no check failed but at least one has not finished — or
+	// is in a state this build does not know, which is read the same way.
+	ChecksPending
+	// ChecksFailing is at least one check failed, whatever the rest are doing.
+	ChecksFailing
+)
+
+// String names the verdict for logs and test failures.
+func (v ChecksVerdict) String() string {
+	switch v {
+	case ChecksPassing:
+		return "passing"
+	case ChecksPending:
+		return "pending"
+	case ChecksFailing:
+		return "failing"
+	default:
+		return "none"
+	}
+}
+
+// CheckOutcome is what one status check amounts to for a reader: it is still
+// going, it passed, it failed, or it finished without counting either way.
+// GitHub has a word for every way each of those happens — a run that timed out
+// and one that failed outright are two words for the same news — and this is
+// the one place those words are classified, so the board's verdict, the pull
+// request screen and the merge refusal can never disagree about whether CI is
+// red.
+//
+// The zero value is pending, which is also what a state nobody can classify
+// reads as.
+type CheckOutcome int
+
+const (
+	// CheckPending is a check not finished — QUEUED, IN_PROGRESS, PENDING,
+	// WAITING, REQUESTED, the EXPECTED of a status nothing has reported yet —
+	// or one in a state this build does not know: a check nobody can classify
+	// is exactly the check to keep watching, and calling it a pass would have
+	// work called ready that nothing said was.
+	CheckPending CheckOutcome = iota
+	// CheckPassing is a check that finished and succeeded.
+	CheckPassing
+	// CheckFailing is a check that finished and failed, in any of GitHub's
+	// words for it.
+	CheckFailing
+	// CheckSkipped is a check that finished without counting either way:
+	// skipped, neutral, cancelled or stale. It holds nothing up.
+	CheckSkipped
+)
+
+// checkOutcomes is every finished state a check arrives in — a CheckRun's
+// conclusion or a StatusContext's state, as [ghRoll.check] reduces them to the
+// one field — and what it amounts to. Everything not named here is pending.
+var checkOutcomes = map[string]CheckOutcome{
+	"SUCCESS":         CheckPassing,
+	"FAILURE":         CheckFailing,
+	"ERROR":           CheckFailing,
+	"TIMED_OUT":       CheckFailing,
+	"STARTUP_FAILURE": CheckFailing,
+	"ACTION_REQUIRED": CheckFailing,
+	"SKIPPED":         CheckSkipped,
+	"NEUTRAL":         CheckSkipped,
+	"CANCELLED":       CheckSkipped,
+	"STALE":           CheckSkipped,
+}
+
+// Outcome is where the check stands, read off its state whatever its case or
+// spacing.
+func (c Check) Outcome() CheckOutcome {
+	return checkOutcomes[strings.ToUpper(strings.TrimSpace(c.State))]
+}
+
+// checksVerdictOf rolls a pull request's checks into one verdict: any failure
+// fails the lot, then any check unfinished leaves it pending.
+func checksVerdictOf(rollup []ghRoll) ChecksVerdict {
+	if len(rollup) == 0 {
+		return ChecksNone
+	}
+	verdict := ChecksPassing
+	for _, entry := range rollup {
+		switch entry.check().Outcome() {
+		case CheckFailing:
+			return ChecksFailing
+		case CheckPending:
+			verdict = ChecksPending
+		}
+	}
+	return verdict
 }
 
 // OpenPRs is every pull request the repository at dir currently has open, keyed
@@ -62,9 +164,10 @@ func (c CLI) OpenPRs(dir string) (map[string]PRStatus, error) {
 		return nil, err
 	}
 	var list []struct {
-		URL            string `json:"url"`
-		ReviewDecision string `json:"reviewDecision"`
-		Mergeable      string `json:"mergeable"`
+		URL            string   `json:"url"`
+		ReviewDecision string   `json:"reviewDecision"`
+		Mergeable      string   `json:"mergeable"`
+		Rollup         []ghRoll `json:"statusCheckRollup"`
 	}
 	if err := json.Unmarshal([]byte(out), &list); err != nil {
 		logging.Error("could not read what gh said about a repository's pull requests", "dir", dir, "error", err)
@@ -75,6 +178,7 @@ func (c CLI) OpenPRs(dir string) (map[string]PRStatus, error) {
 		open[NormaliseURL(pr.URL)] = PRStatus{
 			Approved:  pr.ReviewDecision == reviewApproved,
 			Mergeable: pr.Mergeable == stateMergeable,
+			Checks:    checksVerdictOf(pr.Rollup),
 		}
 	}
 	return open, nil

@@ -91,10 +91,13 @@ func worthReadingPR(s domain.Slice) bool {
 }
 
 // readinessOf turns what gh said about an open pull request into the reading
-// pr-status reports, the same mapping prstate.go's readinessOf makes:
-// approved and mergeable is the review over, and anything else is a review
-// still to come.
+// pr-status reports, the same mapping prstate.go's readinessOf makes: a
+// failed check first, whatever the review says, then approved and mergeable
+// is the review over, and anything else is a review still to come.
 func readinessOf(status gh.PRStatus) domain.PRReadiness {
+	if status.Checks == gh.ChecksFailing {
+		return domain.PRChecksFailing
+	}
 	if status.Approved && status.Mergeable {
 		return domain.PRReadyToMerge
 	}

@@ -143,6 +143,8 @@ func (b Board) agentPresence(sliceID string) domain.AgentPresence {
 // as ordinary work rather than as something to put right. A pull request the
 // review is over on takes that same Success green in bold: it is the end of the
 // state the entry was already in, said louder rather than said in a new colour.
+// A pull request whose checks have failed takes Danger, the board's colour for
+// something gone wrong.
 func (b Board) stateStyle(s domain.SliceState) lipgloss.Style {
 	switch s {
 	case domain.SliceStateWorking:
@@ -155,6 +157,8 @@ func (b Board) stateStyle(s domain.SliceState) lipgloss.Style {
 		return b.styles.StateAwaitingReview
 	case domain.SliceStateReadyToMerge:
 		return b.styles.StateReadyToMerge
+	case domain.SliceStateChecksFailing:
+		return b.styles.StateChecksFailing
 	}
 	return b.styles.StateReadyToPush
 }
