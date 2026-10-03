@@ -132,11 +132,12 @@ gnat's `FollowUpsSidebarView` is pane-level, shown while `slice-show`'s
 [--milestone NAME]` appends a `Note` section to a Todo or In progress
 slice's body — for context a *later* slice needs, never for work (that is a
 follow-up). The target is named by name (plan-apply's title match,
-`--milestone` to disambiguate) or by ID/URL; no ownership check. Its first
-paragraph is provenance nat composes, never the caller: `From "<slice>"
-(<milestone>)` from `--from`, else `From <Config.AssigneeFor name>` — no ID
-or URL, by the same helper (`fromSlice`) the triage's queued-follow-up line
-uses. Refused, before any write: Done, an unreadable body, an empty note, an
+`--milestone` to disambiguate) or by ID/URL; no ownership check. Under its
+stamp, its first paragraph is provenance nat composes, never the caller:
+`From "<slice>" (<milestone>)` from `--from` (`store.SliceLabel`, parsed
+back into `slice-show`'s `fromSlice`), else `From <Config.AssigneeFor name>`
+— no ID or URL, by the same helper (`fromSlice`) the triage's
+queued-follow-up line uses. Refused, before any write: Done, an unreadable body, an empty note, an
 unknown/ambiguous name, an unreadable `--from`. A note on a Todo slice
 reaches its agent as part of the brief with no further plumbing.
 
@@ -150,12 +151,17 @@ every template and every skill for it.
 `store.TaskEvents`: each `Handed back`, `Sent back` (`slice-rework
 --comments`, filed before the branch is cleared, as hand-back files before
 its property), `Relaunched` (written by a non-fix `actions.Launch` of a slice
-already under way or with history; a failure is logged, never fatal),
+already under way or with history — `store.HasHistory`: notes alone are not
+history; a failure is logged, never fatal),
 `Blocked`, `Summary`, `Note` (a `note` event, `by` its provenance), released
 line and `Follow-ups` section, each proposal
-decided by a later `Follow-ups triaged`. `slice-show --json`'s `events` is
-that list, then `approved` (a PR recorded) and `merged` (Done with a PR or
-branch). Both stores write the same markdown.
+decided by a later `Follow-ups triaged`. Every one of those sections opens
+with a stamp paragraph, `At <RFC 3339 with offset>` (the released line says
+`… by <name> at <RFC 3339>: …` instead; `PR description` is never stamped,
+being the PR's body); a section without one predates stamps and reads at no
+time. `slice-show --json`'s `events` is that list (each with its `at`), then
+`approved` (a PR recorded) and `merged` (Done with a PR or branch), which
+have no time. Both stores write the same markdown, through a `Clock` seam.
 
 **Visual changes.** Where a project already has a cheap or usual way to
 render what a slice changed (a gallery story, a screenshot script), every

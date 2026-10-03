@@ -108,7 +108,7 @@ func TestTriagedLines(t *testing.T) {
 
 func TestNotionProposeFollowUpsWritesOneAppend(t *testing.T) {
 	api := &fakeAPI{}
-	err := Over(api).ProposeFollowUps(context.Background(), "s5", []FollowUp{
+	err := clocked(api).ProposeFollowUps(context.Background(), "s5", []FollowUp{
 		{Title: "A", Brief: "One.\n\nTwo."},
 	})
 	if err != nil {
@@ -119,6 +119,7 @@ func TestNotionProposeFollowUpsWritesOneAppend(t *testing.T) {
 	}
 	got, _ := json.Marshal(api.appended[0])
 	want := `[{"heading_3":{"rich_text":[{"text":{"content":"Follow-ups"},"type":"text"}]},"object":"block","type":"heading_3"},` +
+		stampBlockJSON + `,` +
 		`{"numbered_list_item":{"children":[` +
 		`{"object":"block","paragraph":{"rich_text":[{"text":{"content":"One."},"type":"text"}]},"type":"paragraph"},` +
 		`{"object":"block","paragraph":{"rich_text":[{"text":{"content":"Two."},"type":"text"}]},"type":"paragraph"}],` +
@@ -130,7 +131,7 @@ func TestNotionProposeFollowUpsWritesOneAppend(t *testing.T) {
 
 func TestNotionRecordTriageWritesOneAppend(t *testing.T) {
 	api := &fakeAPI{}
-	err := Over(api).RecordTriage(context.Background(), "s5", []Triaged{
+	err := clocked(api).RecordTriage(context.Background(), "s5", []Triaged{
 		{Title: "A", Decision: Queued, Link: "https://notion.so/a"}, {Title: "B", Decision: Dropped},
 	})
 	if err != nil {
@@ -138,6 +139,7 @@ func TestNotionRecordTriageWritesOneAppend(t *testing.T) {
 	}
 	want := [][2]string{
 		{"heading_3", notion.FollowUpsTriagedHeading},
+		{"paragraph", testStamp},
 		{"bulleted_list_item", "Queued: A → https://notion.so/a"},
 		{"bulleted_list_item", "Dropped: B"},
 	}
@@ -213,7 +215,7 @@ func TestBothStoresFileTheSameBody(t *testing.T) {
 	}
 
 	api := &fakeAPI{}
-	remote := Over(api)
+	remote := clocked(api)
 	for _, items := range [][]FollowUp{proposals, many} {
 		if err := remote.ProposeFollowUps(ctx, "writes", items); err != nil {
 			t.Fatalf("Notion ProposeFollowUps: %v", err)
@@ -249,6 +251,12 @@ func TestBothStoresFileTheSameBody(t *testing.T) {
 	}
 	if got := PendingFollowUps(fromLocal); len(got) != 11 || got[10].Brief != "Line one\nline two\n\nPara two." {
 		t.Errorf("PendingFollowUps() = %#v, want the eleven of the newer section", got)
+	}
+	// Each section's stamp is read off as its time, and is no item of it.
+	events := TaskEvents(fromLocal)
+	if len(events) != 2 || !events[0].At.Equal(testNow) || !events[1].At.Equal(testNow) ||
+		len(events[0].FollowUps) != 3 || len(events[1].FollowUps) != 11 {
+		t.Errorf("TaskEvents() = %+v, want two stamped proposals of three and eleven", events)
 	}
 }
 

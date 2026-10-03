@@ -192,11 +192,11 @@ func (l *Local) ReleaseSlice(ctx context.Context, id string, sh Shape, by string
 		if sh.HasAssignee {
 			return l.exec(ctx, tx, "release the slice",
 				`UPDATE slices SET status = ?, assignee = '', body = ? WHERE id = ?`,
-				notion.SliceTodo, appendLines(body, releasedLine(by)), id)
+				notion.SliceTodo, appendLines(body, releasedLine(by, clockOr(l.Clock))), id)
 		}
 		return l.exec(ctx, tx, "release the slice",
 			`UPDATE slices SET status = ?, body = ? WHERE id = ?`,
-			notion.SliceTodo, appendLines(body, releasedLine(by)), id)
+			notion.SliceTodo, appendLines(body, releasedLine(by, clockOr(l.Clock))), id)
 	})
 	if err != nil {
 		return domain.Slice{}, err
@@ -220,7 +220,9 @@ func (l *Local) CompleteSlice(ctx context.Context, id string, _ Shape, o Outcome
 		if err != nil {
 			return err
 		}
-		body = appendSection(body, noteHeading(o), o.Summary)
+		// Stamped, as every task-log section is; the PR description is not, for
+		// the reason [Notion.CompleteSlice] gives.
+		body = appendSection(body, noteHeading(o), stamped(clockOr(l.Clock), o.Summary))
 		if o.PRDescription != "" {
 			body = appendSection(body, notion.PRDescriptionHeading, o.PRDescription)
 		}

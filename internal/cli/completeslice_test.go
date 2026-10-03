@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -99,9 +100,19 @@ func blockTexts(t *testing.T, children []map[string]any) []string {
 		if !ok {
 			t.Fatalf("block %+v has no text content", block)
 		}
-		lines = append(lines, blockType+": "+text)
+		lines = append(lines, blockType+": "+stampless(text))
 	}
 	return lines
+}
+
+// stampTimeRe is the time a task-log stamp or a release's line names.
+var stampTimeRe = regexp.MustCompile(`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:Z|[+-]\d\d:\d\d)`)
+
+// stampless is text with every stamped time in it read as "<stamp>": the store
+// stamps a section with the wall clock, which a command's test cannot hold
+// still, so it asserts that the stamp is there and where, not what it says.
+func stampless(text string) string {
+	return stampTimeRe.ReplaceAllString(text, "<stamp>")
 }
 
 func TestCompleteSliceFinishesTheSlice(t *testing.T) {
@@ -122,7 +133,7 @@ func TestCompleteSliceFinishesTheSlice(t *testing.T) {
 	if api.appends[0].id != sliceID {
 		t.Errorf("appended to %q, want %s", api.appends[0].id, sliceID)
 	}
-	want := []string{"heading_3: Summary", "paragraph: Wrote the renderer."}
+	want := []string{"heading_3: Summary", "paragraph: At <stamp>", "paragraph: Wrote the renderer."}
 	if got := blockTexts(t, api.appends[0].children); !equalLines(got, want) {
 		t.Errorf("blocks = %v, want %v", got, want)
 	}
@@ -209,7 +220,7 @@ func TestCompleteSliceAppendsAParagraphPerChunk(t *testing.T) {
 		t.Fatalf("complete-slice: %v", err)
 	}
 
-	want := []string{"heading_3: Summary", "paragraph: Wrote the renderer.", "paragraph: Follow-up: style it."}
+	want := []string{"heading_3: Summary", "paragraph: At <stamp>", "paragraph: Wrote the renderer.", "paragraph: Follow-up: style it."}
 	if got := blockTexts(t, api.appends[0].children); !equalLines(got, want) {
 		t.Errorf("blocks = %v, want %v", got, want)
 	}
@@ -226,7 +237,7 @@ func TestCompleteSliceReadsTheSummaryFromStdin(t *testing.T) {
 		t.Fatalf("complete-slice: %v", err)
 	}
 
-	want := []string{"heading_3: Summary", "paragraph: Wrote the renderer."}
+	want := []string{"heading_3: Summary", "paragraph: At <stamp>", "paragraph: Wrote the renderer."}
 	if got := blockTexts(t, api.appends[0].children); !equalLines(got, want) {
 		t.Errorf("blocks = %v, want %v", got, want)
 	}
@@ -248,7 +259,7 @@ func TestCompleteSliceBlockedLeavesTheSliceInProgress(t *testing.T) {
 	if len(api.updates) != 0 {
 		t.Errorf("updates = %+v, want none: a blocked slice keeps its status", api.updates)
 	}
-	want := []string{"heading_3: Blocked", "paragraph: The API has no endpoint for it."}
+	want := []string{"heading_3: Blocked", "paragraph: At <stamp>", "paragraph: The API has no endpoint for it."}
 	if got := blockTexts(t, api.appends[0].children); !equalLines(got, want) {
 		t.Errorf("blocks = %v, want %v", got, want)
 	}
@@ -829,7 +840,7 @@ func TestCompleteSliceHandsBackABranch(t *testing.T) {
 	if len(api.appends) != 1 {
 		t.Fatalf("appends = %+v, want exactly one", api.appends)
 	}
-	want := []string{"heading_3: Handed back", "paragraph: Wrote the renderer."}
+	want := []string{"heading_3: Handed back", "paragraph: At <stamp>", "paragraph: Wrote the renderer."}
 	if got := blockTexts(t, api.appends[0].children); !equalLines(got, want) {
 		t.Errorf("blocks = %v, want %v", got, want)
 	}
@@ -885,7 +896,7 @@ func TestCompleteSliceRecordsAPRDescription(t *testing.T) {
 		t.Fatalf("appends = %+v, want exactly one", api.appends)
 	}
 	want := []string{
-		"heading_3: Handed back",
+		"heading_3: Handed back", "paragraph: At <stamp>",
 		"paragraph: Wrote the renderer.",
 		"heading_3: " + notion.PRDescriptionHeading,
 		"paragraph: Render the board",
@@ -913,7 +924,7 @@ func TestCompleteSliceReadsThePRDescriptionFromStdin(t *testing.T) {
 	}
 
 	want := []string{
-		"heading_3: Handed back",
+		"heading_3: Handed back", "paragraph: At <stamp>",
 		"paragraph: Wrote the renderer.",
 		"heading_3: " + notion.PRDescriptionHeading,
 		"paragraph: Render the board",

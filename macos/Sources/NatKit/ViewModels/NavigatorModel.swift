@@ -287,10 +287,16 @@ public enum ThreadEventKind: Equatable, Sendable {
 public struct ThreadFact: Equatable, Sendable {
     public let key: String
     public let value: String
+    /// The slice the value names, where it names one on the plan — a note's
+    /// `task` — which the card draws as the brief's own depends-on row
+    /// (state dot, name, hover detail, a click selecting it) rather than as
+    /// plain text. Nil for every other fact.
+    public let sliceID: String?
 
-    public init(_ key: String, _ value: String) {
+    public init(_ key: String, _ value: String, sliceID: String? = nil) {
         self.key = key
         self.value = value
+        self.sliceID = sliceID
     }
 }
 
@@ -310,10 +316,15 @@ public struct ThreadEvent: Equatable, Sendable {
     /// so the card reads the two as one line, `title`; false where it is
     /// a separate fact about the card, such as a comment's time.
     public let metaIsAction: Bool
+    /// When it happened, where nat knows — drawn at the header's trailing
+    /// end by `threadTimestamp`. Nil for a card nat records no time for. A
+    /// `var` so a recorded event's card takes its event's time in one place.
+    public var when: Date?
 
     public init(
         _ kind: ThreadEventKind, who: String, meta: String? = nil, tone: ThreadTone = .muted,
-        body: String? = nil, facts: [ThreadFact] = [], awaitsTriage: Bool = false, metaIsAction: Bool = true
+        body: String? = nil, facts: [ThreadFact] = [], awaitsTriage: Bool = false, metaIsAction: Bool = true,
+        when: Date? = nil
     ) {
         self.kind = kind
         self.who = who
@@ -323,6 +334,7 @@ public struct ThreadEvent: Equatable, Sendable {
         self.facts = facts
         self.awaitsTriage = awaitsTriage
         self.metaIsAction = metaIsAction
+        self.when = when
     }
 
     /// The card's first line where the meta is an action: who, then what
@@ -331,6 +343,31 @@ public struct ThreadEvent: Equatable, Sendable {
         guard metaIsAction, let meta else { return who }
         return "\(who) \(meta)"
     }
+}
+
+/// When a Thread card happened, as its header says it: the time alone where
+/// it was today, the day and month where it was earlier this year, and the
+/// year too before that — each in the locale's own order and clock, from the
+/// templates `jm` (23:14, or 11:14 PM), `d MMM` (3 Oct) and `d MMM y`
+/// (3 Oct 2025). "Today" and "this year" are `calendar`'s, in its time zone,
+/// so a test holds all three still.
+public func threadTimestamp(
+    _ date: Date, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current
+) -> String {
+    let template: String
+    if calendar.isDate(date, inSameDayAs: now) {
+        template = "jm"
+    } else if calendar.component(.year, from: date) == calendar.component(.year, from: now) {
+        template = "d MMM"
+    } else {
+        template = "d MMM y"
+    }
+    let formatter = DateFormatter()
+    formatter.calendar = calendar
+    formatter.timeZone = calendar.timeZone
+    formatter.locale = locale
+    formatter.setLocalizedDateFormatFromTemplate(template)
+    return formatter.string(from: date)
 }
 
 /// A live agent's own statusline reading as facts: its model, its effort
@@ -355,8 +392,14 @@ public func agentFacts(_ agent: AgentStatus?) -> (model: [ThreadFact], context: 
 /// With no `events` — the slice's detail not read yet, or a nat too old to
 /// report them — the log falls back to what the slice's properties and its
 /// last hand-back note alone say.
+///
+/// `plan` and `milestones` are the project's own, as loaded: what a note's
+/// `fromSlice` is matched against to name the slice it came from as a task
+/// on the plan (see `noteSourceSlice`). Without them every note's source is
+/// plain text.
 public func buildThreadEvents(
-    slice: Slice, agent: AgentStatus?, brief: String?, events: [TaskLogEvent]? = nil
+    slice: Slice, agent: AgentStatus?, brief: String?, events: [TaskLogEvent]? = nil,
+    plan: [Slice] = [], milestones: [Milestone] = []
 ) -> [ThreadEvent] {
     let state = displayState(
         for: slice, agent: agent.map { AgentActivity($0.activity) }, fixLaunched: false)
@@ -385,14 +428,33 @@ public func buildThreadEvents(
     // What the page records, in the order it was written; then the agent as
     // it is now; then what the properties say came of it all.
     let closing: Set<TaskLogEvent.Kind> = [.approved, .merged]
-    log += events.filter { !closing.contains($0.kind) }.map(threadEvent)
+    let card = { (event: TaskLogEvent) -> ThreadEvent in
+        var card = threadEvent(event, plan: plan, milestones: milestones)
+        card.when = event.at
+        return card
+    }
+    log += events.filter { !closing.contains($0.kind) }.map(card)
     if let agentCard { log.append(agentCard) }
-    log += events.filter { closing.contains($0.kind) }.map(threadEvent)
+    log += events.filter { closing.contains($0.kind) }.map(card)
     return log
 }
 
+/// The one slice on the plan a note's source names: the same name, under a
+/// milestone of the same name — a milestone the plan does not list read by
+/// its id, as the brief's own facts read one — or, where the source names no
+/// milestone, by name alone. Nil where none matches, or where more than one
+/// does — a guess at which would be a wrong link as often as a right one.
+public func noteSourceSlice(_ source: NoteSource, plan: [Slice], milestones: [Milestone]) -> Slice? {
+    let names = Dictionary(milestones.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+    let matches = plan.filter { candidate in
+        candidate.name == source.name
+            && (source.milestone.isEmpty || (names[candidate.milestoneID] ?? candidate.milestoneID) == source.milestone)
+    }
+    return matches.count == 1 ? matches[0] : nil
+}
+
 /// One recorded event as its Task log card.
-private func threadEvent(_ event: TaskLogEvent) -> ThreadEvent {
+private func threadEvent(_ event: TaskLogEvent, plan: [Slice], milestones: [Milestone]) -> ThreadEvent {
     let note = event.note.flatMap { $0.isEmpty ? nil : $0 }
     switch event.kind {
     case .handedBack:
@@ -424,7 +486,12 @@ private func threadEvent(_ event: TaskLogEvent) -> ThreadEvent {
         guard let by = event.by.flatMap({ $0.isEmpty ? nil : $0 }) else {
             return ThreadEvent(.note, who: "Note", body: note)
         }
-        return ThreadEvent(.note, who: by, meta: "left a note", body: note)
+        // A note from a task on the plan names it as a task row; from
+        // anywhere else — a person, a workshop, a task since renamed or
+        // removed — its provenance is the source, as nat wrote it.
+        let source = event.fromSlice.flatMap { noteSourceSlice($0, plan: plan, milestones: milestones) }
+        let fact = source.map { ThreadFact("task", $0.name, sliceID: $0.id) } ?? ThreadFact("source", by)
+        return ThreadEvent(.note, who: "Another agent", meta: "left a note", body: note, facts: [fact])
     case .approved:
         let pr = event.pr ?? ""
         if let number = pullRequestNumber(pr) {

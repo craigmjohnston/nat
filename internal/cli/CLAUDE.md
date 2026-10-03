@@ -181,8 +181,9 @@ name (`sliceResolver` — trimmed, case-insensitive, as plan-apply resolves a
 `depends_on`; `--milestone` narrows, and is refused beside an ID). Refuses an
 empty note, an unknown or ambiguous name (listing the matches with their
 milestones), Done, an unreadable body, and an unreadable `--from` — all before
-`Store.RecordNote`. Provenance is `fromSlice` (`From "<name>" (<milestone>)`)
-or `fromPerson` (the config's assignee name), never an ID; `slice-triage`'s
+`Store.RecordNote`. Provenance is `fromSlice` (`From "<name>" (<milestone>)`,
+the label `store.SliceLabel` writes and `TaskEvents` parses back) or
+`fromPerson` (the config's assignee name), never an ID; `slice-triage`'s
 queued-follow-up line is `fromSlice` too. See root CLAUDE.md's Notes rule.
 
 `slice-show --json`'s `events` is the slice's whole task log: every
@@ -191,7 +192,11 @@ queued-follow-up line is `fromSlice` too. See root CLAUDE.md's Notes rule.
 the slice's properties rather than its body — an `approved` event where a
 pull request is recorded and a `merged` event where the slice is Done with a
 pull request or branch recorded. Always an array, never `omitempty`: the app
-ranges over it with no nil check.
+ranges over it with no nil check. Each body event carries `at` (RFC 3339, off
+its section's stamp; omitted where the section predates stamps — and always
+on `approved`/`merged`, which have no time source), and a note from a slice
+`fromSlice: {name, milestone}` — by name, never resolved to an ID here, since
+slice-show reads no plan; the app matches it against the plan it holds.
 
 `slice-visuals` (held slices, or — `canHandInVisuals` — a Done slice with a
 PR recorded, assigned to you where the project has an Assignee column: a fix

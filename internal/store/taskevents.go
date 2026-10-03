@@ -3,6 +3,7 @@ package store
 import (
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/craigmjohnston/nat/internal/notion"
 )
@@ -23,8 +24,56 @@ type TaskEvent struct {
 	// came from — its provenance line less the leading "From " — for a note.
 	// Note is a note's text without that line.
 	By string
+	// FromSlice is the slice a "note" came from, where By reads as the label
+	// [SliceLabel] writes — its name and milestone, never an ID, since the
+	// page names none. Nil for a note from a person, one with no provenance
+	// at all, and every other kind; By is the same either way.
+	FromSlice *NoteSource
+	// At is when the event was written, off the stamp its section opens with
+	// (or, for a release, the time its line names) — the zero time for one
+	// written before sections were stamped.
+	At time.Time
 	// FollowUps is the proposals of a "follow_ups" event alone.
 	FollowUps []TaskFollowUp
+}
+
+// NoteSource is a slice as a note's provenance names it: by name, and by its
+// milestone's name where it has one ("" where it has none).
+type NoteSource struct {
+	Name      string
+	Milestone string
+}
+
+// SliceLabel names a slice as a reader of the plan knows it: its name, quoted,
+// and its milestone's in brackets after it where it has one — `"Name"
+// (Milestone)`. It is what a note's provenance line says of the slice it came
+// from, and [sliceLabelOf] is its one reader, kept beside it so the two cannot
+// drift apart.
+func SliceLabel(name, milestone string) string {
+	if milestone != "" {
+		return `"` + name + `" (` + milestone + `)`
+	}
+	return `"` + name + `"`
+}
+
+// sliceLabelOf reads a label [SliceLabel] wrote back into the slice it names,
+// and false for anything else — a person's name, or text typed by hand. The
+// milestone is whatever follows the last `" (`, so a name that itself holds
+// quotes or brackets still reads whole.
+func sliceLabelOf(label string) (NoteSource, bool) {
+	rest, ok := strings.CutPrefix(label, `"`)
+	if !ok {
+		return NoteSource{}, false
+	}
+	if inner, ok := strings.CutSuffix(rest, ")"); ok {
+		if i := strings.LastIndex(inner, `" (`); i > 0 {
+			return NoteSource{Name: inner[:i], Milestone: inner[i+3:]}, true
+		}
+	}
+	if name, ok := strings.CutSuffix(rest, `"`); ok && name != "" {
+		return NoteSource{Name: name}, true
+	}
+	return NoteSource{}, false
 }
 
 // TaskFollowUp is one follow-up as a "follow_ups" event names it: the
@@ -43,19 +92,22 @@ type TaskFollowUp struct {
 }
 
 // releasedLineRe matches [releasedLine]'s own text, capturing the assignee it
-// named. It is a bare paragraph, never a heading, so [TaskEvents] watches for
-// it on every line of whatever section it turns up inside rather than only at
-// a section boundary.
-var releasedLineRe = regexp.MustCompile(`^Released back to Todo by (.+): the session working it ended without finishing it\.$`)
+// named and, where it names one, when. It is a bare paragraph, never a
+// heading, so [TaskEvents] watches for it on every line of whatever section it
+// turns up inside rather than only at a section boundary. The time is
+// optional: a line written before releases named one still reads.
+var releasedLineRe = regexp.MustCompile(`^Released back to Todo by (.+?)(?: at (\d{4}-\d\d-\d\dT\S+))?: the session working it ended without finishing it\.$`)
 
-// releasedBy reports the name a release's line named, trimmed first the way
-// every other heading match here is.
-func releasedBy(line string) (string, bool) {
+// releasedBy reports the name a release's line named, and when where it says
+// so (the zero time where it does not, or names one that will not parse),
+// trimmed first the way every other heading match here is.
+func releasedBy(line string) (string, time.Time, bool) {
 	m := releasedLineRe.FindStringSubmatch(strings.TrimSpace(line))
 	if m == nil {
-		return "", false
+		return "", time.Time{}, false
 	}
-	return m[1], true
+	at, _ := time.Parse(time.RFC3339, m[2])
+	return m[1], at, true
 }
 
 // TaskEvents reads a slice's whole task log off its body, top to bottom: one
@@ -79,6 +131,12 @@ func releasedBy(line string) (string, bool) {
 // unfiltered — every item, not merely the ones still pending — decorated
 // with whatever the *next* Follow-ups triaged section after it decided, by
 // title, the same match [PendingFollowUps] itself makes.
+//
+// Each section's stamp — its first paragraph, `At <RFC 3339>` — is read off
+// into the event's At and is no part of its text; a section with none (one
+// written before stamps were) reads exactly as it always did, at the zero
+// time. A Follow-ups triaged section's own stamp is read by nothing: it is a
+// record against an earlier event, not an event of its own.
 func TaskEvents(body string) []TaskEvent {
 	const (
 		outside = iota
@@ -91,6 +149,8 @@ func TaskEvents(body string) []TaskEvent {
 	var curLines []string
 	var items []FollowUp
 	var brief []string
+	// proposedAt is the stamp the Follow-ups section being read opened with.
+	var proposedAt time.Time
 	lastFollowUpsIdx := -1
 
 	in, level, fence, indent := outside, 0, "", ""
@@ -106,22 +166,27 @@ func TaskEvents(body string) []TaskEvent {
 	// exactly when in == otherSection — and every place that sets in to
 	// otherSection sets curKind alongside it, so curKind is never empty here.
 	closeOther := func() {
+		at, text := unstamped(strings.TrimSpace(strings.Join(curLines, "\n")))
 		switch curKind {
 		case relaunchedKind:
-			events = append(events, TaskEvent{Kind: relaunchedKind})
+			events = append(events, TaskEvent{Kind: relaunchedKind, At: at})
 		case noteKind:
-			by, note := noteParts(strings.TrimSpace(strings.Join(curLines, "\n")))
-			events = append(events, TaskEvent{Kind: noteKind, Note: note, By: by})
+			by, note := noteParts(text)
+			e := TaskEvent{Kind: noteKind, Note: note, By: by, At: at}
+			if src, ok := sliceLabelOf(by); ok {
+				e.FromSlice = &src
+			}
+			events = append(events, e)
 		default:
-			events = append(events, TaskEvent{Kind: curKind, Note: strings.TrimSpace(strings.Join(curLines, "\n"))})
+			events = append(events, TaskEvent{Kind: curKind, Note: text, At: at})
 		}
 		curKind, curLines = "", nil
 	}
 	closeProposals := func() {
 		closeItem()
-		events = append(events, TaskEvent{Kind: followUpsKind, FollowUps: taskFollowUpsOf(items)})
+		events = append(events, TaskEvent{Kind: followUpsKind, FollowUps: taskFollowUpsOf(items), At: proposedAt})
 		lastFollowUpsIdx = len(events) - 1
-		items = nil
+		items, proposedAt = nil, time.Time{}
 	}
 	closeCurrent := func() {
 		switch in {
@@ -159,10 +224,10 @@ func TaskEvents(body string) []TaskEvent {
 			brief = append(brief, strings.TrimPrefix(line, indent))
 			continue
 		}
-		if by, ok := releasedBy(line); ok {
+		if by, at, ok := releasedBy(line); ok {
 			closeCurrent()
 			in, level, curKind = outside, 0, ""
-			events = append(events, TaskEvent{Kind: releasedKind, By: by})
+			events = append(events, TaskEvent{Kind: releasedKind, By: by, At: at})
 			continue
 		}
 		h, text := headingOf(line)
@@ -212,6 +277,9 @@ func TaskEvents(body string) []TaskEvent {
 				closeItem()
 				items = append(items, FollowUp{Index: len(items) + 1, Title: strings.TrimSpace(m[2])})
 				indent, brief = strings.Repeat(" ", len(m[1])+2), []string{}
+			} else if t, ok := stampAt(line); ok && len(items) == 0 {
+				// The stamp is the section's first paragraph, before any item.
+				proposedAt = t
 			}
 		case record:
 			if title, dec, link, ok := triagedEntry(line); ok {
@@ -221,6 +289,21 @@ func TaskEvents(body string) []TaskEvent {
 	}
 	closeCurrent()
 	return events
+}
+
+// HasHistory reports whether a task log says the slice has been worked: any
+// event at all but a note. A note alone is not history — `slice-note` leaves
+// one on a slice nobody has launched yet, as context for whoever first does —
+// so a slice carrying only notes launches as a fresh launch, not a relaunch.
+// It is the one statement of the rule; gnat's Thread applies the same one
+// to decide whether a log opens at all.
+func HasHistory(events []TaskEvent) bool {
+	for _, e := range events {
+		if e.Kind != noteKind {
+			return true
+		}
+	}
+	return false
 }
 
 // The kinds [TaskEvent.Kind] takes — the snake_case wire vocabulary
@@ -241,7 +324,8 @@ const (
 // Note section.
 const notePrefix = "From "
 
-// noteParts splits a Note section's text into who it came from and the note
+// noteParts splits a Note section's text — its stamp already read off it by
+// [unstamped], where it had one — into who it came from and the note
 // itself. A section whose first paragraph is not a provenance line — one
 // typed onto the page by hand — is all note, from nobody named.
 func noteParts(text string) (by, note string) {

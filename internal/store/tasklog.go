@@ -12,8 +12,10 @@ import (
 // relaunch always reads the same whichever store wrote it.
 const relaunchedLine = "Relaunched to pick up the work so far."
 
-// noteText is a Note section's content: the provenance paragraph, then the
-// note — one rule, so both backends write the same section.
+// noteText is a Note section's content under its stamp: the provenance
+// paragraph, then the note — one rule, so both backends write the same
+// section. Every section here is [stamped] as it is written, so the stamp
+// comes first and the provenance second.
 func noteText(from, text string) string {
 	return from + "\n\n" + text
 }
@@ -26,7 +28,7 @@ func noteText(from, text string) string {
 // never handed back at all, and the comments would be lost rather than
 // retried.
 func (n *Notion) RecordSentBack(ctx context.Context, id, comments string) error {
-	if _, err := n.api.AppendBlockChildren(ctx, id, noteBlocks(notion.SentBackHeading, comments)); err != nil {
+	if _, err := n.api.AppendBlockChildren(ctx, id, noteBlocks(notion.SentBackHeading, stamped(clockOr(n.Clock), comments))); err != nil {
 		return err
 	}
 	logging.Action("slice sent back", "slice", id)
@@ -34,9 +36,9 @@ func (n *Notion) RecordSentBack(ctx context.Context, id, comments string) error 
 }
 
 // RecordNote files a note on the slice page under a heading of its own, its
-// provenance the first paragraph, in one append.
+// stamp the first paragraph and its provenance the second, in one append.
 func (n *Notion) RecordNote(ctx context.Context, id, from, text string) error {
-	if _, err := n.api.AppendBlockChildren(ctx, id, noteBlocks(notion.NoteHeading, noteText(from, text))); err != nil {
+	if _, err := n.api.AppendBlockChildren(ctx, id, noteBlocks(notion.NoteHeading, stamped(clockOr(n.Clock), noteText(from, text)))); err != nil {
 		return err
 	}
 	logging.Action("slice noted", "slice", id)
@@ -46,7 +48,7 @@ func (n *Notion) RecordNote(ctx context.Context, id, from, text string) error {
 // RecordRelaunch files the one fixed line a relaunch leaves on the slice page
 // under a heading of its own, in one append.
 func (n *Notion) RecordRelaunch(ctx context.Context, id string) error {
-	if _, err := n.api.AppendBlockChildren(ctx, id, noteBlocks(notion.RelaunchedHeading, relaunchedLine)); err != nil {
+	if _, err := n.api.AppendBlockChildren(ctx, id, noteBlocks(notion.RelaunchedHeading, stamped(clockOr(n.Clock), relaunchedLine))); err != nil {
 		return err
 	}
 	logging.Action("slice relaunched", "slice", id)
@@ -56,7 +58,7 @@ func (n *Notion) RecordRelaunch(ctx context.Context, id string) error {
 // RecordSentBack appends the review comments to the slice's body, in the
 // markdown Notion would render the same section to.
 func (l *Local) RecordSentBack(ctx context.Context, id, comments string) error {
-	if err := l.appendToBody(ctx, id, "send the slice back", notion.SentBackHeading, comments); err != nil {
+	if err := l.appendToBody(ctx, id, "send the slice back", notion.SentBackHeading, stamped(clockOr(l.Clock), comments)); err != nil {
 		return err
 	}
 	logging.Action("slice sent back", "slice", id)
@@ -66,7 +68,7 @@ func (l *Local) RecordSentBack(ctx context.Context, id, comments string) error {
 // RecordNote appends the note to the slice's body, in the markdown Notion
 // would render the same section to.
 func (l *Local) RecordNote(ctx context.Context, id, from, text string) error {
-	if err := l.appendToBody(ctx, id, "note the slice", notion.NoteHeading, noteText(from, text)); err != nil {
+	if err := l.appendToBody(ctx, id, "note the slice", notion.NoteHeading, stamped(clockOr(l.Clock), noteText(from, text))); err != nil {
 		return err
 	}
 	logging.Action("slice noted", "slice", id)
@@ -75,7 +77,7 @@ func (l *Local) RecordNote(ctx context.Context, id, from, text string) error {
 
 // RecordRelaunch appends the relaunch's one fixed line to the slice's body.
 func (l *Local) RecordRelaunch(ctx context.Context, id string) error {
-	if err := l.appendToBody(ctx, id, "relaunch the slice", notion.RelaunchedHeading, relaunchedLine); err != nil {
+	if err := l.appendToBody(ctx, id, "relaunch the slice", notion.RelaunchedHeading, stamped(clockOr(l.Clock), relaunchedLine)); err != nil {
 		return err
 	}
 	logging.Action("slice relaunched", "slice", id)

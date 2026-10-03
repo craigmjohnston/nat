@@ -426,6 +426,56 @@ func TestLaunchRecordsARelaunchWhenTheBriefAlreadyHasATaskEvent(t *testing.T) {
 	}
 }
 
+// noteLaunch launches a Todo slice whose brief is the given blocks, and
+// reports which slices a relaunch was written on.
+func noteLaunch(t *testing.T, body ...notion.Block) []string {
+	t.Helper()
+	client := &fakeClient{
+		getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil },
+		blocks: func(id string) ([]notion.Block, error) {
+			if id == "s5" {
+				return body, nil
+			}
+			return nil, nil
+		},
+	}
+	_, err := Launch(context.Background(), &fakeLauncher{}, &fakeWorktrees{}, &fakeRepo{}, client.store(), nil, "u1",
+		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceTodo}, WorkingDir: t.TempDir()},
+		config.AgentModel{})
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through", err)
+	}
+	return client.appended
+}
+
+// A note is context left for whoever first launches the slice, not history of
+// an earlier pass: a Todo slice carrying only a note launches fresh, with no
+// Relaunched line.
+func TestLaunchWritesNoRelaunchForASliceWithOnlyANote(t *testing.T) {
+	appended := noteLaunch(t,
+		block(t, "heading_3", "Note"),
+		block(t, "paragraph", "At 2026-10-03T23:14:05+01:00"),
+		block(t, "paragraph", `From "Render the board" (M1)`),
+		block(t, "paragraph", "The menu moved."))
+	if len(appended) != 0 {
+		t.Errorf("appended = %v, want nothing written about a relaunch", appended)
+	}
+}
+
+// A note beside real history does not hide it: a hand-back still makes the
+// launch a relaunch.
+func TestLaunchRecordsARelaunchForANoteBesideAHandBack(t *testing.T) {
+	appended := noteLaunch(t,
+		block(t, "heading_3", "Note"),
+		block(t, "paragraph", "From Craig"),
+		block(t, "paragraph", "Mind the cache."),
+		block(t, "heading_3", "Handed back"),
+		block(t, "paragraph", "Wrote it."))
+	if len(appended) != 1 || appended[0] != "s5" {
+		t.Errorf("appended = %v, want the Relaunched note filed on the slice", appended)
+	}
+}
+
 // A fix launch claims nothing at all, so it never reaches the relaunch write
 // either — see claim-less fix launches in TestLaunchGathersTheReviewForAFixLaunch.
 func TestLaunchNeverRecordsARelaunchForAFixLaunch(t *testing.T) {

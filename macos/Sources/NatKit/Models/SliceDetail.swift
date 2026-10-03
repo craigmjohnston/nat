@@ -150,30 +150,64 @@ public struct TaskLogEvent: Codable, Equatable, Sendable {
     /// Who released it, or who a note came from — a slice by name and
     /// milestone, or a person.
     public let by: String?
+    /// The slice a note came from, by name and milestone, where its
+    /// provenance names one — `fromSlice`. Nat does not resolve it to an ID;
+    /// the Thread matches it against the plan it already holds.
+    public let fromSlice: NoteSource?
+    /// When it happened, off the stamp its section opens with — `at`. Nil
+    /// for a section written before sections were stamped, and for an
+    /// approve or merge, which nat has no time for.
+    public let at: Date?
     /// The pull request an approve opened.
     public let pr: String?
     /// A proposal's follow-ups, each with what was decided about it.
     public let followUps: [TaskFollowUp]
 
     public init(
-        _ kind: Kind, note: String? = nil, by: String? = nil, pr: String? = nil, followUps: [TaskFollowUp] = []
+        _ kind: Kind, note: String? = nil, by: String? = nil, fromSlice: NoteSource? = nil, at: Date? = nil,
+        pr: String? = nil, followUps: [TaskFollowUp] = []
     ) {
         self.kind = kind
         self.note = note
         self.by = by
+        self.fromSlice = fromSlice
+        self.at = at
         self.pr = pr
         self.followUps = followUps
     }
 
-    enum CodingKeys: String, CodingKey { case kind, note, by, pr, followUps }
+    enum CodingKeys: String, CodingKey { case kind, note, by, fromSlice, at, pr, followUps }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         kind = try c.decode(Kind.self, forKey: .kind)
         note = try c.decodeIfPresent(String.self, forKey: .note)
         by = try c.decodeIfPresent(String.self, forKey: .by)
+        fromSlice = try c.decodeIfPresent(NoteSource.self, forKey: .fromSlice)
+        // A time that will not parse is no time, not a failed read.
+        at = (try c.decodeIfPresent(String.self, forKey: .at)).flatMap(PRDetail.parseGoTime)
         pr = try c.decodeIfPresent(String.self, forKey: .pr)
         followUps = try c.decodeIfPresent([TaskFollowUp].self, forKey: .followUps) ?? []
+    }
+}
+
+/// A slice as a note's provenance names it — `slice-show`'s `fromSlice`: its
+/// name, and its milestone's name, empty where it is filed under none.
+public struct NoteSource: Codable, Equatable, Sendable {
+    public let name: String
+    public let milestone: String
+
+    public init(name: String, milestone: String = "") {
+        self.name = name
+        self.milestone = milestone
+    }
+
+    enum CodingKeys: String, CodingKey { case name, milestone }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        milestone = try c.decodeIfPresent(String.self, forKey: .milestone) ?? ""
     }
 }
 

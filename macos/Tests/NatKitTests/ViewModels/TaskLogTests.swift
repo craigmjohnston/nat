@@ -84,19 +84,95 @@ final class TaskLogTests: XCTestCase {
         XCTAssertEqual(log.first { $0.kind == .approved }?.facts, [ThreadFact("pr", "#101"), ThreadFact("into", "main")])
     }
 
-    func testANoteIsDrawnAsItsOwnCardLabelledWithWhoItCameFrom() {
+    func testANoteFromATaskOnThePlanNamesItAsATaskRow() {
+        let events = Fixtures.notedTaskLogEvents
         let log = buildThreadEvents(
-            slice: slice(status: "In progress"), agent: nil, brief: nil, events: Fixtures.notedTaskLogEvents)
+            slice: slice(status: "In progress"), agent: nil, brief: nil, events: events,
+            plan: Fixtures.slices, milestones: Fixtures.milestones)
 
         XCTAssertEqual(log.map(\.kind), [.launched, .note, .handedBack, .sentBack, .note])
+        let shell = Fixtures.slices.first { $0.name == "Bootstrap the SwiftUI shell" }
         XCTAssertEqual(log[1], ThreadEvent(
-            .note, who: "\"Bootstrap the SwiftUI shell\" (M1: Foundations)", meta: "left a note",
-            body: Fixtures.notedTaskLogEvents[0].note))
-        XCTAssertEqual(log[4].who, "Craig Johnston")
+            .note, who: "Another agent", meta: "left a note", body: events[0].note,
+            facts: [ThreadFact("task", "Bootstrap the SwiftUI shell", sliceID: shell?.id)], when: events[0].at))
+        XCTAssertEqual(log[1].title, "Another agent left a note")
+        XCTAssertEqual(log[4].facts, [ThreadFact("source", "Craig Johnston")], "a person is plain text")
+        XCTAssertEqual(log[2].when, events[1].at, "every recorded card carries its time")
+        XCTAssertNil(log[0].when, "the launch has no time source")
+
         let anonymous = buildThreadEvents(
             slice: slice(status: "In progress"), agent: nil, brief: nil, events: [TaskLogEvent(.note, note: "n")])
         XCTAssertEqual(anonymous.last?.title, "Note")
-        XCTAssertEqual(log[4].title, "Craig Johnston left a note")
+        XCTAssertEqual(anonymous.last?.facts, [])
+    }
+
+    /// With no plan to match against, or a source the plan does not hold
+    /// once, the provenance nat wrote is the source.
+    func testANoteFromATaskNotOnThePlanIsItsSource() {
+        let label = "\"Bootstrap the SwiftUI shell\" (M1: Foundations)"
+        let event = TaskLogEvent(
+            .note, note: "n", by: label,
+            fromSlice: NoteSource(name: "Bootstrap the SwiftUI shell", milestone: "M1: Foundations"))
+        let log = buildThreadEvents(slice: slice(status: "In progress"), agent: nil, brief: nil, events: [event])
+        XCTAssertEqual(log.last?.facts, [ThreadFact("source", label)])
+    }
+
+    func testANoteSourceMatchesOneSliceByNameAndMilestone() {
+        let milestones = [
+            Milestone(id: "m1", name: "M1", order: 0, status: "Todo"),
+            Milestone(id: "m2", name: "M2", order: 1, status: "Todo"),
+        ]
+        func task(_ id: String, _ name: String, _ milestone: String) -> Slice {
+            Slice(id: id, name: name, status: "Todo", milestoneID: milestone, assignee: "", pr: "", url: "",
+                  blocked: false, handedBack: false)
+        }
+        let plan = [task("a", "Draw it", "m1"), task("b", "Draw it", "m2"), task("c", "Loose", "gone")]
+
+        XCTAssertEqual(noteSourceSlice(NoteSource(name: "Draw it", milestone: "M2"), plan: plan, milestones: milestones)?.id, "b")
+        XCTAssertNil(noteSourceSlice(NoteSource(name: "Draw it"), plan: plan, milestones: milestones),
+                     "a name alone matching two is no match")
+        XCTAssertEqual(noteSourceSlice(NoteSource(name: "Loose"), plan: plan, milestones: milestones)?.id, "c")
+        XCTAssertEqual(noteSourceSlice(NoteSource(name: "Loose", milestone: "gone"), plan: plan, milestones: milestones)?.id, "c",
+                       "a milestone the plan does not list reads by its id")
+        XCTAssertNil(noteSourceSlice(NoteSource(name: "Draw it", milestone: "M3"), plan: plan, milestones: milestones))
+    }
+
+    func testANoteDecodesItsSourceAndTime() throws {
+        let json = """
+        {"id": "s", "name": "n", "url": "", "status": "Todo", "milestone": "M1", "assignee": "",
+         "blocked": false, "handed_back": false, "brief": "",
+         "events": [
+           {"kind": "note", "note": "a", "by": "\\"Draw it\\" (M2)", "fromSlice": {"name": "Draw it", "milestone": "M2"},
+            "at": "2026-10-03T23:14:05+01:00"},
+           {"kind": "note", "note": "b", "by": "\\"Loose\\"", "fromSlice": {"name": "Loose"}, "at": "not a time"}
+         ]}
+        """
+        let detail = try JSONDecoder().decode(SliceDetail.self, from: Data(json.utf8))
+        XCTAssertEqual(detail.events?[0].fromSlice, NoteSource(name: "Draw it", milestone: "M2"))
+        XCTAssertEqual(detail.events?[0].at, Date(timeIntervalSince1970: 1_791_065_645))
+        XCTAssertEqual(detail.events?[1].fromSlice, NoteSource(name: "Loose"))
+        XCTAssertNil(detail.events?[1].at, "a time that will not parse is no time")
+    }
+
+    // MARK: - When
+
+    func testTheTimestampIsTheTimeTodayTheDayThisYearAndTheYearBefore() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Europe/London"))
+        let locale = Locale(identifier: "en_GB")
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 10, day: 3, hour: 23, minute: 30)))
+        func at(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 9) throws -> Date {
+            try XCTUnwrap(calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: 14)))
+        }
+
+        XCTAssertEqual(threadTimestamp(try at(2026, 10, 3, 23), now: now, calendar: calendar, locale: locale), "23:14")
+        XCTAssertEqual(threadTimestamp(try at(2026, 10, 2), now: now, calendar: calendar, locale: locale), "2 Oct")
+        XCTAssertEqual(threadTimestamp(try at(2026, 1, 1), now: now, calendar: calendar, locale: locale), "1 Jan")
+        XCTAssertEqual(threadTimestamp(try at(2025, 10, 3), now: now, calendar: calendar, locale: locale), "3 Oct 2025")
+        // The US form puts a narrow no-break space before PM; any space will do.
+        let us = threadTimestamp(try at(2026, 10, 3, 23), now: now, calendar: calendar, locale: Locale(identifier: "en_US"))
+        XCTAssertEqual(
+            us.replacingOccurrences(of: "\u{202F}", with: " "), "11:14 PM", "the locale's own clock")
     }
 
     /// An action reads as one line with who did it; a meta that is not an

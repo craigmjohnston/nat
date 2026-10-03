@@ -34,6 +34,10 @@ type Local struct {
 	// it: a store that will not open is a file on this machine and the path is
 	// the whole of what there is to go and look at.
 	path string
+	// Clock is what every task-log section this store writes is stamped with
+	// the time of — the same seam [Notion.Clock] is: nil is the wall clock,
+	// and a test sets it to hold a body's exact text still.
+	Clock func() time.Time
 }
 
 // Local is a Store.
@@ -719,9 +723,11 @@ func (l *Local) PRDescription(ctx context.Context, id string) (string, error) {
 // the markdown [Store.Body] already reads, since the note is written there
 // rather than as a property of its own, so a caller building a milestone
 // digest needs nothing more of a store than the body it already has to fetch
-// for every Done sibling.
+// for every Done sibling. The stamp the section opens with is when, not what
+// was done, and is left off.
 func HandbackSummaryOf(body string) string {
-	return lastMarkdownSection(body, summaryHeading, handedBackHeading)
+	_, summary := unstamped(lastMarkdownSection(body, summaryHeading, handedBackHeading))
+	return summary
 }
 
 // lastMarkdownSection is the rule [Local.PRDescription] and [HandbackSummaryOf]

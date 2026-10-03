@@ -17,7 +17,8 @@ import (
 
 // openPlan opens a plan in a directory of the test's own, and closes it when
 // the test ends. The path is returned as well as the store, since half of what
-// this package promises about a local plan is said about its file.
+// this package promises about a local plan is said about its file. Its clock
+// is [fixedClock], so every stamp it writes is [testStamp].
 func openPlan(t *testing.T) (*Local, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "plan.db")
@@ -25,6 +26,7 @@ func openPlan(t *testing.T) (*Local, string) {
 	if err != nil {
 		t.Fatalf("open the plan: %v", err)
 	}
+	l.Clock = fixedClock
 	t.Cleanup(func() {
 		if err := l.Close(); err != nil {
 			t.Errorf("close the plan: %v", err)

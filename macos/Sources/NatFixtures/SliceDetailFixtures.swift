@@ -161,31 +161,47 @@ extension Fixtures {
     }
 
     /// An in-progress slice with notes left on its brief: one from the shell
-    /// slice before it was launched, one from Craig after its first
-    /// hand-back was sent back — `slice-show`'s `events` for it, in order.
-    public static let notedTaskLogEvents: [TaskLogEvent] = [
-        TaskLogEvent(.note, note: "The window's frame is autosaved under the scene's id now: read it from there rather than adding a key of your own.",
-                     by: "\"Bootstrap the SwiftUI shell\" (M1: Foundations)"),
-        TaskLogEvent(.handedBack, note: "Polls every second; each row draws its agent's activity."),
-        TaskLogEvent(.sentBack, note: "Sources/NatKit/Activity.swift, line 30: a failed capture is unread, not gone."),
-        TaskLogEvent(.note, note: "tmux 3.5 renamed the pane activity format; check `tmux -V` before trusting it.",
-                     by: "Craig Johnston"),
-    ]
+    /// slice (a task on the plan) before it was launched, last year; a
+    /// hand-back and a send-back earlier this year; and one from Craig (no
+    /// task) today — `slice-show`'s `events` for it, in order. The times are
+    /// read off the clock, so a story of it says "today", "this year" and
+    /// "last year" whenever it is rendered.
+    public static var notedTaskLogEvents: [TaskLogEvent] {
+        let calendar = Calendar.current
+        let now = Date()
+        let today = max(calendar.startOfDay(for: now), now.addingTimeInterval(-40 * 60))
+        let startOfYear = calendar.dateInterval(of: .year, for: now)?.start ?? now
+        let thisYear = max(startOfYear, calendar.date(byAdding: .day, value: -12, to: now) ?? now)
+        let lastYear = calendar.date(byAdding: .year, value: -1, to: now) ?? now
+        return [
+            TaskLogEvent(.note, note: "The window's frame is autosaved under the scene's id now: read it from there rather than adding a key of your own.",
+                         by: "\"Bootstrap the SwiftUI shell\" (M1: Foundations)",
+                         fromSlice: NoteSource(name: "Bootstrap the SwiftUI shell", milestone: "M1: Foundations"),
+                         at: lastYear),
+            TaskLogEvent(.handedBack, note: "Polls every second; each row draws its agent's activity.", at: thisYear),
+            TaskLogEvent(.sentBack, note: "Sources/NatKit/Activity.swift, line 30: a failed capture is unread, not gone.",
+                         at: thisYear.addingTimeInterval(3 * 3600)),
+            TaskLogEvent(.note, note: "tmux 3.5 renamed the pane activity format; check `tmux -V` before trusting it.",
+                         by: "Craig Johnston", at: today),
+        ]
+    }
 
     /// The activity slice, read with those notes in its history.
-    public static let notedSliceDetail = SliceDetail(
-        id: activitySliceID,
-        name: "Poll tmux for agent activity",
-        url: "https://notion.so/\(activitySliceID)",
-        status: "In progress",
-        milestone: "M2: Review flow",
-        assignee: "Craig Johnston",
-        blocked: false,
-        handedBack: false,
-        state: "in progress",
-        brief: "Poll tmux every second for each agent's activity.",
-        events: notedTaskLogEvents
-    )
+    public static var notedSliceDetail: SliceDetail {
+        SliceDetail(
+            id: activitySliceID,
+            name: "Poll tmux for agent activity",
+            url: "https://notion.so/\(activitySliceID)",
+            status: "In progress",
+            milestone: "M2: Review flow",
+            assignee: "Craig Johnston",
+            blocked: false,
+            handedBack: false,
+            state: "in progress",
+            brief: "Poll tmux every second for each agent's activity.",
+            events: notedTaskLogEvents
+        )
+    }
 
     /// `sliceDetails` with the activity slice's notes added.
     public static var notedSliceDetails: [String: SliceDetail] {

@@ -44,14 +44,15 @@ func newNotePlan(t *testing.T, breakIt func(*sql.DB)) *followUpsPlan {
 	})
 }
 
-// bodyOf is a slice's body as the plan holds it.
+// bodyOf is a slice's body as the plan holds it, its stamps read as
+// "<stamp>" (see [stampless]).
 func (fp *followUpsPlan) bodyOf(t *testing.T, id string) string {
 	t.Helper()
 	body, err := fp.local(t).Body(context.Background(), id)
 	if err != nil {
 		t.Fatalf("read the body: %v", err)
 	}
-	return body
+	return stampless(body)
 }
 
 // A note from the agent's own slice, on another named by name and milestone,
@@ -63,7 +64,7 @@ func TestSliceNoteByNameFromASlice(t *testing.T) {
 		"--note", "The menu moved to the toolbar."); err != nil {
 		t.Fatalf("slice-note: %v", err)
 	}
-	want := "Draw the menu.\n\n### Note\n\nFrom \"Render the board\" (M1)\n\nThe menu moved to the toolbar."
+	want := "Draw the menu.\n\n### Note\n\nAt <stamp>\n\nFrom \"Render the board\" (M1)\n\nThe menu moved to the toolbar."
 	if got := fp.bodyOf(t, drawM2ID); got != want {
 		t.Errorf("body = %q, want %q", got, want)
 	}
@@ -84,7 +85,15 @@ func TestSliceNoteByNameFromASlice(t *testing.T) {
 	if err := json.Unmarshal(fp.out.Bytes(), &shown); err != nil {
 		t.Fatalf("decode slice-show: %v", err)
 	}
-	want2 := []taskEventJSON{{Kind: "note", Note: "The menu moved to the toolbar.", By: `"Render the board" (M1)`}}
+	// The note names the slice it came from by name and milestone, and when it
+	// was left, which is a time of the wall clock's own here.
+	want2 := []taskEventJSON{{
+		Kind: "note", Note: "The menu moved to the toolbar.", By: `"Render the board" (M1)`,
+		FromSlice: &noteSourceJSON{Name: "Render the board", Milestone: "M1"}, At: "<stamp>",
+	}}
+	for i := range shown.Events {
+		shown.Events[i].At = stampless(shown.Events[i].At)
+	}
 	if !reflect.DeepEqual(shown.Events, want2) {
 		t.Errorf("events = %+v, want %+v", shown.Events, want2)
 	}
@@ -98,7 +107,7 @@ func TestSliceNoteFromThePersonByID(t *testing.T) {
 	if err := fp.run("slice-note", sliceID, "--note", "-"); err != nil {
 		t.Fatalf("slice-note: %v", err)
 	}
-	if got, want := fp.bodyOf(t, sliceID), "Do the thing.\n\n### Note\n\nFrom Craig Johnston\n\nMind the cache."; got != want {
+	if got, want := fp.bodyOf(t, sliceID), "Do the thing.\n\n### Note\n\nAt <stamp>\n\nFrom Craig Johnston\n\nMind the cache."; got != want {
 		t.Errorf("body = %q, want %q", got, want)
 	}
 }
@@ -109,7 +118,7 @@ func TestSliceNoteFromASliceWithNoMilestone(t *testing.T) {
 	if err := fp.run("slice-note", "Loose end", "--from", "Loose end", "--note", "Self."); err != nil {
 		t.Fatalf("slice-note: %v", err)
 	}
-	if got := fp.bodyOf(t, looseID); !strings.HasSuffix(got, "### Note\n\nFrom \"Loose end\"\n\nSelf.") {
+	if got := fp.bodyOf(t, looseID); !strings.HasSuffix(got, "### Note\n\nAt <stamp>\n\nFrom \"Loose end\"\n\nSelf.") {
 		t.Errorf("body = %q, want the provenance without a milestone", got)
 	}
 }

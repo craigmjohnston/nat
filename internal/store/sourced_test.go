@@ -335,7 +335,7 @@ func TestSourcedDelegatesTheRestToTheFile(t *testing.T) {
 	if err := s.RecordNote(ctx, sl.ID, "From Craig", "mind the cache"); err != nil {
 		t.Error(err)
 	}
-	if body, _ := s.Body(ctx, sl.ID); !strings.HasSuffix(strings.TrimRight(body, "\n"), "### Note\n\nFrom Craig\n\nmind the cache") {
+	if body, _ := s.Body(ctx, sl.ID); !strings.HasSuffix(strings.TrimRight(body, "\n"), "### Note\n\n"+testStamp+"\n\nFrom Craig\n\nmind the cache") {
 		t.Errorf("Body = %q, want it to end in the Note section", body)
 	}
 	if err := s.ReopenSlice(ctx, sl.ID, Shape{}); err != nil {

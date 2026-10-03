@@ -282,11 +282,7 @@ struct SliceNavigatorView: View {
                 } else {
                     VStack(alignment: .leading, spacing: 3) {
                         ForEach(deps) { dep in
-                            DependencyRow(
-                                slice: dep, state: state(of: dep),
-                                live: appModel.activityStore?.agents[dep.id] != nil,
-                                milestone: milestoneName(of: dep),
-                                onSelect: { Task { await appModel.selectSlice(dep.id, inProject: projectID) } })
+                            taskRow(dep)
                         }
                     }
                 }
@@ -303,7 +299,25 @@ struct SliceNavigatorView: View {
         appModel.source(ofProject: projectID)?.containerNoun ?? "container"
     }
 
+    /// Another slice of the plan as a row the user can go to: its dot and
+    /// name, its detail on hover, a click selecting it — the brief's depends
+    /// list and a note's `task` fact both draw one.
+    private func taskRow(_ other: Slice) -> DependencyRow {
+        DependencyRow(
+            slice: other, state: state(of: other),
+            live: appModel.activityStore?.agents[other.id] != nil,
+            milestone: milestoneName(of: other),
+            onSelect: { Task { await appModel.selectSlice(other.id, inProject: projectID) } })
+    }
+
+    /// `taskRow` for a slice named by id, nil where the plan has no such
+    /// slice — what a Thread card's fact naming one is drawn with.
+    private func taskRow(id: String) -> AnyView? {
+        plan.first { $0.id == id }.map { AnyView(taskRow($0)) }
+    }
+
     private var plan: [Slice] { appModel.projectStore?.state.projectInfo?.slices ?? [] }
+    private var milestones: [Milestone] { appModel.projectStore?.state.projectInfo?.milestones ?? [] }
     private var dependencies: [Slice] { dependencySlices(slice.dependsOn, plan: plan) }
 
     private func state(of other: Slice) -> SliceDisplayState {
@@ -345,7 +359,8 @@ struct SliceNavigatorView: View {
     @ViewBuilder
     private func threadBody(_ nav: NavigatorModel) -> some View {
         let log = buildThreadEvents(
-            slice: slice, agent: agent, brief: detail.detail?.brief, events: detail.detail?.events)
+            slice: slice, agent: agent, brief: detail.detail?.brief, events: detail.detail?.events,
+            plan: plan, milestones: milestones)
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(spacing: 6) {
@@ -358,7 +373,7 @@ struct SliceNavigatorView: View {
                                     hasLiveAgent: agent != nil)
                             }
                         } else {
-                            ThreadEventCard(event: event)
+                            ThreadEventCard(event: event, taskRow: { taskRow(id: $0) })
                         }
                     }
                     // A reading with no proposal in its log (a nat too old to

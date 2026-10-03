@@ -154,10 +154,16 @@ struct NavHeading: View {
 }
 
 /// One card of the Thread log: its icon and title (who and what they did,
-/// as one line); then the body, cut short as the brief is; then its
-/// labelled facts, on the same ground with nothing between them.
+/// as one line) and, at the header's end, when where nat knows; then the
+/// body, cut short as the brief is; then its labelled facts, on the same
+/// ground with nothing between them.
 struct ThreadEventCard: View {
     let event: ThreadEvent
+    /// Draws a fact that names a slice (`ThreadFact.sliceID`) as a task row
+    /// — the slice navigator's, which has the plan to draw one from. Nil
+    /// from it (or no closure at all, as a session's Thread has) and the
+    /// fact is plain text.
+    var taskRow: ((String) -> AnyView?)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -174,6 +180,9 @@ struct ThreadEventCard: View {
                     Text(meta).monoXS().ink(tone).lineLimit(1)
                 }
                 Spacer(minLength: 0)
+                if let when = event.when {
+                    Text(threadTimestamp(when)).monoXS().ink(.tertiary).lineLimit(1).fixedSize()
+                }
             }
             .padding(.horizontal, 10)
             .padding(.top, 8)
@@ -198,10 +207,14 @@ struct ThreadEventCard: View {
                     ForEach(Array(event.facts.enumerated()), id: \.offset) { _, fact in
                         GridRow {
                             Text(fact.key).ink(.tertiary)
-                            Text(fact.value)
-                                .ink(.primary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
+                            if let id = fact.sliceID, let row = taskRow?(id) {
+                                row
+                            } else {
+                                Text(fact.value)
+                                    .ink(.primary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
                         }
                     }
                 }

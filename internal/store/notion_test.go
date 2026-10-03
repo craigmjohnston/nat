@@ -201,14 +201,17 @@ func TestCompleteSliceEndings(t *testing.T) {
 // a heading of its own, because the two are one hand-back.
 func TestCompleteSliceFilesThePullRequestDescriptionBesideTheSummary(t *testing.T) {
 	api := &fakeAPI{}
-	_, err := Over(api).CompleteSlice(context.Background(), "s5", Shape{}, Outcome{
+	_, err := clocked(api).CompleteSlice(context.Background(), "s5", Shape{}, Outcome{
 		Summary: "Pushed it.", Branch: "slice/x", PRDescription: "Add the store\n\nWhy it matters.",
 	})
 	if err != nil {
 		t.Fatalf("CompleteSlice() error = %v", err)
 	}
+	// The summary is stamped; the description is the pull request's body, and
+	// is not.
 	want := [][2]string{
 		{"heading_3", handedBackHeading},
+		{"paragraph", testStamp},
 		{"paragraph", "Pushed it."},
 		{"heading_3", notion.PRDescriptionHeading},
 		{"paragraph", "Add the store"},
