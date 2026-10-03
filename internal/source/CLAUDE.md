@@ -22,6 +22,21 @@ plan itself is an ordinary `store.Local`, wrapped by `store.Sourced`.
   and both numbers) rather than half-understanding a newer plugin.
 - `sidebar` always sends `expand` as a list, never `null`.
 - `event` is fire-and-forget: its stdout is not read at all.
+- **Validation** (`validate.go`) runs after decode: `Describe` →
+  `ValidateDescribe` (tag `^[A-Z0-9]{1,3}$`, menu), `Sidebar` →
+  `ValidateGroups` (children *xor* containers, one level of children, unique
+  group ids, no empty or `_`-prefixed group/container id — `_` is nat's, for
+  `_unlisted` — and every menu), `Container` → `ValidateContainer` (menu and
+  composers). Every action check is the same: a `choice` with no options is
+  refused. The error is `nat-source-<name> <method>: invalid response: <rule>`
+  — the rule, never the body (`Exec.invalid`).
+- **Stdout is capped** at 4 MiB (`maxStdout`, a var for tests): `capWriter`
+  refuses the write past it, which closes the plugin's pipe, and the cap is
+  reported ahead of whatever exit that caused.
+- `Unavailable{Err}` is a client answering `Err` to everything — what a
+  caller hands a source project whose plugin can't be found, so the project
+  still opens (the plan is nat's own) and every plugin read fails as a broken
+  plugin's would.
 
 ## Never log a body
 

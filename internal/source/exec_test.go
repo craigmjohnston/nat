@@ -83,7 +83,7 @@ func TestDescribeSendsTheEnvelopeAndDecodes(t *testing.T) {
 func TestDescribeRefusesAnotherProtocol(t *testing.T) {
 	f := &fakeRunner{out: `{"protocol":2,"name":"sc"}`}
 	_, err := NewWithRunner("sc", "/bin/nat-source-sc", f).Describe(context.Background(), testProject)
-	if err == nil || err.Error() != "nat-source-sc speaks task-source protocol 2; this nat speaks 1" {
+	if err == nil || err.Error() != "source plugin sc speaks protocol 2; this nat speaks protocol 1" {
 		t.Errorf("Describe() = %v, want a protocol refusal", err)
 	}
 }

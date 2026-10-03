@@ -12,6 +12,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/notion"
+	"github.com/craigmjohnston/nat/internal/source"
 )
 
 // TestMain pins HOME and XDG_DATA_HOME to a directory this test binary made
@@ -448,7 +449,10 @@ func testEnv(cfg config.Config, api *fakeAPI) (Env, *bytes.Buffer) {
 		// A repo with no origin/HEAD and no refs at all: Base answers its
 		// last fallback, so no test runs the real git.
 		NewGit: func() GitCLI { return git.NewWithRunner(&fakeGitRunner{}) },
-		Out:    &out,
+		// A source.Fake of its own per env; a test of a source project
+		// supplies its own Fake instead (see sourceEnv).
+		NewSource: func(string) (source.Client, error) { return &source.Fake{}, nil },
+		Out:       &out,
 	}, &out
 }
 

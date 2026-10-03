@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/git"
+	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/source"
 	"github.com/craigmjohnston/nat/internal/store"
@@ -107,6 +109,29 @@ type NewWorktreesFunc func() actions.Worktrees
 // binary on PATH.
 func DefaultNewWorktrees() actions.Worktrees { return worktree.New() }
 
+// NewSourceFunc builds the client of the task-source plugin of one name, the
+// <name> of nat-source-<name>.
+type NewSourceFunc func(name string) (source.Client, error)
+
+// DefaultNewSource finds the installed plugin of the name — nat's plugins dir
+// first, then PATH — and returns a client running it for real. A plugin that
+// is not installed is refused, saying where it was looked for.
+func DefaultNewSource(name string) (source.Client, error) {
+	dir, err := config.Dir()
+	if err != nil {
+		return nil, err
+	}
+	p, found, err := source.Find(dir, name)
+	if err != nil {
+		return nil, fmt.Errorf("look for task source plugins: %w", err)
+	}
+	if !found {
+		return nil, fmt.Errorf("no task source plugin named %q — expected nat-source-%s under %s or on PATH",
+			name, name, filepath.Join(dir, "plugins", name))
+	}
+	return source.New(name, p.Path), nil
+}
+
 // Env is everything a command needs from the process around it, held as fields
 // so a test can stand in for each edge.
 type Env struct {
@@ -129,6 +154,9 @@ type Env struct {
 	NewGit NewGitFunc
 	// NewWorktrees builds the git worktrees driver. It is worktree.New in production.
 	NewWorktrees NewWorktreesFunc
+	// NewSource builds a task-source plugin's client, by the plugin's name. It
+	// is DefaultNewSource in production.
+	NewSource NewSourceFunc
 	// Out is where a command writes its output.
 	Out io.Writer
 	// In is where a command reads input a flag was not given for; it is stdin
@@ -156,14 +184,55 @@ func (e Env) nudged() {
 // [store.Over] calls this instead, so a plan is opened and hydrated the same
 // way wherever a command reaches for one.
 //
-// A project of nat's own is opened with no Notion client at all, so no path
-// through here reads a token for it.
+// A project of nat's own — local, or a source project — is opened with no
+// Notion client at all, so no path through here reads a token for it.
+//
+// A source project's plugin that cannot be found does not stop the project
+// opening: its plan is nat's own file, so it is opened over a
+// [source.Unavailable] instead, every plugin read failing in the plugin's
+// place — which `info` reports as its source error — and every event logged
+// as not sent.
 func (e Env) storeFor(ctx context.Context, projectID string, project config.ProjectConfig) (store.Store, error) {
-	var remote *store.Notion
-	if !project.IsLocal() {
-		remote = store.Over(e.NewClient(e.Tokens.Token))
+	sp := storeProject(projectID, project)
+	switch {
+	case project.IsLocal():
+		return store.ForProject(ctx, sp, nil, source.Project{}, nil)
+	case project.IsSource():
+		src, err := e.NewSource(project.Source)
+		if err != nil {
+			logging.Error("task source plugin unavailable, opening its project without it",
+				"project", projectID, "source", project.Source, "err", err)
+			src = source.Unavailable{Err: err}
+		}
+		plugin := source.Project{ID: projectID, Name: project.Name, WorkingDir: project.WorkingDir}
+		return store.ForProject(ctx, sp, nil, plugin, src)
 	}
-	return store.ForProject(ctx, storeProject(projectID, project), remote, source.Project{}, nil)
+	return store.ForProject(ctx, sp, store.Over(e.NewClient(e.Tokens.Token)), source.Project{}, nil)
+}
+
+// sourceStore is a source project's store: the plan, and the four reads and
+// writes only its plugin answers.
+type sourceStore interface {
+	store.Store
+	store.Describer
+	store.SidebarReader
+	store.ContainerReader
+	store.ActionRunner
+}
+
+// sourceStoreFor is [Env.storeFor] for a command that only means anything on
+// a source project, refusing any other by name before its plan is opened.
+func (e Env) sourceStoreFor(ctx context.Context, command, projectID string, project config.ProjectConfig) (sourceStore, error) {
+	if project.IsSource() {
+		st, err := e.storeFor(ctx, projectID, project)
+		if err != nil {
+			return nil, err
+		}
+		if ss, ok := st.(sourceStore); ok {
+			return ss, nil
+		}
+	}
+	return nil, fmt.Errorf("%s: %q is not a source project", command, project.Name)
 }
 
 // Usage is the help text, listing every way the binary can be run.
@@ -173,8 +242,8 @@ Every command below that acts on a project requires --project, naming one of
 the config file's projects by its page ID; run one without it to be told the
 projects this machine tracks. There is no fallback to the project the board is
 on: that is the board's own, and the user moves it while an agent works. setup,
-paths and project-create take no such flag: neither acts on a project already
-tracked.
+paths, project-create and source-list take no such flag: none acts on a project
+already tracked.
 
 usage:
   nat                 open the board
@@ -185,10 +254,12 @@ usage:
                       current Pro/Max rate-limit usage, via a throwaway
                       detached session; prints nothing read where no window
                       is available
-  nat info [--json] [--refresh] --project ID
+  nat info [--json] [--refresh] [--expand GROUP]... --project ID
                       print the project's conventions, milestones and slices;
                       reads the replica as it stands by default, --refresh
-                      pulls from the workspace first if it is stale
+                      pulls from the workspace first if it is stale. A source
+                      project's JSON adds its plugin's sidebar, --expand
+                      naming the lazy groups to fill in
   nat next-slice [--json] --project ID
                       claim the next Todo slice and print its brief
   nat start-slice <slice> [--json] --project ID
@@ -281,6 +352,24 @@ usage:
                       the same, with no Notion workspace behind it: the plan
                       is a file of nat's own, in DIR or nat's data directory.
                       Touches Notion nowhere and needs no credential
+  nat project-create <name> --source PLUGIN [--plan-dir DIR] [--repo DIR]
+                        [--description TEXT|-] [--json]
+                      the same, as a source project: its tasks hang off the
+                      containers of the task-source plugin nat-source-PLUGIN,
+                      which must be installed and describe itself first.
+                      Mutually exclusive with --local
+  nat source-list [--json]
+                      list every installed task-source plugin and what it
+                      says about itself; one that will not say is listed
+                      with its error
+  nat container-show <container> [--json] --project ID
+                      print one of a source project's containers as its
+                      plugin describes it, with the project's tasks under it
+  nat source-action --action ID [--group ID | --container ID]
+                        [--input TEXT|-] [--json] --project ID
+                      run one of a source project's plugin actions, against a
+                      group, a container or (neither) the source itself;
+                      --input - reads the input from stdin
   nat project-open-folder <DIR> [--json]
                       open the local plan already kept in DIR as a project:
                       records it in local config, writes nothing to the plan.
@@ -312,7 +401,9 @@ usage:
                       add a Todo slice under a milestone, its description
                       written on the page; --description - reads it from stdin.
                       The scratch project takes no --milestone, filing the
-                      slice under its reserved Unfiled milestone
+                      slice under its reserved Unfiled milestone. A source
+                      project takes --container <id> instead of --milestone,
+                      filing the task under one of its plugin's containers
   nat slice-depends <slice> [--on <slice>]... [--clear] [--json] --project ID
                       record the slices a slice waits on, by URL or ID; --clear
                       drops what is there first, so on its own it frees the
@@ -569,6 +660,12 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return configShow(args[1:], env)
 	case "config-set":
 		return configSet(args[1:], env)
+	case "source-list":
+		return sourceList(ctx, args[1:], env)
+	case "container-show":
+		return containerShow(ctx, args[1:], env)
+	case "source-action":
+		return sourceAction(ctx, args[1:], env)
 	case "help", "-h", "--help":
 		_, err := io.WriteString(env.Out, Usage)
 		return err

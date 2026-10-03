@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"flag"
@@ -78,6 +79,7 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("slice-add", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	milestoneRef := flags.String("milestone", "", "the milestone to file the slice under, by name")
+	containerRef := flags.String("container", "", "a source project's container to file the task under, by its plugin's `id`")
 	description := flags.String("description", "", "the brief to write on the slice page; `-` reads it from stdin")
 	repo := flags.String("repo", "", "working directory for this slice, overriding the project default")
 	var dependsOn stringList
@@ -113,7 +115,15 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	if unfiled && projectID != cfg.ScratchProject {
+	containerID := strings.TrimSpace(*containerRef)
+	switch {
+	case project.IsSource() && !unfiled:
+		return usageErrorf("slice-add: %q is a source project, whose tasks are filed under its plugin's containers: pass --container, not --milestone", project.Name)
+	case project.IsSource() && containerID == "":
+		return usageErrorf("slice-add: no container given: pass --container")
+	case !project.IsSource() && containerID != "":
+		return usageErrorf("slice-add: --container only means something on a source project, and %q is not one", project.Name)
+	case !project.IsSource() && unfiled && projectID != cfg.ScratchProject:
 		return usageErrorf("slice-add: no milestone given: pass --milestone")
 	}
 	st, err := env.storeFor(ctx, projectID, project)
@@ -127,9 +137,12 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	var milestone domain.Milestone
-	if unfiled {
+	switch cr, isSource := st.(store.ContainerReader); {
+	case isSource:
+		milestone, err = containerMilestone(ctx, cr, containerID, shape.Milestones)
+	case unfiled:
 		milestone, err = unfiledMilestoneOf(ctx, st, sp, shape)
-	} else {
+	default:
 		milestone, err = resolveMilestone(*milestoneRef, shape.Milestones)
 	}
 	if err != nil {
@@ -176,6 +189,25 @@ func unfiledMilestoneOf(ctx context.Context, st store.Store, sp store.Project, s
 		return domain.Milestone{}, fmt.Errorf("add the %s milestone: %w", unfiledMilestone, err)
 	}
 	return added[0], nil
+}
+
+// containerMilestone is the milestone a source project's new task is filed
+// under: the container of that id, named as the plan already caches it, or —
+// for a container new to the plan — as its plugin titles it now. A new
+// container whose plugin cannot be read is refused: nat will not file a task
+// under a container it cannot name. One the plugin titles as nothing is named
+// by its id.
+func containerMilestone(ctx context.Context, cr store.ContainerReader, id string, milestones []domain.Milestone) (domain.Milestone, error) {
+	for _, m := range milestones {
+		if m.ID == id {
+			return m, nil
+		}
+	}
+	d, err := cr.Container(ctx, id)
+	if err != nil {
+		return domain.Milestone{}, fmt.Errorf("read container %s: %w", id, err)
+	}
+	return domain.Milestone{ID: id, Name: cmp.Or(strings.TrimSpace(d.Title), id)}, nil
 }
 
 // resolveMilestone finds the milestone a new slice is filed under, by name: a

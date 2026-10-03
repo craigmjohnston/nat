@@ -113,7 +113,8 @@ looks for it, in order:
 2. `nat-source-<name>` on `PATH`.
 
 The plugins directory wins over `PATH`. The file must be executable; one
-that isn't is not a plugin (`source-list` reports it, with that reason).
+that isn't is not a plugin, and is not discovered (nor listed by
+`source-list`).
 `<name>` is lower-case letters, digits and `-`. A symlink is fine — the
 installed path may point into a checkout.
 
@@ -152,8 +153,13 @@ $ echo $?
 1
 ```
 
-nat shows it as `source plugin shortcut: Shortcut token missing — run
-nat-source-shortcut login`.
+nat shows it as `nat-source-shortcut sidebar: Shortcut token missing — run
+nat-source-shortcut login` (the binary, the method, the plugin's line).
+
+A response that decodes but breaks one of the rules below (a bad `tag`, a
+malformed tree, a `choice` with no options) is refused as `nat-source-<name>
+<method>: invalid response: <the rule>` — naming the rule and the ids
+involved, never quoting the response.
 
 ### The envelope
 
@@ -197,7 +203,9 @@ Action    { id, label, input: "none" | "text" | "choice", options?: [string], de
 - **Text** is plain unless stated: only `Section.body` is Markdown.
 - **`Action.input`**: `none` runs on click; `text` asks for a line of text
   (a small sheet); `choice` offers `options` (a submenu) and is invalid
-  without them. `destructive` actions draw in red and confirm first.
+  without them — nat refuses a `describe`, `sidebar` or `container`
+  response carrying one, on any menu or composer. `destructive` actions
+  draw in red and confirm first.
 
 ### `describe`
 
@@ -305,7 +313,8 @@ Response:
 - Groups draw in the order given. A group has **either** `children` **or**
   `containers`, never both, and `children` nest **one level** at most (a
   child group has `containers` only). nat refuses a response that breaks
-  either rule.
+  either rule, or that repeats a group id, or gives a group or container an
+  empty or `_`-prefixed id.
 - `count` is the plugin's own number, drawn as-is beside the label; nat
   never computes it. It may differ from the containers listed (a `lazy`
   group, a paged one).
@@ -473,8 +482,9 @@ nat source-list [--json]
 ```
 
 Every discovered plugin, each `describe`d best-effort. A plugin that won't
-describe (fails, times out, wrong protocol, not executable) is listed with
-its error, never dropped:
+describe (fails, times out, wrong protocol, an invalid response) is listed
+with its error, never dropped. The plain form prints one line per plugin:
+name, path, then `title (tag)` or `error: …`.
 
 ```json
 [
@@ -498,7 +508,8 @@ nat container-show <container id> --project <id> --json
 `{ "container": <the plugin's container response, as-is>, "tasks": [ … ] }`
 — `tasks` are the plan's slices under that container, each in the same
 shape `info --json` gives a slice. Refused on a project that isn't a
-source project. A failed plugin read is the command's error.
+source project. A failed plugin read is the command's error. Without
+`--json` it prints the title, the external URL, the facts and the tasks.
 
 ### New: `source-action`
 
@@ -508,9 +519,11 @@ nat source-action --project <id> --action <action id> [--group <id> | --containe
 
 Runs `action` with the target built from `--group`/`--container` (neither:
 the source header). `--input -` reads the input from stdin (multi-line
-comments). Prints the plugin's `message`; `--json` prints `{ "message":
-"…" }`. Refused on a non-source project and with both `--group` and
-`--container`.
+comments); the input is trimmed of surrounding whitespace either way.
+Prints the plugin's `message` (`Ran <action id>.` when it gave none);
+`--json` prints `{ "message": "…" }`. Refused on a non-source project, with
+no `--action`, and with both `--group` and `--container`. A board running
+on the machine is nudged after a successful action.
 
 ### `project-create --source`
 
@@ -522,7 +535,8 @@ In order: the plugin must be discovered and `describe` with protocol 1
 (refused otherwise, before any write); then the plan file is written; then
 the config entry (backend `source`, `source: <plugin name>`, `plan_dir`
 as for a local project). Mutually exclusive with `--local`. Needs no
-Notion token.
+Notion token. `--json` prints the project as `--local` does, with
+`"backend": "source"` and `"source": "<plugin name>"`.
 
 ### `info --json`
 
@@ -550,8 +564,14 @@ A source project's info gains `source`:
   vanishes from the sidebar because its container did.
 - **A failed plugin read concludes nothing.** If `describe` or `sidebar`
   fails, `info` still succeeds: `error` carries the message, the fields it
-  couldn't read are empty, and `groups` is `_unlisted` alone — so every
-  container with tasks is still drawn, from the cache.
+  couldn't read are empty (`name` is the configured plugin name either
+  way, the nouns default to `container` / `task`), and `groups` is
+  `_unlisted` alone — so every container with tasks is still drawn, from
+  the cache. A failed `describe` is not followed by a `sidebar` call. A
+  plugin that can't be found at all reads the same way: the project still
+  opens, over a client that fails every call.
+- `menu` and `groups` are always arrays; `error` is always present (`""`
+  when nothing failed).
 - Containers otherwise appear in `milestones` exactly as milestones do
   (their `id` is the container id), so every existing reader keeps working.
 
@@ -574,24 +594,28 @@ Absent for a non-source project.
 ### `slice-add --container`
 
 ```
-nat slice-add --project <id> --container <container id> --title … --brief …
+nat slice-add <title> --container <container id> [--description TEXT|-] … --project <id>
 ```
 
-Source projects only; there `--milestone` is refused, and `--container` is
-refused anywhere else. A container already in the plan is filed under
-directly; a new one is read with `container` first for its title, and the
-add refused if that read fails (nat won't file under a container it can't
+Source projects only; there `--milestone` is refused, `--container` is
+required, and `--container` is refused anywhere else. A container already
+in the plan is filed under directly; a new one is read with `container`
+first for its title (a blank title falls back to the id), and the add
+refused if that read fails (nat won't file under a container it can't
 name). Fires `created`.
 
 ### `config-show`
 
 Each project's entry carries `source` (the plugin name) where its backend
-is `source`.
+is `source` (`source=<name>` in the plain form).
 
 ### Refusals and fixes
 
-- `project-mirror` refuses a source project by name, as it does a local
-  one: there is no Notion side to mirror to.
+- `project-mirror` refuses a source project by name: its tasks hang off the
+  plugin's containers, which Notion has nowhere to keep.
+- `done-clear` refuses a source project by name: each Done task deleted
+  would tell the plugin `deleted` of work that merged, and the containers
+  it would then remove are the plugin's.
 - `slice-status` takes the local path for a source project.
 - `milestone-add`, `milestone-rename`, `milestone-remove`,
   `milestone-move`, `slice-move`, and a `slice-reorder` across containers

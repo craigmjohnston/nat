@@ -81,10 +81,17 @@ func (r ExecRunner) run(dir string, stdin io.Reader, name string, args ...string
 	// A plugin that is a script may leave a child holding its pipes after it
 	// is killed; without a delay the wait would last as long as the child.
 	cmd.WaitDelay = time.Second
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
+	var stderr bytes.Buffer
+	stdout := &capWriter{max: maxStdout}
+	cmd.Stdout = stdout
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	err := cmd.Run()
+	if stdout.over {
+		// Checked first: a plugin cut off mid-write dies of the closed pipe, and
+		// its exit says nothing about why.
+		return "", fmt.Errorf("%s wrote more than %d bytes to stdout", name, maxStdout)
+	}
+	if err != nil {
 		if ctx.Err() != nil {
 			return "", fmt.Errorf("%s timed out after %s", name, timeout)
 		}
@@ -96,6 +103,32 @@ func (r ExecRunner) run(dir string, stdin io.Reader, name string, args ...string
 	}
 	return stdout.String(), nil
 }
+
+// maxStdout is the most a plugin may write to stdout in one call: the
+// protocol's 4 MiB. A var, not a const, so the tests can shrink it.
+var maxStdout = 4 << 20
+
+// errStdoutFull is what a [capWriter] answers once the cap is passed, which
+// stops os/exec copying and closes the plugin's pipe.
+var errStdoutFull = errors.New("stdout cap reached")
+
+// capWriter buffers a plugin's stdout up to max bytes and refuses the write
+// that would pass it, remembering that it did.
+type capWriter struct {
+	buf  bytes.Buffer
+	max  int
+	over bool
+}
+
+func (w *capWriter) Write(p []byte) (int, error) {
+	if w.buf.Len()+len(p) > w.max {
+		w.over = true
+		return 0, errStdoutFull
+	}
+	return w.buf.Write(p)
+}
+
+func (w *capWriter) String() string { return w.buf.String() }
 
 // ExitError is a plugin that ran and refused: its exit code, and whatever it
 // wrote to stderr on the way out.
@@ -163,9 +196,20 @@ func (e *Exec) Describe(ctx context.Context, p Project) (Describe, error) {
 		return Describe{}, err
 	}
 	if d.Protocol != ProtocolVersion {
-		return Describe{}, fmt.Errorf("%s speaks task-source protocol %d; this nat speaks %d", e.binary(), d.Protocol, ProtocolVersion)
+		return Describe{}, fmt.Errorf("source plugin %s speaks protocol %d; this nat speaks protocol %d", e.Name, d.Protocol, ProtocolVersion)
+	}
+	if err := ValidateDescribe(d); err != nil {
+		return Describe{}, e.invalid("describe", p, err)
 	}
 	return d, nil
+}
+
+// invalid is the error for a response that decoded but breaks one of the
+// protocol's rules: the rule is named, the response is not, and the log line
+// carries only who answered what.
+func (e *Exec) invalid(method string, p Project, err error) error {
+	logging.Error("task source answered an invalid response", "plugin", e.Name, "method", method, "project", p.ID, "err", err)
+	return fmt.Errorf("%s %s: invalid response: %w", e.binary(), method, err)
 }
 
 // Sidebar asks for the plugin's sidebar tree, with the lazy groups named in
@@ -184,6 +228,9 @@ func (e *Exec) Sidebar(ctx context.Context, p Project, expand []string) ([]Group
 	if err := e.call(ctx, e.runner, "sidebar", p, req, &resp, "expand", expand); err != nil {
 		return nil, err
 	}
+	if err := ValidateGroups(resp.Groups); err != nil {
+		return nil, e.invalid("sidebar", p, err)
+	}
 	return resp.Groups, nil
 }
 
@@ -196,6 +243,9 @@ func (e *Exec) Container(ctx context.Context, p Project, id string) (ContainerDe
 	var d ContainerDetail
 	if err := e.call(ctx, e.runner, "container", p, req, &d, "container", id); err != nil {
 		return ContainerDetail{}, err
+	}
+	if err := ValidateContainer(d); err != nil {
+		return ContainerDetail{}, e.invalid("container", p, err)
 	}
 	return d, nil
 }

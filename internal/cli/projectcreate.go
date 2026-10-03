@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -41,7 +42,8 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 	description := flags.String("description", "", "the conventions to write on the project page; `-` reads them from stdin")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	local := flags.Bool("local", false, "keep the plan in a file of nat's own, with no Notion workspace behind it")
-	planDir := flags.String("plan-dir", "", "with --local: the directory to keep the plan file in; defaults to nat's own data directory")
+	planDir := flags.String("plan-dir", "", "with --local or --source: the directory to keep the plan file in; defaults to nat's own data directory")
+	sourceName := flags.String("source", "", "keep the plan in a file of nat's own, its tasks filed under the containers of the task-source plugin of this `name`")
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
@@ -53,8 +55,12 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 	if name == "" {
 		return usageErrorf("project-create: the project name is empty")
 	}
-	if *planDir != "" && !*local {
-		return usageErrorf("project-create: --plan-dir only means something with --local: a plan in Notion is kept there")
+	src := strings.TrimSpace(*sourceName)
+	if *local && src != "" {
+		return usageErrorf("project-create: --local and --source are mutually exclusive")
+	}
+	if *planDir != "" && !*local && src == "" {
+		return usageErrorf("project-create: --plan-dir only means something with --local or --source: a plan in Notion is kept there")
 	}
 	// Both are settled before Notion is touched, so a project-create whose stdin
 	// cannot be read, or which has no directory to name, fails having created
@@ -70,6 +76,9 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 
 	if *local {
 		return projectCreateLocal(ctx, env, name, info, workdir, *planDir, *asJSON)
+	}
+	if src != "" {
+		return projectCreateSource(ctx, env, src, name, info, workdir, *planDir, *asJSON)
 	}
 
 	cfg, err := env.workspace()
@@ -138,6 +147,13 @@ func projectCreateLocal(ctx context.Context, env Env, name, conventions, workdir
 // project-create --local and scratch-open, so there is no second way to be
 // local. It returns the new ID and the plan directory as config now keeps it.
 func createLocalProject(ctx context.Context, env Env, name, conventions, workdir, planDir string) (string, string, error) {
+	return createPlanProject(ctx, env, config.ProjectConfig{Name: name, WorkingDir: workdir, Backend: config.BackendLocal}, conventions, planDir)
+}
+
+// createPlanProject lays down a plan file of nat's own and then records entry —
+// a local project's, or a source project's, which keeps the same file — in
+// config under a new ID, with the plan directory filled in as config keeps it.
+func createPlanProject(ctx context.Context, env Env, entry config.ProjectConfig, conventions, planDir string) (string, string, error) {
 	dir, err := absPlanDir(planDir)
 	if err != nil {
 		return "", "", err
@@ -149,11 +165,11 @@ func createLocalProject(ctx context.Context, env Env, name, conventions, workdir
 		return "", "", err
 	}
 	id := store.NewProjectID()
-	entry := config.ProjectConfig{Name: name, WorkingDir: workdir, Backend: config.BackendLocal, PlanDir: dir}
+	entry.PlanDir = dir
 	if err := store.CreateLocalProject(ctx, store.ProjectOf(id, entry), conventions); err != nil {
 		return "", "", fmt.Errorf("create the plan: %w", err)
 	}
-	logging.Action("project created", "project", id, "name", name, "backend", config.BackendLocal)
+	logging.Action("project created", "project", id, "name", entry.Name, "backend", entry.Backend, "source", entry.Source)
 	if cfg.Projects == nil {
 		cfg.Projects = map[string]config.ProjectConfig{}
 	}
@@ -163,6 +179,48 @@ func createLocalProject(ctx context.Context, env Env, name, conventions, workdir
 	}
 	env.nudged()
 	return id, dir, nil
+}
+
+// projectCreateSource is project-create for a source project: a plan file of
+// nat's own whose tasks hang off the containers of the plugin named. The
+// plugin must be installed and describe itself in this build's protocol before
+// anything is written — a project over a plugin that cannot answer is one
+// whose every container read fails from its first. Then the plan file, then
+// the config entry, in projectCreateLocal's order and for its reason. No
+// Notion token is read.
+func projectCreateSource(ctx context.Context, env Env, srcName, name, conventions, workdir, planDir string, asJSON bool) error {
+	d, err := describePlugin(ctx, env, srcName)
+	if err != nil {
+		return fmt.Errorf("project-create: %w", err)
+	}
+	entry := config.ProjectConfig{Name: name, WorkingDir: workdir, Backend: config.BackendSource, Source: srcName}
+	id, dir, err := createPlanProject(ctx, env, entry, conventions, planDir)
+	if err != nil {
+		return err
+	}
+
+	if asJSON {
+		return writeJSON(env.Out, projectCreatedJSON{Project: createdProjectJSON{
+			ID: id, Name: name, WorkingDir: workdir, Backend: config.BackendSource, PlanDir: dir, Source: srcName,
+		}})
+	}
+	_, err = io.WriteString(env.Out, sourceProjectCreatedMarkdown(id, name, workdir, dir, srcName, d.Title))
+	return err
+}
+
+// sourceProjectCreatedMarkdown reports a source project as created.
+func sourceProjectCreatedMarkdown(id, name, workdir, planDir, srcName, title string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# %s\n\n", name)
+	fmt.Fprintf(&b, "Created, with an empty plan kept in a file of nat's own, its tasks filed under %s's containers (nat-source-%s).\n\n",
+		cmp.Or(title, srcName), srcName)
+	fmt.Fprintf(&b, "- Project ID: %s\n", id)
+	if planDir != "" {
+		fmt.Fprintf(&b, "- Plan directory: %s\n", planDir)
+	}
+	fmt.Fprintf(&b, "- Working directory: %s\n", workdir)
+	fmt.Fprintf(&b, "- %s\n", switchNote)
+	return b.String()
 }
 
 // absPlanDir is the plan directory as config keeps it: home expanded and made
@@ -280,6 +338,8 @@ type createdProjectJSON struct {
 	// page, database or data source to report.
 	Backend string `json:"backend,omitempty"`
 	PlanDir string `json:"plan_dir,omitempty"`
+	// Source is a source project's plugin, by name.
+	Source string `json:"source,omitempty"`
 }
 
 // projectCreatedMarkdown reports the project as created, saying the two things
