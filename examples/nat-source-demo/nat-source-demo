@@ -1,0 +1,412 @@
+#!/usr/bin/env python3
+"""nat-source-demo — a reference task-source plugin for nat, protocol v1.
+
+The contract this implements is docs/design/task-sources/README.md
+("Wire contract"). nat runs `nat-source-demo <method>` with exactly one JSON
+object on stdin and reads exactly one JSON object from stdout; a non-zero
+exit is an error, and the first non-empty stderr line is the message nat
+shows.
+
+Everything is fixed data except two files under the state directory
+($XDG_STATE_HOME/nat-source-demo, else ~/.local/state/nat-source-demo):
+events.log (one JSON line per `event`) and comments.json (comments added
+through the composer, so they show on the next `container` read).
+
+Standard library only, so it runs anywhere python3 does.
+"""
+
+import json
+import os
+import sys
+import time
+
+PROTOCOL = 1
+
+# --- fixed data -------------------------------------------------------------
+
+PROJECTS = {
+    "NA": ("Native App", "#4f6bd8"),
+    "BD": ("Board", "#2a9d8f"),
+}
+
+CARDS = {
+    "c1": {
+        "title": "Improve diff review ergonomics",
+        "project": "NA",
+        "state": "Doing",
+        "type": "feature",
+        "estimate": 3,
+        "epic": "Native app parity",
+        "labels": ["diff", "agent"],
+        "owner": "Craig",
+        "requester": "Dana Wolfe",
+        "story": (
+            "Comments left on a diff in the app never reach the working agent. "
+            "They queue in the review pane until the session ends, so the agent "
+            "finishes without knowing anything was said.\n\n"
+            "Wire them through. A comment posted on any hunk lands in the agent's "
+            "session as a user turn quoting the file, line range and comment body. "
+            "The agent acknowledges it in the transcript, and resolving the comment "
+            "in the diff marks the turn addressed.\n\n"
+            "**Acceptance:** a comment posted mid-session shows up in the transcript "
+            "within a second, and resolving it updates both panes."
+        ),
+        "comments": [
+            {"by": "Dana Wolfe", "when": "3d ago",
+             "text": "Pairs with the syntax highlighting work. Worth landing both in the same release so the diff feels finished."},
+            {"by": "Craig", "when": "2d ago",
+             "text": "Agreed. Splitting into three tasks: comments → agent, highlighting, hunk folding."},
+            {"by": "Jonas Tran", "when": "2h ago",
+             "text": "The agent turn format should match what nat already emits for CI logs so the transcript stays uniform."},
+        ],
+        "links": [
+            {"label": "PR #418", "text": "Diff comments reach the agent", "state": "open",
+             "url": "https://github.com/example/nat/pull/418"},
+            {"label": "PR #416", "text": "Syntax highlighting in the diff", "state": "open",
+             "url": "https://github.com/example/nat/pull/416"},
+            {"label": "Design", "text": "Figma · Review pane v3",
+             "url": "https://www.figma.com/file/example/review-pane-v3"},
+        ],
+    },
+    "c2": {
+        "title": "Board mouse support",
+        "project": "BD",
+        "state": "Doing",
+        "type": "feature",
+        "estimate": 2,
+        "epic": "Native app parity",
+        "labels": ["board"],
+        "owner": "Craig",
+        "requester": "Priya Deol",
+        "story": (
+            "The board is keyboard-only. Cards should be draggable between columns, "
+            "and the hit targets need to grow so a trackpad user isn't fighting "
+            "18px rows."
+        ),
+        "comments": [
+            {"by": "Priya Deol", "when": "5d ago",
+             "text": "Keyboard parity is non-negotiable; mouse is additive."},
+        ],
+        "links": [
+            {"label": "PR #407", "text": "Widen board hit targets", "state": "merged",
+             "url": "https://github.com/example/nat/pull/407"},
+        ],
+    },
+    "c3": {
+        "title": "Kanban column view",
+        "project": "BD",
+        "state": "Ready",
+        "type": "feature",
+        "estimate": 3,
+        "epic": "Board",
+        "labels": ["board"],
+        "owner": "Craig",
+        "requester": "Priya Deol",
+        "story": (
+            "Show the project's milestones as columns with slices as cards. "
+            "Columns map to slice state. Read-only to start."
+        ),
+        "comments": [],
+        "links": [],
+    },
+    # The Done group is lazy: these two only appear once it is expanded.
+    "d1": {
+        "title": "Widen board hit targets",
+        "project": "BD",
+        "state": "Done",
+        "type": "chore",
+        "estimate": 1,
+        "epic": "Board",
+        "labels": ["board"],
+        "owner": "Craig",
+        "requester": "Priya Deol",
+        "story": "Grow every board row's hit target to the 28px system row height.",
+        "comments": [],
+        "links": [],
+    },
+    "d2": {
+        "title": "Plan order from the first view",
+        "project": "NA",
+        "state": "Done",
+        "type": "bug",
+        "estimate": 1,
+        "epic": "Platform",
+        "labels": ["storage"],
+        "owner": "Craig",
+        "requester": "Jonas Tran",
+        "story": "Read plan order from the data source's first view, not created_time.",
+        "comments": [],
+        "links": [],
+    },
+}
+
+DONE_COUNT = 36
+
+REFRESH = {"id": "refresh", "label": "Refresh", "input": "none"}
+
+SEGMENT_MENU = [
+    {"id": "rename", "label": "Rename…", "input": "text"},
+    {"id": "owner", "label": "Owner", "input": "choice", "options": ["any", "me", "unassigned"]},
+    {"id": "remove", "label": "Remove Segment", "input": "none", "destructive": True},
+]
+
+CARD_MENU = [
+    {"id": "follow", "label": "Follow", "input": "none"},
+]
+
+COMPOSER = {"id": "comment", "label": "Comment", "input": "text"}
+
+TASK_NOTE_FMT = "Linked to dm-{id}. Merging moves the card to Done when it's the last open task."
+
+EVENTS = {"created", "claimed", "released", "handed_back", "approved", "merged", "deleted"}
+
+# --- plumbing ---------------------------------------------------------------
+
+
+class Fail(Exception):
+    """An error nat should show: exit code + one stderr line."""
+
+    def __init__(self, message, code=1):
+        super().__init__(message)
+        self.code = code
+
+
+def state_dir():
+    base = os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
+    path = os.path.join(base, "nat-source-demo")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def load_comments():
+    path = os.path.join(state_dir(), "comments.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as e:
+        raise Fail(f"demo: can't read {path}: {e}")
+    return data if isinstance(data, dict) else {}
+
+
+def save_comments(data):
+    path = os.path.join(state_dir(), "comments.json")
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, path)
+
+
+def card(cid):
+    c = CARDS.get(cid)
+    if c is None:
+        raise Fail(f"demo: no card {cid!r}")
+    return c
+
+
+def badge(c):
+    name, color = PROJECTS[c["project"]]
+    return {"text": c["project"], "color": color, "title": name}
+
+
+def row(cid):
+    c = CARDS[cid]
+    return {
+        "id": cid,
+        "title": c["title"],
+        "external_url": f"https://example.com/demo/card/{cid}",
+        "badges": [badge(c)],
+        "meta": f"{c['estimate']} pt" if c["estimate"] == 1 else f"{c['estimate']} pts",
+        "menu": CARD_MENU,
+    }
+
+
+# --- methods ----------------------------------------------------------------
+
+
+def describe(req):
+    return {
+        "protocol": PROTOCOL,
+        "name": "demo",
+        "title": "Demo source",
+        "tag": "DM",
+        "icon_symbol": "rectangle.on.rectangle.angled",
+        "container_noun": "card",
+        "task_noun": "task",
+        "menu": [REFRESH],
+    }
+
+
+def sidebar(req):
+    expand = req.get("expand") or []
+    if not isinstance(expand, list):
+        raise Fail("demo: expand must be a list of group ids")
+    done = {"id": "done", "label": "Done", "count": DONE_COUNT, "lazy": True, "menu": [REFRESH]}
+    if "done" in expand:
+        done["containers"] = [row("d1"), row("d2")]
+    return {
+        "groups": [
+            {"id": "doing", "label": "Doing", "count": 2, "containers": [row("c1"), row("c2")]},
+            {
+                "id": "ready",
+                "label": "Ready",
+                "count": 1,
+                "children": [
+                    # Segments are saved filters over the same cards, so one card
+                    # may sit in more than one of them.
+                    {"id": "ready/mine", "label": "Mine", "count": 1, "menu": SEGMENT_MENU,
+                     "containers": [row("c3")]},
+                    {"id": "ready/board", "label": "Board", "count": 1, "menu": SEGMENT_MENU,
+                     "containers": [row("c3")]},
+                ],
+            },
+            done,
+        ]
+    }
+
+
+def container(req):
+    cid = req.get("id")
+    if not isinstance(cid, str) or not cid:
+        raise Fail("demo: container needs an id")
+    c = card(cid)
+    name, color = PROJECTS[c["project"]]
+    comments = list(c["comments"]) + load_comments().get(cid, [])
+    return {
+        "id": cid,
+        "title": c["title"],
+        "external_url": f"https://example.com/demo/card/{cid}",
+        "facts": [
+            {"label": "id", "value": f"dm-{cid}"},
+            {"label": "project", "value": f"{c['project']} · {name}", "color": color},
+            {"label": "state", "value": c["state"]},
+            {"label": "type", "value": c["type"]},
+            {"label": "estimate", "value": str(c["estimate"])},
+            {"label": "epic", "value": c["epic"]},
+            {"label": "labels", "value": ", ".join(c["labels"])},
+            {"label": "owner", "value": c["owner"]},
+            {"label": "requester", "value": c["requester"]},
+        ],
+        "sections": [
+            {"id": "story", "title": "Story", "kind": "prose", "body": c["story"]},
+            {"id": "comments", "title": "Comments", "kind": "comments",
+             "comments": comments, "composer": COMPOSER},
+            {"id": "links", "title": "Links", "kind": "links", "links": c["links"]},
+        ],
+        "menu": CARD_MENU,
+        "task_note": TASK_NOTE_FMT.format(id=cid),
+    }
+
+
+def action(req):
+    aid = req.get("action")
+    target = req.get("target") or {}
+    if not isinstance(target, dict):
+        raise Fail("demo: target must be an object")
+    text = req.get("input") or ""
+    group, cid = target.get("group"), target.get("container")
+
+    if aid == "refresh":
+        return {"message": "Refreshed"}
+    if aid == "comment":
+        if not cid:
+            raise Fail("demo: comment needs a card")
+        card(cid)
+        if not text.strip():
+            raise Fail("demo: comment needs some text")
+        data = load_comments()
+        data.setdefault(cid, []).append({
+            "by": os.environ.get("USER") or "you",
+            "when": time.strftime("%d %b %H:%M"),
+            "text": text.strip(),
+        })
+        save_comments(data)
+        return {"message": f"Commented on dm-{cid}"}
+    if aid == "follow":
+        if not cid:
+            raise Fail("demo: follow needs a card")
+        card(cid)
+        return {"message": f"Following dm-{cid} (demo: nothing changed)"}
+    if aid in ("rename", "owner", "remove"):
+        if group not in ("ready/mine", "ready/board"):
+            raise Fail(f"demo: {aid} needs a segment (got {group!r})")
+        if aid == "rename":
+            if not text.strip():
+                raise Fail("demo: rename needs a name")
+            return {"message": f"Would rename {group} to {text.strip()!r} (demo: nothing changed)"}
+        if aid == "owner":
+            if text not in SEGMENT_MENU[1]["options"]:
+                raise Fail(f"demo: owner must be one of any, me, unassigned (got {text!r})")
+            return {"message": f"Would filter {group} to owner {text} (demo: nothing changed)"}
+        return {"message": f"Would remove {group} (demo: nothing changed)"}
+    raise Fail(f"demo: unknown action {aid!r}")
+
+
+def event(req):
+    name = req.get("event")
+    task = req.get("task")
+    if not isinstance(task, dict) or not isinstance(name, str):
+        raise Fail("demo: event needs an event name and a task")
+    # An event this plugin doesn't know is logged and ignored, never refused:
+    # a later protocol may add some. Duplicates and out-of-order delivery are
+    # fine too; the log just records what arrived.
+    line = {
+        "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "project": (req.get("project") or {}).get("id"),
+        "container": req.get("container"),
+        "event": name,
+        "known": name in EVENTS,
+        "task": task,
+    }
+    with open(os.path.join(state_dir(), "events.log"), "a", encoding="utf-8") as f:
+        f.write(json.dumps(line) + "\n")
+    return {}
+
+
+METHODS = {
+    "describe": describe,
+    "sidebar": sidebar,
+    "container": container,
+    "action": action,
+    "event": event,
+}
+
+
+def main(argv):
+    if len(argv) != 2:
+        print("usage: nat-source-demo <describe|sidebar|container|action|event> < request.json",
+              file=sys.stderr)
+        return 2
+    method = METHODS.get(argv[1])
+    if method is None:
+        print(f"demo: unknown method {argv[1]!r}", file=sys.stderr)
+        return 2
+    try:
+        req = json.loads(sys.stdin.read())
+        if not isinstance(req, dict):
+            raise ValueError("not a JSON object")
+    except ValueError as e:
+        print(f"demo: request is not one JSON object: {e}", file=sys.stderr)
+        return 1
+    project = req.get("project")
+    # `nat source-list` describes with an empty project (no project is in
+    # question), so only the other methods need an id.
+    if not isinstance(project, dict) or (argv[1] != "describe" and not project.get("id")):
+        print("demo: request has no project", file=sys.stderr)
+        return 1
+    try:
+        resp = method(req)
+    except Fail as e:
+        print(str(e), file=sys.stderr)
+        return e.code
+    except OSError as e:
+        print(f"demo: {e}", file=sys.stderr)
+        return 1
+    json.dump(resp, sys.stdout)
+    sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
