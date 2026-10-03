@@ -20,6 +20,15 @@ func TestValidateDescribe(t *testing.T) {
 		{"lower case", Describe{Tag: "sc"}, `tag "sc"`},
 		{"too long", Describe{Tag: "SHRT"}, `tag "SHRT"`},
 		{"choice with no options", Describe{Tag: "SC", Menu: choice}, `the source menu: choice action "owner" has no options`},
+		{"a secret action", Describe{Tag: "SC", Menu: []Action{{ID: "tok", Input: InputSecret}}}, `the source menu: action "tok" asks for a secret`},
+		{"setup fields", Describe{Tag: "SC", Setup: []SetupField{
+			{ID: "token", Label: "API token", Input: InputSecret, Hint: "Settings"},
+			{ID: "work-space2", Label: "Workspace", Input: InputText},
+		}}, ""},
+		{"a setup id with upper case", Describe{Tag: "SC", Setup: []SetupField{{ID: "Token", Input: InputSecret}}}, `setup field id "Token" is not lower-case`},
+		{"an empty setup id", Describe{Tag: "SC", Setup: []SetupField{{ID: "", Input: InputSecret}}}, `setup field id ""`},
+		{"a repeated setup id", Describe{Tag: "SC", Setup: []SetupField{{ID: "t", Input: InputSecret}, {ID: "t", Input: InputText}}}, `setup field id "t" is used more than once`},
+		{"a setup choice", Describe{Tag: "SC", Setup: []SetupField{{ID: "t", Input: InputChoice}}}, `setup field "t": input "choice" is not secret or text`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateDescribe(tt.d)
@@ -150,5 +159,8 @@ func TestUnavailableAnswersItsErrorEverywhere(t *testing.T) {
 	}
 	if err := u.Event(ctx, Project{}, "c", Task{}, EventCreated); !errors.Is(err, want) {
 		t.Errorf("Event() = %v", err)
+	}
+	if _, err := u.Setup(ctx, "token", "x"); !errors.Is(err, want) {
+		t.Errorf("Setup() = %v", err)
 	}
 }

@@ -148,13 +148,14 @@ Example error, a plugin with no token:
 
 ```
 $ echo '{"project":{"id":"…","name":"Work","working_dir":"/Users/craig/work/app"}}' | nat-source-shortcut sidebar
-Shortcut token missing — run nat-source-shortcut login        ← stderr
+Shortcut token missing — set it in gnat's Settings ▸ Sources or run nat-source-shortcut login        ← stderr
 $ echo $?
 1
 ```
 
-nat shows it as `nat-source-shortcut sidebar: Shortcut token missing — run
-nat-source-shortcut login` (the binary, the method, the plugin's line).
+nat shows it as `nat-source-shortcut sidebar: Shortcut token missing — set
+it in gnat's Settings ▸ Sources or run nat-source-shortcut login` (the
+binary, the method, the plugin's line).
 
 A response that decodes but breaks one of the rules below (a bad `tag`, a
 malformed tree, a `choice` with no options) is refused as `nat-source-<name>
@@ -173,9 +174,11 @@ Every request carries the project it is about:
 `name` and `working_dir` are as configured and may change. nat stores no
 plugin settings: a plugin that wants per-project settings (a Shortcut team,
 a workspace) keeps them itself, keyed by `project.id`, and asks for them
-however it likes (its own `login`/`setup` subcommand, a file, a `text`
-action). A plugin with nothing configured for a project should fail with a
-stderr line saying how to configure it.
+however it likes (its own `login` subcommand, a file, a `text` action).
+What it needs before it works at all — an API token — it can declare as
+`describe`'s `setup` fields, which gnat draws in Settings and hands back
+through the `setup` method. A plugin with nothing configured for a project
+should fail with a stderr line saying how to configure it.
 
 The method-specific fields below are added to this object.
 
@@ -191,6 +194,7 @@ Section   { id, title, kind: "prose" | "comments" | "links", body?, comments?: [
 Comment   { by, when, text }
 Link      { label, text, state?, url }
 Action    { id, label, input: "none" | "text" | "choice", options?: [string], destructive? }
+Setup     { id, label, input: "secret" | "text", hint? }
 ```
 
 - **Ids** are non-empty strings, opaque to nat. Ids beginning with `_` are
@@ -205,12 +209,18 @@ Action    { id, label, input: "none" | "text" | "choice", options?: [string], de
   (a small sheet); `choice` offers `options` (a submenu) and is invalid
   without them — nat refuses a `describe`, `sidebar` or `container`
   response carrying one, on any menu or composer. `destructive` actions
-  draw in red and confirm first.
+  draw in red and confirm first. `secret` is a `Setup` field's input alone
+  and refused on any action.
 
 ### `describe`
 
-Who the plugin is. Called by `source-list`, on `project-create --source`,
-and on every `info`.
+Who the plugin is. Called by `source-list`, `plugin-list`, `source-setup`,
+on `project-create --source`, and on every `info`.
+
+**`describe` is static: it must answer without any credential.** It is how
+nat learns what a plugin needs set up, so a plugin missing its token still
+describes itself (with its `setup` fields) and refuses only the other
+methods.
 
 Request: the envelope alone.
 
@@ -233,6 +243,9 @@ Response:
   "menu": [
     { "id": "refresh", "label": "Refresh", "input": "none" },
     { "id": "new-segment", "label": "New Segment…", "input": "text" }
+  ],
+  "setup": [
+    { "id": "token", "label": "API token", "input": "secret", "hint": "Shortcut ▸ Settings ▸ API Tokens" }
   ]
 }
 ```
@@ -254,6 +267,13 @@ Response:
   "slice" (`## The card`, "Other cards", "New task").
 - `menu` (optional) is the source section header's menu; its actions are
   run with `target: {}`.
+- `setup` (optional) is what the plugin needs set before it works, drawn
+  under the plugin in gnat's Settings ▸ Sources and sent back through
+  `setup`. `id` is lower-case letters, digits and `-`, unique within the
+  list; `input` is `secret` (a masked field) or `text`; `label` names the
+  field and `hint` (optional) says where to find the value. A `describe`
+  breaking any of these is refused. A plugin with nothing to set up omits
+  it.
 
 ### `sidebar`
 
@@ -471,6 +491,41 @@ Response:
 - To act on "the last open task merged", a plugin counts by itself, from
   the events it has seen or from the remote; nat sends no task list.
 
+### `setup`
+
+Set the value of one of `describe`'s `setup` fields — store a token, say,
+and check it. Like `describe` it is about no project: the envelope's fields
+are all `""`.
+
+Request adds `id` (a `setup` field's `id`) and `input`, the value as the
+user typed it:
+
+```json
+{ "project": { "id": "", "name": "", "working_dir": "" },
+  "id": "token",
+  "input": "<the value>" }
+```
+
+Response:
+
+```json
+{ "message": "Logged in to acme as Craig Johnston" }
+```
+
+- `message` is shown beside the field (a green check in gnat; printed by
+  `nat source-setup`).
+- Refuse an unknown `id`, an empty `input`, or a value the remote rejects
+  the usual way: non-zero exit, one stderr line — which **must not quote
+  the input**.
+- The input reaches the plugin on **stdin only**, never argv. nat logs only
+  the method, the plugin and the `id`; the request is never logged, as no
+  request is. What the plugin then does with the value (a Keychain item, a
+  file) is its own business, and it should keep the value out of its own
+  argv too.
+- 20 s timeout, like every method but `event`.
+- A plugin with no `setup` fields may refuse every `setup` call
+  (`demo: nothing to set up`).
+
 ## The `nat` contract
 
 All project-scoped commands take `--project <id>` as everywhere else.
@@ -524,6 +579,20 @@ Prints the plugin's `message` (`Ran <action id>.` when it gave none);
 `--json` prints `{ "message": "…" }`. Refused on a non-source project, with
 no `--action`, and with both `--group` and `--container`. A board running
 on the machine is nudged after a successful action.
+
+### New: `source-setup`
+
+```
+nat source-setup <plugin name> --id <setup field id> [--json] < value
+```
+
+Sends the plugin's `setup` the value read from **stdin** — all of it, one
+trailing newline trimmed — so a secret is never in nat's argv or `ps`;
+there is no flag for it. Refused, before the value is sent: a plugin not
+installed, an `id` its `describe` doesn't list (a plugin that won't
+describe is refused with that error), and an empty value. Prints the
+plugin's `message`; `--json` prints `{ "message": "…" }`. Acts on no
+project.
 
 ### `project-create --source`
 
@@ -720,9 +789,13 @@ a version that doesn't read that way is never newer.
 ### The `nat` contract
 
 - `plugin-list --json` →
-  `{"sources": [{"repo", "version", "error", "default"}], "installed": [{"name", "path", "kind", "source", "version", "update"}], "available": [{"name", "title", "description", "source", "version", "installed"}]}`.
+  `{"sources": [{"repo", "version", "error", "default"}], "installed": [{"name", "path", "kind", "source", "version", "update", "setup", "describe_error"}], "available": [{"name", "title", "description", "source", "version", "installed"}]}`.
   `kind` is `managed`, `manual` or `path`; `source`/`version` are a managed
-  install's alone; `update` is the newer version, else empty; `available` is
+  install's alone; `update` is the newer version, else empty; `setup` is the
+  plugin's `describe` `setup` list (always an array, empty where it has none
+  or `describe` failed) and `describe_error` the first stderr line of a
+  failed `describe` (else the failure's own words, else empty) — each
+  installed plugin is described once per listing; `available` is
   every source's latest release's plugins, `installed` true where a plugin of
   that name is installed by any means.
 - `plugin-install <name> [--source owner/repo] [--version V] --json` → the
@@ -789,8 +862,11 @@ a version that doesn't read that way is never newer.
 - **Task under a container.** Brief facts show the container's `facts`
   instead of the milestone; the PR section appends `task_note`; the status
   bar crumb is `<container title> / <task>`.
-- **Settings.** A read-only **Sources** tab: each discovered plugin's
-  name, title, tag, icon and path, or its error.
+- **Settings.** A **Sources** tab: each installed plugin's name, kind and
+  version, its `describe_error` as a warning line, and its `setup` fields
+  beneath it (a secure field for `secret`, a text field for `text`, the
+  hint as a caption, Save → `nat source-setup` with the value on stdin; the
+  plugin's message or refusal inline, then `plugin-list` re-read).
 - **Gallery stories**: `sidebar-source`, `window-container`,
   `window-container-comments`, `window-source-task-brief`,
   `window-source-task-pr`, `new-source-project`, `settings-sources`.
@@ -817,8 +893,12 @@ a version that doesn't read that way is never newer.
 - **Relaunch, rework, reopen** (`RecordRelaunch`, `ClearBranch`,
   `ReopenSlice`) fire no event in v1.
 - **Project id changes**: never; a plugin may key settings on it.
-- **Secrets**: the plugin owns them; nat never sees, stores or logs one,
-  and logs only a failing plugin's first stderr line.
+- **Secrets**: the plugin owns them; nat never stores or logs one, and logs
+  only a failing plugin's first stderr line. The one secret nat handles is a
+  `setup` input, and only in passing: stdin in (`nat source-setup`), the
+  plugin's stdin out, never argv, never a log line (method, plugin and `id`
+  only), never an error. gnat sends it on `nat`'s stdin and keeps it out of
+  its own request log.
 
 ## Testing
 

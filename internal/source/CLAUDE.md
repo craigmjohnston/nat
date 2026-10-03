@@ -20,15 +20,22 @@ plan itself is an ordinary `store.Local`, wrapped by `store.Sourced`.
   (`firstLine`); `Exec` wraps every failure as `nat-source-<name> <method>: …`.
 - `describe` refuses any `protocol` but `ProtocolVersion` (naming the plugin
   and both numbers) rather than half-understanding a newer plugin.
+- Methods: `describe`, `sidebar`, `container`, `action`, `event`, `setup`.
 - `sidebar` always sends `expand` as a list, never `null`.
 - `event` is fire-and-forget: its stdout is not read at all.
+- `setup` (`Exec.Setup(ctx, id, input)`) is about no project, like
+  `describe`: the envelope is empty and the run's dir is `""`. It sends
+  `{id, input}` and reads `{message}`. The input is a credential — it goes
+  on the plugin's stdin and nowhere else; the log line is plugin, method and
+  `id`.
 - **Validation** (`validate.go`) runs after decode: `Describe` →
-  `ValidateDescribe` (tag `^[A-Z0-9]{1,3}$`, menu), `Sidebar` →
+  `ValidateDescribe` (tag `^[A-Z0-9]{1,3}$`, menu, `setup` fields: id
+  `^[a-z0-9-]+$` and unique, input `secret`|`text`), `Sidebar` →
   `ValidateGroups` (children *xor* containers, one level of children, unique
   group ids, no empty or `_`-prefixed group/container id — `_` is nat's, for
   `_unlisted` — and every menu), `Container` → `ValidateContainer` (menu and
-  composers). Every action check is the same: a `choice` with no options is
-  refused. The error is `nat-source-<name> <method>: invalid response: <rule>`
+  composers). Every action check is the same: a `choice` with no options,
+  and any `secret` input (a setup field's alone), is refused. The error is `nat-source-<name> <method>: invalid response: <rule>`
   — the rule, never the body (`Exec.invalid`).
 - **Stdout is capped** at 4 MiB (`maxStdout`, a var for tests): `capWriter`
   refuses the write past it, which closes the plugin's pipe, and the cap is
@@ -46,7 +53,9 @@ free text that may carry anything, and the log file was never agreed as a
 place it goes. That includes the JSON decoder's own message, which can quote
 the response: a decode failure is `nat-source-<name> <method>: malformed
 response` and nothing more. A log line carries the plugin, method, project
-ID, the ids the call was about and an exit code — nothing else.
+ID, the ids the call was about and an exit code — nothing else. A `setup`
+input is the sharpest case: `TestSetupNeverLogsTheInput` opens the real log
+(through `internal/logging`'s redactor, never around it) and checks.
 
 ## Conventions
 
@@ -70,6 +79,8 @@ ID, the ids the call was about and an exit code — nothing else.
   `StdinRunner` (see `exec_test.go`'s `fakeRunner`), which runs events
   through the same runner.
 - Everywhere else: `source.Fake` — canned `DescribeResult`/`Groups`/`Details`/
-  `ActionResult`, per-method `…Err`, and recorded `Expands`, `ContainerIDs`,
-  `Actions`, `Events` to assert what was sent. Its zero value works (a nil
-  `Details` answers the zero detail).
+  `ActionResult`/`SetupMessage`, per-method `…Err`, and recorded `Expands`,
+  `ContainerIDs`, `Actions`, `Events`, `Setups` to assert what was sent. Its
+  zero value works (a nil `Details` answers the zero detail).
+- `demo_test.go` runs `examples/nat-source-demo` for real through `New`
+  (skipped with no `python3`): describe, and its `setup` refusal.

@@ -364,18 +364,25 @@ def event(req):
     return {}
 
 
+def setup(req):
+    # The demo needs no credential, so its describe lists no setup fields and
+    # every setup request is refused.
+    raise Fail("demo: nothing to set up")
+
+
 METHODS = {
     "describe": describe,
     "sidebar": sidebar,
     "container": container,
     "action": action,
     "event": event,
+    "setup": setup,
 }
 
 
 def main(argv):
     if len(argv) != 2:
-        print("usage: nat-source-demo <describe|sidebar|container|action|event> < request.json",
+        print("usage: nat-source-demo <describe|sidebar|container|action|event|setup> < request.json",
               file=sys.stderr)
         return 2
     method = METHODS.get(argv[1])
@@ -390,9 +397,10 @@ def main(argv):
         print(f"demo: request is not one JSON object: {e}", file=sys.stderr)
         return 1
     project = req.get("project")
-    # `nat source-list` describes with an empty project (no project is in
-    # question), so only the other methods need an id.
-    if not isinstance(project, dict) or (argv[1] != "describe" and not project.get("id")):
+    # `nat source-list` describes with an empty project, and setup is sent
+    # one too (no project is in question), so only the other methods need an
+    # id.
+    if not isinstance(project, dict) or (argv[1] not in ("describe", "setup") and not project.get("id")):
         print("demo: request has no project", file=sys.stderr)
         return 1
     try:

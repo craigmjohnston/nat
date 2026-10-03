@@ -10,15 +10,42 @@ import (
 // or digits, short enough to sit on an Active row beside a task's title.
 var tagPattern = regexp.MustCompile(`^[A-Z0-9]{1,3}$`)
 
+// setupIDPattern is what a setup field's id must be: lower-case letters,
+// digits and `-`, since it is passed back as `nat source-setup --id`.
+var setupIDPattern = regexp.MustCompile(`^[a-z0-9-]+$`)
+
 // ValidateDescribe refuses a describe nat could not draw: a tag outside the
-// protocol's shape, or a menu action it could not offer. The protocol version
-// is not checked here — [Exec.Describe] refuses that first, in its own words.
-// The error names the rule broken and the field, never the response.
+// protocol's shape, a menu action it could not offer, or a setup field it
+// could not draw or send back. The protocol version is not checked here —
+// [Exec.Describe] refuses that first, in its own words. The error names the
+// rule broken and the field, never the response.
 func ValidateDescribe(d Describe) error {
 	if !tagPattern.MatchString(d.Tag) {
 		return fmt.Errorf("tag %q is not 1–3 upper-case letters or digits", d.Tag)
 	}
-	return validateActions("the source menu", d.Menu)
+	if err := validateActions("the source menu", d.Menu); err != nil {
+		return err
+	}
+	return validateSetup(d.Setup)
+}
+
+// validateSetup refuses a setup field with an id outside `[a-z0-9-]+`, an id
+// used twice, or an input other than secret or text.
+func validateSetup(fields []SetupField) error {
+	seen := map[string]bool{}
+	for _, f := range fields {
+		if !setupIDPattern.MatchString(f.ID) {
+			return fmt.Errorf("setup field id %q is not lower-case letters, digits and -", f.ID)
+		}
+		if seen[f.ID] {
+			return fmt.Errorf("setup field id %q is used more than once", f.ID)
+		}
+		seen[f.ID] = true
+		if f.Input != InputSecret && f.Input != InputText {
+			return fmt.Errorf("setup field %q: input %q is not secret or text", f.ID, f.Input)
+		}
+	}
+	return nil
 }
 
 // ValidateGroups refuses a sidebar tree that breaks the protocol's shape: a
@@ -100,11 +127,16 @@ func validateID(kind, id string) error {
 	return nil
 }
 
-// validateActions refuses a choice action with no options to choose from.
+// validateActions refuses a choice action with no options to choose from, and
+// a secret one — a secret is a setup field's input alone, since an action's
+// input is drawn unmasked and may be passed as a flag.
 func validateActions(where string, actions []Action) error {
 	for _, a := range actions {
 		if a.Input == InputChoice && len(a.Options) == 0 {
 			return fmt.Errorf("%s: choice action %q has no options", where, a.ID)
+		}
+		if a.Input == InputSecret {
+			return fmt.Errorf("%s: action %q asks for a secret, which only a setup field may", where, a.ID)
 		}
 	}
 	return nil

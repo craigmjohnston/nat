@@ -281,6 +281,24 @@ func (e *Exec) Event(ctx context.Context, p Project, container string, task Task
 		"event", event, "container", container, "task", task.ID)
 }
 
+// Setup hands the plugin the value of one of its describe's setup fields — a
+// token, most often — and returns what it says about it. Like describe it is
+// about no project, so the envelope's are all "". The input travels on stdin
+// alone: it is never in argv, never logged and never in an error, which
+// carries only the plugin's own stderr line.
+func (e *Exec) Setup(ctx context.Context, id, input string) (string, error) {
+	req := struct {
+		Project Project `json:"project"`
+		ID      string  `json:"id"`
+		Input   string  `json:"input"`
+	}{Project{}, id, input}
+	var r ActionResult
+	if err := e.call(ctx, e.runner, "setup", Project{}, req, &r, "id", id); err != nil {
+		return "", err
+	}
+	return r.Message, nil
+}
+
 // binary is the plugin as it is named in an error.
 func (e *Exec) binary() string { return "nat-source-" + e.Name }
 
