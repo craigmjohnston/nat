@@ -894,7 +894,7 @@ func TestCompleteSliceHandsBackAFixOnAnApprovedSlice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("complete-slice: %v", err)
 	}
-	want := []string{"heading_3: Handed back", "paragraph: Fixed the failing test."}
+	want := []string{"heading_3: Handed back", "paragraph: At <stamp>", "paragraph: Fixed the failing test."}
 	if len(api.appends) != 1 || !equalLines(blockTexts(t, api.appends[0].children), want) {
 		t.Errorf("appends = %+v, want %v", api.appends, want)
 	}

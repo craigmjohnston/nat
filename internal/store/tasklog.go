@@ -36,9 +36,9 @@ func (n *Notion) RecordSentBack(ctx context.Context, id, comments string) error 
 }
 
 // RecordChecksFailed files the checks a pull request failed on the slice page
-// under a heading of their own, in one append.
+// under a heading of their own, stamped, in one append.
 func (n *Notion) RecordChecksFailed(ctx context.Context, id, checks string) error {
-	if _, err := n.api.AppendBlockChildren(ctx, id, noteBlocks(notion.ChecksFailedHeading, checks)); err != nil {
+	if _, err := n.api.AppendBlockChildren(ctx, id, noteBlocks(notion.ChecksFailedHeading, stamped(clockOr(n.Clock), checks))); err != nil {
 		return err
 	}
 	logging.Action("slice checks failed", "slice", id)
@@ -78,7 +78,7 @@ func (l *Local) RecordSentBack(ctx context.Context, id, comments string) error {
 // RecordChecksFailed appends the failed checks to the slice's body, in the
 // markdown Notion would render the same section to.
 func (l *Local) RecordChecksFailed(ctx context.Context, id, checks string) error {
-	if err := l.appendToBody(ctx, id, "record the slice's failed checks", notion.ChecksFailedHeading, checks); err != nil {
+	if err := l.appendToBody(ctx, id, "record the slice's failed checks", notion.ChecksFailedHeading, stamped(clockOr(l.Clock), checks)); err != nil {
 		return err
 	}
 	logging.Action("slice checks failed", "slice", id)
