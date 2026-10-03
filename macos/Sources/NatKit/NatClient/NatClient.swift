@@ -576,8 +576,18 @@ public final class NatClient: Sendable {
     /// - Returns: SliceAddResult with the created slice's fields
     /// - Throws: NatError if the command fails (no such milestone, empty title, etc.)
     public func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult {
-        var arguments = ["slice-add", title, "--project", projectID]
-        if !milestone.isEmpty { arguments.append(contentsOf: ["--milestone", milestone]) }
+        try await sliceAdd(projectID: projectID, title: title, filing: milestone.isEmpty ? [] : ["--milestone", milestone], description: description)
+    }
+
+    /// File a new task under one of a source project's containers — `nat
+    /// slice-add --container <id>`, which a source project takes in place of
+    /// `--milestone`. The description goes over stdin as `sliceAdd`'s does.
+    public func sliceAdd(projectID: String, title: String, container: String, description: String?) async throws -> SliceAddResult {
+        try await sliceAdd(projectID: projectID, title: title, filing: ["--container", container], description: description)
+    }
+
+    private func sliceAdd(projectID: String, title: String, filing: [String], description: String?) async throws -> SliceAddResult {
+        var arguments = ["slice-add", title, "--project", projectID] + filing
         arguments.append("--json")
         var standardInput: Data?
         if let description = description, !description.isEmpty {

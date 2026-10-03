@@ -32,10 +32,45 @@ enum AppStories {
 
     /// The whole window, held still and with the terminal drawn.
     private static func shell(
-        _ appModel: AppModel, folds: [String: Bool] = [:], focus: NavigatorFocus? = nil
+        _ appModel: AppModel, folds: [String: Bool] = [:], focus: NavigatorFocus? = nil,
+        containerFocus: ContainerFocus? = nil
     ) -> some View {
-        WindowShellView(appModel: appModel, sidebarFolds: folds, focus: focus)
+        WindowShellView(appModel: appModel, sidebarFolds: folds, focus: focus, containerFocus: containerFocus)
             .environment(\.terminalStubbed, true)
+            .environment(\.pulsesPaused, true)
+    }
+
+    /// The board with the Work source project beside the two others, its
+    /// card (or one of its tasks) selected and read — Projects folded so the
+    /// source fold is in view.
+    private static func sourceShell(
+        container: String? = nil, task: String? = nil, containerFocus: ContainerFocus? = nil
+    ) async -> some View {
+        let appModel = await Fixtures.startedAppModel(config: Fixtures.sourceConfig)
+        let projectID = Fixtures.sourceProjectID
+        if let container {
+            await appModel.selectContainer(container, inProject: projectID)
+            await appModel.containerStore(projectID: projectID).fetch(containerID: container)
+        }
+        if let task {
+            await appModel.selectSlice(task, inProject: projectID)
+            await appModel.sliceDetailStore(projectID: projectID).fetch(sliceRef: task)
+            let slice = Fixtures.sourceTasks.first { $0.id == task }
+            if let slice, slice.handedBack || !(slice.branch ?? "").isEmpty {
+                await appModel.diffStore(projectID: projectID).fetch(projectID: projectID, sliceRef: task)
+            }
+            if let slice, !slice.pr.isEmpty {
+                await appModel.prStore(projectID: projectID).fetch(projectID: projectID, sliceRef: task)
+            }
+        }
+        return shell(appModel, folds: ["work": true], containerFocus: containerFocus)
+    }
+
+    /// The sidebar alone over the Work source project, Projects folded.
+    private static func sourceSidebar(client: FixtureNatClient = FixtureNatClient()) async -> some View {
+        let appModel = await Fixtures.startedAppModel(client: client, config: Fixtures.sourceConfig)
+        await appModel.selectContainer(Fixtures.sourceCardID, inProject: Fixtures.sourceProjectID)
+        return SidebarView(appModel: appModel, folded: ["work": true])
             .environment(\.pulsesPaused, true)
     }
 
@@ -935,6 +970,78 @@ enum AppStories {
             colorScheme: .light
         ) {
             StateDotsStory()
+        },
+
+        // MARK: - Task sources
+
+        Story(
+            name: "sidebar-source",
+            summary: "The Work source project's own fold under Projects: the plugin's icon and header menu, "
+                + "Doing with its cards and their tasks, Ready's Mine and Board segments (one card in both), "
+                + "the lazy Done folded with its count; the first card selected.",
+            size: sidebar
+        ) {
+            await sourceSidebar()
+        },
+
+        Story(
+            name: "sidebar-source-error",
+            summary: "The plugin could not be read: its error as the fold's note, and every card with tasks "
+                + "under nat's own Other containers group.",
+            size: sidebar
+        ) {
+            await sourceSidebar(client: Fixtures.failedSourceClient())
+        },
+
+        Story(
+            name: "window-container",
+            summary: "A card selected: the source's icon and tag in the titlebar, Story open with its facts "
+                + "and tasks and New task, Comments and Links folded with their counts; the story and its "
+                + "comments with the composer in the main pane, Open in Demo source at the trailing edge.",
+            size: window
+        ) {
+            await sourceShell(container: Fixtures.sourceCardID)
+        },
+
+        Story(
+            name: "window-container-links",
+            summary: "The same card with its Links section's header clicked: the links in the section, "
+                + "a pull request by its branch glyph and state, a document by its arrow out, and the list in the main pane.",
+            size: window
+        ) {
+            await sourceShell(
+                container: Fixtures.sourceCardID,
+                containerFocus: ContainerFocus(open: ["links"], main: .section("links")))
+        },
+
+        Story(
+            name: "window-source-task-brief",
+            summary: "A Todo task under a card: the brief card's facts lead with the card, opening in its "
+                + "source, and the card's own facts in the milestone's place; the status bar reads card / task.",
+            size: window
+        ) {
+            await sourceShell(task: Fixtures.sourceTodoTaskID)
+        },
+
+        Story(
+            name: "window-source-task-pr",
+            summary: "A handed-back task with its pull request open: the PR section ends on the card's own "
+                + "note about what merging does.",
+            size: window
+        ) {
+            await sourceShell(task: Fixtures.sourceReviewTaskID)
+        },
+
+        Story(
+            name: "new-source-project",
+            summary: "The sheet the + menu's New Demo source project\u{2026} opens: the plugin's icon and title, "
+                + "what a source project is, a name and a working directory.",
+            size: CGSize(width: 460, height: 330)
+        ) {
+            NewSourceProjectSheetView(
+                plugin: Fixtures.sourcePlugins[0], initialName: "Work", initialDirectory: "/Users/craig/work/app",
+                onClose: {}, onAdded: { _, _ in })
+                .surface(.window)
         },
 
         // MARK: - The status bar

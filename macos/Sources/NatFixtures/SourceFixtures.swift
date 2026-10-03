@@ -8,7 +8,10 @@ import NatKit
 /// `container-show`, `slice-show` and `source-list` report it. The shapes
 /// follow `docs/design/task-sources/README.md` field for field.
 extension Fixtures {
-    public static let sourceProjectID = "f1x7500c-0000-4000-8000-000000000001"
+    /// Sorts ahead of the other fixture projects, so a board started over
+    /// `sourceConfig` opens on Work — the shell's own start activates the
+    /// first project, and a story's selection there has to survive it.
+    public static let sourceProjectID = "f1x6500c-0000-4000-8000-000000000001"
 
     public static let sourceProject = Project(
         id: sourceProjectID,
@@ -151,7 +154,9 @@ extension Fixtures {
         Slice(
             id: sourceReviewTaskID, name: "Jump between comment threads", status: "In progress",
             milestoneID: sourceCardID, assignee: "Craig Johnston",
-            pr: "https://github.com/acme/app/pull/418",
+            // #214, the number the fixture client's `pr-view` answers with,
+            // so the PR view reads it as this task's.
+            pr: "https://github.com/acme/app/pull/214",
             url: "nat://\(sourceReviewTaskID)",
             branch: "slice/jump-between-comment-threads", repo: sourceRepo,
             blocked: false, handedBack: true, state: .awaitingReview
@@ -214,8 +219,8 @@ extension Fixtures {
             SourceSection(
                 id: "links", title: "Links", kind: .links,
                 links: [
-                    SourceLink(label: "PR #418", text: "Jump between comment threads", state: "open",
-                               url: "https://github.com/acme/app/pull/418"),
+                    SourceLink(label: "PR #214", text: "Jump between comment threads", state: "open",
+                               url: "https://github.com/acme/app/pull/214"),
                     SourceLink(label: "PR #402", text: "Comment anchors survive a rebase", state: "merged",
                                url: "https://github.com/acme/app/pull/402"),
                     SourceLink(label: "Design", text: "Figma · Review pane v3",
@@ -276,6 +281,30 @@ extension Fixtures {
             )
         }
         return details
+    }
+
+    /// `twoProjectConfig` with the Work source project beside the two, so the
+    /// sidebar has a source fold under Projects.
+    public static var sourceConfig: NatProjectConfig {
+        var projects = twoProjectConfig.projects
+        projects[sourceProjectID] = ProjectConfig(
+            name: sourceProject.name, workingDir: sourceRepo, backend: .source, source: "demo")
+        return NatProjectConfig(
+            projects: projects, agentSplitPercent: 45, pollSeconds: 3600,
+            workshopAgent: AgentModel(model: "sonnet", effort: nil),
+            sliceAgent: AgentModel(model: "opus", effort: "high"),
+            assigneeUserName: "Craig Johnston")
+    }
+
+    /// A client whose Work project's plugin cannot be read: `source.error`
+    /// set and the tree nat's `_unlisted` group alone.
+    public static func failedSourceClient() -> FixtureNatClient {
+        FixtureNatClient(otherPlans: [
+            secondProjectID: secondProjectInfo,
+            sourceProjectID: ProjectInfo(
+                project: sourceProject, milestones: sourceMilestones, slices: sourceTasks,
+                source: sourceInfoFailed),
+        ])
     }
 
     /// `source-list --json`: the demo plugin, described, and one that

@@ -49,6 +49,32 @@ struct CrumbTreePicker: View {
                         } action: {
                             tree.milestone = milestone.name
                         }
+                    case .group(let group):
+                        row(selected: group.id == tree.group, opens: true) {
+                            Text(group.label.uppercased())
+                                .font(.system(size: 11))
+                                .tracking(0.7)
+                        } action: {
+                            tree.open(group: group.id)
+                        }
+                    }
+                }
+            }
+            // A source project's containers, between its groups and a
+            // container's tasks.
+            if let containers = tree.containers {
+                divider
+                column {
+                    ForEach(containers) { container in
+                        row(selected: container.id == tree.container, opens: true) {
+                            Image(systemName: SourceGlyph.container)
+                                .font(.system(size: 11))
+                                .ink(.tertiary)
+                                .frame(width: 16)
+                            Text(container.title)
+                        } action: {
+                            tree.container = container.id
+                        }
                     }
                 }
             }

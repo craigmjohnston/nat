@@ -382,6 +382,41 @@ public enum DesignTokens {
         derived { $0.chipInk(of: tint.tint(in: $0), on: ground) }
     }
 
+    // MARK: - A task-source plugin's own colour
+
+    // A plugin sends colours over the wire (`#rrggbb` — a badge's, a fact's),
+    // chosen for its own pages, not for this theme. These are the one place
+    // such a colour becomes a `Color`: taken as a hue and put through the
+    // palette's own rules, so a tag picked on a white page still reads on a
+    // dark window, and its capsule is a wash like every other chip's.
+
+    /// The six lower-case hex digits of a wire colour, or nil for anything
+    /// that is not `#rrggbb`.
+    public static func wireHex(_ wire: String) -> String? {
+        let trimmed = wire.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("#") else { return nil }
+        let digits = trimmed.dropFirst()
+        guard digits.count == 6, digits.allSatisfy(\.isHexDigit) else { return nil }
+        return digits.lowercased()
+    }
+
+    /// A wire colour as ink on a ground, shaded only as far as it must be to
+    /// read there; nil where it will not parse (the caller's own ink then).
+    public static func wireTint(_ wire: String, on ground: Ground = .window) -> Color? {
+        guard let hex = wireHex(wire) else { return nil }
+        return derived { $0.ink(of: Tint(hex), on: ground.surface(in: $0)) }
+    }
+
+    /// A badge in a wire colour: its word, and the capsule behind it washed
+    /// into `ground` — nil where the colour will not parse.
+    public static func wireBadge(_ wire: String, on ground: Ground) -> (ink: Color, wash: Color)? {
+        guard let hex = wireHex(wire) else { return nil }
+        return (
+            derived { $0.chipInk(of: Tint(hex), on: ground) },
+            derived { $0.wash(.chip, of: Tint(hex), on: ground) }
+        )
+    }
+
     // MARK: - System Color Overrides
 
     /// Orange system color.

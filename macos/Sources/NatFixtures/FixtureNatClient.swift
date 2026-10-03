@@ -418,6 +418,13 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         )
     }
 
+    public func sliceAdd(projectID: String, title: String, container: String, description: String?) async throws -> SliceAddResult {
+        try await record("slice-add \(title) --container \(container)")
+        return SliceAddResult(
+            id: "f1x7500c-0000-4000-8000-000000000099", name: title, status: "Todo",
+            milestoneID: container, milestoneName: container, repo: "", url: "nat://f1x7500c-0000-4000-8000-000000000099")
+    }
+
     public func configSet(key: String, value: String) async throws {
         try await record("config-set \(key)")
     }

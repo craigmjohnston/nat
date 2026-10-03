@@ -127,7 +127,10 @@ struct TitlebarIdentityLabel: View {
     var body: some View {
         HStack(spacing: 5) {
             Group {
-                if let identity {
+                if let identity, let icon = identity.icon {
+                    SourceIdentityLabel(
+                        icon: icon, tag: identity.tag, title: identity.title, size: GnatMetrics.titlebarText)
+                } else if let identity {
                     ActiveIdentityLabel(
                         tag: identity.tag, state: identity.state, live: identity.live, title: identity.title,
                         size: GnatMetrics.titlebarText, titleInk: .primary)

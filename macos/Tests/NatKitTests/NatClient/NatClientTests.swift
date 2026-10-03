@@ -956,6 +956,19 @@ final class NatClientTests: XCTestCase {
         XCTAssertNil(fakeRunner.lastStandardInput)
     }
 
+    func testSliceAddUnderAContainerFilesItByContainerAndSendsTheBriefOverStdin() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceAddSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        _ = try await client.sliceAdd(projectID: "work", title: "Jump threads", container: "4821", description: "Use ⌘J.")
+
+        XCTAssertEqual(
+            fakeRunner.lastArguments,
+            ["slice-add", "Jump threads", "--project", "work", "--container", "4821", "--json", "--description", "-"]
+        )
+        XCTAssertEqual(fakeRunner.lastStandardInput, Data("Use ⌘J.".utf8))
+    }
+
     func testSliceAddWithNoMilestoneOmitsTheFlag() async throws {
         let fakeRunner = FakeRunner(fixture: .sliceAddSuccess)
         let client = NatClient(commandRunner: fakeRunner)

@@ -17,8 +17,19 @@ struct NewSliceSheetView: View {
     /// The scratch project's sheet: a slice there may go under no milestone,
     /// which nat files under the project's unfiled one.
     var milestoneOptional = false
+    /// A source project's container the task goes under — fixed, in place of
+    /// the milestone picker, and filed with `slice-add --container`.
+    var container: Container?
     let onClose: () -> Void
     let onCreated: () -> Void
+
+    /// The container a source project's `+` opened the sheet on.
+    struct Container {
+        let id: String
+        let title: String
+        /// What the source calls one — "card".
+        let noun: String
+    }
 
     @State private var title: String = ""
     @State private var selectedMilestone: String = ""
@@ -29,7 +40,7 @@ struct NewSliceSheetView: View {
     private var canSubmit: Bool {
         !isSubmitting
             && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && (milestoneOptional || !selectedMilestone.isEmpty)
+            && (milestoneOptional || container != nil || !selectedMilestone.isEmpty)
     }
 
     var body: some View {
@@ -47,17 +58,32 @@ struct NewSliceSheetView: View {
                     .font(Typo.mono(size: Typo.code))
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Milestone")
-                    .font(.system(size: Typo.subhead, weight: .semibold))
-                    .ink(.secondary)
-                Picker("Milestone", selection: $selectedMilestone) {
-                    Text(milestoneOptional ? "No milestone" : "Select a milestone").tag("")
-                    ForEach(milestones.filter { !$0.unfiled }) { milestone in
-                        Text(milestone.name).tag(milestone.name)
+            if let container {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(container.noun.prefix(1).uppercased() + container.noun.dropFirst())
+                        .font(.system(size: Typo.subhead, weight: .semibold))
+                        .ink(.secondary)
+                    HStack(spacing: 7) {
+                        Image(systemName: SourceGlyph.container)
+                            .font(.system(size: 11))
+                            .ink(.tertiary)
+                        Text(container.title).ink(.primary).lineLimit(1)
                     }
+                    .font(.system(size: Typo.code))
                 }
-                .labelsHidden()
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Milestone")
+                        .font(.system(size: Typo.subhead, weight: .semibold))
+                        .ink(.secondary)
+                    Picker("Milestone", selection: $selectedMilestone) {
+                        Text(milestoneOptional ? "No milestone" : "Select a milestone").tag("")
+                        ForEach(milestones.filter { !$0.unfiled }) { milestone in
+                            Text(milestone.name).tag(milestone.name)
+                        }
+                    }
+                    .labelsHidden()
+                }
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -123,12 +149,18 @@ struct NewSliceSheetView: View {
             error = nil
 
             do {
-                _ = try await NatClient().sliceAdd(
-                    projectID: projectID,
-                    title: trimmedTitle,
-                    milestone: selectedMilestone,
-                    description: trimmedDescription.isEmpty ? nil : trimmedDescription
-                )
+                let description = trimmedDescription.isEmpty ? nil : trimmedDescription
+                if let container {
+                    _ = try await NatClient().sliceAdd(
+                        projectID: projectID, title: trimmedTitle, container: container.id, description: description)
+                } else {
+                    _ = try await NatClient().sliceAdd(
+                        projectID: projectID,
+                        title: trimmedTitle,
+                        milestone: selectedMilestone,
+                        description: description
+                    )
+                }
                 onCreated()
             } catch let natError as NatError {
                 if case .commandFailed(let message) = natError {

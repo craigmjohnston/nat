@@ -48,6 +48,14 @@ struct SidebarView: View {
     /// The project row under the pointer, whose folder turns into its fold
     /// chevron.
     @State private var hoveredProject: String?
+    /// A source fold's row under the pointer — a group's or a container's,
+    /// by `sourceRowKey` — which shows its hover-only meta, `+` and menu.
+    @State private var hoveredSourceRow: String?
+    @State private var newTaskContainer: NewTaskContainer?
+    /// A source action waiting on its line of text, or on its confirmation.
+    @State private var sourceActionNeedingText: PendingSourceAction?
+    @State private var sourceActionToConfirm: PendingSourceAction?
+    @State private var newSourceProjectPlugin: SourcePlugin?
 
     init(
         appModel: AppModel, onNewProject: @escaping () -> Void = {}, showsTitlebar: Bool = false,
@@ -71,6 +79,23 @@ struct SidebarView: View {
         var id: String { "\(projectID)/\(name)" }
     }
 
+    /// The container a `+` asked for a new task on.
+    fileprivate struct NewTaskContainer: Identifiable {
+        let projectID: String
+        let container: SidebarContainer
+        let noun: String
+        var id: String { "\(projectID)/\(container.id)" }
+    }
+
+    /// One of a source's actions and the row it came from.
+    fileprivate struct PendingSourceAction: Identifiable {
+        let projectID: String
+        let action: SourceAction
+        var group: String?
+        var container: String?
+        var id: String { "\(projectID)/\(group ?? "")/\(container ?? "")/\(action.id)" }
+    }
+
     /// The sidebar's model, its done work dropped while View ▸ Hide Done
     /// Items is on.
     private var model: SidebarModel {
@@ -78,7 +103,7 @@ struct SidebarView: View {
         guard !showsDoneItems else { return model }
         return SidebarModel(
             active: model.active, projects: model.projects.map { $0.hidingDone() },
-            scratch: model.scratch?.hidingDone())
+            sources: model.sources.map { $0.hidingDone() }, scratch: model.scratch?.hidingDone())
     }
 
     var body: some View {
@@ -90,7 +115,11 @@ struct SidebarView: View {
             head("active", label: "Active", count: model.needsYouCount) { EmptyView() }
             // Folded, Projects (and Scratch under it) pins to the sidebar's
             // foot rather than leaving an empty well under its heading.
-            let pinsProjects = !isOpen("work") && !(model.scratch != nil && isOpen("scratch", byDefault: false))
+            let pinsProjects = !isOpen("work") && model.sources.isEmpty
+                && !(model.scratch != nil && isOpen("scratch", byDefault: false))
+            // The tree's scroll holds the source folds too, under Projects,
+            // so it stays up with Projects folded while there are any.
+            let treeShown = isOpen("work") || !model.sources.isEmpty
             if isOpen("active") {
                 if model.active.isEmpty {
                     GnatNote(text: EmptyActiveNote.text.lowercased(), height: GnatMetrics.sidebarRowHeight)
@@ -123,10 +152,13 @@ struct SidebarView: View {
                 .buttonStyle(GnatIconButtonStyle())
                 .help("New project\u{2026}")
             }
-            if isOpen("work") {
+            if treeShown {
                 ScrollView {
                     VStack(spacing: 0) {
-                        ForEach(model.projects) { projectRows($0) }
+                        if isOpen("work") {
+                            ForEach(model.projects) { projectRows($0) }
+                        }
+                        ForEach(model.sources) { sourceFold($0) }
                     }
                 }
                 .thinScrollers()
@@ -134,7 +166,9 @@ struct SidebarView: View {
             }
 
             if let scratch = model.scratch {
-                scratchFold(scratch, projectsOpen: isOpen("work"), hidesRule: projectsEndInSelection(model))
+                scratchFold(
+                    scratch, projectsOpen: treeShown,
+                    hidesRule: model.sources.isEmpty && projectsEndInSelection(model))
             }
 
             if appModel.mirrorNudgeShown {
@@ -293,6 +327,13 @@ struct SidebarView: View {
         let targets = model.projects.filter { $0.kind == .project } + (model.scratch.map { [$0] } ?? [])
         return Menu {
             Button("New project\u{2026}", systemImage: "folder.badge.plus", action: onNewProject)
+            // One per plugin that described itself: one that would not has
+            // no project to make.
+            ForEach(appModel.sourcePlugins.filter { $0.describe != nil }) { plugin in
+                Button("New \(plugin.displayTitle) project\u{2026}", systemImage: plugin.iconSymbol) {
+                    newSourceProjectPlugin = plugin
+                }
+            }
             Divider()
             projectSubmenu("New milestone", systemImage: "folder.badge.plus", targets) { project in
                 newMilestoneText = ""
@@ -335,6 +376,284 @@ struct SidebarView: View {
             }
         }
         .disabled(targets.isEmpty)
+    }
+
+    // MARK: - Sources
+
+    /// A source project's fold: a heading of its own — the plugin's icon,
+    /// the project's name, its header menu — over the plugin's groups, their
+    /// containers, and each container's tasks.
+    @ViewBuilder
+    private func sourceFold(_ project: SidebarProject) -> some View {
+        let key = "s:\(project.id)"
+        let open = isOpen(key)
+        let source = project.source
+        Rule(.separator).padding(.top, 4)
+        HStack(spacing: 6) {
+            DisclosureChevron(open: open)
+            SourceIconView(icon: source?.icon ?? SourceIcon(symbol: ""), size: 13)
+                .ink(.secondary)
+            Text(project.name.uppercased())
+                .font(.system(size: 12))
+                .tracking(0.7)
+                .ink(.secondary)
+                .lineLimit(1)
+            if !open && project.needsYou > 0 {
+                Text("\(project.needsYou)").monoXS().ink(.hot)
+            }
+            Spacer(minLength: 0)
+            if let source, !source.menu.isEmpty {
+                Menu {
+                    actionItems(source.menu, projectID: project.id)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 12, weight: .medium))
+                        .ink(.tertiary)
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .menuStyle(.button)
+                .buttonStyle(GnatIconButtonStyle())
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help(source.title)
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: GnatMetrics.sectionHeadHeight)
+        .contentShape(Rectangle())
+        .onTapGesture { toggle(key, open: open) }
+        .contextMenu { sourceProjectMenu(project) }
+
+        if open {
+            sourceBody(project)
+        }
+    }
+
+    @ViewBuilder
+    private func sourceBody(_ project: SidebarProject) -> some View {
+        switch project.status {
+        case .loading:
+            GnatNote(text: "loading\u{2026}", leading: 26, height: GnatMetrics.sidebarRowHeight)
+        case .failed(let message):
+            failedRow(project, message: message)
+        case .stale(let message):
+            GnatNote(
+                text: "refresh failed — showing the last plan", role: .warning, leading: 26,
+                height: GnatMetrics.sidebarRowHeight)
+                .help(message)
+        case .loaded, .empty, .none:
+            EmptyView()
+        }
+        if let source = project.source {
+            if let error = source.error {
+                // The plugin's own failed read: the fold's note, its first
+                // words drawn and the rest on hover.
+                Text(error)
+                    .font(.system(size: GnatMetrics.xs))
+                    .ink(.warning)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 26)
+                    .padding(.trailing, 10)
+                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .help(error)
+            }
+            ForEach(source.groups) { group in
+                sourceGroup(group, project: project, source: source, indent: 20)
+            }
+        }
+    }
+
+    /// One group of a source fold: its small-caps header with the plugin's
+    /// count, then — open — its child groups, a step in, or its containers.
+    /// A lazy group's fold is the app model's, since opening it is a read.
+    private func sourceGroup(
+        _ group: SidebarSourceGroup, project: SidebarProject, source: SidebarSource, indent: CGFloat
+    ) -> AnyView {
+        let key = "g:\(project.id)/\(group.id)"
+        let open = group.lazy
+            ? appModel.isSourceGroupExpanded(group.id, inProject: project.id)
+            : isOpen(key)
+        let rowKey = sourceRowKey(project.id, group: group.id)
+        let hovered = hoveredSourceRow == rowKey
+        return AnyView(VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                DisclosureChevron(open: open)
+                Text(group.label.uppercased())
+                    .font(.system(size: 11, weight: .medium))
+                    .tracking(0.7)
+                    .ink(.tertiary)
+                    .lineLimit(1)
+                if let count = group.count {
+                    Text("\(count)").font(Typo.mono(size: 11)).ink(.tertiary)
+                }
+                Spacer(minLength: 0)
+                if !group.menu.isEmpty {
+                    Menu {
+                        actionItems(group.menu, projectID: project.id, group: group.id)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 11, weight: .medium))
+                            .ink(.tertiary)
+                            .frame(width: 16, height: 16)
+                            .contentShape(Rectangle())
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(GnatIconButtonStyle())
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .opacity(hovered ? 1 : 0)
+                    .allowsHitTesting(hovered)
+                }
+            }
+            .padding(.leading, indent)
+            .padding(.trailing, 10)
+            .frame(height: 24)
+            .contentShape(Rectangle())
+            .onHover { inside in hover(rowKey, inside) }
+            .onTapGesture {
+                if group.lazy {
+                    Task { await appModel.setSourceGroup(group.id, expanded: !open, inProject: project.id) }
+                } else {
+                    toggle(key, open: open)
+                }
+            }
+            .contextMenu {
+                if !group.menu.isEmpty { actionItems(group.menu, projectID: project.id, group: group.id) }
+            }
+
+            if open {
+                ForEach(group.children) { child in
+                    sourceGroup(child, project: project, source: source, indent: indent + 10)
+                }
+                ForEach(group.containers) { container in
+                    containerRows(container, project: project, source: source, indent: indent)
+                }
+                if group.children.isEmpty && group.containers.isEmpty {
+                    GnatNote(
+                        text: group.lazy && (group.count ?? 0) > 0 ? "loading\u{2026}" : "no \(source.containerNoun)s",
+                        leading: indent + 22, height: GnatMetrics.rowHeight)
+                }
+            }
+        })
+    }
+
+    /// A container row — its card glyph, title, hover meta, badges and a
+    /// hover `+` for a new task — and its tasks nested a step in beneath.
+    @ViewBuilder
+    private func containerRows(
+        _ container: SidebarContainer, project: SidebarProject, source: SidebarSource, indent: CGFloat
+    ) -> some View {
+        let selected = appModel.activeProjectID == project.id && appModel.selectedContainerID == container.id
+        let rowKey = sourceRowKey(project.id, container: container.id)
+        let hovered = hoveredSourceRow == rowKey
+        HStack(spacing: 7) {
+            Image(systemName: SourceGlyph.container)
+                .font(.system(size: 11))
+                .ink(.tertiary)
+                .frame(width: 16)
+            Text(container.title)
+                .font(.system(size: GnatMetrics.body))
+                .ink(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            // The meta and the `+` only under the pointer, taking no room
+            // otherwise: a sidebar is narrow, and the title wants it.
+            if hovered, let meta = container.meta {
+                Text(meta).monoXS().ink(.tertiary)
+            }
+            ForEach(Array(container.badges.enumerated()), id: \.offset) { _, badge in
+                SourceBadgeView(badge: badge)
+            }
+            if hovered {
+                Button {
+                    newTaskContainer = NewTaskContainer(projectID: project.id, container: container, noun: source.containerNoun)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .light))
+                        .ink(.tertiary)
+                        .frame(width: 16, height: 16)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(GnatIconButtonStyle())
+                .help("New \(source.taskNoun) on this \(source.containerNoun)")
+            }
+        }
+        .padding(.leading, indent + 6)
+        .padding(.trailing, 10)
+        .frame(height: GnatMetrics.sidebarRowHeight)
+        .gnatRow(selected: selected)
+        .contentShape(Rectangle())
+        .onHover { inside in hover(rowKey, inside) }
+        .onTapGesture { Task { await appModel.selectContainer(container.id, inProject: project.id) } }
+        .contextMenu { containerMenu(container, project: project, source: source) }
+
+        ForEach(container.tasks) { sliceRow($0, indent: indent + 14) }
+    }
+
+    @ViewBuilder
+    private func containerMenu(_ container: SidebarContainer, project: SidebarProject, source: SidebarSource) -> some View {
+        Button("New \(source.taskNoun)\u{2026}", systemImage: "plus") {
+            newTaskContainer = NewTaskContainer(projectID: project.id, container: container, noun: source.containerNoun)
+        }
+        if let url = container.externalURL.flatMap(URL.init(string:)) {
+            Button("Open in \(source.title)", systemImage: SourceGlyph.externalLink) { NSWorkspace.shared.open(url) }
+        }
+        if !container.menu.isEmpty {
+            Divider()
+            actionItems(container.menu, projectID: project.id, container: container.id)
+        }
+    }
+
+    /// A source project's own menu: its header's actions, then the project's
+    /// own Reveal and Close.
+    @ViewBuilder
+    private func sourceProjectMenu(_ project: SidebarProject) -> some View {
+        if let source = project.source, !source.menu.isEmpty {
+            actionItems(source.menu, projectID: project.id)
+            Divider()
+        }
+        if let directory = workingDirectory(of: project.id) {
+            Button("Reveal working directory in Finder", systemImage: "folder") {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: directory)])
+            }
+        }
+        if ProjectTabRules.showsClose(tabCount: appModel.closableTabCount, isScratch: false) {
+            Divider()
+            Button("Close project", systemImage: "xmark.circle") { requestClose(project.id) }
+        }
+    }
+
+    private func actionItems(
+        _ actions: [SourceAction], projectID: String, group: String? = nil, container: String? = nil
+    ) -> some View {
+        SourceActionItems(
+            actions: actions,
+            onRun: { action, input in
+                runSourceAction(PendingSourceAction(projectID: projectID, action: action, group: group, container: container), input: input)
+            },
+            onText: { sourceActionNeedingText = PendingSourceAction(projectID: projectID, action: $0, group: group, container: container) },
+            onConfirm: { sourceActionToConfirm = PendingSourceAction(projectID: projectID, action: $0, group: group, container: container) })
+    }
+
+    fileprivate func runSourceAction(_ pending: PendingSourceAction, input: String?) {
+        Task {
+            if let refusal = await appModel.runSourceAction(
+                projectID: pending.projectID, action: pending.action, group: pending.group,
+                container: pending.container, input: input) {
+                actionError = refusal
+            }
+        }
+    }
+
+    private func sourceRowKey(_ projectID: String, group: String? = nil, container: String? = nil) -> String {
+        "\(projectID)/\(group.map { "g:\($0)" } ?? "")\(container.map { "c:\($0)" } ?? "")"
+    }
+
+    private func hover(_ key: String, _ inside: Bool) {
+        if inside { hoveredSourceRow = key } else if hoveredSourceRow == key { hoveredSourceRow = nil }
     }
 
     // MARK: - Active
@@ -960,6 +1279,47 @@ struct SidebarView: View {
                             Task { await appModel.refresh() }
                         }
                     )
+                }
+                .sheet(item: view.$newTaskContainer) { target in
+                    NewSliceSheetView(
+                        projectID: target.projectID,
+                        milestones: [],
+                        container: NewSliceSheetView.Container(
+                            id: target.container.id, title: target.container.title, noun: target.noun),
+                        onClose: { view.newTaskContainer = nil },
+                        onCreated: {
+                            view.newTaskContainer = nil
+                            Task { await appModel.refresh() }
+                        }
+                    )
+                }
+                .sheet(item: view.$sourceActionNeedingText) { pending in
+                    SourceActionTextSheet(
+                        action: pending.action,
+                        onCancel: { view.sourceActionNeedingText = nil },
+                        onRun: { text in
+                            view.sourceActionNeedingText = nil
+                            view.runSourceAction(pending, input: text)
+                        })
+                }
+                .alert(
+                    "\(view.sourceActionToConfirm?.action.label ?? "")?",
+                    isPresented: presenting(view.$sourceActionToConfirm),
+                    presenting: view.sourceActionToConfirm
+                ) { pending in
+                    Button(pending.action.label, role: .destructive) { view.runSourceAction(pending, input: nil) }
+                    Button("Cancel", role: .cancel) {}
+                } message: { _ in
+                    Text("The source plugin does this in its own records.")
+                }
+                .sheet(item: view.$newSourceProjectPlugin) { plugin in
+                    NewSourceProjectSheetView(
+                        plugin: plugin,
+                        onClose: { view.newSourceProjectPlugin = nil },
+                        onAdded: { id, name in
+                            view.newSourceProjectPlugin = nil
+                            Task { await appModel.addProject(id: id, name: name) }
+                        })
                 }
                 .sheet(item: view.$sliceForEdit) { row in
                     EditBriefSheetView(

@@ -34,8 +34,8 @@ fuller structure and theme system.
 - Task sources: `SourceModels.swift` (and `ProjectInfo.source`,
   `SliceDetail.container`, `PlanBackend.source`) mirror
   `docs/design/task-sources/README.md` field for field — change the spec and
-  the models together. Settings ▸ Sources (`source-list`) is the only view so
-  far; the sidebar/navigator for source projects is the next milestone.
+  the models together. Where they are drawn: see **Task sources** under The
+  window.
 - `NatBinary.resolve` never falls through to PATH for a packaged app:
   `NAT_BIN` (dev override) → the binary beside the app executable. No
   bundled `nat` is a **damaged install**, reported as such; only a bare dev
@@ -184,6 +184,35 @@ pane SwiftUI lays out (pinned headers, `ScrollViewReader`) — safe only because
 nothing draws until every image's pixel size is known and every image has an
 explicit frame; keep it so. Stories: `window-visuals`,
 `window-visuals-comments`, `visuals-zoomed`, `visuals-comment-editor`.
+
+**Task sources.** A source project (config `backend: source`, or a plan
+carrying `source`) is pulled out of Projects into a top-level fold of its own
+between Projects and Scratch (`SidebarModel.sources`, `SidebarSource`): the
+plugin's icon (`SourceIconView` — `icon_svg` as a template, else the SF
+Symbol), the project's name and the header `menu`; then the plugin's groups
+(one level of children), container rows (`SidebarContainer` — badges, hover
+`meta` and `+`, `menu`, Open in <source>) and each container's tasks, the
+plan's slices whose `milestoneID` is the container's id, through
+`displayState(for:)` like every row (Hide Done applies; a container in two
+groups is one container). A lazy group's fold is `AppModel.sourceExpanded`,
+passed on every read as `info --expand` (`ProjectStore.expand`). Plugin
+actions run through `AppModel.runSourceAction` (`text` asks in a sheet,
+`choice` is a submenu, `destructive` is confirmed), then re-read the plan.
+Active rows and the titlebar carry the plugin's `tag` (`sidebarTags`). A
+container is a third selection kind (`selectedContainerID`, exclusive with
+slice, session and workshop); `ContainerStore` caches `container-show` per
+project and, like the PR screen, keeps a stale reading on a failed re-read.
+`ContainerNavigatorModel` decides the sections (the first prose section's
+facts and tasks, then comments/links; unknown kinds skipped) and
+`ContainerFocus` what is open and what `ContainerPane` shows. A task under a
+container shows the container and its `facts` in place of the milestone,
+the PR section its `task_note`, and the status bar `<container> / <task>`;
+`CrumbTree` has a group → container level for source projects.
+`DesignTokens.wireTint`/`wireBadge` are the one place a plugin's `#rrggbb`
+becomes a `Color` (as a hue through the palette's rules). Stories:
+`sidebar-source`, `sidebar-source-error`, `window-container`,
+`window-container-links`, `window-source-task-brief`,
+`window-source-task-pr`, `new-source-project`.
 
 ## The diff is AppKit, laid out exactly
 
