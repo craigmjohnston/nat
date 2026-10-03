@@ -118,6 +118,7 @@ func command(tokens config.TokenSource) error {
 		NewGit:       newCLIGit,
 		NewWorktrees: newCLIWorktrees,
 		NewSource:    newCLISource,
+		NewPlugins:   cli.DefaultNewPlugins,
 		Out:          stdout,
 		In:           stdin,
 		Nudge:        nudge.Touch,
