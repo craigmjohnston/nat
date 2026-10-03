@@ -6,6 +6,7 @@ import NatFixtures
 private final class PluginStubRunner: CommandRunning, @unchecked Sendable {
     let stdout: String
     private(set) var lastArguments: [String] = []
+    private(set) var lastStandardInput: Data?
 
     init(stdout: String) {
         self.stdout = stdout
@@ -15,6 +16,7 @@ private final class PluginStubRunner: CommandRunning, @unchecked Sendable {
         executable: String, arguments: [String], workingDirectory: String?, standardInput: Data?
     ) async throws -> (stdout: Data, stderr: Data, exitCode: Int32) {
         lastArguments = arguments
+        lastStandardInput = standardInput
         return (Data(stdout.utf8), Data(), 0)
     }
 }
@@ -27,9 +29,10 @@ private let listingJSON = #"""
     {"repo": "dead/source", "version": "", "error": "read plugin source dead/source: GET …: 404 Not Found", "default": false}
   ],
   "installed": [
-    {"name": "demo", "path": "/c/plugins/demo/nat-source-demo", "kind": "managed", "source": "craigmjohnston/nat", "version": "1.0.1", "update": "1.0.2"},
-    {"name": "hand", "path": "/c/plugins/hand/nat-source-hand", "kind": "manual", "source": "", "version": "", "update": ""},
-    {"name": "onpath", "path": "/bin/nat-source-onpath", "kind": "path", "source": "", "version": "", "update": ""}
+    {"name": "demo", "path": "/c/plugins/demo/nat-source-demo", "kind": "managed", "source": "craigmjohnston/nat", "version": "1.0.1", "update": "1.0.2",
+     "setup": [{"id": "token", "label": "API token", "input": "secret", "hint": "Settings ▸ Tokens"}, {"id": "team", "label": "Team", "input": "text"}], "describe_error": ""},
+    {"name": "hand", "path": "/c/plugins/hand/nat-source-hand", "kind": "manual", "source": "", "version": "", "update": "", "setup": [], "describe_error": "hand: broken"},
+    {"name": "onpath", "path": "/bin/nat-source-onpath", "kind": "path", "source": "", "version": "", "update": "", "setup": [], "describe_error": ""}
   ],
   "available": [
     {"name": "demo", "title": "Demo", "description": "A demo.", "source": "craigmjohnston/nat", "version": "1.0.2", "installed": true}
@@ -53,6 +56,13 @@ final class PluginModelsTests: XCTestCase {
         XCTAssertEqual(listing.available[0].id, "craigmjohnston/nat/demo")
         XCTAssertEqual(listing.sources[0].id, "craigmjohnston/nat")
         XCTAssertEqual(listing.installed[0].id, "demo")
+        // A setup field's hint may be left out; the rest are always written.
+        XCTAssertEqual(listing.installed[0].setup, [
+            PluginSetupField(id: "token", label: "API token", input: "secret", hint: "Settings ▸ Tokens"),
+            PluginSetupField(id: "team", label: "Team", input: "text"),
+        ])
+        XCTAssertEqual(listing.installed[0].setup.map(\.isSecret), [true, false])
+        XCTAssertEqual(listing.installed.map(\.describeError), ["", "hand: broken", ""])
     }
 
     func testLabelsForWhatNatCannotSay() {
@@ -103,6 +113,17 @@ final class PluginModelsTests: XCTestCase {
         XCTAssertEqual(sources.lastArguments, ["plugin-source-remove", "a/b", "--json"])
     }
 
+    /// The value — a token — goes on stdin alone: the arguments name the
+    /// plugin and the field and nothing else.
+    func testSourceSetupSendsTheValueOnStdinOnly() async throws {
+        let runner = PluginStubRunner(stdout: #"{"message": "Logged in to scratch as Craig"}"#)
+        let result = try await NatClient(commandRunner: runner).sourceSetup(plugin: "shortcut", id: "token", value: "s3cret-tok")
+        XCTAssertEqual(result, PluginSetupResult(message: "Logged in to scratch as Craig"))
+        XCTAssertEqual(runner.lastArguments, ["source-setup", "shortcut", "--id", "token", "--json"])
+        XCTAssertFalse(runner.lastArguments.contains { $0.contains("s3cret") })
+        XCTAssertEqual(runner.lastStandardInput, Data("s3cret-tok".utf8))
+    }
+
     func testAClientWithNoPluginsRefusesThePluginCommands() async {
         let client = MockActivityClient(response: .agents([]))
         let calls: [(String, () async throws -> Void)] = [
@@ -111,6 +132,7 @@ final class PluginModelsTests: XCTestCase {
             ("plugin-uninstall", { _ = try await client.pluginUninstall(name: "x") }),
             ("plugin-source-add", { _ = try await client.pluginSourceAdd(repo: "a/b") }),
             ("plugin-source-remove", { _ = try await client.pluginSourceRemove(repo: "a/b") }),
+            ("source-setup", { _ = try await client.sourceSetup(plugin: "x", id: "token", value: "v") }),
         ]
         for (command, call) in calls {
             do {
@@ -135,11 +157,14 @@ final class PluginModelsTests: XCTestCase {
         XCTAssertEqual(added.sources, ["craigmjohnston/nat", "a/b"])
         let removed = try await client.pluginSourceRemove(repo: "craigmjohnston/nat")
         XCTAssertEqual(removed.sources, [])
+        let setUp = try await client.sourceSetup(plugin: "shortcut", id: "token", value: "s3cret")
+        XCTAssertEqual(setUp.message, "Logged in to scratch as Craig Scratch")
         XCTAssertEqual(client.writes, [
             "plugin-install demo --source ",
             "plugin-uninstall demo",
             "plugin-source-add a/b",
             "plugin-source-remove craigmjohnston/nat",
+            "source-setup shortcut --id token",
         ])
         XCTAssertTrue(Fixtures.pluginListing.installed.contains { $0.hasUpdate })
     }
@@ -204,6 +229,48 @@ final class PluginsModelTests: XCTestCase {
         await model.uninstall(demo)
         XCTAssertTrue(model.running.contains(.uninstall(name: "demo")))
         first.cancel()
+    }
+
+    func testSaveSetupClearsTheFieldAndKeepsWhatThePluginSaid() async {
+        let client = FixtureNatClient(plugins: Fixtures.pluginListingShortcut)
+        let model = PluginsModel(client: client)
+        let key = PluginsModel.SetupKey(plugin: "shortcut", field: "token")
+
+        XCTAssertFalse(model.canSave(key))
+        model.setupValues[key] = " \n"
+        XCTAssertFalse(model.canSave(key), "a blank value is nothing to save")
+        await model.saveSetup(plugin: "shortcut", field: "token")
+        XCTAssertTrue(client.writes.isEmpty)
+
+        model.setupValues[key] = "s3cret"
+        XCTAssertTrue(model.canSave(key))
+        await model.saveSetup(plugin: "shortcut", field: "token")
+        XCTAssertEqual(model.setupValues[key], "")
+        XCTAssertEqual(model.setupOutcomes[key], .saved("Logged in to scratch as Craig Scratch"))
+        XCTAssertEqual(model.listing, Fixtures.pluginListingShortcut, "the listing is read again")
+        XCTAssertEqual(client.writes, ["source-setup shortcut --id token"])
+        XCTAssertTrue(model.running.isEmpty)
+        XCTAssertNil(model.actionError, "a setup answer is the field's, not the tab's")
+    }
+
+    func testSaveSetupKeepsARefusalAndTheValue() async {
+        let model = PluginsModel(client: FixtureNatClient(behaviour: .refusing("shortcut: token stored, but Shortcut refused it")))
+        let key = PluginsModel.SetupKey(plugin: "shortcut", field: "token")
+        model.setupValues[key] = "wrong"
+        await model.saveSetup(plugin: "shortcut", field: "token")
+        XCTAssertEqual(model.setupOutcomes[key], .refused("shortcut: token stored, but Shortcut refused it"))
+        XCTAssertEqual(model.setupValues[key], "wrong", "kept to correct")
+        XCTAssertNil(model.actionError)
+        XCTAssertTrue(model.running.isEmpty)
+    }
+
+    /// A plugin that answers nothing still reads as saved.
+    func testSaveSetupWithNoMessage() async {
+        let model = PluginsModel(client: NatClient(commandRunner: PluginStubRunner(stdout: #"{"message": ""}"#)))
+        let key = PluginsModel.SetupKey(plugin: "p", field: "f")
+        model.setupValues[key] = "v"
+        await model.saveSetup(plugin: "p", field: "f")
+        XCTAssertEqual(model.setupOutcomes[key], .saved("Saved."))
     }
 
     func testReloadSourcePluginsReadsThemAgain() async {

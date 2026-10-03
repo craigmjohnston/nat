@@ -55,6 +55,7 @@ public protocol NatClientProtocol: Sendable {
     func pluginUninstall(name: String) async throws -> PluginUninstalled
     func pluginSourceAdd(repo: String) async throws -> PluginSourceList
     func pluginSourceRemove(repo: String) async throws -> PluginSourceList
+    func sourceSetup(plugin: String, id: String, value: String) async throws -> PluginSetupResult
     func sliceAdd(projectID: String, title: String, container: String, description: String?) async throws -> SliceAddResult
 }
 
@@ -228,6 +229,10 @@ extension NatClientProtocol {
 
     public func pluginSourceRemove(repo: String) async throws -> PluginSourceList {
         throw NatError.commandFailed("plugin-source-remove: not supported by this client")
+    }
+
+    public func sourceSetup(plugin: String, id: String, value: String) async throws -> PluginSetupResult {
+        throw NatError.commandFailed("source-setup: not supported by this client")
     }
 
     public func sliceAdd(projectID: String, title: String, container: String, description: String?) async throws -> SliceAddResult {

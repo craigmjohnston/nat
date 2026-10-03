@@ -47,14 +47,20 @@ struct SettingsView: View {
 
     @State private var selectedTab: SettingsTab
 
-    /// - Parameter initialTab: Which tab the scene opens on — General for
-    ///   the window itself, and whichever tab's own story wants to show for
-    ///   a gallery capture.
-    init(appModel: AppModel, client: NatClientProtocol = NatClient(), initialTab: SettingsTab = .general) {
+    /// - Parameters:
+    ///   - initialTab: Which tab the scene opens on — General for the window
+    ///     itself, and whichever tab's own story wants to show for a gallery
+    ///     capture.
+    ///   - plugins: The Sources tab's model, already driven — a story's, to
+    ///     draw what a Save came to; the window makes its own.
+    init(
+        appModel: AppModel, client: NatClientProtocol = NatClient(), initialTab: SettingsTab = .general,
+        plugins: PluginsModel? = nil
+    ) {
         self.appModel = appModel
         self.client = client
         _selectedTab = State(initialValue: initialTab)
-        _plugins = State(initialValue: PluginsModel(client: client) { [appModel] in
+        _plugins = State(initialValue: plugins ?? PluginsModel(client: client) { [appModel] in
             await appModel.reloadSourcePlugins()
         })
     }
@@ -244,18 +250,80 @@ struct SettingsView: View {
                     .ink(.secondary)
             }
             ForEach(listing.installed) { plugin in
-                InstalledPluginRow(
-                    plugin: plugin,
-                    updating: plugins.running.contains(.update(name: plugin.name)),
-                    uninstalling: plugins.running.contains(.uninstall(name: plugin.name)),
-                    update: { Task { await plugins.update(plugin) } },
-                    uninstall: { Task { await plugins.uninstall(plugin) } }
-                )
+                VStack(alignment: .leading, spacing: 8) {
+                    InstalledPluginRow(
+                        plugin: plugin,
+                        updating: plugins.running.contains(.update(name: plugin.name)),
+                        uninstalling: plugins.running.contains(.uninstall(name: plugin.name)),
+                        update: { Task { await plugins.update(plugin) } },
+                        uninstall: { Task { await plugins.uninstall(plugin) } }
+                    )
+                    if !plugin.describeError.isEmpty {
+                        Label(plugin.describeError, systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote)
+                            .ink(.warning)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    ForEach(plugin.setup) { field in
+                        setupFieldRow(plugin: plugin.name, field: field)
+                    }
+                }
             }
         } header: {
             Text("Installed")
         } footer: {
-            sectionFootnote("Add a project over one from the + menu. A plugin put here by hand is never overwritten.")
+            sectionFootnote(
+                "Each plugin adds a \u{201C}New \u{2026} project\u{201D} item to the + menu, for a project whose cards "
+                    + "come from that service. Updates come from the sources below. A plugin marked manual or on "
+                    + "PATH was installed outside gnat and is left as you put it.")
+        }
+    }
+
+    /// One of a plugin's setup fields beneath its row: the label, a secure
+    /// field (or a plain one for `text`) and Save, the hint under them, then
+    /// what the last Save came to. The value goes to `nat source-setup` on
+    /// stdin, through `PluginsModel`.
+    private func setupFieldRow(plugin: String, field: PluginSetupField) -> some View {
+        let key = PluginsModel.SetupKey(plugin: plugin, field: field.id)
+        let value = Binding(
+            get: { plugins.setupValues[key] ?? "" },
+            set: { plugins.setupValues[key] = $0 })
+        let save = { Task { await plugins.saveSetup(plugin: plugin, field: field.id) } }
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(field.label)
+                Group {
+                    if field.isSecret {
+                        SecureField(field.label, text: value)
+                    } else {
+                        TextField(field.label, text: value)
+                    }
+                }
+                .textFieldStyle(.roundedBorder)
+                .labelsHidden()
+                .onSubmit { _ = save() }
+                PluginActionButton(title: "Save", running: plugins.running.contains(.setup(key))) { _ = save() }
+                    .disabled(!plugins.canSave(key))
+            }
+            if !field.hint.isEmpty {
+                Text(field.hint)
+                    .font(.footnote)
+                    .ink(.secondary)
+            }
+            switch plugins.setupOutcomes[key] {
+            case .saved(let message):
+                Label(message, systemImage: "checkmark.circle.fill")
+                    .font(.footnote)
+                    .ink(.success)
+                    .fixedSize(horizontal: false, vertical: true)
+            case .refused(let message):
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .ink(.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+            case nil:
+                EmptyView()
+            }
         }
     }
 
@@ -300,7 +368,7 @@ struct SettingsView: View {
         } header: {
             Text("Plugin sources")
         } footer: {
-            sectionFootnote("GitHub repositories whose releases carry a nat-plugins.json. nat's own is always read first.")
+            sectionFootnote("GitHub repositories that publish plugins. nat's own is always checked first.")
         }
     }
 
@@ -349,6 +417,9 @@ struct SettingsView: View {
         Text(text)
             .font(.footnote)
             .ink(.secondary)
+            // A grouped form sets its footers' multi-line alignment trailing;
+            // a caption that wraps reads ragged-right, as System Settings'.
+            .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
     }

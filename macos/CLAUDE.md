@@ -31,13 +31,19 @@ fuller structure and theme system.
 - Every call on a tracked project passes `--project <id>`, no fallback,
   mirroring the Go CLI (exceptions mirror the Go CLI's own: `status`,
   `paths`, `config-show`/`-set`, `project-create`/`-open`, `source-list`,
-  `plugin-*`).
+  `source-setup`, `plugin-*`).
 - Plugin install: `PluginModels.swift` mirrors `nat plugin-list` and the
   other `plugin-*` answers; Settings ▸ Sources draws them through
   `PluginsModel` (Installed, Available, Plugin sources), each button one
   `nat plugin-*` call and then a fresh `plugin-list`, and an install or
-  uninstall re-reads `AppModel.sourcePlugins` for the `+` menu. Stories:
-  `settings-sources`, `-loading`, `-error`, `-empty`.
+  uninstall re-reads `AppModel.sourcePlugins` for the `+` menu. An
+  installed row draws its `describe_error` as a warning line and its
+  `setup` fields beneath it (`SecureField` for `secret`); Save is
+  `PluginsModel.saveSetup` → `NatClient.sourceSetup`, the value on
+  **stdin only** (never an argument; `NatClient` logs no request), the
+  field cleared and the plugin's message (or refusal) kept under it, then
+  `plugin-list` re-read. Stories: `settings-sources`, `-loading`, `-error`,
+  `-empty`, `-setup`, `-setup-saved`.
 - Task sources: `SourceModels.swift` (and `ProjectInfo.source`,
   `SliceDetail.container`, `PlanBackend.source`) mirror
   `docs/design/task-sources/README.md` field for field — change the spec and

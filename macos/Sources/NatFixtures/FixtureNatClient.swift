@@ -199,6 +199,13 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         try await answer(plugins)
     }
 
+    /// Records the plugin and field only — never the value, which stands for
+    /// a token — and answers as the Shortcut plugin does.
+    public func sourceSetup(plugin: String, id: String, value: String) async throws -> PluginSetupResult {
+        try await record("source-setup \(plugin) --id \(id)")
+        return PluginSetupResult(message: "Logged in to scratch as Craig Scratch")
+    }
+
     public func pluginInstall(name: String, source: String?, version: String?) async throws -> PluginInstalled {
         try await record("plugin-install \(name) --source \(source ?? "")")
         return PluginInstalled(

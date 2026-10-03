@@ -39,6 +39,42 @@ extension Fixtures {
         ]
     )
 
+    /// The Shortcut plugin's one setup field, as its describe lists it.
+    public static let shortcutTokenField = PluginSetupField(
+        id: "token", label: "API token", input: "secret", hint: "Shortcut ▸ Settings ▸ API Tokens")
+
+    /// A machine with Shortcut installed, its token field to fill in, beside
+    /// a plugin put in by hand whose describe failed — the warning line. nat
+    /// fills `setup` only from a describe that worked, so no one row carries
+    /// both; and Shortcut's describe needs no token, so a missing one is never
+    /// its describe failing.
+    public static let pluginListingShortcut = PluginListing(
+        sources: [PluginSourceStatus(repo: "craigmjohnston/nat", version: "1.0.57", isDefault: true)],
+        installed: [
+            InstalledPlugin(
+                name: "shortcut",
+                path: "/Users/craig/.config/notion-agent-tracker/plugins/shortcut/nat-source-shortcut",
+                kind: .managed, source: "craigmjohnston/nat", version: "1.0.57",
+                setup: [shortcutTokenField]
+            ),
+            InstalledPlugin(
+                name: "jira", path: "/Users/craig/.config/notion-agent-tracker/plugins/jira/nat-source-jira",
+                kind: .manual,
+                describeError: "source plugin jira speaks protocol 2; this nat speaks protocol 1"
+            ),
+        ],
+        available: [
+            AvailablePlugin(
+                name: "demo", title: "Demo source", description: "Canned cards to try a source project on.",
+                source: "craigmjohnston/nat", version: "1.0.57", installed: true
+            ),
+            AvailablePlugin(
+                name: "shortcut", title: "Shortcut", description: "Shortcut stories as the cards a project's tasks hang off.",
+                source: "craigmjohnston/nat", version: "1.0.57", installed: true
+            ),
+        ]
+    )
+
     /// A machine with nothing installed, whose one source offers nothing yet.
     public static let pluginListingEmpty = PluginListing(
         sources: [PluginSourceStatus(repo: "craigmjohnston/nat", version: "1.0.57", isDefault: true)],
