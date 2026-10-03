@@ -211,6 +211,23 @@ Reading the arguments has to happen before `App.main()` takes over the process,
 which is why `Sources/NatApp/main.swift` is the entry point and `NatApp` carries
 no `@main`.
 
+### Debug the agent pane's keys:
+
+Three environment variables, all off by default and costing nothing unset:
+
+- `NAT_TERM_SESSION=<name>` — the window is a bare agent terminal attached to
+  that tmux session, nothing else.
+- `NAT_KEY_DEBUG=1` — logs (NSLog, `nat key-debug:`) every key-down the
+  pane's monitor is offered and what it decided, monitor installs and
+  removals, and every byte run sent to the pty; a bare `\r` also logs the
+  stack that sent it.
+- `NAT_KEY_DEBUG_SYNTH=1` (with `NAT_KEY_DEBUG`) — posts shift+, ctrl+ and a
+  plain return to the app's own queue four seconds after launch.
+
+`docs/debugging/agent-pane-keys.md` is the method: the harness (a private
+tmux server and a byte recorder), how to run it without touching the real
+tmux server, and how to read the log.
+
 ### Build a release .app bundle:
 ```bash
 bash macos/Scripts/make-app.sh

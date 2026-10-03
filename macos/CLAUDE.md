@@ -22,6 +22,8 @@ fuller structure and theme system.
   full window frame, and pause any animation (or fix it to one phase) before
   comparing — an untimed capture reads a mid-sweep shimmer back as a layout
   bug. `macos/README.md` has the incidents behind both.
+- A key that misbehaves in the agent pane: `docs/debugging/agent-pane-keys.md`
+  (the key chain, the `NAT_KEY_DEBUG` harness on a private tmux socket).
 
 ## NatClient: `nat` is the only source of truth
 
