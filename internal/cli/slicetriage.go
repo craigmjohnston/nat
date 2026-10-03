@@ -108,7 +108,7 @@ func sliceTriage(ctx context.Context, args []string, env Env) error {
 		case store.Queued:
 			q, err := st.AddSlice(ctx, storeProject(projectID, project), store.NewSlice{
 				Title:     f.Title,
-				Brief:     f.Brief + "\n\n" + provenance(s),
+				Brief:     f.Brief + "\n\n" + fromSlice(s, shape.Milestones),
 				Milestone: milestoneOf(s, shape.Milestones),
 				DependsOn: []string{s.ID},
 			})
@@ -228,12 +228,6 @@ func liveSessionFor(env Env, ids ...string) (string, bool, error) {
 		}
 	}
 	return "", false, nil
-}
-
-// provenance is the line a queued follow-up's brief ends with, saying where it
-// came from.
-func provenance(s domain.Slice) string {
-	return fmt.Sprintf("Proposed by the agent working %q (%s).", s.Name, linkOf(s))
 }
 
 // linkOf is where a slice can be found: its URL, or its ID where the plan gives

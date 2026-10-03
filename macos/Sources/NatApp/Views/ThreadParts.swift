@@ -41,6 +41,7 @@ extension ThreadEventKind {
         case .relaunched: return "arrow.clockwise.circle"
         case .blocked: return "exclamationmark.octagon"
         case .followUps: return "lightbulb"
+        case .note: return "note.text"
         case .approved: return "checkmark.seal"
         case .merged: return "arrow.triangle.merge"
         case .closed: return "checkmark.circle"

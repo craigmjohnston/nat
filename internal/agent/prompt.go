@@ -231,7 +231,9 @@ func Prompt(c PromptContext) string {
 	fmt.Fprintf(&b, "\nThis slice is already claimed for %s: the board claims a slice as\n", c.AssigneeName)
 	b.WriteString("it launches the agent for it, so there is nothing to run before starting\n")
 	b.WriteString("work. What follows is your brief: the slice's own body and acceptance\n")
-	b.WriteString("criteria, then the conventions that apply to every slice of the project.\n\n")
+	b.WriteString("criteria, then the conventions that apply to every slice of the project.\n")
+	b.WriteString("The body may end in `Note` sections that earlier sessions left for\n")
+	b.WriteString("whoever worked the slice next: they are part of the brief.\n\n")
 	if !Resuming(c) {
 		b.WriteString("Claude Code has already loaded git status into this session's context —\n")
 		b.WriteString("branch, working-tree state, recent commits — so there is no need to run\n")
@@ -300,6 +302,8 @@ func Prompt(c PromptContext) string {
 	}
 	b.WriteString("If the work is not code — docs, research, written-up findings — produce\n")
 	b.WriteString("the deliverable the brief asks for and link it in the summary below.\n")
+	b.WriteString(notesPassage(c))
+	b.WriteString(namingPassage)
 
 	b.WriteString("\n## Finish\n\n")
 	// Only the app has anywhere to triage follow-ups, so only an agent it
@@ -362,7 +366,8 @@ func Prompt(c PromptContext) string {
 	b.WriteString("- One slice per session. Never pick up another when this one is done.\n")
 	b.WriteString("- The `nat` commands are the only way to record anything about the slice.\n")
 	fmt.Fprintf(&b, "- Every one of them carries `--project %s`.\n", c.ProjectID)
-	b.WriteString("- Never touch other slices, other milestones, or the plan itself.\n")
+	b.WriteString("- Never touch other slices, other milestones, or the plan itself, beyond\n")
+	b.WriteString("  a note on a later slice's brief.\n")
 	b.WriteString("- Never open or merge a pull request, and never push to the main branch.\n")
 
 	return b.String()
@@ -477,6 +482,8 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 		b.WriteString("  — one new Todo slice, its brief read from stdin\n")
 	}
 
+	b.WriteString(namingPassage)
+
 	b.WriteString("\n## Guardrails\n\n")
 	b.WriteString("- Plan only. Never claim, start, or complete a slice — launching work is\n")
 	b.WriteString("  the board's job, not yours.\n")
@@ -541,6 +548,37 @@ func visualsPassage(c PromptContext, when string) string {
 	b.WriteString("in the app; their comments, if any, arrive here as a message.\n\n")
 	return b.String()
 }
+
+// notesPassage tells a slice agent — a fresh one or a fix session — how to
+// leave a note on a later slice's brief, with the agent's own slice as where it
+// came from. skills/next-slice/SKILL.md says the same in its own words.
+func notesPassage(c PromptContext) string {
+	var b strings.Builder
+	b.WriteString("\n## Notes for later slices\n\n")
+	b.WriteString("If this session finds out something a *later* slice needs to know — a\n")
+	b.WriteString("constraint, a seam that moved, an assumption in another slice's brief\n")
+	b.WriteString("that is no longer true — leave a note on that slice, named by its name:\n\n")
+	fmt.Fprintf(&b, "    nat slice-note '<slice name>' --from %s --project %s \\\n", c.Slice.ID, c.ProjectID)
+	b.WriteString("        --note '<what it needs to know, and why>'\n\n")
+	b.WriteString("Add `--milestone '<milestone name>'` where that name is filed under more\n")
+	b.WriteString("than one milestone, and `--note -` to pipe a long note in. The note ends\n")
+	b.WriteString("that slice's brief, with where it came from written by nat, so whoever\n")
+	b.WriteString("works it next reads it as part of the brief. A note is never work to be\n")
+	b.WriteString("done — that is a follow-up, not a note — and never goes on a Done slice.\n")
+	return b.String()
+}
+
+// namingPassage is the rule every text handed to an agent that writes about
+// slices carries — slice, fix, plan and new-project prompts, and every
+// embedded skill in its own copy of the same words. A test walks each for it.
+const namingPassage = "\n## Naming slices\n\n" +
+	"Refer to another slice only by its name, adding its milestone's name\n" +
+	"where the name alone is ambiguous — never by a number, an index, a\n" +
+	"position in a list, a page ID, a URL, or any id of another tracker (a\n" +
+	"card number, an issue key). Names are what every reading of the plan\n" +
+	"shows; the rest is the tracker's own or a plugin's, which the next reader\n" +
+	"may not have. This holds for everything you write: summaries, PR\n" +
+	"descriptions, follow-up briefs, notes, proposal briefs.\n"
 
 // branchArg is what the hand-back command names: the branch the session's
 // worktree is already on, or the placeholder for an agent that will make one.

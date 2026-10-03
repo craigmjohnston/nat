@@ -212,7 +212,7 @@ Then hand back with nat complete-slice as usual.`
 	}
 	brief, _ := fp.local(t).Body(context.Background(), queued.ID)
 	wantBrief := "The width lives under one key.\nStore it per project.\n\n" +
-		`Proposed by the agent working "Render the board" (` + sliceID + `).`
+		`From "Render the board" (M1)`
 	if brief != wantBrief {
 		t.Errorf("queued brief = %q, want %q", brief, wantBrief)
 	}

@@ -188,8 +188,10 @@ selected there is no breadcrumb. Stories: `titlebar-band-*`,
 `status-bar-agent-readout*`, `changes-section-commits`. The Thread is labelled "Task" until the
 slice is under way and "Task log" after, and draws `slice-show`'s `events`
 in order — hand-backs, send-backs (`slice-rework --comments`), releases,
-relaunches, follow-ups (triaged ones as a record, pending ones as the triage
-card in their place), then approve and merge. Selecting sets the selection *before* awaiting the project's
+relaunches, notes (`nat slice-note`, headed by who they came from; notes
+alone open no log on a slice never launched), follow-ups (triaged ones as a
+record, pending ones as the triage card in their place), then approve and
+merge. Story: `window-task-log-notes`. Selecting sets the selection *before* awaiting the project's
 activation (`AppModel.select(inProject:)`), so a later click is never
 overwritten by an earlier one finishing. What the design does not draw
 (workshop, sessions, follow-ups, menus) lives on as the row or section it

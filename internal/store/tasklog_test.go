@@ -189,3 +189,83 @@ func TestMirroredRecordRelaunchCarriesTheLocalFailureUp(t *testing.T) {
 		t.Error("RecordRelaunch on a slice not in the plan: want an error")
 	}
 }
+
+func TestNotionRecordNoteWritesOneAppend(t *testing.T) {
+	api := &fakeAPI{}
+	err := Over(api).RecordNote(context.Background(), "s5", `From "Draw it" (M2)`, "The seam moved.\n\nTwice.")
+	if err != nil {
+		t.Fatalf("RecordNote() error = %v", err)
+	}
+	if len(api.appended) != 1 {
+		t.Fatalf("appends = %d, want one", len(api.appended))
+	}
+	got, _ := json.Marshal(api.appended[0])
+	want := `[{"heading_3":{"rich_text":[{"text":{"content":"Note"},"type":"text"}]},"object":"block","type":"heading_3"},` +
+		`{"object":"block","paragraph":{"rich_text":[{"text":{"content":"From \"Draw it\" (M2)"},"type":"text"}]},"type":"paragraph"},` +
+		`{"object":"block","paragraph":{"rich_text":[{"text":{"content":"The seam moved."},"type":"text"}]},"type":"paragraph"},` +
+		`{"object":"block","paragraph":{"rich_text":[{"text":{"content":"Twice."},"type":"text"}]},"type":"paragraph"}]`
+	if string(got) != want {
+		t.Errorf("blocks =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestNotionRecordNoteCarriesTheFailureUp(t *testing.T) {
+	api := &fakeAPI{appendBlocks: func(string, []map[string]any) ([]notion.Block, error) { return nil, errBoom }}
+	if err := Over(api).RecordNote(context.Background(), "s5", "From Craig", "note"); !errors.Is(err, errBoom) {
+		t.Errorf("RecordNote err = %v, want the append's failure", err)
+	}
+}
+
+// The brief an agent is handed is the body, so a note reaches whoever works
+// the slice later by ending it.
+func TestLocalRecordNoteEndsTheBody(t *testing.T) {
+	l, _ := openPlan(t)
+	fillPlan(t, l)
+	write(t, l, `UPDATE slices SET body = ? WHERE id = ?`, "Do the thing.", "writes")
+
+	if err := l.RecordNote(context.Background(), "writes", `From "Draw it" (M2)`, "The seam moved."); err != nil {
+		t.Fatalf("RecordNote: %v", err)
+	}
+	body, err := l.Body(context.Background(), "writes")
+	if err != nil {
+		t.Fatalf("Body: %v", err)
+	}
+	want := "Do the thing.\n\n### Note\n\nFrom \"Draw it\" (M2)\n\nThe seam moved."
+	if strings.TrimRight(body, "\n") != want {
+		t.Errorf("body = %q, want %q", body, want)
+	}
+}
+
+func TestLocalRecordNoteCarriesTheFailureUp(t *testing.T) {
+	l, _ := openPlan(t)
+	if err := l.RecordNote(context.Background(), "ghost", "From Craig", "note"); err == nil {
+		t.Error("RecordNote on a slice not in the plan: want an error")
+	}
+}
+
+func TestMirroredRecordNoteGoesLocallyThenPushes(t *testing.T) {
+	api := &fakeAPI{}
+	m, l := mirroredPlan(t, api)
+	ctx := context.Background()
+	if err := m.RecordNote(ctx, "writes", "From Craig", "Mind the cache."); err != nil {
+		t.Fatalf("RecordNote: %v", err)
+	}
+	if len(api.appended) != 1 {
+		t.Errorf("appends = %d, want it pushed", len(api.appended))
+	}
+	body, _ := l.Body(ctx, "writes")
+	if !strings.HasSuffix(strings.TrimRight(body, "\n"), "### Note\n\nFrom Craig\n\nMind the cache.") {
+		t.Errorf("body = %q, want it to end in the Note section", body)
+	}
+	if dirty, _ := l.Dirty(ctx, "writes"); dirty {
+		t.Error("dirty = true, want the push to have cleared it")
+	}
+}
+
+func TestMirroredRecordNoteCarriesTheLocalFailureUp(t *testing.T) {
+	l, _ := openPlan(t)
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
+	if err := m.RecordNote(context.Background(), "ghost", "From Craig", "note"); err == nil {
+		t.Error("RecordNote on a slice not in the plan: want an error")
+	}
+}

@@ -763,6 +763,44 @@ func TestEveryCommandInAPromptNamesTheProject(t *testing.T) {
 	}
 }
 
+// Every template handed to an agent that writes about slices carries the
+// naming rule, so a template added later cannot leave it out.
+func TestEveryPromptCarriesTheNamingRule(t *testing.T) {
+	const name, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
+	for prompt, text := range map[string]string{
+		"slice":          Prompt(testContext()),
+		"slice worktree": Prompt(worktreeContext()),
+		"slice gnat":     Prompt(gnatContext()),
+		"slice resume":   Prompt(resumeContext()),
+		"fix":            Prompt(fixContext()),
+		"plan":           PlanPrompt(testProjectID, name, dir, "", "", ""),
+		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", "", ""),
+		"plan gnat":      PlanPrompt(testProjectID, name, dir, "", "", FrontendGnat),
+		"new project":    NewProjectPrompt("ws-1", "A todo app."),
+	} {
+		if !strings.Contains(text, namingPassage) {
+			t.Errorf("the %s prompt does not carry the naming rule", prompt)
+		}
+	}
+}
+
+// Every slice and fix prompt tells the agent how to leave a note on a later
+// slice, from its own slice and pinned to the project like every command.
+func TestSliceAndFixPromptsCarryTheNoteCommand(t *testing.T) {
+	for prompt, c := range map[string]PromptContext{
+		"slice":          testContext(),
+		"slice worktree": worktreeContext(),
+		"slice gnat":     gnatContext(),
+		"slice resume":   resumeContext(),
+		"fix":            fixContext(),
+	} {
+		want := "nat slice-note '<slice name>' --from " + c.Slice.ID + " --project " + testProjectID
+		if text := Prompt(c); !strings.Contains(text, want) {
+			t.Errorf("the %s prompt does not say %q", prompt, want)
+		}
+	}
+}
+
 // The pin is worth explaining as well as applying: an agent that understands
 // why puts --project on the commands it runs of its own accord, which are the
 // ones no prompt can spell out for it.

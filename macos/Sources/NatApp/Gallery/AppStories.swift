@@ -769,6 +769,16 @@ enum AppStories {
         },
 
         Story(
+            name: "window-task-log-notes",
+            summary: "An in-progress task's log with two notes on its brief: one from another task, by name and milestone, and one from a person, each labelled with who it came from.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.activitySliceID, agents: [], details: Fixtures.notedSliceDetails,
+                focus: NavigatorFocus(open: [.thread], main: .diff))
+        },
+
+        Story(
             name: "sidebar-last-active-selected",
             summary: "The last Active row selected: its highlight the ordinary row height, the line under Active not drawn.",
             size: window

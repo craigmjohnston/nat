@@ -144,7 +144,9 @@ might not be.
 ## 4. Do the work
 
 - The brief is what the command printed: the slice's body first, then the
-  project conventions. Read `CLAUDE.md` in the working directory too.
+  project conventions. Read `CLAUDE.md` in the working directory too. The body
+  may end in `Note` sections earlier sessions left for whoever worked the slice
+  next: they are part of the brief.
 - Honour the brief's acceptance criteria and the project's verification gate
   before calling anything done.
 - **If the work is code**: the worktree is already on the slice's branch, so
@@ -156,6 +158,31 @@ might not be.
   they have reviewed it.
 - **If the work is not code** (docs, research, written-up findings): produce
   the deliverable the brief asks for and link it in the summary below.
+
+If this session finds out something a *later* slice needs to know — a
+constraint, a seam that moved, an assumption in another slice's brief that is
+no longer true — leave a note on that slice, named by its name, from your own:
+
+```
+nat slice-note '<slice name>' --from <slice> --project <project> \
+    --note '<what it needs to know, and why>'
+```
+
+Add `--milestone '<milestone name>'` where that name is filed under more than
+one milestone, and `--note -` to pipe a long note in. The note ends that
+slice's brief, with where it came from written by nat, so whoever works it next
+reads it as part of the brief. A note is never work to be done — that is a
+follow-up, not a note — and never goes on a Done slice.
+
+## Naming slices
+
+Refer to another slice only by its name, adding its milestone's name where the
+name alone is ambiguous — never by a number, an index, a position in a list, a
+page ID, a URL, or any id of another tracker (a card number, an issue key).
+Names are what every reading of the plan shows; the rest is the tracker's own
+or a plugin's, which the next reader may not have. This holds for everything
+you write: summaries, PR descriptions, follow-up briefs, notes, proposal
+briefs.
 
 ## 5. Finish
 
@@ -248,7 +275,8 @@ too — a milestone's status follows its slices, and there is nothing to set.
   and never work a slice the CLI would not hand you.
 - Every `nat` command carries `--project <project>`, the ID you settled at the
   start — the one read that finds it is the only exception.
-- Never touch other slices, milestones, or the project page.
+- Never touch other slices, milestones, or the project page, beyond a note on
+  a later slice's brief.
 - One branch per slice, and never push to main.
 - Never open or merge a pull request. Opening one is the board's job, after the
   user has reviewed the branch you handed back.

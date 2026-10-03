@@ -128,12 +128,31 @@ prompt and `/next-slice` carry the passage — the TUI has no triage surface.
 gnat's `FollowUpsSidebarView` is pane-level, shown while `slice-show`'s
 `followUps` is non-empty. Design: `docs/design/follow-up-triage/`.
 
+**Notes.** `nat slice-note <slice> --note TEXT|- [--from <slice>]
+[--milestone NAME]` appends a `Note` section to a Todo or In progress
+slice's body — for context a *later* slice needs, never for work (that is a
+follow-up). The target is named by name (plan-apply's title match,
+`--milestone` to disambiguate) or by ID/URL; no ownership check. Its first
+paragraph is provenance nat composes, never the caller: `From "<slice>"
+(<milestone>)` from `--from`, else `From <Config.AssigneeFor name>` — no ID
+or URL, by the same helper (`fromSlice`) the triage's queued-follow-up line
+uses. Refused, before any write: Done, an unreadable body, an empty note, an
+unknown/ambiguous name, an unreadable `--from`. A note on a Todo slice
+reaches its agent as part of the brief with no further plumbing.
+
+**Naming slices.** Every text handed to an agent that writes about slices
+(slice, fix, plan and new-project prompts; every embedded skill) carries one
+rule: refer to another slice only by name (+ milestone where ambiguous),
+never by number, index, page ID, URL or another tracker's id. Tests walk
+every template and every skill for it.
+
 **Task log.** A slice's history is read off its body, in order, by
 `store.TaskEvents`: each `Handed back`, `Sent back` (`slice-rework
 --comments`, filed before the branch is cleared, as hand-back files before
 its property), `Relaunched` (written by a non-fix `actions.Launch` of a slice
 already under way or with history; a failure is logged, never fatal),
-`Blocked`, `Summary`, released line and `Follow-ups` section, each proposal
+`Blocked`, `Summary`, `Note` (a `note` event, `by` its provenance), released
+line and `Follow-ups` section, each proposal
 decided by a later `Follow-ups triaged`. `slice-show --json`'s `events` is
 that list, then `approved` (a PR recorded) and `merged` (Done with a PR or
 branch). Both stores write the same markdown.
