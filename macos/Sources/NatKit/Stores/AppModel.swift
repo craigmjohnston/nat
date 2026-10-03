@@ -569,6 +569,12 @@ public final class AppModel {
         sourcePlugins = (try? await clientFactory().sourceList()) ?? []
     }
 
+    /// Reads them again, after Settings ▸ Sources installed or took one away.
+    public func reloadSourcePlugins() async {
+        sourcePluginsLoaded = false
+        await loadSourcePlugins()
+    }
+
     /// Start the app: load config, create project store, start timers.
     ///
     /// No config file at all, or one naming no projects, leaves

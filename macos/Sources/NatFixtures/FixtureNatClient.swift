@@ -53,6 +53,9 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// What `slice-show` answers, by slice — `Fixtures.sliceDetails` unless a
     /// story wants another reading of one (a slice with follow-ups pending).
     private let details: [String: SliceDetail]
+    /// What `plugin-list` answers — the same listing after every install,
+    /// since nothing here is installed.
+    private let plugins: PluginListing
 
     /// Every write this client was asked to make, in order — a preview never
     /// looks, and a test asserting that a button reached the client does.
@@ -79,8 +82,10 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         config: ConfigDoc = Fixtures.configDoc,
         usage: UsageReading = Fixtures.usageReading,
         sessions: [Session] = Fixtures.sessions,
-        details: [String: SliceDetail] = Fixtures.sliceDetails
+        details: [String: SliceDetail] = Fixtures.sliceDetails,
+        plugins: PluginListing = Fixtures.pluginListing
     ) {
+        self.plugins = plugins
         self.behaviour = behaviour
         self.plan = plan
         self.otherPlans = otherPlans
@@ -188,6 +193,33 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
 
     public func sourceList() async throws -> [SourcePlugin] {
         try await answer(Fixtures.sourcePlugins)
+    }
+
+    public func pluginList() async throws -> PluginListing {
+        try await answer(plugins)
+    }
+
+    public func pluginInstall(name: String, source: String?, version: String?) async throws -> PluginInstalled {
+        try await record("plugin-install \(name) --source \(source ?? "")")
+        return PluginInstalled(
+            name: name, path: "/Users/craig/.config/notion-agent-tracker/plugins/\(name)/nat-source-\(name)",
+            source: source ?? "craigmjohnston/nat", version: version ?? "1.0.57",
+            sha256: String(repeating: "0", count: 64), installedAt: "2026-10-03T12:00:00Z")
+    }
+
+    public func pluginUninstall(name: String) async throws -> PluginUninstalled {
+        try await record("plugin-uninstall \(name)")
+        return PluginUninstalled(name: name, path: "/Users/craig/.config/notion-agent-tracker/plugins/\(name)")
+    }
+
+    public func pluginSourceAdd(repo: String) async throws -> PluginSourceList {
+        try await record("plugin-source-add \(repo)")
+        return PluginSourceList(sources: plugins.sources.map(\.repo) + [repo])
+    }
+
+    public func pluginSourceRemove(repo: String) async throws -> PluginSourceList {
+        try await record("plugin-source-remove \(repo)")
+        return PluginSourceList(sources: plugins.sources.map(\.repo).filter { $0 != repo })
     }
 
     public func status() async throws -> [AgentStatus] {

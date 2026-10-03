@@ -30,7 +30,14 @@ fuller structure and theme system.
   migration, write ordering all live in the Go binary.
 - Every call on a tracked project passes `--project <id>`, no fallback,
   mirroring the Go CLI (exceptions mirror the Go CLI's own: `status`,
-  `paths`, `config-show`/`-set`, `project-create`/`-open`, `source-list`).
+  `paths`, `config-show`/`-set`, `project-create`/`-open`, `source-list`,
+  `plugin-*`).
+- Plugin install: `PluginModels.swift` mirrors `nat plugin-list` and the
+  other `plugin-*` answers; Settings ▸ Sources draws them through
+  `PluginsModel` (Installed, Available, Plugin sources), each button one
+  `nat plugin-*` call and then a fresh `plugin-list`, and an install or
+  uninstall re-reads `AppModel.sourcePlugins` for the `+` menu. Stories:
+  `settings-sources`, `-loading`, `-error`, `-empty`.
 - Task sources: `SourceModels.swift` (and `ProjectInfo.source`,
   `SliceDetail.container`, `PlanBackend.source`) mirror
   `docs/design/task-sources/README.md` field for field — change the spec and

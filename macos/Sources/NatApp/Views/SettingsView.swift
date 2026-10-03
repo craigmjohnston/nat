@@ -54,6 +54,9 @@ struct SettingsView: View {
         self.appModel = appModel
         self.client = client
         _selectedTab = State(initialValue: initialTab)
+        _plugins = State(initialValue: PluginsModel(client: client) { [appModel] in
+            await appModel.reloadSourcePlugins()
+        })
     }
 
     /// The theme, which is this app's own preference rather than one of
@@ -84,11 +87,8 @@ struct SettingsView: View {
     /// reasonable answer it starts with.
     @State private var agentOptions = AgentOptions.fallback
 
-    /// The task-source plugins `nat source-list` found — nil until the
-    /// Sources tab is first shown and its one read lands — or why that read
-    /// failed.
-    @State private var sourcePlugins: [SourcePlugin]?
-    @State private var sourcesError: String?
+    /// The Sources tab: `nat plugin-list` and the buttons over it.
+    @State private var plugins: PluginsModel
 
     var body: some View {
         // The macOS 15 tab builder rather than `.tabItem`, which is the
@@ -206,39 +206,108 @@ struct SettingsView: View {
         .settingsForm()
     }
 
-    /// Read-only: every task-source plugin this Mac has, as `nat
-    /// source-list` describes it — or, for one that would not describe, why.
-    /// Read once, the first time the tab is shown.
+    /// The task-source plugins: what is installed, what the plugin sources
+    /// offer, and the sources themselves — all `nat plugin-list`, read the
+    /// first time the tab is shown and again after every button, each of
+    /// which is one `nat plugin-*` call (`PluginsModel`).
     private var sourcesTab: some View {
         Form {
-            Section {
-                if let sourcesError {
-                    Label(sourcesError, systemImage: "exclamationmark.triangle.fill")
-                        .ink(.danger)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else if let sourcePlugins {
-                    if sourcePlugins.isEmpty {
-                        Text("No task-source plugins installed. Put nat-source-<name> under ~/.config/notion-agent-tracker/plugins/<name>/ or on PATH.")
-                            .ink(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        ForEach(sourcePlugins) { plugin in
-                            SourcePluginRow(plugin: plugin)
-                        }
+            if let listing = plugins.listing {
+                if let error = plugins.actionError {
+                    Section {
+                        errorLabel(error)
                     }
-                } else {
-                    SettingsLoadingRow(text: "Looking for plugins…")
                 }
-            } header: {
-                Text("Task sources")
-            } footer: {
-                if sourcePlugins?.isEmpty == false {
-                    sectionFootnote("Plugins that bring another tracker's work into nat. Add a project over one from the + menu.")
+                installedSection(listing)
+                availableSection(listing)
+                pluginSourcesSection(listing)
+            } else {
+                Section {
+                    if let error = plugins.loadError {
+                        errorLabel(error)
+                    } else {
+                        SettingsLoadingRow(text: "Looking for plugins…")
+                    }
+                } header: {
+                    Text("Task sources")
                 }
             }
         }
         .settingsForm()
-        .task { await loadSources() }
+        .task { await plugins.loadIfNeeded() }
+    }
+
+    private func installedSection(_ listing: PluginListing) -> some View {
+        Section {
+            if listing.installed.isEmpty {
+                Text("No task-source plugins installed.")
+                    .ink(.secondary)
+            }
+            ForEach(listing.installed) { plugin in
+                InstalledPluginRow(
+                    plugin: plugin,
+                    updating: plugins.running.contains(.update(name: plugin.name)),
+                    uninstalling: plugins.running.contains(.uninstall(name: plugin.name)),
+                    update: { Task { await plugins.update(plugin) } },
+                    uninstall: { Task { await plugins.uninstall(plugin) } }
+                )
+            }
+        } header: {
+            Text("Installed")
+        } footer: {
+            sectionFootnote("Add a project over one from the + menu. A plugin put here by hand is never overwritten.")
+        }
+    }
+
+    private func availableSection(_ listing: PluginListing) -> some View {
+        Section {
+            if listing.available.isEmpty {
+                Text("No plugin source offers a plugin yet.")
+                    .ink(.secondary)
+            }
+            ForEach(listing.available) { plugin in
+                AvailablePluginRow(
+                    plugin: plugin,
+                    installing: plugins.running.contains(.install(source: plugin.source, name: plugin.name)),
+                    install: { Task { await plugins.install(plugin) } }
+                )
+            }
+        } header: {
+            Text("Available")
+        }
+    }
+
+    private func pluginSourcesSection(_ listing: PluginListing) -> some View {
+        Section {
+            ForEach(listing.sources) { source in
+                PluginSourceRow(
+                    source: source,
+                    removing: plugins.running.contains(.removeSource(repo: source.repo)),
+                    remove: { Task { await plugins.removeSource(source.repo) } }
+                )
+            }
+            HStack(spacing: 8) {
+                TextField("Plugin source", text: $plugins.newSource, prompt: Text("owner/repo"))
+                    .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
+                    .onSubmit { Task { await plugins.addSource() } }
+                if plugins.running.contains(.addSource) {
+                    ProgressView().controlSize(.small)
+                }
+                Button("Add") { Task { await plugins.addSource() } }
+                    .disabled(!plugins.canAddSource)
+            }
+        } header: {
+            Text("Plugin sources")
+        } footer: {
+            sectionFootnote("GitHub repositories whose releases carry a nat-plugins.json. nat's own is always read first.")
+        }
+    }
+
+    private func errorLabel(_ message: String) -> some View {
+        Label(message, systemImage: "exclamationmark.triangle.fill")
+            .ink(.danger)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     // MARK: - Rows
@@ -484,16 +553,6 @@ struct SettingsView: View {
         isLoading = false
     }
 
-    /// The Sources tab's one read: only the first time it is shown.
-    private func loadSources() async {
-        guard sourcePlugins == nil, sourcesError == nil else { return }
-        do {
-            sourcePlugins = try await client.sourceList()
-        } catch {
-            sourcesError = error.localizedDescription
-        }
-    }
-
     /// Queues a save behind whatever save is already running. Two fields
     /// committed in the same breath would otherwise both diff against the
     /// baseline the first has not moved yet, and write the first key twice.
@@ -566,47 +625,134 @@ private struct SettingsLoadingRow: View {
     }
 }
 
-/// One plugin of the Sources tab: its icon, title and tag, then the
-/// executable it was found as and where — and, for one that would not
-/// describe, nat's reason in the refusal style the other tabs use.
-private struct SourcePluginRow: View {
-    let plugin: SourcePlugin
+/// A button that is a spinner while its command runs — the stock small
+/// progress indicator in its place, so the row keeps its shape.
+private struct PluginActionButton: View {
+    let title: String
+    let running: Bool
+    var role: ButtonRole?
+    let action: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: plugin.iconSymbol)
-                .font(.title3)
-                .ink(plugin.error == nil ? .primary : .tertiary)
-                .frame(width: 24)
+        if running {
+            ProgressView()
+                .controlSize(.small)
+        } else {
+            Button(title, role: role, action: action)
+        }
+    }
+}
+
+/// One installed plugin: its name and version (or how it got there when nat
+/// did not install it) over the path it runs from, then Update where its
+/// source has a newer release, and Uninstall where it is nat's to remove.
+private struct InstalledPluginRow: View {
+    let plugin: InstalledPlugin
+    let updating: Bool
+    let uninstalling: Bool
+    let update: () -> Void
+    let uninstall: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(plugin.displayTitle)
-                    if let tag = plugin.describe?.tag, !tag.isEmpty {
-                        Text(tag)
-                            .font(Typo.mono(size: 10, weight: .semibold))
-                            .ink(.secondary)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.separator))
-                    }
+                    Text(plugin.name)
+                    Text(plugin.versionLabel)
+                        .font(.footnote)
+                        .ink(.secondary)
                 }
-                Text(plugin.executableName)
-                    .font(Typo.mono(size: 10))
-                    .ink(.secondary)
                 Text(plugin.path)
                     .font(.footnote)
                     .ink(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .help(plugin.path)
-                if let error = plugin.error {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
+            }
+            Spacer(minLength: 0)
+            if plugin.hasUpdate {
+                PluginActionButton(title: "Update to \(plugin.update)", running: updating, action: update)
+            }
+            if plugin.isUninstallable {
+                PluginActionButton(title: "Uninstall", running: uninstalling, action: uninstall)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+/// One plugin a source offers: its title and version, what it is, and where
+/// from — with Install, or a quiet "Installed" for one already here.
+private struct AvailablePluginRow: View {
+    let plugin: AvailablePlugin
+    let installing: Bool
+    let install: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(plugin.displayTitle)
+                    Text(plugin.version)
+                        .font(.footnote)
+                        .ink(.secondary)
+                }
+                if !plugin.description.isEmpty {
+                    Text(plugin.description)
+                        .font(.footnote)
+                        .ink(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text(plugin.source)
+                    .font(.footnote)
+                    .ink(.tertiary)
+            }
+            Spacer(minLength: 0)
+            if plugin.installed {
+                Text("Installed")
+                    .font(.footnote)
+                    .ink(.secondary)
+            } else {
+                PluginActionButton(title: "Install", running: installing, action: install)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+/// One plugin source: the repository and its latest release, or nat's reason
+/// it could not be read; nat's own marked, every other removable.
+private struct PluginSourceRow: View {
+    let source: PluginSourceStatus
+    let removing: Bool
+    let remove: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(source.repo)
+                    if !source.version.isEmpty {
+                        Text(source.version)
+                            .font(.footnote)
+                            .ink(.secondary)
+                    }
+                }
+                if !source.error.isEmpty {
+                    Label(source.error, systemImage: "exclamationmark.triangle.fill")
                         .font(.footnote)
                         .ink(.danger)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 0)
+            if source.isDefault {
+                Text("Default")
+                    .font(.footnote)
+                    .ink(.secondary)
+            } else {
+                PluginActionButton(title: "Remove", running: removing, action: remove)
+            }
         }
         .padding(.vertical, 2)
     }

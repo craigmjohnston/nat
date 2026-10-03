@@ -1361,12 +1361,49 @@ enum AppStories {
 
         Story(
             name: "settings-sources",
-            summary: "The settings window's read-only Sources tab: the demo plugin described "
-                + "(icon, title, tag, executable and path) and one that refused to, with nat's reason.",
-            size: CGSize(width: 520, height: 360),
+            summary: "The settings window's Sources tab: installed plugins (one with an update, "
+                + "one manual, one on PATH), what the sources offer, and the sources themselves — "
+                + "nat's own marked Default, an extra that could not be read with nat's reason.",
+            size: CGSize(width: 520, height: 820),
             colorScheme: .light
         ) {
             SettingsView(appModel: await Fixtures.startedAppModel(), client: FixtureNatClient(), initialTab: .sources)
+        },
+
+        Story(
+            name: "settings-sources-loading",
+            summary: "The Sources tab while plugin-list is still out.",
+            size: CGSize(width: 520, height: 200),
+            colorScheme: .light
+        ) {
+            SettingsView(
+                appModel: await Fixtures.startedAppModel(), client: FixtureNatClient(behaviour: .hanging),
+                initialTab: .sources)
+        },
+
+        Story(
+            name: "settings-sources-error",
+            summary: "The Sources tab when plugin-list itself failed: nat's reason in place of the groups.",
+            size: CGSize(width: 520, height: 200),
+            colorScheme: .light
+        ) {
+            SettingsView(
+                appModel: await Fixtures.startedAppModel(),
+                client: FixtureNatClient(behaviour: .refusing(
+                    "look for task source plugins: open /Users/craig/.config/notion-agent-tracker/plugins: permission denied")),
+                initialTab: .sources)
+        },
+
+        Story(
+            name: "settings-sources-empty",
+            summary: "The Sources tab on a machine with nothing installed and nothing on offer yet.",
+            size: CGSize(width: 520, height: 480),
+            colorScheme: .light
+        ) {
+            SettingsView(
+                appModel: await Fixtures.startedAppModel(),
+                client: FixtureNatClient(plugins: Fixtures.pluginListingEmpty),
+                initialTab: .sources)
         },
     ])
 }

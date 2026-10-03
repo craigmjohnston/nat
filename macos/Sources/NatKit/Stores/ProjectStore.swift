@@ -50,6 +50,11 @@ public protocol NatClientProtocol: Sendable {
     func containerShow(projectID: String, containerID: String) async throws -> ContainerShow
     func sourceAction(projectID: String, action: String, group: String?, container: String?, input: String?) async throws -> SourceActionResult
     func sourceList() async throws -> [SourcePlugin]
+    func pluginList() async throws -> PluginListing
+    func pluginInstall(name: String, source: String?, version: String?) async throws -> PluginInstalled
+    func pluginUninstall(name: String) async throws -> PluginUninstalled
+    func pluginSourceAdd(repo: String) async throws -> PluginSourceList
+    func pluginSourceRemove(repo: String) async throws -> PluginSourceList
     func sliceAdd(projectID: String, title: String, container: String, description: String?) async throws -> SliceAddResult
 }
 
@@ -201,6 +206,28 @@ extension NatClientProtocol {
 
     public func sourceList() async throws -> [SourcePlugin] {
         throw NatError.commandFailed("source-list: not supported by this client")
+    }
+
+    /// Plugin install: only `NatClient` and the fixture client implement
+    /// these, the same reasoning as `workspaceLaunch`.
+    public func pluginList() async throws -> PluginListing {
+        throw NatError.commandFailed("plugin-list: not supported by this client")
+    }
+
+    public func pluginInstall(name: String, source: String?, version: String?) async throws -> PluginInstalled {
+        throw NatError.commandFailed("plugin-install: not supported by this client")
+    }
+
+    public func pluginUninstall(name: String) async throws -> PluginUninstalled {
+        throw NatError.commandFailed("plugin-uninstall: not supported by this client")
+    }
+
+    public func pluginSourceAdd(repo: String) async throws -> PluginSourceList {
+        throw NatError.commandFailed("plugin-source-add: not supported by this client")
+    }
+
+    public func pluginSourceRemove(repo: String) async throws -> PluginSourceList {
+        throw NatError.commandFailed("plugin-source-remove: not supported by this client")
     }
 
     public func sliceAdd(projectID: String, title: String, container: String, description: String?) async throws -> SliceAddResult {
