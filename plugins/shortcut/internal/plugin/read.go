@@ -39,10 +39,10 @@ func describeResponse(tokenSet bool) source.Describe {
 }
 
 // describe says whether a token is there by presence alone — the
-// environment's, else a Keychain item under this account — never reading
-// the Keychain's secret; a lookup that fails is simply no token.
+// environment's, else a Keychain item, found as Token would find it — never
+// reading the Keychain's secret; a lookup that fails is simply no token.
 func (a *app) describe(context.Context) ([]byte, error) {
-	set := a.env.Getenv("SHORTCUT_API_TOKEN") != "" || a.env.Tokens.Has(account(a.env))
+	set := a.env.Getenv("SHORTCUT_API_TOKEN") != "" || a.env.Tokens.Has()
 	return marshal(describeResponse(set)), nil
 }
 

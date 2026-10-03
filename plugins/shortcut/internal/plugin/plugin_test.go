@@ -32,10 +32,10 @@ type fakeTokens struct {
 
 func (f *fakeTokens) Token() (string, error) { return f.token, f.err }
 
-// Has is a stored token, asked after by account — recorded, so a test can
-// see describe asked rather than read.
-func (f *fakeTokens) Has(account string) bool {
-	f.asked = append(f.asked, account)
+// Has is a stored token — each ask recorded, so a test can see describe
+// asked rather than read.
+func (f *fakeTokens) Has() bool {
+	f.asked = append(f.asked, "has")
 	return f.token != "" && f.err == nil
 }
 

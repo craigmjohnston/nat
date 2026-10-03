@@ -51,14 +51,14 @@ func TestToken(t *testing.T) {
 // is simply no token.
 func TestHas(t *testing.T) {
 	r := &fakeRunner{out: "keychain: \"login.keychain-db\"\n"}
-	if !(Keychain{Run: r}).Has("craig") {
+	if !(Keychain{Run: r}).Has() {
 		t.Error("Has = false for a stored item")
 	}
-	want := [][]string{{"security", "find-generic-password", "-s", "nat-source-shortcut", "-a", "craig"}}
+	want := [][]string{{"security", "find-generic-password", "-s", "nat-source-shortcut"}}
 	if !reflect.DeepEqual(r.calls, want) {
 		t.Errorf("calls = %v, want %v", r.calls, want)
 	}
-	if (Keychain{Run: &fakeRunner{err: errors.New("exit status 44")}}).Has("craig") {
+	if (Keychain{Run: &fakeRunner{err: errors.New("exit status 44")}}).Has() {
 		t.Error("Has = true for a failed lookup")
 	}
 }

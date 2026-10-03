@@ -49,12 +49,13 @@ const cacheTTL = 30 * time.Second
 // Tokens is where the Shortcut token lives between runs — the Keychain, in
 // production. Store asks for the token on the terminal itself (login); Save
 // stores one handed in (setup), keeping it out of every argv; Has says
-// whether one is stored without reading it (describe).
+// whether one is stored without reading it (describe), looked up exactly as
+// Token looks it up.
 type Tokens interface {
 	Token() (string, error)
 	Store(account string) error
 	Save(account, token string) error
-	Has(account string) bool
+	Has() bool
 }
 
 // Env is everything Run reads from the world besides stdin.

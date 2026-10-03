@@ -54,8 +54,8 @@ func TestDescribe(t *testing.T) {
 		d.Setup[0].Hint != "Shortcut ▸ Settings ▸ API Tokens" || d.Setup[0].Set == nil || !*d.Setup[0].Set {
 		t.Errorf("setup = %+v, want the token, set", d.Setup)
 	}
-	if !slices.Equal(h.tokens.asked, []string{"craig"}) {
-		t.Errorf("asked the Keychain after %v, want craig", h.tokens.asked)
+	if !slices.Equal(h.tokens.asked, []string{"has"}) {
+		t.Errorf("asked the Keychain %v, want one presence check", h.tokens.asked)
 	}
 	if len(h.fake.Requests()) != 0 {
 		t.Error("describe called Shortcut")

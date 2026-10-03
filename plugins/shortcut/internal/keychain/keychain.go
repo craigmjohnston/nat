@@ -50,11 +50,13 @@ func (k Keychain) Token() (string, error) {
 	return tok, nil
 }
 
-// Has says whether a token is stored under account, without reading it:
-// find-generic-password with no -w prints only the item's attributes, which
-// are discarded. Any failure — no item, no security — reads as none.
-func (k Keychain) Has(account string) bool {
-	_, err := k.Run.Output("security", "find-generic-password", "-s", Service, "-a", account)
+// Has says whether a token is stored, without reading it: find-generic-password
+// with no -w prints only the item's attributes, which are discarded. It looks
+// up by service alone, exactly as Token does, so the two can never disagree
+// about an item stored by hand under some other account. Any failure — no
+// item, no security — reads as none.
+func (k Keychain) Has() bool {
+	_, err := k.Run.Output("security", "find-generic-password", "-s", Service)
 	return err == nil
 }
 

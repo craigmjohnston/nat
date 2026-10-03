@@ -15,7 +15,7 @@ type noTokens struct{}
 func (noTokens) Token() (string, error)    { return "", errors.New("none") }
 func (noTokens) Store(string) error        { return errors.New("none") }
 func (noTokens) Save(string, string) error { return errors.New("none") }
-func (noTokens) Has(string) bool           { return false }
+func (noTokens) Has() bool                 { return false }
 
 func TestMainWiring(t *testing.T) {
 	if a := args(); len(a) == 0 {
