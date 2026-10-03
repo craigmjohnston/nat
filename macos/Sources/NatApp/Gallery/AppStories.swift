@@ -95,9 +95,11 @@ enum AppStories {
 
     /// A project's workshop, its agent live, holding the fixture proposal —
     /// `accepting` with an Accept under way that never lands.
-    private static func projectProposalShell(accepting: Bool) async -> some View {
+    private static func projectProposalShell(
+        _ proposal: PlanProposal = Fixtures.proposal, accepting: Bool
+    ) async -> some View {
         let client = FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner)
-        client.setProposal(Fixtures.proposal, forProject: Fixtures.projectID)
+        client.setProposal(proposal, forProject: Fixtures.projectID)
         let appModel = await Fixtures.startedAppModel(client: client)
         await settleOnPlanner(appModel)
         appModel.workshopSelected = true
@@ -636,6 +638,14 @@ enum AppStories {
             size: window
         ) {
             await projectProposalShell(accepting: false)
+        },
+
+        Story(
+            name: "workshop-proposal-revision",
+            summary: "A project's proposal filing slices into milestones it already has: the new milestone first, then each existing one holding only its proposed slices; the count names what Accept creates.",
+            size: window
+        ) {
+            await projectProposalShell(Fixtures.revisionProposal, accepting: false)
         },
 
         Story(

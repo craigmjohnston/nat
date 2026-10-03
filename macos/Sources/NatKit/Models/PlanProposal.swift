@@ -1,19 +1,26 @@
 import Foundation
 
-/// The plan a workshop session proposed for an Untitled tab — what
-/// `nat plan-proposal --json` reads back from the file `nat plan-propose`
-/// wrote. Held as the tree the workshop's Plan section draws: milestones in plan order, each with
-/// its slices' titles. Nothing here is a slice yet; accepting is what files
-/// them (`nat plan-accept`).
+/// The plan a workshop session proposed — for an Untitled tab or a tracked
+/// project's own workshop — what `nat plan-proposal --json` reads back from
+/// the file `nat plan-propose` wrote. Held as the tree the workshop's Plan
+/// section draws: milestones in plan order, each with its slices' titles.
+/// A project's proposal may file slices under milestones the project already
+/// has; those show as groups too, after the new ones, since a slice headed
+/// for an existing milestone is still proposed work. Nothing here is a slice
+/// yet; accepting is what files them (`nat plan-accept`).
 public struct PlanProposal: Equatable, Sendable, Decodable {
-    /// One proposed milestone and the titles of the slices filed under it.
+    /// One milestone of the tree and the titles of the slices filed under
+    /// it. `isNew` says the proposal creates the milestone itself; false is
+    /// one the project already has, there only to hold its proposed slices.
     public struct Milestone: Equatable, Sendable {
         public let name: String
         public let slices: [String]
+        public let isNew: Bool
 
-        public init(name: String, slices: [String]) {
+        public init(name: String, slices: [String], isNew: Bool = true) {
             self.name = name
             self.slices = slices
+            self.isNew = isNew
         }
     }
 
@@ -26,7 +33,9 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
         self.milestones = milestones
     }
 
-    public var milestoneCount: Int { milestones.count }
+    /// How many milestones accepting creates — an existing one a slice is
+    /// filed under is not among them.
+    public var milestoneCount: Int { milestones.filter(\.isNew).count }
     public var sliceCount: Int { milestones.reduce(0) { $0 + $1.slices.count } }
 
     /// The tree as milestone folders, as the workshop's Plan section draws
@@ -49,7 +58,11 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
 
     // The wire shape is `plan-propose`'s proposal file: the plan document as
     // validated, slices naming their milestone. Grouping them under it is all
-    // this does — validation already ran when the file was written.
+    // this does — validation already ran when the file was written. A
+    // milestone a slice names that the document does not create is one the
+    // project already has (plan-propose --project validated it against the
+    // project's shape), and gets a group of its own after the new ones, in
+    // the order the slices first name it.
     private enum CodingKeys: String, CodingKey { case name, plan }
     private struct Plan: Decodable {
         struct Named: Decodable { let name: String }
@@ -68,14 +81,24 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         let plan = try container.decode(Plan.self, forKey: .plan)
         let slices = plan.slices ?? []
-        milestones = (plan.milestones ?? []).map { milestone in
-            let key = Self.key(milestone.name)
-            return Milestone(
-                name: milestone.name.trimmingCharacters(in: .whitespacesAndNewlines),
-                slices: slices.filter { Self.key($0.milestone) == key }
-                    .map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) }
-            )
+        func titles(under key: String) -> [String] {
+            slices.filter { Self.key($0.milestone) == key }
+                .map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) }
         }
+        let new = (plan.milestones ?? []).map { milestone in
+            Milestone(
+                name: milestone.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                slices: titles(under: Self.key(milestone.name)))
+        }
+        var seen = Set(new.map { Self.key($0.name) })
+        var existing: [Milestone] = []
+        for slice in slices where seen.insert(Self.key(slice.milestone)).inserted {
+            existing.append(Milestone(
+                name: slice.milestone.trimmingCharacters(in: .whitespacesAndNewlines),
+                slices: titles(under: Self.key(slice.milestone)),
+                isNew: false))
+        }
+        milestones = new + existing
     }
 
     /// How the CLI matches a slice to its milestone: trimmed, case-folded.

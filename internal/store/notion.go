@@ -121,15 +121,24 @@ func (n *Notion) plan(ctx context.Context, p Project, ordered bool) (Plan, error
 // Status column converted in the Notion UI takes a different value from the
 // select every project this app made has.
 func (n *Notion) Slice(ctx context.Context, id string) (domain.Slice, Shape, error) {
+	s, sh, _, err := n.slice(ctx, id)
+	return s, sh, err
+}
+
+// slice is [Notion.Slice] with the page's parent alongside — where the page
+// lives, which [Mirrored.Slice] checks against the project it was asked for
+// before taking the page into that project's file. A read by ID reaches any
+// page the token can see, this project's or another's alike.
+func (n *Notion) slice(ctx context.Context, id string) (domain.Slice, Shape, notion.Parent, error) {
 	page, err := n.api.GetPage(ctx, id)
 	if err != nil {
-		return domain.Slice{}, Shape{}, err
+		return domain.Slice{}, Shape{}, notion.Parent{}, err
 	}
 	sh := Shape{statusType: page.Properties[notion.PropStatus].Type}
 	if _, tracked := page.Properties[notion.PropAssignee]; tracked {
 		sh.HasAssignee = true
 	}
-	return domain.SliceFromPage(*page), sh, nil
+	return domain.SliceFromPage(*page), sh, page.Parent, nil
 }
 
 // Body reads a page's own prose as markdown: a slice's brief, or the
