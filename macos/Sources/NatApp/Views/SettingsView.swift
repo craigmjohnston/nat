@@ -30,10 +30,10 @@ import NatKit
 /// rather than a paragraph per row, since three rows of one section rarely
 /// have three different things to say and a caption in the value column
 /// drags the control out of its column and wraps it right-aligned.
-/// The scene's three tabs, named so a story can open on one other than
+/// The scene's four tabs, named so a story can open on one other than
 /// General — the tab builder's own `TabView` selection has no other seam.
 enum SettingsTab: Hashable {
-    case general, agents, projects
+    case general, agents, projects, sources
 }
 
 struct SettingsView: View {
@@ -84,6 +84,12 @@ struct SettingsView: View {
     /// reasonable answer it starts with.
     @State private var agentOptions = AgentOptions.fallback
 
+    /// The task-source plugins `nat source-list` found — nil until the
+    /// Sources tab is first shown and its one read lands — or why that read
+    /// failed.
+    @State private var sourcePlugins: [SourcePlugin]?
+    @State private var sourcesError: String?
+
     var body: some View {
         // The macOS 15 tab builder rather than `.tabItem`, which is the
         // current spelling of the same thing: the settings window's toolbar
@@ -99,6 +105,9 @@ struct SettingsView: View {
             }
             Tab("Projects", systemImage: "folder", value: SettingsTab.projects) {
                 projectsTab
+            }
+            Tab("Sources", systemImage: "puzzlepiece.extension", value: SettingsTab.sources) {
+                sourcesTab
             }
         }
         // Width alone: the height is the tab's own, which is what makes the
@@ -195,6 +204,41 @@ struct SettingsView: View {
             }
         }
         .settingsForm()
+    }
+
+    /// Read-only: every task-source plugin this Mac has, as `nat
+    /// source-list` describes it — or, for one that would not describe, why.
+    /// Read once, the first time the tab is shown.
+    private var sourcesTab: some View {
+        Form {
+            Section {
+                if let sourcesError {
+                    Label(sourcesError, systemImage: "exclamationmark.triangle.fill")
+                        .ink(.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if let sourcePlugins {
+                    if sourcePlugins.isEmpty {
+                        Text("No task-source plugins installed. Put nat-source-<name> under ~/.config/notion-agent-tracker/plugins/<name>/ or on PATH.")
+                            .ink(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        ForEach(sourcePlugins) { plugin in
+                            SourcePluginRow(plugin: plugin)
+                        }
+                    }
+                } else {
+                    SettingsLoadingRow(text: "Looking for plugins…")
+                }
+            } header: {
+                Text("Task sources")
+            } footer: {
+                if sourcePlugins?.isEmpty == false {
+                    sectionFootnote("Plugins that bring another tracker's work into nat. Add a project over one from the + menu.")
+                }
+            }
+        }
+        .settingsForm()
+        .task { await loadSources() }
     }
 
     // MARK: - Rows
@@ -440,6 +484,16 @@ struct SettingsView: View {
         isLoading = false
     }
 
+    /// The Sources tab's one read: only the first time it is shown.
+    private func loadSources() async {
+        guard sourcePlugins == nil, sourcesError == nil else { return }
+        do {
+            sourcePlugins = try await client.sourceList()
+        } catch {
+            sourcesError = error.localizedDescription
+        }
+    }
+
     /// Queues a save behind whatever save is already running. Two fields
     /// committed in the same breath would otherwise both diff against the
     /// baseline the first has not moved yet, and write the first key twice.
@@ -497,17 +551,64 @@ private enum FieldWidth {
 /// fading in rather than by appearing, since a row that arrives resizes the
 /// section it is in and the window around it.
 private struct SettingsLoadingRow: View {
+    var text = "Loading configuration…"
     @State private var isRevealed = false
 
     var body: some View {
         HStack(spacing: 8) {
             ProgressView()
                 .controlSize(.small)
-            Text("Loading configuration…")
+            Text(text)
                 .ink(.secondary)
         }
         .opacity(isRevealed ? 1 : 0)
         .task { isRevealed = await LoadingDelay().shouldReveal() }
+    }
+}
+
+/// One plugin of the Sources tab: its icon, title and tag, then the
+/// executable it was found as and where — and, for one that would not
+/// describe, nat's reason in the refusal style the other tabs use.
+private struct SourcePluginRow: View {
+    let plugin: SourcePlugin
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: plugin.iconSymbol)
+                .font(.title3)
+                .ink(plugin.error == nil ? .primary : .tertiary)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(plugin.displayTitle)
+                    if let tag = plugin.describe?.tag, !tag.isEmpty {
+                        Text(tag)
+                            .font(Typo.mono(size: 10, weight: .semibold))
+                            .ink(.secondary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.separator))
+                    }
+                }
+                Text(plugin.executableName)
+                    .font(Typo.mono(size: 10))
+                    .ink(.secondary)
+                Text(plugin.path)
+                    .font(.footnote)
+                    .ink(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(plugin.path)
+                if let error = plugin.error {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .ink(.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 2)
     }
 }
 

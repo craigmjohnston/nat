@@ -126,6 +126,10 @@ public struct CreatedProject: Codable, Equatable, Sendable {
     /// this machine's configured user rather than anything the sheet asked.
     public let assignee: Bool
 
+    /// The task-source plugin the project was made over (`project-create
+    /// --source`); nil for any other project.
+    public let source: String?
+
     enum CodingKeys: String, CodingKey {
         case id
         case name
@@ -134,6 +138,7 @@ public struct CreatedProject: Codable, Equatable, Sendable {
         case slicesDSID = "slices_ds_id"
         case workingDir = "working_dir"
         case assignee
+        case source
     }
 
     public init(
@@ -143,7 +148,8 @@ public struct CreatedProject: Codable, Equatable, Sendable {
         slicesDBID: String = "",
         slicesDSID: String = "",
         workingDir: String = "",
-        assignee: Bool = false
+        assignee: Bool = false,
+        source: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -152,6 +158,7 @@ public struct CreatedProject: Codable, Equatable, Sendable {
         self.slicesDSID = slicesDSID
         self.workingDir = workingDir
         self.assignee = assignee
+        self.source = source
     }
 
     public init(from decoder: Decoder) throws {
@@ -163,5 +170,6 @@ public struct CreatedProject: Codable, Equatable, Sendable {
         slicesDSID = try container.decodeIfPresent(String.self, forKey: .slicesDSID) ?? ""
         workingDir = try container.decodeIfPresent(String.self, forKey: .workingDir) ?? ""
         assignee = try container.decodeIfPresent(Bool.self, forKey: .assignee) ?? false
+        source = try container.decodeIfPresent(String.self, forKey: .source)
     }
 }

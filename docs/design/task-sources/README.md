@@ -528,7 +528,7 @@ on the machine is nudged after a successful action.
 ### `project-create --source`
 
 ```
-nat project-create --name <name> --source <plugin name> [--plan-dir <dir>] …
+nat project-create <name> --source <plugin name> [--plan-dir <dir>] [--repo <url>] [--description -] …
 ```
 
 In order: the plugin must be discovered and `describe` with protocol 1

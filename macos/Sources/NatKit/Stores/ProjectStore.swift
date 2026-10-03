@@ -46,6 +46,10 @@ public protocol NatClientProtocol: Sendable {
     func planAccept(projectID: String) async throws -> PlanAccepted
     func notionSearch(query: String) async throws -> [NotionPlace]
     func projectMirror(projectID: String, parent: NotionPlace) async throws -> ProjectMirrored
+    func info(projectID: String, refresh: Bool, expand: [String]) async throws -> ProjectInfo
+    func containerShow(projectID: String, containerID: String) async throws -> ContainerShow
+    func sourceAction(projectID: String, action: String, group: String?, container: String?, input: String?) async throws -> SourceActionResult
+    func sourceList() async throws -> [SourcePlugin]
 }
 
 extension NatClientProtocol {
@@ -175,6 +179,27 @@ extension NatClientProtocol {
 
     public func doneClear(projectID: String) async throws -> DoneClearResult {
         throw NatError.commandFailed("done-clear: not stubbed by this test client")
+    }
+
+    /// Task sources: only `NatClient` and the fixture client implement
+    /// these, the same reasoning as `workspaceLaunch`. A plan read with lazy
+    /// groups expanded is the plain one to a conformer with no source.
+    public func info(projectID: String, refresh: Bool, expand: [String]) async throws -> ProjectInfo {
+        try await info(projectID: projectID, refresh: refresh)
+    }
+
+    public func containerShow(projectID: String, containerID: String) async throws -> ContainerShow {
+        throw NatError.commandFailed("container-show: not supported by this client")
+    }
+
+    public func sourceAction(
+        projectID: String, action: String, group: String?, container: String?, input: String?
+    ) async throws -> SourceActionResult {
+        throw NatError.commandFailed("source-action: not supported by this client")
+    }
+
+    public func sourceList() async throws -> [SourcePlugin] {
+        throw NatError.commandFailed("source-list: not supported by this client")
     }
 }
 

@@ -30,7 +30,12 @@ fuller structure and theme system.
   migration, write ordering all live in the Go binary.
 - Every call on a tracked project passes `--project <id>`, no fallback,
   mirroring the Go CLI (exceptions mirror the Go CLI's own: `status`,
-  `paths`, `config-show`/`-set`, `project-create`/`-open`).
+  `paths`, `config-show`/`-set`, `project-create`/`-open`, `source-list`).
+- Task sources: `SourceModels.swift` (and `ProjectInfo.source`,
+  `SliceDetail.container`, `PlanBackend.source`) mirror
+  `docs/design/task-sources/README.md` field for field — change the spec and
+  the models together. Settings ▸ Sources (`source-list`) is the only view so
+  far; the sidebar/navigator for source projects is the next milestone.
 - `NatBinary.resolve` never falls through to PATH for a packaged app:
   `NAT_BIN` (dev override) → the binary beside the app executable. No
   bundled `nat` is a **damaged install**, reported as such; only a bare dev

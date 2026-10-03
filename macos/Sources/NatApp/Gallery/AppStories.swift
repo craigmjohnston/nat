@@ -1251,6 +1251,16 @@ enum AppStories {
             let client = FixtureNatClient(config: Fixtures.configDocWithCustomModel)
             return SettingsView(appModel: await Fixtures.startedAppModel(client: client), client: client, initialTab: .agents)
         },
+
+        Story(
+            name: "settings-sources",
+            summary: "The settings window's read-only Sources tab: the demo plugin described "
+                + "(icon, title, tag, executable and path) and one that refused to, with nat's reason.",
+            size: CGSize(width: 520, height: 360),
+            colorScheme: .light
+        ) {
+            SettingsView(appModel: await Fixtures.startedAppModel(), client: FixtureNatClient(), initialTab: .sources)
+        },
     ])
 }
 

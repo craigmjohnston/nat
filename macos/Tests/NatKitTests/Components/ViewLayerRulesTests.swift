@@ -78,7 +78,13 @@ final class ViewLayerRulesTests: XCTestCase {
     /// a name or by a rule over names — a hex typed into a view is the one
     /// thing no theme can follow.
     func testNoViewTypesAColour() throws {
-        for (name, source) in try viewSources() {
+        // Fixtures are excepted: a task-source plugin sends its badge and fact
+        // colours as `#rrggbb` data, and the canned plugin's data has to say
+        // them as a plugin would.
+        let fixtures = Set(try FileManager.default.contentsOfDirectory(atPath: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/NatFixtures").path))
+        for (name, source) in try viewSources() where !fixtures.contains(name) {
             let hex = try NSRegularExpression(pattern: #"Color\(hex:\s*"|#[0-9a-fA-F]{6}""#)
             let range = NSRange(source.startIndex..., in: source)
             XCTAssertEqual(
