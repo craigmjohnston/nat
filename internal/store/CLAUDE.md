@@ -121,12 +121,21 @@ no working dir.
   `$XDG_DATA_HOME` or `~/.local/share/.../plans`), named
   `localSlug(projectID)+".db"` — the *same slugging rule* as
   `worktree.pathSlug`, reused, not shared code.
-- DSN: `journal_mode(wal)`, `busy_timeout(5000)`, `foreign_keys(on)`,
+- DSN: `busy_timeout(5000)`, `journal_mode(wal)`, `foreign_keys(on)`,
   **`_txlock=immediate`** — every transaction is `BEGIN IMMEDIATE`, never
   deferred. A deferred transaction takes its read lock at the first `SELECT`
   and only asks for the write lock later, which is the **one** lock upgrade
   SQLite refuses outright rather than waits out the busy timeout for — so
   two concurrent writers fail fast rather than queue as intended.
+- **`busy_timeout` must stay the first pragma.** The driver runs `_pragma`s
+  in DSN order on every new connection and drops its own default timeout when
+  any is given, so a pragma before ours runs with no timeout at all —
+  `journal_mode(wal)` first was the "invalid _pragma: database is locked" the
+  app's concurrent `nat` processes kept hitting. On top of that, `Local.retry`
+  retries a `sqlite3.BUSY` twice with backoff (100ms, 300ms) around the open's
+  migrate, every `withTx`, and every direct `l.db` read — at the leaf, never
+  nested; helpers taking a `localQuerier` inside a transaction are covered by
+  `withTx`'s.
 - Schema is stamped in `PRAGMA user_version` (currently `5`; each step is a
   `localSchemaVN` in `localMigrations`). `OpenLocal`
   creates directory + file + schema when none exists (an untouched project

@@ -134,18 +134,28 @@ func localSlug(id string) string {
 // A file that is there and is not a plan — hand-edited, truncated, some other
 // file entirely — is reported with the path and what SQLite made of it, since
 // the path is the whole of what there is to go and look at.
-func OpenLocal(path string) (*Local, error) {
+func OpenLocal(path string) (*Local, error) { return openLocalDSN(path, localDSN(path)) }
+
+// openLocalDSN is [OpenLocal] with the DSN given rather than derived, so a test
+// can open a plan with a busy timeout of nothing and see the retry, not the
+// timeout, wait out a lock.
+//
+// The migrate is retried as a whole because it is where the first connection —
+// and so the open-time pragmas — actually runs: sql.Open is lazy and touches no
+// file at all.
+func openLocalDSN(path, dsn string) (*Local, error) {
 	if dir := filepath.Dir(path); dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return nil, fmt.Errorf("make the plan directory %s: %w", dir, err)
 		}
 	}
-	db, err := sql.Open("sqlite3", localDSN(path))
+	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open the plan at %s: %w", path, err)
 	}
 	l := &Local{db: db, path: path}
-	if err := l.migrate(context.Background()); err != nil {
+	ctx := context.Background()
+	if err := l.retry(ctx, func() error { return l.migrate(ctx) }); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -164,10 +174,19 @@ func OpenLocal(path string) (*Local, error) {
 // one upgrade SQLite refuses outright rather than waiting out the busy timeout
 // for — so two agents writing at once would fail rather than queue, which is
 // exactly what the timeout is there to prevent.
+//
+// The busy timeout comes first, and the order is load-bearing: the driver runs
+// the pragmas in DSN order, as one statement, on every new connection it
+// opens, and drops its own default timeout the moment any pragma is given — so
+// until ours has run, a connection waits for nothing. journal_mode(wal) needs
+// a lock, and put first it failed outright ("invalid _pragma: database is
+// locked") whenever a sibling nat process was committing or checkpointing the
+// WAL away on its way out, which with the app spawning a command a second is
+// often.
 func localDSN(path string) string {
 	return "file:" + path +
-		"?_pragma=journal_mode(wal)" +
-		"&_pragma=busy_timeout(5000)" +
+		"?_pragma=busy_timeout(5000)" +
+		"&_pragma=journal_mode(wal)" +
 		"&_pragma=foreign_keys(on)" +
 		"&_txlock=immediate"
 }
@@ -388,8 +407,10 @@ func (l *Local) localShape(ctx context.Context, p Project, ms []domain.Milestone
 	}
 	if hydrated {
 		var ha, hb int
-		if err := l.db.QueryRowContext(ctx,
-			`SELECT has_assignee, has_branch FROM project WHERE id = ?`, p.ID).Scan(&ha, &hb); err != nil {
+		if err := l.retry(ctx, func() error {
+			return l.db.QueryRowContext(ctx,
+				`SELECT has_assignee, has_branch FROM project WHERE id = ?`, p.ID).Scan(&ha, &hb)
+		}); err != nil {
 			return Shape{}, l.errorf(err, "read the project")
 		}
 		hasAssignee, hasBranch = ha != 0, hb != 0
@@ -400,7 +421,8 @@ func (l *Local) localShape(ctx context.Context, p Project, ms []domain.Milestone
 // Shape reads what can be recorded about a project's slices and the milestones
 // there are to file one under, without reading the slices themselves.
 func (l *Local) Shape(ctx context.Context, p Project) (Shape, error) {
-	ms, err := l.milestones(ctx, l.db)
+	var ms []domain.Milestone
+	err := l.retry(ctx, func() (err error) { ms, err = l.milestones(ctx, l.db); return err })
 	if err != nil {
 		return Shape{}, err
 	}
@@ -444,11 +466,13 @@ func (l *Local) milestones(ctx context.Context, q localQuerier) ([]domain.Milest
 // order, so there is no second round trip to read it and nothing to fall back
 // to when that read fails.
 func (l *Local) Plan(ctx context.Context, p Project) (Plan, error) {
-	ms, err := l.milestones(ctx, l.db)
+	var ms []domain.Milestone
+	err := l.retry(ctx, func() (err error) { ms, err = l.milestones(ctx, l.db); return err })
 	if err != nil {
 		return Plan{}, err
 	}
-	slices, err := l.slices(ctx, l.db)
+	var slices []domain.Slice
+	err = l.retry(ctx, func() (err error) { slices, err = l.slices(ctx, l.db); return err })
 	if err != nil {
 		return Plan{}, err
 	}
@@ -472,7 +496,9 @@ func (l *Local) Plan(ctx context.Context, p Project) (Plan, error) {
 // because the caller has just read it from somewhere else.
 func (l *Local) projectName(ctx context.Context, p Project) (string, error) {
 	var name string
-	err := l.db.QueryRowContext(ctx, `SELECT name FROM project LIMIT 1`).Scan(&name)
+	err := l.retry(ctx, func() error {
+		return l.db.QueryRowContext(ctx, `SELECT name FROM project LIMIT 1`).Scan(&name)
+	})
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return p.Name, nil
@@ -490,7 +516,9 @@ func (l *Local) projectName(ctx context.Context, p Project) (string, error) {
 // it mirrors.
 func (l *Local) hydrated(ctx context.Context, id string) (bool, error) {
 	var synced sql.NullString
-	err := l.db.QueryRowContext(ctx, `SELECT synced_at FROM project WHERE id = ?`, id).Scan(&synced)
+	err := l.retry(ctx, func() error {
+		return l.db.QueryRowContext(ctx, `SELECT synced_at FROM project WHERE id = ?`, id).Scan(&synced)
+	})
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return false, nil
@@ -508,7 +536,9 @@ func (l *Local) hydrated(ctx context.Context, id string) (bool, error) {
 // nothing wrong with a plan that has simply never been pulled.
 func (l *Local) SyncedAt(ctx context.Context, id string) (time.Time, error) {
 	var synced sql.NullString
-	err := l.db.QueryRowContext(ctx, `SELECT synced_at FROM project WHERE id = ?`, id).Scan(&synced)
+	err := l.retry(ctx, func() error {
+		return l.db.QueryRowContext(ctx, `SELECT synced_at FROM project WHERE id = ?`, id).Scan(&synced)
+	})
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return time.Time{}, nil
@@ -618,7 +648,8 @@ func (l *Local) dependencies(ctx context.Context, q localQuerier) (map[string][]
 // reads back false for both here exactly as [Local.Shape] answers it, rather
 // than assuming every plan carries them the way a plan of its own always does.
 func (l *Local) Slice(ctx context.Context, id string) (domain.Slice, Shape, error) {
-	s, err := l.slice(ctx, l.db, id)
+	var s domain.Slice
+	err := l.retry(ctx, func() (err error) { s, err = l.slice(ctx, l.db, id); return err })
 	if err != nil {
 		return domain.Slice{}, Shape{}, err
 	}
@@ -638,7 +669,9 @@ func (l *Local) Slice(ctx context.Context, id string) (domain.Slice, Shape, erro
 // schema to be missing either from.
 func (l *Local) sliceShape(ctx context.Context) (Shape, error) {
 	var id string
-	err := l.db.QueryRowContext(ctx, `SELECT id FROM project LIMIT 1`).Scan(&id)
+	err := l.retry(ctx, func() error {
+		return l.db.QueryRowContext(ctx, `SELECT id FROM project LIMIT 1`).Scan(&id)
+	})
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return Shape{HasAssignee: true, HasBranch: true}, nil
@@ -678,14 +711,18 @@ func (l *Local) slice(ctx context.Context, q localQuerier, id string) (domain.Sl
 // it yet.
 func (l *Local) Body(ctx context.Context, id string) (string, error) {
 	var body string
-	err := l.db.QueryRowContext(ctx, `SELECT body FROM slices WHERE id = ?`, id).Scan(&body)
+	err := l.retry(ctx, func() error {
+		return l.db.QueryRowContext(ctx, `SELECT body FROM slices WHERE id = ?`, id).Scan(&body)
+	})
 	if err == nil {
 		return strings.TrimSpace(body), nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return "", l.errorf(err, "read the slice body")
 	}
-	err = l.db.QueryRowContext(ctx, `SELECT conventions FROM project WHERE id = ?`, id).Scan(&body)
+	err = l.retry(ctx, func() error {
+		return l.db.QueryRowContext(ctx, `SELECT conventions FROM project WHERE id = ?`, id).Scan(&body)
+	})
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return "", nil
@@ -838,6 +875,14 @@ func boolColumn(b bool) int {
 // [Local.slices]: a local file holds one project's sessions and there is
 // nothing else they could belong to.
 func (l *Local) Sessions(ctx context.Context, _ Project) ([]domain.Session, error) {
+	var out []domain.Session
+	err := l.retry(ctx, func() (err error) { out, err = l.sessions(ctx); return err })
+	return out, err
+}
+
+// sessions is [Local.Sessions]'s one read, apart so the retry wraps the query
+// and every row's scan together.
+func (l *Local) sessions(ctx context.Context) ([]domain.Session, error) {
 	rows, err := l.db.QueryContext(ctx,
 		`SELECT id, started_at, dir, branch, ended_at FROM sessions ORDER BY started_at, id`)
 	if err != nil {
@@ -880,7 +925,9 @@ func (l *Local) Sessions(ctx context.Context, _ Project) ([]domain.Session, erro
 // of.
 func (l *Local) Dirty(ctx context.Context, id string) (bool, error) {
 	var dirty bool
-	err := l.db.QueryRowContext(ctx, `SELECT dirty FROM sync WHERE slice_id = ?`, id).Scan(&dirty)
+	err := l.retry(ctx, func() error {
+		return l.db.QueryRowContext(ctx, `SELECT dirty FROM sync WHERE slice_id = ?`, id).Scan(&dirty)
+	})
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return false, nil
@@ -895,7 +942,9 @@ func (l *Local) Dirty(ctx context.Context, id string) (bool, error) {
 // [Local.MarkSent] — and false where it never has been.
 func (l *Local) LastSynced(ctx context.Context, id string) (time.Time, bool, error) {
 	var at sql.NullString
-	err := l.db.QueryRowContext(ctx, `SELECT synced_at FROM sync WHERE slice_id = ?`, id).Scan(&at)
+	err := l.retry(ctx, func() error {
+		return l.db.QueryRowContext(ctx, `SELECT synced_at FROM sync WHERE slice_id = ?`, id).Scan(&at)
+	})
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return time.Time{}, false, nil
@@ -916,10 +965,14 @@ func (l *Local) LastSynced(ctx context.Context, id string) (time.Time, bool, err
 // fetched, or that is not there at all.
 func (l *Local) BodyFresh(ctx context.Context, id string, since time.Time) (bool, error) {
 	var at sql.NullString
-	err := l.db.QueryRowContext(ctx, `SELECT body_at FROM slices WHERE id = ?`, id).Scan(&at)
+	err := l.retry(ctx, func() error {
+		return l.db.QueryRowContext(ctx, `SELECT body_at FROM slices WHERE id = ?`, id).Scan(&at)
+	})
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		err = l.db.QueryRowContext(ctx, `SELECT conventions_at FROM project WHERE id = ?`, id).Scan(&at)
+		err = l.retry(ctx, func() error {
+			return l.db.QueryRowContext(ctx, `SELECT conventions_at FROM project WHERE id = ?`, id).Scan(&at)
+		})
 		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
