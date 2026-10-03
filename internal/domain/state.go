@@ -46,7 +46,7 @@ func (a AgentPresence) String() string {
 // value, the way [AgentPresence] is the reading of tmux, so a rule about work
 // that is out can be written without GitHub's own vocabulary reaching this far.
 //
-// Both of the affirmative values are a pull request positively read as open:
+// Every value but the zero one is a pull request positively read as open:
 // the reading is a listing of what a repository has open, so a pull request
 // that has merged or been closed is one the reading did not name.
 //
@@ -67,8 +67,12 @@ const (
 	// waiting: unreviewed, changes asked for, or approved but unmergeable.
 	PRAwaitingReview
 	// PRReadyToMerge is an open pull request approved and mergeable as it
-	// stands.
+	// stands, with no check failing.
 	PRReadyToMerge
+	// PRChecksFailing is an open pull request with at least one check failed,
+	// whatever its review and mergeability say: CI being red is the author's to
+	// put right before anything a reviewer does matters.
+	PRChecksFailing
 )
 
 // String names the readiness for logs and test failures.
@@ -78,6 +82,8 @@ func (p PRReadiness) String() string {
 		return "awaiting review"
 	case PRReadyToMerge:
 		return "ready to merge"
+	case PRChecksFailing:
+		return "checks failing"
 	default:
 		return "unread"
 	}
@@ -114,6 +120,10 @@ const (
 	// can be merged as it stands: the review is over and the work is one action
 	// from landing.
 	SliceStateReadyToMerge
+	// SliceStateChecksFailing is a slice whose open pull request has a check
+	// failed: the work is out, but not in a state anyone should merge or
+	// review it in.
+	SliceStateChecksFailing
 )
 
 // String names the state for logs and test failures.
@@ -131,6 +141,8 @@ func (s SliceState) String() string {
 		return "awaiting review"
 	case SliceStateReadyToMerge:
 		return "ready to merge"
+	case SliceStateChecksFailing:
+		return "checks failing"
 	default:
 		return "none"
 	}
@@ -167,7 +179,9 @@ func (s SliceState) String() string {
 // approved and mergeable is the review over, and everything else about it — an
 // unreviewed one, one with changes asked for, one nobody could read at all — is
 // the review still to come, which is what a slice handed back on a branch alone
-// is too.
+// is too. A pull request whose checks have failed is neither: it is read as
+// failing whatever its review says, so an approved one is never called ready
+// to merge while CI is red.
 func StateOf(s Slice, presence AgentPresence, pr PRReadiness, byID map[string]Slice) SliceState {
 	switch {
 	case s.Status != SliceClaimed:
@@ -177,8 +191,11 @@ func StateOf(s Slice, presence AgentPresence, pr PRReadiness, byID map[string]Sl
 	case presence != AgentNone:
 		return SliceStateWorking
 	case s.Branch != "" || s.PRURL != "":
-		if pr == PRReadyToMerge {
+		switch pr {
+		case PRReadyToMerge:
 			return SliceStateReadyToMerge
+		case PRChecksFailing:
+			return SliceStateChecksFailing
 		}
 		return SliceStateAwaitingReview
 	case Blocked(s, byID):

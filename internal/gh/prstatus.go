@@ -18,25 +18,97 @@ import (
 const (
 	reviewApproved = "APPROVED"
 	stateMergeable = "MERGEABLE"
-	prListFields   = "url,reviewDecision,mergeable"
+	prListFields   = "url,reviewDecision,mergeable,statusCheckRollup"
 )
 
 // prListLimit is how many open pull requests one listing will carry. gh's own
 // default is thirty, which a busy repository passes without saying so, and the
 // three fields asked for are small enough that a hundred costs nothing worth
-// counting. A repository with more open than that has its oldest left out of
+// counting — the check rollup included, which is a handful of short entries per
+// pull request. A repository with more open than that has its oldest left out of
 // the answer, which reads here as a pull request that is no longer open — the
 // same thing an unread one reads as, and the quiet direction to be wrong in.
 const prListLimit = "100"
 
 // PRStatus is what gh says about a pull request that bears on whether it is
-// still waiting to be reviewed: whether a review has approved it, and whether
-// GitHub can merge it as it stands. Both false is a pull request with a review
-// still to come — and equally the zero value, which is what a read that never
-// happened comes back as.
+// still waiting to be reviewed: whether a review has approved it, whether
+// GitHub can merge it as it stands, and how its checks stand. Both false is a
+// pull request with a review still to come — and equally the zero value, which
+// is what a read that never happened comes back as.
 type PRStatus struct {
 	Approved  bool
 	Mergeable bool
+	Checks    ChecksVerdict
+}
+
+// ChecksVerdict is a pull request's whole status check rollup said as one word.
+// The zero value is a pull request with no checks at all, which is no verdict
+// rather than a pass: nothing ran, so nothing can be said to have gone green.
+type ChecksVerdict int
+
+const (
+	// ChecksNone is a pull request that reported no checks.
+	ChecksNone ChecksVerdict = iota
+	// ChecksPassing is every check finished and none of them failed.
+	ChecksPassing
+	// ChecksPending is no check failed but at least one has not finished — or
+	// is in a state this build does not know, which is read the same way.
+	ChecksPending
+	// ChecksFailing is at least one check failed, whatever the rest are doing.
+	ChecksFailing
+)
+
+// String names the verdict for logs and test failures.
+func (v ChecksVerdict) String() string {
+	switch v {
+	case ChecksPassing:
+		return "passing"
+	case ChecksPending:
+		return "pending"
+	case ChecksFailing:
+		return "failing"
+	default:
+		return "none"
+	}
+}
+
+// checkFinished is every finished state a check arrives in — a CheckRun's
+// conclusion or a StatusContext's state, as [ghRoll.check] reduces them — and
+// whether it is a failure. A skipped, neutral, cancelled or stale check is
+// finished without having failed, so it holds nothing up. Everything not named
+// here (QUEUED, IN_PROGRESS, PENDING, EXPECTED, whatever GitHub adds next) is a
+// check still to finish: a state nobody can classify is not a pass, or the
+// board would call work ready that nothing said was.
+var checkFinished = map[string]bool{
+	"SUCCESS":         false,
+	"SKIPPED":         false,
+	"NEUTRAL":         false,
+	"CANCELLED":       false,
+	"STALE":           false,
+	"FAILURE":         true,
+	"ERROR":           true,
+	"TIMED_OUT":       true,
+	"STARTUP_FAILURE": true,
+	"ACTION_REQUIRED": true,
+}
+
+// checksVerdictOf rolls a pull request's checks into one verdict: any failure
+// fails the lot, then any check unfinished leaves it pending.
+func checksVerdictOf(rollup []ghRoll) ChecksVerdict {
+	if len(rollup) == 0 {
+		return ChecksNone
+	}
+	verdict := ChecksPassing
+	for _, entry := range rollup {
+		failed, finished := checkFinished[strings.ToUpper(strings.TrimSpace(entry.check().State))]
+		switch {
+		case failed:
+			return ChecksFailing
+		case !finished:
+			verdict = ChecksPending
+		}
+	}
+	return verdict
 }
 
 // OpenPRs is every pull request the repository at dir currently has open, keyed
@@ -62,9 +134,10 @@ func (c CLI) OpenPRs(dir string) (map[string]PRStatus, error) {
 		return nil, err
 	}
 	var list []struct {
-		URL            string `json:"url"`
-		ReviewDecision string `json:"reviewDecision"`
-		Mergeable      string `json:"mergeable"`
+		URL            string   `json:"url"`
+		ReviewDecision string   `json:"reviewDecision"`
+		Mergeable      string   `json:"mergeable"`
+		Rollup         []ghRoll `json:"statusCheckRollup"`
 	}
 	if err := json.Unmarshal([]byte(out), &list); err != nil {
 		logging.Error("could not read what gh said about a repository's pull requests", "dir", dir, "error", err)
@@ -75,6 +148,7 @@ func (c CLI) OpenPRs(dir string) (map[string]PRStatus, error) {
 		open[NormaliseURL(pr.URL)] = PRStatus{
 			Approved:  pr.ReviewDecision == reviewApproved,
 			Mergeable: pr.Mergeable == stateMergeable,
+			Checks:    checksVerdictOf(pr.Rollup),
 		}
 	}
 	return open, nil

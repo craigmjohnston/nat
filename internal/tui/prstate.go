@@ -171,11 +171,16 @@ func worthReading(s domain.Slice) bool {
 }
 
 // readinessOf turns what gh said about an open pull request into what the rule
-// takes. Approved and mergeable is the review over; anything else is a review
+// takes. A failed check comes first, whatever the review says, so a pull
+// request is never ready to merge while CI is red. Approved and mergeable is
+// the review over; anything else is a review
 // still to come — a pull request nobody has approved, or an approved one GitHub
 // cannot merge as it stands, which is work for the author again rather than for
 // a reviewer.
 func readinessOf(status gh.PRStatus) domain.PRReadiness {
+	if status.Checks == gh.ChecksFailing {
+		return domain.PRChecksFailing
+	}
 	if status.Approved && status.Mergeable {
 		return domain.PRReadyToMerge
 	}

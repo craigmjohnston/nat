@@ -12,7 +12,8 @@ public struct PRStatusDoc: Codable, Equatable, Sendable {
 }
 
 /// One slice's reading, in `domain.PRReadiness`'s own words: "awaiting
-/// review" and "ready to merge" are a pull request positively read as open,
+/// review", "ready to merge" and "checks failing" are a pull request
+/// positively read as open,
 /// and "unread" is everything else at once — no longer open, or a repository
 /// whose listing could not be taken, which the reading deliberately does not
 /// tell apart.
@@ -34,14 +35,16 @@ public struct PRStatusSlice: Codable, Equatable, Sendable {
         self.readiness = readiness
     }
 
-    /// `domain.PRReadiness`'s two affirmative words, said once here rather
+    /// `domain.PRReadiness`'s affirmative words, said once here rather
     /// than spelled out wherever a reading is compared against one.
     public static let awaitingReview = "awaiting review"
     public static let readyToMerge = "ready to merge"
+    public static let checksFailing = "checks failing"
 
     /// Whether the reading positively saw this pull request open — the one
     /// fact rail membership rides on.
     public var isOpen: Bool {
         readiness == Self.awaitingReview || readiness == Self.readyToMerge
+            || readiness == Self.checksFailing
     }
 }

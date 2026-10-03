@@ -35,13 +35,17 @@ human has read the diff.
   gh's own stdin via `StdinRunner`, never `--body` as an argument: a review
   comment quoting diff lines has no length bound and a shell's argument list
   does.
-- `OpenPRs(dir)` — one `gh pr list --state open --json url,reviewDecision,mergeable
-  --limit 100` per repo, keyed by URL. Only `APPROVED` and `MERGEABLE` count
-  as true; every other GitHub word (`REVIEW_REQUIRED`, `CHANGES_REQUESTED`,
-  `CONFLICTING`, `UNKNOWN`, a no-review-required repo's empty decision) is
-  "not true." **Limit 100 is past gh's default of 30** — a repo with more
-  open PRs than that has its oldest silently missing, which reads exactly
-  like a PR that closed. Not listed = not open; a failed listing is logged
+- `OpenPRs(dir)` — one `gh pr list --state open --json
+  url,reviewDecision,mergeable,statusCheckRollup --limit 100` per repo, keyed
+  by URL. Only `APPROVED` and `MERGEABLE` count as true; every other GitHub
+  word (`REVIEW_REQUIRED`, `CHANGES_REQUESTED`, `CONFLICTING`, `UNKNOWN`, a
+  no-review-required repo's empty decision) is "not true." The rollup becomes
+  one `ChecksVerdict` (`checksVerdictOf`): any failure → failing, else any
+  unfinished or unknown state → pending, else passing; no checks → `ChecksNone`
+  (no verdict). The board folds failing into `domain.PRChecksFailing`.
+  **Limit 100 is past gh's default of 30** — a repo with more open PRs than
+  that has its oldest silently missing, which reads exactly like a PR that
+  closed. Not listed = not open; a failed listing is logged
   and returned as an error, never treated as "nothing open."
 - `ViewPR(dir, ref)` — `gh pr view <ref> --json ...` for the full-detail
   screen. GitHub's own vocabulary is kept as-is (`State`, `ReviewDecision`,

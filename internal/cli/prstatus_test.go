@@ -504,6 +504,9 @@ func TestWorthReadingPRAndReadinessOf(t *testing.T) {
 	if got := readinessOf(gh.PRStatus{Approved: true, Mergeable: false}); got != domain.PRAwaitingReview {
 		t.Errorf("readinessOf(approved, not mergeable) = %v, want awaiting review", got)
 	}
+	if got := readinessOf(gh.PRStatus{Approved: true, Mergeable: true, Checks: gh.ChecksFailing}); got != domain.PRChecksFailing {
+		t.Errorf("readinessOf(approved+mergeable, checks failing) = %v, want checks failing", got)
+	}
 	if got := readinessOf(gh.PRStatus{}); got != domain.PRAwaitingReview {
 		t.Errorf("readinessOf({}) = %v, want awaiting review", got)
 	}

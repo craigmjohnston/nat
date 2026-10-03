@@ -32,6 +32,7 @@ func TestSliceStateString(t *testing.T) {
 		{SliceStateReadyToPush, "ready to push"},
 		{SliceStateAwaitingReview, "awaiting review"},
 		{SliceStateReadyToMerge, "ready to merge"},
+		{SliceStateChecksFailing, "checks failing"},
 		{SliceState(42), "none"},
 	}
 	for _, tt := range tests {
@@ -49,6 +50,7 @@ func TestPRReadinessString(t *testing.T) {
 		{PRUnread, "unread"},
 		{PRAwaitingReview, "awaiting review"},
 		{PRReadyToMerge, "ready to merge"},
+		{PRChecksFailing, "checks failing"},
 		{PRReadiness(42), "unread"},
 	}
 	for _, tt := range tests {
@@ -162,6 +164,14 @@ func TestStateOfPRReadiness(t *testing.T) {
 			readiness: PRAwaitingReview, want: SliceStateAwaitingReview},
 		{name: "nothing read", status: SliceClaimed, prURL: "https://gh/pr/1",
 			readiness: PRUnread, want: SliceStateAwaitingReview},
+		// Failing checks are their own state, never ready to merge or awaiting
+		// review, while the work is out.
+		{name: "checks failing", status: SliceClaimed, prURL: "https://gh/pr/1",
+			readiness: PRChecksFailing, want: SliceStateChecksFailing},
+		{name: "agent on it, checks failing", status: SliceClaimed, presence: AgentWaiting, prURL: "https://gh/pr/1",
+			readiness: PRChecksFailing, want: SliceStateWaiting},
+		{name: "done, checks failing", status: SliceDone, prURL: "https://gh/pr/1",
+			readiness: PRChecksFailing, want: SliceStateNone},
 		// A branch handed back with no pull request on it yet is a review still
 		// to come whatever a stale reading says.
 		{name: "handed back, ready to merge", status: SliceClaimed, branch: "slice/x",

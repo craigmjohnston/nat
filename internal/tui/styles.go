@@ -295,13 +295,15 @@ type Styles struct {
 	// slice in progress with nothing out yet, which takes AccentAlt because it
 	// is ordinary work rather than anything to put right. A review that is over
 	// takes that same green in bold: it is the end of the state beside it rather
-	// than a state of another kind.
+	// than a state of another kind. A pull request whose checks have failed
+	// takes Danger: it is the one state here that is something gone wrong.
 	StateWorking        lipgloss.Style
 	StateWaiting        lipgloss.Style
 	StateBlocked        lipgloss.Style
 	StateReadyToPush    lipgloss.Style
 	StateAwaitingReview lipgloss.Style
 	StateReadyToMerge   lipgloss.Style
+	StateChecksFailing  lipgloss.Style
 
 	// StarDim, StarMid and StarPeak are the star of a slice with an agent
 	// working on it, brightening and settling as the pulse swells: all three
@@ -452,6 +454,7 @@ func NewStyles(isDark bool) Styles {
 		StateReadyToPush:    lipgloss.NewStyle().Foreground(t.AccentAlt),
 		StateAwaitingReview: lipgloss.NewStyle().Foreground(t.Success),
 		StateReadyToMerge:   lipgloss.NewStyle().Foreground(t.Success).Bold(true),
+		StateChecksFailing:  lipgloss.NewStyle().Foreground(t.Danger),
 
 		StarDim:     lipgloss.NewStyle().Faint(true).Foreground(t.Working),
 		StarMid:     lipgloss.NewStyle().Foreground(t.Working),
