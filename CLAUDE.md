@@ -45,6 +45,10 @@ any one package does it.
 - `internal/tui/` — the board. See `internal/tui/CLAUDE.md`.
 - `internal/logging/`, `internal/nudge/` — the log file and the
   write-marker file the board polls every second for near-instant refresh.
+- `plugins/shortcut/` — `nat-source-shortcut`, the Shortcut task-source
+  plugin: its own binary (`go install ./plugins/shortcut`), reusing
+  `internal/source`'s types, never imported by nat. See
+  `plugins/shortcut/CLAUDE.md`.
 - `skills/` — `/queue-work`, `/queue-project`, `/next-slice`, embedded via
   `go:embed`, installed by `nat setup`.
 - `macos/` — `gnat`, the native macOS app (SwiftPM; `NatKit` logic, `NatApp`
