@@ -692,6 +692,9 @@ func TestOnlyAGnatPromptProposesFollowUps(t *testing.T) {
 	for _, want := range []string{
 		"    nat slice-followups " + c.Slice.ID + " --project " + testProjectID + " \\\n        --follow-up '<title line>",
 		"`complete-slice` refuses while the decision is outstanding.",
+		"\nDone when: <how anyone checks it is finished>'",
+		"this text is the\nbrief of a new slice, word for word",
+		"starting `Done when:` saying how anyone checks it is finished",
 	} {
 		if !strings.Contains(gnat, want) {
 			t.Errorf("gnat prompt does not say %q", want)

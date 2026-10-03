@@ -63,12 +63,15 @@ Fold in before handing back:
 1. Persist the split width
    The width lives under one key.
    Store it per project.
+   Done when: two projects keep two widths.
 
 2. Render the picker in a story
    No story shows it open.
+   Done when: a story shows it open.
 
 3. Remove dead code
    Nothing calls it.
+   Done when: it is gone.
 
 Then hand back with nat complete-slice as usual.`
 	if len(fp.runner.sends) != 1 || fp.runner.sends[0].prompt != want {
