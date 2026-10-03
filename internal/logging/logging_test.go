@@ -124,12 +124,14 @@ func TestOpenWritesActionsAndErrorsToTheLogFile(t *testing.T) {
 	}
 	Action("agent launched", "slice", "s1")
 	Error("notion request failed", "path", "/pages/p1")
+	Warn("plan busy, retrying", "attempt", 2)
 	if err := Close(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	got := readFile(t, path)
-	for _, want := range []string{"level=INFO", "agent launched", "slice=s1", "level=ERROR", "notion request failed", "/pages/p1"} {
+	for _, want := range []string{"level=INFO", "agent launched", "slice=s1", "level=ERROR", "notion request failed", "/pages/p1",
+		"level=WARN", "plan busy, retrying", "attempt=2"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("log = %q, want it to contain %q", got, want)
 		}

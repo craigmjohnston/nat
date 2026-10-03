@@ -38,19 +38,27 @@ import (
 // waits its turn out rather than failing; the rollback is unconditional, since
 // rolling back a committed transaction is how database/sql says "nothing to
 // undo" and the alternative is a transaction left open by an early return.
+//
+// The whole transaction is retried when the plan is busy ([Local.retry]), f
+// included. Running f again is safe by the second rule above: it reads what it
+// is about to write inside its own transaction, so a second attempt reads the
+// plan afresh rather than replaying the first one's idea of it, and the failed
+// attempt's writes went with its rollback.
 func (l *Local) withTx(ctx context.Context, doing string, f func(*sql.Tx) error) error {
-	tx, err := l.db.BeginTx(ctx, nil)
-	if err != nil {
-		return l.errorf(err, doing)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := f(tx); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return l.errorf(err, doing)
-	}
-	return nil
+	return l.retry(ctx, func() error {
+		tx, err := l.db.BeginTx(ctx, nil)
+		if err != nil {
+			return l.errorf(err, doing)
+		}
+		defer func() { _ = tx.Rollback() }()
+		if err := f(tx); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return l.errorf(err, doing)
+		}
+		return nil
+	})
 }
 
 // exec runs one statement, saying in the store's own words what it was doing

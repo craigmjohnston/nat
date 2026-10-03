@@ -129,6 +129,12 @@ func Action(msg string, args ...any) { write(slog.LevelInfo, msg, args...) }
 // error conventionally goes under the key "err".
 func Error(msg string, args ...any) { write(slog.LevelError, msg, args...) }
 
+// Warn records something that went wrong and was got over — a write that
+// waited out a busy plan file and then landed, say — which is worth a reader's
+// notice when it starts happening often, but is not a failure. Arguments are
+// slog key/value pairs.
+func Warn(msg string, args ...any) { write(slog.LevelWarn, msg, args...) }
+
 // write hands a record to whichever logger is installed. The logger is read
 // under the lock and used outside it, so a call racing an [Open] writes to one
 // of the two files rather than to a handler being swapped underneath it.
