@@ -14,7 +14,7 @@ final class SourceFilterDraftTests: XCTestCase {
         XCTAssertNil(draft.choice(field("epic", in: action)))
         XCTAssertEqual(draft.summary(field("team", in: action)), "Board")
         XCTAssertFalse(draft.differs(from: action))
-        XCTAssertEqual(draft.input(for: action), #"{"epic":[],"labels":[],"project":[],"team":["board"]}"#)
+        XCTAssertEqual(draft.input(for: action), #"{"epic":[],"labels":[],"project":[],"state":[],"team":["board"]}"#)
     }
 
     func testAnyNamesWhatItFallsThroughTo() {
@@ -38,7 +38,7 @@ final class SourceFilterDraftTests: XCTestCase {
         XCTAssertFalse(draft.isChosen("diff", in: field("labels", in: action)))
         XCTAssertEqual(draft.summary(field("labels", in: action)), "agent, gone", "an id offered nowhere names itself")
         XCTAssertTrue(draft.differs(from: action))
-        XCTAssertEqual(draft.input(for: action), #"{"epic":[],"labels":["agent","gone"],"project":["30"],"team":[]}"#)
+        XCTAssertEqual(draft.input(for: action), #"{"epic":[],"labels":["agent","gone"],"project":["30"],"state":[],"team":[]}"#)
     }
 
     func testAFieldTheDraftHasNotSeenReadsAsSaved() {

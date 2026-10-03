@@ -186,6 +186,44 @@ func describePlugin(ctx context.Context, env Env, name string) (source.Describe,
 	return describeSource(ctx, name, src)
 }
 
+// sourceProjectName is what a source project is called wherever nat names
+// it: its plugin's describe title, read fresh, else the plugin's own name
+// (one that will not describe, or an Env with no way to run one). Never the
+// config entry's name — project-create --source writes none, and one an
+// older entry carries is ignored.
+func sourceProjectName(ctx context.Context, env Env, plugin string) string {
+	if env.NewSource != nil {
+		if d, err := describePlugin(ctx, env, plugin); err == nil && strings.TrimSpace(d.Title) != "" {
+			return d.Title
+		}
+	}
+	return plugin
+}
+
+// withSourceNames is cfg with every source project named by
+// sourceProjectName, each plugin described once, in a copy of its projects
+// map: what a command that lists projects prints, never what is saved.
+func withSourceNames(ctx context.Context, env Env, cfg config.Config) config.Config {
+	if cfg.Projects == nil {
+		return cfg
+	}
+	titles := map[string]string{}
+	projects := make(map[string]config.ProjectConfig, len(cfg.Projects))
+	for id, p := range cfg.Projects {
+		if p.IsSource() {
+			title, ok := titles[p.Source]
+			if !ok {
+				title = sourceProjectName(ctx, env, p.Source)
+				titles[p.Source] = title
+			}
+			p.Name = title
+		}
+		projects[id] = p
+	}
+	cfg.Projects = projects
+	return cfg
+}
+
 // sourceListText is source-list's plain form: one line per plugin.
 func sourceListText(listed []sourcePluginJSON) string {
 	if len(listed) == 0 {

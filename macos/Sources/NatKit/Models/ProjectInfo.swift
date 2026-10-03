@@ -283,7 +283,9 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        name = try c.decode(String.self, forKey: .name)
+        // A source project's entry carries no name — it is named by its
+        // plugin (`AppModel.tabName`) — so an absent one is empty.
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
         slicesDSID = try c.decodeIfPresent(String.self, forKey: .slicesDSID)
         workingDir = try c.decode(String.self, forKey: .workingDir)
         // A backend of the wrong type is no more a reason to lose the config

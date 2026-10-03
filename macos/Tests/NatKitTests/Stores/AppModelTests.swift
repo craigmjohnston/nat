@@ -1,4 +1,5 @@
 import XCTest
+import NatFixtures
 @testable import NatKit
 
 // MARK: - Mock Config Reader
@@ -1234,5 +1235,137 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(cache.reads, ["proj-1"])
         XCTAssertEqual(appModel.projectStore?.state.projectInfo, cached)
         appModel.cleanup()
+    }
+}
+
+// MARK: - A plugin changed in Settings ▸ Sources
+
+@MainActor
+final class AppModelPluginChangeTests: XCTestCase {
+    private typealias Change = PluginsModel.PluginChange
+
+    /// A source project nat deleted with its plugin loses its tab and its
+    /// store; the active project, where it was that one, moves beside it.
+    func testDeletedProjectsLoseTheirTabsAndStores() async {
+        let work = Fixtures.sourceProjectID
+        let appModel = await Fixtures.startedAppModel(config: Fixtures.sourceConfig)
+        await appModel.reloadSourcePlugins()
+        XCTAssertEqual(appModel.sourceProjectNames(of: "demo"), ["Demo source"])
+        XCTAssertEqual(appModel.sourceProjectNames(of: "other"), [])
+        await appModel.activateProject(work)
+        XCTAssertNotNil(appModel.source(ofProject: work))
+        await appModel.setSourceGroup("done", expanded: true, inProject: work)
+
+        await appModel.pluginChanged(Change(plugin: "demo", deletedProjectIDs: [work]))
+        XCTAssertFalse(appModel.projectTabs.contains { $0.id == work })
+        XCTAssertNotNil(appModel.activeProjectID)
+        XCTAssertNotEqual(appModel.activeProjectID, work)
+        XCTAssertNil(appModel.source(ofProject: work), "its store is gone")
+        XCTAssertFalse(appModel.isSourceGroupExpanded("done", inProject: work))
+        appModel.cleanup()
+    }
+
+    /// The last tab going leaves no active project and nothing polling one.
+    func testDeletingTheOnlyProjectLeavesNoneActive() async {
+        let work = Fixtures.sourceProjectID
+        let config = NatProjectConfig(
+            projects: [work: ProjectConfig(name: "Work", workingDir: "", backend: .source, source: "demo")],
+            agentSplitPercent: 45, pollSeconds: 3600,
+            workshopAgent: AgentModel(model: nil, effort: nil), sliceAgent: AgentModel(model: nil, effort: nil),
+            assigneeUserName: nil)
+        let appModel = await Fixtures.startedAppModel(config: config)
+        XCTAssertEqual(appModel.activeProjectID, work)
+        await appModel.pluginChanged(Change(plugin: "demo", deletedProjectIDs: [work]))
+        XCTAssertTrue(appModel.projectTabs.isEmpty)
+        XCTAssertNil(appModel.activeProjectID)
+        appModel.cleanup()
+    }
+
+    /// A deleted background project goes without moving the active one.
+    func testDeletingABackgroundProjectLeavesTheActiveOne() async {
+        let appModel = await Fixtures.startedAppModel(config: Fixtures.sourceConfig)
+        await appModel.activateProject(Fixtures.projectID)
+        let active = appModel.activeProjectID
+        await appModel.pluginChanged(Change(plugin: "demo", deletedProjectIDs: [Fixtures.sourceProjectID]))
+        XCTAssertEqual(appModel.activeProjectID, active)
+        XCTAssertFalse(appModel.projectTabs.contains { $0.id == Fixtures.sourceProjectID })
+        appModel.cleanup()
+    }
+
+    /// An update re-reads every project of that plugin at once — and only
+    /// those: a Notion project has no plugin to ask.
+    func testAChangedPluginsProjectsAreReadAgain() async {
+        let client = FixtureNatClient()
+        let appModel = await Fixtures.startedAppModel(client: client, config: Fixtures.sourceConfig)
+        let work = Fixtures.sourceProjectID
+        // A Notion project active, so the source project is read alone — the
+        // active one's refresh would read every tab behind it too.
+        await appModel.activateProject(Fixtures.projectID)
+        await appModel.rereadSource(projectID: work)
+        let before = client.infoReads
+
+        await appModel.pluginChanged(Change(plugin: "demo"))
+        let after = Array(client.infoReads.dropFirst(before.count))
+        XCTAssertEqual(after, [work])
+
+        await appModel.pluginChanged(Change(plugin: "other"))
+        XCTAssertEqual(client.infoReads.count, before.count + 1, "no project of another plugin is read")
+        appModel.cleanup()
+    }
+
+    /// A plugin installed again after its projects were deleted may make a
+    /// fresh one: what this run made is forgotten with them.
+    func testAReinstallMakesAFreshProject() async {
+        let shortcut = SourcePlugin(name: "shortcut", path: "/p/shortcut", describe: SourceDescribe(
+            name: "shortcut", title: "Shortcut", tag: "SC", iconSymbol: "s", containerNoun: "card", taskNoun: "task",
+            setup: [PluginSetupField(id: "token", label: "API token", input: "secret", set: true)]))
+        let client = FixtureNatClient(sources: [shortcut])
+        let appModel = await Fixtures.startedAppModel(client: client, config: Fixtures.sourceConfig)
+        await appModel.loadSourcePlugins()
+        await appModel.ensureSourceProjects()
+        let made = "f1x8500c-0000-4000-8000-shortcut"
+        await appModel.pluginChanged(Change(plugin: "shortcut", deletedProjectIDs: [made]))
+        XCTAssertFalse(appModel.projectTabs.contains { $0.id == made })
+        await appModel.ensureSourceProjects()
+        XCTAssertEqual(client.writes.filter { $0.hasPrefix("project-create") }.count, 2)
+        appModel.cleanup()
+    }
+}
+
+// MARK: - A source project is named by its plugin
+
+@MainActor
+final class SourceProjectNameTests: XCTestCase {
+    /// Whatever name its config entry carries ("Work" here, as an older
+    /// entry might), a source project's tab is its plugin's title once the
+    /// plugins are read, and the plugin's own name before; any other
+    /// project keeps its config name.
+    func testASourceProjectsTabIsItsPluginsTitle() async {
+        let appModel = Fixtures.appModel(config: Fixtures.sourceConfig)
+        await appModel.start(configPath: Fixtures.paths.config, nudgePath: Fixtures.paths.nudge)
+        await appModel.reloadSourcePlugins()
+        let work = Fixtures.sourceProjectID
+        XCTAssertEqual(appModel.projectTabs.first { $0.id == work }?.name, "Demo source")
+        XCTAssertEqual(appModel.tabName(work), "Demo source")
+        XCTAssertEqual(appModel.sourceProjectNames(of: "demo"), ["Demo source"])
+        XCTAssertEqual(appModel.tabName(Fixtures.projectID), Fixtures.sourceConfig.projects[Fixtures.projectID]?.name)
+        XCTAssertEqual(appModel.tabName("nope", fallback: "Made"), "Made")
+        appModel.cleanup()
+    }
+
+    func testAPluginNotListedLendsItsName() async {
+        let appModel = Fixtures.appModel(client: FixtureNatClient(sources: []), config: Fixtures.sourceConfig)
+        await appModel.start(configPath: Fixtures.paths.config, nudgePath: Fixtures.paths.nudge)
+        await appModel.reloadSourcePlugins()
+        XCTAssertEqual(appModel.tabName(Fixtures.sourceProjectID), "demo")
+        appModel.cleanup()
+    }
+
+    /// `project-create --source` writes no name: an entry without one reads.
+    func testAnEntryWithNoNameDecodes() throws {
+        let entry = try JSONDecoder().decode(
+            ProjectConfig.self, from: Data(#"{"working_dir": "", "backend": "source", "source": "shortcut"}"#.utf8))
+        XCTAssertEqual(entry.name, "")
+        XCTAssertEqual(entry.source, "shortcut")
     }
 }

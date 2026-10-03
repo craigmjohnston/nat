@@ -69,12 +69,16 @@ struct SidebarView: View {
     /// it takes, at most, where another open section has the room.
     @State private var sourceContentHeights: [String: CGFloat] = [:]
 
-    /// - Parameter hoveredContainer: a container row to draw under the
-    ///   pointer — a story's, since a render has no pointer.
+    /// - Parameters:
+    ///   - hoveredContainer: a container row to draw under the pointer — a
+    ///     story's, since a render has no pointer.
+    ///   - hoveredGroup: a source group's row to draw under the pointer, the
+    ///     same way (a container, where both are given, wins).
     init(
         appModel: AppModel, onNewProject: @escaping () -> Void = {}, showsTitlebar: Bool = false,
         folded: [String: Bool] = [:], treeAnchor: UnitPoint? = nil,
-        hoveredContainer: (projectID: String, containerID: String)? = nil
+        hoveredContainer: (projectID: String, containerID: String)? = nil,
+        hoveredGroup: (projectID: String, groupID: String)? = nil
     ) {
         self.appModel = appModel
         self.onNewProject = onNewProject
@@ -83,7 +87,7 @@ struct SidebarView: View {
         _fold = State(initialValue: folded)
         _hoveredSourceRow = State(initialValue: hoveredContainer.map {
             Self.sourceRowKey($0.projectID, container: $0.containerID)
-        })
+        } ?? hoveredGroup.map { Self.sourceRowKey($0.projectID, group: $0.groupID) })
     }
 
     private struct NewSliceTarget: Identifiable {
@@ -485,7 +489,8 @@ struct SidebarView: View {
 
     /// A source fold's heading: the plugin's title, always — the section is
     /// the plugin's, whatever the project behind it is called, and nothing
-    /// renames it — then the header menu, whose Filter… opens anchored here.
+    /// renames it — then the filter button (where the menu has a `filter`
+    /// action), its editor anchored to it, then the header menu.
     private func sourceHead(_ project: SidebarProject, open: Bool) -> some View {
         let key = sourceKey(project)
         let source = project.source
@@ -502,7 +507,10 @@ struct SidebarView: View {
                 Text("\(project.needsYou)").monoXS().ink(.hot)
             }
             Spacer(minLength: 0)
-            if let source, !source.menu.isEmpty {
+            if let filter = source?.menu.filterAction {
+                filterButton(filter, projectID: project.id, group: nil, size: 12, frame: 18)
+            }
+            if let source, !source.menu.menuItems.isEmpty {
                 Menu {
                     actionItems(source.menu, projectID: project.id)
                 } label: {
@@ -524,9 +532,6 @@ struct SidebarView: View {
         .contentShape(Rectangle())
         .onTapGesture { toggle(key, open: open) }
         .contextMenu { sourceProjectMenu(project) }
-        .popover(isPresented: filterPresented(project.id, group: nil), arrowEdge: .trailing) {
-            filterPopover(project.id, group: nil)
-        }
     }
 
     @ViewBuilder
@@ -589,7 +594,16 @@ struct SidebarView: View {
                     Text("\(count)").font(Typo.mono(size: 11)).ink(.tertiary)
                 }
                 Spacer(minLength: 0)
-                if !group.menu.isEmpty {
+                // A segment's filter button under the pointer, beside its
+                // menu — always while its editor is open, which is anchored
+                // to it.
+                if let filter = group.menu.filterAction {
+                    let showing = hovered || filterPresented(project.id, group: group.id).wrappedValue
+                    filterButton(filter, projectID: project.id, group: group.id, size: 11, frame: 16)
+                        .opacity(showing ? 1 : 0)
+                        .allowsHitTesting(showing)
+                }
+                if !group.menu.menuItems.isEmpty {
                     Menu {
                         actionItems(group.menu, projectID: project.id, group: group.id)
                     } label: {
@@ -620,10 +634,7 @@ struct SidebarView: View {
                 }
             }
             .contextMenu {
-                if !group.menu.isEmpty { actionItems(group.menu, projectID: project.id, group: group.id) }
-            }
-            .popover(isPresented: filterPresented(project.id, group: group.id), arrowEdge: .trailing) {
-                filterPopover(project.id, group: group.id)
+                if !group.menu.menuItems.isEmpty { actionItems(group.menu, projectID: project.id, group: group.id) }
             }
 
             if open {
@@ -652,7 +663,9 @@ struct SidebarView: View {
         let rowKey = sourceRowKey(project.id, container: container.id)
         let hovered = hoveredSourceRow == rowKey
         HStack(spacing: 7) {
-            Image(systemName: SourceGlyph.container)
+            // A card with tasks under it is the stacked card; one with none
+            // the single card.
+            Image(systemName: container.tasks.isEmpty ? SourceGlyph.emptyContainer : SourceGlyph.container)
                 .font(.system(size: 11))
                 .ink(.tertiary)
                 .frame(width: 16)
@@ -688,6 +701,9 @@ struct SidebarView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(GnatIconButtonStyle())
+                    // Centred in a badge's own fixed slot, so it sits where
+                    // the (last) badge did.
+                    .frame(width: SourceBadgeView.width)
                     .help("New \(source.taskNoun) on this \(source.containerNoun)")
                 }
             }
@@ -722,7 +738,7 @@ struct SidebarView: View {
     /// own Reveal and Close.
     @ViewBuilder
     private func sourceProjectMenu(_ project: SidebarProject) -> some View {
-        if let source = project.source, !source.menu.isEmpty {
+        if let source = project.source, !source.menu.menuItems.isEmpty {
             actionItems(source.menu, projectID: project.id)
             Divider()
         }
@@ -737,17 +753,42 @@ struct SidebarView: View {
         }
     }
 
+    /// A menu's items: every action but a `filter` one, which is the
+    /// filter button's (`filterButton`).
     private func actionItems(
         _ actions: [SourceAction], projectID: String, group: String? = nil, container: String? = nil
     ) -> some View {
         SourceActionItems(
-            actions: actions,
+            actions: actions.menuItems,
             onRun: { action, input in
                 runSourceAction(PendingSourceAction(projectID: projectID, action: action, group: group, container: container), input: input)
             },
             onText: { sourceActionNeedingText = PendingSourceAction(projectID: projectID, action: $0, group: group, container: container) },
-            onConfirm: { sourceActionToConfirm = PendingSourceAction(projectID: projectID, action: $0, group: group, container: container) },
-            onFilter: { sourceFilterOpen = PendingSourceAction(projectID: projectID, action: $0, group: group, container: container) })
+            onConfirm: { sourceActionToConfirm = PendingSourceAction(projectID: projectID, action: $0, group: group, container: container) })
+    }
+
+    /// The button a `filter` action is, beside the menu it would otherwise
+    /// be an item of: the funnel, filled in the accent while the filter
+    /// narrows anything (`SourceAction.isNarrowing`), opening the editor
+    /// anchored to itself — the header's (`group` nil) or a segment's.
+    private func filterButton(
+        _ action: SourceAction, projectID: String, group: String?, size: CGFloat, frame: CGFloat
+    ) -> some View {
+        let narrowing = action.isNarrowing
+        return Button {
+            sourceFilterOpen = PendingSourceAction(projectID: projectID, action: action, group: group, container: nil)
+        } label: {
+            Image(systemName: narrowing ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                .font(.system(size: size, weight: .medium))
+                .ink(narrowing ? .accent : .tertiary)
+                .frame(width: frame, height: frame)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(GnatIconButtonStyle())
+        .help(action.label.trimmingCharacters(in: CharacterSet(charactersIn: "\u{2026}.")))
+        .popover(isPresented: filterPresented(projectID, group: group), arrowEdge: .trailing) {
+            filterPopover(projectID, group: group)
+        }
     }
 
     /// Whether the filter editor is open on the source header (`group` nil)

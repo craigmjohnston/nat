@@ -88,10 +88,15 @@ spec, `docs/design/task-sources/README.md`.
   `--milestone` is refused; refused anywhere else. An id already in the plan
   is filed under by its cached title; a new one is read for its title (blank
   → the id), and a failed read refuses the add.
-- `project-create --source <name>` (exclusive with `--local`, `--repo`
-  refused with it): `describePlugin` before any write, then
+- `project-create [<name>] --source <plugin>` (exclusive with `--local`,
+  `--repo` refused with it): `describePlugin` before any write, then
   `createPlanProject` — the same file-then-config path `createLocalProject`
-  takes — with **no working directory**: each task's repository is its own.
+  takes — with **no working directory** (each task's repository is its own)
+  and **no name**: a source project is named by `sourceProjectName` (the
+  plugin's describe title, else its name) wherever nat names it —
+  `projectFor` fills it, `info` puts it over a name the plan file holds,
+  `config-show` and `knownProjects` through `withSourceNames` (a copy,
+  never saved), `plugin-uninstall` passes it to `Manager.Uninstall`.
 - `slice-repo <slice> --repo <dir>` (`slicerepo.go`): records a task's
   repository through `store.RepoSetter` (a plan of nat's own; a Notion
   project is refused by name). A Todo slice takes it from anyone, one in

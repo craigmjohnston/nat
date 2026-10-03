@@ -52,7 +52,7 @@ public protocol NatClientProtocol: Sendable {
     func sourceList() async throws -> [SourcePlugin]
     func pluginList() async throws -> PluginListing
     func pluginInstall(name: String, source: String?, version: String?) async throws -> PluginInstalled
-    func pluginUninstall(name: String) async throws -> PluginUninstalled
+    func pluginUninstall(name: String, deleteProjects: Bool) async throws -> PluginUninstalled
     func pluginSourceAdd(repo: String) async throws -> PluginSourceList
     func pluginSourceRemove(repo: String) async throws -> PluginSourceList
     func sourceSetup(plugin: String, id: String, value: String) async throws -> PluginSetupResult
@@ -226,7 +226,7 @@ extension NatClientProtocol {
         throw NatError.commandFailed("plugin-install: not supported by this client")
     }
 
-    public func pluginUninstall(name: String) async throws -> PluginUninstalled {
+    public func pluginUninstall(name: String, deleteProjects: Bool) async throws -> PluginUninstalled {
         throw NatError.commandFailed("plugin-uninstall: not supported by this client")
     }
 

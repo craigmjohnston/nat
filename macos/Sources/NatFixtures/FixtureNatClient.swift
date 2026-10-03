@@ -65,6 +65,14 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// looks, and a test asserting that a button reached the client does.
     private let recorded = Recorder()
 
+    /// Every project `info` was asked for, in order — reads are not writes,
+    /// so they are kept apart from `writes`; a test asserting a plan was read
+    /// again looks here.
+    private let infoRecorded = Recorder()
+
+    /// The projects `info` has read, in order.
+    public var infoReads: [String] { infoRecorded.all() }
+
     /// Set once a caller wants every `sliceDiff` read from here on to refuse
     /// — armed rather than counted, since a story's own setup (`AppModel`
     /// startup reads a handed-back slice's diff for its review stats before
@@ -187,6 +195,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// its lazy Done group listing cards only where `expand` opens it; every
     /// other project reads as it always has.
     public func info(projectID: String, refresh: Bool, expand: [String]) async throws -> ProjectInfo {
+        infoRecorded.append(projectID)
         if projectID == Fixtures.sourceProjectID, otherPlans[projectID] == nil {
             return try await answer(Fixtures.sourceProjectInfo(expand: expand))
         }
@@ -239,9 +248,16 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
             sha256: String(repeating: "0", count: 64), installedAt: "2026-10-03T12:00:00Z")
     }
 
-    public func pluginUninstall(name: String) async throws -> PluginUninstalled {
-        try await record("plugin-uninstall \(name)")
-        return PluginUninstalled(name: name, path: "/Users/craig/.config/notion-agent-tracker/plugins/\(name)")
+    /// Records the uninstall; `deleteProjects` answers with the config's
+    /// source projects of the plugin, by id, as deleted (nothing is).
+    public func pluginUninstall(name: String, deleteProjects: Bool) async throws -> PluginUninstalled {
+        try await record("plugin-uninstall \(name)" + (deleteProjects ? " --delete-projects" : ""))
+        let deleted = deleteProjects
+            ? config.projects.filter { $0.value.source == name }.sorted { $0.key < $1.key }
+                .map { PluginUninstalled.DeletedProject(id: $0.key, name: $0.value.name) }
+            : []
+        return PluginUninstalled(
+            name: name, path: "/Users/craig/.config/notion-agent-tracker/plugins/\(name)", projectsDeleted: deleted)
     }
 
     public func pluginSourceAdd(repo: String) async throws -> PluginSourceList {

@@ -190,17 +190,21 @@ func pluginInstall(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// pluginUninstalledJSON is what plugin-uninstall took away.
+// pluginUninstalledJSON is what plugin-uninstall took away: the plugin's
+// directory and every source project of it deleted with it (always a list).
 type pluginUninstalledJSON struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
+	Name            string                   `json:"name"`
+	Path            string                   `json:"path"`
+	ProjectsDeleted []plugins.DeletedProject `json:"projects_deleted"`
 }
 
 // pluginUninstall removes one plugin from nat's plugins directory, refused
-// while a project is a source project of it.
-func pluginUninstall(args []string, env Env) error {
+// while a project is a source project of it — unless --delete-projects says
+// to delete those projects, plan and config entry, first.
+func pluginUninstall(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("plugin-uninstall", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
+	deleteProjects := flags.Bool("delete-projects", false, "delete the plugin's source projects, plan and all, instead of refusing")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of plain text")
 	rest, err := parseFlags(flags, args)
 	if err != nil {
@@ -217,14 +221,24 @@ func pluginUninstall(args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	dir, err := m.Uninstall(rest[0], cfg)
+	// Named before it goes: a source project is called its plugin's title.
+	title := sourceProjectName(ctx, env, rest[0])
+	gone, err := m.Uninstall(rest[0], title, cfg, *deleteProjects, env.Save)
+	if len(gone.ProjectsDeleted) > 0 {
+		env.nudged()
+	}
 	if err != nil {
 		return err
 	}
 	if *asJSON {
-		return writeJSON(env.Out, pluginUninstalledJSON{Name: rest[0], Path: dir})
+		return writeJSON(env.Out, pluginUninstalledJSON{Name: rest[0], Path: gone.Path, ProjectsDeleted: gone.ProjectsDeleted})
 	}
-	_, err = fmt.Fprintf(env.Out, "Uninstalled %s from %s.\n", rest[0], dir)
+	var b strings.Builder
+	for _, p := range gone.ProjectsDeleted {
+		fmt.Fprintf(&b, "Deleted project %s (%s).\n", p.Name, p.ID)
+	}
+	fmt.Fprintf(&b, "Uninstalled %s from %s.\n", rest[0], gone.Path)
+	_, err = io.WriteString(env.Out, b.String())
 	return err
 }
 

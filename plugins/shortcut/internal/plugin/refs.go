@@ -288,21 +288,11 @@ func projectCode(p shortcut.Project) string {
 	return code("", p.Name)
 }
 
-// badges is a story's one badge: its Shortcut project, else its team, else
-// its epic, else none.
+// badges is a story's one badge, its Shortcut project — else none: only a
+// project draws as a badge.
 func (r *refs) badges(st shortcut.Story) []source.Badge {
 	if p, ok := r.project(st.ProjectID); ok {
 		return []source.Badge{{Text: projectCode(p), Color: hexOr(p.Color, neutral), Title: p.Name}}
-	}
-	if g, ok := r.group(st.GroupID); ok {
-		return []source.Badge{{Text: code(g.MentionName, g.Name), Color: teamColor(g), Title: g.Name}}
-	}
-	if e, ok := r.epic(st.EpicID); ok {
-		c := neutral
-		if g, ok := r.group(e.GroupID); ok {
-			c = teamColor(g)
-		}
-		return []source.Badge{{Text: code("", e.Name), Color: c, Title: e.Name}}
 	}
 	return nil
 }
@@ -419,9 +409,11 @@ func withMe(query, mention string) string {
 // merged is a segment's filter over the section's: each field the segment
 // sets replaces the section's, and each it leaves empty ("Any") falls through
 // to it — labels as a whole, so a segment with any label replaces the
-// section's set, and one with none inherits it.
+// section's set, and one with none inherits it. The state is the segment's
+// alone: the section has none.
 func merged(section, segment settings.Filter) settings.Filter {
 	f := section
+	f.State = segment.State
 	if segment.Team != "" {
 		f.Team = segment.Team
 	}
@@ -441,7 +433,9 @@ func merged(section, segment settings.Filter) settings.Filter {
 // group's own — `owner:me is:started`, `!is:done`, …). A team by mention name,
 // a Shortcut project by id, an epic by name (the search takes an epic's
 // title, quoted for an exact match; r.epics has it looked up by id, and the
-// id itself stands in where it could not be), each label quoted.
+// id itself stands in where it could not be), each label quoted, and a
+// segment's workflow state by name, quoted (the search takes a state's name;
+// r.workflows has it by id, the id itself standing in where it is not there).
 func (r *refs) search(f settings.Filter, base string) string {
 	var terms []string
 	if f.Team != "" {
@@ -456,7 +450,58 @@ func (r *refs) search(f settings.Filter, base string) string {
 	for _, l := range f.Labels {
 		terms = append(terms, "label:"+quoted(l))
 	}
+	if f.State != "" {
+		terms = append(terms, "state:"+quoted(r.stateName(f.State)))
+	}
 	return strings.Join(append(terms, base), " ")
+}
+
+// teamName is the display name of the team mention names, else mention.
+func (r *refs) teamName(mention string) string {
+	i := slices.IndexFunc(r.groups, func(g shortcut.Group) bool { return g.MentionName == mention })
+	if i < 0 || r.groups[i].Name == "" {
+		return mention
+	}
+	return r.groups[i].Name
+}
+
+// projectName is the name of the Shortcut project id names, else id itself.
+func (r *refs) projectName(id string) string {
+	if n, err := strconv.ParseInt(id, 10, 64); err == nil {
+		if p, ok := r.project(n); ok && p.Name != "" {
+			return p.Name
+		}
+	}
+	return id
+}
+
+// stateLabel is a state as the filter editor labels it — its name, after its
+// workflow's where the workspace has more than one — else id itself.
+func (r *refs) stateLabel(id string) string {
+	if n, err := strconv.ParseInt(id, 10, 64); err == nil {
+		if s, w, ok := r.state(n); ok && s.Name != "" {
+			return r.workflowLabel(w, s)
+		}
+	}
+	return id
+}
+
+// workflowLabel is a state named as the editor offers it.
+func (r *refs) workflowLabel(w shortcut.Workflow, s shortcut.WorkflowState) string {
+	if len(r.workflows) > 1 {
+		return w.Name + " › " + s.Name
+	}
+	return s.Name
+}
+
+// stateName is the name of the workflow state id names, else id itself.
+func (r *refs) stateName(id string) string {
+	if n, err := strconv.ParseInt(id, 10, 64); err == nil {
+		if s, _, ok := r.state(n); ok && s.Name != "" {
+			return s.Name
+		}
+	}
+	return id
 }
 
 // epicName is the name of the epic id names, as looked up, else id itself.
@@ -483,8 +528,11 @@ func quoteSpaced(s string) string {
 }
 
 // filterFields are a filter editor — the section's (wider nil) or a
-// segment's (wider the section's) — Team, Project, Epic and Labels, each
-// offering the workspace's unarchived choices with f's own selection. A saved
+// segment's (wider the section's) — Team, Project, a segment's State, Epic
+// and Labels, each offering the workspace's unarchived choices with f's own
+// selection. State is a segment's alone (which stories it lists): every state
+// of every workflow, labelled `<workflow> › <state>` where the workspace has
+// more than one workflow, and inheriting nothing. A saved
 // choice the workspace no longer offers is offered still, named as well as it
 // can be, so opening and saving the editor never drops it. Where wider sets a
 // field, the field says so (Inherited), since "Any" there means wider's
@@ -525,27 +573,35 @@ func (r *refs) filterFields(f settings.Filter, wider *settings.Filter) []source.
 		{ID: "epic", Label: "Epic", Options: offering(epics, one(f.Epic), r.epicName), Value: one(f.Epic), Loading: r.epicsLoading},
 		{ID: "labels", Label: "Labels", Multi: true, Options: offering(labels, labelValue, nil), Value: labelValue},
 	}
-	if wider != nil {
-		named := func(options []source.FilterOption, ids []string) string {
-			var names []string
-			for _, id := range ids {
-				i := slices.IndexFunc(options, func(o source.FilterOption) bool { return o.ID == id })
-				if i < 0 {
-					names = append(names, id)
-				} else {
-					names = append(names, options[i].Label)
-				}
-			}
-			return strings.Join(names, ", ")
-		}
-		fields[0].Inherited = named(teams, one(wider.Team))
-		fields[1].Inherited = named(projects, one(wider.Project))
-		if wider.Epic != "" {
-			fields[2].Inherited = r.epicName(wider.Epic)
-		}
-		fields[3].Inherited = named(labels, wider.Labels)
+	if wider == nil {
+		return fields
 	}
-	return fields
+	named := func(options []source.FilterOption, ids []string) string {
+		var names []string
+		for _, id := range ids {
+			i := slices.IndexFunc(options, func(o source.FilterOption) bool { return o.ID == id })
+			if i < 0 {
+				names = append(names, id)
+			} else {
+				names = append(names, options[i].Label)
+			}
+		}
+		return strings.Join(names, ", ")
+	}
+	fields[0].Inherited = named(teams, one(wider.Team))
+	fields[1].Inherited = named(projects, one(wider.Project))
+	if wider.Epic != "" {
+		fields[2].Inherited = r.epicName(wider.Epic)
+	}
+	fields[3].Inherited = named(labels, wider.Labels)
+	var states []source.FilterOption
+	for _, w := range r.workflows {
+		for _, s := range w.States {
+			states = append(states, source.FilterOption{ID: strconv.FormatInt(s.ID, 10), Label: r.workflowLabel(w, s)})
+		}
+	}
+	state := source.FilterField{ID: "state", Label: "State", Options: offering(states, one(f.State), nil), Value: one(f.State)}
+	return slices.Insert(fields, 2, state)
 }
 
 // filterAction is the Filter… action over fields.

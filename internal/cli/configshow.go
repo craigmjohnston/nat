@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -38,6 +39,8 @@ func configShow(args []string, env Env) error {
 		return fmt.Errorf("no configuration yet: run `nat` once to set it up")
 	}
 
+	// A source project is named by its plugin, whatever its entry says.
+	cfg = withSourceNames(context.Background(), env, cfg)
 	if *asJSON {
 		return writeJSON(env.Out, configShowJSON(cfg))
 	}

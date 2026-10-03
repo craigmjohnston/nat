@@ -61,13 +61,15 @@ type Segment struct {
 }
 
 // Filter is what a segment shows, as the filter editor sets it: a team by
-// mention name, a project and an epic by id, labels by name. Empty fields
-// restrict nothing, so the zero Filter is every unstarted story.
+// mention name, a project and an epic by id, labels by name, and — a
+// segment's alone, never the section's — a workflow state by id. Empty
+// fields restrict nothing, so the zero Filter is every unstarted story.
 type Filter struct {
 	Team    string   `json:"team,omitempty"`
 	Project string   `json:"project,omitempty"`
 	Epic    string   `json:"epic,omitempty"`
 	Labels  []string `json:"labels,omitempty"`
+	State   string   `json:"state,omitempty"`
 }
 
 // Project is one nat project's settings.

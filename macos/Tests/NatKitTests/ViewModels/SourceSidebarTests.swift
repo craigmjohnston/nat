@@ -62,7 +62,7 @@ final class SourceSidebarTests: XCTestCase {
         ])
         XCTAssertEqual(card.tasks.map(\.state), [.todo, .working, .pr])
         XCTAssertEqual(card.needsYou, 1)
-        XCTAssertEqual(card.badges.map(\.text), ["NA"])
+        XCTAssertEqual(card.badges.map(\.text), ["MOB"])
         XCTAssertEqual(card.meta, "3")
         XCTAssertEqual(source.container(withID: Fixtures.sourceMineCardID)?.tasks, [])
         XCTAssertNil(source.container(withID: "nope"))
@@ -143,37 +143,32 @@ final class SourceSidebarTests: XCTestCase {
 
     // MARK: - The breadcrumb picker
 
-    func testTheCrumbTreeOpensASourceProjectOnItsGroupsContainersAndTasks() throws {
+    /// A source project's picker has no group (segment) column: its
+    /// containers stand where milestones would — every one its fold lists,
+    /// once, in the fold's order — then a container's tasks.
+    func testTheCrumbTreeOpensASourceProjectOnItsContainersAndTasks() throws {
         let model = model()
         var tree = CrumbTree(model: model, projectID: Fixtures.sourceProjectID)
         XCTAssertEqual(tree.projects.map(\.id), [Fixtures.projectID, Fixtures.sourceProjectID])
-        XCTAssertEqual(tree.entries.map(\.id), ["g:doing", "g:ready/mine", "g:ready/board", "g:done"])
-        XCTAssertNil(tree.containers)
+        XCTAssertEqual(tree.entries.map(\.id), [
+            "c:\(Fixtures.sourceCardID)", "c:\(Fixtures.sourceSecondCardID)",
+            "c:\(Fixtures.sourceMineCardID)", "c:\(Fixtures.sourceBoardCardID)",
+        ], "the Mine card listed under two segments is one entry")
         XCTAssertNil(tree.slices)
 
-        tree.open(group: "doing")
-        XCTAssertEqual(tree.containers?.map(\.id), [Fixtures.sourceCardID, Fixtures.sourceSecondCardID])
-        XCTAssertNil(tree.slices)
         tree.container = Fixtures.sourceSecondCardID
         XCTAssertEqual(tree.slices?.map(\.sliceID), [Fixtures.sourceSecondCardTaskID])
 
-        tree.open(group: "doing")
-        XCTAssertEqual(tree.container, Fixtures.sourceSecondCardID, "reopening the same group keeps its container")
-        tree.open(group: "ready/board")
-        XCTAssertNil(tree.container)
-        XCTAssertEqual(tree.containers?.map(\.id), [Fixtures.sourceBoardCardID, Fixtures.sourceMineCardID])
-
         tree.open(project: Fixtures.projectID)
-        XCTAssertNil(tree.group)
-        XCTAssertNil(tree.containers)
+        XCTAssertNil(tree.container)
+        XCTAssertFalse(tree.entries.contains { if case .container = $0 { true } else { false } })
     }
 
-    func testAContainerCrumbOpensOnTheFirstGroupListingIt() {
+    func testAContainerCrumbOpensOnItsTasks() {
         let tree = CrumbTree(model: model(), projectID: Fixtures.sourceProjectID, container: Fixtures.sourceMineCardID)
-        XCTAssertEqual(tree.group, "ready/mine")
+        XCTAssertEqual(tree.container, Fixtures.sourceMineCardID)
         XCTAssertEqual(tree.slices, [])
         let gone = CrumbTree(model: model(), projectID: Fixtures.sourceProjectID, container: "nope")
-        XCTAssertNil(gone.group)
         XCTAssertEqual(gone.slices, [])
     }
 

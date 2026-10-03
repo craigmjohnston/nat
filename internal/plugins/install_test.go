@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -303,9 +304,10 @@ func TestUninstall(t *testing.T) {
 	t.Setenv("PATH", "")
 
 	m := managedInstall(t, g)
-	dir, err := m.Uninstall("demo", config.Config{})
-	if err != nil || dir != m.pluginDir("demo") {
-		t.Fatalf("Uninstall = %q, %v", dir, err)
+	gone, err := m.Uninstall("demo", "Demo", config.Config{}, false, noSave(t))
+	dir := gone.Path
+	if err != nil || dir != m.pluginDir("demo") || gone.ProjectsDeleted == nil || len(gone.ProjectsDeleted) != 0 {
+		t.Fatalf("Uninstall = %+v, %v", gone, err)
 	}
 	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
 		t.Error("the plugin's directory survived")
@@ -315,14 +317,14 @@ func TestUninstall(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Uninstall("demo", config.Config{}); err != nil {
+	if _, err := m.Uninstall("demo", "Demo", config.Config{}, false, noSave(t)); err != nil {
 		t.Errorf("manual uninstall = %v", err)
 	}
 
-	if _, err := m.Uninstall("demo", config.Config{}); err == nil || err.Error() != "no plugin demo is installed" {
+	if _, err := m.Uninstall("demo", "Demo", config.Config{}, false, noSave(t)); err == nil || err.Error() != "no plugin demo is installed" {
 		t.Errorf("nothing installed = %v", err)
 	}
-	if _, err := m.Uninstall("Bad", config.Config{}); err == nil {
+	if _, err := m.Uninstall("Bad", "Bad", config.Config{}, false, noSave(t)); err == nil {
 		t.Error("a bad name uninstalled")
 	}
 }
@@ -337,8 +339,8 @@ func TestUninstallRefusesWhileAProjectUsesIt(t *testing.T) {
 		"p3": {Name: "Other", Backend: config.BackendSource, Source: "else"},
 		"p4": {Name: "Local", Backend: config.BackendLocal},
 	}}
-	_, err := m.Uninstall("demo", cfg)
-	if err == nil || err.Error() != "plugin demo is the source of Home (p1), Work (p2): delete or move those projects first" {
+	_, err := m.Uninstall("demo", "Demo", cfg, false, noSave(t))
+	if err == nil || err.Error() != "plugin demo is the source of Demo (p1), Demo (p2): delete or move those projects first, or pass --delete-projects" {
 		t.Errorf("in use = %v", err)
 	}
 	if _, err := os.Stat(m.pluginDir("demo")); err != nil {
@@ -353,7 +355,7 @@ func TestUninstallRefusesAPluginOnPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin)
-	_, err := m.Uninstall("demo", config.Config{})
+	_, err := m.Uninstall("demo", "Demo", config.Config{}, false, noSave(t))
 	if err == nil || err.Error() != "plugin demo is on PATH at "+filepath.Join(bin, "nat-source-demo")+", not installed by nat: remove it there" {
 		t.Errorf("on PATH = %v", err)
 	}
@@ -362,7 +364,7 @@ func TestUninstallRefusesAPluginOnPath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(m.ConfigDir, "plugins"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Uninstall("demo", config.Config{}); err == nil {
+	if _, err := m.Uninstall("demo", "Demo", config.Config{}, false, noSave(t)); err == nil {
 		t.Error("an unreadable plugins dir = nil")
 	}
 }
@@ -380,7 +382,137 @@ func TestUninstallReportsARemovalFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
-	if _, err := m.Uninstall("demo", config.Config{}); err == nil {
+	if _, err := m.Uninstall("demo", "Demo", config.Config{}, false, noSave(t)); err == nil {
 		t.Error("an unremovable directory uninstalled")
+	}
+}
+
+// noSave is a save an uninstall that deletes no project never calls.
+func noSave(t *testing.T) func(config.Config) error {
+	return func(config.Config) error {
+		t.Helper()
+		t.Error("saved the config with no project to delete")
+		return nil
+	}
+}
+
+// sourceProjects is a config with two source projects of demo (plans in
+// plans), one of another plugin and a local one, demo's Work active.
+func sourceProjects(plans string) config.Config {
+	return config.Config{ActiveProjectID: "p2", Projects: map[string]config.ProjectConfig{
+		"p2": {Name: "Work", Backend: config.BackendSource, Source: "demo", PlanDir: plans},
+		"p1": {Name: "Home", Backend: config.BackendSource, Source: "demo", PlanDir: plans},
+		"p3": {Name: "Other", Backend: config.BackendSource, Source: "else", PlanDir: plans},
+		"p4": {Name: "Local", Backend: config.BackendLocal, PlanDir: plans},
+	}}
+}
+
+func TestUninstallDeletesItsProjectsWhenAsked(t *testing.T) {
+	g := newFakeGitHub(t)
+	g.release(DefaultSource, "1.0", true, map[string]string{"demo": "x"})
+	m := managedInstall(t, g)
+	plans := t.TempDir()
+	// p1's plan has SQLite's journal files beside it; p2's plan is already gone.
+	for _, f := range []string{"p1.db", "p1.db-wal", "p1.db-shm", "p3.db", "p4.db"} {
+		if err := os.WriteFile(filepath.Join(plans, f), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var saves []config.Config
+	save := func(c config.Config) error {
+		// Each save comes after that project's plan is gone.
+		for id := range sourceProjects(plans).Projects {
+			if _, kept := c.Projects[id]; !kept {
+				if _, err := os.Stat(filepath.Join(plans, id+".db")); err == nil {
+					t.Errorf("%s's entry went before its plan", id)
+				}
+			}
+		}
+		saves = append(saves, c)
+		return nil
+	}
+	gone, err := m.Uninstall("demo", "Demo", sourceProjects(plans), true, save)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []DeletedProject{{ID: "p1", Name: "Demo"}, {ID: "p2", Name: "Demo"}}
+	if !reflect.DeepEqual(gone.ProjectsDeleted, want) || gone.Path != m.pluginDir("demo") {
+		t.Errorf("Uninstall = %+v", gone)
+	}
+	left, _ := os.ReadDir(plans)
+	var names []string
+	for _, e := range left {
+		names = append(names, e.Name())
+	}
+	if strings.Join(names, " ") != "p3.db p4.db" {
+		t.Errorf("plans left = %v", names)
+	}
+	if len(saves) != 2 {
+		t.Fatalf("saves = %d, want one per project", len(saves))
+	}
+	last := saves[1]
+	if len(last.Projects) != 2 || last.ActiveProjectID != "" {
+		t.Errorf("last save = %+v, want p3 and p4 and no active project", last)
+	}
+	if _, err := os.Stat(m.pluginDir("demo")); !errors.Is(err, fs.ErrNotExist) {
+		t.Error("the plugin's directory survived")
+	}
+}
+
+func TestUninstallDeletingProjectsStopsOnAFailure(t *testing.T) {
+	g := newFakeGitHub(t)
+	g.release(DefaultSource, "1.0", true, map[string]string{"demo": "x"})
+	m := managedInstall(t, g)
+
+	// A plan the OS will not remove: nothing of that project goes, nor the plugin.
+	plans := t.TempDir()
+	if err := os.WriteFile(filepath.Join(plans, "p1.db"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(plans, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(plans, 0o755) })
+	_, err := m.Uninstall("demo", "Demo", sourceProjects(plans), true, noSave(t))
+	if err == nil || !strings.HasPrefix(err.Error(), "delete project Demo (p1): ") {
+		t.Errorf("unremovable plan = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(plans, "p1.db")); err != nil {
+		t.Error("the refused plan went")
+	}
+	if _, err := os.Stat(m.pluginDir("demo")); err != nil {
+		t.Error("a failed delete removed the plugin")
+	}
+
+	// A config that will not save.
+	boom := errors.New("boom")
+	_, err = m.Uninstall("demo", "Demo", sourceProjects(t.TempDir()), true, func(config.Config) error { return boom })
+	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "save config") {
+		t.Errorf("failed save = %v", err)
+	}
+
+	// A plan with nowhere to be: no home to put nat's data directory under.
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_DATA_HOME", "")
+	_, err = m.Uninstall("demo", "Demo", sourceProjects(""), true, noSave(t))
+	if err == nil || !strings.Contains(err.Error(), "home") {
+		t.Errorf("no plan path = %v", err)
+	}
+}
+
+// TestUninstallDeletesNoProjectOfAPluginItCannotRemove: a plugin on PATH is
+// refused before any of its projects is touched.
+func TestUninstallDeletesNoProjectOfAPluginItCannotRemove(t *testing.T) {
+	m := &Manager{ConfigDir: t.TempDir()}
+	t.Setenv("PATH", "")
+	plans := t.TempDir()
+	if err := os.WriteFile(filepath.Join(plans, "p1.db"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Uninstall("demo", "Demo", sourceProjects(plans), true, noSave(t)); err == nil || err.Error() != "no plugin demo is installed" {
+		t.Errorf("not installed = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(plans, "p1.db")); err != nil {
+		t.Error("a refused uninstall deleted a project's plan")
 	}
 }

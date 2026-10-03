@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/craigmjohnston/nat/internal/source"
@@ -43,18 +44,20 @@ func (a *app) runAction(ctx context.Context) (string, error) {
 		if a.req.Target.Group == "" {
 			// The section header's: every search the sidebar makes.
 			return a.editSegments(func(p *settings.Project) (string, error) {
-				f, err := parseFilter(input)
+				f, err := parseFilter(input, false)
 				if err != nil {
 					return "", err
 				}
 				p.Filter = f
-				return "Every Shortcut list now shows " + describeFilter(f, "everything"), nil
+				return "Every Shortcut list now shows " + a.filterRefs(ctx, f).describeFilter(f, "everything"), nil
 			})
 		}
 		fallthrough
 	case "rename", "remove":
 		return a.editSegments(func(p *settings.Project) (string, error) {
-			return segmentAction(p, a.req.Action, a.req.Target.Group, input)
+			return segmentAction(p, a.req.Action, a.req.Target.Group, input, func(f settings.Filter) *refs {
+				return a.filterRefs(ctx, f)
+			})
 		})
 	case "comment":
 		id, err := storyID(a.req.Target.Container)
@@ -90,8 +93,8 @@ func (a *app) editSegments(edit func(p *settings.Project) (string, error)) (stri
 }
 
 // segmentAction renames, re-filters or removes the segment whose group id is
-// group.
-func segmentAction(p *settings.Project, action, group, input string) (string, error) {
+// group; a new filter is said by the names refsFor reads for it.
+func segmentAction(p *settings.Project, action, group, input string, refsFor func(settings.Filter) *refs) (string, error) {
 	i := p.Find(group)
 	if i < 0 {
 		return "", fmt.Errorf("shortcut: %s needs a segment (got %q)", action, group)
@@ -106,12 +109,12 @@ func segmentAction(p *settings.Project, action, group, input string) (string, er
 		s.Name = input
 		return fmt.Sprintf("Renamed %s to %s", old, input), nil
 	case "filter":
-		f, err := parseFilter(input)
+		f, err := parseFilter(input, true)
 		if err != nil {
 			return "", err
 		}
 		s.Filter = f
-		return fmt.Sprintf("%s now shows %s", s.Name, describeFilter(f, "every unstarted story")), nil
+		return fmt.Sprintf("%s now shows %s", s.Name, refsFor(f).describeFilter(f, "every unstarted story")), nil
 	}
 	name := s.Name
 	p.Segments = slices.Delete(p.Segments, i, i+1)
@@ -119,9 +122,11 @@ func segmentAction(p *settings.Project, action, group, input string) (string, er
 }
 
 // parseFilter reads the filter editor's answer: a JSON object of field id —
-// team, project, epic, labels — to the option ids chosen, an empty list (or a
-// field left out) being "any". Team, project and epic take one choice each.
-func parseFilter(input string) (settings.Filter, error) {
+// team, project, epic, labels and, for a segment's, state — to the option ids
+// chosen, an empty list (or a field left out) being "any". Team, project,
+// epic and state take one choice each. The section's filter has no state: a
+// state is a segment's own choice of which stories it lists.
+func parseFilter(input string, segment bool) (settings.Filter, error) {
 	var chosen map[string][]string
 	if json.Unmarshal([]byte(input), &chosen) != nil {
 		return settings.Filter{}, errors.New("shortcut: a filter is a JSON object of field ids to lists of choices")
@@ -148,6 +153,11 @@ func parseFilter(input string) (settings.Filter, error) {
 			err = one(&f.Epic)
 		case "labels":
 			f.Labels = ids
+		case "state":
+			if !segment {
+				return settings.Filter{}, errors.New("shortcut: the section's filter has no state field — set a state on a segment")
+			}
+			err = one(&f.State)
 		default:
 			err = fmt.Errorf("shortcut: a segment has no filter field %q", field)
 		}
@@ -161,21 +171,46 @@ func parseFilter(input string) (settings.Filter, error) {
 	return f, nil
 }
 
-// describeFilter is a filter as a toast says it: what it narrows to, field by
-// field, or none where it narrows nothing.
-func describeFilter(f settings.Filter, none string) string {
+// filterRefs reads the names a filter's toast says, in one parallel round
+// after the filter has parsed: the workflows, teams and projects (each a
+// failure tolerated — a name it can't read is said by its id, as a search
+// would) and the one epic, through the sidebar's 1 h lookup cache.
+func (a *app) filterRefs(ctx context.Context, f settings.Filter) *refs {
+	var r refs
+	var epics []int64
+	if id, err := strconv.ParseInt(f.Epic, 10, 64); err == nil {
+		epics = append(epics, id)
+	}
+	// Every function tolerates its failure, so the round never fails.
+	_ = parallel(
+		func() error { r.workflows, _ = a.sc.Workflows(ctx); return nil },
+		func() error { r.groups, _ = a.sc.Groups(ctx); return nil },
+		func() error { r.projects, _ = a.sc.Projects(ctx); return nil },
+		func() error { r.epics = lookup(ctx, a, "epic", epics, a.sc.Epic); return nil },
+	)
+	return &r
+}
+
+// describeFilter is a filter as a toast says it — by the names the editor
+// offered, not ids: what it narrows to, field by field, or none where it
+// narrows nothing. A team is its display name, a state labelled as the
+// editor labels it; anything r cannot name is said by its id.
+func (r *refs) describeFilter(f settings.Filter, none string) string {
 	var parts []string
 	if f.Team != "" {
-		parts = append(parts, "team "+f.Team)
+		parts = append(parts, "team "+r.teamName(f.Team))
 	}
 	if f.Project != "" {
-		parts = append(parts, "project "+f.Project)
+		parts = append(parts, "project "+r.projectName(f.Project))
 	}
 	if f.Epic != "" {
-		parts = append(parts, "epic "+f.Epic)
+		parts = append(parts, "epic "+r.epicName(f.Epic))
 	}
 	if len(f.Labels) > 0 {
 		parts = append(parts, "labels "+strings.Join(f.Labels, ", "))
+	}
+	if f.State != "" {
+		parts = append(parts, "state "+r.stateLabel(f.State))
 	}
 	if len(parts) == 0 {
 		return none

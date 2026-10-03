@@ -128,7 +128,7 @@ func TestActionSegments(t *testing.T) {
 	}
 	filter := `{"team":["board"],"project":["30"],"epic":["10"],"labels":["diff"," ","agent"]}`
 	if got := h.act("filter", `{"group":"ready/board-work"}`, filter); !strings.Contains(got,
-		"Board now shows team board; project 30; epic 10; labels diff, agent") {
+		"Board now shows team Board; project Mobile App; epic Native app parity; labels diff, agent") {
 		t.Errorf("filter = %q", got)
 	}
 	if got := h.act("remove", `{"group":"ready/board-work-2"}`, ""); !strings.Contains(got, "Removed segment Board work") {

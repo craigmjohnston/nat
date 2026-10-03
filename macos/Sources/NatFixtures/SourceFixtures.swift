@@ -40,8 +40,10 @@ extension Fixtures {
     /// Todo, under the second card.
     public static let sourceSecondCardTaskID = "f1x7500c-0000-4000-8000-000000000014"
 
-    static let sourceNativeApp = SourceBadge(text: "NA", color: "#4f6bd8", title: "Native App")
-    static let sourceBoard = SourceBadge(text: "BD", color: "#2a9d8f", title: "Board")
+    // A card's one badge is its Shortcut-style project, as the plugin sends
+    // it; a card with no project has none (never its team's).
+    static let sourceMobileApp = SourceBadge(text: "MOB", color: "#e5732a", title: "Mobile App")
+    static let sourceWeb = SourceBadge(text: "WE", color: "#8e8e93", title: "Web")
 
     // The workspace's choices a filter offers, as the Shortcut plugin sends
     // them: teams by mention name, projects and epics by id, labels by name.
@@ -57,6 +59,14 @@ extension Fixtures {
         SourceFilterOption(id: "10", label: "Native app parity"),
         SourceFilterOption(id: "12", label: "Review pane v3"),
     ]
+    /// A segment's states, one workflow's, so named alone.
+    static let sourceStateOptions = [
+        SourceFilterOption(id: "501", label: "Backlog"),
+        SourceFilterOption(id: "505", label: "Done"),
+        SourceFilterOption(id: "503", label: "In Development"),
+        SourceFilterOption(id: "504", label: "In Review"),
+        SourceFilterOption(id: "502", label: "Ready for Dev"),
+    ]
     static let sourceLabelOptions = [
         SourceFilterOption(id: "agent", label: "agent"),
         SourceFilterOption(id: "diff", label: "diff", color: "#d64545"),
@@ -67,9 +77,10 @@ extension Fixtures {
     /// project.
     static let sourceSectionFilter = ["project": ["30"]]
 
-    /// A filter action's four fields over `selected`; `section` (a segment's)
-    /// names what each "Any" falls through to, and `epicsLoading` is the
-    /// plugin still fetching its epic list.
+    /// A filter action's fields over `selected`; `section` (a segment's)
+    /// names what each "Any" falls through to, and adds the State field a
+    /// segment's editor alone has; `epicsLoading` is the plugin still
+    /// fetching its epic list.
     public static func sourceFilterAction(
         _ selected: [String: [String]], section: [String: [String]]? = nil, epicsLoading: Bool = false
     ) -> SourceAction {
@@ -77,11 +88,15 @@ extension Fixtures {
             guard let ids = section?[field], !ids.isEmpty else { return nil }
             return ids.map { id in options.first { $0.id == id }?.label ?? id }.joined(separator: ", ")
         }
+        let state = section == nil ? [] : [
+            SourceFilterField(id: "state", label: "State", options: sourceStateOptions, value: selected["state"] ?? []),
+        ]
         return SourceAction(id: "filter", label: "Filter…", input: .filter, fields: [
             SourceFilterField(id: "team", label: "Team", options: sourceTeamOptions, value: selected["team"] ?? [],
                               inherited: named(sourceTeamOptions, "team")),
             SourceFilterField(id: "project", label: "Project", options: sourceProjectOptions,
                               value: selected["project"] ?? [], inherited: named(sourceProjectOptions, "project")),
+        ] + state + [
             SourceFilterField(id: "epic", label: "Epic", options: epicsLoading ? [] : sourceEpicOptions,
                               value: selected["epic"] ?? [], inherited: named(sourceEpicOptions, "epic"),
                               loading: epicsLoading),
@@ -107,28 +122,28 @@ extension Fixtures {
         SourceContainer(
             id: sourceCardID, title: "Improve diff review ergonomics",
             externalURL: "https://demo.example/cards/\(sourceCardID)",
-            badges: [sourceNativeApp], meta: "3", menu: sourceCardMenu),
+            badges: [sourceMobileApp], meta: "3", menu: sourceCardMenu),
         SourceContainer(
             id: sourceSecondCardID, title: "Board mouse support",
             externalURL: "https://demo.example/cards/\(sourceSecondCardID)",
-            badges: [sourceBoard], meta: "2", menu: sourceCardMenu),
+            badges: [], meta: "2", menu: sourceCardMenu),
     ]
 
     static let sourceMineCard = SourceContainer(
         id: sourceMineCardID, title: "Kanban column view",
         externalURL: "https://demo.example/cards/\(sourceMineCardID)",
-        badges: [sourceBoard], meta: "3", menu: sourceCardMenu)
+        badges: [], meta: "3", menu: sourceCardMenu)
 
     static let sourceBoardCard = SourceContainer(
         id: sourceBoardCardID, title: "Wheel scrolling in the Active panel",
         externalURL: "https://demo.example/cards/\(sourceBoardCardID)",
-        badges: [sourceBoard], meta: "1", menu: sourceCardMenu)
+        badges: [sourceWeb], meta: "1", menu: sourceCardMenu)
 
     static let sourceDoneCards: [SourceContainer] = [
         SourceContainer(
             id: sourceDoneCardID, title: "Pluggable plan storage",
             externalURL: "https://demo.example/cards/\(sourceDoneCardID)",
-            badges: [sourceNativeApp], meta: "5"),
+            badges: [sourceMobileApp], meta: "5"),
     ]
 
     /// The plugin's tree, with the lazy Done group listing its cards only

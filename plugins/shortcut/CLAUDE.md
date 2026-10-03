@@ -83,19 +83,29 @@ built from is `docs/design/task-sources/shortcut-plugin-brief.md`.
   time (`weekStart`), lazy with a count. Every query is one `refs.search`:
   the filter's terms — `team:<mention>`, `project:<id>`, `epic:"<name>"`
   (the search takes an epic's title; the id is looked up, the id itself
-  where it can't be), `label:"<name>"` each — then the group's own. Doing and
-  Done use the section filter (`settings.Project.Filter`); a segment uses
-  `merged(section, segment)` — each field the segment sets replaces the
-  section's, labels as a whole. The response's top-level `menu` is the
-  header's: describe's actions plus the section's Filter…; each segment's
-  menu is Rename, its Filter… (fields carrying `inherited`, the section's
-  value "Any" falls through to) and Remove. A filter action's options are the
+  where it can't be), `label:"<name>"` each, `state:"<name>"` (by name,
+  through the workflows — read in the first round, beside `/member`, so a
+  segment's search can name it; the id itself where it isn't there) — then
+  the group's own. Doing and Done use the section filter
+  (`settings.Project.Filter`); a segment uses `merged(section, segment)` —
+  each field the segment sets replaces the section's, labels as a whole. A
+  segment lists only unstarted stories (trimmed after the search by state
+  type) **unless its filter names a state**: then the user said which, and
+  nothing is trimmed. The response's top-level `menu` is the header's:
+  describe's actions plus the section's Filter…; each segment's menu is
+  Rename, its Filter… (fields carrying `inherited`, the section's value "Any"
+  falls through to) and Remove. A filter action's options are the
   workspace's unarchived teams, projects (`GET /projects`, read beside
   groups; a failure is no projects), epics and labels (`GET /labels?slim=true`,
-  through the 1 h cache); a saved choice no longer offered is offered still.
-- **Badges** are a story's Shortcut project — `abbreviation` (else a code
-  from its name), its hex `color` (else grey), title the name — else its team,
-  else its epic, else none. `project` is a fact after `team`.
+  through the 1 h cache), and — **a segment's editor only**, after Project —
+  State: every state of every workflow, `<workflow> › <state>` where there
+  is more than one workflow. The section's filter has no state (`parseFilter`
+  refuses one there: a state is which stories a segment lists). A saved
+  choice no longer offered is offered still.
+- **Badges** are a story's Shortcut project alone — `abbreviation` (else a
+  code from its name), its hex `color` (else grey), title the name; a story
+  with no project (or a workspace that won't list projects) has no badge,
+  never its team's or epic's. `project` is a fact after `team`.
 - **Team colours** come from `color_key` (Shortcut sends `color: null`),
   mapped to hex by `colorKeys`; a hex `color`, if ever sent, wins; an
   unknown key is grey. Archived teams are never offered in any list of
@@ -103,8 +113,7 @@ built from is `docs/design/task-sources/shortcut-plugin-brief.md`.
 - **Never `GET /epics` with descriptions, and never `GET /iterations`** —
   the full epic list is megabytes on a real workspace. Ids the stories at
   hand reference are looked up one by one (`/epics/{id}`, `/iterations/{id}`;
-  the sidebar only for project- and team-less stories' badges and the
-  filters' epics), through a 1 h cache shared by every project on the same
+  the sidebar only for the filters' epics), through a 1 h cache shared by every project on the same
   API (`lookup`), stale on error, an empty fact when nothing is cached. The
   one exception is the filter editor's epic list: `GET
   /epics?includes_description=false`, **only** from the `warm` subcommand,
@@ -125,12 +134,18 @@ built from is `docs/design/task-sources/shortcut-plugin-brief.md`.
   best-effort: it never fails a call.
 - **Settings** live in `$XDG_CONFIG_HOME/nat-source-shortcut/config.json`
   (else `~/.config/…`), keyed by nat project id: `segments` (id, name,
-  `filter` — team mention name, project id, epic id, label names),
+  `filter` — team mention name, project id, epic id, label names, workflow
+  state id),
   `started_state`, `done_state` (a state name or id in the story's
   workflow), `filter` (the section's, narrowing every search; an older
   entry's `team` reads into it, and a segment's older `query` is not read).
   The `filter` action sets the section's (no group) or a segment's, its input
-  a JSON object of field id to choices. A project with no entry gets one
+  a JSON object of field id to choices; its message names what was picked
+  by the names the editor offered (team display name, project, epic, state
+  labelled as the editor labels it — `describeFilter`), read after the parse
+  in one parallel round (`filterRefs`: workflows, teams, projects, the epic
+  through `lookup`), each failure tolerated and an unnamed id said as is. A
+  project with no entry gets one
   segment, Ready, with an empty filter; nil segments mean default,
   an empty list means the user removed them all. A segment's id is fixed at
   creation — its group id is `ready/<id>`, which nat and gnat remember, so a

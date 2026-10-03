@@ -11,6 +11,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/source"
 	"github.com/craigmjohnston/nat/plugins/shortcut/internal/settings"
+	"github.com/craigmjohnston/nat/plugins/shortcut/internal/shortcut"
 )
 
 // filterOf is a segment's filter action as the sidebar sent it.
@@ -62,13 +63,13 @@ func fields(a source.Action) string {
 }
 
 // A segment's Filter… opens on its own selection, offering the workspace's
-// unarchived teams, projects, epics and labels — and a saved choice the
-// workspace no longer offers, so a save never drops it.
+// unarchived teams, projects, workflow states, epics and labels — and a saved
+// choice the workspace no longer offers, so a save never drops it.
 func TestFilterFields(t *testing.T) {
 	h := newHarness(t)
 	h.warmEpics()
 	h.writeConfig(settings.Project{Segments: []settings.Segment{
-		{ID: "r", Name: "Ready", Filter: settings.Filter{Team: "old", Project: "32", Epic: "11", Labels: []string{"agent", "gone"}}},
+		{ID: "r", Name: "Ready", Filter: settings.Filter{Team: "old", Project: "32", Epic: "11", Labels: []string{"agent", "gone"}, State: "502"}},
 	}})
 	a := filterOf(t, h.call("sidebar", `"expand":[]`), "ready/r")
 	if a.ID != "filter" || a.Label != "Filter…" {
@@ -77,11 +78,23 @@ func TestFilterFields(t *testing.T) {
 	want := strings.Join([]string{
 		"team = old | board:Board#2aa198 native-app:Native App#2c3e7a old:old",
 		"project = 32 | 32:32 30:Mobile App#e5732a 31:Web#8e8e93",
+		"state = 502 | 501:Backlog 505:Done 503:In Development 504:In Review 502:Ready for Dev 506:Won't Do",
 		"epic = 11 | 10:Native app parity 11:Old epic",
 		"labels multi = agent,gone | agent:agent diff:diff#d64545 gone:gone",
 	}, "\n")
 	if got := fields(a); got != want {
 		t.Errorf("fields:\n%s\nwant:\n%s", got, want)
+	}
+	// The segment's state is searched by name, and lists what is in it.
+	if !slices.Contains(h.gets(), `/search/stories team:old project:32 epic:"Old epic" label:"agent" label:"gone" state:"Ready for Dev" !is:done`) {
+		t.Errorf("searches = %q", h.gets())
+	}
+	// With more than one workflow, a state is named by its workflow too.
+	h.fake.Workflows = append(h.fake.Workflows, shortcut.Workflow{ID: 2, Name: "Design", States: []shortcut.WorkflowState{{ID: 601, Name: "Ready for Dev"}}})
+	h.now = h.now.Add(time.Minute)
+	a = filterOf(t, h.call("sidebar", `"expand":[]`), "ready/r")
+	if got := fields(a); !strings.Contains(got, "state = 502 | 601:Design › Ready for Dev 501:Engineering › Backlog") {
+		t.Errorf("two workflows' state field:\n%s", got)
 	}
 	// An empty filter selects nothing, and says so with empty lists.
 	h.writeConfig(settings.Project{Segments: []settings.Segment{{ID: "r", Name: "Ready"}}})
@@ -101,7 +114,7 @@ func TestFilterFields(t *testing.T) {
 func TestEpicsWarmInTheBackground(t *testing.T) {
 	h := newHarness(t)
 	first := h.call("sidebar", `"expand":[]`)
-	if f := filterOf(t, first, "ready/ready").Fields[2]; f.ID != "epic" || !f.Loading || len(f.Options) != 0 {
+	if f := filterOf(t, first, "ready/ready").Fields[3]; f.ID != "epic" || !f.Loading || len(f.Options) != 0 {
 		t.Errorf("epic field before the warm-up = %+v", f)
 	}
 	if !slices.Equal(h.spawned, []string{"warm"}) {
@@ -128,7 +141,7 @@ func TestEpicsWarmInTheBackground(t *testing.T) {
 		}
 	}
 	h.fake.Reset()
-	f := filterOf(t, h.call("sidebar", `"expand":[]`), "ready/ready").Fields[2]
+	f := filterOf(t, h.call("sidebar", `"expand":[]`), "ready/ready").Fields[3]
 	if f.Loading || len(f.Options) != 1 || f.Options[0].Label != "Native app parity" {
 		t.Errorf("epic field after the warm-up = %+v", f)
 	}
@@ -142,7 +155,7 @@ func TestEpicsWarmInTheBackground(t *testing.T) {
 	// Past the hour the stale list is offered meanwhile and a refresh started.
 	h.now = h.now.Add(2 * time.Hour)
 	h.spawned = nil
-	f = filterOf(t, h.call("sidebar", `"expand":[]`), "ready/ready").Fields[2]
+	f = filterOf(t, h.call("sidebar", `"expand":[]`), "ready/ready").Fields[3]
 	if f.Loading || len(f.Options) != 1 || !slices.Equal(h.spawned, []string{"warm"}) {
 		t.Errorf("stale: field %+v, spawned %v", f, h.spawned)
 	}
@@ -208,10 +221,10 @@ func TestSectionFilter(t *testing.T) {
 		t.Errorf("section menu = %s", got)
 	}
 
-	if got := h.act("filter", `{}`, `{"project":["30"],"labels":["diff"]}`); !strings.Contains(got, "Every Shortcut list now shows project 30; labels diff") {
+	if got := h.act("filter", `{}`, `{"project":["30"],"labels":["diff"]}`); !strings.Contains(got, "Every Shortcut list now shows project Mobile App; labels diff") {
 		t.Errorf("section filter = %q", got)
 	}
-	if got := h.act("filter", `{"group":"ready/ready"}`, `{"labels":["agent"],"team":["board"]}`); !strings.Contains(got, "Ready now shows team board; labels agent") {
+	if got := h.act("filter", `{"group":"ready/ready"}`, `{"labels":["agent"],"team":["board"]}`); !strings.Contains(got, "Ready now shows team Board; labels agent") {
 		t.Errorf("segment filter = %q", got)
 	}
 	h.fake.Reset()
@@ -236,12 +249,15 @@ func TestSectionFilter(t *testing.T) {
 		if f.Inherited != "" {
 			t.Errorf("the section's own %s inherits %q", f.ID, f.Inherited)
 		}
+		if f.ID == "state" {
+			t.Error("the section's filter offers a state")
+		}
 	}
 	inherited := map[string]string{}
 	for _, f := range filterOf(t, out, "ready/ready").Fields {
 		inherited[f.ID] = f.Inherited
 	}
-	if want := map[string]string{"team": "", "project": "Mobile App", "epic": "", "labels": "diff"}; !reflect.DeepEqual(inherited, want) {
+	if want := map[string]string{"team": "", "project": "Mobile App", "state": "", "epic": "", "labels": "diff"}; !reflect.DeepEqual(inherited, want) {
 		t.Errorf("inherited = %v, want %v", inherited, want)
 	}
 
@@ -262,6 +278,22 @@ func TestSectionFilter(t *testing.T) {
 	if errs := h.actFail("filter", `{}`, `nope`); !strings.Contains(errs, "a filter is a JSON object") {
 		t.Errorf("bad section filter: %q", errs)
 	}
+
+	// A state is a segment's alone: the section's filter refuses one, a
+	// segment's takes one choice and says it.
+	if errs := h.actFail("filter", `{}`, `{"state":["502"]}`); !strings.Contains(errs, "shortcut: the section's filter has no state field") {
+		t.Errorf("section state = %q", errs)
+	}
+	if got := h.act("filter", `{"group":"ready/ready"}`, `{"state":["504"]}`); !strings.Contains(got, "Ready now shows state In Review") {
+		t.Errorf("segment state = %q", got)
+	}
+	if errs := h.actFail("filter", `{"group":"ready/ready"}`, `{"state":["502","504"]}`); !strings.Contains(errs, "a segment's state is one choice, not 2") {
+		t.Errorf("two states = %q", errs)
+	}
+	// The section's filter never carries a state into a segment's search.
+	if m := merged(settings.Filter{State: "1", Team: "t"}, settings.Filter{}); m.State != "" || m.Team != "t" {
+		t.Errorf("merged = %+v", m)
+	}
 }
 
 // An epic that cannot be looked up is searched, and offered, by its id.
@@ -272,7 +304,43 @@ func TestUnknownEpicFallsBackToItsID(t *testing.T) {
 	if !slices.Contains(h.gets(), `/search/stories epic:"999" !is:done`) {
 		t.Errorf("searches = %q", h.gets())
 	}
-	if f := filterOf(t, out, "ready/e").Fields[2]; len(f.Options) != 1 || f.Options[0] != (source.FilterOption{ID: "999", Label: "999"}) {
+	if f := filterOf(t, out, "ready/e").Fields[3]; len(f.Options) != 1 || f.Options[0] != (source.FilterOption{ID: "999", Label: "999"}) {
 		t.Errorf("epic field = %+v", f)
+	}
+}
+
+// A filter's toast says what the user picked by the names the editor
+// offered — a team by its display name, a state as the editor labels it —
+// and anything it cannot name by its id, as a search would.
+func TestFilterToastSaysNames(t *testing.T) {
+	h := newHarness(t)
+	h.writeConfig(settings.Project{Segments: []settings.Segment{{ID: "r", Name: "Ready"}}})
+	act := func(target, input string) string {
+		t.Helper()
+		var res source.ActionResult
+		if err := json.Unmarshal([]byte(h.act("filter", target, input)), &res); err != nil {
+			t.Fatal(err)
+		}
+		return res.Message
+	}
+	if got := act(`{"group":"ready/r"}`, `{"team":["native-app"],"project":["30"],"state":["502"],"epic":["10"],"labels":["diff"]}`); got !=
+		"Ready now shows team Native App; project Mobile App; epic Native app parity; labels diff; state Ready for Dev" {
+		t.Errorf("named = %q", got)
+	}
+	// Ids nothing names are said as they are.
+	if got := act(`{"group":"ready/r"}`, `{"team":["gone"],"project":["99"],"state":["999"],"epic":["999"]}`); got !=
+		"Ready now shows team gone; project 99; epic 999; state 999" {
+		t.Errorf("unnamed = %q", got)
+	}
+	// With more than one workflow a state carries its workflow's name.
+	h.fake.Workflows = append(h.fake.Workflows, shortcut.Workflow{ID: 2, Name: "Design", States: []shortcut.WorkflowState{{ID: 601, Name: "Sketch"}}})
+	if got := act(`{"group":"ready/r"}`, `{"state":["601"]}`); got != "Ready now shows state Design › Sketch" {
+		t.Errorf("two workflows = %q", got)
+	}
+	// A Shortcut that won't answer: every name falls back to its id, and the
+	// filter is still saved.
+	h.fake.Fail = map[string]int{"GET /workflows": 500, "GET /groups": 500, "GET /projects": 500}
+	if got := act(`{}`, `{"team":["board"],"project":["30"]}`); got != "Every Shortcut list now shows team board; project 30" {
+		t.Errorf("failed reads = %q", got)
 	}
 }
