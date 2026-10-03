@@ -128,10 +128,11 @@ while True:
 
 Two traps it hit:
 
-- A dev binary's Sparkle updater runs an app-modal alert at launch. Nothing
-  in the run loop's default mode fires under it, so a synthesized press
+- A dev binary's Sparkle updater used to run an app-modal alert at launch
+  (now `UpdaterGate` starts it only from a bundled `.app`). Nothing in the
+  run loop's default mode fires under a modal, so a synthesized press
   scheduled that way never happens — and an empty log reads as a pass. The
-  synth uses common-mode timers and dismisses the modal, logging it.
+  synth uses common-mode timers and dismisses any modal, logging it.
 - The synth focuses the pane itself (logged as `synth: focusing pane`) since
   nothing has clicked it; a real press needs the click.
 

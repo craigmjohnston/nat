@@ -1,4 +1,5 @@
 import Combine
+import NatKit
 import Sparkle
 import SwiftUI
 
@@ -20,8 +21,10 @@ final class UpdaterViewModel: ObservableObject {
     private var cancellable: AnyCancellable?
 
     init() {
+        // A dev executable never starts it: see `UpdaterGate`. The menu
+        // item then stays disabled, since `canCheckForUpdates` never rises.
         controller = SPUStandardUpdaterController(
-            startingUpdater: true,
+            startingUpdater: UpdaterGate.shouldStart(bundleURL: Bundle.main.bundleURL),
             updaterDelegate: nil,
             userDriverDelegate: nil
         )

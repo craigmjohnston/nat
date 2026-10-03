@@ -24,9 +24,10 @@ enum KeyDebug {
     /// no accessibility permission needed. A no-op otherwise.
     ///
     /// Timers in the run loop's common modes rather than a sleep in a
-    /// `.task`: a dev binary's updater runs an app-modal alert at launch,
-    /// and nothing scheduled in the default mode fires under it — the
-    /// presses silently never happened, which reads as a pass.
+    /// `.task`: nothing scheduled in the default mode fires under an
+    /// app-modal alert (a dev binary's updater used to put one up at launch,
+    /// see `UpdaterGate`), and presses that silently never happen read as a
+    /// pass.
     @MainActor
     static func synthesizeIfAsked() {
         guard enabled, ProcessInfo.processInfo.environment["NAT_KEY_DEBUG_SYNTH"] == "1" else { return }
@@ -43,8 +44,8 @@ enum KeyDebug {
 
     @MainActor
     private static func post(_ name: String, _ flags: NSEvent.ModifierFlags) {
-        // A dev binary's updater puts up an app-modal alert at launch, which
-        // would take the presses itself; a person clicks it away, so does this.
+        // An app-modal alert would take the presses itself; a person clicks
+        // it away, so does this.
         if let modal = NSApp.modalWindow {
             log("synth: dismissing modal \"\(modal.title)\"")
             NSApp.abortModal()
