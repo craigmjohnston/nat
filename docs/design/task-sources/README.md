@@ -625,6 +625,113 @@ is `source` (`source=<name>` in the plain form).
 - The TUI's `n` (add slice) is refused with a toast on a source project;
   tasks are added from gnat or `nat slice-add --container`.
 
+## Installing plugins
+
+Discovery (above) is unchanged: an installed plugin is still just an
+executable where nat looks. Installing is how one gets into the plugins
+directory without copying it there by hand, from a **plugin source**.
+
+### A plugin source
+
+A plugin source is a GitHub repository, `owner/repo`, whose releases carry a
+manifest asset named `nat-plugins.json` beside the plugin binaries it names:
+
+```json
+{
+  "version": "1.0.42",
+  "plugins": [
+    {
+      "name": "shortcut",
+      "title": "Shortcut",
+      "description": "Shortcut stories as the cards a project's tasks hang off.",
+      "asset": "nat-source-shortcut",
+      "sha256": "<64 hex digits>"
+    }
+  ]
+}
+```
+
+- `version` is the release's version with no `v` prefix, dotted integers
+  (`1.0.42`); the release's tag is `v<version>`. **A plugin's version is the
+  release's** — there is no per-plugin version.
+- `name` follows Discovery's rule (lower-case letters, digits, `-`), once per
+  manifest. `asset` is the release asset that is the binary (one file name,
+  no path), `sha256` its SHA-256 in hex. `title` and `description` are what
+  a list of plugins shows before one is installed.
+- Unknown fields are ignored. A manifest that breaks any of these rules is
+  refused whole, as a failed read.
+
+nat reads `https://github.com/<owner>/<repo>/releases/latest/download/nat-plugins.json`
+for the latest release, `…/releases/download/v<version>/nat-plugins.json` for
+one version (`--version`, whose manifest must say that version), and a binary
+at `…/releases/download/v<version>/<asset>`. A manifest read times out at 10
+s, a download at 60 s; redirects are followed (GitHub sends downloads to its
+storage host) but never to anything but https; response bodies are never
+logged or quoted in an error.
+
+**In a source's repo**, each `plugins/<name>/` carries a static
+`plugin.json` of `{"name", "title", "description"}` (`name` equal to the
+directory's). The release pipeline reads those to build the manifest — it
+can't ask a plugin's own `describe`, which may need a token the build doesn't
+have. nat's own pipeline (`macos/Scripts/make-plugins.sh`, then
+`release-plugins.sh`) builds each into a universal binary, signs and
+notarizes it (a downloaded unsigned binary can carry the quarantine flag and
+be blocked when nat runs it), takes the digests **after** signing, and
+attaches the binaries and the manifest to every release; a repo with no
+plugin directories still publishes a manifest with an empty list.
+
+### Sources
+
+nat's own repository, `craigmjohnston/nat`, is always the first source and
+cannot be removed. Config's `plugin_sources` (a list of `owner/repo`, omitted
+until one is added) are the extras, read in order after it.
+
+A source that cannot be read — no release, no manifest, a manifest that
+won't parse or breaks a rule — **concludes nothing**: it is listed with its
+`error`, never as a source offering no plugins, and the other sources are
+read regardless.
+
+### Installed
+
+`nat plugin-install <name>` installs from `--source`, else the first source
+offering the name. The binary is downloaded beside where it goes, its digest
+checked (a mismatch refuses and deletes it), made executable and renamed
+into `<config dir>/plugins/<name>/nat-source-<name>` in one step; then
+`installed.json` is written beside it:
+
+```json
+{"source": "owner/repo", "version": "1.0.42", "sha256": "…", "installed_at": "2026-10-03T12:00:00Z"}
+```
+
+A directory with that record is a **managed** install, and installing over
+it is the update. A directory without one is a **manual** install — put
+there by hand — and installing over it is refused, naming the path: nat
+never overwrites what someone placed themselves. A plugin found on PATH is a
+**path** install.
+
+`nat plugin-uninstall <name>` removes `<config dir>/plugins/<name>/`, managed
+or manual. It is refused while any project is a source project of that
+plugin (naming them), and for a plugin found only on PATH (naming where).
+
+An installed managed plugin has an **update** when its source's latest
+release carries it at a newer version, versions compared as dotted integers;
+a version that doesn't read that way is never newer.
+
+### The `nat` contract
+
+- `plugin-list --json` →
+  `{"sources": [{"repo", "version", "error", "default"}], "installed": [{"name", "path", "kind", "source", "version", "update"}], "available": [{"name", "title", "description", "source", "version", "installed"}]}`.
+  `kind` is `managed`, `manual` or `path`; `source`/`version` are a managed
+  install's alone; `update` is the newer version, else empty; `available` is
+  every source's latest release's plugins, `installed` true where a plugin of
+  that name is installed by any means.
+- `plugin-install <name> [--source owner/repo] [--version V] --json` → the
+  record above plus `name` and `path`.
+- `plugin-uninstall <name> --json` → `{"name", "path"}`.
+- `plugin-source-add <owner/repo>` / `plugin-source-remove <owner/repo>`
+  (`--json` → `{"sources": [...]}`, every source in reading order).
+  Removing nat's own is refused, as is anything not shaped `owner/repo`.
+
 ## Data model
 
 - **Config.** `ProjectConfig.source` (omitted when empty) and backend

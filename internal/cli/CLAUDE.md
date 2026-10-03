@@ -4,8 +4,14 @@ The headless `nat` subcommands: what an agent runs against its own slice,
 what skills run to plan and queue work, and the macOS app's entire backend
 contract (`NatClient` shells out to `nat <command> --json`). Runs before the
 tmux check, with no TUI code in the path — a command prints to the terminal
-it was typed in and exits. `setup`, `project-create` and `source-list` act
-on no already-tracked project.
+it was typed in and exits. `setup`, `project-create`, `source-list` and the
+`plugin-*` commands act on no already-tracked project.
+
+`plugin-list`/`-install`/`-uninstall`/`-source-add`/`-source-remove` are thin:
+flags, `Env.Load`, then `internal/plugins` through `Env.NewPlugins` (a
+`*plugins.Manager`; tests point one at an httptest TLS server). The source
+edits need a config that exists and `Save` it; the rest read a missing
+config as no extra sources and no projects.
 
 ## `--project` pinning
 
