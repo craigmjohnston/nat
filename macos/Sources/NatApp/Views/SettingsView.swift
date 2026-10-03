@@ -279,9 +279,10 @@ struct SettingsView: View {
         }
     }
 
-    /// One of a plugin's setup fields beneath its row: the label, a secure
-    /// field (or a plain one for `text`) and Save, the hint under them, then
-    /// what the last Save came to. The value goes to `nat source-setup` on
+    /// One of a plugin's setup fields beneath its row: whether the plugin
+    /// holds a value for it (where it says), the label, a secure field (or a
+    /// plain one for `text`) and Save, the hint under them, then what the
+    /// last Save came to. The value goes to `nat source-setup` on
     /// stdin, through `PluginsModel`.
     private func setupFieldRow(plugin: String, field: PluginSetupField) -> some View {
         let key = PluginsModel.SetupKey(plugin: plugin, field: field.id)
@@ -289,14 +290,28 @@ struct SettingsView: View {
             get: { plugins.setupValues[key] ?? "" },
             set: { plugins.setupValues[key] = $0 })
         let save = { Task { await plugins.saveSetup(plugin: plugin, field: field.id) } }
+        // A field already set is one a value would replace, and says so.
+        let prompt = field.set == true ? Text("Replace \u{2026}") : nil
         return VStack(alignment: .leading, spacing: 4) {
+            switch field.set {
+            case false:
+                Label("\(field.label) not set", systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .ink(.warning)
+            case true:
+                Label("\(field.label) set", systemImage: "checkmark")
+                    .font(.footnote)
+                    .ink(.secondary)
+            case nil:
+                EmptyView()
+            }
             HStack(spacing: 8) {
                 Text(field.label)
                 Group {
                     if field.isSecret {
-                        SecureField(field.label, text: value)
+                        SecureField(field.label, text: value, prompt: prompt)
                     } else {
-                        TextField(field.label, text: value)
+                        TextField(field.label, text: value, prompt: prompt)
                     }
                 }
                 .textFieldStyle(.roundedBorder)

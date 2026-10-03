@@ -1408,9 +1408,9 @@ enum AppStories {
 
         Story(
             name: "settings-sources-setup",
-            summary: "The Sources tab with Shortcut installed and its API token field still empty — "
-                + "a secure field, Save disabled, the hint under it — beside a plugin whose describe "
-                + "failed, its reason as a warning line.",
+            summary: "The Sources tab with Shortcut installed and no token: \u{201C}API token not set\u{201D} "
+                + "over an empty secure field, Save disabled, the hint under it — beside a plugin whose "
+                + "describe failed, its reason as a warning line.",
             size: CGSize(width: 520, height: 620),
             colorScheme: .light
         ) {
@@ -1422,7 +1422,8 @@ enum AppStories {
 
         Story(
             name: "settings-sources-setup-saved",
-            summary: "The same tab after a token was saved: the field cleared, and the plugin's "
+            summary: "The same tab after a token was saved and plugin-list re-read: \u{201C}API token set\u{201D}, "
+                + "the field cleared with a \u{201C}Replace …\u{201D} placeholder, and the plugin's "
                 + "\u{201C}Logged in to …\u{201D} under it with a green check.",
             size: CGSize(width: 520, height: 620),
             colorScheme: .light

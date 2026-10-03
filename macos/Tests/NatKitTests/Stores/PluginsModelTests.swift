@@ -30,7 +30,7 @@ private let listingJSON = #"""
   ],
   "installed": [
     {"name": "demo", "path": "/c/plugins/demo/nat-source-demo", "kind": "managed", "source": "craigmjohnston/nat", "version": "1.0.1", "update": "1.0.2",
-     "setup": [{"id": "token", "label": "API token", "input": "secret", "hint": "Settings ▸ Tokens"}, {"id": "team", "label": "Team", "input": "text"}], "describe_error": ""},
+     "setup": [{"id": "token", "label": "API token", "input": "secret", "hint": "Settings ▸ Tokens", "set": true}, {"id": "team", "label": "Team", "input": "text"}], "describe_error": ""},
     {"name": "hand", "path": "/c/plugins/hand/nat-source-hand", "kind": "manual", "source": "", "version": "", "update": "", "setup": [], "describe_error": "hand: broken"},
     {"name": "onpath", "path": "/bin/nat-source-onpath", "kind": "path", "source": "", "version": "", "update": "", "setup": [], "describe_error": ""}
   ],
@@ -58,9 +58,10 @@ final class PluginModelsTests: XCTestCase {
         XCTAssertEqual(listing.installed[0].id, "demo")
         // A setup field's hint may be left out; the rest are always written.
         XCTAssertEqual(listing.installed[0].setup, [
-            PluginSetupField(id: "token", label: "API token", input: "secret", hint: "Settings ▸ Tokens"),
+            PluginSetupField(id: "token", label: "API token", input: "secret", hint: "Settings ▸ Tokens", set: true),
             PluginSetupField(id: "team", label: "Team", input: "text"),
         ])
+        XCTAssertEqual(listing.installed[0].setup.map(\.set), [true, nil], "set is optional, and absent is nil")
         XCTAssertEqual(listing.installed[0].setup.map(\.isSecret), [true, false])
         XCTAssertEqual(listing.installed.map(\.describeError), ["", "hand: broken", ""])
     }
@@ -247,7 +248,10 @@ final class PluginsModelTests: XCTestCase {
         await model.saveSetup(plugin: "shortcut", field: "token")
         XCTAssertEqual(model.setupValues[key], "")
         XCTAssertEqual(model.setupOutcomes[key], .saved("Logged in to scratch as Craig Scratch"))
-        XCTAssertEqual(model.listing, Fixtures.pluginListingShortcut, "the listing is read again")
+        XCTAssertEqual(
+            model.listing?.installed.first?.setup.first?.set, true,
+            "the listing is read again, and the field now reads set")
+        XCTAssertEqual(Fixtures.pluginListingShortcut.installed.first?.setup.first?.set, false)
         XCTAssertEqual(client.writes, ["source-setup shortcut --id token"])
         XCTAssertTrue(model.running.isEmpty)
         XCTAssertNil(model.actionError, "a setup answer is the field's, not the tab's")

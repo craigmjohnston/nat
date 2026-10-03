@@ -38,7 +38,9 @@ fuller structure and theme system.
   `nat plugin-*` call and then a fresh `plugin-list`, and an install or
   uninstall re-reads `AppModel.sourcePlugins` for the `+` menu. An
   installed row draws its `describe_error` as a warning line and its
-  `setup` fields beneath it (`SecureField` for `secret`); Save is
+  `setup` fields beneath it (`SecureField` for `secret`; `set == false` a
+  "<label> not set" warning over it, `true` a quiet "<label> set" ✓ and a
+  "Replace …" placeholder, nil neither); Save is
   `PluginsModel.saveSetup` → `NatClient.sourceSetup`, the value on
   **stdin only** (never an argument; `NatClient` logs no request), the
   field cleared and the plugin's message (or refusal) kept under it, then

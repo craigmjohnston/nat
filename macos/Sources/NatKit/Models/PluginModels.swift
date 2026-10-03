@@ -119,25 +119,36 @@ public struct PluginSetupField: Codable, Equatable, Sendable, Identifiable {
     public let input: String
     /// Where to find the value, or empty.
     public let hint: String
+    /// Whether the plugin holds a value for it now — a presence check on its
+    /// side — or nil where it does not say.
+    public let set: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case id, label, input, hint
+        case id, label, input, hint, set
     }
 
-    public init(id: String, label: String, input: String, hint: String = "") {
+    public init(id: String, label: String, input: String, hint: String = "", set: Bool? = nil) {
         self.id = id
         self.label = label
         self.input = input
         self.hint = hint
+        self.set = set
     }
 
-    /// `hint` is the one field the protocol lets a plugin leave out.
+    /// `hint` and `set` are the fields the protocol lets a plugin leave out.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         label = try c.decode(String.self, forKey: .label)
         input = try c.decode(String.self, forKey: .input)
         hint = try c.decodeIfPresent(String.self, forKey: .hint) ?? ""
+        set = try c.decodeIfPresent(Bool.self, forKey: .set)
+    }
+
+    /// The same field, its `set` as given — what a plugin given a value
+    /// would describe it as.
+    public func with(set: Bool?) -> PluginSetupField {
+        PluginSetupField(id: id, label: label, input: input, hint: hint, set: set)
     }
 
     /// Whether the field is drawn masked.
