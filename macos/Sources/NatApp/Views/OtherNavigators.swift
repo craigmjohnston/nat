@@ -353,7 +353,8 @@ struct WorkshopNavigatorView: View {
 
     /// The proposal: its counts, on an Untitled tab the name field, the
     /// caption, then the proposed tree in the sidebar's own rows — each
-    /// milestone a folder over its slices, every one Todo. A revised
+    /// milestone a folder over its slices, every one Todo, the ones the
+    /// proposal creates marked NEW. A revised
     /// proposal replaces it in place. A slice row scrolls the Plan tab to
     /// that slice's box.
     private func planContent(_ proposal: PlanProposal) -> some View {
@@ -380,7 +381,8 @@ struct WorkshopNavigatorView: View {
                 }
             }
             ForEach(proposal.folders, id: \.milestoneID) { folder in
-                TreeMilestoneLine(name: folder.title, count: "\(folder.slices.count)", indent: 12)
+                TreeMilestoneLine(
+                    name: folder.title, count: "\(folder.slices.count)", indent: 12, isNew: folder.isNew)
                 ForEach(folder.slices, id: \.sliceID) { slice in
                     TreeSliceLine(title: slice.name, state: .todo, indent: 20)
                         .onTapGesture { appModel.showProposedSlice(slice.sliceID) }

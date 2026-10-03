@@ -76,6 +76,7 @@ final class PlanProposalModelTests: XCTestCase {
         XCTAssertEqual(proposal.sliceCount, 4)
         XCTAssertEqual(proposal.folders.map(\.title), ["M9: New", "M53: App interaction fixes", "M12: Later"])
         XCTAssertEqual(proposal.folders.map(\.total), [1, 2, 1])
+        XCTAssertEqual(proposal.folders.map(\.isNew), [true, false, false], "only the milestone accepting creates is new")
     }
 
     func testAProposalCreatingNoMilestoneStillHoldsItsSlices() throws {

@@ -59,7 +59,8 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
     public var sliceCount: Int { milestones.reduce(0) { $0 + $1.slices.count } }
 
     /// The tree as milestone folders, as the workshop's Plan section draws
-    /// it: every slice Todo, no milestone current, nothing done.
+    /// it: every slice Todo, no milestone current, nothing done, and each
+    /// marked new where the proposal creates it.
     public var folders: [MilestoneFolder] {
         milestones.enumerated().map { index, milestone in
             MilestoneFolder(
@@ -72,7 +73,8 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
                     MilestoneSliceRow(
                         sliceID: Self.sliceID(milestone: index, slice: sliceIndex), name: slice.name, glyph: .todo,
                         isBlocked: false)
-                }
+                },
+                isNew: milestone.isNew
             )
         }
     }
