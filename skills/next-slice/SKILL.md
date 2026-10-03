@@ -195,8 +195,21 @@ one in and **stop**:
 nat slice-followups <slice> --project <project> \
     --follow-up '<title line>
 
-<two or three sentences: what, where, why it matters>'
+<the change: which file or function, what it does instead, and why>
+Done when: <how anyone checks it is finished>'
 ```
+
+Write each one as a slice brief: if the user queues it, this text is the brief
+of a new slice, word for word, read by an agent with nothing else. The title is
+an imperative action ("Make the sidebar's post-write refresh read the
+replica"), not a symptom. The body is the change — which file or function, what
+it does instead, and why — then a line starting `Done when:` saying how anyone
+checks it is finished. Write a decision, not a question: where there is a
+choice, pick one and name the alternative rejected; no "could", "might",
+"consider" or "worth looking at". If saying what to change needs a look at the
+code, take that look now — it is usually one read; if it genuinely needs
+investigation, the investigation is the deliverable and `Done when:` says what
+it produces.
 
 `--follow-up` repeats, one per follow-up. The user decides on the board — queue
 it as a slice, fold it into this one, or drop it — and the decision arrives here

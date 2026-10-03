@@ -18,9 +18,9 @@ import (
 
 // The three follow-ups the tests below hand in, as an agent would quote them.
 const (
-	followUpA = "Persist the split width\n\nThe width lives under one key.\nStore it per project."
-	followUpB = "Render the picker in a story\n\nNo story shows it open."
-	followUpC = "Remove dead code\n\nNothing calls it."
+	followUpA = "Persist the split width\n\nThe width lives under one key.\nStore it per project.\nDone when: two projects keep two widths."
+	followUpB = "Render the picker in a story\n\nNo story shows it open.\nDone when: a story shows it open."
+	followUpC = "Remove dead code\n\nNothing calls it.\nDone when: it is gone."
 )
 
 // followUpsPlan is a project kept locally, with one slice in it — status as
@@ -164,9 +164,9 @@ Waiting for the user's decision — it arrives as a message; do not hand back be
 
 	shown := fp.shown(t)
 	wantShown := []followUpJSON{
-		{1, "Persist the split width", "The width lives under one key.\nStore it per project."},
-		{2, "Render the picker in a story", "No story shows it open."},
-		{3, "Remove dead code", "Nothing calls it."},
+		{1, "Persist the split width", "The width lives under one key.\nStore it per project.\nDone when: two projects keep two widths."},
+		{2, "Render the picker in a story", "No story shows it open.\nDone when: a story shows it open."},
+		{3, "Remove dead code", "Nothing calls it.\nDone when: it is gone."},
 	}
 	if !equalFollowUps(shown.FollowUps, wantShown) {
 		t.Errorf("slice-show followUps = %+v, want %+v", shown.FollowUps, wantShown)
@@ -189,6 +189,7 @@ Fold in before handing back:
 
 2. Render the picker in a story
    No story shows it open.
+   Done when: a story shows it open.
 
 Then hand back with nat complete-slice as usual.`
 	if len(fp.runner.sends) != 1 || fp.runner.sends[0].session != "nat-render" || fp.runner.sends[0].prompt != wantSent {
@@ -211,7 +212,7 @@ Then hand back with nat complete-slice as usual.`
 		t.Errorf("queued slice = %+v, want Todo under M1, unassigned, waiting on its parent", queued)
 	}
 	brief, _ := fp.local(t).Body(context.Background(), queued.ID)
-	wantBrief := "The width lives under one key.\nStore it per project.\n\n" +
+	wantBrief := "The width lives under one key.\nStore it per project.\nDone when: two projects keep two widths.\n\n" +
 		`From "Render the board" (M1)`
 	if brief != wantBrief {
 		t.Errorf("queued brief = %q, want %q", brief, wantBrief)
@@ -272,7 +273,9 @@ func TestSliceFollowUpsRefusals(t *testing.T) {
 		{"none", notion.SliceInProgress, nil, "no follow-up given"},
 		{"no title", notion.SliceInProgress, []string{"--follow-up", "  \n "}, "has no title"},
 		{"no brief", notion.SliceInProgress, []string{"--follow-up", "Just a title"}, `"Just a title" has no brief`},
-		{"twice", notion.SliceInProgress, []string{"--follow-up", followUpA, "--follow-up", "Persist the split width\n\nAgain."},
+		{"no done-condition", notion.SliceInProgress, []string{"--follow-up", "Store the width\n\nStore it per project.\ndone when: lowercase is not it."},
+			`"Store the width" has no "Done when:" line`},
+		{"twice", notion.SliceInProgress, []string{"--follow-up", followUpA, "--follow-up", "Persist the split width\n\nAgain.\nDone when: twice."},
 			`two follow-ups are titled "Persist the split width"`},
 		{"not held", notion.SliceTodo, []string{"--follow-up", followUpA}, "only a slice you claimed can be given follow-ups"},
 	}

@@ -75,7 +75,9 @@ func sliceFollowUps(ctx context.Context, args []string, env Env) error {
 
 // followUpsOf reads each --follow-up as the follow-up it describes, settling
 // every refusal before anything is read or written: none at all, one with no
-// title or no brief, and two of the same title — the title is what the triage
+// title, no brief or no `Done when:` line — a queued follow-up's brief is the
+// new slice's, word for word, and one with no done-condition is a slice no
+// agent can finish — and two of the same title — the title is what the triage
 // record names each one by, so two alike could never be told apart in it.
 func followUpsOf(given []string) ([]store.FollowUp, error) {
 	if len(given) == 0 {
@@ -90,7 +92,9 @@ func followUpsOf(given []string) ([]store.FollowUp, error) {
 		case title == "":
 			return nil, usageErrorf("slice-followups: a follow-up has no title: its first line is the title")
 		case brief == "":
-			return nil, usageErrorf("slice-followups: %q has no brief: say what, where and why after the title line", title)
+			return nil, usageErrorf("slice-followups: %q has no brief: say the change after the title line, then a \"Done when:\" line", title)
+		case !hasDoneWhen(brief):
+			return nil, usageErrorf("slice-followups: %q has no \"Done when:\" line: say how anyone checks it is finished", title)
 		case seen[title]:
 			return nil, usageErrorf("slice-followups: two follow-ups are titled %q: give each its own title", title)
 		}
@@ -98,6 +102,16 @@ func followUpsOf(given []string) ([]store.FollowUp, error) {
 		items = append(items, store.FollowUp{Title: title, Brief: brief})
 	}
 	return items, nil
+}
+
+// hasDoneWhen is whether a brief has a line beginning `Done when:`.
+func hasDoneWhen(brief string) bool {
+	for _, line := range strings.Split(brief, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "Done when:") {
+			return true
+		}
+	}
+	return false
 }
 
 // followUpsFiledMarkdown says what was filed and what the agent does now, which

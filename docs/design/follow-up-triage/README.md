@@ -294,8 +294,11 @@ the `--summary` guidance with a *Follow-ups* passage:
 > in code you didn't touch, a refactor the brief didn't ask for — is not
 > yours to do and not yours to lose. When the gate is green, before
 > `complete-slice`, hand each one in with
-> `nat slice-followups <slice> --project <id> --follow-up '<title line>\n\n<two or three sentences: what, where, why it matters>'`
-> (repeatable) and **stop**. The user decides on the board — queue as a
+> `nat slice-followups <slice> --project <id> --follow-up '<title line>\n\n<the change: which file or function, what it does instead, and why>\nDone when: <how anyone checks it is finished>'`
+> (repeatable) and **stop**. Write each one as a slice brief: if the user
+> queues it, this text is the brief of a new slice, word for word — an
+> imperative title, the concrete change, a `Done when:` line, and a decision
+> rather than a question. The user decides on the board — queue as a
 > slice, fold into this one, or drop — and the decision arrives here as a
 > message naming what to fold in. Do that, then hand back as below.
 > `complete-slice` refuses while the decision is outstanding. Never widen

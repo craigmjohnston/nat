@@ -315,7 +315,8 @@ func Prompt(c PromptContext) string {
 		b.WriteString("yours to do and not yours to lose. When the gate is green, before\n")
 		b.WriteString("`complete-slice`, hand each one in and **stop**:\n\n")
 		fmt.Fprintf(&b, "    nat slice-followups %s --project %s \\\n", c.Slice.ID, c.ProjectID)
-		b.WriteString("        --follow-up '<title line>\n\n<two or three sentences: what, where, why it matters>'\n\n")
+		b.WriteString("        --follow-up '<title line>\n\n<the change: which file or function, what it does instead, and why>\nDone when: <how anyone checks it is finished>'\n\n")
+		b.WriteString(followUpBriefPassage)
 		b.WriteString("`--follow-up` repeats, one per follow-up. The user decides in the app —\n")
 		b.WriteString("queue it as a slice, fold it into this one, or drop it — and the decision\n")
 		b.WriteString("arrives here as a message naming what to fold in. Do that, then hand back\n")
@@ -579,6 +580,21 @@ const namingPassage = "\n## Naming slices\n\n" +
 	"shows; the rest is the tracker's own or a plugin's, which the next reader\n" +
 	"may not have. This holds for everything you write: summaries, PR\n" +
 	"descriptions, follow-up briefs, notes, proposal briefs.\n"
+
+// followUpBriefPassage says how a follow-up is written: as the brief of the
+// slice it becomes if queued, since slice-triage files it as one verbatim.
+// skills/next-slice/SKILL.md carries the same words in its own copy.
+const followUpBriefPassage = "Write each one as a slice brief: if the user queues it, this text is the\n" +
+	"brief of a new slice, word for word, read by an agent with nothing else.\n" +
+	"The title is an imperative action (\"Make the sidebar's post-write\n" +
+	"refresh read the replica\"), not a symptom. The body is the change —\n" +
+	"which file or function, what it does instead, and why — then a line\n" +
+	"starting `Done when:` saying how anyone checks it is finished. Write a\n" +
+	"decision, not a question: where there is a choice, pick one and name the\n" +
+	"alternative rejected; no \"could\", \"might\", \"consider\" or \"worth looking\n" +
+	"at\". If saying what to change needs a look at the code, take that look\n" +
+	"now — it is usually one read; if it genuinely needs investigation, the\n" +
+	"investigation is the deliverable and `Done when:` says what it produces.\n\n"
 
 // branchArg is what the hand-back command names: the branch the session's
 // worktree is already on, or the placeholder for an agent that will make one.
