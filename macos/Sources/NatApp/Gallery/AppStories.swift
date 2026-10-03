@@ -252,6 +252,19 @@ enum AppStories {
         }
     )
 
+    /// The status bar's plan (M2 partly done, M3 untouched) and an untouched
+    /// M4 after it, for the milestones' default folds.
+    private static let defaultFoldsPlan = ProjectInfo(
+        project: Fixtures.project,
+        milestones: Fixtures.milestones + [Milestone(id: "M4: Polish", name: "M4: Polish", order: 3, status: "Queued")],
+        slices: statusBarPlan.slices + (1...2).map { n in
+            Slice(
+                id: "f1x75222-0000-4000-8000-0000000004\(String(format: "%02d", n))",
+                name: "Polish pass \(n)", status: "Todo", milestoneID: "M4: Polish",
+                assignee: "", pr: "", url: "", blocked: false, handedBack: false)
+        }
+    )
+
     /// A scratch plan: one slice added with no milestone (so under the
     /// unfiled one), one under a milestone of its own.
     private static let unfiledScratchPlan = ProjectInfo(
@@ -638,6 +651,17 @@ enum AppStories {
             let appModel = await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig)
             appModel.selectedSliceID = Fixtures.mergeBoxSliceID
             return shell(appModel, folds: ["active": true, "p:\(Fixtures.secondProjectID)": true])
+        },
+
+        Story(
+            name: "window-sidebar-default-folds",
+            summary: "A fresh launch's milestone folds: M2, partly done, open; M3 open for the selected slice in it; M4, untouched, folded to its head.",
+            size: window
+        ) {
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(plan: defaultFoldsPlan), config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = defaultFoldsPlan.slices.first { $0.milestoneID == "M3: View gallery" }?.id
+            return shell(appModel)
         },
 
         Story(

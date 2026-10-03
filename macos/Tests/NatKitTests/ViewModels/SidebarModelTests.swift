@@ -100,6 +100,24 @@ final class SidebarModelTests: XCTestCase {
         XCTAssertEqual(model.projects[0].milestones.map(\.total), [1, 0])
     }
 
+    func testOnlyAPartlyDoneMilestoneOrTheSelectionsOpensByDefault() {
+        func row(_ id: String) -> SidebarSliceRow {
+            SidebarSliceRow(sliceID: id, projectID: "p", title: id, state: .todo, live: false)
+        }
+        let partly = SidebarMilestone(name: "partly", done: 1, total: 2, slices: [row("a"), row("b")])
+        let untouched = SidebarMilestone(name: "untouched", done: 0, total: 2, slices: [row("c"), row("d")])
+        let finished = SidebarMilestone(name: "finished", done: 2, total: 2, slices: [row("e"), row("f")])
+        let empty = SidebarMilestone(name: "empty", done: 0, total: 0, slices: [])
+
+        XCTAssertTrue(partly.opensByDefault(selecting: nil))
+        XCTAssertFalse(untouched.opensByDefault(selecting: nil))
+        XCTAssertFalse(untouched.opensByDefault(selecting: "a"))
+        XCTAssertTrue(untouched.opensByDefault(selecting: "d"))
+        XCTAssertFalse(finished.opensByDefault(selecting: nil))
+        XCTAssertTrue(finished.opensByDefault(selecting: "e"))
+        XCTAssertFalse(empty.opensByDefault(selecting: "a"))
+    }
+
     func testEachPlanStatusIsReadOffTheLoad() {
         let inputs = [
             SidebarProjectInput(id: "a", name: "A", plan: nil, isLoading: true),
