@@ -3,3 +3,5 @@
 dist/
 .DS_Store
 coverage.out
+/plugins/shortcut/nat-source-shortcut
+/plugins/shortcut/fakeshortcut
