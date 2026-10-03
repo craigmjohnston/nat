@@ -592,6 +592,31 @@ func TestSourceProjectRoundTrip(t *testing.T) {
 	}
 }
 
+// Extra plugin sources survive a round trip, and a config with none writes no
+// plugin_sources key at all, so an older config is written back unchanged.
+func TestPluginSourcesRoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := Save(Config{PluginSources: []string{"someone/plugins"}}); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.PluginSources) != 1 || out.PluginSources[0] != "someone/plugins" {
+		t.Fatalf("round trip: %v", out.PluginSources)
+	}
+
+	if err := Save(Config{}); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := Path()
+	data, _ := os.ReadFile(path)
+	if strings.Contains(string(data), "plugin_sources") {
+		t.Fatalf("a config with no extra sources wrote the key:\n%s", data)
+	}
+}
+
 func TestLocalProjectRoundTrip(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	in := Config{Projects: map[string]ProjectConfig{
